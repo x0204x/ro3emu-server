@@ -90,6 +90,40 @@ public sealed class GameData(IOptions<ServerOptions> options, ILogger<GameData> 
 
     public JsonElement? Row(string table, long id) => Table(table).TryGetValue(id.ToString(), out var row) ? row : null;
 
+    /// <summary>
+    /// Repeated config rows are arrays in the Genesis export. D Asia also emits serial-keyed objects such as
+    /// DropGroupConfig { "1": row, "2": row }; accept both representations while rejecting ordinary row objects.
+    /// </summary>
+    public static bool TryGroupedRows(JsonElement value, out JsonElement[] rows)
+    {
+        if (value.ValueKind == JsonValueKind.Array)
+        {
+            rows = value.EnumerateArray().ToArray();
+            return rows.All(row => row.ValueKind == JsonValueKind.Object);
+        }
+        if (value.ValueKind == JsonValueKind.Object)
+        {
+            var keyed = new List<(long Serial, JsonElement Row)>();
+            foreach (var property in value.EnumerateObject())
+            {
+                if (!long.TryParse(property.Name, System.Globalization.NumberStyles.None,
+                        System.Globalization.CultureInfo.InvariantCulture, out long serial)
+                    || property.Value.ValueKind != JsonValueKind.Object)
+                {
+                    rows = [];
+                    return false;
+                }
+                keyed.Add((serial, property.Value));
+            }
+            rows = keyed.OrderBy(row => row.Serial).Select(row => row.Row).ToArray();
+            // Genesis may intentionally serialize an empty repeated group as [], while an empty object is the
+            // exporter's placeholder for an absent/unresolved group. Keep those meanings distinct.
+            return keyed.Count > 0;
+        }
+        rows = [];
+        return false;
+    }
+
     /// <summary>Localized text (Localization_en: id -> {_kDes}); config "names" are arrays of text ids.</summary>
     public string Text(long id)
     {

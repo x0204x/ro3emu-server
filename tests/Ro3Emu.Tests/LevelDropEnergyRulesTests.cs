@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Romsg;
@@ -227,6 +228,29 @@ public sealed class LevelDropEnergyRulesTests : IAsyncLifetime
         var drops = new List<(int, int)>();
         Service<RewardService>().PickFromGroup(3005, new RoleProgress { Career = 1000, Level = 5 }, drops);
         Assert.Equal([(100, 5)], drops);
+    }
+
+    [ClientDataFact]
+    public void DAsiaSerialKeyedDropGroupUsesOmittedWeightAndQuantityDefaults()
+    {
+        var groups = Assert.IsType<Dictionary<string, JsonElement>>(Data.Table("DropGroupConfig"));
+        const string groupId = "121121";
+        JsonElement original = groups[groupId];
+        groups[groupId] = JsonSerializer.SerializeToElement(new Dictionary<string, object>
+        {
+            ["6"] = new
+            {
+                _iID = 121121, _iJobLimit = new[] { 2100 }, _iMinLevelLimit = 1,
+                _iSerial = 6, _kDropItem = 2090120,
+            },
+        });
+        try
+        {
+            var drops = new List<(int, int)>();
+            Service<RewardService>().PickFromGroup(121121, new RoleProgress { Career = 2100, Level = 10 }, drops);
+            Assert.Equal([(2090120, 1)], drops);
+        }
+        finally { groups[groupId] = original; }
     }
 
     // ---- 8. mount energy ----

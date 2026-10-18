@@ -112,7 +112,7 @@ public sealed class AwardService(GameData data)
             if (groupId <= 0 || chance is < 0 or > 1_000_000 || rolls is < 1 or > 1000 || picks is < 1 or > 1000)
                 throw Fail($"DropPoolConfig {poolId} slot {slot} has unsupported range");
             var candidates = EligibleRows(groupId, progress);
-            long weight = candidates.Sum(r => GameData.Int(r, "_iWeights"));
+            long weight = candidates.Sum(DropWeight);
             if (weight <= 0) continue;
             // (inferred) RewardService's current [group,chance-per-million,rolls,picks] interpretation.
             for (int r = 0; r < rolls; r++)
@@ -123,10 +123,10 @@ public sealed class AwardService(GameData data)
                     long choice = Random.Shared.NextInt64(weight);
                     foreach (var candidate in candidates)
                     {
-                        choice -= GameData.Int(candidate, "_iWeights");
+                        choice -= DropWeight(candidate);
                         if (choice >= 0) continue;
-                        int min = checked((int)GameData.Int(candidate, "_iMinNumber"));
-                        int max = checked((int)GameData.Int(candidate, "_iMaxNumber"));
+                        int min = checked((int)DropQuantity(candidate, "_iMinNumber"));
+                        int max = checked((int)DropQuantity(candidate, "_iMaxNumber"));
                         if (min < 1 || max < min) throw Fail($"DropGroupConfig {groupId} has invalid quantity range");
                         int count = checked((int)Random.Shared.NextInt64(min, (long)max + 1));
                         int entry = checked((int)GameData.Int(candidate, "_kDropItem"));
@@ -142,12 +142,12 @@ public sealed class AwardService(GameData data)
 
     private List<JsonElement> EligibleRows(long groupId, RoleProgress? progress)
     {
-        if (data.Row("DropGroupConfig", groupId) is not { ValueKind: JsonValueKind.Array } rows)
+        if (data.Row("DropGroupConfig", groupId) is not { } raw || !GameData.TryGroupedRows(raw, out var rows))
             throw Fail($"missing DropGroupConfig {groupId}");
         var eligible = new List<JsonElement>();
-        foreach (var row in rows.EnumerateArray())
+        foreach (var row in rows)
         {
-            long weight = GameData.Int(row, "_iWeights");
+            long weight = DropWeight(row);
             if (weight <= 0) continue;
             // A declared but empty/zero-weight pool still resolves fixed grants without a recipient.
             // Only an eligible weighted candidate needs role level and career.
@@ -166,14 +166,22 @@ public sealed class AwardService(GameData data)
                 throw Fail($"DropGroupConfig {groupId} has unresolved eligibility or bind policy");
             int bind = PoolBindType(row, groupId);
             int entry = checked((int)GameData.Int(row, "_kDropItem"));
-            int low = checked((int)GameData.Int(row, "_iMinNumber"));
-            int high = checked((int)GameData.Int(row, "_iMaxNumber"));
+            int low = checked((int)DropQuantity(row, "_iMinNumber"));
+            int high = checked((int)DropQuantity(row, "_iMaxNumber"));
             if (low <= 0 || high < low) throw Fail($"DropGroupConfig {groupId} has invalid quantity range");
             ValidateGrant(entry, low, bind, 0);
             eligible.Add(row);
         }
         return eligible;
     }
+
+    // D Asia omits Lua defaults from repeated DropGroupConfig rows. Genesis serializes these fields explicitly.
+    // Preserve an explicitly serialized zero; only an absent field receives the client-table default.
+    private static long DropWeight(JsonElement row) =>
+        row.TryGetProperty("_iWeights", out _) ? GameData.Int(row, "_iWeights") : 1;
+
+    private static long DropQuantity(JsonElement row, string field) =>
+        row.TryGetProperty(field, out _) ? GameData.Int(row, field) : 1;
 
     private static int PoolBindType(JsonElement row, long groupId)
     {

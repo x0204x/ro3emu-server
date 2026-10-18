@@ -549,6 +549,40 @@ public sealed class QuestEngineTests : IAsyncLifetime
     }
 
     [ClientDataFact]
+    public async Task DAsiaSerialKeyedRewardCompletesTheFirstRequest()
+    {
+        await using var bot = await InWorld();
+        await Gm("!job 1100");
+        var data = Service<GameData>();
+        var groups = Assert.IsType<Dictionary<string, JsonElement>>(data.Table("DropGroupConfig"));
+        const string groupId = "121121";
+        JsonElement original = groups[groupId];
+        groups[groupId] = JsonSerializer.SerializeToElement(new Dictionary<string, object>
+        {
+            ["1"] = new
+            {
+                _iID = 121121, _iJobLimit = new[] { 1000 }, _iMinLevelLimit = 1,
+                _iMinNumber = 2, _iMaxNumber = 2, _kDropItem = 2010120,
+            },
+            ["2"] = new
+            {
+                _iID = 121121, _iJobLimit = new[] { 1100 }, _iMinLevelLimit = 1,
+                _iSerial = 2, _kDropItem = 2020120,
+            },
+        });
+        try
+        {
+            await Accept(10101210);
+            await Gm("!quest finish 10101210");
+            Assert.Equal(TaskState.Delivery, (await State(10101210)).Status);
+            Assert.Equal(1, await Read(s => s.Tasks!.CompleteTaskNum[10101210]));
+            Assert.Equal(10, await Read(s => Service<CharacterService>().CountOf(s, 2020120)));
+            Assert.Equal(1, OwnedQuestSourceCount((long)bot.Self!.Uuid, 10101210));
+        }
+        finally { groups[groupId] = original; }
+    }
+
+    [ClientDataFact]
     public async Task ChapterOneFinalDialoguesGrantTheCareerPoolOnce()
     {
         await using var bot = await InWorld();

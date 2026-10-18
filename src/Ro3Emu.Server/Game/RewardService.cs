@@ -310,7 +310,7 @@ public sealed class RewardService
     internal void PickFromGroup(long group, RoleProgress progress, List<(int, int)> drops, List<(int Entry, int Count, int Bind)>? bound = null,
         int monsterLevel = DropAttenuation.NoMonster)
     {
-        if (data.Row("DropGroupConfig", group) is not { ValueKind: JsonValueKind.Array } rows) return;
+        if (data.Row("DropGroupConfig", group) is not { } raw || !GameData.TryGroupedRows(raw, out var rows)) return;
         var p = progress;
         // D Asia omits _iWeights for an unweighted row; that row still participates with weight one (for example
         // group 105, and the equal-choice item groups). An explicitly serialized zero remains disabled. Groups
@@ -323,7 +323,7 @@ public sealed class RewardService
                     || !row.TryGetProperty("_iMaxNumber", out _))) return 0;
             return row.TryGetProperty("_iWeights", out _) ? GameData.Int(row, "_iWeights") : 1;
         }
-        var candidates = rows.EnumerateArray().Where(r =>
+        var candidates = rows.Where(r =>
         {
             if (Weight(r) <= 0 || GameData.Int(r, "_iQuestLimit") != 0 || GameData.Int(r, "_iActivityid") != 0) return false;
             long min = GameData.Int(r, "_iMinLevelLimit"), max = GameData.Int(r, "_iMaxLevelLimit");
@@ -338,9 +338,12 @@ public sealed class RewardService
         {
             roll -= Weight(r);
             if (roll >= 0) continue;
-            int count = _random.Next((int)GameData.Int(r, "_iMinNumber"), (int)Math.Max(GameData.Int(r, "_iMinNumber"), GameData.Int(r, "_iMaxNumber")) + 1);
+            int min = r.TryGetProperty("_iMinNumber", out _) ? (int)GameData.Int(r, "_iMinNumber") : 1;
+            int max = r.TryGetProperty("_iMaxNumber", out _) ? (int)GameData.Int(r, "_iMaxNumber") : 1;
+            if (min <= 0 || max < min) return;
+            int count = _random.Next(min, max + 1);
             int entry = r.TryGetProperty("_kDropItem", out _) ? (int)GameData.Int(r, "_kDropItem") : BaseExpItem;
-            int amount = attenuation.Apply(r, Math.Max(1, count), p.Level, monsterLevel, _random);
+            int amount = attenuation.Apply(r, count, p.Level, monsterLevel, _random);
             if (amount <= 0) return;
             drops.Add((entry, amount));
             bound?.Add((entry, amount, (int)GameData.Int(r, "_iBind")));
