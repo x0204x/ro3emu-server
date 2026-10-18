@@ -81,7 +81,8 @@ public static class ClientPatcher
             Func<ModuleDefinition, string>? extra = file switch
             {
                 AsiaProfileFile => m => AsiaProfilePatch.Patch(m, serverBaseUrl, LoginPath, ServerListPathAndQuery),
-                "Assembly-CSharp.dll" => m => RedirectChat(m, hooksDll) + "; " + VoiceStubPatch.Patch(m) + "; " + TextSink.PatchLanguageGet(m, locDll),
+                "Assembly-CSharp.dll" => m => RedirectChat(m, hooksDll) + "; " + VoiceStubPatch.Patch(m, hooksDll) + "; " + VoiceEnablePatch.Patch(m)
+                    + "; " + TextSink.PatchLanguageGet(m, locDll),
                 "Happyengine.Base.Runtime.dll" when VerboseLogs => ForceShowLog,
                 "Unity.TextMeshPro.dll" => m => TextSink.PatchTmp(m, locDll, hooksDll),
                 "HUD.dll" => m => TextSink.PatchHud(m, locDll),
@@ -293,6 +294,8 @@ public static class ClientPatcher
         var managed = ManagedDir(clientDir);
         var problems = new List<string>();
         var rules = Rules("http://127.0.0.1", PemMarker);
+        hooksDll ??= DefaultHooksDll();
+        locDll ??= Embedded(LocFile, "Ro3Emu.Loc");
         foreach (var file in FilesToPatch(clientDir))
         {
             var source = File.Exists(Path.Combine(BackupDir(clientDir), file)) ? Path.Combine(BackupDir(clientDir), file) : Path.Combine(managed, file);
@@ -303,7 +306,10 @@ public static class ClientPatcher
             if (file == "Assembly-CSharp.dll" && assembly.MainModule.GetType("NetworkLib.NW_ChatNetworkManager") == null) problems.Add("NW_ChatNetworkManager not found");
             if (file == "Assembly-CSharp.dll")
             {
-                try { VoiceStubPatch.Patch(assembly.MainModule); } // in memory only: does the voice stub fit this build
+                // In memory only: do the voice stub (and its calls into the hooks DLL) and the voice UI switch fit this build.
+                try { VoiceStubPatch.Patch(assembly.MainModule, File.Exists(hooksDll) ? hooksDll : null); }
+                catch (InvalidOperationException e) { problems.Add(e.Message); }
+                try { VoiceEnablePatch.Patch(assembly.MainModule); }
                 catch (InvalidOperationException e) { problems.Add(e.Message); }
             }
             if (file == AsiaProfileFile)
@@ -315,8 +321,6 @@ public static class ClientPatcher
         }
         problems.AddRange(rules.Where(r => r.Hits == 0).Select(r => "literal not found: " + r.Description));
 
-        hooksDll ??= DefaultHooksDll();
-        locDll ??= Embedded(LocFile, "Ro3Emu.Loc");
         foreach (var dll in new[] { hooksDll, locDll })
         {
             if (!File.Exists(dll)) { problems.Add($"{Path.GetFileName(dll)} is missing"); continue; }

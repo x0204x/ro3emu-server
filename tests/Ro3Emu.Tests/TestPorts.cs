@@ -51,7 +51,7 @@ internal static class TestPorts
             for (int i = 0; i < size; i++)
             {
                 int port = Range.First + (start + i) % size;
-                if (port is 5380 or 20000 or 33100) continue; // Never use the application's default ports.
+                if (port is 5380 or 20000 or 33100 or 33101) continue; // Never use the application's default ports.
                 if (Selected.Contains(port)) continue;
                 using var listener = new TcpListener(IPAddress.Loopback, port) { ExclusiveAddressUse = true };
                 try { listener.Start(); }

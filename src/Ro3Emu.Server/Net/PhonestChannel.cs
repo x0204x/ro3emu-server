@@ -44,10 +44,16 @@ public sealed class PhonestChannel : IAsyncDisposable
         _socket = socket;
         _log = log;
         Remote = socket.RemoteEndPoint?.ToString() ?? "?";
+        var local = (socket.LocalEndPoint as System.Net.IPEndPoint)?.Address;
+        LocalAddress = local is { IsIPv4MappedToIPv6: true } ? local.MapToIPv4() : local;
         _writer = Task.Run(WriteLoopAsync);
     }
 
     public string Remote { get; }
+
+    /// <summary>This side's address of the connection (the interface the client reached us on); null for a socket
+    /// that is not connected. IPv4-mapped addresses of a dual-mode socket are unwrapped to plain IPv4.</summary>
+    public System.Net.IPAddress? LocalAddress { get; }
     public Diagnostics.ConnectionMetrics? Metrics { get; init; }
 
     /// <summary>Nonblocking close observation while frame dispatch is awaiting game-loop selection.

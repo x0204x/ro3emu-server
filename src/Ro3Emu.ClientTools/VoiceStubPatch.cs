@@ -14,6 +14,9 @@ namespace Ro3Emu.ClientTools;
 /// the original does for a room it is already in) so the guild voice UI records the channel, LeaveChannel reports the
 /// leave (Lua OnLeaveChannel), LeaveChannelAll reports OnLeaveChannelAll; every other call is a no-op. The constructor
 /// no longer creates the GME context. Repeating the patch on its own output changes nothing.
+/// Init, JoinChannel, LeaveChannel, LeaveChannelAll, SetMicrophoneMute, SetSpeakerMute, SetSpeakerVolume and
+/// SetMicVolume also call the same-named static methods of Ro3Emu.ClientHooks.VoiceClient first (team voice through the
+/// server's relay); VoiceClient reports what happens there to Lua itself.
 /// </summary>
 public static class VoiceStubPatch
 {
@@ -35,12 +38,8 @@ public static class VoiceStubPatch
         ("Obf_CYC", 1, null),     // GetChannel
         ("Obf_eYC", 3, null),     // subscribe the room events
         ("Obf_FYC", 1, true),     // SpeakToChannelID
-        ("Obf_hYC", 2, true),     // SetSpeakerMute
         ("Obf_HYC", 1, false),    // GetSpeakerMute
-        ("Obf_iYC", 2, true),     // SetMicrophoneMute
         ("Obf_IYC", 1, false),    // GetMicrophoneMute
-        ("Obf_jYC", 2, true),     // SetSpeakerVolume
-        ("Obf_JYC", 2, true),     // SetMicVolume
         ("Obf_kYC", 1, -1),       // GetSpeakerVolume
         ("Obf_KYC", 1, -1),       // GetMicVolume
         ("Obf_oYC", 2, true),     // AddListenBlackList
@@ -63,7 +62,31 @@ public static class VoiceStubPatch
         ("Obf_AzC", 1, 0),        // GetVoiceFileDuration
     ];
 
-    public static string Patch(ModuleDefinition module)
+    /// <summary>The ClientHooks type the voice calls also go to (Ro3Emu.ClientHooks.VoiceClient, static methods).</summary>
+    public const string HooksType = "Ro3Emu.ClientHooks.VoiceClient";
+    private const string HooksAssembly = "Ro3Emu.ClientHooks";
+
+    /// <summary>
+    /// Adapter methods that also call VoiceClient: obfuscated name, parameter count, VoiceClient method, how many of the
+    /// adapter's parameters it gets (JoinChannel's room type and auth buffer stay behind). Lua names in the comments.
+    /// </summary>
+    private static readonly (string Name, int Parameters, string Hook, int Passed)[] Forwarded =
+    [
+        ("Obf_yyC", 1, "Init", 1),
+        ("Obf_dYC", 3, "JoinChannel", 1),
+        ("Obf_gYC", 1, "LeaveChannel", 1),
+        ("Obf_GYC", 0, "LeaveChannelAll", 0),
+        ("Obf_iYC", 2, "SetMicrophoneMute", 2),
+        ("Obf_hYC", 2, "SetSpeakerMute", 2),
+        ("Obf_jYC", 2, "SetSpeakerVolume", 2),
+        ("Obf_JYC", 2, "SetMicVolume", 2),
+    ];
+
+    /// <summary>
+    /// <paramref name="hooksDll"/>: the Ro3Emu.ClientHooks.dll to call into; its VoiceClient methods are checked against
+    /// the adapter's. Without it (the tests) the references are made by name only.
+    /// </summary>
+    public static string Patch(ModuleDefinition module, string? hooksDll = null)
     {
         var adapter = module.GetType(AdapterType) ?? throw new InvalidOperationException("VoiceCallAdapter not found");
         var native = NativeNamespaces(module);
@@ -113,9 +136,31 @@ public static class VoiceStubPatch
 
         foreach (var (name, parameters, result) in Fixed) Return(Method(name, parameters), result);
 
-        // Init(roleId): if (string.IsNullOrEmpty(roleId)) return false; userId = roleId; return true;
+        // Each forwarded method starts with VoiceClient.<Hook>(its arguments); the rest of its body follows.
+        var hooks = Hooks(module, hooksDll, Method);
+        void Forward(ILProcessor il, MethodDefinition method)
+        {
+            var (_, _, _, passed) = Forwarded.Single(f => f.Name == method.Name && f.Parameters == method.Parameters.Count);
+            for (int i = 0; i < passed; i++) il.Append(il.Create(OpCodes.Ldarg, method.Parameters[i]));
+            il.Append(il.Create(OpCodes.Call, hooks[method.Name]));
+        }
+
+        // SetMicrophoneMute, SetSpeakerMute, SetSpeakerVolume, SetMicVolume(channel, value): VoiceClient.X(channel, value); return true;
+        foreach (var name in new[] { "Obf_iYC", "Obf_hYC", "Obf_jYC", "Obf_JYC" })
+        {
+            var method = Method(name, 2);
+            Rewrite(method, il =>
+            {
+                Forward(il, method);
+                il.Append(il.Create(OpCodes.Ldc_I4_1));
+                il.Append(il.Create(OpCodes.Ret));
+            });
+        }
+
+        // Init(roleId): VoiceClient.Init(roleId); if (string.IsNullOrEmpty(roleId)) return false; userId = roleId; return true;
         Rewrite(init, il =>
         {
+            Forward(il, init);
             var go = il.Create(OpCodes.Ldarg_0);
             il.Append(il.Create(OpCodes.Ldarg_1));
             il.Append(il.Create(OpCodes.Call, isNullOrEmpty));
@@ -165,9 +210,11 @@ public static class VoiceStubPatch
             il.Append(il.Create(OpCodes.Ret));
         });
 
-        // JoinChannel(channelId, roomType, authBuffer): if (channelId == null) return false; Obf_PYC(null, channelId, userId, 0, "OK."); return true;
+        // JoinChannel(channelId, roomType, authBuffer): VoiceClient.JoinChannel(channelId);
+        // if (channelId == null) return false; Obf_PYC(null, channelId, userId, 0, "OK."); return true;
         Rewrite(join, il =>
         {
+            Forward(il, join);
             var go = il.Create(OpCodes.Ldarg_0);
             il.Append(il.Create(OpCodes.Ldarg_1));
             il.Append(il.Create(OpCodes.Brtrue, go));
@@ -200,9 +247,10 @@ public static class VoiceStubPatch
             il.Append(il.Create(OpCodes.Ret));
         });
 
-        // LeaveChannel(channelId): if (channelId == null) return false; Obf_qYC(null, channelId, userId); return true;
+        // LeaveChannel(channelId): VoiceClient.LeaveChannel(channelId); if (channelId == null) return false; Obf_qYC(null, channelId, userId); return true;
         Rewrite(leave, il =>
         {
+            Forward(il, leave);
             var go = il.Create(OpCodes.Ldarg_0);
             il.Append(il.Create(OpCodes.Ldarg_1));
             il.Append(il.Create(OpCodes.Brtrue, go));
@@ -218,10 +266,11 @@ public static class VoiceStubPatch
             il.Append(il.Create(OpCodes.Ret));
         });
 
-        // LeaveChannelAll(): leaveAllPending = true; joined.Clear(); Obf_QYC(); return true;
+        // LeaveChannelAll(): VoiceClient.LeaveChannelAll(); leaveAllPending = true; joined.Clear(); Obf_QYC(); return true;
         // Only OnLeaveChannelAll is reported: Lua registers no OnLeaveChannel callback for it.
         Rewrite(leaveAll, il =>
         {
+            Forward(il, leaveAll);
             il.Append(il.Create(OpCodes.Ldarg_0));
             il.Append(il.Create(OpCodes.Ldc_I4_1));
             il.Append(il.Create(OpCodes.Stfld, leaveAllPending));
@@ -269,7 +318,41 @@ public static class VoiceStubPatch
 
         var left = NativeCalls(module);
         if (left.Count > 0) throw new InvalidOperationException("VoiceCallAdapter still reaches GME: " + string.Join(", ", left));
-        return $"voice -> stub ({Fixed.Length + 9} methods, no GME)";
+        return $"voice -> stub ({Fixed.Length + 13} methods, no GME; {Forwarded.Length} call {HooksType})";
+    }
+
+    /// <summary>
+    /// The VoiceClient method references by adapter method name: static void Hook(the adapter's first Passed parameter
+    /// types), in the Ro3Emu.ClientHooks reference the module already has (RedirectChat adds it) or a new one. With the
+    /// hooks DLL each one must exist there, so a hooks build without them fails here and not in the game.
+    /// </summary>
+    private static Dictionary<string, MethodReference> Hooks(ModuleDefinition module, string? hooksDll, Func<string, int, MethodDefinition> adapterMethod)
+    {
+        using var hooks = hooksDll == null ? null : AssemblyDefinition.ReadAssembly(hooksDll, new ReaderParameters { InMemory = true });
+        var definition = hooks?.MainModule.GetType(HooksType);
+        if (hooks != null && definition == null) throw new InvalidOperationException($"{HooksType} not found in {Path.GetFileName(hooksDll)}");
+
+        var scope = module.AssemblyReferences.FirstOrDefault(r => r.Name == HooksAssembly);
+        if (scope == null)
+        {
+            scope = new AssemblyNameReference(HooksAssembly, hooks?.Name.Version ?? new Version(0, 0, 0, 0));
+            module.AssemblyReferences.Add(scope);
+        }
+        var type = new TypeReference("Ro3Emu.ClientHooks", "VoiceClient", module, scope);
+
+        var result = new Dictionary<string, MethodReference>(StringComparer.Ordinal);
+        foreach (var (name, parameters, hook, passed) in Forwarded)
+        {
+            var types = adapterMethod(name, parameters).Parameters.Take(passed).Select(p => p.ParameterType).ToList();
+            if (definition != null && !definition.Methods.Any(m => m.Name == hook && m.IsStatic && m.IsPublic
+                    && m.ReturnType.MetadataType == MetadataType.Void
+                    && m.Parameters.Select(p => p.ParameterType.FullName).SequenceEqual(types.Select(t => t.FullName))))
+                throw new InvalidOperationException($"{HooksType}.{hook}({string.Join(", ", types.Select(t => t.Name))}) not found in {Path.GetFileName(hooksDll)}");
+            var reference = new MethodReference(hook, module.TypeSystem.Void, type) { HasThis = false };
+            foreach (var t in types) reference.Parameters.Add(new ParameterDefinition(t));
+            result[name] = reference;
+        }
+        return result;
     }
 
     /// <summary>
@@ -377,7 +460,8 @@ public static class VoiceStubPatch
         });
     }
 
-    private static void Rewrite(MethodDefinition method, Action<ILProcessor> emit)
+    /// <summary>Replaces the body with what <paramref name="emit"/> appends (also used by VoiceEnablePatch).</summary>
+    internal static void Rewrite(MethodDefinition method, Action<ILProcessor> emit)
     {
         method.Body.Instructions.Clear();
         method.Body.ExceptionHandlers.Clear();
@@ -385,5 +469,47 @@ public static class VoiceStubPatch
         method.Body.InitLocals = false;
         emit(method.Body.GetILProcessor());
         method.Body.OptimizeMacros();
+    }
+}
+
+/// <summary>
+/// Turns the client's voice UI on for the server's voice relay (Ro3Emu.ClientHooks.VoiceClient, see VoiceStubPatch):
+/// LA_Utils.USE_YIM (property Obf_f, a constant false in this PC build, read only by Lua) gates every VoiceCall_Util
+/// call; its getter returns true.
+/// MetaSDKUtil.ReqChatAudioPermission is deliberately left alone: VoiceCall_Util.TryJoinChannel goes on whatever it
+/// answers, and the chat voice-message recorder (a separate publisher service, LC_ChatServer SendToYMChat) must stay
+/// behind its "no permission" answer.
+/// (In this file because Ro3Emu.Setup compiles the patcher sources by name.)
+/// The body is recognised before it is replaced, so another client build fails the check instead of being patched
+/// blindly. Repeating the patch on its own output changes nothing.
+/// </summary>
+public static class VoiceEnablePatch
+{
+    public const string UtilsType = "LA_Utils";
+    public const string UseYimProperty = "Obf_f";
+
+    public static string Patch(ModuleDefinition module)
+    {
+        var utils = module.GetType(UtilsType) ?? throw new InvalidOperationException($"{UtilsType} not found");
+        var getter = utils.Properties.SingleOrDefault(p => p.Name == UseYimProperty)?.GetMethod
+            ?? throw new InvalidOperationException($"{UtilsType}.{UseYimProperty} (USE_YIM) not found");
+        if (!getter.IsStatic || getter.ReturnType.MetadataType != MetadataType.Boolean || !IsConstant(getter))
+            throw new InvalidOperationException($"{UtilsType}.{UseYimProperty} is not the USE_YIM constant of the known client build");
+
+        // get_USE_YIM(): return true;
+        VoiceStubPatch.Rewrite(getter, il =>
+        {
+            il.Append(il.Create(OpCodes.Ldc_I4_1));
+            il.Append(il.Create(OpCodes.Ret));
+        });
+
+        return "voice UI on (USE_YIM true)";
+    }
+
+    /// <summary>A body that is only "return false;" (the original) or "return true;" (patched).</summary>
+    private static bool IsConstant(MethodDefinition method)
+    {
+        var code = method.Body.Instructions.Where(i => i.OpCode != OpCodes.Nop).ToList();
+        return code.Count == 2 && (code[0].OpCode == OpCodes.Ldc_I4_0 || code[0].OpCode == OpCodes.Ldc_I4_1) && code[1].OpCode == OpCodes.Ret;
     }
 }

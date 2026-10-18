@@ -105,6 +105,11 @@ public sealed partial class TeamService : IGameTicker
     public IReadOnlyList<long> MembersOf(long role) =>
         _byMember.TryGetValue(role, out var team) ? team.Members.ToArray() : [role];
 
+    /// <summary>The leader's forbidden-chat restriction on a member (TeamChangeMemberState, team.Muted); used by the
+    /// voice relay to silence a muted member's microphone the same way text chat is silenced.</summary>
+    public bool IsForbiddenChat(long role) =>
+        _byMember.TryGetValue(role, out var team) && team.Muted.Contains(role);
+
     public Task CreateAsync(GameSession s, TeamCreateReq req) =>
         RunTeamAsync(s, "team/create", () => CreateCoreAsync(s, req));
 

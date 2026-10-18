@@ -13,6 +13,14 @@ using Ro3Emu.Bot;
 //   party                 create a party;  invite <roleId>  invite into it;  friend <roleId>  send a friend request
 //   guildapply <guildId>  apply to a guild;  guildhelp <guildId>  respond to a guild being founded;  guildleave
 //   quit
+// usage: Ro3Emu.BotCli voice-echo <server http base> <account> <password> [roleName] [--delay-ms 1000] [--data-dir <dir>]
+//   waits for a party invite, accepts it and echoes the party's voice back (see BotVoiceEcho)
+if (args.Length > 0 && args[0] == "voice-echo")
+{
+    Environment.ExitCode = await VoiceEchoAsync(args[1..]);
+    return;
+}
+
 string name = args.Length > 0 ? args[0] : "Botty";
 string http = args.Length > 1 ? args[1] : "http://127.0.0.1:5380";
 string dataDir = args.Length > 2 ? args[2] : FindDataDir();
@@ -127,6 +135,89 @@ async Task Step(float nx, float nz, bool stop)
 }
 
 static float F(string s) => float.Parse(s, CultureInfo.InvariantCulture);
+
+static async Task<int> VoiceEchoAsync(string[] args)
+{
+    var positional = new List<string>();
+    int delayMs = 1000;
+    string? dataDir = null;
+    for (int i = 0; i < args.Length; i++)
+    {
+        if (args[i] == "--delay-ms" && i + 1 < args.Length) delayMs = int.Parse(args[++i], CultureInfo.InvariantCulture);
+        else if (args[i] == "--data-dir" && i + 1 < args.Length) dataDir = args[++i];
+        else positional.Add(args[i]);
+    }
+    if (positional.Count < 3 || delayMs < 0)
+    {
+        Console.WriteLine("usage: Ro3Emu.BotCli voice-echo <server http base> <account> <password> [roleName] [--delay-ms 1000] [--data-dir <dir>]");
+        return 2;
+    }
+    string http = positional[0], account = positional[1], password = positional[2];
+    string? wantedName = positional.Count > 3 ? positional[3] : null;
+    dataDir ??= FindDataDir();
+
+    using var stop = new CancellationTokenSource();
+    Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };
+    static void Log(string line) => Console.WriteLine(line);
+
+    await using var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+    await bot.LoginAsync(account, password);
+    await bot.EnterGateAsync();
+    // An existing role: the one named, else the account's first; none yet: create one.
+    var existing = wantedName != null ? bot.Roles.FirstOrDefault(r => r.Name == wantedName) : bot.Roles.FirstOrDefault();
+    string roleName = existing?.Name ?? wantedName ?? "EchoBot";
+    long roleId = existing?.Id ?? (await bot.CreateRoleAsync(roleName)).RoleBaseInfo.Id;
+    await bot.EnterWorldAsync(roleId);
+    Log($"{roleName} ({roleId}) in world");
+
+    // Heartbeat like the real client, so the session looks alive.
+    _ = Task.Run(async () =>
+    {
+        while (!stop.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(5000, stop.Token);
+                await bot.SendGameAsync(1, new Romsg.Ping());
+            }
+            catch { return; }
+        }
+    });
+
+    try
+    {
+        long teamId = await BotVoiceEcho.AcceptPartyInviteAsync(bot, Log, stop.Token);
+        var end = await BotVoiceEcho.RunAsync(bot, roleId, teamId, TimeSpan.FromMilliseconds(delayMs), Log, stop.Token);
+        switch (end.Kind)
+        {
+            case BotVoiceEchoEndKind.Kicked when end.KickCode == Ro3Emu.Server.Voice.VoiceKickCode.RemovedFromRoom:
+                Log("no longer in the team, exiting");
+                return 0;
+            case BotVoiceEchoEndKind.Kicked:
+                Log($"kicked with code {end.KickCode}, exiting");
+                return 1;
+            case BotVoiceEchoEndKind.JoinRefused:
+                Log($"voice join refused with code {end.KickCode}, exiting");
+                return 1;
+            case BotVoiceEchoEndKind.Closed:
+                Log("voice connection closed, exiting");
+                return 1;
+            default:
+                Log("stopped");
+                return 0;
+        }
+    }
+    catch (OperationCanceledException) when (stop.IsCancellationRequested)
+    {
+        Log("stopped");
+        return 0;
+    }
+    catch (InvalidOperationException e)
+    {
+        Log($"error: {e.Message}");
+        return 1;
+    }
+}
 
 static string FindDataDir()
 {

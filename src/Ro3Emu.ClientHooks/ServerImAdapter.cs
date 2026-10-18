@@ -14,6 +14,7 @@ namespace Ro3Emu.ClientHooks
     /// (GM_Chat.proto) with a command id, and this adapter tunnels those bytes through the game connection instead of
     /// Tencent's cloud. Frames both ways: uint32 LE cmd ‖ int32 LE errorCode ‖ protobuf.
     /// Up: game message 77010; down: game message 77011.
+    /// Its per-frame pump and receive hook also carry the voice relay ticket (77016) and pump (VoiceClient).
     /// </summary>
     public sealed class ServerImAdapter : Obf_ci
     {
@@ -80,6 +81,7 @@ namespace Ro3Emu.ClientHooks
             n = 0;
             while (_requestCallback != null && n++ < MaxPerFrame && _inbound.TryDequeue(out var frame)) Deliver(frame);
             while (_diagnostics.TryDequeue(out var line)) Diagnostics.Run(line);
+            VoiceClient.Pump();
             UiTweaks.Tick();
         }
 
@@ -96,6 +98,7 @@ namespace Ro3Emu.ClientHooks
             while (_status.TryDequeue(out _)) { }
             _requestCallback = null;
             _requestArray = null;
+            VoiceClient.Shutdown(); // voice must not outlive the game connection (mic left open after logout)
         }
 
         /// <summary>Same hand-off as the Tencent adapter: cmd, length, pinned pointer, error code in the shared array.</summary>
@@ -142,6 +145,11 @@ namespace Ro3Emu.ClientHooks
             if (msgId == Diagnostics.MsgId)
             {
                 _diagnostics.Enqueue(System.Text.Encoding.UTF8.GetString(memory.ToArray()));
+                return;
+            }
+            if (msgId == VoiceProtocol.TicketMsgId)
+            {
+                VoiceClient.OnTicket(memory.ToArray());
                 return;
             }
             if (msgId != DownMsgId || memory.Length < 8) return;

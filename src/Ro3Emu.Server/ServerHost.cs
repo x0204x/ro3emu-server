@@ -153,6 +153,10 @@ public static class ServerHost
         builder.Services.AddSingleton<SessionRegistry>();
         builder.Services.AddSingleton<GateAuthRegistry>();
         builder.Services.AddSingleton<ReconnectService>();
+        builder.Services.AddSingleton<Voice.VoiceTicketRegistry>();
+        builder.Services.AddSingleton<Voice.VoiceRooms>();
+        // The voice relay PoC only opens a second listener when a port is configured for it.
+        if (options.Voice.Port > 0) builder.Services.AddHostedService<Voice.VoiceGateServer>();
         builder.Services.AddHostedService<DatabaseBackup>();
         builder.Services.AddSingleton<Game.Persistence.PositionPersistence>();
         builder.Services.AddSingleton<Game.Persistence.SettingsPersistence>();
@@ -166,6 +170,7 @@ public static class ServerHost
         builder.Services.AddSingleton<Game.Messaging.IMessageModule, SocialMessages>();
         builder.Services.AddSingleton<Game.Messaging.IMessageModule, ActivitiesMessages>();
         builder.Services.AddSingleton<Game.Messaging.IMessageModule, AdventureGroupMessages>();
+        builder.Services.AddSingleton<Game.Messaging.IMessageModule, Voice.VoiceTicketService>();
         builder.Services.AddSingleton<GameMessageHandler>();
         builder.Services.AddSingleton(sp => GateCrypto.LoadOrCreate(options.DataDir, sp.GetRequiredService<ILogger<GateCrypto>>()));
         builder.Services.AddSingleton<IMicroService, LoginService>();
@@ -473,6 +478,7 @@ internal sealed class GameLoopTickers(IServiceProvider services) : IHostedServic
         Add<ShopService>(); // 05:00 purchase-limit rollover
         Add<ItemBoxService>(); // award boxes; 05:00 item use-time rollover
         Add<PowerService>(); // throttled 31502/31503 republish of changed power
+        Add<Voice.VoiceRooms>(); // VAD silence timeout every tick, team-membership sweep every second
         return Task.CompletedTask;
     }
 
