@@ -169,6 +169,7 @@ foreach ($client in $Clients) {
         $nav = (Get-ChildItem (Join-Path $data 'nav')).Count
         $msgs = (Get-Content (Join-Path $data 'msgtable.tsv')).Count
         if ($tables -lt 400 -or $nav -lt 100 -or $msgs -lt 1000) { Fail 'export' "tables $tables, nav $nav, messages $msgs" }
+        if (@($stamp.FailedTables).Count -gt 0) { Fail 'export' ('incomplete, tables not exported: ' + (@($stamp.FailedTables) -join ', ')) }
         Pass 'export' "tables $tables, nav $nav, messages $msgs, skills $((Get-ChildItem (Join-Path $data 'skills')).Count), sceneeditor $((Get-ChildItem (Join-Path $data 'sceneeditor')).Count)"
 
         $url = "http://127.0.0.1:$($ports[0])"

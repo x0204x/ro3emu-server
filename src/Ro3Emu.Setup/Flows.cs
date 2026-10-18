@@ -134,6 +134,10 @@ internal static class Flows
         Ui.EndProgress();
         Ui.Ok($"exported in {Ui.Duration(watch.Elapsed)}: {result.ConfigTables} tables, {result.SceneEditor} maps, {result.Skills} skills, " +
               $"{result.NavFiles} walk maps, {result.Messages} messages, {result.LocEntries} English texts");
+        if (result.FailedTables.Count > 0)
+            Ui.Warn($"{result.FailedTables.Count} game table(s) could not be exported ({string.Join(", ", result.FailedTables.Take(5))}" +
+                (result.FailedTables.Count > 5 ? ", ..." : "") + "). The server may miss some content; RO3Emu will try again next start. " +
+                "If this keeps happening, your game is newer than this RO3Emu: get the latest one from the releases page.");
         return result;
     }
 
