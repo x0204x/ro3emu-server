@@ -243,6 +243,51 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         Assert.Equal(ErrorCodes.SkillPassive, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
     }
 
+    [ClientDataTheory]
+    [InlineData(12004, 1200401, 1200411, 1200404, 400)]
+    [InlineData(12012, 1201201, 1201210, 1201209, 167)]
+    public async Task FireProjectilesUseAuthoredBulletAndActionHitEffects(
+        int group, int skillId, int bulletEffect, int hitEffect, int travelMs)
+    {
+        await using var alice = await InWorld("Alice");
+        await Gm("alice", "!job 2100"); await Teach("alice", group);
+        var target = await Target("alice", stationary: true);
+        await Loop.InvokeAsync(() =>
+        {
+            var session = Session("alice");
+            var start = session.Position;
+            var nav = app.Services.GetRequiredService<WorldData>().Map(session.SceneEntry)!.Nav;
+            var offset = new[] { (4f, 0f), (-4f, 0f), (0f, 4f), (0f, -4f) }
+                .First(o => nav == null || nav.CanWalk(start.X, start.Y, start.Z, start.X + o.Item1, start.Z + o.Item2));
+            target.X = start.X + offset.Item1;
+            target.Z = start.Z + offset.Item2;
+            target.Y = nav?.WalkHeight(target.X, target.Z, start.Y) ?? start.Y;
+            target.Hp = 1_000_000;
+            return Task.CompletedTask;
+        });
+
+        await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = skillId, TargetId = target.Uid });
+        var accepted = await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser);
+        Assert.Equal(0, accepted.Result);
+        var timeline = await Next(alice, CombatService.UseInSkill, UseInSkillInfo.Parser,
+            x => x.SessionId == accepted.SessionId);
+        var bullet = await Next(alice, CombatService.SkillBullet, SkillFixTimeBulletNotify.Parser,
+            x => x.SkillConfigId == skillId && x.TargetId == target.Uid);
+        Assert.Equal((long)alice.Self!.Uuid, bullet.SourceId);
+        Assert.Equal((long)alice.Self.Uuid, bullet.MasterId);
+        Assert.Equal(bulletEffect, bullet.EffectId);
+        Assert.Equal(travelMs, bullet.FixedTime);
+        Assert.Equal(1, bullet.Split);
+        Assert.Equal(target.Pos, bullet.TargetPosition);
+        Assert.Equal(Session("alice").Position, bullet.SourcePosition);
+        Assert.True(bullet.StartTimestampMs >= timeline.StartTime);
+
+        var hit = await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser,
+            x => x.SessionId == accepted.SessionId);
+        Assert.Equal(hitEffect, hit.ShowPoint);
+        Assert.True(Assert.Single(hit.Dsts, d => d.DstID == target.Uid).Damage > 0);
+    }
+
     [ClientDataFact]
     public async Task InterruptInvalidatesDelayedHitAndEchoesAutoCast()
     {

@@ -407,17 +407,47 @@ public sealed partial class CombatService
         var points = template is { } t ? Numbers(t, "m_kAtkPoints") : [];
         double point = points.FirstOrDefault(0.2);
         int at = Script(row) == "Resurrection" ? action.ChantMs : ImpactOffset(template, point, action.ChantMs, action.ActionMs);
-        ScheduleRuntime(action.WorldScene, TimeSpan.FromMilliseconds(at), async () =>
+        int bulletEffect = actor == null && req.TargetId != 0 && !HasClientBulletPoints(template)
+            ? BulletEffect(GameData.Int(row, "_iScriptShow")) : 0;
+        var bulletTarget = req.TargetPos ?? target?.Pos ?? origin;
+        int bulletTravel = bulletEffect > 0 ? BulletTravelMs(bulletEffect, origin, bulletTarget) : 0;
+        if (bulletTravel > 0)
+        {
+            ScheduleRuntime(action.WorldScene, TimeSpan.FromMilliseconds(at), async () =>
+            {
+                if (!Live(s, action)) return;
+                await SendSkillBulletAsync(s, new SkillFixTimeBulletNotify
+                {
+                    SourceId = action.OwnerId, TargetId = req.TargetId, EffectId = bulletEffect,
+                    FixedTime = bulletTravel, Split = 1, TargetPosition = bulletTarget.Clone(),
+                    SkillConfigId = req.SkillId, MasterId = action.OwnerId, SourcePosition = action.Origin.Clone(),
+                    StartTimestampMs = Now,
+                }, highLevel: GameData.Int(row, "_iSkillEffectLevel") > 0);
+            });
+        }
+        int resolveAt = at + bulletTravel;
+        ScheduleRuntime(action.WorldScene, TimeSpan.FromMilliseconds(resolveAt), async () =>
         {
             if (!Live(s, action)) return;
             action.Resolved = true;
             await ResolveCastAsync(s, action);
         });
-        ScheduleRuntime(action.WorldScene, TimeSpan.FromMilliseconds(Math.Max(at, action.ChantMs + action.ActionMs) + 1), () =>
+        ScheduleRuntime(action.WorldScene, TimeSpan.FromMilliseconds(Math.Max(resolveAt, action.ChantMs + action.ActionMs) + 1), () =>
         {
             if (ReferenceEquals(s.SkillCast, action)) s.SkillCast = null;
             return Task.CompletedTask;
         });
+    }
+
+    private static bool HasClientBulletPoints(JsonElement? template)
+    {
+        if (template is not { } value || !value.TryGetProperty("m_kClientPoints", out var points)) return false;
+        return points.ValueKind switch
+        {
+            JsonValueKind.Array => points.GetArrayLength() > 0,
+            JsonValueKind.Object => points.EnumerateObject().Any(),
+            _ => false,
+        };
     }
 
     /// <summary>Piecewise template time mapping; same scale as LC_Skill_RunTimeContext (inferred for attack points).</summary>

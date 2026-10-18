@@ -294,13 +294,53 @@ public sealed partial class CombatService : IGameTicker
         log.LogDebug("{Name} locks {Target}", s.Role?.Name, req.EnemyId);
     }
 
-    /// <summary>The template's damage EffectData (hit fx + flinch): the first with m_kDamage in [show*100, show*100+99].</summary>
+    /// <summary>
+    /// The authored Action damage entry drives 31101 hit presentation. Bullet entries are a different client path:
+    /// LC_DamageHelper only builds an action hit from m_kDamageType 3, while type 2 belongs to LC_Bullet_Mgr.
+    /// </summary>
     private int HitEffect(long scriptShow)
     {
         var effects = data.SkillTemplateTable("Lua_Config_EffectData");
         for (long id = scriptShow * 100; id < scriptShow * 100 + 100; id++)
-            if (effects.TryGetValue(id.ToString(), out var e) && e.TryGetProperty("m_kDamage", out _)) return (int)id;
+            if (effects.TryGetValue(id.ToString(), out var e)
+                && e.TryGetProperty("m_kDamage", out var damage)
+                && GameData.Int(damage, "m_kDamageType") == 3
+                && damage.TryGetProperty("m_kActionDamge", out _)) return (int)id;
         return 1000002;
+    }
+
+    /// <summary>The first visible authored Bullet entry for a timeline that has no client bullet points.</summary>
+    private int BulletEffect(long scriptShow)
+    {
+        var effects = data.SkillTemplateTable("Lua_Config_EffectData");
+        for (long id = scriptShow * 100; id < scriptShow * 100 + 100; id++)
+        {
+            if (!effects.TryGetValue(id.ToString(), out var e)
+                || !e.TryGetProperty("m_kDamage", out var damage)
+                || GameData.Int(damage, "m_kDamageType") != 2
+                || !damage.TryGetProperty("m_kBulletData", out var bullet)
+                || !bullet.TryGetProperty("m_kBulletName", out var name)
+                || name.ValueKind != JsonValueKind.String
+                || string.IsNullOrWhiteSpace(name.GetString())) continue;
+            return (int)id;
+        }
+        return 0;
+    }
+
+    private int BulletTravelMs(int effectId, Vec3 origin, Vec3 target)
+    {
+        if (!data.SkillTemplateTable("Lua_Config_EffectData").TryGetValue(effectId.ToString(), out var effect)
+            || !effect.TryGetProperty("m_kDamage", out var damage)
+            || !damage.TryGetProperty("m_kBulletData", out var bullet)) return 0;
+        double duration;
+        if (GameData.Int(bullet, "m_iBulletControlType") == 0)
+            duration = GameData.Number(bullet.TryGetProperty("m_fBulletLifeTime", out var life) ? life : default) ?? 0;
+        else
+        {
+            double unitsPerSecond = GameData.Number(bullet.TryGetProperty("m_fBulletSpeed", out var speed) ? speed : default) ?? 0;
+            duration = unitsPerSecond > 0 ? Math.Max(1, Distance(origin, target) / unitsPerSecond * 1000) : 0;
+        }
+        return duration > 0 ? (int)Math.Clamp(Math.Round(duration), 1, 5000) : 0;
     }
 
     // ---- monsters hitting players ----
