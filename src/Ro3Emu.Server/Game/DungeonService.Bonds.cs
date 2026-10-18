@@ -99,7 +99,7 @@ public sealed partial class DungeonService
         var roster = Present(attempt).Where(attempt.Loaded.Contains).ToArray();
         foreach (var member in roster)
         {
-            var wanted = BondBuffs(boss, member, BondRoster(attempt, member)).ToHashSet();
+            var wanted = BondBuffs(boss, member, BondRoster(attempt, member)).Concat(BlessingBuffs(attempt)).ToHashSet();
             foreach (var old in member.Buffs.Where(b => b.SourceId == attempt.Room.Id && !wanted.Contains(b.ConfigId)).ToArray())
                 await buffs.RemoveAsync(member, old);
             foreach (int id in wanted)

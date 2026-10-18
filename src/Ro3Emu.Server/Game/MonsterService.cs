@@ -10,7 +10,7 @@ namespace Ro3Emu.Server.Game;
 /// skill, spawning the scene-editor groups when a map is first entered, the AI (roam, chase, attack, leash) on the map
 /// tick, death, corpse removal and respawn. Combat math and hits go through CombatService.
 /// </summary>
-public sealed class MonsterService : MonsterBrain, IGameTicker
+public sealed partial class MonsterService : MonsterBrain, IGameTicker
 {
     private readonly World world;
     private readonly WorldData worldData;
@@ -18,11 +18,13 @@ public sealed class MonsterService : MonsterBrain, IGameTicker
     private readonly GameLoop loop;
     private readonly ILogger<MonsterService> log;
     private readonly ReconstructedDungeons? reconstructed;
+    private readonly BossSkillOptions bossOptions;
 
     public MonsterService(World world, WorldData worldData, GameData data, GameLoop loop, ILogger<MonsterService> log,
-        ReconstructedDungeons? reconstructed = null)
+        ReconstructedDungeons? reconstructed = null, Microsoft.Extensions.Options.IOptions<ServerOptions>? options = null)
     {
         this.reconstructed = reconstructed;
+        bossOptions = options?.Value.BossSkills ?? new BossSkillOptions();
         this.world = world;
         this.worldData = worldData;
         this.data = data;
@@ -32,7 +34,7 @@ public sealed class MonsterService : MonsterBrain, IGameTicker
         {
             if (unit is MonsterUnit monster && _spawns.TryGetValue(monster.RuntimeMap, out var owner))
                 owner.Units.Remove(monster);
-            return Task.CompletedTask;
+            return unit is MonsterUnit { BossSkills: not null } boss ? EndBossSkillsTask(boss, interrupt: false) ?? Task.CompletedTask : Task.CompletedTask;
         });
     }
 
@@ -119,7 +121,10 @@ public sealed class MonsterService : MonsterBrain, IGameTicker
             RoamDistance: speed > 0 ? Cm("_iRoamDis", 0) : 0, RoamTimeMs: aiRow is { } r2 ? (int)Math.Max(2000, GameData.Int(r2, "_iRoamTime")) : 8000,
             ViewRange: Cm("_iViewRange", 5), LeashDistance: aiRow is { } r3 && r3.TryGetProperty("_iUnFightParam", out var uf) && uf.ValueKind == JsonValueKind.Array
                 && uf.GetArrayLength() > 0 && GameData.Number(uf[0]) is { } leash ? (float)leash / 100 : Cm("_iChaseDistance", 18),
-            skill, skillMs, hitPoint, swing, range, (int)Math.Max(500, GameData.Int(npc, "_iBodyRemainTime")));
+            skill, skillMs, hitPoint, swing, range, (int)Math.Max(500, GameData.Int(npc, "_iBodyRemainTime")))
+        {
+            Skills = BossBook(npcId, npc, skill),
+        };
     }
 
     private BossNormalAttacks? _bossAttacks;
@@ -470,7 +475,18 @@ public sealed class MonsterService : MonsterBrain, IGameTicker
             if (m.Target == null) Disengage(m, map);
             return;
         }
+        if (m.BusyUntilMs > now)
+        {
+            if (m.Moving)
+            {
+                m.Moving = false;
+                SendStop(m, now);
+            }
+            return;
+        }
         float dist = Distance(m.X, m.Z, target.X, target.Z);
+        // A tower boss uses its specials on the pets it fights (inferred: the Pet Tower bosses run the MVP scripts).
+        if (m.Template.Skills != null && !m.SpecialsOwnedByMvp && TryBossSkill(m, null, target, dist, now)) return;
         if (dist <= m.Template.AttackRange + 0.5f)
         {
             if (m.Moving)
@@ -506,7 +522,18 @@ public sealed class MonsterService : MonsterBrain, IGameTicker
             Disengage(m, map);
             return;
         }
+        if (m.BusyUntilMs > now)
+        {
+            // A special skill is being cast: the boss holds its ground and does not swing.
+            if (m.Moving)
+            {
+                m.Moving = false;
+                SendStop(m, now);
+            }
+            return;
+        }
         float dist = Distance(m, target);
+        if (m.Template.Skills != null && !m.SpecialsOwnedByMvp && TryBossSkill(m, target, null, dist, now)) return;
         float reach = m.Template.AttackRange + 0.5f;
         if (dist <= reach)
         {
@@ -537,6 +564,7 @@ public sealed class MonsterService : MonsterBrain, IGameTicker
 
     private void Disengage(MonsterUnit m, MapInstance map)
     {
+        EndBossSkills(m, interrupt: true);
         SetTarget(m, null);
         m.PetTarget = null;
         m.Returning = true;
@@ -607,6 +635,7 @@ public sealed class MonsterService : MonsterBrain, IGameTicker
         if (m.Dead) return;
         m.Dead = true;
         m.Moving = false;
+        EndBossSkills(m, interrupt: true);
         SetTarget(m, null);
         m.PetTarget = null;
         await world.ToUnitViewersAsync(m, CombatService.AoiAttrChange, Hp(m));

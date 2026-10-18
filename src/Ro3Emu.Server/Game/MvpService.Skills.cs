@@ -55,6 +55,11 @@ public sealed partial class MvpService
         [5020002] = [(5202201, 0), (5202301, 0)],       // Golden Thief Bug: Summon Thief Bug, Frenzy
     };
 
+    /// <summary>A skill this service casts for its field MVP itself (its plans and their marking selectors): the generic
+    /// boss scheduler (BossSkillSets) leaves it out of the boss's rotation.</summary>
+    internal static bool OwnsSkill(int bossNpc, int skill) =>
+        BossSkillIds.TryGetValue(bossNpc, out var ids) && Array.Exists(ids, p => p.Skill == skill || p.Select == skill);
+
     private const int SummonCount = 3;        // descriptions: "summons three", 10110300447 @{1} = 3
     private const int SelfDestructBuff = 5002801; // BuffConfig "Summoned Unit Self-Destruct", its born time is the life
     private const int DefaultMinionLifeMs = 15_000;
@@ -137,11 +142,17 @@ public sealed partial class MvpService
                 loop.TrackRuntimeDetached("MVP back in combat", () => EnterCombatAsync(boss));
             }
             st.LastFightMs = now;
-            if (st.SkillsStopped || now < st.NextCastMs) return;
-            var plan = Plans(st.Def.NpcId).FirstOrDefault(p => now >= st.SkillReadyMs.GetValueOrDefault(p.Skill));
-            if (plan == null) return;
+            if (st.SkillsStopped || now < st.NextCastMs || boss.BusyUntilMs > now) return;
+            var plan = now < boss.NextSpecialMs ? null : Plans(st.Def.NpcId).FirstOrDefault(p => now >= st.SkillReadyMs.GetValueOrDefault(p.Skill));
+            if (plan == null)
+            {
+                // Its own plans first, then the generic specials of its family (BossSkillSets), on the same gap.
+                monsters.TryBossSkill(boss, now);
+                return;
+            }
             st.SkillReadyMs[plan.Skill] = now + Math.Max(1000, plan.CdMs);
             st.NextCastMs = now + Math.Max(plan.ActionMs, plan.PublicCdMs);
+            boss.NextSpecialMs = Math.Max(boss.NextSpecialMs, st.NextCastMs);
             loop.TrackRuntimeDetached("MVP skill", () => CastAsync(st, boss, plan));
         }
         else if (st.LastFightMs > 0 && now - st.LastFightMs >= UnFight(boss.Template.NpcId).Ms)

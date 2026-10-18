@@ -344,6 +344,10 @@ public static partial class EconomySnapshotReader
                                 }
                             }
                             break;
+                        case "multi_dungeon_server":
+                            // Realm of the Gods first clears (hall of fame, Sacred Blessing unlocks): records, no balance.
+                            ValidateProto(Convert.FromBase64String(value), DBMultiDungeonServerInfo.Descriptor);
+                            break;
                         default:
                             Issue(EconomyIssueKind.UnknownSchema, key, "Unclassified server_state key.");
                             break;

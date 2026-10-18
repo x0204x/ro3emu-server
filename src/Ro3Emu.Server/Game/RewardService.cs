@@ -256,6 +256,14 @@ public sealed class RewardService
         return drops.GroupBy(d => d.Item1).Select(g => (g.Key, g.Sum(d => d.Item2))).ToList();
     }
 
+    /// <summary>One DropPoolConfig draw for this player, each chosen DropGroupConfig._iBind retained, same goods merged.</summary>
+    public List<(int Entry, int Count, int Bind)> RollPoolBound(long poolId, RoleProgress progress)
+    {
+        var bound = new List<(int Entry, int Count, int Bind)>();
+        RollPool(poolId, progress, new List<(int, int)>(), bound);
+        return bound.GroupBy(x => (x.Entry, x.Bind)).Select(g => (g.Key.Entry, g.Sum(x => x.Count), g.Key.Bind)).ToList();
+    }
+
     /// <summary>Stage-box pool draw with each chosen DropGroupConfig._iBind retained (draw rules inferred).</summary>
     public List<(int Entry, int Count, int Bind)> RollAwardBound(long awardId, GameSession player)
         => RollAwardBound(awardId, player.Progress!);

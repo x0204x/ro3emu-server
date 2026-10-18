@@ -110,6 +110,9 @@ public sealed class BossNormalAttacks(GameData data)
     /// <summary>A SkillConfig row whose script logic is named as a normal attack (inferred from the name).</summary>
     public static bool IsNamedSwing(JsonElement row) => SwingName.IsMatch(Logic(row));
 
+    /// <summary>The rest of an AI script after a known stem is a difficulty or tier variant ("_easy", "EZ", "_3").</summary>
+    public static bool IsVariantSuffix(string suffix) => Variant.IsMatch(suffix);
+
     private long Resolve(int npcId, JsonElement npc)
     {
         if (ById.TryGetValue(npcId, out long byId)) return byId;

@@ -19,6 +19,10 @@ public sealed partial class DungeonService
         public Dictionary<long, byte[]> Statistics { get; set; } = new();
         public Dictionary<string, byte[]> Results { get; set; } = new();
         public Dictionary<string, JourneyVictory> PendingJourney { get; set; } = new();
+        /// <summary>Final Trial honors per "multi:mark": TenGameplayFinalTrialConfig id -> DBMultiDungeonHonorState.</summary>
+        public Dictionary<string, Dictionary<long, int>> Honors { get; set; } = new();
+        /// <summary>Sacred Blessing level (TenGameplayBuffConfig id) last acknowledged per boss (82588 clears isNeedTip).</summary>
+        public Dictionary<long, long> BlessingsSeen { get; set; } = new();
     }
 
     public sealed class Record
@@ -34,7 +38,7 @@ public sealed partial class DungeonService
     }
 
     private static State Copy(State state) => JsonSerializer.Deserialize<State>(JsonSerializer.SerializeToUtf8Bytes(state))!;
-    private static string RecordKey(DungeonCatalog.Plan plan) => $"{plan.MultiId}:{plan.Mark}";
+    private static string RecordKey(DungeonCatalog.Plan plan) => $"{plan.RewardMultiId}:{plan.RewardMark}";
     private async Task SaveAsync(GameSession s, State state)
     {
         var transaction = roles.NewTransaction();
@@ -143,7 +147,7 @@ public sealed partial class DungeonService
                 var allowance = GetAllowance(state, multi, mark);
                 var record = state.Records.GetValueOrDefault($"{id}:{mark}");
                 int maximum = catalog.Refresh(multi) is { } refresh ? (int)GameData.Int(refresh, "_iRewardMaxNum") : 0;
-                dungeon.AwardInfo.Add(new DBMultiDungeonAwardInfo
+                var award = new DBMultiDungeonAwardInfo
                 {
                     TotalNumber = maximum, UseNumber = maximum - allowance.Remaining,
                     // Separate first clear from recurring counters: Lua adds a free first entitlement for NotPass.
@@ -151,7 +155,15 @@ public sealed partial class DungeonService
                     IsFirst = record?.Passed == true ? 2 : 0,
                     FirstPassState = (MultiDungeonFirstPassState)(record?.Passed == true ? 2 : 0),
                     FastRecord = record?.FastestMs ?? 0,
-                });
+                };
+                if (Blessing(boss) is { } blessing)
+                {
+                    award.SacredBlessings = blessing.Info;
+                    award.SacredBlessings.IsNeedTip = blessing.Info.UnlockSacredBlessingID != 0
+                        && state.BlessingsSeen.GetValueOrDefault(GameData.Int(boss, "_iBoss")) != blessing.Info.UnlockSacredBlessingID;
+                }
+                if (HonorView(state, $"{id}:{mark}", boss) is { } honor) award.Honor = honor;
+                dungeon.AwardInfo.Add(award);
             }
             if (dungeon.AwardInfo.Count == 0) continue;
             info.DungeonInfo[id] = dungeon;

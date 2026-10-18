@@ -11,7 +11,11 @@ public sealed record MonsterTemplate(
     int NpcId, int Level, long MaxHp, long MaxSp, long Atk, long Matk, long Def, long Mdef, long Hit, long Flee, long Cri,
     int SpeedCm, int Element, int Race, int Size, int Camp,
     bool Aggressive, float RoamDistance, int RoamTimeMs, float ViewRange, float LeashDistance,
-    int NormalSkill, int SkillMs, float HitPointSeconds, int SwingIntervalMs, float AttackRange, int BodyRemainMs);
+    int NormalSkill, int SkillMs, float HitPointSeconds, int SwingIntervalMs, float AttackRange, int BodyRemainMs)
+{
+    /// <summary>The boss's special skills (BossSkillSets); null: only the normal attack.</summary>
+    public BossSkillBook? Skills { get; init; }
+}
 
 /// <summary>A live monster on a map (entityType 1): HP, home point, current walk segment and AI state.</summary>
 public sealed class MonsterUnit : WorldUnit
@@ -56,6 +60,14 @@ public sealed class MonsterUnit : WorldUnit
     public long NextChaseMs { get; set; }
     public bool Returning { get; set; }
     public long LastCombatMs { get; set; }
+    /// <summary>Boss special-skill scheduler state, created when the boss first engages (MonsterService.BossSkills).</summary>
+    public BossSkillRuntime? BossSkills { get; set; }
+    /// <summary>A special skill's cast and action run until then: the boss neither walks nor swings.</summary>
+    public long BusyUntilMs { get; set; }
+    /// <summary>No other special before then (the gap after the previous one); shared with MvpService's own plans.</summary>
+    public long NextSpecialMs { get; set; }
+    /// <summary>MvpService paces this boss's specials from its own tick (its plans first, then the generic ones).</summary>
+    public bool SpecialsOwnedByMvp { get; set; }
     /// <summary>Live boss skill cooldowns for 31125/31127, keyed by actual cast row.</summary>
     public Dictionary<int, long> BossSkillCds { get; } = new();
 

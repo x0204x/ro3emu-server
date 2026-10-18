@@ -68,6 +68,12 @@ public sealed partial class TimedBattleService
                 if (winnerFaction == 0 && survivors.Count > 1 && time.GetUtcNow().ToUnixTimeSeconds() >= match.Deadline)
                     winnerFaction = ChickenRanks(match).Where(r => survivors.Contains(r.Key)).MinBy(r => r.Value).Key;
             }
+            else if (match.Dragon != null)
+            {
+                // Dragon Coffin Island: the camp with the higher score when the countdown ends (UITips 290002); a camp
+                // that left entirely forfeits before it (inferred).
+                if (winnerFaction == 0 && time.GetUtcNow().ToUnixTimeSeconds() >= match.Deadline) winnerFaction = DragonLeader(match);
+            }
             else if (winnerFaction == 0 && time.GetUtcNow().ToUnixTimeSeconds() >= match.Deadline)
             {
                 // (inferred) Unique confirmed-kill lead wins a timed-out round.
@@ -79,7 +85,8 @@ public sealed partial class TimedBattleService
             }
             var winner = winnerFaction == 0 ? null : match.Players
                 .Where(p => eligible.Contains(p) && match.Faction[p] == winnerFaction)
-                .OrderByDescending(p => match.Kills.GetValueOrDefault(p)).ThenBy(p => match.Participants[p].Id)
+                .OrderByDescending(p => match.Dragon?.Score.GetValueOrDefault(p) ?? 0)
+                .ThenByDescending(p => match.Kills.GetValueOrDefault(p)).ThenBy(p => match.Participants[p].Id)
                 .FirstOrDefault();
             bool actualVictory = winner != null;
             var staged = new List<FrozenRecipient>();

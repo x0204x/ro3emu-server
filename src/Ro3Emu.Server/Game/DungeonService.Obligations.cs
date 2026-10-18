@@ -128,11 +128,11 @@ public sealed partial class DungeonService
                 var goods = new List<DungeonRewardGood>();
                 bool newRecord = false;
                 bool auctionEligible = false;
-                if (success && a.Plan.Multi is { } multi && a.Plan.Boss is { } boss)
+                if (success && a.Plan.RewardMulti is { } multi && a.Plan.RewardBoss is { } boss)
                 {
                     string key = RecordKey(a.Plan);
                     var old = next.Records.GetValueOrDefault(key);
-                    var allowance = SpendableAllowance(next, s, multi, a.Plan.Mark);
+                    var allowance = SpendableAllowance(next, s, multi, a.Plan.RewardMark);
                     bool first = old?.Passed != true;
                     if (first || allowance.Remaining > 0)
                     {
@@ -146,6 +146,7 @@ public sealed partial class DungeonService
                     }
                     newRecord = old == null || old.FastestMs == 0 || duration < old.FastestMs;
                     next.Records[key] = new Record { Passed = true, FastestMs = newRecord ? duration : old!.FastestMs };
+                    EarnHonors(next, a, boss, duration);
                 }
                 // Valhalla Trials: a layer pays its _iPassReward once, and the clear is recorded with that payment.
                 if (success && a.Plan.Layer is { } layer)
@@ -167,7 +168,7 @@ public sealed partial class DungeonService
                         $"journey/dungeon/{character.RewardRealmId}/{a.Room.Id}/{roleId}") is { } victory)
                     next.PendingJourney[victory.Source] = victory;
                 var tiers = new Dictionary<int, long>();
-                if (a.Plan.Boss is { } auctionBoss && auctionBoss.TryGetProperty("_iGuildAward", out var tierRows)
+                if (a.Plan.RewardBoss is { } auctionBoss && auctionBoss.TryGetProperty("_iGuildAward", out var tierRows)
                     && tierRows.ValueKind == JsonValueKind.Array)
                     foreach (var tier in tierRows.EnumerateArray())
                         if (tier.ValueKind == JsonValueKind.Array && tier.GetArrayLength() >= 2)
@@ -179,7 +180,7 @@ public sealed partial class DungeonService
                     DurationMs = duration, NewRecord = newRecord, BaseState = original,
                     NextState = JsonSerializer.SerializeToUtf8Bytes(next), Goods = goods,
                     GuildId = guilds.ForRole(roleId)?.Id ?? 0,
-                    AuctionSourceType = auctionEligible && a.Plan.Multi is { } selected
+                    AuctionSourceType = auctionEligible && a.Plan.RewardMulti is { } selected
                         ? auctions.DungeonSrcType((int)GameData.Int(selected, "_iDifficulty")) : 0,
                     PlayBook = a.PlayBook, AuctionTiers = auctionEligible ? tiers : new(),
                     RequiresKill = killSourceKey != null, KillSourceKey = killSourceKey ?? "",
@@ -286,6 +287,14 @@ public sealed partial class DungeonService
                         FastestMs = live?.FastestMs > 0 && record.FastestMs > 0
                             ? Math.Min(live.FastestMs, record.FastestMs) : Math.Max(live?.FastestMs ?? 0, record.FastestMs) };
                 }
+            // Final Trial honors only move forward (NotFinish -> Finish -> Received); a claim made meanwhile stays.
+            foreach (var (key, honors) in earned.Honors)
+                foreach (var (id, state) in honors)
+                    if (before.Honors.GetValueOrDefault(key)?.GetValueOrDefault(id) != state)
+                    {
+                        if (!next.Honors.TryGetValue(key, out var live)) next.Honors[key] = live = new();
+                        live[id] = Math.Max(live.GetValueOrDefault(id), state);
+                    }
             foreach (var (key, allowance) in earned.Allowances)
             {
                 var old = before.Allowances.GetValueOrDefault(key);

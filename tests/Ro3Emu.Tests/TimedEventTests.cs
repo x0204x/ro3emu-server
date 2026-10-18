@@ -437,12 +437,29 @@ public sealed class TimedEventTests : IAsyncLifetime
             });
             await ChickenBattleAsync([alice, bob], loaded);
         }
+        else
+        {
+            // Dragon Coffin Island opens with its 30 s preparation stage (DungeonLua_3010303): no fighting yet.
+            Assert.Equal(0, loaded.Stage);
+            Assert.Equal([1L, 0, 2, 0], loaded.Vars.Single(v => v.VarId == 304).Vi64);
+            await OnLoop(() =>
+            {
+                Assert.False(Service<TimedBattleService>().CanFight(Session(alice), Session(bob)));
+                return Task.CompletedTask;
+            });
+            clock.Set(loaded.StageModuleData.StageEndTime / 1000 + 1);
+            await OnLoop(() => { Service<TimedBattleService>().Tick(default); return Task.CompletedTask; });
+            await Next(alice, DungeonService.BaseInfo, DungeonBaseInfoNotify.Parser, s => s.Stage == 1);
+        }
         await OnLoop(() =>
         {
             Assert.True(Service<TimedBattleService>().CanFight(Session(alice), Session(bob)));
             Session(bob).CurrentHp = 1;
             return Task.CompletedTask;
         });
+        if (entry == 6) // the camps start at their own points (GroupSpawnPointA/B): meet in the middle
+            await OnLoop(() => Service<SceneService>().TeleportInMapAsync(Session(alice),
+                new Ro3Emu.Server.Maps.MapPoint(Session(bob).Position.X + 1, Session(bob).Position.Y, Session(bob).Position.Z, 0)));
         await alice.SendGameAsync(CombatService.UseSkill,
             new CastSkillReq { SkillId = 1000001, TargetId = (long)bob.Self.Uuid });
         Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
@@ -463,7 +480,16 @@ public sealed class TimedEventTests : IAsyncLifetime
         }
         else
         {
+            // A kill is 20 points for the killer's camp (BattleEventPointConfig 42010), not an elimination: the higher
+            // camp score wins when the countdown ends.
+            var scored = await Next(alice, DungeonService.BaseInfo, DungeonBaseInfoNotify.Parser,
+                s => s.Vars.Any(v => v.VarId == 304 && v.Vi64.Count == 4 && v.Vi64[1] == 20));
+            Assert.Equal([1L, 20, 2, 0], scored.Vars.Single(v => v.VarId == 304).Vi64);
+            Assert.Empty(alice.Inbox.Snapshot().Where(e => e.IsGame(TimedBattleService.DragonSettle)));
+            clock.Set(scored.StageModuleData.StageEndTime / 1000 + 1);
+            await OnLoop(() => { Service<TimedBattleService>().Tick(default); return Task.CompletedTask; });
             var result = await Next(alice, TimedBattleService.DragonSettle, DragonIslandSettleNtf.Parser);
+            Assert.Equal(20, result.Snapshot.SceneStatistics.Values.Single().CampStatistics[1].ExtraData[1041003].LongValue);
             Assert.Equal(1, result.ResultType);
             Assert.Equal(2, result.NewRankId);
             Assert.Equal(50, result.CurrencyEarned);

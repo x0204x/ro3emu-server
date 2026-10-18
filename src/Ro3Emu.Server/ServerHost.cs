@@ -120,6 +120,8 @@ public static class ServerHost
         builder.Services.AddSingleton<InstanceService>();
         builder.Services.AddSingleton<DungeonCatalog>();
         builder.Services.AddSingleton<DungeonObligationStore>();
+        builder.Services.AddSingleton<PraiseService>();
+        builder.Services.AddSingleton<CasualBattleService>();
         builder.Services.AddSingleton<DungeonService>();
         builder.Services.AddSingleton<TerritoryWarsClock>();
         builder.Services.AddSingleton<TerritoryWarsService>();
@@ -319,7 +321,10 @@ public static class ServerHost
         app.Services.GetRequiredService<TimedEventService>();
         app.Services.GetRequiredService<PronteraDefenseService>();
         var timedBattles = app.Services.GetRequiredService<TimedBattleService>();
-        app.Services.GetRequiredService<CombatService>().SetEventPvPHandlers(timedBattles.CanFight, timedBattles.PlayerKilledAsync);
+        var casual = app.Services.GetRequiredService<CasualBattleService>();
+        app.Services.GetRequiredService<CombatService>().SetEventPvPHandlers(
+            (a, b) => timedBattles.CanFight(a, b) || casual.CanFight(a, b),
+            async (killer, victim) => { await timedBattles.PlayerKilledAsync(killer, victim); await casual.PlayerKilledAsync(killer, victim); });
         app.Services.GetRequiredService<FestivalService>();
         app.Services.GetRequiredService<TrainingService>();
         app.Services.GetRequiredService<GuildHomeService>();
@@ -452,6 +457,7 @@ internal sealed class GameLoopTickers(IServiceProvider services) : IHostedServic
         Add<TimedEventService>();
         Add<PronteraDefenseService>();
         Add<TimedBattleService>();
+        Add<CasualBattleService>();
         Add<FestivalService>();
         Add<TrainingService>();
         Add<GuildHomeService>();

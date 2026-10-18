@@ -28,13 +28,29 @@ public sealed class DungeonCatalog(GameData data, WorldData worldData, MonsterSe
         public long SceneEntry => GameData.Int(Config, "_iID");
         public int MultiId => Multi is { } row ? (int)GameData.Int(row, "_iID") : 0;
         public int DurationMs => (int)Math.Clamp(GameData.Int(Config, "_iLimitTime"), 1000, int.MaxValue);
-        public DungeonInitData Init(long teamId = 0, long instanceId = 0) => LayerId != 0
-            // The client never reads it (LC_DunGeon_Valhalla); filled as the proto defines it (inferred).
-            ? new() { HeroicSpiritDungeonInitData = new HeroicSpiritDungeonInitData { ChallengeId = LayerId } }
-            : MultiId == 0 ? new()
-            : new() { MultiDungeonInitData = new MultiDungeonInitData
-            { MultiDungeonId = MultiId, MarkId = Mark, TeamID = teamId, DungeonId = instanceId } };
+        /// <summary>A Hidden Realm run: the random entry (TenGameplayConfig _iIsRandomDungeon) this boss was drawn for.</summary>
+        public RandomOrigin? Origin { get; init; }
+        /// <summary>The entry whose rewards, allowance and record the run counts against: the Hidden Realm's own row when
+        /// drawn from it (inferred: its boss row 4300099 carries the awards and _iMatchID), else the fought boss's.</summary>
+        public JsonElement? RewardMulti => Origin?.Multi ?? Multi;
+        public JsonElement? RewardBoss => Origin?.Boss ?? Boss;
+        public int RewardMark => Origin?.Mark ?? Mark;
+        public int RewardMultiId => RewardMulti is { } row ? (int)GameData.Int(row, "_iID") : 0;
+        public DungeonInitData Init(long teamId = 0, long instanceId = 0)
+        {
+            var init = LayerId != 0
+                // The client never reads it (LC_DunGeon_Valhalla); filled as the proto defines it (inferred).
+                ? new DungeonInitData { HeroicSpiritDungeonInitData = new HeroicSpiritDungeonInitData { ChallengeId = LayerId } }
+                : MultiId == 0 ? new DungeonInitData()
+                : new DungeonInitData { MultiDungeonInitData = new MultiDungeonInitData
+                { MultiDungeonId = MultiId, MarkId = Mark, TeamID = teamId, DungeonId = instanceId } };
+            if (Origin is { } origin && init.MultiDungeonInitData != null)
+                init.MultiDungeonInitData.Origin = new MultiDungeonInfo { MultiDungeonId = GameData.Int(origin.Multi, "_iID"), MarkId = origin.Mark };
+            return init;
+        }
     }
+
+    public sealed record RandomOrigin(JsonElement Multi, JsonElement Boss, int Mark);
 
     public IEnumerable<JsonElement> MultiRows => data.Table("TenGameplayConfig").Values
         .Where(r => TowerService.FitsPlayBook(r, seasons.PlayBook));

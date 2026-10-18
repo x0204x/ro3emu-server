@@ -36,9 +36,16 @@ public sealed partial class DungeonService
         return s.SendGameAsync(Statistics, response);
     }
 
-    public Task StatisticsCurrentAsync(GameSession s) => s.SendGameAsync(StatisticsCurrent,
-        new GetDungeonStatisticsInDungeonResp { Result = s.DungeonAttempt == null ? ErrorCodes.SceneMissing : 0,
-            DungeonStatistics = s.DungeonAttempt is { } a ? StatisticsOf(a) : null });
+    /// <summary>Another mode's live report for 30117 (CasualBattleService: Mock Battle), or null.</summary>
+    internal Func<GameSession, DungeonStatisticsInfoWithDungeon?>? CurrentStatisticsOwner { get; set; }
+
+    public Task StatisticsCurrentAsync(GameSession s)
+    {
+        var other = s.DungeonAttempt == null ? CurrentStatisticsOwner?.Invoke(s) : null;
+        return s.SendGameAsync(StatisticsCurrent, new GetDungeonStatisticsInDungeonResp
+        { Result = s.DungeonAttempt == null && other == null ? ErrorCodes.SceneMissing : 0,
+            DungeonStatistics = s.DungeonAttempt is { } a ? StatisticsOf(a) : other });
+    }
 
     public Task StatisticsModuleAsync(GameSession s)
     {

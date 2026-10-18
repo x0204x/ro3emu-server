@@ -386,6 +386,7 @@ public sealed partial class MvpService : IGameTicker
         var at = points.Count > 0 ? points[_random.Next(points.Count)] is var p ? new MapPoint(p.X, p.Y, p.Z, p.Face) : default
             : map.Born ?? default;
         st.Unit = await monsters.SpawnSingleAsync(st.Runtime, st.Def.NpcId, at);
+        if (st.Unit != null) st.Unit.SpecialsOwnedByMvp = true; // TickBossSkills paces all of its specials
         if (st.Retired) { st.Unit = null; return; }
         if (st.Unit == null) return;
         st.Stats.Clear();

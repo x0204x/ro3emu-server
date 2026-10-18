@@ -130,6 +130,67 @@ public sealed class ServerOptions
     /// </summary>
     public int ChickenTestPlayers { get; set; }
     public int ChickenTestTeamSize { get; set; }
+
+    /// <summary>
+    /// (inferred) Seconds of a Realm of the Gods raid's preparation phase: the boss waits until the team leader presses the
+    /// scene's "Start Battle" button (DungeonLua_30201xx DungeonBase.FunctionButtons, sent as 30125) or this time runs out.
+    /// The client has the button, not the phase length.
+    /// </summary>
+    public int RaidPreparationSeconds { get; set; } = 120;
+
+    /// <summary>
+    /// (inferred) Seconds from a raid boss fight's start to its enrage, against which the Final Trial "more than N minutes
+    /// remaining until enrage" honors (TenGameplayFinalTrialConfig, condition 7004) are judged. The enrage timer lives in
+    /// the boss's server script, which the client does not carry.
+    /// </summary>
+    public int RaidEnrageSeconds { get; set; } = 600;
+
+    /// <summary>Boss special skills (BossSkillSets, MonsterService.BossSkills): the scheduler's inferred numbers.</summary>
+    public BossSkillOptions BossSkills { get; set; } = new();
+}
+
+/// <summary>
+/// The boss skill scheduler. The skill rows, their cooldowns, cast and action times, ranges, damage and buffs come from
+/// SkillConfig; the original server's AI scripts that decided when to cast are not in the client, so every number here
+/// is (inferred) and can be tuned without a code change.
+/// </summary>
+public sealed class BossSkillOptions
+{
+    /// <summary>Off: bosses only swing their normal attack, as before the scheduler.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Delay after a boss engages before its first special skill.</summary>
+    public int FirstCastDelayMs { get; set; } = 3000;
+
+    /// <summary>Pause after a special's action ends before the next one (the boss swings meanwhile); a row's longer
+    /// _iPubCD wins.</summary>
+    public int GlobalCooldownMs { get; set; } = 2000;
+
+    /// <summary>Cooldown of a skill whose family carries only placeholder cooldowns (every row 0-2 s: Realm of the
+    /// Gods, story Baphomet and Pharaoh), where the encounter script set the pace.</summary>
+    public int PlaceholderCooldownMs { get; set; } = 15000;
+
+    /// <summary>HP percent at which a boss with phase variants enters each next phase (phase 1, phase 2...).</summary>
+    public int[] PhaseHpPercents { get; set; } = [50, 25];
+
+    /// <summary>Area radius (m) when neither the row nor its show template gives one.</summary>
+    public float DefaultRadius { get; set; } = 5f;
+
+    /// <summary>Longest distance (m) to its target at which a boss starts a targeted skill; rows with "anywhere"
+    /// ranges (_iDistanceMax 9999) are capped to it.</summary>
+    public float MaxReach { get; set; } = 15f;
+
+    /// <summary>Most hits one cast lands (a show's attack points; Ring of Light has three).</summary>
+    public int MaxHitsPerCast { get; set; } = 6;
+
+    /// <summary>Boss skill damage as a percent of the row's formula result.</summary>
+    public int DamagePercent { get; set; } = 100;
+
+    /// <summary>Minions of a summon skill whose description gives no count.</summary>
+    public int SummonCount { get; set; } = 3;
+
+    /// <summary>Life of a summoned minion without a self-destruct born buff.</summary>
+    public int SummonLifeMs { get; set; } = 30000;
 }
 
 /// <summary>In-game bug reports: the menu's Feedback button and "/bug" in chat (FeedbackService).</summary>

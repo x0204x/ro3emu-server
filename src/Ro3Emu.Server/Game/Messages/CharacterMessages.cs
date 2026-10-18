@@ -482,7 +482,9 @@ public sealed class CharacterMessages(CharacterService character, SkillService s
         {
             // Starting another action cancels collection even if it never lands a combat hit (inferred).
             await gathering.InterruptAsync(session);
-            await combat.CastAsync(session, CastSkillReq.Parser.ParseFrom(body.Span));
+            var cast = CastSkillReq.Parser.ParseFrom(body.Span);
+            // Dragon Coffin Island's crystals and soul are taken by their interaction skills (TimedBattleService.DragonIsland).
+            if (!await timedBattles.TryDragonPickupAsync(session, cast)) await combat.CastAsync(session, cast);
         });
         routes.Map(SkillService.PlanUpdate, "skills", async (session, msgId, body) =>
         {

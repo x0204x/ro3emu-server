@@ -8,7 +8,7 @@ public sealed partial class DungeonService
     public int MatchAdmission(GameSession s, DungeonCatalog.Plan plan)
     {
         int error = Admission(s, plan);
-        return error != 0 ? error : pending.ContainsKey(s) ? ErrorCodes.DungeonPreparing : 0;
+        return error != 0 ? error : Preparing(s) ? ErrorCodes.DungeonPreparing : 0;
     }
 
     /// <summary>

@@ -5,7 +5,7 @@ using Romsg;
 namespace Ro3Emu.Server.Game;
 
 /// <summary>Dungeons, the tower, daily and timed activities, festivals, training, lottery, AFK and build plans.</summary>
-public sealed class ActivitiesMessages(DailyActivityService daily, TowerService tower, ValhallaService valhalla, MonsterHuntService monsterHunt, FirstHeartService firstHeart, DungeonService dungeons, DungeonMatchService dungeonMatches, WildAfkService afk, NewActivityService activities, TimedEventService timedEvents, TimedBattleService timedBattles, FestivalService festival, TrainingService training, LotteryService lottery, GenreService genre, GuildHuntingService hunting) : Messaging.IMessageModule
+public sealed class ActivitiesMessages(PraiseService praise, CasualBattleService casual, DailyActivityService daily, TowerService tower, ValhallaService valhalla, MonsterHuntService monsterHunt, FirstHeartService firstHeart, DungeonService dungeons, DungeonMatchService dungeonMatches, WildAfkService afk, NewActivityService activities, TimedEventService timedEvents, TimedBattleService timedBattles, FestivalService festival, TrainingService training, LotteryService lottery, GenreService genre, GuildHuntingService hunting) : Messaging.IMessageModule
 {
     private const uint SetAutoBattle = 31054;
 
@@ -33,7 +33,10 @@ public sealed class ActivitiesMessages(DailyActivityService daily, TowerService 
             or TowerService.ClaimFirstPass or TowerService.Sweep or TowerService.End or TowerService.Start);
         routes.AdmitRole(id => id is DungeonService.SetJobPosition or DungeonService.SetGuide or DungeonService.ClaimFirstPass
             or DungeonService.Statistics or DungeonService.StatisticsHistory or DungeonService.StatisticsCurrent
-            or DungeonService.StatisticsModule or DungeonService.QueryResult);
+            or DungeonService.StatisticsModule or DungeonService.QueryResult
+            or DungeonService.HallOfFame or DungeonService.MarkBlessings or PraiseService.Praise);
+        // Final Trial honor claims pay their awards (DungeonService.RealmOfGods reserves the role and the claim).
+        routes.AdmitEconomic(id => id is DungeonService.ClaimHonor);
 
         routes.Map(82800, "genre", async (session, msgId, body) =>
         {
@@ -297,6 +300,8 @@ public sealed class ActivitiesMessages(DailyActivityService daily, TowerService 
             if (dailyRequest.RainbowKoiBet != null) await festival.BetAsync(session, dailyRequest);
             // Branch 200 gveHuntingQueryResult (MG_Activity.proto:310) is the Hunting Challenge's, not the Ring's.
             else if (dailyRequest.GveHuntingQueryResult != null) await hunting.QueryResultAsync(session, dailyRequest);
+            // Branch 120 casualBattleSignUp is Mock Battle's (CasualBattleService).
+            else if (dailyRequest.CasualBattleSignUp != null) await casual.SignUpAsync(session, dailyRequest);
             else await daily.AcceptRingAsync(session, dailyRequest);
         });
         routes.Map(DailyActivityService.StageGain, "daily", async (session, msgId, body) =>
@@ -372,6 +377,26 @@ public sealed class ActivitiesMessages(DailyActivityService daily, TowerService 
         routes.Map(DungeonService.ClaimFirstPass, "dungeons", async (session, msgId, body) =>
         {
             await dungeons.ClaimFirstPassAsync(session, ClaimFirstPassAwardReq.Parser.ParseFrom(body.Span));
+        });
+        routes.Map(DungeonService.HallOfFame, "dungeons", async (session, msgId, body) =>
+        {
+            await dungeons.HallOfFameAsync(session, QueryHallOfFameInfoReq.Parser.ParseFrom(body.Span));
+        });
+        routes.Map(DungeonService.MarkBlessings, "dungeons", async (session, msgId, body) =>
+        {
+            await dungeons.MarkBlessingsAsync(session, MultiDungeonMarkSacredBlessingsReq.Parser.ParseFrom(body.Span));
+        });
+        routes.Map(DungeonService.ClaimHonor, "dungeons", async (session, msgId, body) =>
+        {
+            await dungeons.ClaimHonorAsync(session, MultiDungeonClaimHonorAwardReq.Parser.ParseFrom(body.Span));
+        });
+        routes.Map(PraiseService.Praise, "praise", async (session, msgId, body) =>
+        {
+            await praise.PraiseAsync(session, MultiDungeonPraiseReq.Parser.ParseFrom(body.Span));
+        });
+        routes.Map(DungeonService.ModuleButton, "dungeons", async (session, msgId, body) =>
+        {
+            await dungeons.ModuleButtonAsync(session, DungeonModuleButtonReq.Parser.ParseFrom(body.Span));
         });
         routes.Map(TowerService.Start, "tower", async (session, msgId, body) =>
         {

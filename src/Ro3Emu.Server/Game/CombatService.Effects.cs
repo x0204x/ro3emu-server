@@ -333,13 +333,21 @@ public sealed partial class CombatService
     /// </summary>
     internal (int Id, int Ms) MovementEffect(long scriptShow) => _movementEffects.GetOrAdd(scriptShow, show =>
     {
+        var (id, ms, _) = FindMovementEffect(data, show);
+        return (id, ms);
+    });
+
+    /// <summary>The show's displacement EffectData (see <see cref="MovementEffect"/>), with its move curve's name.</summary>
+    internal static (int Id, int Ms, string Curve) FindMovementEffect(GameData data, long show)
+    {
         var effects = data.SkillTemplateTable("Lua_Config_EffectData");
         for (long id = show * 100; id < show * 100 + 100; id++)
             if (effects.TryGetValue(id.ToString(), out var e) && e.TryGetProperty("m_kPoint", out var point)
                 && point.TryGetProperty("m_bMovement", out var moves) && moves.ValueKind == JsonValueKind.True)
-                return ((int)id, point.TryGetProperty("m_iMovementTime", out var ms) && ms.TryGetInt32(out int t) ? t : 0);
-        return (0, 0);
-    });
+                return ((int)id, point.TryGetProperty("m_iMovementTime", out var ms) && ms.TryGetInt32(out int t) ? t : 0,
+                    point.TryGetProperty("m_kMoveCurveName", out var curve) && curve.ValueKind == JsonValueKind.String ? curve.GetString() ?? "" : "");
+        return (0, 0, "");
+    }
 
     private (DisplaceKind Kind, float Distance, int EffectId, int Ms)? Displacement(JsonElement row)
     {
