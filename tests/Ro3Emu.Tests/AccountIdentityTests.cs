@@ -81,6 +81,20 @@ public sealed class AccountIdentityTests : IDisposable
         Assert.Equal("7", MicroServiceRouter.MapString(map, "Uid"));
     }
 
+    [Fact]
+    public async Task TheCaseInsensitiveLookupUsesItsIndex()
+    {
+        using var store = Store();
+        await store.SignInAsync("admin", "secret");
+        using var db = store.Open();
+        using var plan = db.CreateCommand();
+        plan.CommandText = "EXPLAIN QUERY PLAN SELECT name,password_hash,salt FROM account WHERE name='Admin' COLLATE NOCASE";
+        using var reader = plan.ExecuteReader();
+        var steps = new List<string>();
+        while (reader.Read()) steps.Add(reader.GetString(3));
+        Assert.Contains(steps, s => s.Contains("account_name_nocase", StringComparison.Ordinal));
+    }
+
     private static long Count(AccountStore store)
     {
         using var db = store.Open();

@@ -1,0 +1,12 @@
+{
+  "1": { "_iID": 1, "_iType": 1, "_iBagTab": 1, "_iTrade": 0 },
+  "2": { "_iID": 2, "_iType": 1, "_iBagTab": 1, "_iTrade": 0 },
+  "100": { "_iID": 100, "_iType": 1, "_iBagTab": 1, "_iTrade": 0 },
+  "101": { "_iID": 101, "_iType": 1, "_iBagTab": 1, "_iTrade": 0 },
+  "102": { "_iID": 102, "_iType": 1, "_iBagTab": 1, "_iTrade": 0 },
+  "1000000": { "_iID": 1000000, "_iType": 2, "_iBagTab": 1, "_iStackLimit": 50, "_iTrade": 1 },
+  "1004000": { "_iID": 1004000, "_iType": 2, "_iBagTab": 1, "_iStackLimit": 50, "_iTrade": 1 },
+  "1200000": { "_iID": 1200000, "_iType": 2, "_iBagTab": 1, "_iStackLimit": 50, "_iTrade": 1 },
+  "2010121": { "_iID": 2010121, "_iType": 5, "_iBagTab": 2, "_iStackLimit": 1, "_iTrade": 1 },
+  "2550120": { "_iID": 2550120, "_iType": 5, "_iBagTab": 2, "_iStackLimit": 1, "_iTrade": 1 }
+}

@@ -12,6 +12,24 @@ namespace Ro3Emu.Server.Game;
 
 public sealed partial class TimedBattleService
 {
+    /// <summary>The frozen grants of a settlement (timed_battle_obligation) on the shared obligation plans. Delivery
+    /// stays this service's own: each row is paid under its role and row reservation right after the settlement
+    /// commit, and at login (the role select reserves the pending rows, <see cref="LoginKeysAsync"/>).</summary>
+    private static class Obligations
+    {
+        internal static ReservationKey Key(string source) => RoleObligations<TimedBattleObligationRow>.Key(source);
+        internal static DbPlan CreatePlan(IEnumerable<TimedBattleObligationRow> rows) =>
+            RoleObligations<TimedBattleObligationRow>.CreatePlan(rows);
+        internal static DbPlan DeliverPlan(TimedBattleObligationRow row) => RoleObligations<TimedBattleObligationRow>.DeliverPlan(row);
+        internal static Task<List<TimedBattleObligationRow>> PendingAsync(AccountStore accounts, long role) =>
+            RoleObligations<TimedBattleObligationRow>.PendingAsync(accounts, role);
+    }
+
+    /// <summary>C/D 15: the role's undelivered settlement grants, read before the role select admits so it can reserve
+    /// them for <see cref="DeliverPendingAsync"/>.</summary>
+    internal Task<ReservationKey[]> LoginKeysAsync(long roleId) =>
+        RoleObligations<TimedBattleObligationRow>.LoginKeysAsync(accounts, roleId);
+
     private sealed record SettlementCost(int Entry, int Count);
     private sealed record FrozenRecipient(GameSession Player, State Next, RoleProgress? PaidProgress,
         TimedBattleObligationRow Obligation, CharacterService.FirstCardSightPlan? TaskPlan);
@@ -20,7 +38,7 @@ public sealed partial class TimedBattleService
     private static ReservationKey[] SettlementKeys(Match match, long matchId) =>
         new[] { ReservationKey.Entity("timed_match", matchId.ToString(CultureInfo.InvariantCulture)) }
             .Concat(match.Participants.Values.Select(participant => ReservationKey.Role(participant.Id)))
-            .Concat(match.Participants.Values.Select(participant => ReservationKey.Entity("timed_battle_obligation",
+            .Concat(match.Participants.Values.Select(participant => Obligations.Key(
                 $"timed_battle/{matchId}/{participant.Id}"))).Distinct().ToArray();
 
     private async Task SettleMatchCoreAsync(Match match)
@@ -187,7 +205,7 @@ public sealed partial class TimedBattleService
                 if (item.PaidProgress != null) tx.Progress(item.Obligation.RoleId, item.PaidProgress);
                 item.TaskPlan?.Persist(tx);
             }
-            tx.Add(new TimedBattleObligationCreatePlan(frozen.Select(item => item.Obligation)));
+            tx.Add(Obligations.CreatePlan(frozen.Select(item => item.Obligation)));
             var catalog = EventEconomy.Catalog(data);
             EconomyAsset Asset(int entry) => catalog.TryAsset(entry, out var asset) ? asset
                 : throw new InvalidDataException($"Timed battle item {entry} is not catalogued.");
@@ -244,8 +262,7 @@ public sealed partial class TimedBattleService
             var item = recipients[player];
             try
             {
-                var keys = new[] { ReservationKey.Role(item.Obligation.RoleId),
-                    ReservationKey.Entity("timed_battle_obligation", item.Obligation.SourceKey) };
+                var keys = new[] { ReservationKey.Role(item.Obligation.RoleId), Obligations.Key(item.Obligation.SourceKey) };
                 if (loop.Owners is { } owners)
                     await owners.RunSessionAsync("timed battle recipient", keys, item.Player,
                         () => DeliverOneAsync(item.Player, item.Obligation));
@@ -282,14 +299,12 @@ public sealed partial class TimedBattleService
     {
         if (session.Role == null) return;
         long roleId = session.Role.Id;
-        var pending = await accounts.ReadAsync<List<TimedBattleObligationRow>>(
-            new TimedBattleObligationReadPlan(roleId));
+        var pending = await Obligations.PendingAsync(accounts, roleId);
         if (pending.Count > 0) pendingDeliveryRoles.Add(roleId);
         foreach (var obligation in pending)
         {
             if (session.Role?.Id != roleId) throw new OperationCanceledException("Timed battle recipient changed role.");
-            var keys = new[] { ReservationKey.Role(obligation.RoleId),
-                ReservationKey.Entity("timed_battle_obligation", obligation.SourceKey) };
+            var keys = new[] { ReservationKey.Role(obligation.RoleId), Obligations.Key(obligation.SourceKey) };
             if (loop.Owners is { } owners)
                 await owners.RunSessionAsync("timed battle delivery", keys, session,
                     () => DeliverOneAsync(session, obligation));
@@ -306,7 +321,7 @@ public sealed partial class TimedBattleService
         if (grants.Length > 0)
             paid = await character.ApplyAwardAsync(session, new AwardPlan(0, 0, grants), persist: tx =>
             {
-                tx.Add(new TimedBattleObligationDeliverPlan(obligation.SourceKey, obligation.RoleId));
+                tx.Add(Obligations.DeliverPlan(obligation));
                 if (grants.Any(grant => grant.Entry is not (100 or 101)))
                     tx.WithEventEconomy(EventEconomy.ForRole(data, session, "timed-battle-deliver",
                         obligation.SourceKey + "/deliver", [], [], new { obligation.SourceKey }));
@@ -314,13 +329,12 @@ public sealed partial class TimedBattleService
         else
         {
             var tx = roles.NewTransaction();
-            tx.Add(new TimedBattleObligationDeliverPlan(obligation.SourceKey, obligation.RoleId));
+            tx.Add(Obligations.DeliverPlan(obligation));
             await roles.CommitAsync(tx, "timed-battle/deliver-empty");
             paid = true;
         }
         if (!paid) throw new InvalidOperationException("Frozen timed battle award was not delivered.");
-        if ((await accounts.ReadAsync<List<TimedBattleObligationRow>>(
-                new TimedBattleObligationReadPlan(obligation.RoleId))).Count == 0)
+        if ((await Obligations.PendingAsync(accounts, obligation.RoleId)).Count == 0)
             pendingDeliveryRoles.Remove(obligation.RoleId);
         await SyncBattleStateAsync(session);
         if (obligation.Entry == ChickenEntry)

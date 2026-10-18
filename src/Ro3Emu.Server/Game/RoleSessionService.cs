@@ -188,8 +188,8 @@ public sealed class RoleSessionService(RoleStore roles, Data.GameData data, Buff
         {
             // C/D 15: the select reserves its role, account and lifecycle plus the keys its login callees write (own
             // Prontera settlements, own Eve cycle, current territory season, its guild's caravan and challenge gates,
-            // its pending MVP and dungeon obligations) - not Realm. Realm-shared maintenance runs on the services' own
-            // tickers; LoginScopeAuditTests guards that nothing else is needed.
+            // its pending MVP, dungeon, Mock Battle and timed-battle obligations) - not Realm. Realm-shared maintenance
+            // runs on the services' own tickers; LoginScopeAuditTests guards that nothing else is needed.
             using (var scope = await EnterSelectAsync(owners, req.Id, session.Account!))
             {
                 if (!SelectionAvailable(session)) return;

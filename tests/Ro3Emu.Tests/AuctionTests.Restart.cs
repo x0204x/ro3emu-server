@@ -8,7 +8,7 @@ namespace Ro3Emu.Tests;
 /// recovery sweep that starts with the server, and a second restart does not settle it again.</summary>
 public sealed partial class AuctionTests
 {
-    [ClientDataFact]
+    [Fact]
     public async Task ALotThatEndsWhileTheServerIsDownSettlesOnceAfterRestart()
     {
         long id, aliceId, bobId, aliceFunds, bobFunds;
@@ -41,16 +41,4 @@ public sealed partial class AuctionTests
         await using var outbid = await InWorld("Alice", create: false);
         Assert.Equal(aliceFunds, Currency(outbid));
     }
-
-    private async Task RestartHostAsync(TimeSpan downtime)
-    {
-        await app.StopAsync();
-        await app.DisposeAsync();
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        clock.Advance(downtime);
-        await StartHostAsync();
-    }
-
-    private MailService.Mailbox MailboxOf(long role) => Service<RoleStore>().LoadMailbox(role)
-        is { } blob ? System.Text.Json.JsonSerializer.Deserialize<MailService.Mailbox>(blob)! : new MailService.Mailbox();
 }

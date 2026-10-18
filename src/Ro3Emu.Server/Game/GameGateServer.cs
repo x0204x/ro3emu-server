@@ -116,8 +116,12 @@ public sealed class GameGateServer(
             await session.Channel.SendAsync(ConnectResponse, new ConnectServerResp { Type = ConnectServerResp.Types.RespType.ConnectRefused });
             return;
         }
-        session.Account = account;
-        if (type == ConnectServerReq.Types.ReqType.NewConnection) await sessions.RegisterAsync(session);
+        // Another account on this connection is refused while a role of the first one is in the world.
+        if (!await sessions.SignInAsync(session, account, register: type == ConnectServerReq.Types.ReqType.NewConnection))
+        {
+            await session.Channel.SendAsync(ConnectResponse, new ConnectServerResp { Type = ConnectServerResp.Types.RespType.ConnectRefused });
+            return;
+        }
         if (!sessions.IsWinner(session) || session.Channel.PeerClosed) return;
         // SwitchToAccount (back to the role screen) answers with its own response type; the rest is the same.
         var resp = type == ConnectServerReq.Types.ReqType.SwitchToAccount

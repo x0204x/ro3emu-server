@@ -1,0 +1,6 @@
+{
+  "m_kBornPoints": [ { "isDefault": true, "position": { "x": 20, "y": 0, "z": 20 }, "direction": 90 } ],
+  "m_kResurrectionPointList": [ { "position": { "x": 20, "y": 0, "z": 20 }, "direction": 90 } ],
+  "m_kGroups": { "414": { "Id": 414, "itemIdList": [ 413 ] } },
+  "m_kMonsterSpawnPoints": { "413": { "Id": 413, "npcId": 0, "position": { "x": 24, "y": 0, "z": 26 }, "direction": 180 } }
+}

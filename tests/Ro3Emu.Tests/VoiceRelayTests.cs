@@ -414,6 +414,173 @@ public sealed class VoiceRelayTests : IAsyncLifetime
         await aliceVoice.ExpectNoneAsync((t, _) => t == VoiceDown.Audio, TimeSpan.FromMilliseconds(500));
     }
 
+    private static bool MicStateOf(byte type, byte[] payload, long role, bool on) =>
+        type == VoiceDown.MicState && BitConverter.ToInt64(payload) == role && payload[8] == (on ? 1 : 0);
+
+    [Fact]
+    public async Task LeaderMuteHoldsAgainstMicOnAndARejoinAndLiftingItGivesTheMicBack()
+    {
+        var (alice, aliceId) = await InWorld("Alice");
+        var (bob, bobId) = await InWorld("Bob");
+        await using var a = alice;
+        await using var b = bob;
+        long teamId = await CreatePartyAsync(alice, aliceId, bob, bobId);
+        var (aliceRole, aliceToken) = await GetTicketAsync(alice);
+        var (bobRole, bobToken) = await GetTicketAsync(bob);
+        await using var aliceVoice = await ConnectAuthedAsync(aliceRole, aliceToken);
+        await using var bobVoice = await ConnectAuthedAsync(bobRole, bobToken);
+        string channel = teamId.ToString();
+        await aliceVoice.JoinAsync(channel);
+        await aliceVoice.WaitTypeAsync(VoiceDown.JoinResult, Wait);
+        await bobVoice.JoinAsync(channel);
+        await bobVoice.WaitTypeAsync(VoiceDown.JoinResult, Wait);
+        await bobVoice.MicAsync(true);
+        await aliceVoice.WaitAsync((t, p) => MicStateOf(t, p, bobRole, true), Wait);
+        await bobVoice.WaitAsync((t, p) => MicStateOf(t, p, bobRole, true), Wait);
+
+        async Task Forbid(bool forbidden)
+        {
+            await alice.SendGameAsync(Server.Game.TeamService.TeamChangeMemberState, new Romsg.ChangeTeamMemberStateReq
+            {
+                EOperType = Romsg.ETeamMemberStateOperEnum.EteamMemberStateForbiddenChat,
+                MemberGuid = bobId,
+                IsForbiddenChat = forbidden,
+            });
+            await Next(alice, Server.Game.TeamService.TeamChangeMemberState, Romsg.ChangeTeamMemberStateResp.Parser);
+        }
+
+        await Forbid(true);
+        await aliceVoice.WaitAsync((t, p) => MicStateOf(t, p, bobRole, false), TimeSpan.FromSeconds(3));
+        await bobVoice.WaitAsync((t, p) => MicStateOf(t, p, bobRole, false), TimeSpan.FromSeconds(3));
+
+        // Bob's client asks for the mic again and talks at once, inside the same second: refused, answered to him
+        // alone with MicState off, and his audio reaches nobody.
+        await bobVoice.MicAsync(true);
+        await bobVoice.WaitAsync((t, p) => MicStateOf(t, p, bobRole, false), Wait);
+        for (ushort seq = 0; seq < 5; seq++) await bobVoice.SendAudioAsync(seq, [9, 9, 9]);
+        await aliceVoice.ExpectNoneAsync((t, p) => t == VoiceDown.Audio || MicStateOf(t, p, bobRole, true), TimeSpan.FromMilliseconds(600));
+
+        // Leaving and joining again does not shake the mute off.
+        await bobVoice.LeaveAsync();
+        await aliceVoice.WaitAsync((t, p) => t == VoiceDown.MemberChange && BitConverter.ToInt64(p) == bobRole && p[8] == 0, Wait);
+        await bobVoice.JoinAsync(channel);
+        Assert.Equal(VoiceJoinCode.Ok, (await bobVoice.WaitTypeAsync(VoiceDown.JoinResult, Wait)).Payload[0]);
+        await bobVoice.MicAsync(true);
+        await bobVoice.WaitAsync((t, p) => MicStateOf(t, p, bobRole, false), Wait);
+        for (ushort seq = 5; seq < 10; seq++) await bobVoice.SendAudioAsync(seq, [9, 9, 9]);
+        await aliceVoice.ExpectNoneAsync((t, p) => t == VoiceDown.Audio || MicStateOf(t, p, bobRole, true), TimeSpan.FromMilliseconds(600));
+
+        // The leader lifts the mute: Bob still wants his mic, so it comes back and his voice flows again.
+        await Forbid(false);
+        await aliceVoice.WaitAsync((t, p) => MicStateOf(t, p, bobRole, true), TimeSpan.FromSeconds(3));
+        await bobVoice.SendAudioAsync(10, [7]);
+        var heard = await aliceVoice.WaitTypeAsync(VoiceDown.Audio, Wait);
+        Assert.Equal(bobRole, BitConverter.ToInt64(heard.Payload));
+    }
+
+    [Fact]
+    public async Task ControlFramesHaveABudgetAndAFloodingMemberCannotDisconnectTheOthers()
+    {
+        var (alice, aliceId) = await InWorld("Alice");
+        var (bob, bobId) = await InWorld("Bob");
+        await using var a = alice;
+        await using var b = bob;
+        long teamId = await CreatePartyAsync(alice, aliceId, bob, bobId);
+        var (aliceRole, aliceToken) = await GetTicketAsync(alice);
+        var (bobRole, bobToken) = await GetTicketAsync(bob);
+        await using var aliceVoice = await ConnectAuthedAsync(aliceRole, aliceToken);
+        await using var bobVoice = await ConnectAuthedAsync(bobRole, bobToken);
+        string channel = teamId.ToString();
+        await bobVoice.JoinAsync(channel);
+        await bobVoice.WaitTypeAsync(VoiceDown.JoinResult, Wait);
+        await aliceVoice.JoinAsync(channel);
+        await aliceVoice.WaitTypeAsync(VoiceDown.JoinResult, Wait);
+        await bobVoice.WaitAsync((t, p) => t == VoiceDown.MemberChange && BitConverter.ToInt64(p) == aliceRole && p[8] == 1, Wait);
+
+        async Task<int> CountAtBob(Func<byte, byte[], bool> match)
+        {
+            int n = 0;
+            try { while (true) { await bobVoice.WaitAsync(match, TimeSpan.FromMilliseconds(500)); n++; } }
+            catch (TimeoutException) { }
+            return n;
+        }
+
+        // Joining the room she is already in: confirmed, but Bob hears nothing of it.
+        for (int i = 0; i < 10; i++) await aliceVoice.JoinAsync(channel);
+        for (int i = 0; i < 10; i++) await aliceVoice.WaitTypeAsync(VoiceDown.JoinResult, Wait);
+        Assert.Equal(0, await CountAtBob((t, p) => t == VoiceDown.MemberChange && BitConverter.ToInt64(p) == aliceRole));
+
+        // The same Mic over and over: one change, one event.
+        for (int i = 0; i < 100; i++) await aliceVoice.MicAsync(true);
+        Assert.Equal(1, await CountAtBob((t, p) => t == VoiceDown.MicState && BitConverter.ToInt64(p) == aliceRole));
+
+        // Toggling as fast as the socket goes: the budget (ControlBurst 20 + ControlPerSecond 10, already spent
+        // above) lets a handful through, and the sustained flood disconnects Alice, not the room.
+        var started = DateTime.UtcNow;
+        bool writeFailed = false;
+        try { for (int i = 0; i < 400 && !aliceVoice.Closed; i++) await aliceVoice.MicAsync(i % 2 == 1); }
+        catch (IOException) { writeFailed = true; } // the server closed her socket under a pending write
+        int toggles = await CountAtBob((t, p) => t == VoiceDown.MicState && BitConverter.ToInt64(p) == aliceRole);
+        double seconds = (DateTime.UtcNow - started).TotalSeconds;
+        Assert.InRange(toggles, 0, 20 + 10 + (int)Math.Ceiling(seconds * 10));
+        if (!writeFailed)
+        {
+            var kicked = await aliceVoice.WaitTypeAsync(VoiceDown.Kicked, Wait);
+            Assert.Equal(VoiceKickCode.Flood, kicked.Payload[0]);
+        }
+        await bobVoice.WaitAsync((t, p) => t == VoiceDown.MemberChange && BitConverter.ToInt64(p) == aliceRole && p[8] == 0, Wait);
+
+        Assert.False(bobVoice.Closed);
+        await bobVoice.PingAsync();
+        await bobVoice.WaitTypeAsync(VoiceDown.Pong, Wait);
+    }
+
+    [Fact]
+    public async Task LegacyAccountsDifferingOnlyInCaseKeepTheirOwnVoiceConnections()
+    {
+        var lower = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
+        await using var l = lower;
+        await lower.LoginAsync("admin", "pw");
+        // A database from before accounts were one per name regardless of case can hold a second spelling.
+        using (var raw = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(_dataDir, "ro3emu.db")};Pooling=False"))
+        {
+            raw.Open();
+            using var insert = raw.CreateCommand();
+            insert.CommandText = "INSERT INTO account(name,password_hash,salt,created_utc) SELECT 'Admin',password_hash,salt,created_utc FROM account WHERE name='admin'";
+            Assert.Equal(1, insert.ExecuteNonQuery());
+        }
+        var upper = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
+        await using var u = upper;
+        await upper.LoginAsync("Admin", "pw");
+
+        async Task<long> Enter(BotClient bot, string role)
+        {
+            await bot.EnterGateAsync();
+            long id = (await bot.CreateRoleAsync(role)).RoleBaseInfo.Id;
+            await bot.EnterWorldAsync(id);
+            return id;
+        }
+        long lowerId = await Enter(lower, "Lowercase");
+        long upperId = await Enter(upper, "Uppercase");
+
+        var (lowerRole, lowerToken) = await GetTicketAsync(lower);
+        var (upperRole, upperToken) = await GetTicketAsync(upper);
+        Assert.Equal(lowerId, lowerRole);
+        Assert.Equal(upperId, upperRole);
+        await using var lowerVoice = await ConnectAuthedAsync(lowerRole, lowerToken);
+        await using var upperVoice = await ConnectAuthedAsync(upperRole, upperToken);
+
+        // Two accounts, two connections: neither replaces the other.
+        await lowerVoice.ExpectNoneAsync((t, _) => t == VoiceDown.Kicked, TimeSpan.FromMilliseconds(500));
+        await upperVoice.ExpectNoneAsync((t, _) => t == VoiceDown.Kicked, TimeSpan.FromMilliseconds(100));
+        foreach (var voice in new[] { lowerVoice, upperVoice })
+        {
+            await voice.PingAsync();
+            await voice.WaitTypeAsync(VoiceDown.Pong, Wait);
+            Assert.False(voice.Closed);
+        }
+    }
+
     [Fact]
     public async Task MicOffForwardsNothingSpeakerOffHearsNothing()
     {

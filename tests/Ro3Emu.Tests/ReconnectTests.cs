@@ -33,7 +33,7 @@ public sealed class ReconnectTests : IAsyncLifetime
         app = ServerHost.Create([], o =>
         {
             o.DataDir = directory;
-            if (gameData) o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            if (gameData) o.GameDataDir = SyntheticData.Dir;
             o.HttpPort = hp;
             o.MicroGatePort = mp;
             o.GameGatePort = gp;
@@ -98,7 +98,7 @@ public sealed class ReconnectTests : IAsyncLifetime
 
     private static AoIViewChangeData View(BotEvent e) => AoIViewChangeData.Parser.ParseFrom(e.Body);
 
-    [ClientDataFact]
+    [Fact]
     public async Task GracefulDropReconnectsTheSameSessionWithoutLogout()
     {
         await StartAsync(gameData: true);
@@ -441,12 +441,5 @@ public sealed class ReconnectTests : IAsyncLifetime
         var result = await alice.ReconnectGameAsync();
         Assert.Equal(Reconnected, result.Result);
         Assert.Empty(phases);
-    }
-
-    private static string RepoRoot()
-    {
-        var p = new DirectoryInfo(AppContext.BaseDirectory);
-        while (p != null && !Directory.Exists(Path.Combine(p.FullName, "data", "config"))) p = p.Parent;
-        return p?.FullName ?? throw new DirectoryNotFoundException("data/config");
     }
 }

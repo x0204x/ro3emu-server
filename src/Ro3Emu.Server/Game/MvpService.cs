@@ -123,6 +123,7 @@ public sealed partial class MvpService : IGameTicker
     internal Func<string, Task>? BeforeRetainedPublicationForTest { get; set; }
 
     private TimeSpan _sinceCheck;
+    private readonly RoleObligations<MvpObligationRow> _awardObligations;
 
     public MvpService(GameData data, AccountStore accounts, MonsterService monsters, WorldData worldData, CharacterService character,
         RewardService rewards, TaskService tasks, TeamService teams, CombatService combat, BuffService buffs, SessionRegistry sessions,
@@ -142,6 +143,11 @@ public sealed partial class MvpService : IGameTicker
         this.world = world;
         this.loop = loop;
         this.combat = combat;
+        // No tick retry (as before the shared component): an undelivered award waits for the next kill's delivery
+        // pass or the next login, and a refused delivery stops that pass.
+        _awardObligations = new RoleObligations<MvpObligationRow>("MVP award", accounts, loop, TimeProvider.System,
+            role => sessions.All().FirstOrDefault(s => s.Role?.Id == role), s => s.Progress != null, PayAsync,
+            ObligationRetry.NextRecovery, log);
         combat.EventDamageRecorded.Add((s, m, damage) => { OnDealt(s, m, damage); return Task.CompletedTask; });
         combat.Taken.Add(OnTaken);
         combat.BeforeLethalPublication.Add(PrepareKilledAsync);
@@ -607,7 +613,7 @@ public sealed partial class MvpService : IGameTicker
             .ToDictionary(s => s.Role!.Id);
         await RoleFanout.EachAsync(online.Values, tasks.PrepareProgressAsync);
         var keys = online.Keys.Select(id => ReservationKey.Role(id))
-            .Concat(online.Keys.Select(id => ReservationKey.Entity("mvp_obligation", parentSource + "/" + id)))
+            .Concat(online.Keys.Select(id => RoleObligations<MvpObligationRow>.Key(parentSource + "/" + id)))
             .Append(ReservationKey.Entity("mvp_settlement", parentSource))
             .Append(ReservationKey.Entity("mvp_cooldown", st.Def.CfgId.ToString(CultureInfo.InvariantCulture)));
         if (st.Runtime.LineNumber == 1)
@@ -687,7 +693,7 @@ public sealed partial class MvpService : IGameTicker
             obligations.Add(new(parentSource + "/" + player, st.Def.CfgId, deadMs, player,
                 JsonSerializer.SerializeToUtf8Bytes(grants), ntf.ToByteArray()));
         }
-        if (obligations.Count > 0) builder.Add(new MvpObligationCreatePlan(obligations));
+        if (obligations.Count > 0) builder.Add(RoleObligations<MvpObligationRow>.CreatePlan(obligations));
         var catalog = EventEconomy.Catalog(data);
         var minted = obligations.SelectMany(row => JsonSerializer.Deserialize<AwardGrant[]>(row.Awards)!
             .Where(grant => grant.Entry is not (100 or 101))
@@ -916,9 +922,7 @@ public sealed partial class MvpService : IGameTicker
         new(info.FirstNum, info.EndNum, info.JoinNum, info.TeamNum, info.LastTime);
 
     /// <summary>C/D 15: the role's pending obligations, read before the role select admits so it can reserve them.</summary>
-    internal async Task<ReservationKey[]> LoginKeysAsync(long roleId) =>
-        [.. (await accounts.ReadAsync<List<MvpObligationRow>>(new MvpObligationsReadPlan(roleId)))
-            .Select(row => ReservationKey.Entity("mvp_obligation", row.SourceKey)).Distinct()];
+    internal Task<ReservationKey[]> LoginKeysAsync(long roleId) => _awardObligations.LoginKeysAsync(roleId);
 
     /// <summary>On login and after a kill, complete frozen rewards without rolling again.</summary>
     public Task RecoverAsync(GameSession session) => DeliverPendingAsync(session);
@@ -939,36 +943,38 @@ public sealed partial class MvpService : IGameTicker
         if (role == null || session.Progress == null
             || session.Owner?.State == RoleOwnerState.RecoveryRequired) return;
         var attachment = session.Attachment;
-        var pending = await accounts.ReadAsync<List<MvpObligationRow>>(new MvpObligationsReadPlan(role.Value));
-        foreach (var row in pending)
+        // Inside the role select only the obligations it reserved are delivered; a later one stays durable and
+        // pending for the next kill or login.
+        await _awardObligations.DeliverPendingAsync(session, role.Value, () => session.Role?.Id == role
+            && ReferenceEquals(session.Attachment, attachment) && attachment?.Cancelled != true && session.Progress != null
+            && session.Owner?.State != RoleOwnerState.RecoveryRequired);
+    }
+
+    /// <summary>One frozen award: its goods and the delivered mark in one commit (event/mvp-delivery), then the result
+    /// popup and the source-linked quest follow-up. False stops the delivery pass (refused, or the role moved on).</summary>
+    private async Task<bool> PayAsync(GameSession session, MvpObligationRow row)
+    {
+        var attachment = session.Attachment;
+        using (var held = await CharacterService.Lock(session, [RoleObligations<MvpObligationRow>.Key(row.SourceKey)]))
         {
-            if (session.Role?.Id != role || !ReferenceEquals(session.Attachment, attachment)
-                || attachment?.Cancelled == true || session.Progress == null
-                || session.Owner?.State == RoleOwnerState.RecoveryRequired) return;
-            // Inside the role select only the obligations it reserved are delivered; a later one stays durable and
-            // pending for the next kill or login.
-            if (loop.Owners is { } owners && !owners.CurrentCovers(ReservationKey.Entity("mvp_obligation", row.SourceKey))) continue;
-            using (var held = await CharacterService.Lock(session,
-                [ReservationKey.Entity("mvp_obligation", row.SourceKey)]))
-            {
-                if (session.Role?.Id != row.PlayerId) return;
-                var grants = JsonSerializer.Deserialize<AwardGrant[]>(row.Awards)
-                    ?? throw new InvalidDataException("Invalid frozen MVP award obligation.");
-                var economy = grants.Any(grant => grant.Entry is not (100 or 101))
-                    ? EventEconomy.ForRole(data, session, "mvp-delivery", "mvp/delivery/" + row.SourceKey,
-                        Array.Empty<(int Entry, long Count)>(), Array.Empty<AwardGrant>(),
-                        new { row.SourceKey, row.PlayerId,
-                            AwardHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(row.Awards)) }) : null;
-                if (!await character.ApplyAwardAsync(session, new AwardPlan(0, 0, grants), persist: builder =>
-                    {
-                        builder.Add(new MvpObligationDeliverPlan(row.SourceKey, row.PlayerId));
-                        if (economy != null) builder.WithEventEconomy(economy);
-                    }, stateLockHeld: true)) return;
-            }
-            if (session.Role?.Id != row.PlayerId || !ReferenceEquals(session.Attachment, attachment)
-                || attachment?.Cancelled == true) return;
-            await session.SendGameAsync(ResultNtf, MVPResultNtf.Parser.ParseFrom(row.Result));
-            await tasks.RefreshAsync(session); // settles the source-linked 103022 task follow-up.
+            if (session.Role?.Id != row.PlayerId) return false;
+            var grants = JsonSerializer.Deserialize<AwardGrant[]>(row.Awards)
+                ?? throw new InvalidDataException("Invalid frozen MVP award obligation.");
+            var economy = grants.Any(grant => grant.Entry is not (100 or 101))
+                ? EventEconomy.ForRole(data, session, "mvp-delivery", "mvp/delivery/" + row.SourceKey,
+                    Array.Empty<(int Entry, long Count)>(), Array.Empty<AwardGrant>(),
+                    new { row.SourceKey, row.PlayerId,
+                        AwardHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(row.Awards)) }) : null;
+            if (!await character.ApplyAwardAsync(session, new AwardPlan(0, 0, grants), persist: builder =>
+                {
+                    builder.Add(RoleObligations<MvpObligationRow>.DeliverPlan(row));
+                    if (economy != null) builder.WithEventEconomy(economy);
+                }, stateLockHeld: true)) return false;
         }
+        if (session.Role?.Id != row.PlayerId || !ReferenceEquals(session.Attachment, attachment)
+            || attachment?.Cancelled == true) return false;
+        await session.SendGameAsync(ResultNtf, MVPResultNtf.Parser.ParseFrom(row.Result));
+        await tasks.RefreshAsync(session); // settles the source-linked 103022 task follow-up.
+        return true;
     }
 }

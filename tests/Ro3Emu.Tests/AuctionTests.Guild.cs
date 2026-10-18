@@ -7,7 +7,7 @@ using Ro3Emu.Server.Game;
 
 namespace Ro3Emu.Tests;
 
-public sealed partial class AuctionTests
+public sealed partial class AuctionContentTests
 {
     [ClientDataFact]
     public async Task CommittedChallengeRetryRetainsOriginalPlayBookAndOpenDay()

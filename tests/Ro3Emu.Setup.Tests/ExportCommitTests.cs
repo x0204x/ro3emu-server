@@ -121,6 +121,80 @@ public sealed class ExportCommitTests : IDisposable
         Assert.False(GameDataExport.UpToDate(Data, Client)); // no stamp: the next start exports again
     }
 
+    [Theory]
+    [InlineData(@"Config\DataConfig\ItemConfig.lua.bytes: bad chunk", "ItemConfig")]
+    [InlineData("Config/ComplexConfig/DropPoolConfig.lua.bytes: truncated", "DropPoolConfig")]
+    [InlineData(@"Config\SceneEditor\Sc_x.lua.bytes: bad", "Sc_x")]
+    [InlineData(@"Config\Skill\Skill_1.lua.bytes: bad", "Skill_1")]
+    [InlineData("Localization_en.lua.bytes: bad", "Localization_en")]
+    [InlineData(@"Logic\Asset\LC_DAL_Bag.lua.bytes: bad", null)]
+    [InlineData(@"UI\Main\Something.lua.bytes: bad", null)]
+    public void AChunkThatDoesNotDecodeIsAMissingTableWhenTheExportReadsIt(string error, string? table) =>
+        Assert.Equal(table, GameDataExport.TableOfDecodeError(error));
+
+    private string Journal => Path.Combine(Data, ".export", "swapping");
+
+    [Fact]
+    public void TheSwapJournalIsWrittenBeforeAnythingMovesAndRemovedAfterARollback()
+    {
+        Fill(Data, "old");
+        Stamp();
+        var staged = Path.Combine(_dir, "staged");
+        Fill(staged, "new", files: 3);
+        var old = Path.Combine(Data, ".export", "old");
+        Assert.Throws<IOException>(() => GameDataExport.SwapIn(Data, staged, old, step =>
+        {
+            if (step == "aside:export.json") Assert.True(File.Exists(Journal));
+            if (step == "in:skills") throw new IOException("disk full");
+        }));
+        Assert.False(File.Exists(Journal));
+        Assert.True(GameDataExport.UpToDate(Data, Client)); // the stamp came back with everything else
+    }
+
+    [Theory]
+    [InlineData("in:config")]
+    [InlineData("in:skills")]
+    [InlineData("in:loc_en.tsv")]
+    public void AnExportThatDiedMidSwapIsPutBackBeforeTheNextOneClearsItsWork(string diesAt)
+    {
+        Fill(Data, "old");
+        Stamp();
+        var staged = Path.Combine(_dir, "staged");
+        Fill(staged, "new", files: 3);
+        var old = Path.Combine(Data, ".export", "old");
+        // A process that dies runs no catch: model it by copying the folder as it stood at that step, then restoring it.
+        var snapshot = Path.Combine(_dir, "snapshot");
+        Assert.Throws<IOException>(() => GameDataExport.SwapIn(Data, staged, old, step =>
+        {
+            if (step != diesAt) return;
+            CopyTree(Data, snapshot);
+            throw new IOException("process died");
+        }));
+        Directory.Delete(Data, true);
+        Directory.Move(snapshot, Data);
+        Assert.True(File.Exists(Journal));
+        Assert.False(GameDataExport.UpToDate(Data, Client)); // never counted as up to date mid-swap
+
+        GameDataExport.RecoverInterruptedSwap(Data);
+        Assert.False(File.Exists(Journal));
+        Assert.Equal("old", Tag(Data));
+        Assert.All(GameDataExport.TopFiles, f => Assert.Equal("old", File.ReadAllText(Path.Combine(Data, f))));
+        foreach (var folder in GameDataExport.Folders)
+            Assert.Equal(folder == "config" ? 3 : 2, Directory.GetFiles(Path.Combine(Data, folder)).Length);
+        Assert.True(GameDataExport.UpToDate(Data, Client)); // the previous generation, stamp and all
+    }
+
+    private static void CopyTree(string from, string to)
+    {
+        Directory.CreateDirectory(to);
+        foreach (var file in Directory.GetFiles(from, "*", SearchOption.AllDirectories))
+        {
+            var target = Path.Combine(to, Path.GetRelativePath(from, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(file, target);
+        }
+    }
+
     public void Dispose()
     {
         try { Directory.Delete(_dir, true); } catch (IOException) { }

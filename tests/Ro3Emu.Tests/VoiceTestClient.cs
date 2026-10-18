@@ -7,8 +7,8 @@ using Ro3Emu.Server.Voice;
 namespace Ro3Emu.Tests;
 
 /// <summary>
-/// A raw voice-gate client for tests: speaks <see cref="VoiceFrame"/> directly over a plain TcpClient (the relay
-/// has no client implementation yet, so this plays that part). Frames are buffered as they arrive; <see
+/// A raw voice-gate client for tests: speaks <see cref="VoiceFrame"/> directly over a plain TcpClient (the in-game
+/// client lives in Ro3Emu.ClientHooks, which needs the game; this plays its part). Frames are buffered as they arrive; <see
 /// cref="WaitAsync"/> lets a test pick a specific one out of order, the way BotClient's Inbox does for the game gate.
 /// </summary>
 public sealed class VoiceTestClient : IAsyncDisposable

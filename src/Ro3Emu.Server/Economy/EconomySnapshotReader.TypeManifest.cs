@@ -64,7 +64,10 @@ public static partial class EconomySnapshotReader
     // roles' equipment as a display snapshot, never a holding.
     // Mock Battle: role.timed_battle CasualMmr/CasualRecords/CasualBest/CasualTotal are a rating and statistics, and
     // CasualSettled the once-only markers of each match's event/casual-battle receipt; no balance, no asset.
-    public const string ExpectedFormatManifestHash = "E9C260BA78F57E9B497E3D1121AC95F015E8353A1553436BE320054ACD156C30";
+    // casual_battle_obligation.payout is CasualBattleService.Payout: a frozen match result (rating delta, record,
+    // numbers) and the DropPool ids its payment rolls. No goods: they are granted by the role's event/casual-battle
+    // receipt that also writes the timed_battle state and marks the row delivered.
+    public const string ExpectedFormatManifestHash = "C30B966932EA711BC056382F73CF7189C57E143F7C7A15351BEC6D13ECDCB91F";
     public static string FormatManifestHash => State.FormatManifestHash;
 
     private sealed partial class State
@@ -123,6 +126,8 @@ public static partial class EconomySnapshotReader
             entries.Add("role-string-set:task_followup:System.String");
             entries.Add("dungeon_reward_obligation:Ro3Emu.Server.Accounts.DungeonRewardObligation");
             TypeShape(typeof(Ro3Emu.Server.Accounts.DungeonRewardObligation));
+            entries.Add("casual_battle_obligation:Ro3Emu.Server.Game.CasualBattleService+Payout");
+            TypeShape(typeof(Ro3Emu.Server.Game.CasualBattleService.Payout));
             // These JSON wrappers carry embedded protobuf bytes in addition to their explicit DTO graph.
             Message(Romsg.DBMountsInfo.Descriptor);
             Message(Romsg.DBLotteryData.Descriptor);

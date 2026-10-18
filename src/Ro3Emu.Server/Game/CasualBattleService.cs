@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text.Json;
 using Romsg;
+using Ro3Emu.Server.Accounts;
+using Ro3Emu.Server.Accounts.Persistence;
 using Ro3Emu.Server.Data;
 using Ro3Emu.Server.Game.Ownership;
 using Ro3Emu.Server.Maps;
@@ -61,6 +63,8 @@ public sealed class CasualBattleService : IGameTicker
     private readonly TimedBattleService timedBattles;
     private readonly PraiseService praise;
     private readonly GameLoop loop;
+    private readonly RoleStore roles;
+    private readonly AccountStore accounts;
     private readonly ILogger<CasualBattleService> log;
 
     private sealed record Group(GameSession[] Members, long Window);
@@ -86,7 +90,15 @@ public sealed class CasualBattleService : IGameTicker
         public readonly Dictionary<int, long> CampScore = new() { [1] = 0, [2] = 0 };
         public readonly HashSet<GameSession> Loaded = new();
         public int Stage;
+        /// <summary>The battle is over and its result frozen in memory (<see cref="Frozen"/>); no more fighting.</summary>
+        public bool Ending;
+        /// <summary>Every stayed player's obligation is durable; payouts may now run.</summary>
         public bool Settled;
+        public bool Announced, Persisting;
+        public int Failures;
+        public long RetryAt;
+        public CasualBattleObligationRow[]? Frozen;
+        public readonly Dictionary<long, DungeonResultNotify> Notices = new();
         public long Deadline => Open + BattleSeconds;
     }
 
@@ -102,12 +114,15 @@ public sealed class CasualBattleService : IGameTicker
     public CasualBattleService(GameData data, ActivityClock activityClock, TimeProvider time, FunctionService functions,
         TeamService teams, SessionRegistry sessions, InstanceService instances, SceneService scene, WorldData worldData,
         CharacterService character, RewardService rewards, TimedBattleService timedBattles, PraiseService praise,
-        CombatService combat, DungeonService dungeons, GameLoop loop, GmCommands gm, ILogger<CasualBattleService> log)
+        CombatService combat, DungeonService dungeons, GameLoop loop, GmCommands gm, RoleStore roles, AccountStore accounts,
+        ILogger<CasualBattleService> log)
     {
         this.data = data; this.activityClock = activityClock; this.time = time; this.functions = functions; this.teams = teams;
         this.sessions = sessions; this.instances = instances; this.scene = scene; this.worldData = worldData;
         this.character = character; this.rewards = rewards; this.timedBattles = timedBattles; this.praise = praise;
-        this.loop = loop; this.log = log;
+        this.loop = loop; this.roles = roles; this.accounts = accounts; this.log = log;
+        obligations = new RoleObligations<CasualBattleObligationRow>("Mock Battle payout", accounts, loop, time, Online,
+            s => s.TimedBattle != null && s.Progress != null, PayAsync, ObligationRetry.TickWithBackoff, log);
         scene.Loaded.Add(LoadedAsync);
         scene.Leaving.Add(LeavingAsync);
         combat.PvpDealt.Add(Dealt);
@@ -120,7 +135,7 @@ public sealed class CasualBattleService : IGameTicker
     private long Param(string key, long fallback) => data.Table("PublicParamConfig").TryGetValue(key, out var v)
         ? (long)(GameData.Number(v) ?? fallback) : fallback;
 
-    private Match? Live(GameSession s) => active.TryGetValue(s, out var m) && !m.Settled && s.InstanceId == m.Room.Id ? m : null;
+    private Match? Live(GameSession s) => active.TryGetValue(s, out var m) && !m.Ending && s.InstanceId == m.Room.Id ? m : null;
 
     /// <summary>The TimeLimitConfig 1084 window of a state ("Matching" / "Battling") open now, or null.</summary>
     private ActivityClock.Window? Window(string state) => activityClock.Segments(TimeLimit, Now)
@@ -173,6 +188,7 @@ public sealed class CasualBattleService : IGameTicker
         else if (queue.Count > 0 && !OpenForTest && Window("Matching") == null && Window("Battling") == null) queue.Clear();
         foreach (var match in matches.ToArray())
             loop.PostLegacy(() => AdvanceAsync(match), "casual battle timeline");
+        obligations.Tick();
     }
 
     /// <summary>The queued groups become two camps (whole groups to the smaller camp, at most 40 each) and enter.</summary>
@@ -227,7 +243,7 @@ public sealed class CasualBattleService : IGameTicker
         var info = new DungeonBaseInfoNotify
         {
             DungeonEntry = Scene, DungeonId = match.Room.Id, Stage = match.Stage, ChangeType = (DungeonBaseInfoNotify.Types.eChangeType)2,
-            StageModuleData = new DungeonStageModuleData { MapState = match.Settled ? 2 : 1, Stage = match.Stage,
+            StageModuleData = new DungeonStageModuleData { MapState = match.Ending ? 2 : 1, Stage = match.Stage,
                 MapStateStartTime = match.Open * 1000, MapStateEndTime = match.Deadline * 1000,
                 StageStartTime = start * 1000, StageEndTime = end * 1000,
                 NextStageStartTime = nextEnd == 0 ? 0 : end * 1000, NextStageEndTime = nextEnd * 1000 },
@@ -250,23 +266,24 @@ public sealed class CasualBattleService : IGameTicker
 
     private async Task LoadedAsync(GameSession s)
     {
-        if (!active.TryGetValue(s, out var match) || match.Room.Id != s.InstanceId || match.Settled) return;
+        if (!active.TryGetValue(s, out var match) || match.Room.Id != s.InstanceId || match.Ending) return;
         match.Loaded.Add(s);
         await s.SendGameAsync(DungeonService.BaseInfo, Info(match));
         if (worldData.Map(Scene)?.Points.TryGetValue(CampPoints[match.Players[s].Camp - 1], out var start) == true)
             await scene.TeleportInMapAsync(s, start);
     }
 
-    private async Task LeavingAsync(GameSession s)
+    private Task LeavingAsync(GameSession s)
     {
         // Leaving the public map on the way in is not leaving the match.
-        if (!active.TryGetValue(s, out var match) || match.Settled || s.InstanceId != match.Room.Id) return;
+        if (!active.TryGetValue(s, out var match) || match.Ending || s.InstanceId != match.Room.Id) return Task.CompletedTask;
         active.Remove(s);
         match.Players[s].Left = true;
         s.EventFaction = 0;
         // A camp with nobody left loses (inferred).
         if (match.Stage > 0 && match.Players.Values.Where(p => !p.Left).Select(p => p.Camp).Distinct().Count() < 2)
-            await SettleAsync(match);
+            RequestSettle(match);
+        return Task.CompletedTask;
     }
 
     public bool CanFight(GameSession attacker, GameSession target) => Live(attacker) is { } m && Live(target) == m && m.Stage > 0
@@ -295,7 +312,7 @@ public sealed class CasualBattleService : IGameTicker
             { assist.Assists++; Score(m, helper, AssistPersonal); }
         dead.HitBy.Clear();
         await BroadcastAsync(m);
-        if (m.CampScore.Values.Any(score => score >= ScoreBar)) await SettleAsync(m);
+        if (m.CampScore.Values.Any(score => score >= ScoreBar)) RequestSettle(m);
     }
 
     private void Score(Match m, GameSession player, int row)
@@ -311,6 +328,8 @@ public sealed class CasualBattleService : IGameTicker
     private async Task AdvanceAsync(Match match)
     {
         if (match.Settled) return;
+        // Over, but its result is not durable yet: the save is retried with backoff.
+        if (match.Ending) { if (Now >= match.RetryAt) await SettleAsync(match); return; }
         long elapsed = Now - match.Open;
         int stage = elapsed < PrepareSeconds ? 0 : elapsed < PrepareSeconds + MainSeconds ? 1 : 2;
         if (Now >= match.Deadline) { await SettleAsync(match); return; }
@@ -338,13 +357,38 @@ public sealed class CasualBattleService : IGameTicker
         return result;
     }
 
-    /// <summary>The end: result, rating, records and rewards per player who stayed, 30132, then everyone out after 30 s.</summary>
-    private async Task SettleAsync(Match match)
+    /// <summary>
+    /// One role's frozen Mock Battle result (a casual_battle_obligation row): what its payment applies to the role's
+    /// timed_battle state and which DropPools it rolls. No goods until the event/casual-battle receipt pays them.
+    /// </summary>
+    public sealed class Payout
     {
-        if (match.Settled) return;
-        match.Settled = true;
+        public long MatchId { get; set; }
+        public long RoleId { get; set; }
+        public long BattleTime { get; set; }
+        public string ResultId { get; set; } = "";
+        public bool Won { get; set; }
+        public int Outcome { get; set; }
+        public long StartMmr { get; set; }
+        public long MmrDelta { get; set; }
+        public TimedBattleService.CasualStats Stats { get; set; } = new();
+        public List<long> Pools { get; set; } = new();
+    }
+
+    /// <summary>The frozen payouts: saved before the match counts as settled, paid once each, retried by the tick
+    /// while the role is online and paid at login after a disconnect or a restart.</summary>
+    private readonly RoleObligations<CasualBattleObligationRow> obligations;
+
+    internal static string SourceKey(long match, long role) =>
+        string.Create(CultureInfo.InvariantCulture, $"casual-battle/{match}/{role}");
+    private static long Backoff(int failures) => RoleObligations<CasualBattleObligationRow>.Backoff(failures);
+
+    /// <summary>The battle is over: freeze its result in memory (once) and stop all fighting and scoring.</summary>
+    private void End(Match match)
+    {
+        if (match.Ending) return;
+        match.Ending = true;
         match.Stage = 2;
-        matches.Remove(match);
         var stayed = match.Players.Values.Where(p => !p.Left).Select(p => p.Camp).Distinct().ToArray();
         int winCamp = stayed.Length == 1 ? stayed[0] : match.CampScore[1] == match.CampScore[2] ? 0
             : match.CampScore[1] > match.CampScore[2] ? 1 : 2;
@@ -353,63 +397,147 @@ public sealed class CasualBattleService : IGameTicker
             .ThenByDescending(p => p.Kills).ThenBy(p => p.Id).FirstOrDefault();
         string resultId = match.Room.Id.ToString(CultureInfo.InvariantCulture);
         long start = Param("RelaxGVGStartMMR", 1000), win = Param("RelaxGVGWinMMR", 5), lose = Param("RelaxGVGLoseMMR", -3);
-        foreach (var p in match.Players.Values.Where(p => !p.Left).ToArray())
+        var rows = new List<CasualBattleObligationRow>();
+        foreach (var p in match.Players.Values.Where(p => !p.Left).OrderBy(p => p.Id))
         {
-            var s = p.Session;
-            active.Remove(s);
-            s.EventFaction = 0;
-            if (s.Role?.Id != p.Id || s.TimedBattle == null) continue;
+            active.Remove(p.Session);
+            p.Session.EventFaction = 0;
             bool won = winCamp != 0 && p.Camp == winCamp;
-            int outcome = winCamp == 0 ? 3 : won ? 1 : 2; // 3 draw (inferred: the achievements count win/lose/draw)
-            try { await PayAsync(s, p, match, won, outcome, resultId, start, winCamp == 0 ? 0 : won ? win : lose); }
-            catch (Exception e) { log.LogError(e, "Mock Battle settlement failed for {Role}", p.Id); }
+            var payout = new Payout
+            {
+                MatchId = match.Room.Id, RoleId = p.Id, BattleTime = match.Open, ResultId = resultId, Won = won,
+                Outcome = winCamp == 0 ? 3 : won ? 1 : 2, // 3 draw (inferred: the achievements count win/lose/draw)
+                StartMmr = start, MmrDelta = winCamp == 0 ? 0 : won ? win : lose,
+                Stats = new TimedBattleService.CasualStats { PersonalScore = p.Score, Damage = p.Damage, Kills = p.Kills,
+                    Assists = p.Assists, DamageTaken = p.Taken, Healing = p.Healing },
+                // DungeonAwardModule ScoreCondition [2,3,25] (inferred: personal score >= 25): 85201, the winners also 85202.
+                Pools = p.Score < 25 ? [] : won ? [85201, 85202] : [85201],
+            };
+            rows.Add(new CasualBattleObligationRow(SourceKey(match.Room.Id, p.Id), match.Room.Id, p.Id,
+                JsonSerializer.SerializeToUtf8Bytes(payout)));
             var info = new DungeonResultInfo { Result = won ? 1 : 2, WinCamp = winCamp, DungeonId = Scene,
                 StatisticsId = match.Room.Id, StatisticsTime = Now * 1000, DungeonStartTimestamp = match.Open * 1000 };
             info.SceneStatistics.Add(stats.SceneStatistics);
             if (mvp != null) info.MetaData["mvpPlayerId"] = mvp.Id.ToString(CultureInfo.InvariantCulture);
-            try { await s.SendGameAsync(ResultNotify, new DungeonResultNotify { ResultInfo = info, ResultId = resultId }); }
-            catch (Exception e) when (e is IOException or ObjectDisposedException) { }
+            match.Notices[p.Id] = new DungeonResultNotify { ResultInfo = info, ResultId = resultId };
         }
-        await BroadcastAsync(match);
-        loop.ScheduleLegacy(TimeSpan.FromSeconds(ExitSeconds), async () =>
-        {
-            foreach (var p in match.Players.Values)
-                if (p.Session.InstanceId == match.Room.Id) await instances.LeaveAsync(p.Session);
-        });
+        match.Frozen = rows.ToArray();
+    }
+
+    /// <summary>A kill or a departure ended the battle: stop it now, persist on its own realm-scoped turn.</summary>
+    private void RequestSettle(Match match)
+    {
+        End(match);
+        loop.PostLegacy(() => SettleAsync(match), "casual battle settlement");
     }
 
     /// <summary>
-    /// One player's rating, record, best/lifetime numbers and DungeonAwardModule reward in one receipt
-    /// (event/casual-battle), with the role's timed_battle state; then 5070.
+    /// The end: every stayed player's payout obligation is saved in one transaction before the match counts as
+    /// settled (a refused save is retried by the timeline with backoff), then each is paid on its own, 30132 is sent
+    /// (best-effort) and everyone leaves after 30 s. A payout that fails stays pending: the tick retries it while the
+    /// role is online, and the next login pays it after a disconnect or a restart.
     /// </summary>
-    private async Task PayAsync(GameSession s, Player p, Match match, bool won, int outcome, string resultId, long startMmr, long delta)
+    private async Task SettleAsync(Match match)
     {
-        var state = s.TimedBattle!;
-        if (state.CasualSettled.Contains(match.Room.Id)) return;
-        var next = JsonSerializer.Deserialize<TimedBattleService.State>(JsonSerializer.SerializeToUtf8Bytes(state))!;
-        next.CasualSettled.Add(match.Room.Id);
-        next.CasualMmr = (int)Math.Max(0, (next.CasualMmr == 0 ? startMmr : next.CasualMmr) + delta);
-        next.CasualRecords.Insert(0, new TimedBattleService.CasualRecord { ResultId = resultId, BattleTime = match.Open, Outcome = outcome });
-        if (next.CasualRecords.Count > 20) next.CasualRecords.RemoveRange(20, next.CasualRecords.Count - 20); // (inferred) twenty kept
-        var b = next.CasualBest; var t = next.CasualTotal;
-        b.PersonalScore = Math.Max(b.PersonalScore, p.Score); b.Damage = Math.Max(b.Damage, p.Damage); b.Kills = Math.Max(b.Kills, p.Kills);
-        b.Assists = Math.Max(b.Assists, p.Assists); b.DamageTaken = Math.Max(b.DamageTaken, p.Taken); b.Healing = Math.Max(b.Healing, p.Healing);
-        t.PersonalScore += p.Score; t.Damage += p.Damage; t.Kills += p.Kills; t.Assists += p.Assists; t.DamageTaken += p.Taken; t.Healing += p.Healing;
-        var grants = new List<AwardGrant>();
-        if (p.Score >= 25) // DungeonAwardModule ScoreCondition [2,3,25] (inferred: personal score >= 25)
-            foreach (long pool in won ? new long[] { 85201, 85202 } : [85201])
-                grants.AddRange(rewards.RollPoolBound(pool, s.Progress!).Select(g => new AwardGrant(g.Entry, g.Count, g.Bind)));
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(next);
-        var plan = new AwardPlan(0, 0, grants);
-        if (!await character.ApplyAwardAsync(s, plan, persist: tx =>
+        End(match);
+        if (match.Settled || match.Persisting) return;
+        if (!match.Announced)
+        {
+            match.Announced = true;
+            await BroadcastAsync(match);
+            loop.ScheduleLegacy(TimeSpan.FromSeconds(ExitSeconds), async () =>
             {
-                tx.RoleBlob(s.Role!.Id, "timed_battle", bytes);
-                if (grants.Any(g => g.Entry is not (100 or 101)))
-                    tx.WithEventEconomy(Economy.EventEconomy.ForRole(data, s, "casual-battle",
-                        $"casual-battle/{match.Room.Id}/{s.Role.Id}", [], grants, new { Match = match.Room.Id, Won = won, p.Score }));
-            }, committed: () => s.TimedBattle = next))
-            throw new InvalidOperationException("Mock Battle settlement refused.");
-        await timedBattles.CasualSettledAsync(s);
+                foreach (var p in match.Players.Values)
+                    if (p.Session.InstanceId == match.Room.Id) await instances.LeaveAsync(p.Session);
+            });
+        }
+        match.Persisting = true;
+        try
+        {
+            if (!await obligations.FreezeAsync(match.Frozen!, "casual-battle/freeze", match.Room.Id))
+            {
+                match.Failures++;
+                match.RetryAt = Now + Backoff(match.Failures);
+                return;
+            }
+        }
+        finally { match.Persisting = false; }
+        match.Settled = true;
+        matches.Remove(match);
+        // Pending (not yet due for the tick) until the first attempt below sets its retry.
+        foreach (var row in match.Frozen!) obligations.Track(row);
+        foreach (var row in match.Frozen!)
+        {
+            var player = match.Players.Values.First(p => p.Id == row.RoleId);
+            var s = player.Session.Role?.Id == row.RoleId ? player.Session : Online(row.RoleId);
+            if (s?.TimedBattle == null || s.Progress == null) { obligations.Forget(row.SourceKey); continue; } // paid at login
+            await obligations.TryPayAsync(s, row);
+            if (s.Role?.Id == row.RoleId && match.Notices.TryGetValue(row.RoleId, out var notice))
+                try { await s.SendGameAsync(ResultNotify, notice); }
+                catch (Exception e) when (e is IOException or ObjectDisposedException) { }
+        }
+    }
+
+    private GameSession? Online(long roleId) => sessions.All().FirstOrDefault(s => s.Role?.Id == roleId);
+
+    /// <summary>
+    /// One player's rating, record, best/lifetime numbers and DungeonAwardModule reward in one receipt
+    /// (event/casual-battle, source casual-battle/{match}/{role}), with the role's timed_battle state and the
+    /// obligation's delivered mark; then 5070. CasualSettled makes a second payment of the match a no-op.
+    /// </summary>
+    private async Task<bool> PayAsync(GameSession s, CasualBattleObligationRow row)
+    {
+        var payout = JsonSerializer.Deserialize<Payout>(row.Payout)
+            ?? throw new InvalidDataException("Invalid Mock Battle payout " + row.SourceKey);
+        bool paid = false;
+        using (await CharacterService.Lock(s, [RoleObligations<CasualBattleObligationRow>.Key(row.SourceKey)]))
+        {
+            if (s.Role?.Id != row.RoleId || s.TimedBattle == null || s.Progress == null)
+                throw new OperationCanceledException("Mock Battle recipient left the game.");
+            var state = s.TimedBattle;
+            if (!state.CasualSettled.Contains(row.MatchId))
+            {
+                var next = JsonSerializer.Deserialize<TimedBattleService.State>(JsonSerializer.SerializeToUtf8Bytes(state))!;
+                next.CasualSettled.Add(row.MatchId);
+                next.CasualMmr = (int)Math.Max(0, (next.CasualMmr == 0 ? payout.StartMmr : next.CasualMmr) + payout.MmrDelta);
+                next.CasualRecords.Insert(0, new TimedBattleService.CasualRecord
+                { ResultId = payout.ResultId, BattleTime = payout.BattleTime, Outcome = payout.Outcome });
+                if (next.CasualRecords.Count > 20) next.CasualRecords.RemoveRange(20, next.CasualRecords.Count - 20); // (inferred) twenty kept
+                var b = next.CasualBest; var t = next.CasualTotal; var p = payout.Stats;
+                b.PersonalScore = Math.Max(b.PersonalScore, p.PersonalScore); b.Damage = Math.Max(b.Damage, p.Damage);
+                b.Kills = Math.Max(b.Kills, p.Kills); b.Assists = Math.Max(b.Assists, p.Assists);
+                b.DamageTaken = Math.Max(b.DamageTaken, p.DamageTaken); b.Healing = Math.Max(b.Healing, p.Healing);
+                t.PersonalScore += p.PersonalScore; t.Damage += p.Damage; t.Kills += p.Kills; t.Assists += p.Assists;
+                t.DamageTaken += p.DamageTaken; t.Healing += p.Healing;
+                var grants = new List<AwardGrant>();
+                foreach (long pool in payout.Pools)
+                    grants.AddRange(rewards.RollPoolBound(pool, s.Progress).Select(g => new AwardGrant(g.Entry, g.Count, g.Bind)));
+                var bytes = JsonSerializer.SerializeToUtf8Bytes(next);
+                if (!await character.ApplyAwardAsync(s, new AwardPlan(0, 0, grants), persist: tx =>
+                    {
+                        tx.RoleBlob(row.RoleId, "timed_battle", bytes);
+                        tx.Add(RoleObligations<CasualBattleObligationRow>.DeliverPlan(row));
+                        if (grants.Any(g => g.Entry is not (100 or 101)))
+                            tx.WithEventEconomy(Economy.EventEconomy.ForRole(data, s, "casual-battle", row.SourceKey, [], grants,
+                                new { Match = row.MatchId, payout.Won, Score = payout.Stats.PersonalScore }));
+                    }, stateLockHeld: true, committed: () => s.TimedBattle = next))
+                    throw new InvalidOperationException("Mock Battle settlement refused.");
+                paid = true;
+            }
+        }
+        if (paid) await timedBattles.CasualSettledAsync(s);
+        return true;
+    }
+
+    /// <summary>C/D 15: the role's pending payouts, read before the role select admits so it can reserve them.</summary>
+    internal Task<ReservationKey[]> LoginKeysAsync(long roleId) => obligations.LoginKeysAsync(roleId);
+
+    /// <summary>Login pays what a failure, a disconnect or a restart left pending (after the timed-battle state).</summary>
+    public async Task LoginAsync(GameSession s)
+    {
+        if (s.Role == null || s.TimedBattle == null) return;
+        long roleId = s.Role.Id;
+        await obligations.DeliverPendingAsync(s, roleId, () => s.Role?.Id == roleId);
     }
 
     private async Task GmAsync(GameSession s, string[] args)

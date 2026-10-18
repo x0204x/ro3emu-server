@@ -15,7 +15,7 @@ namespace Ro3Emu.Server.Voice;
 /// and drains in <see cref="StopAsync"/>, like <see cref="Net.GateListener"/>.
 /// </summary>
 public sealed class VoiceGateServer(IOptions<ServerOptions> options, VoiceTicketRegistry tickets, VoiceRooms rooms,
-    TeamService teams, SessionRegistry sessions, GameLoop loop, ILogger<VoiceGateServer> log)
+    TeamService teams, SessionRegistry sessions, GameLoop loop, GmCommands gm, ILogger<VoiceGateServer> log)
     : BackgroundService
 {
     private const long IpBanDurationMs = 60_000;
@@ -54,6 +54,13 @@ public sealed class VoiceGateServer(IOptions<ServerOptions> options, VoiceTicket
             throw;
         }
         _listener = listener;
+        // Test aid: the connection ends as a network drop would (no Kicked frame); the client reconnects on its own.
+        gm.Register("voicedrop", "(voice relay test aid: drops your voice connection; the client reconnects)", async (s, _) =>
+        {
+            var connection = s.Account == null ? null : rooms.ConnectionOf(s.Account);
+            connection?.Close();
+            await GmCommands.ReplyAsync(s, connection == null ? "No voice connection." : "Voice connection dropped.");
+        });
         if (IPAddress.IsLoopback(address)) log.LogInformation("VoiceGate listening on {Address}:{Port}", address, opts.Voice.Port);
         else log.LogWarning("VoiceGate listening on {Address}:{Port} WITHOUT encryption (AllowPlaintextOffLoopback)", address, opts.Voice.Port);
         return base.StartAsync(cancellationToken);
@@ -106,6 +113,7 @@ public sealed class VoiceGateServer(IOptions<ServerOptions> options, VoiceTicket
         var connection = new VoiceConnection(socket)
         {
             RateLimiter = new VoiceRateLimiter(voice.FramesPerSecond, voice.Burst),
+            ControlLimiter = new VoiceRateLimiter(voice.ControlPerSecond, voice.ControlBurst),
         };
         // Tracked before it starts, so a connection that ends at once still removes its own entry.
         var serve = new Task<Task>(() => RunAsync(connection, remote));
@@ -158,7 +166,14 @@ public sealed class VoiceGateServer(IOptions<ServerOptions> options, VoiceTicket
         while (!live.IsCancellationRequested)
         {
             frame = await connection.ReadFrameAsync(maxPayload, live.Token);
+            // Kicked (flood, replaced, removed): read on until the writer has flushed the Kicked frame and closed,
+            // but act on nothing, so a kicked connection cannot rejoin a room or flood the logs meanwhile. Not
+            // touched either: one that never reads its Kicked frame still ends at the idle timeout.
+            if (connection.Kicked) continue;
             connection.Touch();
+            // Everything but Audio (its own budget, in HandleAudio) shares one control budget: a Mic reaches the
+            // whole room and a Join costs a game-loop hop, so neither may be sent at network speed.
+            if (frame.Type != VoiceUp.Audio && !TakeControl(connection)) continue;
             switch (frame.Type)
             {
                 case VoiceUp.Join: await HandleJoinAsync(connection, frame.Payload); break;
@@ -204,28 +219,37 @@ public sealed class VoiceGateServer(IOptions<ServerOptions> options, VoiceTicket
             connection.SendJoinResult(VoiceJoinCode.UnsupportedRoom, channel);
             return;
         }
-        byte code = await loop.InvokeAsync(() =>
+        // A repeated Join of the room it is in: confirmed again, but no loop hop and nothing to the others.
+        if (rooms.IsIn(connection, requested))
+        {
+            connection.SendJoinResult(VoiceJoinCode.Ok, channel);
+            return;
+        }
+        var (code, forbidden) = await loop.InvokeAsync(() =>
         {
             bool alive = sessions.All().Any(s => s.Role?.Id == connection.RoleId);
             var (teamId, _) = teams.TeamOf(connection.RoleId);
             byte result = alive && teamId != 0 && teamId == requested ? VoiceJoinCode.Ok : VoiceJoinCode.NotMember;
-            return Task.FromResult(result);
+            return Task.FromResult((result, teams.IsForbiddenChat(connection.RoleId)));
         });
         if (code != VoiceJoinCode.Ok)
         {
             connection.SendJoinResult(code, channel);
             return;
         }
-        var outcome = rooms.Join(connection, requested);
+        var outcome = rooms.Join(connection, requested, forbidden);
         connection.SendJoinResult(outcome.Code, channel);
-        if (outcome.Code != VoiceJoinCode.Ok) return;
+        if (outcome.Code != VoiceJoinCode.Ok || outcome.AlreadyIn) return;
         foreach (var other in outcome.PreviousRoomOthers) other.SendMemberChange(connection.RoleId, false);
         foreach (var existing in outcome.ExistingMembers)
         {
             connection.SendMemberChange(existing.RoleId, true);
             connection.SendMicState(existing.RoleId, existing.MicOn);
             existing.SendMemberChange(connection.RoleId, true);
+            if (outcome.MicOn) existing.SendMicState(connection.RoleId, true);
         }
+        // A mic the player turned on before joining (or kept from the room it switched from) is live here too.
+        if (outcome.MicOn) connection.SendMicState(connection.RoleId, true);
     }
 
     private void HandleLeave(VoiceConnection connection)
@@ -237,8 +261,8 @@ public sealed class VoiceGateServer(IOptions<ServerOptions> options, VoiceTicket
     private void HandleMic(VoiceConnection connection, byte[] payload)
     {
         if (payload.Length < 1) return;
-        bool on = payload[0] != 0;
-        VoiceRooms.BroadcastMic(connection, rooms.SetMic(connection, on), on);
+        // Unchanged: nothing sent. Refused (the leader's mute): MicState off to the sender alone.
+        VoiceRooms.BroadcastMic(connection, rooms.SetMic(connection, payload[0] != 0));
     }
 
     private void HandleSpeaker(VoiceConnection connection, byte[] payload)
@@ -252,13 +276,12 @@ public sealed class VoiceGateServer(IOptions<ServerOptions> options, VoiceTicket
         var limiter = connection.RateLimiter!;
         if (limiter.RecordAndCheckFlood())
         {
-            connection.Kick(VoiceKickCode.Flood);
-            Ban(connection.RemoteAddress);
-            log.LogWarning("VoiceGate: {Remote} disconnected for sustained flood", connection.RemoteAddress);
+            KickForFlood(connection, "audio");
             return;
         }
         if (!limiter.TryTake()) return; // over its instantaneous budget: drop, do not disconnect
-        if (!connection.MicOn || connection.RoomId == 0 || payload.Length < 2) return;
+        // ChatForbidden as well as MicOn: the leader's mute holds from the tick that saw it, whatever Mic says.
+        if (!connection.MicOn || connection.ChatForbidden || connection.RoomId == 0 || payload.Length < 2) return;
         ushort seq = BinaryPrimitives.ReadUInt16LittleEndian(payload.AsSpan(0, 2));
         var opus = payload.AsSpan(2);
         if (rooms.MarkSpeaking(connection))
@@ -267,6 +290,28 @@ public sealed class VoiceGateServer(IOptions<ServerOptions> options, VoiceTicket
         if (listeners.Length == 0) return;
         byte[] frame = VoiceConnection.BuildAudioFrame(connection.RoleId, seq, opus);
         foreach (var listener in listeners) listener.SendAudioFrame(frame);
+    }
+
+    /// <summary>The control budget: false drops the frame; a sustained flood also disconnects and bans, as for Audio.</summary>
+    private bool TakeControl(VoiceConnection connection)
+    {
+        var limiter = connection.ControlLimiter!;
+        if (limiter.RecordAndCheckFlood())
+        {
+            KickForFlood(connection, "control");
+            return false;
+        }
+        return limiter.TryTake();
+    }
+
+    private void KickForFlood(VoiceConnection connection, string what)
+    {
+        // Out of its room at once (no more frames reach the others), then Kicked; the serve task's own cleanup
+        // finds nothing left to remove.
+        Cleanup(connection);
+        connection.Kick(VoiceKickCode.Flood);
+        Ban(connection.RemoteAddress);
+        log.LogWarning("VoiceGate: {Remote} disconnected for a sustained {What} flood", connection.RemoteAddress, what);
     }
 
     private void Cleanup(VoiceConnection connection)

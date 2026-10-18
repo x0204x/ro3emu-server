@@ -45,9 +45,24 @@ public sealed class VoiceConnection : IDisposable
     public long RoleId { get; set; }
     public VoiceRateLimiter? RateLimiter { get; set; }
 
+    /// <summary>The budget for everything after Auth that is not Audio (Join, Leave, Mic, Speaker, Ping).</summary>
+    public VoiceRateLimiter? ControlLimiter { get; set; }
+
     /// <summary>0 = not in a room.</summary>
     public long RoomId { get; set; }
+
+    /// <summary>What the client last asked for with Mic; kept while the leader's mute overrides it, so lifting the
+    /// mute gives the player back the mic they had.</summary>
+    public bool MicWanted { get; set; }
+
+    /// <summary>The mic the room sees and the relay forwards audio for: <see cref="MicWanted"/> unless
+    /// <see cref="ChatForbidden"/>. Only VoiceRooms changes it, under its lock.</summary>
     public bool MicOn { get; set; }
+
+    /// <summary>The team leader's forbidden-chat on this role, as the game loop last saw it (VoiceRooms refreshes it
+    /// every tick and on Join). Read by the connection's own task on every Audio frame, hence volatile.</summary>
+    public bool ChatForbidden { get => _chatForbidden; set => _chatForbidden = value; }
+    private volatile bool _chatForbidden;
     public bool SpeakerOn { get; set; } = true;
 
     /// <summary>VAD state (VoiceRooms owns the transitions; the connection just stores the current value).</summary>
@@ -103,6 +118,9 @@ public sealed class VoiceConnection : IDisposable
     }
 
     public void SendPong() => Enqueue(VoiceFrame.Write(VoiceDown.Pong, []));
+
+    /// <summary>True once <see cref="Kick"/> ran: the connection is on its way out and its frames are ignored.</summary>
+    public bool Kicked => _closeAfterDrain;
 
     /// <summary>Queues a Kicked frame, then closes the connection once the writer has flushed it.</summary>
     public void Kick(byte code)

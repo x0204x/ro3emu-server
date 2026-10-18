@@ -1,0 +1,6 @@
+{
+  "9001": { "_iId": 9001, "_iTimeLimitId": 1074, "_strStateName": "GveHuntCandidate", "_iCycleCount": -1, "_iWeekRefreshCount": 1, "_iWeekStart": 333000, "_iWeekEnd": 333120 },
+  "9002": { "_iId": 9002, "_iTimeLimitId": 1074, "_strStateName": "GveHuntStart", "_iCycleCount": -1, "_iWeekRefreshCount": 1, "_iWeekStart": 333120, "_iWeekEnd": 333420 },
+  "9003": { "_iId": 9003, "_iTimeLimitId": 1074, "_strStateName": "GveHuntEnd", "_iCycleCount": -1, "_iWeekRefreshCount": 1, "_iWeekStart": 333420, "_iWeekEnd": 333600 },
+  "9004": { "_iId": 9004, "_iTimeLimitId": 1074, "_strStateName": "GveHuntShow", "_iCycleCount": -1, "_iWeekRefreshCount": 1, "_iWeekStart": 333600, "_iWeekEnd": 334800 }
+}

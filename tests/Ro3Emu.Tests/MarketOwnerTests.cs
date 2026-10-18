@@ -32,7 +32,7 @@ public sealed class MarketOwnerTests(ITestOutputHelper output) : IAsyncLifetime
         var (http, micro, game) = TestPorts.FreePorts();
         app = ServerHost.Create([], o =>
         {
-            o.DataDir = directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = directory; o.GameDataDir = SyntheticData.Dir;
             o.HttpPort = http; o.MicroGatePort = micro; o.GameGatePort = game;
         });
         await app.StartAsync(); url = $"http://127.0.0.1:{http}";
@@ -43,12 +43,6 @@ public sealed class MarketOwnerTests(ITestOutputHelper output) : IAsyncLifetime
         Accounts.AfterWriterCommitForTest = null;
         await app.StopAsync(); await app.DisposeAsync();
         Directory.Delete(directory, true);
-    }
-    private static string RepoRoot()
-    {
-        for (var path = new DirectoryInfo(AppContext.BaseDirectory); path != null; path = path.Parent)
-            if (File.Exists(Path.Combine(path.FullName, "Ro3Emu.slnx"))) return path.FullName;
-        throw new InvalidOperationException("repository root");
     }
     private async Task<(BotClient Bot, GameSession Session)> Login(string name)
     {
@@ -77,7 +71,7 @@ public sealed class MarketOwnerTests(ITestOutputHelper output) : IAsyncLifetime
         return 0;
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task MultiSellerCommitAndSlowNoticeFenceOnlyParticipantsAndPublishAllTogether()
     {
         var (buyerBot, buyer) = await Login("Ownerbuyer"); await using var b = buyerBot;
@@ -151,7 +145,7 @@ public sealed class MarketOwnerTests(ITestOutputHelper output) : IAsyncLifetime
         }
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task MarketDeliveryRestagesMailboxAfterWaitingForEarlierDelivery()
     {
         var (bot, session) = await Login("Restagemail"); await using var client = bot;
@@ -191,7 +185,7 @@ public sealed class MarketOwnerTests(ITestOutputHelper output) : IAsyncLifetime
         Assert.Single(box.Letters, letter => letter.Id == finalMail && letter.Currency[1] == 7);
     }
 
-    [ClientDataTheory]
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task MarketPurchaseWaitsForCommittedParticipantApplyThenUsesNewBalances(bool speculativeRefusal)
@@ -314,7 +308,7 @@ public sealed class MarketOwnerTests(ITestOutputHelper output) : IAsyncLifetime
         });
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task SqlConflictRollsBackEveryParticipantAndRetryHasOneOutcome()
     {
         var (bot, buyer) = await Login("Conflictbuyer"); await using var client = bot;
@@ -333,7 +327,7 @@ public sealed class MarketOwnerTests(ITestOutputHelper output) : IAsyncLifetime
         Assert.Single(JsonSerializer.Deserialize<MailService.Mailbox>(Roles.LoadMailbox(seller)!)!.Letters);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task MailClaimKeepsLiveStateUnchangedUntilReceiptAndAllowsUnrelatedProgress()
     {
         var (bot, owner) = await Login("Claimowner"); await using var client = bot;

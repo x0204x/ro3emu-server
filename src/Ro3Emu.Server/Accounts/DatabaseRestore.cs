@@ -10,8 +10,12 @@ namespace Ro3Emu.Server.Accounts;
 ///   anything live is touched, so a failed or bad copy leaves the realm as it was.
 /// - **Journalled swap:** <c>ro3emu.db.restore-pending</c> is written (and flushed) before the live database with its
 ///   WAL is moved to <c>&lt;data&gt;/restore-saved/</c> (never deleted) and the copy renamed in. A failed swap moves the
-///   old files back. Only a completed or rolled-back restore removes the marker; while it exists
-///   <see cref="ThrowIfUnfinished"/> refuses to open the realm, so a server never creates an empty database in the gap.
+///   old files back. Only a completed restore, or a rolled-back one that did not resume an earlier unfinished restore,
+///   removes the marker; while it exists <see cref="ThrowIfUnfinished"/> refuses to open the realm, so a server never
+///   creates an empty database in the gap.
+/// - **Resuming:** the database, its WAL and its SHM are one set. A run cut between their moves can leave the WAL and
+///   SHM behind without the database; a retry moves them away too (back into the earlier saved folder when that one
+///   lacks them), so the restored file is never opened beside an old WAL that SQLite would replay into it.
 /// </summary>
 public static class DatabaseRestore
 {
@@ -74,39 +78,46 @@ public static class DatabaseRestore
 
         // 2. Journal, then swap. The marker outlives a crash at any point below.
         var marker = MarkerPath(dataDir);
-        string? saved = File.Exists(live) ? Path.Combine(dataDir, "restore-saved", DateTime.Now.ToString("yyyyMMdd-HHmmss-fff")) : null;
+        // An earlier restore that did not finish: its saved folder holds the old database, maybe without its WAL/SHM.
+        bool resuming = File.Exists(marker);
+        string? earlierSaved = resuming && !File.Exists(live) ? LastSavedFolder(marker) : null;
+        // Where each live file goes: the database and its sidecars to a new saved folder, except a WAL/SHM left without
+        // its database, which belongs to the earlier set and completes that set when it lacks them.
+        string fresh = Path.Combine(dataDir, "restore-saved", DateTime.Now.ToString("yyyyMMdd-HHmmss-fff"));
+        var plan = Sidecars.Where(suffix => File.Exists(live + suffix)).Select(suffix => (Suffix: suffix,
+            Folder: suffix.Length > 0 && earlierSaved != null && File.Exists(Path.Combine(earlierSaved, "ro3emu.db"))
+                && !File.Exists(Path.Combine(earlierSaved, "ro3emu.db" + suffix)) ? earlierSaved : fresh)).ToList();
+        string? saved = plan.Any(p => p.Folder == fresh) ? fresh : plan.Count > 0 ? earlierSaved : null;
         WriteMarker(marker, backup, saved);
-        var moved = new List<string>();
+        var moved = new List<(string Suffix, string Folder)>();
         try
         {
-            if (saved != null)
+            foreach (var (suffix, folder) in plan)
             {
-                Directory.CreateDirectory(saved);
-                foreach (var suffix in Sidecars)
-                {
-                    if (!File.Exists(live + suffix)) continue;
-                    File.Move(live + suffix, Path.Combine(saved, "ro3emu.db" + suffix));
-                    moved.Add(suffix);
-                    stepForTest?.Invoke("moved" + suffix);
-                }
+                Directory.CreateDirectory(folder);
+                File.Move(live + suffix, Path.Combine(folder, "ro3emu.db" + suffix));
+                moved.Add((suffix, folder));
+                stepForTest?.Invoke("moved" + suffix);
             }
             stepForTest?.Invoke("swap");
             File.Move(incoming, live);
         }
         catch (Exception failure)
         {
-            // Put the previous database back exactly as it was; only then is the restore over.
+            // Put the previous files back exactly as they were; only then is this attempt over.
             try
             {
                 stepForTest?.Invoke("rollback");
-                foreach (var suffix in moved) File.Move(Path.Combine(saved!, "ro3emu.db" + suffix), live + suffix);
+                foreach (var (suffix, folder) in moved) File.Move(Path.Combine(folder, "ro3emu.db" + suffix), live + suffix);
             }
             catch (Exception rollback)
             {
                 throw new IOException($"The restore failed ({failure.Message}) and putting the previous database back failed too " +
                     $"({rollback.Message}). {RecoveryHelp(marker)}", failure);
             }
-            File.Delete(marker);
+            // Resuming, the data dir was already without its database before this attempt: the earlier marker must stay
+            // so the server still refuses to open (and create) an empty realm.
+            if (!resuming) File.Delete(marker);
             DeleteQuietly(incoming);
             throw;
         }
@@ -133,6 +144,17 @@ public static class DatabaseRestore
     private static string RecoveryHelp(string marker) =>
         "To recover, either run the restore again (Ro3Emu.Server --restore-backup <file>), or move the previous database " +
         $"(ro3emu.db with its -wal/-shm) back from the restore-saved folder named in {marker} into the data dir; then delete {marker}.";
+
+    /// <summary>The newest "previous database saved in" folder the marker names that still exists, or null.</summary>
+    private static string? LastSavedFolder(string marker)
+    {
+        const string prefix = "previous database saved in: ";
+        string[] lines;
+        try { lines = File.ReadAllLines(marker); }
+        catch (IOException) { return null; }
+        return lines.Where(l => l.StartsWith(prefix, StringComparison.Ordinal)).Select(l => l[prefix.Length..].Trim())
+            .LastOrDefault(Directory.Exists);
+    }
 
     private static void WriteMarker(string marker, string backup, string? saved)
     {

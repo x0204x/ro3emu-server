@@ -56,8 +56,7 @@ public sealed class PhonestGateService(GateAuthRegistry auths, MicroSessions mic
             log.LogWarning("PhonestGate.bind refused for {Id} from {Remote}", id, session.Channel.Remote);
             return MicroServiceRouter.Fail("bind refused");
         }
-        session.Account = account;
-        micro.Bind(session);
+        micro.SignIn(session, account);
         log.LogInformation("PhonestGate.bind: {Account} ({Id}) bound {Remote}", account, id, session.Channel.Remote);
         return new() { ["Ret"] = MicroServiceRouter.Ret(true) };
     }

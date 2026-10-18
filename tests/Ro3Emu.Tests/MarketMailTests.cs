@@ -31,7 +31,7 @@ public sealed class MarketMailTests : IAsyncLifetime
         app = ServerHost.Create([], o =>
         {
             o.DataDir = dataDir;
-            o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.GameDataDir = SyntheticData.Dir;
             o.HttpPort = httpPort;
             o.MicroGatePort = microPort;
             o.GameGatePort = gamePort;
@@ -117,7 +117,7 @@ public sealed class MarketMailTests : IAsyncLifetime
     private static async Task<T> Next<T>(BotClient bot, uint id, MessageParser<T> parser) where T : IMessage<T> =>
         parser.ParseFrom((await bot.Inbox.WaitAsync(e => e.IsGame(id), Wait)).Body);
 
-    [ClientDataFact]
+    [Fact]
     public async Task BothMailboxFormatsMigrateToTypedWireAndClaimMixedAssetsOnce()
     {
         var (alice, role) = await InWorld("Formats");
@@ -190,7 +190,7 @@ public sealed class MarketMailTests : IAsyncLifetime
         Assert.Equal(4_000_001_000L, app.Services.GetRequiredService<RoleStore>().LoadProgress(role).Currency[1]);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task BoundAttachmentNeedsMatchingStackWhenBagIsFull()
     {
         var (alice, role) = await InWorld("BoundBag");
@@ -236,7 +236,7 @@ public sealed class MarketMailTests : IAsyncLifetime
             i => i.Entry == 1000000 && i.BindType == 2 && i.Stack == 2);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task MixedBoundCurrencyAndLongCurrencyOverflowDoesNotClaim()
     {
         var (alice, role) = await InWorld("CurrencyOverflow");
@@ -262,7 +262,7 @@ public sealed class MarketMailTests : IAsyncLifetime
         Assert.Equal(original, roles.LoadMailbox(role)); // refused claim did not change its durable flag
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task SingleMixedLetterRollsBackAllAssetFormsThenGrantsOnce()
     {
         var (alice, role) = await InWorld("MixedAtomic");
@@ -316,7 +316,7 @@ public sealed class MarketMailTests : IAsyncLifetime
         Assert.Equal(4_000_001_000L, roles.LoadProgress(role).Currency[1]);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task TemplateWireOwnershipAndExactlyOnceClaim()
     {
         var (alice, aliceId) = await InWorld("Alice");
@@ -396,7 +396,7 @@ public sealed class MarketMailTests : IAsyncLifetime
         Assert.Empty(Assert.IsType<object?[]>((await List(alice, aliceId))["MailList"]));
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task MalformedAndFullBagClaimsDoNotConsumeMail()
     {
         var (alice, aliceId) = await InWorld("FullBag");
@@ -442,7 +442,7 @@ public sealed class MarketMailTests : IAsyncLifetime
         Assert.Equal(1007, app.Services.GetRequiredService<RoleStore>().LoadProgress(aliceId).Currency[1]);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task LateSqlFailureRollsBackClaimAndRetryGrantsOnce()
     {
         var (alice, aliceId) = await InWorld("Rollback");
@@ -483,7 +483,7 @@ public sealed class MarketMailTests : IAsyncLifetime
         Assert.Equal(true, Assert.IsType<Dictionary<object, object?>>(Row(await List(alice, aliceId))["Params"])["giftReceived"]);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task PostCommitHookFailureCannotTurnGrantedClaimIntoFailure()
     {
         var (alice, aliceId) = await InWorld("PostCommit");
@@ -525,7 +525,7 @@ public sealed class MarketMailTests : IAsyncLifetime
         Assert.Equal(1011, roles.LoadProgress(aliceId).Currency[1]);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task RawAndMarketMailShareListBulkClaimAndLongCurrency()
     {
         var (alice, role) = await InWorld("Mixed");
@@ -558,7 +558,7 @@ public sealed class MarketMailTests : IAsyncLifetime
         Assert.True((bool)Assert.IsType<Dictionary<object, object?>>(RowById(after, market)["Params"])["giftReceived"]!);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task AuctionAndMarketMailboxFormatsKeepTypedContentBindingAndExactAssets()
     {
         var (alice, role) = await InWorld("OldFormats");
@@ -617,7 +617,7 @@ public sealed class MarketMailTests : IAsyncLifetime
         Assert.Equal(JsonValueKind.String, letters[1].GetProperty("ContentParams").ValueKind);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task BoundAttachmentCannotUseFreeSpaceInUnboundStackWhenBagIsFull()
     {
         var (alice, role) = await InWorld("BoundCapacity");
@@ -651,7 +651,7 @@ public sealed class MarketMailTests : IAsyncLifetime
             i => i.Entry == 1000000 && i.BindType == 1);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task CombinedBoundAttachmentAndLongCurrencyOverflowLeavesMailUnclaimed()
     {
         var (alice, role) = await InWorld("MixedOverflow");
@@ -680,7 +680,7 @@ public sealed class MarketMailTests : IAsyncLifetime
             i => i.Entry == 1000000 && i.BindType == 1);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task ConcurrentRawTemplateAndMarketWritesDoNotOverwriteClaimOrRead()
     {
         var (alice, role) = await InWorld("Concurrent");
@@ -711,7 +711,7 @@ public sealed class MarketMailTests : IAsyncLifetime
         Assert.NotNull(RowById(final, await delivery));
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task LegacyRowsMigrateAtomicallyAndRemainIdempotentAcrossRestart()
     {
         var (alice, role) = await InWorld("Legacy");
@@ -773,12 +773,4 @@ public sealed class MarketMailTests : IAsyncLifetime
             Assert.Equal(4_000_001_000L, app.Services.GetRequiredService<RoleStore>().LoadProgress(role).Currency[1]);
         }
     }
-
-    private static string RepoRoot()
-    {
-        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
-            if (File.Exists(Path.Combine(dir.FullName, "Ro3Emu.slnx"))) return dir.FullName;
-        throw new DirectoryNotFoundException("repository root");
-    }
-
 }

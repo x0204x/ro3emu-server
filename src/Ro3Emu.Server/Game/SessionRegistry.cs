@@ -20,6 +20,24 @@ public sealed class SessionRegistry(ILogger<SessionRegistry> log, Ownership.Owne
     private volatile GameSession[] _snapshot = [];
     internal Action<GameSession>? UnregisteredForTest { get; set; }
 
+    /// <summary>
+    /// The one account transition of a game connection; nothing else sets <see cref="GameSession.Account"/>. The first
+    /// sign-in binds the account (and registers the session for a new connection). Another account on the same
+    /// connection first drops the old account's key, so no key of it keeps pointing here, and is refused (false) while a
+    /// role of the old account is selected: that role's world state belongs to the old account.
+    /// </summary>
+    public async Task<bool> SignInAsync(GameSession session, string account, bool register)
+    {
+        if (session.Account != null && !string.Equals(session.Account, account, StringComparison.Ordinal))
+        {
+            if (session.Role != null) return false;
+            Unregister(session);
+        }
+        session.Account = account;
+        if (register) await RegisterAsync(session);
+        return true;
+    }
+
     public async Task RegisterAsync(GameSession session)
     {
         owners?.AssertLoop();

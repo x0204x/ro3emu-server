@@ -16,10 +16,25 @@ public sealed class MicroSessions(ILogger<MicroSessions> log)
     private readonly object _sync = new();
     private readonly Dictionary<string, MicroSession> _byAccount = new(StringComparer.Ordinal);
 
-    public void Bind(MicroSession session)
+    /// <summary>
+    /// The one account transition of a micro connection; nothing else sets <see cref="MicroSession.Account"/>. Binds the
+    /// account (the newest connection of an account receives its pushes); another account on the same connection first
+    /// drops the old account's key, so pushes for it never reach this connection.
+    /// </summary>
+    public void SignIn(MicroSession session, string account)
     {
-        lock (_sync) _byAccount[session.Account!] = session;
+        lock (_sync)
+        {
+            if (session.Account != null && !string.Equals(session.Account, account, StringComparison.Ordinal)
+                && _byAccount.TryGetValue(session.Account, out var current) && current == session)
+                _byAccount.Remove(session.Account);
+            session.Account = account;
+            _byAccount[account] = session;
+        }
     }
+
+    /// <summary>Tests: the session an account is bound to.</summary>
+    internal MicroSession? For(string account) { lock (_sync) return _byAccount.GetValueOrDefault(account); }
 
     public void Remove(MicroSession session)
     {

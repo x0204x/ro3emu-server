@@ -72,8 +72,8 @@ public static class VoiceJoinCode
 }
 
 /// <summary>
-/// Kicked codes (VoiceDown.Kicked payload byte 0); a guess at a useful split since the client side of this PoC
-/// does not exist yet to confirm what it would show for each.
+/// Kicked codes (VoiceDown.Kicked payload byte 0). The in-game client (Ro3Emu.ClientHooks.VoiceClient) only logs the
+/// code and leaves the channel, whatever it is; the split is for logs and bots.
 /// </summary>
 public static class VoiceKickCode
 {

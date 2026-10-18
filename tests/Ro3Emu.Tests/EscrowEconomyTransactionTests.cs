@@ -24,7 +24,7 @@ public sealed class EscrowEconomyTransactionTests : IDisposable
     {
         string root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
         directory = Path.Combine(root, ".loadtest-temp", "e03-core-" + Guid.NewGuid().ToString("N"));
-        accounts = new AccountStore(Options.Create(new ServerOptions { DataDir = directory }));
+        accounts = new AccountStore(Options.Create(new ServerOptions { DataDir = directory, GameDataDir = SyntheticData.Dir }));
         roles = new RoleStore(accounts);
         items = new ItemStore(accounts);
         sender = roles.Create("e03-sender", 1, "E03S" + Guid.NewGuid().ToString("N")[..8], 1, 1000, 1)!.Id;
@@ -34,7 +34,7 @@ public sealed class EscrowEconomyTransactionTests : IDisposable
         roles.SaveProgress(sender, purse);
     }
 
-    [ClientDataFact]
+    [Fact]
     public void CrossOwnerTransferUsesActualLocationsAndBalancedEdge()
     {
         var debit = roles.LoadProgress(sender);
@@ -100,7 +100,7 @@ public sealed class EscrowEconomyTransactionTests : IDisposable
         Assert.Equal(100, roles.LoadProgress(sender).Currency[1]);
     }
 
-    [ClientDataFact]
+    [Fact]
     public void DuplicateFinancialMailAppendKeepsReceiptRevisionAtCommittedNoOpValue()
     {
         string deliveryKey = "e03-noop-" + Guid.NewGuid().ToString("N");
@@ -144,7 +144,7 @@ public sealed class EscrowEconomyTransactionTests : IDisposable
             "E03 role revision advancement differs from typed child mutations", StringComparison.Ordinal));
     }
 
-    [ClientDataFact]
+    [Fact]
     public void CheckerRejectsSuppressedCommittedRoleRevision()
     {
         var before = roles.ReadRevisionVector(receiver);
@@ -171,7 +171,7 @@ public sealed class EscrowEconomyTransactionTests : IDisposable
             "E03 role revision advancement differs from typed child mutations", StringComparison.Ordinal));
     }
 
-    [ClientDataFact]
+    [Fact]
     public void OmittedSourceCannotCreateItemAndRollsBackChildren()
     {
         var transaction = roles.NewTransaction();
@@ -184,7 +184,7 @@ public sealed class EscrowEconomyTransactionTests : IDisposable
         Assert.Null(EconomyReceiptReader.Read(accounts.DatabasePath, intent.OperationId));
     }
 
-    [ClientDataFact]
+    [Fact]
     public void UnbalancedTransferRollsBackBothRolePurses()
     {
         var debit = roles.LoadProgress(sender);
@@ -203,7 +203,7 @@ public sealed class EscrowEconomyTransactionTests : IDisposable
         Assert.Null(EconomyReceiptReader.Read(accounts.DatabasePath, intent.OperationId));
     }
 
-    [ClientDataTheory]
+    [Theory]
     [InlineData(true)]
     [InlineData(false)]
     public void ExternalAuthorizationWithWrongOwnerOrCompartmentRollsBack(bool wrongOwner)
@@ -221,7 +221,7 @@ public sealed class EscrowEconomyTransactionTests : IDisposable
         Assert.Null(EconomyReceiptReader.Read(accounts.DatabasePath, intent.OperationId));
     }
 
-    [ClientDataFact]
+    [Fact]
     public void LostAcknowledgementResolvesTypedIdsAndReplayWithoutSecondGrant()
     {
         var intent = new EscrowEconomyIntent("e03/test-source", "e03-receiver", receiver)
@@ -247,7 +247,7 @@ public sealed class EscrowEconomyTransactionTests : IDisposable
         Assert.Single(ledger.Legs);
     }
 
-    [ClientDataFact]
+    [Fact]
     public void LedgerInsertFailureRollsBackItemReceiptAndWatermark()
     {
         var intent = new EscrowEconomyIntent("e03/test-ledger-fault", "e03-receiver", receiver)
@@ -264,7 +264,7 @@ public sealed class EscrowEconomyTransactionTests : IDisposable
         Assert.Empty(EconomyLedgerReader.Read(accounts.DatabasePath, Catalog, "auto", 0, 0).Receipts);
     }
 
-    [ClientDataFact]
+    [Fact]
     public void CheckerRejectsExternalLegMovedOutsideAuthorizedOwner()
     {
         var intent = new EscrowEconomyIntent("e03/test-owner-evidence", "e03-receiver", receiver)
@@ -283,7 +283,7 @@ public sealed class EscrowEconomyTransactionTests : IDisposable
         Assert.Contains(altered.Issues, x => x.Detail.Contains("authorization cannot cover", StringComparison.Ordinal));
     }
 
-    [ClientDataFact]
+    [Fact]
     public void CheckerRejectsTamperedItemTransferFingerprint()
     {
         var grant = roles.NewTransaction();
@@ -308,7 +308,7 @@ public sealed class EscrowEconomyTransactionTests : IDisposable
         Assert.Contains(altered.Issues, x => x.Detail.Contains("opposite counterparty", StringComparison.Ordinal));
     }
 
-    [ClientDataFact]
+    [Fact]
     public void AbstractMailAttachmentCanRealizeRolledEquipmentWithExactMetadataEdge()
     {
         var box = new MailService.Mailbox { Letters = [new MailService.Letter
@@ -351,7 +351,7 @@ public sealed class EscrowEconomyTransactionTests : IDisposable
         Assert.Contains(altered.Issues, x => x.Detail.Contains("mail attachment realization", StringComparison.Ordinal));
     }
 
-    [ClientDataFact]
+    [Fact]
     public void ExactMailItemCannotSilentlyChangeAttributesDuringClaim()
     {
         var box = new MailService.Mailbox { Letters = [new MailService.Letter
@@ -379,7 +379,7 @@ public sealed class EscrowEconomyTransactionTests : IDisposable
         Assert.Null(EconomyReceiptReader.Read(accounts.DatabasePath, intent.OperationId));
     }
 
-    [ClientDataFact]
+    [Fact]
     public void MixedBindingMailClaimsExistingPlainStackAndNewRolledStack()
     {
         var seed = roles.NewTransaction();

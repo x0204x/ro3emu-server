@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Ro3Emu.Server.Accounts;
 
+using Microsoft.AspNetCore.Builder;
 namespace Ro3Emu.Server.Http;
 
 /// <summary>
@@ -12,6 +13,7 @@ namespace Ro3Emu.Server.Http;
 public static class SdkEndpoints
 {
     public const string LoginPath = "/sdk/login";
+
     public const string ServerListPath = "/serverlist/v2/168/serverlist.json";
 
     /// <summary>Plain-JSON marker understood by Lua_UT_Utils.Decrypt (otherwise it expects base64 AES).</summary>
@@ -27,8 +29,9 @@ public static class SdkEndpoints
     {
         app.MapGet(GateKeyPath, (Net.GateCrypto crypto) => Results.Text(crypto.PublicKeyPem, "application/x-pem-file"));
 
-        app.MapPost(LoginPath, async (HttpRequest request, AccountStore accounts, ILogger<AccountStore> log) =>
+        app.MapPost(LoginPath, async (HttpRequest request, CredentialLimiter limiter, AccountStore accounts, ILogger<AccountStore> log) =>
         {
+            if (!limiter.TryAcquire(request.HttpContext.Connection.RemoteIpAddress)) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
             var form = await request.ReadFormAsync();
             string identity = form["identity"].ToString().Trim();
             string credential = form["credential"].ToString();

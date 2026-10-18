@@ -31,7 +31,7 @@ public sealed class LoginScopeAuditTests(ITestOutputHelper output) : IAsyncLifet
         var (hp, mp, gp) = TestPorts.FreePorts();
         app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = dataDir; o.GameDataDir = SyntheticData.Dir;
             o.HttpPort = hp; o.MicroGatePort = mp; o.GameGatePort = gp;
         });
         await app.StartAsync();
@@ -67,7 +67,7 @@ public sealed class LoginScopeAuditTests(ITestOutputHelper output) : IAsyncLifet
         AssertEmpty(audit);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task GuildMembersLoginAndPublishInsideTheirOwnGuildKeys()
     {
         var audit = Audit();
@@ -145,9 +145,6 @@ public sealed class LoginScopeAuditTests(ITestOutputHelper output) : IAsyncLifet
         var e = await bot.Inbox.WaitAsync(e => e.IsGame(id) && (match == null || match(parser.ParseFrom(e.Body))), Wait);
         return parser.ParseFrom(e.Body);
     }
-
-    private static string RepoRoot()
-    { for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null; d = d.Parent) if (File.Exists(Path.Combine(d.FullName, "Ro3Emu.slnx"))) return d.FullName; throw new DirectoryNotFoundException(); }
 
     // Role ids differ per run; keep the shape of each entry.
     private static string Normalize(string line) =>

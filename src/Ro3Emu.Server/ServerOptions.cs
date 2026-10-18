@@ -97,6 +97,17 @@ public sealed class ServerOptions
     /// <summary>In-game bug reports (FeedbackService, docs/guide/feedback.md).</summary>
     public FeedbackOptions Feedback { get; set; } = new();
 
+    /// <summary>
+    /// Credential checks (SDK login, character deletion) one remote address may make per minute; past it the server
+    /// answers 429 without hashing. Each check costs a 100 000-round PBKDF2 hash, and logins register accounts.
+    /// Loopback is exempt (local play, the load tests, RO3Emu.exe); behind a reverse proxy every player shares the
+    /// proxy's address, so raise this there.
+    /// </summary>
+    public int LoginAttemptsPerMinute { get; set; } = 20;
+
+    /// <summary>Tests: the credential limit applies to loopback too.</summary>
+    public bool LoginLimitIncludesLoopback { get; set; }
+
     /// <summary>Team voice relay proof of concept (Voice/, docs TBD). Off until a port is set.</summary>
     public VoiceOptions Voice { get; set; } = new();
 
@@ -227,6 +238,14 @@ public sealed class VoiceOptions
 
     /// <summary>Extra frames the token bucket allows in a short burst on top of <see cref="FramesPerSecond"/>.</summary>
     public int Burst { get; set; } = 10;
+
+    /// <summary>Control frames (Join, Leave, Mic, Speaker, Ping, anything else after Auth) a connection may send per
+    /// second; the extra ones are dropped, and a sustained flood (3x this rate over 5 s) disconnects it. A real
+    /// client sends a few per minute: a ping every 10 s plus the player's own clicks.</summary>
+    public int ControlPerSecond { get; set; } = 10;
+
+    /// <summary>Extra control frames allowed in a short burst on top of <see cref="ControlPerSecond"/>.</summary>
+    public int ControlBurst { get; set; } = 20;
 
     /// <summary>Longest opus payload accepted in one Audio frame, in bytes.</summary>
     public int MaxPayload { get; set; } = 512;

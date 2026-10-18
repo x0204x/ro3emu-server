@@ -13,22 +13,26 @@ using Ro3Emu.Server.Game;
 
 namespace Ro3Emu.Tests;
 
-/// <summary>Current MailService micro RPCs and game 31602.</summary>
-public sealed class MailTests : IAsyncLifetime
+/// <summary>Current MailService micro RPCs and game 31602. The host and helpers; each subclass picks the
+/// game data its server starts on.</summary>
+public abstract class MailTestsHost : IAsyncLifetime
 {
-    private sealed class TestClock : TimeProvider
+    /// <summary>GameDataDir of the server.</summary>
+    protected abstract string GameDataDir { get; }
+
+    protected sealed class TestClock : TimeProvider
     {
         private long seconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref seconds));
         public void Advance(long amount) => Interlocked.Add(ref seconds, amount);
     }
 
-    private readonly string dir = Path.Combine(Path.GetTempPath(), "ro3emu-mail-" + Guid.NewGuid().ToString("N"));
-    private readonly TestClock clock = new();
-    private static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);
-    private WebApplication app = null!;
-    private string http = "";
-    private MailService Mail => app.Services.GetRequiredService<MailService>();
+    protected readonly string dir = Path.Combine(Path.GetTempPath(), "ro3emu-mail-" + Guid.NewGuid().ToString("N"));
+    protected readonly TestClock clock = new();
+    protected static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);
+    protected WebApplication app = null!;
+    protected string http = "";
+    protected MailService Mail => app.Services.GetRequiredService<MailService>();
 
     public async Task InitializeAsync()
     {
@@ -36,7 +40,7 @@ public sealed class MailTests : IAsyncLifetime
         app = ServerHost.Create([], o =>
         {
             o.DataDir = dir;
-            o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.GameDataDir = GameDataDir;
             o.HttpPort = httpPort;
             o.MicroGatePort = microPort;
             o.GameGatePort = gamePort;
@@ -53,14 +57,7 @@ public sealed class MailTests : IAsyncLifetime
         try { Directory.Delete(dir, true); } catch (IOException) { }
     }
 
-    private static string RepoRoot()
-    {
-        var path = new DirectoryInfo(AppContext.BaseDirectory);
-        while (path != null && !File.Exists(Path.Combine(path.FullName, "Ro3Emu.slnx"))) path = path.Parent;
-        return path?.FullName ?? throw new InvalidOperationException("repo root");
-    }
-
-    private async Task<(BotClient Bot, long Role)> InWorld(string name, bool create = true)
+    protected async Task<(BotClient Bot, long Role)> InWorld(string name, bool create = true)
     {
         var bot = new BotClient(http, File.ReadAllText(Path.Combine(dir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw");
@@ -70,34 +67,41 @@ public sealed class MailTests : IAsyncLifetime
         return (bot, id);
     }
 
-    private static Dictionary<object, object?> Row(object? value) => (Dictionary<object, object?>)value!;
-    private static Dictionary<object, object?> Params(object? value) => Row(Row(value)["Params"]);
-    private static bool Ok(Dictionary<object, object?> response) => response["Ret"] is object?[] ret && ret[0] is true;
+    protected static Dictionary<object, object?> Row(object? value) => (Dictionary<object, object?>)value!;
+    protected static Dictionary<object, object?> Params(object? value) => Row(Row(value)["Params"]);
+    protected static bool Ok(Dictionary<object, object?> response) => response["Ret"] is object?[] ret && ret[0] is true;
 
-    private static async Task<T> Next<T>(BotClient bot, uint msgId, MessageParser<T> parser, Func<T, bool>? match = null)
+    protected static async Task<T> Next<T>(BotClient bot, uint msgId, MessageParser<T> parser, Func<T, bool>? match = null)
         where T : IMessage<T> => parser.ParseFrom((await bot.Inbox.WaitAsync(
             e => e.IsGame(msgId) && (match == null || match(parser.ParseFrom(e.Body))), Wait)).Body);
 
-    private static Task<Dictionary<object, object?>> List(BotClient bot, long role, int category = 1, int start = 0, int limit = 150) =>
+    protected static Task<Dictionary<object, object?>> List(BotClient bot, long role, int category = 1, int start = 0, int limit = 150) =>
         bot.MicroAsync("MailService", "getUserMailList", new Dictionary<string, object?>
         { ["Uid"] = role.ToString(), ["Start"] = start, ["Limit"] = limit, ["MailType"] = category });
 
-    private static async Task<object?[]> Letters(BotClient bot, long role, int category = 1)
+    protected static async Task<object?[]> Letters(BotClient bot, long role, int category = 1)
     {
         var response = await List(bot, role, category);
         Assert.True(Ok(response));
         return (object?[])response["MailList"]!;
     }
 
-    private static async Task<ClaimMailRsp> Claim(BotClient bot, params string[] ids)
+    protected static async Task<ClaimMailRsp> Claim(BotClient bot, params string[] ids)
     {
         var request = new ClaimMailReq();
         request.MailUid.Add(ids);
         await bot.SendGameAsync(MailService.ClaimMail, request);
         return await Next(bot, MailService.ClaimMail, ClaimMailRsp.Parser);
     }
+}
 
-    [ClientDataFact]
+/// <summary>Mail rules on the synthetic fixture (no client data): delivery, claims, replays, ownership, expiry, capacity
+/// and the rollback of a failed mailbox write.</summary>
+public sealed class MailTests : MailTestsHost
+{
+    protected override string GameDataDir => SyntheticData.Dir;
+
+    [Fact]
     public async Task RawMailMicroReadDeleteGmPushAndClaimSync()
     {
         var (alice, role) = await InWorld("Alice");
@@ -139,7 +143,7 @@ public sealed class MailTests : IAsyncLifetime
         Assert.Equal("News", Row(Assert.Single(await Letters(alice, role)))["Title"]);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task TemplateBulkReplayAndReconnectKeepSingleGrants()
     {
         var (alice, role) = await InWorld("Alice");
@@ -168,7 +172,7 @@ public sealed class MailTests : IAsyncLifetime
             .Progress!.Currency[2]);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task OfflineDeliveryIsDurableAndInvalidatesMailboxOnLogin()
     {
         var (alice, role) = await InWorld("Alice");
@@ -183,7 +187,7 @@ public sealed class MailTests : IAsyncLifetime
         Assert.Equal(1020L, Convert.ToInt64(Params(row)["cfg_id"]));
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task MicroReconnectGroupSyncReinvalidatesReadUnclaimedMailWithoutGameLogin()
     {
         var (alice, role) = await InWorld("Alice");
@@ -206,7 +210,7 @@ public sealed class MailTests : IAsyncLifetime
         Assert.False((bool)Params(row)["giftReceived"]!);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task OwnershipExpiryAndGroupNotice()
     {
         var (alice, aliceId) = await InWorld("Alice");
@@ -230,7 +234,7 @@ public sealed class MailTests : IAsyncLifetime
         Assert.False(Ok(await alice.MicroPositionalAsync("MailService", "setMailHaveRead", [aliceId.ToString(), shortId])));
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task MalformedMicroInputsAndCapacityRefusalLeaveMailClaimable()
     {
         var (alice, role) = await InWorld("Alice");
@@ -258,23 +262,7 @@ public sealed class MailTests : IAsyncLifetime
         Assert.False((bool)Params((await Letters(alice, role)).Single(r => Row(r)["MailId"]!.Equals(money)))["giftReceived"]!);
     }
 
-    [ClientDataFact]
-    public async Task ConfiguredTemplateAwardResolvesGroupAndClaimsExactFixedGrant()
-    {
-        var (alice, role) = await InWorld("Alice");
-        await using var _ = alice;
-        string id = await Mail.SendTemplateAsync(role, 1024);
-        var row = Row(Assert.Single(await Letters(alice, role)));
-        var item = Assert.Single(MailItemList.Parser.ParseFrom((byte[])Params(row)["items"]!).Items);
-        Assert.Equal(1, item.ItemEntry);
-        Assert.Equal(5000, item.Stack);
-        Assert.Equal(0, (await Claim(alice, id)).Result);
-        Assert.Equal(6000, app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == role)
-            .Progress!.Currency[1]);
-        await Assert.ThrowsAsync<AwardResolutionException>(() => Mail.SendTemplateAsync(role, 1025)); // conditional group
-    }
-
-    [ClientDataFact]
+    [Fact]
     public async Task VirtualExpClaimLevelsUpOnceAndMailboxWriteRollbackRestoresProgress()
     {
         var (alice, role) = await InWorld("Alice");
@@ -310,7 +298,7 @@ public sealed class MailTests : IAsyncLifetime
         Assert.True((bool)Params(Assert.Single(await Letters(alice, role)))["giftReceived"]!);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task SourceOwnedTemplateDeliveryRollsBackAndReadsLegacySourceKeyOnce()
     {
         var (alice, role) = await InWorld("Alice");
@@ -339,7 +327,7 @@ public sealed class MailTests : IAsyncLifetime
         Assert.False(migrated.ContainsKey("SourceKey"));
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task FailedMailboxWriteRollsBackGrantAndConcurrentDeliverySurvivesClaim()
     {
         var (alice, role) = await InWorld("Alice");
@@ -365,7 +353,7 @@ public sealed class MailTests : IAsyncLifetime
             .Progress!.Currency[2]);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task ActivityBatchSharesMailboxAndRollsBackOnSourceFailure()
     {
         var (alice, role) = await InWorld("Alice");
@@ -392,5 +380,26 @@ public sealed class MailTests : IAsyncLifetime
         Assert.True(session.Progress.Level > oldLevel);
         Assert.True((bool)Params((await Letters(alice, role)).Single(r => Row(r)["MailId"]!.Equals(id)))["giftReceived"]!);
     }
+}
 
+/// <summary>Mail on the client's own data: a real template's configured award.</summary>
+public sealed class MailClientDataTests : MailTestsHost
+{
+    protected override string GameDataDir => Path.Combine(ClientData.RepoRoot, "data");
+
+    [ClientDataFact]
+    public async Task ConfiguredTemplateAwardResolvesGroupAndClaimsExactFixedGrant()
+    {
+        var (alice, role) = await InWorld("Alice");
+        await using var _ = alice;
+        string id = await Mail.SendTemplateAsync(role, 1024);
+        var row = Row(Assert.Single(await Letters(alice, role)));
+        var item = Assert.Single(MailItemList.Parser.ParseFrom((byte[])Params(row)["items"]!).Items);
+        Assert.Equal(1, item.ItemEntry);
+        Assert.Equal(5000, item.Stack);
+        Assert.Equal(0, (await Claim(alice, id)).Result);
+        Assert.Equal(6000, app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == role)
+            .Progress!.Currency[1]);
+        await Assert.ThrowsAsync<AwardResolutionException>(() => Mail.SendTemplateAsync(role, 1025)); // conditional group
+    }
 }

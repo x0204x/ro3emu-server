@@ -1,0 +1,4 @@
+{
+  "m_kBornPoints": [ { "isDefault": true, "position": { "x": 150, "y": 0, "z": 186 }, "direction": 45 } ],
+  "m_kResurrectionPointList": [ { "position": { "x": 148, "y": 0, "z": 180 }, "direction": 45 } ]
+}

@@ -22,7 +22,7 @@ public sealed class MarketCaptureTests : IAsyncLifetime
         var (http, micro, game) = TestPorts.FreePorts();
         app = ServerHost.Create([], o =>
         {
-            o.DataDir = directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = directory; o.GameDataDir = SyntheticData.Dir;
             o.HttpPort = http; o.MicroGatePort = micro; o.GameGatePort = game;
         });
         accounts = app.Services.GetRequiredService<AccountStore>();
@@ -95,7 +95,7 @@ public sealed class MarketCaptureTests : IAsyncLifetime
         Assert.Single(accounts.ReadSync<List<(string Id, string Data)>>(new MarketRecordReadPlan("capture")));
     }
 
-    [ClientDataTheory]
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void ChangedRecordOrPhantomRejectsEntirePaymentItemAndMailCommit(bool phantom)
@@ -262,11 +262,5 @@ public sealed class MarketCaptureTests : IAsyncLifetime
         await app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         try { Directory.Delete(directory, true); } catch (IOException) { }
-    }
-    private static string RepoRoot()
-    {
-        for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null; d = d.Parent)
-            if (File.Exists(Path.Combine(d.FullName, "Ro3Emu.slnx"))) return d.FullName;
-        throw new DirectoryNotFoundException();
     }
 }

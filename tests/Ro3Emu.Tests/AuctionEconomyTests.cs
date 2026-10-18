@@ -8,57 +8,7 @@ namespace Ro3Emu.Tests;
 
 public sealed partial class AuctionTests
 {
-    private EconomySnapshot AuctionCut() => EconomySnapshotReader.Read(
-        Service<AccountStore>().DatabasePath, EconomyCatalog.Load(Path.Combine(RepoRoot(), "data")), "auto");
-
-    private EconomyLedgerWindow AuctionWindow(EconomySnapshot opening, EconomySnapshot closing) =>
-        EconomyLedgerReader.Read(Service<AccountStore>().DatabasePath,
-            EconomyCatalog.Load(Path.Combine(RepoRoot(), "data")), "auto",
-            opening.Cut.CommitSequence!.Value, closing.Cut.CommitSequence!.Value);
-
-    [ClientDataFact]
-    public async Task AuctionEconomyGuildPublicationSourcesEachResolvedLotOnce()
-    {
-        await using var alice = await InWorld("Alice");
-        long guild = await AuctionGuild(alice);
-        await Gm(alice, "!zeny 100000000");
-        var opening = AuctionCut();
-        Assert.Equal(0, await Service<AuctionService>().PublishGuildChallengeAsync(
-            "economy-source", guild, 1001, 1, [(long)alice.Self!.Uuid]));
-
-        var lots = Service<AuctionStore>().Items().Where(x => x.GuildId == guild).ToArray();
-        Assert.NotEmpty(lots);
-        var closing = AuctionCut();
-        var ledger = AuctionWindow(opening, closing);
-        Assert.Single(ledger.Receipts);
-        var sources = ledger.Legs.Where(x => x.Kind == EconomyLegKind.Source).ToArray();
-        Assert.Equal((long)lots.Length, sources.Sum(x => x.Delta));
-        Assert.Equal(lots.Select(x => $"auction/lot/{x.Id}").Order(),
-            sources.Select(x => x.Location.Key).Order());
-        Assert.Equal(lots.Length, sources.Select(x => x.Location.Key).Distinct().Count());
-        Assert.All(sources,
-            leg => Assert.Equal(EconomyReason.ActivityReward, leg.Reason));
-        var check = EconomyExactnessChecker.Check(opening, closing, ledger);
-        Assert.All(check.Assets, value => Assert.Equal("0", value.Residual));
-        Assert.All(check.Locations, value => Assert.Equal("0", value.Residual));
-
-        // A later sibling lot must retain its own identity through sale; the source is not recreated.
-        var later = lots.OrderBy(x => x.Id).Skip(1).First();
-        clock.Advance(TimeSpan.FromMinutes(5));
-        await Service<AuctionService>().ProcessPrebuysAsync();
-        Assert.Equal(0, (await Bid(alice, later.Id, later.FixedPrice, BiddingType.Fixed)).Result);
-        Assert.Equal(later.SourceKey, Service<AuctionStore>().Get(later.Id)!.SourceKey);
-        Assert.Single(Mailbox(alice).Letters, m => m.DeliveryKey == $"auction:{later.Id}:award");
-        var afterSale = AuctionCut();
-        var wholeWindow = AuctionWindow(opening, afterSale);
-        Assert.Equal((long)lots.Length, wholeWindow.Legs.Where(x => x.Kind == EconomyLegKind.Source)
-            .Sum(x => x.Delta));
-        var wholeCheck = EconomyExactnessChecker.Check(opening, afterSale, wholeWindow);
-        Assert.All(wholeCheck.Assets, value => Assert.Equal("0", value.Residual));
-        Assert.All(wholeCheck.Locations, value => Assert.Equal("0", value.Residual));
-    }
-
-    [ClientDataFact]
+    [Fact]
     public async Task AuctionEconomyBidOutbidAndCancelConserveReserveAndRefundMail()
     {
         await using var alice = await InWorld("Alice");
@@ -105,7 +55,7 @@ public sealed partial class AuctionTests
         Assert.Single(Mailbox(bob).Letters, m => m.DeliveryKey.StartsWith($"auction:{lot.Id}:cancel:"));
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task AuctionEconomyFixedBuyRecordsExactFeeAndOneLotDelivery()
     {
         await using var alice = await InWorld("Alice");
@@ -131,7 +81,7 @@ public sealed partial class AuctionTests
         Assert.All(check.Locations, value => Assert.Equal("0", value.Residual));
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task AuctionEconomyLegacyBonusClaimTransfersHeldBonusToMailOnce()
     {
         await using var alice = await InWorld("Alice");
@@ -163,7 +113,7 @@ public sealed partial class AuctionTests
         Assert.Equal(closing.Cut.CommitSequence, AuctionCut().Cut.CommitSequence);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task AuctionEconomyRefusalAndFailedCommitLeaveNoReceiptThenLostAckResolvesOnce()
     {
         await using var alice = await InWorld("Alice");
@@ -194,7 +144,7 @@ public sealed partial class AuctionTests
         Assert.Single(AuctionWindow(opening, closing).Receipts);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task AuctionEconomyDeletedRecipientRetainsLotAndReserveWithOneRecoveryReceipt()
     {
         var roles = Service<RoleStore>();

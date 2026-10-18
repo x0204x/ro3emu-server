@@ -72,6 +72,8 @@ public sealed partial class AccountStore : IDisposable
                 salt          BLOB NOT NULL,
                 created_utc   TEXT NOT NULL
             );
+            -- Login finds an account in any letter case (AccountCredentialsRead); not unique, legacy spellings may coexist.
+            CREATE INDEX IF NOT EXISTS account_name_nocase ON account(name COLLATE NOCASE);
             CREATE TABLE IF NOT EXISTS auth_token (
                 token       TEXT PRIMARY KEY,
                 kind        TEXT NOT NULL,

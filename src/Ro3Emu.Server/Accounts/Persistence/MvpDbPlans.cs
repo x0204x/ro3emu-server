@@ -48,8 +48,22 @@ internal sealed class MvpSchemaPlan : DbPlan
 
 internal sealed record MvpStateRow(int Config, int Phase, long Time, string Dead);
 internal sealed record MvpCounterRow(long First, long End, long Join, long Team, long Last);
+/// <summary>One mvp_award_obligation row (frozen awards and the 30002 result); the shared RoleObligation plans read,
+/// insert and mark it.</summary>
 internal sealed record MvpObligationRow(string SourceKey, int Config, long DeathMs, long PlayerId,
-    byte[] Awards, byte[] Result);
+    byte[] Awards, byte[] Result) : IRoleObligationRow<MvpObligationRow>
+{
+    public static RoleObligationTable Table { get; } = new("mvp_award_obligation", "mvp_obligation", "player_id",
+        ["source_key", "cfg_id", "death_ms", "player_id", "awards", "result"], "death_ms,source_key", "mvp",
+        "mvp/read-pending");
+    public static MvpObligationRow Read(SqliteDataReader reader) => new(reader.GetString(0), reader.GetInt32(1),
+        reader.GetInt64(2), reader.GetInt64(3), (byte[])reader.GetValue(4), (byte[])reader.GetValue(5));
+    public long RoleId => PlayerId;
+    public object[] Values() => [SourceKey, Config, DeathMs, PlayerId, Awards, Result];
+    public MvpObligationRow Detach() => this with { Awards = (byte[])Awards.Clone(), Result = (byte[])Result.Clone() };
+    public bool SameFrozen(MvpObligationRow stored) => stored.PlayerId == PlayerId && stored.Config == Config
+        && stored.DeathMs == DeathMs && stored.Awards.AsSpan().SequenceEqual(Awards) && stored.Result.AsSpan().SequenceEqual(Result);
+}
 internal sealed record MvpSettlementSnapshot(long DeathMs, MvpObligationRow[] Obligations);
 
 /// <summary>Stable source claim, including kills whose capped participants receive no economic goods.</summary>
@@ -85,15 +99,14 @@ internal sealed class MvpSettlementProbeReadPlan(string sourceKey) : DbReadPlan
             if (source.ExecuteScalar() is not long found) return null;
             death = found;
         }
-        using var cmd = DbSql.Command(db, tx, """
-            SELECT source_key,cfg_id,death_ms,player_id,awards,result
+        using var cmd = DbSql.Command(db, tx, $"""
+            SELECT {MvpObligationRow.Table.Select}
             FROM mvp_award_obligation WHERE source_key LIKE $prefix ORDER BY player_id
             """);
         cmd.Parameters.AddWithValue("$prefix", sourceKey + "/%");
         using var rows = cmd.ExecuteReader();
         var obligations = new List<MvpObligationRow>();
-        while (rows.Read()) obligations.Add(new(rows.GetString(0), rows.GetInt32(1), rows.GetInt64(2),
-            rows.GetInt64(3), (byte[])rows.GetValue(4), (byte[])rows.GetValue(5)));
+        while (rows.Read()) obligations.Add(MvpObligationRow.Read(rows));
         return new MvpSettlementSnapshot(death, obligations.ToArray());
     }
 }
@@ -134,77 +147,6 @@ internal sealed class MvpReadPlan(MvpReadKind kind, long player = 0) : DbReadPla
                 }
             default: throw new ArgumentOutOfRangeException(nameof(kind));
         }
-    }
-}
-
-internal sealed class MvpObligationsReadPlan(long playerId) : DbReadPlan
-{
-    internal override int Bytes => 256;
-    internal override string Label => "mvp/read-pending";
-    internal override object Execute(SqliteConnection db, SqliteTransaction tx)
-    {
-        using var cmd = DbSql.Command(db, tx, """
-            SELECT source_key,cfg_id,death_ms,player_id,awards,result
-            FROM mvp_award_obligation WHERE player_id=$p AND delivered=0 ORDER BY death_ms,source_key
-            """);
-        cmd.Parameters.AddWithValue("$p", playerId);
-        using var rows = cmd.ExecuteReader();
-        var result = new List<MvpObligationRow>();
-        while (rows.Read()) result.Add(new(rows.GetString(0), rows.GetInt32(1), rows.GetInt64(2),
-            rows.GetInt64(3), (byte[])rows.GetValue(4), (byte[])rows.GetValue(5)));
-        return result;
-    }
-}
-
-internal sealed class MvpObligationCreatePlan : DbPlan
-{
-    private readonly MvpObligationRow[] rows;
-    internal MvpObligationCreatePlan(IEnumerable<MvpObligationRow> rows)
-    {
-        this.rows = rows.Select(row => row with { Awards = (byte[])row.Awards.Clone(),
-            Result = (byte[])row.Result.Clone() }).ToArray();
-        if (this.rows.Select(row => row.SourceKey).Distinct(StringComparer.Ordinal).Count() != this.rows.Length)
-            throw new ArgumentException("Duplicate MVP obligation source.");
-    }
-    internal override int Bytes => 256 + rows.Sum(row => row.SourceKey.Length * 2 + row.Awards.Length + row.Result.Length);
-    internal override string Label => "mvp/create-obligations";
-    internal override IReadOnlyList<OwnerRevisionKey> EntityWrites =>
-        rows.Select(row => RevisionStore.Entity("mvp_obligation", row.SourceKey)).ToArray();
-    internal override object Execute(SqliteConnection db, SqliteTransaction tx)
-    {
-        foreach (var row in rows)
-        {
-            using var cmd = DbSql.Command(db, tx, """
-                INSERT INTO mvp_award_obligation(source_key,cfg_id,death_ms,player_id,awards,result,delivered)
-                VALUES($s,$c,$d,$p,$a,$r,0)
-                """);
-            cmd.Parameters.AddWithValue("$s", row.SourceKey);
-            cmd.Parameters.AddWithValue("$c", row.Config);
-            cmd.Parameters.AddWithValue("$d", row.DeathMs);
-            cmd.Parameters.AddWithValue("$p", row.PlayerId);
-            cmd.Parameters.AddWithValue("$a", row.Awards);
-            cmd.Parameters.AddWithValue("$r", row.Result);
-            if (cmd.ExecuteNonQuery() != 1) throw new InvalidOperationException("MVP obligation insert failed.");
-        }
-        return rows.Length;
-    }
-}
-
-internal sealed class MvpObligationDeliverPlan(string sourceKey, long playerId) : DbPlan
-{
-    internal override int Bytes => 128 + sourceKey.Length * 2;
-    internal override string Label => "mvp/deliver-obligation";
-    internal override IReadOnlyList<OwnerRevisionKey> EntityWrites => [RevisionStore.Entity("mvp_obligation", sourceKey)];
-    internal override object Execute(SqliteConnection db, SqliteTransaction tx)
-    {
-        using var cmd = DbSql.Command(db, tx, """
-            UPDATE mvp_award_obligation SET delivered=1
-            WHERE source_key=$s AND player_id=$p AND delivered=0
-            """);
-        cmd.Parameters.AddWithValue("$s", sourceKey);
-        cmd.Parameters.AddWithValue("$p", playerId);
-        if (cmd.ExecuteNonQuery() != 1) throw new OwnerRevisionConflictException();
-        return 1;
     }
 }
 

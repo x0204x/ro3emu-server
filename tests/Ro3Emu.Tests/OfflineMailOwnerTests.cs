@@ -44,7 +44,7 @@ public sealed class OfflineMailOwnerTests : IAsyncLifetime
         var (http, micro, game) = TestPorts.FreePorts();
         app = ServerHost.Create([], o =>
         {
-            o.DataDir = directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = directory; o.GameDataDir = SyntheticData.Dir;
             o.HttpPort = http; o.MicroGatePort = micro; o.GameGatePort = game;
         }, clock);
         await app.StartAsync();
@@ -75,7 +75,7 @@ public sealed class OfflineMailOwnerTests : IAsyncLifetime
     private static Task<Dictionary<object, object?>> List(BotClient bot, long role) => bot.MicroAsync("MailService", "getUserMailList",
         new() { ["Uid"] = role.ToString(), ["MailType"] = 1, ["Start"] = 0, ["Limit"] = 150 });
 
-    [ClientDataTheory]
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task TwoOfflineDeliveriesShareOwnerAndRestageAfterCommitOrApply(bool afterCommit)
@@ -126,7 +126,7 @@ public sealed class OfflineMailOwnerTests : IAsyncLifetime
         });
     }
 
-    [ClientDataTheory]
+    [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
     [InlineData(false, true)]

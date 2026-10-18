@@ -9,25 +9,30 @@ using Ro3Emu.Bot;
 using Ro3Emu.Server;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Accounts.Persistence;
+using Ro3Emu.Server.Economy;
 using Ro3Emu.Server.Game;
 using Ro3Emu.Server.Maps;
 
 namespace Ro3Emu.Tests;
 
-/// <summary>Actual 820xx wire, authoritative dungeon supply and durable auction finance.</summary>
-public sealed partial class AuctionTests : IAsyncLifetime
+/// <summary>Actual 820xx wire, authoritative dungeon supply and durable auction finance. The host and helpers; each
+/// subclass picks the game data its servers start on.</summary>
+public abstract class AuctionTestsHost : IAsyncLifetime
 {
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-auction-" + Guid.NewGuid().ToString("N"));
-    private readonly ManualClock clock = new(new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.FromHours(2)));
-    private WebApplication app = null!;
-    private string http = "";
-    private (int Http, int Micro, int Game) ports;
-    private const int Multi = 50101, Boss = 4300001, Entry = 1200000;
-    private const long Scene = 3120401;
-    private static readonly TimeSpan Wait = TimeSpan.FromSeconds(15);
+    /// <summary>GameDataDir of every server the test starts.</summary>
+    protected abstract string GameDataDir { get; }
 
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
-    private GameSession Session(BotClient bot) => Service<SessionRegistry>().All()
+    protected readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-auction-" + Guid.NewGuid().ToString("N"));
+    protected readonly ManualClock clock = new(new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.FromHours(2)));
+    protected WebApplication app = null!;
+    protected string http = "";
+    protected (int Http, int Micro, int Game) ports;
+    protected const int Multi = 50101, Boss = 4300001, Entry = 1200000;
+    protected const long Scene = 3120401;
+    protected static readonly TimeSpan Wait = TimeSpan.FromSeconds(15);
+
+    protected T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    protected GameSession Session(BotClient bot) => Service<SessionRegistry>().All()
         .Single(s => s.Account == bot.Account && s.Role != null);
 
     public async Task InitializeAsync()
@@ -36,12 +41,12 @@ public sealed partial class AuctionTests : IAsyncLifetime
         await StartHostAsync();
     }
 
-    private async Task StartHostAsync()
+    protected async Task StartHostAsync()
     {
         app = ServerHost.Create([], o =>
         {
             o.DataDir = dataDir;
-            o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.GameDataDir = GameDataDir;
             o.SeasonStart = "2026-10-08";
             o.HttpPort = ports.Http;
             o.MicroGatePort = ports.Micro;
@@ -60,7 +65,7 @@ public sealed partial class AuctionTests : IAsyncLifetime
         try { Directory.Delete(dataDir, true); } catch (IOException) { }
     }
 
-    private async Task<BotClient> InWorld(string name, bool create = true)
+    protected async Task<BotClient> InWorld(string name, bool create = true)
     {
         var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw");
@@ -73,25 +78,25 @@ public sealed partial class AuctionTests : IAsyncLifetime
         return bot;
     }
 
-    private static async Task<T> Next<T>(BotClient bot, uint id, MessageParser<T> parser, Func<T, bool>? match = null)
+    protected static async Task<T> Next<T>(BotClient bot, uint id, MessageParser<T> parser, Func<T, bool>? match = null)
         where T : IMessage<T>
     {
         var e = await bot.Inbox.WaitAsync(e => e.IsGame(id) && (match == null || match(parser.ParseFrom(e.Body))), Wait);
         return parser.ParseFrom(e.Body);
     }
 
-    private async Task Gm(BotClient bot, string command)
+    protected async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
         (await client.PostAsync($"{http}/ro3emu/gm?account={bot.Account}", new StringContent(command)))
             .EnsureSuccessStatusCode();
     }
 
-    private long Currency(BotClient bot) => Session(bot).Progress!.Currency.GetValueOrDefault(1);
-    private MailService.Mailbox Mailbox(BotClient bot) => Service<RoleStore>().LoadMailbox((long)bot.Self!.Uuid)
+    protected long Currency(BotClient bot) => Session(bot).Progress!.Currency.GetValueOrDefault(1);
+    protected MailService.Mailbox Mailbox(BotClient bot) => Service<RoleStore>().LoadMailbox((long)bot.Self!.Uuid)
         is { } blob ? JsonSerializer.Deserialize<MailService.Mailbox>(blob)! : new MailService.Mailbox();
 
-    private AuctionStore.Item Seed(AuctionType type, params BotClient[] eligible)
+    protected AuctionStore.Item Seed(AuctionType type, params BotClient[] eligible)
     {
         long now = clock.GetUtcNow().ToUnixTimeSeconds();
         var row = new AuctionStore.Item
@@ -109,21 +114,107 @@ public sealed partial class AuctionTests : IAsyncLifetime
         return row;
     }
 
-    private void SaveRows(params AuctionStore.Item[] rows)
+    protected void SaveRows(params AuctionStore.Item[] rows)
     {
         var plan = Service<AccountStore>().NewTransaction();
         foreach (var row in rows) Service<AuctionStore>().EnlistSave(row, plan);
         plan.Commit(Service<AccountStore>(), "test/auction-seed");
     }
 
-    private static async Task<BiddingAuctionRes> Bid(BotClient bot, long id, int price, BiddingType type)
+    protected static async Task<BiddingAuctionRes> Bid(BotClient bot, long id, int price, BiddingType type)
     {
         await bot.SendGameAsync(AuctionService.Bid, new BiddingAuctionReq
         { AuctionId = id, Price = price, OpType = type });
         return await Next(bot, AuctionService.Bid, BiddingAuctionRes.Parser);
     }
 
-    [ClientDataFact]
+    protected async Task<long> Party(BotClient leader, params BotClient[] others)
+    {
+        await leader.SendGameAsync(TeamService.TeamCreate, new TeamCreateReq { TeamType = TeamType.Five, TargetId = 1001 });
+        var created = await Next(leader, TeamService.TeamCreate, TeamCreateResp.Parser);
+        Assert.Equal(0, created.Result);
+        foreach (var member in others)
+        {
+            await leader.SendGameAsync(TeamService.TeamInvite, new InviteIntoTeamReq { Guid = (long)member.Self!.Uuid });
+            Assert.Equal(0, (await Next(leader, TeamService.TeamInvite, InviteIntoTeamResp.Parser)).Result);
+            await Next(member, TeamService.TeamNotifyInvitee, NotifyInvitee.Parser);
+            await member.SendGameAsync(TeamService.TeamInviteeResp, new InviteeResp
+            { TeamId = created.TeamId, IsAgree = true, InviteGuid = (long)leader.Self!.Uuid });
+            Assert.Equal(0, (await Next(member, TeamService.TeamInviteeResp, InviteeRespResp.Parser)).Result);
+        }
+        return created.TeamId;
+    }
+
+    protected static async Task<long> Load(BotClient bot)
+    {
+        var sw = await Next(bot, MsgId.SwitchSceneLine, SwitchSceneLineResp.Parser, m => m.SceneEntry == Scene);
+        await bot.SendGameAsync(MsgId.SceneLoaded, new SceneLoadedReq { SceneId = Scene });
+        Assert.Equal(0, (await Next(bot, MsgId.SceneLoaded, SceneLoadedResp.Parser, m => m.SceneId == Scene)).Result);
+        await Next(bot, MsgId.EntitySelf, EntitySelf.Parser);
+        await Next(bot, DungeonService.BaseInfo, DungeonBaseInfoNotify.Parser, m => m.DungeonId == sw.SceneID);
+        return sw.SceneID;
+    }
+
+    protected async Task<MonsterUnit> BossIn(long runId)
+    {
+        for (int i = 0; i < 100; i++)
+        {
+            var actor = await Service<GameLoop>().InvokeAsync(() => Task.FromResult(Service<World>().AllUnits()
+                .OfType<MonsterUnit>().SingleOrDefault(m => m.InstanceId == runId && m.Template.NpcId == Boss)));
+            if (actor != null) return actor;
+            await Task.Delay(20);
+        }
+        throw new TimeoutException("configured dungeon boss did not spawn");
+    }
+
+    protected async Task Kill(BotClient bot, MonsterUnit actor)
+    {
+        Vec3 pos = null!;
+        await Service<GameLoop>().InvokeAsync(() => { actor.Hp = 1; pos = actor.Pos; return Task.CompletedTask; });
+        await bot.SendGameAsync(MsgId.Walk, new WalkReq { Pos = pos, BStop = true, SpeedRate = 1 });
+        await bot.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = actor.Uid });
+        Assert.Equal(0, (await Next(bot, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
+        await Next(bot, CombatService.SkillHit, SkillHitInfo.Parser,
+            hit => hit.Dsts.Any(d => d.DstID == actor.Uid && d.IsDead));
+    }
+
+    protected sealed class ManualClock(DateTimeOffset now) : TimeProvider
+    {
+        public DateTimeOffset Now { get; private set; } = now;
+        public override DateTimeOffset GetUtcNow() => Now.ToUniversalTime();
+        public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.FindSystemTimeZoneById("Central European Standard Time");
+        public void Advance(TimeSpan by) => Now = Now.Add(by);
+    }
+
+    protected async Task RestartHostAsync(TimeSpan downtime)
+    {
+        await app.StopAsync();
+        await app.DisposeAsync();
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        clock.Advance(downtime);
+        await StartHostAsync();
+    }
+
+    protected MailService.Mailbox MailboxOf(long role) => Service<RoleStore>().LoadMailbox(role)
+        is { } blob ? System.Text.Json.JsonSerializer.Deserialize<MailService.Mailbox>(blob)! : new MailService.Mailbox();
+
+    protected EconomySnapshot AuctionCut() => EconomySnapshotReader.Read(
+        Service<AccountStore>().DatabasePath, EconomyCatalog.Load(GameDataDir), "auto");
+
+    protected EconomyLedgerWindow AuctionWindow(EconomySnapshot opening, EconomySnapshot closing) =>
+        EconomyLedgerReader.Read(Service<AccountStore>().DatabasePath,
+            EconomyCatalog.Load(GameDataDir), "auto",
+            opening.Cut.CommitSequence!.Value, closing.Cut.CommitSequence!.Value);
+}
+
+/// <summary>Auction finance on the synthetic fixture (no client data): bids, outbids, escrow, prebuys, settlement,
+/// failed commits and restarts. The content of real lots (dungeon bosses, guild and world tabs) is in
+/// <see cref="AuctionContentTests"/>.</summary>
+public sealed partial class AuctionTests : AuctionTestsHost
+{
+    protected override string GameDataDir => SyntheticData.Dir;
+
+    [Fact]
     public async Task ProxyTiesAndSameSecondOutbidsRefundEveryEscrowOnce()
     {
         await using var alice = await InWorld("Alice");
@@ -165,7 +256,7 @@ public sealed partial class AuctionTests : IAsyncLifetime
         Assert.Equal((long)bob.Self!.Uuid, Service<AuctionStore>().Get(row.Id)!.Owner);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task IncreasingOwnAutoLimitOnlyDebitsDeltaAndKeepsPublicPrice()
     {
         await using var alice = await InWorld("Alice");
@@ -187,7 +278,7 @@ public sealed partial class AuctionTests : IAsyncLifetime
         Assert.Contains(award.Attachments, a => a.Entry == 1 && a.Count == 1000);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task DungeonAllPassStillRandomlyAwardsAndPaidSaleMailsEightyPercentDividend()
     {
         await using var alice = await InWorld("Alice");
@@ -215,7 +306,7 @@ public sealed partial class AuctionTests : IAsyncLifetime
         Assert.Single(Mailbox(alice).Letters, m => m.DeliveryKey == $"auction:{paid.Id}:award");
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task ThreeWirePassesAccelerateDungeonUnsoldAward()
     {
         await using var alice = await InWorld("Alice");
@@ -236,95 +327,7 @@ public sealed partial class AuctionTests : IAsyncLifetime
             m => m.DeliveryKey == $"auction:{row.Id}:unsold");
     }
 
-    [ClientDataFact]
-    public async Task AuthoritativeThreePlayerBossCreatesDungeonRowsVisibleBeforeAnyBid()
-    {
-        await using var alice = await InWorld("Alice");
-        await using var bob = await InWorld("Bob");
-        await using var carol = await InWorld("Carol");
-        foreach (var bot in new[] { alice, bob, carol }) await Gm(bot, "!lvl 99");
-        long team = await Party(alice, bob, carol);
-        await alice.SendGameAsync(DungeonService.Enter, new EnterDungeonReq
-        {
-            SceneEntry = Scene,
-            InitData = new DungeonInitData { MultiDungeonInitData = new MultiDungeonInitData
-            { MultiDungeonId = Multi, MarkId = 1 } },
-        });
-        Assert.Equal(0, (await Next(alice, DungeonService.Enter, EnterDungeonRsp.Parser)).Result);
-        foreach (var member in new[] { bob, carol })
-        {
-            await Next(member, DungeonService.ReadyQueue, TeamEnterReadyQueueNotify.Parser, n => n.ReadyQueue.Count == 3);
-            await member.SendGameAsync(DungeonService.Confirm, new ConfirmTeamDungeonReq { IsAgree = true });
-            Assert.Equal(0, (await Next(member, DungeonService.Confirm, ConfirmTeamDungeonRsp.Parser)).Result);
-        }
-        long runId = await Load(alice);
-        Assert.Equal(runId, await Load(bob));
-        Assert.Equal(runId, await Load(carol));
-        var actor = await BossIn(runId);
-        await Kill(alice, actor);
-        foreach (var bot in new[] { alice, bob, carol })
-        {
-            Assert.Equal((DungeonRes)1, (await Next(bot, DungeonService.Result, DungeonResNotify.Parser)).Res);
-            var award = await Next(bot, DungeonService.AwardNotify, SyncMultiDungeonAwardNotify.Parser);
-            Assert.NotEmpty(award.AutionAward);
-        }
-        var rows = Service<AuctionService>().DungeonRows(runId);
-        Assert.NotEmpty(rows);
-        Assert.All(rows, r => Assert.Equal(AuctionState.Public, r.State));
-        await alice.SendGameAsync(AuctionService.Self, new QuerySelfAuctionReq { AuctionType = AuctionType.Dungeon });
-        var self = await Next(alice, AuctionService.Self, QuerySelfAuctionRes.Parser);
-        Assert.Contains(self.SelfAuctions, r => rows.Any(row => row.Id == r.AuctionId));
-        int before = rows.Count;
-        await Service<AuctionService>().FinalizeDungeonRunAsync(runId);
-        Assert.Equal(before, Service<AuctionService>().DungeonRows(runId).Count); // completion replay cannot mint twice
-        await using var outsider = await InWorld("Outsider");
-        await outsider.SendGameAsync(AuctionService.Query, new QueryAuctionReq
-        { AuctionType = AuctionType.Dungeon, SrcType = 5001, StartIndex = 1, EndIndex = 100 });
-        Assert.Empty((await Next(outsider, AuctionService.Query, QueryAuctionRes.Parser)).Auctions);
-    }
-
-    [ClientDataFact]
-    public async Task AuctionInsertFailureCannotHideCommittedDungeonResultAndJournalRetries()
-    {
-        await using var alice = await InWorld("Alice");
-        await using var bob = await InWorld("Bob");
-        await using var carol = await InWorld("Carol");
-        foreach (var bot in new[] { alice, bob, carol }) await Gm(bot, "!lvl 99");
-        await Party(alice, bob, carol);
-        await alice.SendGameAsync(DungeonService.Enter, new EnterDungeonReq
-        {
-            SceneEntry = Scene,
-            InitData = new DungeonInitData { MultiDungeonInitData = new MultiDungeonInitData
-            { MultiDungeonId = Multi, MarkId = 1 } },
-        });
-        Assert.Equal(0, (await Next(alice, DungeonService.Enter, EnterDungeonRsp.Parser)).Result);
-        foreach (var member in new[] { bob, carol })
-        {
-            await Next(member, DungeonService.ReadyQueue, TeamEnterReadyQueueNotify.Parser, n => n.ReadyQueue.Count == 3);
-            await member.SendGameAsync(DungeonService.Confirm, new ConfirmTeamDungeonReq { IsAgree = true });
-            Assert.Equal(0, (await Next(member, DungeonService.Confirm, ConfirmTeamDungeonRsp.Parser)).Result);
-        }
-        long runId = await Load(alice);
-        await Load(bob);
-        await Load(carol);
-        FixtureSql.Execute(Service<AccountStore>(), "CREATE TRIGGER fail_auction_insert BEFORE INSERT ON auction_item "
-            + "BEGIN SELECT RAISE(ABORT, 'test auction publication failure'); END");
-        await Kill(alice, await BossIn(runId));
-        foreach (var bot in new[] { alice, bob, carol })
-        {
-            Assert.Equal((DungeonRes)1, (await Next(bot, DungeonService.Result, DungeonResNotify.Parser)).Res);
-            Assert.NotEmpty((await Next(bot, DungeonService.AwardNotify, SyncMultiDungeonAwardNotify.Parser)).NormalAward);
-        }
-        Assert.Empty(Service<AuctionService>().DungeonRows(runId));
-        Assert.Contains(Service<AuctionStore>().PendingRuns(), r => r.Id == runId && r.Ready && !r.Finalized);
-        FixtureSql.Execute(Service<AccountStore>(), "DROP TRIGGER fail_auction_insert");
-        await Service<AuctionService>().FinalizeDungeonRunAsync(runId);
-        Assert.NotEmpty(Service<AuctionService>().DungeonRows(runId));
-        await alice.SendGameAsync(AuctionService.Self, new QuerySelfAuctionReq { AuctionType = AuctionType.Dungeon });
-        Assert.NotEmpty((await Next(alice, AuctionService.Self, QuerySelfAuctionRes.Parser)).SelfAuctions);
-    }
-
-    [ClientDataFact]
+    [Fact]
     public async Task FailedReadyMarkerRetriesOnlyAfterCompletedProducerHandoff()
     {
         await using var alice = await InWorld("Alice");
@@ -344,7 +347,7 @@ public sealed partial class AuctionTests : IAsyncLifetime
         Assert.True(Service<AuctionStore>().GetRun(runId)!.Ready);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task PublicEscrowWaitsForOwnStartThenSelectsLowestPrice()
     {
         await using var alice = await InWorld("Alice");
@@ -374,7 +377,7 @@ public sealed partial class AuctionTests : IAsyncLifetime
         Assert.Equal(startingFunds - 900, Currency(alice)); // one reservation, no second debit at activation
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task PassedCheapLotCannotBeReacquiredBySecondPublicReservation()
     {
         await using var alice = await InWorld("Alice");
@@ -399,7 +402,7 @@ public sealed partial class AuctionTests : IAsyncLifetime
             && m.DeliveryKey.EndsWith(":cancel"));
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task QueuedOnlyRestartPausesUntilResumeWithoutSecondDebit()
     {
         long id, role, fundsAfterReserve;
@@ -434,7 +437,7 @@ public sealed partial class AuctionTests : IAsyncLifetime
         Assert.Equal(fundsAfterReserve, Currency(again));
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task FailedSqlSettlementRestoresWalletRowAndMail()
     {
         await using var alice = await InWorld("Alice");
@@ -456,7 +459,7 @@ public sealed partial class AuctionTests : IAsyncLifetime
         Assert.Single(Mailbox(alice).Letters, m => m.DeliveryKey.StartsWith($"auction:{row.Id}:outbid:"));
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task IncrementalBatchPreorderCountsOnlyCommittedEscrow()
     {
         await using var alice = await InWorld("Alice");
@@ -490,7 +493,7 @@ public sealed partial class AuctionTests : IAsyncLifetime
         Assert.Equal(3, Session(alice).Auction!.PreBuyNum["4:5001:1200000"]);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task PartialBatchFailureStillSyncsItsOneFundedReservation()
     {
         await using var alice = await InWorld("Alice");
@@ -518,7 +521,7 @@ public sealed partial class AuctionTests : IAsyncLifetime
         Assert.Equal(starting - 800, Currency(alice));
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task QueuedMaximumMustClearExistingManualPriceAndRaise()
     {
         await using var alice = await InWorld("Alice");
@@ -544,70 +547,5 @@ public sealed partial class AuctionTests : IAsyncLifetime
         Assert.Equal(starting - 500, Currency(alice));
         Assert.Single(Mailbox(alice).Letters, m => m.DeliveryKey.StartsWith("prebuy:")
             && m.DeliveryKey.EndsWith(":unused"));
-    }
-
-    private async Task<long> Party(BotClient leader, params BotClient[] others)
-    {
-        await leader.SendGameAsync(TeamService.TeamCreate, new TeamCreateReq { TeamType = TeamType.Five, TargetId = 1001 });
-        var created = await Next(leader, TeamService.TeamCreate, TeamCreateResp.Parser);
-        Assert.Equal(0, created.Result);
-        foreach (var member in others)
-        {
-            await leader.SendGameAsync(TeamService.TeamInvite, new InviteIntoTeamReq { Guid = (long)member.Self!.Uuid });
-            Assert.Equal(0, (await Next(leader, TeamService.TeamInvite, InviteIntoTeamResp.Parser)).Result);
-            await Next(member, TeamService.TeamNotifyInvitee, NotifyInvitee.Parser);
-            await member.SendGameAsync(TeamService.TeamInviteeResp, new InviteeResp
-            { TeamId = created.TeamId, IsAgree = true, InviteGuid = (long)leader.Self!.Uuid });
-            Assert.Equal(0, (await Next(member, TeamService.TeamInviteeResp, InviteeRespResp.Parser)).Result);
-        }
-        return created.TeamId;
-    }
-
-    private static async Task<long> Load(BotClient bot)
-    {
-        var sw = await Next(bot, MsgId.SwitchSceneLine, SwitchSceneLineResp.Parser, m => m.SceneEntry == Scene);
-        await bot.SendGameAsync(MsgId.SceneLoaded, new SceneLoadedReq { SceneId = Scene });
-        Assert.Equal(0, (await Next(bot, MsgId.SceneLoaded, SceneLoadedResp.Parser, m => m.SceneId == Scene)).Result);
-        await Next(bot, MsgId.EntitySelf, EntitySelf.Parser);
-        await Next(bot, DungeonService.BaseInfo, DungeonBaseInfoNotify.Parser, m => m.DungeonId == sw.SceneID);
-        return sw.SceneID;
-    }
-
-    private async Task<MonsterUnit> BossIn(long runId)
-    {
-        for (int i = 0; i < 100; i++)
-        {
-            var actor = await Service<GameLoop>().InvokeAsync(() => Task.FromResult(Service<World>().AllUnits()
-                .OfType<MonsterUnit>().SingleOrDefault(m => m.InstanceId == runId && m.Template.NpcId == Boss)));
-            if (actor != null) return actor;
-            await Task.Delay(20);
-        }
-        throw new TimeoutException("configured dungeon boss did not spawn");
-    }
-
-    private async Task Kill(BotClient bot, MonsterUnit actor)
-    {
-        Vec3 pos = null!;
-        await Service<GameLoop>().InvokeAsync(() => { actor.Hp = 1; pos = actor.Pos; return Task.CompletedTask; });
-        await bot.SendGameAsync(MsgId.Walk, new WalkReq { Pos = pos, BStop = true, SpeedRate = 1 });
-        await bot.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = actor.Uid });
-        Assert.Equal(0, (await Next(bot, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
-        await Next(bot, CombatService.SkillHit, SkillHitInfo.Parser,
-            hit => hit.Dsts.Any(d => d.DstID == actor.Uid && d.IsDead));
-    }
-
-    private static string RepoRoot()
-    {
-        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
-            if (File.Exists(Path.Combine(dir.FullName, "Ro3Emu.slnx"))) return dir.FullName;
-        throw new DirectoryNotFoundException("repository root");
-    }
-
-    private sealed class ManualClock(DateTimeOffset now) : TimeProvider
-    {
-        public DateTimeOffset Now { get; private set; } = now;
-        public override DateTimeOffset GetUtcNow() => Now.ToUniversalTime();
-        public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.FindSystemTimeZoneById("Central European Standard Time");
-        public void Advance(TimeSpan by) => Now = Now.Add(by);
     }
 }

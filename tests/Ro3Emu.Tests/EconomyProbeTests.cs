@@ -15,16 +15,16 @@ public sealed class EconomyProbeTests : IDisposable
     private readonly ItemStore items;
     private readonly long role;
     private string Database => Path.Combine(directory, "ro3emu.db");
-    private string Data => Path.Combine(RepoRoot(), "data");
+    private string Data => SyntheticData.Dir;
     public EconomyProbeTests()
     {
-        accounts = new AccountStore(Options.Create(new ServerOptions { DataDir = directory }));
+        accounts = new AccountStore(Options.Create(new ServerOptions { DataDir = directory, GameDataDir = SyntheticData.Dir }));
         roles = new RoleStore(accounts); items = new ItemStore(accounts);
         role = roles.Create("cli", 1, "Cli", 1, 1000, 1)!.Id;
         var p = roles.LoadProgress(role); p.Currency[1] = 1000; roles.SaveProgress(role, p);
     }
 
-    [ClientDataFact]
+    [Fact]
     public void SnapshotCompareReceiptAndRestoreCommandsStayReadOnlyAndNeverHideIncompleteCoverage()
     {
         string opening = Path.Combine(directory, "opening");
@@ -51,7 +51,7 @@ public sealed class EconomyProbeTests : IDisposable
         Assert.Equal(1, RunReadOnly("verify-receipts", Database, Data, "auto", "0", "1", Path.Combine(directory, "damaged")));
     }
 
-    [ClientDataFact]
+    [Fact]
     public void CliRejectsWrongRealmMalformedEvidenceAndOutputOverwrite()
     {
         string opening = Path.Combine(directory, "opening");

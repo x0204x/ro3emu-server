@@ -2,13 +2,16 @@ namespace Ro3Emu.Tests;
 
 /// <summary>
 /// The game data exported from your own client (data/config and the rest, see README). It is not in git, so tests that
-/// need it are skipped when it is missing instead of failing.
+/// need it are skipped when it is missing instead of failing. RO3EMU_NO_CLIENT_DATA=1 treats it as missing even when it
+/// is there, to check which tests a public checkout (CI) runs. Tests whose rules do not depend on the real content use
+/// the synthetic fixture instead (<see cref="SyntheticData"/>) and always run.
 /// </summary>
 public static class ClientData
 {
     public static string RepoRoot { get; } = FindRepoRoot();
 
-    public static bool Available { get; } = Directory.Exists(Path.Combine(RepoRoot, "data", "config"));
+    public static bool Available { get; } = Environment.GetEnvironmentVariable("RO3EMU_NO_CLIENT_DATA") is not ("1" or "true")
+        && Directory.Exists(Path.Combine(RepoRoot, "data", "config"));
 
     public const string SkipReason = "Needs the game data exported from your own client (data/config, see README).";
 

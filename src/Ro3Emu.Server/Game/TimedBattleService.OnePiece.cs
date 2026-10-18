@@ -505,7 +505,7 @@ public sealed partial class TimedBattleService
         var roleIds = present.ToDictionary(m => m, m => m.Role!.Id);
         var keys = new[] { ReservationKey.Entity("timed_onepiece", a.Room.Id.ToString(CultureInfo.InvariantCulture)) }
             .Concat(roleIds.Values.Select(id => ReservationKey.Role(id)))
-            .Concat(roleIds.Values.Select(id => ReservationKey.Entity("timed_battle_obligation", TreasureSource(a, id))))
+            .Concat(roleIds.Values.Select(id => Obligations.Key(TreasureSource(a, id))))
             .ToArray();
         TreasurePay[] paid = [];
         using (var scope = loop.Owners is { } owners
@@ -539,8 +539,7 @@ public sealed partial class TimedBattleService
             var pay = paid.First(p => p.Player == recipient);
             try
             {
-                var deliveryKeys = new[] { ReservationKey.Role(pay.Obligation.RoleId),
-                    ReservationKey.Entity("timed_battle_obligation", pay.Obligation.SourceKey) };
+                var deliveryKeys = new[] { ReservationKey.Role(pay.Obligation.RoleId), Obligations.Key(pay.Obligation.SourceKey) };
                 if (loop.Owners is { } owners)
                     await owners.RunSessionAsync("timed battle onepiece delivery", deliveryKeys, recipient,
                         () => DeliverOneAsync(recipient, pay.Obligation));
@@ -605,7 +604,7 @@ public sealed partial class TimedBattleService
             tx.RoleBlob(pay.Obligation.RoleId, "timed_battle", pay.Obligation.NextState);
             pay.TaskPlan?.Persist(tx);
         }
-        tx.Add(new TimedBattleObligationCreatePlan(paid.Select(p => p.Obligation)));
+        tx.Add(Obligations.CreatePlan(paid.Select(p => p.Obligation)));
         var economic = paid.SelectMany(p => p.Grants.Where(g => g.Entry is not (100 or 101)).Select(g => (Pay: p, Grant: g))).ToArray();
         if (economic.Length > 0)
         {

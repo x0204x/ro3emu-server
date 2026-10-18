@@ -3,12 +3,18 @@ using Ro3Emu.Server.Game;
 
 namespace Ro3Emu.Server.Voice;
 
-/// <summary>Join() outcome: the accepted/refused code and, on success, the room's members before the newcomer and
-/// the members of the room it left (a switch), for the caller to notify.</summary>
-public readonly record struct VoiceJoinOutcome(byte Code, VoiceConnection[] ExistingMembers, VoiceConnection[] PreviousRoomOthers);
+/// <summary>Join() outcome: the accepted/refused code and, on success, the room's members before the newcomer, the
+/// members of the room it left (a switch) and the newcomer's own mic as the room sees it, for the caller to notify.
+/// <see cref="AlreadyIn"/>: a repeated Join of the room the connection is already in, which changes nothing and
+/// notifies nobody.</summary>
+public readonly record struct VoiceJoinOutcome(byte Code, VoiceConnection[] ExistingMembers, VoiceConnection[] PreviousRoomOthers,
+    bool MicOn = false, bool AlreadyIn = false);
 
-/// <summary>SetMic() outcome: the whole room (sender included) and whether the sender was speaking until now.</summary>
-public readonly record struct VoiceMicOutcome(VoiceConnection[] Members, bool StoppedSpeaking);
+/// <summary>SetMic() outcome. <see cref="Changed"/>: the mic the room sees flipped to <see cref="On"/>, and
+/// <see cref="Members"/> (the whole room, sender included) are to be told, plus Vad speaking=0 when
+/// <see cref="StoppedSpeaking"/>. <see cref="Refused"/>: a mic-on the leader's mute overrides, answered to the sender
+/// alone with MicState off. Neither: an unchanged state, nothing to send.</summary>
+public readonly record struct VoiceMicOutcome(VoiceConnection[] Members, bool StoppedSpeaking, bool On, bool Changed, bool Refused);
 
 /// <summary>
 /// The voice relay's shared state: who is authed, who is in which room, mic/speaker flags, and the VAD and
@@ -25,9 +31,14 @@ public sealed class VoiceRooms(IOptions<ServerOptions> options, TeamService team
     private static readonly TimeSpan VadSilence = TimeSpan.FromMilliseconds(300);
 
     private readonly object _sync = new();
-    private readonly Dictionary<string, VoiceConnection> _byAccount = new(StringComparer.OrdinalIgnoreCase);
+    // Ordinal: the account's stored spelling is its identity, and a legacy database can hold "admin" and "Admin" as
+    // two accounts, which must not evict each other's voice connection.
+    private readonly Dictionary<string, VoiceConnection> _byAccount = new(StringComparer.Ordinal);
     private readonly Dictionary<long, HashSet<VoiceConnection>> _rooms = new();
     private TimeSpan _sinceSweep;
+
+    /// <summary>The account's authed voice connection, or null.</summary>
+    public VoiceConnection? ConnectionOf(string account) { lock (_sync) return _byAccount.GetValueOrDefault(account); }
 
     /// <summary>Registers an authed connection under its account, replacing (and returning) whatever connection
     /// that account already held: one voice connection per account.</summary>
@@ -44,13 +55,15 @@ public sealed class VoiceRooms(IOptions<ServerOptions> options, TeamService team
         }
     }
 
-    public VoiceJoinOutcome Join(VoiceConnection connection, long roomId)
+    /// <summary>Puts the connection in <paramref name="roomId"/>. <paramref name="chatForbidden"/> is the leader's mute
+    /// as the game loop saw it while validating the join: a muted role enters with its mic off whatever it asked for.</summary>
+    public VoiceJoinOutcome Join(VoiceConnection connection, long roomId, bool chatForbidden)
     {
         lock (_sync)
         {
             _rooms.TryGetValue(roomId, out var members);
-            if (connection.RoomId == roomId && members != null)
-                return new VoiceJoinOutcome(VoiceJoinCode.Ok, members.Where(c => c != connection).ToArray(), []);
+            if (connection.RoomId == roomId && members != null && members.Contains(connection))
+                return new VoiceJoinOutcome(VoiceJoinCode.Ok, [], [], connection.MicOn, AlreadyIn: true);
             // A full room refuses before the connection leaves the room it is in.
             if (members != null && members.Count >= options.Value.Voice.MaxRoomSize) return new VoiceJoinOutcome(VoiceJoinCode.Full, [], []);
             var previousOthers = OthersLocked(connection);
@@ -59,8 +72,17 @@ public sealed class VoiceRooms(IOptions<ServerOptions> options, TeamService team
             var existing = members.ToArray();
             members.Add(connection);
             connection.RoomId = roomId;
-            return new VoiceJoinOutcome(VoiceJoinCode.Ok, existing, previousOthers);
+            connection.ChatForbidden = chatForbidden;
+            connection.MicOn = connection.MicWanted && !chatForbidden;
+            return new VoiceJoinOutcome(VoiceJoinCode.Ok, existing, previousOthers, connection.MicOn);
         }
+    }
+
+    /// <summary>True when the connection is in <paramref name="roomId"/> already (a repeated Join needs no game-loop
+    /// check: the membership sweep re-validates it every second anyway).</summary>
+    public bool IsIn(VoiceConnection connection, long roomId)
+    {
+        lock (_sync) return connection.RoomId == roomId && _rooms.TryGetValue(roomId, out var set) && set.Contains(connection);
     }
 
     /// <summary>Leaves the current room (if any); returns the other members that were in it, for the caller to notify.</summary>
@@ -102,28 +124,43 @@ public sealed class VoiceRooms(IOptions<ServerOptions> options, TeamService team
         }
     }
 
-    /// <summary>Sets the sender's mic; returns the whole room (the sender included: it must see its own state too) and
-    /// whether a mic-off cut a speaking turn, so the caller also sends Vad speaking=0.</summary>
+    /// <summary>Records the client's mic request. The mic the room sees follows it unless the leader's mute
+    /// (<see cref="VoiceConnection.ChatForbidden"/>) holds it off; see <see cref="VoiceMicOutcome"/> for what to send.</summary>
     public VoiceMicOutcome SetMic(VoiceConnection connection, bool on)
     {
         lock (_sync)
         {
-            connection.MicOn = on;
-            bool stopped = !on && connection.Speaking;
-            if (!on) connection.Speaking = false;
-            var members = connection.RoomId != 0 && _rooms.TryGetValue(connection.RoomId, out var set) ? set.ToArray() : [];
-            return new VoiceMicOutcome(members, stopped);
+            connection.MicWanted = on;
+            return ApplyMicLocked(connection, refuseOn: on);
         }
     }
 
-    /// <summary>Sends a SetMic() result to the room: MicState, plus Vad speaking=0 when the mic-off cut a speaking turn.</summary>
-    public static void BroadcastMic(VoiceConnection connection, VoiceMicOutcome outcome, bool on)
+    /// <summary>Brings <see cref="VoiceConnection.MicOn"/> in line with the wish and the mute.</summary>
+    private VoiceMicOutcome ApplyMicLocked(VoiceConnection connection, bool refuseOn)
     {
-        foreach (var member in outcome.Members)
-        {
-            member.SendMicState(connection.RoleId, on);
-            if (outcome.StoppedSpeaking) member.SendVad(connection.RoleId, false);
-        }
+        bool on = connection.MicWanted && !connection.ChatForbidden;
+        if (on == connection.MicOn)
+            return new VoiceMicOutcome([], false, on, Changed: false, Refused: refuseOn && !on);
+        connection.MicOn = on;
+        bool stopped = !on && connection.Speaking;
+        if (!on) connection.Speaking = false;
+        var members = connection.RoomId != 0 && _rooms.TryGetValue(connection.RoomId, out var set) ? set.ToArray() : [];
+        return new VoiceMicOutcome(members, stopped, on, Changed: true, Refused: refuseOn && !on);
+    }
+
+    /// <summary>Sends a SetMic() result: a change to the room (MicState, plus Vad speaking=0 when a mic-off cut a
+    /// speaking turn), a refused mic-on to the sender alone (MicState off: the leader's mute stands).</summary>
+    public static void BroadcastMic(VoiceConnection connection, VoiceMicOutcome outcome)
+    {
+        if (outcome.Changed)
+            foreach (var member in outcome.Members)
+            {
+                member.SendMicState(connection.RoleId, outcome.On);
+                if (outcome.StoppedSpeaking) member.SendVad(connection.RoleId, false);
+            }
+        // A change already told the sender (it is in Members) unless it is in no room yet.
+        if (outcome.Refused && !(outcome.Changed && outcome.Members.Contains(connection)))
+            connection.SendMicState(connection.RoleId, false);
     }
 
     public void SetSpeaker(VoiceConnection connection, bool on)
@@ -157,31 +194,46 @@ public sealed class VoiceRooms(IOptions<ServerOptions> options, TeamService team
         }
     }
 
-    /// <summary>The game loop's regular tick: VAD silence timeout every tick, the team-membership sweep once a
-    /// second. Both run here (not via GameLoop.InvokeAsync) because Tick already executes on the loop thread.</summary>
+    /// <summary>The game loop's regular tick: the leader's mute and the VAD silence timeout every tick, the
+    /// team-membership sweep once a second. All run here (not via GameLoop.InvokeAsync) because Tick already executes
+    /// on the loop thread, the only one that may read TeamService.</summary>
     public void Tick(GameTime time)
     {
-        SweepVad();
+        SweepMuteAndVad();
         _sinceSweep += time.Delta;
         if (_sinceSweep < SweepInterval) return;
         _sinceSweep = TimeSpan.Zero;
         SweepMembership();
     }
 
-    private void SweepVad()
+    /// <summary>
+    /// Copies the leader's forbidden-chat (TeamService, loop-owned) onto every joined connection, where the voice
+    /// connection's own task reads it for each Mic and Audio frame without a loop hop, and forces the mic the room
+    /// sees off (or back to the player's wish once the mute is lifted), telling the room. Then the VAD timeout: 300 ms
+    /// without audio ends a speaking turn.
+    /// </summary>
+    private void SweepMuteAndVad()
     {
+        List<(VoiceConnection Connection, VoiceMicOutcome Mic)>? micChanged = null;
         List<(VoiceConnection Connection, long Room)>? silenced = null;
         long now = Environment.TickCount64;
         lock (_sync)
         {
             foreach (var room in _rooms)
                 foreach (var c in room.Value)
+                {
+                    c.ChatForbidden = teams.IsForbiddenChat(c.RoleId);
+                    var mic = ApplyMicLocked(c, refuseOn: false);
+                    if (mic.Changed) (micChanged ??= new()).Add((c, mic));
                     if (c.Speaking && now - c.LastAudioAtMs >= VadSilence.TotalMilliseconds)
                     {
                         c.Speaking = false;
                         (silenced ??= new()).Add((c, room.Key));
                     }
+                }
         }
+        if (micChanged != null)
+            foreach (var (connection, mic) in micChanged) BroadcastMic(connection, mic);
         if (silenced == null) return;
         foreach (var (connection, room) in silenced)
             foreach (var member in MembersOf(room)) member.SendVad(connection.RoleId, false);
@@ -189,8 +241,8 @@ public sealed class VoiceRooms(IOptions<ServerOptions> options, TeamService team
 
     /// <summary>
     /// Re-validates every joined connection against TeamService/SessionRegistry: a session that is gone, switched
-    /// teams or no longer matches its room is removed (Kicked + MemberChange to the rest); a member the team leader
-    /// muted gets its mic forced off and a MicState broadcast, without leaving the room.
+    /// teams or no longer matches its room is removed (Kicked + MemberChange to the rest). The leader's mute is not
+    /// here: <see cref="SweepMuteAndVad"/> applies it every tick.
     /// </summary>
     private void SweepMembership()
     {
@@ -208,10 +260,7 @@ public sealed class VoiceRooms(IOptions<ServerOptions> options, TeamService team
                 connection.Kick(VoiceKickCode.RemovedFromRoom);
                 foreach (var other in others) other.SendMemberChange(connection.RoleId, false);
                 log.LogInformation("Voice: role {RoleId} dropped from room {Room} (sweep)", connection.RoleId, room);
-                continue;
             }
-            bool muted = teams.IsForbiddenChat(connection.RoleId);
-            if (muted && connection.MicOn) BroadcastMic(connection, SetMic(connection, false), false);
         }
     }
 }

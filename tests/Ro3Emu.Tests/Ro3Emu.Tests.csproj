@@ -21,6 +21,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Client hooks code with no Unity dependency, compiled here so its logic can be tested (the hooks project itself
+         builds only against a client's managed DLLs). -->
+    <Compile Include="..\..\src\Ro3Emu.ClientHooks\VoiceLinkState.cs" Link="ClientHooks\VoiceLinkState.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The synthetic game data (SyntheticData.Dir, docs/testing.md): hand-written, every value invented. -->
+    <None Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Ro3Emu.Server\Ro3Emu.Server.csproj" />
     <ProjectReference Include="..\..\src\Ro3Emu.Bot\Ro3Emu.Bot.csproj" />
     <ProjectReference Include="..\..\src\Ro3Emu.LoadTest\Ro3Emu.LoadTest.csproj" />

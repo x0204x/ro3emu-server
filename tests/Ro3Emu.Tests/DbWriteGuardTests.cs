@@ -117,13 +117,13 @@ public sealed class DbWriteGuardTests : IDisposable
     }
 #endif
 
-    [ClientDataFact]
+    [Fact]
     public async Task HttpMicroGameLoopTimerAndBackupHaveZeroNonWriterWritesAfterStartup()
     {
         var (http, micro, game) = TestPorts.FreePorts();
         await using var app = ServerHost.Create([], o =>
         {
-            o.DataDir = _dir; o.HttpPort = http; o.MicroGatePort = micro; o.GameGatePort = game;
+            o.DataDir = _dir; o.GameDataDir = SyntheticData.Dir; o.HttpPort = http; o.MicroGatePort = micro; o.GameGatePort = game;
         });
         await app.StartAsync();
         try

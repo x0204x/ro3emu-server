@@ -44,17 +44,13 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        // Preserve this fixture's empty map/activity data while supplying only the
-        // denomination inputs required by guild initialization's E05d receipt.
-        string config = Path.Combine(directory, "config");
-        Directory.CreateDirectory(config);
-        foreach (string file in new[] { "ItemConfig.json", "AuctionConfig.json", "GuildSettingConfig.json",
-            "GuildTransportConfig.json", "GVGConfig.json", "PublicParamConfig.json" })
-            File.Copy(Path.Combine(RepoRoot(), "data", "config", file), Path.Combine(config, file));
+        // The synthetic game data: a small invented set that also holds the denomination tables guild initialization's
+        // E05d receipt needs.
         var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
         app = ServerHost.Create([], options =>
         {
             options.DataDir = directory;
+            options.GameDataDir = SyntheticData.Dir;
             options.HttpPort = httpPort;
             options.MicroGatePort = microPort;
             options.GameGatePort = gamePort;
@@ -86,13 +82,6 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
 
     private BotClient Bot() => new(http, File.ReadAllText(Path.Combine(directory, "gate_rsa_public.pem")));
 
-    private static string RepoRoot()
-    {
-        for (var path = new DirectoryInfo(AppContext.BaseDirectory); path != null; path = path.Parent)
-            if (File.Exists(Path.Combine(path.FullName, "Ro3Emu.slnx"))) return path.FullName;
-        throw new DirectoryNotFoundException("Repository root was not found.");
-    }
-
     private async Task<int> Delete(string account, string password, string role)
     {
         using var client = new HttpClient();
@@ -102,7 +91,7 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         return json.RootElement.GetProperty("code").GetInt32();
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task QuiescingFirstTimerRoleIsSkippedAndAttachedSecondStillReconciles()
     {
         var season = app.Services.GetRequiredService<SeasonService>();
@@ -182,7 +171,7 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         }
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task AfkTimerWaitingOnOldGateSkipsQuiescedLeaseButDirectReconcileStillWorks()
     {
         var afk = app.Services.GetRequiredService<WildAfkService>();
@@ -269,7 +258,7 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         }
     }
 
-    [ClientDataTheory]
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task ReplacementWaitsFirstAdmittedMutationAndOnlyNewestAttaches(bool thirdLogin)
@@ -358,7 +347,7 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         finally { release.TrySetResult(); }
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task ForeignAndDeletedSelectionPreserveCurrentRoleAndDeleteRefusesAttachedRole()
     {
         await using var alice = Bot();
@@ -394,7 +383,7 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         Assert.Equal((ulong)kept, (await alice.EnterWorldAsync(kept)).Uuid); // same-role reselect crosses its old fence
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task DirectOtherRoleSelectionFencesOldReturnPointAndReplacesAttachment()
     {
         await using var bot = Bot();
@@ -426,7 +415,7 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         });
     }
 
-    [ClientDataTheory]
+    [Theory]
     [InlineData("BeforeAttach")]
     [InlineData("BeforePublish")]
     public async Task DisconnectDuringSelectNeverPublishesAnAttachment(string phase)
@@ -458,7 +447,7 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         });
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task FailedInitializationUsesTheCommonHandoverAndReleasesLoadingLease()
     {
         await using var bot = Bot();
@@ -480,7 +469,7 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         });
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task FailedEarlyOtherRoleInitializationCannotCleanOldStateIntoNewRole()
     {
         await using var bot = Bot();
@@ -546,7 +535,7 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         Assert.Equal((ulong)second, (await retry.EnterWorldAsync(second)).Uuid);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task ReplacedAccountStageRequestCannotCreateRoleAfterItsRealmWait()
     {
         var old = Bot();
@@ -580,7 +569,7 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         finally { release.TrySetResult(); await old.DisposeAsync(); }
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task OfflineMailOfferedDuringHandoverWaitsForItsDurableFence()
     {
         var bot = Bot();
@@ -616,7 +605,7 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         finally { release.TrySetResult(); }
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task EssentialCleanupFaultRetainsLeaseButLaterActivityUnlinksStillRun()
     {
         var bot = Bot();
@@ -659,7 +648,7 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         Assert.Equal(409, await Delete("cleanup", "pw", "CleanupRole"));
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task DeleteWaitsAdmittedOfflineItemAndMailThenRejectsNewGrantsAndReusesName()
     {
         var bot = Bot();
@@ -707,7 +696,7 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         Assert.Equal(1, roles.ReadRevisionVector(replacement.Id).Epoch);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task DeleteWaitsSelectingRoleBeforeCheckingWhetherItIsOnline()
     {
         await using var bot = Bot();

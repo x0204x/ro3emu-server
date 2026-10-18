@@ -1,0 +1,6 @@
+{
+  "1200000": {
+    "_iID": 1200000, "_iAuction": 1, "_iType": 3, "_iCurrency": 1,
+    "_iDungeonPrice": 450, "_iDungeonPriceMax": 4500, "_iAuctionPrice": 650, "_iBaseRaisePrice": 50
+  }
+}

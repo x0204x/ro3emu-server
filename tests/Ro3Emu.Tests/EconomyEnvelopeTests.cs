@@ -22,7 +22,7 @@ public sealed class EconomyEnvelopeTests : IDisposable
     {
         string root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
         directory = Path.Combine(root, ".loadtest-temp", "e05d-envelope-" + Guid.NewGuid().ToString("N"));
-        gameData = Path.Combine(root, "data");
+        gameData = SyntheticData.Dir;
         catalog = EconomyCatalog.Load(gameData);
         accounts = new AccountStore(Options.Create(new ServerOptions { DataDir = directory, GameDataDir = gameData }));
         roles = new RoleStore(accounts);
@@ -60,7 +60,7 @@ public sealed class EconomyEnvelopeTests : IDisposable
     private EconomyLedgerWindow Window(EconomySnapshot a, EconomySnapshot b) => EconomyLedgerReader.Read(
         accounts.DatabasePath, catalog, "auto", a.Cut.CommitSequence!.Value, b.Cut.CommitSequence!.Value);
 
-    [ClientDataFact]
+    [Fact]
     public async Task TransactionSnapshotIncludesDungeonPendingAlongsideSemanticEnvelopeHoldings()
     {
         var obligations = new DungeonObligationStore(accounts);
@@ -95,7 +95,7 @@ public sealed class EconomyEnvelopeTests : IDisposable
             location => Assert.Equal("0", location.Residual));
     }
 
-    [ClientDataFact]
+    [Fact]
     public void EnvelopeClonesOutcomeAndCanonicalIntentBytes()
     {
         byte[] input = [3, 4];
@@ -111,7 +111,7 @@ public sealed class EconomyEnvelopeTests : IDisposable
         Assert.Equal(hash, envelope.IntentHash);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task AsyncEnvelopeCommitsOnceAndReplaysBeforeStaleRevision()
     {
         string op = Guid.NewGuid().ToString("N"), source = "friend-gift:" + Guid.NewGuid().ToString("N");
@@ -132,7 +132,7 @@ public sealed class EconomyEnvelopeTests : IDisposable
         Assert.All(check.Locations, x => Assert.Equal("0", x.Residual));
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task SameOperationWithChangedMetadataChildConflictsBeforeApply()
     {
         string op = Guid.NewGuid().ToString("N"), source = "child:" + Guid.NewGuid().ToString("N");
@@ -151,7 +151,7 @@ public sealed class EconomyEnvelopeTests : IDisposable
         Assert.Single(Window(opening, Cut()).Receipts);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task GenericOwnerReceiptCannotReplayAnAbsentEconomicReceipt()
     {
         string operation = Guid.NewGuid().ToString("N");
@@ -164,7 +164,7 @@ public sealed class EconomyEnvelopeTests : IDisposable
         Assert.NotNull(EconomyReceiptReader.Read(accounts.DatabasePath, operation));
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task LaterWindowValidatesEarlierTransferWithoutReturningItsLegs()
     {
         long other = roles.Create("e05d-other", 1, "E05" + Guid.NewGuid().ToString("N")[..8], 1, 1000, 1)!.Id;
@@ -196,7 +196,7 @@ public sealed class EconomyEnvelopeTests : IDisposable
         Assert.Empty(window.Legs);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task GeneratedAuctionAliasBindsToClaimedTypedLotAndConcreteLedgerOwner()
     {
         var auction = new AuctionStore(accounts);
@@ -227,7 +227,7 @@ public sealed class EconomyEnvelopeTests : IDisposable
             location => Assert.Equal("0", location.Residual));
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task UndeclaredAndWrongAmountMovementRollsBack()
     {
         var opening = Cut();
@@ -242,7 +242,7 @@ public sealed class EconomyEnvelopeTests : IDisposable
         Assert.Empty(Window(opening, Cut()).Receipts);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task LastLedgerInsertFailureRollsBackOwnerReceiptAndSource()
     {
         string op = Guid.NewGuid().ToString("N"), source = "fault:" + Guid.NewGuid().ToString("N");
@@ -258,7 +258,7 @@ public sealed class EconomyEnvelopeTests : IDisposable
         Assert.Single(Window(opening, Cut()).Receipts);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task MetadataReceiptHasNoLegsAndTracksExistingAndCreatedGuildRevisions()
     {
         var guilds = new GuildStore(accounts);
@@ -308,7 +308,7 @@ public sealed class EconomyEnvelopeTests : IDisposable
         Assert.Contains(Window(opening, closing).Issues, x => x.Kind == EconomyIssueKind.Corruption);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task ExistingE01ReceiptSchemaUpgradesWithoutLosingReceiptSourceOrLegs()
     {
         string upgradeDir = Path.Combine(directory, "upgrade-" + Guid.NewGuid().ToString("N"));

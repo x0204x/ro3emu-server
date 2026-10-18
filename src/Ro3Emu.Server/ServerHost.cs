@@ -198,6 +198,8 @@ public static class ServerHost
         // Stops before the quiesce: roles waiting for a reconnect are logged out while cleanup is still admitted.
         builder.Services.AddHostedService<ReconnectShutdownService>();
 
+        builder.Services.AddSingleton<CredentialLimiter>();
+
         var app = builder.Build();
         app.Services.GetRequiredService<RealmLock>();
         app.Services.GetRequiredService<Game.Ownership.RoleHandover>()
@@ -257,8 +259,9 @@ public static class ServerHost
         });
         // Character deletion for the launcher / website (the client itself has none): POST form identity, credential,
         // role (id or name). A role that is in the world cannot be deleted.
-        app.MapPost("/ro3emu/account/delete-role", async (HttpRequest request, AccountStore accounts, RoleStore roles, SessionRegistry sessions, GameLoop loop, Game.Ownership.OwnerRegistry owners, ILogger<RoleStore> log) =>
+        app.MapPost("/ro3emu/account/delete-role", async (HttpRequest request, CredentialLimiter limiter, AccountStore accounts, RoleStore roles, SessionRegistry sessions, GameLoop loop, Game.Ownership.OwnerRegistry owners, ILogger<RoleStore> log) =>
         {
+            if (!limiter.TryAcquire(request.HttpContext.Connection.RemoteIpAddress)) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
             var form = await request.ReadFormAsync();
             string typed = form["identity"].ToString().Trim(), credential = form["credential"].ToString(), which = form["role"].ToString().Trim();
             // Roles are keyed by the account's stored name, whatever letter case the form used.

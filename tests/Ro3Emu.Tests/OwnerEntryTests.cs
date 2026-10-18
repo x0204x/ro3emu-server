@@ -22,17 +22,11 @@ public sealed class OwnerEntryTests : IAsyncLifetime
     {
         var (http, micro, game) = TestPorts.FreePorts();
         app = ServerHost.Create([], o =>
-        { o.DataDir = directory; o.GameDataDir = Path.Combine(RepoRoot(), "data"); o.HttpPort = http; o.MicroGatePort = micro; o.GameGatePort = game; });
+        { o.DataDir = directory; o.GameDataDir = SyntheticData.Dir; o.HttpPort = http; o.MicroGatePort = micro; o.GameGatePort = game; });
         await app.StartAsync(); url = $"http://127.0.0.1:{http}";
     }
     public async Task DisposeAsync()
     { await app.StopAsync(); await app.DisposeAsync(); Directory.Delete(directory, recursive: true); }
-    private static string RepoRoot()
-    {
-        for (var path = new DirectoryInfo(AppContext.BaseDirectory); path != null; path = path.Parent)
-            if (File.Exists(Path.Combine(path.FullName, "Ro3Emu.slnx"))) return path.FullName;
-        throw new InvalidOperationException("repository root");
-    }
     private async Task<(BotClient Bot, long Role)> Login(string name)
     {
         var bot = new BotClient(url, File.ReadAllText(Path.Combine(directory, "gate_rsa_public.pem")));
@@ -41,7 +35,7 @@ public sealed class OwnerEntryTests : IAsyncLifetime
         await bot.EnterWorldAsync(role); return (bot, role);
     }
 
-    [ClientDataTheory]
+    [Theory]
     [InlineData("GM")]
     [InlineData("micro/MailService")]
     [InlineData("timer/owner-test")]

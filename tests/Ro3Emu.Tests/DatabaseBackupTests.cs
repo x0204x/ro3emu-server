@@ -316,6 +316,77 @@ public sealed class DatabaseBackupTests : IDisposable
         Assert.True(File.Exists(Path.Combine(saved, "ro3emu.db")));
     }
 
+    /// <summary>
+    /// The state an earlier restore leaves when it is cut between moving ro3emu.db and its WAL: the database in a saved
+    /// folder named by the marker, and its WAL, holding a committed change the database file does not have yet, still
+    /// in the data dir. Returns the saved folder.
+    /// </summary>
+    private string InterruptedBetweenTheDatabaseAndItsWal()
+    {
+        string saved = Path.Combine(_dir, "restore-saved", "20261018-000000-000");
+        Directory.CreateDirectory(saved);
+        string wal = Path.Combine(_dir, "orphan-wal");
+        using (var db = new SqliteConnection($"Data Source={Live};Pooling=False"))
+        {
+            db.Open();
+            using var command = db.CreateCommand();
+            command.CommandText = "PRAGMA wal_autocheckpoint=0; UPDATE role SET name='InWal' WHERE name='After';";
+            command.ExecuteNonQuery();
+            // Copied while the change is only in the WAL (closing the connection would checkpoint it).
+            CopyShared(Live, Path.Combine(saved, "ro3emu.db"));
+            CopyShared(Live + "-wal", wal);
+        }
+        SqliteConnection.ClearAllPools();
+        foreach (var suffix in new[] { "", "-wal", "-shm" }) File.Delete(Live + suffix);
+        File.Move(wal, Live + "-wal");
+        File.WriteAllText(DatabaseRestore.MarkerPath(_dir), $"started: earlier{Environment.NewLine}backup: x{Environment.NewLine}" +
+            $"previous database saved in: {saved}{Environment.NewLine}");
+        return saved;
+
+        static void CopyShared(string from, string to)
+        {
+            using var source = new FileStream(from, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var target = File.Create(to);
+            source.CopyTo(target);
+        }
+    }
+
+    [Fact]
+    public void ResumingARestoreCutBeforeTheWalMovedNeverReplaysTheOldWalIntoTheBackup()
+    {
+        string copy = RealmWithAnOlderBackup();
+        string earlier = InterruptedBetweenTheDatabaseAndItsWal();
+        Assert.Contains("unfinished database restore", Assert.Throws<InvalidOperationException>(() => Store()).Message);
+
+        // The database itself was already set aside; its leftover WAL joins it there.
+        Assert.Equal(earlier, DatabaseRestore.Restore(_dir, copy));
+        Assert.False(File.Exists(DatabaseRestore.MarkerPath(_dir)));
+        Assert.Equal(["Before"], RoleNames(Live)); // exactly the backup, nothing from the old WAL
+        using (var accounts = Store()) Assert.Equal(["Before"], new RoleStore(accounts).ForAccount("fault").Select(r => r.Name).ToList());
+        SqliteConnection.ClearAllPools();
+        // The old WAL went back to its own database: that set is complete, with the change only the WAL held.
+        Assert.True(File.Exists(Path.Combine(earlier, "ro3emu.db-wal")));
+        Assert.Equal(["Before", "InWal"], RoleNames(Path.Combine(earlier, "ro3emu.db")));
+    }
+
+    [Fact]
+    public void AFailedRetryOfAnUnfinishedRestoreKeepsRefusingStart()
+    {
+        string copy = RealmWithAnOlderBackup();
+        string earlier = InterruptedBetweenTheDatabaseAndItsWal();
+        Assert.Throws<IOException>(() => DatabaseRestore.Restore(_dir, copy, step =>
+        {
+            if (step == "swap") throw new IOException("rename failed");
+        }));
+        // Still no database in the data dir: the marker stays and nothing may open (and create) an empty realm.
+        Assert.False(File.Exists(Live));
+        Assert.True(File.Exists(DatabaseRestore.MarkerPath(_dir)));
+        Assert.Contains("unfinished database restore", Assert.Throws<InvalidOperationException>(() => Store()).Message);
+        SqliteConnection.ClearAllPools();
+        Assert.Equal(earlier, DatabaseRestore.Restore(_dir, copy)); // a clean retry finishes it
+        Assert.Equal(["Before"], RoleNames(Live));
+    }
+
     public void Dispose()
     {
         SqliteConnection.ClearAllPools();

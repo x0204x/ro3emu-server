@@ -1,9 +1,10 @@
 namespace Ro3Emu.Server.Voice;
 
 /// <summary>
-/// Per-connection token bucket for Audio frames: <see cref="VoiceOptions.FramesPerSecond"/> tokens refill every
-/// second, up to FramesPerSecond + <see cref="VoiceOptions.Burst"/> banked. A frame with no token left is dropped,
-/// not queued. <see cref="RecordAndCheckFlood"/> separately tracks a sustained flood (more than 3x the frame rate
+/// Per-connection token bucket, one for Audio frames (<see cref="VoiceOptions.FramesPerSecond"/> /
+/// <see cref="VoiceOptions.Burst"/>) and one for control frames (<see cref="VoiceOptions.ControlPerSecond"/> /
+/// <see cref="VoiceOptions.ControlBurst"/>): framesPerSecond tokens refill every second, up to framesPerSecond +
+/// burst banked. A frame with no token left is dropped, not queued. <see cref="RecordAndCheckFlood"/> separately tracks a sustained flood (more than 3x the frame rate
 /// averaged over a trailing 5-second window) so the caller can disconnect instead of merely throttling: a short
 /// burst (its total over 5 s still under the threshold) is only throttled, a client that keeps sending far above
 /// its budget for the whole window is dropped.

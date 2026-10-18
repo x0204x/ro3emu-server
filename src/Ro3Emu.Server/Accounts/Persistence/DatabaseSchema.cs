@@ -30,5 +30,6 @@ internal static class DatabaseSchema
         new TerritorySchemaPlan(RealmStateKind.TerritoryEscort),
         new TerritorySchemaPlan(RealmStateKind.GuildLeague),
         new TimedBattleSchemaPlan(),
+        new CasualBattleSchemaPlan(),
     ];
 }

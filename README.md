@@ -125,6 +125,7 @@ show is playable from day one, without season or server-day gates ([details](doc
 - trade center, stalls, auctions (guild, world, event), mail
 - NPC, point and guild shops, battle pass
 - friends and gifts, parties and raids, chat channels and horns
+- party voice chat through the server (off by default, see below)
 - adventure groups
 
 **Guilds**
@@ -136,23 +137,30 @@ show is playable from day one, without season or server-day gates ([details](doc
 **Instances and activities**
 - story dungeons and scripted story scenes (reconstructed)
 - Spirit Tower, Phantom Realm, Valhalla Trials, Realm of the Gods
+  (blessings, Final Trial honors, hall of fame), Hidden Realm
+- bosses cast their special skills, with phases and summons
 - Monster Hunt, Rift Crisis, Survivor Battle, Wedding Crashers,
-  Hunting Challenge, timed events, daily activities, leaderboards
+  Dragon Coffin Island, Mock Battle (40 vs 40), Hunting Challenge,
+  timed events, daily activities, leaderboards
 
 </td></tr>
 </table>
 
 **Not yet**
-- **Bosses' special skills.** Bosses fight with their own normal attacks; field MVP summons and fields work.
-- **Group content extras:** Realm of the Gods blessings and honors, Hidden Realm, the Dragon Island monster layer,
-  Leisure Forty (40 vs 40).
+- **Boss script mechanics:** the special skills are in, but mechanics that lived only in the original server's scripts
+  (bubbles, bells, rhythm stages) are plain area attacks, and knockback does not move players yet.
+- **Mock Battle extras:** the arena's monsters and the 40-player team frame.
 - **War of Emperium extras:** commander tools, siege weapons and vehicles.
 - **Survivor Battle extras:** follow, spectate, shop, Kafra adventure.
 - **Guild extras:** merging, impeachment, group mail.
 - **Smaller missing pieces:** shop gifting, titles, Paragon (Astral Level), and some stages of the story dungeons
   that are still simplified.
-- **Tavern and guild voice:** the rooms are coming without audio. The client's voice service belongs to the publisher,
-  so real voice chat is out of reach.
+- **Tavern and guild voice:** only party voice is implemented.
+
+**Voice.** Party voice goes through a relay in the server instead of the publisher's Tencent GME, and the patched
+client records and plays it through Windows' own winmm. It is off by default: `Voice:Port` turns it on. The voice
+stream is not encrypted yet (only its one-time ticket travels through the encrypted game gate), so the relay listens
+on loopback only unless `Voice:AllowPlaintextOffLoopback` is set.
 
 ## For developers
 
@@ -184,8 +192,8 @@ chunks into standard Lua 5.4 bytecode for any decompiler.
 | `src/Ro3Emu.Server` | the server: HTTP, micro gate, game gate, game loop, services, SQLite stores |
 | `src/Ro3Emu.Setup` | RO3Emu.exe: finds or installs the game, exports data, runs the server, patches the client |
 | `src/Ro3Emu.DataExport` | game data export from the client (Lua VM, file system, nav meshes, English text map) |
-| `src/Ro3Emu.ClientTools` | client patcher (patch, restore, play; the chat redirect and the voice stub) and patch-repository releases |
-| `src/Ro3Emu.ClientHooks` · `src/Ro3Emu.Loc` | code injected into the client: Lua patches and the English text layer |
+| `src/Ro3Emu.ClientTools` | client patcher (patch, restore, play; the chat and voice redirects) and patch-repository releases |
+| `src/Ro3Emu.ClientHooks` · `src/Ro3Emu.Loc` | code injected into the client: Lua patches, party voice and the English text layer |
 | `src/Ro3Emu.Bot` · `src/Ro3Emu.BotCli` | a scripted client speaking the real protocol (tests, load, extra players) |
 | `src/Ro3Emu.LoadTest` | load runner: scenarios S1-S5 with protocol bots |
 | `src/Ro3Emu.Launcher` · `src/Ro3Emu.Patcher` | a player launcher and its content-addressed update engine |
@@ -201,8 +209,9 @@ dotnet test tests/Ro3Emu.Setup.Tests -c Release                         # RO3Emu
 dotnet test tests/Ro3Emu.Patcher.Tests -c Release                       # update engine
 ```
 
-Most server tests need the exported `data/` and are skipped without it. CI runs all three suites on Linux on every
-push. The suite runs as if the machine were in UTC+08, so results don't depend on where it runs
+Tests of content need the exported `data/` and are skipped without it; tests of rules (persistence, retries,
+ownership, logins) run on a small invented data set in `tests/Ro3Emu.Tests/Fixtures/GameData`, so CI runs them too
+([docs/guide/testing.md](docs/guide/testing.md)). CI runs all three suites on Linux on every push. The suite runs as if the machine were in UTC+08, so results don't depend on where it runs
 (`RO3EMU_TEST_HOST_TZ=<zone id>` picks another zone, `host` keeps the real one).
 
 ### Load tests
@@ -242,6 +251,7 @@ flowchart LR
 - **One game loop** owns all game state on a 50 ms tick; network readers only parse and queue, so services need no
   locks of their own.
 - **Persistence off the loop:** stores hand immutable plans to a single writer thread, one transaction per plan.
+  Activity rewards are settled through durable payout obligations ([docs](docs/systems/durable-settlement.md)).
 - **Visibility:** a grid per scene, views capped at the client's own limit, nearest players first; broadcasts are
   serialized once and shared.
 - **Map lines:** busy public maps open more channels and close empty ones.

@@ -11,7 +11,7 @@ public sealed partial class AuctionTests
 {
     private static TaskCompletionSource AuctionSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    [ClientDataFact]
+    [Fact]
     public async Task DungeonRewardRestagesWhenParticipantProgressChangesDuringAdmission()
     {
         await using var alice = await InWorld("RollAlice");
@@ -81,7 +81,7 @@ public sealed partial class AuctionTests
         Assert.True(Service<AuctionStore>().GetRun(runId)!.Finalized);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task HeldBidDefersSettlementWithoutBlockingUnrelatedRole()
     {
         await using var alice = await InWorld("HoldAlice");
@@ -136,7 +136,7 @@ public sealed partial class AuctionTests
         Assert.Single(Mailbox(alice).Letters, letter => letter.DeliveryKey == $"auction:{row.Id}:award");
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task SlowNoticeDoesNotRetainBidParticipants()
     {
         await using var alice = await InWorld("NoteAlice");
@@ -166,7 +166,7 @@ public sealed partial class AuctionTests
         Assert.Single(Mailbox(alice).Letters, letter => letter.DeliveryKey.StartsWith($"auction:{row.Id}:outbid:"));
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task PreStackWaitsForPublicEscrowApplyBeforeReadingPersonalCount()
     {
         await using var alice = await InWorld("StackAlice");
@@ -205,7 +205,7 @@ public sealed partial class AuctionTests
         Assert.Equal(1, stack.PreItems[Entry].PreBuyNum);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task FailedFixedBuyLeavesEscrowAndMailUntouched()
     {
         await using var alice = await InWorld("FailAlice");
@@ -228,7 +228,7 @@ public sealed partial class AuctionTests
         Assert.Equal(AuctionState.Settled, Service<AuctionStore>().Get(row.Id)!.State);
     }
 
-    [ClientDataFact]
+    [Fact]
     public async Task DeletedEscrowRecipientLeavesOneDurableRecoveryObligation()
     {
         var roles = Service<RoleStore>();

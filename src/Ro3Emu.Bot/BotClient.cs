@@ -185,6 +185,15 @@ public sealed class BotClient : IAsyncDisposable
         });
     }
 
+    /// <summary>Another ConnectServerReq{NewConnection} on the open game connection (tests: an account switch on one
+    /// connection); returns the gate's answer.</summary>
+    public async Task<ConnectServerResp.Types.RespType> ConnectAgainAsync(byte[] engineToken)
+    {
+        using var connectExpected = _inbox.Expect(e => e.Kind == BotEventKind.ConnectResponse);
+        await SendWithDrainAsync(_game!, 3, new ConnectServerReq { Type = ConnectServerReq.Types.ReqType.NewConnection, Token = ByteString.CopyFrom(engineToken) });
+        return (await connectExpected.WaitAsync(Timeout, _cts.Token)).ConnectResult;
+    }
+
     public async Task<AccountLoginCreateRoleResp> CreateRoleAsync(string name, int sex = 1, int hair = 0)
     {
         return await StageAsync("create-role", async () =>

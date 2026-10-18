@@ -135,6 +135,31 @@ public static partial class EconomySnapshotReader
             }
         }
 
+        /// <summary>Mock Battle obligations hold a frozen result and the DropPools to roll, never goods: those arrive
+        /// with the role's event/casual-battle receipt. An unpaid row with pools is an earned but unrolled reward.</summary>
+        private void ReadCasualBattle()
+        {
+            using var read = Command("SELECT source_key,role_id,payout,delivered FROM casual_battle_obligation ORDER BY source_key");
+            using var row = read.ExecuteReader();
+            int rowNumber = 0;
+            while (row.Read()) Guard("casual_battle_obligation/row/" + rowNumber++, () =>
+            {
+                string key = "casual_battle_obligation/" + SqlText(row, 0);
+                byte[] payout = SqlBlob(row, 2);
+                Measure("casual_battle_obligation", payout.Length, true);
+                long delivered = SqlLong(row, 3);
+                if (delivered is not (0 or 1)) throw new InvalidDataException("Invalid Mock Battle delivery marker.");
+                using var doc = Json(payout);
+                var value = doc.RootElement;
+                Fields(value, "MatchId RoleId BattleTime ResultId Won Outcome StartMmr MmrDelta Stats Pools");
+                Fields(Prop(value, "Stats"), "PersonalScore Damage Kills Assists DamageTaken Healing");
+                if (Long(value, "RoleId") != SqlLong(row, 1)) throw new InvalidDataException("Mock Battle payout role mismatch.");
+                if (delivered == 0 && Elements(Prop(value, "Pools")).Any())
+                    Issue(EconomyIssueKind.RecoveryDebt, key,
+                        "Unpaid Mock Battle DropPools; random contents cannot be resolved at read time.");
+            });
+        }
+
         private void ReadEventTimedBattle(long? role)
         {
             using var read = Command("SELECT source_key,role_id,grants,delivered FROM timed_battle_obligation" +

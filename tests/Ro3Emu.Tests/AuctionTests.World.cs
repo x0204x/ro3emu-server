@@ -8,7 +8,7 @@ namespace Ro3Emu.Tests;
 
 /// <summary>World Auction (type 2) and Event Auction (type 3): creation, visibility on the client's own queries,
 /// bidding, settlement, dividends and restart idempotency (AuctionService.World.cs).</summary>
-public sealed partial class AuctionTests
+public sealed partial class AuctionContentTests
 {
     private const int NoviceActivity = 10000001, EventTab = 3001;
 

@@ -12,9 +12,15 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
+      # Tests that need the client's exported game data are skipped here; the synthetic fixture
+      # (tests/Ro3Emu.Tests/Fixtures/GameData, docs/testing.md) lets the rest run.
       - name: Server tests
-        run: dotnet test tests/Ro3Emu.Tests -c Release --filter "Category!=Slow"
+        run: dotnet test tests/Ro3Emu.Tests -c Release --filter "Category!=Slow" --logger "trx;LogFileName=server.trx" --results-directory TestResults
       - name: Patcher tests
-        run: dotnet test tests/Ro3Emu.Patcher.Tests -c Release
+        run: dotnet test tests/Ro3Emu.Patcher.Tests -c Release --logger "trx;LogFileName=patcher.trx" --results-directory TestResults
       - name: Setup tests (RO3Emu.exe, data export, installer)
-        run: dotnet test tests/Ro3Emu.Setup.Tests -c Release --filter "Category!=Slow"
+        run: dotnet test tests/Ro3Emu.Setup.Tests -c Release --filter "Category!=Slow" --logger "trx;LogFileName=setup.trx" --results-directory TestResults
+      - name: Executed and skipped tests
+        if: always()
+        shell: pwsh
+        run: ./tools/test-summary.ps1 -Results TestResults
