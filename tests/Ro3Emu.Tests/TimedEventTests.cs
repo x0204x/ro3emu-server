@@ -507,9 +507,12 @@ public sealed class TimedEventTests : IAsyncLifetime
             Assert.Equal(50, Service<CharacterService>().CountOf(Session(alice), 6));
             Assert.Equal(150, Service<CharacterService>().CountOf(Session(bob), 6));
             Assert.Equal(20, Service<CharacterService>().CountOf(Session(bob), 17));
+            var rankAwardRow = Service<GameData>().Row("DragonIslandLevelConfig", result.NewRankId)!.Value;
+            var rankAward = Service<AwardService>().ResolveDirect(Session(alice), GameData.Int(rankAwardRow, "_iAward"));
+            int expectedShardCount = rankAward.Grants.Where(g => g.Entry == 1200000).Sum(g => g.Count);
             await alice.SendGameAsync(TimedBattleService.DragonClaim, new DragonIslandClaimRankRewardReq());
             Assert.Equal(0, (await Next(alice, TimedBattleService.DragonClaim, DragonIslandClaimRankRewardRes.Parser)).ErrorCode);
-            Assert.Equal(10, Service<CharacterService>().CountOf(Session(alice), 1200000));
+            Assert.Equal(expectedShardCount, Service<CharacterService>().CountOf(Session(alice), 1200000));
             await alice.SendGameAsync(TimedBattleService.DragonClaim, new DragonIslandClaimRankRewardReq());
             Assert.Equal(ErrorCodes.TaskRequirements,
                 (await Next(alice, TimedBattleService.DragonClaim, DragonIslandClaimRankRewardRes.Parser)).ErrorCode);

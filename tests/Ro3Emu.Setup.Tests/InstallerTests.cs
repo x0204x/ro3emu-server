@@ -207,19 +207,21 @@ public sealed class InstallerTests : IAsyncLifetime
     [Fact]
     public async Task ResumesAnInterruptedDownloadAndMovesToTheNextOrigin()
     {
-        var content = Publish(TwoPackages());
-        var big = Zip(TwoPackages()["p2"]);
+        var packages = TwoPackages();
+        var content = Publish(packages);
+        var big = Zip(packages["p2"]);
         var path = $"pkg/{Sha(big)}.zip";
         int served = 0;
-        // Origin a: the first request breaks off halfway, later ones fail; origin b serves ranges.
+        // Origin a: the first request ends halfway, later ones fail; origin b serves ranges.
         _faults["a/" + path] = async context =>
         {
             if (Interlocked.Increment(ref served) == 1)
             {
-                context.Response.ContentLength = big.Length;
-                await context.Response.Body.WriteAsync(big.AsMemory(0, big.Length / 2));
-                await context.Response.Body.FlushAsync();
-                context.Abort();
+                int half = big.Length / 2;
+                context.Response.StatusCode = StatusCodes.Status206PartialContent;
+                context.Response.ContentLength = half;
+                context.Response.Headers.ContentRange = $"bytes 0-{half - 1}/{big.Length}";
+                await context.Response.Body.WriteAsync(big.AsMemory(0, half));
                 return true;
             }
             context.Response.StatusCode = 503;
