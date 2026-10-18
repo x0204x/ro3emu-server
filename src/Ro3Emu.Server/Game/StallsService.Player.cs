@@ -21,7 +21,7 @@ public sealed partial class StallsService
     private int NameError(GameSession s, string title) => string.IsNullOrWhiteSpace(title) || title.Any(char.IsControl)
         || title.EnumerateRunes().Count() > nameMaxLength && title != DefaultTitle(s) ? ErrorCodes.StallName : 0;
 
-    private string DefaultTitle(GameSession s) => data.Text(37824).Replace("${1}", s.Role?.Name ?? "");
+    private string DefaultTitle(GameSession s) => data.ClientText(37824).Replace("${1}", s.Role?.Name ?? "");
 
     private int MaxGrid(GameSession s)
     {

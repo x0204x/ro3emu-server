@@ -188,7 +188,7 @@ public sealed partial class TimedBattleService
         var chest = new ChickenChestUnit
         {
             Uid = ChestUidBase | Interlocked.Increment(ref chestSerial), SceneEntry = ChickenScene, InstanceId = match.Room!.Id,
-            X = at.X, Y = at.Y, Z = at.Z, Face = at.Face, NpcId = npcId, Name = data.TextOf(npc, "_kName"),
+            X = at.X, Y = at.Y, Z = at.Z, Face = at.Face, NpcId = npcId, Name = data.ClientTextOf(npc, "_kName"),
             Quality = BoxDrop.ContainsKey(npcId) && npcId < 15000600 ? npcId - 15000500 : 0, Wire = item => Wire(item),
         };
         fill(chest);

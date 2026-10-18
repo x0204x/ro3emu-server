@@ -230,7 +230,7 @@ public sealed partial class WorldData(IOptions<ServerOptions> options, GameData 
                 // by floor(y*10) (LC_InteractManager.lua:612-644).
                 if (kind == WorldNpcKind.Kafra && map.Nav?.WalkHeight(x, z, y) is { } ground) y = ground;
                 npcs.Add(new WorldNpc(NpcUidBase | sceneEntry << 16 | (long)npcs.Count, sceneEntry, kind, npcId,
-                    data.TextOf(npcRow, "_kName"), (int)GameData.Int(npcRow, "_iCamp"), x, y, z, face, e));
+                    data.ClientTextOf(npcRow, "_kName"), (int)GameData.Int(npcRow, "_iCamp"), x, y, z, face, e));
             }
         }
         if (_pointNpcs.TryGetValue(sceneEntry, out var placed)
@@ -240,7 +240,7 @@ public sealed partial class WorldData(IOptions<ServerOptions> options, GameData 
                 if (!spawnPoints.TryGetProperty(pointId.ToString(System.Globalization.CultureInfo.InvariantCulture), out var p)
                     || !p.TryGetProperty("position", out var pos) || data.Row("NPCConfig", npcId) is not { } npcRow) continue;
                 npcs.Add(new WorldNpc(NpcUidBase | sceneEntry << 16 | (long)npcs.Count, sceneEntry, WorldNpcKind.Npc, npcId,
-                    data.TextOf(npcRow, "_kName"), (int)GameData.Int(npcRow, "_iCamp"), WorldNpc.Float(pos, "x"),
+                    data.ClientTextOf(npcRow, "_kName"), (int)GameData.Int(npcRow, "_iCamp"), WorldNpc.Float(pos, "x"),
                     WorldNpc.Float(pos, "y"), WorldNpc.Float(pos, "z"), WorldNpc.Float(p, "direction"), p));
             }
         var spawnGroups = LoadSpawnGroups(se);

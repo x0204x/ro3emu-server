@@ -17,6 +17,7 @@ public static class ClientPatcher
     private const string ServerListPathAndQuery = ServerListPath + "?inline=true&force_refresh=true";
     private const string PemMarker = "-----BEGIN RSA PUBLIC KEY-----";
 
+    private const string AsiaProfileFile = "RO3.AsiaProfile.dll";
     private static readonly string[] PatchedFiles = ["Happyengine.Network.dll", "Assembly-CSharp.dll", "Phonest.Common.dll", "Happyengine.Base.Runtime.dll", "Unity.TextMeshPro.dll", "HUD.dll", "HappyEngine.Resource.dll", "UnityEngine.UI.dll"];
 
     /// <summary>--verbose: GS_Debug.ShowLog always true, so the Lua debug logs (Lua_Debug reads it) reach Player.log.</summary>
@@ -49,7 +50,8 @@ public static class ClientPatcher
         var backup = BackupDir(clientDir);
         Directory.CreateDirectory(backup);
         var record = ReadRecord(backup);
-        foreach (var file in PatchedFiles)
+        var files = FilesToPatch(clientDir);
+        foreach (var file in files)
         {
             var saved = Path.Combine(backup, file);
             var current = Path.Combine(managed, file);
@@ -78,10 +80,11 @@ public static class ClientPatcher
         File.Copy(locDll, Path.Combine(managed, LocFile), overwrite: true);
         Console.WriteLine($"installed {LocFile}");
 
-        foreach (var file in PatchedFiles)
+        foreach (var file in files)
         {
             Func<ModuleDefinition, string>? extra = file switch
             {
+                AsiaProfileFile => m => AsiaProfilePatch.Patch(m, serverBaseUrl, LoginPath, ServerListPathAndQuery),
                 "Assembly-CSharp.dll" => m => RedirectChat(m, hooksDll) + "; " + VoiceStubPatch.Patch(m) + "; " + TextSink.PatchLanguageGet(m, locDll),
                 "Happyengine.Base.Runtime.dll" when VerboseLogs => ForceShowLog,
                 "Unity.TextMeshPro.dll" => m => TextSink.PatchTmp(m, locDll, hooksDll),
@@ -93,7 +96,7 @@ public static class ClientPatcher
             RewriteStrings(clientDir, file, rules, extra);
         }
 
-        File.WriteAllLines(Path.Combine(backup, PatchedRecord), PatchedFiles.Select(f => f + "\t" + Sha256(Path.Combine(managed, f))));
+        File.WriteAllLines(Path.Combine(backup, PatchedRecord), files.Select(f => f + "\t" + Sha256(Path.Combine(managed, f))));
         var missing = rules.Where(r => r.Hits == 0).Select(r => r.Description).ToList();
         if (missing.Count > 0) throw new InvalidOperationException($"literal not found: {string.Join(" | ", missing)} "
             + "(a client build this patcher does not know; open an issue with .ro3-update/installed-release.txt)");
@@ -105,7 +108,7 @@ public static class ClientPatcher
     {
         var managed = ManagedDir(clientDir);
         var backup = BackupDir(clientDir);
-        foreach (var file in PatchedFiles)
+        foreach (var file in PatchedFiles.Append(AsiaProfileFile))
         {
             var saved = Path.Combine(backup, file);
             if (!File.Exists(saved)) continue;
@@ -152,7 +155,7 @@ public static class ClientPatcher
         var managed = ManagedDir(clientDir);
         var problems = new List<string>();
         var rules = Rules("http://127.0.0.1", PemMarker);
-        foreach (var file in PatchedFiles)
+        foreach (var file in FilesToPatch(clientDir))
         {
             var source = File.Exists(Path.Combine(BackupDir(clientDir), file)) ? Path.Combine(BackupDir(clientDir), file) : Path.Combine(managed, file);
             if (!File.Exists(source)) { problems.Add($"{file} is missing"); continue; }
@@ -163,6 +166,11 @@ public static class ClientPatcher
             if (file == "Assembly-CSharp.dll")
             {
                 try { VoiceStubPatch.Patch(assembly.MainModule); } // in memory only: does the voice stub fit this build
+                catch (InvalidOperationException e) { problems.Add(e.Message); }
+            }
+            if (file == AsiaProfileFile)
+            {
+                try { AsiaProfilePatch.Patch(assembly.MainModule, "http://127.0.0.1", LoginPath, ServerListPathAndQuery); }
                 catch (InvalidOperationException e) { problems.Add(e.Message); }
             }
             if (file == "Unity.TextMeshPro.dll" && assembly.MainModule.GetType("TMPro.TMP_Text") == null) problems.Add("TMPro.TMP_Text not found");
@@ -433,6 +441,17 @@ public static class ClientPatcher
         if (!File.Exists(Path.Combine(clientDir, "ro3.exe")) || !Directory.Exists(managed))
             throw new DirectoryNotFoundException($"{clientDir} is not an RO3 client folder (expected ro3.exe and ro3_Data\\Managed)");
         return managed;
+    }
+
+    /// <summary>The Asia Recovery build adds a profile adapter which takes precedence over the URL literals in the
+    /// normal network assemblies. It is optional so the publisher's other PC builds keep the same patch surface.</summary>
+    private static string[] FilesToPatch(string clientDir)
+    {
+        var managed = ManagedDir(clientDir);
+        var backup = BackupDir(clientDir);
+        return File.Exists(Path.Combine(managed, AsiaProfileFile)) || File.Exists(Path.Combine(backup, AsiaProfileFile))
+            ? [.. PatchedFiles, AsiaProfileFile]
+            : PatchedFiles;
     }
 
     private static string BackupDir(string clientDir) => Path.Combine(clientDir, "ro3emu-backup");

@@ -71,9 +71,19 @@ public sealed class WorldRoleOperationsTests : IAsyncLifetime
         {
             var login = await Next(alice, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser);
             potion = login.PackInfo[1].All.Items.Values.Single(i => i.ItemEntry == 1000000).ItemGuid;
+            var emptyQuickUse = Assert.Single(login.QuickUseInfos.All.Value);
+            Assert.Equal((0, 0), (emptyQuickUse.LieQuickUse, emptyQuickUse.ItemEntry));
+            Assert.Equal(100, login.MedicinesAutoUse.All.HpConfig.Condition);
+            Assert.Equal(Enumerable.Range(0, 6), login.ShortcutBarInfos.All.Value.Select(s => s.SlotIndex));
+            Assert.All(login.ShortcutBarInfos.All.Value, s => Assert.Equal(0, s.ItemGuid));
 
             await alice.SendGameAsync(CharacterService.ShortcutBarSave, new ShortcutBarSaveReq { SlotIndex = 0, ItemGuid = potion });
             Assert.Equal(0, (await Next(alice, CharacterService.ShortcutBarSave, ShortcutBarSaveRes.Parser)).Result);
+            var bound = await Next(alice, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser,
+                m => !m.SyncAllMark && m.ShortcutBarInfos?.Inc?.Value.Count == 6);
+            Assert.Equal(potion, bound.ShortcutBarInfos.Inc.Value[0].ItemGuid);
+            Assert.True(bound.ShortcutBarInfos.Inc.Value[0].HasItemGuid);
+            Assert.False(bound.ShortcutBarInfos.Inc.Value[1].HasItemGuid);
             await alice.SendGameAsync(CharacterService.QuickUseSave, new QuickUseSaveReq { LieQuickUse = 0, EntryItem = 1000000 });
             var quick = await Next(alice, CharacterService.QuickUseSave, QuickUseSaveRes.Parser);
             Assert.Equal(0, quick.Result);
@@ -93,6 +103,7 @@ public sealed class WorldRoleOperationsTests : IAsyncLifetime
         await using var again = await InWorld("Alice", create: false);
         var persisted = await Next(again, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser);
         Assert.Equal(19, persisted.PackInfo[1].All.Items[potion].Stack);
+        Assert.Equal(6, persisted.ShortcutBarInfos.All.Value.Count);
         Assert.Contains(persisted.ShortcutBarInfos.All.Value, s => s.SlotIndex == 0 && s.ItemGuid == potion);
         Assert.Equal(1000000, Assert.Single(persisted.QuickUseInfos.All.Value).ItemEntry);
     }
@@ -219,13 +230,17 @@ public sealed class WorldRoleOperationsTests : IAsyncLifetime
     {
         await using (var alice = await InWorld("Alice"))
         {
-            await Next(alice, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser);
+            var initial = await Next(alice, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser);
+            Assert.Equal(100, initial.MedicinesAutoUse.All.HpConfig.Condition);
+            await Gm("alice", "!item 1000100 10");
             var medicine = new MedicinesAutoUseSetReq
             {
                 Type = MedicineAutoUseType.Hp, OpType = MedicineAutoUseOpType.Switch,
                 SetData = new MedicinesAutoUse { IsOpen = true, Condition = 50 },
             };
-            medicine.SetData.ItemEntrys.Add(1000000);
+            medicine.SetData.ItemEntrys.Add(1000100);
+            medicine.SetData.ItemEntrys.Add(0);
+            medicine.SetData.ItemEntrys.Add(0);
             await alice.SendGameAsync(CharacterService.MedicinesAutoUseSet, medicine);
             var saved = await Next(alice, CharacterService.MedicinesAutoUseSet, MedicinesAutoUseSetResp.Parser);
             Assert.Equal(0, saved.Result);
@@ -244,6 +259,7 @@ public sealed class WorldRoleOperationsTests : IAsyncLifetime
         Assert.Equal(1002011, items.CurrentArrowID);
         Assert.True(items.MedicinesAutoUse.All.HpConfig.IsOpen);
         Assert.Equal(50, items.MedicinesAutoUse.All.HpConfig.Condition);
+        Assert.Equal([1000100, 0, 0], items.MedicinesAutoUse.All.HpConfig.ItemEntrys);
     }
 
     [ClientDataFact]

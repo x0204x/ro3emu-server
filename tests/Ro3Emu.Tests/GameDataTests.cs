@@ -28,6 +28,40 @@ public sealed class GameDataTests
         Assert.Equal("Lv. 1 Ore Vein", Data.TextOf(Data.Row("NPCConfig", 7010001)!.Value, "_kName"));
     }
 
+    [Fact]
+    public void ClientVisibleTextUsesTheMatchingSourceLanguageId()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "ro3emu-client-text-" + Guid.NewGuid().ToString("N"));
+        string config = Path.Combine(dir, "config");
+        Directory.CreateDirectory(config);
+        try
+        {
+            File.WriteAllText(Path.Combine(config, "Localization_en.json"),
+                """{"10470000823":{"_iID":10470000823,"_kDes":"Map Vendor"},"2":{"_iID":2,"_kDes":"Girl"},"3":{"_iID":3,"_kDes":"Novice"},"4":{"_iID":4,"_kDes":"Vendor @{1}"}}""");
+            File.WriteAllText(Path.Combine(config, "Localization_zh_CN.json"),
+                """{"10470000823":{"_iID":10470000823,"_kDes":"地图商贩"},"2":{"_iID":2,"_kDes":"少女"},"4":{"_iID":4,"_kDes":"商贩 @{1}"}}""");
+            File.WriteAllText(Path.Combine(config, "Localization_zh_TW.json"),
+                """{"10470000823":{"_iID":10470000823,"_kDes":"地圖商人"},"4":{"_iID":4,"_kDes":"商人 @{1}"}}""");
+            File.WriteAllText(Path.Combine(config, "MapConfig.json"),
+                """{"10111":{"_iID":10111,"_iName":[10470000823]}}""");
+            using var row = JsonDocument.Parse("""{"_kName":[10470000823]}""");
+            var data = new GameData(Options.Create(new ServerOptions { GameDataDir = dir }), NullLogger<GameData>.Instance);
+
+            Assert.Equal("Map Vendor", data.TextOf(row.RootElement, "_kName"));
+            Assert.Equal("地圖商人", data.ClientTextOf(row.RootElement, "_kName"));
+            Assert.Equal("Map Vendor", data.MapName(10111));
+            Assert.Equal("地圖商人", data.ClientMapName(10111));
+            Assert.Equal("少女", data.ClientText(2)); // no zh_TW row: use zh_CN
+            Assert.Equal("Novice", data.ClientText(3)); // neither Chinese table has the id: use English
+            using var templated = JsonDocument.Parse("""{"_kName":[4,"A"]}""");
+            Assert.Equal("商人 A", data.ClientTextOf(templated.RootElement, "_kName"));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
     [ClientDataFact]
     public void SkillRowsRemainValidAfterFileParseAndConcurrentAccess()
     {

@@ -221,6 +221,14 @@ public sealed class LevelDropEnergyRulesTests : IAsyncLifetime
         Assert.Equal([(2, 100)], Roll(85, DropAttenuation.NoMonster));
     }
 
+    [ClientDataFact]
+    public void ExpCurveDropGroupsAreImplicitGuaranteedBaseExp()
+    {
+        var drops = new List<(int, int)>();
+        Service<RewardService>().PickFromGroup(3005, new RoleProgress { Career = 1000, Level = 5 }, drops);
+        Assert.Equal([(100, 5)], drops);
+    }
+
     // ---- 8. mount energy ----
 
     [ClientDataFact]

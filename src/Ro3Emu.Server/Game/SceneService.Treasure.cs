@@ -35,7 +35,7 @@ public sealed partial class SceneService
             || TreasurePoint(hunt.PointId) is not { } target || target.Scene != session.SceneEntry
             || data.Row("NPCConfig", TreasureNpcId) is not { } npcRow) return;
         var npc = new WorldNpc(TreasureUid(session), target.Scene, WorldNpcKind.Npc, TreasureNpcId,
-            data.TextOf(npcRow, "_iName"), (int)Data.GameData.Int(npcRow, "_iCamp"),
+            data.ClientTextOf(npcRow, "_kName"), (int)Data.GameData.Int(npcRow, "_iCamp"),
             target.Position.X, target.Position.Y, target.Position.Z, target.Position.Face, default);
         var view = new AoIViewChangeData();
         view.Bases.Add(NpcEntity(npc));

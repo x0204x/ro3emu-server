@@ -116,7 +116,7 @@ public sealed partial class DungeonService
             {
                 Uid = SceneActorUidBase | Interlocked.Increment(ref sceneActorSerial), SceneEntry = a.Plan.SceneEntry,
                 InstanceId = a.Room.Id, X = at.X, Y = at.Y, Z = at.Z, Face = at.Face, NpcId = spec.NpcId, Point = spec.Point,
-                EntityType = type, Camp = GameData.Int(row, "_iCamp"), Name = type == 2 ? data.TextOf(row, "_kName") : "",
+                EntityType = type, Camp = GameData.Int(row, "_iCamp"), Name = type == 2 ? data.ClientTextOf(row, "_kName") : "",
                 Template = type == 1 ? monsters.Template(spec.NpcId) : null, BornMs = MonsterService.NowMs,
             };
             unit.Buffs.AddRange(spec.Buffs.Select(id => ActorBuff(unit, id)));

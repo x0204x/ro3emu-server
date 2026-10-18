@@ -46,8 +46,8 @@ public sealed partial class StallsService
                             EconomyCompartment.Stall, new(EconomyOwnerKind.System, id.ToString(CultureInfo.InvariantCulture)));
                 row = new StallRow
                 {
-                    Key = SystemKey(id), SystemId = id, Scene = location[2], Title = data.Text(Param("StallsSystemDefaultName", 181000)),
-                    OwnerName = data.Text(Param("StallsSystemDefaultRoleName", 182000)), Career = (int)Field(trigger, "_kJob").FirstOrDefault(1000),
+                    Key = SystemKey(id), SystemId = id, Scene = location[2], Title = data.ClientText(Param("StallsSystemDefaultName", 181000)),
+                    OwnerName = data.ClientText(Param("StallsSystemDefaultRoleName", 182000)), Career = (int)Field(trigger, "_kJob").FirstOrDefault(1000),
                     Level = (int)Field(trigger, "_kLevel").FirstOrDefault(1), Sex = 1,
                     X = location[3], Z = location[4], OpenTime = Now, Timeout = Now + Param("StallsSystemTime", 259200),
                     MaxGrid = goods.Length, RestockTime = Now + Param("StallsSystemRestockCD", 600),

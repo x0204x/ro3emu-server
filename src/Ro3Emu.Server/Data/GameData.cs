@@ -17,6 +17,7 @@ public sealed class GameData(IOptions<ServerOptions> options, ILogger<GameData> 
     private readonly Dictionary<string, Dictionary<string, JsonElement>> _tables = new();
     private readonly object _sync = new();
     private volatile Dictionary<long, string>? _texts;
+    private volatile Dictionary<long, string>? _clientTexts;
     private volatile FrozenDictionary<string, Dictionary<string, JsonElement>>? _frozen;
 
     private string Root => options.Value.GameDataDir ?? options.Value.DataDir;
@@ -81,7 +82,8 @@ public sealed class GameData(IOptions<ServerOptions> options, ILogger<GameData> 
             foreach (var (key, table) in loaded) _tables.TryAdd(key, table);
             _frozen = _tables.ToFrozenDictionary();
         }
-        Text(0); // builds the text index
+        Text(0); // builds the English text index used by server rules and logs
+        ClientText(0); // builds the source-language index used for strings sent to the client
         log.LogInformation("Game data preloaded: {Tables} tables in {Ms} ms, managed heap {Mb} MB",
             files.Length, watch.ElapsedMilliseconds, GC.GetTotalMemory(false) >> 20);
     }
@@ -110,16 +112,53 @@ public sealed class GameData(IOptions<ServerOptions> options, ILogger<GameData> 
         return texts.TryGetValue(id, out var text) ? text : "";
     }
 
+    /// <summary>
+    /// Traditional Chinese text sent in client-visible string fields. Some overhead labels bypass the patched client
+    /// text setters, so resolving zh_TW on the server is required. Missing zh_TW rows fall back through zh_CN to English.
+    /// Server rules keep using <see cref="Text"/> so English searches and comparisons do not change.
+    /// </summary>
+    public string ClientText(long id)
+    {
+        var texts = _clientTexts;
+        if (texts == null)
+            lock (_sync)
+            {
+                texts = _clientTexts;
+                if (texts == null)
+                {
+                    texts = new();
+                    foreach (string table in new[] { "Localization_zh_TW", "Localization_zh_CN" })
+                    {
+                        foreach (var (_, row) in Table(table))
+                        {
+                            if (row.TryGetProperty("_iID", out var tid) && row.TryGetProperty("_kDes", out var des)
+                                && des.ValueKind == JsonValueKind.String)
+                                texts.TryAdd(tid.GetInt64(), des.GetString()!);
+                        }
+                    }
+                    _clientTexts = texts;
+                }
+            }
+        return texts.TryGetValue(id, out var text) ? text : Text(id);
+    }
+
     /// <summary>Text of a field holding [textId, ...].</summary>
     /// <summary>
     /// A localized text field [textId, param1, param2, ...]: the text with @{n} replaced by the n-th parameter, as the
     /// client's GetWordNew does (NPCConfig 7010001 _kName [10470000361, "1"] is "Lv. 1 Ore Vein").
     /// </summary>
     public string TextOf(JsonElement row, string field)
+        => TextOf(row, field, Text);
+
+    /// <summary>Source-language text of a localized field for a client-visible wire string.</summary>
+    public string ClientTextOf(JsonElement row, string field)
+        => TextOf(row, field, ClientText);
+
+    private static string TextOf(JsonElement row, string field, Func<long, string> resolve)
     {
         if (!row.TryGetProperty(field, out var v) || v.ValueKind != JsonValueKind.Array || v.GetArrayLength() == 0 || !v[0].TryGetInt64(out var id))
             return "";
-        string text = Text(id);
+        string text = resolve(id);
         for (int i = 1; i < v.GetArrayLength(); i++)
         {
             string placeholder = "@{" + i + "}";
@@ -209,6 +248,9 @@ public sealed class GameData(IOptions<ServerOptions> options, ILogger<GameData> 
     }
 
     public string MapName(long sceneEntry) => Row("MapConfig", sceneEntry) is { } row ? TextOf(row, "_iName") : "";
+
+    /// <summary>Source-language map name for a client-visible wire string.</summary>
+    public string ClientMapName(long sceneEntry) => Row("MapConfig", sceneEntry) is { } row ? ClientTextOf(row, "_iName") : "";
 }
 
 /// <summary>Runs <see cref="GameData.Preload"/> at startup, before the game loop and the gates start.</summary>

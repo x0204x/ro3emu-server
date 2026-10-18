@@ -35,7 +35,9 @@ public sealed partial class CharacterService
         [(1600301, 50), (1600501, 55), (1600502, 60), (1600503, 70), (1600504, 80), (1600505, 90)];
     private const int StatPlanCount = 5; // PublicParamConfig.SchemeNum=5 (inferred for attribute plans).
     private const int StatPlanNameLimit = 8; // PublicParamConfig.SchemeNameNumMax=8.
-    private const int ShortcutSlotLimit = 12; // (inferred) bounded by the visible bar; no server field declares its size.
+    // D Asia's PC main-bar controller constructs exactly six item slots. Its incremental handler only updates a
+    // slot that was present in the first 5009 snapshot, so BuildItems also projects all six positions on the wire.
+    private const int ShortcutSlotLimit = 6;
 
     private void LoadStatPlans(GameSession session)
     {
@@ -187,8 +189,12 @@ public sealed partial class CharacterService
         int result = !validType || req.OpType is < MedicineAutoUseOpType.Switch or > MedicineAutoUseOpType.Medicine
             || req.SetData == null || req.SetData.Condition is < 0 or > 100 || req.SetData.ItemEntrys.Count > 8
             ? ErrorCodes.Parameter : 0;
-        if (result == 0 && req.SetData!.ItemEntrys.Any(entry => entry <= 0 || data.Row("ItemConfig", entry) is not { } row
-            || GameData.Int(row, "_iIsUse") == 0)) result = ErrorCodes.ItemNoConfig;
+        // The client keeps empty medicine positions as zeroes. HP entries must match its own candidate rule:
+        // ItemConfig._iCanAuto contains both 1 and 3. Ignore zero placeholders when validating removals.
+        if (result == 0 && req.SetData!.ItemEntrys.Where(entry => entry != 0).Any(entry => entry < 0
+            || data.Row("ItemConfig", entry) is not { } row || GameData.Int(row, "_iIsUse") == 0
+            || req.Type == MedicineAutoUseType.Hp && (!HasAutoMode(row, 1) || !HasAutoMode(row, 3))))
+            result = ErrorCodes.ItemNoConfig;
         var nextInfo = session.BagState.Info.Clone();
         var saved = nextInfo.MedicinesAutoUse ?? new MedicinesAutoUseSet();
         if (result == 0)
@@ -202,6 +208,10 @@ public sealed partial class CharacterService
         { Result = result, Type = req.Type, SetData = (req.Type == MedicineAutoUseType.Hp ? saved.HpConfig : saved.SpConfig)?.Clone() });
         if (result == 0) await SyncItemsAsync(session);
     }
+
+    private static bool HasAutoMode(System.Text.Json.JsonElement row, int mode) =>
+        row.TryGetProperty("_iCanAuto", out var modes) && modes.ValueKind == System.Text.Json.JsonValueKind.Array
+        && modes.EnumerateArray().Any(value => GameData.Number(value) == mode);
 
     /// <summary>31324 sets the equipped arrow entry; count comes from actually owned bag stacks.</summary>
     public async Task ArrowSwitchAsync(GameSession session, ItemArrowSwitchReq req)

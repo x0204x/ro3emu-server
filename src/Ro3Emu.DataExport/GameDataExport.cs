@@ -6,7 +6,7 @@ namespace Ro3Emu.DataExport;
 
 /// <summary>
 /// Everything the server reads from the client, exported in one go from a client folder into a data folder:
-/// config/ (DataConfig, ComplexConfig and Localization_en tables), sceneeditor/, skills/, nav/, msgtable.tsv, plus
+/// config/ (DataConfig, ComplexConfig, Localization_en, Localization_zh_CN and Localization_zh_TW tables), sceneeditor/, skills/, nav/, msgtable.tsv, plus
 /// loc_en.tsv (the English map for the client, see <see cref="LocMapBuilder"/>) and export.json (what was exported
 /// from which client). The new tables are written next to the old ones and swapped in at the end, so a failed or
 /// cancelled export leaves the previous one intact. Nothing in the client folder is written.
@@ -14,7 +14,7 @@ namespace Ro3Emu.DataExport;
 public static class GameDataExport
 {
     /// <summary>Bumped when the export's output changes, so RO3Emu.exe exports again after an update of itself.</summary>
-    public const int FormatVersion = 1;
+    public const int FormatVersion = 3;
 
     public static readonly string[] Folders = ["config", "sceneeditor", "skills", "nav"];
 
@@ -176,8 +176,11 @@ public static class GameDataExport
         Tables("Exporting the English texts", Path.Combine(staged, "config"), "Localization_en.luac");
         var scene = Tables("Exporting the maps", Path.Combine(staged, "sceneeditor"), @"Config\SceneEditor");
         var skills = Tables("Exporting the skills", Path.Combine(staged, "skills"), @"Config\Skill");
-        var locDir = Path.Combine(work, "loc");
+        // Keep the Chinese tables next to Localization_en. Some client-visible wire strings (for example overhead NPC
+        // names) bypass the patched text setters, so the server resolves their matching zh_TW text id directly.
+        var locDir = Path.Combine(staged, "config");
         Tables("Exporting the Chinese texts", locDir, "Localization_zh_CN.luac");
+        Tables("Exporting the Traditional Chinese texts", locDir, "Localization_zh_TW.luac");
 
         var mapResource = Path.Combine(staged, "config", "MapResource.json");
         if (!File.Exists(mapResource)) throw new ExportException("The game tables could not be exported (no MapResource table). Is this a complete Ragnarok 3 PC client?");

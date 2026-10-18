@@ -108,7 +108,7 @@ public sealed partial class MapTests : IAsyncLifetime
 
         await Gm("alice", "!warp 10111 156 192"); // PublicParamConfig.SpawnScenePos
         var town = (await FollowSceneChange(alice)).Npcs;
-        Assert.Equal("Kafra Staff", town.Bases.First(b => b.EntityTemplateID == 200015).Name);
+        Assert.Equal("卡普拉職員", town.Bases.First(b => b.EntityTemplateID == 200015).Name);
         Assert.Contains(town.Bases, b => b.EntityTemplateID == 300001); // portal to Prontera
     }
 
@@ -221,6 +221,7 @@ public sealed partial class MapTests : IAsyncLifetime
         // The killer gets the drop tables' Base EXP (item 100) as exp: a 5066 increment.
         var exp = await Next(alice, CharacterService.RoleBaseInfoSync, RoleBaseInfoIncrement.Parser, m => !m.SyncAllMark && m.HasExp);
         Assert.True(exp.Exp > 0 || exp.HasLevel);
+        Assert.True(exp.JobExp > 0 || exp.HasJobLevel);
         // The kill counts for the quest: 5027 completeNum 1 of 20.
         var quest = await Next(alice, TaskService.TaskInfoSync, DBTaskInfoIncrement.Parser, m => m.Infos.TryGetValue(10101220, out var t) && t.Inc != null);
         Assert.Equal([1L], quest.Infos[10101220].Inc.CompleteNum.All.Value);

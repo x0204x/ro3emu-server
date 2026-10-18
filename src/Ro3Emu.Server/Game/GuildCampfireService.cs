@@ -310,7 +310,7 @@ public sealed class GuildCampfireService : IGameTicker
     {
         if (data.Row("NPCConfig", configId) is not { } row) return;
         var npc = new WorldNpc(Uid(room, pointId), Dungeon, WorldNpcKind.Npc, configId,
-            data.TextOf(row, "_kName"), (int)GameData.Int(row, "_iCamp"),
+            data.ClientTextOf(row, "_kName"), (int)GameData.Int(row, "_iCamp"),
             point.X, point.Y, point.Z, point.Face, default);
         view.Bases.Add(SceneService.NpcEntity(npc));
     }

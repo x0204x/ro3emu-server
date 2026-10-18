@@ -312,23 +312,34 @@ public sealed class RewardService
     {
         if (data.Row("DropGroupConfig", group) is not { ValueKind: JsonValueKind.Array } rows) return;
         var p = progress;
+        // D Asia omits _iWeights for an unweighted row; that row still participates with weight one (for example
+        // group 105, and the equal-choice item groups). An explicitly serialized zero remains disabled. Groups
+        // 3000..3999 are level-banded EXP curves: they also omit _kDropItem, while min/max carry the EXP amount.
+        bool expCurve = group is >= 3000 and < 4000;
+        long Weight(JsonElement row)
+        {
+            bool hasItem = row.TryGetProperty("_kDropItem", out _);
+            if (!hasItem && (!expCurve || !row.TryGetProperty("_iMinNumber", out _)
+                    || !row.TryGetProperty("_iMaxNumber", out _))) return 0;
+            return row.TryGetProperty("_iWeights", out _) ? GameData.Int(row, "_iWeights") : 1;
+        }
         var candidates = rows.EnumerateArray().Where(r =>
         {
-            if (GameData.Int(r, "_iWeights") <= 0 || GameData.Int(r, "_iQuestLimit") != 0 || GameData.Int(r, "_iActivityid") != 0) return false;
+            if (Weight(r) <= 0 || GameData.Int(r, "_iQuestLimit") != 0 || GameData.Int(r, "_iActivityid") != 0) return false;
             long min = GameData.Int(r, "_iMinLevelLimit"), max = GameData.Int(r, "_iMaxLevelLimit");
             if (p.Level < min || max > 0 && p.Level > max) return false;
             return !r.TryGetProperty("_iJobLimit", out var jobs) || jobs.ValueKind != JsonValueKind.Array || jobs.GetArrayLength() == 0
                    || jobs.EnumerateArray().Any(j => GameData.Number(j) == p.Career);
         }).ToList();
-        long total = candidates.Sum(r => GameData.Int(r, "_iWeights"));
+        long total = candidates.Sum(Weight);
         if (total <= 0) return;
         long roll = (long)(_random.NextDouble() * total);
         foreach (var r in candidates)
         {
-            roll -= GameData.Int(r, "_iWeights");
+            roll -= Weight(r);
             if (roll >= 0) continue;
             int count = _random.Next((int)GameData.Int(r, "_iMinNumber"), (int)Math.Max(GameData.Int(r, "_iMinNumber"), GameData.Int(r, "_iMaxNumber")) + 1);
-            int entry = (int)GameData.Int(r, "_kDropItem");
+            int entry = r.TryGetProperty("_kDropItem", out _) ? (int)GameData.Int(r, "_kDropItem") : BaseExpItem;
             int amount = attenuation.Apply(r, Math.Max(1, count), p.Level, monsterLevel, _random);
             if (amount <= 0) return;
             drops.Add((entry, amount));

@@ -94,7 +94,7 @@ public sealed partial class TimedBattleService
             });
         if (added.Length > 0)
             foreach (long map in added.Select(s => s.Map).Distinct())
-                loop.PostRuntime(() => RiftChatAsync(RiftOpenChat, data.MapName(map), "1"));
+                loop.PostRuntime(() => RiftChatAsync(RiftOpenChat, data.ClientMapName(map), "1"));
     }
 
     private void PlaceRiftRound(Random rng)
@@ -185,7 +185,7 @@ public sealed partial class TimedBattleService
     {
         var npc = data.Row("NPCConfig", stone.StoneNpc);
         var entity = SceneService.NpcEntity(new WorldNpc(stone.Uid, stone.Map, WorldNpcKind.Npc, stone.StoneNpc,
-            npc is { } n ? data.TextOf(n, "_kName") : "", npc is { } c ? (int)GameData.Int(c, "_iCamp") : 0,
+            npc is { } n ? data.ClientTextOf(n, "_kName") : "", npc is { } c ? (int)GameData.Int(c, "_iCamp") : 0,
             stone.Point.X, stone.Point.Y, stone.Point.Z, stone.Point.Face, default));
         entity.CustomDatas.Add(RiftInfo(stone));
         return entity;

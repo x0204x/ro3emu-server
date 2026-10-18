@@ -195,7 +195,7 @@ public sealed class GatheringService : IGameTicker
                 X = pos.X, Y = pos.Y, Z = pos.Z, Face = point.Position.Face,
                 Source = point, NpcId = npcId, CollectionId = collectionId, InteractionId = interactionId,
                 GenerationId = Guid.NewGuid().ToString("N"),
-                Name = data.TextOf(npc, "_kName"), Camp = (int)GameData.Int(npc, "_iCamp"),
+                Name = data.ClientTextOf(npc, "_kName"), Camp = (int)GameData.Int(npc, "_iCamp"),
                 InteractDistance = Math.Max(1, GameData.Int(npc, "_iInteractDistance")),
                 SharedLimit = NthInt(npc, "_iCTimes", 0), PersonalLimit = NthInt(npc, "_iCTimes", 1),
                 CooldownSeconds = Math.Max(0, (int)GameData.Int(npc, "_iInterval")),

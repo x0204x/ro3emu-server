@@ -97,9 +97,23 @@ public sealed partial class CharacterService
         var p = session.Progress!;
         var info = new DBItemsInfo { AutoDecomposeSetting = session.AutoDecompose.Clone() };
         var preferences = session.BagState.Info;
-        info.QuickUseInfos.Add(preferences.QuickUseInfos);
-        info.ShortcutBarInfos.Add(preferences.ShortcutBarInfos);
-        info.MedicinesAutoUse = preferences.MedicinesAutoUse?.Clone();
+        // D Asia creates KnapsackShortcutBinding only when quickUseInfos is present in the first 5009 snapshot.
+        // Keep the stored form sparse, but always publish its one supported slot to the client.
+        info.QuickUseInfos.Add(preferences.QuickUseInfos.FirstOrDefault(i => i.LieQuickUse == 0)?.Clone()
+            ?? new QuickUseSaveInfo { LieQuickUse = 0, ItemEntry = 0 });
+        // Keep persisted preferences sparse, but make the client-facing list positional and stable. D Asia's Lua
+        // change handler ignores an update for an absent slot; a dense first snapshot lets later saves/removals
+        // travel as element-wise AUTO_SYNC increments and appear without a scene reload.
+        for (int slot = 0; slot < ShortcutSlotLimit; slot++)
+        {
+            long itemGuid = preferences.ShortcutBarInfos.FirstOrDefault(i => i.SlotIndex == slot)?.ItemGuid ?? 0;
+            info.ShortcutBarInfos.Add(new ShortcutBarInfo { SlotIndex = slot, ItemGuid = itemGuid });
+        }
+        // The D Asia HP panel dereferences HpAutoUseConfig and floors its threshold before it sends 31320. A missing
+        // object therefore prevents the first medicine from ever reaching the server. Lua's parser uses 100 as the
+        // default threshold, so expose that same default without persisting it until the player changes the setting.
+        info.MedicinesAutoUse = preferences.MedicinesAutoUse?.Clone() ?? new MedicinesAutoUseSet();
+        info.MedicinesAutoUse.HpConfig ??= new MedicinesAutoUse { Condition = 100 };
         info.CurrentArrowID = preferences.CurrentArrowID;
         info.ItemCds = preferences.ItemCds?.Clone();
         info.ShareCds = preferences.ShareCds?.Clone();

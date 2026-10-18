@@ -396,7 +396,7 @@ public sealed partial class MvpService : IGameTicker
         st.UnFightApplied = false;
         await ApplyBornBuffsAsync(st.Unit);
         log.LogInformation("MVP {Cfg} ({Npc} {Name}) spawned on {Map} at {X:F0},{Z:F0}", st.Def.CfgId, st.Def.NpcId, NpcName(st.Def.NpcId), st.Def.MapId, st.Unit.X, st.Unit.Z);
-        await BroadcastAsync(st.Runtime, RefreshMessage, NpcName(st.Def.NpcId), data.MapName(st.Def.MapId));
+        await BroadcastAsync(st.Runtime, RefreshMessage, ClientNpcName(st.Def.NpcId), data.ClientMapName(st.Def.MapId));
     }
 
     internal void StopSummonsAfterObservationForTest(MonsterUnit boss)
@@ -575,7 +575,7 @@ public sealed partial class MvpService : IGameTicker
             await ClearAddsAsync(st);
             if (!prepared.DeathBroadcastSent)
             {
-                await BroadcastAsync(st.Runtime, DieMessage, NpcName(st.Def.NpcId), prepared.KillerName);
+                await BroadcastAsync(st.Runtime, DieMessage, ClientNpcName(st.Def.NpcId), prepared.KillerName);
                 prepared.DeathBroadcastSent = true;
             }
             if (!prepared.DeliveryAttempted)
@@ -832,6 +832,7 @@ public sealed partial class MvpService : IGameTicker
     }
 
     private string NpcName(int npcId) => data.Row("NPCConfig", npcId) is { } row ? data.TextOf(row, "_kName") : npcId.ToString();
+    private string ClientNpcName(int npcId) => data.Row("NPCConfig", npcId) is { } row ? data.ClientTextOf(row, "_kName") : npcId.ToString();
 
     /// <summary>1022 marquee: ChatConfig 603 "${1} has spawned on the ${2} map." / 604 "${1} was defeated by ${2}." (param encoding inferred).</summary>
     private async Task BroadcastAsync(RuntimeMapKey runtime, int chatId, params string[] args)
