@@ -87,7 +87,7 @@ public sealed partial class CombatService
                 foreach (var handler in PvpDealtAsync) await handler(source, target, effective, hp == 0);
             }
             var hit = new SkillHitInfo { SrcID = attackerRole.Id, SkillId = skillId, ShowPoint = show,
-                SessionId = session, SrcElement = 1,
+                SessionId = session, SrcElement = 1, Split = PresentationSplit(row),
                 Dsts = { new DamageInfo { DstID = targetRole.Id, Damage = damage, SheildDamage = shieldDamage, HitResult = result,
                     DstElement = 1, IsDead = hp == 0 } } };
             var sourceViewers = CurrentPlayerHit(source, target, attackerRole, targetRole, sceneId)

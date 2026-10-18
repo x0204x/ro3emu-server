@@ -328,6 +328,14 @@ public sealed partial class CombatService : IGameTicker
         return 0;
     }
 
+    /// <summary>
+    /// The authored damage-display count is also the client presentation split. LC_DamageHelper divides one
+    /// authoritative total damage value across this many jump words, while LC_Bullet_Mgr emits this many bullets.
+    /// An empty _kShowDmg means one hit/projectile (for example Fire Ball); Fire Bolt authors one through ten.
+    /// </summary>
+    private static int PresentationSplit(JsonElement row) =>
+        (int)Math.Max(1, Numbers(row, "_kShowDmg").FirstOrDefault(1));
+
     private int BulletTravelMs(int effectId, Vec3 origin, Vec3 target)
     {
         if (!data.SkillTemplateTable("Lua_Config_EffectData").TryGetValue(effectId.ToString(), out var effect)

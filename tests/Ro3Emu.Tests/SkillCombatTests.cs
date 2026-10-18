@@ -61,7 +61,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         while (dir != null && !File.Exists(Path.Combine(dir.FullName, "Ro3Emu.slnx"))) dir = dir.Parent;
         return dir?.FullName ?? throw new DirectoryNotFoundException();
     }
-    private Task Teach(string name, int group) => Loop.InvokeAsync(() => { Session(name).Progress!.Skills[group] = 1; return Task.CompletedTask; });
+    private Task Teach(string name, int group, int level = 1) => Loop.InvokeAsync(() => { Session(name).Progress!.Skills[group] = level; return Task.CompletedTask; });
     private Task<MonsterUnit> Target(string name, bool stationary = false, int npcId = 5000001) => Loop.InvokeAsync(async () =>
     {
         var s = Session(name);
@@ -244,13 +244,13 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
     }
 
     [ClientDataTheory]
-    [InlineData(12004, 1200401, 1200411, 1200404, 400)]
-    [InlineData(12012, 1201201, 1201210, 1201209, 167)]
+    [InlineData(12004, 5, 1200405, 1200411, 1200404, 400, 5)]
+    [InlineData(12012, 5, 1201205, 1201210, 1201209, 167, 1)]
     public async Task FireProjectilesUseAuthoredBulletAndActionHitEffects(
-        int group, int skillId, int bulletEffect, int hitEffect, int travelMs)
+        int group, int level, int skillId, int bulletEffect, int hitEffect, int travelMs, int split)
     {
         await using var alice = await InWorld("Alice");
-        await Gm("alice", "!job 2100"); await Teach("alice", group);
+        await Gm("alice", "!job 2100"); await Teach("alice", group, level);
         var target = await Target("alice", stationary: true);
         await Loop.InvokeAsync(() =>
         {
@@ -277,7 +277,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         Assert.Equal((long)alice.Self.Uuid, bullet.MasterId);
         Assert.Equal(bulletEffect, bullet.EffectId);
         Assert.Equal(travelMs, bullet.FixedTime);
-        Assert.Equal(1, bullet.Split);
+        Assert.Equal(split, bullet.Split);
         Assert.Equal(target.Pos, bullet.TargetPosition);
         Assert.Equal(Session("alice").Position, bullet.SourcePosition);
         Assert.True(bullet.StartTimestampMs >= timeline.StartTime);
@@ -285,7 +285,10 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         var hit = await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser,
             x => x.SessionId == accepted.SessionId);
         Assert.Equal(hitEffect, hit.ShowPoint);
-        Assert.True(Assert.Single(hit.Dsts, d => d.DstID == target.Uid).Damage > 0);
+        Assert.Equal(split, hit.Split);
+        var targetDamage = Assert.Single(hit.Dsts, d => d.DstID == target.Uid);
+        Assert.True(targetDamage.Damage > 0);
+        Assert.Equal(targetDamage.Damage, 1_000_000 - target.Hp); // split is presentation only; total damage is committed once
     }
 
     [ClientDataFact]

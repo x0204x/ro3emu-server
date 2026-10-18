@@ -419,7 +419,7 @@ public sealed partial class CombatService
                 await SendSkillBulletAsync(s, new SkillFixTimeBulletNotify
                 {
                     SourceId = action.OwnerId, TargetId = req.TargetId, EffectId = bulletEffect,
-                    FixedTime = bulletTravel, Split = 1, TargetPosition = bulletTarget.Clone(),
+                    FixedTime = bulletTravel, Split = PresentationSplit(row), TargetPosition = bulletTarget.Clone(),
                     SkillConfigId = req.SkillId, MasterId = action.OwnerId, SourcePosition = action.Origin.Clone(),
                     StartTimestampMs = Now,
                 }, highLevel: GameData.Int(row, "_iSkillEffectLevel") > 0);
