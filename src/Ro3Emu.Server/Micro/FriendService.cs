@@ -31,18 +31,44 @@ public sealed class FriendService(AccountStore accounts, SocialOwnerCache cache,
     }
 
     public async ValueTask<object?> InvokeAsync(MicroSession session, string method, object? args) =>
-        await loop.InvokeAsync(() => InvokeOnLoopAsync(method, args));
+        await loop.InvokeAsync(() => InvokeOnLoopAsync(session, method, args));
 
-    private async Task<object?> InvokeOnLoopAsync(string method, object? args)
+    /// <summary>
+    /// The caller's own role: the selected role of the game session bound to the micro session's verified account
+    /// (LoginService.verifySdk). Null before verifySdk or while no role is selected. Read on the loop.
+    /// </summary>
+    private long? CallerRole(MicroSession? session)
     {
-        long self = Uid(args, "Uid");
+        string? account = session?.Account;
+        if (string.IsNullOrEmpty(account)) return null;
+        return sessions.All().FirstOrDefault(s => s.Role != null
+            && string.Equals(s.Account, account, StringComparison.Ordinal))?.Role!.Id;
+    }
+
+    private async Task<object?> InvokeOnLoopAsync(MicroSession session, string method, object? args)
+    {
         if (method is "queryNotification" or "readNotification" or "closeChat") return Ok(new());
-        if (method is "fetchFriendsInfo" or "fetchApplicants" or "fetchBlacklist" or "fetchBeBlacklist")
+        bool fetch = method is "fetchFriendsInfo" or "fetchApplicants" or "fetchBlacklist" or "fetchBeBlacklist";
+        if (!fetch && method is not ("apply" or "accept" or "acceptAll" or "refuse" or "refuseAll" or "refuseBatch"
+            or "remove" or "addBlacklist" or "delBlacklist")) return null;
+
+        // Every friend list belongs to the caller's selected role. The client still sends its own role id as Uid
+        // (LC_FriendServer.lua: tostring(GetSelfGuid())); it must match and never chooses whose lists are read or changed.
+        if (CallerRole(session) is not long self) return MicroServiceRouter.Fail("no selected role");
+        if (Uid(args, "Uid") != self)
+        {
+            log.LogWarning("Friend {Method} refused: Uid {Uid} is not the caller's role {Role}", method, Uid(args, "Uid"), self);
+            return MicroServiceRouter.Fail("role mismatch");
+        }
+
+        if (fetch)
         {
             using var scope = await owners.EnterAsync("micro/friend/read", [ReservationKey.Role(self)]);
+            if (CallerRole(session) != self) return MicroServiceRouter.Fail("no selected role");
             var read = await cache.LoadSocialAsync([self]);
             var value = read[self];
-            // Legacy fetches also expose surviving relation rows for a soft-deleted Uid.
+            // Legacy fetches also expose surviving relation rows for a soft-deleted Uid (now only the caller's own
+            // selected role, so this is a defensive path for a role deleted while selected).
             // Keep that projection read-only; the tombstone must never enter OwnerRegistry.
             var tombstone = value is null ? await cache.TombstoneRowsAsync(self) : null;
             long[] friends = value?.Friends ?? tombstone?.Friends ?? [],
@@ -68,9 +94,6 @@ public sealed class FriendService(AccountStore accounts, SocialOwnerCache cache,
             };
         }
 
-        if (method is not ("apply" or "accept" or "acceptAll" or "refuse" or "refuseAll" or "refuseBatch"
-            or "remove" or "addBlacklist" or "delBlacklist")) return null;
-
         // Discover the complete participant set before admission. A missing or changed projection restarts
         // without retaining a provisional reservation; no owner is looked up through an online session.
         while (true)
@@ -94,6 +117,8 @@ public sealed class FriendService(AccountStore accounts, SocialOwnerCache cache,
                 using (var scope = await owners.EnterAsync("micro/friend/" + method,
                     participants.Select(id => ReservationKey.Role(id)).ToArray()))
                 {
+                    // The role may have been deselected while the participant set was staged.
+                    if (CallerRole(session) != self) return MicroServiceRouter.Fail("no selected role");
                     if (participants.Any(id => loaded[id] is not null && cache.Social(id) is null) ||
                         (method is "acceptAll" or "refuseAll" or "refuseBatch" &&
                         !mine.Applicants.SequenceEqual(cache.Social(self)!.Applicants)))
@@ -328,7 +353,7 @@ public sealed class PartyService(TeamService teams, FriendStore friends, Session
         // Group IDs are sequential; a caller's supplied ID is never authorization.
         string? account = session.Account;
         if (string.IsNullOrEmpty(account)) return MicroServiceRouter.Fail("TID_NO_DOCUMENT");
-        var active = sessions.All().Where(s => s.Role != null && string.Equals(s.Account, account, StringComparison.OrdinalIgnoreCase))
+        var active = sessions.All().Where(s => s.Role != null && string.Equals(s.Account, account, StringComparison.Ordinal))
             .Select(s => s.Role!.Id).ToHashSet();
         var allowed = active.Count > 0 ? active : (await roles.ForAccountAsync(account)).Select(r => r.Id).ToHashSet();
         var ids = args is IDictionary<object, object?> map && map.TryGetValue("PartyIDs", out var value) && value is object?[] list

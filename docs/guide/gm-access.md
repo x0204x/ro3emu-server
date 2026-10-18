@@ -5,7 +5,7 @@ GM commands are the `!` lines in chat (`!help`), the client's GM panel (30300) a
 
 | `GmAccounts` | `GmOpenWhenEmpty` | in game |
 |---|---|---|
-| listed accounts | any | only those accounts (case-insensitive) |
+| listed accounts | any | only those accounts, spelled as stored (an account name is one account in any letter case; the list matches its stored spelling) |
 | empty | unset, host not started as Production | everyone (tests, `tools/run-server.ps1`, local play) |
 | empty | unset, host started as **Production** | **nobody** |
 | empty | `true` / `false` | everyone / nobody (an explicit value wins over the environment) |

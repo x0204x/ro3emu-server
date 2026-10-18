@@ -57,6 +57,9 @@ public sealed class Manifest
         return compressor.Wrap(json).ToArray();
     }
 
+    internal static bool IsSha256Hex(string? value) =>
+        value is { Length: 64 } && value.All(ch => ch is >= '0' and <= '9' or >= 'a' and <= 'f');
+
     public static Manifest FromCompressedBytes(byte[] data)
     {
         using var decompressor = new ZstdSharp.Decompressor();
@@ -70,6 +73,13 @@ public sealed class Manifest
         foreach (var file in manifest.Files)
         {
             PathRules.ValidateRelative(file.Path);
+            // Chunk hashes name cache files: only a SHA-256 in lower-case hex may become a path.
+            if (file.Sha256.Length != 0 && !IsSha256Hex(file.Sha256)) throw new InvalidDataException($"Bad file hash in the manifest: {file.Path}");
+            foreach (var chunk in file.Chunks)
+            {
+                if (!IsSha256Hex(chunk.Hash) || chunk.Size < 0 || chunk.StoredSize < 0)
+                    throw new InvalidDataException($"Bad chunk in the manifest: {file.Path}");
+            }
         }
         return manifest;
     }

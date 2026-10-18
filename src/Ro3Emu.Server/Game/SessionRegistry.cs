@@ -13,8 +13,8 @@ public sealed class SessionRegistry(ILogger<SessionRegistry> log, Ownership.Owne
     private const int ReasonKicked = 21;
 
     private readonly object _sync = new();
-    private readonly Dictionary<string, GameSession> _byAccount = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, long> _generations = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, GameSession> _byAccount = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> _generations = new(StringComparer.Ordinal);
     /// <summary>Copy-on-write snapshot for <see cref="All"/>: tickers enumerate it many times a second; it changes
     /// only on (un)registration.</summary>
     private volatile GameSession[] _snapshot = [];

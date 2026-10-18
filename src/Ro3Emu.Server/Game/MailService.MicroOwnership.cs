@@ -16,13 +16,13 @@ public sealed partial class MailService
         return await loop.InvokeAsync(async () =>
         {
             var selected = sessions.All().FirstOrDefault(s => s.Account != null &&
-                string.Equals(s.Account, session.Account, StringComparison.OrdinalIgnoreCase));
+                string.Equals(s.Account, session.Account, StringComparison.Ordinal));
             if (selected?.Role is not { } role) return MicroServiceRouter.Fail("no selected role");
             var attachment = selected.Attachment;
             using var scope = await owners.EnterAsync("micro/MailService", [ReservationKey.Role(role.Id)]);
             if (selected.Role?.Id != role.Id || !ReferenceEquals(selected.Attachment, attachment)
                 || attachment?.Cancelled == true || !ReferenceEquals(selected, sessions.All().FirstOrDefault(s =>
-                    string.Equals(s.Account, session.Account, StringComparison.OrdinalIgnoreCase))))
+                    string.Equals(s.Account, session.Account, StringComparison.Ordinal))))
                 return MicroServiceRouter.Fail("no selected role");
             scope.Context.Pin(owners.Get(role.Id));
             return await InvokeMicroCoreAsync(session, method, args);

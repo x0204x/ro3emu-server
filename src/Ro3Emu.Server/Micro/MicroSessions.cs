@@ -14,7 +14,7 @@ public sealed class MicroSessions(ILogger<MicroSessions> log)
     private const ushort MicroPush = 35;
 
     private readonly object _sync = new();
-    private readonly Dictionary<string, MicroSession> _byAccount = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, MicroSession> _byAccount = new(StringComparer.Ordinal);
 
     public void Bind(MicroSession session)
     {

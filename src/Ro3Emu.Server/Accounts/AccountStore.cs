@@ -468,10 +468,13 @@ public sealed partial class AccountStore : IDisposable
         try { return VerifyAsync(name, password).GetAwaiter().GetResult(); }
         finally { AccessMetrics.LegacyWait(started, OnLoop, label: "account/verify"); }
     }
-    public async Task<bool> VerifyAsync(string name, string password)
+    public async Task<bool> VerifyAsync(string name, string password) => await VerifiedAccountAsync(name, password).ConfigureAwait(false) != null;
+
+    /// <summary>The account's stored name when the password matches, else null.</summary>
+    public async Task<string?> VerifiedAccountAsync(string name, string password)
     {
         var credentials = await ReadAsync<AccountCredentials?>(new AccountCredentialsRead(name)).ConfigureAwait(false);
-        return credentials != null && await MatchesAsync(password, credentials).ConfigureAwait(false);
+        return credentials != null && await MatchesAsync(password, credentials).ConfigureAwait(false) ? credentials.Name : null;
     }
 
     public LoginResult Login(string name, string password)
@@ -480,19 +483,30 @@ public sealed partial class AccountStore : IDisposable
         try { return LoginAsync(name, password).GetAwaiter().GetResult(); }
         finally { AccessMetrics.LegacyWait(started, OnLoop, label: "account/login"); }
     }
-    public async Task<LoginResult> LoginAsync(string name, string password)
+    public async Task<LoginResult> LoginAsync(string name, string password) => (await SignInAsync(name, password).ConfigureAwait(false)).Result;
+
+    /// <summary>
+    /// Login or first-time registration. <see cref="SignIn.Account"/> is the account's stored name, which can differ
+    /// from <paramref name="name"/> in letter case; tokens and sessions must carry it, never the typed spelling.
+    /// </summary>
+    public async Task<SignIn> SignInAsync(string name, string password)
     {
         var existing = await ReadAsync<AccountCredentials?>(new AccountCredentialsRead(name)).ConfigureAwait(false);
-        if (existing != null) return await MatchesAsync(password, existing).ConfigureAwait(false) ? LoginResult.Ok : LoginResult.BadPassword;
+        if (existing != null) return await Check(existing).ConfigureAwait(false);
         byte[] salt = RandomNumberGenerator.GetBytes(16);
         byte[] hash = await Task.Run(() => AccountHash.Hash(password, salt)).ConfigureAwait(false);
         if (await WriteAsync<bool>(new AccountRegisterPlan(name, hash, salt, DateTime.UtcNow.ToString("O"))).ConfigureAwait(false))
-            return LoginResult.Registered;
+            return new(LoginResult.Registered, name);
         // A concurrent registration won the unique-name constraint; compare against its committed credentials.
         existing = await ReadAsync<AccountCredentials?>(new AccountCredentialsRead(name)).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Account registration collision did not leave a visible account.");
-        return await MatchesAsync(password, existing).ConfigureAwait(false) ? LoginResult.Ok : LoginResult.BadPassword;
+        return await Check(existing).ConfigureAwait(false);
+
+        async Task<SignIn> Check(AccountCredentials credentials) =>
+            new(await MatchesAsync(password, credentials).ConfigureAwait(false) ? LoginResult.Ok : LoginResult.BadPassword, credentials.Name);
     }
+
+    public readonly record struct SignIn(LoginResult Result, string Account);
     private static Task<bool> MatchesAsync(string password, AccountCredentials existing)
         => Task.Run(() => CryptographicOperations.FixedTimeEquals(existing.Hash, AccountHash.Hash(password, existing.Salt)));
 

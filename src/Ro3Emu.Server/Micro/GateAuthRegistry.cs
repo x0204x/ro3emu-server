@@ -37,7 +37,7 @@ public sealed class GateAuthRegistry
         lock (_sync)
         {
             if (!_byCaller.TryGetValue(callerId, out var entry) || !CryptographicOperations.FixedTimeEquals(entry.Auth, oldAuth)
-                || !string.Equals(entry.Account, account, StringComparison.OrdinalIgnoreCase))
+                || !string.Equals(entry.Account, account, StringComparison.Ordinal))
                 return null;
             var auth = RandomNumberGenerator.GetBytes(16);
             _byCaller[callerId] = (entry.Account, auth);

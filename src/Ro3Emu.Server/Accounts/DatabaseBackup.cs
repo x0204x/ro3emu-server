@@ -27,9 +27,16 @@ public sealed class DatabaseBackup(IOptions<ServerOptions> options, AccountStore
 
     public string Directory => Path.Combine(options.Value.DataDir, "backups");
 
+    /// <summary>Unfinished copies of a crashed run are gone before the host reports itself started, under the same
+    /// gate as a backup, so neither the startup backup nor a manual one can meet a half-written file.</summary>
+    public override Task StartAsync(CancellationToken ct)
+    {
+        lock (backupGate) RemoveStalePartials();
+        return base.StartAsync(ct);
+    }
+
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        RemoveStalePartials();
         while (!ct.IsCancellationRequested)
         {
             try

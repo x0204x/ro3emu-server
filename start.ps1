@@ -26,9 +26,20 @@ if (-not $sdk) {
     Fail "The .NET 10 SDK is needed to build from source (https://dotnet.microsoft.com/download/dotnet/10.0, or winget install Microsoft.DotNet.SDK.10). Players: use RO3Emu.exe from the release zip instead, it needs nothing installed."
 }
 
+$clientBuild = @()
+if ($ClientDir) {
+    # The client hooks and the translation patch compile against this client's DLLs, not the default folder's.
+    $ClientDir = (Resolve-Path -LiteralPath $ClientDir).Path
+    $managed = Join-Path $ClientDir 'ro3_Data\Managed'
+    if (-not (Test-Path -LiteralPath (Join-Path $managed 'Assembly-CSharp.dll'))) { Fail "No game found in $ClientDir (expected ro3_Data\Managed\Assembly-CSharp.dll)." }
+    $env:RO3_CLIENT_DIR = $ClientDir
+    $clientBuild = @("-p:ClientManaged=$managed")
+}
+
 Write-Host '== Building' -ForegroundColor Cyan
 foreach ($project in 'src/Ro3Emu.Server', 'src/Ro3Emu.ClientHooks', 'src/Ro3Emu.Loc', 'src/Ro3Emu.Setup') {
-    Run dotnet @('build', (Join-Path $root $project), '-c', 'Release', '-v', 'q', '-nologo', '-clp:ErrorsOnly')
+    $extra = if ($project -in 'src/Ro3Emu.ClientHooks', 'src/Ro3Emu.Loc') { $clientBuild } else { @() }
+    Run dotnet (@('build', (Join-Path $root $project), '-c', 'Release', '-v', 'q', '-nologo', '-clp:ErrorsOnly') + $extra)
 }
 
 $arguments = @()

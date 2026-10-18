@@ -10,18 +10,27 @@ internal static class AccountHash
         Rfc2898DeriveBytes.Pbkdf2(Encoding.UTF8.GetBytes(password), salt, 100_000, HashAlgorithmName.SHA256, 32);
 }
 
-internal sealed record AccountCredentials(byte[] Hash, byte[] Salt);
+/// <summary>Credentials of one account; <see cref="Name"/> is the stored (canonical) spelling of its name.</summary>
+internal sealed record AccountCredentials(string Name, byte[] Hash, byte[] Salt);
 
+/// <summary>
+/// One account per name regardless of ASCII letter case: "Admin" finds "admin". The stored spelling is the identity
+/// every session, token and permission check uses. A legacy database holding two spellings keeps both: the exact
+/// spelling wins (else the older account), so neither account can reach the other.
+/// </summary>
 internal sealed class AccountCredentialsRead(string name) : DbReadPlan
 {
     internal override int Bytes => 128 + Encoding.UTF8.GetByteCount(name);
     internal override string Label => "account/credentials";
     internal override object? Execute(SqliteConnection db, SqliteTransaction tx)
     {
-        using var select = DbSql.Command(db, tx, "SELECT password_hash,salt FROM account WHERE name=$name");
+        using var select = DbSql.Command(db, tx,
+            "SELECT name,password_hash,salt FROM account WHERE name=$name COLLATE NOCASE ORDER BY name=$name DESC, rowid LIMIT 1");
         select.Parameters.AddWithValue("$name", name);
         using var row = select.ExecuteReader();
-        return row.Read() ? new AccountCredentials((byte[])((byte[])row[0]).Clone(), (byte[])((byte[])row[1]).Clone()) : null;
+        return row.Read()
+            ? new AccountCredentials(row.GetString(0), (byte[])((byte[])row[1]).Clone(), (byte[])((byte[])row[2]).Clone())
+            : null;
     }
 }
 
@@ -38,7 +47,9 @@ internal sealed class AccountRegisterPlan : DbPlan
     internal override string Label => "account/register";
     internal override object Execute(SqliteConnection db, SqliteTransaction tx)
     {
-        using var insert = DbSql.Command(db, tx, "INSERT OR IGNORE INTO account(name,password_hash,salt,created_utc) VALUES($name,$hash,$salt,$now)");
+        // A spelling that differs only in letter case is the same account, never a new one.
+        using var insert = DbSql.Command(db, tx, "INSERT OR IGNORE INTO account(name,password_hash,salt,created_utc) " +
+            "SELECT $name,$hash,$salt,$now WHERE NOT EXISTS (SELECT 1 FROM account WHERE name=$name COLLATE NOCASE)");
         insert.Parameters.AddWithValue("$name", _name);
         insert.Parameters.AddWithValue("$hash", _hash);
         insert.Parameters.AddWithValue("$salt", _salt);

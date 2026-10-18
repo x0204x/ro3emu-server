@@ -57,8 +57,7 @@ public sealed class ReconnectService
     internal static readonly TimeSpan ReadyFallback = TimeSpan.FromSeconds(3);
     /// <summary>(inferred) A refused reconnect connection is closed after this, the client opens its own retry.</summary>
     internal static readonly TimeSpan RefusedCloseDelay = TimeSpan.FromSeconds(1);
-    private static readonly MessagePackSerializerOptions Untrusted =
-        MessagePackSerializerOptions.Standard.WithSecurity(MessagePackSecurity.UntrustedData);
+    private static readonly MessagePackSerializerOptions Untrusted = Micro.MicroServiceRouter.Untrusted;
 
     private readonly ServerOptions _options;
     private readonly GameLoop _loop;

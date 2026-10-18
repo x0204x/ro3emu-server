@@ -107,7 +107,7 @@ public sealed class GameGateServer(
         if (type is ConnectServerReq.Types.ReqType.NewConnection or ConnectServerReq.Types.ReqType.SwitchToAccount && request.HasToken)
         {
             // GameClient.Token = the msgpack MixedLoginToken from LoginService.verifySdk.
-            var token = MessagePackSerializer.Deserialize<Dictionary<string, object?>>(request.Token.Memory);
+            var token = MessagePackSerializer.Deserialize<Dictionary<string, object?>>(request.Token.Memory, Micro.MicroServiceRouter.Untrusted);
             account = accounts.ResolveEngineSign(token.GetValueOrDefault("Sign") as string);
         }
         Log.LogInformation("GameGate: {Remote} connectServer {Type} account={Account}", session.Channel.Remote, type, account ?? "?");
@@ -155,7 +155,7 @@ public sealed class GameGateServer(
         }
 
         object? args = null;
-        try { args = MessagePackSerializer.Deserialize<object>(message.Parameters.Memory); } catch (MessagePackSerializationException) { }
+        try { args = MessagePackSerializer.Deserialize<object>(message.Parameters.Memory, Micro.MicroServiceRouter.Untrusted); } catch (MessagePackSerializationException) { }
         string described = MicroServiceRouter.Describe(args);
         traffic.Rpc(session.Account, "c2s-rpc", method, () => described);
         Log.LogInformation("GameGate: {Account} rpc {Method} {Args}", session.Account, method, described);
@@ -175,6 +175,8 @@ public sealed class GameGateServer(
         catch (Exception e) when (e is MessagePackSerializationException or EndOfStreamException) { return Task.CompletedTask; }
         return reconnects.ClientReadyAsync(session, flags[0], flags[1], flags[2]);
     }
+
+    protected override bool IsSignedIn(PhonestChannel channel) => (channel.Session as GameSession)?.Account != null;
 
     protected override async ValueTask OnDisconnectedAsync(PhonestChannel channel)
     {

@@ -251,8 +251,10 @@ public static class ServerHost
         app.MapPost("/ro3emu/account/delete-role", async (HttpRequest request, AccountStore accounts, RoleStore roles, SessionRegistry sessions, GameLoop loop, Game.Ownership.OwnerRegistry owners, ILogger<RoleStore> log) =>
         {
             var form = await request.ReadFormAsync();
-            string identity = form["identity"].ToString().Trim(), credential = form["credential"].ToString(), which = form["role"].ToString().Trim();
-            if (!await accounts.VerifyAsync(identity, credential)) return Results.Json(new { code = 401, message = "bad account or password" });
+            string typed = form["identity"].ToString().Trim(), credential = form["credential"].ToString(), which = form["role"].ToString().Trim();
+            // Roles are keyed by the account's stored name, whatever letter case the form used.
+            if (await accounts.VerifiedAccountAsync(typed, credential) is not { } identity)
+                return Results.Json(new { code = 401, message = "bad account or password" });
             var role = roles.ForAccount(identity).FirstOrDefault(r => r.Id.ToString() == which || string.Equals(r.Name, which, StringComparison.OrdinalIgnoreCase));
             if (role == null) return Results.Json(new { code = 404, message = "no such character on this account" });
             return await loop.InvokeAsync(async () =>

@@ -173,6 +173,21 @@ public sealed class PatcherTests : IDisposable
         PathRules.ValidateRelative("Game_Data/level0");
     }
 
+    [Theory]
+    [InlineData("../../sentinel.txt")]
+    [InlineData("..\\..\\sentinel.txt")]
+    [InlineData("ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789")]
+    [InlineData("abcdef")]
+    [InlineData("")]
+    public void Manifest_ChunkHashesThatAreNotSha256AreRejected(string hash)
+    {
+        // A chunk hash names a cache file; anything but 64 lower-case hex digits could point outside the cache.
+        var manifest = new Manifest { Files = [new ManifestFile { Path = "Game.exe", Chunks = [new ChunkRef { Hash = hash, Size = 1, StoredSize = 1 }] }] };
+        Assert.Throws<InvalidDataException>(() => Manifest.FromCompressedBytes(manifest.ToCompressedBytes()));
+        manifest.Files[0].Chunks[0].Hash = new string('a', 64);
+        Assert.Single(Manifest.FromCompressedBytes(manifest.ToCompressedBytes()).Files);
+    }
+
     [Fact]
     public async Task FreshInstall_ThenPatch_DownloadsOnlyChanges_AndKeepsUserFiles()
     {

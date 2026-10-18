@@ -51,7 +51,7 @@ public sealed class PhonestGateService(GateAuthRegistry auths, MicroSessions mic
     {
         string? id = MicroServiceRouter.MapString(args, "Id");
         var account = auths.Verify(id, MapBytes(args, "Auth"));
-        if (account == null || (session.Account != null && !string.Equals(session.Account, account, StringComparison.OrdinalIgnoreCase)))
+        if (account == null || (session.Account != null && !string.Equals(session.Account, account, StringComparison.Ordinal)))
         {
             log.LogWarning("PhonestGate.bind refused for {Id} from {Remote}", id, session.Channel.Remote);
             return MicroServiceRouter.Fail("bind refused");

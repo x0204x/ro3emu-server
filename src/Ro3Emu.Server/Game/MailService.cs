@@ -575,7 +575,7 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
     {
         if (method is not ("getUserMailList" or "getMailContent" or "setMailHaveRead" or "deleteMail" or "syncGroupMail")) return null;
         var role = sessions.All().FirstOrDefault(s => s.Account != null
-            && string.Equals(s.Account, session.Account, StringComparison.OrdinalIgnoreCase))?.Role;
+            && string.Equals(s.Account, session.Account, StringComparison.Ordinal))?.Role;
         if (role == null) return MicroServiceRouter.Fail("no selected role");
         string? requestedUid = method is "getUserMailList" or "deleteMail"
             ? MicroServiceRouter.MapString(args, "Uid") : (args as object?[])?.FirstOrDefault() as string;

@@ -26,6 +26,8 @@ public sealed class MicroGateServer(IOptions<ServerOptions> options, GateCrypto 
 
     protected override string Name => "MicroGate";
 
+    protected override bool IsSignedIn(PhonestChannel channel) => (channel.Session as MicroSession)?.Account != null;
+
     protected override ValueTask OnDisconnectedAsync(PhonestChannel channel)
     {
         if (channel.Session is MicroSession session) sessions.Remove(session);

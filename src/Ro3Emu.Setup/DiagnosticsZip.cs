@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Ro3Emu.Setup;
 
@@ -32,7 +33,7 @@ internal static class DiagnosticsZip
                 using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
                 if (stream.Length > maxBytes) stream.Seek(-maxBytes, SeekOrigin.End);
                 using var reader = new StreamReader(stream, Encoding.UTF8);
-                Text(name, reader.ReadToEnd());
+                Text(name, Redact(reader.ReadToEnd()));
             }
             catch (Exception e) { Text(name + ".error.txt", e.Message); }
         }
@@ -58,6 +59,14 @@ internal static class DiagnosticsZip
         }
         return path;
     }
+
+    /// <summary>Login secrets (a live SDK ticket, engine sign or gate auth) that an older server or the game may have
+    /// logged: a shared zip must not let anyone log in as the player.</summary>
+    private static readonly Regex Secrets = new(
+        """(?<key>\b(?:Ticket|Token|Sign|Auth|OldAuth|NewAuth|Password|Credential|LoginToken|MixedLoginToken|AccessToken|RefreshToken)\b"?\s*[=:]\s*"?)[^\s",}\]]{6,}""",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    internal static string Redact(string text) => Secrets.Replace(text, "${key}<redacted>");
 
     private static string SystemInfo(string? clientDir)
     {

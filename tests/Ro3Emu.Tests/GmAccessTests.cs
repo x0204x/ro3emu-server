@@ -32,7 +32,8 @@ public sealed class GmAccessTests
     [InlineData("", true, "anyone", false, true)]
     [InlineData("", false, "anyone", false, false)]  // Production: nobody in game
     [InlineData("", false, "anyone", true, true)]    // ...but the loopback tool is unchanged
-    [InlineData("admin", false, "Admin", false, true)]
+    [InlineData("admin", false, "admin", false, true)]
+    [InlineData("admin", false, "Admin", false, false)] // the stored spelling only: a case variant is not the GM
     [InlineData("admin", null, "tester", false, false)]
     [InlineData("admin", false, "tester", true, false)] // a list binds the tool as before
     public void TheAllowlistMatrix(string list, bool? openWhenEmpty, string account, bool loopbackTool, bool expected)

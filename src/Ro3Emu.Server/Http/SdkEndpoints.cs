@@ -36,13 +36,13 @@ public static class SdkEndpoints
             {
                 return Results.Json(new { code = 401 });
             }
-            var result = await accounts.LoginAsync(identity, credential);
-            log.LogInformation("SDK login {Identity}: {Result}", identity, result);
+            var (result, account) = await accounts.SignInAsync(identity, credential);
+            log.LogInformation("SDK login {Identity}: {Result}", account, result);
             if (result == AccountStore.LoginResult.BadPassword)
             {
                 return Results.Json(new { code = 401 });
             }
-            return Results.Json(new { code = 0, data = new { token = await accounts.IssueSdkTokenAsync(identity) } });
+            return Results.Json(new { code = 0, data = new { token = await accounts.IssueSdkTokenAsync(account) } });
         });
 
         app.MapGet(ServerListPath, (HttpContext context, IOptions<ServerOptions> options) =>
