@@ -224,6 +224,7 @@ public sealed partial class CharacterService
             Item = ItemInfo(item),
         });
         await EquipmentAppearanceChangedAsync(session);
+        await CombatLoadoutChangedAsync(session);
         foreach (var handler in StateChanged) handler(session);
     }
 

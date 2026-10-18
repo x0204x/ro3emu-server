@@ -249,7 +249,7 @@ public sealed partial class GenreTests : IAsyncLifetime
         await using var again = await Enter("AttackPlan", create: false);
         var restored = await Next(again, SkillService.SkillDataSync, DBSkillDataIncrement.Parser);
         Assert.Equal(0, restored.CurrentPlanIndex);
-        Assert.Equal(1100001, restored.CurrentAtkSkillId);
+        Assert.Equal(1001001, restored.CurrentAtkSkillId);
         var session = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == roleId);
         Assert.Equal(3, session.Progress!.Skills[11001]);
         Assert.DoesNotContain(12100, session.Progress.Skills.Keys);

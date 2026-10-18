@@ -101,9 +101,9 @@ public sealed class SkillGrowthTests : IAsyncLifetime
         await Gm("novice", "!job 1100");
         await again.SendGameAsync(1023, new PlayerAssetReq { AssetType = { 5 } });
         var swordman = await Next(again, SkillService.SkillDataSync, DBSkillDataIncrement.Parser,
-            m => m.SyncAllMark && m.CurrentAtkSkillId == 1100001);
+            m => m.SyncAllMark && m.CurrentAtkSkillId == 1001001);
         Assert.DoesNotContain(swordman.SkillWheel.All.WhellSkills.Values,
-            slot => slot.SkillConfigId == 1100001);
+            slot => slot.SkillConfigId == 1001001);
     }
 
     [ClientDataFact]
@@ -147,7 +147,7 @@ public sealed class SkillGrowthTests : IAsyncLifetime
 
         await Gm("alice", "!job 1100");
         await Next(alice, SkillService.SkillDataSync, DBSkillDataIncrement.Parser,
-            m => !m.SyncAllMark && m.CurrentAtkSkillId == 1100001);
+            m => !m.SyncAllMark && m.CurrentAtkSkillId == 1001001);
         var learn = new SkillGrowthSkillPlanUpdateReq { Plan = 0 };
         learn.LevelUpList[11001] = new SkillData { SkillId = 11001, SkillLevel = 5 };
         learn.LevelUpList[11002] = new SkillData { SkillId = 11002, SkillLevel = 1 };
@@ -185,7 +185,7 @@ public sealed class SkillGrowthTests : IAsyncLifetime
             await Next(alice, SkillService.SkillDataSync, DBSkillDataIncrement.Parser);
             await Gm("alice", "!job 1100");
             await Next(alice, SkillService.SkillDataSync, DBSkillDataIncrement.Parser,
-                m => !m.SyncAllMark && m.CurrentAtkSkillId == 1100001);
+                m => !m.SyncAllMark && m.CurrentAtkSkillId == 1001001);
             var learn = new SkillGrowthSkillPlanUpdateReq { Plan = 0 };
             learn.LevelUpList[11001] = new SkillData { SkillLevel = 3 };
             await alice.SendGameAsync(SkillService.PlanUpdate, learn);

@@ -263,6 +263,7 @@ public sealed class MountService : IGameTicker
         ArmExpiry(s);
         await PublishOwnedAsync(s);
         await character.RefreshStatsAsync(s);
+        await character.CombatLoadoutChangedAsync(s);
         var entity = RoleSessionService.PlayerEntity(s);
         entity.NotifyType = EntityBase.Types.NotifyType.Rider;
         await s.SendGameAsync(CharacterService.EntityBaseChange, entity);

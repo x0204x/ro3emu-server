@@ -165,7 +165,7 @@ public sealed class MapLineTests : IAsyncLifetime
             return Task.CompletedTask;
         });
         long hp=Service<CharacterService>().Stats(b)[2000];
-        int skill=Service<SkillService>().NormalAttack(a.Progress!.Career);
+        int skill=Service<SkillService>().NormalAttack(a);
         await alice.SendGameAsync(CombatService.UseSkill,new CastSkillReq{SkillId=skill,TargetId=b.Role!.Id});
         Assert.NotEqual(0,(await Next(alice,CombatService.UseSkill,CastSkillRsp.Parser)).Result);
         Assert.Equal(hp,Service<CharacterService>().Stats(b)[2000]);

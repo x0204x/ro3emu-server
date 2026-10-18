@@ -151,6 +151,7 @@ public sealed partial class CharacterService
         if (result == 0)
         {
             await EquipmentAppearanceChangedAsync(session);
+            await CombatLoadoutChangedAsync(session);
             foreach (var handler in StateChanged) handler(session);
         }
     }

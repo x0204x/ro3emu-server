@@ -636,8 +636,8 @@ public sealed partial class CombatService : IGameTicker
     internal (double PlayerDps, double MonsterDps, long PlayerHp) Duel(GameSession p, MonsterTemplate m)
     {
         var stats = character.Stats(p);
-        var playerSkill = data.Row("SkillConfig", skills.NormalAttack(p.Progress!.Career))!.Value;
-        var player = new Fighter(stats[103], stats[104], stats[109], stats[111], p.Progress.Level, 1);
+        var playerSkill = data.Row("SkillConfig", skills.NormalAttack(p))!.Value;
+        var player = new Fighter(stats[103], stats[104], stats[109], stats[111], p.Progress!.Level, 1);
         var asTarget = new Fighter(0, 0, m.Flee, 0, m.Level, m.Element) { Def = m.Def, Mdef = m.Mdef, Flee = m.Flee };
         double playerDps = ExpectedDamage(player, asTarget, playerSkill) * 1000.0 / Math.Max(1, SkillMs(p, playerSkill));
         var monster = new Fighter(m.Atk, m.Matk, m.Hit, m.Cri, m.Level, m.Element);

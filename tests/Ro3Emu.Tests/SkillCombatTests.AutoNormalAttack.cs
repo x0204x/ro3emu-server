@@ -18,7 +18,7 @@ public sealed partial class SkillCombatTests
         const int bladeSmash = 1509901; // group 15099, _iIfAutoAtk 2, _iIsNormalAtk 0, _iCD 7000
         await using var alice = await InWorld("Alice");
         await Gm("alice", "!job 5100"); await Teach("alice", 15099);
-        int normal = app.Services.GetRequiredService<SkillService>().NormalAttack(5100);
+        int normal = app.Services.GetRequiredService<SkillService>().NormalAttack(Session("alice"));
         Assert.NotEqual(bladeSmash, normal);
         var target = await Target("alice", stationary: true);
         await Loop.InvokeAsync(() => { target.Hp = 1_000_000_000; return Task.CompletedTask; });
@@ -37,6 +37,12 @@ public sealed partial class SkillCombatTests
                 u => u.SrcID == self && u.SessionId != accepted.SessionId);
             Assert.Equal(normal, swing.SkillID);
             Assert.Equal(target.Uid, swing.TargetId);
+            Assert.Equal(target.Pos.X, swing.TargetPos.X);
+            Assert.Equal(target.Pos.Y, swing.TargetPos.Y);
+            Assert.Equal(target.Pos.Z, swing.TargetPos.Z);
+            Assert.True(swing.PlayAct);
+            Assert.True(swing.SkillMs > 0);
+            Assert.True(swing.StartTime > 0);
         }
         await Loop.InvokeAsync(() => { Assert.Equal(normal, Session("alice").Attack?.SkillId); return Task.CompletedTask; });
 

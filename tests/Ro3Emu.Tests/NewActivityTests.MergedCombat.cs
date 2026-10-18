@@ -21,7 +21,9 @@ public sealed partial class NewActivityTests
             .AllUnits().OfType<MonsterUnit>().Single(m => m.InstanceId == room)));
         await OnLoop(() => { actor.Hp = 1; return Task.CompletedTask; });
         await bot.SendGameAsync(MsgId.Walk, new WalkReq { Pos = actor.Pos, BStop = true, SpeedRate = 1 });
-        await bot.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1100001, TargetId = actor.Uid });
+        int normal = await Service<GameLoop>().InvokeAsync(() =>
+            Task.FromResult(Service<SkillService>().NormalAttack(Session(bot))));
+        await bot.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = normal, TargetId = actor.Uid });
         Assert.Equal(0, (await Next(bot, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
         var hit = await Next(bot, CombatService.SkillHit, SkillHitInfo.Parser,
             h => h.Dsts.Any(d => d.DstID == actor.Uid && d.Damage > 0));

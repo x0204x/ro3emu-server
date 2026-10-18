@@ -529,7 +529,7 @@ public sealed class CharacterTests : IAsyncLifetime
 
         await Gm("alice", "!job 1100");
         var swordman = await Next(alice, SkillService.SkillDataSync, DBSkillDataIncrement.Parser, m => !m.SyncAllMark && m.HasCurrentAtkSkillId);
-        Assert.Equal(1100001, swordman.CurrentAtkSkillId); // JobConfig._kSkillNormalID
+        Assert.Equal(1001001, swordman.CurrentAtkSkillId); // JobAttackConfig default attack
 
         // Job 15 of rank 2 = 15 points (JobLvConfig 201..215); learn Bash level 3.
         var req = new SkillGrowthSkillPlanUpdateReq { Plan = 0 };
@@ -545,6 +545,37 @@ public sealed class CharacterTests : IAsyncLifetime
         Assert.Equal(12, bash.SkillPoints[2].All);
         Assert.All(learned.SkillAssignPlans.Inc.Value.Skip(1), other => Assert.DoesNotContain(11001, other.SkillAssigns.Keys));
         Assert.Equal(0, (await Next(alice, SkillService.PlanUpdate, SkillGrowthSkillPlanUpdateResp.Parser)).Result);
+    }
+
+    [ClientDataFact]
+    public async Task MageStaffChangesThePublishedNormalAttackImmediately()
+    {
+        const int Staff = 2090120;
+        await using var alice = await InWorld("Alice");
+        await Next(alice, SkillService.SkillDataSync, DBSkillDataIncrement.Parser, m => m.SyncAllMark);
+        var startingBag = await Next(alice, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser, m => m.SyncAllMark);
+        long dagger = startingBag.PackInfo[2].All.Items.Values.Single(item => item.ItemEntry == Dagger).ItemGuid;
+        await alice.SendGameAsync(CharacterService.EquipItemOpr,
+            new EquipItemOprReq { Opr = 0, Pos = (EquipGridType)1, ItemGUID = dagger });
+        Assert.Equal(0, (await Next(alice, CharacterService.EquipItemOpr, EquipItemOprResp.Parser)).Result);
+
+        await Gm("alice", "!job 2100");
+        await Next(alice, SkillService.SkillDataSync, DBSkillDataIncrement.Parser, m => !m.SyncAllMark);
+        Assert.Equal(1000001, _app.Services.GetRequiredService<SkillService>().NormalAttack(2100));
+        var live = _app.Services.GetRequiredService<SessionRegistry>().All().Single(session => session.Account == "alice");
+        Assert.Equal(1000001, _app.Services.GetRequiredService<SkillService>().NormalAttack(live)); // incompatible saved dagger -> valid unarmed row
+
+        await Gm("alice", $"!item {Staff}");
+        var granted = await Next(alice, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser,
+            m => m.PackInfo.GetValueOrDefault(2)?.Inc?.Items.Values.Any(i => i.All?.ItemEntry == Staff) == true);
+        long guid = granted.PackInfo[2].Inc.Items.Values.Single(i => i.All?.ItemEntry == Staff).All.ItemGuid;
+        await alice.SendGameAsync(CharacterService.EquipItemOpr,
+            new EquipItemOprReq { Opr = 0, Pos = (EquipGridType)1, ItemGUID = guid });
+        Assert.Equal(0, (await Next(alice, CharacterService.EquipItemOpr, EquipItemOprResp.Parser)).Result);
+        var equipped = await Next(alice, SkillService.SkillDataSync, DBSkillDataIncrement.Parser,
+            m => !m.SyncAllMark && m.HasCurrentAtkSkillId);
+        Assert.Equal(1299901, equipped.CurrentAtkSkillId);
+        Assert.Equal(1299901, equipped.SkillWheel.Inc.AtkSkillId);
     }
 
     [ClientDataFact]

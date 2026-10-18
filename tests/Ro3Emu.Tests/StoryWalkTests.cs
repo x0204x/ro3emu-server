@@ -560,7 +560,7 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
             }
             if (target == null) { _killProblem = "none alive"; return false; }
             await EnsureAliveAsync();
-            int attack = await OnLoop(s => Service<SkillService>().NormalAttack(s.Progress!.Career));
+            int attack = await OnLoop(s => Service<SkillService>().NormalAttack(s));
             int lastResult = 0;
             for (int attempt = 0; attempt < 20 && !target.Dead; attempt++)
             {

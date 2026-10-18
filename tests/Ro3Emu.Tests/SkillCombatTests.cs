@@ -217,7 +217,15 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         var reply = await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser);
         Assert.Equal(0, reply.Result);
         var use = await Next(alice, CombatService.UseInSkill, UseInSkillInfo.Parser, p => p.SessionId == reply.SessionId);
+        Assert.Equal((long)alice.Self!.Uuid, use.SrcID);
+        Assert.Equal(1100101, use.SkillID);
         Assert.Equal(target.Uid, use.TargetId);
+        Assert.Equal(target.Pos.X, use.TargetPos.X);
+        Assert.Equal(target.Pos.Y, use.TargetPos.Y);
+        Assert.Equal(target.Pos.Z, use.TargetPos.Z);
+        Assert.True(use.PlayAct);
+        Assert.True(use.SkillMs > 0);
+        Assert.True(use.StartTime > 0);
         var hit = await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser, p => p.SessionId == reply.SessionId);
         Assert.Equal(1100101, hit.ShowPoint); // master's skill-specific EffectData entry for Bash
         Assert.True(Assert.Single(hit.Dsts).Damage > 0);
@@ -245,7 +253,16 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1200401, TargetId = target.Uid, IsAutoCast = true });
         var accepted = await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser);
         Assert.Equal(0, accepted.Result); Assert.True(accepted.IsAutoCast);
-        await Next(alice, CombatService.UseInSkill, UseInSkillInfo.Parser, x => x.SessionId == accepted.SessionId);
+        var timeline = await Next(alice, CombatService.UseInSkill, UseInSkillInfo.Parser, x => x.SessionId == accepted.SessionId);
+        Assert.Equal(1200401, timeline.SkillID);
+        Assert.Equal(target.Uid, timeline.TargetId);
+        Assert.Equal(target.Pos.X, timeline.TargetPos.X);
+        Assert.Equal(target.Pos.Y, timeline.TargetPos.Y);
+        Assert.Equal(target.Pos.Z, timeline.TargetPos.Z);
+        Assert.True(timeline.PlayAct);
+        Assert.True(timeline.ChantMs > 0);
+        Assert.True(timeline.SkillMs > 0);
+        Assert.True(timeline.StartTime > 0);
         await alice.SendGameAsync(CombatService.SkillInterrupt, new SkillInterruptReq { InterruptSkillId = 1200401 });
         Assert.True((await Next(alice, CombatService.SkillInterrupt, SkillInterruptResp.Parser)).IsInterruptSucc);
         var end = await Next(alice, CombatService.SkillEnd, SkillEndNotify.Parser, x => x.SessionId == accepted.SessionId);
@@ -581,6 +598,18 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         // and UnitConfig[31007]._iCollisionType is None, so the client's target radius is 0.
         await using var alice = await InWorld("Alice");
         await Gm("alice", "!job 3100");
+        const int Bow = 2110120;
+        await Gm("alice", $"!item {Bow}");
+        var granted = await Next(alice, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser,
+            m => m.PackInfo.GetValueOrDefault(2)?.Inc?.Items.Values.Any(i => i.All?.ItemEntry == Bow) == true);
+        long bow = granted.PackInfo[2].Inc.Items.Values.Single(i => i.All?.ItemEntry == Bow).All.ItemGuid;
+        await alice.SendGameAsync(CharacterService.EquipItemOpr,
+            new EquipItemOprReq { Opr = 0, Pos = (EquipGridType)1, ItemGUID = bow });
+        Assert.Equal(0, (await Next(alice, CharacterService.EquipItemOpr, EquipItemOprResp.Parser)).Result);
+        var live = Session("alice");
+        int normalAttack = app.Services.GetRequiredService<SkillService>().NormalAttack(live);
+        Assert.True(normalAttack == 1300001,
+            $"career={live.Progress!.Career}, attack={normalAttack}, items={string.Join(';', live.Items.Select(i => $"{i.Entry}/{i.Pack}/{i.Grid}"))}");
         var target = await Target("alice", stationary: true, npcId: 5000007);
         var aoi = await Next(alice, GameAoiSink.SyncAoiView, AoIViewChangeData.Parser,
             view => view.Bases.Any(b => b.Uuid == (ulong)target.Uid));

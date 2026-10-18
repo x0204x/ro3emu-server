@@ -102,7 +102,9 @@ public sealed partial class NewActivityTests
         await bot.SendGameAsync(84064, new TrainingUpdateWoodNpcAttrReq { Race = 3, Element = 4, BodyType = 1 });
         Assert.NotEqual(0, (await Next(bot, 84064, TrainingUpdateWoodNpcAttrResp.Parser)).Result);
         await bot.SendGameAsync(MsgId.Walk, new WalkReq { Pos = actor.Pos, BStop = true, SpeedRate = 1 });
-        await bot.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1100001, TargetId = actor.Uid });
+        int normal = await Service<GameLoop>().InvokeAsync(() =>
+            Task.FromResult(Service<SkillService>().NormalAttack(Session(bot))));
+        await bot.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = normal, TargetId = actor.Uid });
         Assert.Equal(0, (await Next(bot, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
         await Next(bot, CombatService.SkillHit, SkillHitInfo.Parser, h => h.Dsts.Any(d => d.DstID == actor.Uid && d.Damage > 0));
         await bot.SendGameAsync(CombatService.SkillInterrupt, new NullArg());
