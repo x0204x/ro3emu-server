@@ -98,6 +98,17 @@ public sealed class GuildHuntingService : IGameTicker
         public DBGveHuntingActivityData Data { get; } = data;
         public Runtime Runtime { get; } = runtime;
         public bool Dirty { get; set; }
+        /// <summary>The settled result was committed and then announced (43513, mails). A week loaded settled is.</summary>
+        public bool Published { get; set; } = data.IsSettled;
+        /// <summary>No retry of a failed save (or settlement) before this (unix s).</summary>
+        public long RetryAt { get; set; }
+
+        // One writer per week (loop only): every SaveAsync takes a ticket; a write covers every ticket taken before
+        // its snapshot, so a caller learns whether the state it asked to save is committed.
+        public bool Saving { get; set; }
+        public long Requested { get; set; }
+        public long Committed { get; set; }
+        public List<(long Ticket, TaskCompletionSource<bool> Done)> Waiting { get; } = new();
     }
 
     /// <summary>The event's phase bounds (unix s), from TimeLimitConfig 1074 offsets on the 3303 occurrence.</summary>
@@ -113,7 +124,9 @@ public sealed class GuildHuntingService : IGameTicker
     private Week? current;
     private Week? lastSettled;
     private long lastSecond = -1, lastSave, mailRetryAt;
-    private bool settling, mailing, broadcasting, saving, saveAgain;
+    private bool settling, mailing, broadcasting;
+    /// <summary>A failed save is retried this many seconds later (the periodic save's own interval).</summary>
+    private const int RetrySeconds = 5;
     private readonly Dictionary<long, (InstanceService.Room Room, MonsterUnit Boss)> bosses = new();
     private readonly HashSet<long> spawning = new();
     private readonly Dictionary<long, CommandSlots> commands = new();
@@ -131,26 +144,62 @@ public sealed class GuildHuntingService : IGameTicker
         lastSettled = weeks.FirstOrDefault(w => w.Data.IsSettled);
     }
 
-    private Task SaveAsync(Week week) => loop.TrackAsync("guild hunt save", async () =>
+    /// <summary>
+    /// Saves the week as it is now (or newer); true once that is committed, false if the write failed (the week stays
+    /// Dirty and the tick retries it, settled or not) or the loop refused the work at shutdown.
+    /// </summary>
+    private async Task<bool> SaveAsync(Week week)
     {
-        // One write at a time, each taking the newest bytes, so an older snapshot never lands after a newer one.
-        if (saving) { saveAgain = true; return; }
-        saving = true;
+        try { return await loop.TrackAsync("guild hunt save", () => SaveCoreAsync(week)); }
+        catch (OperationCanceledException)
+        {
+            week.Dirty = true;
+            return false;
+        }
+    }
+
+    private async Task<bool> SaveCoreAsync(Week week)
+    {
+        long ticket = ++week.Requested;
+        if (week.Saving)
+        {
+            // The running writer's next write takes the newest bytes, so an older snapshot never lands after a newer one.
+            var done = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            week.Waiting.Add((ticket, done));
+            return await done.Task;
+        }
+        week.Saving = true;
         try
         {
-            do
+            while (week.Committed < week.Requested)
             {
-                saveAgain = false;
+                long covers = week.Requested;
                 week.Dirty = false;
                 lastSave = Now;
-                await accounts.WriteAsync<int>(new GuildHuntingSavePlan(week.Cycle, week.Data.ToByteArray(),
-                    JsonSerializer.SerializeToUtf8Bytes(week.Runtime)));
+                try
+                {
+                    await accounts.WriteAsync<int>(new GuildHuntingSavePlan(week.Cycle, week.Data.ToByteArray(),
+                        JsonSerializer.SerializeToUtf8Bytes(week.Runtime)));
+                }
+                catch (Exception e)
+                {
+                    week.Dirty = true;
+                    week.RetryAt = Now + RetrySeconds;
+                    log.LogError(e, "Guild hunt week {Cycle} save failed", week.Cycle);
+                    break;
+                }
+                week.Committed = covers;
             }
-            while (saveAgain);
         }
-        catch (Exception e) { week.Dirty = true; log.LogError(e, "Guild hunt week {Cycle} save failed", week.Cycle); }
-        finally { saving = false; }
-    });
+        finally
+        {
+            week.Saving = false;
+            // Tickets after the last committed write failed with it; their callers see false and the tick retries.
+            foreach (var (waiting, done) in week.Waiting) done.TrySetResult(waiting <= week.Committed);
+            week.Waiting.Clear();
+        }
+        return ticket <= week.Committed;
+    }
 
     // ------------------------------------------------------------------ schedule
 
@@ -217,6 +266,19 @@ public sealed class GuildHuntingService : IGameTicker
             if (!settling) { settling = true; loop.TrackRuntimeDetached("guild hunt settle", () => SettleAsync(week)); }
             return;
         }
+        // Settled in memory but not yet committed: retry the save; nothing is announced or mailed before it lands.
+        if (current is { Data.IsSettled: true, Published: false } held)
+        {
+            if (!settling && now >= held.RetryAt)
+            {
+                settling = true;
+                loop.TrackRuntimeDetached("guild hunt settle", () => SettleAsync(held));
+            }
+            return;
+        }
+        // Finished weeks too: a failed save of the mailed flag (or of anything after the result) is retried.
+        foreach (var finished in new[] { current, lastSettled }.Distinct())
+            if (finished is { Data.IsSettled: true, Dirty: true, Saving: false } && now >= finished.RetryAt) _ = SaveAsync(finished);
         if (current is { Data.IsSettled: true, Runtime.Mailed: false } done && !mailing && now >= mailRetryAt)
         {
             mailing = true;
@@ -465,34 +527,46 @@ public sealed class GuildHuntingService : IGameTicker
     /// <summary>
     /// GveHuntEnd: the bosses leave, each group's ranks and the server top are frozen in DBGveHuntingActivityData, 43513
     /// goes to the matched guilds' online members (HC:317-410, LG:2556-2602 opens the podium), then the mails follow.
+    /// The frozen result is committed before anything is announced: if the save fails the week stays unpublished and
+    /// the tick retries the save (this method again, past the freeze), and a restart before then settles the saved
+    /// scores afresh, so no player ever saw or was mailed a result the database does not hold.
     /// </summary>
     private async Task SettleAsync(Week week)
     {
         try
         {
-            foreach (var (guild, held) in bosses.ToArray())
-            {
-                if (!held.Boss.Dead)
-                {
-                    var score = ScoreOf(week, guild);
-                    long dealt = Math.Clamp(held.Boss.Template.MaxHp - held.Boss.Hp, 0, held.Boss.Template.MaxHp);
-                    if (dealt > score.Damage) { score.Damage = dealt; score.ReachMs = Math.Min(NowMs, week.Data.StartPhaseEndMs); }
-                }
-                bosses.Remove(guild);
-                await instances.RemoveMonsterAsync(held.Room, held.Boss);
-            }
-            commands.Clear();
             var all = week.Data.GroupMap.Values.SelectMany(g => g.GuildIds).ToArray();
-            foreach (var group in week.Data.GroupMap.Values)
+            if (!week.Data.IsSettled)
             {
-                var result = new GveHuntingGroupMatchResult { GuildResults = { RankOf(week, group) } };
-                foreach (long guild in group.GuildIds) week.Data.GuildMatchResults[guild] = result;
-                group.IsSettled = true;
+                foreach (var (guild, held) in bosses.ToArray())
+                {
+                    if (!held.Boss.Dead)
+                    {
+                        var score = ScoreOf(week, guild);
+                        long dealt = Math.Clamp(held.Boss.Template.MaxHp - held.Boss.Hp, 0, held.Boss.Template.MaxHp);
+                        if (dealt > score.Damage) { score.Damage = dealt; score.ReachMs = Math.Min(NowMs, week.Data.StartPhaseEndMs); }
+                    }
+                    bosses.Remove(guild);
+                    await instances.RemoveMonsterAsync(held.Room, held.Boss);
+                }
+                commands.Clear();
+                foreach (var group in week.Data.GroupMap.Values)
+                {
+                    var result = new GveHuntingGroupMatchResult { GuildResults = { RankOf(week, group) } };
+                    foreach (long guild in group.GuildIds) week.Data.GuildMatchResults[guild] = result;
+                    group.IsSettled = true;
+                }
+                week.Data.TopResults.Clear();
+                week.Data.TopResults.AddRange(RankOf(week, all.Where(g => ScoreOf(week, g).Damage > 0), TopSize));
+                week.Data.IsSettled = true;
             }
-            week.Data.TopResults.Clear();
-            week.Data.TopResults.AddRange(RankOf(week, all.Where(g => ScoreOf(week, g).Damage > 0), TopSize));
-            week.Data.IsSettled = true;
-            await SaveAsync(week);
+            if (!await SaveAsync(week))
+            {
+                week.RetryAt = Now + RetrySeconds;
+                log.LogWarning("Guild hunt {Cycle}: the result is held back until it is saved", week.Cycle);
+                return;
+            }
+            week.Published = true;
             lastSettled = week;
             var byGuild = OnlineByGuild();
             foreach (long guild in all)

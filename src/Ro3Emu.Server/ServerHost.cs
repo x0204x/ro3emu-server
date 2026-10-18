@@ -19,6 +19,8 @@ public static class ServerHost
             ContentRootPath = AppContext.BaseDirectory,
         });
         var options = Resolve(builder.Configuration, configure);
+        // Fail fast, before any service is built, if an offline restore of this data dir did not finish (C/D 19).
+        DatabaseRestore.ThrowIfUnfinished(options.DataDir);
         // Stage G: the default host on Windows also writes Warning and above to the Windows Event Log, synchronously on
         // the logging thread - the game loop included (a quarter of a walk's cost at 500 players). The console logger
         // queues to a background writer; the metrics provider registered below stays.

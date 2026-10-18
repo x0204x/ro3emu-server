@@ -40,6 +40,8 @@ public sealed partial class AccountStore : IDisposable
         if (metrics != null) metrics.DbAccess = AccessMetrics;
         _loop = loop;
         _log = log;
+        // A half-done restore may have moved the live file away; opening now would create an empty realm (C/D 19).
+        DatabaseRestore.ThrowIfUnfinished(options.Value.DataDir);
         Directory.CreateDirectory(options.Value.DataDir);
         _databasePath = Path.Combine(options.Value.DataDir, "ro3emu.db");
         _escrowCatalog = new Lazy<EconomyCatalog>(() =>

@@ -132,6 +132,132 @@ public sealed class GuildHuntingTests : IAsyncLifetime
         return Read();
     }
 
+    /// <summary>The newest guild_hunting row as committed: the week and the runtime's mailed flag and Hunters' damage.</summary>
+    private (DBGveHuntingActivityData Data, bool Mailed, long Damage) Saved(long guild)
+    {
+        using var db = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(dataDir, "ro3emu.db")};Mode=ReadOnly;Pooling=False");
+        db.Open();
+        using var command = db.CreateCommand();
+        command.CommandText = "SELECT data, runtime FROM guild_hunting ORDER BY cycle_start DESC LIMIT 1";
+        using var reader = command.ExecuteReader();
+        if (!reader.Read()) return (new DBGveHuntingActivityData(), false, 0);
+        using var runtime = System.Text.Json.JsonDocument.Parse((byte[])reader[1]);
+        long damage = runtime.RootElement.GetProperty("Scores").TryGetProperty(guild.ToString(), out var score)
+            ? score.GetProperty("Damage").GetInt64() : 0;
+        return (DBGveHuntingActivityData.Parser.ParseFrom((byte[])reader[0]), runtime.RootElement.GetProperty("Mailed").GetBoolean(), damage);
+    }
+
+    private static async Task Until(Func<bool> done)
+    {
+        for (int i = 0; i < 250 && !done(); i++) await Task.Delay(20);
+        Assert.True(done());
+    }
+
+    /// <summary>Lets game time pass a second at a time from the given time (up to a minute) until <paramref name="done"/>.</summary>
+    private async Task Elapse(int hour, int minute, int second, Func<bool> done)
+    {
+        for (int s = 0; s < 60 && !done(); s++)
+        {
+            clock.Set(hour, minute + (second + s) / 60, (second + s) % 60);
+            for (int i = 0; i < 10 && !done(); i++) await Task.Delay(20);
+        }
+        Assert.True(done());
+    }
+
+    /// <summary>Alice's guild alone in this week's event, its 1000 damage committed by the periodic save.</summary>
+    private async Task<(BotClient Alice, long Guild)> ScoredWeek()
+    {
+        var alice = await InWorld("Alice");
+        long hunters = await Founder(alice, "Hunters");
+        long room = await EnterHome(alice);
+        clock.Set(20, 32, 0);
+        await Next(alice, GuildHuntingService.Matched, GveHuntingMatchedNotify.Parser);
+        var boss = await Boss(room);
+        await Service<GameLoop>().InvokeAsync(() => { boss.Hp = boss.Template.MaxHp - 1000; return Task.CompletedTask; });
+        clock.Set(20, 32, 2);
+        await Next(alice, GuildHuntingService.LiveRank, GveHuntingLiveRankNotify.Parser, r => r.Guilds.Single().Score == 1000);
+        clock.Set(20, 32, 10); // past the periodic save
+        await Until(() => Saved(hunters).Damage == 1000);
+        return (alice, hunters);
+    }
+
+    [ClientDataFact]
+    public async Task AFailedSettlementSaveHoldsTheResultBackAndARestartSettlesItOnce()
+    {
+        var (alice, hunters) = await ScoredWeek();
+        long role = (long)alice.Self!.Uuid;
+        int failures = 0;
+        Service<AccountStore>().BeforeCommitForTest = label =>
+        {
+            if (label != "guild-hunting/save") return;
+            Interlocked.Increment(ref failures);
+            throw new IOException("Test-only failure at commit.");
+        };
+
+        // 20:37 GveHuntEnd: the frozen result cannot be saved, then neither can the retry.
+        clock.Set(20, 37, 0);
+        await Until(() => Volatile.Read(ref failures) >= 1);
+        await Elapse(20, 37, 1, () => Volatile.Read(ref failures) >= 2);
+        await Task.Delay(300);
+        // Nothing was announced or mailed from a result the database does not hold.
+        Assert.DoesNotContain(alice.Inbox.Snapshot(), e => e.IsGame(GuildHuntingService.MatchResult));
+        Assert.Empty(await Letters(role, 0));
+        Assert.False(Saved(hunters).Data.IsSettled);
+        await alice.DisposeAsync();
+        await StopAsync();
+
+        // The restarted server settles the saved scores: one result, each letter once.
+        await StartAsync();
+        clock.Set(20, 38, 0);
+        await using var again = await InWorld("Alice", create: false);
+        await Until(() => Saved(hunters) is { Data.IsSettled: true, Mailed: true });
+        await again.SendGameAsync(GuildHuntingService.History, new GveHuntingHistoryQueryReq());
+        var result = await Next(again, GuildHuntingService.History, GveHuntingMatchResultNotify.Parser);
+        var own = Assert.Single(result.MatchResults);
+        Assert.Equal((hunters, 1, 1000L), (own.GuildId, own.Rank, own.Score));
+        Assert.Equal(hunters, Assert.Single(result.TopResults).GuildId);
+        Assert.Equal(new[] { 10200, 10204 }, (await Letters(role, 2)).Select(l => l.TemplateId).Order());
+        clock.Set(20, 38, 10);
+        await Task.Delay(300);
+        Assert.Equal(2, (await Letters(role, 0)).Count);
+    }
+
+    [ClientDataFact]
+    public async Task AFailedSaveAfterTheMailsIsRetriedAndARestartMailsNothingTwice()
+    {
+        var (alice, hunters) = await ScoredWeek();
+        long role = (long)alice.Self!.Uuid;
+        int saves = 0;
+        Service<AccountStore>().BeforeCommitForTest = label =>
+        {
+            // The settlement commits; every save after it (the mailed flag and its retries) fails.
+            if (label == "guild-hunting/save" && Interlocked.Increment(ref saves) > 1)
+                throw new IOException("Test-only failure at commit.");
+        };
+
+        clock.Set(20, 37, 0);
+        var result = await Next(alice, GuildHuntingService.MatchResult, GveHuntingMatchResultNotify.Parser);
+        Assert.Equal(1000, Assert.Single(result.MatchResults).Score);
+        Assert.Equal(new[] { 10200, 10204 }, (await Letters(role, 2)).Select(l => l.TemplateId).Order());
+        await Until(() => Volatile.Read(ref saves) >= 2);
+        Assert.Equal((true, false), (Saved(hunters).Data.IsSettled, Saved(hunters).Mailed));
+        // The settled week's failed save is retried by the tick (and fails again here).
+        await Elapse(20, 37, 1, () => Volatile.Read(ref saves) >= 3);
+        Assert.False(Saved(hunters).Mailed);
+        await alice.DisposeAsync();
+        await StopAsync();
+
+        // The restart finds the settled week with its mails unflagged: it mails again, the delivery keys skip both
+        // letters, and the flag is saved.
+        await StartAsync();
+        clock.Set(20, 38, 0);
+        await using var again = await InWorld("Alice", create: false);
+        await Until(() => Saved(hunters).Mailed);
+        Assert.Equal(2, (await Letters(role, 0)).Count);
+        await again.SendGameAsync(GuildHuntingService.History, new GveHuntingHistoryQueryReq());
+        Assert.Equal(result, await Next(again, GuildHuntingService.History, GveHuntingMatchResultNotify.Parser));
+    }
+
     [ClientDataFact]
     public async Task MatchedGuildsRaceTheirBossesAndTheScorerIsRankedAndMailed()
     {

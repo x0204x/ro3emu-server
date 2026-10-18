@@ -8,6 +8,8 @@ namespace Ro3Emu.ClientTools;
 ///   SDK login URL and server list URL (Happyengine.Network Obf_dI + callers, Assembly-CSharp MetaSDKUtil);
 ///   gate RSA public key (Phonest.Common Utils.GenEncryptKeyFromToken).
 /// Originals are copied once to &lt;client&gt;\ro3emu-backup and every patch starts from them, so it is repeatable.
+/// New DLLs are staged, checked and journalled before any replaces its Managed copy (<see cref="ReplaceManaged"/>), so
+/// an interrupted patch can never make one of our DLLs the "original" that restore brings back.
 /// Lua and proto are untouched (they are RSA-signed and checked by RO3.ClientSecurity).
 /// </summary>
 public static class ClientPatcher
@@ -18,7 +20,7 @@ public static class ClientPatcher
     private const string PemMarker = "-----BEGIN RSA PUBLIC KEY-----";
 
     private const string AsiaProfileFile = "RO3.AsiaProfile.dll";
-    private static readonly string[] PatchedFiles = ["Happyengine.Network.dll", "Assembly-CSharp.dll", "Phonest.Common.dll", "Happyengine.Base.Runtime.dll", "Unity.TextMeshPro.dll", "HUD.dll", "HappyEngine.Resource.dll", "UnityEngine.UI.dll"];
+    internal static readonly string[] PatchedFiles = ["Happyengine.Network.dll", "Assembly-CSharp.dll", "Phonest.Common.dll", "Happyengine.Base.Runtime.dll", "Unity.TextMeshPro.dll", "HUD.dll", "HappyEngine.Resource.dll", "UnityEngine.UI.dll"];
 
     /// <summary>--verbose: GS_Debug.ShowLog always true, so the Lua debug logs (Lua_Debug reads it) reach Player.log.</summary>
     public static bool VerboseLogs { get; set; }
@@ -40,47 +42,41 @@ public static class ClientPatcher
     /// <summary>
     /// The patched DLLs' SHA-256 as last written, one "file\thash" per line in the backup folder. A Managed DLL that
     /// matches neither this nor its backup was replaced by someone else: a game update (the publisher's launcher or
-    /// RO3Emu.exe update), so it is the new original and becomes the backup.
+    /// RO3Emu.exe update), so it is the new original and becomes the backup, unless it could be our own output
+    /// (<see cref="ReplaceManaged"/>).
     /// </summary>
     private const string PatchedRecord = "patched.sha256";
+
+    /// <summary>
+    /// Written (and flushed) in the backup folder before the first staged DLL replaces its Managed copy, removed once
+    /// <see cref="PatchedRecord"/> is updated; "file\thash" of every staged DLL. While it exists those hashes are ours,
+    /// whatever the record says: an interrupted patch leaves some new DLLs under an old record.
+    /// </summary>
+    private const string PatchJournal = "patching.journal";
+
+    /// <summary>A patched DLL is first written as &lt;Managed&gt;\X.dll + this, checked, then renamed over X.dll.</summary>
+    internal const string StagedSuffix = ".ro3emu-new";
+
+    /// <summary>An empty type every DLL the patcher writes carries, so its output is recognisable without the record.</summary>
+    internal const string MarkerNamespace = "Ro3Emu", MarkerType = "PatchedByRo3Emu";
 
     public static void Patch(string clientDir, string serverBaseUrl, string publicKeyPem, string? hooksDll = null, string? locDll = null)
     {
         var managed = ManagedDir(clientDir);
-        var backup = BackupDir(clientDir);
-        Directory.CreateDirectory(backup);
-        var record = ReadRecord(backup);
-        var files = FilesToPatch(clientDir);
-        foreach (var file in files)
-        {
-            var saved = Path.Combine(backup, file);
-            var current = Path.Combine(managed, file);
-            if (!File.Exists(saved))
-            {
-                File.Copy(current, saved);
-                Console.WriteLine($"backed up {file}");
-            }
-            else if (record.TryGetValue(file, out var written) && Sha256(current) is var now && now != written && now != Sha256(saved))
-            {
-                File.Copy(current, saved, overwrite: true);
-                Console.WriteLine($"backed up {file} again: the game updated it");
-            }
-        }
-
         string pem = publicKeyPem.Replace("\r\n", "\n").Trim();
         if (!pem.StartsWith(PemMarker, StringComparison.Ordinal)) throw new ArgumentException("the key file is not a PKCS#1 'RSA PUBLIC KEY' PEM");
 
         var rules = Rules(serverBaseUrl, pem);
         hooksDll ??= DefaultHooksDll();
         if (!File.Exists(hooksDll)) throw new FileNotFoundException("build src/Ro3Emu.ClientHooks first", hooksDll);
-        File.Copy(hooksDll, Path.Combine(managed, HooksFile), overwrite: true);
-        Console.WriteLine($"installed {HooksFile}");
         locDll ??= Embedded(LocFile, "Ro3Emu.Loc");
         if (!File.Exists(locDll)) throw new FileNotFoundException("build src/Ro3Emu.Loc first", locDll);
+        File.Copy(hooksDll, Path.Combine(managed, HooksFile), overwrite: true);
+        Console.WriteLine($"installed {HooksFile}");
         File.Copy(locDll, Path.Combine(managed, LocFile), overwrite: true);
         Console.WriteLine($"installed {LocFile}");
 
-        foreach (var file in files)
+        ReplaceManaged(clientDir, (file, source, destination) =>
         {
             Func<ModuleDefinition, string>? extra = file switch
             {
@@ -93,10 +89,9 @@ public static class ClientPatcher
                 "UnityEngine.UI.dll" => m => ImageSwapPatch.Patch(m, hooksDll),
                 _ => null,
             };
-            RewriteStrings(clientDir, file, rules, extra);
-        }
+            RewriteStrings(clientDir, file, source, destination, rules, extra);
+        });
 
-        File.WriteAllLines(Path.Combine(backup, PatchedRecord), files.Select(f => f + "\t" + Sha256(Path.Combine(managed, f))));
         var missing = rules.Where(r => r.Hits == 0).Select(r => r.Description).ToList();
         if (missing.Count > 0) throw new InvalidOperationException($"literal not found: {string.Join(" | ", missing)} "
             + "(a client build this patcher does not know; open an issue with .ro3-update/installed-release.txt)");
@@ -104,11 +99,154 @@ public static class ClientPatcher
         Console.WriteLine($"client now talks to {serverBaseUrl}; do not run RO3Launcher.exe on this copy (its repair restores the originals)");
     }
 
+    /// <summary>
+    /// Brings every patched DLL from its pristine backup to its new Managed copy without ever losing an original:
+    /// - **Backup:** the first run copies each original to ro3emu-backup. Later a Managed DLL that matches neither the
+    ///   record nor its backup is a game update and becomes the new backup, unless it could be our own output (named
+    ///   in an unfinished journal, carrying the marker type, or referencing our hooks/Loc DLLs, or unreadable).
+    /// - **Stage:** <paramref name="produce"/>(file, backup, staged) writes each new DLL next to its target; every
+    ///   staged file must load as an assembly before any target is touched.
+    /// - **Journal, replace, record:** the journal names the staged hashes before the first rename; the record is
+    ///   rewritten and the journal removed only after the last one.
+    /// </summary>
+    /// <param name="stepForTest">Called with "staged" and "replaced:&lt;file&gt;"; a test throws from it to interrupt.</param>
+    internal static void ReplaceManaged(string clientDir, Action<string, string, string> produce, Action<string>? stepForTest = null)
+    {
+        var managed = ManagedDir(clientDir);
+        var backup = BackupDir(clientDir);
+        var files = FilesToPatch(clientDir);
+        Directory.CreateDirectory(backup);
+        RemoveStaged(managed, files);
+        var record = ReadRecord(backup);
+        var journalPath = Path.Combine(backup, PatchJournal);
+        var unfinished = ReadPairs(journalPath);
+        foreach (var file in files)
+        {
+            var saved = Path.Combine(backup, file);
+            var current = Path.Combine(managed, file);
+            if (!File.Exists(saved))
+            {
+                if (IsOurOutput(current, unfinished, file))
+                    throw new InvalidOperationException($"{file} in Managed may be RO3Emu's patched output and there is no original in {backup}; "
+                        + "repair the client with the publisher's launcher, then patch again");
+                CopyAtomically(current, saved);
+                Console.WriteLine($"backed up {file}");
+            }
+            else if (record.TryGetValue(file, out var written) && Sha256(current) is var now && now != written && now != Sha256(saved))
+            {
+                if (IsOurOutput(current, unfinished, file))
+                {
+                    Console.WriteLine($"{file} was left by an interrupted patch, not a game update: the original backup is kept");
+                    continue;
+                }
+                CopyAtomically(current, saved);
+                Console.WriteLine($"backed up {file} again: the game updated it");
+            }
+        }
+
+        var staged = files.Select(f => (File: f, Temp: Path.Combine(managed, f) + StagedSuffix, Target: Path.Combine(managed, f))).ToList();
+        try
+        {
+            foreach (var s in staged)
+            {
+                produce(s.File, Path.Combine(backup, s.File), s.Temp);
+                using (var file = new FileStream(s.Temp, FileMode.Open, FileAccess.ReadWrite)) file.Flush(flushToDisk: true);
+            }
+            foreach (var s in staged)
+            {
+                try { using var check = AssemblyDefinition.ReadAssembly(s.Temp, new ReaderParameters { InMemory = true }); }
+                catch (Exception e) when (e is BadImageFormatException or IOException)
+                {
+                    throw new InvalidOperationException($"the patched {s.File} does not load ({e.Message}); the client was not changed", e);
+                }
+            }
+            stepForTest?.Invoke("staged");
+
+            // Earlier unfinished journals are kept in the new one: their DLLs may still be on disk if this run stops too.
+            var journal = unfinished.Select(p => p.Key + "\t" + p.Value).ToList();
+            journal.AddRange(staged.Select(s => s.File + "\t" + Sha256(s.Temp)));
+            WriteDurably(journalPath, journal);
+            foreach (var s in staged)
+            {
+                File.Move(s.Temp, s.Target, overwrite: true);
+                stepForTest?.Invoke("replaced:" + s.File);
+            }
+            WriteDurably(Path.Combine(backup, PatchedRecord), files.Select(f => f + "\t" + Sha256(Path.Combine(managed, f))));
+            File.Delete(journalPath);
+        }
+        finally
+        {
+            RemoveStaged(managed, files);
+        }
+    }
+
+    /// <summary>
+    /// Whether a Managed DLL could have been written by this patcher, so it must never become the original backup:
+    /// a hash an unfinished patch staged, our marker type, a reference to our hooks/Loc DLLs (patches before the
+    /// marker), or a file that does not even load (a write cut short).
+    /// </summary>
+    private static bool IsOurOutput(string path, List<KeyValuePair<string, string>> unfinished, string file)
+    {
+        var hash = Sha256(path);
+        if (unfinished.Any(p => string.Equals(p.Key, file, StringComparison.OrdinalIgnoreCase) && p.Value == hash)) return true;
+        try
+        {
+            using var assembly = AssemblyDefinition.ReadAssembly(path, new ReaderParameters { InMemory = true });
+            return IsMarked(assembly.MainModule)
+                || assembly.MainModule.AssemblyReferences.Any(r => r.Name is "Ro3Emu.ClientHooks" or "Ro3Emu.Loc");
+        }
+        catch (Exception e) when (e is BadImageFormatException or IOException or InvalidOperationException)
+        {
+            return true;
+        }
+    }
+
+    internal static bool IsMarked(ModuleDefinition module) => module.GetType(MarkerNamespace, MarkerType) != null;
+
+    /// <summary>Adds the marker type (an empty static class) unless the module has it.</summary>
+    internal static void Mark(ModuleDefinition module)
+    {
+        if (IsMarked(module)) return;
+        module.Types.Add(new TypeDefinition(MarkerNamespace, MarkerType,
+            TypeAttributes.NotPublic | TypeAttributes.Abstract | TypeAttributes.Sealed | TypeAttributes.BeforeFieldInit, module.TypeSystem.Object));
+    }
+
+    private static void RemoveStaged(string managed, IEnumerable<string> files)
+    {
+        foreach (var file in files)
+        {
+            var staged = Path.Combine(managed, file) + StagedSuffix;
+            if (File.Exists(staged)) File.Delete(staged);
+        }
+    }
+
+    /// <summary>Copies through a temporary name, so the target is either the old file or a complete copy.</summary>
+    private static void CopyAtomically(string source, string target)
+    {
+        var temp = target + ".tmp";
+        File.Copy(source, temp, overwrite: true);
+        using (var file = new FileStream(temp, FileMode.Open, FileAccess.ReadWrite)) file.Flush(flushToDisk: true);
+        File.Move(temp, target, overwrite: true);
+    }
+
+    private static void WriteDurably(string path, IEnumerable<string> lines)
+    {
+        var temp = path + ".tmp";
+        using (var file = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            using (var writer = new StreamWriter(file, leaveOpen: true)) foreach (var line in lines) writer.WriteLine(line);
+            file.Flush(flushToDisk: true);
+        }
+        File.Move(temp, path, overwrite: true);
+    }
+
     public static void Restore(string clientDir)
     {
         var managed = ManagedDir(clientDir);
         var backup = BackupDir(clientDir);
-        foreach (var file in PatchedFiles.Append(AsiaProfileFile))
+        var files = FilesToPatch(clientDir);
+        RemoveStaged(managed, files);
+        foreach (var file in files)
         {
             var saved = Path.Combine(backup, file);
             if (!File.Exists(saved)) continue;
@@ -237,15 +375,22 @@ public static class ClientPatcher
 
     private static Dictionary<string, string> ReadRecord(string backup)
     {
-        var path = Path.Combine(backup, PatchedRecord);
         var record = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (!File.Exists(path)) return record;
+        foreach (var (file, hash) in ReadPairs(Path.Combine(backup, PatchedRecord))) record[file] = hash;
+        return record;
+    }
+
+    /// <summary>The "file\thash" lines of a record or journal (empty if there is none).</summary>
+    private static List<KeyValuePair<string, string>> ReadPairs(string path)
+    {
+        var pairs = new List<KeyValuePair<string, string>>();
+        if (!File.Exists(path)) return pairs;
         foreach (var line in File.ReadAllLines(path))
         {
             var cells = line.Split('\t');
-            if (cells.Length == 2) record[cells[0]] = cells[1];
+            if (cells.Length == 2) pairs.Add(new(cells[0], cells[1]));
         }
-        return record;
+        return pairs;
     }
 
     private static string Sha256(string path)
@@ -372,11 +517,10 @@ public static class ClientPatcher
     }
 
     /// <summary>Loads the pristine DLL from the backup, rewrites matching literals, writes it into Managed if anything changed.</summary>
-    private static void RewriteStrings(string clientDir, string file, List<Rule> rules, Func<ModuleDefinition, string>? extra = null)
+    private static void RewriteStrings(string clientDir, string file, string source, string destination, List<Rule> rules, Func<ModuleDefinition, string>? extra = null)
     {
         using var resolver = new DefaultAssemblyResolver(); // disposing closes the DLLs it opened in Managed
         resolver.AddSearchDirectory(ManagedDir(clientDir));
-        var source = Path.Combine(BackupDir(clientDir), file);
         using var assembly = AssemblyDefinition.ReadAssembly(source, new ReaderParameters { AssemblyResolver = resolver, InMemory = true });
         var changed = new List<string>();
 
@@ -409,11 +553,12 @@ public static class ClientPatcher
 
         if (changed.Count == 0)
         {
-            File.Copy(source, Path.Combine(ManagedDir(clientDir), file), overwrite: true);
+            File.Copy(source, destination, overwrite: true);
             Console.WriteLine($"{file}: nothing to patch (original kept)");
             return;
         }
-        assembly.Write(Path.Combine(ManagedDir(clientDir), file));
+        Mark(assembly.MainModule);
+        assembly.Write(destination);
         Console.WriteLine($"patched {file}: {changed.Count} literal(s)");
         foreach (var where in changed) Console.WriteLine($"    {Shorten(where, 150)}");
     }
