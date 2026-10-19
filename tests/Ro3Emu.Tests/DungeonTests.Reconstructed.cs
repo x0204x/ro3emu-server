@@ -76,6 +76,43 @@ public sealed partial class DungeonTests
     }
 
     [ClientDataFact]
+    public async Task TheEggThiefPortalWaveKeepsPursuingFromOutsideTheFieldLeash()
+    {
+        const long scene = 1021301;
+        await using var alice = await InWorld("Alice");
+        var fieldTemplate = Assert.IsType<MonsterTemplate>(Service<MonsterService>().Template(5000035));
+        Assert.Equal(0, fieldTemplate.SpeedCm);
+        Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
+        long instance = await Load(alice, scene);
+        var actors = await WaveIn(instance, 3);
+        var player = Session(alice);
+
+        await OnLoop(() =>
+        {
+            var monsters = Service<MonsterService>();
+            var map = Service<World>().Map(player.WorldScene);
+            foreach (var actor in actors)
+            {
+                float dx = actor.Home.X - player.Position.X, dz = actor.Home.Z - player.Position.Z;
+                float homeDistance = MathF.Sqrt(dx * dx + dz * dz);
+                Assert.True(actor.Template.SpeedCm > 0, $"portal monster {actor.Template.NpcId} cannot move");
+                Assert.True(actor.Template.LeashDistance >= homeDistance,
+                    $"portal monster {actor.Template.NpcId} leash {actor.Template.LeashDistance} < {homeDistance}");
+                Assert.Same(player, actor.Target);
+                float before = MathF.Sqrt(MathF.Pow(actor.X - player.Position.X, 2) + MathF.Pow(actor.Z - player.Position.Z, 2));
+                monsters.Tick(actor, map);
+                Assert.Same(player, actor.Target);
+                Assert.True(actor.Moving, $"portal monster {actor.Template.NpcId} did not start pursuing");
+                float destination = MathF.Sqrt(MathF.Pow(actor.ToX - player.Position.X, 2) + MathF.Pow(actor.ToZ - player.Position.Z, 2));
+                Assert.True(destination < before, $"portal monster {actor.Template.NpcId} did not move toward the player");
+            }
+            return Task.CompletedTask;
+        });
+        Assert.Same(fieldTemplate, Service<MonsterService>().Template(5000035));
+        Assert.Equal(0, fieldTemplate.SpeedCm); // the public-map template remains untouched
+    }
+
+    [ClientDataFact]
     public async Task AReconstructedClearCountsTowardItsStoryQuestDungeonPassTarget()
     {
         // Quest 10103120 targets [101018, 1051001, 1]: pass the Desert Crossroad Peco Peco nest once.
