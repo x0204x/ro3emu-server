@@ -84,12 +84,15 @@ public sealed partial class LifeJobService
             tx.RoleBlob(id, "life_restrict", restrictionBytesNext);
             tx.RoleBlob(id, "life_runtime", runtimeBytesNext);
             tx.WithEconomy(character.ProgressionEconomy(s, "cd13c/life-login-reconcile", [], [],
-                new { LifeHash = Convert.ToHexString(SHA256.HashData(lifeBytesNext)),
+                new
+                {
+                    LifeHash = Convert.ToHexString(SHA256.HashData(lifeBytesNext)),
                     RestrictHash = Convert.ToHexString(SHA256.HashData(restrictionBytesNext)),
                     RuntimeHash = Convert.ToHexString(SHA256.HashData(runtimeBytesNext)),
                     Vigor = restriction.RestrictCount[VigorId].Count,
                     VigorUses = restriction.RestrictCount[VigorUsesId].Count,
-                    runtime.EnergySpent, runtime.EnergyDay, runtime.PotionDay, runtime.FoodBook }));
+                    runtime.EnergySpent, runtime.EnergyDay, runtime.PotionDay, runtime.FoodBook
+                }));
             await roles.CommitAsync(tx, "life/load", _ =>
             { s.LifeJob = life; s.Restrictions = restriction; s.LifeRuntime = runtime; });
         }
@@ -251,8 +254,11 @@ public sealed partial class LifeJobService
     {
         foreach (var key in data.Table("LifeJobConfig").Keys)
             if (long.TryParse(key, out long job) && !life.LifeJobInfoMap.ContainsKey(job))
-                life.LifeJobInfoMap[job] = new DBLifeJobInfoDetail { JobId = job, TitleInfo = new LifeJobTitleInfo(),
-                    ToolsInfo = new LifeJobToolsInfo(), GatherInfo = new GatherJobInfo(), BuildInfo = new BuildJobInfo() };
+                life.LifeJobInfoMap[job] = new DBLifeJobInfoDetail
+                {
+                    JobId = job, TitleInfo = new LifeJobTitleInfo(),
+                    ToolsInfo = new LifeJobToolsInfo(), GatherInfo = new GatherJobInfo(), BuildInfo = new BuildJobInfo()
+                };
     }
 
     private DBLifeJobInfoDetail NewJob(long job) => new()
@@ -409,9 +415,12 @@ public sealed partial class LifeJobService
         Reconcile(next, restrict, runtime);
         NormalizeTitles(next);
         restrict.RestrictCount[VigorId].LimitCount = VigorLimit(s, next);
-        return (0, new GatherResolution { RoleId = s.Role!.Id, BeforeLife = beforeLife,
+        return (0, new GatherResolution
+        {
+            RoleId = s.Role!.Id, BeforeLife = beforeLife,
             BeforeRestrict = beforeRestrict, BeforeRuntime = beforeRuntime, Life = next,
-            Restrict = restrict, Runtime = runtime, Grants = grants.ToArray() });
+            Restrict = restrict, Runtime = runtime, Grants = grants.ToArray()
+        });
     }
 
     /// <summary>Commit the frozen collection with its source claim; publish life state before economic notices.</summary>
@@ -506,9 +515,15 @@ public sealed partial class LifeJobService
                     AddExp(s, next, GameData.Int(row, "_iJobId"), OperationExp(s, row, true) * req.ItemNum);
                     var received = await CommitAsync(s, "cd13c/life-forge", next, restrict, runtime,
                         actualCosts.GroupBy(c => c.Entry).Select(g => (g.Key, g.Sum(c => c.Count))).ToArray(), grants,
-                        result: new { Recipe = req.ItemUniqueId, Batch = req.ItemNum,
-                            OutputTypes = outcomes.Select(p => new { Type = p.Key,
-                                Grants = p.Value.Select(g => new { g.Entry, g.Count, g.BindType }).ToArray() }).ToArray() });
+                        result: new
+                        {
+                            Recipe = req.ItemUniqueId, Batch = req.ItemNum,
+                            OutputTypes = outcomes.Select(p => new
+                            {
+                                Type = p.Key,
+                                Grants = p.Value.Select(g => new { g.Entry, g.Count, g.BindType }).ToArray()
+                            }).ToArray()
+                        });
                     if (received == null) error = character.ShortageOf(s, cost);
                     else
                     {
@@ -606,14 +621,17 @@ public sealed partial class LifeJobService
                 tx.RoleBlob(s.Role.Id, "life_runtime", JsonSerializer.SerializeToUtf8Bytes(runtime));
                 if (rewardSettlement == null)
                     tx.WithEconomy(character.ProgressionEconomy(s, kind, semanticCost, goods,
-                        new { LifeHash = Convert.ToHexString(SHA256.HashData(life.ToByteArray())),
+                        new
+                        {
+                            LifeHash = Convert.ToHexString(SHA256.HashData(life.ToByteArray())),
                             RestrictHash = Convert.ToHexString(SHA256.HashData(restrict.ToByteArray())),
                             RuntimeHash = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(runtime))),
                             Vigor = restrict.RestrictCount[VigorId].Count,
                             VigorUses = restrict.RestrictCount[VigorUsesId].Count,
                             runtime.EnergySpent, runtime.EnergyDay, runtime.PotionDay, runtime.FoodBook,
                             Grants = grants.Select(g => new { g.Entry, g.Count, g.BindType }).ToArray(),
-                            Result = result }));
+                            Result = result
+                        }));
             },
             boundGoods: itemGrants.Select(g => (g.Entry, g.Count, g.BindType)).ToArray(),
             baseExp: baseExp, jobExp: jobExp,

@@ -24,9 +24,13 @@ internal static class OperationReceipts
     };
     private static object? Decode(Value value) => value.Kind switch
     {
-        "null" => null, "bool" => value.Data.GetBoolean(), "int" => value.Data.GetInt32(),
-        "long" => value.Data.GetInt64(), "string" => value.Data.GetString(),
-        "ids" => value.Data.Deserialize<long[]>(), "bytes" => value.Data.Deserialize<byte[]>(),
+        "null" => null,
+        "bool" => value.Data.GetBoolean(),
+        "int" => value.Data.GetInt32(),
+        "long" => value.Data.GetInt64(),
+        "string" => value.Data.GetString(),
+        "ids" => value.Data.Deserialize<long[]>(),
+        "bytes" => value.Data.Deserialize<byte[]>(),
         "auction" => value.Data.Deserialize<AuctionItemWriteReceipt>(),
         "friend-group" => value.Data.Deserialize<FriendStore.ChatGroup>(),
         "parts" => value.Data.Deserialize<Value[]>()!.Select(Decode).ToArray(),

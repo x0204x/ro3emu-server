@@ -67,8 +67,11 @@ public sealed class EconomyMeasurementTests(ITestOutputHelper output)
     private static object Summary(List<double> values)
     {
         var sorted = values.Order().ToArray();
-        return new { Count = values.Count, Mean = values.Average(), Median = sorted[sorted.Length / 2],
-            P95 = sorted[(int)Math.Ceiling(sorted.Length * .95) - 1], Max = sorted[^1] };
+        return new
+        {
+            Count = values.Count, Mean = values.Average(), Median = sorted[sorted.Length / 2],
+            P95 = sorted[(int)Math.Ceiling(sorted.Length * .95) - 1], Max = sorted[^1]
+        };
     }
 
     private sealed record ProbeState(long Transactions, long Receipts, long Legs, long PayloadBytes,
@@ -126,8 +129,14 @@ public sealed class EconomyMeasurementTests(ITestOutputHelper output)
                 using var command = db.CreateCommand(); command.CommandText = "SELECT * FROM " + table;
                 using var rows = command.ExecuteReader();
                 while (rows.Read()) for (int i = 0; i < rows.FieldCount; i++)
-                    bytes += rows.GetValue(i) switch { string value => Encoding.UTF8.GetByteCount(value), byte[] value => value.Length,
-                        long => 8, DBNull => 0, _ => throw new InvalidDataException("Unexpected probe storage type.") };
+                    bytes += rows.GetValue(i) switch
+                    {
+                        string value => Encoding.UTF8.GetByteCount(value),
+                        byte[] value => value.Length,
+                        long => 8,
+                        DBNull => 0,
+                        _ => throw new InvalidDataException("Unexpected probe storage type.")
+                    };
             }
             using var mode = db.CreateCommand(); mode.CommandText = "PRAGMA journal_mode";
             string wal = Path.Combine(directory, "ro3emu.db-wal");

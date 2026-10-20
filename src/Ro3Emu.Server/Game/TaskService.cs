@@ -218,7 +218,7 @@ public sealed partial class TaskService
             t => t is [TClientInteract, var id, var required] && id == req.TaskId && required == req.GoalCount ? long.MaxValue : 0,
             d => ContextMapMatches(session, d));
         await session.SendGameAsync(TriggerTaskEvent, new TriggerTaskEventResp
-            { Result = matches ? 0 : ErrorCodes.TaskRequirements, TaskId = req.TaskId, GoalCount = req.GoalCount });
+        { Result = matches ? 0 : ErrorCodes.TaskRequirements, TaskId = req.TaskId, GoalCount = req.GoalCount });
     }
 
     /// <summary>

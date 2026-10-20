@@ -8,7 +8,9 @@ public sealed class VoiceProtocolException(string message) : Exception(message);
 
 /// <summary>
 /// The voice gate's own tiny framing, independent of the game gate's Phonest/Protobuf stack: 'V' 'T' | type u8 |
-/// len u16 LE | payload. Plaintext (loopback/local play PoC; docs/README voice section notes the gap).
+/// len u16 LE | payload. Auth is the one frame sent as is; every frame after it, both ways, carries a payload sealed
+/// with the ticket's secret (<see cref="Ro3Emu.ClientHooks.VoiceCipher"/>: counter | ciphertext | tag), so len
+/// counts the sealed bytes.
 /// </summary>
 public static class VoiceFrame
 {
@@ -56,6 +58,13 @@ public static class VoiceFrame
 public static class VoiceUp
 {
     public const byte Auth = 0x01, Join = 0x02, Leave = 0x03, Mic = 0x04, Audio = 0x05, Ping = 0x06, Speaker = 0x08;
+
+    /// <summary>Auth payload byte 0. 2 = the stream is sealed after Auth; 1 (plaintext, before encryption) is refused.</summary>
+    public const byte AuthVersion = 2;
+
+    /// <summary>Auth payload: version u8 | role id i64 | 16-byte token | 16-byte proof of the ticket's secret
+    /// (<see cref="Ro3Emu.ClientHooks.VoiceCipher.AuthProof"/>).</summary>
+    public const int AuthSize = 1 + 8 + 16 + Ro3Emu.ClientHooks.VoiceCipher.AuthProofSize;
 }
 
 /// <summary>Server -> client frame types.</summary>

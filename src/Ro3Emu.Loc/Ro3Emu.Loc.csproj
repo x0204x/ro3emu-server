@@ -9,6 +9,8 @@
     <TargetFramework>netstandard2.1</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
+    <!-- Built only against a local client (never in CI), so warnings stay warnings here. -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <!-- The client's managed DLLs: -p:ClientManaged=..., or the RO3_CLIENT_DIR environment variable (the ROO_PC folder). -->
     <ClientManaged Condition="'$(ClientManaged)' == '' and '$(RO3_CLIENT_DIR)' != ''">$(RO3_CLIENT_DIR)\ro3_Data\Managed</ClientManaged>
     <ClientManaged Condition="'$(ClientManaged)' == ''">C:\RO3\ROO_PC\ro3_Data\Managed</ClientManaged>

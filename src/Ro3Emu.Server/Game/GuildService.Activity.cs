@@ -285,8 +285,10 @@ public sealed partial class GuildService
         var res = new GuildMoneyRankResp();
         if (Own(s) is { } g)
             res.PlayerHistoryData.AddRange(g.Members.Values.OrderByDescending(m => m.ContributeMoney).Select(m => new PlayerHistoryInfo
-            { PlayerId = m.RoleId, ContributeMoney = m.ContributeMoney, Official = m.Official,
-                HistoryContribute = (int)Math.Min(int.MaxValue, m.HistoryContribute) }));
+            {
+                PlayerId = m.RoleId, ContributeMoney = m.ContributeMoney, Official = m.Official,
+                HistoryContribute = (int)Math.Min(int.MaxValue, m.HistoryContribute)
+            }));
         return s.SendGameAsync(MoneyRank, res);
     }
 }

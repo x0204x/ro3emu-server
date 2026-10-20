@@ -211,7 +211,8 @@ public sealed partial class DungeonService
             || source != monster.RewardSource?.Key)
             throw new InvalidOperationException("Frozen dungeon terminal source changed before kill.");
         var settlement = monster.RewardSettlement ??= new RewardSettlement(
-            source, "monster-kill", autoDecompose: true) { DeferPresentation = true };
+            source, "monster-kill", autoDecompose: true)
+        { DeferPresentation = true };
         if (settlement.SourceKey != source || settlement.CommandKind != "monster-kill")
             throw new InvalidOperationException("Dungeon activation has a different kill source.");
         if (ReferenceEquals(a.ActivationSettlement, settlement)) return;
@@ -274,18 +275,23 @@ public sealed partial class DungeonService
         var before = JsonSerializer.Deserialize<State>(row.BaseState)!;
         var earned = JsonSerializer.Deserialize<State>(row.NextState)!;
         var next = current.SeasonStart < earned.SeasonStart ? new State
-        { PlayBook = earned.PlayBook, SeasonStart = earned.SeasonStart,
+        {
+            PlayBook = earned.PlayBook, SeasonStart = earned.SeasonStart,
             JobPosition = current.JobPosition, FirstSetted = current.FirstSetted,
-            PendingJourney = new(current.PendingJourney) } : Copy(current);
+            PendingJourney = new(current.PendingJourney)
+        } : Copy(current);
         if (next.PlayBook == earned.PlayBook && next.SeasonStart == earned.SeasonStart)
         {
             foreach (var (key, record) in earned.Records)
                 if (!before.Records.TryGetValue(key, out var prior) || prior.Passed != record.Passed || prior.FastestMs != record.FastestMs)
                 {
                     var live = next.Records.GetValueOrDefault(key);
-                    next.Records[key] = new Record { Passed = record.Passed || live?.Passed == true,
+                    next.Records[key] = new Record
+                    {
+                        Passed = record.Passed || live?.Passed == true,
                         FastestMs = live?.FastestMs > 0 && record.FastestMs > 0
-                            ? Math.Min(live.FastestMs, record.FastestMs) : Math.Max(live?.FastestMs ?? 0, record.FastestMs) };
+                            ? Math.Min(live.FastestMs, record.FastestMs) : Math.Max(live?.FastestMs ?? 0, record.FastestMs)
+                    };
                 }
             // Final Trial honors only move forward (NotFinish -> Finish -> Received); a claim made meanwhile stays.
             foreach (var (key, honors) in earned.Honors)
@@ -348,7 +354,7 @@ public sealed partial class DungeonService
             foreach (var good in row.Goods.Where(g => data.Row("ItemConfig", g.Entry) is { } item
                 && GameData.Int(item, "_iType") == 1))
                 shown.Add(character.ItemInfoOf(new InvItem
-                    { Entry = good.Entry, Stack = good.Count, BindType = good.Bind }));
+                { Entry = good.Entry, Stack = good.Count, BindType = good.Bind }));
         }
         try { await settlement.PresentAsync(); }
         catch (Exception e) { log.LogWarning(e, "Dungeon reward presentation failed after commit for {Source}", row.Key); }

@@ -169,8 +169,10 @@ public sealed partial class GenreTests : IAsyncLifetime
             var emptyTotem = new TotemPlan();
             for (int slot = 1; slot <= 3; slot++) emptyTotem.SetUpTotem[slot] = 0;
             await donor.SendGameAsync(82803, new GenreResponserSaveReq
-            { SeekUserId = response.SeekUserId, ResponseId = response.ResponseId,
-                Plan = new GenrePlanConcrete { EquipPlan = gear, TotemPlan = emptyTotem } });
+            {
+                SeekUserId = response.SeekUserId, ResponseId = response.ResponseId,
+                Plan = new GenrePlanConcrete { EquipPlan = gear, TotemPlan = emptyTotem }
+            });
             Assert.Equal(0, (await Next(donor, 82803, GenreResponserSaveResp.Parser)).Result);
             await donor.SendGameAsync(82802, new GenreResponserSendPlanReq
             { SeekUserId = response.SeekUserId, ResponseId = response.ResponseId });

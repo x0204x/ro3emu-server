@@ -72,8 +72,11 @@ public sealed class EnchantService(GameData data, CharacterService character, Fu
                         {
                             transaction.WithEconomy(character.FamilyEconomy(session, "cd13a/enchant-apply",
                                 cost.Concat([(scroll.Entry, 1L)]).ToArray(), [],
-                                new { Equip = equip.Guid, Scroll = scroll.Guid, Installed = installed,
-                                    Replaced = replacement.Value, Attr = rolled.Attr, Time = rolled.GetTime }));
+                                new
+                                {
+                                    Equip = equip.Guid, Scroll = scroll.Guid, Installed = installed,
+                                    Replaced = replacement.Value, Attr = rolled.Attr, Time = rolled.GetTime
+                                }));
                         }, stageItems: staged => staged.Single(i => i.Guid == equip.Guid).Enchantments = candidate.Enchantments) == null)
                         result = ErrorCodes.EnchantMaterials;
                 }

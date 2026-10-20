@@ -121,8 +121,11 @@ public sealed partial class GuildLeagueTests : IAsyncLifetime
     private async Task<long> Guild(string name, BotClient leader, BotClient member)
     {
         foreach (var b in new[] { leader, member }) await Gm(b, "!lvl 60");
-        await leader.SendGameAsync(GuildService.Create, new GuildCreateReq { Name = name,
-            Icon = new GuildHeadIcon { BackgroundType = 100101, IconType = 200101 } });
+        await leader.SendGameAsync(GuildService.Create, new GuildCreateReq
+        {
+            Name = name,
+            Icon = new GuildHeadIcon { BackgroundType = 100101, IconType = 200101 }
+        });
         Assert.Equal(0, (await Next(leader, GuildService.Create, GuildCreateResp.Parser)).Result);
         long guild = (await Next(leader, GuildService.Full, GuildFullInfoNtf.Parser, n => n.Guid > 0)).Guid;
         await leader.SendGameAsync(GuildService.Edit, new GuildEditReq { Tp = (GuildEditReq.Types.EditType)6, AutoAcceptApply = true });

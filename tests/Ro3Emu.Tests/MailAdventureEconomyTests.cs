@@ -142,7 +142,7 @@ public sealed class MailAdventureEconomyTests : IAsyncLifetime
         var held = Cut();
         clock.Advance(1);
         var list = await alice.MicroAsync("MailService", "getUserMailList", new Dictionary<string, object?>
-            { ["Uid"] = role.ToString(), ["Start"] = 0, ["Limit"] = 150, ["MailType"] = 1 });
+        { ["Uid"] = role.ToString(), ["Start"] = 0, ["Limit"] = 150, ["MailType"] = 1 });
         Assert.DoesNotContain((object?[])list["MailList"]!, value =>
             value is Dictionary<object, object?> row && Equals(row["MailId"], expiryId));
         var purged = Cut();
@@ -182,7 +182,7 @@ public sealed class MailAdventureEconomyTests : IAsyncLifetime
         await alice.SendGameAsync(82963, new NewActivityFragmentGatherAskReq { ItemConfigID = 1111001 });
         var ask = await Next(alice, 82963, NewActivityFragmentGatherAskResp.Parser);
         var send = new NewActivityFragmentGatherSendReq
-            { ToUserID = (long)alice.Self!.Uuid, AskID = ask.AskID, ItemID = 1111001 };
+        { ToUserID = (long)alice.Self!.Uuid, AskID = ask.AskID, ItemID = 1111001 };
         var before = Cut();
         await bob.SendGameAsync(82964, send);
         await Next(bob, 82964, NewActivityFragmentGatherSendResp.Parser);
@@ -236,7 +236,7 @@ public sealed class MailAdventureEconomyTests : IAsyncLifetime
         await alice.SendGameAsync(MailService.ClaimMail, new ClaimMailReq { MailUid = { first } });
         Assert.Equal(0, (await Next(alice, MailService.ClaimMail, ClaimMailRsp.Parser)).Result);
         var removed = await alice.MicroAsync("MailService", "deleteMail", new()
-            { ["Uid"] = role.ToString(), ["MailIds"] = new[] { first } });
+        { ["Uid"] = role.ToString(), ["MailIds"] = new[] { first } });
         Assert.True(removed["Ret"] is object?[] { Length: > 0 } ret && ret[0] is true);
         var afterDelete = Cut();
 

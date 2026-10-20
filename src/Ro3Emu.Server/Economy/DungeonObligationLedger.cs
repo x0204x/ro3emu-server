@@ -57,8 +57,11 @@ internal static class DungeonObligationLedger
             PendingBaseExp = baseExp, PendingJobExp = jobExp
         });
         if (intent.Length > 65536) throw new InvalidOperationException("Frozen dungeon intent exceeds receipt limit.");
-        string revisions = JsonSerializer.Serialize(new { roleId = row.RoleId, epoch,
-            deleted = false, parts = new Dictionary<string, long>() });
+        string revisions = JsonSerializer.Serialize(new
+        {
+            roleId = row.RoleId, epoch,
+            deleted = false, parts = new Dictionary<string, long>()
+        });
         var legs = holdings.Select((h, index) => new EconomyLeg(0, operation, index,
             EconomyLegKind.Source, EconomyReason.ActivityReward, h.Asset, h.Location,
             h.Quantity, AfterFingerprint: h.Asset.Kind == EconomyAssetKind.Item ? h.Fingerprint : null,

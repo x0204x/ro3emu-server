@@ -18,11 +18,14 @@ public sealed class EquipmentRatingTests
     {
         // ItemConfig/EquipConfig 2010250: Cutter has two base attributes, PATK=103 and MATK=104.
         // AttributeConfig weights: 103=5, 104=5, STR(1)=50; SpecialEffectConfig[1]._iPower=100.
-        var item = new InvItem { Entry = 2010250, Attrs = new()
+        var item = new InvItem
         {
-            [3] = 1, [30] = 103, [60] = 38, [31] = 104, [61] = 41,
-            [100] = 1, [140] = 2, [80] = 1,
-        } };
+            Entry = 2010250, Attrs = new()
+            {
+                [3] = 1, [30] = 103, [60] = 38, [31] = 104, [61] = 41,
+                [100] = 1, [140] = 2, [80] = 1,
+            }
+        };
 
         Assert.Equal(595, EquipmentRating.Calculate(item, Data));
         item.Attrs[60] = 51;
@@ -33,11 +36,14 @@ public sealed class EquipmentRatingTests
     public void FractionalConfigWeightRoundsOnceAndStopsAtFirstIncompletePair()
     {
         // AttributeConfig[101]._iPower=0.25; slot 1 is missing its value, so slot 2 is not parsed by the client.
-        var item = new InvItem { Entry = 2010250, Attrs = new()
+        var item = new InvItem
         {
-            [3] = 1, [30] = 101, [60] = 3, [31] = 103, [32] = 103, [62] = 100,
-            [100] = 1, [140] = 1,
-        } };
+            Entry = 2010250, Attrs = new()
+            {
+                [3] = 1, [30] = 101, [60] = 3, [31] = 103, [32] = 103, [62] = 100,
+                [100] = 1, [140] = 1,
+            }
+        };
 
         Assert.Equal(51, EquipmentRating.Calculate(item, Data)); // 3*0.25 + 1*50 = 50.75
     }

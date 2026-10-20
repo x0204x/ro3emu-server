@@ -75,7 +75,7 @@ public sealed class StageRewardTests : IAsyncLifetime
 
     private async Task LoggedOut(BotClient bot)
     {
-        string account = bot.Account;
+        string? account = bot.Account;
         await bot.DisposeAsync();
         var deadline = DateTime.UtcNow + Wait;
         while (app.Services.GetRequiredService<SessionRegistry>().All().Any(s => s.Account == account && s.Role != null)

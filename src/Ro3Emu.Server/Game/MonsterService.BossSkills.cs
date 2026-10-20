@@ -159,52 +159,52 @@ public sealed partial class MonsterService
         switch (op)
         {
             case "spawn":
-            {
-                int npc = int.Parse(args[1], CultureInfo.InvariantCulture);
-                if (Template(npc) is not { } template) return $"NPC {npc} is not a monster.";
-                double angle = s.Face * Math.PI / 180;
-                var at = new MapPoint(s.Position.X + (float)Math.Sin(angle) * 4, s.Position.Y, s.Position.Z + (float)Math.Cos(angle) * 4, s.Face + 180);
-                if (await SpawnSingleAsync(s.RuntimeMap, npc, at) is not { } boss) return $"Could not spawn {npc} here.";
-                Engage(boss, s);
-                return $"Spawned {NpcName(npc)} ({npc}, uid {boss.Uid}) with {template.Skills?.Skills.Length ?? 0} special skill(s); it attacks you.";
-            }
-            case "skills":
-            {
-                if (args.Length > 1)
                 {
                     int npc = int.Parse(args[1], CultureInfo.InvariantCulture);
-                    return Template(npc) is { } t ? Describe(npc, t.Skills, null, NowMs) : $"NPC {npc} is not a monster.";
+                    if (Template(npc) is not { } template) return $"NPC {npc} is not a monster.";
+                    double angle = s.Face * Math.PI / 180;
+                    var at = new MapPoint(s.Position.X + (float)Math.Sin(angle) * 4, s.Position.Y, s.Position.Z + (float)Math.Cos(angle) * 4, s.Face + 180);
+                    if (await SpawnSingleAsync(s.RuntimeMap, npc, at) is not { } boss) return $"Could not spawn {npc} here.";
+                    Engage(boss, s);
+                    return $"Spawned {NpcName(npc)} ({npc}, uid {boss.Uid}) with {template.Skills?.Skills.Length ?? 0} special skill(s); it attacks you.";
                 }
-                return NearestBoss(s) is { } boss ? Describe(boss.Template.NpcId, boss.Template.Skills, boss, NowMs) : "No boss with special skills near you.";
-            }
+            case "skills":
+                {
+                    if (args.Length > 1)
+                    {
+                        int npc = int.Parse(args[1], CultureInfo.InvariantCulture);
+                        return Template(npc) is { } t ? Describe(npc, t.Skills, null, NowMs) : $"NPC {npc} is not a monster.";
+                    }
+                    return NearestBoss(s) is { } boss ? Describe(boss.Template.NpcId, boss.Template.Skills, boss, NowMs) : "No boss with special skills near you.";
+                }
             case "phase":
-            {
-                if (NearestBoss(s) is not { Template.Skills: { } book } boss) return "No boss with special skills near you.";
-                int phase = int.Parse(args[1], CultureInfo.InvariantCulture);
-                if (phase < 1 || phase > book.PhaseHpBp.Length) return $"{NpcName(boss.Template.NpcId)} has phases 0..{book.Phases - 1}.";
-                boss.Hp = Math.Max(1, boss.Template.MaxHp * book.PhaseHpBp[phase - 1] / 10000 - 1);
-                SendHealth(boss);
-                if (boss.Target == null) Engage(boss, s);
-                return $"{NpcName(boss.Template.NpcId)} HP set to {boss.Hp}/{boss.Template.MaxHp}: phase {phase} begins.";
-            }
+                {
+                    if (NearestBoss(s) is not { Template.Skills: { } book } boss) return "No boss with special skills near you.";
+                    int phase = int.Parse(args[1], CultureInfo.InvariantCulture);
+                    if (phase < 1 || phase > book.PhaseHpBp.Length) return $"{NpcName(boss.Template.NpcId)} has phases 0..{book.Phases - 1}.";
+                    boss.Hp = Math.Max(1, boss.Template.MaxHp * book.PhaseHpBp[phase - 1] / 10000 - 1);
+                    SendHealth(boss);
+                    if (boss.Target == null) Engage(boss, s);
+                    return $"{NpcName(boss.Template.NpcId)} HP set to {boss.Hp}/{boss.Template.MaxHp}: phase {phase} begins.";
+                }
             case "cast":
-            {
-                if (NearestBoss(s) is not { Template.Skills: { } book } boss) return "No boss with special skills near you.";
-                int id = int.Parse(args[1], CultureInfo.InvariantCulture);
-                int index = Array.FindIndex(book.Skills, k => k.Id == id);
-                if (index < 0) return $"Skill {id} is not in {NpcName(boss.Template.NpcId)}'s set.";
-                if (boss.Target != s) Engage(boss, s);
-                var rt = boss.BossSkills ??= new BossSkillRuntime(book);
-                rt.Engaged = true;
-                StartBossSkill(boss, s, null, rt, index, NowMs);
-                return $"{NpcName(boss.Template.NpcId)} casts {data.TextOf(book.Skills[index].Row, "_iName")} ({id}).";
-            }
+                {
+                    if (NearestBoss(s) is not { Template.Skills: { } book } boss) return "No boss with special skills near you.";
+                    int id = int.Parse(args[1], CultureInfo.InvariantCulture);
+                    int index = Array.FindIndex(book.Skills, k => k.Id == id);
+                    if (index < 0) return $"Skill {id} is not in {NpcName(boss.Template.NpcId)}'s set.";
+                    if (boss.Target != s) Engage(boss, s);
+                    var rt = boss.BossSkills ??= new BossSkillRuntime(book);
+                    rt.Engaged = true;
+                    StartBossSkill(boss, s, null, rt, index, NowMs);
+                    return $"{NpcName(boss.Template.NpcId)} casts {data.TextOf(book.Skills[index].Row, "_iName")} ({id}).";
+                }
             case "kill":
-            {
-                if (NearestBoss(s, anyMonster: true) is not { } boss) return "No monster near you.";
-                await KillAsync(boss);
-                return $"{NpcName(boss.Template.NpcId)} removed (no rewards).";
-            }
+                {
+                    if (NearestBoss(s, anyMonster: true) is not { } boss) return "No monster near you.";
+                    await KillAsync(boss);
+                    return $"{NpcName(boss.Template.NpcId)} removed (no rewards).";
+                }
             default: throw new ArgumentException("op");
         }
     }

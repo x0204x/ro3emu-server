@@ -454,7 +454,7 @@ public sealed partial class EmojiService : IGameTicker
             invites.Remove(invite);
             if (invite.Invitee == roleId && Online(invite.Owner) is { } owner)
                 loop.PostRuntime(() => owner.SendGameAsync(InviteResponseNtf, new EmojiInviteResponseNtf
-                    { IsAccept = false, EmojiId = invite.EmojiId, InviteeId = roleId, ErrorCode = CannotInvite }));
+                { IsAccept = false, EmojiId = invite.EmojiId, InviteeId = roleId, ErrorCode = CannotInvite }));
         }
     }
 

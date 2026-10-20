@@ -117,14 +117,16 @@ internal sealed class EconomyEnvelopePlan(RoleItemPlan child, EconomyEnvelope en
         string beforeVector = JsonSerializer.Serialize(new
         {
             roles = ExpectedRevisions?.Values.OrderBy(x => x.RoleId).Select(x => new
-                { x.RoleId, x.Epoch, x.Deleted, parts = x.Parts.OrderBy(p => p.Key).ToDictionary(p => p.Key, p => p.Value) }),
+            { x.RoleId, x.Epoch, x.Deleted, parts = x.Parts.OrderBy(p => p.Key).ToDictionary(p => p.Key, p => p.Value) }),
             entities = orderedEntities
         });
         string afterVector = JsonSerializer.Serialize(new
         {
             roles = ExpectedRevisions?.Values.OrderBy(x => x.RoleId).Select(x => new
-                { x.RoleId, x.Epoch, x.Deleted, parts = x.Parts.OrderBy(p => p.Key).ToDictionary(p => p.Key,
-                    p => child.MutatedRoleWrites(children).Contains(RevisionStore.Role(x.RoleId, p.Key)) ? checked(p.Value + 1) : p.Value) }),
+            {
+                x.RoleId, x.Epoch, x.Deleted, parts = x.Parts.OrderBy(p => p.Key).ToDictionary(p => p.Key,
+                    p => child.MutatedRoleWrites(children).Contains(RevisionStore.Role(x.RoleId, p.Key)) ? checked(p.Value + 1) : p.Value)
+            }),
             entities = orderedEntities.Select(x => mutatedEntities.Contains(x.Key) || generatedEntities.Contains(x.Key)
                 ? new OwnerRevisionValue(x.Key, checked(x.Revision + 1), true) : x)
         });
@@ -274,8 +276,11 @@ internal sealed class EconomyEnvelopePlan(RoleItemPlan child, EconomyEnvelope en
                 effect.Delta != 1 || !claimed.Contains(envelope.SourceKey) ||
                 !IsAuctionLotSource(source, envelope.SourceKey) || !lots.TryGetValue(source, out long id))
                 throw new InvalidDataException("E05d auction source effect has no claimed created lot.");
-            return effect with { Owner = new EconomyOwner(EconomyOwnerKind.Escrow,
-                "auction:" + id.ToString(CultureInfo.InvariantCulture)) };
+            return effect with
+            {
+                Owner = new EconomyOwner(EconomyOwnerKind.Escrow,
+                "auction:" + id.ToString(CultureInfo.InvariantCulture))
+            };
         }).ToArray();
     }
 

@@ -51,8 +51,11 @@ public sealed partial class PetService
             {
                 tx.RoleBlob(s.Role!.Id, "pets", saved);
                 tx.WithEconomy(character.FamilyEconomy(s, "cd13b/pet-self-choose", [(item.Entry, 1L)], goods,
-                    new { Item = item.Entry, Pet = petId, Duplicate = goods.Count > 0,
-                        StateHash = Convert.ToHexString(SHA256.HashData(saved)) }));
+                    new
+                    {
+                        Item = item.Entry, Pet = petId, Duplicate = goods.Count > 0,
+                        StateHash = Convert.ToHexString(SHA256.HashData(saved))
+                    }));
             }, committed: () => s.Pets = next, asyncCommit: true) == null) return ErrorCodes.ItemsShort;
         await s.SendGameAsync(SelfChoose, new PetChooseNtf { PetId = petId });
         await ChangedAsync(s, items: true);

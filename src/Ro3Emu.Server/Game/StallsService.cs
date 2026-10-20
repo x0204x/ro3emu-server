@@ -382,7 +382,7 @@ public sealed partial class StallsService
                 if ((row.Owner != 0 && s.ViewedStall == row.Owner) || (row.SystemId != 0 && s.ViewedSystemStall == row.SystemId))
                 {
                     await s.SendGameAsync(BuyerChange, new PlayerStallsSyncBuyerStallsInfoNtf
-                        { Info = BuyerView(row, row.SystemId > 0 && s.SceneEntry == row.Scene ? s.LineNumber : 0) });
+                    { Info = BuyerView(row, row.SystemId > 0 && s.SceneEntry == row.Scene ? s.LineNumber : 0) });
                     if (row.Ended) s.ViewedStall = s.ViewedSystemStall = 0;
                 }
             }

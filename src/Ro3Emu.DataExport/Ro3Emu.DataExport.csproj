@@ -10,7 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="KeraLua" Version="1.4.10" />
+    <PackageReference Include="KeraLua" />
     <InternalsVisibleTo Include="Ro3Emu.Setup.Tests" />
   </ItemGroup>
 

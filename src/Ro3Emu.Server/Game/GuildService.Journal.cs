@@ -54,8 +54,11 @@ public sealed partial class GuildService
     private Task EventsCoreAsync(GameSession s, GuildEventReq req)
     {
         var g = Own(s);
-        var resp = new GuildEventResp { FromIndex = req.FromIndex, Count = req.Count, GetUp = req.GetUp,
-            OnlyShowMe = req.OnlyShowMe };
+        var resp = new GuildEventResp
+        {
+            FromIndex = req.FromIndex, Count = req.Count, GetUp = req.GetUp,
+            OnlyShowMe = req.OnlyShowMe
+        };
         if (g == null) { resp.Result = ErrorCodes.NotInGuild; return s.SendGameAsync(Events, resp); }
         var journal = store.Journal(g.Id);
         resp.LastIndex = journal.Count == 0 ? 0 : journal[0].Index;

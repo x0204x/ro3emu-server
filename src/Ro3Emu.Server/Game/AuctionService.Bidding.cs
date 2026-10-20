@@ -45,9 +45,12 @@ public sealed partial class AuctionService
 
     private static DBAuctionItem DbView(AuctionStore.Item row, long viewer)
     {
-        var item = new DBAuctionItem { AuctionId = row.Id, AuctionType = row.Type, GuildId = row.GuildId,
+        var item = new DBAuctionItem
+        {
+            AuctionId = row.Id, AuctionType = row.Type, GuildId = row.GuildId,
             SrcType = row.SrcType, ItemId = row.Entry, ItemPrice = row.Price, StartTime = row.Start,
-            EndTime = row.End, State = row.State, OwnerId = row.Owner, LastBiddingTime = row.LastBid };
+            EndTime = row.End, State = row.State, OwnerId = row.Owner, LastBiddingTime = row.LastBid
+        };
         if (row.Auto && row.Owner == viewer) item.CurMaxAutoBidding = new DBAutoBidding
         { RoleId = row.Owner, MaxPrice = row.Reserve, BiddingTime = row.LastBid, IsPaused = row.AutoPaused };
         foreach (long role in row.Joined) item.JoinBiddingRoleIds[role] = role;
@@ -98,76 +101,82 @@ public sealed partial class AuctionService
                 }
                 else
                 {
-                long role = s.Role.Id;
-                if (row.Owner == role && row.Reserve == price && row.Auto == (op == BiddingType.Auto))
-                    return BidResponse(s, row, op, extra, 0);
-                long oldOwner = row.Owner;
-                int oldReserve = row.Reserve;
-                bool priorAutoWins = oldOwner != 0 && oldOwner != role && row.Auto && !row.AutoPaused
-                    && op != BiddingType.Fixed && row.Reserve >= price;
-                if (priorAutoWins)
-                {
-                    row.Price = Math.Min(row.Reserve, price + Math.Max(1, row.Raise));
-                    row.LastBid = Now;
-                    row.Revision++;
-                    if (!row.Joined.Contains(role)) row.Joined.Add(role);
-                    var transaction = roles.NewTransaction();
-                    store.EnlistSave(row, transaction);
-                    transaction.WithEscrowEconomy(AuctionIntent("auction/proxy-retain", role, s.Account ?? "")
-                        .Evidence(new { Lot = LotEvidence(row), Bidder = role, OfferedPrice = price, Operation = op }));
-                    RequireScope(scope, transaction);
-                    await roles.CommitAsync(transaction, "auction/proxy-retain");
-                    changed = row;
-                    outbid = role;
-                    committed = true;
-                }
-                else
-                {
-                    int debit = oldOwner == role ? price - oldReserve : price;
-                    var refunds = oldOwner != 0 && oldOwner != role ? new[] { oldOwner } : Array.Empty<long>();
-                    long[] dividendRoles = op == BiddingType.Fixed ? DividendRoles(row) : [];
-                    var next = System.Text.Json.JsonSerializer.Deserialize<AuctionStore.Item>(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(row))!;
-                    next.OriginalBytes = row.OriginalBytes is null ? null : (byte[])row.OriginalBytes.Clone();
-                    next.SourceRevision = row.SourceRevision;
-                    next.Owner = role;
-                    next.Reserve = price;
-                    next.Price = op == BiddingType.Fixed ? next.FixedPrice
-                        : op == BiddingType.Auto ? oldOwner == role || oldOwner == 0 ? row.Price
-                            : Math.Min(price, (row.Auto ? row.Reserve : row.Price) + Math.Max(1, row.Raise))
-                        : price;
-                    next.Auto = op == BiddingType.Auto;
-                    next.AutoPaused = false;
-                    next.LastBid = Now;
-                    next.Revision++;
-                    if (!next.Joined.Contains(role)) next.Joined.Add(role);
-                    long countdown = Math.Max(0, Param("AuctionCountdown", 5));
-                    if (next.End - Now <= countdown) next.End = checked(next.End + Math.Max(0, Param("AuctionExtendTime", 3)));
-                    if (op == BiddingType.Fixed) { next.State = AuctionState.Settled; next.Winner = role; next.End = Now; }
-                    var paid = await character.ExchangeLockedAsync(s, debit == 0 ? [] : [(next.Currency, debit)], [],
-                        popup: false, sync: false, asyncCommit: true, committed: () => committed = true, persist: tx =>
-                        {
-                            store.EnlistSave(next, tx);
-                            if (oldOwner != 0 && oldOwner != role) QueueOutbidLocked(next, oldOwner, oldReserve, tx);
-                            if (op == BiddingType.Fixed) SettleLetters(next, dividendRoles, tx);
-                            var economy = op == BiddingType.Fixed
-                                ? SettlementIntent("auction/fixed-buy", next, dividendRoles, role, s.Account ?? "",
-                                    details: new { Before = LotEvidence(row), After = LotEvidence(next), Debit = debit,
-                                        OutbidRole = oldOwner, OutbidRefund = oldReserve, Operation = op },
-                                    walletDebit: debit)
-                                : AuctionIntent("auction/bid", role, s.Account ?? "")
-                                    .Evidence(new { Before = LotEvidence(row), After = LotEvidence(next),
-                                        Debit = debit, OutbidRole = oldOwner, OutbidRefund = oldReserve,
-                                        Operation = op });
-                            tx.WithEscrowEconomy(economy);
-                            RequireScope(scope, tx);
-                        });
-                    if (paid == null) return BidResponse(s, row, op, extra, ErrorCodes.AuctionCurrencyShort);
-                    changed = next;
-                    outbid = refunds.FirstOrDefault();
-                    mailRecipients = refunds.Append(role).Concat(dividendRoles).Distinct().ToArray();
-                    paidItems = true;
-                }
-                response = BidResponse(s, changed, op, extra, 0);
+                    long role = s.Role.Id;
+                    if (row.Owner == role && row.Reserve == price && row.Auto == (op == BiddingType.Auto))
+                        return BidResponse(s, row, op, extra, 0);
+                    long oldOwner = row.Owner;
+                    int oldReserve = row.Reserve;
+                    bool priorAutoWins = oldOwner != 0 && oldOwner != role && row.Auto && !row.AutoPaused
+                        && op != BiddingType.Fixed && row.Reserve >= price;
+                    if (priorAutoWins)
+                    {
+                        row.Price = Math.Min(row.Reserve, price + Math.Max(1, row.Raise));
+                        row.LastBid = Now;
+                        row.Revision++;
+                        if (!row.Joined.Contains(role)) row.Joined.Add(role);
+                        var transaction = roles.NewTransaction();
+                        store.EnlistSave(row, transaction);
+                        transaction.WithEscrowEconomy(AuctionIntent("auction/proxy-retain", role, s.Account ?? "")
+                            .Evidence(new { Lot = LotEvidence(row), Bidder = role, OfferedPrice = price, Operation = op }));
+                        RequireScope(scope, transaction);
+                        await roles.CommitAsync(transaction, "auction/proxy-retain");
+                        changed = row;
+                        outbid = role;
+                        committed = true;
+                    }
+                    else
+                    {
+                        int debit = oldOwner == role ? price - oldReserve : price;
+                        var refunds = oldOwner != 0 && oldOwner != role ? new[] { oldOwner } : Array.Empty<long>();
+                        long[] dividendRoles = op == BiddingType.Fixed ? DividendRoles(row) : [];
+                        var next = System.Text.Json.JsonSerializer.Deserialize<AuctionStore.Item>(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(row))!;
+                        next.OriginalBytes = row.OriginalBytes is null ? null : (byte[])row.OriginalBytes.Clone();
+                        next.SourceRevision = row.SourceRevision;
+                        next.Owner = role;
+                        next.Reserve = price;
+                        next.Price = op == BiddingType.Fixed ? next.FixedPrice
+                            : op == BiddingType.Auto ? oldOwner == role || oldOwner == 0 ? row.Price
+                                : Math.Min(price, (row.Auto ? row.Reserve : row.Price) + Math.Max(1, row.Raise))
+                            : price;
+                        next.Auto = op == BiddingType.Auto;
+                        next.AutoPaused = false;
+                        next.LastBid = Now;
+                        next.Revision++;
+                        if (!next.Joined.Contains(role)) next.Joined.Add(role);
+                        long countdown = Math.Max(0, Param("AuctionCountdown", 5));
+                        if (next.End - Now <= countdown) next.End = checked(next.End + Math.Max(0, Param("AuctionExtendTime", 3)));
+                        if (op == BiddingType.Fixed) { next.State = AuctionState.Settled; next.Winner = role; next.End = Now; }
+                        var paid = await character.ExchangeLockedAsync(s, debit == 0 ? [] : [(next.Currency, debit)], [],
+                            popup: false, sync: false, asyncCommit: true, committed: () => committed = true, persist: tx =>
+                            {
+                                store.EnlistSave(next, tx);
+                                if (oldOwner != 0 && oldOwner != role) QueueOutbidLocked(next, oldOwner, oldReserve, tx);
+                                if (op == BiddingType.Fixed) SettleLetters(next, dividendRoles, tx);
+                                var economy = op == BiddingType.Fixed
+                                    ? SettlementIntent("auction/fixed-buy", next, dividendRoles, role, s.Account ?? "",
+                                        details: new
+                                        {
+                                            Before = LotEvidence(row), After = LotEvidence(next), Debit = debit,
+                                            OutbidRole = oldOwner, OutbidRefund = oldReserve, Operation = op
+                                        },
+                                        walletDebit: debit)
+                                    : AuctionIntent("auction/bid", role, s.Account ?? "")
+                                        .Evidence(new
+                                        {
+                                            Before = LotEvidence(row), After = LotEvidence(next),
+                                            Debit = debit, OutbidRole = oldOwner, OutbidRefund = oldReserve,
+                                            Operation = op
+                                        });
+                                tx.WithEscrowEconomy(economy);
+                                RequireScope(scope, tx);
+                            });
+                        if (paid == null) return BidResponse(s, row, op, extra, ErrorCodes.AuctionCurrencyShort);
+                        changed = next;
+                        outbid = refunds.FirstOrDefault();
+                        mailRecipients = refunds.Append(role).Concat(dividendRoles).Distinct().ToArray();
+                        paidItems = true;
+                    }
+                    response = BidResponse(s, changed, op, extra, 0);
                 }
                 if (paidItems)
                 {
@@ -191,8 +200,7 @@ public sealed partial class AuctionService
         }
         catch (Exception e)
         {
-            log.LogError(e, committed ? "Auction bid committed but notification failed for {Auction}"
-                : "Auction bid failed for {Auction}", id);
+            log.LogError(e, "Auction bid for {Auction} failed (committed before the failure: {Committed})", id, committed);
             return BidResponse(s, store.Get(id), op, extra, committed ? 0 : ErrorCodes.Unknown);
         }
     }
@@ -206,7 +214,7 @@ public sealed partial class AuctionService
         int delta = price - (prior?.UnitPrice ?? 0);
         var order = new AuctionStore.Prebuy(prior?.Id ?? 0, s.Role!.Id, row.Type, row.SrcType, row.Entry,
             1, price, row.Currency, (prior?.Revision ?? 0) + 1, false, row.Id, false)
-            { Original = prior?.Original, SourceRevision = prior?.SourceRevision };
+        { Original = prior?.Original, SourceRevision = prior?.SourceRevision };
         byte[]? oldPersonal = roles.LoadAuction(s.Role.Id);
         var personal = oldPersonal is { } saved ? DBAuction.Parser.ParseFrom(saved) : new DBAuction();
         personal.PreBuyNum[PrebuyKey(row.Type, row.SrcType, row.Entry)] = pending.Count(p => p.Role == s.Role.Id
@@ -220,8 +228,11 @@ public sealed partial class AuctionService
                         mail.QueueTemplateLocked(s.Role.Id, $"prebuy:{prior!.Id}:revise:{order.Revision}", 1040,
                             [new MailService.Attachment(row.Currency, -delta)], tx, data.ItemName(row.Entry));
                     tx.WithEscrowEconomy(AuctionIntent("auction/public-prebuy", s.Role.Id, s.Account ?? "")
-                        .Evidence(new { Lot = LotEvidence(row), order.Id, order.Revision, order.UnitPrice,
-                            PreviousUnitPrice = prior?.UnitPrice ?? 0, Debit = delta }));
+                        .Evidence(new
+                        {
+                            Lot = LotEvidence(row), order.Id, order.Revision, order.UnitPrice,
+                            PreviousUnitPrice = prior?.UnitPrice ?? 0, Debit = delta
+                        }));
                     RequireScope(scope, tx);
                 });
         if (paid == null) return (BidResponse(s, row, op, extra, ErrorCodes.AuctionCurrencyShort), false, false);
@@ -246,12 +257,16 @@ public sealed partial class AuctionService
                 if (outbid != 0 && recipient == outbid && row.Owner != outbid
                     && AuctionRequestCurrent(s, recipient, lease))
                     sends.Add(ObserveAuctionNotice(s.SendGameAsync(Changed, new AuctionItemChangeNotify
-                    { AuctionType = row.Type, AuctionId = row.Id, SrcType = row.SrcType, ItemPrice = row.Price,
-                        State = row.State, OwnerId = row.Owner, ItemId = row.Entry }), recipient));
+                    {
+                        AuctionType = row.Type, AuctionId = row.Id, SrcType = row.SrcType, ItemPrice = row.Price,
+                        State = row.State, OwnerId = row.Owner, ItemId = row.Entry
+                    }), recipient));
                 if (row.Type == AuctionType.Dungeon && AuctionRequestCurrent(s, recipient, lease))
                     sends.Add(ObserveAuctionNotice(s.SendGameAsync(DungeonChanged, new DungeonAuctionItemChangeNotify
-                    { AuctionId = row.Id, ItemPrice = row.Price, OwnerId = row.Owner, EndTime = ClientEnd(row),
-                        IsFix = row.State == AuctionState.Settled, LastBiddingTime = row.LastBid }), recipient));
+                    {
+                        AuctionId = row.Id, ItemPrice = row.Price, OwnerId = row.Owner, EndTime = ClientEnd(row),
+                        IsFix = row.State == AuctionState.Settled, LastBiddingTime = row.LastBid
+                    }), recipient));
             }
             catch (Exception e) { log.LogWarning(e, "Auction price notification failed for {Role}", recipient); }
         }

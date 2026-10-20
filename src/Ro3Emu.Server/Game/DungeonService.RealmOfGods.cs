@@ -59,8 +59,11 @@ public sealed partial class DungeonService
     // ---- hall of fame ----
 
     public Task HallOfFameAsync(GameSession s, QueryHallOfFameInfoReq req) => s.SendGameAsync(HallOfFame,
-        new QueryHallOfFameInfoResp { MultiDungeonBossId = req.MultiDungeonBossId,
-            HallOfFameInfo = ServerInfo.HallOfFame.TryGetValue(req.MultiDungeonBossId, out var record) ? record.Clone() : null });
+        new QueryHallOfFameInfoResp
+        {
+            MultiDungeonBossId = req.MultiDungeonBossId,
+            HallOfFameInfo = ServerInfo.HallOfFame.TryGetValue(req.MultiDungeonBossId, out var record) ? record.Clone() : null
+        });
 
     /// <summary>
     /// The first won run of a boss on this realm becomes its hall of fame entry: the team leader, the time and every
@@ -72,10 +75,13 @@ public sealed partial class DungeonService
         int bossId = (int)GameData.Int(boss, "_iBoss");
         if (ServerInfo.HallOfFame.ContainsKey(bossId) || party.Length == 0) return;
         var leader = party.FirstOrDefault(s => s.Role!.Id == a.Leader) ?? party[0];
-        var record = new DBMultiDungeonHallOfFame { MultiDungeonBossId = bossId,
+        var record = new DBMultiDungeonHallOfFame
+        {
+            MultiDungeonBossId = bossId,
             PassTime = (int)Math.Min(int.MaxValue, (loop.Now - a.StartedAt).TotalSeconds),
             PassTimestamp = clock.GetUtcNow().ToUnixTimeMilliseconds(),
-            TeamLeaderId = leader.Role!.Id, TeamLeaderName = leader.Role.Name };
+            TeamLeaderId = leader.Role!.Id, TeamLeaderName = leader.Role.Name
+        };
         // The MVP panel shows up to ten roles (UI_Sys_Dungeon_Group_MvpPanelCtrl m_kWT_Role01..10), leader first.
         foreach (var member in party.OrderBy(s => s == leader ? 0 : 1).ThenBy(s => Slot(a, s.Role!.Id)).Take(10))
             record.RoleInfo.Add(character.DetailInfo(member));
@@ -123,8 +129,11 @@ public sealed partial class DungeonService
             || FirstClearCondition(GameData.Int(boss, "_kBlessingBuffUnlock")) is not var (unlockBoss, days)
             || !ServerInfo.HallOfFame.TryGetValue(unlockBoss, out var first)) return null;
         long unlock = first.PassTimestamp / 1000 + days * Day;
-        var info = new DBMultiDungeonSacredBlessings { FirstPassTeamLeaderName = first.TeamLeaderName,
-            TeamLeaderId = first.TeamLeaderId, FirstUnlockTime = unlock };
+        var info = new DBMultiDungeonSacredBlessings
+        {
+            FirstPassTeamLeaderName = first.TeamLeaderName,
+            TeamLeaderId = first.TeamLeaderId, FirstUnlockTime = unlock
+        };
         long now = clock.GetUtcNow().ToUnixTimeSeconds();
         JsonElement? level = null;
         if (now >= unlock)
@@ -328,9 +337,12 @@ public sealed partial class DungeonService
             return;
         }
         double days = args.Length > 1 ? double.Parse(args[1], CultureInfo.InvariantCulture) : 0;
-        var record = new DBMultiDungeonHallOfFame { MultiDungeonBossId = boss, PassTime = 0,
+        var record = new DBMultiDungeonHallOfFame
+        {
+            MultiDungeonBossId = boss, PassTime = 0,
             PassTimestamp = clock.GetUtcNow().AddDays(-days).ToUnixTimeMilliseconds(),
-            TeamLeaderId = s.Role!.Id, TeamLeaderName = s.Role.Name, RoleInfo = { character.DetailInfo(s) } };
+            TeamLeaderId = s.Role!.Id, TeamLeaderName = s.Role.Name, RoleInfo = { character.DetailInfo(s) }
+        };
         await StoreFirstClearAsync(record, replace: true);
         await SyncAsync(s);
         await GmCommands.ReplyAsync(s, $"First clear of {boss} set {days} day(s) ago (test aid).");

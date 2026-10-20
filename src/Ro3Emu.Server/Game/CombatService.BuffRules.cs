@@ -152,7 +152,7 @@ public sealed partial class CombatService
             && s.SceneGeneration == generation && s.WorldScene == scene && sessions.All().Contains(s);
         var rule = effect.Rule;
         var defender = new Fighter(0, 0, m.Template.Flee, 0, m.Template.Level, m.Template.Element)
-            { Def = m.Template.Def, Mdef = m.Template.Mdef, Flee = m.Template.Flee };
+        { Def = m.Template.Def, Mdef = m.Template.Mdef, Flee = m.Template.Flee };
         long amount = PeriodicAmount(attacker, defender, rule, buff.PileCount);
         long before = m.Hp;
         m.Hp = Math.Max(0, before - amount);

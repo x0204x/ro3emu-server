@@ -45,7 +45,7 @@ public sealed class LoadTestReplyStateTests
         var basePacket = new AoIViewChangeData();
         basePacket.Bases.Add(new EntityBase { Uuid = 42, EntityType = 3 });
         reducer.Observe(new BotEvent(BotEventKind.Game)
-            { MsgId = GameAoiSink.SyncAoiView, Body = basePacket.ToByteArray() });
+        { MsgId = GameAoiSink.SyncAoiView, Body = basePacket.ToByteArray() });
         reducer.RecordReply(new BotEvent(BotEventKind.Game) { MsgId = 100, Body = [1, 2, 3] }, 3);
         reducer.RecordReply(new BotEvent(BotEventKind.Rpc) { Name = "scene-ready", Body = [4] }, 4);
         Assert.Single(reducer.Snapshot().LastReplies); // RPC events have no game message ID.

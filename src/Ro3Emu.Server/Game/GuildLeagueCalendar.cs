@@ -130,8 +130,13 @@ public sealed class GuildLeagueCalendar(GameData data, ActivityClock clock, Time
         int weeks = (int)rows.Select(r => GameData.Int(r, "_iOpenedWeek")).DefaultIfEmpty(0).Max();
         string flag = Weekday(opening) switch
         {
-            1 => "_iIsMonday", 2 => "_iIsTuesday", 3 => "_iIsWednesday", 4 => "_iIsThursday",
-            5 => "_iIsFriday", 6 => "_iIsSaturday", _ => "_iIsSunday",
+            1 => "_iIsMonday",
+            2 => "_iIsTuesday",
+            3 => "_iIsWednesday",
+            4 => "_iIsThursday",
+            5 => "_iIsFriday",
+            6 => "_iIsSaturday",
+            _ => "_iIsSunday",
         };
         int[] ids = [RegistrationActivity, .. RoundActivities];
         var entries = new List<(int Activity, Window Window)>();

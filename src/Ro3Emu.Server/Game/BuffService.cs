@@ -54,7 +54,11 @@ public sealed partial class BuffService : IGameTicker
     // SpecialStatusConfig rows specify forbidden actions. No general category interpreter was recovered.
     private static int StateFor(int buffGroup) => buffGroup switch
     {
-        9016 => 18, 9022 => 19, 9023 => 20, 12003 => 11, 9034 => 25,
+        9016 => 18,
+        9022 => 19,
+        9023 => 20,
+        12003 => 11,
+        9034 => 25,
         _ => 0,
     };
 
@@ -394,9 +398,26 @@ public sealed partial class BuffService : IGameTicker
     // Lua_GameDefine.enum_ForbiddenState: masks are explicit and do not line up with every proto ordinal.
     private static ulong ForbiddenMask(int ordinal) => ordinal switch
     {
-        1 => 1, 2 => 2, 3 => 4, 4 => 8, 5 => 16, 6 => 32, 7 => 64, 8 => 128, 9 => 256,
-        10 => 512, 11 => 1024, 12 => 2048, 13 => 4096, 14 => 8192, 15 => 16384,
-        16 => 65536, 23 => 4194304, 24 => 8388608, 25 => 16777216, 27 => 67108864,
+        1 => 1,
+        2 => 2,
+        3 => 4,
+        4 => 8,
+        5 => 16,
+        6 => 32,
+        7 => 64,
+        8 => 128,
+        9 => 256,
+        10 => 512,
+        11 => 1024,
+        12 => 2048,
+        13 => 4096,
+        14 => 8192,
+        15 => 16384,
+        16 => 65536,
+        23 => 4194304,
+        24 => 8388608,
+        25 => 16777216,
+        27 => 67108864,
         _ => 0, // Lua enum has no named mask for the remaining server ordinals.
     };
 

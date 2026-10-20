@@ -1,14 +1,19 @@
 name: release
 
-# A tag v* builds the two release archives (tools/release/pack.ps1) and attaches them to a draft release.
-# CI has no game client, so the client hooks/loc DLLs come from prebuilt/client: built by the maintainer against the
-# 7 Oct 2026 client with `pwsh tools/release/pack.ps1 -UpdatePrebuiltClientDlls` and committed; pack.ps1 refuses them
+# A tag v* builds the two release archives (tools/release/pack.ps1) and attaches them to a draft release. A manual
+# run with a version does the same for the commit it runs on; publishing that draft creates the tag.
+# CI has no game client, so the client hooks/loc DLLs come from prebuilt/client: built against the 20 Oct 2026 client
+# with `pwsh tools/release/pack.ps1 -UpdatePrebuiltClientDlls` and committed; pack.ps1 refuses them
 # when they were built from other hooks/loc sources than the tagged ones. Run tools/release/smoke.ps1 locally (it needs
 # the clients) before publishing the draft.
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      version:
+        description: Version to draft, e.g. 1.0.5 (empty builds the archives only)
+        required: false
 
 permissions:
   contents: write
@@ -16,27 +21,33 @@ permissions:
 jobs:
   pack:
     runs-on: windows-latest
+    env:
+      TAG: ${{ github.ref_type == 'tag' && github.ref_name || (inputs.version && format('v{0}', inputs.version) || '') }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
+      - name: Server tests
+        run: dotnet test tests/Ro3Emu.Tests -c Release --filter "Category!=Slow"
       - name: Setup tests
         run: dotnet test tests/Ro3Emu.Setup.Tests -c Release --filter "Category!=Slow"
       - name: Pack
         shell: pwsh
         run: |
-          $version = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME.TrimStart('v') } else { '0.0.0' }
+          $version = if ($env:TAG) { $env:TAG.TrimStart('v') } else { '0.0.0' }
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Version '$version' is not major.minor.patch" }
           ./tools/release/pack.ps1 -UsePrebuiltClientDlls -Version $version
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: ro3emu-release
           path: |
             dist/RO3Emu-win-x64.zip
             dist/RO3Emu-server-linux-x64.tar.gz
       - name: Draft release
-        if: github.ref_type == 'tag'
+        if: env.TAG != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ github.ref_name }}" dist/RO3Emu-win-x64.zip dist/RO3Emu-server-linux-x64.tar.gz --draft --title "RO3Emu ${{ github.ref_name }}" --notes "Download RO3Emu-win-x64.zip, extract it and double-click RO3Emu.exe. Server hosts on Linux: RO3Emu-server-linux-x64.tar.gz."
+          gh release create "$env:TAG" dist/RO3Emu-win-x64.zip dist/RO3Emu-server-linux-x64.tar.gz --draft --target "$env:GITHUB_SHA" --title "RO3Emu $env:TAG" --notes "Download RO3Emu-win-x64.zip, extract it and double-click RO3Emu.exe. Server hosts on Linux: RO3Emu-server-linux-x64.tar.gz."

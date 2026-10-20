@@ -54,8 +54,11 @@ public sealed partial class TerritoryWarsService
         {
             Uuid = (ulong)Uid, EntityTemplateID = (ulong)NpcId, EntityType = 2,
             State = EntityState.Alive, NotifyType = EntityBase.Types.NotifyType.All,
-            MovementInfo = new MovementInfo { Pos = Pos, Face = Face, ServerTime = MonsterService.NowMs,
-                MoveType = MovementType.MoveTypeNone },
+            MovementInfo = new MovementInfo
+            {
+                Pos = Pos, Face = Face, ServerTime = MonsterService.NowMs,
+                MoveType = MovementType.MoveTypeNone
+            },
         };
     }
 
@@ -302,9 +305,9 @@ public sealed partial class TerritoryWarsService
             try
             {
                 if (!worldPickups.TryGetValue(req.NpcUid, out var unit) || unit.Taken) return ErrorCodes.NpcMissing;
-            if (s.Role == null || s.Progress == null || s.Dead || s.SceneLoading || s.InstanceId != 0
-                || s.LineNumber != 1 || s.WorldScene != unit.WorldScene
-                || !IsWorldTerritory(s.SceneEntry)) return ErrorCodes.FeatureUnavailable;
+                if (s.Role == null || s.Progress == null || s.Dead || s.SceneLoading || s.InstanceId != 0
+                    || s.LineNumber != 1 || s.WorldScene != unit.WorldScene
+                    || !IsWorldTerritory(s.SceneEntry)) return ErrorCodes.FeatureUnavailable;
                 if (req.InteractionId != unit.InteractionId) return ErrorCodes.NpcParameter;
                 if (MonsterService.Distance(s.Position.X, s.Position.Z, unit.X, unit.Z) > 5) return ErrorCodes.NpcTooFar;
                 long limit = WorldCarryLimit();
@@ -471,8 +474,11 @@ public sealed partial class TerritoryWarsService
                     int lost = (int)Math.Min(int.MaxValue, Math.Ceiling(carried * Math.Clamp(rate, 0, 1)));
                     if (lost <= 0) return;
                     var next = Copy(state);
-                    var drop = new WorldDrop { Id = next.NextWorldDropId++, Scene = victim.SceneEntry,
-                        X = victim.Position.X, Y = victim.Position.Y, Z = victim.Position.Z, Amount = lost };
+                    var drop = new WorldDrop
+                    {
+                        Id = next.NextWorldDropId++, Scene = victim.SceneEntry,
+                        X = victim.Position.X, Y = victim.Position.Y, Z = victim.Position.Z, Amount = lost
+                    };
                     next.WorldDrops.Add(drop.Id, drop);
                     var asset = new EconomyAsset(EconomyAssetKind.Currency, SupplyCurrency);
                     var movement = new EventEconomyMutation(EventEconomy.Catalog(data), Guid.NewGuid().ToString("N"),
@@ -550,9 +556,9 @@ public sealed partial class TerritoryWarsService
                 string claimKey = $"{Epoch}:{week}:{pair.Key}";
                 int max = (int)(data.Row("RestrictConfig", GameData.Int(row, "_iRestrictId")) is { } restrict
                     ? GameData.Int(restrict, "_iMaxRestrictNum") : 0);
-            if (role != null && killer.Role != null && killer.InstanceId == 0 && killer.LineNumber == 1 && !killer.SceneLoading
-                && killer.WorldScene == monster.WorldScene && max > 0
-                    && role.WorldLandClaims.GetValueOrDefault(claimKey) < max)
+                if (role != null && killer.Role != null && killer.InstanceId == 0 && killer.LineNumber == 1 && !killer.SceneLoading
+                    && killer.WorldScene == monster.WorldScene && max > 0
+                        && role.WorldLandClaims.GetValueOrDefault(claimKey) < max)
                 {
                     var grants = new List<Grant>();
                     AddAward(grants, GameData.Int(row, "_iAward"), killer);

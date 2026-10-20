@@ -184,8 +184,11 @@ public sealed partial class NewActivityTests : IAsyncLifetime
     {
         await using var bot = await InWorld("Preview");
         await Gm(bot, "!lvl 30"); await Reconcile(bot);
-        var req = new CommonActivityReq { ActivityId = 104,
-            FunctionPreviewGetReward = new GetThreeDayFunctionPreviewAwardReq { FunctionPreviewCfgId = 4 } };
+        var req = new CommonActivityReq
+        {
+            ActivityId = 104,
+            FunctionPreviewGetReward = new GetThreeDayFunctionPreviewAwardReq { FunctionPreviewCfgId = 4 }
+        };
         Assert.Equal(0, (await Common(bot, req)).Result);
         Assert.Equal(ErrorCodes.RewardClaimed, (await Common(bot, req)).Result);
         req.FunctionPreviewGetReward.FunctionPreviewCfgId = 9; // the configured level40 preview
@@ -202,8 +205,11 @@ public sealed partial class NewActivityTests : IAsyncLifetime
         await Gm(bot, "!lvl 30"); await Reconcile(bot);
         var session = Session(bot);
         long roleId = session.Role!.Id;
-        var request = new CommonActivityReq { ActivityId = 103,
-            LevelAwardGetReward = new GetThreeDayLevelAwardReq { LevelAwardCfgId = 1 } };
+        var request = new CommonActivityReq
+        {
+            ActivityId = 103,
+            LevelAwardGetReward = new GetThreeDayLevelAwardReq { LevelAwardCfgId = 1 }
+        };
         Assert.False(session.NewActivities!.ActivityInfo[103].ActivityParam.LevelAward.AwardData.ContainsKey(1));
         await bot.SendGameAsync(MsgId.Logout, new LogoutReq());
         await Next(bot, MsgId.Logout, LogoutResp.Parser);

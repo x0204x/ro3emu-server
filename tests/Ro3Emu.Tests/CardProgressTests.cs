@@ -390,7 +390,7 @@ public sealed class CardProgressTests : IAsyncLifetime
         Assert.DoesNotContain(session.Items, i => i.Entry == Lunatic);
 
         await alice.SendGameAsync(82806, new SwitchGenrePlanReq
-            { TargetPlan = 1, IsApply = true, ChildSystem = { [4] = 1 } });
+        { TargetPlan = 1, IsApply = true, ChildSystem = { [4] = 1 } });
         Assert.Equal(0, (await Next(alice, 82806, SwitchGenrePlanResp.Parser)).Result);
         Assert.Equal(1, session.CardPlans.CurrentPlan);
         Assert.DoesNotContain(session.Items, i => i.Grid < 0);

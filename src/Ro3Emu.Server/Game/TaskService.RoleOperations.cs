@@ -46,7 +46,7 @@ public sealed partial class TaskService
             await FlushAsync(session);
         }
         await session.SendGameAsync(TaskNpcChat, new TaskNpcChatResp
-            { Result = allowed ? 0 : ErrorCodes.TaskRequirements, ChatId = req.ChatId });
+        { Result = allowed ? 0 : ErrorCodes.TaskRequirements, ChatId = req.ChatId });
     }
 
     /// <summary>

@@ -129,10 +129,16 @@ public sealed partial class TimedBattleService : IGameTicker
     /// <summary>5070 DBCasualBattleInfo of the role's Mock Battle state (LC_DAL_DailyActivity._processCasualBattleInfo).</summary>
     internal static DBCasualBattleInfo CasualInfo(State state, int startMmr)
     {
-        static CasualBattleStats Wire(CasualStats s) => new() { PersonalScore = s.PersonalScore, Damage = s.Damage, Kills = s.Kills,
-            Assists = s.Assists, DamageTaken = s.DamageTaken, Healing = s.Healing };
-        var info = new DBCasualBattleInfo { Mmr = state.CasualMmr == 0 ? startMmr : state.CasualMmr,
-            BestRecord = Wire(state.CasualBest), LifetimeTotal = Wire(state.CasualTotal) };
+        static CasualBattleStats Wire(CasualStats s) => new()
+        {
+            PersonalScore = s.PersonalScore, Damage = s.Damage, Kills = s.Kills,
+            Assists = s.Assists, DamageTaken = s.DamageTaken, Healing = s.Healing
+        };
+        var info = new DBCasualBattleInfo
+        {
+            Mmr = state.CasualMmr == 0 ? startMmr : state.CasualMmr,
+            BestRecord = Wire(state.CasualBest), LifetimeTotal = Wire(state.CasualTotal)
+        };
         info.RecentRecords.Add(state.CasualRecords.Select(r => new CasualBattleHistoryRecord
         { ResultId = r.ResultId, BattleTime = r.BattleTime, Outcome = r.Outcome }));
         return info;
@@ -287,7 +293,7 @@ public sealed partial class TimedBattleService : IGameTicker
         int teamSize = row is { } team ? (int)GameData.Int(team, "_kTeamQuantity") : 0;
         // TEST AID (not original behaviour): ServerOptions.ChickenTestPlayers/ChickenTestTeamSize or GM "!chicken shape"
         // start a Survivor Battle with a small lobby (the config asks for 100 entrants in teams of 5).
-        if (entry == ChickenEntry && (ChickenTestShape ?? (options.ChickenTestPlayers, options.ChickenTestTeamSize)) is (> 0 and var testPlayers, > 0 and var testTeam))
+        if (entry == ChickenEntry && (ChickenTestShape ?? (options.ChickenTestPlayers, options.ChickenTestTeamSize)) is ( > 0 and var testPlayers, > 0 and var testTeam))
             (players, teamSize) = (testPlayers, testTeam);
         return players > teamSize && players <= 1000 && teamSize > 0 && players % teamSize == 0
             ? (players, teamSize) : (0, 0);
@@ -357,9 +363,11 @@ public sealed partial class TimedBattleService : IGameTicker
         int result = req.OperateId != 0 || req.MatchData?.MultiDungeon != null ? ErrorCodes.Parameter
             : Admission(session, req.MatchEntryId);
         await session.SendGameAsync(StartMatch, new StartMatchResp
-        { Result = result, MatchEntryId = req.MatchEntryId, MatchData = req.MatchData?.Clone(),
+        {
+            Result = result, MatchEntryId = req.MatchEntryId, MatchData = req.MatchData?.Clone(),
             // Same LC_DAL_Match.ResetMatchTimer consumer as dungeon matching: Unix seconds.
-            MatchStartTime = result == 0 ? time.GetUtcNow().ToUnixTimeSeconds() : 0 });
+            MatchStartTime = result == 0 ? time.GetUtcNow().ToUnixTimeSeconds() : 0
+        });
         if (result != 0) return;
         int entry = req.MatchEntryId;
         if (!queue.TryGetValue(entry, out var waiting)) queue[entry] = waiting = [];
@@ -371,9 +379,12 @@ public sealed partial class TimedBattleService : IGameTicker
         waiting.RemoveRange(0, shape.Players);
         if (waiting.Count == 0) queue.Remove(entry);
         long now = time.GetUtcNow().ToUnixTimeSeconds();
-        var match = new Match { Entry = entry, Players = players, TeamSize = shape.TeamSize, Open = now,
+        var match = new Match
+        {
+            Entry = entry, Players = players, TeamSize = shape.TeamSize, Open = now,
             // Survivor Battle's end is set when its battle stage starts (TimedBattleService.Chicken).
-            Deadline = entry == ChickenEntry ? long.MaxValue : now + 300 };
+            Deadline = entry == ChickenEntry ? long.MaxValue : now + 300
+        };
         for (int i = 0; i < players.Length; i++)
         {
             var player = players[i];
@@ -420,8 +431,11 @@ public sealed partial class TimedBattleService : IGameTicker
         if (!match.Players.Any(preparing.ContainsKey)) return;
         foreach (var player in match.Players) preparing.Remove(player);
         long failedId = match.Participants[failed].Id;
-        var notify = new FailMatchNtf { Result = ErrorCodes.DungeonDeclined, MatchEntryId = match.Entry,
-            PenaltyMemberGuid = failedId, FailPlayer = failedId, MatchStartTime = match.Open };
+        var notify = new FailMatchNtf
+        {
+            Result = ErrorCodes.DungeonDeclined, MatchEntryId = match.Entry,
+            PenaltyMemberGuid = failedId, FailPlayer = failedId, MatchStartTime = match.Open
+        };
         await RoleFanout.EachAsync(match.Players, player => player.SendGameAsync(DungeonMatchService.FailNotify, notify));
     }
 
@@ -429,8 +443,11 @@ public sealed partial class TimedBattleService : IGameTicker
     {
         var notify = new MatchReadyNotify { MatchEntryId = match.Entry };
         foreach (var player in match.Players)
-            notify.ReadyInfos.Add(new MatchRoleReadyInfo { PlayerId = match.Participants[player].Id,
-                Status = match.Ready.Contains(player) ? MatchReadyStatus.Ready : MatchReadyStatus.None });
+            notify.ReadyInfos.Add(new MatchRoleReadyInfo
+            {
+                PlayerId = match.Participants[player].Id,
+                Status = match.Ready.Contains(player) ? MatchReadyStatus.Ready : MatchReadyStatus.None
+            });
         notify.EndTime = (match.Open + 30) * 1000;
         if (match.Entry == DragonEntry) notify.DragonIslandReadyProgress = new DragonIslandReadyProgress
         { ReadyCount = match.Ready.Count, ExpectedCount = match.Players.Length };
@@ -442,43 +459,43 @@ public sealed partial class TimedBattleService : IGameTicker
         Match? settle = null;
         using (var scope = await EnterCommandAsync(session, req.MatchEntryId, "timed battle ready"))
         {
-        var match = preparing.GetValueOrDefault(session);
-        int result = !session.ActivitiesReady ? ErrorCodes.FeatureUnavailable
-            : match == null || match.Entry != req.MatchEntryId || session.Role?.Id != req.PlayerId
-            ? ErrorCodes.Parameter : !req.IsReady ? ErrorCodes.DungeonDeclined : 0;
-        await session.SendGameAsync(Ready, new MatchReadyResp
-        { Result = result, MatchEntryId = req.MatchEntryId, PlayerId = session.Role?.Id ?? 0, IsReady = req.IsReady });
-        if (match == null || result == ErrorCodes.Parameter) return;
-        if (result != 0)
-        {
-            await FailReadyAsync(match, session);
-            return;
-        }
-        match.Ready.Add(session);
-        await BroadcastReadyAsync(match);
-        if (match.Ready.Count != match.Players.Length) return;
-        int sceneEntry = match.Entry == ChickenEntry ? 2240101 : 3010303;
-        try { match.Room = instances.Create(sceneEntry, match.Players); }
-        catch (Exception e) { log.LogWarning(e, "Timed battle room create failed"); await CancelReadyAsync(match, false); return; }
-        foreach (var player in match.Players) preparing.Remove(player);
-        matches[match.Room.Id] = match;
-        praise.Remember(match.Room.Id, sceneEntry, match.Participants.Values.Select(p => p.Id)); // the result screens' likes
-        if (match.Entry == ChickenEntry) match.Chicken = NewRun(match);
-        else if (match.Entry == DragonEntry) { match.Open = time.GetUtcNow().ToUnixTimeSeconds(); match.Deadline = match.Open + 300; match.Dragon = NewDragonRun(match); }
-        await RoleFanout.EachAsync(match.Players, async player =>
-        {
-            active[player] = match;
-            player.EventFaction = match.Faction[player];
-            bool entered = false;
-            try { entered = await instances.EnterAsync(match.Room, player, 5); }
-            finally
+            var match = preparing.GetValueOrDefault(session);
+            int result = !session.ActivitiesReady ? ErrorCodes.FeatureUnavailable
+                : match == null || match.Entry != req.MatchEntryId || session.Role?.Id != req.PlayerId
+                ? ErrorCodes.Parameter : !req.IsReady ? ErrorCodes.DungeonDeclined : 0;
+            await session.SendGameAsync(Ready, new MatchReadyResp
+            { Result = result, MatchEntryId = req.MatchEntryId, PlayerId = session.Role?.Id ?? 0, IsReady = req.IsReady });
+            if (match == null || result == ErrorCodes.Parameter) return;
+            if (result != 0)
             {
-                if (!entered) { active.Remove(player); player.EventFaction = 0; }
+                await FailReadyAsync(match, session);
+                return;
             }
-        });
-        await RoleFanout.EachAsync(match.Players.Where(active.ContainsKey), player =>
-            player.SendGameAsync(MatchStartNotify, new StartMatchNotify { MatchEntryId = match.Entry }));
-        if (match.Players.Any(p => !active.ContainsKey(p))) settle = match;
+            match.Ready.Add(session);
+            await BroadcastReadyAsync(match);
+            if (match.Ready.Count != match.Players.Length) return;
+            int sceneEntry = match.Entry == ChickenEntry ? 2240101 : 3010303;
+            try { match.Room = instances.Create(sceneEntry, match.Players); }
+            catch (Exception e) { log.LogWarning(e, "Timed battle room create failed"); await CancelReadyAsync(match, false); return; }
+            foreach (var player in match.Players) preparing.Remove(player);
+            matches[match.Room.Id] = match;
+            praise.Remember(match.Room.Id, sceneEntry, match.Participants.Values.Select(p => p.Id)); // the result screens' likes
+            if (match.Entry == ChickenEntry) match.Chicken = NewRun(match);
+            else if (match.Entry == DragonEntry) { match.Open = time.GetUtcNow().ToUnixTimeSeconds(); match.Deadline = match.Open + 300; match.Dragon = NewDragonRun(match); }
+            await RoleFanout.EachAsync(match.Players, async player =>
+            {
+                active[player] = match;
+                player.EventFaction = match.Faction[player];
+                bool entered = false;
+                try { entered = await instances.EnterAsync(match.Room, player, 5); }
+                finally
+                {
+                    if (!entered) { active.Remove(player); player.EventFaction = 0; }
+                }
+            });
+            await RoleFanout.EachAsync(match.Players.Where(active.ContainsKey), player =>
+                player.SendGameAsync(MatchStartNotify, new StartMatchNotify { MatchEntryId = match.Entry }));
+            if (match.Players.Any(p => !active.ContainsKey(p))) settle = match;
         }
         if (settle != null) await SettleMatchAsync(settle);
     }
@@ -542,8 +559,11 @@ public sealed partial class TimedBattleService : IGameTicker
             .OrderByDescending(p => match.Kills.GetValueOrDefault(p)).ThenByDescending(p => run?.Players[p].Damage ?? 0)
             .ThenBy(p => match.Participants[p].Id).FirstOrDefault();
         long mvpId = actualVictory && mvp != null ? match.Participants[mvp].Id : 0;
-        var result = new ChickenResultNotify { HasAborted = !actualVictory, BattleStartTime = start,
-            TeamStatistics = new TeamStatisticsInfo { TeamId = faction } };
+        var result = new ChickenResultNotify
+        {
+            HasAborted = !actualVictory, BattleStartTime = start,
+            TeamStatistics = new TeamStatisticsInfo { TeamId = faction }
+        };
         result.TeamStatistics.MemberIds.AddRange(match.Players
             .Where(p => match.Faction[p] == faction).Select(p => match.Participants[p].Id));
         result.TeamStatistics.ExtraData[1012001] = new ExtraValueData { LongValue = ranks.GetValueOrDefault(faction) };
@@ -554,9 +574,14 @@ public sealed partial class TimedBattleService : IGameTicker
         {
             var (id, name, career) = Presentation(match, player);
             var role = new RoleStatisticsInfo
-            { BaseInfo = new StatisticsRoleBaseInfo { Id = id, Name = name,
-                Job = career, CampId = match.Faction[player], TeamId = match.Faction[player] },
-                Totalscore = match.Kills.GetValueOrDefault(player) };
+            {
+                BaseInfo = new StatisticsRoleBaseInfo
+                {
+                    Id = id, Name = name,
+                    Job = career, CampId = match.Faction[player], TeamId = match.Faction[player]
+                },
+                Totalscore = match.Kills.GetValueOrDefault(player)
+            };
             if (run?.Players.GetValueOrDefault(player) is { } me)
             {
                 role.TotalDamage = me.Damage; role.TotalBeDamage = me.Injury; role.TotalCure = me.Cure;
@@ -595,11 +620,14 @@ public sealed partial class TimedBattleService : IGameTicker
 
     private static DungeonResultInfo DragonSnapshot(Match match, GameSession? winner, bool actualVictory, long settledAt)
     {
-        var result = new DungeonResultInfo { Result = actualVictory ? 1 : 0,
-             WinEntityId = actualVictory ? match.Participants[winner!].Id : 0,
-             WinCamp = actualVictory ? match.Faction[winner!] : 0,
+        var result = new DungeonResultInfo
+        {
+            Result = actualVictory ? 1 : 0,
+            WinEntityId = actualVictory ? match.Participants[winner!].Id : 0,
+            WinCamp = actualVictory ? match.Faction[winner!] : 0,
             DungeonId = (int)(match.Room?.SceneEntry ?? 0),
-            StatisticsTime = settledAt, DungeonStartTimestamp = match.Open * 1000 };
+            StatisticsTime = settledAt, DungeonStartTimestamp = match.Open * 1000
+        };
         if (match.Room is { } room)
         {
             var scene = new SceneStatisticsInfo { SceneId = room.Id, DungeonId = (int)room.SceneEntry };
@@ -608,9 +636,14 @@ public sealed partial class TimedBattleService : IGameTicker
                 var (id, name, career) = Presentation(match, player);
                 long score = match.Dragon?.Score.GetValueOrDefault(player) ?? match.Kills.GetValueOrDefault(player);
                 var role = new RoleStatisticsInfo
-                { BaseInfo = new StatisticsRoleBaseInfo { Id = id, Name = name,
-                    Job = career, CampId = match.Faction[player], TeamId = match.Faction[player] },
-                    Totalscore = score };
+                {
+                    BaseInfo = new StatisticsRoleBaseInfo
+                    {
+                        Id = id, Name = name,
+                        Job = career, CampId = match.Faction[player], TeamId = match.Faction[player]
+                    },
+                    Totalscore = score
+                };
                 // LC_DAL_DragonIsland sorts by extraData TotalScore 1021005, then KillPlayer 1001004.
                 role.ExtraData[1021005] = new ExtraValueData { LongValue = score };
                 role.ExtraData[1001004] = new ExtraValueData { LongValue = match.Kills.GetValueOrDefault(player) };
@@ -618,8 +651,11 @@ public sealed partial class TimedBattleService : IGameTicker
             }
             if (match.Dragon is { } run)
                 foreach (var (camp, campScore) in run.CampScore)
-                    scene.CampStatistics[camp] = new CampStatisticsInfo { CampId = camp,
-                        ExtraData = { [1041003] = new ExtraValueData { LongValue = campScore } } }; // CampScore
+                    scene.CampStatistics[camp] = new CampStatisticsInfo
+                    {
+                        CampId = camp,
+                        ExtraData = { [1041003] = new ExtraValueData { LongValue = campScore } }
+                    }; // CampScore
             if (actualVictory) result.MetaData["mvpPlayerId"] = match.Participants[winner!].Id.ToString(System.Globalization.CultureInfo.InvariantCulture);
             result.SceneStatistics[room.Id] = scene;
         }
@@ -742,51 +778,51 @@ public sealed partial class TimedBattleService : IGameTicker
         Match? settle = null;
         using (var scope = await EnterLeaveAsync(session))
         {
-        foreach (int entry in queue.Keys.ToArray())
-            if (queue[entry].Remove(session) && queue[entry].Count == 0) queue.Remove(entry);
-        if (preparing.TryGetValue(session, out var waiting)) await CancelReadyAsync(waiting, false, session);
-        if (active.TryGetValue(session, out var match) && !match.Settled)
-        {
-            // Handover clears live role state after cleanup. Retain the final presentation of this
-            // participant, never a later role selected on the same connection.
-            var original = match.Participants[session];
-            if (ReferenceEquals(session.Role, original.Role) && ReferenceEquals(session.Attachment, original.Lease))
-                match.Participants[session] = original with
-                { Name = session.Role!.Name, Career = session.Progress?.Career ?? original.Career };
-            match.Absent.Add(session);
-            match.Fallen.Add(session);
-            session.EventFaction = 0;
-            if (match.Chicken is { } chicken)
+            foreach (int entry in queue.Keys.ToArray())
+                if (queue[entry].Remove(session) && queue[entry].Count == 0) queue.Remove(entry);
+            if (preparing.TryGetValue(session, out var waiting)) await CancelReadyAsync(waiting, false, session);
+            if (active.TryGetValue(session, out var match) && !match.Settled)
             {
-                // Survivor Battle: a departure is that player's forfeit; the others play on (inferred). Before the
-                // battle stage a lobby left with one team is cancelled rather than won.
-                chicken.Players[session].State = RoundRoleStatus.Leave;
-                RecordEliminations(match, chicken);
-                active.Remove(session);
-                await ChickenDetachAsync(match, session);
-                if (chicken.Stage < ChickenRules.StageStartGame)
+                // Handover clears live role state after cleanup. Retain the final presentation of this
+                // participant, never a later role selected on the same connection.
+                var original = match.Participants[session];
+                if (ReferenceEquals(session.Role, original.Role) && ReferenceEquals(session.Attachment, original.Lease))
+                    match.Participants[session] = original with
+                    { Name = session.Role!.Name, Career = session.Progress?.Career ?? original.Career };
+                match.Absent.Add(session);
+                match.Fallen.Add(session);
+                session.EventFaction = 0;
+                if (match.Chicken is { } chicken)
                 {
-                    if (match.Players.Where(p => !match.Absent.Contains(p)).Select(p => match.Faction[p]).Distinct().Count() < 2)
-                        await AbortMatchAsync(match, session);
+                    // Survivor Battle: a departure is that player's forfeit; the others play on (inferred). Before the
+                    // battle stage a lobby left with one team is cancelled rather than won.
+                    chicken.Players[session].State = RoundRoleStatus.Leave;
+                    RecordEliminations(match, chicken);
+                    active.Remove(session);
+                    await ChickenDetachAsync(match, session);
+                    if (chicken.Stage < ChickenRules.StageStartGame)
+                    {
+                        if (match.Players.Where(p => !match.Absent.Contains(p)).Select(p => match.Faction[p]).Distinct().Count() < 2)
+                            await AbortMatchAsync(match, session);
+                    }
+                    else if (RemainingFactions(match).Count <= 1) settle = match;
+                    else
+                    {
+                        await SyncTeamAsync(match, match.Faction[session]);
+                        await BroadcastHudAsync(match);
+                    }
                 }
-                else if (RemainingFactions(match).Count <= 1) settle = match;
-                else
+                // A fully loaded live match treats departure as a forfeit; before both entered, cancel without prizes.
+                // Both are inferred small-realm policies; the departed role never receives settlement rewards.
+                else if (match.Loaded.Count == match.Players.Length)
                 {
-                    await SyncTeamAsync(match, match.Faction[session]);
-                    await BroadcastHudAsync(match);
+                    active.Remove(session);
+                    if (RemainingFactions(match).Count <= 1) settle = match;
                 }
+                else await AbortMatchAsync(match, session);
             }
-            // A fully loaded live match treats departure as a forfeit; before both entered, cancel without prizes.
-            // Both are inferred small-realm policies; the departed role never receives settlement rewards.
-            else if (match.Loaded.Count == match.Players.Length)
-            {
-                active.Remove(session);
-                if (RemainingFactions(match).Count <= 1) settle = match;
-            }
-            else await AbortMatchAsync(match, session);
-        }
-        if (treasure.TryGetValue(session, out var run))
-        { run.Settled = true; treasure.Remove(session); }
+            if (treasure.TryGetValue(session, out var run))
+            { run.Settled = true; treasure.Remove(session); }
         }
         if (settle != null) await SettleMatchAsync(settle);
     }

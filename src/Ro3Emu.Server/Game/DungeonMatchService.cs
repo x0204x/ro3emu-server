@@ -76,9 +76,15 @@ public sealed class DungeonMatchService : IGameTicker
             || selected.DungeonId <= 0 || selected.MultiDungeonId is < 1 or > int.MaxValue
             || selected.MarkId is < 1 or > int.MaxValue) return (ErrorCodes.Parameter, default, null);
         // DungeonCatalog verifies the exported boss -> scene relation, map, waves and current playbook.
-        var plan = catalog.Resolve(new EnterDungeonReq { SceneEntry = selected.DungeonId,
-            InitData = new DungeonInitData { MultiDungeonInitData = new MultiDungeonInitData
-            { MultiDungeonId = (int)selected.MultiDungeonId, MarkId = (int)selected.MarkId } } });
+        var plan = catalog.Resolve(new EnterDungeonReq
+        {
+            SceneEntry = selected.DungeonId,
+            InitData = new DungeonInitData
+            {
+                MultiDungeonInitData = new MultiDungeonInitData
+                { MultiDungeonId = (int)selected.MultiDungeonId, MarkId = (int)selected.MarkId }
+            }
+        });
         if (plan?.Boss is not { } boss || plan.Multi == null
             || GameData.Int(boss, "_iMatchID") != entry) return (ErrorCodes.DungeonDataMissing, default, null);
         int quantity = (int)GameData.Int(data.Row("MatchConfig", entry)!.Value, "_iStartQuantity");
@@ -122,21 +128,30 @@ public sealed class DungeonMatchService : IGameTicker
             { error = Admission(member, selected.Plan!); if (error != 0) break; }
         if (error != 0)
         {
-            await s.SendGameAsync(StartMatch, new StartMatchResp { Result = error, MatchEntryId = req.MatchEntryId,
-                MatchData = req.MatchData?.Clone() });
+            await s.SendGameAsync(StartMatch, new StartMatchResp
+            {
+                Result = error, MatchEntryId = req.MatchEntryId,
+                MatchData = req.MatchData?.Clone()
+            });
             return;
         }
         // LC_DAL_Match.ResetMatchTimer compares 82681 matchStartTime with TimerManager.GetSystemTime (seconds).
         long startSeconds = time.GetUtcNow().ToUnixTimeSeconds();
-        var item = new Group { Key = selected.Key, Plan = selected.Plan!, Members = group.Members,
+        var item = new Group
+        {
+            Key = selected.Key, Plan = selected.Plan!, Members = group.Members,
             Ids = group.Members.Select(m => m.Role!.Id).ToArray(), Leader = s.Role!.Id,
-            TeamId = group.TeamId, Data = req.MatchData!.Clone(), StartSeconds = startSeconds };
+            TeamId = group.TeamId, Data = req.MatchData!.Clone(), StartSeconds = startSeconds
+        };
         if (!queue.TryGetValue(item.Key, out var list)) queue[item.Key] = list = [];
         list.Add(item);
         foreach (var member in item.Members) waiting[member] = item;
         foreach (var member in item.Members)
-            await SendQuietAsync(member, StartMatch, new StartMatchResp { MatchEntryId = req.MatchEntryId,
-                MatchData = item.Data.Clone(), MatchStartTime = startSeconds });
+            await SendQuietAsync(member, StartMatch, new StartMatchResp
+            {
+                MatchEntryId = req.MatchEntryId,
+                MatchData = item.Data.Clone(), MatchStartTime = startSeconds
+            });
         if (item.Members.Length == 1 && s.DungeonSoloMatch)
         {
             list.Remove(item);
@@ -196,9 +211,12 @@ public sealed class DungeonMatchService : IGameTicker
         long nowMs = time.GetUtcNow().ToUnixTimeMilliseconds();
         // The client receives whole Unix seconds. Make that same boundary authoritative for votes and expiry.
         long deadlineMs = ((nowMs + seconds * 1000L + 999) / 1000) * 1000;
-        var match = new Match { Key = first.Key, Plan = first.Plan, Groups = picked.ToArray(),
+        var match = new Match
+        {
+            Key = first.Key, Plan = first.Plan, Groups = picked.ToArray(),
             Members = picked.SelectMany(g => g.Members).ToArray(), Data = first.Data,
-            DeadlineMs = deadlineMs, StartSeconds = picked.Min(g => g.StartSeconds) };
+            DeadlineMs = deadlineMs, StartSeconds = picked.Min(g => g.StartSeconds)
+        };
         foreach (var member in match.Members) preparing[member] = match;
         await BroadcastReadyAsync(match);
         loop.ScheduleLegacy(TimeSpan.FromMilliseconds(Math.Max(0,
@@ -212,12 +230,18 @@ public sealed class DungeonMatchService : IGameTicker
     {
         if (match.Closed) return;
         // UI_Sys_Dungeon_PreparePanelCtrl subtracts TimerManager.GetSystemTime (seconds) from 82636 endTime.
-        var notify = new MatchReadyNotify { MatchEntryId = match.Key.Entry,
+        var notify = new MatchReadyNotify
+        {
+            MatchEntryId = match.Key.Entry,
             EndTime = match.DeadlineMs / 1000,
-            DungeonId = match.Key.Scene, MultiDungeonId = match.Key.Multi, MarkId = match.Key.Mark };
+            DungeonId = match.Key.Scene, MultiDungeonId = match.Key.Multi, MarkId = match.Key.Mark
+        };
         foreach (var member in match.Members)
-            notify.ReadyInfos.Add(new MatchRoleReadyInfo { PlayerId = member.Role!.Id,
-                Status = match.Ready.Contains(member) ? MatchReadyStatus.Ready : MatchReadyStatus.None });
+            notify.ReadyInfos.Add(new MatchRoleReadyInfo
+            {
+                PlayerId = member.Role!.Id,
+                Status = match.Ready.Contains(member) ? MatchReadyStatus.Ready : MatchReadyStatus.None
+            });
         foreach (var member in match.Members) await SendQuietAsync(member, ReadyNotify, notify);
     }
 
@@ -228,8 +252,11 @@ public sealed class DungeonMatchService : IGameTicker
         int error = match == null || match.Closed || expired || match.Key.Entry != req.MatchEntryId
             || s.Role?.Id != req.PlayerId ? ErrorCodes.Parameter
             : !req.IsReady ? ErrorCodes.DungeonDeclined : 0;
-        await s.SendGameAsync(Ready, new MatchReadyResp { Result = error, MatchEntryId = req.MatchEntryId,
-            PlayerId = s.Role?.Id ?? 0, IsReady = req.IsReady });
+        await s.SendGameAsync(Ready, new MatchReadyResp
+        {
+            Result = error, MatchEntryId = req.MatchEntryId,
+            PlayerId = s.Role?.Id ?? 0, IsReady = req.IsReady
+        });
         if (expired) { await ExpireAsync(match!); return; }
         if (match == null || match.Closed || error == ErrorCodes.Parameter) return;
         if (error != 0) { await FailReadyAsync(match, s); return; }
@@ -250,8 +277,11 @@ public sealed class DungeonMatchService : IGameTicker
         if (error == 0)
         {
             try { error = await dungeons.BeginMatchedAsync(match.Plan, match.Members, teamId); }
-            catch (Exception e) { log.LogWarning(e, "Matched dungeon handoff failed for {Scene}", match.Key.Scene);
-                error = ErrorCodes.DungeonBusy; }
+            catch (Exception e)
+            {
+                log.LogWarning(e, "Matched dungeon handoff failed for {Scene}", match.Key.Scene);
+                error = ErrorCodes.DungeonBusy;
+            }
         }
         if (error != 0)
         {
@@ -271,8 +301,11 @@ public sealed class DungeonMatchService : IGameTicker
         int error = match == null || match.Closed || expired || match.Key.Entry != req.MatchEntryId
             || s.Role?.Id != req.PlayerId || target == null || target == s || match.Ready.Contains(target)
             ? ErrorCodes.Parameter : 0;
-        await s.SendGameAsync(Reminder, new MatchReadyReminderResp { Result = error, MatchEntryId = req.MatchEntryId,
-            PlayerId = s.Role?.Id ?? 0, RemindedPlayerId = req.RemindedPlayerId });
+        await s.SendGameAsync(Reminder, new MatchReadyReminderResp
+        {
+            Result = error, MatchEntryId = req.MatchEntryId,
+            PlayerId = s.Role?.Id ?? 0, RemindedPlayerId = req.RemindedPlayerId
+        });
         if (expired) { await ExpireAsync(match!); return; }
         if (error == 0) await SendQuietAsync(target!, ReminderNotify,
             new MatchReadyReminderNotify { MatchEntryId = req.MatchEntryId, ReminderPlayerId = s.Role!.Id });
@@ -292,8 +325,11 @@ public sealed class DungeonMatchService : IGameTicker
         // The DAL cancel response clears its current state; a new 82681 response starts the next search.
         if (req.NextMatchEntry != 0)
         {
-            var next = new StartMatchReq { MatchEntryId = req.NextMatchEntry,
-                MatchData = req.NextMatchData?.Clone() };
+            var next = new StartMatchReq
+            {
+                MatchEntryId = req.NextMatchEntry,
+                MatchData = req.NextMatchData?.Clone()
+            };
             if (WantsEntry(next.MatchEntryId) || next.MatchData?.MultiDungeon != null)
                 await StartMatchAsync(s, next);
             else await timedBattles.StartMatchAsync(s, next);
@@ -333,9 +369,12 @@ public sealed class DungeonMatchService : IGameTicker
         if (match.Closed) return;
         match.Closed = true;
         long failedId = failed.Role?.Id ?? 0;
-        var notify = new FailMatchNtf { Result = ErrorCodes.DungeonDeclined, MatchEntryId = match.Key.Entry,
+        var notify = new FailMatchNtf
+        {
+            Result = ErrorCodes.DungeonDeclined, MatchEntryId = match.Key.Entry,
             PenaltyMemberGuid = failedId, FailPlayer = failedId, MatchData = match.Data.Clone(),
-            MatchStartTime = match.StartSeconds };
+            MatchStartTime = match.StartSeconds
+        };
         foreach (var member in match.Members)
         {
             preparing.Remove(member);

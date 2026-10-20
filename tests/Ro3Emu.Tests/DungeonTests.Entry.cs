@@ -26,8 +26,11 @@ public sealed partial class DungeonTests
         await alice.SendGameAsync(DungeonMatchService.StartMatch, new StartMatchReq
         {
             MatchEntryId = 100,
-            MatchData = new MatchData { MultiDungeon = new MultiDungeonMatchData
-            { DungeonId = Scene, MultiDungeonId = multi, MarkId = 1 } },
+            MatchData = new MatchData
+            {
+                MultiDungeon = new MultiDungeonMatchData
+                { DungeonId = Scene, MultiDungeonId = multi, MarkId = 1 }
+            },
         });
         var queued = await Next(alice, DungeonMatchService.StartMatch, StartMatchResp.Parser);
         Assert.Equal(0, queued.Result);

@@ -102,7 +102,7 @@ public sealed partial class CharacterService
         }
         // The Lua reply consumer changes curPlanIndex even on error. Echo the retained index on refusal.
         await session.SendGameAsync(ChangeStatPlan, new PlanAttrPointChangeResq
-            { Result = result, DestPlanIndex = result == 0 ? dest : old.CurPlanIndex, Flag = result == 0 ? 0 : 1 });
+        { Result = result, DestPlanIndex = result == 0 ? dest : old.CurPlanIndex, Flag = result == 0 ? 0 : 1 });
         if (result != 0 || dest == old.CurPlanIndex) return;
         await SendStatPlanAsync(session);
         await SendStatsAsync(session);
@@ -130,7 +130,7 @@ public sealed partial class CharacterService
             plan = next.AllPlanBaseProperty[req.PlanIndex];
         }
         await session.SendGameAsync(RenameStatPlan, new PlanAttrPointNameChangeResq
-            { Result = result, PlanIndex = req.PlanIndex, PlanName = plan!.PlanName });
+        { Result = result, PlanIndex = req.PlanIndex, PlanName = plan!.PlanName });
         if (result == 0) await SendStatPlanAsync(session);
     }
 

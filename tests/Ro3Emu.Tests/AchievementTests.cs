@@ -437,7 +437,7 @@ public sealed class AchievementTests : IAsyncLifetime
         await Gm("alice", "!ach fill 100 10"); // 150 points: level 2
         await Until("Alice", s => s.Achievements!.AchievementLevelInfo[100].Level == 2, "level 2");
         await alice.SendGameAsync(AchievementService.GetAllReward, new GetAchievementAllRewardReq
-            { LevelRewards = { new LevelRewardInfo { Type = 100, Level = 2 } } });
+        { LevelRewards = { new LevelRewardInfo { Type = 100, Level = 2 } } });
         var levelsOnly = await Next(alice, AchievementService.GetAllReward, GetAchievementAllRewardResp.Parser);
         Assert.Equal(0, levelsOnly.Result);
         Assert.Empty(levelsOnly.SuccessTaskIds);
@@ -544,7 +544,7 @@ public sealed class AchievementTests : IAsyncLifetime
         await Full(alice);
         await Gm("alice", "!lvl 21");
         await alice.SendGameAsync(GuildService.Create, new GuildCreateReq
-            { Name = "Trophy", Icon = new GuildHeadIcon { BackgroundType = 100101, IconType = 200101 } });
+        { Name = "Trophy", Icon = new GuildHeadIcon { BackgroundType = 100101, IconType = 200101 } });
         Assert.Equal(0, (await Next(alice, GuildService.Create, GuildCreateResp.Parser)).Result);
         await ReachedIncrement(alice, Guild);
         // 107003 [5, 20]: CheckGuildPosition with operator 5 (<): the leader (1) holds a position below 20.

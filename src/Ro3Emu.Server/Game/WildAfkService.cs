@@ -278,7 +278,8 @@ public sealed class WildAfkService : IGameTicker
             state.LastToggleMs = old.LastToggleMs;
             state.TotalDrops = old.TotalDrops;
             state.AccountedAtMs = accountedBefore;
-        });
+        }
+        );
     }
 
     /// <summary>Daily row 106 is one 500130 delivery for [106901,3600]; held awards must not expire.</summary>
@@ -449,8 +450,11 @@ public sealed class WildAfkService : IGameTicker
             if (legacy) await s.SendGameAsync(Magnification, new SetHighMagnificationRsp { Result = error, Status = info.IsHighMagnification });
             else if (enabled) await s.SendGameAsync(Start, new StartHighMultiplierTimeRsp { Result = error, RemainingTimeSeconds = info.HighMultiplierTimeSeconds });
             // (inferred) The pause summary reports this day's consumed seconds, not time since the last toggle.
-            else await s.SendGameAsync(Pause, new PauseHighMultiplierTimeRsp { Result = error,
-                RemainingTimeSeconds = info.HighMultiplierTimeSeconds, ConsumedTimeSeconds = state.ConsumedTodaySeconds });
+            else await s.SendGameAsync(Pause, new PauseHighMultiplierTimeRsp
+            {
+                Result = error,
+                RemainingTimeSeconds = info.HighMultiplierTimeSeconds, ConsumedTimeSeconds = state.ConsumedTodaySeconds
+            });
             // The recovered handlers test `if result` (Lua's 0 is truthy), even on refusals: always correct the asset.
             s.Synced.Remove(Sync);
             await SyncAsync(s);

@@ -36,8 +36,11 @@ public sealed class DeadlinesTests : IAsyncLifetime
         var session = NewSession();
         var seen = new List<DateTimeOffset>();
         var firstDue = Epoch.AddMilliseconds(1250);
-        await OnLoop(() => { _deadlines.Set(session, "first", firstDue,
-            (s, due, lease, ct) => { Assert.Same(session, s); seen.Add(due); return Task.CompletedTask; }); });
+        await OnLoop(() =>
+        {
+            _deadlines.Set(session, "first", firstDue,
+            (s, due, lease, ct) => { Assert.Same(session, s); seen.Add(due); return Task.CompletedTask; });
+        });
 
         await OnLoop(() => { _clock.Set(firstDue.AddTicks(-1)); _deadlines.Tick(default); });
         await Barrier();
@@ -48,8 +51,11 @@ public sealed class DeadlinesTests : IAsyncLifetime
         Assert.Equal(new[] { firstDue }, seen);
 
         var secondDue = firstDue.AddMilliseconds(175);
-        await OnLoop(() => { _deadlines.Set(session, "second", secondDue,
-            (s, due, lease, ct) => { seen.Add(due); return Task.CompletedTask; }); });
+        await OnLoop(() =>
+        {
+            _deadlines.Set(session, "second", secondDue,
+            (s, due, lease, ct) => { seen.Add(due); return Task.CompletedTask; });
+        });
         await OnLoop(() => { _clock.Set(secondDue.AddSeconds(11)); _deadlines.Tick(default); });
         await Barrier();
         Assert.Equal(new[] { firstDue, secondDue }, seen);

@@ -110,8 +110,11 @@ public sealed class GuildChallengeTests : IAsyncLifetime
     private async Task<long> Guild(BotClient leader, params BotClient[] members)
     {
         foreach (var b in members.Prepend(leader)) await Gm(b, "!lvl 99");
-        await leader.SendGameAsync(GuildService.Create, new GuildCreateReq { Name = "Testers",
-            Icon = new GuildHeadIcon { BackgroundType = 100101, IconType = 200101 } });
+        await leader.SendGameAsync(GuildService.Create, new GuildCreateReq
+        {
+            Name = "Testers",
+            Icon = new GuildHeadIcon { BackgroundType = 100101, IconType = 200101 }
+        });
         Assert.Equal(0, (await Next(leader, GuildService.Create, GuildCreateResp.Parser)).Result);
         long guild = (await Next(leader, GuildService.Full, GuildFullInfoNtf.Parser, n => n.Guid > 0)).Guid;
         await leader.SendGameAsync(GuildService.Edit, new GuildEditReq { Tp = (GuildEditReq.Types.EditType)6, AutoAcceptApply = true });
@@ -513,8 +516,11 @@ public sealed class GuildChallengeTests : IAsyncLifetime
         await using var carol = await InWorld("Carol");
         long oldGuild = await Guild(alice, bob);
         await Gm(carol, "!lvl 99");
-        await carol.SendGameAsync(GuildService.Create, new GuildCreateReq { Name = "Second",
-            Icon = new GuildHeadIcon { BackgroundType = 100101, IconType = 200101 } });
+        await carol.SendGameAsync(GuildService.Create, new GuildCreateReq
+        {
+            Name = "Second",
+            Icon = new GuildHeadIcon { BackgroundType = 100101, IconType = 200101 }
+        });
         Assert.Equal(0, (await Next(carol, GuildService.Create, GuildCreateResp.Parser)).Result);
         long newGuild = (await Next(carol, GuildService.Full, GuildFullInfoNtf.Parser, n => n.Guid > 0)).Guid;
         await carol.SendGameAsync(GuildService.Edit, new GuildEditReq

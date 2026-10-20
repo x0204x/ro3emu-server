@@ -25,50 +25,50 @@ public static partial class EconomySnapshotReader
             {
                 Guard("role/row/" + rowIndex++, () =>
                 {
-                long role = SqlLong(r, 0);
-                if (role <= 0) throw new FormatException("Invalid role id.");
-                roles.Add(role);
-                unknownRoleDeletion.Add(role); // Quarantine until a valid deletion state has been read.
-                Measure("role", 0);
-                for (int i = 1; i < r.FieldCount; i++)
-                {
-                    string name = names[i], key = $"role/{role}/{name}";
-                    if (name == "deleted_time")
+                    long role = SqlLong(r, 0);
+                    if (role <= 0) throw new FormatException("Invalid role id.");
+                    roles.Add(role);
+                    unknownRoleDeletion.Add(role); // Quarantine until a valid deletion state has been read.
+                    Measure("role", 0);
+                    for (int i = 1; i < r.FieldCount; i++)
                     {
-                        if (r.IsDBNull(i)) Issue(EconomyIssueKind.Corruption, key, "Persisted deletion time is NULL.");
-                        else Guard(key, () =>
+                        string name = names[i], key = $"role/{role}/{name}";
+                        if (name == "deleted_time")
                         {
-                            long deletedTime = SqlLong(r, i);
-                            if (deletedTime < 0) throw new FormatException("Negative role deletion time.");
-                            if (deletedTime > 0) deletedRoles.Add(role);
-                            unknownRoleDeletion.Remove(role);
-                        });
-                        continue;
-                    }
-                    if (r.IsDBNull(i))
-                    {
-                        if (name == "currency") Issue(EconomyIssueKind.Corruption, key, "Persisted currency purse is NULL.");
-                        continue;
-                    }
-                    if (name == "currency")
-                    {
+                            if (r.IsDBNull(i)) Issue(EconomyIssueKind.Corruption, key, "Persisted deletion time is NULL.");
+                            else Guard(key, () =>
+                            {
+                                long deletedTime = SqlLong(r, i);
+                                if (deletedTime < 0) throw new FormatException("Negative role deletion time.");
+                                if (deletedTime > 0) deletedRoles.Add(role);
+                                unknownRoleDeletion.Remove(role);
+                            });
+                            continue;
+                        }
+                        if (r.IsDBNull(i))
+                        {
+                            if (name == "currency") Issue(EconomyIssueKind.Corruption, key, "Persisted currency purse is NULL.");
+                            continue;
+                        }
+                        if (name == "currency")
+                        {
+                            Guard(key, () =>
+                            {
+                                string currencyText = SqlText(r, i);
+                                PayloadBytes("role", Encoding.UTF8.GetByteCount(currencyText));
+                                ParseCurrency(currencyText, role, key);
+                            });
+                            continue;
+                        }
                         Guard(key, () =>
                         {
-                            string currencyText = SqlText(r, i);
-                            PayloadBytes("role", Encoding.UTF8.GetByteCount(currencyText));
-                            ParseCurrency(currencyText, role, key);
+                            byte[] value = SqlBlob(r, i);
+                            if (value.Length == 0) return;
+                            var m = Metrics.GetValueOrDefault("role");
+                            Metrics["role"] = (m.Rows, m.Blobs + 1, checked(m.Bytes + value.Length));
+                            DecodeRoleBlob(name, value, role, key);
                         });
-                        continue;
                     }
-                    Guard(key, () =>
-                    {
-                        byte[] value = SqlBlob(r, i);
-                        if (value.Length == 0) return;
-                        var m = Metrics.GetValueOrDefault("role");
-                        Metrics["role"] = (m.Rows, m.Blobs + 1, checked(m.Bytes + value.Length));
-                        DecodeRoleBlob(name, value, role, key);
-                    });
-                }
                 });
             }
         }
@@ -294,29 +294,29 @@ public static partial class EconomySnapshotReader
             {
                 Guard("item/row/" + rowIndex++, () =>
                 {
-                long guid = SqlLong(r, 0), role = SqlLong(r, 1);
-                string key = $"item/{guid}";
-                Guard(key, () =>
-                {
-                    long entry = SqlLong(r, 2), stack = SqlLong(r, 3), pack = SqlLong(r, 4), sort = SqlLong(r, 5), grid = SqlLong(r, 6);
-                    long bindType = SqlLong(r, 10), bindExpire = SqlLong(r, 11), locked = SqlLong(r, 12);
-                    if (guid <= 0 || role <= 0 || entry <= 0 || pack < 0 || sort < 0 || bindType < 0 || bindExpire < 0 || locked is not (0 or 1))
-                        throw new FormatException("Invalid inventory identity/location or binding.");
-                    var extras = new Dictionary<string, JsonElement>();
-                    foreach (var pair in new[] { (7, "Attrs"), (8, "Enchantments"), (9, "StringAttrs") })
+                    long guid = SqlLong(r, 0), role = SqlLong(r, 1);
+                    string key = $"item/{guid}";
+                    Guard(key, () =>
                     {
-                        if (r.IsDBNull(pair.Item1)) continue;
-                        using var doc = Json(SqlText(r, pair.Item1));
-                        if (doc.RootElement.ValueKind != JsonValueKind.Object) throw new JsonException("Invalid item metadata.");
-                        extras.Add(pair.Item2, doc.RootElement.Clone());
-                    }
-                    string Extra(string name) => extras.TryGetValue(name, out var value) ? Canon(value) : "{}";
-                    string fingerprint = Hash($"Attrs={Extra("Attrs")}|StringAttrs={Extra("StringAttrs")}" +
-                        $"|Enchantments={Extra("Enchantments")}|BindType={bindType}|BindExpire={bindExpire}|IsLocked={locked}");
-                    Entry(entry, stack, Role(role, key), EconomyCompartment.Inventory,
-                        key + $"/pack-{pack}/grid-{grid}/sort-{sort}", fingerprint, instance: Id(guid));
-                });
-                Measure("item", Enumerable.Range(7, 3).Where(i => !r.IsDBNull(i)).Sum(i => Encoding.UTF8.GetByteCount(SqlText(r, i))));
+                        long entry = SqlLong(r, 2), stack = SqlLong(r, 3), pack = SqlLong(r, 4), sort = SqlLong(r, 5), grid = SqlLong(r, 6);
+                        long bindType = SqlLong(r, 10), bindExpire = SqlLong(r, 11), locked = SqlLong(r, 12);
+                        if (guid <= 0 || role <= 0 || entry <= 0 || pack < 0 || sort < 0 || bindType < 0 || bindExpire < 0 || locked is not (0 or 1))
+                            throw new FormatException("Invalid inventory identity/location or binding.");
+                        var extras = new Dictionary<string, JsonElement>();
+                        foreach (var pair in new[] { (7, "Attrs"), (8, "Enchantments"), (9, "StringAttrs") })
+                        {
+                            if (r.IsDBNull(pair.Item1)) continue;
+                            using var doc = Json(SqlText(r, pair.Item1));
+                            if (doc.RootElement.ValueKind != JsonValueKind.Object) throw new JsonException("Invalid item metadata.");
+                            extras.Add(pair.Item2, doc.RootElement.Clone());
+                        }
+                        string Extra(string name) => extras.TryGetValue(name, out var value) ? Canon(value) : "{}";
+                        string fingerprint = Hash($"Attrs={Extra("Attrs")}|StringAttrs={Extra("StringAttrs")}" +
+                            $"|Enchantments={Extra("Enchantments")}|BindType={bindType}|BindExpire={bindExpire}|IsLocked={locked}");
+                        Entry(entry, stack, Role(role, key), EconomyCompartment.Inventory,
+                            key + $"/pack-{pack}/grid-{grid}/sort-{sort}", fingerprint, instance: Id(guid));
+                    });
+                    Measure("item", Enumerable.Range(7, 3).Where(i => !r.IsDBNull(i)).Sum(i => Encoding.UTF8.GetByteCount(SqlText(r, i))));
                 });
             }
         }
@@ -331,74 +331,74 @@ public static partial class EconomySnapshotReader
             {
                 Guard("market/row/" + rowIndex++, () =>
                 {
-                string kind = SqlText(r, 0), id = SqlText(r, 1), data = SqlText(r, 2), key = "market/" + kind + "/" + id;
-                Measure("market_record", Encoding.UTF8.GetByteCount(data), true);
-                Guard(key, () =>
-                {
-                    using var doc = Json(data);
-                    var row = doc.RootElement;
-                    if (row.ValueKind != JsonValueKind.Object && kind != "trade_sequence") throw new JsonException("Expected market row object.");
-                    switch (kind)
+                    string kind = SqlText(r, 0), id = SqlText(r, 1), data = SqlText(r, 2), key = "market/" + kind + "/" + id;
+                    Measure("market_record", Encoding.UTF8.GetByteCount(data), true);
+                    Guard(key, () =>
                     {
-                        case "trade_listing":
-                            Fields(row, "Sku Spu SellerId Entry Currency UnitPrice Quantity SaleTimeMs PublicUntilMs ExpiresAtMs SpecialType Item");
-                            long seller = Long(row, "SellerId"), quantity = Long(row, "Quantity");
-                            if (!Try(row, "Item", out var item) || Long(item, "Stack") != quantity || Long(item, "Entry") != Long(row, "Entry"))
-                                throw new FormatException("Trade listing item/quantity mismatch.");
-                            Item(item, Role(seller, key), EconomyCompartment.TradeListing, key); break;
-                        case "trade_preorder":
-                            Fields(row, "Id Sku Spu BuyerId Entry Quantity Price Currency TimeMs Sequence Status Hidden Item");
-                            long status = Long(row, "Status"), count = Long(row, "Quantity"), price = Long(row, "Price");
-                            if (status is < 0 or > 5 || count <= 0 || price <= 0) throw new FormatException("Invalid preorder status or price.");
-                            if (status == 0) Currency(Long(row, "Currency"), checked(count * price), Role(Long(row, "BuyerId"), key),
-                                EconomyCompartment.TradePreorder, key); break;
-                        case "stall":
-                            Fields(row, "Key Owner SystemId Scene LineNumber Title OwnerName Career Sex Level Area Appearance X Y Z OpenTime Timeout RestockTime MaxGrid NextItemId Ended EndMailId Stock Records Gains TaxRate");
-                            long ownerId = Long(row, "Owner"), system = Long(row, "SystemId");
-                            if (ownerId <= 0 && system <= 0) throw new FormatException("Stall has no owner identity.");
-                            var owner = ownerId > 0 ? Role(ownerId, key) : new EconomyOwner(EconomyOwnerKind.System, Id(system));
-                            if (!Try(row, "Stock", out var stock)) throw new JsonException("Stall stock missing.");
-                            int n = 0;
-                            foreach (var slot in Elements(stock))
-                            {
-                                Fields(slot, "Id Item Price Currency SystemConfig Bought");
-                                if (!Try(slot, "Item", out var held)) throw new JsonException("Stall stock item missing.");
-                                long stockCount = Long(held, "Stack");
-                                if (stockCount < 0 || stockCount == 0 && ownerId > 0)
-                                    throw new FormatException("Invalid player or negative stall stock.");
-                                string slotKey = key + "/" + Long(slot, "Id", n++);
-                                if (stockCount > 0) Item(held, owner, EconomyCompartment.Stall, slotKey);
-                                if (ownerId > 0 && Bool(row, "Ended")) Issue(EconomyIssueKind.Corruption, key, "Ended player stall retains stock.");
-                            }
-                            break;
-                        case "mail":
-                            Fields(row, "Id RoleId TemplateId CreatedTime RemoveTime Read Claimed Items Currency ContentParams");
-                            if (Bool(row, "Claimed")) break;
-                            long recipient = Long(row, "RoleId");
-                            if (recipient <= 0) throw new FormatException("Legacy mail recipient is invalid.");
-                            string effectiveId = String(row, "Id");
-                            if (effectiveId.Length == 0) effectiveId = id;
-                            var receiver = Role(recipient, key);
-                            if (Try(row, "Items", out var legacyItems))
-                            {
-                                int i = 0; foreach (var held in Elements(legacyItems)) Item(held, receiver, EconomyCompartment.LegacyMail, key + "/item-" + i++);
-                            }
-                            if (Try(row, "Currency", out var legacyCurrency))
-                                foreach (var p in Properties(legacyCurrency))
-                                    Currency(long.Parse(p.Name, CultureInfo.InvariantCulture), p.Value.GetInt64(), receiver,
-                                        EconomyCompartment.LegacyMail, key + "/currency-" + p.Name);
-                            if (mailDeliveryKeys.Contains(recipient + "/" + effectiveId))
-                                Issue(EconomyIssueKind.Corruption, key, "Legacy row appears already migrated to canonical mailbox.");
-                            break;
-                        case "trade_history":
-                            Fields(row, "Id Sku Spu SellerId BuyerId Entry Quantity UnitPrice TimeMs Item");
-                            if (Try(row, "Item", out var historyItem))
-                                Fields(historyItem, "Guid Entry Stack Pack Sort Grid IsLocked Attrs StringAttrs BindType BindExpire ExpireTimeStamp Enchantments");
-                            break;
-                        case "trade_sequence": break; // Allocator, never a purse.
-                        default: Issue(EconomyIssueKind.UnknownSchema, key, "Unclassified market_record.kind."); break;
-                    }
-                });
+                        using var doc = Json(data);
+                        var row = doc.RootElement;
+                        if (row.ValueKind != JsonValueKind.Object && kind != "trade_sequence") throw new JsonException("Expected market row object.");
+                        switch (kind)
+                        {
+                            case "trade_listing":
+                                Fields(row, "Sku Spu SellerId Entry Currency UnitPrice Quantity SaleTimeMs PublicUntilMs ExpiresAtMs SpecialType Item");
+                                long seller = Long(row, "SellerId"), quantity = Long(row, "Quantity");
+                                if (!Try(row, "Item", out var item) || Long(item, "Stack") != quantity || Long(item, "Entry") != Long(row, "Entry"))
+                                    throw new FormatException("Trade listing item/quantity mismatch.");
+                                Item(item, Role(seller, key), EconomyCompartment.TradeListing, key); break;
+                            case "trade_preorder":
+                                Fields(row, "Id Sku Spu BuyerId Entry Quantity Price Currency TimeMs Sequence Status Hidden Item");
+                                long status = Long(row, "Status"), count = Long(row, "Quantity"), price = Long(row, "Price");
+                                if (status is < 0 or > 5 || count <= 0 || price <= 0) throw new FormatException("Invalid preorder status or price.");
+                                if (status == 0) Currency(Long(row, "Currency"), checked(count * price), Role(Long(row, "BuyerId"), key),
+                                    EconomyCompartment.TradePreorder, key); break;
+                            case "stall":
+                                Fields(row, "Key Owner SystemId Scene LineNumber Title OwnerName Career Sex Level Area Appearance X Y Z OpenTime Timeout RestockTime MaxGrid NextItemId Ended EndMailId Stock Records Gains TaxRate");
+                                long ownerId = Long(row, "Owner"), system = Long(row, "SystemId");
+                                if (ownerId <= 0 && system <= 0) throw new FormatException("Stall has no owner identity.");
+                                var owner = ownerId > 0 ? Role(ownerId, key) : new EconomyOwner(EconomyOwnerKind.System, Id(system));
+                                if (!Try(row, "Stock", out var stock)) throw new JsonException("Stall stock missing.");
+                                int n = 0;
+                                foreach (var slot in Elements(stock))
+                                {
+                                    Fields(slot, "Id Item Price Currency SystemConfig Bought");
+                                    if (!Try(slot, "Item", out var held)) throw new JsonException("Stall stock item missing.");
+                                    long stockCount = Long(held, "Stack");
+                                    if (stockCount < 0 || stockCount == 0 && ownerId > 0)
+                                        throw new FormatException("Invalid player or negative stall stock.");
+                                    string slotKey = key + "/" + Long(slot, "Id", n++);
+                                    if (stockCount > 0) Item(held, owner, EconomyCompartment.Stall, slotKey);
+                                    if (ownerId > 0 && Bool(row, "Ended")) Issue(EconomyIssueKind.Corruption, key, "Ended player stall retains stock.");
+                                }
+                                break;
+                            case "mail":
+                                Fields(row, "Id RoleId TemplateId CreatedTime RemoveTime Read Claimed Items Currency ContentParams");
+                                if (Bool(row, "Claimed")) break;
+                                long recipient = Long(row, "RoleId");
+                                if (recipient <= 0) throw new FormatException("Legacy mail recipient is invalid.");
+                                string effectiveId = String(row, "Id");
+                                if (effectiveId.Length == 0) effectiveId = id;
+                                var receiver = Role(recipient, key);
+                                if (Try(row, "Items", out var legacyItems))
+                                {
+                                    int i = 0; foreach (var held in Elements(legacyItems)) Item(held, receiver, EconomyCompartment.LegacyMail, key + "/item-" + i++);
+                                }
+                                if (Try(row, "Currency", out var legacyCurrency))
+                                    foreach (var p in Properties(legacyCurrency))
+                                        Currency(long.Parse(p.Name, CultureInfo.InvariantCulture), p.Value.GetInt64(), receiver,
+                                            EconomyCompartment.LegacyMail, key + "/currency-" + p.Name);
+                                if (mailDeliveryKeys.Contains(recipient + "/" + effectiveId))
+                                    Issue(EconomyIssueKind.Corruption, key, "Legacy row appears already migrated to canonical mailbox.");
+                                break;
+                            case "trade_history":
+                                Fields(row, "Id Sku Spu SellerId BuyerId Entry Quantity UnitPrice TimeMs Item");
+                                if (Try(row, "Item", out var historyItem))
+                                    Fields(historyItem, "Guid Entry Stack Pack Sort Grid IsLocked Attrs StringAttrs BindType BindExpire ExpireTimeStamp Enchantments");
+                                break;
+                            case "trade_sequence": break; // Allocator, never a purse.
+                            default: Issue(EconomyIssueKind.UnknownSchema, key, "Unclassified market_record.kind."); break;
+                        }
+                    });
                 });
             }
         }

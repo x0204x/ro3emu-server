@@ -10,14 +10,15 @@ using Ro3Emu.Server.Game;
 namespace Ro3Emu.Tests;
 
 /// <summary>
-/// Seven-Day Goal (FirstHeartService): 5049 starts at base level 10 (NewActivityConfig 114, condition 21000012) with day 1
-/// open; 83500 pays a completed task once and scores its point, 83501 a score reward once the score reaches it; the state
+/// Seven-Day Goal (FirstHeartService): 5049 starts at base level 30 (NewActivityConfig 114, condition 21000012; level 10
+/// before the 20 Oct 2026 client) with day 1 open; 83500 pays a completed task once and scores its point, 83501 a score reward once the score reaches it; the state
 /// survives a relogin. Day 1 tasks: 100100200 (level 10), 101101100 (1 login day), 102101110 (a quality-3 card).
 /// </summary>
 public sealed class FirstHeartTests : IAsyncLifetime
 {
     private const long LevelTen = 100100200, LevelTwenty = 100100201, LevelFifty = 100100206, LoginOne = 101101100,
         LoginSeven = 101101106, CardTask = 102101110;
+    private const int OpenLevel = 30; // condition 21000012
     private const int Zeny = 1;
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(15);
     private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-firstheart-" + Guid.NewGuid().ToString("N"));
@@ -111,7 +112,7 @@ public sealed class FirstHeartTests : IAsyncLifetime
     }
 
     [ClientDataFact]
-    public async Task SyncStartsAtLevelTenWithDayOneOpenAndAnInitializedRewardMap()
+    public async Task SyncStartsAtItsOpenLevelWithDayOneOpenAndAnInitializedRewardMap()
     {
         await using var alice = await InWorld("Alice");
         var s = Session(alice);
@@ -119,8 +120,10 @@ public sealed class FirstHeartTests : IAsyncLifetime
         Assert.Null(await Cfg(s));
         Assert.False(await Read(() => s.Synced.ContainsKey(FirstHeartService.Sync)));
         Assert.Equal(ErrorCodes.ActivityClosed, await ClaimTask(alice, LevelTen));
+        await Gm(alice, $"!lvl {OpenLevel - 1}");
+        Assert.Equal(ErrorCodes.ActivityClosed, await ClaimTask(alice, LevelTen));
 
-        await Gm(alice, "!lvl 10");
+        await Gm(alice, $"!lvl {OpenLevel}");
         var full = await Next(alice, FirstHeartService.Sync, DBFirstHeartTaskActivityDataIncrement.Parser, m => m.SyncAllMark);
         var all = full.ActivityData[1].All;
         Assert.Equal(1, all.CfgData[1001]);
@@ -147,7 +150,7 @@ public sealed class FirstHeartTests : IAsyncLifetime
     {
         await using var alice = await InWorld("Alice");
         var s = Session(alice);
-        await Gm(alice, "!lvl 10");
+        await Gm(alice, $"!lvl {OpenLevel}");
         await Until(s, cfg => Status(cfg, LevelTen) == FirstHeartTaskState.Accept, "level 10 task completed");
 
         Assert.Equal(ErrorCodes.TaskRequirements, await ClaimTask(alice, CardTask));   // not completed
@@ -176,7 +179,7 @@ public sealed class FirstHeartTests : IAsyncLifetime
     {
         await using var alice = await InWorld("Alice");
         var s = Session(alice);
-        await Gm(alice, "!lvl 20");
+        await Gm(alice, $"!lvl {OpenLevel}");
         await Until(s, cfg => Status(cfg, LoginOne) == FirstHeartTaskState.Accept, "day 1 tasks completed");
         Assert.Equal(0, await ClaimTask(alice, LevelTen));
         Assert.Equal(0, await ClaimTask(alice, LoginOne));

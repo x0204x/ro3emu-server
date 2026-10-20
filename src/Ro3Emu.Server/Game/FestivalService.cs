@@ -182,9 +182,12 @@ public sealed class FestivalService : IGameTicker
             changed = true;
             next = await accounts.ReadAsync<byte[]?>(new FestivalReadPlan(FestivalReadKind.Round, cycle.Start))
                 is { } saved ? JsonSerializer.Deserialize<Round>(saved) : null;
-            next ??= new Round { Cycle = cycle.Start, AnswerStart = answer.Start, End = answer.End,
+            next ??= new Round
+            {
+                Cycle = cycle.Start, AnswerStart = answer.Start, End = answer.End,
                 Deadline = answer.Start, Questions = data.Table("RainbowKoiQuestionConfig").Values
-                    .Select(r => (long)GameData.Int(r, "_iID")).Where(id => id > 0).Order().Take(15).ToArray() };
+                    .Select(r => (long)GameData.Int(r, "_iID")).Where(id => id > 0).Order().Take(15).ToArray()
+            };
         }
         // (inferred) Select eligible online roles during the candidate minute, stable by role id, capped by the map.
         if (active.State == "Candidate" && !next!.Complete)
@@ -212,13 +215,22 @@ public sealed class FestivalService : IGameTicker
     {
         if (!info.ActivityData.TryGetValue(ActivityId, out var row)) return;
         var segment = Segment;
-        var state = new PlayerActivityInfo { ActivityKey = ActivityId.ToString(), Playbook = 101,
+        var state = new PlayerActivityInfo
+        {
+            ActivityKey = ActivityId.ToString(), Playbook = 101,
             State = segment?.State ?? "_close", ActivityInstance = current?.Cycle ?? 0,
             CurStartTime = segment?.Start ?? 0, CurEndTime = segment?.End ?? 0,
             CycleStartTime = current?.Cycle ?? 0, CycleEndTime = current?.End ?? 0,
             IsEnterComplete = segment != null, IsExitComplete = current?.Complete ?? false,
-            ActivityParam = new() { RainbowKoi = new() { BetTargetId = current?.Bets.GetValueOrDefault(session.Role!.Id) ?? 0,
-                Progress = new() { IsGameOver = current?.Complete ?? false } } } };
+            ActivityParam = new()
+            {
+                RainbowKoi = new()
+                {
+                    BetTargetId = current?.Bets.GetValueOrDefault(session.Role!.Id) ?? 0,
+                    Progress = new() { IsGameOver = current?.Complete ?? false }
+                }
+            }
+        };
         if (current != null)
             foreach (var (id, c) in current.Candidates)
                 state.ActivityParam.RainbowKoi.Progress.CandidateMap[id] = new RainbowKoiCandidateInfo
@@ -254,8 +266,10 @@ public sealed class FestivalService : IGameTicker
                 () => daily.SyncEventsAsync(session));
         else await daily.SyncEventsAsync(session);
         await session.SendGameAsync(DailyActivityService.RingAccept, new CommonDailyActivityRes
-        { ActivityId = req.ActivityId, RequestId = req.RequestId, Result = result,
-            RainbowKoiBet = new() { TargetPlayerId = req.RainbowKoiBet?.TargetPlayerId ?? 0 } });
+        {
+            ActivityId = req.ActivityId, RequestId = req.RequestId, Result = result,
+            RainbowKoiBet = new() { TargetPlayerId = req.RainbowKoiBet?.TargetPlayerId ?? 0 }
+        });
     }
 
     public async Task<bool> TryEnterAsync(GameSession session, EnterDungeonReq req)
@@ -315,9 +329,12 @@ public sealed class FestivalService : IGameTicker
     private DungeonBaseInfoNotify Snapshot()
     {
         var r = current!;
-        var result = new DungeonBaseInfoNotify { DungeonEntry = Dungeon, DungeonId = room!.Id, Level = 1,
+        var result = new DungeonBaseInfoNotify
+        {
+            DungeonEntry = Dungeon, DungeonId = room!.Id, Level = 1,
             Stage = r.Question + 1, ChangeType = (DungeonBaseInfoNotify.Types.eChangeType)2,
-            InitData = new() { RainbowKoiInitData = new() { ActivityKey = ActivityId.ToString(), ActivityInstance = r.Cycle } } };
+            InitData = new() { RainbowKoiInitData = new() { ActivityKey = ActivityId.ToString(), ActivityInstance = r.Cycle } }
+        };
         result.InitData.RainbowKoiInitData.CandidatePlayerIds.Add(r.Candidates.Keys);
         result.InitData.RainbowKoiInitData.QuestionIds.Add(r.Questions.Select(id => checked((int)id)));
         result.Vars.Add(Var(1102, r.Deadline * 1000));

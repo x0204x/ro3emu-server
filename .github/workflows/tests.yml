@@ -2,18 +2,41 @@ name: tests
 
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # Players run the server on Windows, hosts mostly on Linux.
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
+          cache: true
+          cache-dependency-path: |
+            Directory.Packages.props
+            **/*.csproj
       # Tests that need the client's exported game data are skipped here; the synthetic fixture
-      # (tests/Ro3Emu.Tests/Fixtures/GameData, docs/testing.md) lets the rest run.
+      # (tests/Ro3Emu.Tests/Fixtures/GameData, docs/guide/testing.md) lets the rest run.
       - name: Server tests
         run: dotnet test tests/Ro3Emu.Tests -c Release --filter "Category!=Slow" --logger "trx;LogFileName=server.trx" --results-directory TestResults
       - name: Patcher tests

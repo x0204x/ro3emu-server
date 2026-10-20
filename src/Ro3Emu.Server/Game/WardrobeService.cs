@@ -207,8 +207,11 @@ public sealed partial class WardrobeService
                 {
                     tx.RoleBlob(session.Role!.Id, "wardrobe", next.ToByteArray());
                     tx.WithEconomy(character.FamilyEconomy(session, "cd13b/wardrobe-redeem", costs, [],
-                        new { Appearance = req.AppearanceId,
-                            StateHash = Convert.ToHexString(SHA256.HashData(next.ToByteArray())) }));
+                        new
+                        {
+                            Appearance = req.AppearanceId,
+                            StateHash = Convert.ToHexString(SHA256.HashData(next.ToByteArray()))
+                        }));
                 }, committed: () => { session.Wardrobe = next; ArmExpiry(session); }, asyncCommit: true);
             if (paid == null) result = character.ShortageOf(session, costs);
             else
@@ -252,8 +255,11 @@ public sealed partial class WardrobeService
                 {
                     tx.RoleBlob(session.Role!.Id, "wardrobe", next.ToByteArray());
                     tx.WithEconomy(character.FamilyEconomy(session, "cd13b/wardrobe-item", [(item.Entry, 1L)], [],
-                        new { Appearance = appearanceId, Item = item.Entry,
-                            StateHash = Convert.ToHexString(SHA256.HashData(next.ToByteArray())) }));
+                        new
+                        {
+                            Appearance = appearanceId, Item = item.Entry,
+                            StateHash = Convert.ToHexString(SHA256.HashData(next.ToByteArray()))
+                        }));
                 }, committed: () => { session.Wardrobe = next; ArmExpiry(session); }, asyncCommit: true);
             if (spent == null) result = ErrorCodes.ItemsShort;
             else

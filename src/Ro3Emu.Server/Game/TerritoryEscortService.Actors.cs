@@ -28,8 +28,11 @@ public sealed partial class TerritoryEscortService
         {
             Uuid = (ulong)Uid, EntityTemplateID = 4910003, EntityType = 2,
             State = EntityState.Alive, NotifyType = EntityBase.Types.NotifyType.All,
-            MovementInfo = new MovementInfo { Pos = Pos, Face = Face, ServerTime = MonsterService.NowMs,
-                MoveType = MovementType.MoveTypeNone },
+            MovementInfo = new MovementInfo
+            {
+                Pos = Pos, Face = Face, ServerTime = MonsterService.NowMs,
+                MoveType = MovementType.MoveTypeNone
+            },
         };
     }
 
@@ -190,11 +193,14 @@ public sealed partial class TerritoryEscortService
             (int)GameData.Int(npc, "_iElement"), (int)GameData.Int(npc, "_iRace"), (int)GameData.Int(npc, "_iSize"),
             1, false, 0, 8000, 0, 0, 0, 0, 0, 0, 0, 500);
         var point = new SpawnPoint(-1, owner.Position.X, owner.Position.Y, owner.Position.Z, owner.Face, npcId);
-        return new MonsterUnit { Uid = CartUidBase | cart.Id, SceneEntry = owner.SceneEntry,
+        return new MonsterUnit
+        {
+            Uid = CartUidBase | cart.Id, SceneEntry = owner.SceneEntry,
             X = owner.Position.X - 3, Y = owner.Position.Y, Z = owner.Position.Z,
             Face = owner.Face, Template = template, Group = new SpawnGroup(-1, false, 1, 0, [], [point]),
             Home = point, Hp = cart.CurrentHp > 0 ? Math.Min(cart.CurrentHp, template.MaxHp) : template.MaxHp,
-            BornTimeMs = MonsterService.NowMs };
+            BornTimeMs = MonsterService.NowMs
+        };
     }
 
     private async Task RefreshCartActorsAsync()
@@ -203,10 +209,16 @@ public sealed partial class TerritoryEscortService
         var finalized = new List<(CartState Cart, long Scene)>();
         using var reservation = await EnterGateAsync("escort/cart actors");
         using var stagedEscortLedger = StageLedger();
-        try { wanted = ledger.Carts.Values.Select(c => new CartState { Id = c.Id, Guild = c.Guild,
-            Owner = c.Owner, Round = c.Round, Type = c.Type, Point = c.Point, Count = c.Count,
-            OriginCount = c.OriginCount, DamageTier = c.DamageTier, CurrentHp = c.CurrentHp,
-            Started = c.Started, Scene = c.Scene }).ToArray(); }
+        try
+        {
+            wanted = ledger.Carts.Values.Select(c => new CartState
+            {
+                Id = c.Id, Guild = c.Guild,
+                Owner = c.Owner, Round = c.Round, Type = c.Type, Point = c.Point, Count = c.Count,
+                OriginCount = c.OriginCount, DamageTier = c.DamageTier, CurrentHp = c.CurrentHp,
+                Started = c.Started, Scene = c.Scene
+            }).ToArray();
+        }
         finally { stagedEscortLedger.Dispose(); gate.Release(); reservation?.Dispose(); }
         await actorGate.WaitAsync();
         try
@@ -261,10 +273,16 @@ public sealed partial class TerritoryEscortService
                 {
                     unit.X = owner.Position.X - 3; unit.Y = owner.Position.Y; unit.Z = owner.Position.Z;
                     unit.Face = owner.Face;
-                    await world.MoveUnitAsync(unit, new MovementChangeNtf { Uid = unit.Uid,
+                    await world.MoveUnitAsync(unit, new MovementChangeNtf
+                    {
+                        Uid = unit.Uid,
                         TransType = MovementTransitionType.MoveTransNormal,
-                        MovementInfo = new MovementInfo { Pos = unit.Pos, ServerTime = MonsterService.NowMs,
-                            Face = unit.Face, MoveType = MovementType.MoveTypeNone } });
+                        MovementInfo = new MovementInfo
+                        {
+                            Pos = unit.Pos, ServerTime = MonsterService.NowMs,
+                            Face = unit.Face, MoveType = MovementType.MoveTypeNone
+                        }
+                    });
                 }
             }
         }
@@ -282,9 +300,14 @@ public sealed partial class TerritoryEscortService
         CargoState[] wanted;
         using var reservation = await EnterGateAsync("escort/cargo actors");
         using var stagedEscortLedger = StageLedger();
-        try { wanted = ledger.Cargo.Values.Where(x => !x.Picked && x.Expires > clock.Now).Select(x => new CargoState
-        { Id = x.Id, Scene = x.Scene, LooterGuild = x.LooterGuild, X = x.X, Y = x.Y, Z = x.Z,
-            FreeAfter = x.FreeAfter, Expires = x.Expires }).ToArray(); }
+        try
+        {
+            wanted = ledger.Cargo.Values.Where(x => !x.Picked && x.Expires > clock.Now).Select(x => new CargoState
+            {
+                Id = x.Id, Scene = x.Scene, LooterGuild = x.LooterGuild, X = x.X, Y = x.Y, Z = x.Z,
+                FreeAfter = x.FreeAfter, Expires = x.Expires
+            }).ToArray();
+        }
         finally { stagedEscortLedger.Dispose(); gate.Release(); reservation?.Dispose(); }
         await actorGate.WaitAsync();
         try
@@ -296,8 +319,11 @@ public sealed partial class TerritoryEscortService
             {
                 long uid = CargoUidBase | cargo.Id;
                 if (liveCargo.ContainsKey(uid)) continue;
-                var unit = new CargoUnit { Uid = uid, SceneEntry = cargo.Scene,
-                    X = cargo.X, Y = cargo.Y, Z = cargo.Z };
+                var unit = new CargoUnit
+                {
+                    Uid = uid, SceneEntry = cargo.Scene,
+                    X = cargo.X, Y = cargo.Y, Z = cargo.Z
+                };
                 liveCargo[uid] = unit;
                 await world.AddUnitAsync(unit);
             }
@@ -385,10 +411,13 @@ public sealed partial class TerritoryEscortService
                     for (int i = priorDrops; i < totalDrops; i++)
                     {
                         long id = ledger.NextCargoId++;
-                        ledger.Cargo[id] = new CargoState { Id = id, Scene = monster.SceneEntry,
+                        ledger.Cargo[id] = new CargoState
+                        {
+                            Id = id, Scene = monster.SceneEntry,
                             LooterGuild = guild.Id, X = monster.X + (i % 3 - 1) * 1.5f,
                             Y = monster.Y, Z = monster.Z + (i / 3) * 1.5f,
-                            FreeAfter = clock.Now + 300, Expires = clock.Now + 1800 };
+                            FreeAfter = clock.Now + 300, Expires = clock.Now + 1800
+                        };
                     }
                     int lost = Math.Min(cart.Count, (int)Math.Ceiling(origin * 0.2));
                     cart.Count -= lost;
@@ -454,8 +483,10 @@ public sealed partial class TerritoryEscortService
         if (!changedTier) return;
         await RoleFanout.EachAsync(sessions.All().Where(s => s.WorldScene == monster.WorldScene && !s.SceneLoading),
             peer => peer.SendGameAsync(CartVarNtf, new TerritoryWarsEscortCartInfoChange
-            { Uuid = monster.Uid & ~CartUidBase, CartVarinfo = new EscortCartVarInfo
-                { CurNum = remaining, FollowPlayer = live.Owner } }));
+            {
+                Uuid = monster.Uid & ~CartUidBase, CartVarinfo = new EscortCartVarInfo
+                { CurNum = remaining, FollowPlayer = live.Owner }
+            }));
         await SendScoreAsync(attacker);
         await RefreshCargoActorsAsync();
     }

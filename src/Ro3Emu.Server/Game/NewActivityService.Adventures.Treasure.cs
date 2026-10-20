@@ -162,8 +162,11 @@ public sealed partial class NewActivityService
                 PointPosition = new Vec3 { X = target.Position.X, Y = target.Position.Y, Z = target.Position.Z },
             };
             for (int i = 0; i < grants.Length; i++)
-                notice.Items[i + 1] = new ItemBaseInfo { ItemEntry = grants[i].Entry, Stack = grants[i].Count,
-                    ItemInfos = { [10001] = new ItemAttrValue { LongVal = 0 } } };
+                notice.Items[i + 1] = new ItemBaseInfo
+                {
+                    ItemEntry = grants[i].Entry, Stack = grants[i].Count,
+                    ItemInfos = { [10001] = new ItemAttrValue { LongVal = 0 } }
+                };
             if (monsterId != 0) notice.Param.Add(monsterId);
             await session.SendGameAsync(83251, notice);
             tasks.OnTreasureDug(session); // quest target 106802, after the dig's commit

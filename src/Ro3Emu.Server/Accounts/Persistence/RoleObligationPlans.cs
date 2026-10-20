@@ -59,7 +59,9 @@ internal sealed class RoleObligationCreatePlan<TRow> : DbPlan where TRow : class
     internal IReadOnlyList<TRow> Rows => rows;
     internal override int Bytes => 256 + rows.Sum(row => row.Values().Sum(value => value switch
     {
-        string text => text.Length * 2, byte[] bytes => bytes.Length, _ => 8,
+        string text => text.Length * 2,
+        byte[] bytes => bytes.Length,
+        _ => 8,
     }));
     internal override string Label => TRow.Table.LabelPrefix + "/create-obligations";
     internal override IReadOnlyList<OwnerRevisionKey> EntityWrites =>

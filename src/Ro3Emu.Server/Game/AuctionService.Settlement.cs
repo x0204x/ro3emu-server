@@ -135,44 +135,47 @@ public sealed partial class AuctionService
             }
             else
             {
-            // Non-dungeon rows are never server-minted without a source; retain their durable row on unsold expiry.
-            dividendRoles = winner != 0 && !row.RandomAward ? DividendRoles(row) : [];
-            var recipients = dividendRoles.Append(winner)
-                .Concat(winner != 0 && !row.RandomAward && row.Type is (AuctionType.Dungeon or AuctionType.Guild)
-                    ? row.Joined : Array.Empty<long>()).Where(role => role != 0).Distinct().ToArray();
-            if (recipients.FirstOrDefault(role => roles.Get(role) == null) is var missing and > 0)
-            {
-                // Retain the paid escrow and source row until a product policy resolves a deleted claimant.
-                row.SettlementRecoveryReason = $"deleted-recipient:{missing}";
-                row.Revision++;
-                var recovery = roles.NewTransaction();
-                store.EnlistSave(row, recovery);
-                recovery.WithEscrowEconomy(AuctionIntent("auction/settlement-recovery")
-                    .Evidence(new { PriorLot = priorLot, NewLot = LotEvidence(row), MissingRecipient = missing }));
-                RequireScope(scope, recovery);
-                await roles.CommitAsync(recovery, "auction/settlement-recovery");
-                log.LogWarning("Auction {Auction} requires settlement recovery for deleted recipient {Role}", id, missing);
-                return;
-            }
-            row.Winner = winner;
-            row.State = AuctionState.Settled;
-            row.End = Math.Min(row.End, Now);
-            var transaction = roles.NewTransaction();
-            store.EnlistSave(row, transaction);
-            if (winner != 0)
-            {
-                if (row.RandomAward)
-                    mail.QueueTemplateLocked(winner, $"auction:{id}:unsold", 1113,
-                        [new MailService.Attachment(row.Entry, 1, row.Bind)], transaction);
-                else SettleLetters(row, dividendRoles, transaction);
-            }
-            transaction.WithEscrowEconomy(SettlementIntent("auction/settle", row, dividendRoles,
-                sourceKey: $"auction/lot/{id}/settle",
-                details: new { PriorLot = priorLot, NewLot = LotEvidence(row), Winner = winner,
-                    DividendRoles = dividendRoles }));
-            RequireScope(scope, transaction);
-            await roles.CommitAsync(transaction, "auction/settle");
-            settled = row;
+                // Non-dungeon rows are never server-minted without a source; retain their durable row on unsold expiry.
+                dividendRoles = winner != 0 && !row.RandomAward ? DividendRoles(row) : [];
+                var recipients = dividendRoles.Append(winner)
+                    .Concat(winner != 0 && !row.RandomAward && row.Type is (AuctionType.Dungeon or AuctionType.Guild)
+                        ? row.Joined : Array.Empty<long>()).Where(role => role != 0).Distinct().ToArray();
+                if (recipients.FirstOrDefault(role => roles.Get(role) == null) is var missing and > 0)
+                {
+                    // Retain the paid escrow and source row until a product policy resolves a deleted claimant.
+                    row.SettlementRecoveryReason = $"deleted-recipient:{missing}";
+                    row.Revision++;
+                    var recovery = roles.NewTransaction();
+                    store.EnlistSave(row, recovery);
+                    recovery.WithEscrowEconomy(AuctionIntent("auction/settlement-recovery")
+                        .Evidence(new { PriorLot = priorLot, NewLot = LotEvidence(row), MissingRecipient = missing }));
+                    RequireScope(scope, recovery);
+                    await roles.CommitAsync(recovery, "auction/settlement-recovery");
+                    log.LogWarning("Auction {Auction} requires settlement recovery for deleted recipient {Role}", id, missing);
+                    return;
+                }
+                row.Winner = winner;
+                row.State = AuctionState.Settled;
+                row.End = Math.Min(row.End, Now);
+                var transaction = roles.NewTransaction();
+                store.EnlistSave(row, transaction);
+                if (winner != 0)
+                {
+                    if (row.RandomAward)
+                        mail.QueueTemplateLocked(winner, $"auction:{id}:unsold", 1113,
+                            [new MailService.Attachment(row.Entry, 1, row.Bind)], transaction);
+                    else SettleLetters(row, dividendRoles, transaction);
+                }
+                transaction.WithEscrowEconomy(SettlementIntent("auction/settle", row, dividendRoles,
+                    sourceKey: $"auction/lot/{id}/settle",
+                    details: new
+                    {
+                        PriorLot = priorLot, NewLot = LotEvidence(row), Winner = winner,
+                        DividendRoles = dividendRoles
+                    }));
+                RequireScope(scope, transaction);
+                await roles.CommitAsync(transaction, "auction/settle");
+                settled = row;
             }
         }
         if (moved != null)
@@ -211,10 +214,13 @@ public sealed partial class AuctionService
         QueryAuctionBonusRes res;
         using (var scope = await EnterSessionAuctionAsync(s, "auction/bonus-read", role => RoleKeys([role])))
         {
-        res = new QueryAuctionBonusRes();
-        foreach (var bonus in store.Bonuses(s.Role!.Id).Where(b => req.GuildId == 0 || b.Guild == req.GuildId))
-            res.GroupBonus[bonus.Key] = new DBBonus { Bonus = bonus.Amount, GuildId = bonus.Guild,
-                State = bonus.Claimed ? GroupBonusState.Recieved : GroupBonusState.Finished };
+            res = new QueryAuctionBonusRes();
+            foreach (var bonus in store.Bonuses(s.Role!.Id).Where(b => req.GuildId == 0 || b.Guild == req.GuildId))
+                res.GroupBonus[bonus.Key] = new DBBonus
+                {
+                    Bonus = bonus.Amount, GuildId = bonus.Guild,
+                    State = bonus.Claimed ? GroupBonusState.Recieved : GroupBonusState.Finished
+                };
         }
         await SendSessionAuctionAsync(s, requestRole, requestLease, QueryBonus, res);
     }
@@ -254,7 +260,7 @@ public sealed partial class AuctionService
             }
             catch (Exception e)
             {
-                log.LogError(e, committed ? "Auction bonus claim notification failed" : "Auction bonus claim failed");
+                log.LogError(e, "Auction bonus claim failed (committed before the failure: {Committed})", committed);
                 result = committed ? 0 : ErrorCodes.Unknown;
             }
         }

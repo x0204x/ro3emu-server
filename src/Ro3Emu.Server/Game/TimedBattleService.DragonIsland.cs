@@ -82,11 +82,14 @@ public sealed partial class TimedBattleService
         {
             DungeonEntry = match.Room!.SceneEntry, DungeonId = match.Room.Id, Stage = run.Stage, InitData = init,
             ChangeType = (DungeonBaseInfoNotify.Types.eChangeType)2,
-            StageModuleData = new DungeonStageModuleData { MapState = run.Stage == 2 ? 2 : 1, Stage = run.Stage,
+            StageModuleData = new DungeonStageModuleData
+            {
+                MapState = run.Stage == 2 ? 2 : 1, Stage = run.Stage,
                 MapStateStartTime = match.Open * 1000, MapStateEndTime = end,
                 StageStartTime = run.Stage == 0 ? match.Open * 1000 : prepareEnd,
                 StageEndTime = run.Stage == 0 ? prepareEnd : end,
-                NextStageStartTime = run.Stage == 0 ? prepareEnd : 0, NextStageEndTime = run.Stage == 0 ? end : 0 },
+                NextStageStartTime = run.Stage == 0 ? prepareEnd : 0, NextStageEndTime = run.Stage == 0 ? end : 0
+            },
         };
         var camps = new DungeonVar { VarId = CampScoreVar };
         camps.Vi64.Add([1, run.CampScore[1], 2, run.CampScore[2]]);

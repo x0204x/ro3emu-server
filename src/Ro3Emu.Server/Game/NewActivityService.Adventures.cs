@@ -257,7 +257,7 @@ public sealed partial class NewActivityService
             global.Progress = Math.Min(EveConstant("SeasonEveTotalProgress"),
                 global.Progress + EveConstant("SeasonEveCompleteChapterProgress"));
             global.PlayerBullet.Add(new SeasonEveBulletInfo
-                { PlayerId = session.Role!.Id, ChapterId = req.ChapterId, TimeMs = Now * 1000 });
+            { PlayerId = session.Role!.Id, ChapterId = req.ChapterId, TimeMs = Now * 1000 });
             int limit = EveConstant("SeasonEveBarrageCacheCount");
             while (global.PlayerBullet.Count > limit) global.PlayerBullet.RemoveAt(0);
             return await CommitAdventureAsync(session, next, [GameData.Int(chapter, "_iAward")],
@@ -292,7 +292,7 @@ public sealed partial class NewActivityService
             long id = GameData.Int(row, "_iId");
             if (id < 1) continue;
             var chapter = new SeasonEveGlobalChapterInfo
-                { ChapterId = id, OpenTime = EveChapterOpenTime(session, activityId, row) };
+            { ChapterId = id, OpenTime = EveChapterOpenTime(session, activityId, row) };
             if (global.ChapterInfo.TryGetValue(id, out var saved))
                 foreach (var (clue, discoveries) in saved.Clues) chapter.Clues[clue] = discoveries;
             result.ChapterInfo[id] = chapter;

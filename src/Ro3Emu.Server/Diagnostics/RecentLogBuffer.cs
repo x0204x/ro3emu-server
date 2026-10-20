@@ -54,7 +54,10 @@ public sealed class RecentLogBuffer(TimeProvider clock) : ILoggerProvider
 
     private static string Short(LogLevel level) => level switch
     {
-        LogLevel.Information => "info", LogLevel.Warning => "warn", LogLevel.Error => "fail", LogLevel.Critical => "crit",
+        LogLevel.Information => "info",
+        LogLevel.Warning => "warn",
+        LogLevel.Error => "fail",
+        LogLevel.Critical => "crit",
         _ => level.ToString().ToLowerInvariant(),
     };
 

@@ -72,8 +72,11 @@ public sealed partial class GuildLeagueService
         {
             Uuid = (ulong)p.Uid, EntityTemplateID = CircleNpc, EntityType = 2, Name = "", EntityCamp = 0,
             State = EntityState.Alive, NotifyType = EntityBase.Types.NotifyType.All,
-            MovementInfo = new MovementInfo { Pos = new Vec3 { X = p.At.X, Y = p.At.Y, Z = p.At.Z },
-                ServerTime = MonsterService.NowMs, MoveType = MovementType.MoveTypeNone },
+            MovementInfo = new MovementInfo
+            {
+                Pos = new Vec3 { X = p.At.X, Y = p.At.Y, Z = p.At.Z },
+                ServerTime = MonsterService.NowMs, MoveType = MovementType.MoveTypeNone
+            },
         };
         entity.CustomDatas.Add(CircleData(m, p, now, stay));
         return entity;

@@ -239,8 +239,11 @@ public sealed partial class TradeService
             changed = listing;
             return 0;
         });
-        var response = new ChangeSkuPriceResp { Code = code, Errno = code,
-            Errmsg = code == 0 ? "" : "Price change refused" };
+        var response = new ChangeSkuPriceResp
+        {
+            Code = code, Errno = code,
+            Errmsg = code == 0 ? "" : "Price change refused"
+        };
         if (changed != null)
         {
             var rows = await OwnRows(s);

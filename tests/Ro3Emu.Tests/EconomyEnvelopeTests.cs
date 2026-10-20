@@ -77,7 +77,7 @@ public sealed class EconomyEnvelopeTests : IDisposable
         var opening = Cut();
         Assert.Equal(2, opening.Holdings.Count(x => x.Location.Compartment == EconomyCompartment.Pending));
         using (var db = new SqliteConnection(new SqliteConnectionStringBuilder
-            { DataSource = accounts.DatabasePath, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString()))
+        { DataSource = accounts.DatabasePath, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString()))
         {
             db.Open();
             using var tx = db.BeginTransaction(deferred: true);

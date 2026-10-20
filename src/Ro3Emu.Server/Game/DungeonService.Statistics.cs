@@ -11,8 +11,11 @@ public sealed partial class DungeonService
     /// <summary>Real shared combat counters; zero task score until a recovered task-scoring rule exists.</summary>
     private static DungeonStatisticsInfoWithDungeon StatisticsOf(Attempt a)
     {
-        var result = new DungeonStatisticsInfoWithDungeon { StatisticsId = a.Room.Id,
-            DungeonId = (int)a.Plan.SceneEntry, StatisticsTime = MonsterService.NowMs };
+        var result = new DungeonStatisticsInfoWithDungeon
+        {
+            StatisticsId = a.Room.Id,
+            DungeonId = (int)a.Plan.SceneEntry, StatisticsTime = MonsterService.NowMs
+        };
         var scene = new SceneStatisticsInfo { SceneId = a.Room.Id, DungeonId = (int)a.Plan.SceneEntry };
         foreach (var (id, stats) in a.Stats) scene.RoleStatistics[id] = stats.Clone();
         result.SceneStatistics[a.Room.Id] = scene;
@@ -43,8 +46,10 @@ public sealed partial class DungeonService
     {
         var other = s.DungeonAttempt == null ? CurrentStatisticsOwner?.Invoke(s) : null;
         return s.SendGameAsync(StatisticsCurrent, new GetDungeonStatisticsInDungeonResp
-        { Result = s.DungeonAttempt == null && other == null ? ErrorCodes.SceneMissing : 0,
-            DungeonStatistics = s.DungeonAttempt is { } a ? StatisticsOf(a) : other });
+        {
+            Result = s.DungeonAttempt == null && other == null ? ErrorCodes.SceneMissing : 0,
+            DungeonStatistics = s.DungeonAttempt is { } a ? StatisticsOf(a) : other
+        });
     }
 
     public Task StatisticsModuleAsync(GameSession s)
@@ -88,8 +93,11 @@ public sealed partial class DungeonService
     private static void StoreHistory(State state, Attempt a)
     {
         state.Statistics[a.Room.Id] = StatisticsOf(a).ToByteArray();
-        var result = new DBDungeonResultData { ResultId = ResultId(a), ServerId = 1, DungeonId = a.Room.Id,
-            DungeonEntryId = (int)a.Plan.SceneEntry, CreateTime = MonsterService.NowMs };
+        var result = new DBDungeonResultData
+        {
+            ResultId = ResultId(a), ServerId = 1, DungeonId = a.Room.Id,
+            DungeonEntryId = (int)a.Plan.SceneEntry, CreateTime = MonsterService.NowMs
+        };
         // Mode-specific SecondResultType/ResultParam have no recovered ordinary-dungeon mapping.
         state.Results[result.ResultId] = result.ToByteArray();
         // Twenty owned reports retained across login (inferred retention policy, no globally queryable role data).

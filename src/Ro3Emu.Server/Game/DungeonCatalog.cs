@@ -42,8 +42,11 @@ public sealed class DungeonCatalog(GameData data, WorldData worldData, MonsterSe
                 // The client never reads it (LC_DunGeon_Valhalla); filled as the proto defines it (inferred).
                 ? new DungeonInitData { HeroicSpiritDungeonInitData = new HeroicSpiritDungeonInitData { ChallengeId = LayerId } }
                 : MultiId == 0 ? new DungeonInitData()
-                : new DungeonInitData { MultiDungeonInitData = new MultiDungeonInitData
-                { MultiDungeonId = MultiId, MarkId = Mark, TeamID = teamId, DungeonId = instanceId } };
+                : new DungeonInitData
+                {
+                    MultiDungeonInitData = new MultiDungeonInitData
+                    { MultiDungeonId = MultiId, MarkId = Mark, TeamID = teamId, DungeonId = instanceId }
+                };
             if (Origin is { } origin && init.MultiDungeonInitData != null)
                 init.MultiDungeonInitData.Origin = new MultiDungeonInfo { MultiDungeonId = GameData.Int(origin.Multi, "_iID"), MarkId = origin.Mark };
             return init;

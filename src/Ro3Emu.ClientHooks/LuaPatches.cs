@@ -226,7 +226,11 @@ namespace Ro3Emu.ClientHooks
 
         internal static long ToLong(object value) => value switch
         {
-            long l => l, int i => i, double d => (long)d, float f => (long)f, _ => long.MinValue,
+            long l => l,
+            int i => i,
+            double d => (long)d,
+            float f => (long)f,
+            _ => long.MinValue,
         };
 
         private static readonly System.Collections.Generic.HashSet<string> Reported = new System.Collections.Generic.HashSet<string>();

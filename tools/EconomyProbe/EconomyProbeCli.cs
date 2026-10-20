@@ -42,8 +42,11 @@ public static class EconomyProbeCli
                 var ledger = EconomyLedgerReader.Read(database, catalog, snapshot.Cut.RealmId, from, through);
                 // Receipt consistency alone never certifies opening + ledger = closing or realm coverage.
                 var verdict = Verdict(ledger.Issues, !ledger.CompleteHistory || ledger.UncoveredMutationFamilies.Count != 0);
-                Write(args[6], new { Command = command, Database = database, Binding = binding, Ledger = ledger,
-                    Verdict = verdict.ToString(), Scope = "Receipt and retained ledger consistency; no balance comparison." },
+                Write(args[6], new
+                {
+                    Command = command, Database = database, Binding = binding, Ledger = ledger,
+                    Verdict = verdict.ToString(), Scope = "Receipt and retained ledger consistency; no balance comparison."
+                },
                     Summary(command, verdict, snapshot.Cut, ledger.Issues, ledger.UncoveredMutationFamilies) +
                     $"\nReceipts: {ledger.Receipts.Count}; legs: {ledger.Legs.Count}; range: ({from}, {through}].\n");
                 return Exit(verdict);
@@ -62,8 +65,11 @@ public static class EconomyProbeCli
             foreach (var row in check.Assets)
                 text.AppendLine($"| {row.Asset.Kind}/{row.Asset.Id}/{row.Asset.Epoch} | {row.Opening} | {row.Closing} | {row.Sources} | {row.Sinks} | {row.Residual} | {row.LegResidual} |");
             if (command == "restore-check") text.AppendLine("\nE01 checks retained receipts, database integrity and these cuts. Archive/backup lifecycle qualification belongs to E06.");
-            Write(args[5], new { Command = command, Database = database, Binding = binding, Opening = opening,
-                Closing = snapshot, Ledger = window, Check = check }, text.ToString());
+            Write(args[5], new
+            {
+                Command = command, Database = database, Binding = binding, Opening = opening,
+                Closing = snapshot, Ledger = window, Check = check
+            }, text.ToString());
             return Exit(check.Verdict);
         }
         catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or JsonException or

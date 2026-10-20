@@ -216,7 +216,7 @@ internal sealed class EconomyTransactionPlan(RoleItemPlan child, EconomyMutation
             "cd13e/journey-victory" => ["new_activities", "dungeons"],
             _ => throw new InvalidOperationException("Unrecognized owned economic command.")
         };
-        string[] columns = [..sourceColumns, "daily", "library", "task_followup", "mounts", "activity_runtime"];
+        string[] columns = [.. sourceColumns, "daily", "library", "task_followup", "mounts", "activity_runtime"];
         bool award = mutation.CommandKind is "cd13e/quest-award" or "cd13e/achievement-award" or "cd13e/advguild-award" or "cd13e/monsterhunt-award" or "cd13e/guild-award" or "cd13e/growthclass-award" or "cd13e/library-award" or "cd13e/firstheart-award" or "cd13e/daily-stage" or
             "cd13e/journey-victory" or "cd13e/grant" or "cd13e/gm-grant";
         if (child.Parts.Count < 2 || child.Parts[0] is not ItemDeltaWritePlan ||
@@ -269,7 +269,9 @@ internal sealed class EconomyTransactionPlan(RoleItemPlan child, EconomyMutation
             : 0;
         string[] cardColumns = cardSuffix switch
         {
-            1 => ["library"], 2 => ["library", "task_followup"], _ => []
+            1 => ["library"],
+            2 => ["library", "task_followup"],
+            _ => []
         };
         var sourceExtra = extra.Take(extra.Length - cardSuffix).ToArray();
         bool columnsValid = mutation.CommandKind == "monster-kill"
@@ -278,7 +280,7 @@ internal sealed class EconomyTransactionPlan(RoleItemPlan child, EconomyMutation
         string[] allowedColumns = mutation.CommandKind == "monster-kill"
             ? ["library", "task_followup", "tower", "tasks", "wild_afk", "area_concur"]
             : mutation.CommandKind is "gather-yield" or "dungeon-reward"
-                ? [..requiredColumns, "library", "task_followup"] : requiredColumns;
+                ? [.. requiredColumns, "library", "task_followup"] : requiredColumns;
         var activation = extra.OfType<DungeonObligationActivatePlan>().SingleOrDefault();
         var ordinaryExtra = extra.Where(x => x is not DungeonObligationActivatePlan and not KillTaskProgressPlan).ToArray();
         bool MonsterExtrasValid()
@@ -386,24 +388,24 @@ internal sealed class EconomyTransactionPlan(RoleItemPlan child, EconomyMutation
                         _ => EconomyReason.NpcShopPayment
                     }
                     : mutation.CommandKind switch
-                {
-                    "gather-yield" => EconomyReason.GatherYield,
-                    "monster-kill" => EconomyReason.MonsterDrop,
-                    "dungeon-reward" or "tower-reward" or "cd13e/tower-milestone" or
-                        "cd13e/journey-victory" => EconomyReason.ActivityReward,
-                    "cd13e/quest-award" => EconomyReason.QuestReward,
-                    "cd13e/achievement-award" => EconomyReason.AchievementReward,
-                    "cd13e/advguild-award" => EconomyReason.AdventureGroupReward,
-                    "cd13e/monsterhunt-award" => EconomyReason.MonsterHuntReward,
-                    "cd13e/guild-award" => EconomyReason.GuildReward,
-                    "cd13e/growthclass-award" => EconomyReason.GrowthClassReward,
-                    "cd13e/library-award" => EconomyReason.LibraryReward,
-                    "cd13e/firstheart-award" => EconomyReason.FirstHeartReward,
-                    "cd13e/daily-stage" => EconomyReason.DailyReward,
-                    "cd13e/gm-grant" => EconomyReason.GmGrant,
-                    "cd13e/grant" => EconomyReason.OwnedGrant,
-                    _ => EconomyReason.NpcShopGoods
-                };
+                    {
+                        "gather-yield" => EconomyReason.GatherYield,
+                        "monster-kill" => EconomyReason.MonsterDrop,
+                        "dungeon-reward" or "tower-reward" or "cd13e/tower-milestone" or
+                            "cd13e/journey-victory" => EconomyReason.ActivityReward,
+                        "cd13e/quest-award" => EconomyReason.QuestReward,
+                        "cd13e/achievement-award" => EconomyReason.AchievementReward,
+                        "cd13e/advguild-award" => EconomyReason.AdventureGroupReward,
+                        "cd13e/monsterhunt-award" => EconomyReason.MonsterHuntReward,
+                        "cd13e/guild-award" => EconomyReason.GuildReward,
+                        "cd13e/growthclass-award" => EconomyReason.GrowthClassReward,
+                        "cd13e/library-award" => EconomyReason.LibraryReward,
+                        "cd13e/firstheart-award" => EconomyReason.FirstHeartReward,
+                        "cd13e/daily-stage" => EconomyReason.DailyReward,
+                        "cd13e/gm-grant" => EconomyReason.GmGrant,
+                        "cd13e/grant" => EconomyReason.OwnedGrant,
+                        _ => EconomyReason.NpcShopGoods
+                    };
                 result.Add(new EconomyLeg(0, mutation.OperationId, result.Count, kind, reason, asset, location,
                     delta, BeforeFingerprint: prior, AfterFingerprint: next, SourceKey: mutation.SourceKey));
             }

@@ -79,7 +79,7 @@ public sealed partial class NewActivityService
 
     private JsonElement? PassReward(long activityId, int level) => data.Table("BattlePassRewardConfig").Values
         .FirstOrDefault(r => GameData.Int(r, "_iActivityId") == activityId && GameData.Int(r, "_iLevel") == level) is
-        { ValueKind: JsonValueKind.Object } row ? row : null;
+    { ValueKind: JsonValueKind.Object } row ? row : null;
 
     private async Task<int> ClaimPassAsync(GameSession session, long activityId, BattlePassClaimRewardReq req, BattlePassClaimRewardRes res)
     {
@@ -181,8 +181,11 @@ public sealed partial class NewActivityService
                 .Source(AdventureAsset(entitlement), 1, EconomyReason.ActivityReward,
                     EconomyCompartment.Mail, new EconomyOwner(EconomyOwnerKind.Role,
                         req.TargetPlayerId.ToString(CultureInfo.InvariantCulture)))
-                .Evidence(new { Recipient = req.TargetPlayerId, Activity = activityId, Token = token,
-                    Entitlement = entitlement, Message = req.GiftMessage });
+                .Evidence(new
+                {
+                    Recipient = req.TargetPlayerId, Activity = activityId, Token = token,
+                    Entitlement = entitlement, Message = req.GiftMessage
+                });
             result = await CommitAsync(session, session.NewActivities!.Clone(), costs: [(token, 1)],
                 persist: delivery.Persist, stateLockHeld: true, economy: economy);
             if (result == 0) delivered = delivery;
@@ -255,7 +258,7 @@ public sealed partial class NewActivityService
             }
             var nextRuntime = CloneRuntime(session);
             nextRuntime.PassProgress[activityId] = new PassProgressRuntime
-                { Initialized = true, LastBalance = balance, ActivityInstance = info.ActivityInstance };
+            { Initialized = true, LastBalance = balance, ActivityInstance = info.ActivityInstance };
             var costs = activate && !freePremiumPass ? new[] { (Entry: premiumItem, Count: 1) } : [];
             if (await CommitAsync(session, next, costs: costs, runtime: nextRuntime,
                 source: $"pass/activate/{activityId}/{info.ActivityInstance}/{premiumItem}") != 0) return;

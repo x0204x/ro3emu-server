@@ -156,8 +156,11 @@ public sealed class SocialOutfitService
             bool live = current is { Status: TimeLimit } && current.ExpireTimestamp > now;
             container.SocialOutfitInfos[id] = seconds < 0
                 ? new DBSocialOutfitInfo { CfgId = id, Status = Permanent, UnlockTimestamp = now }
-                : new DBSocialOutfitInfo { CfgId = id, Status = TimeLimit, UnlockTimestamp = live ? current!.UnlockTimestamp : now,
-                    ExpireTimestamp = (live ? current!.ExpireTimestamp : now) + seconds };
+                : new DBSocialOutfitInfo
+                {
+                    CfgId = id, Status = TimeLimit, UnlockTimestamp = live ? current!.UnlockTimestamp : now,
+                    ExpireTimestamp = (live ? current!.ExpireTimestamp : now) + seconds
+                };
         }
         byte[] saved = next.ToByteArray();
         if (!await character.CommitItemActionAsync(use, tx => tx.RoleBlob(s.Role.Id, "social_outfit", saved), () => s.SocialOutfit = next,

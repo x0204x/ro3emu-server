@@ -17,19 +17,19 @@ public sealed partial class AuctionService
             store.Items().Where(r => req.AuctionTypes.Contains((long)r.Type) && r.State != AuctionState.Settled
                 && r.End > Now && Visible(s, r)))))
         {
-        res = new QueryAuctionCountRes();
-        var all = store.Items();
-        foreach (var type in req.AuctionTypes.Distinct())
-        {
-            if (!Enum.IsDefined(typeof(AuctionType), (int)type)) continue;
-            var rows = all.Where(r => (long)r.Type == type && r.State != AuctionState.Settled
-                && r.End > Now && Visible(s, r)).ToArray();
-            var counts = new QueryAuctionSrcTypeCount();
-            foreach (var group in rows.GroupBy(r => (long)r.SrcType)) counts.SrcTypeCount[group.Key] = group.LongCount();
-            foreach (var group in rows.GroupBy(r => GameData.Int(data.Row("AuctionConfig", r.Entry)!.Value, "_iType")))
-                counts.ItemTypeCount[group.Key] = group.LongCount();
-            res.AuctionSrcTypeCount[type] = counts;
-        }
+            res = new QueryAuctionCountRes();
+            var all = store.Items();
+            foreach (var type in req.AuctionTypes.Distinct())
+            {
+                if (!Enum.IsDefined(typeof(AuctionType), (int)type)) continue;
+                var rows = all.Where(r => (long)r.Type == type && r.State != AuctionState.Settled
+                    && r.End > Now && Visible(s, r)).ToArray();
+                var counts = new QueryAuctionSrcTypeCount();
+                foreach (var group in rows.GroupBy(r => (long)r.SrcType)) counts.SrcTypeCount[group.Key] = group.LongCount();
+                foreach (var group in rows.GroupBy(r => GameData.Int(data.Row("AuctionConfig", r.Entry)!.Value, "_iType")))
+                    counts.ItemTypeCount[group.Key] = group.LongCount();
+                res.AuctionSrcTypeCount[type] = counts;
+            }
         }
         await SendSessionAuctionAsync(s, requestRole, requestLease, Count, res);
     }
@@ -46,34 +46,42 @@ public sealed partial class AuctionService
                     data.Row("AuctionConfig", r.Entry)!.Value, "_iType")))),
             store.Prebuys().Where(p => p.Role == role))))
         {
-        res = new PreAuctionItemStackQueryRes();
-        var pending = store.Prebuys().Where(p => p.Role == s.Role!.Id).ToDictionary(p => p.RequestedId);
-        foreach (var group in store.Items().Where(r => r.Type == req.AuctionType && r.State != AuctionState.Settled
-            && (req.SrcType == 0 || r.SrcType == req.SrcType) && Visible(s, r)
-            && (req.QueryItemTypes.Count == 0 || req.QueryItemTypes.Contains((int)GameData.Int(data.Row("AuctionConfig", r.Entry)!.Value, "_iType"))))
-            .GroupBy(r => (long)r.Entry))
-        {
-            var stack = new PreAuctionItemStack { ItemId = group.Key,
-                OwnCount = group.LongCount(r => r.Owner == s.Role!.Id || pending.ContainsKey(r.Id)),
-                FirstEndTime = group.Any(r => r.State == AuctionState.Public)
-                    ? group.Where(r => r.State == AuctionState.Public).Min(r => r.Start) : group.Min(r => r.End),
-                State = group.Any(r => r.State == AuctionState.Public)
-                    ? AuctionState.Public : AuctionState.Bidding };
-            string key = PrebuyKey(req.AuctionType, RowSrc(req.AuctionType, (int)req.SrcType), (int)group.Key);
-            stack.PreBuyNum = s.Auction?.PreBuyNum.GetValueOrDefault(key) ?? 0;
-            foreach (var row in group)
+            res = new PreAuctionItemStackQueryRes();
+            var pending = store.Prebuys().Where(p => p.Role == s.Role!.Id).ToDictionary(p => p.RequestedId);
+            foreach (var group in store.Items().Where(r => r.Type == req.AuctionType && r.State != AuctionState.Settled
+                && (req.SrcType == 0 || r.SrcType == req.SrcType) && Visible(s, r)
+                && (req.QueryItemTypes.Count == 0 || req.QueryItemTypes.Contains((int)GameData.Int(data.Row("AuctionConfig", r.Entry)!.Value, "_iType"))))
+                .GroupBy(r => (long)r.Entry))
             {
-                bool queued = pending.TryGetValue(row.Id, out var reservation);
-                int selfBudget = row.Owner == s.Role!.Id && row.Auto ? row.Reserve
-                    : queued ? reservation!.UnitPrice : 0;
-                stack.PreAuctionItem[row.Id] = new PreBiddingAuctionItem
-                { AuctionId = row.Id, BiddingPrice = row.Price, OwnerId = row.Owner,
-                    SelfIsAutoBidding = row.Owner == s.Role.Id && row.Auto || queued,
-                    AutoBidding = selfBudget > 0 ? new DBAutoBidding { RoleId = s.Role.Id, MaxPrice = selfBudget,
-                        BiddingTime = row.LastBid, IsPaused = row.AutoPaused } : null };
+                var stack = new PreAuctionItemStack
+                {
+                    ItemId = group.Key,
+                    OwnCount = group.LongCount(r => r.Owner == s.Role!.Id || pending.ContainsKey(r.Id)),
+                    FirstEndTime = group.Any(r => r.State == AuctionState.Public)
+                        ? group.Where(r => r.State == AuctionState.Public).Min(r => r.Start) : group.Min(r => r.End),
+                    State = group.Any(r => r.State == AuctionState.Public)
+                        ? AuctionState.Public : AuctionState.Bidding
+                };
+                string key = PrebuyKey(req.AuctionType, RowSrc(req.AuctionType, (int)req.SrcType), (int)group.Key);
+                stack.PreBuyNum = s.Auction?.PreBuyNum.GetValueOrDefault(key) ?? 0;
+                foreach (var row in group)
+                {
+                    bool queued = pending.TryGetValue(row.Id, out var reservation);
+                    int selfBudget = row.Owner == s.Role!.Id && row.Auto ? row.Reserve
+                        : queued ? reservation!.UnitPrice : 0;
+                    stack.PreAuctionItem[row.Id] = new PreBiddingAuctionItem
+                    {
+                        AuctionId = row.Id, BiddingPrice = row.Price, OwnerId = row.Owner,
+                        SelfIsAutoBidding = row.Owner == s.Role.Id && row.Auto || queued,
+                        AutoBidding = selfBudget > 0 ? new DBAutoBidding
+                        {
+                            RoleId = s.Role.Id, MaxPrice = selfBudget,
+                            BiddingTime = row.LastBid, IsPaused = row.AutoPaused
+                        } : null
+                    };
+                }
+                res.PreItems[group.Key] = stack;
             }
-            res.PreItems[group.Key] = stack;
-        }
         }
         await SendSessionAuctionAsync(s, requestRole, requestLease, PreStack, res);
     }
@@ -95,27 +103,30 @@ public sealed partial class AuctionService
                         .SelectMany(r => RowKeys(r)).Concat(RowKeys(null, [role],
                             store.Prebuys().Where(p => p.Role == role && p.Paused))).Distinct().ToArray()))
                 {
-                rows = store.Items().Where(r => r.Owner == s.Role!.Id && r.Auto && r.AutoPaused
-                    && r.State == AuctionState.Bidding && r.End > Now).ToArray();
-                var orders = store.Prebuys().Where(p => p.Role == s.Role!.Id && p.Paused).ToArray();
-                if (rows.Length != 0 || orders.Length != 0)
-                {
-                    var transaction = roles.NewTransaction();
-                    foreach (var row in rows) { row.AutoPaused = false; store.EnlistSave(row, transaction); }
-                    foreach (var order in orders) store.EnlistPrebuy(order with { Paused = false }, transaction);
-                    transaction.WithEscrowEconomy(AuctionIntent("auction/resume-auto", s.Role!.Id, s.Account ?? "")
-                        .Evidence(new { Lots = rows.Select(LotEvidence).ToArray(),
-                            Orders = orders.Select(p => new { p.Id, p.Role, p.UnitPrice, p.Currency }).ToArray() }));
-                    RequireScope(scope, transaction);
-                    await roles.CommitAsync(transaction, "auction/resume-auto");
-                }
-                committed = true;
+                    rows = store.Items().Where(r => r.Owner == s.Role!.Id && r.Auto && r.AutoPaused
+                        && r.State == AuctionState.Bidding && r.End > Now).ToArray();
+                    var orders = store.Prebuys().Where(p => p.Role == s.Role!.Id && p.Paused).ToArray();
+                    if (rows.Length != 0 || orders.Length != 0)
+                    {
+                        var transaction = roles.NewTransaction();
+                        foreach (var row in rows) { row.AutoPaused = false; store.EnlistSave(row, transaction); }
+                        foreach (var order in orders) store.EnlistPrebuy(order with { Paused = false }, transaction);
+                        transaction.WithEscrowEconomy(AuctionIntent("auction/resume-auto", s.Role!.Id, s.Account ?? "")
+                            .Evidence(new
+                            {
+                                Lots = rows.Select(LotEvidence).ToArray(),
+                                Orders = orders.Select(p => new { p.Id, p.Role, p.UnitPrice, p.Currency }).ToArray()
+                            }));
+                        RequireScope(scope, transaction);
+                        await roles.CommitAsync(transaction, "auction/resume-auto");
+                    }
+                    committed = true;
                 }
                 foreach (var row in rows) await ChangedAsync(row);
             }
             catch (Exception e)
             {
-                log.LogError(e, committed ? "Committed resume notification failed" : "Resume auto bidding failed");
+                log.LogError(e, "Resume auto bidding failed (committed before the failure: {Committed})", committed);
                 result = committed ? 0 : ErrorCodes.Unknown;
             }
         }
@@ -155,13 +166,13 @@ public sealed partial class AuctionService
             using (var scope = await EnterSessionAuctionAsync(s, "auction/cancel", role => RowKeys(store.Get(id), [role],
                 store.Prebuys().Where(p => p.Role == role && p.RequestedId == id))))
             {
-            var row = store.Get(id);
-            if (row == null) return (ErrorCodes.ItemMissing, 0);
-            object priorLot = LotEvidence(row);
-            entry = row.Entry;
-            var pending = store.Prebuys().FirstOrDefault(p => p.Role == s.Role.Id && p.RequestedId == id);
-            if (pending != null)
-            {
+                var row = store.Get(id);
+                if (row == null) return (ErrorCodes.ItemMissing, 0);
+                object priorLot = LotEvidence(row);
+                entry = row.Entry;
+                var pending = store.Prebuys().FirstOrDefault(p => p.Role == s.Role.Id && p.RequestedId == id);
+                if (pending != null)
+                {
                     var transaction = roles.NewTransaction();
                     store.EnlistPrebuy(pending with { Processed = true, Revision = pending.Revision + 1 }, transaction);
                     byte[]? before = roles.LoadAuction(s.Role.Id);
@@ -184,46 +195,52 @@ public sealed partial class AuctionService
                     }
                     transaction.WithEscrowEconomy(AuctionIntent("auction/prebuy-cancel", s.Role.Id, s.Account ?? "",
                             $"auction/prebuy/{pending.Id}/cancel")
-                        .Evidence(new { pending.Id, pending.Entry, pending.Currency, pending.UnitPrice,
-                            Quit = quit, PriorLot = priorLot, NewLot = LotEvidence(row) }));
+                        .Evidence(new
+                        {
+                            pending.Id, pending.Entry, pending.Currency, pending.UnitPrice,
+                            Quit = quit, PriorLot = priorLot, NewLot = LotEvidence(row)
+                        }));
                     RequireScope(scope, transaction);
                     await roles.CommitAsync(transaction, "auction/prebuy-cancel");
                     committed = true;
                     refund = syncPersonal = true;
-            }
-            else
-            {
-            if (!Visible(s, row) || guildId != 0 && row.GuildId != guildId) return (ErrorCodes.AuctionGuild, row.Entry);
-            if (row.State is not (AuctionState.Bidding or AuctionState.Public) || row.End <= Now)
-                return (ErrorCodes.NotForSale, row.Entry);
-            if (quit && row.Type != AuctionType.Dungeon) return (ErrorCodes.Parameter, row.Entry);
-            if (!quit && (row.Owner != s.Role.Id || !row.Auto)) return (ErrorCodes.NoPermission, row.Entry);
-            if (quit && row.GiveUp.Contains(s.Role.Id)) return (0, row.Entry);
-            refund = row.Owner == s.Role.Id;
-                var transaction = roles.NewTransaction();
-                if (refund)
-                {
-                    row.Revision++;
-                    mail.QueueTemplateLocked(s.Role.Id, $"auction:{id}:cancel:{row.Revision}:{s.Role.Id}", 1040,
-                        [new MailService.Attachment(row.Currency, row.Reserve)], transaction, data.ItemName(row.Entry));
-                    row.Owner = 0; row.Reserve = 0; row.Auto = false; row.AutoPaused = false;
-                    row.Price = (int)GameData.Int(data.Row("AuctionConfig", row.Entry)!.Value,
-                        row.Type == AuctionType.Dungeon ? "_iDungeonPrice" : "_iAuctionPrice");
                 }
-                if (quit)
+                else
                 {
-                    row.GiveUp.Add(s.Role.Id);
-                    if (row.Type == AuctionType.Dungeon && row.Eligible.All(row.GiveUp.Contains)) row.End = Now;
+                    if (!Visible(s, row) || guildId != 0 && row.GuildId != guildId) return (ErrorCodes.AuctionGuild, row.Entry);
+                    if (row.State is not (AuctionState.Bidding or AuctionState.Public) || row.End <= Now)
+                        return (ErrorCodes.NotForSale, row.Entry);
+                    if (quit && row.Type != AuctionType.Dungeon) return (ErrorCodes.Parameter, row.Entry);
+                    if (!quit && (row.Owner != s.Role.Id || !row.Auto)) return (ErrorCodes.NoPermission, row.Entry);
+                    if (quit && row.GiveUp.Contains(s.Role.Id)) return (0, row.Entry);
+                    refund = row.Owner == s.Role.Id;
+                    var transaction = roles.NewTransaction();
+                    if (refund)
+                    {
+                        row.Revision++;
+                        mail.QueueTemplateLocked(s.Role.Id, $"auction:{id}:cancel:{row.Revision}:{s.Role.Id}", 1040,
+                            [new MailService.Attachment(row.Currency, row.Reserve)], transaction, data.ItemName(row.Entry));
+                        row.Owner = 0; row.Reserve = 0; row.Auto = false; row.AutoPaused = false;
+                        row.Price = (int)GameData.Int(data.Row("AuctionConfig", row.Entry)!.Value,
+                            row.Type == AuctionType.Dungeon ? "_iDungeonPrice" : "_iAuctionPrice");
+                    }
+                    if (quit)
+                    {
+                        row.GiveUp.Add(s.Role.Id);
+                        if (row.Type == AuctionType.Dungeon && row.Eligible.All(row.GiveUp.Contains)) row.End = Now;
+                    }
+                    store.EnlistSave(row, transaction);
+                    transaction.WithEscrowEconomy(AuctionIntent("auction/cancel", s.Role.Id, s.Account ?? "")
+                        .Evidence(new
+                        {
+                            PriorLot = priorLot, NewLot = LotEvidence(row), Quit = quit,
+                            Refund = refund
+                        }));
+                    RequireScope(scope, transaction);
+                    await roles.CommitAsync(transaction, "auction/cancel");
+                    committed = true;
+                    changed = row;
                 }
-                store.EnlistSave(row, transaction);
-                transaction.WithEscrowEconomy(AuctionIntent("auction/cancel", s.Role.Id, s.Account ?? "")
-                    .Evidence(new { PriorLot = priorLot, NewLot = LotEvidence(row), Quit = quit,
-                        Refund = refund }));
-                RequireScope(scope, transaction);
-                await roles.CommitAsync(transaction, "auction/cancel");
-                committed = true;
-                changed = row;
-            }
             }
             if (refund) await mail.NotifyRecipientAsync(requestRole);
             if (syncPersonal && AuctionRequestCurrent(s, requestRole, requestLease))
@@ -233,8 +250,7 @@ public sealed partial class AuctionService
         }
         catch (Exception e)
         {
-            log.LogError(e, committed ? "Committed auction cancellation notification failed for {Auction}"
-                : "Auction cancellation failed for {Auction}", id);
+            log.LogError(e, "Auction cancellation of {Auction} failed (committed before the failure: {Committed})", id, committed);
             return (committed ? 0 : ErrorCodes.Unknown, committed ? entry : 0);
         }
     }

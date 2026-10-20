@@ -68,8 +68,11 @@ public sealed partial class MapTests : IAsyncLifetime
         }
         // The ready packets precede SceneLoaded's Realm-protected guild publication. Drain that
         // publication before Alice's held MVP settlement so Bob's channel can process lottery.
-        await loop.InvokeAsync(async () => { using var scope = await loop.Owners!.EnterAsync(
-            "map test scene online barrier", ReservationKey.Realm); }).WaitAsync(Wait);
+        await loop.InvokeAsync(async () =>
+        {
+            using var scope = await loop.Owners!.EnterAsync(
+            "map test scene online barrier", ReservationKey.Realm);
+        }).WaitAsync(Wait);
     }
 
     private static async Task<T> Next<T>(BotClient bot, uint msgId, Google.Protobuf.MessageParser<T> parser, Func<T, bool>? match = null)

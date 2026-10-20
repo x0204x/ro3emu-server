@@ -115,8 +115,11 @@ public sealed class MountService : IGameTicker
     {
         state ??= s.MountState;
         // A copy prevents a failed payment from publishing a paid preview or ownership change.
-        return JsonSerializer.SerializeToUtf8Bytes(new SavedState { Info = (info ?? s.Mounts!).ToByteArray(),
-            Claimed = state.Claimed, Previews = state.Previews, QuestMount = state.QuestMount });
+        return JsonSerializer.SerializeToUtf8Bytes(new SavedState
+        {
+            Info = (info ?? s.Mounts!).ToByteArray(),
+            Claimed = state.Claimed, Previews = state.Previews, QuestMount = state.QuestMount
+        });
     }
 
     private void Save(GameSession s) => roles.SaveMounts(s.Role!.Id, Encode(s));
@@ -344,8 +347,11 @@ public sealed class MountService : IGameTicker
                     tx.RoleBlob(s.Role!.Id, "mounts", Encode(s, next));
                     if (look != null) tx.RoleBlob(s.Role!.Id, "wardrobe", look.ToByteArray());
                     tx.WithEconomy(character.FamilyEconomy(s, "cd13b/mount-unlock", [(item.Entry, 1L)], [],
-                        new { Item = item.Entry, Mount = id,
-                            StateHash = Convert.ToHexString(SHA256.HashData(Encode(s, next))) }));
+                        new
+                        {
+                            Item = item.Entry, Mount = id,
+                            StateHash = Convert.ToHexString(SHA256.HashData(Encode(s, next)))
+                        }));
                 }, committed: () =>
                 {
                     s.Mounts = next; ArmExpiry(s);
@@ -400,8 +406,11 @@ public sealed class MountService : IGameTicker
                 {
                     tx.RoleBlob(s.Role!.Id, "mounts", Encode(s, state: state));
                     tx.WithEconomy(character.FamilyEconomy(s, "cd13b/mount-etchant-refresh", cost, [],
-                        new { Mount = req.MountId, Part = req.Part, Selected = selected,
-                            StateHash = Convert.ToHexString(SHA256.HashData(Encode(s, state: state))) }));
+                        new
+                        {
+                            Mount = req.MountId, Part = req.Part, Selected = selected,
+                            StateHash = Convert.ToHexString(SHA256.HashData(Encode(s, state: state)))
+                        }));
                 }, committed: () => s.MountState = state, asyncCommit: true) == null)
                 error = character.ShortageOf(s, cost);
         }
@@ -462,8 +471,11 @@ public sealed class MountService : IGameTicker
                 {
                     tx.RoleBlob(s.Role!.Id, "mounts", Encode(s, state: state));
                     tx.WithEconomy(character.FamilyEconomy(s, "cd13b/mount-score", [], goods,
-                        new { Indices = req.Index.ToArray(),
-                            StateHash = Convert.ToHexString(SHA256.HashData(Encode(s, state: state))) }));
+                        new
+                        {
+                            Indices = req.Index.ToArray(),
+                            StateHash = Convert.ToHexString(SHA256.HashData(Encode(s, state: state)))
+                        }));
                 }, committed: () => s.MountState = state, asyncCommit: true) == null)
                 resp.Result = ErrorCodes.ItemNoConfig;
             else resp.Index.Add(req.Index);

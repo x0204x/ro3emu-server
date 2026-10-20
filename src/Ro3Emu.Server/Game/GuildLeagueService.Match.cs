@@ -280,15 +280,21 @@ public sealed partial class GuildLeagueService
     {
         string key = MatchKey(cup.Index, round, group.Tier, group.Order, pair);
         if (matches.TryGetValue(key, out var match)) return match;
-        match = new Match { Key = key, Index = cup.Index, Round = round, Tier = group.Tier, Order = group.Order, Pair = pair,
+        match = new Match
+        {
+            Key = key, Index = cup.Index, Round = round, Tier = group.Tier, Order = group.Order, Pair = pair,
             Blue = guildsOf.Blue, Red = guildsOf.Red, Start = window.Start, End = window.End,
-            Main = new Field(MainScene), Sub = new Field(SubScene) };
+            Main = new Field(MainScene), Sub = new Field(SubScene)
+        };
         foreach (long g in new[] { match.Blue, match.Red }) { match.Points[g] = 0; match.Morale[g] = 0; match.MainKills[g] = 0; }
         if (maps.Map(MainScene) is { } map)
             foreach (int id in CapturePoints)
                 if (map.Regions.TryGetValue(id, out var region))
-                    match.Main.Points[id] = new Point { Area = region, Uid = CircleUidBase | Interlocked.Increment(ref circleSerial),
-                        Circle = CircleId(id), At = map.Grounded(new MapPoint(region.X, region.Y, region.Z, 0)) };
+                    match.Main.Points[id] = new Point
+                    {
+                        Area = region, Uid = CircleUidBase | Interlocked.Increment(ref circleSerial),
+                        Circle = CircleId(id), At = map.Grounded(new MapPoint(region.X, region.Y, region.Z, 0))
+                    };
         match.Bosses = 0;
         matches[key] = match;
         return match;
@@ -353,12 +359,21 @@ public sealed partial class GuildLeagueService
     private DungeonBaseInfoNotify BaseInfo(Match m, Field field)
     {
         int stage = m.Ended ? 3 : 2;
-        var info = new DungeonBaseInfoNotify { DungeonEntry = field.Scene, DungeonId = field.Room?.Id ?? 0, Stage = stage, Level = 1,
-            InitData = new DungeonInitData { GuildLeagueInitStr = new GuildLeagueInitStr { Info = MatchInfo(m), CurStage = m.Round },
-                PlaybookId = seasons.PlayBook },
-            StageModuleData = new DungeonStageModuleData { MapState = stage, Stage = stage, StageStartTime = m.Start * 1000,
-                StageEndTime = m.End * 1000, MapStateStartTime = m.Start * 1000, MapStateEndTime = m.End * 1000 },
-            ChangeType = (DungeonBaseInfoNotify.Types.eChangeType)2 };
+        var info = new DungeonBaseInfoNotify
+        {
+            DungeonEntry = field.Scene, DungeonId = field.Room?.Id ?? 0, Stage = stage, Level = 1,
+            InitData = new DungeonInitData
+            {
+                GuildLeagueInitStr = new GuildLeagueInitStr { Info = MatchInfo(m), CurStage = m.Round },
+                PlaybookId = seasons.PlayBook
+            },
+            StageModuleData = new DungeonStageModuleData
+            {
+                MapState = stage, Stage = stage, StageStartTime = m.Start * 1000,
+                StageEndTime = m.End * 1000, MapStateStartTime = m.Start * 1000, MapStateEndTime = m.End * 1000
+            },
+            ChangeType = (DungeonBaseInfoNotify.Types.eChangeType)2
+        };
         info.Vars.Add(Vars(m));
         return info;
     }
@@ -454,8 +469,11 @@ public sealed partial class GuildLeagueService
         var msg = new GuildLeagueBattlePointTitleNtf { TitleId = titleId, PlayerGuid = f.Role };
         if (row.TryGetProperty("_iName", out var name) && name.ValueKind == System.Text.Json.JsonValueKind.Array)
             foreach (var p in name.EnumerateArray().Skip(1))
-                msg.ParamList.Add(new GuildLeagueBattlePointTitleParam { StringValue = p.ValueKind == System.Text.Json.JsonValueKind.String
-                    ? p.GetString() ?? "" : p.ToString(), IntValue = int.TryParse(p.ToString(), out int n) ? n : 0 });
+                msg.ParamList.Add(new GuildLeagueBattlePointTitleParam
+                {
+                    StringValue = p.ValueKind == System.Text.Json.JsonValueKind.String
+                    ? p.GetString() ?? "" : p.ToString(), IntValue = int.TryParse(p.ToString(), out int n) ? n : 0
+                });
         await SendAllAsync(Present(field), TitleNotify, msg);
     }
 
@@ -509,8 +527,11 @@ public sealed partial class GuildLeagueService
         f.DeadUntil = Now + ReviveSeconds;
         if (at.Match.Carriers.Remove(s.Role.Id)) // (inferred) the flag is lost when its carrier falls
             PostFlag(s);
-        await s.SendGameAsync(CombatService.ReviveInfo, new SyncClientPlayerReviveInfoNtf { BDead = true, ReviveTime = f.DeadUntil,
-            SceneEntry = s.SceneEntry });
+        await s.SendGameAsync(CombatService.ReviveInfo, new SyncClientPlayerReviveInfoNtf
+        {
+            BDead = true, ReviveTime = f.DeadUntil,
+            SceneEntry = s.SceneEntry
+        });
     }
 
     /// <summary>31013 from a league battlefield: allowed once the countdown is over (the client sends none by itself).</summary>
@@ -797,8 +818,11 @@ public sealed partial class GuildLeagueService
             var info = new DungeonStatisticsInfo { DungeonMapId = field.Scene };
             foreach (var f in field.Fighters.Values)
             {
-                var role = new DungeonRoleInfo { RoleBase = new ObjScoreBaseInfo { Id = f.Role, Name = f.Name, Job = f.Job, Area = 1 },
-                    GuildId = f.Guild, TotalDamage = f.Damage, TotalBeDamage = f.Taken, TotalCure = f.Heal, Totalscore = f.Score };
+                var role = new DungeonRoleInfo
+                {
+                    RoleBase = new ObjScoreBaseInfo { Id = f.Role, Name = f.Name, Job = f.Job, Area = 1 },
+                    GuildId = f.Guild, TotalDamage = f.Damage, TotalBeDamage = f.Taken, TotalCure = f.Heal, Totalscore = f.Score
+                };
                 role.DicParams[6] = f.Kills; role.DicParams[7] = f.Assists; role.DicParams[8] = f.Deaths;
                 role.DicParams[9] = f.MonsterKills; role.DicParams[10] = f.BossKills; role.DicParams[11] = f.Captures;
                 role.DicParams[12] = f.Flags; role.DicParams[14] = f.GetFlags; role.DicParams[16] = f.Revives;

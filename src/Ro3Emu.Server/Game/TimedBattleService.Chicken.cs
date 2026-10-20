@@ -261,8 +261,11 @@ public sealed partial class TimedBattleService
 
     private static ItemBaseInfo Wire(ChickenItem item, int? stack = null)
     {
-        var info = new ItemBaseInfo { ItemGuid = item.Guid, ItemEntry = item.Entry, Stack = stack ?? item.Stack,
-            ItemBindInfo = new ItemBindInfo() };
+        var info = new ItemBaseInfo
+        {
+            ItemGuid = item.Guid, ItemEntry = item.Entry, Stack = stack ?? item.Stack,
+            ItemBindInfo = new ItemBindInfo()
+        };
         // ItemAttrTypeChickenPlayerId / Name (MG_Pack.proto:145-146): the owner of an ID tag; 0 for other items.
         info.ItemInfos[AttrChickenPlayerId] = new ItemAttrValue { LongVal = item.OwnerId };
         if (item.OwnerName.Length > 0)

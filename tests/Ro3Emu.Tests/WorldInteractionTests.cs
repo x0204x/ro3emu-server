@@ -29,15 +29,24 @@ public sealed class WorldInteractionTests : IAsyncLifetime
         var source = Path.Combine(RepoRoot(), "data", "sceneeditor", "sc_prt_fild08_001_sceneeditor.json");
         var scene = JsonNode.Parse(await File.ReadAllTextAsync(source))!.AsObject();
         var npcs = scene["kNpcList"]!.AsObject();
-        npcs["900001"] = new JsonObject { ["Id"] = 900001, ["NpcTag"] = 2, ["IsServerNpc"] = true,
-            ["NpcId"] = 7100004, ["x"] = 347.26, ["y"] = -8.42, ["z"] = 294.01, ["FaceDirection"] = 180 };
-        npcs["900002"] = new JsonObject { ["Id"] = 900002, ["NpcTag"] = 2, ["IsServerNpc"] = true,
-            ["NpcId"] = 400140, ["x"] = 349.26, ["y"] = -8.42, ["z"] = 294.01, ["FaceDirection"] = 180 };
+        npcs["900001"] = new JsonObject
+        {
+            ["Id"] = 900001, ["NpcTag"] = 2, ["IsServerNpc"] = true,
+            ["NpcId"] = 7100004, ["x"] = 347.26, ["y"] = -8.42, ["z"] = 294.01, ["FaceDirection"] = 180
+        };
+        npcs["900002"] = new JsonObject
+        {
+            ["Id"] = 900002, ["NpcTag"] = 2, ["IsServerNpc"] = true,
+            ["NpcId"] = 400140, ["x"] = 349.26, ["y"] = -8.42, ["z"] = 294.01, ["FaceDirection"] = 180
+        };
         await File.WriteAllTextAsync(Path.Combine(sceneDir, "sc_prt_fild08_001_sceneeditor.json"), scene.ToJsonString());
 
         var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o => { o.DataDir = stateDir; o.GameDataDir = fixture;
-            o.HttpPort = httpPort; o.MicroGatePort = microPort; o.GameGatePort = gamePort; });
+        app = ServerHost.Create([], o =>
+        {
+            o.DataDir = stateDir; o.GameDataDir = fixture;
+            o.HttpPort = httpPort; o.MicroGatePort = microPort; o.GameGatePort = gamePort;
+        });
         await app.StartAsync();
         http = $"http://127.0.0.1:{httpPort}";
     }

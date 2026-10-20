@@ -21,8 +21,11 @@ public sealed partial class GuildLeagueService
         var group = next.Cup is { } cup && cup.Index == m.Index
             ? cup.Groups.FirstOrDefault(g => g.Tier == m.Tier && g.Order == m.Order) : null;
         if (group == null || group.Outcomes.Any(o => o.Round == m.Round && o.Pair == m.Pair)) { m.Committed = true; return; }
-        var outcome = new Outcome { Round = m.Round, Pair = m.Pair, Blue = m.Blue, Red = m.Red, Winner = m.Winner,
-            BluePoints = m.Points[m.Blue], RedPoints = m.Points[m.Red], Time = m.EndedAt, Report = m.Key };
+        var outcome = new Outcome
+        {
+            Round = m.Round, Pair = m.Pair, Blue = m.Blue, Red = m.Red, Winner = m.Winner,
+            BluePoints = m.Points[m.Blue], RedPoints = m.Points[m.Red], Time = m.EndedAt, Report = m.Key
+        };
         foreach (var f in m.Main.Fighters.Values.Concat(m.Sub.Fighters.Values))
         {
             var row = outcome.Players.TryGetValue(f.Role, out var known) ? known : outcome.Players[f.Role] = [f.Guild, 0];
@@ -47,9 +50,15 @@ public sealed partial class GuildLeagueService
     /// </summary>
     private GuildLeagueHistory History(Match m, Group group, Outcome outcome)
     {
-        var history = new GuildLeagueHistory { ResultId = m.Key, OwnerId = "",
-            ResultInfo = new LeagueResultInfo { RankType = m.Tier, BlueGuild = Dungeon(m.Blue, group), RedGuild = Dungeon(m.Red, group),
-                Result = outcome.Winner == m.Blue ? 0 : 1, Time = outcome.Time, CurStage = m.Round } };
+        var history = new GuildLeagueHistory
+        {
+            ResultId = m.Key, OwnerId = "",
+            ResultInfo = new LeagueResultInfo
+            {
+                RankType = m.Tier, BlueGuild = Dungeon(m.Blue, group), RedGuild = Dungeon(m.Red, group),
+                Result = outcome.Winner == m.Blue ? 0 : 1, Time = outcome.Time, CurStage = m.Round
+            }
+        };
         foreach (var (key, info) in Boards(m)) history.DungeonRolesInfo[key] = info;
         return history;
     }
@@ -86,8 +95,11 @@ public sealed partial class GuildLeagueService
                 {
                     if (group.Outcomes.Any(o => o.Round == round && o.Pair == i)) continue;
                     var (blue, red) = (pairs[i].Blue, pairs[i].Red);
-                    group.Outcomes.Add(new Outcome { Round = round, Pair = i, Blue = blue, Red = red,
-                        Winner = blue == 0 ? red : blue, Time = nextCup.Round(round).End, Rewarded = true, AuctionDone = true });
+                    group.Outcomes.Add(new Outcome
+                    {
+                        Round = round, Pair = i, Blue = blue, Red = red,
+                        Winner = blue == 0 ? red : blue, Time = nextCup.Round(round).End, Rewarded = true, AuctionDone = true
+                    });
                 }
             }
             nextCup.SettledRound = round;
@@ -208,8 +220,11 @@ public sealed partial class GuildLeagueService
             g.Aggregate(0L, (n, x) => checked(n + x.Grant.Count)))).ToArray();
         return new EventEconomyMutation(catalog, Guid.NewGuid().ToString("N"), "realm", 0,
             "event/guild-league-award", sourceKey, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            [], goods, deltas, JsonSerializer.SerializeToUtf8Bytes(new { Source = sourceKey,
-                Awards = grants.Select(x => new { x.Role, x.Grant.Entry, x.Grant.Count, x.Grant.Bind }) }));
+            [], goods, deltas, JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                Source = sourceKey,
+                Awards = grants.Select(x => new { x.Role, x.Grant.Entry, x.Grant.Count, x.Grant.Bind })
+            }));
     }
 
     /// <summary>

@@ -1,0 +1,4 @@
+# Formatting-only commits, skipped by `git blame` (git config blame.ignoreRevsFile .git-blame-ignore-revs).
+
+# Format C# layout with dotnet format whitespace
+857e47518bbcf211933296702a81bf67f869d783

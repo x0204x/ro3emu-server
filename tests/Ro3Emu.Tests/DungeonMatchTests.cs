@@ -74,8 +74,11 @@ public sealed class DungeonMatchTests : IAsyncLifetime
     private static StartMatchReq Request(long scene = Scene, int multi = Multi, int mark = 1) => new()
     {
         MatchEntryId = Entry,
-        MatchData = new MatchData { MultiDungeon = new MultiDungeonMatchData
-        { DungeonId = scene, MultiDungeonId = multi, MarkId = mark } },
+        MatchData = new MatchData
+        {
+            MultiDungeon = new MultiDungeonMatchData
+            { DungeonId = scene, MultiDungeonId = multi, MarkId = mark }
+        },
     };
 
     private async Task<StartMatchResp> Start(BotClient bot, StartMatchReq? req = null, int expected = 0)

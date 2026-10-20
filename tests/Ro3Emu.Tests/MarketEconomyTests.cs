@@ -46,12 +46,12 @@ public sealed partial class TradeTests
         });
         var before = MarketEconomyEvidence.Cut(dataDir, RepoRoot());
         await seller.SendGameAsync(TradeService.PutOn, new TradePutOnItemReq
-            { ItemGuid = original, ItemPrice = 600, CurrencyType = 1, Quantity = 2 });
+        { ItemGuid = original, ItemPrice = 600, CurrencyType = 1, Quantity = 2 });
         var listed = await Next(seller, TradeService.PutOn, TradePutOnItemResp.Parser);
         Assert.Equal(0, listed.Result); Assert.Equal(700, listed.Tax);
         var row = Assert.Single(listed.BoothInfos);
         await buyer.SendGameAsync(TradeService.BuyNormal, new TradeBuyNormalItemsReq
-            { ItemId = 1254013, SpuId = row.SpuId, Price = 600, TotalPrice = 600, TotalQuantity = 1 });
+        { ItemId = 1254013, SpuId = row.SpuId, Price = 600, TotalPrice = 600, TotalQuantity = 1 });
         Assert.Equal(0, (await Next(buyer, TradeService.BuyNormal, TradeBuyNormalItemsResp.Parser)).Result);
         var mail = Assert.Single(await Mail(buyer, (long)buyer.Self!.Uuid), x => x.Template == 1064);
         await buyer.SendGameAsync(MailService.ClaimMail, new ClaimMailReq { MailUid = { mail.Id } });
@@ -112,7 +112,7 @@ public sealed partial class StallsTests
         long offer = Service<MarketStore>().ReadCurrent<StallsService.StallRow>("stall", "p:" + Id(seller))!.Stock.Single().Id;
         Assert.Equal(0, await Purchase(buyer, Id(seller), offer));
         await buyer.SendGameAsync(StallsService.Buy, new PlayerStallsBuyItemReq
-            { StallsID = Id(seller), StallsItemID = offer, Num = 1, Price = 9999 });
+        { StallsID = Id(seller), StallsItemID = offer, Num = 1, Price = 9999 });
         Assert.Equal(ErrorCodes.StallPriceChanged, (await Next(buyer, StallsService.Buy, PlayerStallsBuyItemResp.Parser)).Result);
         await seller.SendGameAsync(StallsService.End, new PlayerStallsEndReq());
         Assert.Equal(0, (await Next(seller, StallsService.End, PlayerStallsEndResp.Parser)).Result);

@@ -179,8 +179,11 @@ public sealed class SeasonPageService(GameData data, CharacterService character,
         }
         next.RankRewardReceiveInfo.Clear();
         next.MailRewardReceiveInfo.Clear();
-        var nextMeta = new PageMeta { SeasonId = seasons.SeasonId,
-            Baseline = ScoreCurrency.Values.Distinct().ToDictionary(id => id, id => session.Progress!.Currency.GetValueOrDefault(id)) };
+        var nextMeta = new PageMeta
+        {
+            SeasonId = seasons.SeasonId,
+            Baseline = ScoreCurrency.Values.Distinct().ToDictionary(id => id, id => session.Progress!.Currency.GetValueOrDefault(id))
+        };
         void Persist(Ro3Emu.Server.Accounts.Persistence.RoleItemPlanBuilder tx)
         {
             tx.RoleBlob(session.Role!.Id, "season_page", next.ToByteArray());

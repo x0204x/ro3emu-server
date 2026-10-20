@@ -63,9 +63,11 @@ public sealed partial class TerritoryEscortService
                     ledger.Goods[cart.Guild] = checked(ledger.Goods.GetValueOrDefault(cart.Guild) + cart.Count);
                 if (ledger.SeasonStart != 0 || ledger.PlayBook != 0)
                     ledger.Archives[TerritoryWarsClock.EpochOf(ledger.SeasonStart, ledger.PlayBook, ledger.Cycle)] = new SeasonArchive
-                    { Goods = ledger.Goods, Listings = ledger.Listings, Play = ledger.Play,
+                    {
+                        Goods = ledger.Goods, Listings = ledger.Listings, Play = ledger.Play,
                         ScoresByRound = ledger.ScoresByRound, StockRounds = ledger.StockRounds,
-                        SkillCooldowns = ledger.SkillCooldowns };
+                        SkillCooldowns = ledger.SkillCooldowns
+                    };
                 if (ledger.Archives.Remove(Epoch, out var restored))
                 {
                     ledger.Goods = restored.Goods; ledger.Listings = restored.Listings;
@@ -185,16 +187,22 @@ public sealed partial class TerritoryEscortService
     private TerritoryWarEscortCartInfo CartWire(CartState c)
     {
         var owner = sessions.All().FirstOrDefault(x => x.Role?.Id == c.Owner);
-        return new TerritoryWarEscortCartInfo { CartId = c.Id, OwnerPlayerId = c.Owner,
+        return new TerritoryWarEscortCartInfo
+        {
+            CartId = c.Id, OwnerPlayerId = c.Owner,
             FollowPlayerId = c.Owner, MapId = owner?.SceneEntry ?? c.Scene, PointConfigId = c.Point,
-            Pos = owner?.Position?.Clone() ?? new Vec3() };
+            Pos = owner?.Position?.Clone() ?? new Vec3()
+        };
     }
 
     private PlayState GetPlay(long guildId)
     {
         if (ledger.Play.TryGetValue(guildId, out var p) && p.Round == Round) return p;
-        p = new PlayState { Round = Round, Start = clock.Stages.FirstOrDefault(x => x.Round == Round && x.Type == 2)?.StartTime ?? 0,
-            ToTransport = ledger.Goods.GetValueOrDefault(guildId) };
+        p = new PlayState
+        {
+            Round = Round, Start = clock.Stages.FirstOrDefault(x => x.Round == Round && x.Type == 2)?.StartTime ?? 0,
+            ToTransport = ledger.Goods.GetValueOrDefault(guildId)
+        };
         ledger.Play[guildId] = p;
         return p;
     }
@@ -203,13 +211,16 @@ public sealed partial class TerritoryEscortService
     {
         var p = ledger.Play.TryGetValue(g.Id, out var current) && current.Round == Round
             ? current : new PlayState { Round = Round };
-        return new TerritoryWarsEscortGuildPlayInfo { GuildId = g.Id, GuildName = g.Name,
+        return new TerritoryWarsEscortGuildPlayInfo
+        {
+            GuildId = g.Id, GuildName = g.Name,
             HeadIcon = new GuildHeadIcon { BackgroundType = g.Background, IconType = g.Icon },
             IsBuyer = ledger.Listings.Values.Any(x => x.Buyer == g.Id),
             BuyNum = p.BuyNum, SellNum = p.SellNum, StartPlayTime = p.Start,
             TransportNum = p.Transported, ToTransportNum = ledger.Goods.GetValueOrDefault(g.Id),
             StartCartNum = p.StartedCarts, TransportCartNum = p.FinishedCarts,
-            PointId = p.Point != 0 ? p.Point : GuildPoint?.Invoke(g.Id) ?? 0 };
+            PointId = p.Point != 0 ? p.Point : GuildPoint?.Invoke(g.Id) ?? 0
+        };
     }
 
     private async Task GuildPlayAsync(GameSession s, TerritoryWarsEscortGuildPlayInfoReq req)
@@ -228,9 +239,12 @@ public sealed partial class TerritoryEscortService
             foreach (var m in g.Members.Values)
             {
                 var rs = m.RoleId == s.Role!.Id ? s.TerritoryEscort : LoadRole(m.RoleId);
-                resp.PlayerInfos.Add(new TerritoryWarsEscortPlayerPlayInfo { RoleId = m.RoleId,
+                resp.PlayerInfos.Add(new TerritoryWarsEscortPlayerPlayInfo
+                {
+                    RoleId = m.RoleId,
                     PlayerName = m.Name, Score = rs?.ScoreByRound.GetValueOrDefault(Round) ?? 0,
-                    AwardStates = ClaimBits(rs, Round) });
+                    AwardStates = ClaimBits(rs, Round)
+                });
             }
         await s.SendGameAsync(PlayersPlay, resp);
     }
@@ -262,7 +276,7 @@ public sealed partial class TerritoryEscortService
         if (result == 0)
         {
             using var reservation = await EnterGateAsync("escort/play", s);
-        using var stagedEscortLedger = StageLedger();
+            using var stagedEscortLedger = StageLedger();
             try
             {
                 var p = GetPlay(g!.Id);
@@ -285,9 +299,12 @@ public sealed partial class TerritoryEscortService
         foreach (var g in guilds.List().Where(g => ledger.Play.TryGetValue(g.Id, out var p) && p.Round == Round))
         {
             var p = ledger.Play[g.Id];
-            zone.Guilds.Add(new TerritoryWarsEscortGuildPlayTimeInfo { GuildId = g.Id, GuildName = g.Name,
+            zone.Guilds.Add(new TerritoryWarsEscortGuildPlayTimeInfo
+            {
+                GuildId = g.Id, GuildName = g.Name,
                 StartPlayTime = p.Start, PointId = p.Point, TotalGoods = p.ToTransport + p.Transported,
-                ToTransGoods = ledger.Goods.GetValueOrDefault(g.Id) });
+                ToTransGoods = ledger.Goods.GetValueOrDefault(g.Id)
+            });
             zone.GuildPlayInfos.Add(PlayWire(g));
         }
         resp.ZoneGuildPlayTimeInfos.Add(zone);
@@ -339,16 +356,22 @@ public sealed partial class TerritoryEscortService
                 count = (int)Math.Min(cap, stock); id = ledger.NextCartId++;
                 var transaction = accounts.NewTransaction();
                 ledger.Goods[g!.Id] = stock - count;
-                ledger.Carts[id] = startedCart = new CartState { Id = id, Guild = g.Id, Owner = RoleId(s),
+                ledger.Carts[id] = startedCart = new CartState
+                {
+                    Id = id, Guild = g.Id, Owner = RoleId(s),
                     Round = Round, Type = req.CartType, Point = req.PointId, Count = count, OriginCount = count,
-                    Started = clock.Now, Scene = s.SceneEntry };
+                    Started = clock.Now, Scene = s.SceneEntry
+                };
                 var p = GetPlay(g.Id); p.StartedCarts++; p.ToTransport = Math.Max(0, p.ToTransport - count); p.Point = req.PointId;
                 await CommitAsync(transaction, "cart-start", $"escort-cart:{Epoch}:{id}:start", s);
             }
         }
         finally { stagedEscortLedger.Dispose(); gate.Release(); reservation?.Dispose(); }
-        await s.SendGameAsync(Cart, new TerritoryWarsEscortCartRes { CartType = req.CartType, CartId = id,
-            TransportNum = count, Result = result });
+        await s.SendGameAsync(Cart, new TerritoryWarsEscortCartRes
+        {
+            CartType = req.CartType, CartId = id,
+            TransportNum = count, Result = result
+        });
         if (result == 0)
         {
             await RefreshCartActorsAsync();
@@ -357,16 +380,22 @@ public sealed partial class TerritoryEscortService
             await RoleFanout.EachAsync(sessions.All().Where(x => x.WorldScene == s.WorldScene && !x.SceneLoading), async peer =>
             {
                 await peer.SendGameAsync(CartNtf, new TerritoryWarsEscortCartNtf { CartInfo = CartWire(c), Reason = (TerritoryWarEscortCartChangeReason)0 });
-                await peer.SendGameAsync(CartVarNtf, new TerritoryWarsEscortCartInfoChange { Uuid = id,
-                    CartVarinfo = new EscortCartVarInfo { CurNum = count, FollowPlayer = RoleId(s) } });
+                await peer.SendGameAsync(CartVarNtf, new TerritoryWarsEscortCartInfoChange
+                {
+                    Uuid = id,
+                    CartVarinfo = new EscortCartVarInfo { CurNum = count, FollowPlayer = RoleId(s) }
+                });
             });
             if (play.StartedCarts == 1)
                 await RoleFanout.EachAsync(sessions.All().Where(x => x.Role != null && guilds.ForRole(x.Role.Id)?.Id == g.Id),
                     peer => peer.SendGameAsync(GuildStartNtf, new TerritoryWarsEscortGuildStartPlayNtf
                     {
-                        PlayTimeInfo = new TerritoryWarsEscortGuildPlayTimeInfo { GuildId = g.Id, GuildName = g.Name,
+                        PlayTimeInfo = new TerritoryWarsEscortGuildPlayTimeInfo
+                        {
+                            GuildId = g.Id, GuildName = g.Name,
                             StartPlayTime = play.Start, PointId = req.PointId,
-                            TotalGoods = play.ToTransport + count, ToTransGoods = ledger.Goods.GetValueOrDefault(g.Id) },
+                            TotalGoods = play.ToTransport + count, ToTransGoods = ledger.Goods.GetValueOrDefault(g.Id)
+                        },
                         SceneEntryId = (int)s.SceneEntry,
                     }));
         }
@@ -405,10 +434,13 @@ public sealed partial class TerritoryEscortService
         finally { stagedEscortLedger.Dispose(); gate.Release(); reservation?.Dispose(); }
         if (!accepted) return; // NullArg response; no success packet on a refusal.
         await RefreshCartActorsAsync();
-        await s.SendGameAsync(SuccessNtf, new TerritoryWarsEscortSuccessNtf { CartType = cart!.Type,
+        await s.SendGameAsync(SuccessNtf, new TerritoryWarsEscortSuccessNtf
+        {
+            CartType = cart!.Type,
             CartId = cart.Id, GuildId = cart.Guild, TeamId = teams.TeamOf(RoleId(s)).TeamId,
             OriginTransportNum = cart.OriginCount == 0 ? cart.Count : cart.OriginCount,
-            FinalTransportNum = cart.Count, PlayerId = RoleId(s) });
+            FinalTransportNum = cart.Count, PlayerId = RoleId(s)
+        });
         await RoleFanout.EachAsync(sessions.All().Where(x => x.WorldScene == s.WorldScene && !x.SceneLoading),
             peer => peer.SendGameAsync(CartNtf, new TerritoryWarsEscortCartNtf { CartInfo = CartWire(cart), Reason = (TerritoryWarEscortCartChangeReason)2 }));
         await SendScoreAsync(s);
@@ -540,8 +572,11 @@ public sealed partial class TerritoryEscortService
         long token = Interlocked.Increment(ref nextInvite);
         var pos = inviter.Position.Clone();
         transferInvites[token] = new TransferInvitation(inviter.Role.Id, recipient.Role.Id, inviter.SceneEntry, pos, clock.Now + 20);
-        await recipient.SendGameAsync(GroupTransferNtf, new EscortGroupTransferNtf { SceneId = inviter.SceneEntry,
-            TransferPos = pos, InviterPlayerId = inviter.Role.Id, InviterUid = token });
+        await recipient.SendGameAsync(GroupTransferNtf, new EscortGroupTransferNtf
+        {
+            SceneId = inviter.SceneEntry,
+            TransferPos = pos, InviterPlayerId = inviter.Role.Id, InviterUid = token
+        });
         return token;
     }
 
@@ -595,23 +630,32 @@ public sealed partial class TerritoryEscortService
         }
         finally { stagedEscortLedger.Dispose(); gate.Release(); reservation?.Dispose(); }
         if (result != 0) return; // NullArg response.
-        var info = new EscortNpcSkill { PointId = req.PointId, GuildId = g!.Id, SkillId = req.SkillId,
+        var info = new EscortNpcSkill
+        {
+            PointId = req.PointId, GuildId = g!.Id, SkillId = req.SkillId,
             CDEndTime = cooldownEnd, Success = true,
-            EffectEndTime = clock.Now + (req.SkillId == 5800801 ? 300 : 20) };
+            EffectEndTime = clock.Now + (req.SkillId == 5800801 ? 300 : 20)
+        };
         await RoleFanout.EachAsync(sessions.All().Where(x => x.WorldScene == s.WorldScene), async peer =>
         {
             var ntf = new EscortNpcSkillNtf(); ntf.NpcSkills.Add(info);
             await peer.SendGameAsync(NpcSkillNtf, ntf);
-            await peer.SendGameAsync(NpcSkillSuccessNtf, new EscortNpcSkillSuccessfulNtf { SkillId = req.SkillId,
-                EffectEndTime = info.EffectEndTime });
+            await peer.SendGameAsync(NpcSkillSuccessNtf, new EscortNpcSkillSuccessfulNtf
+            {
+                SkillId = req.SkillId,
+                EffectEndTime = info.EffectEndTime
+            });
             if (req.SkillId == 5800801)
             {
                 var detected = new EscortDetectMiniMapNtf();
                 foreach (var cart in ledger.Carts.Values.Where(c => c.Scene == s.SceneEntry && c.Guild != g.Id))
-                    detected.EscortInfo.Add(new MiniMapInfo { Uid = (ulong)cart.Id, Pos = CartWire(cart).Pos,
+                    detected.EscortInfo.Add(new MiniMapInfo
+                    {
+                        Uid = (ulong)cart.Id, Pos = CartWire(cart).Pos,
                         NpcConfigId = (ulong)(cart.Type == 0 ? 4910001 : 4910002),
                         SpecialType = (MiniMapInfoSpecialType)1,
-                        EscortCartInfo = new MiniMapInfoEscortCart { OwnerId = cart.Owner, GuildId = cart.Guild, CartType = cart.Type } });
+                        EscortCartInfo = new MiniMapInfoEscortCart { OwnerId = cart.Owner, GuildId = cart.Guild, CartType = cart.Type }
+                    });
                 await peer.SendGameAsync(DetectNtf, detected);
             }
         });

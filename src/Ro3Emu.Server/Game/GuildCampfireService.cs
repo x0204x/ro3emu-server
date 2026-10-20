@@ -272,7 +272,10 @@ public sealed class GuildCampfireService : IGameTicker
                 Type = (GuildCampFireShowType)1, Param = show,
                 StartTimeStamp = StartTime() + (stage switch
                 {
-                    2 => 30, 3 => 300, 4 => 900, _ => 0,
+                    2 => 30,
+                    3 => 300,
+                    4 => 900,
+                    _ => 0,
                 }),
             };
         return result;
@@ -356,20 +359,20 @@ public sealed class GuildCampfireService : IGameTicker
         using var scope = await EnterWithGuildGateAsync("campfire/seed", guild, [role]);
         try
         {
-        if (session.Role?.Id != role || GuildId(session) != guild) return ErrorCodes.NotInGuild;
-        // A detached seed (C/D 16) is admitted later than its NPC talk: the seed stage may have ended meanwhile.
-        if (!Open(session) || CurrentStage() != 1) return ErrorCodes.FeatureUnavailable;
-        var next = Read(guild);
-        if (next.Seeds.GetValueOrDefault(role)?.Contains(pointId) == true) return ErrorCodes.RewardClaimed;
-        if (next.Seeds.GetValueOrDefault(role)?.Count >= MaxSeeds() || next.Exp >= MaxExp()) return ErrorCodes.RewardClaimed;
-        int exp = data.Row("CampFireSeed", seedId) is { } row ? (int)GameData.Int(row, "_iExp") : 0;
-        if (exp <= 0) return ErrorCodes.RewardMissing;
-        if (!next.Seeds.TryGetValue(role, out var collected)) next.Seeds[role] = collected = new HashSet<int>();
-        collected.Add(pointId);
-        next.Exp = Math.Min(MaxExp(), checked(next.Exp + exp));
-        await SaveAsync(guild, next, session);
-        await PlayerInfoAsync(session);
-        return 0;
+            if (session.Role?.Id != role || GuildId(session) != guild) return ErrorCodes.NotInGuild;
+            // A detached seed (C/D 16) is admitted later than its NPC talk: the seed stage may have ended meanwhile.
+            if (!Open(session) || CurrentStage() != 1) return ErrorCodes.FeatureUnavailable;
+            var next = Read(guild);
+            if (next.Seeds.GetValueOrDefault(role)?.Contains(pointId) == true) return ErrorCodes.RewardClaimed;
+            if (next.Seeds.GetValueOrDefault(role)?.Count >= MaxSeeds() || next.Exp >= MaxExp()) return ErrorCodes.RewardClaimed;
+            int exp = data.Row("CampFireSeed", seedId) is { } row ? (int)GameData.Int(row, "_iExp") : 0;
+            if (exp <= 0) return ErrorCodes.RewardMissing;
+            if (!next.Seeds.TryGetValue(role, out var collected)) next.Seeds[role] = collected = new HashSet<int>();
+            collected.Add(pointId);
+            next.Exp = Math.Min(MaxExp(), checked(next.Exp + exp));
+            await SaveAsync(guild, next, session);
+            await PlayerInfoAsync(session);
+            return 0;
         }
         finally { Gate(guild).Release(); }
     }
@@ -660,34 +663,34 @@ public sealed class GuildCampfireService : IGameTicker
             room.ActiveMembers.Select(m => m.Session.Role?.Id ?? 0));
         try
         {
-        var state = Read(guild);
-        if (state.DrawnStages.Contains(stage)) return;
-        var present = room.ActiveMembers.Select(m => m.Session)
-            .Where(s => s.Role != null && s.InstanceId == room.Id && !s.SceneLoading
-                && (state.Seeds.ContainsKey(s.Role.Id) || state.FuelCount.ContainsKey(s.Role.Id)))
-            .ToArray();
-        if (present.Length == 0) return;
-        // CampFireAffixNewConfig action 34 at phases 2/3/4 names three BuffConfig rewards and 2500/10000.
-        // With its probability table empty in the original Lua, this is an (inferred) single eligible draw.
-        var row = data.Table("CampFireAffixNewConfig").Values.FirstOrDefault(r =>
-            GameData.Int(r, "_iPhase") == stage && GameData.Int(r, "_iActionType") == 34);
-        if (row.ValueKind != JsonValueKind.Object || !row.TryGetProperty("_iActionParams", out var args)
-            || args.ValueKind != JsonValueKind.Array || args.GetArrayLength() < 2) return;
-        var buffIds = args.EnumerateArray().Skip(1).Where(a => a.ValueKind == JsonValueKind.Array && a.GetArrayLength() >= 1)
-            .Select(a => (int)(GameData.Number(a[0]) ?? 0)).Where(id => data.Row("BuffConfig", id) != null).ToArray();
-        if (buffIds.Length == 0) return;
-        var winner = present[Random.Shared.Next(present.Length)];
-        int buff = buffIds[Random.Shared.Next(buffIds.Length)];
-        state.DrawnStages.Add(stage);
-        await SaveAsync(guild, state, winner);
-        await buffs.AddAsync(winner, buff, 0, winner.Role!.Id);
-        var notice = new GuildCampFireLuckyPlayerNotify { AwardLevel = Level(state.Exp) };
-        notice.PlayerList.Add(new GuildCampFireLuckyPlayerInfo { PlayerId = winner.Role.Id, BuffId = buff });
-        foreach (var member in room.ActiveMembers)
-        {
-            var session = member.Session;
-            if (session.SceneEntry == Dungeon && !session.SceneLoading) await session.SendGameAsync(Lucky, notice);
-        }
+            var state = Read(guild);
+            if (state.DrawnStages.Contains(stage)) return;
+            var present = room.ActiveMembers.Select(m => m.Session)
+                .Where(s => s.Role != null && s.InstanceId == room.Id && !s.SceneLoading
+                    && (state.Seeds.ContainsKey(s.Role.Id) || state.FuelCount.ContainsKey(s.Role.Id)))
+                .ToArray();
+            if (present.Length == 0) return;
+            // CampFireAffixNewConfig action 34 at phases 2/3/4 names three BuffConfig rewards and 2500/10000.
+            // With its probability table empty in the original Lua, this is an (inferred) single eligible draw.
+            var row = data.Table("CampFireAffixNewConfig").Values.FirstOrDefault(r =>
+                GameData.Int(r, "_iPhase") == stage && GameData.Int(r, "_iActionType") == 34);
+            if (row.ValueKind != JsonValueKind.Object || !row.TryGetProperty("_iActionParams", out var args)
+                || args.ValueKind != JsonValueKind.Array || args.GetArrayLength() < 2) return;
+            var buffIds = args.EnumerateArray().Skip(1).Where(a => a.ValueKind == JsonValueKind.Array && a.GetArrayLength() >= 1)
+                .Select(a => (int)(GameData.Number(a[0]) ?? 0)).Where(id => data.Row("BuffConfig", id) != null).ToArray();
+            if (buffIds.Length == 0) return;
+            var winner = present[Random.Shared.Next(present.Length)];
+            int buff = buffIds[Random.Shared.Next(buffIds.Length)];
+            state.DrawnStages.Add(stage);
+            await SaveAsync(guild, state, winner);
+            await buffs.AddAsync(winner, buff, 0, winner.Role!.Id);
+            var notice = new GuildCampFireLuckyPlayerNotify { AwardLevel = Level(state.Exp) };
+            notice.PlayerList.Add(new GuildCampFireLuckyPlayerInfo { PlayerId = winner.Role.Id, BuffId = buff });
+            foreach (var member in room.ActiveMembers)
+            {
+                var session = member.Session;
+                if (session.SceneEntry == Dungeon && !session.SceneLoading) await session.SendGameAsync(Lucky, notice);
+            }
         }
         finally { Gate(guild).Release(); }
     }

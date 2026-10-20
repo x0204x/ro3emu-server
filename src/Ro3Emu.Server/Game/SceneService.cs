@@ -84,7 +84,7 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
             if (!ReferenceEquals(s.Role, role) || !ReferenceEquals(s.Attachment, lease) || lease?.Cancelled == true
                 || s.SceneGeneration != generation || s.SceneEntry != sourceScene || s.InstanceId != sourceInstance)
                 return false;
-            return await EnterSceneCoreAsync(s,scene,at,reason,instanceId,transfer,lineNumber,source,createLine);
+            return await EnterSceneCoreAsync(s, scene, at, reason, instanceId, transfer, lineNumber, source, createLine);
         }
         finally { s.SceneTransitionGate.Release(); }
     }

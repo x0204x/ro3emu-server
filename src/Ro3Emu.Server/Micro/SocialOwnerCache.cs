@@ -111,8 +111,11 @@ public sealed class SocialOwnerCache(AccountStore accounts, OwnerRegistry owners
             {
                 Vector = before.Vector.WithRevision(RevisionStore.FriendRelation,
                     owners.Get(id).Revisions[RevisionStore.FriendRelation]),
-                Friends = value.Friends, Applicants = value.Applicants, Blacklist = value.Blacklist,
-                BlacklistedBy = value.BlacklistedBy, Intimacy = value.Intimacy,
+                Friends = value.Friends,
+                Applicants = value.Applicants,
+                Blacklist = value.Blacklist,
+                BlacklistedBy = value.BlacklistedBy,
+                Intimacy = value.Intimacy,
             };
         }
         foreach (var (id, value) in updated) _social[id] = value;

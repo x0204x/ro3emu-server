@@ -638,8 +638,11 @@ public sealed partial class MvpService : IGameTicker
             var counter = counters[player];
             long current = tp switch
             {
-                MVP_AWARD_TYPE.First => counter.FirstNum, MVP_AWARD_TYPE.End => counter.EndNum, MVP_AWARD_TYPE.Team => counter.TeamNum,
-                MVP_AWARD_TYPE.Join => counter.JoinNum, _ => 0,
+                MVP_AWARD_TYPE.First => counter.FirstNum,
+                MVP_AWARD_TYPE.End => counter.EndNum,
+                MVP_AWARD_TYPE.Team => counter.TeamNum,
+                MVP_AWARD_TYPE.Join => counter.JoinNum,
+                _ => 0,
             };
             int cap = tp switch { MVP_AWARD_TYPE.First => FirstCap, MVP_AWARD_TYPE.End => EndCap, MVP_AWARD_TYPE.Team => TeamCap, MVP_AWARD_TYPE.Join => JoinCap, _ => int.MaxValue };
             if (current >= cap) return; // 26051 "Today's Reward Count has been exhausted"
@@ -710,9 +713,12 @@ public sealed partial class MvpService : IGameTicker
                 [], goods, deltas, JsonSerializer.SerializeToUtf8Bytes(new
                 {
                     st.Def.CfgId, DeadMs = deadMs,
-                    Recipients = obligations.Select(row => new { row.PlayerId, row.SourceKey,
+                    Recipients = obligations.Select(row => new
+                    {
+                        row.PlayerId, row.SourceKey,
                         AwardHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(row.Awards)),
-                        ResultHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(row.Result)) }).ToArray()
+                        ResultHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(row.Result))
+                    }).ToArray()
                 })));
         }
         await builder.CommitAsync(accounts, "mvp/kill-settlement", _ =>
@@ -787,8 +793,11 @@ public sealed partial class MvpService : IGameTicker
         {
             Func<Stat, long> value = tp switch
             {
-                MVPRankType.Attack => s => s.Attack, MVPRankType.BeAttack => s => s.BeAttack, MVPRankType.Cure => s => s.Cure,
-                MVPRankType.Dead => s => s.Dead, _ => _ => 0,
+                MVPRankType.Attack => s => s.Attack,
+                MVPRankType.BeAttack => s => s.BeAttack,
+                MVPRankType.Cure => s => s.Cure,
+                MVPRankType.Dead => s => s.Dead,
+                _ => _ => 0,
             };
             long total = Math.Max(1, st.Stats.Values.Sum(value));
             var info = new MVPReportRankInfo
@@ -963,8 +972,11 @@ public sealed partial class MvpService : IGameTicker
             var economy = grants.Any(grant => grant.Entry is not (100 or 101))
                 ? EventEconomy.ForRole(data, session, "mvp-delivery", "mvp/delivery/" + row.SourceKey,
                     Array.Empty<(int Entry, long Count)>(), Array.Empty<AwardGrant>(),
-                    new { row.SourceKey, row.PlayerId,
-                        AwardHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(row.Awards)) }) : null;
+                    new
+                    {
+                        row.SourceKey, row.PlayerId,
+                        AwardHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(row.Awards))
+                    }) : null;
             if (!await character.ApplyAwardAsync(session, new AwardPlan(0, 0, grants), persist: builder =>
                 {
                     builder.Add(RoleObligations<MvpObligationRow>.DeliverPlan(row));

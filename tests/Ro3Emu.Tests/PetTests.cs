@@ -110,8 +110,11 @@ public sealed class PetTests : IAsyncLifetime
         if (info.MoveType != MovementType.MoveTypeWalk) return info.Pos;
         float angle = info.MovementWalk.Dir * MathF.PI / 180f;
         float distance = info.MovementWalk.Speed * info.MoveDuration / 1000f;
-        return new Vec3 { X = info.Pos.X + distance * MathF.Sin(angle), Y = info.MovementWalk.EndHeight,
-            Z = info.Pos.Z + distance * MathF.Cos(angle) };
+        return new Vec3
+        {
+            X = info.Pos.X + distance * MathF.Sin(angle), Y = info.MovementWalk.EndHeight,
+            Z = info.Pos.Z + distance * MathF.Cos(angle)
+        };
     }
 
     private static async Task<EntityBase> FollowSceneChange(BotClient bot)
@@ -250,8 +253,11 @@ public sealed class PetTests : IAsyncLifetime
         foreach (var (x, dir, stop) in new[] { (born.X + 2, 90f, false), (born.X + 4, 90f, false),
                      (born.X + 4, 90f, true), (born.X + 2, 270f, false), (born.X + 2, 270f, true) })
         {
-            var request = new WalkReq { Pos = new Vec3 { X = x, Y = born.Y, Z = born.Z },
-                Dir = dir, Face = dir, SpeedRate = 1, BStop = stop };
+            var request = new WalkReq
+            {
+                Pos = new Vec3 { X = x, Y = born.Y, Z = born.Z },
+                Dir = dir, Face = dir, SpeedRate = 1, BStop = stop
+            };
             await bot.SendGameAsync(MsgId.Walk, request);
             var ownerMove = await Next(viewer, 31081, MovementChangeNtf.Parser, m => m.Uid == ownerUid);
             var ownerPet = await Next(bot, 31081, MovementChangeNtf.Parser, m => m.Uid == petUid);
@@ -603,8 +609,11 @@ public sealed class PetTests : IAsyncLifetime
         await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(async () =>
         {
             using var held = await CharacterService.Lock(Session);
-            Session.Pets!.IncubationSlot[1] = new DBSlotInfo { SlotId = 1, IncubateInfo =
-                { [10001] = new DBIncubateInfo { IncubateTime = _clock.GetUtcNow().ToUnixTimeSeconds() - 600, AwardType = 1, AwardId = 10001, AwardCount = 1 } } };
+            Session.Pets!.IncubationSlot[1] = new DBSlotInfo
+            {
+                SlotId = 1, IncubateInfo =
+                { [10001] = new DBIncubateInfo { IncubateTime = _clock.GetUtcNow().ToUnixTimeSeconds() - 600, AwardType = 1, AwardId = 10001, AwardCount = 1 } }
+            };
             Roles.SavePets(RoleId(bot), Session.Pets.ToByteArray());
         });
         await bot.SendGameAsync(PetService.EggReward, new PetEggRewardReq { RoundId = 10001, SlotIds = { 1 } });
@@ -642,8 +651,11 @@ public sealed class PetTests : IAsyncLifetime
             using var held = await CharacterService.Lock(Session);
             Session.Pets!.IncubationLv = 2;
             Session.Pets.IncubationExp = bar - 10;
-            Session.Pets.IncubationSlot[1] = new DBSlotInfo { SlotId = 1, IncubateInfo =
-                { [10001] = new DBIncubateInfo { IncubateTime = _clock.GetUtcNow().ToUnixTimeSeconds() - 600, AwardType = 2, AwardId = 1610001, AwardCount = 1 } } };
+            Session.Pets.IncubationSlot[1] = new DBSlotInfo
+            {
+                SlotId = 1, IncubateInfo =
+                { [10001] = new DBIncubateInfo { IncubateTime = _clock.GetUtcNow().ToUnixTimeSeconds() - 600, AwardType = 2, AwardId = 1610001, AwardCount = 1 } }
+            };
             Roles.SavePets(RoleId(bot), Session.Pets.ToByteArray());
         });
         var collect = new PetEggRewardReq { RoundId = 10001, SlotIds = { 1 } };

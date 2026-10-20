@@ -464,7 +464,7 @@ public sealed class MountTests : IAsyncLifetime
     [ClientDataFact]
     public async Task LoginOwnsTheMountOfAShopLookBoughtBeforeThePurchaseGrantedIt()
     {
-        const int DisabledLook = 60040031; // WardRobeConfig type 6 with _iDisable 1, though MountsConfig lists it.
+        const int DisabledLook = 60040032; // WardRobeConfig type 6 with _iDisable 1, though MountsConfig lists it.
         var roles = app.Services.GetRequiredService<RoleStore>();
         var loop = app.Services.GetRequiredService<GameLoop>();
         long role;

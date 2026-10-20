@@ -138,8 +138,15 @@ public sealed class TotemEffects : IGameTicker
                     finally { calculatingHpCondition = false; }
                     long hp = s.CurrentHp ?? maxHp;
                     long q = op[2] == 1 ? maxHp > 0 ? (long)Math.Floor(hp * 10000d / maxHp) : 0 : hp;
-                    bool active = op[1] switch { 1 => q > op[3], 2 => q >= op[3], 3 => q < op[3],
-                        4 => q <= op[3], 5 => q == op[3], _ => false };
+                    bool active = op[1] switch
+                    {
+                        1 => q > op[3],
+                        2 => q >= op[3],
+                        3 => q < op[3],
+                        4 => q <= op[3],
+                        5 => q == op[3],
+                        _ => false
+                    };
                     if (active) yield return (op[4], op[5] == 2 ? Math.Floor(s.Progress!.Level * op[6] / 10000d) : op[6]);
                 }
                 else if (op.Length >= 8 && op[0] == 12 && op[1] == 1 && op[3] == 2)
@@ -439,8 +446,13 @@ public sealed class TotemEffects : IGameTicker
     {
         foreach (var passive in Passives(s).Where(p => p.Id is 2503201 or 2513201 or 2514701 or 2505901).DistinctBy(p => (p.Item.Guid, p.Id)))
         {
-            int active = passive.Id switch { 2503201 => 2503401, 2513201 => 2513401,
-                2514701 => 2514901, _ => 2506101 };
+            int active = passive.Id switch
+            {
+                2503201 => 2503401,
+                2513201 => 2513401,
+                2514701 => 2514901,
+                _ => 2506101
+            };
             var desc = passive.Row.GetProperty("_kDescData");
             if (Proc(s, passive.Item.Guid, passive.Id, 10000, (int)((GameData.Number(desc[2]) ?? 0) * 1000)))
                 await buffs.AddSourcedAsync(s, active, (int)((GameData.Number(desc[1]) ?? 0) * 1000), passive.Item.Guid);

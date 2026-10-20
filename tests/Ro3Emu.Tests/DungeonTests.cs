@@ -86,11 +86,14 @@ public sealed partial class DungeonTests : IAsyncLifetime
 
     private static EnterDungeonReq Request(int multi = Multi, int mark = 1, long scene = Scene,
         long teamId = 0, long runId = 0) => new()
-    {
-        SceneEntry = scene,
-        InitData = new DungeonInitData { MultiDungeonInitData = new MultiDungeonInitData
-        { MultiDungeonId = multi, MarkId = mark, TeamID = teamId, DungeonId = runId } },
-    };
+        {
+            SceneEntry = scene,
+            InitData = new DungeonInitData
+            {
+                MultiDungeonInitData = new MultiDungeonInitData
+                { MultiDungeonId = multi, MarkId = mark, TeamID = teamId, DungeonId = runId }
+            },
+        };
 
     private static async Task<int> Enter(BotClient bot, EnterDungeonReq? req = null)
     {

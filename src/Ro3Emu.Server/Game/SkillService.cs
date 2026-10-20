@@ -247,8 +247,11 @@ public sealed class SkillService
         {
             var blank = new SkillPlan { IsUnlock = true };
             foreach (int group in skillData.SkillList)
-                blank.SkillAssigns[group] = new SkillData { SkillId = group,
-                    SkillLevel = group == atkGroup ? 1 : Initial(p, group) };
+                blank.SkillAssigns[group] = new SkillData
+                {
+                    SkillId = group,
+                    SkillLevel = group == atkGroup ? 1 : Initial(p, group)
+                };
             blank.SkillQueue[0] = new SkillData(); // paired by the client even in a fresh plan.
             blank.ManualLoadSkill.Add(new SkillData());
             blank.AutoLoadSkill.Add(new SkillData());
@@ -363,8 +366,11 @@ public sealed class SkillService
             var queueLevels = JsonMap(source, "QueueLevels");
             foreach (var (slot, group) in JsonMap(source, "Queue"))
                 if (slot >= 0 && slot < Parameter("QueueNum", 12))
-                    plan.SkillQueue[slot] = new SkillData { SkillId = group,
-                        SkillLevel = queueLevels.GetValueOrDefault(slot, PlanLevel(session.Progress!, plan, group)) };
+                    plan.SkillQueue[slot] = new SkillData
+                    {
+                        SkillId = group,
+                        SkillLevel = queueLevels.GetValueOrDefault(slot, PlanLevel(session.Progress!, plan, group))
+                    };
             imported.SkillAssignPlans.Add(plan);
             index++;
         }
@@ -386,8 +392,11 @@ public sealed class SkillService
         for (int slot = 1; slot <= Math.Max(1, last); slot++)
         {
             int group = slots.GetValueOrDefault(slot);
-            destination.Add(new SkillData { SkillId = group,
-                SkillLevel = group > 0 ? levels.GetValueOrDefault(slot, PlanLevel(progress, plan, group)) : 0 });
+            destination.Add(new SkillData
+            {
+                SkillId = group,
+                SkillLevel = group > 0 ? levels.GetValueOrDefault(slot, PlanLevel(progress, plan, group)) : 0
+            });
         }
     }
 
@@ -400,8 +409,11 @@ public sealed class SkillService
         if (progress != null) tx.Progress(session.Role.Id, progress);
         tx.RoleBlob(session.Role.Id, "skill_plans", next.ToByteArray());
         tx.WithEconomy(character.ProgressionEconomy(session, kind, [], [],
-            new { Plans = Convert.ToBase64String(next.ToByteArray()), Skills = progress?.Skills,
-                Bar = progress?.SkillBar }));
+            new
+            {
+                Plans = Convert.ToBase64String(next.ToByteArray()), Skills = progress?.Skills,
+                Bar = progress?.SkillBar
+            }));
         await roles.CommitAsync(tx, kind, _ =>
         {
             session.SkillPlans = next;
@@ -563,20 +575,20 @@ public sealed class SkillService
     {
         bool changed = false;
         {
-        using var held = await CharacterService.Lock(session);
-        var next = Build(session);
-        var progress = CharacterService.GenreCloneProgress(session.Progress!);
-        int result = req.Plan is < 0 or >= PlanCount || !next.SkillAssignPlans[req.Plan].IsUnlock
-            ? ErrorCodes.Parameter : PlanSwitchCooldownError(session);
-        if (result == 0) result = StageSkillPlan(session, next, progress, req.Plan);
-        if (result == 0 && req.Plan != session.SkillPlans!.CurrentPlanIndex)
-        {
-            await CommitAsync(session, next, progress, "cd13c/skill-switch",
-                () => session.SkillPlanSwitchUtc = DateTime.UtcNow);
-            changed = true;
-        }
-        await session.SendGameAsync(SwitchPlan, new SwitchPlanResp { Result = result, Plan = req.Plan, Flag = 0 });
-        if (result == 0) await SyncAsync(session);
+            using var held = await CharacterService.Lock(session);
+            var next = Build(session);
+            var progress = CharacterService.GenreCloneProgress(session.Progress!);
+            int result = req.Plan is < 0 or >= PlanCount || !next.SkillAssignPlans[req.Plan].IsUnlock
+                ? ErrorCodes.Parameter : PlanSwitchCooldownError(session);
+            if (result == 0) result = StageSkillPlan(session, next, progress, req.Plan);
+            if (result == 0 && req.Plan != session.SkillPlans!.CurrentPlanIndex)
+            {
+                await CommitAsync(session, next, progress, "cd13c/skill-switch",
+                    () => session.SkillPlanSwitchUtc = DateTime.UtcNow);
+                changed = true;
+            }
+            await session.SendGameAsync(SwitchPlan, new SwitchPlanResp { Result = result, Plan = req.Plan, Flag = 0 });
+            if (result == 0) await SyncAsync(session);
         }
         if (changed) await OnActivePlanChangedAsync(session);
     }
@@ -801,33 +813,33 @@ public sealed class SkillService
     {
         bool changed = false;
         {
-        using var held = await CharacterService.Lock(session);
-        var plans = Build(session);
-        int code = req.Plan is < 0 or >= PlanCount || !plans.SkillAssignPlans[req.Plan].IsUnlock
-            || InCombat(session) ? ErrorCodes.Parameter : 0;
-        if (code == 0)
-        {
-            var selected = plans.SkillAssignPlans[req.Plan];
-            foreach (var (group, assigned) in selected.SkillAssigns)
-                assigned.SkillLevel = IsNormalGroup(session.Progress!, group) ? 1 : Initial(session.Progress!, group);
-            var progress = CharacterService.GenreCloneProgress(session.Progress!);
-            int oldIndex = plans.CurrentPlanIndex;
-            code = StageSkillPlan(session, plans, progress, req.Plan);
-            plans.CurrentPlanIndex = oldIndex;
+            using var held = await CharacterService.Lock(session);
+            var plans = Build(session);
+            int code = req.Plan is < 0 or >= PlanCount || !plans.SkillAssignPlans[req.Plan].IsUnlock
+                || InCombat(session) ? ErrorCodes.Parameter : 0;
             if (code == 0)
             {
-                PruneLoads(selected, progress);
-                if (req.Plan == oldIndex)
+                var selected = plans.SkillAssignPlans[req.Plan];
+                foreach (var (group, assigned) in selected.SkillAssigns)
+                    assigned.SkillLevel = IsNormalGroup(session.Progress!, group) ? 1 : Initial(session.Progress!, group);
+                var progress = CharacterService.GenreCloneProgress(session.Progress!);
+                int oldIndex = plans.CurrentPlanIndex;
+                code = StageSkillPlan(session, plans, progress, req.Plan);
+                plans.CurrentPlanIndex = oldIndex;
+                if (code == 0)
                 {
-                    await CommitAsync(session, plans, progress, "cd13c/skill-reset");
-                    changed = true;
+                    PruneLoads(selected, progress);
+                    if (req.Plan == oldIndex)
+                    {
+                        await CommitAsync(session, plans, progress, "cd13c/skill-reset");
+                        changed = true;
+                    }
+                    else await CommitAsync(session, plans, kind: "cd13c/skill-reset");
+                    session.SkillPlans = plans;
+                    await SyncAsync(session);
                 }
-                else await CommitAsync(session, plans, kind: "cd13c/skill-reset");
-                session.SkillPlans = plans;
-                await SyncAsync(session);
             }
-        }
-        await session.SendGameAsync(SkillReset, new SkillResetResp { Result = code, Plan = req.Plan });
+            await session.SendGameAsync(SkillReset, new SkillResetResp { Result = code, Plan = req.Plan });
         }
         if (changed) await OnActivePlanChangedAsync(session);
     }

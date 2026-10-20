@@ -57,8 +57,11 @@ public sealed class TotemEffectsTests : IAsyncLifetime
         var item = new InvItem
         {
             Guid = 990001, Entry = 17300001, Stack = 1, Pack = 4,
-            Attrs = new Dictionary<int, long> { [3] = 1, [240] = 10051001, [241] = 10053001,
-                [242] = 10053005, [243] = 10052017, [244] = 10053010, [245] = 10053012 },
+            Attrs = new Dictionary<int, long>
+            {
+                [3] = 1, [240] = 10051001, [241] = 10053001,
+                [242] = 10053005, [243] = 10052017, [244] = 10053010, [245] = 10053012
+            },
         };
         session.Items.Add(item);
         session.Totems!.TotemPlans[0].SetUpTotem[1] = item.Guid;

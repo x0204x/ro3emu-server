@@ -76,10 +76,12 @@ internal sealed class EscrowEconomyTransactionPlan(RoleItemPlan child, EscrowEco
             revisionBefore[group.Key.ToString(CultureInfo.InvariantCulture)] = new
             { roleId = expected.RoleId, epoch = expected.Epoch, deleted = expected.Deleted, parts = prior };
             revisionAfter[group.Key.ToString(CultureInfo.InvariantCulture)] = new
-            { roleId = expected.RoleId, epoch = expected.Epoch, deleted = expected.Deleted,
+            {
+                roleId = expected.RoleId, epoch = expected.Epoch, deleted = expected.Deleted,
                 parts = prior.ToDictionary(x => x.Key,
                     x => mutatedRoleWrites.Contains(new RoleRevisionKey(group.Key, x.Key))
-                        ? checked(x.Value + 1) : x.Value, StringComparer.Ordinal) };
+                        ? checked(x.Value + 1) : x.Value, StringComparer.Ordinal)
+            };
         }
         byte[] payload = intent.Payload;
         byte[] childBytes = EscrowEconomyReceiptCodec.Encode(receipts);
@@ -510,9 +512,13 @@ internal static class EscrowEconomyReceiptCodec
         if (values.Length is < 1 or > 16384) throw new InvalidDataException("Invalid E03 child count.");
         return values.Select(x => x.Kind switch
         {
-            "null" => null, "bool" => (object?)x.Data.GetBoolean(), "int" => x.Data.GetInt32(),
-            "long" => x.Data.GetInt64(), "string" => x.Data.GetString(),
-            "ids" => x.Data.Deserialize<long[]>(), "bytes" => x.Data.Deserialize<byte[]>(),
+            "null" => null,
+            "bool" => (object?)x.Data.GetBoolean(),
+            "int" => x.Data.GetInt32(),
+            "long" => x.Data.GetInt64(),
+            "string" => x.Data.GetString(),
+            "ids" => x.Data.Deserialize<long[]>(),
+            "bytes" => x.Data.Deserialize<byte[]>(),
             "auction" => x.Data.Deserialize<AuctionItemWriteReceipt>(),
             _ => throw new InvalidDataException("Unknown E03 child receipt kind.")
         }).ToArray();

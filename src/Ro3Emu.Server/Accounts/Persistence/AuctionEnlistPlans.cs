@@ -49,8 +49,11 @@ internal sealed class AuctionReadPlan(AuctionReadKind kind, long id = 0, bool pe
                         rows.Add(row with { Original = row });
                     }
                     reader.Close();
-                    return rows.Select(row => row with { SourceRevision = ReadRevision(db, tx,
-                        RevisionStore.Entity("auction_prebuy", row.Id)) }).ToList();
+                    return rows.Select(row => row with
+                    {
+                        SourceRevision = ReadRevision(db, tx,
+                        RevisionStore.Entity("auction_prebuy", row.Id))
+                    }).ToList();
                 }
             case AuctionReadKind.PendingRuns:
                 using (var cmd = DbSql.Command(db, tx, "SELECT state FROM auction_run"))
@@ -327,8 +330,11 @@ internal sealed class AuctionRunClearPlan : DbPlan
         using var read = DbSql.Command(db, tx, "SELECT state FROM auction_run WHERE id=$id");
         read.Parameters.AddWithValue("$id", _runId);
         var run = read.ExecuteScalar() is byte[] bytes ? JsonSerializer.Deserialize<AuctionStore.Run>(bytes)!
-            : new AuctionStore.Run { Id = _runId, GuildId = _guildId, SrcType = _sourceType,
-                PlayBook = _playBook, TierGroups = new(_tiers) };
+            : new AuctionStore.Run
+            {
+                Id = _runId, GuildId = _guildId, SrcType = _sourceType,
+                PlayBook = _playBook, TierGroups = new(_tiers)
+            };
         if (run.Finalized) return 0;
         if (run.GuildId != _guildId) run.GuildId = 0;
         if (!run.Eligible.Contains(_roleId)) run.Eligible.Add(_roleId);

@@ -40,8 +40,11 @@ public sealed class LoadTestRunnerTests
     [Fact]
     public void Idle_but_ten_hertz_loop_fails_cadence_gate()
     {
-        var report = new RunReport { Scenario = "S2", RequestedBots = 300, TargetBots = 300,
-            RequestedSeconds = 600, StartedUtc = DateTimeOffset.UtcNow, MeasurementPhase = "scenario" };
+        var report = new RunReport
+        {
+            Scenario = "S2", RequestedBots = 300, TargetBots = 300,
+            RequestedSeconds = 600, StartedUtc = DateTimeOffset.UtcNow, MeasurementPhase = "scenario"
+        };
         report.ServerBefore = JsonNode.Parse("""{"epoch":"one","elapsedSeconds":0,"loop":{"ticks":0}}""");
         report.ServerAfter = JsonNode.Parse("""{"epoch":"one","elapsedSeconds":600,"loop":{"ticks":6000,"tickDurationMs":{"count":6000,"sum":600,"min":0.1,"max":0.1,"bounds":[1],"buckets":[6000,0]}}}""");
         Assert.Equal("FAIL", TargetEvaluation.Evaluate(report)[0].Status);
@@ -109,12 +112,21 @@ public sealed class LoadTestRunnerTests
         var correlation = new MovementCorrelation();
         correlation.Offer(42, 1.01f, 2, false);
         correlation.Offer(42, 1.01f, 2, true);
-        correlation.Seen(new MovementChangeNtf { Uid = 42, MovementInfo = new MovementInfo
-            { Pos = new Vec3 { X = 1.01f, Z = 2 }, MoveType = MovementType.MoveTypeWalk } });
-        correlation.Seen(new MovementChangeNtf { Uid = 42, MovementInfo = new MovementInfo
-            { Pos = new Vec3 { X = 1.01f, Z = 2 }, MoveType = MovementType.MoveTypeNone } });
-        correlation.Seen(new MovementChangeNtf { Uid = 42, MovementInfo = new MovementInfo
-            { Pos = new Vec3 { X = 1.02f, Z = 2 }, MoveType = MovementType.MoveTypeWalk } });
+        correlation.Seen(new MovementChangeNtf
+        {
+            Uid = 42, MovementInfo = new MovementInfo
+            { Pos = new Vec3 { X = 1.01f, Z = 2 }, MoveType = MovementType.MoveTypeWalk }
+        });
+        correlation.Seen(new MovementChangeNtf
+        {
+            Uid = 42, MovementInfo = new MovementInfo
+            { Pos = new Vec3 { X = 1.01f, Z = 2 }, MoveType = MovementType.MoveTypeNone }
+        });
+        correlation.Seen(new MovementChangeNtf
+        {
+            Uid = 42, MovementInfo = new MovementInfo
+            { Pos = new Vec3 { X = 1.02f, Z = 2 }, MoveType = MovementType.MoveTypeWalk }
+        });
         var result = correlation.Snapshot();
         Assert.Equal(2, result.ObservedOffers);
         Assert.Equal(0, result.NeverSeen);
@@ -155,8 +167,11 @@ public sealed class LoadTestRunnerTests
     [Fact]
     public void Reduced_offer_never_passes_targets_and_every_target_row_is_reported()
     {
-        var report = new RunReport { Scenario = "S2", RequestedBots = 50, TargetBots = 300,
-            RequestedSeconds = 30, StartedUtc = DateTimeOffset.UtcNow };
+        var report = new RunReport
+        {
+            Scenario = "S2", RequestedBots = 50, TargetBots = 300,
+            RequestedSeconds = 30, StartedUtc = DateTimeOffset.UtcNow
+        };
         report.ServerBefore = JsonNode.Parse("""{"epoch":"one","elapsedSeconds":1,"loop":{"ticks":0,"overruns":0,"busyMs":0},"database":{"loopStatements":0},"errors":{"exceptions":0},"wire":{"bytesOut":0}}""");
         report.ServerAfter = JsonNode.Parse("""{"epoch":"one","elapsedSeconds":31,"loop":{"ticks":600,"overruns":0,"busyMs":0},"database":{"loopStatements":0},"errors":{"exceptions":0},"wire":{"bytesOut":0}}""");
         var rows = TargetEvaluation.Evaluate(report);

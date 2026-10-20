@@ -87,7 +87,7 @@ public sealed class LocalServer : IAsyncDisposable
             if (result != null) await result.DisposeAsync();
             else if (process != null)
             {
-                if (!process.HasExited) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(); }
+                if (!process.HasExited) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(CancellationToken.None); }
                 process.Dispose();
             }
             throw;

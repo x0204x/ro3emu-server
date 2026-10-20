@@ -53,15 +53,21 @@ public sealed class TerritoryWarsTests : IAsyncLifetime
         }
         // SceneLoaded sends the bot's ready packets before the route takes Realm for guild publication.
         // The flag is set inside that scope; acquiring it once drains the remaining route work.
-        await OnLoop(async () => { using var scope = await loop.Owners!.EnterAsync(
-            "territory test scene online barrier", ReservationKey.Realm); }).WaitAsync(Wait);
+        await OnLoop(async () =>
+        {
+            using var scope = await loop.Owners!.EnterAsync(
+            "territory test scene online barrier", ReservationKey.Realm);
+        }).WaitAsync(Wait);
     }
     public Task InitializeAsync() => StartAsync();
     private async Task StartAsync()
     {
         var (web, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o => { o.DataDir = dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
-            o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game; o.PlayBook = 101; o.SeasonStart = "2026-05-19"; }, clock);
+        app = ServerHost.Create([], o =>
+        {
+            o.DataDir = dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game; o.PlayBook = 101; o.SeasonStart = "2026-05-19";
+        }, clock);
         SureHitRolls.Install(app); // lethal hits are prepared; a FLEE miss would only be noise
         await app.StartAsync(); http = $"http://127.0.0.1:{web}";
     }
@@ -91,8 +97,11 @@ public sealed class TerritoryWarsTests : IAsyncLifetime
     private async Task<long> Guild(BotClient bot, string name, int members = 20)
     {
         await OnLoop(() => Service<CharacterService>().SetLevelAsync(Session(bot), 99, null));
-        await bot.SendGameAsync(GuildService.Create, new GuildCreateReq { Name = name,
-            Icon = new GuildHeadIcon { BackgroundType = 100101, IconType = 200101 } });
+        await bot.SendGameAsync(GuildService.Create, new GuildCreateReq
+        {
+            Name = name,
+            Icon = new GuildHeadIcon { BackgroundType = 100101, IconType = 200101 }
+        });
         Assert.Equal(0, (await Next(bot, GuildService.Create, GuildCreateResp.Parser)).Result);
         long id = (await Next(bot, GuildService.Full, GuildFullInfoNtf.Parser, g => g.Guid > 0)).Guid;
         await OnLoop(() =>
@@ -330,10 +339,13 @@ public sealed class TerritoryWarsTests : IAsyncLifetime
         await using var peer = await Bot("TerrEpochPeer");
         long guild = await Guild(bot, "TwEpoch");
         var store = Service<GuildStore>(); var wars = Service<TerritoryWarsService>();
-        await bot.SendGameAsync(TerritoryWarsService.AutoSet, new TerritoryAutoBidSetReq {
-            ZoneId = 2, InitialBid = 1000, MaxBid = 3000, Style = (TerritoryAutoBidStyle)1 });
+        await bot.SendGameAsync(TerritoryWarsService.AutoSet, new TerritoryAutoBidSetReq
+        {
+            ZoneId = 2, InitialBid = 1000, MaxBid = 3000, Style = (TerritoryAutoBidStyle)1
+        });
         await Next(bot, TerritoryWarsService.AutoSet, TerritoryAutoBidSetRes.Parser);
-        await OnLoop(() => {
+        await OnLoop(() =>
+        {
             var g = store.Get(guild)!; g.Members[Session(bot).Role!.Id].Official = 20; g.Rights[25] = [];
             Assert.True(store.Save(g)); return Task.CompletedTask;
         });

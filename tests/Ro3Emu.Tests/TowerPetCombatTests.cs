@@ -50,8 +50,11 @@ public sealed class TowerPetCombatTests : IAsyncLifetime
         foreach (int petId in new[] { 13001, 10001, 11001, 21002 })
             roster.ListPet[petId] = new PetData { PetId = petId, Level = 12, Star = 1 };
         Service<RoleStore>().SavePets(id, roster.ToByteArray());
-        Service<RoleStore>().SaveTower(id, new DBClimTower { LayerConfID = 1, IsNewbeeInit = true,
-            ChallengeTime = DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeMilliseconds() }.ToByteArray());
+        Service<RoleStore>().SaveTower(id, new DBClimTower
+        {
+            LayerConfID = 1, IsNewbeeInit = true,
+            ChallengeTime = DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeMilliseconds()
+        }.ToByteArray());
         await bot.EnterWorldAsync(id);
         using var client = new HttpClient();
         foreach (string command in new[] { "!lvl 99", "!quest done 10105020", "!quest done 10104330" })
@@ -123,10 +126,13 @@ public sealed class TowerPetCombatTests : IAsyncLifetime
                 if (i > 0) Assert.True(pet.TryBeginCast(pet.SupportSkills.Single(), MonsterService.NowMs));
             }
             var source = a.Monsters[0];
-            attacker = new MonsterUnit { Uid = 1L << 49, SceneEntry = s.SceneEntry, InstanceId = a.InstanceId,
+            attacker = new MonsterUnit
+            {
+                Uid = 1L << 49, SceneEntry = s.SceneEntry, InstanceId = a.InstanceId,
                 X = added[0].X, Y = added[0].Y, Z = added[0].Z, Hp = 1000000,
                 Template = source.Template with { NormalSkill = 0, Atk = 200, HitPointSeconds = 0 },
-                Group = source.Group, Home = source.Home };
+                Group = source.Group, Home = source.Home
+            };
             await Service<World>().AddUnitAsync(attacker);
             await Service<CombatService>().TowerPetSupportAsync(s, added[0], 2354301);
             await Service<CombatService>().TowerPetSupportAsync(s, added[0], 2354301); // rejected by own cooldown/action

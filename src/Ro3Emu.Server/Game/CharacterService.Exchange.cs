@@ -502,7 +502,7 @@ public sealed partial class CharacterService
                 Entry = grant.Entry, Stack = count, Pack = pack, Sort = NextSort(session, pack),
                 BindType = grant.BindType, BindExpire = grant.BindExpire,
                 Attrs = grant.CardType == 0 ? null : new Dictionary<int, long>
-                    { [501] = 0, [502] = 0, [530] = grant.CardType },
+                { [501] = 0, [502] = 0, [530] = grant.CardType },
             };
             if (persist) itemStore.Insert(session.Role!.Id, item);
             session.Items.Add(item);

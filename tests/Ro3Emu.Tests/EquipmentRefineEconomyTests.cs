@@ -287,7 +287,7 @@ public sealed class EquipmentRefineEconomyTests : IAsyncLifetime
             Assert.Equal(record.CurrencyBefore - record.CurrencyCost,
                 roles.LoadProgress(record.Role).Currency.GetValueOrDefault(2));
             using (var db = new SqliteConnection(new SqliteConnectionStringBuilder
-                { DataSource = Path.Combine(crashDir, "ro3emu.db"), Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString()))
+            { DataSource = Path.Combine(crashDir, "ro3emu.db"), Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString()))
             {
                 db.Open();
                 using var command = db.CreateCommand();

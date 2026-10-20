@@ -28,13 +28,19 @@ public sealed class CoreMessages(RoleSessionService roleSessions, ChatService ch
         routes.Map(2001, "handler", async (session, msgId, body) =>
         {
             var order = CreateOrderReq.Parser.ParseFrom(body.Span);
-            await session.SendGameAsync(2001, new CreateOrderResp { Result = ErrorCodes.FeatureUnavailable,
-                ChargeId = order.ChargeId, ChargeType = order.ChargeType });
+            await session.SendGameAsync(2001, new CreateOrderResp
+            {
+                Result = ErrorCodes.FeatureUnavailable,
+                ChargeId = order.ChargeId, ChargeType = order.ChargeType
+            });
         });
         routes.Map(2002, "handler", async (session, msgId, body) =>
         {
-            await session.SendGameAsync(2002, new PayResultResp { Result = ErrorCodes.FeatureUnavailable,
-                OrderId = PayResultReq.Parser.ParseFrom(body.Span).OrderId });
+            await session.SendGameAsync(2002, new PayResultResp
+            {
+                Result = ErrorCodes.FeatureUnavailable,
+                OrderId = PayResultReq.Parser.ParseFrom(body.Span).OrderId
+            });
         });
         routes.Map(2003, "handler", async (session, msgId, body) =>
         {
@@ -128,8 +134,11 @@ public sealed class CoreMessages(RoleSessionService roleSessions, ChatService ch
             // Equipment ranking in tooltips (UI_Com_ItemTips_Equip_HeadWidgetCtrl._requestRankData, board 1401): both ids
             // echoed (an empty reply caches item 0), 0 when the instance is not on the board.
             var rank = QueryEquipRankReq.Parser.ParseFrom(body.Span);
-            await session.SendGameAsync(EquipGetRank, new QueryEquipRankRes { Rankid = rank.Rankid, Itemuid = rank.Itemuid,
-                Rank = await ranks.EquipRankAsync(rank.Rankid, rank.Itemuid) });
+            await session.SendGameAsync(EquipGetRank, new QueryEquipRankRes
+            {
+                Rankid = rank.Rankid, Itemuid = rank.Itemuid,
+                Rank = await ranks.EquipRankAsync(rank.Rankid, rank.Itemuid)
+            });
         });
         routes.Map(AuctionService.Sync, "handler", async (session, msgId, body) =>
         {

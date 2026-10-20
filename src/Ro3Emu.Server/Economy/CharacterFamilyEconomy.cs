@@ -23,14 +23,14 @@ internal static class CharacterFamilyEconomy
         string[] parts = kind == ShopAppearanceKind ? ["shop", "wardrobe", "mounts", "equip_plans"]
             : kind == ItemActionKind ? ["bag_state", "emoji_info", "personal", "social_outfit"]
             : kind[6..].Split('-')[0] switch
-        {
-            "character" => ["bag_state", "equip_plans", "stat_plans", "activity_runtime"],
-            "equipment" => ["equip_levels", "equip_plans", "auto_decompose"],
-            "appraisal" or "enchant" => ["equip_plans"],
-            "card" => ["card_plans", "library", "equip_plans"],
-            "shop" => ["shop", "equip_plans"],
-            _ => throw new InvalidOperationException("Unknown E05a family.")
-        };
+            {
+                "character" => ["bag_state", "equip_plans", "stat_plans", "activity_runtime"],
+                "equipment" => ["equip_levels", "equip_plans", "auto_decompose"],
+                "appraisal" or "enchant" => ["equip_plans"],
+                "card" => ["card_plans", "library", "equip_plans"],
+                "shop" => ["shop", "equip_plans"],
+                _ => throw new InvalidOperationException("Unknown E05a family.")
+            };
         return new HashSet<string>(parts.Concat(["library", "tasks", "task_runtime", "task_followup"]), StringComparer.Ordinal);
     }
 

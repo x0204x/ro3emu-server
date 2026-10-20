@@ -1,0 +1,14 @@
+<Project>
+
+  <!-- Quality gates shared by every project; each project file keeps its own target framework and features. -->
+  <PropertyGroup>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- A known vulnerable package (NU1901-NU1904) is reported without failing the build; Dependabot proposes the fix. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
+    <!-- Rules broken by code that predates this setting are listed, with their counts, in .editorconfig. -->
+    <AnalysisLevel>10.0-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+</Project>

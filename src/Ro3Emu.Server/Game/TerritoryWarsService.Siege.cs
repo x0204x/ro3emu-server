@@ -154,12 +154,18 @@ public sealed partial class TerritoryWarsService
         new GetGuildWartimeToolBelongListRsp { Result = Own(s) == null ? ErrorCodes.TerritoryGuild : ErrorCodes.DataNotFound });
 
     private Task SiegeToolAssignAsync(GameSession s, GuildWartimeToolBelongOperReq req) => Send(s, SiegeToolAssign,
-        new GuildWartimeToolBelongOperRsp { Result = Own(s) == null ? ErrorCodes.TerritoryGuild : ErrorCodes.FeatureUnavailable,
-            ToolType = req.ToolType, BagIndex = req.BagIndex, RoleGuildId = req.RoleGuildId });
+        new GuildWartimeToolBelongOperRsp
+        {
+            Result = Own(s) == null ? ErrorCodes.TerritoryGuild : ErrorCodes.FeatureUnavailable,
+            ToolType = req.ToolType, BagIndex = req.BagIndex, RoleGuildId = req.RoleGuildId
+        });
 
     private Task SiegeToolExchangeAsync(GameSession s, GuildWartimeToolExchangeOperReq req) => Send(s, SiegeToolExchange,
-        new GuildWartimeToolExchangeOperRsp { Result = Own(s) == null ? ErrorCodes.TerritoryGuild : ErrorCodes.FeatureUnavailable,
-            ToolType = req.ToolType, SrcBagIndex = req.SrcBagIndex, TargetBagIndex = req.TargetBagIndex });
+        new GuildWartimeToolExchangeOperRsp
+        {
+            Result = Own(s) == null ? ErrorCodes.TerritoryGuild : ErrorCodes.FeatureUnavailable,
+            ToolType = req.ToolType, SrcBagIndex = req.SrcBagIndex, TargetBagIndex = req.TargetBagIndex
+        });
 
     private async Task PublishSiegeIfChangedAsync()
     {
@@ -217,8 +223,11 @@ public sealed partial class TerritoryWarsService
                         throw new ArgumentException("two different existing guilds");
                     int round = ZoneType(zone) == 1 ? 3 : 2;
                     state.Owners[zone] = defense;
-                    state.Battles[BattleKey(round, zone)] = new BattleState { Zone = zone, Round = round, Settled = true,
-                        Winner = defense, Guilds = [attack, defense], Scores = new() { [attack] = 1 } };
+                    state.Battles[BattleKey(round, zone)] = new BattleState
+                    {
+                        Zone = zone, Round = round, Settled = true,
+                        Winner = defense, Guilds = [attack, defense], Scores = new() { [attack] = 1 }
+                    };
                     await SaveAsync(state);
                     break;
                 case "open":

@@ -81,36 +81,39 @@ public sealed partial class CombatService
             (damage, long hp, long effective, long shieldDamage) = committed.Value;
             try
             {
-            if (effective > 0 && CurrentPlayerHit(source, target, attackerRole, targetRole, sceneId))
-            {
-                foreach (var handler in PvpDealt) handler(source, target, effective, hp == 0);
-                foreach (var handler in PvpDealtAsync) await handler(source, target, effective, hp == 0);
-            }
-            var hit = new SkillHitInfo { SrcID = attackerRole.Id, SkillId = skillId, ShowPoint = show,
-                SessionId = session, SrcElement = 1, Split = PresentationSplit(row),
-                Dsts = { new DamageInfo { DstID = targetRole.Id, Damage = damage, SheildDamage = shieldDamage, HitResult = result,
-                    DstElement = 1, IsDead = hp == 0 } } };
-            var sourceViewers = CurrentPlayerHit(source, target, attackerRole, targetRole, sceneId)
-                ? world.Viewers(source).Append(source) : Enumerable.Empty<GameSession>();
-            foreach (var viewer in sourceViewers.Concat(world.Viewers(target)).Append(target).Distinct())
-                await viewer.SendGameAsync(SkillHit, hit);
-            if (!ReferenceEquals(target.Role, targetRole)) continue;
-            await character.SetHpSpAsync(target, null, null); // publish current HP after the serialized reservation
-            if (!ReferenceEquals(target.Role, targetRole)) continue;
-            if (CurrentPlayerHit(source, target, attackerRole, targetRole, sceneId)) await FightingAsync(source);
-            await FightingAsync(target);
-            if (hp == 0)
-            {
-                if (!ReferenceEquals(target.Role, targetRole)) continue;
-                await PlayerDiesAsync(target);
-                if (effective <= 0 || !CurrentPlayerHit(source, target, attackerRole, targetRole, sceneId)) continue;
-                if (eventFight && eventPlayerKilled != null) await eventPlayerKilled(source, target);
-                foreach (var handler in PlayerKilled)
+                if (effective > 0 && CurrentPlayerHit(source, target, attackerRole, targetRole, sceneId))
                 {
-                    if (!CurrentPlayerHit(source, target, attackerRole, targetRole, sceneId)) break;
-                    await handler(source, target);
+                    foreach (var handler in PvpDealt) handler(source, target, effective, hp == 0);
+                    foreach (var handler in PvpDealtAsync) await handler(source, target, effective, hp == 0);
                 }
-            }
+                var hit = new SkillHitInfo
+                {
+                    SrcID = attackerRole.Id, SkillId = skillId, ShowPoint = show,
+                    SessionId = session, SrcElement = 1, Split = PresentationSplit(row),
+                    Dsts = { new DamageInfo { DstID = targetRole.Id, Damage = damage, SheildDamage = shieldDamage, HitResult = result,
+                    DstElement = 1, IsDead = hp == 0 } }
+                };
+                var sourceViewers = CurrentPlayerHit(source, target, attackerRole, targetRole, sceneId)
+                    ? world.Viewers(source).Append(source) : Enumerable.Empty<GameSession>();
+                foreach (var viewer in sourceViewers.Concat(world.Viewers(target)).Append(target).Distinct())
+                    await viewer.SendGameAsync(SkillHit, hit);
+                if (!ReferenceEquals(target.Role, targetRole)) continue;
+                await character.SetHpSpAsync(target, null, null); // publish current HP after the serialized reservation
+                if (!ReferenceEquals(target.Role, targetRole)) continue;
+                if (CurrentPlayerHit(source, target, attackerRole, targetRole, sceneId)) await FightingAsync(source);
+                await FightingAsync(target);
+                if (hp == 0)
+                {
+                    if (!ReferenceEquals(target.Role, targetRole)) continue;
+                    await PlayerDiesAsync(target);
+                    if (effective <= 0 || !CurrentPlayerHit(source, target, attackerRole, targetRole, sceneId)) continue;
+                    if (eventFight && eventPlayerKilled != null) await eventPlayerKilled(source, target);
+                    foreach (var handler in PlayerKilled)
+                    {
+                        if (!CurrentPlayerHit(source, target, attackerRole, targetRole, sceneId)) break;
+                        await handler(source, target);
+                    }
+                }
             }
             finally { if (hp == 0) ReleaseDeathPublication(target); }
         }

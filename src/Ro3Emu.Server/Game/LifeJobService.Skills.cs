@@ -22,21 +22,21 @@ public sealed partial class LifeJobService
             {
                 (info.TitleInfo.JobTitleDetail, false), (info.TitleInfo.SkillExtraSkill, true),
             })
-            foreach (var (sort, chosen) in slots)
-            {
-                int id = chosen.SelectedSkill;
-                int offeredId = chosen.OriginalSkill > 0 ? chosen.OriginalSkill : id;
-                if (id <= 0 || data.Row("LifeSkillConfig", id) is not { } skill || !Current(skill)) continue;
-                if (data.Row("LifeSkillConfig", offeredId) is not { } offered
-                    || GameData.Int(offered, "_iGroup") != GameData.Int(skill, "_iGroup")
-                    || GameData.Int(skill, "_iLevel") < GameData.Int(offered, "_iLevel")) continue;
-                var slot = data.Table("LifeSkillSlots").Values.FirstOrDefault(r =>
-                    GameData.Int(r, "_iJobId") == job && GameData.Int(r, "_iSort") == sort);
-                if (slot.ValueKind != JsonValueKind.Object || !GameData.Pairs(slot, "_kSkillpool").Any(p => p.Id == offeredId))
-                    continue;
-                yield return new LifeSkill(job, sort, extra, checked((int)GameData.Int(skill, "_iFuctionType")),
-                    Numbers(skill, "_kFuctionDatas").FirstOrDefault(), Numbers(skill, "_kFuctionExtraData"), skill);
-            }
+                foreach (var (sort, chosen) in slots)
+                {
+                    int id = chosen.SelectedSkill;
+                    int offeredId = chosen.OriginalSkill > 0 ? chosen.OriginalSkill : id;
+                    if (id <= 0 || data.Row("LifeSkillConfig", id) is not { } skill || !Current(skill)) continue;
+                    if (data.Row("LifeSkillConfig", offeredId) is not { } offered
+                        || GameData.Int(offered, "_iGroup") != GameData.Int(skill, "_iGroup")
+                        || GameData.Int(skill, "_iLevel") < GameData.Int(offered, "_iLevel")) continue;
+                    var slot = data.Table("LifeSkillSlots").Values.FirstOrDefault(r =>
+                        GameData.Int(r, "_iJobId") == job && GameData.Int(r, "_iSort") == sort);
+                    if (slot.ValueKind != JsonValueKind.Object || !GameData.Pairs(slot, "_kSkillpool").Any(p => p.Id == offeredId))
+                        continue;
+                    yield return new LifeSkill(job, sort, extra, checked((int)GameData.Int(skill, "_iFuctionType")),
+                        Numbers(skill, "_kFuctionDatas").FirstOrDefault(), Numbers(skill, "_kFuctionExtraData"), skill);
+                }
         }
     }
 

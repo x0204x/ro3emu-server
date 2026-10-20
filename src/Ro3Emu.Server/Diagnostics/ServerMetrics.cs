@@ -149,9 +149,12 @@ public sealed class ServerMetrics : IDisposable
             semantics = "Cumulative epoch counters; database.routedAccess is cumulative for the AccountStore lifetime and requires start/end subtraction. Histogram buckets are disjoint upper bounds; snapshots are weakly consistent. Wire replies cover the first same-id response on the originating connection, after a full socket send. Egress gauges include the frame currently being sent and are lifetime gauges. DB commitStatementMs includes the statement causing an implicit commit, not only fsync. Sessions are approximate concurrent gauges.",
             loop = new
             {
-                lifecycle = new { phase = ((GameLoopPhase)Volatile.Read(ref _loopPhase)).ToString(),
+                lifecycle = new
+                {
+                    phase = ((GameLoopPhase)Volatile.Read(ref _loopPhase)).ToString(),
                     outstanding = Volatile.Read(ref _loopOutstanding), rejected = Volatile.Read(ref _loopRejected),
-                    drainFailed = Volatile.Read(ref _loopDrainFailed) != 0 },
+                    drainFailed = Volatile.Read(ref _loopDrainFailed) != 0
+                },
                 ticks = tick.Count, ticksPerSecond = tick.Count / Math.Max(elapsed, .001), busyMs,
                 busyRatio = busyMs / Math.Max(elapsed * 1000, 1), overruns = Volatile.Read(ref e.Overruns),
                 tickDurationMs = tick, cadenceMs = e.CadenceMs.Snapshot(), queueLength = e.QueueLength.Snapshot(),
@@ -200,13 +203,19 @@ public sealed class ServerMetrics : IDisposable
                 login = sessions.Count(s => s.Role == null), loading = sessions.Count(s => s.Role != null && s.SceneLoading),
                 inWorld = sessions.Count(s => s.Role != null && !s.SceneLoading),
                 byMap = sessions.Where(s => s.Role != null).Select(s => new { map = s.RuntimeMap, loading = s.SceneLoading })
-                    .GroupBy(s => s.map).Select(g => new { map = g.Key.SceneEntry, line = g.Key.LineNumber,
+                    .GroupBy(s => s.map).Select(g => new
+                    {
+                        map = g.Key.SceneEntry, line = g.Key.LineNumber,
                         kind = g.Key.Kind.ToString(), runtimeId = g.Key.Id, sceneId = g.Key.WorldScene,
-                        count = g.Count(), loading = g.Count(s => s.loading) }).ToArray(),
+                        count = g.Count(), loading = g.Count(s => s.loading)
+                    }).ToArray(),
                 publicLines = publicLines == null ? null : sessions.Where(s => s.Role != null).Select(s => s.SceneEntry)
-                    .Distinct().SelectMany(publicLines.Snapshot).Select(l => new { map = l.Map.SceneEntry,
+                    .Distinct().SelectMany(publicLines.Snapshot).Select(l => new
+                    {
+                        map = l.Map.SceneEntry,
                         line = l.Map.LineNumber, sceneId = l.Map.WorldScene, players = l.Players,
-                        reservations = l.Reservations, softLimit = l.SoftLimit, hardLimit = l.HardLimit }).ToArray(),
+                        reservations = l.Reservations, softLimit = l.SoftLimit, hardLimit = l.HardLimit
+                    }).ToArray(),
                 lineSemantics = "byMap is approximate registered-session locality, including provisional/loading roles; line is public line number (private/event line is 1), kind + runtimeId distinguish rooms; sceneId is RuntimeMap.WorldScene. publicLines is the admission manager's occupied players + reservations, used for capacity checks",
             },
             runtime = new

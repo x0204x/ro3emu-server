@@ -318,8 +318,11 @@ public sealed partial class TerritoryEscortService : IGameTicker
             .Where(id => oldEpoch != Epoch || oldGoods.GetValueOrDefault(id) != ledger.Goods.GetValueOrDefault(id)))
             foreach (var peer in sessions.All().Where(s => s.Role != null && guilds.ForRole(s.Role.Id)?.Id == guildId))
                 loop.PostOwned(peer, () => peer.SendGameAsync(GuildService.BaseChange,
-                    new GuildBaseInfoChangeNtf { Tp = GuildBaseInfoChangeNtf.Types.ChangeType.ChangeItem,
-                        Items = GuildItems(guildId) }), "escort/goods notice");
+                    new GuildBaseInfoChangeNtf
+                    {
+                        Tp = GuildBaseInfoChangeNtf.Types.ChangeType.ChangeItem,
+                        Items = GuildItems(guildId)
+                    }), "escort/goods notice");
     }
 
     private void RestoreCommittedLedger()
@@ -343,8 +346,11 @@ public sealed partial class TerritoryEscortService : IGameTicker
         if (state.SeasonStart == clock.SeasonStart && state.PlayBook == clock.PlayBook && state.Cycle == clock.Cycle) return false;
         string previous = TerritoryWarsClock.EpochOf(state.SeasonStart, state.PlayBook, state.Cycle);
         if (state.SeasonStart != 0 || state.PlayBook != 0)
-            state.Archives[previous] = new RoleProgress { ScoreByRound = state.ScoreByRound,
-                ClaimedByRound = state.ClaimedByRound, LastGuildByRound = state.LastGuildByRound };
+            state.Archives[previous] = new RoleProgress
+            {
+                ScoreByRound = state.ScoreByRound,
+                ClaimedByRound = state.ClaimedByRound, LastGuildByRound = state.LastGuildByRound
+            };
         if (state.Archives.Remove(Epoch, out var restored))
         {
             state.ScoreByRound = restored.ScoreByRound;
@@ -508,22 +514,31 @@ public sealed partial class TerritoryEscortService : IGameTicker
     private static TerritoryWarsEscortGuildSimpleInfo Simple(GuildStore.State g)
     {
         var leader = g.Members.Values.FirstOrDefault(m => m.Official == 1);
-        return new TerritoryWarsEscortGuildSimpleInfo { GuildId = g.Id, GuildName = g.Name,
+        return new TerritoryWarsEscortGuildSimpleInfo
+        {
+            GuildId = g.Id, GuildName = g.Name,
             LeaderId = leader?.RoleId ?? 0, LeaderName = leader?.Name ?? "",
-            HeadIcon = new GuildHeadIcon { BackgroundType = g.Background, IconType = g.Icon } };
+            HeadIcon = new GuildHeadIcon { BackgroundType = g.Background, IconType = g.Icon }
+        };
     }
 
     private static TerritoryWarsEscortGuildSellingGoods Wire(Listing x)
     {
-        var w = new TerritoryWarsEscortGuildSellingGoods { GoodsUid = x.Id, GuildId = x.Seller,
+        var w = new TerritoryWarsEscortGuildSellingGoods
+        {
+            GoodsUid = x.Id, GuildId = x.Seller,
             SellingNum = x.Count, UnitPrice = x.Price, SellingMessage = x.Message,
             State = (TerritoryWarsEscortGoodsState)x.State, Timestamp = x.Time,
-            StateData = new TerritoryWarsEscortGuildSellingGoodsOrderData() };
+            StateData = new TerritoryWarsEscortGuildSellingGoodsOrderData()
+        };
         foreach (var a in x.Applications.Values.OrderBy(a => a.Time))
             w.StateData.ApplyBuyers.Add(new TerritoryWarsEscortGuildApplyBuyer { GuildId = a.Guild, Timestamp = a.Time, Message = a.Message });
         foreach (var id in x.Rejected)
-            w.StateData.RejectBuyers.Add(new TerritoryWarsEscortGuildRejectBuyer { GuildId = id,
-                Timestamp = x.Time, Reason = (TerritoryWarsEscortTradeRejectReason)4 });
+            w.StateData.RejectBuyers.Add(new TerritoryWarsEscortGuildRejectBuyer
+            {
+                GuildId = id,
+                Timestamp = x.Time, Reason = (TerritoryWarsEscortTradeRejectReason)4
+            });
         if (x.Buyer != 0) w.StateData.SuccessBuyer = new TerritoryWarsEscortGuildSuccessBuyer { GuildId = x.Buyer, Timestamp = x.Time };
         return w;
     }
@@ -543,8 +558,11 @@ public sealed partial class TerritoryEscortService : IGameTicker
         try
         {
             var sorted = ledger.Listings.Values.Where(x => x.State == 0).OrderByDescending(x => x.Time).ToList();
-            resp = new TerritoryWarsEscortSellingGoodsRes { TotalNum = sorted.Count,
-                StartIdx = Math.Clamp(req.StartIdx, 0, sorted.Count), Num = Math.Clamp(req.Num, 1, 100) };
+            resp = new TerritoryWarsEscortSellingGoodsRes
+            {
+                TotalNum = sorted.Count,
+                StartIdx = Math.Clamp(req.StartIdx, 0, sorted.Count), Num = Math.Clamp(req.Num, 1, 100)
+            };
             var page = sorted.Skip(resp.StartIdx).Take(resp.Num).ToList();
             resp.SellingGoods.AddRange(page.Select(Wire));
             AddSimple(resp.GuildSimpleInfos, page, guilds);
@@ -581,18 +599,18 @@ public sealed partial class TerritoryEscortService : IGameTicker
         {
             var list = ledger.Listings.Values.Where(x => seller ? x.Seller == own : x.Applications.ContainsKey(own))
                 .OrderByDescending(x => x.Time).Take(100).ToList();
-        if (seller)
-        {
-            var result = new TerritoryWarsEscortGuildSellOrderListRes();
-            result.Orders.AddRange(list.Select(Wire)); AddSimple(result.GuildSimpleInfos, list, guilds);
-            resp = result;
-        }
-        else
-        {
-            var result = new TerritoryWarsEscortGuildOrderListRes();
-            result.Orders.AddRange(list.Select(Wire)); AddSimple(result.GuildSimpleInfos, list, guilds);
-            resp = result;
-        }
+            if (seller)
+            {
+                var result = new TerritoryWarsEscortGuildSellOrderListRes();
+                result.Orders.AddRange(list.Select(Wire)); AddSimple(result.GuildSimpleInfos, list, guilds);
+                resp = result;
+            }
+            else
+            {
+                var result = new TerritoryWarsEscortGuildOrderListRes();
+                result.Orders.AddRange(list.Select(Wire)); AddSimple(result.GuildSimpleInfos, list, guilds);
+                resp = result;
+            }
         }
         finally { stagedEscortLedger.Dispose(); gate.Release(); reservation?.Dispose(); }
         await s.SendGameAsync(seller ? SellOrders : BuyOrders, resp);
@@ -620,8 +638,11 @@ public sealed partial class TerritoryEscortService : IGameTicker
                 var transaction = accounts.NewTransaction();
                 if (isNew) id = ledger.NextGoodsId++;
                 ledger.Goods[guild!.Id] = available - req.SellingNum;
-                ledger.Listings[id] = new Listing { Id = id, Seller = guild.Id, Count = req.SellingNum,
-                    Price = req.UnitPrice, Message = req.SellingMessage, Time = clock.Now, State = 0 };
+                ledger.Listings[id] = new Listing
+                {
+                    Id = id, Seller = guild.Id, Count = req.SellingNum,
+                    Price = req.UnitPrice, Message = req.SellingMessage, Time = clock.Now, State = 0
+                };
                 await CommitAsync(transaction, "listing", isNew
                     ? $"escort-list:{Epoch}:{id}:open"
                     : $"escort-list:{Epoch}:{id}:amend:{old!.Count}:{req.SellingNum}:{clock.Now}", s);
@@ -747,8 +768,11 @@ public sealed partial class TerritoryEscortService : IGameTicker
             }
         }
         finally { stagedEscortLedger.Dispose(); gate.Release(); reservation?.Dispose(); }
-        await s.SendGameAsync(Operate, new TerritoryWarsEscortOperateApplyRes { GoodsUid = req.GoodsUid,
-            TargetGuildId = req.TargetGuildId, IsAccept = req.IsAccept, Result = result });
+        await s.SendGameAsync(Operate, new TerritoryWarsEscortOperateApplyRes
+        {
+            GoodsUid = req.GoodsUid,
+            TargetGuildId = req.TargetGuildId, IsAccept = req.IsAccept, Result = result
+        });
         if (result == 0 && req.IsAccept)
         {
             await guildService.RefreshResourceAsync(seller!.Id);

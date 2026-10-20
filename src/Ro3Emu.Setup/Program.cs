@@ -34,6 +34,7 @@ internal static class Program
           --no-launch        do not start the game (server only)
           --yes              no questions: take the defaults
           --http-port <n> --micro-port <n> --game-port <n>   server ports (default 5380, 20000, 33100)
+          --voice-port <n>   turn on party voice chat on this TCP port, for example 33101 (off by default)
           --home <folder>    where RO3Emu keeps data, logs and settings (default: next to RO3Emu.exe)
         """;
 
@@ -180,6 +181,7 @@ internal sealed class Options
                 case "--http-port": o.Ports = o.Ports with { Http = Port("--http-port") }; break;
                 case "--micro-port": o.Ports = o.Ports with { MicroGate = Port("--micro-port") }; break;
                 case "--game-port": o.Ports = o.Ports with { GameGate = Port("--game-port") }; break;
+                case "--voice-port": o.Ports = o.Ports with { Voice = Port("--voice-port") }; break;
                 case "-h": case "--help": o.Command = "help"; break;
                 default:
                     if (args[i].StartsWith("--")) throw new SetupException($"Unknown option {args[i]}.", "Run RO3Emu.exe help.");

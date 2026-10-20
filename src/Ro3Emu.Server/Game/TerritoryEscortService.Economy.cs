@@ -87,7 +87,10 @@ public sealed partial class TerritoryEscortService
         return new EventEconomyMutation(EventEconomy.Catalog(data), Guid.NewGuid().ToString("N"),
             actor?.Account ?? "realm", actor?.Role?.Id ?? 0, "event/escort-" + kind, sourceKey,
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), costs, goods, deltas,
-            JsonSerializer.SerializeToUtf8Bytes(new { Kind = kind, Source = sourceKey,
-                Locations = changes.Select(x => new { x.key.Owner, x.key.Asset, x.key.Location, x.Delta }) }));
+            JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                Kind = kind, Source = sourceKey,
+                Locations = changes.Select(x => new { x.key.Owner, x.key.Asset, x.key.Location, x.Delta })
+            }));
     }
 }

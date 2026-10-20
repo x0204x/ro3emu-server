@@ -366,8 +366,11 @@ public sealed class GuildCaravanService : IGameTicker
         if (state.Day == Day) return state;
         // (inferred) Yesterday's compensation settles the order without a 104011 departure event;
         // today's ToDo progress is earned only by a new button departure.
-        var next = new State { Day = Day, GuildId = state.GuildId, Revision = state.Revision,
-            PendingAwards = state.PendingAwards.ToList() };
+        var next = new State
+        {
+            Day = Day, GuildId = state.GuildId, Revision = state.Revision,
+            PendingAwards = state.PendingAwards.ToList()
+        };
         long owed = !state.IsAwardGot && state.Skus.Count(x => x.Status == 1) >= Setting("GuildTransportRequestItemTypeNum", 5)
             ? DepartureAward(state) : 0;
         if (owed > 0)
@@ -693,7 +696,9 @@ public sealed class GuildCaravanService : IGameTicker
             || fixedPlan == null && (!Eligible(s) || Guild(s)?.Id != guildId || Read(role!.Id)?.GuildId != state.GuildId)
             || valid?.Invoke() == false) return null;
         List<InvItem>? committed;
-        try { committed = await character.ExchangeLockedAsync(s, cost, goods, boundGoods: bound,
+        try
+        {
+            committed = await character.ExchangeLockedAsync(s, cost, goods, boundGoods: bound,
             baseExp: plan.Grants.Where(g => g.Entry == 100).Sum(g => (long)g.Count),
             jobExp: plan.Grants.Where(g => g.Entry == 101).Sum(g => (long)g.Count),
             popup: false, persist: tx =>
@@ -703,7 +708,8 @@ public sealed class GuildCaravanService : IGameTicker
                     guilds.EnlistCaravanReward(guildId, s.Role.Id, funds, contribute, tx);
                 additional?.Invoke(tx);
                 tx.WithEconomy(economy);
-            }, asyncCommit: true); }
+            }, asyncCommit: true);
+        }
         catch (CaravanMembershipChangedException) { return null; }
         if (committed == null) return null;
         Copy(next, state);
@@ -917,10 +923,12 @@ public sealed class GuildCaravanService : IGameTicker
                                 var targetPlan = awards.ResolveForProgress(targetOnline?.Progress ?? roles.LoadProgress(req.PlayerID), targetAward);
                                 // The helper books the recipient's configured award now; personal grants remain pending.
                                 targetNext.PendingAwards.Add(new PendingAward
-                                { SourceKey = $"guild-caravan:help:{guild.Id}:{req.PlayerID}:{target.Day}:{target.CurRound}:{req.SkuIndex}",
+                                {
+                                    SourceKey = $"guild-caravan:help:{guild.Id}:{req.PlayerID}:{target.Day}:{target.CurRound}:{req.SkuIndex}",
                                     GuildId = guild.Id, GuildBooked = true,
                                     Grants = targetPlan.Grants.Select(g => new PendingGrant
-                                    { Entry = g.Entry, Count = g.Count, BindType = g.BindType, ExpireTimeStamp = g.ExpireTimeStamp }).ToList() });
+                                    { Entry = g.Entry, Count = g.Count, BindType = g.BindType, ExpireTimeStamp = g.ExpireTimeStamp }).ToList()
+                                });
                                 long targetFunds = targetPlan.Grants.Where(g => g.Entry == 104).Sum(g => (long)g.Count);
                                 long targetContribution = targetPlan.Grants.Where(g => g.Entry == 102).Sum(g => (long)g.Count);
                                 var reward = await ExchangeAwardAsync(s, own, helperAward, guild.Id, [(entry, count)],
@@ -1033,51 +1041,51 @@ public sealed class GuildCaravanService : IGameTicker
             bool departed = false;
             using (var operation = await EnterWithCharacterGateAsync("guild-caravan/depart", guild.Id, s, s.Role!.Id))
             {
-            try
-            {
-                var state = await EnsureAsync(s, guild);
-                int done = state.Skus.Count(x => x.Status == 1);
-                resp.Result = state.CurRound >= Setting("GuildTransportRoundNum", 5) ? ErrorCodes.CaravanDeparted
-                    : done < Setting("GuildTransportRequestItemTypeNum", 5) ? ErrorCodes.CaravanLoadShort : 0;
-                if (resp.Result == 0)
+                try
                 {
-                    long group = DepartureAward(state);
-                    if (group == 0) resp.Result = ErrorCodes.Unknown;
-                    else
+                    var state = await EnsureAsync(s, guild);
+                    int done = state.Skus.Count(x => x.Status == 1);
+                    resp.Result = state.CurRound >= Setting("GuildTransportRoundNum", 5) ? ErrorCodes.CaravanDeparted
+                        : done < Setting("GuildTransportRequestItemTypeNum", 5) ? ErrorCodes.CaravanLoadShort : 0;
+                    if (resp.Result == 0)
                     {
-                        GetRewardNotify? reward;
-                        using (var taskGate = await TaskService.LockTasksAsync(s))
-                        {
-                            var staged = tasks.StageCaravanDeparture(s);
-                            reward = await ExchangeAwardAsync(s, state, group, guild.Id, [], next =>
-                            {
-                                next.CurRound++;
-                                // (inferred) IsAwardGot marks exhaustion of all daily departures,
-                                // while the active order can still depart with five through eight loaded slots.
-                                next.IsAwardGot = next.CurRound >= Setting("GuildTransportRoundNum", 5);
-                                next.Skus.Clear();
-                            }, tx =>
-                            {
-                                tx.Add(new CaravanVersionPlan(guild.Id, state.Day));
-                                if (staged != null) tx.RoleBlob(s.Role!.Id, "tasks", staged.ToByteArray());
-                            }, stateLockHeld: operation.CharacterLocked,
-                                sourceKey: $"guild-caravan:depart:{s.Role!.Id}:{state.Day}:{state.CurRound}");
-                            if (reward != null && staged != null) s.Tasks = staged;
-                        }
-                        if (reward == null) resp.Result = ErrorCodes.Unknown;
+                        long group = DepartureAward(state);
+                        if (group == 0) resp.Result = ErrorCodes.Unknown;
                         else
                         {
-                            resp.AwardId = group; resp.Award = reward;
-                            if (!state.IsAwardGot) { state.Skus = Generate(s, state.Day, state.CurRound); await SaveAsync(s.Role!.Id, state); }
-                            await PublishAsync(s, state);
-                            await ShowCoreAsync(s, state);
-                            await PushOtherShowsAsync(guild, s.Role!.Id);
-                            departed = true;
+                            GetRewardNotify? reward;
+                            using (var taskGate = await TaskService.LockTasksAsync(s))
+                            {
+                                var staged = tasks.StageCaravanDeparture(s);
+                                reward = await ExchangeAwardAsync(s, state, group, guild.Id, [], next =>
+                                {
+                                    next.CurRound++;
+                                    // (inferred) IsAwardGot marks exhaustion of all daily departures,
+                                    // while the active order can still depart with five through eight loaded slots.
+                                    next.IsAwardGot = next.CurRound >= Setting("GuildTransportRoundNum", 5);
+                                    next.Skus.Clear();
+                                }, tx =>
+                                {
+                                    tx.Add(new CaravanVersionPlan(guild.Id, state.Day));
+                                    if (staged != null) tx.RoleBlob(s.Role!.Id, "tasks", staged.ToByteArray());
+                                }, stateLockHeld: operation.CharacterLocked,
+                                    sourceKey: $"guild-caravan:depart:{s.Role!.Id}:{state.Day}:{state.CurRound}");
+                                if (reward != null && staged != null) s.Tasks = staged;
+                            }
+                            if (reward == null) resp.Result = ErrorCodes.Unknown;
+                            else
+                            {
+                                resp.AwardId = group; resp.Award = reward;
+                                if (!state.IsAwardGot) { state.Skus = Generate(s, state.Day, state.CurRound); await SaveAsync(s.Role!.Id, state); }
+                                await PublishAsync(s, state);
+                                await ShowCoreAsync(s, state);
+                                await PushOtherShowsAsync(guild, s.Role!.Id);
+                                departed = true;
+                            }
                         }
                     }
                 }
-            }
-            catch (CaravanMembershipChangedException) { resp.Result = ErrorCodes.NotInGuild; }
+                catch (CaravanMembershipChangedException) { resp.Result = ErrorCodes.NotInGuild; }
             }
             if (departed) await RefreshDepartureTasksAsync(s);
         }

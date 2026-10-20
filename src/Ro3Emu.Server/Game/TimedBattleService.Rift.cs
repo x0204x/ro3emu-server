@@ -166,8 +166,11 @@ public sealed partial class TimedBattleService
         if (data.Row("OnePieceRewardConfig", chosen) is not { } reward) return null;
         int stoneNpc = (int)GameData.Int(row, "_iId");
         long uid = RiftUidBase + map * 4096 + riftSeq++ % 4096;
-        var stone = new RiftStone { Uid = uid, Map = map, Point = point, StoneNpc = stoneNpc, Star = star, Scene = chosen,
-            Boss = RiftBoss((int)GameData.Int(reward, "_iMonsterId"), star) };
+        var stone = new RiftStone
+        {
+            Uid = uid, Map = map, Point = point, StoneNpc = stoneNpc, Star = star, Scene = chosen,
+            Boss = RiftBoss((int)GameData.Int(reward, "_iMonsterId"), star)
+        };
         riftStones[uid] = stone;
         riftMapTotals[map] = riftMapTotals.GetValueOrDefault(map) + 1;
         return stone;

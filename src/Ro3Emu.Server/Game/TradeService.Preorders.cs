@@ -131,8 +131,11 @@ public sealed partial class TradeService
             }
             return 0;
         });
-        var response = new CRefundPreTradeTopResponse { Code = code, Errno = code,
-            Errmsg = code == 0 ? "" : "Refund refused" };
+        var response = new CRefundPreTradeTopResponse
+        {
+            Code = code, Errno = code,
+            Errmsg = code == 0 ? "" : "Refund refused"
+        };
         if (code == 0)
         {
             response.Data = new CRefundPreTradeTopDTO { IsReward = req.IsReward };

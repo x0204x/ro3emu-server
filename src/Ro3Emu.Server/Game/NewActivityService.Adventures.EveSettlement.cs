@@ -86,8 +86,11 @@ public sealed partial class NewActivityService
                     .Where(a => a.Entry is not (100 or 101)).GroupBy(a => a.Entry))
                     intent.Source(AdventureAsset(group.Key), group.Sum(a => (long)a.Count),
                         EconomyReason.ActivityReward);
-                tx.WithEscrowEconomy(intent.Evidence(new { Role = roleId, info.CycleStartTime,
-                    Deliveries = deliveries.Select(d => new { d.TemplateId, d.Attachments }).ToArray() }));
+                tx.WithEscrowEconomy(intent.Evidence(new
+                {
+                    Role = roleId, info.CycleStartTime,
+                    Deliveries = deliveries.Select(d => new { d.TemplateId, d.Attachments }).ToArray()
+                }));
             }, committed: () =>
             {
                 // A cancelled attachment cannot undo a committed settlement; publish its source before notices.

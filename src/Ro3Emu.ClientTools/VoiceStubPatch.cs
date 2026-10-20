@@ -298,9 +298,9 @@ public static class VoiceStubPatch
         // from the start (the original made it in Init; IsInChannel reads it).
         foreach (var ctor in adapter.Methods.Where(m => m.IsConstructor && !m.IsStatic))
         {
-            foreach (var call in ctor.Body.Instructions.Where(i => i.Operand is MethodReference m && IsNative(m.DeclaringType, native)).ToList())
+            foreach (var call in ctor.Body.Instructions.ToList())
             {
-                var target = (MethodReference)call.Operand;
+                if (call.Operand is not MethodReference target || !IsNative(target.DeclaringType, native)) continue;
                 if (call.OpCode != OpCodes.Call || target.HasThis || target.Parameters.Count != 0 || target.ReturnType.IsValueType)
                     throw new InvalidOperationException($"VoiceCallAdapter constructor: unexpected GME call {target.FullName}");
                 call.OpCode = OpCodes.Ldnull;

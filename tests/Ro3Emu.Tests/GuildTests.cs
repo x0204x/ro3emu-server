@@ -201,16 +201,22 @@ public sealed partial class GuildTests : IAsyncLifetime
         visible.Data.Add(full.OfficalRight.Data.Single(x => x.RightType == 8));
         await alice.SendGameAsync(GuildService.Edit, new GuildEditReq { Tp = (GuildEditReq.Types.EditType)4, Right = visible });
         Assert.Equal(ErrorCodes.Parameter, (await Next(alice, GuildService.Edit, GuildEditResp.Parser, x => x.Result != 0)).Result);
-        await alice.SendGameAsync(GuildService.Edit, new GuildEditReq { Tp = (GuildEditReq.Types.EditType)10,
-            Announce = "Hiring now", JoinLevelLimit = 21, AutoAcceptApply = true });
+        await alice.SendGameAsync(GuildService.Edit, new GuildEditReq
+        {
+            Tp = (GuildEditReq.Types.EditType)10,
+            Announce = "Hiring now", JoinLevelLimit = 21, AutoAcceptApply = true
+        });
         var recruit = await Next(alice, GuildService.Edit, GuildEditResp.Parser, x => x.Tp == 10);
         Assert.Equal(0, recruit.Result);
         Assert.False(recruit.IsOpeRecruit);
         Assert.Equal("Hiring now", recruit.Announce);
         Assert.Equal(21, recruit.JoinLevelLimit);
         Assert.True(recruit.AutoAcceptApply);
-        await alice.SendGameAsync(GuildService.Edit, new GuildEditReq { Tp = (GuildEditReq.Types.EditType)10,
-            Announce = "Publish me", JoinLevelLimit = 0, AutoAcceptApply = false, IsOpeRecruit = true });
+        await alice.SendGameAsync(GuildService.Edit, new GuildEditReq
+        {
+            Tp = (GuildEditReq.Types.EditType)10,
+            Announce = "Publish me", JoinLevelLimit = 0, AutoAcceptApply = false, IsOpeRecruit = true
+        });
         Assert.Equal(0, (await Next(alice, GuildService.Edit, GuildEditResp.Parser, x => x.IsOpeRecruit)).Result);
         Assert.Equal("Publish me", app.Services.GetRequiredService<GuildStore>().Get(id)!.Announce);
         Assert.True(app.Services.GetRequiredService<GuildStore>().Get(id)!.LastRecruitMs > 0);
@@ -314,8 +320,11 @@ public sealed partial class GuildTests : IAsyncLifetime
         await founder.SendGameAsync(GuildService.MarketList, new ListOnBlackMarketReq { UnitPrice = 500, Count = 10 });
         Assert.Equal(ErrorCodes.FeatureUnavailable,
             (await Next(founder, GuildService.MarketList, ListOnBlackMarketRsp.Parser)).Result);
-        await founder.SendGameAsync(GuildService.Edit, new GuildEditReq { Tp = (GuildEditReq.Types.EditType)10,
-            Announce = "Help build", JoinLevelLimit = 21, AutoAcceptApply = true });
+        await founder.SendGameAsync(GuildService.Edit, new GuildEditReq
+        {
+            Tp = (GuildEditReq.Types.EditType)10,
+            Announce = "Help build", JoinLevelLimit = 21, AutoAcceptApply = true
+        });
         Assert.Equal(0, (await Next(founder, GuildService.Edit, GuildEditResp.Parser, x => x.Tp == 10)).Result);
         Assert.Equal(GuildStatus.PreCreate, (await Next(founder, GuildService.BaseChange,
             GuildBaseInfoChangeNtf.Parser, x => x.Base?.Announce == "Help build")).Base.Status);

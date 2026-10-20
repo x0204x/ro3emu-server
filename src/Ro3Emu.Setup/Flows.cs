@@ -231,7 +231,7 @@ internal static class Flows
                 Ui.Step("Friends can join");
                 Ui.Info($"They run:  RO3Emu.exe join {publicHost}{(ports.Http == 5380 ? "" : ":" + ports.Http)}");
                 Ui.Info($"Windows may ask whether Ro3Emu.Server may use the network: allow it.");
-                Ui.Info($"For players outside your network, forward TCP ports {ports.Http}, {ports.MicroGate} and {ports.GameGate} on your router");
+                Ui.Info($"For players outside your network, forward TCP ports {ServerProcess.PortList(ports)} on your router");
                 Ui.Info("to this PC and start with --public <your public IP>.");
             }
             if (server != null) Program.OnClose = () => server.Stop(TimeSpan.FromSeconds(4));

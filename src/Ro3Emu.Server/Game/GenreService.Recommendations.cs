@@ -424,136 +424,136 @@ public sealed partial class GenreService
     {
         bool skillChanged = false;
         {
-        using var held = await CharacterService.Lock(s);
-        int result = Gate(s);
-        var reply = new GenreSeekerApplyPlanResp();
-        reply.ChildType.Add(req.ChildType);
-        var record = FindOther(s.Genre!, req.ResponseUserId, req.ResponseId);
-        if (result == 0 && (!s.Genre!.GenreMap.SystemMap.ContainsKey(req.PlanId) || record?.HaveCommited != true
-            || record.Plans == null || record.RougeInfo?.SeekUserId != s.Role!.Id
-            || record.RougeInfo.ResponserUserId != req.ResponseUserId)) result = ErrorCodes.Parameter;
-        var selected = s.Genre!.GenreMap.SystemMap.TryGetValue(req.PlanId, out var current)
-            ? current.GenrePlans.ToDictionary(kv => kv.Key, kv => kv.Value) : new Dictionary<int, int>();
-        var replacing = (req.ChildType.Count == 0 ? req.SystemType.Keys : req.ChildType.Where(kv => kv.Value == 1).Select(kv => kv.Key)).ToArray();
-        if (result == 0 && (replacing.Length == 0 || replacing.Any(type => type is < Skill or > Talent
-            || !req.SystemType.ContainsKey(type)) || req.ChildType.Any(kv => kv.Value is not 0 and not 1)))
-            result = ErrorCodes.Parameter;
-        var next = new Stage(s, skills);
-        // The donor WholeRole reservation includes login reconciliation and item/GM writes through Apply.
-        var donorItems = result == 0 ? (Online(req.ResponseUserId)?.Items ?? items.Load(req.ResponseUserId))
-            .ToDictionary(i => i.Guid, i => i.Clone()) : new();
-        var used = new HashSet<long>();
-        long Own(long donorGuid)
-        {
-            if (!donorItems.TryGetValue(donorGuid, out var from)) return 0;
-            var own = next.Items.Where(i => i.Entry == from.Entry && i.Stack > 0 && !used.Contains(i.Guid))
-                .OrderBy(i => i.Guid == donorGuid ? 0 : 1).ThenBy(i => i.Guid).FirstOrDefault();
-            if (own == null) return 0;
-            used.Add(own.Guid);
-            return own.Guid;
-        }
-        if (result == 0)
-        {
-            var concrete = record!.Plans!;
-            foreach (int type in replacing)
+            using var held = await CharacterService.Lock(s);
+            int result = Gate(s);
+            var reply = new GenreSeekerApplyPlanResp();
+            reply.ChildType.Add(req.ChildType);
+            var record = FindOther(s.Genre!, req.ResponseUserId, req.ResponseId);
+            if (result == 0 && (!s.Genre!.GenreMap.SystemMap.ContainsKey(req.PlanId) || record?.HaveCommited != true
+                || record.Plans == null || record.RougeInfo?.SeekUserId != s.Role!.Id
+                || record.RougeInfo.ResponserUserId != req.ResponseUserId)) result = ErrorCodes.Parameter;
+            var selected = s.Genre!.GenreMap.SystemMap.TryGetValue(req.PlanId, out var current)
+                ? current.GenrePlans.ToDictionary(kv => kv.Key, kv => kv.Value) : new Dictionary<int, int>();
+            var replacing = (req.ChildType.Count == 0 ? req.SystemType.Keys : req.ChildType.Where(kv => kv.Value == 1).Select(kv => kv.Key)).ToArray();
+            if (result == 0 && (replacing.Length == 0 || replacing.Any(type => type is < Skill or > Talent
+                || !req.SystemType.ContainsKey(type)) || req.ChildType.Any(kv => kv.Value is not 0 and not 1)))
+                result = ErrorCodes.Parameter;
+            var next = new Stage(s, skills);
+            // The donor WholeRole reservation includes login reconciliation and item/GM writes through Apply.
+            var donorItems = result == 0 ? (Online(req.ResponseUserId)?.Items ?? items.Load(req.ResponseUserId))
+                .ToDictionary(i => i.Guid, i => i.Clone()) : new();
+            var used = new HashSet<long>();
+            long Own(long donorGuid)
             {
-                int target = req.SystemType[type];
-                selected[type] = target;
-                switch (type)
+                if (!donorItems.TryGetValue(donorGuid, out var from)) return 0;
+                var own = next.Items.Where(i => i.Entry == from.Entry && i.Stack > 0 && !used.Contains(i.Guid))
+                    .OrderBy(i => i.Guid == donorGuid ? 0 : 1).ThenBy(i => i.Guid).FirstOrDefault();
+                if (own == null) return 0;
+                used.Add(own.Guid);
+                return own.Guid;
+            }
+            if (result == 0)
+            {
+                var concrete = record!.Plans!;
+                foreach (int type in replacing)
                 {
-                    case Skill when concrete.SkillPlan != null && target >= 0 && target < next.Skills.SkillAssignPlans.Count:
-                        next.Skills.SkillAssignPlans[target] = concrete.SkillPlan.Clone(); break;
-                    case Attr when concrete.AttrPointPlan != null && next.Attrs.AllPlanBaseProperty.ContainsKey(target):
-                        next.Attrs.AllPlanBaseProperty[target] = concrete.AttrPointPlan.Clone(); break;
-                    case Equip when concrete.EquipPlan != null && next.Equipment.EquipPlans.ContainsKey(target):
+                    int target = req.SystemType[type];
+                    selected[type] = target;
+                    switch (type)
                     {
-                        var copy = concrete.EquipPlan.Clone();
-                        foreach (int slot in copy.ItemsEquipGrid.Keys.ToArray())
-                        {
-                            if (copy.ItemsEquipGrid[slot] == 0) { copy.ItemsEquipGrid.Remove(slot); continue; }
-                            long owned = Own(copy.ItemsEquipGrid[slot]);
-                            if (owned == 0) { result = ErrorCodes.ItemMissing; break; }
-                            copy.ItemsEquipGrid[slot] = owned;
-                        }
-                        if (result == 0) next.Equipment.EquipPlans[target] = copy;
-                        break;
+                        case Skill when concrete.SkillPlan != null && target >= 0 && target < next.Skills.SkillAssignPlans.Count:
+                            next.Skills.SkillAssignPlans[target] = concrete.SkillPlan.Clone(); break;
+                        case Attr when concrete.AttrPointPlan != null && next.Attrs.AllPlanBaseProperty.ContainsKey(target):
+                            next.Attrs.AllPlanBaseProperty[target] = concrete.AttrPointPlan.Clone(); break;
+                        case Equip when concrete.EquipPlan != null && next.Equipment.EquipPlans.ContainsKey(target):
+                            {
+                                var copy = concrete.EquipPlan.Clone();
+                                foreach (int slot in copy.ItemsEquipGrid.Keys.ToArray())
+                                {
+                                    if (copy.ItemsEquipGrid[slot] == 0) { copy.ItemsEquipGrid.Remove(slot); continue; }
+                                    long owned = Own(copy.ItemsEquipGrid[slot]);
+                                    if (owned == 0) { result = ErrorCodes.ItemMissing; break; }
+                                    copy.ItemsEquipGrid[slot] = owned;
+                                }
+                                if (result == 0) next.Equipment.EquipPlans[target] = copy;
+                                break;
+                            }
+                        case Card when concrete.CardPlan != null && next.Cards.StoragePlans.ContainsKey(target):
+                            {
+                                var copy = OwnedCardPlan(concrete.CardPlan, next.Items);
+                                if (copy == null) result = ErrorCodes.ItemMissing;
+                                else next.Cards.StoragePlans[target] = copy;
+                                break;
+                            }
+                        case Totem when concrete.TotemPlan != null && next.Totems.TotemPlans.ContainsKey(target):
+                            {
+                                var copy = concrete.TotemPlan.Clone();
+                                foreach (int slot in copy.SetUpTotem.Keys.ToArray())
+                                {
+                                    if (copy.SetUpTotem[slot] == 0) continue;
+                                    long owned = Own(copy.SetUpTotem[slot]);
+                                    if (owned == 0) { result = ErrorCodes.ItemMissing; break; }
+                                    copy.SetUpTotem[slot] = owned;
+                                }
+                                if (result == 0) next.Totems.TotemPlans[target] = copy;
+                                break;
+                            }
+                        case Emblem when concrete.EmblePlan != null && next.Echoes.Plans.ContainsKey(target):
+                            {
+                                var copy = new EmblemService.Plan();
+                                foreach (var (slot, donorGuid) in concrete.EmblePlan.SetUpEmblem)
+                                {
+                                    if (donorGuid == 0) continue;
+                                    long owned = Own(donorGuid);
+                                    if (owned == 0) { result = ErrorCodes.ItemMissing; break; }
+                                    copy.Slots[slot] = owned;
+                                }
+                                if (result == 0) next.Echoes.Plans[target] = copy;
+                                break;
+                            }
+                        case Pet when concrete.PetPlan != null && next.Pets.SetupPlans.ContainsKey(target):
+                            next.Pets.SetupPlans[target] = concrete.PetPlan.Clone();
+                            foreach (int slot in next.Pets.SetupPlans[target].SetUpPets.Where(kv => kv.Value == 0).Select(kv => kv.Key).ToArray())
+                                next.Pets.SetupPlans[target].SetUpPets.Remove(slot);
+                            foreach (int slot in next.Pets.SetupPlans[target].SupportPets.Where(kv => kv.Value == 0).Select(kv => kv.Key).ToArray())
+                                next.Pets.SetupPlans[target].SupportPets.Remove(slot);
+                            break;
+                        case Talent when concrete.SeasonTalentPlan != null && next.Talents.Plan.TryGetValue(target, out var purchased):
+                            // Talent levels are paid for per plan/node. A recommendation cannot purchase them for the seeker.
+                            if (concrete.SeasonTalentPlan.TalentNodes.Any(kv => kv.Value.CurrentLevel < 0
+                                || !purchased.TalentNodes.ContainsKey(kv.Key)
+                                || kv.Value.CurrentLevel > purchased.TalentNodes[kv.Key].CurrentLevel)) result = ErrorCodes.TalentLocked;
+                            else next.Talents.Plan[target] = concrete.SeasonTalentPlan.Clone();
+                            break;
+                        default: result = ErrorCodes.Parameter; break;
                     }
-                    case Card when concrete.CardPlan != null && next.Cards.StoragePlans.ContainsKey(target):
-                    {
-                        var copy = OwnedCardPlan(concrete.CardPlan, next.Items);
-                        if (copy == null) result = ErrorCodes.ItemMissing;
-                        else next.Cards.StoragePlans[target] = copy;
-                        break;
-                    }
-                    case Totem when concrete.TotemPlan != null && next.Totems.TotemPlans.ContainsKey(target):
-                    {
-                        var copy = concrete.TotemPlan.Clone();
-                        foreach (int slot in copy.SetUpTotem.Keys.ToArray())
-                        {
-                            if (copy.SetUpTotem[slot] == 0) continue;
-                            long owned = Own(copy.SetUpTotem[slot]);
-                            if (owned == 0) { result = ErrorCodes.ItemMissing; break; }
-                            copy.SetUpTotem[slot] = owned;
-                        }
-                        if (result == 0) next.Totems.TotemPlans[target] = copy;
-                        break;
-                    }
-                    case Emblem when concrete.EmblePlan != null && next.Echoes.Plans.ContainsKey(target):
-                    {
-                        var copy = new EmblemService.Plan();
-                        foreach (var (slot, donorGuid) in concrete.EmblePlan.SetUpEmblem)
-                        {
-                            if (donorGuid == 0) continue;
-                            long owned = Own(donorGuid);
-                            if (owned == 0) { result = ErrorCodes.ItemMissing; break; }
-                            copy.Slots[slot] = owned;
-                        }
-                        if (result == 0) next.Echoes.Plans[target] = copy;
-                        break;
-                    }
-                    case Pet when concrete.PetPlan != null && next.Pets.SetupPlans.ContainsKey(target):
-                        next.Pets.SetupPlans[target] = concrete.PetPlan.Clone();
-                        foreach (int slot in next.Pets.SetupPlans[target].SetUpPets.Where(kv => kv.Value == 0).Select(kv => kv.Key).ToArray())
-                            next.Pets.SetupPlans[target].SetUpPets.Remove(slot);
-                        foreach (int slot in next.Pets.SetupPlans[target].SupportPets.Where(kv => kv.Value == 0).Select(kv => kv.Key).ToArray())
-                            next.Pets.SetupPlans[target].SupportPets.Remove(slot);
-                        break;
-                    case Talent when concrete.SeasonTalentPlan != null && next.Talents.Plan.TryGetValue(target, out var purchased):
-                        // Talent levels are paid for per plan/node. A recommendation cannot purchase them for the seeker.
-                        if (concrete.SeasonTalentPlan.TalentNodes.Any(kv => kv.Value.CurrentLevel < 0
-                            || !purchased.TalentNodes.ContainsKey(kv.Key)
-                            || kv.Value.CurrentLevel > purchased.TalentNodes[kv.Key].CurrentLevel)) result = ErrorCodes.TalentLocked;
-                        else next.Talents.Plan[target] = concrete.SeasonTalentPlan.Clone();
-                        break;
-                    default: result = ErrorCodes.Parameter; break;
+                    if (result != 0) break;
                 }
-                if (result != 0) break;
             }
-        }
-        if (result == 0) result = StageSelection(s, next, selected, replacing.ToHashSet());
-        if (result == 0) result = ApplyCooldownError(s, next);
-        if (result == 0)
-        {
-            var genre = s.Genre!.Clone();
-            var plan = genre.GenreMap.SystemMap[req.PlanId];
-            plan.GenrePlans.Clear();
-            foreach (var (type, index) in selected) plan.GenrePlans[type] = index;
-            plan.Property.Clear();
-            foreach (var (id, value) in Properties(s, next)) plan.Property[id] = value;
-            plan.Power = Power(s, next);
-            genre.CurrentPlan = req.PlanId;
-            try
+            if (result == 0) result = StageSelection(s, next, selected, replacing.ToHashSet());
+            if (result == 0) result = ApplyCooldownError(s, next);
+            if (result == 0)
             {
-                bool changed = replacing.Contains(Skill) || next.Skills.CurrentPlanIndex != s.SkillPlans!.CurrentPlanIndex;
-                await CommitAsync(s, next, genre);
-                skillChanged = changed;
+                var genre = s.Genre!.Clone();
+                var plan = genre.GenreMap.SystemMap[req.PlanId];
+                plan.GenrePlans.Clear();
+                foreach (var (type, index) in selected) plan.GenrePlans[type] = index;
+                plan.Property.Clear();
+                foreach (var (id, value) in Properties(s, next)) plan.Property[id] = value;
+                plan.Power = Power(s, next);
+                genre.CurrentPlan = req.PlanId;
+                try
+                {
+                    bool changed = replacing.Contains(Skill) || next.Skills.CurrentPlanIndex != s.SkillPlans!.CurrentPlanIndex;
+                    await CommitAsync(s, next, genre);
+                    skillChanged = changed;
+                }
+                catch (Exception e) when (e is Microsoft.Data.Sqlite.SqliteException or InvalidOperationException)
+                { log.LogWarning(e, "Genre recommendation commit failed"); result = ErrorCodes.Unknown; }
             }
-            catch (Exception e) when (e is Microsoft.Data.Sqlite.SqliteException or InvalidOperationException)
-            { log.LogWarning(e, "Genre recommendation commit failed"); result = ErrorCodes.Unknown; }
-        }
-        reply.Result = result;
-        await s.SendGameAsync(82813, reply);
-        if (result == 0) { await SyncAsync(s); await PublishSyncAsync(s); }
+            reply.Result = result;
+            await s.SendGameAsync(82813, reply);
+            if (result == 0) { await SyncAsync(s); await PublishSyncAsync(s); }
         }
         if (skillChanged) await skills.OnActivePlanChangedAsync(s);
     }

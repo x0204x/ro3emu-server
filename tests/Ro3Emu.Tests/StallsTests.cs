@@ -294,7 +294,7 @@ public sealed partial class StallsTests : IAsyncLifetime
         await Next(buyer, GameAoiSink.SyncAoiView, AoIViewChangeData.Parser,
             view => view.Bases.Any(entity => entity.StallsInfo?.StallsID == sellerId));
         await buyer.SendGameAsync(StallsService.View, new PlayerStallsSyncBuyerStallsInfoReq
-            { StallsID = sellerId, SceneEntryID = 10100, SceneLineNum = 2 });
+        { StallsID = sellerId, SceneEntryID = 10100, SceneLineNum = 2 });
         var listing = await Next(buyer, StallsService.View, PlayerStallsSyncBuyerStallsInfoResp.Parser);
         Assert.Equal(0, listing.Result);
         Assert.Equal(2, listing.Info.Baseinfo.SceneLineNum);

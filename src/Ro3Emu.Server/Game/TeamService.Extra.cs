@@ -304,15 +304,15 @@ public sealed partial class TeamService
         PublicTeams(target, area).Where(t => (playBook == 0 || t.PlayBook == playBook)
             && (map == 0 || Detail(t, t.Leader).MapId == map)).OrderBy(t => t.Created).ThenBy(t => t.Id)
             .Skip(Math.Max(0, offset)).Take(Math.Clamp(limit, 0, 100)).Select(t => (object)new Dictionary<string, object?>
-    {
-        ["GameSummaryData"] = TotalSimple(t).ToByteArray(),
-    }).ToArray();
+            {
+                ["GameSummaryData"] = TotalSimple(t).ToByteArray(),
+            }).ToArray();
 
     public object[] TargetCounts(string area = "") => _teams.Values.Where(t => area.Length == 0 || t.Area == area)
         .GroupBy(t => t.Target).Select(g => (object)new Dictionary<string, object?>
-    {
-        ["SubType"] = g.Key, ["Count"] = g.Count(),
-    }).ToArray();
+        {
+            ["SubType"] = g.Key, ["Count"] = g.Count(),
+        }).ToArray();
 
     public object? DirectoryParty(long id)
     {

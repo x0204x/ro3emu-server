@@ -29,18 +29,18 @@ public sealed partial class AuctionService
             DBAuction personal;
             using (var scope = await EnterSessionAuctionAsync(s, "auction/prebuy-count", role => RoleKeys([role])))
             {
-            actual = store.Prebuys().Count(p => p.Role == s.Role.Id && p.Type == type
-                && p.SrcType == src && p.Entry == entry);
-            byte[]? before = roles.LoadAuction(s.Role.Id);
-            personal = before is { } saved ? DBAuction.Parser.ParseFrom(saved) : new DBAuction();
-            personal.PreBuyNum[PrebuyKey(type, src, entry)] = actual;
-            var transaction = roles.NewTransaction();
-            EnlistPersonal(s.Role.Id, before, personal, transaction);
-            transaction.WithEscrowEconomy(AuctionIntent("auction/prebuy-count", s.Role.Id, s.Account ?? "")
-                .Evidence(new { Type = type, SrcType = src, Entry = entry, Requested = target, Actual = actual }));
-            RequireScope(scope, transaction);
-            await roles.CommitAsync(transaction, "auction/prebuy-count");
-            committedResult = actual == target ? 0 : ErrorCodes.AuctionPriceChanged;
+                actual = store.Prebuys().Count(p => p.Role == s.Role.Id && p.Type == type
+                    && p.SrcType == src && p.Entry == entry);
+                byte[]? before = roles.LoadAuction(s.Role.Id);
+                personal = before is { } saved ? DBAuction.Parser.ParseFrom(saved) : new DBAuction();
+                personal.PreBuyNum[PrebuyKey(type, src, entry)] = actual;
+                var transaction = roles.NewTransaction();
+                EnlistPersonal(s.Role.Id, before, personal, transaction);
+                transaction.WithEscrowEconomy(AuctionIntent("auction/prebuy-count", s.Role.Id, s.Account ?? "")
+                    .Evidence(new { Type = type, SrcType = src, Entry = entry, Requested = target, Actual = actual }));
+                RequireScope(scope, transaction);
+                await roles.CommitAsync(transaction, "auction/prebuy-count");
+                committedResult = actual == target ? 0 : ErrorCodes.AuctionPriceChanged;
             }
             if (s.Role?.Id == requestRole && ReferenceEquals(s.Attachment, requestLease)
                 && requestLease?.Cancelled != true)
@@ -49,8 +49,8 @@ public sealed partial class AuctionService
         }
         catch (Exception e)
         {
-            log.LogError(e, committedResult.HasValue ? "Committed auction prebuy count notice failed for {Role}"
-                : "Auction prebuy count failed for {Role}", s.Role.Id);
+            log.LogError(e, "Auction prebuy count for {Role} failed (committed before the failure: {Committed})",
+                s.Role.Id, committedResult.HasValue);
             return committedResult ?? ErrorCodes.Unknown;
         }
     }
@@ -168,10 +168,13 @@ public sealed partial class AuctionService
                     [new MailService.Attachment(order.Currency, order.UnitPrice)], transaction,
                     data.ItemName(order.Entry));
             transaction.WithEscrowEconomy(AuctionIntent("auction/process-prebuy", sourceKey: $"auction/prebuy/{order.Id}/process")
-                .Evidence(new { order.Id, order.Role, order.Entry, order.Currency, order.UnitPrice,
+                .Evidence(new
+                {
+                    order.Id, order.Role, order.Entry, order.Currency, order.UnitPrice,
                     Accepted = accepted, Refund = refund, PriorLot = priorLot,
                     NewLot = row == null ? null : LotEvidence(row), OutbidRole = oldOwner,
-                    OutbidRefund = accepted ? oldReserve : 0 }));
+                    OutbidRefund = accepted ? oldReserve : 0
+                }));
             RequireScope(scope, transaction);
             await roles.CommitAsync(transaction, "auction/process-prebuy");
             changed = row;

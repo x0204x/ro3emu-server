@@ -9,6 +9,8 @@ namespace Ro3Emu.Server.Voice;
 /// One voice-gate TCP connection: its socket, outbound queues and the state the relay (<see cref="VoiceRooms"/>)
 /// tracks for it. Reads happen on the connection's own serve task; writes go through <see cref="RunWriterAsync"/>
 /// so only one task ever touches the socket's send side (control and audio frames both end up here, queued).
+/// Frames are queued in the clear and sealed by that one writer, in wire order, once <see cref="Cipher"/> is set
+/// (after Auth); reads are opened with it, and a frame that fails to open ends the connection.
 /// </summary>
 public sealed class VoiceConnection : IDisposable
 {
@@ -22,8 +24,8 @@ public sealed class VoiceConnection : IDisposable
     private readonly NetworkStream _stream;
     private readonly CancellationTokenSource _cts = new();
     private readonly object _sync = new();
-    private readonly Queue<byte[]> _control = new();
-    private readonly Queue<byte[]> _audio = new();
+    private readonly Queue<(byte Type, byte[] Payload)> _control = new();
+    private readonly Queue<(byte Type, byte[] Payload)> _audio = new();
     private readonly SemaphoreSlim _signal = new(0);
     private volatile bool _closed;
     private volatile bool _closeAfterDrain;
@@ -44,6 +46,11 @@ public sealed class VoiceConnection : IDisposable
     public string? Account { get; set; }
     public long RoleId { get; set; }
     public VoiceRateLimiter? RateLimiter { get; set; }
+
+    /// <summary>The stream's cipher, set by the serve task when Auth is accepted and before AuthOk is queued; the
+    /// writer reads the volatile field after the semaphore signal for that frame, so it always sees it.</summary>
+    public Ro3Emu.ClientHooks.VoiceCipher? Cipher { get => _cipher; set => _cipher = value; }
+    private volatile Ro3Emu.ClientHooks.VoiceCipher? _cipher;
 
     /// <summary>The budget for everything after Auth that is not Audio (Join, Leave, Mic, Speaker, Ping).</summary>
     public VoiceRateLimiter? ControlLimiter { get; set; }
@@ -76,12 +83,21 @@ public sealed class VoiceConnection : IDisposable
 
     public void Touch() => LastActivityAtMs = Environment.TickCount64;
 
-    public Task<(byte Type, byte[] Payload)> ReadFrameAsync(int maxPayload, CancellationToken ct) =>
-        VoiceFrame.ReadAsync(_stream, maxPayload, ct);
+    /// <summary>The next frame, opened with <see cref="Cipher"/> once it is set (<paramref name="maxPayload"/> is the
+    /// cap on the plaintext; the sealing overhead is added here).</summary>
+    public async Task<(byte Type, byte[] Payload)> ReadFrameAsync(int maxPayload, CancellationToken ct)
+    {
+        var cipher = _cipher;
+        var frame = await VoiceFrame.ReadAsync(_stream, maxPayload + (cipher == null ? 0 : Ro3Emu.ClientHooks.VoiceCipher.Overhead), ct);
+        if (cipher == null) return frame;
+        byte[]? plain = cipher.Open(frame.Type, frame.Payload);
+        if (plain == null) throw new VoiceProtocolException("frame failed authentication");
+        return (frame.Type, plain);
+    }
 
     // --- outgoing frames: encoding lives next to the queue it feeds, so the wire layout has one home ---
 
-    public void SendAuthOk() => Enqueue(VoiceFrame.Write(VoiceDown.AuthOk, []));
+    public void SendAuthOk() => Enqueue(VoiceDown.AuthOk, []);
 
     public void SendJoinResult(byte code, string channel)
     {
@@ -90,7 +106,7 @@ public sealed class VoiceConnection : IDisposable
         payload[0] = code;
         payload[1] = (byte)chanBytes.Length;
         chanBytes.CopyTo(payload, 2);
-        Enqueue(VoiceFrame.Write(VoiceDown.JoinResult, payload));
+        Enqueue(VoiceDown.JoinResult, payload);
     }
 
     public void SendMemberChange(long roleId, bool joined)
@@ -98,7 +114,7 @@ public sealed class VoiceConnection : IDisposable
         var payload = new byte[9];
         BinaryPrimitives.WriteInt64LittleEndian(payload, roleId);
         payload[8] = joined ? (byte)1 : (byte)0;
-        Enqueue(VoiceFrame.Write(VoiceDown.MemberChange, payload));
+        Enqueue(VoiceDown.MemberChange, payload);
     }
 
     public void SendMicState(long roleId, bool on)
@@ -106,7 +122,7 @@ public sealed class VoiceConnection : IDisposable
         var payload = new byte[9];
         BinaryPrimitives.WriteInt64LittleEndian(payload, roleId);
         payload[8] = on ? (byte)1 : (byte)0;
-        Enqueue(VoiceFrame.Write(VoiceDown.MicState, payload));
+        Enqueue(VoiceDown.MicState, payload);
     }
 
     public void SendVad(long roleId, bool speaking)
@@ -114,52 +130,59 @@ public sealed class VoiceConnection : IDisposable
         var payload = new byte[9];
         BinaryPrimitives.WriteInt64LittleEndian(payload, roleId);
         payload[8] = speaking ? (byte)1 : (byte)0;
-        Enqueue(VoiceFrame.Write(VoiceDown.Vad, payload));
+        Enqueue(VoiceDown.Vad, payload);
     }
 
-    public void SendPong() => Enqueue(VoiceFrame.Write(VoiceDown.Pong, []));
+    public void SendPong() => Enqueue(VoiceDown.Pong, []);
 
     /// <summary>True once <see cref="Kick"/> ran: the connection is on its way out and its frames are ignored.</summary>
     public bool Kicked => _closeAfterDrain;
 
-    /// <summary>Queues a Kicked frame, then closes the connection once the writer has flushed it.</summary>
+    /// <summary>Queues a Kicked frame as the connection's last: queued audio is dropped, nothing is queued after it,
+    /// and the connection ends once the writer has flushed it.</summary>
     public void Kick(byte code)
     {
-        // Flag first: the writer may dequeue the Kicked frame the moment it is queued and must already see it.
-        _closeAfterDrain = true;
-        Enqueue(VoiceFrame.Write(VoiceDown.Kicked, [code]));
+        lock (_sync)
+        {
+            if (_closed || _closeAfterDrain) return;
+            _audio.Clear();
+            _control.Enqueue((VoiceDown.Kicked, [code]));
+            // Under the same lock as the frame: the writer that dequeues it also sees the flag.
+            _closeAfterDrain = true;
+        }
+        _signal.Release();
     }
 
-    /// <summary>Builds one Audio-down frame (speaker i64 | seq u16 | opus) for the caller to fan out to every
-    /// listener; built once per received frame, not once per listener.</summary>
-    public static byte[] BuildAudioFrame(long speaker, ushort seq, ReadOnlySpan<byte> opus)
+    /// <summary>Builds one Audio-down payload (speaker i64 | seq u16 | opus) for the caller to fan out to every
+    /// listener; built once per received frame, sealed per listener by its writer (never changed after this).</summary>
+    public static byte[] BuildAudioPayload(long speaker, ushort seq, ReadOnlySpan<byte> opus)
     {
         var payload = new byte[10 + opus.Length];
         BinaryPrimitives.WriteInt64LittleEndian(payload, speaker);
         BinaryPrimitives.WriteUInt16LittleEndian(payload.AsSpan(8, 2), seq);
         opus.CopyTo(payload.AsSpan(10));
-        return VoiceFrame.Write(VoiceDown.Audio, payload);
+        return payload;
     }
 
-    /// <summary>Queues an already-built Audio-down frame; the oldest queued audio frame is dropped first.</summary>
-    public void SendAudioFrame(byte[] frame)
+    /// <summary>Queues an Audio-down payload; the oldest queued audio frame is dropped first.</summary>
+    public void SendAudio(byte[] payload)
     {
         lock (_sync)
         {
-            if (_closed) return;
+            if (_closed || _closeAfterDrain) return;
             if (_audio.Count >= MaxQueuedAudio) _audio.Dequeue();
-            _audio.Enqueue(frame);
+            _audio.Enqueue((VoiceDown.Audio, payload));
         }
         _signal.Release();
     }
 
-    private void Enqueue(byte[] frame)
+    private void Enqueue(byte type, byte[] payload)
     {
         lock (_sync)
         {
-            if (_closed) return;
+            if (_closed || _closeAfterDrain) return;
             if (_control.Count >= MaxQueuedControl) { CloseLocked(); return; }
-            _control.Enqueue(frame);
+            _control.Enqueue((type, payload));
         }
         _signal.Release();
     }
@@ -172,18 +195,43 @@ public sealed class VoiceConnection : IDisposable
             while (!_cts.IsCancellationRequested)
             {
                 await _signal.WaitAsync(_cts.Token);
-                byte[]? frame;
+                (byte Type, byte[] Payload)? next;
                 bool drained;
                 lock (_sync)
                 {
-                    frame = _control.Count > 0 ? _control.Dequeue() : _audio.Count > 0 ? _audio.Dequeue() : null;
+                    next = _control.Count > 0 ? _control.Dequeue() : _audio.Count > 0 ? _audio.Dequeue() : null;
                     drained = _control.Count == 0 && _audio.Count == 0;
                 }
-                if (frame != null) await _stream.WriteAsync(frame, _cts.Token);
-                if (drained && _closeAfterDrain) { Close(); return; }
+                if (next is var (type, payload))
+                {
+                    // Sealed here, by the only writer, so the counters go out in the order the frames do.
+                    var cipher = _cipher;
+                    await _stream.WriteAsync(VoiceFrame.Write(type, cipher == null ? payload : cipher.Seal(type, payload)), _cts.Token);
+                }
+                if (drained && _closeAfterDrain) { EndAfterKick(); return; }
             }
         }
         catch (Exception e) when (e is OperationCanceledException or IOException or SocketException or ObjectDisposedException) { }
+    }
+
+    /// <summary>How long a kicked client has to close its side after its Kicked frame before the socket closes.</summary>
+    public static readonly TimeSpan KickedCloseDelay = TimeSpan.FromSeconds(2);
+
+    // FIN right behind the Kicked frame; the serve task reads on (and drops) until the client closes its side, and
+    // the socket closes KickedCloseDelay later at the latest. Closing at once sends RST while the client's own
+    // frames are still unread here, and a Windows client then loses the Kicked frame before it reads it.
+    private void EndAfterKick()
+    {
+        try { _socket.Shutdown(SocketShutdown.Send); }
+        catch (Exception e) when (e is SocketException or ObjectDisposedException) { Close(); return; }
+        _ = CloseLaterAsync(_cts.Token);
+
+        async Task CloseLaterAsync(CancellationToken closed)
+        {
+            try { await Task.Delay(KickedCloseDelay, closed); }
+            catch (OperationCanceledException) { return; } // the client closed first, or the server stopped
+            Close();
+        }
     }
 
     public void Close()
@@ -206,5 +254,6 @@ public sealed class VoiceConnection : IDisposable
         _socket.Dispose();
         _cts.Dispose();
         _signal.Dispose();
+        _cipher?.Dispose();
     }
 }

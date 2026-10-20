@@ -3,14 +3,15 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading.Channels;
 using Romsg;
+using Ro3Emu.ClientHooks;
 using Ro3Emu.Server.Game;
 using Ro3Emu.Server.Voice;
 
 namespace Ro3Emu.Bot;
 
-/// <summary>The 77016 voice ticket: u16 port | u8 hostLen | host ASCII | i64 roleId | 16-byte token | u32 ttlSeconds.
-/// Port 0 means the relay is off on that server.</summary>
-public sealed record BotVoiceTicket(ushort Port, string Host, long RoleId, byte[] Token, uint TtlSeconds)
+/// <summary>The 77016 voice ticket: u16 port | u8 hostLen | host ASCII | i64 roleId | 16-byte token | u32 ttlSeconds |
+/// 32-byte stream secret. Port 0 means the relay is off on that server.</summary>
+public sealed record BotVoiceTicket(ushort Port, string Host, long RoleId, byte[] Token, uint TtlSeconds, byte[] Secret)
 {
     public static BotVoiceTicket Parse(byte[] body)
     {
@@ -18,12 +19,13 @@ public sealed record BotVoiceTicket(ushort Port, string Host, long RoleId, byte[
         ushort port = BinaryPrimitives.ReadUInt16LittleEndian(body.AsSpan(0, 2));
         int hostLen = body[2];
         int at = 3 + hostLen;
-        if (body.Length < at + 8 + 16 + 4) throw new InvalidDataException("voice ticket too short");
+        if (body.Length < at + 8 + 16 + 4 + VoiceCipher.SecretSize) throw new InvalidDataException("voice ticket too short");
         string host = Encoding.ASCII.GetString(body, 3, hostLen);
         long roleId = BinaryPrimitives.ReadInt64LittleEndian(body.AsSpan(at, 8));
         byte[] token = body[(at + 8)..(at + 24)];
         uint ttl = BinaryPrimitives.ReadUInt32LittleEndian(body.AsSpan(at + 24, 4));
-        return new BotVoiceTicket(port, host, roleId, token, ttl);
+        byte[] secret = body[(at + 28)..(at + 28 + VoiceCipher.SecretSize)];
+        return new BotVoiceTicket(port, host, roleId, token, ttl, secret);
     }
 
     /// <summary>Asks the game gate for a ticket (77015) and waits for the 77016 reply.</summary>
@@ -36,7 +38,7 @@ public sealed record BotVoiceTicket(ushort Port, string Host, long RoleId, byte[
 }
 
 /// <summary>
-/// A bot's connection to the voice gate (<see cref="VoiceFrame"/> framing over plain TCP). One reader (the caller of
+/// A bot's connection to the voice gate (<see cref="VoiceFrame"/> framing over TCP, sealed after Auth with the ticket secret). One reader (the caller of
 /// <see cref="ReadFrameAsync"/>); writes from several tasks (audio, ping) are serialized here.
 /// </summary>
 public sealed class BotVoiceClient : IAsyncDisposable
@@ -44,6 +46,7 @@ public sealed class BotVoiceClient : IAsyncDisposable
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private TcpClient? _tcp;
     private NetworkStream? _stream;
+    private volatile VoiceCipher? _cipher; // set by AuthAsync: every later frame both ways is sealed with it
 
     /// <summary><paramref name="host"/> as the ticket gives it; a bracketed IPv6 literal is unwrapped.</summary>
     public async Task ConnectAsync(string host, int port, CancellationToken ct)
@@ -53,16 +56,31 @@ public sealed class BotVoiceClient : IAsyncDisposable
         _stream = _tcp.GetStream();
     }
 
-    public Task<(byte Type, byte[] Payload)> ReadFrameAsync(CancellationToken ct) =>
-        VoiceFrame.ReadAsync(_stream!, ushort.MaxValue, ct);
-
-    public Task AuthAsync(long roleId, byte[] token, CancellationToken ct)
+    /// <summary>The next frame, opened with the ticket's secret after Auth; one that fails to open throws.</summary>
+    public async Task<(byte Type, byte[] Payload)> ReadFrameAsync(CancellationToken ct)
     {
-        var payload = new byte[25];
-        payload[0] = 1;
+        var frame = await VoiceFrame.ReadAsync(_stream!, ushort.MaxValue, ct);
+        var cipher = _cipher;
+        if (cipher == null) return frame;
+        return (frame.Type, cipher.Open(frame.Type, frame.Payload) ?? throw new VoiceProtocolException("frame failed authentication"));
+    }
+
+    /// <summary>Auth (sent as is), then everything is sealed with <paramref name="secret"/>.</summary>
+    public async Task AuthAsync(long roleId, byte[] token, byte[] secret, CancellationToken ct)
+    {
+        var payload = new byte[VoiceUp.AuthSize];
+        payload[0] = VoiceUp.AuthVersion;
         BinaryPrimitives.WriteInt64LittleEndian(payload.AsSpan(1, 8), roleId);
         token.AsSpan(0, 16).CopyTo(payload.AsSpan(9, 16));
-        return SendAsync(VoiceUp.Auth, payload, ct);
+        VoiceCipher.AuthProof(secret, roleId, token).CopyTo(payload, 25);
+        var cipher = VoiceCipher.ForClient(secret);
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            _cipher = cipher; // before the write: the reply is sealed and may be read the moment Auth is out
+            await _stream!.WriteAsync(VoiceFrame.Write(VoiceUp.Auth, payload), ct);
+        }
+        finally { _writeLock.Release(); }
     }
 
     public Task JoinAsync(string channel, CancellationToken ct)
@@ -88,9 +106,13 @@ public sealed class BotVoiceClient : IAsyncDisposable
 
     private async Task SendAsync(byte type, byte[] payload, CancellationToken ct)
     {
-        byte[] frame = VoiceFrame.Write(type, payload);
         await _writeLock.WaitAsync(ct);
-        try { await _stream!.WriteAsync(frame, ct); }
+        try
+        {
+            // Sealed under the write lock, so the counters reach the wire in order.
+            var cipher = _cipher;
+            await _stream!.WriteAsync(VoiceFrame.Write(type, cipher == null ? payload : cipher.Seal(type, payload)), ct);
+        }
         finally { _writeLock.Release(); }
     }
 
@@ -99,6 +121,7 @@ public sealed class BotVoiceClient : IAsyncDisposable
         _stream?.Dispose();
         _tcp?.Dispose();
         _writeLock.Dispose();
+        _cipher?.Dispose();
         return ValueTask.CompletedTask;
     }
 }
@@ -146,12 +169,17 @@ public static class BotVoiceEcho
         }
     }
 
+    /// <summary>The party's voice room, as <see cref="RunAsync(BotClient, long, string, TimeSpan, Action{string}, CancellationToken)"/>.</summary>
+    public static Task<BotVoiceEchoEnd> RunAsync(BotClient bot, long roleId, long teamId, TimeSpan delay,
+        Action<string> log, CancellationToken ct) =>
+        RunAsync(bot, roleId, teamId.ToString(System.Globalization.CultureInfo.InvariantCulture), delay, log, ct);
+
     /// <summary>
-    /// Ticket, connect, Auth, Join <paramref name="teamId"/>, mic on, then echo until Kicked (for example removed
-    /// from the room after leaving the party), the voice gate closes the connection, or <paramref name="ct"/>.
-    /// Audio bytes are never logged.
+    /// Ticket, connect, Auth, Join <paramref name="room"/> (a team id, or a guild voice channel "2_&lt;guildId&gt;_&lt;n&gt;"
+    /// the bot sits in), mic on, then echo until Kicked (for example removed from the room after leaving the party or
+    /// the channel), the voice gate closes the connection, or <paramref name="ct"/>. Audio bytes are never logged.
     /// </summary>
-    public static async Task<BotVoiceEchoEnd> RunAsync(BotClient bot, long roleId, long teamId, TimeSpan delay,
+    public static async Task<BotVoiceEchoEnd> RunAsync(BotClient bot, long roleId, string room, TimeSpan delay,
         Action<string> log, CancellationToken ct)
     {
         var ticket = await BotVoiceTicket.RequestAsync(bot, ReplyTimeout);
@@ -162,8 +190,8 @@ public static class BotVoiceEcho
         using var live = CancellationTokenSource.CreateLinkedTokenSource(ct);
         try
         {
-            await voice.AuthAsync(ticket.RoleId, ticket.Token, live.Token);
-            var setup = await SetupAsync(voice, teamId, log, live.Token);
+            await voice.AuthAsync(ticket.RoleId, ticket.Token, ticket.Secret, live.Token);
+            var setup = await SetupAsync(voice, room, log, live.Token);
             if (setup != null) return setup;
             var echoes = Channel.CreateUnbounded<(long DueMs, byte[] Opus)>(new UnboundedChannelOptions { SingleReader = true });
             var stats = new EchoStats();
@@ -186,14 +214,14 @@ public static class BotVoiceEcho
         }
     }
 
-    /// <summary>Waits for AuthOk, joins the team room and turns the mic on; returns an end result if that fails.</summary>
-    private static async Task<BotVoiceEchoEnd?> SetupAsync(BotVoiceClient voice, long teamId, Action<string> log, CancellationToken ct)
+    /// <summary>Waits for AuthOk, joins the room and turns the mic on; returns an end result if that fails.</summary>
+    private static async Task<BotVoiceEchoEnd?> SetupAsync(BotVoiceClient voice, string room, Action<string> log, CancellationToken ct)
     {
         var (type, payload) = await voice.ReadFrameAsync(ct);
         if (type == VoiceDown.Kicked) return new(BotVoiceEchoEndKind.Kicked, payload.Length > 0 ? payload[0] : (byte)0);
         if (type != VoiceDown.AuthOk) return new(BotVoiceEchoEndKind.Closed);
         log("voice auth ok");
-        await voice.JoinAsync(teamId.ToString(System.Globalization.CultureInfo.InvariantCulture), ct);
+        await voice.JoinAsync(room, ct);
         while (true)
         {
             (type, payload) = await voice.ReadFrameAsync(ct);
@@ -202,13 +230,13 @@ public static class BotVoiceEcho
             byte code = payload.Length > 0 ? payload[0] : byte.MaxValue;
             if (code != VoiceJoinCode.Ok)
             {
-                log($"voice join of team {teamId} refused (code {code})");
+                log($"voice join of room {room} refused (code {code})");
                 return new(BotVoiceEchoEndKind.JoinRefused, code);
             }
             break;
         }
         await voice.MicAsync(true, ct);
-        log($"in voice room {teamId}, mic on, echoing");
+        log($"in voice room {room}, mic on, echoing");
         return null;
     }
 

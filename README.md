@@ -8,7 +8,7 @@ server first; changes to the original rules come after.
 
 <p align="center">
   <a href="https://github.com/aethai/ro3emu-server/releases/latest"><img src="https://img.shields.io/github/v/release/aethai/ro3emu-server?label=release" alt="Latest release"></a>
-  <a href="https://github.com/aethai/ro3emu-server/actions/workflows/tests.yml"><img src="https://github.com/aethai/ro3emu-server/actions/workflows/tests.yml/badge.svg" alt="Tests on Linux"></a>
+  <a href="https://github.com/aethai/ro3emu-server/actions/workflows/tests.yml"><img src="https://github.com/aethai/ro3emu-server/actions/workflows/tests.yml/badge.svg" alt="Tests on Linux and Windows"></a>
   <a href="https://github.com/aethai/ro3emu-server/actions/workflows/ci.yml"><img src="https://github.com/aethai/ro3emu-server/actions/workflows/ci.yml/badge.svg" alt="Client-independent .NET checks"></a>
   <img src="https://img.shields.io/badge/C%23-.NET%2010-512BD4?logo=dotnet&logoColor=white" alt=".NET 10">
   <img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="GPL-3.0">
@@ -40,7 +40,8 @@ server first; changes to the original rules come after.
 
 **Don't have the game?** RO3Emu.exe downloads it from the official Genesis update servers (about 24 GB) and checks every
 file against the publisher's signature: it offers this when it finds no game folder, or run `RO3Emu.exe install`.
-RO3Emu never hosts game files. Tested with the Genesis client releases of 7 and 16 October 2026.
+RO3Emu never hosts game files. Tested with the Genesis client releases of 7 and 16 October 2026; the 20 October
+release passes `RO3Emu.exe check` and the data export.
 
 | Command | What it does |
 |---|---|
@@ -64,7 +65,8 @@ your characters), `logs\` and `RO3Emu.settings.json`.
 
 **On Windows.** The host runs `RO3Emu.exe host`; it prints the address to share (Windows asks once whether the server
 may use the network: allow it). Friends run `RO3Emu.exe join <that address>`. For friends outside your home network,
-forward TCP ports `5380`, `20000` and `33100` on your router to the host and share your public IP.
+forward TCP ports `5380`, `20000` and `33100` on your router to the host and share your public IP. Party voice chat
+is off unless the host adds `--voice-port 33101` (any free port); then forward that port too.
 
 **On Linux.** Download **`RO3Emu-server-linux-x64.tar.gz`**, extract it and run `server.sh`; nothing to install:
 
@@ -74,7 +76,7 @@ forward TCP ports `5380`, `20000` and `33100` on your router to the host and sha
 ./server.sh --service ...                                                       # install it as a systemd service
 ```
 
-Open TCP `5380`, `20000` and `33100`.
+Open TCP `5380`, `20000` and `33100`, and the voice port if you turn voice on with `--voice-port 33101`.
 
 **Good to know**
 - **GM commands** (`!help` in chat) are on for every account when you play on your own PC. A hosted server gives them
@@ -159,8 +161,8 @@ show is playable from day one, without season or server-day gates ([details](doc
 
 **Voice.** Party voice goes through a relay in the server instead of the publisher's Tencent GME, and the patched
 client records and plays it through Windows' own winmm. It is off by default: `Voice:Port` turns it on. The voice
-stream is not encrypted yet (only its one-time ticket travels through the encrypted game gate), so the relay listens
-on loopback only unless `Voice:AllowPlaintextOffLoopback` is set.
+stream is encrypted (AES-CTR with an HMAC-SHA256 tag per frame) with a fresh key per session that travels inside the
+one-time ticket over the encrypted game gate, so the relay serves off loopback too.
 
 ## For developers
 
@@ -211,7 +213,7 @@ dotnet test tests/Ro3Emu.Patcher.Tests -c Release                       # update
 
 Tests of content need the exported `data/` and are skipped without it; tests of rules (persistence, retries,
 ownership, logins) run on a small invented data set in `tests/Ro3Emu.Tests/Fixtures/GameData`, so CI runs them too
-([docs/guide/testing.md](docs/guide/testing.md)). CI runs all three suites on Linux on every push. The suite runs as if the machine were in UTC+08, so results don't depend on where it runs
+([docs/guide/testing.md](docs/guide/testing.md)). CI runs all three suites on Linux and Windows for every pull request and push to `main`. The suite runs as if the machine were in UTC+08, so results don't depend on where it runs
 (`RO3EMU_TEST_HOST_TZ=<zone id>` picks another zone, `host` keeps the real one).
 
 ### Load tests

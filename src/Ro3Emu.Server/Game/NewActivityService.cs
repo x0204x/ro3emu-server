@@ -429,9 +429,12 @@ public sealed partial class NewActivityService
                     economy.Sink(Asset(group.Key), group.Sum(c => (long)c.Count), EconomyReason.ItemUse);
                 foreach (var group in grants.Where(g => g.Entry is not (100 or 101)).GroupBy(g => g.Entry))
                     economy.Source(Asset(group.Key), group.Sum(g => (long)g.Count), EconomyReason.ActivityReward);
-                economy.Evidence(new { AwardIds = resolvedIds, Costs = costs ?? [], Grants = grants.Select(g =>
+                economy.Evidence(new
+                {
+                    AwardIds = resolvedIds, Costs = costs ?? [], Grants = grants.Select(g =>
                     new { g.Entry, g.Count, g.BindType, g.ExpireTimeStamp }).ToArray(),
-                    Exp = grants.Where(g => g.Entry is 100 or 101).Select(g => new { g.Entry, g.Count }).ToArray() });
+                    Exp = grants.Where(g => g.Entry is 100 or 101).Select(g => new { g.Entry, g.Count }).ToArray()
+                });
             }
             byte[] infoBytes = next.ToByteArray(), runtimeBytes = JsonSerializer.SerializeToUtf8Bytes(runtime ?? session.ActivityRuntime);
             var journeyEconomy = journeySource == null ? null : new CharacterService.OwnedAwardSource(

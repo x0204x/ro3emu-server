@@ -82,7 +82,8 @@ public sealed class FirstHeartService : IGameTicker
 
     private int PlayBook(GameSession s) => (int)(s.SeasonState?.PlayBookId ?? seasons.PlayBook);
 
-    /// <summary>NewActivityConfig 114: its book, window and open condition (21000012: base level 10), as for 5013.</summary>
+    /// <summary>NewActivityConfig 114: its book, window and open condition (21000012: base level 30, 10 before the
+    /// 20 Oct 2026 client), as for 5013.</summary>
     private bool Open(GameSession s)
     {
         if (s.Role == null || s.Progress == null || data.Row("NewActivityConfig", Activity) is not { } row

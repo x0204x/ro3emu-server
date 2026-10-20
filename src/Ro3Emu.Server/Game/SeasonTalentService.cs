@@ -13,7 +13,7 @@ namespace Ro3Emu.Server.Game;
 /// plan policies are not captured: active-plan max-parent activation, five zero-based plans, and active-plan
 /// total levels for tree thresholds are inferred from the client graph and PublicParamConfig.SchemeNum=5.
 /// </summary>
-public sealed class SeasonTalentService
+public sealed partial class SeasonTalentService
 {
     public const uint TalentSync = 5050, Upgrade = 83550, SetPlan = 83552, RenamePlan = 83553;
     private const long TalentFunction = 1003, ParentFunction = 10, TalentTask = 10103160, ParentTask = 10101170;
@@ -116,7 +116,7 @@ public sealed class SeasonTalentService
         Seed(state);
         var active = state.Plan[state.CurPlanId];
         // (inferred) tree/node thresholds count the selected plan's purchased ordinary levels.
-        long total = active.TalentNodes.Where(kv => kv.Key != 10100000).Sum(kv => Math.Max(0, kv.Value.CurrentLevel));
+        long total = PurchasedLevels(active);
         state.UnlockedTrees.Clear();
         long? oathMax = null;
         foreach (var tree in Trees())
@@ -212,6 +212,12 @@ public sealed class SeasonTalentService
         return false; // (inferred) one maxed incoming parent opens a branch, never an unearned child.
     }
 
+    // Choice markers have no purchase price. Switching a choice must not create paid levels
+    // that unlock later trees (inferred server policy).
+    private long PurchasedLevels(SeasonTalentPlan plan) => plan.TalentNodes.Where(kv =>
+        data.Row("SeasonTalentConfig", kv.Key) is { } row && GameData.Int(row, "_iType") is >= 1 and <= 3)
+        .Sum(kv => Math.Max(0, kv.Value.CurrentLevel));
+
     private JsonElement? Effect(long group, long level, int career)
     {
         JsonElement? generic = null;
@@ -248,6 +254,12 @@ public sealed class SeasonTalentService
     /// <summary>83550: lock validation, payment, plan/oath mutation and durable save as one role operation.</summary>
     public async Task UpgradeAsync(GameSession s, SeasonTalentUpgradeReq req)
     {
+        if (data.Row("SeasonTalentConfig", req.TalentId) is { } requested
+            && GameData.Int(requested, "_iType") is ProfessionBranchType or ProfessionOptionType)
+        {
+            await SelectProfessionAsync(s, req);
+            return;
+        }
         int result;
         using (await CharacterService.Lock(s))
         {
@@ -262,8 +274,11 @@ public sealed class SeasonTalentService
                 try
                 {
                     var economy = character.ProgressionEconomy(s, "cd13c/season-talent-upgrade", cost!, [],
-                        new { Node = node, Oath = isOath, Level = isOath ? next.BattleOathLevel
-                            : next.Plan[next.CurPlanId].TalentNodes[node].CurrentLevel, Plan = next.CurPlanId });
+                        new
+                        {
+                            Node = node, Oath = isOath, Level = isOath ? next.BattleOathLevel
+                            : next.Plan[next.CurPlanId].TalentNodes[node].CurrentLevel, Plan = next.CurPlanId
+                        });
                     paid = await character.ExchangeLockedAsync(s, cost!, [], popup: false, sync: false,
                         persist: tx => { tx.RoleBlob(s.Role!.Id, "season_talent", next.ToByteArray()); tx.WithEconomy(economy); },
                         committed: () => s.SeasonTalent = next, asyncCommit: true);
@@ -379,7 +394,7 @@ public sealed class SeasonTalentService
     {
         if (!Available(s) || s.SeasonTalent is not { } state || s.Progress == null
             || !state.Plan.TryGetValue(state.CurPlanId, out var plan)) yield break;
-        long total = plan.TalentNodes.Where(kv => kv.Key != 10100000).Sum(kv => Math.Max(0, kv.Value.CurrentLevel));
+        long total = PurchasedLevels(plan);
         foreach (var (id, saved) in plan.TalentNodes)
         {
             if (id == 10100000 || saved.CurrentLevel <= 0 || data.Row("SeasonTalentConfig", id) is not { } node) continue;

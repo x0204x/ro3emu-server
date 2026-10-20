@@ -122,9 +122,12 @@ public sealed partial class CombatService
         int loopSkill = skills.IsCurrentNormalAttack(s, req.SkillId) ? req.SkillId : skills.NormalAttack(s);
         if (GameData.Int(row!.Value, "_iIfAutoAtk") == 2 && owned == null && target != null && CanHitMonster(s, target))
         {
-            s.Attack = new AttackLoop { Target = target, SkillId = loopSkill,
+            s.Attack = new AttackLoop
+            {
+                Target = target, SkillId = loopSkill,
                 NextSwingMs = Now + SkillMs(s, row.Value) + Math.Max(0, GameData.Int(row.Value, "_iChantFix") + GameData.Int(row.Value, "_iChantVar")) + 1,
-                StartX = s.Position.X, StartZ = s.Position.Z };
+                StartX = s.Position.X, StartZ = s.Position.Z
+            };
         }
         else s.Attack = null;
         if (GameData.Int(row.Value, "_iIfAutoAtk") == 2 && owned == null && playerTarget != null)
@@ -141,10 +144,13 @@ public sealed partial class CombatService
     {
         if (costs.Items.Count == 0) return true;
         var mutation = character.ProgressionEconomy(s, "cd13c/cast-admit", costs.Items, [],
-            new { SessionId = id, Skill = row.GetRawText(), Request = Convert.ToBase64String(Google.Protobuf.MessageExtensions.ToByteArray(request)),
+            new
+            {
+                SessionId = id, Skill = row.GetRawText(), Request = Convert.ToBase64String(Google.Protobuf.MessageExtensions.ToByteArray(request)),
                 Plan = s.SkillPlans?.CurrentPlanIndex, Attachment = s.Attachment?.Generation,
                 s.WorldScene, s.SceneGeneration, AttributeCosts = costs.Attrs, BuffCosts = costs.Buffs,
-                EnergyCosts = costs.Energy, Outcome = "admitted" });
+                EnergyCosts = costs.Energy, Outcome = "admitted"
+            });
         return await character.ExchangeLockedAsync(s, costs.Items, [], popup: false,
             persist: tx => tx.WithEconomy(mutation), asyncCommit: true) != null;
     }
@@ -362,8 +368,11 @@ public sealed partial class CombatService
         if (target != null && !CanHitMonster(s, target)) return;
         if (EffectiveSkillRow(s, skillId) is not { } row || !Learned(s, row) || !SkillModeAllowed(s, row)
             || buffs.HasForbidden(s, 5) || s.SkillCast is { Cancelled: false }) return;
-        var request = new CastSkillReq { SkillId = (int)GameData.Int(row, "_iID"), TargetId = target?.Uid ?? 0,
-            TargetPos = target?.Pos ?? s.Position.Clone(), Face = s.Face };
+        var request = new CastSkillReq
+        {
+            SkillId = (int)GameData.Int(row, "_iID"), TargetId = target?.Uid ?? 0,
+            TargetPos = target?.Pos ?? s.Position.Clone(), Face = s.Face
+        };
         if (!await AdmitAutomaticCostAsync(s, row, request, id)) { s.Attack = null; return; }
         await StartCastAsync(s, row, request, id);
     }

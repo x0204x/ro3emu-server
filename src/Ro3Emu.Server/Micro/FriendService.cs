@@ -85,7 +85,7 @@ public sealed class FriendService(AccountStore accounts, SocialOwnerCache cache,
                     ["RelationData"] = friends.Select(f => (object)new Dictionary<string, object?>
                     {
                         ["Uid"] = f.ToString(), ["DataMap"] = new Dictionary<string, object?>
-                            { ["intimacy"] = value?.Intimacy[f] ?? tombstone!.Intimacy[f] },
+                        { ["intimacy"] = value?.Intimacy[f] ?? tombstone!.Intimacy[f] },
                     }).ToArray(),
                 }),
                 "fetchApplicants" => Ok(new() { ["Applicants"] = UidRows(applicants) }),
@@ -145,7 +145,7 @@ public sealed class FriendService(AccountStore accounts, SocialOwnerCache cache,
     private sealed record Push(long Role, string Method);
     private sealed record Outcome(object Reply, Push[] Pushes);
     private static object[] UidRows(IEnumerable<long> roles) => roles.Select(id => (object)new Dictionary<string, object?>
-        { ["uid"] = id.ToString() }).ToArray();
+    { ["uid"] = id.ToString() }).ToArray();
 
     private async Task<Outcome> StageCommitAsync(string method, long self, long other, SocialSnapshot mine,
         IReadOnlyDictionary<long, SocialSnapshot?> snapshots)

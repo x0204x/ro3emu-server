@@ -298,8 +298,11 @@ public sealed class GatheringService : IGameTicker
         await session.SendGameAsync(StateChange, new InteractChangeNtf
         {
             Uid = session.Role!.Id,
-            DataInfo = new InteractInfo { EType = InteractInfo.Types.EState.Collection, StateId = 5,
-                ActiveObjId = node.Uid, InteractConfigId = node.InteractionId, CollectionInfo = state },
+            DataInfo = new InteractInfo
+            {
+                EType = InteractInfo.Types.EState.Collection, StateId = 5,
+                ActiveObjId = node.Uid, InteractConfigId = node.InteractionId, CollectionInfo = state
+            },
         });
         if (gameId == 0)
             Schedule(_runtimes[node.RuntimeMap], TimeSpan.FromMilliseconds(duration), () => CompleteAsync(session, node.Uid), session);
@@ -518,12 +521,15 @@ public sealed class GatheringService : IGameTicker
         owner.Deadlines.Add(deadline);
         // An Apply fault quarantines the role and therefore blocks the legacy Realm ticker.
         // Source reconciliation needs only a read and this resource's runtime; it must still run.
-        try { loop.ScheduleRuntime(delay, async () =>
+        try
+        {
+            loop.ScheduleRuntime(delay, async () =>
         {
             if (owner.Retired || !owner.Deadlines.Remove(deadline)) return;
             owner.Pending++;
             await RunDeadlineAsync(owner, deadline.Item2);
-        }); }
+        });
+        }
         catch { owner.Deadlines.Remove(deadline); throw; }
     }
 

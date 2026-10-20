@@ -120,8 +120,11 @@ public sealed partial class GuildTests
         if (escrow > 0)
         {
             var market = store.LoadMarket();
-            market.Stalls.Add(new GuildStore.MarketStall { Id = "disband-held", GuildId = guildId,
-                UnitPrice = 500, TotalCount = escrow, RemainCount = escrow, ExpiresMs = long.MaxValue });
+            market.Stalls.Add(new GuildStore.MarketStall
+            {
+                Id = "disband-held", GuildId = guildId,
+                UnitPrice = 500, TotalCount = escrow, RemainCount = escrow, ExpiresMs = long.MaxValue
+            });
             Assert.True(store.SaveMarket(market, []));
         }
         var catalog = EconomyCatalog.Load(Path.Combine(RepoRoot(), "data"));

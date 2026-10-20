@@ -84,7 +84,8 @@ public sealed class DbWriteGuardTests : IDisposable
                 }
                 catch (SqliteException error) { code = error.SqliteErrorCode; }
                 catch (Exception error) { unexpected = error; }
-            }) { IsBackground = true };
+            })
+            { IsBackground = true };
             thread.Start();
             if (!thread.Join(TimeSpan.FromSeconds(10))) throw new TimeoutException("D1 wrong-thread probe did not finish.");
             if (unexpected != null) throw unexpected;

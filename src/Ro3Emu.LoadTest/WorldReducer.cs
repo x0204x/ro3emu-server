@@ -155,7 +155,7 @@ public sealed class WorldReducer(int maxEntities = 4096)
         lock (_lock) return new(InboundCount, InboundBytes, MaxVisible, _entities.Count, _readyScenes,
             new Dictionary<uint, long>(_counts), new Dictionary<uint, long>(_bytes), _faults.ToArray(),
             _lastReplies.ToDictionary(x => x.Key, x => x.Value with { BodyPrefix = x.Value.BodyPrefix.ToArray() }))
-            { Location = _location };
+        { Location = _location };
     }
 
     /// <summary>Start a measured phase without discarding the causal entity bases learned in setup.</summary>

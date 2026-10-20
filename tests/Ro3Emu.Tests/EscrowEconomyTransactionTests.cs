@@ -311,10 +311,13 @@ public sealed class EscrowEconomyTransactionTests : IDisposable
     [Fact]
     public void AbstractMailAttachmentCanRealizeRolledEquipmentWithExactMetadataEdge()
     {
-        var box = new MailService.Mailbox { Letters = [new MailService.Letter
+        var box = new MailService.Mailbox
+        {
+            Letters = [new MailService.Letter
         {
             Id = "realize-1", Attachments = [new MailService.Attachment(1000000, 1, 1)]
-        }] };
+        }]
+        };
         var delivery = roles.NewTransaction();
         delivery.RoleBlob(receiver, "mailbox", JsonSerializer.SerializeToUtf8Bytes(box));
         delivery.WithEscrowEconomy(new EscrowEconomyIntent("e03/test-mail-abstract", "e03-receiver", receiver)
@@ -354,11 +357,14 @@ public sealed class EscrowEconomyTransactionTests : IDisposable
     [Fact]
     public void ExactMailItemCannotSilentlyChangeAttributesDuringClaim()
     {
-        var box = new MailService.Mailbox { Letters = [new MailService.Letter
+        var box = new MailService.Mailbox
+        {
+            Letters = [new MailService.Letter
         {
             Id = "exact-1", Items = [new InvItem { Entry = 1000000, Stack = 1, Pack = 1,
                 Attrs = new() { [30] = 3 } }]
-        }] };
+        }]
+        };
         var delivery = roles.NewTransaction();
         delivery.RoleBlob(receiver, "mailbox", JsonSerializer.SerializeToUtf8Bytes(box));
         delivery.WithEscrowEconomy(new EscrowEconomyIntent("e03/test-mail-exact", "e03-receiver", receiver)
@@ -389,10 +395,13 @@ public sealed class EscrowEconomyTransactionTests : IDisposable
         roles.Commit(seed, "test/e03-mixed-seed");
         var existing = Assert.Single(items.Load(receiver));
 
-        var box = new MailService.Mailbox { Letters = [new MailService.Letter
+        var box = new MailService.Mailbox
+        {
+            Letters = [new MailService.Letter
         {
             Id = "mixed-1", Attachments = [new(1000000, 1, 0), new(1000000, 1, 1)]
-        }] };
+        }]
+        };
         var delivery = roles.NewTransaction();
         delivery.RoleBlob(receiver, "mailbox", JsonSerializer.SerializeToUtf8Bytes(box));
         delivery.WithEscrowEconomy(new EscrowEconomyIntent("e03/test-mixed-delivery", "e03-receiver", receiver)

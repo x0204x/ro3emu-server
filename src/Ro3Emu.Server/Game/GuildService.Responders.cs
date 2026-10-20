@@ -111,8 +111,11 @@ public sealed partial class GuildService
         if (LiveResponses(guild).Count() >= Setting("GuildResponseMaxNum", 50)[0]) return ErrResponderListFull;
         if (store.List().Count(g => g.Id != guild.Id && Founding(g) && g.HelperApplies.ContainsKey(s.Role.Id))
             >= Setting("GuildPersonResponseMaxNum", 10)[0]) return ErrResponderPersonalLimit;
-        guild.HelperApplies[s.Role.Id] = new GuildStore.Application { RoleId = s.Role.Id, Name = s.Role.Name,
-            Level = s.Progress.Level, Career = s.Progress.Career, ApplyTime = NowMs() };
+        guild.HelperApplies[s.Role.Id] = new GuildStore.Application
+        {
+            RoleId = s.Role.Id, Name = s.Role.Name,
+            Level = s.Progress.Level, Career = s.Progress.Career, ApplyTime = NowMs()
+        };
         if (!await SaveGuildAsync(guild)) return ErrorCodes.GuildMissing;
         await PushRedDotAsync(guild);
         return 0;
@@ -184,8 +187,11 @@ public sealed partial class GuildService
             token = ++nextToken;
             helperInvites[token] = new HelperInvitation(g!.Id, target!.Role!.Id, s.Role!.Id,
                 now + Setting("GuildResponseInviteTime", 30)[0] * 1000);
-            await target.SendGameAsync(InviteHelperNotify, new InviteCreateHelperNotify { Token = token, PlayerId = s.Role.Id,
-                GuildId = g.Id, HelperCount = g.Members.Count, GuildName = g.Name });
+            await target.SendGameAsync(InviteHelperNotify, new InviteCreateHelperNotify
+            {
+                Token = token, PlayerId = s.Role.Id,
+                GuildId = g.Id, HelperCount = g.Members.Count, GuildName = g.Name
+            });
         }
         await s.SendGameAsync(InviteHelperToken, new InviteCreateHelperTokenRes { Token = token, Result = code });
     }

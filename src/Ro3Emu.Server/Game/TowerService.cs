@@ -440,16 +440,20 @@ public sealed partial class TowerService
             next.CompleteTime = now;
             next.ChallengeTime = now;
         }
-        var first = new ClimbTowerFirstPassData { Layer = floor, HasFirstPass = true,
+        var first = new ClimbTowerFirstPassData
+        {
+            Layer = floor, HasFirstPass = true,
             PlayerId = s.Role!.Id, PlayerName = s.Role.Name, PassTime = now,
-            Job = s.Progress!.Career, Gender = s.Role.Sex };
+            Job = s.Progress!.Career, Gender = s.Role.Sex
+        };
         monster.RewardSource ??= new RewardSourceId(character.RewardRealmId,
             RewardSourceId.ProcessRun, monster.SpawnGeneration);
         var capturedTower = accounts.ReadSync<RoleBlobSnapshot>(new RoleBlobSnapshotRead(s.Role.Id, "tower"));
         if (capturedTower.Value == null || !capturedTower.Value.AsSpan().SequenceEqual(previous.ToByteArray()))
             throw new OwnerRevisionConflictException();
         var settlement = monster.RewardSettlement = new RewardSettlement(
-            monster.RewardSource.Key, "monster-kill", autoDecompose: true) { DeferPresentation = true };
+            monster.RewardSource.Key, "monster-kill", autoDecompose: true)
+        { DeferPresentation = true };
         (long Guid, InvItem Item, int Stack)[] before = [];
         // Capture after ordinary loot is staged under the same owner lock. A new ordinary stack
         // still has GUID 0 here, so its object identity is retained until ApplyGuids publishes it.

@@ -16,10 +16,12 @@ Options:
   --download DIR    get the needed game files from the official servers into DIR
   --host ADDRESS    the address players connect to (default: this machine's first address)
   --gm ACCOUNT      an account that gets GM commands in game (repeatable)
+  --voice-port PORT turn on party voice chat on this TCP port, for example 33101 (off by default)
   --service         install and start a systemd service (needs sudo)
   --reexport        export the game data again (after a game update)
 
-Open TCP ports 5380, 20000 and 33100 for players. Players run RO3Emu.exe on Windows:
+Open TCP ports 5380, 20000 and 33100 for players, and the voice port if you set one. Players run RO3Emu.exe on
+Windows:
 
   RO3Emu.exe join <host address>
 

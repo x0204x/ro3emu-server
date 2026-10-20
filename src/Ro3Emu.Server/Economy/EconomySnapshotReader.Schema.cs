@@ -31,7 +31,7 @@ public static partial class EconomySnapshotReader
         ["guild"] = "id name state", ["guild_member"] = "role_id guild_id", ["guild_market"] = "id state",
         ["guild_recovery"] = "guild_id state created_ms", ["guild_event"] = "guild_id idx data",
         ["guild_caravan_member"] = "role_id state revision", ["guild_caravan_version"] = "guild_id day revision",
-        ["guild_campfire"] = "guild_id state", ["guild_hunting"] = "cycle_start data runtime",["guild_challenge"] = "guild_id state",
+        ["guild_campfire"] = "guild_id state", ["guild_hunting"] = "cycle_start data runtime", ["guild_challenge"] = "guild_id state",
         ["guild_challenge_clear"] = "id guild_id season cycle difficulty pending state",
         ["territory_wars"] = "id state", ["territory_wars_seasons"] = "epoch state",
         ["territory_escort"] = "id state", ["guild_league"] = "id state", ["festival_round"] = "cycle state",

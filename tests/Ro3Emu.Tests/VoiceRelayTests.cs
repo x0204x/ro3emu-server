@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Ro3Emu.Bot;
+using Ro3Emu.ClientHooks;
 using Ro3Emu.Server;
 using Ro3Emu.Server.Voice;
 
@@ -79,16 +80,16 @@ public sealed class VoiceRelayTests : IAsyncLifetime
         return created.TeamId;
     }
 
-    private static async Task<(long RoleId, byte[] Token)> GetTicketAsync(BotClient bot, int expectedPort = 0)
+    private static async Task<(long RoleId, TestVoiceKey Key)> GetTicketAsync(BotClient bot, int expectedPort = 0)
     {
         var ticket = await GetRawTicketAsync(bot);
         if (expectedPort != 0) Assert.Equal(expectedPort, ticket.Port);
-        return (ticket.RoleId, ticket.Token);
+        return (ticket.RoleId, new TestVoiceKey(ticket.Token, ticket.Secret));
     }
 
     /// <summary>77016 parsed by hand (not through BotVoiceTicket) so the wire layout itself is pinned here:
-    /// u16 port | u8 hostLen | host ASCII | i64 roleId | 16-byte token | u32 ttlSeconds.</summary>
-    private static async Task<(ushort Port, string Host, long RoleId, byte[] Token, uint Ttl)> GetRawTicketAsync(BotClient bot)
+    /// u16 port | u8 hostLen | host ASCII | i64 roleId | 16-byte token | u32 ttlSeconds | 32-byte secret.</summary>
+    private static async Task<(ushort Port, string Host, long RoleId, byte[] Token, uint Ttl, byte[] Secret)> GetRawTicketAsync(BotClient bot)
     {
         using var expected = bot.Inbox.Expect(e => e.IsGame(VoiceTicketService.Ticket));
         await bot.SendGameBytesAsync(VoiceTicketService.TicketReq, []);
@@ -97,14 +98,15 @@ public sealed class VoiceRelayTests : IAsyncLifetime
         int hostLen = body[2];
         string host = System.Text.Encoding.ASCII.GetString(body, 3, hostLen);
         int at = 3 + hostLen;
-        Assert.Equal(at + 8 + 16 + 4, body.Length);
+        Assert.Equal(at + 8 + 16 + 4 + VoiceCipher.SecretSize, body.Length);
         long roleId = BitConverter.ToInt64(body, at);
         byte[] token = body[(at + 8)..(at + 24)];
         uint ttl = BitConverter.ToUInt32(body, at + 24);
-        return (port, host, roleId, token, ttl);
+        byte[] secret = body[(at + 28)..];
+        return (port, host, roleId, token, ttl, secret);
     }
 
-    private async Task<VoiceTestClient> ConnectAuthedAsync(long roleId, byte[] token)
+    private async Task<VoiceTestClient> ConnectAuthedAsync(long roleId, TestVoiceKey token)
     {
         var client = new VoiceTestClient(_voicePort) { Tag = roleId.ToString() };
         await client.ConnectAsync();
@@ -120,7 +122,8 @@ public sealed class VoiceRelayTests : IAsyncLifetime
         await using var a = alice;
         var (roleId, token) = await GetTicketAsync(alice, _voicePort);
         Assert.Equal(aliceId, roleId);
-        Assert.NotEqual(new byte[16], token);
+        Assert.NotEqual(new byte[16], token.Token);
+        Assert.NotEqual(new byte[VoiceCipher.SecretSize], token.Secret);
     }
 
     [Fact]
@@ -246,7 +249,13 @@ public sealed class VoiceRelayTests : IAsyncLifetime
         var notMember = await carolVoice.WaitTypeAsync(VoiceDown.JoinResult, Wait);
         Assert.Equal(VoiceJoinCode.NotMember, notMember.Payload[0]);
 
+        // A guild voice channel she does not sit in (GuildVoiceAudioTests covers the guild rooms).
         await carolVoice.JoinAsync("2_5_1");
+        var notSeated = await carolVoice.WaitTypeAsync(VoiceDown.JoinResult, Wait);
+        Assert.Equal(VoiceJoinCode.NotMember, notSeated.Payload[0]);
+
+        // Tavern rooms (talk type 3) are not served.
+        await carolVoice.JoinAsync("3_5_1");
         var unsupported = await carolVoice.WaitTypeAsync(VoiceDown.JoinResult, Wait);
         Assert.Equal(VoiceJoinCode.UnsupportedRoom, unsupported.Payload[0]);
     }
@@ -285,7 +294,7 @@ public sealed class VoiceRelayTests : IAsyncLifetime
 
         // Wrong token: the ticket survives for a correct retry.
         var (roleId, token) = await GetTicketAsync(alice);
-        var wrongToken = token.ToArray();
+        var wrongToken = token.Token.ToArray();
         wrongToken[0] ^= 0xFF;
         await using (var wrong = new VoiceTestClient(_voicePort))
         {
@@ -517,17 +526,18 @@ public sealed class VoiceRelayTests : IAsyncLifetime
         // Toggling as fast as the socket goes: the budget (ControlBurst 20 + ControlPerSecond 10, already spent
         // above) lets a handful through, and the sustained flood disconnects Alice, not the room.
         var started = DateTime.UtcNow;
-        bool writeFailed = false;
+        // The relay reads on after the kick, so her writes keep succeeding until she sees its orderly close; only a
+        // write after the socket's final close (KickedCloseDelay later) can fail.
         try { for (int i = 0; i < 400 && !aliceVoice.Closed; i++) await aliceVoice.MicAsync(i % 2 == 1); }
-        catch (IOException) { writeFailed = true; } // the server closed her socket under a pending write
+        catch (IOException) { }
         int toggles = await CountAtBob((t, p) => t == VoiceDown.MicState && BitConverter.ToInt64(p) == aliceRole);
         double seconds = (DateTime.UtcNow - started).TotalSeconds;
         Assert.InRange(toggles, 0, 20 + 10 + (int)Math.Ceiling(seconds * 10));
-        if (!writeFailed)
-        {
-            var kicked = await aliceVoice.WaitTypeAsync(VoiceDown.Kicked, Wait);
-            Assert.Equal(VoiceKickCode.Flood, kicked.Payload[0]);
-        }
+        // However fast she wrote, the Kicked frame reaches her before the connection ends.
+        var kicked = await aliceVoice.WaitTypeAsync(VoiceDown.Kicked, Wait);
+        Assert.Equal(VoiceKickCode.Flood, kicked.Payload[0]);
+        await Wait200UntilAsync(() => aliceVoice.Closed, Wait);
+        Assert.True(aliceVoice.Closed);
         await bobVoice.WaitAsync((t, p) => t == VoiceDown.MemberChange && BitConverter.ToInt64(p) == aliceRole && p[8] == 0, Wait);
 
         Assert.False(bobVoice.Closed);
@@ -640,6 +650,7 @@ public sealed class VoiceRelayTests : IAsyncLifetime
             Assert.Equal("", ticket.Host);
             Assert.Equal(new byte[16], ticket.Token);
             Assert.Equal(0u, ticket.Ttl);
+            Assert.Equal(new byte[VoiceCipher.SecretSize], ticket.Secret);
         }
         finally
         {
@@ -728,19 +739,112 @@ public sealed class VoiceRelayTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData("127.0.0.1", null, false, true)]
-    [InlineData("192.168.1.20", null, false, false)] // plaintext voice off loopback needs the explicit opt-in
-    [InlineData("192.168.1.20", null, true, true)]
-    [InlineData("192.168.1.20", "127.0.0.1", false, true)] // bound to loopback whatever the public host says
-    public void PlaintextVoiceServesOnLoopbackOrOnlyWithTheOptIn(string publicHost, string? bind, bool allow, bool served)
+    [InlineData("127.0.0.1", null)]
+    [InlineData("192.168.1.20", null)] // encrypted: off loopback needs no opt-in any more
+    [InlineData("192.168.1.20", "127.0.0.1")]
+    public void VoiceServesWheneverAPortIsSet(string publicHost, string? bind)
     {
         var o = new ServerOptions { PublicHost = publicHost, BindAddress = bind };
         o.Voice.Port = 33101;
-        o.Voice.AllowPlaintextOffLoopback = allow;
-        Assert.Equal(served, o.VoiceServed());
+        Assert.True(o.VoiceServed());
         o.Voice.Port = 0;
         Assert.False(o.VoiceServed());
     }
+
+    [Fact]
+    public async Task ASniffedTokenWithoutTheSecretNeitherLogsInNorKicksThePlayer()
+    {
+        var (alice, _) = await InWorld("Alice");
+        await using var a = alice;
+        var (roleId, key) = await GetTicketAsync(alice);
+        await using var thief = new VoiceTestClient(_voicePort);
+        await thief.ConnectAsync();
+        await thief.AuthAsync(roleId, key.Token, VoiceCipher.NewSecret()); // the token off the wire, a guessed secret
+        await thief.ExpectNoneAsync((t, _) => t == VoiceDown.AuthOk, TimeSpan.FromMilliseconds(500));
+        // The ticket was not used up: the player's own Auth still gets in.
+        await using var player = await ConnectAuthedAsync(roleId, key);
+        Assert.False(player.Closed);
+    }
+
+    [Fact]
+    public async Task APlaintextVersionOneAuthIsRefused()
+    {
+        // A client from before encryption: right token, but it would talk in the clear.
+        var (alice, _) = await InWorld("Alice");
+        await using var a = alice;
+        var (roleId, key) = await GetTicketAsync(alice);
+        await using var old = new VoiceTestClient(_voicePort);
+        await old.ConnectAsync();
+        await old.AuthAsync(roleId, key.Token, key.Secret, version: 1);
+        await old.ExpectNoneAsync((t, _) => t == VoiceDown.AuthOk, TimeSpan.FromMilliseconds(500));
+        await Wait200UntilAsync(() => old.Closed, Wait);
+        Assert.True(old.Closed);
+    }
+
+    [Fact]
+    public async Task AFrameThatFailsItsTagClosesTheConnection()
+    {
+        var (alice, _) = await InWorld("Alice");
+        await using var a = alice;
+        var (roleId, key) = await GetTicketAsync(alice);
+        await using var voice = await ConnectAuthedAsync(roleId, key);
+        // Counter 0 with a made-up body and tag: what an injected frame looks like.
+        await voice.SendRawAsync(VoiceUp.Ping, new byte[VoiceCipher.Overhead + 4]);
+        await voice.ExpectNoneAsync((t, _) => t == VoiceDown.Pong, TimeSpan.FromMilliseconds(500));
+        await Wait200UntilAsync(() => voice.Closed, Wait);
+        Assert.True(voice.Closed);
+    }
+
+    [Fact]
+    public async Task AReplayedFrameClosesTheConnection()
+    {
+        var (alice, _) = await InWorld("Alice");
+        await using var a = alice;
+        var (roleId, key) = await GetTicketAsync(alice);
+        await using var voice = await ConnectAuthedAsync(roleId, key);
+        await voice.PingAsync();
+        await voice.WaitTypeAsync(VoiceDown.Pong, Wait);
+        byte[] wire = voice.RawSent;
+        // The last write was that Ping, and a Ping has no payload: its frame is exactly header + sealing overhead.
+        byte[] lastPing = wire[^(VoiceFrame.HeaderSize + VoiceCipher.Overhead)..];
+        await voice.SendBytesAsync(lastPing);
+        await voice.ExpectNoneAsync((t, _) => t == VoiceDown.Pong, TimeSpan.FromMilliseconds(500));
+        await Wait200UntilAsync(() => voice.Closed, Wait);
+        Assert.True(voice.Closed);
+    }
+
+    [Fact]
+    public async Task AudioIsRelayedButNeverCrossesTheWireInTheClear()
+    {
+        var (alice, aliceId) = await InWorld("Alice");
+        var (bob, bobId) = await InWorld("Bob");
+        await using var a = alice;
+        await using var b = bob;
+        long teamId = await CreatePartyAsync(alice, aliceId, bob, bobId);
+        var (aliceRole, aliceKey) = await GetTicketAsync(alice);
+        var (bobRole, bobKey) = await GetTicketAsync(bob);
+        await using var aliceVoice = await ConnectAuthedAsync(aliceRole, aliceKey);
+        await using var bobVoice = await ConnectAuthedAsync(bobRole, bobKey);
+        string channel = teamId.ToString();
+        await aliceVoice.JoinAsync(channel);
+        await aliceVoice.WaitTypeAsync(VoiceDown.JoinResult, Wait);
+        await bobVoice.JoinAsync(channel);
+        await bobVoice.WaitTypeAsync(VoiceDown.JoinResult, Wait);
+        await aliceVoice.MicAsync(true);
+        await bobVoice.WaitAsync((t, p) => t == VoiceDown.MicState && BitConverter.ToInt64(p) == aliceRole && p[8] == 1, Wait);
+
+        byte[] speech = System.Text.Encoding.ASCII.GetBytes("RO3EMU-SPEECH-IN-THE-CLEAR-RO3EMU-SPEECH-IN-THE-CLEAR");
+        await aliceVoice.SendAudioAsync(0, speech);
+        var (_, payload) = await bobVoice.WaitTypeAsync(VoiceDown.Audio, Wait);
+        Assert.Equal(speech, payload[10..]);
+
+        Assert.False(Contains(aliceVoice.RawSent, speech[..16]), "Alice's audio went out in the clear");
+        Assert.False(Contains(bobVoice.RawReceived, speech[..16]), "Bob's audio came in in the clear");
+        Assert.False(Contains(bobVoice.RawReceived, BitConverter.GetBytes(aliceRole)), "the speaker id came in in the clear");
+        Assert.False(Contains(aliceVoice.RawSent, System.Text.Encoding.ASCII.GetBytes(channel)), "the room id went out in the clear");
+    }
+
+    private static bool Contains(byte[] haystack, byte[] needle) => haystack.AsSpan().IndexOf(needle) >= 0;
 
     private static async Task<(BotClient Bot, long Id)> InWorldOn(string http, string dataDir, string name)
     {

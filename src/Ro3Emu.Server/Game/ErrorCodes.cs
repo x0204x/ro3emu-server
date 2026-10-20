@@ -226,6 +226,18 @@ public static class ErrorCodes
     public const int GuildIconLocked = 10003, GuildFrameLocked = 10004, GuildJoinLevel = 10008;
     public const int GuildTextLength = 10027;
     public const int GuildFundsShort = 484, GuildContributeShort = 10040, GuildBuildBusy = 485, GuildHallLow = 486, GuildBuildMax = 487;
+    // Guild voice channels (ErrorCodeConfig 97001-97032, Localization_en): not in a guild, invalid channel, on the
+    // channel's block list, already / not in the channel, not leader nor GuildVoice right, the leader cannot be kicked,
+    // not blocked; Order mode: no mic in Free mode, managers need not apply, already may speak,
+    // already / not applied, not Order mode, reason too long; already in another channel, the leader's mic stays,
+    // cannot kick yourself.
+    public const int GuildVoiceNotInGuild = 97001, GuildVoiceBadChannel = 97002, GuildVoiceBlocked = 97003;
+    public const int GuildVoiceAlreadyInChannel = 97004, GuildVoiceNotInChannel = 97005, GuildVoiceNoPermission = 97006;
+    public const int GuildVoiceCannotKickLeader = 97007, GuildVoiceNotBlocked = 97008;
+    public const int GuildVoiceFreeMode = 97016, GuildVoiceManagerNeedsNoApply = 97017, GuildVoiceAlreadyCanSpeak = 97018;
+    public const int GuildVoiceAlreadyApplied = 97019, GuildVoiceNotApplied = 97020, GuildVoiceNotOrderMode = 97021;
+    public const int GuildVoiceReasonTooLong = 97024, GuildVoiceInAnotherChannel = 97029, GuildVoiceLeaderCannotMute = 97030;
+    public const int GuildVoiceCannotKickSelf = 97032;
     // Guild Caravan: ErrorCodeConfig 489-504; exact RPC-to-code selection is (inferred).
     public const int CaravanLoaded = 489, CaravanExpired = 490, CaravanOrderExpired = 491;
     public const int CaravanNotAsking = 492, CaravanCannotAsk = 493, CaravanRequestMissing = 494;

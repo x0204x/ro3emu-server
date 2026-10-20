@@ -121,12 +121,12 @@ public sealed class ActivityAdventuresTests : IAsyncLifetime
         foreach (long forged in new long[] { 103, 104 })
         {
             var wrongInfo = new CommonActivityReq
-                { ActivityId = forged, RequestId = ++requestId, SeasonEveGetInfo = new SeasonEveGetGlobalInfoReq() };
+            { ActivityId = forged, RequestId = ++requestId, SeasonEveGetInfo = new SeasonEveGetGlobalInfoReq() };
             await alice.SendGameAsync(NewActivityService.Common, wrongInfo);
             Assert.NotEqual(0, (await Next(alice, NewActivityService.Common, CommonActivityRes.Parser,
                 r => r.RequestId == wrongInfo.RequestId)).Result);
             var wrongClue = new CommonActivityReq
-                { ActivityId = forged, RequestId = ++requestId, SeasonEveFindClue = new SeasonEveFindClueReq { ClueId = 1 } };
+            { ActivityId = forged, RequestId = ++requestId, SeasonEveFindClue = new SeasonEveFindClueReq { ClueId = 1 } };
             await alice.SendGameAsync(NewActivityService.Common, wrongClue);
             Assert.NotEqual(0, (await Next(alice, NewActivityService.Common, CommonActivityRes.Parser,
                 r => r.RequestId == wrongClue.RequestId)).Result);
@@ -185,9 +185,9 @@ public sealed class ActivityAdventuresTests : IAsyncLifetime
         Assert.Equal(2, shared.BulletInfo.Count);
         Assert.Equal(shared.Progress, (await Global(bob)).Progress);
         Assert.NotEqual(0, (await Request(alice, r => r.SeasonEveClaimAward = new SeasonEveClaimAwardReq
-            { ClaimId = { [1] = true } })).Result);
+        { ClaimId = { [1] = true } })).Result);
         Assert.NotEqual(0, (await Request(alice, r => r.SeasonEveSelectWish = new SeasonEveSelectWishReq
-            { WishId = 1 })).Result);
+        { WishId = 1 })).Result);
 
         clock.Set(window.Start + 1800);
         long paced = (await Global(alice)).Progress;
@@ -204,13 +204,13 @@ public sealed class ActivityAdventuresTests : IAsyncLifetime
         Assert.Equal(1_000_000, (await Global(relog)).Progress);
         Assert.Equal(1_000_000, (await Global(bob)).Progress);
         Assert.Equal(0, (await Request(relog, r => r.SeasonEveClaimAward = new SeasonEveClaimAwardReq
-            { ClaimId = { [1] = true } })).Result);
+        { ClaimId = { [1] = true } })).Result);
         Assert.NotEqual(0, (await Request(relog, r => r.SeasonEveClaimAward = new SeasonEveClaimAwardReq
-            { ClaimId = { [1] = true } })).Result);
+        { ClaimId = { [1] = true } })).Result);
         Assert.Equal(0, (await Request(relog, r => r.SeasonEveSelectWish = new SeasonEveSelectWishReq
-            { WishId = 1 })).Result);
+        { WishId = 1 })).Result);
         Assert.NotEqual(0, (await Request(relog, r => r.SeasonEveSelectWish = new SeasonEveSelectWishReq
-            { WishId = 2 })).Result);
+        { WishId = 2 })).Result);
 
         var registry = app.Services.GetRequiredService<SessionRegistry>();
         var roles = app.Services.GetRequiredService<Ro3Emu.Server.Accounts.RoleStore>();
@@ -862,14 +862,14 @@ public sealed class ActivityAdventuresTests : IAsyncLifetime
         var bobAsk = await Next(bob, 82963, NewActivityFragmentGatherAskResp.Parser, r => r.AskID > 0);
         var aliceId = (long)alice.Self!.Uuid; var bobId = (long)bob.Self!.Uuid;
         var fromAlice = new NewActivityFragmentGatherSendReq
-            { ToUserID = bobId, AskID = bobAsk.AskID, ItemID = 1111001 };
+        { ToUserID = bobId, AskID = bobAsk.AskID, ItemID = 1111001 };
         var fromBob = new NewActivityFragmentGatherSendReq
-            { ToUserID = aliceId, AskID = aliceAsk.AskID, ItemID = 1111001 };
+        { ToUserID = aliceId, AskID = aliceAsk.AskID, ItemID = 1111001 };
         await Task.WhenAll(
             alice.SendGameAsync(NewActivityService.Common, new CommonActivityReq
-                { ActivityId = 105, RequestId = 701, FragmentGatherSend = fromAlice.Clone() }),
+            { ActivityId = 105, RequestId = 701, FragmentGatherSend = fromAlice.Clone() }),
             bob.SendGameAsync(NewActivityService.Common, new CommonActivityReq
-                { ActivityId = 105, RequestId = 702, FragmentGatherSend = fromBob.Clone() }));
+            { ActivityId = 105, RequestId = 702, FragmentGatherSend = fromBob.Clone() }));
         var outcomes = await Task.WhenAll(
             Next(alice, NewActivityService.Common, CommonActivityRes.Parser, r => r.RequestId == 701),
             Next(bob, NewActivityService.Common, CommonActivityRes.Parser, r => r.RequestId == 702));
@@ -877,14 +877,14 @@ public sealed class ActivityAdventuresTests : IAsyncLifetime
         if (outcomes[0].Result != 0)
         {
             await alice.SendGameAsync(NewActivityService.Common, new CommonActivityReq
-                { ActivityId = 105, RequestId = 703, FragmentGatherSend = fromAlice });
+            { ActivityId = 105, RequestId = 703, FragmentGatherSend = fromAlice });
             Assert.Equal(0, (await Next(alice, NewActivityService.Common, CommonActivityRes.Parser,
                 r => r.RequestId == 703)).Result);
         }
         if (outcomes[1].Result != 0)
         {
             await bob.SendGameAsync(NewActivityService.Common, new CommonActivityReq
-                { ActivityId = 105, RequestId = 704, FragmentGatherSend = fromBob });
+            { ActivityId = 105, RequestId = 704, FragmentGatherSend = fromBob });
             Assert.Equal(0, (await Next(bob, NewActivityService.Common, CommonActivityRes.Parser,
                 r => r.RequestId == 704)).Result);
         }
@@ -907,9 +907,9 @@ public sealed class ActivityAdventuresTests : IAsyncLifetime
         await alice.SendGameAsync(82963, new NewActivityFragmentGatherAskReq { ItemConfigID = 1111001 });
         var ask = await Next(alice, 82963, NewActivityFragmentGatherAskResp.Parser, r => r.AskID > 0);
         var send = new NewActivityFragmentGatherSendReq
-            { ToUserID = (long)alice.Self!.Uuid, AskID = ask.AskID, ItemID = 1111001 };
+        { ToUserID = (long)alice.Self!.Uuid, AskID = ask.AskID, ItemID = 1111001 };
         await Task.WhenAll(bob.SendGameAsync(NewActivityService.Common, new CommonActivityReq
-            { ActivityId = 105, RequestId = 711, FragmentGatherSend = send.Clone() }),
+        { ActivityId = 105, RequestId = 711, FragmentGatherSend = send.Clone() }),
             carol.SendGameAsync(NewActivityService.Common, new CommonActivityReq
             { ActivityId = 105, RequestId = 712, FragmentGatherSend = send.Clone() }));
         var outcomes = await Task.WhenAll(
@@ -949,7 +949,7 @@ public sealed class ActivityAdventuresTests : IAsyncLifetime
             try
             {
                 await activities.FragmentSendAsync(sender, new NewActivityFragmentGatherSendReq
-                    { ToUserID = receiver.Role!.Id, AskID = ask.AskID, ItemID = 1111001 });
+                { ToUserID = receiver.Role!.Id, AskID = ask.AskID, ItemID = 1111001 });
             }
             finally { receiver.ActivityGate.Release(); }
         }));
@@ -1064,7 +1064,7 @@ public sealed class ActivityAdventuresTests : IAsyncLifetime
         try
         {
             await bob.SendGameAsync(82964, new NewActivityFragmentGatherSendReq
-                { ToUserID = aliceId, AskID = ask.AskID, ItemID = 1111001 });
+            { ToUserID = aliceId, AskID = ask.AskID, ItemID = 1111001 });
             await entered.Task.WaitAsync(Wait);
             if (delete)
             {

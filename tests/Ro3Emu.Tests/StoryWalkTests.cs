@@ -684,7 +684,7 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
                 await Service<GameLoop>().InvokeAsync(() => Service<SceneService>().TeleportInMapAsync(Session(),
                     new MapPoint(actor.X + 1, actor.Y, actor.Z, actor.Face)));
                 var reply = await RequestAsync(SceneService.NpcInteraction, new NpcInteractionReq
-                    { NpcUid = actor.Uid, InteractionId = (int)interaction, SceneConfigId = scene }, NpcInteractionRsp.Parser);
+                { NpcUid = actor.Uid, InteractionId = (int)interaction, SceneConfigId = scene }, NpcInteractionRsp.Parser);
                 detail.Add($"step {wave + 1}: 32700 interaction {interaction} on {actor.NpcId}" + (reply.Result != 0 ? $" refused {reply.Result}" : ""));
                 break;
             default:
@@ -745,7 +745,7 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
                 if (TargetDone(task, index)) break;
                 int level = await OnLoop(s => s.Progress!.Skills.GetValueOrDefault(group));
                 var reply = await RequestAsync(SkillService.PlanUpdate, new SkillGrowthSkillPlanUpdateReq
-                    { Plan = 0, LevelUpList = { [group] = new SkillData { SkillId = group, SkillLevel = level + 1 } } },
+                { Plan = 0, LevelUpList = { [group] = new SkillData { SkillId = group, SkillLevel = level + 1 } } },
                     SkillGrowthSkillPlanUpdateResp.Parser);
                 if (reply.Result == 0) { learned++; any = true; }
             }
@@ -921,7 +921,7 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
         {
             int pet = free[0];
             var reply = await RequestAsync(PetService.StateUpdate, new PetStateUpdateReq
-                { PetId = pet, Source = 0, Target = (PetStateSource_Type)1, TargetSlotIndex = slot }, PetStateUpdateResp.Parser);
+            { PetId = pet, Source = 0, Target = (PetStateSource_Type)1, TargetSlotIndex = slot }, PetStateUpdateResp.Parser);
             if (reply.Result != 0) throw new WalkBlocked($"33311 deploy pet {pet} to slot {slot} refused {reply.Result}");
             free.RemoveAt(0);
             deployed.Add(pet);

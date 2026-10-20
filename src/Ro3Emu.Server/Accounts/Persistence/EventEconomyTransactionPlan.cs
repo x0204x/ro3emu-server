@@ -105,10 +105,16 @@ internal sealed class EventEconomyTransactionPlan(RoleItemPlan child, EventEcono
             sequence = (long)advance.ExecuteScalar()!;
         long recorded = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var mutated = MutatedRoleWrites(result).ToHashSet();
-        var beforeVector = RoleWrites.Distinct().Select(key => new { key.RoleId, key.Part,
-            Epoch = ExpectedRevisions![key.RoleId].Epoch, Revision = ExpectedRevisions[key.RoleId].Revision(key.Part) }).ToArray();
-        var afterVector = beforeVector.Select(value => new { value.RoleId, value.Part, value.Epoch,
-            Revision = checked(value.Revision + (mutated.Contains(RevisionStore.Role(value.RoleId, value.Part)) ? 1 : 0)) }).ToArray();
+        var beforeVector = RoleWrites.Distinct().Select(key => new
+        {
+            key.RoleId, key.Part,
+            Epoch = ExpectedRevisions![key.RoleId].Epoch, Revision = ExpectedRevisions[key.RoleId].Revision(key.Part)
+        }).ToArray();
+        var afterVector = beforeVector.Select(value => new
+        {
+            value.RoleId, value.Part, value.Epoch,
+            Revision = checked(value.Revision + (mutated.Contains(RevisionStore.Role(value.RoleId, value.Part)) ? 1 : 0))
+        }).ToArray();
         var pins = RolePins.Distinct().Select(role => new { RoleId = role, ExpectedRevisions![role].Epoch }).ToArray();
         var changedEntities = MutatedEntityWrites(result).Concat(MutatedEntityDeltaWrites(result)).ToHashSet();
         var entityAfter = entityBefore.Select(value => new OwnerRevisionValue(value.Key,

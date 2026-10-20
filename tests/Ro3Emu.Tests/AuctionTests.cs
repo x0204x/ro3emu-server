@@ -413,7 +413,7 @@ public sealed partial class AuctionTests : AuctionTestsHost
             var row = Seed(AuctionType.Dungeon, alice);
             row.State = AuctionState.Public;
             row.Start = clock.GetUtcNow().ToUnixTimeSeconds() + 30;
-        SaveRows(row);
+            SaveRows(row);
             id = row.Id;
             Assert.Equal(0, (await Bid(alice, id, 800, BiddingType.Auto)).Result);
             fundsAfterReserve = Currency(alice);

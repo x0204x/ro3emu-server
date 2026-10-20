@@ -241,8 +241,11 @@ public sealed partial class GuildLeagueService : IGameTicker
             standing.Name = g.Name; standing.Background = g.Background; standing.Icon = g.Icon;
         }
         Place(next, eligible.Select(g => g.Id).ToHashSet(), newSeason || next.Guilds.Values.All(s => s.Tier == 0));
-        var cup = new Cup { Index = t.Index, Init = t.Init, Windows = [t.Preliminary.Start, t.Preliminary.End,
-            t.Semifinal.Start, t.Semifinal.End, t.Final.Start, t.Final.End] };
+        var cup = new Cup
+        {
+            Index = t.Index, Init = t.Init, Windows = [t.Preliminary.Start, t.Preliminary.End,
+            t.Semifinal.Start, t.Semifinal.End, t.Final.Start, t.Final.End]
+        };
         foreach (int tier in Tiers)
         {
             var members = next.Guilds.Where(p => p.Value.Tier == tier && eligible.Any(g => g.Id == p.Key))
@@ -397,8 +400,11 @@ public sealed partial class GuildLeagueService : IGameTicker
         var rsp = new GetGuildLeagueGroupInfoRsp { EStatus = calendar.Info(Now).EStatus };
         if (own != null && GroupOf(own.Id) is { } group)
             for (int i = 0; i < group.Pairs.Count; i++)
-                rsp.Info.Add(new GuildLeagueMatchInfo { BlueGuild = Dungeon(group.Pairs[i][0], group, i),
-                    RedGuild = Dungeon(group.Pairs[i][1], group, i) });
+                rsp.Info.Add(new GuildLeagueMatchInfo
+                {
+                    BlueGuild = Dungeon(group.Pairs[i][0], group, i),
+                    RedGuild = Dungeon(group.Pairs[i][1], group, i)
+                });
         return s.SendGameAsync(msgId, rsp);
     }
 

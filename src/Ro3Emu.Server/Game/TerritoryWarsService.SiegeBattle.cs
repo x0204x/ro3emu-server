@@ -89,10 +89,13 @@ public sealed partial class TerritoryWarsService
                 var pair = SiegeGuilds(city);
                 if (pair.Attack == 0 || pair.Defense == 0)
                 { await Send(s, 30400, new EnterDungeonRsp { Result = ErrorCodes.TerritoryNotQualified }); return true; }
-                record = new SiegeRunState { City = city, Start = window.Start, End = window.End,
+                record = new SiegeRunState
+                {
+                    City = city, Start = window.Start, End = window.End,
                     Attack = pair.Attack, Defense = pair.Defense, StatisticsId = await AllocateStatisticsIdAsync(),
                     AttackSnapshot = SiegeSnapshot(guildStore.Get(pair.Attack)!).ToByteArray(),
-                    DefenseSnapshot = SiegeSnapshot(guildStore.Get(pair.Defense)!).ToByteArray() };
+                    DefenseSnapshot = SiegeSnapshot(guildStore.Get(pair.Defense)!).ToByteArray()
+                };
                 state.SiegeRuns[key] = record;
                 await SaveAsync(state);
             }
@@ -106,8 +109,11 @@ public sealed partial class TerritoryWarsService
             { await Send(s, 30400, new EnterDungeonRsp { Result = ErrorCodes.Parameter }); return true; }
             else if (!instances.AddParticipant(battle.Room, s))
             { await Send(s, 30400, new EnterDungeonRsp { Result = ErrorCodes.Parameter }); return true; }
-            bool added = record.Players.TryAdd(s.Role.Id, new Participant { Id = s.Role.Id, Guild = guild,
-                Name = s.Role.Name, Job = s.Progress.Career, Level = s.Progress.Level, Joined = clock.Now });
+            bool added = record.Players.TryAdd(s.Role.Id, new Participant
+            {
+                Id = s.Role.Id, Guild = guild,
+                Name = s.Role.Name, Job = s.Progress.Career, Level = s.Progress.Level, Joined = clock.Now
+            });
             await SaveAsync(state);
             await Send(s, 30400, new EnterDungeonRsp());
             // DungeonConfig's default camp relation is client-side. The crystal is camp 2;
@@ -160,15 +166,27 @@ public sealed partial class TerritoryWarsService
     private DungeonBaseInfoNotify SiegeBaseInfo(SiegeRun battle)
     {
         var r = battle.State;
-        return new DungeonBaseInfoNotify { DungeonEntry = SiegeScene, DungeonId = battle.Room.Id,
+        return new DungeonBaseInfoNotify
+        {
+            DungeonEntry = SiegeScene, DungeonId = battle.Room.Id,
             Stage = r.Settled ? 3 : 2, Level = 99,
-            InitData = new DungeonInitData { SiegeInitData = new SiegeInitData { CityId = r.City,
-                AttackGuildData = new SiegeGuildDungeonData { GuildId = r.Attack },
-                DefenseGuildData = new SiegeGuildDungeonData { GuildId = r.Defense } }, PlaybookId = clock.PlayBook },
-            StageModuleData = new DungeonStageModuleData { MapState = r.Settled ? 3 : 2, Stage = r.Settled ? 3 : 2,
+            InitData = new DungeonInitData
+            {
+                SiegeInitData = new SiegeInitData
+                {
+                    CityId = r.City,
+                    AttackGuildData = new SiegeGuildDungeonData { GuildId = r.Attack },
+                    DefenseGuildData = new SiegeGuildDungeonData { GuildId = r.Defense }
+                }, PlaybookId = clock.PlayBook
+            },
+            StageModuleData = new DungeonStageModuleData
+            {
+                MapState = r.Settled ? 3 : 2, Stage = r.Settled ? 3 : 2,
                 StageStartTime = r.Start * 1000, StageEndTime = r.End * 1000,
-                MapStateStartTime = r.Start * 1000, MapStateEndTime = r.End * 1000 },
-            ChangeType = (DungeonBaseInfoNotify.Types.eChangeType)2 };
+                MapStateStartTime = r.Start * 1000, MapStateEndTime = r.End * 1000
+            },
+            ChangeType = (DungeonBaseInfoNotify.Types.eChangeType)2
+        };
     }
 
     private Task SiegeLeavingAsync(GameSession s)
@@ -219,10 +237,10 @@ public sealed partial class TerritoryWarsService
         using var stagedTerritoryState = StageState();
         try
         {
-        if (!ReferenceEquals(s.SiegeBattle, battle) || !SiegeActive(battle) || !SiegeMember(s, battle)) return;
-        battle.State.Players[s.Role.Id].Damage += Math.Max(0, amount);
-        if (m == battle.Crystal) battle.State.CrystalHp = m.Hp;
-        await SaveAsync(state);
+            if (!ReferenceEquals(s.SiegeBattle, battle) || !SiegeActive(battle) || !SiegeMember(s, battle)) return;
+            battle.State.Players[s.Role.Id].Damage += Math.Max(0, amount);
+            if (m == battle.Crystal) battle.State.CrystalHp = m.Hp;
+            await SaveAsync(state);
         }
         finally { stagedTerritoryState.Dispose(); gate.Release(); reservation?.Dispose(); }
     }
@@ -235,9 +253,9 @@ public sealed partial class TerritoryWarsService
         using var stagedTerritoryState = StageState();
         try
         {
-        if (!ReferenceEquals(s.SiegeBattle, battle) || !SiegeActive(battle) || !SiegeMember(s, battle)) return;
-        battle.State.Players[s.Role.Id].Healed += Math.Max(0, amount);
-        await SaveAsync(state);
+            if (!ReferenceEquals(s.SiegeBattle, battle) || !SiegeActive(battle) || !SiegeMember(s, battle)) return;
+            battle.State.Players[s.Role.Id].Healed += Math.Max(0, amount);
+            await SaveAsync(state);
         }
         finally { stagedTerritoryState.Dispose(); gate.Release(); reservation?.Dispose(); }
     }
@@ -249,12 +267,12 @@ public sealed partial class TerritoryWarsService
         using var stagedTerritoryState = StageState();
         try
         {
-        if (!SiegeHostile(s, victim)) return;
-        var battle = s.SiegeBattle!;
-        var attacker = battle.State.Players[s.Role!.Id]; var defender = battle.State.Players[victim.Role!.Id];
-        attacker.Damage += Math.Max(0, amount); defender.Taken += Math.Max(0, amount);
-        if (lethal) { attacker.Kills++; attacker.Score++; } // (inferred) one point per player kill.
-        await SaveAsync(state);
+            if (!SiegeHostile(s, victim)) return;
+            var battle = s.SiegeBattle!;
+            var attacker = battle.State.Players[s.Role!.Id]; var defender = battle.State.Players[victim.Role!.Id];
+            attacker.Damage += Math.Max(0, amount); defender.Taken += Math.Max(0, amount);
+            if (lethal) { attacker.Kills++; attacker.Score++; } // (inferred) one point per player kill.
+            await SaveAsync(state);
         }
         finally { stagedTerritoryState.Dispose(); gate.Release(); reservation?.Dispose(); }
     }
@@ -291,8 +309,10 @@ public sealed partial class TerritoryWarsService
             if (siegeBattles.TryGetValue(key, out var battle) && !battle.Room.Closed)
             {
                 await RoleFanout.EachAsync(battle.Room.ActiveMembers.Select(m => m.Session), async s =>
-                { if (s.SiegeBattle == battle && !s.SceneLoading && !SiegeMember(s, battle))
-                        await instances.LeaveAsync(s); });
+                {
+                    if (s.SiegeBattle == battle && !s.SceneLoading && !SiegeMember(s, battle))
+                        await instances.LeaveAsync(s);
+                });
                 // The attacker client waits 2s for the crystal and 5s for the result panel;
                 // keep the scene for a bounded presentation grace (inferred).
                 if (current.Settled && clock.Now >= current.SettledAt + 30)
@@ -314,18 +334,29 @@ public sealed partial class TerritoryWarsService
         run.Winner = winner; run.Settled = true; run.SettledAt = clock.Now;
         int zone = SiegeZone(run.City);
         AssignTerritoryOwner(next, zone, winner);
-        var result = new DungeonResultInfo { FirstResultType = 1, SecondResultType = 1, Result = 1,
+        var result = new DungeonResultInfo
+        {
+            FirstResultType = 1, SecondResultType = 1, Result = 1,
             WinEntityId = winner, StatisticsId = run.StatisticsId, DungeonId = (int)SiegeScene,
-            StatisticsTime = clock.Now * 1000, DungeonStartTimestamp = run.Start * 1000 };
+            StatisticsTime = clock.Now * 1000, DungeonStartTimestamp = run.Start * 1000
+        };
         result.SceneStatistics[run.StatisticsId] = SiegeStatistics(run).SceneStatistics[run.StatisticsId];
         run.Result = result.ToByteArray();
-        var outcome = new SiegeResultInfo { Result = winner == run.Attack ? 1 : 2, Time = clock.Now,
+        var outcome = new SiegeResultInfo
+        {
+            Result = winner == run.Attack ? 1 : 2, Time = clock.Now,
             WinGuildInfo = GuildSnapInfo.Parser.ParseFrom(winner == run.Attack ? run.AttackSnapshot : run.DefenseSnapshot),
-            LoseGuildInfo = GuildSnapInfo.Parser.ParseFrom(winner == run.Attack ? run.DefenseSnapshot : run.AttackSnapshot) };
+            LoseGuildInfo = GuildSnapInfo.Parser.ParseFrom(winner == run.Attack ? run.DefenseSnapshot : run.AttackSnapshot)
+        };
         int week = (int)Math.Max(1, (run.Start - clock.SeasonStart) / (7 * 86400) + 1); // (inferred) season-relative week.
-        var history = new SiegeCityHistoryInfo { CityId = run.City, Week = week,
-            GuildInfo = outcome.WinGuildInfo.Clone(), BattleInfo = new SiegeHistoryBattleInfo {
-                ResultInfo = outcome, CommonResultInfo = result } };
+        var history = new SiegeCityHistoryInfo
+        {
+            CityId = run.City, Week = week,
+            GuildInfo = outcome.WinGuildInfo.Clone(), BattleInfo = new SiegeHistoryBattleInfo
+            {
+                ResultInfo = outcome, CommonResultInfo = result
+            }
+        };
         history.SiegeWinInfo[run.City] = 1;
         if (!next.SiegeHistory.TryGetValue(run.City, out var entries)) next.SiegeHistory[run.City] = entries = new();
         entries.Add(history.ToByteArray());
@@ -423,10 +454,15 @@ public sealed partial class TerritoryWarsService
         var sceneStats = new SceneStatisticsInfo { SceneId = run.StatisticsId, DungeonId = (int)SiegeScene };
         foreach (var p in run.Players.Values)
         {
-            var role = new RoleStatisticsInfo { BaseInfo = new StatisticsRoleBaseInfo {
-                Id = p.Id, Area = 1, Name = p.Name, Job = p.Job, GuildId = p.Guild,
-                RewardData = new StatisticsAwardCheckData { PlayerLevel = p.Level, Job = p.Job } },
-                TotalDamage = p.Damage, TotalBeDamage = p.Taken, TotalCure = p.Healed, Totalscore = p.Score };
+            var role = new RoleStatisticsInfo
+            {
+                BaseInfo = new StatisticsRoleBaseInfo
+                {
+                    Id = p.Id, Area = 1, Name = p.Name, Job = p.Job, GuildId = p.Guild,
+                    RewardData = new StatisticsAwardCheckData { PlayerLevel = p.Level, Job = p.Job }
+                },
+                TotalDamage = p.Damage, TotalBeDamage = p.Taken, TotalCure = p.Healed, Totalscore = p.Score
+            };
             // The client indexes extraData directly while decoding Siege results. These are the
             // schema's EStatisticsModuleEnum keys; zero means the unsupported action did not occur.
             role.ExtraData[1001001] = new ExtraValueData { LongValue = p.Damage }; // Damage
@@ -446,12 +482,18 @@ public sealed partial class TerritoryWarsService
         foreach (var (id, bytes) in new[] { (run.Attack, run.AttackSnapshot), (run.Defense, run.DefenseSnapshot) })
         {
             var guild = GuildSnapInfo.Parser.ParseFrom(bytes);
-            sceneStats.GuildStatistics[id] = new GuildStatisticsInfo { GuildId = id, GuildName = guild.Name,
-                GuildIcon = guild.Icon?.Clone() ?? new GuildHeadIcon() };
+            sceneStats.GuildStatistics[id] = new GuildStatisticsInfo
+            {
+                GuildId = id, GuildName = guild.Name,
+                GuildIcon = guild.Icon?.Clone() ?? new GuildHeadIcon()
+            };
         }
-        return new DungeonStatisticsInfoWithDungeon { StatisticsId = run.StatisticsId, DungeonId = (int)SiegeScene,
+        return new DungeonStatisticsInfoWithDungeon
+        {
+            StatisticsId = run.StatisticsId, DungeonId = (int)SiegeScene,
             StatisticsTime = (run.Settled ? run.SettledAt : clock.Now) * 1000,
-            SceneStatistics = { [run.StatisticsId] = sceneStats } };
+            SceneStatistics = { [run.StatisticsId] = sceneStats }
+        };
     }
 
     /// <summary>Shared report IDs for Siege players; 30106 cannot author a winner or objective event.</summary>
@@ -476,17 +518,25 @@ public sealed partial class TerritoryWarsService
         if (id == 30117) await Send(s, id, new GetDungeonStatisticsInDungeonResp { DungeonStatistics = report });
         else if (id == 30116)
         {
-            var response = new DungeonStatisticsModuleRsp { StatisticsId = report.StatisticsId,
-                DungeonId = report.DungeonId, StatisticsTime = report.StatisticsTime };
+            var response = new DungeonStatisticsModuleRsp
+            {
+                StatisticsId = report.StatisticsId,
+                DungeonId = report.DungeonId, StatisticsTime = report.StatisticsTime
+            };
             response.SceneStatistics.Add(report.SceneStatistics); await Send(s, id, response);
         }
         else if (id == 30110)
         {
             var response = new DungeonStatisticsRes(); var map = new DungeonStatisticsInfo { DungeonMapId = SiegeScene };
             foreach (var p in battle.State.Players.Values)
-                map.DungeonRolesInfo.Add(new DungeonRoleInfo { RoleBase = new ObjScoreBaseInfo {
-                    Id = p.Id, Name = p.Name, Job = p.Job, Area = 1 }, TotalDamage = p.Damage,
-                    TotalBeDamage = p.Taken, TotalCure = p.Healed, Totalscore = p.Score });
+                map.DungeonRolesInfo.Add(new DungeonRoleInfo
+                {
+                    RoleBase = new ObjScoreBaseInfo
+                    {
+                        Id = p.Id, Name = p.Name, Job = p.Job, Area = 1
+                    }, TotalDamage = p.Damage,
+                    TotalBeDamage = p.Taken, TotalCure = p.Healed, Totalscore = p.Score
+                });
             response.DungeonRolesInfo[battle.State.StatisticsId] = map; await Send(s, id, response);
         }
         else return false;

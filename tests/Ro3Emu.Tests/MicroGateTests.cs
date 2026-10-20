@@ -16,7 +16,7 @@ using Ro3Emu.Server.Net;
 
 namespace Ro3Emu.Tests;
 
-public class MicroGateTests : IDisposable
+public sealed class MicroGateTests : IDisposable
 {
     private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-test-" + Guid.NewGuid().ToString("N"));
 
@@ -77,7 +77,7 @@ public class MicroGateTests : IDisposable
         long token = EncryptToken.Parser.ParseFrom(body).Token;
 
         // Client side of Utils.GenEncryptKeyFromToken, then [2] in plaintext.
-        var sessionKey = SHA1.HashData(RandomNumberGenerator.GetBytes(16));
+        var sessionKey = RandomNumberGenerator.GetBytes(20); // the client's SHA-1 of 16 random bytes
         var encryptKey = new EncryptKey
         {
             HeadPadding = ByteString.CopyFrom(RandomNumberGenerator.GetBytes(7)),

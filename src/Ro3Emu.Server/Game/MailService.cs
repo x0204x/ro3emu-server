@@ -340,8 +340,11 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
     /// </summary>
     public Task<string> SendRawAsync(long role, string title, string content, IReadOnlyList<Attachment>? attachments = null,
         string sender = "RO3", DateTimeOffset? expiresAt = null, int category = 1, int importantType = 0) =>
-        DeliverAsync(role, new Letter { Title = title, Content = content, Sender = sender, Category = category,
-            ImportantType = importantType, Attachments = attachments?.ToList() ?? new() }, expiresAt,
+        DeliverAsync(role, new Letter
+        {
+            Title = title, Content = content, Sender = sender, Category = category,
+            ImportantType = importantType, Attachments = attachments?.ToList() ?? new()
+        }, expiresAt,
             attachments is { Count: > 0 } ? 30 : 7);
 
     /// <summary>
@@ -358,8 +361,11 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
         if (GameData.Int(template, "_iTimerMethod") != 0 && expiresAt == null)
             throw new ArgumentException("This MailConfig timer mode requires an explicit expiry.", nameof(expiresAt));
         int days = (int)GameData.Int(template, "_kTimes");
-        return DeliverAsync(role, new Letter { TemplateId = templateId, SenderId = "0", Category = category,
-            ImportantType = importantType, Attachments = attachments.ToList() }, expiresAt, days > 0 ? days : 30);
+        return DeliverAsync(role, new Letter
+        {
+            TemplateId = templateId, SenderId = "0", Category = category,
+            ImportantType = importantType, Attachments = attachments.ToList()
+        }, expiresAt, days > 0 ? days : 30);
     }
 
     /// <summary>
@@ -384,8 +390,11 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
         if (GameData.Int(template, "_iTimerMethod") != 0)
             throw new AwardResolutionException($"Template {templateId} requires a timer policy");
         int days = (int)GameData.Int(template, "_kTimes");
-        return DeliverAsync(role, new Letter { TemplateId = templateId, SenderId = "0", DeliveryKey = sourceKey,
-            Attachments = attachments.ToList() }, null, days > 0 ? days : 30, persist, ownerContext, authorize,
+        return DeliverAsync(role, new Letter
+        {
+            TemplateId = templateId, SenderId = "0", DeliveryKey = sourceKey,
+            Attachments = attachments.ToList()
+        }, null, days > 0 ? days : 30, persist, ownerContext, authorize,
             parentEconomy);
     }
 
@@ -535,10 +544,13 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
             foreach (var (entry, amount) in letter.Currency)
                 intent.Source(MailAsset(entry), amount, reason);
             authorize?.Invoke(intent);
-            transaction.WithEscrowEconomy(intent.Evidence(new { Role = role, LetterId = id,
+            transaction.WithEscrowEconomy(intent.Evidence(new
+            {
+                Role = role, LetterId = id,
                 letter.DeliveryKey, DeliverySemanticHash = deliveryHash,
                 letter.TemplateId, letter.Category,
-                Exp = letter.Attachments.Where(a => a.Entry is 100 or 101).ToArray() }));
+                Exp = letter.Attachments.Where(a => a.Entry is 100 or 101).ToArray()
+            }));
             await roles.CommitAsync(transaction, "mail/deliver");
         }
         return id;
@@ -617,7 +629,7 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
                 var mail = box.Letters.FirstOrDefault(m => m.Id == id && Active(m, now));
                 if (mail == null) return MicroServiceRouter.Fail("mail missing or expired");
                 if (method == "getMailContent") return new Dictionary<string, object?>
-                    { ["Ret"] = MicroServiceRouter.Ret(true), ["Content"] = mail.Content };
+                { ["Ret"] = MicroServiceRouter.Ret(true), ["Content"] = mail.Content };
                 mail.Read = true;
                 await CommitMailboxAsync(role.Id, box, transaction, "mail/micro-read");
                 return Success();
@@ -668,8 +680,11 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
                     byte[] purged = JsonSerializer.SerializeToUtf8Bytes(box);
                     purge.RoleBlob(role, "mailbox", purged);
                     purge.WithEscrowEconomy(new EscrowEconomyIntent("mail/claim-purge", session.Account ?? "",
-                        role, transferReason: EconomyReason.MailClaim).Evidence(new { Role = role,
-                            Expired = expiredIds.Order().ToArray() }));
+                        role, transferReason: EconomyReason.MailClaim).Evidence(new
+                        {
+                            Role = role,
+                            Expired = expiredIds.Order().ToArray()
+                        }));
                     await roles.CommitAsync(purge, "mail/claim-purge");
                     source = new RoleBlobSnapshot(true, purged, purge.CommittedVector(role, "mailbox"));
                 }
@@ -706,9 +721,12 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
                                 tx.RoleBlob(role, "mailbox", claimed);
                                 var intent = new EscrowEconomyIntent("mail/claim", session.Account ?? "",
                                     role, sourceKey: $"mail/claim/{role}/{id}", transferReason: EconomyReason.MailClaim)
-                                    .Evidence(new { Role = role, MailId = id, Attachments = mail.Attachments,
+                                    .Evidence(new
+                                    {
+                                        Role = role, MailId = id, Attachments = mail.Attachments,
                                         Items = mail.Items.Select(i => new { i.Entry, i.Stack, i.Guid }).ToArray(),
-                                        Currency = mail.Currency, BaseExp = baseExp, JobExp = jobExp });
+                                        Currency = mail.Currency, BaseExp = baseExp, JobExp = jobExp
+                                    });
                                 for (int index = 0; index < mail.Attachments.Count; index++)
                                 {
                                     var attachment = mail.Attachments[index];

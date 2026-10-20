@@ -39,6 +39,39 @@ public class SetupTests
     }
 
     [Fact]
+    public void VoiceIsOffUnlessAVoicePortIsGiven()
+    {
+        Assert.Equal(0, Options.Parse(["host"]).Ports.Voice);
+        Assert.Equal(33101, Options.Parse(["host", "--voice-port", "33101"]).Ports.Voice);
+        Assert.Throws<SetupException>(() => Options.Parse(["host", "--voice-port", "0"]));
+    }
+
+    [Fact]
+    public void TheVoicePortReachesTheServerOnlyWhenSet()
+    {
+        var off = ServerProcess.ServerArgs("data", new ServerProcess.Ports());
+        Assert.DoesNotContain(off, a => a.StartsWith("--Ro3Emu:Voice:Port"));
+        var on = ServerProcess.ServerArgs("data", new ServerProcess.Ports(Voice: 33101));
+        Assert.Contains("--Ro3Emu:Voice:Port=33101", on);
+        Assert.Contains("--Ro3Emu:GameGatePort=33100", on);
+    }
+
+    [Fact]
+    public void ThePortsToForwardIncludeVoiceWhenItIsOn()
+    {
+        Assert.Equal("5380, 20000 and 33100", ServerProcess.PortList(new ServerProcess.Ports()));
+        Assert.Equal("5380, 20000, 33100 and 33101", ServerProcess.PortList(new ServerProcess.Ports(Voice: 33101)));
+    }
+
+    [Fact]
+    public void AnInstallGoesOnToPlayWithTheSameVoicePort()
+    {
+        var after = new OptionsWithClient(Options.Parse(["install", "--voice-port", "33101"]), @"C:\RO3\ROO_PC").Value;
+        Assert.Equal(33101, after.Ports.Voice);
+        Assert.Equal(0, new OptionsWithClient(Options.Parse(["install"]), @"C:\RO3\ROO_PC").Value.Ports.Voice);
+    }
+
+    [Fact]
     public void TranslationsAreEmbeddedInFileOrder()
     {
         var translations = Flows.Translations();

@@ -4,9 +4,9 @@
 # Nothing from the game goes in: the archives are checked against an allowlist and the DLLs' embedded resources are
 # checked too, and the build fails if a client DLL, Lua, config JSON or exported data would ship.
 #
-# The hooks DLL is compiled against the 7 Oct 2026 client's own DLLs (the originals from ro3emu-backup when that client
-# is patched); RO3Emu.exe check confirms it resolves in the 16 Oct client too. Without a client (CI) it takes the
-# committed prebuilt/client DLLs, after checking they were built from the current hooks and loc sources.
+# The hooks DLL is compiled against the client's own DLLs (the originals from ro3emu-backup when that client is
+# patched); prebuilt/client holds the build against the 20 Oct 2026 release, the one the publisher serves. Without a
+# client (CI) it takes those committed DLLs, after checking they were built from the current hooks and loc sources.
 #
 # usage: pwsh tools/release/pack.ps1 [-ClientDir <game folder>] [-Version 1.0.0] [-UpdatePrebuiltClientDlls]
 #        pwsh tools/release/pack.ps1 -UsePrebuiltClientDlls        (CI: no client on the machine)
@@ -50,7 +50,7 @@ if ($UsePrebuiltClientDlls) {
     $stamp = (Get-Content (Join-Path $prebuilt 'source.sha256') -Raw).Trim()
     $current = SourceStamp
     if ($stamp -ne $current) {
-        throw "prebuilt/client was built from other hooks/loc sources ($stamp, now $current). On a machine with the 7 Oct client run: pwsh tools/release/pack.ps1 -UpdatePrebuiltClientDlls, then commit prebuilt/client."
+        throw "prebuilt/client was built from other hooks/loc sources ($stamp, now $current). On a machine with the current client run: pwsh tools/release/pack.ps1 -UpdatePrebuiltClientDlls, then commit prebuilt/client."
     }
     Copy-Item (Join-Path $prebuilt '*.dll') $clientDlls
 } else {

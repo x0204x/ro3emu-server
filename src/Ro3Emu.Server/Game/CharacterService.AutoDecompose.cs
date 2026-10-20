@@ -83,9 +83,12 @@ public sealed partial class CharacterService
             while (left > 0)
             {
                 int stack = Math.Min(left, limit);
-                var item = new InvItem { Entry = entry, Stack = stack, Pack = pack,
+                var item = new InvItem
+                {
+                    Entry = entry, Stack = stack, Pack = pack,
                     Sort = items.Where(i => i.Grid == 0 && i.Pack == pack).Select(i => i.Sort).DefaultIfEmpty(0).Max() + 1,
-                    Attrs = EmblemAttrFactory?.Invoke(entry) ?? RollAttrs(entry) };
+                    Attrs = EmblemAttrFactory?.Invoke(entry) ?? RollAttrs(entry)
+                };
                 items.Add(item);
                 left -= stack;
             }

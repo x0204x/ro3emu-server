@@ -133,7 +133,7 @@ public sealed class ProgressionEconomyTransactionTests : IDisposable
         var changed = Progression(op);
         // A second child changes the exact state even though no denomination moved.
         changed.RoleBlob(role, "life_runtime", System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new
-            { EnergyDay = 1, EnergySpent = 0, PotionDay = 1, FoodBook = 101 }));
+        { EnergyDay = 1, EnergySpent = 0, PotionDay = 1, FoodBook = 101 }));
         await roles.CommitAsync(first, "test/progression-original");
         await Assert.ThrowsAsync<EconomyOperationConflictException>(() => roles.CommitAsync(changed, "test/progression-altered"));
         Assert.Null(roles.LoadLifeRuntime(role));

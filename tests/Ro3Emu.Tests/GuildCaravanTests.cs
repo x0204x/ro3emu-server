@@ -367,7 +367,7 @@ public sealed class GuildCaravanTests : IAsyncLifetime
             if (round == 0)
             {
                 Assert.True(session.DailyRows!.ActivityData[101].TaskCompleteTimes == 1,
-                    $"daily={session.DailyRows.ActivityData[101].TaskCompleteTimes}; task={session.Tasks!.Infos.GetValueOrDefault(500080)}; completed={session.Tasks.CompleteTaskNum.GetValueOrDefault(500080)}; function={app.Services.GetRequiredService<FunctionService>().IsOpen(session,1320)}");
+                    $"daily={session.DailyRows.ActivityData[101].TaskCompleteTimes}; task={session.Tasks!.Infos.GetValueOrDefault(500080)}; completed={session.Tasks.CompleteTaskNum.GetValueOrDefault(500080)}; function={app.Services.GetRequiredService<FunctionService>().IsOpen(session, 1320)}");
             }
         }
         Assert.Equal(5, show.CurRound);

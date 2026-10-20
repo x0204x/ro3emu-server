@@ -12,14 +12,14 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Google.Protobuf" Version="3.36.2" />
-    <PackageReference Include="Grpc.Tools" Version="2.84.0">
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.Tools">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="MessagePack" Version="3.1.11" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
-    <PackageReference Include="SharpZipLib" Version="1.4.2" />
+    <PackageReference Include="MessagePack" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="SharpZipLib" />
   </ItemGroup>
 
   <ItemGroup>
@@ -27,6 +27,12 @@
     <Protobuf Include="Protos\phonest\*.proto" ProtoRoot="Protos\phonest" GrpcServices="None" />
     <!-- RO3 game messages (package romsg & co.), regenerated from the client's LocalProto/proto.pb.bytes. -->
     <Protobuf Include="Protos\romsg\*.proto" ProtoRoot="Protos\romsg" GrpcServices="None" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The voice frame cipher: one copy for the relay, the bot (through this project) and the in-game client hooks,
+         which compile it against the client's own mscorlib. -->
+    <Compile Include="..\Ro3Emu.ClientHooks\VoiceCipher.cs" Link="Voice\VoiceCipher.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -29,15 +29,21 @@ public sealed class KillEconomyMeasurementTests(ITestOutputHelper output)
         Assert.Equal(samples * 4, before.Commits - startBefore);
         Assert.Equal(samples, after.Commits - startAfter);
         Assert.Equal(before.Outcome(), after.Outcome());
-        object Summary(List<double> values) => new { Mean = values.Average(), Median = values.Order().ElementAt(samples / 2),
-            P95 = values.Order().ElementAt((int)Math.Ceiling(samples * .95) - 1), Max = values.Max() };
-        var report = new { Fixture = "two existing stacks + 7 currency + 3 base EXP + 4 job EXP, base level 50/job level 15 (career 1100)",
+        object Summary(List<double> values) => new
+        {
+            Mean = values.Average(), Median = values.Order().ElementAt(samples / 2),
+            P95 = values.Order().ElementAt((int)Math.Ceiling(samples * .95) - 1), Max = values.Max()
+        };
+        var report = new
+        {
+            Fixture = "two existing stacks + 7 currency + 3 base EXP + 4 job EXP, base level 50/job level 15 (career 1100)",
             Samples = samples, Warmup = warmup, BeforeCommitsPerKill = 4, AfterCommitsPerKill = 1,
             BeforeDeathToDurableMs = Summary(oldMs), AfterDeathToDurableMs = Summary(newMs),
             BeforeMaxQueueAgeMs = before.QueueAge, AfterMaxQueueAgeMs = after.QueueAge,
             QueueAgeBoundary = "writer lifetime high-water mark, including fixture setup and warmup",
             Boundary = "start of frozen kill settlement through acknowledgement of final durable commit; no presentation",
-            Runtime = Environment.Version.ToString(), Note = "Shared host microfixture, no performance assertion or load qualification" };
+            Runtime = Environment.Version.ToString(), Note = "Shared host microfixture, no performance assertion or load qualification"
+        };
         string json = JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true });
         string artifacts = Path.Combine(root, ".loadtest-temp", "e04-measurements"); Directory.CreateDirectory(artifacts);
         string path = Path.Combine(artifacts, "fixed-kill-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + ".json");

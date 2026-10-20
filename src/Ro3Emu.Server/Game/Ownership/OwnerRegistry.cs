@@ -49,7 +49,7 @@ public sealed class OwnerRegistry
         if (snapshot.Deleted) throw new Accounts.Persistence.OwnerRevisionConflictException();
         if (!_rolesById.TryGetValue(snapshot.RoleId, out var owner))
             _rolesById.Add(snapshot.RoleId, owner = new RoleOwner(snapshot.RoleId, snapshot.Epoch)
-                { Revisions = snapshot.Parts.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal) });
+            { Revisions = snapshot.Parts.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal) });
         if (owner.LifecycleEpoch != snapshot.Epoch || owner.State == RoleOwnerState.Deleted)
             throw new Accounts.Persistence.OwnerRevisionConflictException();
         return owner;
@@ -428,15 +428,21 @@ public sealed class OwnerRegistry
     }
     public async Task<T> RunAsync<T>(string origin, ReservationKey[] keys, Func<Task<T>> work)
     { using var scope = await EnterAsync(origin, keys); return await work(); }
-    public object Snapshot() => new { conflicts = Reservations.Conflicts, deferred = Deferred, maxQueueAgeMs = MaxQueueAgeMs,
+    public object Snapshot() => new
+    {
+        conflicts = Reservations.Conflicts, deferred = Deferred, maxQueueAgeMs = MaxQueueAgeMs,
         totalQueueWaitMs = TotalQueueWaitMs, realmScopes = RealmScopes, runtimeIntents = RuntimeIntents,
-        handovers = HandoverCount, handoverConflicts = HandoverConflicts, realmByOrigin = RealmByOrigin(), waitByOrigin = WaitByOrigin() };
+        handovers = HandoverCount, handoverConflicts = HandoverConflicts, realmByOrigin = RealmByOrigin(), waitByOrigin = WaitByOrigin()
+    };
 
     private object RealmByOrigin()
     {
         lock (_realmByOrigin)
             return _realmByOrigin.OrderByDescending(x => x.Value.HeldMs + x.Value.WaitMs).Take(40)
-                .ToDictionary(x => x.Key, x => new { count = x.Value.Count, waitMs = Math.Round(x.Value.WaitMs, 1),
-                    heldMs = Math.Round(x.Value.HeldMs, 1), maxHeldMs = Math.Round(x.Value.MaxHeldMs, 1) });
+                .ToDictionary(x => x.Key, x => new
+                {
+                    count = x.Value.Count, waitMs = Math.Round(x.Value.WaitMs, 1),
+                    heldMs = Math.Round(x.Value.HeldMs, 1), maxHeldMs = Math.Round(x.Value.MaxHeldMs, 1)
+                });
     }
 }

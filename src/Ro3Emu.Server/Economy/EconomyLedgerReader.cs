@@ -224,8 +224,10 @@ public static class EconomyLedgerReader
                         issues.Add(new(EconomyIssueKind.Corruption, "receipt/" + op, "Invalid typed child result or revision evidence: " + error.Message));
                     }
                     if (seq > fromExclusive) receipts.Add(new EconomyReceipt(seq, op, count, [source])
-                    { ActorRoleId = row.GetInt64(6), CommandKind = commandKind, RewardEvidence = rewardEvidence,
-                        BeforeProgressRevision = beforeProgressRevision, AfterProgressRevision = afterProgressRevision });
+                    {
+                        ActorRoleId = row.GetInt64(6), CommandKind = commandKind, RewardEvidence = rewardEvidence,
+                        BeforeProgressRevision = beforeProgressRevision, AfterProgressRevision = afterProgressRevision
+                    });
                 }
             }
             if (expectedSequence <= throughInclusive)
@@ -562,8 +564,11 @@ public static class EconomyLedgerReader
                     }
                     if (transferIndexes.TryGetValue(edge.Key, out var indexes))
                         foreach (int i in indexes)
-                            legs[i] = legs[i] with { Counterparty = legs[i].LegNumber == debit.LegNumber
-                                ? credit.Location : debit.Location };
+                            legs[i] = legs[i] with
+                            {
+                                Counterparty = legs[i].LegNumber == debit.LegNumber
+                                ? credit.Location : debit.Location
+                            };
                 }
             }
             foreach (var receipt in receipts)
@@ -756,18 +761,18 @@ public static class EconomyLedgerReader
 
     private static (EconomyReason Cost, EconomyReason Goods) FamilyReasons(string family, string command) =>
         CharacterFamilyEconomy.IsKind(command) ? CharacterFamilyEconomy.Reasons(command) : family switch
-    {
-        "pet" => (EconomyReason.PetCost,
-            command == "cd13b/pet-rebirth" ? EconomyReason.PetRefund : EconomyReason.PetGoods),
-        "mount" => (EconomyReason.MountCost, EconomyReason.MountGoods),
-        "wardrobe" => (EconomyReason.WardrobeCost, EconomyReason.WardrobeGoods),
-        "totem" => (EconomyReason.TotemCost,
-            command == "cd13b/totem-upgrade" ? EconomyReason.TotemRefund : EconomyReason.TotemGoods),
-        "emblem" => (EconomyReason.EmblemCost, EconomyReason.EmblemGoods),
-        "genre" => (EconomyReason.GenreCost, EconomyReason.GenreGoods),
-        "valhalla" => (EconomyReason.ValhallaCost, EconomyReason.ValhallaCost),
-        _ => throw new InvalidDataException("Unknown family reason namespace.")
-    };
+        {
+            "pet" => (EconomyReason.PetCost,
+                command == "cd13b/pet-rebirth" ? EconomyReason.PetRefund : EconomyReason.PetGoods),
+            "mount" => (EconomyReason.MountCost, EconomyReason.MountGoods),
+            "wardrobe" => (EconomyReason.WardrobeCost, EconomyReason.WardrobeGoods),
+            "totem" => (EconomyReason.TotemCost,
+                command == "cd13b/totem-upgrade" ? EconomyReason.TotemRefund : EconomyReason.TotemGoods),
+            "emblem" => (EconomyReason.EmblemCost, EconomyReason.EmblemGoods),
+            "genre" => (EconomyReason.GenreCost, EconomyReason.GenreGoods),
+            "valhalla" => (EconomyReason.ValhallaCost, EconomyReason.ValhallaCost),
+            _ => throw new InvalidDataException("Unknown family reason namespace.")
+        };
 
     private static void ValidateEscrowRevisions(string beforeJson, string afterJson,
         EscrowRolePart[][] childRoleWrites, object?[] childReceipts)
@@ -921,12 +926,12 @@ public static class EconomyLedgerReader
         string[] allowed = commandKind switch
         {
             "monster-kill" => ["inventory", "progress", "library", "task_followup", "tower", "tasks", "wild_afk", "area_concur"],
-            "cd13e/daily-reset" => [..required, "wild_afk"],
-            "gather-yield" => [..required, "library", "task_followup"],
-            "dungeon-reward" => [..required, "auction_order", "library", "task_followup"],
+            "cd13e/daily-reset" => [.. required, "wild_afk"],
+            "gather-yield" => [.. required, "library", "task_followup"],
+            "dungeon-reward" => [.. required, "auction_order", "library", "task_followup"],
             "cd13e/tower-milestone" or "cd13e/quest-award" or "cd13e/achievement-award" or "cd13e/advguild-award" or "cd13e/monsterhunt-award" or "cd13e/guild-award" or "cd13e/growthclass-award" or "cd13e/library-award" or "cd13e/firstheart-award" or "cd13e/daily-stage" or
             "cd13e/grant" or "cd13e/gm-grant" or "cd13e/character-exp" or
-                "cd13e/journey-victory" => [..required, "daily", "library", "task_followup", "activity_runtime", "mounts"],
+                "cd13e/journey-victory" => [.. required, "daily", "library", "task_followup", "activity_runtime", "mounts"],
             _ => required
         };
         bool library = bParts.ContainsKey("library"), followup = bParts.ContainsKey("task_followup");
@@ -1113,8 +1118,11 @@ public static class EconomyLedgerReader
                 effect.Delta != 1 || !claims.Contains(source) || !IsLotSource(lotSource, source) ||
                 !lots.TryGetValue(lotSource, out var lot) || lot.Entry != effect.Asset.Id)
                 throw new InvalidDataException("E05d auction alias lacks its authenticated created lot.");
-            return effect with { Owner = new EconomyOwner(EconomyOwnerKind.Escrow,
-                "auction:" + lot.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)) };
+            return effect with
+            {
+                Owner = new EconomyOwner(EconomyOwnerKind.Escrow,
+                "auction:" + lot.Id.ToString(System.Globalization.CultureInfo.InvariantCulture))
+            };
         }).ToArray();
 
         static bool IsLotSource(string lotSource, string batchSource)

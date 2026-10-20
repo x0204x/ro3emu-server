@@ -20,52 +20,53 @@ public static partial class EconomySnapshotReader
                 int rowNumber = 0;
                 while (r.Read())
                 {
-                    Guard("auction_item/row/" + rowNumber++, () => {
-                    long id = SqlLong(r, 0); string source = SqlText(r, 1), key = "auction/lot/" + id;
-                    byte[] bytes = SqlBlob(r, 2); Measure("auction_item", bytes.Length, true);
-                    Guard(key, () =>
+                    Guard("auction_item/row/" + rowNumber++, () =>
                     {
-                        using var doc = Json(bytes);
-                        var row = doc.RootElement;
-                        Fields(row, "Id SourceKey Type SrcType GuildId Entry Bind Start End State Owner Price Reserve Currency Raise FixedPrice MaxPrice TypeAttr LastBid Revision Auto AutoPaused RunId Eligible GiveUp Joined Winner RandomAward SettlementRecoveryReason");
-                        if (Long(row, "Id") != id || String(row, "SourceKey") != source || source.Length == 0)
-                            throw new FormatException("Auction lot identity mismatch.");
-                        long entry = Long(row, "Entry"), currency = Long(row, "Currency"), owner = Long(row, "Owner"),
-                            reserve = Long(row, "Reserve"), winner = Long(row, "Winner"), status = Long(row, "State");
-                        if (entry <= 0 || !catalog.TryAsset(entry, out var asset) || asset.Kind != EconomyAssetKind.Item)
-                        { Issue(EconomyIssueKind.Coverage, key, "Auction item is absent from item catalogue."); return; }
-                        if (!catalog.TryAsset(currency, out var money) || money.Kind != EconomyAssetKind.Currency)
-                        { Issue(EconomyIssueKind.Coverage, key, "Auction currency is not catalogued."); return; }
-                        if (owner < 0 || reserve < 0 || winner < 0 || status <= (int)AuctionState.Snone || status > (int)AuctionState.Settled)
-                            throw new FormatException("Invalid auction state or reserve.");
-                        auctionCurrency[id] = currency;
-                        if (status == (int)AuctionState.Settled)
+                        long id = SqlLong(r, 0); string source = SqlText(r, 1), key = "auction/lot/" + id;
+                        byte[] bytes = SqlBlob(r, 2); Measure("auction_item", bytes.Length, true);
+                        Guard(key, () =>
                         {
-                            if (winner == 0)
+                            using var doc = Json(bytes);
+                            var row = doc.RootElement;
+                            Fields(row, "Id SourceKey Type SrcType GuildId Entry Bind Start End State Owner Price Reserve Currency Raise FixedPrice MaxPrice TypeAttr LastBid Revision Auto AutoPaused RunId Eligible GiveUp Joined Winner RandomAward SettlementRecoveryReason");
+                            if (Long(row, "Id") != id || String(row, "SourceKey") != source || source.Length == 0)
+                                throw new FormatException("Auction lot identity mismatch.");
+                            long entry = Long(row, "Entry"), currency = Long(row, "Currency"), owner = Long(row, "Owner"),
+                                reserve = Long(row, "Reserve"), winner = Long(row, "Winner"), status = Long(row, "State");
+                            if (entry <= 0 || !catalog.TryAsset(entry, out var asset) || asset.Kind != EconomyAssetKind.Item)
+                            { Issue(EconomyIssueKind.Coverage, key, "Auction item is absent from item catalogue."); return; }
+                            if (!catalog.TryAsset(currency, out var money) || money.Kind != EconomyAssetKind.Currency)
+                            { Issue(EconomyIssueKind.Coverage, key, "Auction currency is not catalogued."); return; }
+                            if (owner < 0 || reserve < 0 || winner < 0 || status <= (int)AuctionState.Snone || status > (int)AuctionState.Settled)
+                                throw new FormatException("Invalid auction state or reserve.");
+                            auctionCurrency[id] = currency;
+                            if (status == (int)AuctionState.Settled)
                             {
-                                Hold(asset, new(EconomyOwnerKind.Recovery, "auction:" + id), EconomyCompartment.AuctionLot,
-                                    key, 1, GrantFingerprint(Long(row, "Bind")));
-                                if (reserve > 0)
+                                if (winner == 0)
                                 {
-                                    Currency(currency, reserve, new(EconomyOwnerKind.Recovery, "auction-reserve:" + id),
-                                        EconomyCompartment.AuctionReserve, key + "/reserve");
-                                    Issue(EconomyIssueKind.Corruption, key, "Settled unsold lot retains a bidder reserve.");
+                                    Hold(asset, new(EconomyOwnerKind.Recovery, "auction:" + id), EconomyCompartment.AuctionLot,
+                                        key, 1, GrantFingerprint(Long(row, "Bind")));
+                                    if (reserve > 0)
+                                    {
+                                        Currency(currency, reserve, new(EconomyOwnerKind.Recovery, "auction-reserve:" + id),
+                                            EconomyCompartment.AuctionReserve, key + "/reserve");
+                                        Issue(EconomyIssueKind.Corruption, key, "Settled unsold lot retains a bidder reserve.");
+                                    }
+                                    Issue(EconomyIssueKind.RecoveryDebt, key, "Settled unsold lot retains ownership; retirement/return policy is unresolved.");
                                 }
-                                Issue(EconomyIssueKind.RecoveryDebt, key, "Settled unsold lot retains ownership; retirement/return policy is unresolved.");
+                                else if (!mailDeliveryKeys.Contains(winner + "/auction:" + id + ":award")
+                                    && !mailDeliveryKeys.Contains(winner + "/auction:" + id + ":unsold"))
+                                    Issue(EconomyIssueKind.RecoveryDebt, key, "Settled winner mail linkage is absent or already claimed/deleted.");
+                                return;
                             }
-                            else if (!mailDeliveryKeys.Contains(winner + "/auction:" + id + ":award")
-                                && !mailDeliveryKeys.Contains(winner + "/auction:" + id + ":unsold"))
-                                Issue(EconomyIssueKind.RecoveryDebt, key, "Settled winner mail linkage is absent or already claimed/deleted.");
-                            return;
-                        }
-                        Hold(asset, new(EconomyOwnerKind.Escrow, "auction:" + id), EconomyCompartment.AuctionLot,
-                            key, 1, GrantFingerprint(Long(row, "Bind")));
-                        if (reserve > 0)
-                        {
-                            if (owner <= 0) throw new FormatException("Auction reserve has no owner.");
-                            Currency(currency, reserve, Role(owner, key), EconomyCompartment.AuctionReserve, key + "/reserve");
-                        }
-                    });
+                            Hold(asset, new(EconomyOwnerKind.Escrow, "auction:" + id), EconomyCompartment.AuctionLot,
+                                key, 1, GrantFingerprint(Long(row, "Bind")));
+                            if (reserve > 0)
+                            {
+                                if (owner <= 0) throw new FormatException("Auction reserve has no owner.");
+                                Currency(currency, reserve, Role(owner, key), EconomyCompartment.AuctionReserve, key + "/reserve");
+                            }
+                        });
                     });
                 }
             }
@@ -77,15 +78,16 @@ public static partial class EconomySnapshotReader
                 int rowNumber = 0;
                 while (r.Read())
                 {
-                    Guard("auction_prebuy/row/" + rowNumber++, () => {
-                    long id = SqlLong(r, 0); string key = "auction/prebuy/" + id; Measure("auction_prebuy", 0);
-                    Guard(key, () =>
+                    Guard("auction_prebuy/row/" + rowNumber++, () =>
                     {
-                        long role = SqlLong(r, 1), quantity = SqlLong(r, 2), price = SqlLong(r, 3), currency = SqlLong(r, 4), processed = SqlLong(r, 5);
-                        if (quantity != 1 || price <= 0 || processed is not (0 or 1) || SqlLong(r, 6) is not (0 or 1))
-                            throw new FormatException("Unknown prebuy quantity/status semantics.");
-                        if (processed == 0) Currency(currency, price, Role(role, key), EconomyCompartment.AuctionPrebuy, key);
-                    });
+                        long id = SqlLong(r, 0); string key = "auction/prebuy/" + id; Measure("auction_prebuy", 0);
+                        Guard(key, () =>
+                        {
+                            long role = SqlLong(r, 1), quantity = SqlLong(r, 2), price = SqlLong(r, 3), currency = SqlLong(r, 4), processed = SqlLong(r, 5);
+                            if (quantity != 1 || price <= 0 || processed is not (0 or 1) || SqlLong(r, 6) is not (0 or 1))
+                                throw new FormatException("Unknown prebuy quantity/status semantics.");
+                            if (processed == 0) Currency(currency, price, Role(role, key), EconomyCompartment.AuctionPrebuy, key);
+                        });
                     });
                 }
             }
@@ -96,23 +98,24 @@ public static partial class EconomySnapshotReader
                 int rowNumber = 0;
                 while (r.Read())
                 {
-                    Guard("auction_bonus/row/" + rowNumber++, () => {
-                    long role = SqlLong(r, 0), amount = SqlLong(r, 2), claimed = SqlLong(r, 3);
-                    string group = SqlText(r, 1), key = "auction/bonus/" + role + "/" + group;
-                    Measure("auction_bonus", Encoding.UTF8.GetByteCount(group));
-                    Guard(key, () =>
+                    Guard("auction_bonus/row/" + rowNumber++, () =>
                     {
-                        if (amount <= 0 || claimed is not (0 or 1)) throw new FormatException("Invalid auction bonus amount/status.");
-                        if (claimed == 1) return; // Current writer records delivered bonus with claimed=1.
-                        string[] parts = group.Split(':');
-                        if (parts.Length < 2 || !long.TryParse(parts[^1], NumberStyles.None, CultureInfo.InvariantCulture, out long lot)
-                            || !auctionCurrency.ContainsKey(lot))
-                        { Issue(EconomyIssueKind.Coverage, key, "Legacy unclaimed bonus lot/source linkage is ambiguous."); return; }
-                        if (mailDeliveryKeys.Contains(role + "/auction:" + lot + ":dividend:" + role)
-                            || mailDeliveryKeys.Contains(role + "/auction:bonus:" + group + ":" + role))
-                            Issue(EconomyIssueKind.Corruption, key, "Unclaimed bonus has an already-delivered mail entitlement.");
-                        Currency(catalog.AuctionBonusCurrency, amount, Role(role, key), EconomyCompartment.AuctionBonus, key);
-                    });
+                        long role = SqlLong(r, 0), amount = SqlLong(r, 2), claimed = SqlLong(r, 3);
+                        string group = SqlText(r, 1), key = "auction/bonus/" + role + "/" + group;
+                        Measure("auction_bonus", Encoding.UTF8.GetByteCount(group));
+                        Guard(key, () =>
+                        {
+                            if (amount <= 0 || claimed is not (0 or 1)) throw new FormatException("Invalid auction bonus amount/status.");
+                            if (claimed == 1) return; // Current writer records delivered bonus with claimed=1.
+                            string[] parts = group.Split(':');
+                            if (parts.Length < 2 || !long.TryParse(parts[^1], NumberStyles.None, CultureInfo.InvariantCulture, out long lot)
+                                || !auctionCurrency.ContainsKey(lot))
+                            { Issue(EconomyIssueKind.Coverage, key, "Legacy unclaimed bonus lot/source linkage is ambiguous."); return; }
+                            if (mailDeliveryKeys.Contains(role + "/auction:" + lot + ":dividend:" + role)
+                                || mailDeliveryKeys.Contains(role + "/auction:bonus:" + group + ":" + role))
+                                Issue(EconomyIssueKind.Corruption, key, "Unclaimed bonus has an already-delivered mail entitlement.");
+                            Currency(catalog.AuctionBonusCurrency, amount, Role(role, key), EconomyCompartment.AuctionBonus, key);
+                        });
                     });
                 }
             }
@@ -135,26 +138,27 @@ public static partial class EconomySnapshotReader
                 int rowNumber = 0;
                 while (r.Read())
                 {
-                    Guard("guild/row/" + rowNumber++, () => {
-                    long id = SqlLong(r, 0); guilds.Add(id); string key = "guild/" + id;
-                    byte[] bytes = SqlBlob(r, 1); Measure("guild", bytes.Length, true);
-                    Guard(key, () =>
+                    Guard("guild/row/" + rowNumber++, () =>
                     {
-                        using var doc = Json(bytes); var state = doc.RootElement;
-                        Fields(state, "Id Name Announce Notice CreateTime Status HelperDeadlineMs Level Background Icon AutoAccept AutoCreateHelper JoinLevelLimit Money Contribute Materials Reputation AuctionMaterials LastChangeNameTime LastChangeNoticeTime LastRecruitMs HistoryNames Members Applications HelperApplies Rights Buildings BuildingEndTimes CurActivity LastWeekActivity ActivityWeek LeagueElites LeagueEliteVersion UnlockedHeadIcons ShopCommodityBuys ShopCommodityWeek");
-                        if (Long(state, "Id") != id) throw new FormatException("Guild identity mismatch.");
-                        var owner = new EconomyOwner(EconomyOwnerKind.Guild, Id(id));
-                        foreach (var field in new[] { ("Money", 1L), ("Contribute", 2L), ("Materials", 3L),
-                            ("Reputation", 4L), ("AuctionMaterials", 5L) })
+                        long id = SqlLong(r, 0); guilds.Add(id); string key = "guild/" + id;
+                        byte[] bytes = SqlBlob(r, 1); Measure("guild", bytes.Length, true);
+                        Guard(key, () =>
                         {
-                            long quantity = Long(state, field.Item1);
-                            if (quantity < 0) throw new FormatException("Negative guild resource " + field.Item1);
-                            if (quantity > 0) Resource(EconomyAssetKind.GuildResource, field.Item2, quantity,
-                                owner, EconomyCompartment.GuildTreasury, key + "/" + field.Item1);
-                        }
-                        // Member CurContribute/HistoryContribute are progression/history mirrors, not a purse; guild and
-                        // member activity counters and a member's brought-in funds (ContributeMoney) are counters too.
-                    });
+                            using var doc = Json(bytes); var state = doc.RootElement;
+                            Fields(state, "Id Name Announce Notice CreateTime Status HelperDeadlineMs Level Background Icon AutoAccept AutoCreateHelper JoinLevelLimit Money Contribute Materials Reputation AuctionMaterials LastChangeNameTime LastChangeNoticeTime LastRecruitMs HistoryNames Members Applications HelperApplies Rights Buildings BuildingEndTimes CurActivity LastWeekActivity ActivityWeek LeagueElites LeagueEliteVersion UnlockedHeadIcons ShopCommodityBuys ShopCommodityWeek");
+                            if (Long(state, "Id") != id) throw new FormatException("Guild identity mismatch.");
+                            var owner = new EconomyOwner(EconomyOwnerKind.Guild, Id(id));
+                            foreach (var field in new[] { ("Money", 1L), ("Contribute", 2L), ("Materials", 3L),
+                            ("Reputation", 4L), ("AuctionMaterials", 5L) })
+                            {
+                                long quantity = Long(state, field.Item1);
+                                if (quantity < 0) throw new FormatException("Negative guild resource " + field.Item1);
+                                if (quantity > 0) Resource(EconomyAssetKind.GuildResource, field.Item2, quantity,
+                                    owner, EconomyCompartment.GuildTreasury, key + "/" + field.Item1);
+                            }
+                            // Member CurContribute/HistoryContribute are progression/history mirrors, not a purse; guild and
+                            // member activity counters and a member's brought-in funds (ContributeMoney) are counters too.
+                        });
                     });
                 }
             }
@@ -165,28 +169,29 @@ public static partial class EconomySnapshotReader
                 int rowNumber = 0;
                 while (r.Read())
                 {
-                    Guard("guild_recovery/row/" + rowNumber++, () => {
-                    long id = SqlLong(r, 0); string key = "guild-recovery/" + id;
-                    byte[] bytes = SqlBlob(r, 1); Measure("guild_recovery", bytes.Length, true);
-                    Guard(key, () =>
+                    Guard("guild_recovery/row/" + rowNumber++, () =>
                     {
-                        if (id <= 0 || guilds.Contains(id) || !recoveredGuilds.Add(id) || SqlLong(r, 2) <= 0)
-                            throw new FormatException("Invalid or live guild recovery identity.");
-                        using var doc = Json(bytes);
-                        var state = doc.RootElement;
-                        Fields(state, "Id Name Announce Notice CreateTime Status HelperDeadlineMs Level Background Icon AutoAccept AutoCreateHelper JoinLevelLimit Money Contribute Materials Reputation AuctionMaterials LastChangeNameTime LastChangeNoticeTime LastRecruitMs HistoryNames Members Applications HelperApplies Rights Buildings BuildingEndTimes CurActivity LastWeekActivity ActivityWeek LeagueElites LeagueEliteVersion UnlockedHeadIcons ShopCommodityBuys ShopCommodityWeek");
-                        if (Long(state, "Id") != id) throw new FormatException("Guild recovery snapshot identity mismatch.");
-                        var owner = new EconomyOwner(EconomyOwnerKind.Guild, Id(id));
-                        foreach (var field in new[] { ("Money", 1L), ("Contribute", 2L), ("Materials", 3L),
-                            ("Reputation", 4L), ("AuctionMaterials", 5L) })
+                        long id = SqlLong(r, 0); string key = "guild-recovery/" + id;
+                        byte[] bytes = SqlBlob(r, 1); Measure("guild_recovery", bytes.Length, true);
+                        Guard(key, () =>
                         {
-                            long quantity = Long(state, field.Item1);
-                            if (quantity < 0) throw new FormatException("Negative recovered guild resource " + field.Item1);
-                            if (quantity > 0) Resource(EconomyAssetKind.GuildResource, field.Item2, quantity,
-                                owner, EconomyCompartment.Recovery, key + "/" + field.Item1);
-                        }
-                        Issue(EconomyIssueKind.RecoveryDebt, key, "Disbanded guild retains assets pending an explicit settlement policy.");
-                    });
+                            if (id <= 0 || guilds.Contains(id) || !recoveredGuilds.Add(id) || SqlLong(r, 2) <= 0)
+                                throw new FormatException("Invalid or live guild recovery identity.");
+                            using var doc = Json(bytes);
+                            var state = doc.RootElement;
+                            Fields(state, "Id Name Announce Notice CreateTime Status HelperDeadlineMs Level Background Icon AutoAccept AutoCreateHelper JoinLevelLimit Money Contribute Materials Reputation AuctionMaterials LastChangeNameTime LastChangeNoticeTime LastRecruitMs HistoryNames Members Applications HelperApplies Rights Buildings BuildingEndTimes CurActivity LastWeekActivity ActivityWeek LeagueElites LeagueEliteVersion UnlockedHeadIcons ShopCommodityBuys ShopCommodityWeek");
+                            if (Long(state, "Id") != id) throw new FormatException("Guild recovery snapshot identity mismatch.");
+                            var owner = new EconomyOwner(EconomyOwnerKind.Guild, Id(id));
+                            foreach (var field in new[] { ("Money", 1L), ("Contribute", 2L), ("Materials", 3L),
+                            ("Reputation", 4L), ("AuctionMaterials", 5L) })
+                            {
+                                long quantity = Long(state, field.Item1);
+                                if (quantity < 0) throw new FormatException("Negative recovered guild resource " + field.Item1);
+                                if (quantity > 0) Resource(EconomyAssetKind.GuildResource, field.Item2, quantity,
+                                    owner, EconomyCompartment.Recovery, key + "/" + field.Item1);
+                            }
+                            Issue(EconomyIssueKind.RecoveryDebt, key, "Disbanded guild retains assets pending an explicit settlement policy.");
+                        });
                     });
                 }
             }
@@ -227,45 +232,46 @@ public static partial class EconomySnapshotReader
                 int rowNumber = 0;
                 while (r.Read())
                 {
-                    Guard("guild_caravan_member/row/" + rowNumber++, () => {
-                    long role = SqlLong(r, 0); string key = "caravan/" + role;
-                    byte[] bytes = SqlBlob(r, 1); Measure("guild_caravan_member", bytes.Length, true);
-                    Guard(key, () =>
+                    Guard("guild_caravan_member/row/" + rowNumber++, () =>
                     {
-                        using var doc = Json(bytes); var state = doc.RootElement;
-                        Fields(state, "Revision GuildId Day CurRound RefreshTimes HelpOtherCount ReqHelpOtherCount IsAwardGot LastRefreshTime Skus PendingAwards");
-                        if (!Try(state, "PendingAwards", out var awards)) return;
-                        int index = 0;
-                        foreach (var award in Elements(awards))
+                        long role = SqlLong(r, 0); string key = "caravan/" + role;
+                        byte[] bytes = SqlBlob(r, 1); Measure("guild_caravan_member", bytes.Length, true);
+                        Guard(key, () =>
                         {
-                            Fields(award, "GuildId GuildBooked Grants SourceKey");
-                            string stable = String(award, "SourceKey", "");
-                            string path = key + "/" + (stable.Length == 0 ? index.ToString(CultureInfo.InvariantCulture) : stable);
-                            index++;
-                            bool booked = Bool(award, "GuildBooked");
-                            long guild = Long(award, "GuildId");
-                            if (!Try(award, "Grants", out var grants)) throw new JsonException("Pending caravan grant list is missing.");
-                            int n = 0;
-                            foreach (var grant in Elements(grants))
+                            using var doc = Json(bytes); var state = doc.RootElement;
+                            Fields(state, "Revision GuildId Day CurRound RefreshTimes HelpOtherCount ReqHelpOtherCount IsAwardGot LastRefreshTime Skus PendingAwards");
+                            if (!Try(state, "PendingAwards", out var awards)) return;
+                            int index = 0;
+                            foreach (var award in Elements(awards))
                             {
-                                Fields(grant, "Entry Count BindType ExpireTimeStamp");
-                                long entry = Long(grant, "Entry"), count = Long(grant, "Count");
-                                string grantKey = path + "/" + n++;
-                                if (entry == 104)
+                                Fields(award, "GuildId GuildBooked Grants SourceKey");
+                                string stable = String(award, "SourceKey", "");
+                                string path = key + "/" + (stable.Length == 0 ? index.ToString(CultureInfo.InvariantCulture) : stable);
+                                index++;
+                                bool booked = Bool(award, "GuildBooked");
+                                long guild = Long(award, "GuildId");
+                                if (!Try(award, "Grants", out var grants)) throw new JsonException("Pending caravan grant list is missing.");
+                                int n = 0;
+                                foreach (var grant in Elements(grants))
                                 {
-                                    if (!booked)
+                                    Fields(grant, "Entry Count BindType ExpireTimeStamp");
+                                    long entry = Long(grant, "Entry"), count = Long(grant, "Count");
+                                    string grantKey = path + "/" + n++;
+                                    if (entry == 104)
                                     {
-                                        Resource(EconomyAssetKind.GuildResource, EconomyDenominations.GuildMoney, count,
-                                            Guild(guild, grantKey), EconomyCompartment.CaravanPending, grantKey);
-                                        Issue(EconomyIssueKind.RecoveryDebt, grantKey, $"Guild {guild} has unbooked earned funds {count}.");
+                                        if (!booked)
+                                        {
+                                            Resource(EconomyAssetKind.GuildResource, EconomyDenominations.GuildMoney, count,
+                                                Guild(guild, grantKey), EconomyCompartment.CaravanPending, grantKey);
+                                            Issue(EconomyIssueKind.RecoveryDebt, grantKey, $"Guild {guild} has unbooked earned funds {count}.");
+                                        }
+                                        continue; // Already-booked guild Money exists in guild.state.
                                     }
-                                    continue; // Already-booked guild Money exists in guild.state.
+                                    Entry(entry, count, Role(role, grantKey), EconomyCompartment.CaravanPending, grantKey,
+                                        GrantFingerprint(Long(grant, "BindType"), Long(grant, "ExpireTimeStamp")));
                                 }
-                                Entry(entry, count, Role(role, grantKey), EconomyCompartment.CaravanPending, grantKey,
-                                    GrantFingerprint(Long(grant, "BindType"), Long(grant, "ExpireTimeStamp")));
                             }
-                        }
-                    });
+                        });
                     });
                 }
             }
@@ -310,11 +316,15 @@ public static partial class EconomySnapshotReader
             int rowNumber = 0;
             while (r.Read())
             {
-                Guard(table + "/row/" + rowNumber++, () => {
-                string key = table + "/" + Convert.ToString(r[0], CultureInfo.InvariantCulture);
-                byte[] bytes = SqlBlob(r, 1); Measure(table, bytes.Length, true);
-                Guard(key, () => { using var doc = Json(bytes); if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
-                    throw new System.Text.Json.JsonException("Expected JSON object."); decode(key, doc.RootElement); });
+                Guard(table + "/row/" + rowNumber++, () =>
+                {
+                    string key = table + "/" + Convert.ToString(r[0], CultureInfo.InvariantCulture);
+                    byte[] bytes = SqlBlob(r, 1); Measure(table, bytes.Length, true);
+                    Guard(key, () =>
+                    {
+                        using var doc = Json(bytes); if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+                            throw new System.Text.Json.JsonException("Expected JSON object."); decode(key, doc.RootElement);
+                    });
                 });
             }
         }

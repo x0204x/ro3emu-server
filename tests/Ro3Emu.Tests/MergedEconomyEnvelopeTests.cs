@@ -21,7 +21,7 @@ public sealed class MergedEconomyEnvelopeTests : IDisposable
     private readonly ItemStore items;
     private readonly long role;
     private static readonly EconomyCatalog Catalog = new(new Dictionary<long, EconomyAssetKind>
-        { [1] = EconomyAssetKind.Currency, [3] = EconomyAssetKind.Item });
+    { [1] = EconomyAssetKind.Currency, [3] = EconomyAssetKind.Item });
 
     public MergedEconomyEnvelopeTests()
     {

@@ -521,9 +521,12 @@ public sealed partial class EmblemService
                 var next = CopyState(session.Emblems);
                 long previous = session.EmblemPower;
                 await CommitEmblemsAsync(session, "emblem-upgrade", next, beforeItems, afterItems, costs,
-                    new { req.EmblemGuid, Materials = req.ConsumeItems.OrderBy(p => p.Key).ToArray(),
+                    new
+                    {
+                        req.EmblemGuid, Materials = req.ConsumeItems.OrderBy(p => p.Key).ToArray(),
                         Feeds = feed.Select(i => new { i.Guid, i.Entry }).OrderBy(i => i.Guid).ToArray(),
-                        AddedExperience = xp, Attributes = upgradedAttrs });
+                        AddedExperience = xp, Attributes = upgradedAttrs
+                    });
                 await ChangedAsync(session, previous, inventory: true);
                 int gained = (int)upgradedAttrs!.GetValueOrDefault(Level) - level;
                 foreach (var handler in Upgraded)

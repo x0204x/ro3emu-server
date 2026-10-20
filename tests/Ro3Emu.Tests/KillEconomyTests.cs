@@ -68,8 +68,11 @@ public sealed class KillEconomyTests : IAsyncLifetime
     private Task Reward(GameSession player, MonsterUnit monster) => Service<CombatService>().Killed
         .Single(h => h.Target == Service<RewardService>())(player, monster);
     private EconomySnapshot Cut() => S3EconomyReader.Read(directory, Catalog.Value);
-    private long ReceiptCount() { using var db = Service<AccountStore>().Open(); using var c = db.CreateCommand();
-        c.CommandText = "SELECT count(*) FROM operation_receipt WHERE command_kind='monster-kill'"; return (long)c.ExecuteScalar()!; }
+    private long ReceiptCount()
+    {
+        using var db = Service<AccountStore>().Open(); using var c = db.CreateCommand();
+        c.CommandText = "SELECT count(*) FROM operation_receipt WHERE command_kind='monster-kill'"; return (long)c.ExecuteScalar()!;
+    }
 
     [ClientDataFact]
     public async Task LethalHitAndCorpseWaitForDurableRewardBarrier()

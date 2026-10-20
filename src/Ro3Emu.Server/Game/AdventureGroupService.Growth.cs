@@ -205,83 +205,83 @@ public sealed partial class AdventureGroupService
         switch (op)
         {
             case "create" when args.Length > 1:
-            {
-                string name = string.Join(' ', args.Skip(1));
-                if (Own(s) != null) { reply = "Already in an adventure group."; break; }
-                if (store.NameExists(name)) { reply = "Name taken."; break; }
-                var g = new AdventureGroupStore.State
                 {
-                    Name = name, Status = StatusNormal, CreateType = 2, CreateTime = Now, Owner = self, Level = 1,
-                    SaplingId = SaplingNpcs[0], DayResetTime = DayStart, WeekResetTime = WeekStart,
-                };
-                g.Members[self] = NewMember(self);
-                AddEvent(g, AdventureGroupEventType.EventTypeCreate, self, 0, name);
-                if (!await SaveAsync(g)) { reply = "Create failed (name or membership conflict)."; break; }
-                await SendFullAsync(s, g, joined: true);
-                await SyncRelationAsync(s, g);
-                await RefreshGroupQuestsAsync(s);
-                reply = $"Adventure group {g.Id} '{name}' founded (normal, sapling {g.SaplingId}).";
-                break;
-            }
-            case "add" when args.Length > 1:
-            {
-                var g = Own(s);
-                var target = await roles.FindByNameAsync(string.Join(' ', args.Skip(1)));
-                if (g == null) { reply = "Not in an adventure group."; break; }
-                if (target == null) { reply = "No such role."; break; }
-                if (store.ForRole(target.Id) != null) { reply = "That role is already in a group."; break; }
-                if (g.Members.Count >= MemberLimit) { reply = "Group full."; break; }
-                reply = await AdmitAsync(g, target.Id) ? $"{target.Name} joined {g.Name}." : "Add failed.";
-                break;
-            }
-            case "exp" when args.Length > 1 && long.TryParse(args[1], out long amount):
-            {
-                var g = Own(s);
-                if (g is not { Status: StatusNormal }) { reply = "Not in a normal adventure group."; break; }
-                g.WeekMoney = 0;
-                g.WeekResetTime = WeekStart;
-                if (!await SaveAsync(g)) { reply = "Save failed."; break; }
-                long gained = 0;
-                for (long left = amount; left > 0;)
-                {
-                    long step = Math.Min(left, WeeklyExpLimit);
-                    long got = await AddExpAsync(self, step);
-                    if (got <= 0) break;
-                    gained += got;
-                    left -= step;
-                    if (left > 0 && store.ForRole(self) is { } again)
+                    string name = string.Join(' ', args.Skip(1));
+                    if (Own(s) != null) { reply = "Already in an adventure group."; break; }
+                    if (store.NameExists(name)) { reply = "Name taken."; break; }
+                    var g = new AdventureGroupStore.State
                     {
-                        again.WeekMoney = 0;
-                        await SaveAsync(again);
-                    }
+                        Name = name, Status = StatusNormal, CreateType = 2, CreateTime = Now, Owner = self, Level = 1,
+                        SaplingId = SaplingNpcs[0], DayResetTime = DayStart, WeekResetTime = WeekStart,
+                    };
+                    g.Members[self] = NewMember(self);
+                    AddEvent(g, AdventureGroupEventType.EventTypeCreate, self, 0, name);
+                    if (!await SaveAsync(g)) { reply = "Create failed (name or membership conflict)."; break; }
+                    await SendFullAsync(s, g, joined: true);
+                    await SyncRelationAsync(s, g);
+                    await RefreshGroupQuestsAsync(s);
+                    reply = $"Adventure group {g.Id} '{name}' founded (normal, sapling {g.SaplingId}).";
+                    break;
                 }
-                var after = Own(s)!;
-                reply = $"+{gained} group EXP: {after.Money}, level {after.Level}.";
-                break;
-            }
+            case "add" when args.Length > 1:
+                {
+                    var g = Own(s);
+                    var target = await roles.FindByNameAsync(string.Join(' ', args.Skip(1)));
+                    if (g == null) { reply = "Not in an adventure group."; break; }
+                    if (target == null) { reply = "No such role."; break; }
+                    if (store.ForRole(target.Id) != null) { reply = "That role is already in a group."; break; }
+                    if (g.Members.Count >= MemberLimit) { reply = "Group full."; break; }
+                    reply = await AdmitAsync(g, target.Id) ? $"{target.Name} joined {g.Name}." : "Add failed.";
+                    break;
+                }
+            case "exp" when args.Length > 1 && long.TryParse(args[1], out long amount):
+                {
+                    var g = Own(s);
+                    if (g is not { Status: StatusNormal }) { reply = "Not in a normal adventure group."; break; }
+                    g.WeekMoney = 0;
+                    g.WeekResetTime = WeekStart;
+                    if (!await SaveAsync(g)) { reply = "Save failed."; break; }
+                    long gained = 0;
+                    for (long left = amount; left > 0;)
+                    {
+                        long step = Math.Min(left, WeeklyExpLimit);
+                        long got = await AddExpAsync(self, step);
+                        if (got <= 0) break;
+                        gained += got;
+                        left -= step;
+                        if (left > 0 && store.ForRole(self) is { } again)
+                        {
+                            again.WeekMoney = 0;
+                            await SaveAsync(again);
+                        }
+                    }
+                    var after = Own(s)!;
+                    reply = $"+{gained} group EXP: {after.Money}, level {after.Level}.";
+                    break;
+                }
             case "water":
-            {
-                var g = Own(s);
-                if (g == null) { reply = "Not in an adventure group."; break; }
-                g.Members[self].WateringCount = 0;
-                reply = await SaveAsync(g) ? "Today's watering reset." : "Save failed.";
-                if (g.Members.TryGetValue(self, out var m)) await BroadcastMemberAsync(g, m, ChangeType.ChangePlayerChange);
-                break;
-            }
+                {
+                    var g = Own(s);
+                    if (g == null) { reply = "Not in an adventure group."; break; }
+                    g.Members[self].WateringCount = 0;
+                    reply = await SaveAsync(g) ? "Today's watering reset." : "Save failed.";
+                    if (g.Members.TryGetValue(self, out var m)) await BroadcastMemberAsync(g, m, ChangeType.ChangePlayerChange);
+                    break;
+                }
             case "disband":
-            {
-                var g = Own(s);
-                reply = g == null ? "Not in an adventure group." : await DisbandAsync(g) ? "Disbanded." : "Disband failed.";
-                break;
-            }
+                {
+                    var g = Own(s);
+                    reply = g == null ? "Not in an adventure group." : await DisbandAsync(g) ? "Disbanded." : "Disband failed.";
+                    break;
+                }
             default:
-            {
-                var g = Own(s);
-                reply = g == null ? "Not in an adventure group." :
-                    $"{g.Id} '{g.Name}' status {g.Status} level {g.Level} exp {g.Money} (week {g.WeekMoney}) members {g.Members.Count} " +
-                    $"sapling {g.SaplingId} watered {g.SaplingWatering} ritual step {RitualOf(g.Id)?.Step.ToString() ?? "-"}";
-                break;
-            }
+                {
+                    var g = Own(s);
+                    reply = g == null ? "Not in an adventure group." :
+                        $"{g.Id} '{g.Name}' status {g.Status} level {g.Level} exp {g.Money} (week {g.WeekMoney}) members {g.Members.Count} " +
+                        $"sapling {g.SaplingId} watered {g.SaplingWatering} ritual step {RitualOf(g.Id)?.Step.ToString() ?? "-"}";
+                    break;
+                }
         }
         await GmCommands.ReplyAsync(s, reply);
     }

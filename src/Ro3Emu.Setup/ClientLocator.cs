@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Win32;
 using Ro3Emu.ClientTools;
 using Ro3Emu.DataExport;
@@ -7,7 +8,7 @@ namespace Ro3Emu.Setup;
 /// <summary>Finds the player's Ragnarok 3 PC client folder (the one with ro3.exe) and checks it.</summary>
 internal static class ClientLocator
 {
-    public static bool IsClient(string? dir) =>
+    public static bool IsClient([NotNullWhen(true)] string? dir) =>
         !string.IsNullOrWhiteSpace(dir) && File.Exists(Path.Combine(dir, "ro3.exe")) && Directory.Exists(Path.Combine(dir, "ro3_Data", "Managed"));
 
     /// <summary>

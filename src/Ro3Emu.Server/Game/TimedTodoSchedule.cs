@@ -104,8 +104,13 @@ public sealed class TimedTodoSchedule(GameData data, ActivityClock clock, TimePr
             long week = Math.Max(1, (Monday(day) - firstMonday).Days / 7 + 1);
             string flag = Weekday(opening) switch
             {
-                1 => "_iIsMonday", 2 => "_iIsTuesday", 3 => "_iIsWednesday", 4 => "_iIsThursday",
-                5 => "_iIsFriday", 6 => "_iIsSaturday", _ => "_iIsSunday",
+                1 => "_iIsMonday",
+                2 => "_iIsTuesday",
+                3 => "_iIsWednesday",
+                4 => "_iIsThursday",
+                5 => "_iIsFriday",
+                6 => "_iIsSaturday",
+                _ => "_iIsSunday",
             };
             var selected = customRows.FirstOrDefault(r => GameData.Int(r, "_iOpenedWeek") == week && GameData.Int(r, flag) == 1);
             if (selected.ValueKind == JsonValueKind.Object && selected.TryGetProperty("_kWeeklyOpenActivity", out var list)

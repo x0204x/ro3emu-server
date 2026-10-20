@@ -32,7 +32,8 @@ public sealed record RunnerOptions(string Scenario, int Bots, int TargetBots, in
         if (phase is not ("realistic" or "sync")) throw new ArgumentException("--walk-phase must be realistic or sync");
         var prefix = values.GetValueOrDefault("--output") ?? Path.Combine(repo, ".loadtest", "runs", $"{DateTime.UtcNow:yyyyMMdd-HHmmss}-{scenario}-{requested}");
         return new(scenario, requested, qualifiedTarget, duration, local, url,
-            values.GetValueOrDefault("--pem"), Path.GetFullPath(prefix), repo) { WalkPhase = phase };
+            values.GetValueOrDefault("--pem"), Path.GetFullPath(prefix), repo)
+        { WalkPhase = phase };
     }
 
     private static string FindRepoRoot()

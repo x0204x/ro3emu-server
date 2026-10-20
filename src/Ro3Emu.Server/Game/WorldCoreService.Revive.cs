@@ -117,7 +117,7 @@ public sealed partial class WorldCoreService
             {
                 try
                 {
-                    var paid = await character.ExchangeAsync(s, [(item,count)], [], popup: false, sync: false,
+                    var paid = await character.ExchangeAsync(s, [(item, count)], [], popup: false, sync: false,
                         rewardSettlement: new RewardSettlement(source, "world-revive"), committed: () =>
                         {
                             if (!combat.CommitReviveClaim(s))

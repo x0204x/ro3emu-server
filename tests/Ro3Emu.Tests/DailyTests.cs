@@ -746,8 +746,11 @@ public sealed class DailyTests : IAsyncLifetime
         await app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
         {
             var s = app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role != null);
-            s.Tasks!.Infos[10102050] = new TaskInfo { TaskId = 10102050, Status = TaskState.Running,
-                CompleteNum = { 0 } }; // A real item-submit objective; settlement must read committed inventory.
+            s.Tasks!.Infos[10102050] = new TaskInfo
+            {
+                TaskId = 10102050, Status = TaskState.Running,
+                CompleteNum = { 0 }
+            }; // A real item-submit objective; settlement must read committed inventory.
             var point = app.Services.GetRequiredService<WorldData>().Map(10213)!.Points[1010203001];
             s.SceneEntry = 10213;
             s.Position = new Vec3 { X = point.X, Y = point.Y, Z = point.Z };
@@ -762,8 +765,11 @@ public sealed class DailyTests : IAsyncLifetime
         Assert.Equal(TaskState.Finish, await State(s => s.Tasks!.Infos[10102050].Status));
         Assert.Equal(10, await State(s => s.Tasks!.Infos[10102050].CompleteNum[0]));
         await bot.SendGameAsync(TaskService.TaskDelivery,
-            new TaskDeliveryReq { Req = { new TaskDeliverySingleReq { Id = 10102050 },
-                new TaskDeliverySingleReq { Id = 10102050 } } });
+            new TaskDeliveryReq
+            {
+                Req = { new TaskDeliverySingleReq { Id = 10102050 },
+                new TaskDeliverySingleReq { Id = 10102050 } }
+            });
         var delivery = await Next(bot, TaskService.TaskDelivery, TaskDeliveryResp.Parser);
         Assert.Equal(0, Assert.Single(delivery.Data).Result);
         Assert.Equal(ErrorCodes.TaskStatus, (await Next(bot, TaskService.ApiError, APIErrorMsg.Parser)).ErrorCode);

@@ -190,8 +190,11 @@ public sealed partial class AuctionService
             var transaction = roles.NewTransaction();
             store.EnlistSource(source, transaction);
             var escrow = AuctionIntent(kind, sourceKey: "auction/source/" + source)
-                .Evidence(new { Source = source, Type = type, SrcType = srcType, GuildId = guildId,
-                    Members = eligible, Goods = goods, Start = start, End = end });
+                .Evidence(new
+                {
+                    Source = source, Type = type, SrcType = srcType, GuildId = guildId,
+                    Members = eligible, Goods = goods, Start = start, End = end
+                });
             int index = 0;
             foreach (var (entry, amount, bind) in goods)
             {

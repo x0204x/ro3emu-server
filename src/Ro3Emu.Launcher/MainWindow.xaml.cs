@@ -176,6 +176,7 @@ public partial class MainWindow : Window
     {
         const int DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_ROUND = 2;
         int preference = DWMWCP_ROUND;
-        DwmSetWindowAttribute(new WindowInteropHelper(this).Handle, DWMWA_WINDOW_CORNER_PREFERENCE, ref preference, sizeof(int));
+        // Cosmetic: Windows before 11 refuses the attribute and keeps square corners.
+        _ = DwmSetWindowAttribute(new WindowInteropHelper(this).Handle, DWMWA_WINDOW_CORNER_PREFERENCE, ref preference, sizeof(int));
     }
 }

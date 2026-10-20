@@ -169,8 +169,11 @@ public sealed class ShopService : IGameTicker
                 int code = await wardrobe.BuyFromShopLockedAsync(session, appearance, Parts(row.Value), cost, bonus,
                     persistShop: tx => tx.RoleBlob(session.Role!.Id, "shop", JsonSerializer.SerializeToUtf8Bytes(next)),
                     committedShop: () => session.Shop = next,
-                    shopOutcome: new { Commodity = commodityId, Count = 1, Unit = unit, Payment = currency, Appearance = appearance,
-                        Before = bought, Counter = next.Bought[commodityId] });
+                    shopOutcome: new
+                    {
+                        Commodity = commodityId, Count = 1, Unit = unit, Payment = currency, Appearance = appearance,
+                        Before = bought, Counter = next.Bought[commodityId]
+                    });
                 if (code != 0) error = new(code, $"appearance {appearance}");
             }
         }
@@ -185,8 +188,11 @@ public sealed class ShopService : IGameTicker
                 next.Bought[commodityId] = new Counter { Count = bought + count, Period = Period(Family(row.Value), session) };
                 var economy = NpcPurchase(session, row.Value, commodityId, count, unit, currency, entry,
                     perUnit, bought, next.Bought[commodityId]) ?? character.FamilyEconomy(session, "cd13a/shop-buy",
-                        cost, [(entry, perUnit * count)], new { Commodity = commodityId, Count = count, Unit = unit,
-                            Payment = currency, Goods = entry, Before = bought, Counter = next.Bought[commodityId] });
+                        cost, [(entry, perUnit * count)], new
+                        {
+                            Commodity = commodityId, Count = count, Unit = unit,
+                            Payment = currency, Goods = entry, Before = bought, Counter = next.Bought[commodityId]
+                        });
                 // The new-cycle allowance and its payment must commit together; a failed save cannot grant a free retry.
                 if (await character.ExchangeLockedAsync(session, cost, [(entry, perUnit * count)],
                     persist: tx =>
@@ -252,10 +258,16 @@ public sealed class ShopService : IGameTicker
         string operation = Guid.NewGuid().ToString("N");
         string config = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(row.GetRawText() + "\n" + shop.GetRawText())));
         // Quote is diagnostic only in the original service; the resolved server price is the semantic input.
-        string fingerprint = JsonSerializer.Serialize(new { Version = 1, Commodity = commodity, Count = count,
-            UnitPrice = unit, Payment = payment, Goods = entry, PerUnit = perUnit, Config = config });
-        byte[] outcome = JsonSerializer.SerializeToUtf8Bytes(new { Version = 1, Result = 0, Commodity = commodity,
-            Count = count, Price = unit, BuyTimes = next.Count, BeforeBuyTimes = priorCount, next.Period, Config = config });
+        string fingerprint = JsonSerializer.Serialize(new
+        {
+            Version = 1, Commodity = commodity, Count = count,
+            UnitPrice = unit, Payment = payment, Goods = entry, PerUnit = perUnit, Config = config
+        });
+        byte[] outcome = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            Version = 1, Result = 0, Commodity = commodity,
+            Count = count, Price = unit, BuyTimes = next.Count, BeforeBuyTimes = priorCount, next.Period, Config = config
+        });
         EconomyQuantity[] costs = payment > 0 && unit > 0 ? [new(Asset(payment), checked((long)unit * count))] : [];
         return new EconomyMutation(operation, session.Account!, session.Role!.Id, "npc-shop-buy", fingerprint,
             "npc-shop/" + session.Role.Id.ToString(CultureInfo.InvariantCulture) + "/" + operation,

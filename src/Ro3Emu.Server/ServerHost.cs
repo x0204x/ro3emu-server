@@ -112,6 +112,7 @@ public static class ServerHost
         builder.Services.AddSingleton<TradeService>();
         builder.Services.AddSingleton<StallsService>();
         builder.Services.AddSingleton<GuildService>();
+        builder.Services.AddSingleton<GuildVoiceService>();
         builder.Services.AddSingleton<AdventureGroupStore>();
         builder.Services.AddSingleton<AdventureGroupService>();
         builder.Services.AddSingleton<GuildCaravanService>();
@@ -173,6 +174,7 @@ public static class ServerHost
         builder.Services.AddSingleton<Game.Messaging.IMessageModule, ActivitiesMessages>();
         builder.Services.AddSingleton<Game.Messaging.IMessageModule, AdventureGroupMessages>();
         builder.Services.AddSingleton<Game.Messaging.IMessageModule, Voice.VoiceTicketService>();
+        builder.Services.AddSingleton<Game.Messaging.IMessageModule>(sp => sp.GetRequiredService<GuildVoiceService>());
         builder.Services.AddSingleton<GameMessageHandler>();
         builder.Services.AddSingleton(sp => GateCrypto.LoadOrCreate(options.DataDir, sp.GetRequiredService<ILogger<GateCrypto>>()));
         builder.Services.AddSingleton<IMicroService, LoginService>();
@@ -369,6 +371,8 @@ public static class ServerHost
         app.Services.GetRequiredService<PersonalService>().Upvoted.Add(questTasks.OnProfileLiked); // 106902
         app.Services.GetRequiredService<GuildCampfireService>().Joined.Add(questTasks.OnCampfireJoined); // 106018
         app.Services.GetRequiredService<GuildService>().MembershipChanged.Add(questTasks.OnStateChanged); // 104007
+        app.Services.GetRequiredService<GuildService>().MembershipChanged.Add(app.Services.GetRequiredService<GuildVoiceService>().OnMembershipChanged);
+        app.Services.GetRequiredService<GuildService>().RightsChanged.Add(app.Services.GetRequiredService<GuildVoiceService>().OnRightsChanged);
         var social = app.Services.GetRequiredService<Micro.SocialOwnerCache>();
         questTasks.LoadFriendCount = async s => s.Role is { } role
             ? (await social.LoadSocialAsync([role.Id])).GetValueOrDefault(role.Id)?.Friends.LongLength : null; // 103019
@@ -488,6 +492,7 @@ internal sealed class GameLoopTickers(IServiceProvider services) : IHostedServic
         Add<ItemBoxService>(); // award boxes; 05:00 item use-time rollover
         Add<PowerService>(); // throttled 31502/31503 republish of changed power
         Add<Voice.VoiceRooms>(); // VAD silence timeout every tick, team-membership sweep every second
+        Add<GuildVoiceService>(); // guild voice channels: drops the offline and those no longer in the guild, every second
         return Task.CompletedTask;
     }
 

@@ -187,6 +187,7 @@ internal sealed class OptionsWithClient(Options options, string client)
         if (o.Yes) args.Add("--yes");
         if (o.Home != null) args.AddRange(["--home", o.Home]);
         args.AddRange(["--http-port", o.Ports.Http.ToString(), "--micro-port", o.Ports.MicroGate.ToString(), "--game-port", o.Ports.GameGate.ToString()]);
+        if (o.Ports.Voice > 0) args.AddRange(["--voice-port", o.Ports.Voice.ToString()]);
         return args.ToArray();
     }
 }

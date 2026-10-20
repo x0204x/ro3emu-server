@@ -64,7 +64,7 @@ public sealed class CommonWorldTests : IAsyncLifetime
         Assert.Equal(2, presence.AllInfo.AllOnlineId.Count);
 
         await alice.SendGameAsync(WorldCommonService.Inspect, new InspectCommandReq
-            { ServerEntityType = 3, ServerEntityId = aliceId, Cmd = "height" });
+        { ServerEntityType = 3, ServerEntityId = aliceId, Cmd = "height" });
         var height = await Next(alice, WorldCommonService.DebugHeight, DebugShowHeightNtf.Parser);
         Assert.True(height.Clear);
         Assert.Single(height.Data);
@@ -72,7 +72,7 @@ public sealed class CommonWorldTests : IAsyncLifetime
         Assert.Contains($"uid={aliceId}", own.Res);
 
         await bob.SendGameAsync(WorldCommonService.Inspect, new InspectCommandReq
-            { ServerEntityType = 0, ServerEntityId = aliceId, Cmd = "summary" });
+        { ServerEntityType = 0, ServerEntityId = aliceId, Cmd = "summary" });
         Assert.Equal("GM inspect denied.", (await Next(bob, WorldCommonService.Inspect, InspectCommandResp.Parser)).Res);
 
         await alice.SendGameAsync(WorldCommonService.GmTransmit, new GMCommandTransmitReq { LPlayerId = aliceId, Data = "!where" });

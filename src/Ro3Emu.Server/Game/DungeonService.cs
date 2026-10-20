@@ -266,8 +266,11 @@ public sealed partial class DungeonService
     /// <summary>42033 is the actual prepare-panel producer (LC_DAL_Team.lua:3337-3587), not teleport invite 30118.</summary>
     private Task BroadcastReadyAsync(Preparation p, bool cancel = false, int error = 0, long role = 0)
     {
-        var msg = new TeamEnterReadyQueueNotify { DungeonId = p.Plan.SceneEntry, DungeonInitData = p.Plan.Init(p.TeamId),
-            Cancel = cancel, CancelErrorCode = error, CancelRoleId = role };
+        var msg = new TeamEnterReadyQueueNotify
+        {
+            DungeonId = p.Plan.SceneEntry, DungeonInitData = p.Plan.Init(p.TeamId),
+            Cancel = cancel, CancelErrorCode = error, CancelRoleId = role
+        };
         foreach (var member in p.Members) if (member.Role != null) msg.ReadyQueue[member.Role.Id] = p.Ready.Contains(member);
         return Task.WhenAll(p.Members.Where(s => s.Role != null).Select(s => SendQuietAsync(s, ReadyQueue, msg)));
     }
@@ -326,14 +329,22 @@ public sealed partial class DungeonService
         // (inferred) 30107 acknowledges a real room allocation; this client build has no Lua handler beyond PB registration.
         foreach (var member in members)
             await SendQuietAsync(member, CreateResult, new CreateDungeonResultNotify());
-        var a = new Attempt { Room = room, Plan = plan, Leader = leader, TeamId = team,
+        var a = new Attempt
+        {
+            Room = room, Plan = plan, Leader = leader, TeamId = team,
             PlayBook = seasons.PlayBook, SeasonId = seasons.SeasonId, Matched = matched,
-            Blessing = plan.Boss is { } blessed ? Blessing(blessed)?.Row : null };
+            Blessing = plan.Boss is { } blessed ? Blessing(blessed)?.Row : null
+        };
         foreach (var member in members)
         {
-            a.Stats[member.Role!.Id] = new RoleStatisticsInfo { BaseInfo = new StatisticsRoleBaseInfo
-            { Id = member.Role.Id, Name = member.Role.Name, Job = member.Progress!.Career, Area = 1, TeamId = team,
-                RewardData = new StatisticsAwardCheckData { PlayerLevel = member.Progress.Level, Job = member.Progress.Career } } };
+            a.Stats[member.Role!.Id] = new RoleStatisticsInfo
+            {
+                BaseInfo = new StatisticsRoleBaseInfo
+                {
+                    Id = member.Role.Id, Name = member.Role.Name, Job = member.Progress!.Career, Area = 1, TeamId = team,
+                    RewardData = new StatisticsAwardCheckData { PlayerLevel = member.Progress.Level, Job = member.Progress.Career }
+                }
+            };
             a.StartingItems[member] = Inventory(member);
         }
         foreach (var member in members)
@@ -393,11 +404,14 @@ public sealed partial class DungeonService
             DungeonEntry = a.Plan.SceneEntry, DungeonId = a.Room.Id, Stage = a.Wave + 1, Level = 1,
             InitData = init, ChangeType = (DungeonBaseInfoNotify.Types.eChangeType)2,
             Vars = { PlayerList(a) },
-            StageModuleData = new DungeonStageModuleData { MapState = a.Settled ? 2 : a.Started ? 1 : 0,
+            StageModuleData = new DungeonStageModuleData
+            {
+                MapState = a.Settled ? 2 : a.Started ? 1 : 0,
                 Stage = a.Wave + 1, MapStateStartTime = a.StartMs, StageStartTime = a.StartMs,
                 MapStateEndTime = a.Started ? a.StartMs + a.Plan.DurationMs : 0,
                 StageEndTime = a.Started ? a.StartMs + a.Plan.DurationMs : 0,
-                NextStageStartTime = 0, NextStageEndTime = 0 },
+                NextStageStartTime = 0, NextStageEndTime = 0
+            },
         };
         if (QuestList(a) is { } quests) snapshot.Vars.Add(quests);
         if (GoalParams(a) is { } goal) snapshot.Vars.Add(goal);
@@ -535,8 +549,11 @@ public sealed partial class DungeonService
         if (a.Settled || a.Room.Closed) return;
         a.Spawning = true;
         a.WaveBase = a.Spawned;
-        var change = new DungeonEventNotify { DungeonEntry = a.Plan.SceneEntry,
-            EventType = (DungeonEventType)1, StageNum = a.Wave + 1, LevelNum = 1, Vars = { PlayerList(a) } };
+        var change = new DungeonEventNotify
+        {
+            DungeonEntry = a.Plan.SceneEntry,
+            EventType = (DungeonEventType)1, StageNum = a.Wave + 1, LevelNum = 1, Vars = { PlayerList(a) }
+        };
         if (QuestList(a) is { } quests) change.Vars.Add(quests);
         if (GoalParams(a) is { } goal) change.Vars.Add(goal);
         if (a.GuildChallenge is { } challenge) change.Vars.Add(challenge.Vars());
@@ -732,10 +749,13 @@ public sealed partial class DungeonService
     }
 
     private Task SendReviveInfoAsync(GameSession s, Attempt a) => a.Plan.Multi == null && !s.Dead ? Task.CompletedTask
-        : SendQuietAsync(s, ReviveInfo, new SyncClientPlayerReviveInfoNtf { BDead = s.Dead,
+        : SendQuietAsync(s, ReviveInfo, new SyncClientPlayerReviveInfoNtf
+        {
+            BDead = s.Dead,
             // LC_SceneCom_Revive.lua:254-261 explicitly interprets freeReviveNum as USED, not remaining.
             FreeReviveNum = a.RevivesUsed.GetValueOrDefault(s.Role!.Id),
-            ReviveTime = a.AutoReviveAt.GetValueOrDefault(s.Role.Id), SceneEntry = a.Plan.SceneEntry });
+            ReviveTime = a.AutoReviveAt.GetValueOrDefault(s.Role.Id), SceneEntry = a.Plan.SceneEntry
+        });
 
     public async Task ClientEventAsync(GameSession s, ClientDungeonEvent req)
     {
@@ -902,8 +922,11 @@ public sealed partial class DungeonService
                     await s.SendGameAsync(Result, result);
                     if (success && a.Plan.Multi != null)
                     {
-                        var award = new SyncMultiDungeonAwardNotify { PassTime = row.DurationMs, IsFastRecord = newRecord,
-                            Honor = EarnedHonors(row) };
+                        var award = new SyncMultiDungeonAwardNotify
+                        {
+                            PassTime = row.DurationMs, IsFastRecord = newRecord,
+                            Honor = EarnedHonors(row)
+                        };
                         award.NormalAward.Add(awardedItems);
                         award.AutionAward.Add(auctionAwards);
                         await s.SendGameAsync(AwardNotify, award);

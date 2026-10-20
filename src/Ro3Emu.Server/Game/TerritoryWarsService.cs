@@ -572,8 +572,11 @@ public sealed partial class TerritoryWarsService : IGameTicker
     private PlayerActivityTerritoryWar BuildActivityState(GameSession s)
     {
         var stage = clock.Current;
-        var war = new DBTerritoryWarData { ZoneData = new(), BattleZoneData = new(),
-            Stage = new TerritoryStage { StageType = stage.Type, StartTime = stage.StartTime, EndTime = stage.EndTime } };
+        var war = new DBTerritoryWarData
+        {
+            ZoneData = new(), BattleZoneData = new(),
+            Stage = new TerritoryStage { StageType = stage.Type, StartTime = stage.StartTime, EndTime = stage.EndTime }
+        };
         foreach (var z in Zones)
         {
             int id = (int)Id(z);
@@ -586,8 +589,11 @@ public sealed partial class TerritoryWarsService : IGameTicker
         }
         return new PlayerActivityTerritoryWar
         {
-            TerritoryWarData = war, TerritoryWarStage = new TerritoryWarStage { StageType = (TerritoryWarStageType)stage.Type,
-                StartTime = stage.StartTime, EndTime = stage.EndTime },
+            TerritoryWarData = war, TerritoryWarStage = new TerritoryWarStage
+            {
+                StageType = (TerritoryWarStageType)stage.Type,
+                StartTime = stage.StartTime, EndTime = stage.EndTime
+            },
         };
     }
 
@@ -648,7 +654,8 @@ public sealed partial class TerritoryWarsService : IGameTicker
             next.Pending.Remove(key);
             next.Paid.Add(key);
             if (await character.ExchangeLockedAsync(s, [], [],
-                persist: tx => {
+                persist: tx =>
+                {
                     tx.RoleBlob(s.Role.Id, "territory_wars", JsonSerializer.SerializeToUtf8Bytes(next));
                     if (goods.Any(g => g.Count > 0 && g.Entry is not (100 or 101)))
                         tx.WithEventEconomy(new EventEconomyMutation(EventEconomy.Catalog(data),

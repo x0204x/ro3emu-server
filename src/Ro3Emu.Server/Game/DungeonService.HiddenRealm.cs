@@ -35,9 +35,15 @@ public sealed partial class DungeonService
             for (int mark = 1; mark <= DungeonCatalog.Marks(multi); mark++)
             {
                 if (catalog.Boss(multi, mark) is not { } boss || members.Any(s => !Meets(s, multi) || !Meets(s, boss))) continue;
-                var plan = catalog.Resolve(new EnterDungeonReq { SceneEntry = GameData.Int(boss, "_iDungeon"),
-                    InitData = new DungeonInitData { MultiDungeonInitData = new MultiDungeonInitData
-                    { MultiDungeonId = (int)GameData.Int(multi, "_iID"), MarkId = mark } } });
+                var plan = catalog.Resolve(new EnterDungeonReq
+                {
+                    SceneEntry = GameData.Int(boss, "_iDungeon"),
+                    InitData = new DungeonInitData
+                    {
+                        MultiDungeonInitData = new MultiDungeonInitData
+                        { MultiDungeonId = (int)GameData.Int(multi, "_iID"), MarkId = mark }
+                    }
+                });
                 if (plan != null) pool.Add(plan with { Origin = new DungeonCatalog.RandomOrigin(origin.Multi!.Value, origin.Boss!.Value, origin.Mark) });
             }
         return pool;
@@ -50,9 +56,12 @@ public sealed partial class DungeonService
         var drawn = pool.Count > 0 ? pool[Random.Shared.Next(pool.Count)]
             : origin with { Origin = new DungeonCatalog.RandomOrigin(origin.Multi!.Value, origin.Boss!.Value, origin.Mark) };
         long enterTime = clock.GetUtcNow().ToUnixTimeSeconds() + RandomSeconds();
-        var notify = new RandomDungeonNotify { EnterTime = enterTime,
+        var notify = new RandomDungeonNotify
+        {
+            EnterTime = enterTime,
             Origin = new MultiDungeonInfo { MultiDungeonId = origin.MultiId, MarkId = origin.Mark },
-            Random = new MultiDungeonInfo { MultiDungeonId = drawn.MultiId, MarkId = drawn.Mark } };
+            Random = new MultiDungeonInfo { MultiDungeonId = drawn.MultiId, MarkId = drawn.Mark }
+        };
         foreach (var member in members) rolling.Add(member);
         await Task.WhenAll(members.Select(member => SendQuietAsync(member, RandomDungeon, notify)));
         loop.ScheduleLegacy(TimeSpan.FromSeconds(RandomSeconds()), async () =>

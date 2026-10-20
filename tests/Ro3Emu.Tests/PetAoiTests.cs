@@ -217,8 +217,11 @@ public sealed class PetAoiTests
         if (info.MoveType != MovementType.MoveTypeWalk) return info.Pos;
         float angle = info.MovementWalk.Dir * MathF.PI / 180f;
         float travel = info.MovementWalk.Speed * info.MoveDuration / 1000f;
-        return new Vec3 { X = info.Pos.X + MathF.Sin(angle) * travel, Y = info.MovementWalk.EndHeight,
-            Z = info.Pos.Z + MathF.Cos(angle) * travel };
+        return new Vec3
+        {
+            X = info.Pos.X + MathF.Sin(angle) * travel, Y = info.MovementWalk.EndHeight,
+            Z = info.Pos.Z + MathF.Cos(angle) * travel
+        };
     }
 
     [Fact]

@@ -129,7 +129,12 @@ public sealed class FunctionService
     /// <summary>LC_InteractCondition operator table (lua :313-356): 1 ==, 2 ~=, 3 &gt;, 4 &gt;=, 5 &lt;, 6 &lt;=.</summary>
     private static bool Compare(long op, long value, long param) => op switch
     {
-        1 => value == param, 2 => value != param, 3 => value > param, 4 => value >= param, 5 => value < param, 6 => value <= param,
+        1 => value == param,
+        2 => value != param,
+        3 => value > param,
+        4 => value >= param,
+        5 => value < param,
+        6 => value <= param,
         _ => false,
     };
 

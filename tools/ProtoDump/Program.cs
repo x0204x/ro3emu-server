@@ -124,11 +124,21 @@ static string FieldType(FieldDescriptorProto f, Dictionary<string, DescriptorPro
     return f.Type switch
     {
         Type.Message or Type.Enum or Type.Group => Trim(f.TypeName),
-        Type.Double => "double", Type.Float => "float",
-        Type.Int64 => "int64", Type.Uint64 => "uint64", Type.Int32 => "int32", Type.Uint32 => "uint32",
-        Type.Fixed64 => "fixed64", Type.Fixed32 => "fixed32", Type.Sfixed32 => "sfixed32", Type.Sfixed64 => "sfixed64",
-        Type.Sint32 => "sint32", Type.Sint64 => "sint64",
-        Type.Bool => "bool", Type.String => "string", Type.Bytes => "bytes",
+        Type.Double => "double",
+        Type.Float => "float",
+        Type.Int64 => "int64",
+        Type.Uint64 => "uint64",
+        Type.Int32 => "int32",
+        Type.Uint32 => "uint32",
+        Type.Fixed64 => "fixed64",
+        Type.Fixed32 => "fixed32",
+        Type.Sfixed32 => "sfixed32",
+        Type.Sfixed64 => "sfixed64",
+        Type.Sint32 => "sint32",
+        Type.Sint64 => "sint64",
+        Type.Bool => "bool",
+        Type.String => "string",
+        Type.Bytes => "bytes",
         _ => f.Type.ToString(),
     };
 }

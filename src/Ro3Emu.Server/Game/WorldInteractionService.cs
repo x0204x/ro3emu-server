@@ -133,8 +133,11 @@ public sealed class WorldInteractionService
         if (!active.Remove(s, out var state)) return;
         if (state.SeatIndex >= 0) seats.Remove((s.WorldScene, state.Npc.Uid, state.SeatIndex));
         if (s.Role == null || s.SceneLoading) return;
-        var message = new InteractChangeNtf { Uid = s.Role.Id,
-            DataInfo = new InteractInfo { EType = InteractInfo.Types.EState.Idle }, Interrupt = interrupt };
+        var message = new InteractChangeNtf
+        {
+            Uid = s.Role.Id,
+            DataInfo = new InteractInfo { EType = InteractInfo.Types.EState.Idle }, Interrupt = interrupt
+        };
         await s.SendGameAsync(Change, message);
         foreach (var viewer in world.Viewers(s)) await viewer.SendGameAsync(Change, message);
     }
@@ -150,9 +153,15 @@ public sealed class WorldInteractionService
     private async Task PlayerEnteredAsync(GameSession viewer, GameSession subject)
     {
         if (active.TryGetValue(subject, out var state) && StillHere(subject, state))
-            await viewer.SendGameAsync(Change, new InteractChangeNtf { Uid = subject.Role!.Id,
-                DataInfo = new InteractInfo { EType = (InteractInfo.Types.EState)state.StatusType,
-                    StateId = state.StatusId, InteractConfigId = state.InteractionId, ActiveObjId = state.Npc.Uid } });
+            await viewer.SendGameAsync(Change, new InteractChangeNtf
+            {
+                Uid = subject.Role!.Id,
+                DataInfo = new InteractInfo
+                {
+                    EType = (InteractInfo.Types.EState)state.StatusType,
+                    StateId = state.StatusId, InteractConfigId = state.InteractionId, ActiveObjId = state.Npc.Uid
+                }
+            });
     }
 
     /// <summary>32703: only a configured QuitStatus action is accepted; skill grants stay with combat.</summary>

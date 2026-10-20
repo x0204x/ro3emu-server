@@ -106,8 +106,11 @@ public sealed partial class GuildService
         var recipients = g.Members.Values.Where(m => Compare(op, m.Official, position)).Select(m => m.RoleId).Order().ToArray();
         if (recipients.Length == 0) return ErrorCodes.Parameter;
         string source = $"guild-pack:{g.Id}:{s.Role!.Id}:{use.Item.Guid}:{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
-        if (!await character.CommitItemActionAsync(use, null, null, new { Guild = g.Id, Group = group, Template = template,
-            Recipients = recipients })) return ErrorCodes.ItemsShort;
+        if (!await character.CommitItemActionAsync(use, null, null, new
+        {
+            Guild = g.Id, Group = group, Template = template,
+            Recipients = recipients
+        })) return ErrorCodes.ItemsShort;
         var context = ownerRegistry.Current;
         foreach (long role in recipients)
         {
@@ -123,7 +126,12 @@ public sealed partial class GuildService
     /// <summary>LC_InteractCondition operator table (lua :313-356): 1 ==, 2 ~=, 3 &gt;, 4 &gt;=, 5 &lt;, 6 &lt;=.</summary>
     private static bool Compare(long op, long value, long param) => op switch
     {
-        1 => value == param, 2 => value != param, 3 => value > param, 4 => value >= param, 5 => value < param, 6 => value <= param,
+        1 => value == param,
+        2 => value != param,
+        3 => value > param,
+        4 => value >= param,
+        5 => value < param,
+        6 => value <= param,
         _ => false,
     };
 

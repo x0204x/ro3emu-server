@@ -200,9 +200,12 @@ public sealed class TotemService
         int itemReceipt = tx.ItemDelta(s.Role!.Id, s.Items, copies);
         tx.RoleBlob(s.Role.Id, "totems", next.ToByteArray());
         tx.WithEconomy(character.FamilyEconomy(s, "cd13b/totem-state", [], [],
-            new { StateHash = Convert.ToHexString(SHA256.HashData(next.ToByteArray())),
+            new
+            {
+                StateHash = Convert.ToHexString(SHA256.HashData(next.ToByteArray())),
                 Markers = copies.Where(i => IsTotem(data, i.Entry)).Select(i =>
-                    new { i.Guid, Active = Value(i, 10001), Slot = Value(i, 10002), Stamp = Value(i, 10003) }).ToArray() }));
+                    new { i.Guid, Active = Value(i, 10001), Slot = Value(i, 10002), Stamp = Value(i, 10003) }).ToArray()
+            }));
         await roles.CommitAsync(tx, "totem/state", receipts =>
         {
             ItemSnapshotWritePlan.ApplyGuids(copies, (long[])receipts[itemReceipt]!);
@@ -229,8 +232,11 @@ public sealed class TotemService
         var tx = roles.NewTransaction();
         int itemReceipt = tx.ItemDelta(s.Role!.Id, s.Items, copies);
         tx.RoleBlob(s.Role.Id, "totem_refine_epoch", System.Text.Encoding.UTF8.GetBytes(epoch));
-        tx.WithEconomy(character.FamilyEconomy(s, "cd13b/totem-epoch", [], [], new { Epoch = epoch,
-            Refined = copies.Where(i => IsTotem(data, i.Entry)).Select(i => new { i.Guid, Count = Value(i, 270) }).ToArray() }));
+        tx.WithEconomy(character.FamilyEconomy(s, "cd13b/totem-epoch", [], [], new
+        {
+            Epoch = epoch,
+            Refined = copies.Where(i => IsTotem(data, i.Entry)).Select(i => new { i.Guid, Count = Value(i, 270) }).ToArray()
+        }));
         await roles.CommitAsync(tx, "totem/epoch", receipts =>
         {
             ItemSnapshotWritePlan.ApplyGuids(copies, (long[])receipts[itemReceipt]!);
@@ -403,8 +409,11 @@ public sealed class TotemService
                 {
                     tx.RoleBlob(s.Role!.Id, "totems", next.ToByteArray());
                     tx.WithEconomy(character.FamilyEconomy(s, "cd13b/totem-upgrade", semanticCost, refund,
-                        new { Experience = next.TotemTotalExp,
-                            StateHash = Convert.ToHexString(SHA256.HashData(next.ToByteArray())) }));
+                        new
+                        {
+                            Experience = next.TotemTotalExp,
+                            StateHash = Convert.ToHexString(SHA256.HashData(next.ToByteArray()))
+                        }));
                 }, committed: () => s.Totems = next, asyncCommit: true) == null) error = character.ShortageOf(s, cost);
             else { await SyncAsync(s); await character.RefreshStatsAsync(s); }
         }
@@ -524,8 +533,11 @@ public sealed class TotemService
             int itemReceipt = tx.ItemDelta(s.Role!.Id, s.Items, copies);
             tx.WithEconomy(character.FamilyEconomy(s, "cd13b/totem-combine",
                 [(left.Entry, 1L), (right.Entry, 1L)], [(next.Entry, 1)],
-                new { Left = left.Entry, Right = right.Entry, Output = next.Entry,
-                    next.BindType, next.BindExpire, next.Attrs }));
+                new
+                {
+                    Left = left.Entry, Right = right.Entry, Output = next.Entry,
+                    next.BindType, next.BindExpire, next.Attrs
+                }));
             await roles.CommitAsync(tx, "totem/combine", receipts =>
             {
                 ItemSnapshotWritePlan.ApplyGuids(copies, (long[])receipts[itemReceipt]!);

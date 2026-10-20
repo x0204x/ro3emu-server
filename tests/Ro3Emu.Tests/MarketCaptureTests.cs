@@ -243,8 +243,11 @@ public sealed class MarketCaptureTests : IAsyncLifetime
     public void CapturedItemExecutorCopiesNestedFieldsAndAppliesIdsOnlyAfterCommit()
     {
         long role = Role("ItemSnapshot");
-        var candidate = new InvItem { Entry = 2010121, Stack = 1, Pack = 2,
-            Attrs = new() { [30] = 17 }, Enchantments = new() { [7] = new() { Attr = new() { [8] = 9 } } } };
+        var candidate = new InvItem
+        {
+            Entry = 2010121, Stack = 1, Pack = 2,
+            Attrs = new() { [30] = 17 }, Enchantments = new() { [7] = new() { Attr = new() { [8] = 9 } } }
+        };
         var builder = new RoleItemPlanBuilder(accounts);
         int slot = builder.Add(new MarketItemsWritePlan(role, [], [candidate]));
         candidate.Attrs[30] = 99;

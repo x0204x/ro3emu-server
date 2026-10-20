@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 
 namespace Ro3Emu.Setup;
 
@@ -11,7 +12,7 @@ internal static class FolderPicker
         string? result = null;
         var thread = new Thread(() =>
         {
-            try { result = Show(title); }
+            try { if (OperatingSystem.IsWindows()) result = Show(title); }
             catch (Exception e) { SetupLog.Write("folder picker: " + e); }
         });
         thread.SetApartmentState(ApartmentState.STA);
@@ -20,6 +21,7 @@ internal static class FolderPicker
         return result;
     }
 
+    [SupportedOSPlatform("windows")]
     private static string? Show(string title)
     {
         var dialog = (IFileOpenDialog)new FileOpenDialogCom();

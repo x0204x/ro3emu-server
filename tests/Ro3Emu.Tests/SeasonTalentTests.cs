@@ -28,10 +28,34 @@ public sealed class SeasonTalentTests
         public GameSession Session => app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role != null);
         public CharacterService Character => app.Services.GetRequiredService<CharacterService>();
         public AccountStore Accounts => app.Services.GetRequiredService<AccountStore>();
+        public RoleStore Roles => app.Services.GetRequiredService<RoleStore>();
         public MapPoint TaskPoint(long scene, long point) => app.Services.GetRequiredService<WorldData>().Map(scene)!.Points[point];
         public string DatabaseFile => Path.Combine(dir, "state", "ro3emu.db");
         public string StateDir => Path.Combine(dir, "state");
         public string GameDataDir => Path.Combine(dir, "game");
+        public GameLoop Loop => app.Services.GetRequiredService<GameLoop>();
+        public SeasonTalentService Talents => app.Services.GetRequiredService<SeasonTalentService>();
+
+        public async Task PrepareFirstProfessionChoice(BotClient bot)
+        {
+            await Gm("alice", "!job 1200");
+            await Gm("alice", "!lvl 50");
+            await Gm("alice", "!quest done 10101170");
+            await Gm("alice", "!quest done 10103160");
+            await Gm("alice", "!item 1250900 100000");
+            await Gm("alice", "!item 2 1000000");
+            Assert.False(Session.SeasonTalent!.UnlockedNode[10102003]);
+            var data = app.Services.GetRequiredService<Ro3Emu.Server.Data.GameData>();
+            foreach (var row in data.Table("SeasonTalentConfig").Values
+                .OrderBy(r => Ro3Emu.Server.Data.GameData.Int(r, "_iId")))
+            {
+                long id = Ro3Emu.Server.Data.GameData.Int(row, "_iId");
+                if (Ro3Emu.Server.Data.GameData.Int(row, "_iTalentTreeID") != 10101 && id is not (10102001 or 10102002)) continue;
+                // Reach the choice through real paid protocol upgrades, without seeding node levels.
+                for (int level = 0; level < Ro3Emu.Server.Data.GameData.Int(row, "_iMaxLevel"); level++)
+                    Assert.Equal(0, await Upgrade(bot, (int)id));
+            }
+        }
 
         public async Task StartAsync(int playbook = 101, bool removeLevelTwo = false, bool extraMemberAttr = false,
             bool oathOpen = false, bool missingGraph = false, bool jobSpecificRow = false)
@@ -144,6 +168,38 @@ public sealed class SeasonTalentTests
     {
         await bot.SendGameAsync(SeasonTalentService.Upgrade, new SeasonTalentUpgradeReq { TalentId = node });
         return (await Next(bot, SeasonTalentService.Upgrade, SeasonTalentUpgradeResp.Parser)).Result;
+    }
+
+    [ClientDataFact]
+    public async Task FirstProfessionChoiceCommitsItsPathAndReplacesOnlyItsOwnPlan()
+    {
+        await using var fixture = new ServerFixture();
+        await fixture.StartAsync();
+        var alice = await fixture.InWorld("Alice");
+        await fixture.PrepareFirstProfessionChoice(alice);
+        Assert.True(fixture.Session.SeasonTalent!.UnlockedNode[10102003]);
+        Assert.Equal(0, await Upgrade(alice, 10102102)); // Rapid Pierce; client submits the leaf.
+        var state = fixture.Session.SeasonTalent!;
+        Assert.Equal(1, state.Plan[0].TalentNodes[10102003].CurrentLevel);
+        Assert.Equal(1, state.Plan[0].TalentNodes[10102101].CurrentLevel);
+        Assert.Equal(1, state.Plan[0].TalentNodes[10102102].CurrentLevel);
+        Assert.Equal(0, state.Plan[1].TalentNodes[10102102].CurrentLevel);
+        Assert.Equal(0, await Upgrade(alice, 10102106)); // Switch to Swift Sword / Critical Attack.
+        state = fixture.Session.SeasonTalent!;
+        Assert.Equal(0, state.Plan[0].TalentNodes[10102101].CurrentLevel);
+        Assert.Equal(0, state.Plan[0].TalentNodes[10102102].CurrentLevel);
+        Assert.Equal(1, state.Plan[0].TalentNodes[10102105].CurrentLevel);
+        Assert.Equal(1, state.Plan[0].TalentNodes[10102106].CurrentLevel);
+        var saved = DBSeasonTalent.Parser.ParseFrom(fixture.Roles.LoadSeasonTalent(fixture.Session.Role!.Id)!);
+        Assert.Equal(state, saved);
+        await alice.DisposeAsync();
+        await using var again = await fixture.InWorld("Alice", create: false);
+        await Next(again, SeasonTalentService.TalentSync, DBSeasonTalentIncrement.Parser);
+        var restored = fixture.Session.SeasonTalent!.Plan[0];
+        Assert.Equal(0, restored.TalentNodes[10102102].CurrentLevel);
+        Assert.Equal(1, restored.TalentNodes[10102105].CurrentLevel);
+        Assert.Equal(1, restored.TalentNodes[10102106].CurrentLevel);
+        Assert.True(restored.TalentNodes[10102106].IsActivated);
     }
 
     [ClientDataFact]

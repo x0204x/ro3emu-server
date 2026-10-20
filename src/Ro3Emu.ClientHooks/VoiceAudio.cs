@@ -230,7 +230,7 @@ namespace Ro3Emu.ClientHooks
                             for (int s = 0; s < FrameSamples; s++) pcm[s] = Clamp((int)((short)(bytes[2 * s] | (bytes[2 * s + 1] << 8)) * gain));
                             if (_running)
                                 try { _onFrame(pcm); }
-                            catch (Exception e) { Debug.LogWarning("[Ro3Emu.Voice] capture: " + e.Message); }
+                                catch (Exception e) { Debug.LogWarning("[Ro3Emu.Voice] capture: " + e.Message); }
                         }
                         WaveBuffers.ClearDone(header);
                         if (_running) Winmm.waveInAddBuffer(_device, header, WaveBuffers.HeaderSize);

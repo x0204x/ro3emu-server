@@ -473,7 +473,7 @@ public sealed class EconomyRewardTests : IDisposable
         var ledger = EconomyLedgerReader.Read(reopened.DatabasePath, Catalog, "auto", 0, 2);
         Assert.True(ledger.CompleteHistory, string.Join("; ", ledger.Issues.Select(x => x.Detail)));
         using var db = new SqliteConnection(new SqliteConnectionStringBuilder
-            { DataSource = reopened.DatabasePath, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
+        { DataSource = reopened.DatabasePath, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
         db.Open();
         using var foreignKeys = db.CreateCommand();
         foreignKeys.CommandText = "PRAGMA foreign_key_check";
@@ -561,7 +561,7 @@ public sealed class EconomyRewardTests : IDisposable
         var ledger = EconomyLedgerReader.Read(reopened.DatabasePath, Catalog, "auto", 0, 2);
         Assert.True(ledger.CompleteHistory, string.Join("; ", ledger.Issues.Select(x => x.Detail)));
         using var db = new SqliteConnection(new SqliteConnectionStringBuilder
-            { DataSource = reopened.DatabasePath, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
+        { DataSource = reopened.DatabasePath, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
         db.Open();
         using var foreignKeys = db.CreateCommand();
         foreignKeys.CommandText = "PRAGMA foreign_key_check";
@@ -572,7 +572,7 @@ public sealed class EconomyRewardTests : IDisposable
     private static List<string> Legs(string path, string operation)
     {
         using var db = new SqliteConnection(new SqliteConnectionStringBuilder
-            { DataSource = path, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
+        { DataSource = path, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
         db.Open();
         using var command = db.CreateCommand();
         command.CommandText = """

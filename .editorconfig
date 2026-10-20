@@ -7,8 +7,102 @@ indent_size = 4
 insert_final_newline = true
 trim_trailing_whitespace = true
 
+# C# layout, checked in CI by `dotnet format whitespace`. Short initializers and blocks stay on one line; members of
+# a multi-line initializer are not split one per line.
 [*.cs]
 max_line_length = 120
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_members_in_object_initializers = false
+csharp_new_line_before_members_in_anonymous_types = false
+csharp_preserve_single_line_statements = true
+csharp_preserve_single_line_blocks = true
+# Enforced in the build (EnforceCodeStyleInBuild): every file outside the client projects is file-scoped.
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_style_var_for_built_in_types = true:silent
+csharp_style_var_when_type_is_apparent = true:silent
+dotnet_style_qualification_for_field = false:suggestion
+dotnet_style_qualification_for_property = false:suggestion
+dotnet_style_qualification_for_method = false:suggestion
+dotnet_style_qualification_for_event = false:suggestion
+
+# Analyzer baseline: rules of AnalysisLevel 10.0-recommended that older code still breaks, each with its number of
+# violations. They show as suggestions; every other rule of that level fails the build. CI checks the numbers
+# (dotnet run --project tools/AnalyzerBaseline -c Release): more violations fail, and fewer fail until the number is
+# lowered, so new code cannot add any. Delete a rule's two lines once it reaches zero.
+# 23: types that own disposable fields should be disposable
+dotnet_diagnostic.CA1001.severity = suggestion
+# 1: declare types in namespaces
+dotnet_diagnostic.CA1050.severity = suggestion
+# 29: do not declare visible instance fields
+dotnet_diagnostic.CA1051.severity = suggestion
+# 2: CancellationToken parameters must come last
+dotnet_diagnostic.CA1068.severity = suggestion
+# 397: specify IFormatProvider
+dotnet_diagnostic.CA1305.severity = suggestion
+# 55: specify StringComparison for correctness
+dotnet_diagnostic.CA1310.severity = suggestion
+# 1: use nameof
+dotnet_diagnostic.CA1507.severity = suggestion
+# 7: use the ArgumentOutOfRangeException throw helper
+dotnet_diagnostic.CA1512.severity = suggestion
+# 1: use the ObjectDisposedException throw helper
+dotnet_diagnostic.CA1513.severity = suggestion
+# 64: identifiers should not contain underscores
+dotnet_diagnostic.CA1707.severity = suggestion
+# 1: identifiers should differ by more than case
+dotnet_diagnostic.CA1708.severity = suggestion
+# 5: identifiers should not have an incorrect suffix
+dotnet_diagnostic.CA1711.severity = suggestion
+# 1: identifiers should have the correct prefix
+dotnet_diagnostic.CA1715.severity = suggestion
+# 3: identifiers should not match keywords
+dotnet_diagnostic.CA1716.severity = suggestion
+# 4: identifiers should not contain type names
+dotnet_diagnostic.CA1720.severity = suggestion
+# 16: parameter names should match the base declaration
+dotnet_diagnostic.CA1725.severity = suggestion
+# 1: do not initialize unnecessarily
+dotnet_diagnostic.CA1805.severity = suggestion
+# 166: mark members as static
+dotnet_diagnostic.CA1822.severity = suggestion
+# 4: use a property instead of a LINQ method
+dotnet_diagnostic.CA1826.severity = suggestion
+# 1: use Any instead of Count
+dotnet_diagnostic.CA1827.severity = suggestion
+# 2: use Length/Count instead of Count()
+dotnet_diagnostic.CA1829.severity = suggestion
+# 5: use AsSpan or AsMemory instead of a range indexer
+dotnet_diagnostic.CA1832.severity = suggestion
+# 2: prefer IsEmpty over Count
+dotnet_diagnostic.CA1836.severity = suggestion
+# 4: prefer Dictionary.Contains methods
+dotnet_diagnostic.CA1841.severity = suggestion
+# 381: use LoggerMessage delegates
+dotnet_diagnostic.CA1848.severity = suggestion
+# 5: prefer TryGetValue
+dotnet_diagnostic.CA1854.severity = suggestion
+# 65: use concrete types for performance
+dotnet_diagnostic.CA1859.severity = suggestion
+# 1: avoid Enumerable.Any()
+dotnet_diagnostic.CA1860.severity = suggestion
+# 164: avoid constant arrays as arguments
+dotnet_diagnostic.CA1861.severity = suggestion
+# 8: use StringComparison for case-insensitive comparisons
+dotnet_diagnostic.CA1862.severity = suggestion
+# 10: cache and reuse JsonSerializerOptions
+dotnet_diagnostic.CA1869.severity = suggestion
+# 148: avoid potentially expensive logging
+dotnet_diagnostic.CA1873.severity = suggestion
+# 15: instantiate argument exceptions correctly
+dotnet_diagnostic.CA2208.severity = suggestion
+
+# The client projects keep their block-scoped namespaces (built only against a local client).
+[src/Ro3Emu.{ClientHooks,Loc}/**.cs]
+csharp_style_namespace_declarations = block_scoped:silent
+
+# Generated protobuf code is not ours to format or analyze.
+[**/obj/**.cs]
+generated_code = true
 
 [*.{json,csproj,props,targets,slnx,xml,yml,yaml,js,mjs,cjs,html,css}]
 indent_size = 2

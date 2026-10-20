@@ -292,8 +292,11 @@ public sealed partial class ScenarioRunner
         {
             if (unit == 1) await Task.Delay(TimeSpan.FromSeconds(Math.Max(1, seconds / 2)), ct);
             var bought = await S3RequestAsync(buyer, "exchange-buy", TradeService.BuyNormal,
-                new TradeBuyNormalItemsReq { ItemId = 1254013, SpuId = commodity.SpuId,
-                    Price = 600, TotalPrice = 600, TotalQuantity = 1 },
+                new TradeBuyNormalItemsReq
+                {
+                    ItemId = 1254013, SpuId = commodity.SpuId,
+                    Price = 600, TotalPrice = 600, TotalQuantity = 1
+                },
                 TradeBuyNormalItemsResp.Parser, r => r.Result == 0, ct);
             if (bought.Result != 0) break;
             // Currency 1 has zero MarketFee; the purchase moves 600 to seller mail and one item to buyer mail.
@@ -376,8 +379,11 @@ public sealed partial class ScenarioRunner
                         using var complete = actor.Bot.Inbox.Expect(e => e.IsGame(GatheringService.StateChange) &&
                             InteractChangeNtf.Parser.ParseFrom(e.Body).DataInfo.EType == InteractInfo.Types.EState.Idle);
                         var interaction = await S3RequestAsync(actor, "gather-start", GatheringService.Interaction,
-                            new NpcInteractionReq { NpcUid = (long)node.Uuid, InteractionId = 70100001,
-                                SceneConfigId = actor.Scene, Pos = node.MovementInfo.Pos },
+                            new NpcInteractionReq
+                            {
+                                NpcUid = (long)node.Uuid, InteractionId = 70100001,
+                                SceneConfigId = actor.Scene, Pos = node.MovementInfo.Pos
+                            },
                             NpcInteractionRsp.Parser, r => r.Result == 0, stop.Token);
                         if (interaction.Result == 0)
                         {

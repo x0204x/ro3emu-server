@@ -55,8 +55,11 @@ public sealed partial class TerritoryWarsService
             {
                 Uuid = (ulong)Uid, EntityTemplateID = ScenePointNpc, EntityType = 1, Face = Face, State = EntityState.Alive,
                 BornTimeMs = BornMs, NotifyType = EntityBase.Types.NotifyType.All, EntityCamp = Template?.Camp ?? 1,
-                MovementInfo = new MovementInfo { Pos = Pos, Face = Face, ServerTime = MonsterService.NowMs,
-                    MoveType = MovementType.MoveTypeNone },
+                MovementInfo = new MovementInfo
+                {
+                    Pos = Pos, Face = Face, ServerTime = MonsterService.NowMs,
+                    MoveType = MovementType.MoveTypeNone
+                },
             };
             if (Template is { } t)
                 foreach (var (idx, value) in new (long, long)[] { (101, t.MaxHp), (2000, t.MaxHp), (2002, t.Level) })
@@ -71,8 +74,11 @@ public sealed partial class TerritoryWarsService
     /// LC_TerritoryWars_GameplayPointHelper.lua:160-190); which objects start unavailable or owned is not exported.
     /// </summary>
     private static Dictionary<int, ScenePoint> DefaultScenePoints(long scene) => scene != StrongholdScene ? new()
-        : StrongholdGameplayPoints.ToDictionary(p => p.Key, p => new ScenePoint { Id = p.Key, Type = p.Value,
-            Status = (int)EnumGlobalScenePoint.Ready });
+        : StrongholdGameplayPoints.ToDictionary(p => p.Key, p => new ScenePoint
+        {
+            Id = p.Key, Type = p.Value,
+            Status = (int)EnumGlobalScenePoint.Ready
+        });
 
     /// <summary>A record saved before 30129 existed has no stored points and reads the defaults.</summary>
     private static IReadOnlyDictionary<int, ScenePoint> ScenePointsOf(BattleState r) =>
@@ -82,8 +88,11 @@ public sealed partial class TerritoryWarsService
     {
         var msg = new GlobalScenePointDataNotify();
         foreach (var p in ScenePointsOf(r).Values.Where(p => only == null || only.Contains(p.Id)).OrderBy(p => p.Id))
-            msg.GlobalPoints[p.Id] = new GlobalScenePointData { PointId = p.Id, Status = (EnumGlobalScenePoint)p.Status,
-                ReadyTime = p.ReadyTime, BelongGuildId = p.Owner };
+            msg.GlobalPoints[p.Id] = new GlobalScenePointData
+            {
+                PointId = p.Id, Status = (EnumGlobalScenePoint)p.Status,
+                ReadyTime = p.ReadyTime, BelongGuildId = p.Owner
+            };
         return msg;
     }
 
@@ -116,9 +125,12 @@ public sealed partial class TerritoryWarsService
         {
             if (only != null && !only.Contains(pointId) || !points.TryGetValue(pointId, out var p)) continue;
             long hp = unit.Template?.MaxHp ?? 1;
-            msg.GlobalDatas[unit.Uid] = new GlobalObjectData { GlobalObjId = unit.Uid, ConfigId = ScenePointNpc,
+            msg.GlobalDatas[unit.Uid] = new GlobalObjectData
+            {
+                GlobalObjId = unit.Uid, ConfigId = ScenePointNpc,
                 Pos = new Vec3 { X = unit.X, Y = unit.Y, Z = unit.Z }, Hp = hp, MaxHp = hp, DungeonPointId = pointId,
-                BelongGuild = p.Owner };
+                BelongGuild = p.Owner
+            };
         }
         return msg.GlobalDatas.Count == 0 ? Task.CompletedTask : Send(s, GlobalObjectNotify, msg);
     }
@@ -178,7 +190,9 @@ public sealed partial class TerritoryWarsService
             throw new ArgumentException("point unready|ready|complete [readySeconds] [owner|self]");
         var status = args[1].ToLowerInvariant() switch
         {
-            "unready" => EnumGlobalScenePoint.UnReady, "ready" => EnumGlobalScenePoint.Ready, _ => EnumGlobalScenePoint.Complete,
+            "unready" => EnumGlobalScenePoint.UnReady,
+            "ready" => EnumGlobalScenePoint.Ready,
+            _ => EnumGlobalScenePoint.Complete,
         };
         long seconds = args.Length > 2 ? long.Parse(args[2], System.Globalization.CultureInfo.InvariantCulture) : 0;
         using var reservation = await EnterGateAsync("territory/scene point gm", s);

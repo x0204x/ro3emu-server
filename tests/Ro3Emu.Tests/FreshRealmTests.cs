@@ -142,8 +142,9 @@ public sealed class FreshRealmTests : IAsyncLifetime
         Assert.Equal(0, GameData.Int(data.Row("MultiverseStage", 101002)!.Value, "_iHide"));
         Assert.InRange(now, time.StageTimeInfo[101001].StartTime, time.StageTimeInfo[101001].EndTime - 1);
         Assert.True(time.StageTimeInfo[101002].StartTime > now);
-        // Season 69 (level 50) is open, and the hook's "server opens content" signal holds from the first day: a
-        // function no level reaches (7201, [1002,9999]) is reported open; the original never reports one.
+        // The season page 69 is open (OpenContent forces it since the 20 Oct 2026 client closed it at level 9999), and the
+        // hook's "server opens content" signal holds from the first day: a function no level reaches (7201, [1002,9999])
+        // is reported open; the original never reports one.
         var open = await Next(alice, FunctionService.FunctionOpenSync, FunctionOpenInfoIncrement.Parser,
             m => m.FunctionOpenInfos.ContainsKey(69));
         Assert.True(open.FunctionOpenInfos[69].All);

@@ -23,8 +23,11 @@ public sealed partial class TerritoryWarsService
             g.Aggregate(0L, (n, x) => checked(n + x.Grant.Count)))).ToArray();
         return new EventEconomyMutation(catalog, Guid.NewGuid().ToString("N"), "realm", 0,
             "event/territory-" + kind, sourceKey, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            [], goods, deltas, JsonSerializer.SerializeToUtf8Bytes(new { Kind = kind, Source = sourceKey,
-                Grants = grants.Select(x => new { x.Role, x.Grant.Entry, x.Grant.Count, x.Grant.Bind }) }));
+            [], goods, deltas, JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                Kind = kind, Source = sourceKey,
+                Grants = grants.Select(x => new { x.Role, x.Grant.Entry, x.Grant.Count, x.Grant.Bind })
+            }));
     }
     private EventEconomyMutation? SiegeMailSource(IReadOnlyDictionary<long, List<MailService.Attachment>> awards,
         string sourceKey)
@@ -42,8 +45,11 @@ public sealed partial class TerritoryWarsService
             g.Aggregate(0L, (n, x) => checked(n + x.Grant.Count)))).ToArray();
         return new EventEconomyMutation(catalog, Guid.NewGuid().ToString("N"), "realm", 0,
             "event/territory-siege-settle", sourceKey, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            [], goods, deltas, JsonSerializer.SerializeToUtf8Bytes(new { Source = sourceKey,
-                Awards = grants.Select(x => new { x.Role, x.Grant.Entry, x.Grant.Count, x.Grant.Bind }) }));
+            [], goods, deltas, JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                Source = sourceKey,
+                Awards = grants.Select(x => new { x.Role, x.Grant.Entry, x.Grant.Count, x.Grant.Bind })
+            }));
     }
     private static Dictionary<(EconomyOwner Owner, EconomyAsset Asset, string Location), long> WarsHoldings(
         WorldState source, string prefix = "active/")
@@ -118,8 +124,11 @@ public sealed partial class TerritoryWarsService
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             totals.Where(x => x.Delta < 0).Select(x => new EconomyQuantity(x.Asset, -x.Delta)).ToArray(),
             totals.Where(x => x.Delta > 0).Select(x => new EconomyQuantity(x.Asset, x.Delta)).ToArray(),
-            ownerDeltas, JsonSerializer.SerializeToUtf8Bytes(new { Kind = kind, Source = sourceKey,
-                Changes = changes.Select(x => new { x.key.Owner, x.key.Asset, x.key.Location, x.Delta }) }));
+            ownerDeltas, JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                Kind = kind, Source = sourceKey,
+                Changes = changes.Select(x => new { x.key.Owner, x.key.Asset, x.key.Location, x.Delta })
+            }));
     }
 
 }

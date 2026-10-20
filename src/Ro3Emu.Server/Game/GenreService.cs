@@ -171,49 +171,49 @@ public sealed partial class GenreService(
     {
         bool skillChanged = false;
         {
-        using var held = await CharacterService.Lock(s);
-        var state = s.Genre!;
-        var reply = new SwitchGenrePlanResp { IsApply = req.IsApply, TargetPlan = req.TargetPlan };
-        reply.ChildSystem.Add(req.ChildSystem);
-        int code = Gate(s);
-        if (code == 0 && !state.GenreMap.SystemMap.TryGetValue(req.TargetPlan, out _)) code = ErrorCodes.Parameter;
-        var selected = state.GenreMap.SystemMap.TryGetValue(req.TargetPlan, out var preset)
-            ? preset.GenrePlans.ToDictionary(kv => kv.Key, kv => kv.Value) : new Dictionary<int, int>();
-        foreach (var (type, index) in req.ChildSystem) selected[type] = index;
-        var next = new Stage(s, skills);
-        if (code == 0) code = StageSelection(s, next, selected);
-        if (code == 0 && req.IsApply) code = ApplyCooldownError(s, next);
-        if (code == 0)
-        {
-            var genre = state.Clone();
-            var plan = genre.GenreMap.SystemMap[req.TargetPlan];
-            plan.GenrePlans.Clear();
-            foreach (var (type, index) in selected) plan.GenrePlans[type] = index;
-            if (req.IsApply) genre.CurrentPlan = req.TargetPlan;
-            RefreshPlan(s, plan, selected);
-            try
+            using var held = await CharacterService.Lock(s);
+            var state = s.Genre!;
+            var reply = new SwitchGenrePlanResp { IsApply = req.IsApply, TargetPlan = req.TargetPlan };
+            reply.ChildSystem.Add(req.ChildSystem);
+            int code = Gate(s);
+            if (code == 0 && !state.GenreMap.SystemMap.TryGetValue(req.TargetPlan, out _)) code = ErrorCodes.Parameter;
+            var selected = state.GenreMap.SystemMap.TryGetValue(req.TargetPlan, out var preset)
+                ? preset.GenrePlans.ToDictionary(kv => kv.Key, kv => kv.Value) : new Dictionary<int, int>();
+            foreach (var (type, index) in req.ChildSystem) selected[type] = index;
+            var next = new Stage(s, skills);
+            if (code == 0) code = StageSelection(s, next, selected);
+            if (code == 0 && req.IsApply) code = ApplyCooldownError(s, next);
+            if (code == 0)
             {
-                if (req.IsApply)
+                var genre = state.Clone();
+                var plan = genre.GenreMap.SystemMap[req.TargetPlan];
+                plan.GenrePlans.Clear();
+                foreach (var (type, index) in selected) plan.GenrePlans[type] = index;
+                if (req.IsApply) genre.CurrentPlan = req.TargetPlan;
+                RefreshPlan(s, plan, selected);
+                try
                 {
-                    bool changed = next.Skills.CurrentPlanIndex != s.SkillPlans!.CurrentPlanIndex;
-                    await CommitAsync(s, next, genre);
-                    skillChanged = changed;
+                    if (req.IsApply)
+                    {
+                        bool changed = next.Skills.CurrentPlanIndex != s.SkillPlans!.CurrentPlanIndex;
+                        await CommitAsync(s, next, genre);
+                        skillChanged = changed;
+                    }
+                    else await SaveGenreAsync(s, genre);
                 }
-                else await SaveGenreAsync(s, genre);
+                catch (Exception e) when (e is Microsoft.Data.Sqlite.SqliteException or InvalidOperationException)
+                {
+                    log.LogError(e, "Genre build change failed for role {Role}", s.Role!.Id);
+                    code = ErrorCodes.Unknown;
+                }
             }
-            catch (Exception e) when (e is Microsoft.Data.Sqlite.SqliteException or InvalidOperationException)
+            reply.Result = code;
+            await s.SendGameAsync(82806, reply);
+            if (code == 0)
             {
-                log.LogError(e, "Genre build change failed for role {Role}", s.Role!.Id);
-                code = ErrorCodes.Unknown;
+                await SyncAsync(s);
+                if (req.IsApply) await PublishSyncAsync(s);
             }
-        }
-        reply.Result = code;
-        await s.SendGameAsync(82806, reply);
-        if (code == 0)
-        {
-            await SyncAsync(s);
-            if (req.IsApply) await PublishSyncAsync(s);
-        }
         }
         // Skill observers (including cart capacity) may acquire StateLock after the atomic commit.
         if (skillChanged) await skills.OnActivePlanChangedAsync(s);
@@ -242,8 +242,11 @@ public sealed partial class GenreService(
         roles.SavePets(role, next.Pets.ToByteArray(), tx);
         roles.SaveSeasonTalent(role, next.Talents.ToByteArray(), tx);
         tx.WithEconomy(character.FamilyEconomy(s, "cd13b/genre-apply", [], [],
-            new { Version = 1, Genre = genre.ToByteArray(), Cards = next.Cards.ToByteArray(),
-                Totems = next.Totems.ToByteArray(), Emblems = next.Echoes }));
+            new
+            {
+                Version = 1, Genre = genre.ToByteArray(), Cards = next.Cards.ToByteArray(),
+                Totems = next.Totems.ToByteArray(), Emblems = next.Echoes
+            }));
         await roles.CommitAsync(tx, "cd13b/genre-apply", receipts =>
         {
             ItemSnapshotWritePlan.ApplyGuids(next.Items, (long[])receipts[itemReceipt]!);

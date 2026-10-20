@@ -38,9 +38,12 @@ public sealed partial class ScenarioRunner(RunnerOptions options)
 
     public async Task<RunReport> RunAsync(CancellationToken ct)
     {
-        var report = new RunReport { Scenario = options.Scenario, TargetBots = options.TargetBots,
+        var report = new RunReport
+        {
+            Scenario = options.Scenario, TargetBots = options.TargetBots,
             RequestedBots = options.Bots, RequestedSeconds = options.DurationSeconds, StartedUtc = DateTimeOffset.UtcNow,
-            WalkPhase = options.WalkPhase };
+            WalkPhase = options.WalkPhase
+        };
         Directory.CreateDirectory(Path.GetDirectoryName(options.OutputPrefix)!);
         LocalServer? server = null;
         Dictionary<int, (string Name, double Cpu)>? competitorsBefore = null;
@@ -197,19 +200,20 @@ public sealed partial class ScenarioRunner(RunnerOptions options)
                 report.AbortReason = $"Scheduling lag p99 {report.SchedulingLagP99Ms:F1} ms > 100 ms";
             report.Targets = TargetEvaluation.Evaluate(report);
             report.Verdict = report.AbortReason == null && report.Targets.All(x => x.Status == "PASS") ? "PASS" : "NOT QUALIFIED";
-            await File.WriteAllTextAsync(options.OutputPrefix + ".json", report.ToJson());
-            await File.WriteAllTextAsync(options.OutputPrefix + ".md", report.ToMarkdown());
+            // The report is written even when the run was cancelled: that is when its abort reason matters most.
+            await File.WriteAllTextAsync(options.OutputPrefix + ".json", report.ToJson(), CancellationToken.None);
+            await File.WriteAllTextAsync(options.OutputPrefix + ".md", report.ToMarkdown(), CancellationToken.None);
             // Persistence evidence beside the report: the loop's synchronous DB waits by label (C/D 16 work list),
             // lazy parts, snapshots and backups. Cumulative since server start (not reset with the epoch).
             if (options.ServerLocal)
             {
                 if (persistenceEvidence != null)
-                    await File.WriteAllTextAsync(options.OutputPrefix + ".persistence.json", persistenceEvidence);
+                    await File.WriteAllTextAsync(options.OutputPrefix + ".persistence.json", persistenceEvidence, CancellationToken.None);
                 // Ownership evidence (C/D 15): Realm admissions by origin with queued and held time - every other
                 // reservation waits while one is held. Cumulative since server start.
                 if (report.ServerAfter?["ownership"] is { } ownership)
                     await File.WriteAllTextAsync(options.OutputPrefix + ".ownership.json",
-                        ownership.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                        ownership.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }), CancellationToken.None);
             }
         }
         return report;
@@ -243,8 +247,11 @@ public sealed partial class ScenarioRunner(RunnerOptions options)
     }
     private async Task<string> GitOutputAsync(params string[] args)
     {
-        var start = new ProcessStartInfo("git") { WorkingDirectory = options.RepositoryRoot, UseShellExecute = false,
-            RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+        var start = new ProcessStartInfo("git")
+        {
+            WorkingDirectory = options.RepositoryRoot, UseShellExecute = false,
+            RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true
+        };
         foreach (var arg in args) start.ArgumentList.Add(arg);
         using var process = Process.Start(start) ?? throw new InvalidOperationException("git did not start");
         var output = await process.StandardOutput.ReadToEndAsync();
@@ -627,35 +634,35 @@ public sealed partial class ScenarioRunner(RunnerOptions options)
                     using var attempt = new ActionAttempt(tally);
                     try
                     {
-                    using var reply = actor.Bot.Inbox.Expect(e => e.IsGame(CombatService.UseSkill));
-                    using var hit = actor.Bot.Inbox.Expect(e => e.IsGame(CombatService.SkillHit) &&
-                        SkillHitInfo.Parser.ParseFrom(e.Body) is { SrcID: var source, SkillId: 1000001 } packetHit &&
-                        source == actor.RoleId && packetHit.Dsts.Any(x => x.DstID == (long)target.Uuid));
-                    using var loot = actor.Bot.Inbox.Expect(e => e.IsGame(CharacterService.ItemsSync));
-                    // Another fighter may kill the target before this cast's hit moment; the server then (rightly)
-                    // leaves it out of the hit. That is a refused swing, not a bot failure.
-                    using var died = actor.Bot.Inbox.Expect(e => e.IsGame(CombatService.SkillHit) &&
-                        SkillHitInfo.Parser.ParseFrom(e.Body).Dsts.Any(x => x.DstID == (long)target.Uuid && x.IsDead));
-                    var sw = Stopwatch.StartNew();
-                    await actor.Sender.SendAsync(() => actor.Bot.SendGameAsync(CombatService.UseSkill,
-                        new CastSkillReq { SkillId = 1000001, TargetId = (long)target.Uuid }), stop.Token);
-                    var response = CastSkillRsp.Parser.ParseFrom((await reply.WaitAsync(TimeSpan.FromSeconds(4), stop.Token)).Body);
-                    if (response.Result != 0) { attempt.Refuse(); continue; }
-                    SkillHitInfo strike;
-                    try { strike = SkillHitInfo.Parser.ParseFrom((await hit.WaitAsync(TimeSpan.FromSeconds(4), stop.Token)).Body); }
-                    catch (TimeoutException) when (died.IsCompleted ||
-                        actor.Reducer.Monsters().All(m => m.Uuid != target.Uuid))
-                    { attempt.Refuse(); continue; }
-                    if (strike.Dsts.Any(x => x.Damage > 0)) attempt.Complete();
-                    else attempt.Refuse();
-                    // A received item sync proves observation only, not item/currency conservation.
-                    try
-                    {
-                        await loot.WaitAsync(TimeSpan.FromMilliseconds(200), stop.Token);
-                        var observedLoot = _counts.Action("observed-loot-sync");
-                        observedLoot.Plan(); observedLoot.Offer(); observedLoot.Complete(sw.Elapsed.TotalMilliseconds);
-                    }
-                    catch (TimeoutException) { }
+                        using var reply = actor.Bot.Inbox.Expect(e => e.IsGame(CombatService.UseSkill));
+                        using var hit = actor.Bot.Inbox.Expect(e => e.IsGame(CombatService.SkillHit) &&
+                            SkillHitInfo.Parser.ParseFrom(e.Body) is { SrcID: var source, SkillId: 1000001 } packetHit &&
+                            source == actor.RoleId && packetHit.Dsts.Any(x => x.DstID == (long)target.Uuid));
+                        using var loot = actor.Bot.Inbox.Expect(e => e.IsGame(CharacterService.ItemsSync));
+                        // Another fighter may kill the target before this cast's hit moment; the server then (rightly)
+                        // leaves it out of the hit. That is a refused swing, not a bot failure.
+                        using var died = actor.Bot.Inbox.Expect(e => e.IsGame(CombatService.SkillHit) &&
+                            SkillHitInfo.Parser.ParseFrom(e.Body).Dsts.Any(x => x.DstID == (long)target.Uuid && x.IsDead));
+                        var sw = Stopwatch.StartNew();
+                        await actor.Sender.SendAsync(() => actor.Bot.SendGameAsync(CombatService.UseSkill,
+                            new CastSkillReq { SkillId = 1000001, TargetId = (long)target.Uuid }), stop.Token);
+                        var response = CastSkillRsp.Parser.ParseFrom((await reply.WaitAsync(TimeSpan.FromSeconds(4), stop.Token)).Body);
+                        if (response.Result != 0) { attempt.Refuse(); continue; }
+                        SkillHitInfo strike;
+                        try { strike = SkillHitInfo.Parser.ParseFrom((await hit.WaitAsync(TimeSpan.FromSeconds(4), stop.Token)).Body); }
+                        catch (TimeoutException) when (died.IsCompleted ||
+                            actor.Reducer.Monsters().All(m => m.Uuid != target.Uuid))
+                        { attempt.Refuse(); continue; }
+                        if (strike.Dsts.Any(x => x.Damage > 0)) attempt.Complete();
+                        else attempt.Refuse();
+                        // A received item sync proves observation only, not item/currency conservation.
+                        try
+                        {
+                            await loot.WaitAsync(TimeSpan.FromMilliseconds(200), stop.Token);
+                            var observedLoot = _counts.Action("observed-loot-sync");
+                            observedLoot.Plan(); observedLoot.Offer(); observedLoot.Complete(sw.Elapsed.TotalMilliseconds);
+                        }
+                        catch (TimeoutException) { }
                     }
                     catch (Exception error) { attempt.Fail(error); throw; }
                     await actor.Sender.SendAsync(() => actor.Bot.SendGameAsync(MsgId.Heartbeat, new Ping()), stop.Token);
@@ -702,19 +709,19 @@ public sealed partial class ScenarioRunner(RunnerOptions options)
                         using var attempt = new ActionAttempt(tally);
                         try
                         {
-                        using var expected = actor.Bot.Inbox.Expect(e => e.IsGame(id));
-                        var sw = Stopwatch.StartNew();
-                        await actor.Sender!.SendAsync(() => actor.Bot.SendGameAsync(id, request), stop.Token);
-                        var received = await expected.WaitAsync(TimeSpan.FromSeconds(5), stop.Token);
-                        bool accepted = id switch
-                        {
-                            GuildService.Recommend => GuildRecommendListResp.Parser.ParseFrom(received.Body).Result == 0,
-                            AuctionService.Query => QueryAuctionRes.Parser.ParseFrom(received.Body).AuctionType == AuctionType.World,
-                            TeamService.TeamInviteList => TeamInviteListResp.Parser.ParseFrom(received.Body).Result == 0,
-                            31470 => QueryEquipRankRes.Parser.ParseFrom(received.Body) is { Rankid: 0, Itemuid: 0 },
-                            _ => false,
-                        };
-                        if (accepted) attempt.Complete(); else attempt.Refuse();
+                            using var expected = actor.Bot.Inbox.Expect(e => e.IsGame(id));
+                            var sw = Stopwatch.StartNew();
+                            await actor.Sender!.SendAsync(() => actor.Bot.SendGameAsync(id, request), stop.Token);
+                            var received = await expected.WaitAsync(TimeSpan.FromSeconds(5), stop.Token);
+                            bool accepted = id switch
+                            {
+                                GuildService.Recommend => GuildRecommendListResp.Parser.ParseFrom(received.Body).Result == 0,
+                                AuctionService.Query => QueryAuctionRes.Parser.ParseFrom(received.Body).AuctionType == AuctionType.World,
+                                TeamService.TeamInviteList => TeamInviteListResp.Parser.ParseFrom(received.Body).Result == 0,
+                                31470 => QueryEquipRankRes.Parser.ParseFrom(received.Body) is { Rankid: 0, Itemuid: 0 },
+                                _ => false,
+                            };
+                            if (accepted) attempt.Complete(); else attempt.Refuse();
                         }
                         catch (Exception error) { attempt.Fail(error); throw; }
                     }
@@ -774,17 +781,17 @@ public sealed partial class ScenarioRunner(RunnerOptions options)
         using var attempt = new ActionAttempt(tally);
         try
         {
-        using var reply = actor.Bot.Inbox.Expect(e => e.IsGame(SceneService.SceneTeleport));
-        using var switchScene = actor.Bot.Inbox.Expect(e => e.IsGame(MsgId.SwitchSceneLine));
-        using var self = actor.Bot.Inbox.Expect(e => e.IsGame(MsgId.EntitySelf));
-        using var end = actor.Bot.Inbox.Expect(e => e.IsGame(MsgId.SelfInfoEndFrameNotify));
-        var sw = Stopwatch.StartNew();
-        await actor.Bot.SendGameAsync(SceneService.SceneTeleport, new SceneTeleportReq { TargetMapId = target }).WaitAsync(TimeSpan.FromSeconds(10), ct);
-        var response = SceneTeleportRsp.Parser.ParseFrom((await reply.WaitAsync(TimeSpan.FromSeconds(30), ct)).Body);
-        if (response.Result != 0) { attempt.Refuse(); throw new InvalidOperationException($"Travel refused {response.Result}"); }
-        var scene = SwitchSceneLineResp.Parser.ParseFrom((await switchScene.WaitAsync(TimeSpan.FromSeconds(30), ct)).Body);
-        await LoadSceneAsync(actor, scene.SceneEntry, self, end, ct);
-        attempt.Complete();
+            using var reply = actor.Bot.Inbox.Expect(e => e.IsGame(SceneService.SceneTeleport));
+            using var switchScene = actor.Bot.Inbox.Expect(e => e.IsGame(MsgId.SwitchSceneLine));
+            using var self = actor.Bot.Inbox.Expect(e => e.IsGame(MsgId.EntitySelf));
+            using var end = actor.Bot.Inbox.Expect(e => e.IsGame(MsgId.SelfInfoEndFrameNotify));
+            var sw = Stopwatch.StartNew();
+            await actor.Bot.SendGameAsync(SceneService.SceneTeleport, new SceneTeleportReq { TargetMapId = target }).WaitAsync(TimeSpan.FromSeconds(10), ct);
+            var response = SceneTeleportRsp.Parser.ParseFrom((await reply.WaitAsync(TimeSpan.FromSeconds(30), ct)).Body);
+            if (response.Result != 0) { attempt.Refuse(); throw new InvalidOperationException($"Travel refused {response.Result}"); }
+            var scene = SwitchSceneLineResp.Parser.ParseFrom((await switchScene.WaitAsync(TimeSpan.FromSeconds(30), ct)).Body);
+            await LoadSceneAsync(actor, scene.SceneEntry, self, end, ct);
+            attempt.Complete();
         }
         catch (Exception error) { attempt.Fail(error); throw; }
     }
@@ -826,18 +833,18 @@ public sealed partial class ScenarioRunner(RunnerOptions options)
         using var attempt = new ActionAttempt(tally);
         try
         {
-        using var reply = actor.Bot.Inbox.Expect(e => e.IsGame(SceneService.NpcInteraction));
-        using var switchScene = actor.Bot.Inbox.Expect(e => e.IsGame(MsgId.SwitchSceneLine));
-        using var self = actor.Bot.Inbox.Expect(e => e.IsGame(MsgId.EntitySelf));
-        using var end = actor.Bot.Inbox.Expect(e => e.IsGame(MsgId.SelfInfoEndFrameNotify));
-        var sw = Stopwatch.StartNew();
-        await actor.Sender!.SendAsync(() => actor.Bot.SendGameAsync(SceneService.NpcInteraction,
-            new NpcInteractionReq { NpcUid = npc.Uid, InteractionId = 9, SceneConfigId = 10100, TargetSceneEntry = target }), ct);
-        var response = NpcInteractionRsp.Parser.ParseFrom((await reply.WaitAsync(TimeSpan.FromSeconds(30), ct)).Body);
-        if (response.Result != 0) { attempt.Refuse(); throw new InvalidOperationException($"Kafra refused {response.Result}"); }
-        var scene = SwitchSceneLineResp.Parser.ParseFrom((await switchScene.WaitAsync(TimeSpan.FromSeconds(30), ct)).Body);
-        await LoadSceneAsync(actor, scene.SceneEntry, self, end, ct);
-        attempt.Complete();
+            using var reply = actor.Bot.Inbox.Expect(e => e.IsGame(SceneService.NpcInteraction));
+            using var switchScene = actor.Bot.Inbox.Expect(e => e.IsGame(MsgId.SwitchSceneLine));
+            using var self = actor.Bot.Inbox.Expect(e => e.IsGame(MsgId.EntitySelf));
+            using var end = actor.Bot.Inbox.Expect(e => e.IsGame(MsgId.SelfInfoEndFrameNotify));
+            var sw = Stopwatch.StartNew();
+            await actor.Sender!.SendAsync(() => actor.Bot.SendGameAsync(SceneService.NpcInteraction,
+                new NpcInteractionReq { NpcUid = npc.Uid, InteractionId = 9, SceneConfigId = 10100, TargetSceneEntry = target }), ct);
+            var response = NpcInteractionRsp.Parser.ParseFrom((await reply.WaitAsync(TimeSpan.FromSeconds(30), ct)).Body);
+            if (response.Result != 0) { attempt.Refuse(); throw new InvalidOperationException($"Kafra refused {response.Result}"); }
+            var scene = SwitchSceneLineResp.Parser.ParseFrom((await switchScene.WaitAsync(TimeSpan.FromSeconds(30), ct)).Body);
+            await LoadSceneAsync(actor, scene.SceneEntry, self, end, ct);
+            attempt.Complete();
         }
         catch (Exception error) { attempt.Fail(error); throw; }
     }

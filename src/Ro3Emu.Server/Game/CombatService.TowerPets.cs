@@ -83,8 +83,11 @@ public sealed partial class CombatService
             if (!support.SelfOnly && MonsterService.Distance(pet.X, pet.Z, owner.Position.X, owner.Position.Z) <= radius)
                 recipients.Add((owner.Role!.Id, null, MonsterService.Distance(pet.X, pet.Z, owner.Position.X, owner.Position.Z)));
             var casterStats = pet.CombatStats;
-            var hit = new SkillHitInfo { SrcID = pet.Uid, SkillId = skillId, SessionId = castId, SrcElement = pet.Element,
-                ShowPoint = HitEffect(GameData.Int(row, "_iScriptShow")) };
+            var hit = new SkillHitInfo
+            {
+                SrcID = pet.Uid, SkillId = skillId, SessionId = castId, SrcElement = pet.Element,
+                ShowPoint = HitEffect(GameData.Int(row, "_iScriptShow"))
+            };
             foreach (var recipient in recipients.OrderBy(r => r.Id == pet.Uid ? 0 : 1)
                          .ThenBy(r => r.Distance).ThenBy(r => r.Id).Take(maximum))
             {

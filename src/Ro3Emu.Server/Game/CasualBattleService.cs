@@ -215,8 +215,11 @@ public sealed class CasualBattleService : IGameTicker
         foreach (var (camp, members) in camps)
             foreach (var member in members)
             {
-                match.Players[member] = new Player { Session = member, Id = member.Role!.Id, Name = member.Role.Name,
-                    Career = member.Progress!.Career, Camp = camp };
+                match.Players[member] = new Player
+                {
+                    Session = member, Id = member.Role!.Id, Name = member.Role.Name,
+                    Career = member.Progress!.Career, Camp = camp
+                };
                 active[member] = match;
                 member.EventFaction = camp;
             }
@@ -243,10 +246,13 @@ public sealed class CasualBattleService : IGameTicker
         var info = new DungeonBaseInfoNotify
         {
             DungeonEntry = Scene, DungeonId = match.Room.Id, Stage = match.Stage, ChangeType = (DungeonBaseInfoNotify.Types.eChangeType)2,
-            StageModuleData = new DungeonStageModuleData { MapState = match.Ending ? 2 : 1, Stage = match.Stage,
+            StageModuleData = new DungeonStageModuleData
+            {
+                MapState = match.Ending ? 2 : 1, Stage = match.Stage,
                 MapStateStartTime = match.Open * 1000, MapStateEndTime = match.Deadline * 1000,
                 StageStartTime = start * 1000, StageEndTime = end * 1000,
-                NextStageStartTime = nextEnd == 0 ? 0 : end * 1000, NextStageEndTime = nextEnd * 1000 },
+                NextStageStartTime = nextEnd == 0 ? 0 : end * 1000, NextStageEndTime = nextEnd * 1000
+            },
         };
         var camps = new DungeonVar { VarId = CampScoreVar };
         camps.Vi64.Add([1, match.CampScore[1], 2, match.CampScore[2]]);
@@ -342,8 +348,14 @@ public sealed class CasualBattleService : IGameTicker
         var scene = new SceneStatisticsInfo { SceneId = 0, DungeonId = Scene };
         foreach (var p in m.Players.Values)
         {
-            var role = new RoleStatisticsInfo { BaseInfo = new StatisticsRoleBaseInfo { Id = p.Id, Name = p.Name, Job = p.Career,
-                CampId = p.Camp, TeamId = p.Camp }, Totalscore = p.Score, TotalDamage = p.Damage, TotalBeDamage = p.Taken, TotalCure = p.Healing };
+            var role = new RoleStatisticsInfo
+            {
+                BaseInfo = new StatisticsRoleBaseInfo
+                {
+                    Id = p.Id, Name = p.Name, Job = p.Career,
+                    CampId = p.Camp, TeamId = p.Camp
+                }, Totalscore = p.Score, TotalDamage = p.Damage, TotalBeDamage = p.Taken, TotalCure = p.Healing
+            };
             foreach (var (key, value) in new (int, long)[] { (1021005, p.Score), (1001004, p.Kills), (1001005, p.Assists),
                 (1001001, p.Damage), (1001002, p.Taken), (1001003, p.Healing), (1001006, p.Deaths) })
                 role.ExtraData[key] = new ExtraValueData { LongValue = value };
@@ -408,15 +420,21 @@ public sealed class CasualBattleService : IGameTicker
                 MatchId = match.Room.Id, RoleId = p.Id, BattleTime = match.Open, ResultId = resultId, Won = won,
                 Outcome = winCamp == 0 ? 3 : won ? 1 : 2, // 3 draw (inferred: the achievements count win/lose/draw)
                 StartMmr = start, MmrDelta = winCamp == 0 ? 0 : won ? win : lose,
-                Stats = new TimedBattleService.CasualStats { PersonalScore = p.Score, Damage = p.Damage, Kills = p.Kills,
-                    Assists = p.Assists, DamageTaken = p.Taken, Healing = p.Healing },
+                Stats = new TimedBattleService.CasualStats
+                {
+                    PersonalScore = p.Score, Damage = p.Damage, Kills = p.Kills,
+                    Assists = p.Assists, DamageTaken = p.Taken, Healing = p.Healing
+                },
                 // DungeonAwardModule ScoreCondition [2,3,25] (inferred: personal score >= 25): 85201, the winners also 85202.
                 Pools = p.Score < 25 ? [] : won ? [85201, 85202] : [85201],
             };
             rows.Add(new CasualBattleObligationRow(SourceKey(match.Room.Id, p.Id), match.Room.Id, p.Id,
                 JsonSerializer.SerializeToUtf8Bytes(payout)));
-            var info = new DungeonResultInfo { Result = won ? 1 : 2, WinCamp = winCamp, DungeonId = Scene,
-                StatisticsId = match.Room.Id, StatisticsTime = Now * 1000, DungeonStartTimestamp = match.Open * 1000 };
+            var info = new DungeonResultInfo
+            {
+                Result = won ? 1 : 2, WinCamp = winCamp, DungeonId = Scene,
+                StatisticsId = match.Room.Id, StatisticsTime = Now * 1000, DungeonStartTimestamp = match.Open * 1000
+            };
             info.SceneStatistics.Add(stats.SceneStatistics);
             if (mvp != null) info.MetaData["mvpPlayerId"] = mvp.Id.ToString(CultureInfo.InvariantCulture);
             match.Notices[p.Id] = new DungeonResultNotify { ResultInfo = info, ResultId = resultId };

@@ -72,7 +72,7 @@ public sealed class RewardService
         monster.RewardRecipient = player.Role.Id;
         monster.RewardSource ??= new RewardSourceId(character.RewardRealmId, RewardSourceId.ProcessRun, monster.SpawnGeneration);
         monster.RewardSettlement ??= new RewardSettlement(monster.RewardSource.Key, "monster-kill", autoDecompose: true)
-            { DeferPresentation = true };
+        { DeferPresentation = true };
         return monster.RewardCommit = CommitKillAsync(player, monster);
     }
 
@@ -187,11 +187,17 @@ public sealed class RewardService
             await monster.RewardSettlement!.PresentAsync();
             if (outcome.Items.Count > 0)
             {
-                var notify = new GetRewardNotify { Position = monster.Pos, TargetEntry = monster.Template.NpcId,
-                    TargetUid = role.Id, RewardType = { RewardDrop } };
+                var notify = new GetRewardNotify
+                {
+                    Position = monster.Pos, TargetEntry = monster.Template.NpcId,
+                    TargetUid = role.Id, RewardType = { RewardDrop }
+                };
                 foreach (var (entry, count) in outcome.Items)
-                    notify.Rewards.Add(new ItemBaseInfo { ItemEntry = entry, Stack = count,
-                        ItemInfos = { [10001] = new ItemAttrValue { LongVal = 0 } } });
+                    notify.Rewards.Add(new ItemBaseInfo
+                    {
+                        ItemEntry = entry, Stack = count,
+                        ItemInfos = { [10001] = new ItemAttrValue { LongVal = 0 } }
+                    });
                 await player.SendGameAsync(CharacterService.GetRewardNotify, notify);
             }
         }

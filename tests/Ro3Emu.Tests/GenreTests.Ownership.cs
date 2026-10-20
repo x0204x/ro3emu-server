@@ -91,7 +91,7 @@ public sealed partial class GenreTests
         });
         Assert.Equal(0, (await Next(donor, 82803, GenreResponserSaveResp.Parser)).Result);
         await donor.SendGameAsync(82802, new GenreResponserSendPlanReq
-            { SeekUserId = response.SeekUserId, ResponseId = response.ResponseId });
+        { SeekUserId = response.SeekUserId, ResponseId = response.ResponseId });
         Assert.Equal(0, (await Next(donor, 82802, GenreResponserSendPlanResp.Parser)).Result);
         return response.ResponseId;
     }

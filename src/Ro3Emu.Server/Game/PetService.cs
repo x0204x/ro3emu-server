@@ -188,8 +188,11 @@ public sealed partial class PetService
             tx.RoleBlob(s.Role!.Id, "pets", next.ToByteArray());
             tx.RoleBlob(s.Role.Id, "pet_books", JsonSerializer.SerializeToUtf8Bytes(books));
             tx.WithEconomy(character.FamilyEconomy(s, "cd13b/pet-" + kind, cost, goods,
-                new { StateHash = Convert.ToHexString(SHA256.HashData(next.ToByteArray())),
-                    BooksHash = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(books))) }));
+                new
+                {
+                    StateHash = Convert.ToHexString(SHA256.HashData(next.ToByteArray())),
+                    BooksHash = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(books)))
+                }));
         }, committed: () => s.Pets = next, asyncCommit: true);
         if (paid == null) return false;
         return true;

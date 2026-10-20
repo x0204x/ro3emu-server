@@ -296,10 +296,16 @@ public sealed class S3EconomyTests
     public void S3_retains_corruption_failure_even_when_the_other_cut_is_missing()
     {
         var corrupt = Cut(null) with { Issues = [new(EconomyIssueKind.Corruption, "item/7", "negative stack")] };
-        Assert.Equal("FAIL", new RunReport { Scenario = "S3", TargetBots = 500, RequestedBots = 20,
-            RequestedSeconds = 60, StartedUtc = Start, S3OpeningEconomy = corrupt }.EvaluateLedgerRow().Status);
-        Assert.Equal("FAIL", new RunReport { Scenario = "S3", TargetBots = 500, RequestedBots = 20,
-            RequestedSeconds = 60, StartedUtc = Start, S3ClosingEconomy = corrupt }.EvaluateLedgerRow().Status);
+        Assert.Equal("FAIL", new RunReport
+        {
+            Scenario = "S3", TargetBots = 500, RequestedBots = 20,
+            RequestedSeconds = 60, StartedUtc = Start, S3OpeningEconomy = corrupt
+        }.EvaluateLedgerRow().Status);
+        Assert.Equal("FAIL", new RunReport
+        {
+            Scenario = "S3", TargetBots = 500, RequestedBots = 20,
+            RequestedSeconds = 60, StartedUtc = Start, S3ClosingEconomy = corrupt
+        }.EvaluateLedgerRow().Status);
     }
 
     [Fact]

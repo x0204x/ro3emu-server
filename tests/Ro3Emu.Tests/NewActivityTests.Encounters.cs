@@ -221,130 +221,133 @@ public sealed partial class NewActivityTests
             .RunRuntimeAsync("test/festival reconcile", () => Service<FestivalService>().ReconcileAsync()));
         try
         {
-        await Gm(bot, "!lvl 99");
-        await bot.SendGameAsync(DungeonService.Enter, new EnterDungeonReq { SceneEntry = FestivalService.Dungeon });
-        Assert.Equal(ErrorCodes.ActivityPeriod, (await Next(bot, DungeonService.Enter, EnterDungeonRsp.Parser)).Result);
-        clock.SetLocal(2026, 10, 9, 18, 30, 10);
-        // The jump crosses the daily boundary: a heartbeat's daily reset clears DailyReady while it commits, and the
-        // one candidate pass below would skip the role (a live server re-selects on the next second's tick). Settle
-        // the reset first; it serialises with any heartbeat reset already running.
-        await OnLoop(() => Service<Ro3Emu.Server.Game.Ownership.OwnerRegistry>()
-            .RunRuntimeAsync("test/daily reconcile", () => Service<DailyActivityService>().ReconcileAsync(Session(bot))));
-        await ReconcileFestival();
-        clock.SetLocal(2026, 10, 9, 18, 32);
-        var bet = new CommonDailyActivityReq { ActivityId = FestivalService.ActivityId, RequestId = 701,
-            RainbowKoiBet = new RainbowKoiBetReq { TargetPlayerId = (long)bot.Self!.Uuid + 900 } };
-        await bot.SendGameAsync(DailyActivityService.RingAccept, bet);
-        Assert.Equal(ErrorCodes.Parameter, (await Next(bot, DailyActivityService.RingAccept, CommonDailyActivityRes.Parser, r => r.RequestId == 701)).Result);
-        bet.RequestId++; bet.RainbowKoiBet.TargetPlayerId = (long)bot.Self.Uuid;
-        await bot.SendGameAsync(DailyActivityService.RingAccept, bet);
-        Assert.Equal(0, (await Next(bot, DailyActivityService.RingAccept, CommonDailyActivityRes.Parser, r => r.RequestId == 702)).Result);
-        bet.RequestId++;
-        await bot.SendGameAsync(DailyActivityService.RingAccept, bet);
-        Assert.Equal(ErrorCodes.RewardClaimed, (await Next(bot, DailyActivityService.RingAccept, CommonDailyActivityRes.Parser, r => r.RequestId == 703)).Result);
-        await bot.SendGameAsync(DungeonService.Enter, new EnterDungeonReq { SceneEntry = FestivalService.Dungeon });
-        Assert.Equal(0, (await Next(bot, DungeonService.Enter, EnterDungeonRsp.Parser)).Result);
-        await LoadPrivate(bot, FestivalService.Dungeon);
-        int answer = (int)GameData.Int(Service<GameData>().Table("RainbowKoiQuestionConfig").Values
-            .OrderBy(r => GameData.Int(r, "_iID")).First(), "_iQuestionAnswer");
-        using var editor = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(Path.Combine(RepoRoot(), "data", "sceneeditor", "sc_prontera_001_dg01_sceneeditor.json")));
-        var center = editor.RootElement.GetProperty("m_kRegins").GetProperty(answer == 1 ? "27" : "28").GetProperty("center");
-        var answerPosition = new Vec3
-        { X = center.GetProperty("x").GetSingle(), Y = center.GetProperty("y").GetSingle(), Z = center.GetProperty("z").GetSingle() };
-        await bot.SendGameAsync(MsgId.Walk, new WalkReq { BStop = true, SpeedRate = 1, Pos = answerPosition });
-        // Sending a frame only queues it. The direct ReconcileAsync call below can otherwise
-        // overtake WalkAsync on the game loop and judge the old position at the answer deadline.
-        bool arrived = false;
-        for (int i = 0; i < 400 && !arrived; i++)
-        {
-            await OnLoop(() =>
+            await Gm(bot, "!lvl 99");
+            await bot.SendGameAsync(DungeonService.Enter, new EnterDungeonReq { SceneEntry = FestivalService.Dungeon });
+            Assert.Equal(ErrorCodes.ActivityPeriod, (await Next(bot, DungeonService.Enter, EnterDungeonRsp.Parser)).Result);
+            clock.SetLocal(2026, 10, 9, 18, 30, 10);
+            // The jump crosses the daily boundary: a heartbeat's daily reset clears DailyReady while it commits, and the
+            // one candidate pass below would skip the role (a live server re-selects on the next second's tick). Settle
+            // the reset first; it serialises with any heartbeat reset already running.
+            await OnLoop(() => Service<Ro3Emu.Server.Game.Ownership.OwnerRegistry>()
+                .RunRuntimeAsync("test/daily reconcile", () => Service<DailyActivityService>().ReconcileAsync(Session(bot))));
+            await ReconcileFestival();
+            clock.SetLocal(2026, 10, 9, 18, 32);
+            var bet = new CommonDailyActivityReq
             {
-                var position = Session(bot).Position;
-                arrived = Math.Abs(position.X - answerPosition.X) < 0.01f
-                    && Math.Abs(position.Z - answerPosition.Z) < 0.01f;
-                return Task.CompletedTask;
-            });
-            if (!arrived) await Task.Delay(20);
-        }
-        Assert.True(arrived, "The authoritative player position did not reach the authored answer zone.");
-        var plan = Service<AwardService>().Resolve(Session(bot), 85001, 101);
-        var item = plan.Grants.First();
-        long before = Service<CharacterService>().CountOf(Session(bot), item.Entry);
-        clock.SetLocal(2026, 10, 9, 18, 35, 1);
-        await ReconcileFestival();
-        var store = Service<AccountStore>();
-        long roleId = (long)bot.Self.Uuid;
-        long CountRows(string sql, string? source = null)
-        {
-            using var db = store.Open();
-            using var cmd = db.CreateCommand();
-            cmd.CommandText = sql;
-            if (sql.Contains("$role", StringComparison.Ordinal)) cmd.Parameters.AddWithValue("$role", roleId);
-            if (sql.Contains("$source", StringComparison.Ordinal)) cmd.Parameters.AddWithValue("$source", source ?? "");
-            return (long)cmd.ExecuteScalar()!;
-        }
-        long cycle;
-        using (var db = store.Open())
-        using (var cmd = db.CreateCommand())
-        {
-            cmd.CommandText = "SELECT cycle FROM festival_round ORDER BY cycle DESC LIMIT 1";
-            cycle = (long)cmd.ExecuteScalar()!;
-        }
-        string completionSource = $"festival/{cycle}/complete";
-        const string rewardCount = "SELECT count(*) FROM festival_reward WHERE role_id=$role";
-        const string completionCount = "SELECT count(*) FROM operation_receipt WHERE command_kind='event/festival-complete' AND source_key=$source";
-        Assert.Equal(0, CountRows(rewardCount));
-        Assert.Equal(0, CountRows(completionCount, completionSource));
-        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        store.BeforeOwnedCommitForTest = label =>
-        {
-            if (label != "economy/event/festival-complete") return Task.CompletedTask;
-            entered.TrySetResult();
-            return release.Task;
-        };
-        Task completion;
-        Task retry;
-        try
-        {
-            clock.AdvanceSeconds(30);
-            completion = ReconcileFestival();
-            await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.Equal(before, Service<CharacterService>().CountOf(Session(bot), item.Entry));
+                ActivityId = FestivalService.ActivityId, RequestId = 701,
+                RainbowKoiBet = new RainbowKoiBetReq { TargetPlayerId = (long)bot.Self!.Uuid + 900 }
+            };
+            await bot.SendGameAsync(DailyActivityService.RingAccept, bet);
+            Assert.Equal(ErrorCodes.Parameter, (await Next(bot, DailyActivityService.RingAccept, CommonDailyActivityRes.Parser, r => r.RequestId == 701)).Result);
+            bet.RequestId++; bet.RainbowKoiBet.TargetPlayerId = (long)bot.Self.Uuid;
+            await bot.SendGameAsync(DailyActivityService.RingAccept, bet);
+            Assert.Equal(0, (await Next(bot, DailyActivityService.RingAccept, CommonDailyActivityRes.Parser, r => r.RequestId == 702)).Result);
+            bet.RequestId++;
+            await bot.SendGameAsync(DailyActivityService.RingAccept, bet);
+            Assert.Equal(ErrorCodes.RewardClaimed, (await Next(bot, DailyActivityService.RingAccept, CommonDailyActivityRes.Parser, r => r.RequestId == 703)).Result);
+            await bot.SendGameAsync(DungeonService.Enter, new EnterDungeonReq { SceneEntry = FestivalService.Dungeon });
+            Assert.Equal(0, (await Next(bot, DungeonService.Enter, EnterDungeonRsp.Parser)).Result);
+            await LoadPrivate(bot, FestivalService.Dungeon);
+            int answer = (int)GameData.Int(Service<GameData>().Table("RainbowKoiQuestionConfig").Values
+                .OrderBy(r => GameData.Int(r, "_iID")).First(), "_iQuestionAnswer");
+            using var editor = System.Text.Json.JsonDocument.Parse(File.ReadAllBytes(Path.Combine(RepoRoot(), "data", "sceneeditor", "sc_prontera_001_dg01_sceneeditor.json")));
+            var center = editor.RootElement.GetProperty("m_kRegins").GetProperty(answer == 1 ? "27" : "28").GetProperty("center");
+            var answerPosition = new Vec3
+            { X = center.GetProperty("x").GetSingle(), Y = center.GetProperty("y").GetSingle(), Z = center.GetProperty("z").GetSingle() };
+            await bot.SendGameAsync(MsgId.Walk, new WalkReq { BStop = true, SpeedRate = 1, Pos = answerPosition });
+            // Sending a frame only queues it. The direct ReconcileAsync call below can otherwise
+            // overtake WalkAsync on the game loop and judge the old position at the answer deadline.
+            bool arrived = false;
+            for (int i = 0; i < 400 && !arrived; i++)
+            {
+                await OnLoop(() =>
+                {
+                    var position = Session(bot).Position;
+                    arrived = Math.Abs(position.X - answerPosition.X) < 0.01f
+                        && Math.Abs(position.Z - answerPosition.Z) < 0.01f;
+                    return Task.CompletedTask;
+                });
+                if (!arrived) await Task.Delay(20);
+            }
+            Assert.True(arrived, "The authoritative player position did not reach the authored answer zone.");
+            var plan = Service<AwardService>().Resolve(Session(bot), 85001, 101);
+            var item = plan.Grants.First();
+            long before = Service<CharacterService>().CountOf(Session(bot), item.Entry);
+            clock.SetLocal(2026, 10, 9, 18, 35, 1);
+            await ReconcileFestival();
+            var store = Service<AccountStore>();
+            long roleId = (long)bot.Self.Uuid;
+            long CountRows(string sql, string? source = null)
+            {
+                using var db = store.Open();
+                using var cmd = db.CreateCommand();
+                cmd.CommandText = sql;
+                if (sql.Contains("$role", StringComparison.Ordinal)) cmd.Parameters.AddWithValue("$role", roleId);
+                if (sql.Contains("$source", StringComparison.Ordinal)) cmd.Parameters.AddWithValue("$source", source ?? "");
+                return (long)cmd.ExecuteScalar()!;
+            }
+            long cycle;
+            using (var db = store.Open())
+            using (var cmd = db.CreateCommand())
+            {
+                cmd.CommandText = "SELECT cycle FROM festival_round ORDER BY cycle DESC LIMIT 1";
+                cycle = (long)cmd.ExecuteScalar()!;
+            }
+            string completionSource = $"festival/{cycle}/complete";
+            const string rewardCount = "SELECT count(*) FROM festival_reward WHERE role_id=$role";
+            const string completionCount = "SELECT count(*) FROM operation_receipt WHERE command_kind='event/festival-complete' AND source_key=$source";
             Assert.Equal(0, CountRows(rewardCount));
             Assert.Equal(0, CountRows(completionCount, completionSource));
-            retry = ReconcileFestival();
-            await Task.Delay(30);
-            Assert.False(retry.IsCompleted);
-            Assert.Equal(0, CountRows(completionCount, completionSource));
-        }
-        finally { release.TrySetResult(); store.BeforeOwnedCommitForTest = null; }
-        await Task.WhenAll(completion, retry).WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.Equal(before + item.Count * 2, Service<CharacterService>().CountOf(Session(bot), item.Entry));
-        Assert.Equal(2, CountRows(rewardCount));
-        Assert.Equal(1, CountRows(completionCount, completionSource));
-        await ReconcileFestival();
-        Assert.Equal(before + item.Count * 2, Service<CharacterService>().CountOf(Session(bot), item.Entry));
-        Assert.Equal(1, CountRows(completionCount, completionSource));
-        using (var db = Service<AccountStore>().Open())
-        using (var cmd = db.CreateCommand())
-        {
-            cmd.CommandText = "SELECT grants FROM festival_reward WHERE role_id=$r AND claimed=1 ORDER BY source";
-            cmd.Parameters.AddWithValue("$r", (long)bot.Self.Uuid);
-            using var frozen = cmd.ExecuteReader();
-            int rows = 0;
-            while (frozen.Read())
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            store.BeforeOwnedCommitForTest = label =>
             {
-                var grants = System.Text.Json.JsonSerializer.Deserialize<AwardGrant[]>((byte[])frozen.GetValue(0));
-                Assert.NotNull(grants);
-                Assert.Contains(grants, grant => grant.Entry == item.Entry && grant.Count == item.Count);
-                rows++;
+                if (label != "economy/event/festival-complete") return Task.CompletedTask;
+                entered.TrySetResult();
+                return release.Task;
+            };
+            Task completion;
+            Task retry;
+            try
+            {
+                clock.AdvanceSeconds(30);
+                completion = ReconcileFestival();
+                await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                Assert.Equal(before, Service<CharacterService>().CountOf(Session(bot), item.Entry));
+                Assert.Equal(0, CountRows(rewardCount));
+                Assert.Equal(0, CountRows(completionCount, completionSource));
+                retry = ReconcileFestival();
+                await Task.Delay(30);
+                Assert.False(retry.IsCompleted);
+                Assert.Equal(0, CountRows(completionCount, completionSource));
             }
-            Assert.Equal(2, rows);
-        }
-        await bot.DisposeAsync(); await WaitOffline("festival");
-        await using var again = await InWorld("Festival", false);
-        Assert.Equal(before + item.Count * 2, Service<CharacterService>().CountOf(Session(again), item.Entry));
+            finally { release.TrySetResult(); store.BeforeOwnedCommitForTest = null; }
+            await Task.WhenAll(completion, retry).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(before + item.Count * 2, Service<CharacterService>().CountOf(Session(bot), item.Entry));
+            Assert.Equal(2, CountRows(rewardCount));
+            Assert.Equal(1, CountRows(completionCount, completionSource));
+            await ReconcileFestival();
+            Assert.Equal(before + item.Count * 2, Service<CharacterService>().CountOf(Session(bot), item.Entry));
+            Assert.Equal(1, CountRows(completionCount, completionSource));
+            using (var db = Service<AccountStore>().Open())
+            using (var cmd = db.CreateCommand())
+            {
+                cmd.CommandText = "SELECT grants FROM festival_reward WHERE role_id=$r AND claimed=1 ORDER BY source";
+                cmd.Parameters.AddWithValue("$r", (long)bot.Self.Uuid);
+                using var frozen = cmd.ExecuteReader();
+                int rows = 0;
+                while (frozen.Read())
+                {
+                    var grants = System.Text.Json.JsonSerializer.Deserialize<AwardGrant[]>((byte[])frozen.GetValue(0));
+                    Assert.NotNull(grants);
+                    Assert.Contains(grants, grant => grant.Entry == item.Entry && grant.Count == item.Count);
+                    rows++;
+                }
+                Assert.Equal(2, rows);
+            }
+            await bot.DisposeAsync(); await WaitOffline("festival");
+            await using var again = await InWorld("Festival", false);
+            Assert.Equal(before + item.Count * 2, Service<CharacterService>().CountOf(Session(again), item.Entry));
         }
         catch (Exception error)
         {

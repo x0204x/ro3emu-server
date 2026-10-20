@@ -38,8 +38,10 @@ internal sealed record TimedBattleObligationRow(string SourceKey, long MatchId, 
     public object[] Values() => [SourceKey, MatchId, Entry, RoleId, Grants, Costs, NextState, Result];
     public TimedBattleObligationRow Detach() => this with
     {
-        Grants = (byte[])Grants.Clone(), Costs = (byte[])Costs.Clone(),
-        NextState = (byte[])NextState.Clone(), Result = (byte[])Result.Clone(),
+        Grants = (byte[])Grants.Clone(),
+        Costs = (byte[])Costs.Clone(),
+        NextState = (byte[])NextState.Clone(),
+        Result = (byte[])Result.Clone(),
     };
     public bool SameFrozen(TimedBattleObligationRow stored) => stored.RoleId == RoleId && stored.MatchId == MatchId
         && stored.Entry == Entry && stored.Grants.AsSpan().SequenceEqual(Grants) && stored.Costs.AsSpan().SequenceEqual(Costs)

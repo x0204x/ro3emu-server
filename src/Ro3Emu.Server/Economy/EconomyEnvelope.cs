@@ -33,7 +33,8 @@ public sealed class EconomyEnvelope
         string requestFingerprint, string sourceKey, long effectiveUtcMs,
         IReadOnlyList<EconomyEffect> effects, byte[] outcome)
         : this(operationId, actorAccount, actorRoleId, commandKind, requestFingerprint, sourceKey,
-            effectiveUtcMs, effects, outcome, null) { }
+            effectiveUtcMs, effects, outcome, null)
+    { }
 
     private EconomyEnvelope(string operationId, string actorAccount, long actorRoleId, string commandKind,
         string requestFingerprint, string sourceKey, long effectiveUtcMs,

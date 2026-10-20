@@ -10,12 +10,12 @@ namespace Ro3Emu.Server.Voice;
 /// <summary>
 /// The voice relay's own TCP listener (VoiceFrame framing, not Phonest/PhonestChannel: the gate carries no
 /// client identity of its own, only the 77015/77016 ticket). Registered when <see cref="VoiceOptions.Port"/> is
-/// set (ServerHost.Create) and serving only when <see cref="ServerOptions.VoiceServed"/>: the stream is plaintext,
-/// so off loopback it needs <see cref="VoiceOptions.AllowPlaintextOffLoopback"/>. Binds in <see cref="StartAsync"/>
+/// set (ServerHost.Create) and serving only when <see cref="ServerOptions.VoiceServed"/>. Every frame after Auth is
+/// sealed with the ticket's secret (<see cref="VoiceConnection.Cipher"/>), so it serves off loopback as well. Binds in <see cref="StartAsync"/>
 /// and drains in <see cref="StopAsync"/>, like <see cref="Net.GateListener"/>.
 /// </summary>
 public sealed class VoiceGateServer(IOptions<ServerOptions> options, VoiceTicketRegistry tickets, VoiceRooms rooms,
-    TeamService teams, SessionRegistry sessions, GameLoop loop, GmCommands gm, ILogger<VoiceGateServer> log)
+    SessionRegistry sessions, GameLoop loop, GmCommands gm, ILogger<VoiceGateServer> log)
     : BackgroundService
 {
     private const long IpBanDurationMs = 60_000;
@@ -36,12 +36,6 @@ public sealed class VoiceGateServer(IOptions<ServerOptions> options, VoiceTicket
         var opts = options.Value;
         if (opts.Voice.Port <= 0) return base.StartAsync(cancellationToken);
         var address = opts.ListenAddress();
-        if (!opts.VoiceServed())
-        {
-            log.LogWarning("VoiceGate not started: the voice stream is not encrypted and {Address} is not loopback "
-                + "(set Voice:AllowPlaintextOffLoopback to serve it anyway)", address);
-            return base.StartAsync(cancellationToken);
-        }
         var listener = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
         try
         {
@@ -61,8 +55,7 @@ public sealed class VoiceGateServer(IOptions<ServerOptions> options, VoiceTicket
             connection?.Close();
             await GmCommands.ReplyAsync(s, connection == null ? "No voice connection." : "Voice connection dropped.");
         });
-        if (IPAddress.IsLoopback(address)) log.LogInformation("VoiceGate listening on {Address}:{Port}", address, opts.Voice.Port);
-        else log.LogWarning("VoiceGate listening on {Address}:{Port} WITHOUT encryption (AllowPlaintextOffLoopback)", address, opts.Voice.Port);
+        log.LogInformation("VoiceGate listening on {Address}:{Port}", address, opts.Voice.Port);
         return base.StartAsync(cancellationToken);
     }
 
@@ -166,9 +159,10 @@ public sealed class VoiceGateServer(IOptions<ServerOptions> options, VoiceTicket
         while (!live.IsCancellationRequested)
         {
             frame = await connection.ReadFrameAsync(maxPayload, live.Token);
-            // Kicked (flood, replaced, removed): read on until the writer has flushed the Kicked frame and closed,
-            // but act on nothing, so a kicked connection cannot rejoin a room or flood the logs meanwhile. Not
-            // touched either: one that never reads its Kicked frame still ends at the idle timeout.
+            // Kicked (flood, replaced, removed): read on until the client closes after its Kicked frame (at most
+            // VoiceConnection.KickedCloseDelay after that last frame is written), but act on nothing, so a kicked
+            // connection cannot rejoin a room or flood the logs meanwhile. Not touched either: a client that stops
+            // reading, so its Kicked frame never goes out, still ends at the idle timeout.
             if (connection.Kicked) continue;
             connection.Touch();
             // Everything but Audio (its own budget, in HandleAudio) shares one control budget: a Mic reaches the
@@ -191,11 +185,12 @@ public sealed class VoiceGateServer(IOptions<ServerOptions> options, VoiceTicket
 
     private async Task<bool> HandleAuthAsync(VoiceConnection connection, byte[] payload)
     {
-        if (payload.Length != 25 || payload[0] != 1) return false;
+        if (payload.Length != VoiceUp.AuthSize || payload[0] != VoiceUp.AuthVersion) return false;
         long roleId = BinaryPrimitives.ReadInt64LittleEndian(payload.AsSpan(1, 8));
         byte[] token = payload[9..25];
-        string? account = tickets.Consume(roleId, token);
-        if (account == null) return false;
+        var claim = tickets.Consume(roleId, token, payload[25..]);
+        if (claim == null) return false;
+        string account = claim.Account;
         bool alive = await loop.InvokeAsync(() => Task.FromResult(sessions.All().Any(s =>
             string.Equals(s.Account, account, StringComparison.Ordinal) && s.Role?.Id == roleId)));
         if (!alive) return false;
@@ -206,6 +201,7 @@ public sealed class VoiceGateServer(IOptions<ServerOptions> options, VoiceTicket
             Cleanup(previous);
             previous.Kick(VoiceKickCode.ReplacedByNewAuth);
         }
+        connection.Cipher = Ro3Emu.ClientHooks.VoiceCipher.ForServer(claim.Secret); // AuthOk is the first sealed frame
         connection.SendAuthOk();
         return true;
     }
@@ -214,11 +210,12 @@ public sealed class VoiceGateServer(IOptions<ServerOptions> options, VoiceTicket
     {
         string channel = ReadLengthPrefixedAscii(payload, out bool wellFormed);
         if (!wellFormed) return;
-        if (!long.TryParse(channel, out long requested))
+        if (!VoiceRoomKey.TryParse(channel, out var key))
         {
             connection.SendJoinResult(VoiceJoinCode.UnsupportedRoom, channel);
             return;
         }
+        long requested = key.Value;
         // A repeated Join of the room it is in: confirmed again, but no loop hop and nothing to the others.
         if (rooms.IsIn(connection, requested))
         {
@@ -228,9 +225,8 @@ public sealed class VoiceGateServer(IOptions<ServerOptions> options, VoiceTicket
         var (code, forbidden) = await loop.InvokeAsync(() =>
         {
             bool alive = sessions.All().Any(s => s.Role?.Id == connection.RoleId);
-            var (teamId, _) = teams.TeamOf(connection.RoleId);
-            byte result = alive && teamId != 0 && teamId == requested ? VoiceJoinCode.Ok : VoiceJoinCode.NotMember;
-            return Task.FromResult((result, teams.IsForbiddenChat(connection.RoleId)));
+            byte result = alive && rooms.Belongs(connection.RoleId, key) ? VoiceJoinCode.Ok : VoiceJoinCode.NotMember;
+            return Task.FromResult((result, rooms.MicHeldOff(connection.RoleId, requested)));
         });
         if (code != VoiceJoinCode.Ok)
         {
@@ -288,8 +284,8 @@ public sealed class VoiceGateServer(IOptions<ServerOptions> options, VoiceTicket
             foreach (var member in rooms.MembersOf(connection.RoomId)) member.SendVad(connection.RoleId, true);
         var listeners = rooms.ListenersFor(connection);
         if (listeners.Length == 0) return;
-        byte[] frame = VoiceConnection.BuildAudioFrame(connection.RoleId, seq, opus);
-        foreach (var listener in listeners) listener.SendAudioFrame(frame);
+        byte[] audio = VoiceConnection.BuildAudioPayload(connection.RoleId, seq, opus);
+        foreach (var listener in listeners) listener.SendAudio(audio);
     }
 
     /// <summary>The control budget: false drops the frame; a sustained flood also disconnects and bans, as for Audio.</summary>

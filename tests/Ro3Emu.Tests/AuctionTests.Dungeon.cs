@@ -22,8 +22,11 @@ public sealed partial class AuctionContentTests : AuctionTestsHost
         await alice.SendGameAsync(DungeonService.Enter, new EnterDungeonReq
         {
             SceneEntry = Scene,
-            InitData = new DungeonInitData { MultiDungeonInitData = new MultiDungeonInitData
-            { MultiDungeonId = Multi, MarkId = 1 } },
+            InitData = new DungeonInitData
+            {
+                MultiDungeonInitData = new MultiDungeonInitData
+                { MultiDungeonId = Multi, MarkId = 1 }
+            },
         });
         Assert.Equal(0, (await Next(alice, DungeonService.Enter, EnterDungeonRsp.Parser)).Result);
         foreach (var member in new[] { bob, carol })
@@ -69,8 +72,11 @@ public sealed partial class AuctionContentTests : AuctionTestsHost
         await alice.SendGameAsync(DungeonService.Enter, new EnterDungeonReq
         {
             SceneEntry = Scene,
-            InitData = new DungeonInitData { MultiDungeonInitData = new MultiDungeonInitData
-            { MultiDungeonId = Multi, MarkId = 1 } },
+            InitData = new DungeonInitData
+            {
+                MultiDungeonInitData = new MultiDungeonInitData
+                { MultiDungeonId = Multi, MarkId = 1 }
+            },
         });
         Assert.Equal(0, (await Next(alice, DungeonService.Enter, EnterDungeonRsp.Parser)).Result);
         foreach (var member in new[] { bob, carol })

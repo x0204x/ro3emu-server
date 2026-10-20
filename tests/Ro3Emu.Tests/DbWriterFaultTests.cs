@@ -180,13 +180,20 @@ public sealed class DbWriterFaultTests : IDisposable
     {
         // Stage G group commit: jobs queued behind a busy writer share one durable commit, each in its own savepoint.
         var metrics = new DbAccessMetrics();
+        // A group budget the blocker always overruns and the backlog never does, however fast the machine.
+        var budget = TimeSpan.FromMilliseconds(300);
         using var writer = new DbWriter($"Data Source={Database}", metrics)
         {
+            MaxGroupExecution = budget,
             BeforeCommitForTest = label => { if (label == "test/doomed") throw new IOException("Test-only failure at commit."); },
         };
         Assert.Equal(1, await writer.ExecuteAsync<int>(new Plan("setup", _executed))); // the table exists
         using var hold = new ManualResetEventSlim();
-        var blocker = writer.ExecuteAsync<int>(new Plan("block", _executed, () => hold.Wait(TimeSpan.FromSeconds(10))));
+        var blocker = writer.ExecuteAsync<int>(new Plan("block", _executed, () =>
+        {
+            hold.Wait(TimeSpan.FromSeconds(10));
+            Thread.Sleep(budget + TimeSpan.FromMilliseconds(50));
+        }));
         await Task.Delay(50); // the blocker's group is open; the rest queue behind it
         var before = Enumerable.Range(0, 10).Select(i => writer.ExecuteAsync<int>(new Plan("a" + i, _executed))).ToList();
         var partial = writer.ExecuteAsync<int>(new PartialPlan("partial", _executed));

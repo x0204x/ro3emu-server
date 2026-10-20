@@ -12,7 +12,34 @@ namespace Ro3Emu.Setup;
 /// </summary>
 internal sealed class ServerProcess : IDisposable
 {
-    public sealed record Ports(int Http = 5380, int MicroGate = 20000, int GameGate = 33100);
+    /// <summary>The server's TCP ports. <paramref name="Voice"/> 0 = the party voice relay is off (the default).</summary>
+    public sealed record Ports(int Http = 5380, int MicroGate = 20000, int GameGate = 33100, int Voice = 0)
+    {
+        /// <summary>Every port the server listens on, voice only when it is on.</summary>
+        public IEnumerable<int> All() => Voice > 0 ? [Http, MicroGate, GameGate, Voice] : [Http, MicroGate, GameGate];
+    }
+
+    /// <summary>"5380, 20000 and 33100" (with the voice port when it is on): what a host opens or forwards.</summary>
+    public static string PortList(Ports ports)
+    {
+        var all = ports.All().Select(p => p.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList();
+        return string.Join(", ", all[..^1]) + " and " + all[^1];
+    }
+
+    /// <summary>The server's own arguments: data folder and ports (the voice relay only when a voice port is set).</summary>
+    public static List<string> ServerArgs(string dataDir, Ports ports)
+    {
+        var args = new List<string>
+        {
+            $"--Ro3Emu:DataDir={dataDir}",
+            "--Ro3Emu:PreloadGameData=true",
+            $"--Ro3Emu:HttpPort={ports.Http}",
+            $"--Ro3Emu:MicroGatePort={ports.MicroGate}",
+            $"--Ro3Emu:GameGatePort={ports.GameGate}",
+        };
+        if (ports.Voice > 0) args.Add($"--Ro3Emu:Voice:Port={ports.Voice}");
+        return args;
+    }
 
     private readonly Process _process;
     private readonly StreamWriter _log;
@@ -49,7 +76,7 @@ internal sealed class ServerProcess : IDisposable
     /// <summary>A port something else already listens on (on any address), or null.</summary>
     public static int? BusyPort(Ports ports)
     {
-        foreach (var port in new[] { ports.Http, ports.MicroGate, ports.GameGate })
+        foreach (var port in ports.All())
         {
             try
             {
@@ -79,14 +106,7 @@ internal sealed class ServerProcess : IDisposable
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
         };
-        foreach (var a in new[]
-        {
-            $"--Ro3Emu:DataDir={dataDir}",
-            "--Ro3Emu:PreloadGameData=true",
-            $"--Ro3Emu:HttpPort={ports.Http}",
-            $"--Ro3Emu:MicroGatePort={ports.MicroGate}",
-            $"--Ro3Emu:GameGatePort={ports.GameGate}",
-        }.Concat(extraArgs)) start.ArgumentList.Add(a);
+        foreach (var a in ServerArgs(dataDir, ports).Concat(extraArgs)) start.ArgumentList.Add(a);
         foreach (var (k, v) in environment) start.Environment[k] = v;
         // The bundled server is self-contained; never let a machine-wide .NET or a developer variable steer it.
         start.Environment.Remove("DOTNET_ROOT");

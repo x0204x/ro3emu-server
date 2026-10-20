@@ -295,10 +295,16 @@ public sealed class GuildChallengeService : IGameTicker
         {
             var scenes = Values(cfg, "_kDungeonId");
             if (state.Stage > 0 && state.Stage <= scenes.Length)
-                info.DungeonNtf = new DungeonCallMemberNtf { Difficulty = state.Difficulty, SceneEntryID = scenes[state.Stage - 1],
+                info.DungeonNtf = new DungeonCallMemberNtf
+                {
+                    Difficulty = state.Difficulty, SceneEntryID = scenes[state.Stage - 1],
                     Endtime = schedule.CurrentOrNext(Activity)!.End, UId = Live(g.Id)?.Room.Id ?? 0,
-                    CallData = new SceneCallData { GuildChallengeData = new GuildChallengeCallData
-                    { ConfigId = (int)GameData.Int(cfg, "_iGuildChallengeId") } } };
+                    CallData = new SceneCallData
+                    {
+                        GuildChallengeData = new GuildChallengeCallData
+                        { ConfigId = (int)GameData.Int(cfg, "_iGuildChallengeId") }
+                    }
+                };
         }
         return info;
     }
@@ -402,9 +408,12 @@ public sealed class GuildChallengeService : IGameTicker
             if (code == 0 && plan == null) code = ErrorCodes.DungeonDataMissing;
             await s.SendGameAsync(DungeonService.Enter, new EnterDungeonRsp { Result = code });
             if (code != 0) return true;
-            var run = live?.GuildChallenge ?? new Run { Owner = this, Guild = g!.Id, Cycle = state!.Cycle,
+            var run = live?.GuildChallenge ?? new Run
+            {
+                Owner = this, Guild = g!.Id, Cycle = state!.Cycle,
                 Challenge = (int)GameData.Int(c!.Value, "_iGuildChallengeId"), Difficulty = state.Difficulty, Stage = state.Stage,
-                End = schedule.CurrentOrNext(Activity)!.End };
+                End = schedule.CurrentOrNext(Activity)!.End
+            };
             var attempt = await dungeons.EnterGuildChallengeAsync(s, plan!, run, live);
             if (attempt != null) runs[g!.Id] = attempt;
             await BroadcastAsync(g!.Id);
@@ -462,10 +471,13 @@ public sealed class GuildChallengeService : IGameTicker
                         // prior stage's best time (inferred) so reward replays do not add duplicate time.
                         int total = elapsed + store.Clears(run.Guild, a.SeasonId, run.Cycle, run.Difficulty)
                             .Where(c => c.Stage < run.Stage).GroupBy(c => c.Stage).Sum(g => g.Min(c => c.StageTimeMs));
-                        clear = new Clear { Id = id, Guild = run.Guild, Cycle = run.Cycle, Season = a.SeasonId,
+                        clear = new Clear
+                        {
+                            Id = id, Guild = run.Guild, Cycle = run.Cycle, Season = a.SeasonId,
                             PlayBook = a.PlayBook, Challenge = run.Challenge, Difficulty = run.Difficulty, Stage = run.Stage,
                             OpenDay = Math.Max(1, (clock.GetLocalNow().Date - seasons.Start.Date).Days + 1),
-                            StageTimeMs = elapsed, PassTimeMs = total };
+                            StageTimeMs = elapsed, PassTimeMs = total
+                        };
                         var stage = data.Table("GuildChallengeRewardConfig").Values.Single(r =>
                             GameData.Int(r, "_iGuildChallengeId") == run.Challenge && GameData.Int(r, "_iStage") == run.Stage);
                         var prior = store.Clears()
@@ -507,9 +519,15 @@ public sealed class GuildChallengeService : IGameTicker
             foreach (var s in present)
             {
                 s.Attack = null;
-                var result = new DungeonResNotify { DungeonEntry = a.Plan.SceneEntry, Res = (DungeonRes)(success ? 1 : 2),
-                    Data = new DungeonResData { GuildChallengeData = new GuildChallengeResData
-                    { PassDifficultTime = clear?.PassTimeMs ?? 0, IsNew = clear?.NewRecord ?? false } } };
+                var result = new DungeonResNotify
+                {
+                    DungeonEntry = a.Plan.SceneEntry, Res = (DungeonRes)(success ? 1 : 2),
+                    Data = new DungeonResData
+                    {
+                        GuildChallengeData = new GuildChallengeResData
+                        { PassDifficultTime = clear?.PassTimeMs ?? 0, IsNew = clear?.NewRecord ?? false }
+                    }
+                };
                 if (clear != null)
                 {
                     if (clear.Delivered.Contains(s.Role!.Id))

@@ -15,19 +15,29 @@ public sealed partial class TerritoryWarsService
     {
         var scene = new SceneStatisticsInfo { SceneId = r.StatisticsId, DungeonId = (int)r.Scene };
         foreach (var p in r.Players.Values)
-            scene.RoleStatistics[p.Id] = new RoleStatisticsInfo {
-                BaseInfo = new StatisticsRoleBaseInfo { Id = p.Id, Area = 1, Name = p.Name, Job = p.Job, GuildId = p.Guild,
-                    RewardData = new StatisticsAwardCheckData { PlayerLevel = p.Level, Job = p.Job } },
-                TotalDamage = p.Damage, TotalBeDamage = p.Taken, TotalCure = p.Healed, Totalscore = p.Score };
+            scene.RoleStatistics[p.Id] = new RoleStatisticsInfo
+            {
+                BaseInfo = new StatisticsRoleBaseInfo
+                {
+                    Id = p.Id, Area = 1, Name = p.Name, Job = p.Job, GuildId = p.Guild,
+                    RewardData = new StatisticsAwardCheckData { PlayerLevel = p.Level, Job = p.Job }
+                },
+                TotalDamage = p.Damage, TotalBeDamage = p.Taken, TotalCure = p.Healed, Totalscore = p.Score
+            };
         foreach (long guild in r.Guilds)
             if (guildStore.Get(guild) is { } g)
-                scene.GuildStatistics[guild] = new GuildStatisticsInfo { GuildId = guild, GuildName = g.Name,
-                    GuildIcon = new GuildHeadIcon { IconType = g.Icon, BackgroundType = g.Background } };
+                scene.GuildStatistics[guild] = new GuildStatisticsInfo
+                {
+                    GuildId = guild, GuildName = g.Name,
+                    GuildIcon = new GuildHeadIcon { IconType = g.Icon, BackgroundType = g.Background }
+                };
         return scene;
     }
-    private DungeonStatisticsInfoWithDungeon StatisticsReport(BattleState r) => new() {
+    private DungeonStatisticsInfoWithDungeon StatisticsReport(BattleState r) => new()
+    {
         StatisticsId = r.StatisticsId, DungeonId = (int)r.Scene, StatisticsTime = (r.Settled ? r.End : clock.Now) * 1000,
-        SceneStatistics = { [r.StatisticsId] = Statistics(r) } };
+        SceneStatistics = { [r.StatisticsId] = Statistics(r) }
+    };
 
     /// <summary>
     /// The last crystal owner wins the capital/siege (GVGConfig help). Point-war score ranks capture/hold work;
@@ -46,9 +56,12 @@ public sealed partial class TerritoryWarsService
         AssignTerritoryOwner(next, r.Zone, winner);
         // MG_Dungeon cause enums: this settlement is triggered by the scheduled stage timeout;
         // LC_DAL_TerritoryWars determines each recipient's victory from winEntityId, not the round number.
-        var result = new DungeonResultInfo { FirstResultType = 1, SecondResultType = 1, Result = winner == 0 ? 0 : 1,
+        var result = new DungeonResultInfo
+        {
+            FirstResultType = 1, SecondResultType = 1, Result = winner == 0 ? 0 : 1,
             WinEntityId = winner, StatisticsId = r.StatisticsId, DungeonId = (int)r.Scene, StatisticsTime = r.End * 1000,
-            DungeonStartTimestamp = r.Start * 1000, SceneStatistics = { [r.StatisticsId] = Statistics(r) } };
+            DungeonStartTimestamp = r.Start * 1000, SceneStatistics = { [r.StatisticsId] = Statistics(r) }
+        };
         r.Result = result.ToByteArray();
         if (!next.Results.TryGetValue(r.Zone, out var list)) next.Results[r.Zone] = list = new();
         list.Add(r.Result);
@@ -154,9 +167,11 @@ public sealed partial class TerritoryWarsService
         else if (id == 30110)
         {
             var msg = new DungeonStatisticsRes(); var map = new DungeonStatisticsInfo { DungeonMapId = b.State.Scene };
-            foreach (var p in b.State.Players.Values) map.DungeonRolesInfo.Add(new DungeonRoleInfo {
+            foreach (var p in b.State.Players.Values) map.DungeonRolesInfo.Add(new DungeonRoleInfo
+            {
                 RoleBase = new ObjScoreBaseInfo { Id = p.Id, Name = p.Name, Job = p.Job, Area = 1 }, TotalDamage = p.Damage,
-                TotalBeDamage = p.Taken, TotalCure = p.Healed, Totalscore = p.Score });
+                TotalBeDamage = p.Taken, TotalCure = p.Healed, Totalscore = p.Score
+            });
             msg.DungeonRolesInfo[b.State.StatisticsId] = map; await Send(s, id, msg);
         }
         else return false;
@@ -180,7 +195,8 @@ public sealed partial class TerritoryWarsService
         role.Donated = checked(role.Donated + count); role.Donations[clock.Now] = checked(role.Donations.GetValueOrDefault(clock.Now) + count);
         next.Donations[s.Role.Id] = role.Donated;
         guild.Materials = checked(guild.Materials + count); // carried supply -> guild material 126, one-to-one (inferred).
-        if (await character.ExchangeLockedAsync(s, [(133, count)], [], sync: false, popup: false, persist: tx => {
+        if (await character.ExchangeLockedAsync(s, [(133, count)], [], sync: false, popup: false, persist: tx =>
+        {
             guildStore.EnlistSave(guild, tx); SaveRole(s.Role.Id, role, tx); Save(next, tx);
             tx.WithEventEconomy(new EventEconomyMutation(EventEconomy.Catalog(data), Guid.NewGuid().ToString("N"),
                 s.Account!, s.Role.Id, "event/territory-submit-drop",

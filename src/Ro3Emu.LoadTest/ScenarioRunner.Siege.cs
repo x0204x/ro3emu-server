@@ -35,14 +35,20 @@ public sealed partial class ScenarioRunner
             var leader = leaders[team];
             using var created = leader.Bot.Inbox.Expect(e => e.IsGame(GuildService.Create));
             using var full = leader.Bot.Inbox.Expect(e => e.IsGame(GuildService.Full) && GuildFullInfoNtf.Parser.ParseFrom(e.Body).Guid > 0);
-            await leader.Bot.SendGameAsync(GuildService.Create, new GuildCreateReq { Name = $"S5{(char)('A' + team)}{_prefix[2..6]}",
-                Icon = new GuildHeadIcon { BackgroundType = 100101, IconType = 200101 } });
+            await leader.Bot.SendGameAsync(GuildService.Create, new GuildCreateReq
+            {
+                Name = $"S5{(char)('A' + team)}{_prefix[2..6]}",
+                Icon = new GuildHeadIcon { BackgroundType = 100101, IconType = 200101 }
+            });
             int result = GuildCreateResp.Parser.ParseFrom((await created.WaitAsync(TimeSpan.FromSeconds(15), ct)).Body).Result;
             if (result != 0) throw new InvalidOperationException($"S5 guild create refused {result}");
             guilds[team] = GuildFullInfoNtf.Parser.ParseFrom((await full.WaitAsync(TimeSpan.FromSeconds(15), ct)).Body).Guid;
             using var edited = leader.Bot.Inbox.Expect(e => e.IsGame(GuildService.Edit) && GuildEditResp.Parser.ParseFrom(e.Body).Tp == 10);
-            await leader.Bot.SendGameAsync(GuildService.Edit, new GuildEditReq { Tp = (GuildEditReq.Types.EditType)10,
-                Announce = "S5", JoinLevelLimit = 0, AutoAcceptApply = true });
+            await leader.Bot.SendGameAsync(GuildService.Edit, new GuildEditReq
+            {
+                Tp = (GuildEditReq.Types.EditType)10,
+                Announce = "S5", JoinLevelLimit = 0, AutoAcceptApply = true
+            });
             result = GuildEditResp.Parser.ParseFrom((await edited.WaitAsync(TimeSpan.FromSeconds(15), ct)).Body).Result;
             if (result != 0) throw new InvalidOperationException($"S5 guild auto-accept refused {result}");
         }
@@ -72,8 +78,11 @@ public sealed partial class ScenarioRunner
                     using var switchScene = actor.Bot.Inbox.Expect(e => e.IsGame(MsgId.SwitchSceneLine));
                     using var self = actor.Bot.Inbox.Expect(e => e.IsGame(MsgId.EntitySelf));
                     using var end = actor.Bot.Inbox.Expect(e => e.IsGame(MsgId.SelfInfoEndFrameNotify));
-                    await actor.Bot.SendGameAsync(30400, new EnterDungeonReq { SceneEntry = SiegeScene,
-                        InitData = new DungeonInitData { SiegeInitData = new SiegeInitData { CityId = SiegeCity } } });
+                    await actor.Bot.SendGameAsync(30400, new EnterDungeonReq
+                    {
+                        SceneEntry = SiegeScene,
+                        InitData = new DungeonInitData { SiegeInitData = new SiegeInitData { CityId = SiegeCity } }
+                    });
                     int result = EnterDungeonRsp.Parser.ParseFrom((await reply.WaitAsync(TimeSpan.FromSeconds(30), ct)).Body).Result;
                     if (result != 0) throw new InvalidOperationException($"siege entry refused {result}");
                     var scene = SwitchSceneLineResp.Parser.ParseFrom((await switchScene.WaitAsync(TimeSpan.FromSeconds(30), ct)).Body);

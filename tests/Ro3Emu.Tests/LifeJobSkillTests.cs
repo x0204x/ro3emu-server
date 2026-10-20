@@ -75,7 +75,7 @@ public sealed class LifeJobSkillTests : IAsyncLifetime
             var offers = await OnLoop(s => Task.FromResult(s.LifeJob!.LifeJobInfoMap[1].TitleInfo.JobTitleDetail[1].OptionalSkills.Values.ToArray()));
             Assert.Equal(3, offers.Length); Assert.Contains(1000, offers);
             await b.SendGameAsync(LifeJobService.ChooseTitle, new ChooseTitlePointReq
-                { LifejobId = (LifeJobType)1, Level = 1, TitlePoint = 1000 });
+            { LifejobId = (LifeJobType)1, Level = 1, TitlePoint = 1000 });
             Assert.Equal(0, (await Next(b, LifeJobService.ChooseTitle, ChooseTitlePointResp.Parser, _ => true)).Result);
 
             var quote = await Next(b, LifeJobService.HealthNotify, GetHealthCostNtf.Parser,

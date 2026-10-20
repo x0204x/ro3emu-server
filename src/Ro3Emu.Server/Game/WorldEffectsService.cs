@@ -269,10 +269,18 @@ public sealed class WorldEffectsService
         if (!ValidScene(s) || args.Length != 5) throw new ArgumentException("force field");
         uint id = U(args[0]); float radius = F(args[1]), direction = F(args[2]), speed = F(args[3]); int seconds = I(args[4]);
         if (!Angle(direction) || seconds is < 1 or > 300) throw new ArgumentException("direction or lifetime");
-        var field = new ForceFieldInfo { Uuid = id, CustomField = new CustomForceField
-        { FieldType = ForceFieldType.Direction, ForceDir = direction, ForceSpeed = speed,
-            ForceRangeInfo = new ShapeRange { Type = RangeType.Circle,
-                CircleRange = new CircleShape { Center = s.Position.Clone(), Radius = radius } } } };
+        var field = new ForceFieldInfo
+        {
+            Uuid = id, CustomField = new CustomForceField
+            {
+                FieldType = ForceFieldType.Direction, ForceDir = direction, ForceSpeed = speed,
+                ForceRangeInfo = new ShapeRange
+                {
+                    Type = RangeType.Circle,
+                    CircleRange = new CircleShape { Center = s.Position.Clone(), Radius = radius }
+                }
+            }
+        };
         if (!await PutForceFieldAsync(s.WorldScene, field, TimeSpan.FromSeconds(seconds))) throw new ArgumentException("field shape or duplicate id");
         await GmCommands.ReplyAsync(s, "Force field active.");
     }

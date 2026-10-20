@@ -73,10 +73,16 @@ public sealed class RoleItemCaptureTests : IDisposable
     public void FinancialMailboxAppendsReadCurrentStateAndDeduplicatesSourceWithinOneTransaction()
     {
         long role = Role("MailCapture");
-        var first = new MailService.Letter { DeliveryKey = "source:one", CreatedTime = 10,
-            TemplateId = 1040, Attachments = [new MailService.Attachment(1, 5)] };
-        var second = new MailService.Letter { DeliveryKey = "source:two", CreatedTime = 11,
-            TemplateId = 1040, Attachments = [new MailService.Attachment(1, 7)] };
+        var first = new MailService.Letter
+        {
+            DeliveryKey = "source:one", CreatedTime = 10,
+            TemplateId = 1040, Attachments = [new MailService.Attachment(1, 5)]
+        };
+        var second = new MailService.Letter
+        {
+            DeliveryKey = "source:two", CreatedTime = 11,
+            TemplateId = 1040, Attachments = [new MailService.Attachment(1, 7)]
+        };
         var builder = new RoleItemPlanBuilder(accounts);
         builder.Add(new FinancialMailAppendPlan(role, "source:one", first, 100));
         builder.Add(new FinancialMailAppendPlan(role, "source:one", first, 101));

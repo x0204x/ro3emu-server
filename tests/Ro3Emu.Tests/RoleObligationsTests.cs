@@ -86,8 +86,11 @@ public sealed class RoleObligationsTests : IAsyncLifetime
 
     private static CasualBattleObligationRow Casual(long match, long role, int score = 40) =>
         new(CasualBattleService.SourceKey(match, role), match, role, JsonSerializer.SerializeToUtf8Bytes(
-            new CasualBattleService.Payout { MatchId = match, RoleId = role, Outcome = 1, Won = true, MmrDelta = 5,
-                Stats = new TimedBattleService.CasualStats { PersonalScore = score } }));
+            new CasualBattleService.Payout
+            {
+                MatchId = match, RoleId = role, Outcome = 1, Won = true, MmrDelta = 5,
+                Stats = new TimedBattleService.CasualStats { PersonalScore = score }
+            }));
 
     private long Rows(string table, int delivered)
     {

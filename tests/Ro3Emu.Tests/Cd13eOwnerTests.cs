@@ -70,7 +70,7 @@ public sealed class Cd13eOwnerTests : IAsyncLifetime
     private long Scalar(string sql)
     {
         using var db = new SqliteConnection(new SqliteConnectionStringBuilder
-            { DataSource = Path.Combine(directory, "ro3emu.db"), Mode = SqliteOpenMode.ReadOnly }.ToString());
+        { DataSource = Path.Combine(directory, "ro3emu.db"), Mode = SqliteOpenMode.ReadOnly }.ToString());
         db.Open(); using var command = db.CreateCommand(); command.CommandText = sql;
         return Convert.ToInt64(command.ExecuteScalar());
     }

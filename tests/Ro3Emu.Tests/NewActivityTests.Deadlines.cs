@@ -96,7 +96,7 @@ public sealed partial class NewActivityTests
                 new MonthCardInfo { MonthCardId = id, ExpireTs = expiry, LastDays = 5, DayAward = true };
             session.ActivityRuntime.MonthCards[id] = new MonthCardRuntime { ClaimedDay = today };
             session.ActivityRuntime.AdventureTreasure = new AdventureTreasureCursor
-                { PointId = 1, GroupId = 1, ItemId = 1112001, Began = clock.GetUtcNow().ToUnixTimeSeconds() - 10799 };
+            { PointId = 1, GroupId = 1, ItemId = 1112001, Began = clock.GetUtcNow().ToUnixTimeSeconds() - 10799 };
             Service<RoleStore>().SaveNewActivities(session.Role!.Id, session.NewActivities.ToByteArray());
             Service<RoleStore>().SaveActivityRuntime(session.Role.Id,
                 System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(session.ActivityRuntime));
@@ -171,8 +171,11 @@ public sealed partial class NewActivityTests
         await OnLoop(() =>
         {
             session.NewActivities!.ActivityInfo[199].ActivityParam.MonthCard.Infos[id] =
-                new MonthCardInfo { MonthCardId = id, ExpireTs = clock.GetUtcNow().ToUnixTimeSeconds() - 1,
-                    LastDays = 4, DayAward = false };
+                new MonthCardInfo
+                {
+                    MonthCardId = id, ExpireTs = clock.GetUtcNow().ToUnixTimeSeconds() - 1,
+                    LastDays = 4, DayAward = false
+                };
             Service<RoleStore>().SaveNewActivities(session.Role!.Id, session.NewActivities.ToByteArray());
             Service<NewActivityService>().ProjectionChanged.Add(s =>
             {
@@ -284,7 +287,7 @@ public sealed partial class NewActivityTests
             Assert.True(RefreshIdle());
             var pass = session.NewActivities!.ActivityInfo[200];
             session.ActivityRuntime.PassProgress[200] = new PassProgressRuntime
-                { Initialized = true, LastBalance = -1, ActivityInstance = pass.ActivityInstance };
+            { Initialized = true, LastBalance = -1, ActivityInstance = pass.ActivityInstance };
             session.NewActivities.ActivityInfo[199].ActivityParam.MonthCard.Infos[cardId] =
                 new MonthCardInfo { MonthCardId = cardId, ExpireTs = expiry, LastDays = 5, DayAward = true };
             session.ActivityRuntime.MonthCards[cardId] = new MonthCardRuntime { ClaimedDay = today };

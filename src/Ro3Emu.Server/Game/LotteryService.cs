@@ -240,8 +240,11 @@ public sealed class LotteryService
         var role = session.Role;
         if (role == null)
         {
-            await session.SendGameAsync(DrawRequest, new LotteryResp { Result = ErrorCodes.FeatureUnavailable,
-                Type = request.Type, PoolData = new LotteryPoolData { PoolId = request.PoolId } });
+            await session.SendGameAsync(DrawRequest, new LotteryResp
+            {
+                Result = ErrorCodes.FeatureUnavailable,
+                Type = request.Type, PoolData = new LotteryPoolData { PoolId = request.PoolId }
+            });
             return;
         }
         var attachment = session.Attachment;
@@ -264,8 +267,11 @@ public sealed class LotteryService
             var source = session.Lottery ?? new DBLotteryData();
             long day = activityClock.Day(clock.GetUtcNow().ToUnixTimeSeconds());
             var next = Project(session, source, session.LotteryDay != day);
-            var response = new LotteryResp { Type = request.Type,
-                PoolData = next.LotteryPool.GetValueOrDefault(request.PoolId)?.Clone() ?? new LotteryPoolData { PoolId = request.PoolId } };
+            var response = new LotteryResp
+            {
+                Type = request.Type,
+                PoolData = next.LotteryPool.GetValueOrDefault(request.PoolId)?.Clone() ?? new LotteryPoolData { PoolId = request.PoolId }
+            };
             int code = 0;
             if (row == null || request.PoolId <= 0) code = ErrorCodes.Parameter;
             else if (!response.PoolData.IsOpen) code = ErrorCodes.ActivityClosed;
@@ -304,8 +310,11 @@ public sealed class LotteryService
                     pity.PityCount = hit ? 0 : pity.PityCount + 1;
                     pity.MustCount = guarantee;
                     if (forced) pity.HitPityCount++;
-                    var result = new LotteryItemData { ItemId = outcome.Id, ItemCount = outcome.Count,
-                        IsPet = outcome.Kind == 1, PoolId = request.PoolId };
+                    var result = new LotteryItemData
+                    {
+                        ItemId = outcome.Id, ItemCount = outcome.Count,
+                        IsPet = outcome.Kind == 1, PoolId = request.PoolId
+                    };
                     if (outcome.Kind == 1)
                     {
                         if (!pets.TryStageLotteryPet(petState, outcome.Id, out var broken)) { code = ErrorCodes.PetNoConfig; break; }
@@ -343,8 +352,11 @@ public sealed class LotteryService
                     }).ToArray();
                     var economy = petDraw ? null : EventEconomy.ForRole(data, session, "lottery-draw", sourceKey,
                         [(ticket, (long)count)], goods,
-                        new { request.PoolId, Type = (int)request.Type, Day = day, Results = resolved,
-                            Lottery = Convert.ToBase64String(saved), Pets = Convert.ToBase64String(petBytes) });
+                        new
+                        {
+                            request.PoolId, Type = (int)request.Type, Day = day, Results = resolved,
+                            Lottery = Convert.ToBase64String(saved), Pets = Convert.ToBase64String(petBytes)
+                        });
                     if (!await character.ApplyAwardAsync(session, new AwardPlan(0, 0, goods),
                             costs: [(ticket, count)], persist: transaction =>
                             {

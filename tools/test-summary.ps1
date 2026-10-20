@@ -5,7 +5,7 @@ param(
 
 # One line per .trx file (named after its project, e.g. LogFileName=server.trx): how many tests executed, how many were
 # skipped, and how many of the skipped ones need the game data exported from a client (ClientDataFact, see
-# docs/testing.md). In GitHub Actions the lines also go to the job summary.
+# docs/guide/testing.md). In GitHub Actions the lines also go to the job summary.
 $ErrorActionPreference = 'Stop'
 $clientData = 'Needs the game data exported from your own client'
 if (-not (Test-Path -LiteralPath $Results)) { Write-Output "No test results in $Results"; return }

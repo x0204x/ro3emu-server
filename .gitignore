@@ -27,3 +27,6 @@ tools/unluac-batch/*.class
 /downloads/
 /RO3Emu.settings.json
 /RO3Emu-diagnostics.zip
+
+# Temporary solution of tools/AnalyzerBaseline
+/.analyzer-baseline.slnx

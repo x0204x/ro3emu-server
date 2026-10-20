@@ -30,9 +30,12 @@ public sealed partial class GuildService
             await chat.PublishRecruitmentAsync(s, req.Content, guild?.Id ?? 0,
                 guild?.Status == (int)GuildStatus.PreCreate, guild?.Members.Count ?? 0);
         }
-        await s.SendGameAsync(Recruit, new GuildRecruitResp { Result = code, Content = req.Content,
+        await s.SendGameAsync(Recruit, new GuildRecruitResp
+        {
+            Result = code, Content = req.Content,
             NextTime = code == 0 ? now / 1000 + delay : previous / 1000 + delay,
-            IsNormal = guild?.Status == (int)GuildStatus.Normal });
+            IsNormal = guild?.Status == (int)GuildStatus.Normal
+        });
     }
 
     /// <summary>32215: only the pre-create founder can cancel; all helper membership indices are released.</summary>
@@ -92,8 +95,10 @@ public sealed partial class GuildService
             foreach (var peer in guild.Members.Values)
                 if (Online(peer.RoleId) is { } online)
                     await online.SendGameAsync(HelperChange, new GuildCreateHelperMemberChangeNtf
-                    { Status = GuildCreateHelperMemberChangeNtf.Types.ChangeType.Delete,
-                        Info = new GuildCreateHelperInfo { PlayerID = member.RoleId } });
+                    {
+                        Status = GuildCreateHelperMemberChangeNtf.Types.ChangeType.Delete,
+                        Info = new GuildCreateHelperInfo { PlayerID = member.RoleId }
+                    });
             await ClearMember(s, guild);
             return;
         }

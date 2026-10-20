@@ -242,7 +242,7 @@ public sealed class MailTests : MailTestsHost
         await Assert.ThrowsAsync<ArgumentException>(() => Mail.SendRawAsync(role, "Invalid", "Body", [new(999999999, 1)]));
         await Assert.ThrowsAsync<ArgumentException>(() => Mail.SendTemplateAsync(role, 1020, [new(2, 0)]));
         Assert.False(Ok(await alice.MicroAsync("MailService", "getUserMailList", new()
-            { ["Uid"] = role.ToString(), ["MailType"] = 1, ["Start"] = "bad", ["Limit"] = 150 })));
+        { ["Uid"] = role.ToString(), ["MailType"] = 1, ["Start"] = "bad", ["Limit"] = 150 })));
         Assert.Empty(await Letters(alice, role)); // bad input does not close the micro connection
         Assert.Empty((object?[])(await List(alice, role, start: 300))["MailList"]!); // unsigned 16-bit wire value
 
@@ -252,7 +252,7 @@ public sealed class MailTests : MailTestsHost
         Assert.Empty(refused.MailUid);
         Assert.False((bool)Params(Assert.Single(await Letters(alice, role)))["giftReceived"]!);
         Assert.False(Ok(await alice.MicroAsync("MailService", "deleteMail", new()
-            { ["Uid"] = role.ToString(), ["MailIds"] = new object?[] { id, 123 } })));
+        { ["Uid"] = role.ToString(), ["MailIds"] = new object?[] { id, 123 } })));
         Assert.Single(await Letters(alice, role));
 
         var session = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == role);

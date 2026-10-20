@@ -87,8 +87,11 @@ public sealed partial class LifeJobService
                 slots[(int)level].ExtraInfo = old.ExtraInfo?.Clone();
                 var cost = Costs(row, "_kRefreshcost");
                 if (await CommitAsync(s, "cd13c/life-title-refresh", next, s.Restrictions!.Clone(), Copy(s.LifeRuntime), cost, [],
-                    result: new { Job = job, Slot = level, Extra = extra,
-                        Offered = slots[(int)level].OptionalSkills.Keys.ToArray() }) == null) error = character.ShortageOf(s, cost);
+                    result: new
+                    {
+                        Job = job, Slot = level, Extra = extra,
+                        Offered = slots[(int)level].OptionalSkills.Keys.ToArray()
+                    }) == null) error = character.ShortageOf(s, cost);
             }
         }
         if (extra) await s.SendGameAsync(RefreshTitleEx, new RefreshTitlePointExResp { Result = error });

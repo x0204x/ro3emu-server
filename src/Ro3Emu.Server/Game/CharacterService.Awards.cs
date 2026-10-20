@@ -199,10 +199,13 @@ public sealed partial class CharacterService
                 while (left > 0)
                 {
                     int stack = Math.Min(left, stackLimit);
-                    var item = new InvItem { Entry = grant.Entry, Stack = stack, Pack = pack,
+                    var item = new InvItem
+                    {
+                        Entry = grant.Entry, Stack = stack, Pack = pack,
                         Sort = items.Where(i => i.Grid == 0 && i.Pack == pack).Select(i => i.Sort).DefaultIfEmpty(0).Max() + 1,
                         BindType = grant.BindType, BindExpire = grant.ExpireTimeStamp,
-                        Attrs = TotemAttrFactory?.Invoke(grant.Entry) ?? EmblemAttrFactory?.Invoke(grant.Entry) ?? RollAttrs(grant.Entry) };
+                        Attrs = TotemAttrFactory?.Invoke(grant.Entry) ?? EmblemAttrFactory?.Invoke(grant.Entry) ?? RollAttrs(grant.Entry)
+                    };
                     items.Add(item);
                     created.Add(item);
                     received.Add(item);
@@ -216,9 +219,12 @@ public sealed partial class CharacterService
                     continue;
                 }
             }
-            notification.Rewards.Add(ItemInfo(new InvItem { Entry = grant.Entry, Stack = grant.Count,
+            notification.Rewards.Add(ItemInfo(new InvItem
+            {
+                Entry = grant.Entry, Stack = grant.Count,
                 BindType = grant.BindType, ExpireTimeStamp = grant.ExpireTimeStamp,
-                Attrs = items.LastOrDefault(i => i.Entry == grant.Entry)?.Attrs }));
+                Attrs = items.LastOrDefault(i => i.Entry == grant.Entry)?.Attrs
+            }));
         }
         // Quest award auto returns are staged alongside the source grant, costs, tasks and daily state.
         // Other ApplyAward callers have no quest delivery boundary and retain their standalone behavior.
@@ -382,8 +388,11 @@ public sealed partial class CharacterService
 
     private static RoleProgress CloneProgress(RoleProgress source)
     {
-        var result = new RoleProgress { SourceRevision = source.SourceRevision, Career = source.Career, Level = source.Level, JobLevel = source.JobLevel,
-            Exp = source.Exp, JobExp = source.JobExp, BonusPoints = source.BonusPoints, StarterKit = source.StarterKit };
+        var result = new RoleProgress
+        {
+            SourceRevision = source.SourceRevision, Career = source.Career, Level = source.Level, JobLevel = source.JobLevel,
+            Exp = source.Exp, JobExp = source.JobExp, BonusPoints = source.BonusPoints, StarterKit = source.StarterKit
+        };
         Array.Copy(source.Stats, result.Stats, source.Stats.Length);
         foreach (var (key, value) in source.Currency) result.Currency[key] = value;
         foreach (var (key, value) in source.Skills) result.Skills[key] = value;
@@ -444,8 +453,11 @@ public sealed partial class CharacterService
         while (count > 0)
         {
             int stack = Math.Min(count, stackLimit);
-            var item = new InvItem { Entry = entry, Stack = stack, Pack = pack, Sort = NextSort(session, pack),
-                Attrs = TotemAttrFactory?.Invoke(entry) ?? EmblemAttrFactory?.Invoke(entry) ?? RollAttrs(entry), BindType = bind };
+            var item = new InvItem
+            {
+                Entry = entry, Stack = stack, Pack = pack, Sort = NextSort(session, pack),
+                Attrs = TotemAttrFactory?.Invoke(entry) ?? EmblemAttrFactory?.Invoke(entry) ?? RollAttrs(entry), BindType = bind
+            };
             if (persist) itemStore.Insert(session.Role!.Id, item);
             session.Items.Add(item);
             changed.Add(item);

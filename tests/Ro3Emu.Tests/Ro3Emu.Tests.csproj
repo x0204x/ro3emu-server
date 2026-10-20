@@ -8,12 +8,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="coverlet.collector" Version="6.0.4" />
-    <PackageReference Include="Google.Protobuf" Version="3.36.2" />
-    <PackageReference Include="MessagePack" Version="3.1.11" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
-    <PackageReference Include="xunit" Version="2.9.3" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="MessagePack" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
 
   <ItemGroup>
@@ -24,10 +24,11 @@
     <!-- Client hooks code with no Unity dependency, compiled here so its logic can be tested (the hooks project itself
          builds only against a client's managed DLLs). -->
     <Compile Include="..\..\src\Ro3Emu.ClientHooks\VoiceLinkState.cs" Link="ClientHooks\VoiceLinkState.cs" />
+    <Compile Include="..\..\src\Ro3Emu.ClientHooks\VoiceOffHint.cs" Link="ClientHooks\VoiceOffHint.cs" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- The synthetic game data (SyntheticData.Dir, docs/testing.md): hand-written, every value invented. -->
+    <!-- The synthetic game data (SyntheticData.Dir, docs/guide/testing.md): hand-written, every value invented. -->
     <None Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

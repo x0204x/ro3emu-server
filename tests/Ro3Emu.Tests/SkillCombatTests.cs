@@ -668,10 +668,16 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         var nav = app.Services.GetRequiredService<WorldData>().Map(Session("alice").SceneEntry)!.Nav!;
         var approach = Enumerable.Range(0, 32).Select(i => i * MathF.Tau / 32)
             .Select(angle => (
-                Far: new Vec3 { X = start.X + 18.7f * MathF.Cos(angle), Y = start.Y,
-                    Z = start.Z + 18.7f * MathF.Sin(angle) },
-                Near: new Vec3 { X = start.X + 18f * MathF.Cos(angle), Y = start.Y,
-                    Z = start.Z + 18f * MathF.Sin(angle) }))
+                Far: new Vec3
+                {
+                    X = start.X + 18.7f * MathF.Cos(angle), Y = start.Y,
+                    Z = start.Z + 18.7f * MathF.Sin(angle)
+                },
+                Near: new Vec3
+                {
+                    X = start.X + 18f * MathF.Cos(angle), Y = start.Y,
+                    Z = start.Z + 18f * MathF.Sin(angle)
+                }))
             .First(p => nav.IsWalkable(p.Far.X, p.Far.Y, p.Far.Z)
                 && nav.IsWalkable(p.Near.X, p.Near.Y, p.Near.Z)
                 && nav.CanWalk(start.X, start.Y, start.Z, p.Far.X, p.Far.Z));

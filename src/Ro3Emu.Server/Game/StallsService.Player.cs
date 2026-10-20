@@ -258,8 +258,11 @@ public sealed partial class StallsService
                 row.Gains[offer.Currency] = checked(row.Gains.GetValueOrDefault(offer.Currency) + net);
                 meta.WeekMoney.Value = checked(meta.WeekMoney.Value + gross);
                 row.TaxRate = TaxRate(meta.WeekMoney.Value);
-                var record = new StallsRecord { ItemEntryID = bought.Entry, ItemNum = req.Num, Buytime = Now, Tradetax = tax,
-                    Gainmoney = net, Areaid = s.Role.Area, Buyerid = s.Role.Id, Buyername = s.Role.Name, CoinEntryID = offer.Currency };
+                var record = new StallsRecord
+                {
+                    ItemEntryID = bought.Entry, ItemNum = req.Num, Buytime = Now, Tradetax = tax,
+                    Gainmoney = net, Areaid = s.Role.Area, Buyerid = s.Role.Id, Buyername = s.Role.Name, CoinEntryID = offer.Currency
+                };
                 row.Records.Insert(0, record.ToByteArray());
                 if (row.Records.Count > Param("StallsLogsNumMax", 100)) row.Records.RemoveAt(row.Records.Count - 1);
                 if (offer.Item.Stack == 0) row.Stock.Remove(offer);
@@ -281,8 +284,11 @@ public sealed partial class StallsService
     {
         StallRow? row = null; DBStallsInfo? meta = null;
         await market.RunAsync(s, tx => { row = Own(tx, s); meta = Metadata(tx, s.Role!.Id); return 0; });
-        await s.SendGameAsync(Info, new PlayerStallsInfoResp { CurrentStallsID = Active(row) ? row!.Owner : 0,
-            Info = Active(row) ? SellerView(row!) : null, CurTax = meta!.CurTax.Clone() });
+        await s.SendGameAsync(Info, new PlayerStallsInfoResp
+        {
+            CurrentStallsID = Active(row) ? row!.Owner : 0,
+            Info = Active(row) ? SellerView(row!) : null, CurTax = meta!.CurTax.Clone()
+        });
     }
 
     private async Task ViewAsync(GameSession s, PlayerStallsSyncBuyerStallsInfoReq req)
@@ -298,7 +304,7 @@ public sealed partial class StallsService
         });
         if (code == 0) { s.ViewedStall = row!.Owner; s.ViewedSystemStall = row.SystemId; }
         await s.SendGameAsync(View, new PlayerStallsSyncBuyerStallsInfoResp
-            { Result = code, Info = code == 0 ? BuyerView(row!, row!.SystemId > 0 ? s.LineNumber : 0) : null });
+        { Result = code, Info = code == 0 ? BuyerView(row!, row!.SystemId > 0 ? s.LineNumber : 0) : null });
     }
 
     private void Close(MarketTransaction tx, StallRow row, int mail)

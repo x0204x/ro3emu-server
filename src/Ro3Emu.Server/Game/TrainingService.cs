@@ -131,8 +131,11 @@ public sealed class TrainingService : IGameTicker
         var room = instances.Create(map, [s]);
         var old = attempts.GetValueOrDefault(s);
         if (!await instances.EnterAsync(room, s, 3)) return;
-        attempts[s] = new Attempt { Room = room, Challenge = map == 2100011,
-            Race = old?.Race ?? 2, Element = old?.Element ?? 1, Size = old?.Size ?? 2 };
+        attempts[s] = new Attempt
+        {
+            Room = room, Challenge = map == 2100011,
+            Race = old?.Race ?? 2, Element = old?.Element ?? 1, Size = old?.Size ?? 2
+        };
     }
 
     private async Task LoadedAsync(GameSession s)
@@ -156,8 +159,11 @@ public sealed class TrainingService : IGameTicker
 
     private Task SnapshotAsync(GameSession s, Attempt a)
     {
-        var snapshot = new DungeonBaseInfoNotify { DungeonEntry = a.Room.SceneEntry, DungeonId = a.Room.Id,
-            Level = 1, Stage = a.Running ? 105 : 104, ChangeType = (DungeonBaseInfoNotify.Types.eChangeType)2 };
+        var snapshot = new DungeonBaseInfoNotify
+        {
+            DungeonEntry = a.Room.SceneEntry, DungeonId = a.Room.Id,
+            Level = 1, Stage = a.Running ? 105 : 104, ChangeType = (DungeonBaseInfoNotify.Types.eChangeType)2
+        };
         snapshot.Vars.Add(new DungeonVar { VarId = 3500000, Vi64 = { a.Running ? a.End : 0 } });
         return s.SendGameAsync(DungeonService.BaseInfo, snapshot);
     }
@@ -257,8 +263,11 @@ public sealed class TrainingService : IGameTicker
             string source = $"training/claim/{s.Role!.Id}/{string.Join('-', req.AimAwardIds.Order())}";
             var economy = EventEconomy.ForRole(data, s, "training-claim", source,
                 Array.Empty<(int Entry, long Count)>(), grants,
-                new { Claimed = req.AimAwardIds.Order().ToArray(), MaxDps = next.MaxDps,
-                    Grants = grants.Select(g => new { g.Entry, g.Count, g.BindType, g.ExpireTimeStamp }).ToArray() });
+                new
+                {
+                    Claimed = req.AimAwardIds.Order().ToArray(), MaxDps = next.MaxDps,
+                    Grants = grants.Select(g => new { g.Entry, g.Count, g.BindType, g.ExpireTimeStamp }).ToArray()
+                });
             if (!await character.ApplyAwardAsync(s, new AwardPlan(0, 0, grants), persist: tx =>
                 {
                     tx.RoleBlob(s.Role.Id, "training", claimed);
@@ -298,8 +307,11 @@ public sealed class TrainingService : IGameTicker
             builder.RoleBlob(s.Role!.Id, "training", next.ToByteArray());
             await roles.CommitAsync(builder, "training/result", _ =>
             { s.Training = next; a.Running = false; });
-            await s.SendGameAsync(DungeonService.Result, new DungeonResNotify { DungeonEntry = a.Room.SceneEntry,
-                Res = (DungeonRes)1, Data = new() { TrainingGroundData = new() { MaxDps = dps, SumDamage = a.Damage } } });
+            await s.SendGameAsync(DungeonService.Result, new DungeonResNotify
+            {
+                DungeonEntry = a.Room.SceneEntry,
+                Res = (DungeonRes)1, Data = new() { TrainingGroundData = new() { MaxDps = dps, SumDamage = a.Damage } }
+            });
             await CharacterService.SyncAsync(s, Sync, next.Clone()); await SnapshotAsync(s, a);
         }
         finally { a.Settling = false; }
@@ -309,7 +321,9 @@ public sealed class TrainingService : IGameTicker
     {
         foreach (var (s, a) in attempts.ToArray())
             if (a.Running && !a.Settling && Now >= a.End)
-            { a.Settling = true; loop.PostOwned(s, () => FinishAsync(s, a), "training finish",
-                discarded: () => a.Settling = false); }
+            {
+                a.Settling = true; loop.PostOwned(s, () => FinishAsync(s, a), "training finish",
+                discarded: () => a.Settling = false);
+            }
     }
 }

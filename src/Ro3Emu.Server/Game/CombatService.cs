@@ -411,49 +411,52 @@ public sealed partial class CombatService : IGameTicker
             var killed = new List<MonsterUnit>();
             try
             {
-            foreach (var monster in targets)
-            {
-                if (monster.Dead || monster.Hp <= 0) continue; // another cast may have reserved this actor while we awaited
-                processed.Add(monster);
-                var defender = new Fighter(0, 0, monster.Template.Flee, 0, monster.Template.Level, monster.Template.Element)
+                foreach (var monster in targets)
+                {
+                    if (monster.Dead || monster.Hp <= 0) continue; // another cast may have reserved this actor while we awaited
+                    processed.Add(monster);
+                    var defender = new Fighter(0, 0, monster.Template.Flee, 0, monster.Template.Level, monster.Template.Element)
                     { Def = monster.Template.Def, Mdef = monster.Template.Mdef, Flee = monster.Template.Flee };
-                var (damage, result) = Damage(attacker, defender, row);
-                foreach (var adjust in MonsterDamageAdjusters) damage = adjust(monster, damage, false);
-                long previousHp = monster.Hp;
-                monster.Hp = Math.Max(0, monster.Hp - damage);
-                if (monster.Hp == 0) killed.Add(monster); // reserve before awaited callbacks
-                await SettleMonsterHitAsync(owner, monster, previousHp, damage);
-                hit.Dsts.Add(new DamageInfo { DstID = monster.Uid, Damage = damage, HitResult = result,
-                    DstElement = monster.Template.Element, IsDead = monster.Hp == 0 });
-            }
-            foreach (var viewer in processed.SelectMany(m => m.Viewers).Append(owner).Distinct())
-                await viewer.SendGameAsync(SkillHit, hit);
-            foreach (var monster in processed)
-            {
-                if (a.Settled || owner.Dead) return;
-                if (monster.Hp == 0 && !monster.DeathDurable) continue; // another cast's uncommitted death
-                await world.ToUnitViewersAsync(monster, AoiAttrChange, MonsterService.Hp(monster));
-                if (monster.Hp > 0)
-                {
-                    monsters.Engage(monster, pet);
-                    await FightingAsync(monster);
-                    continue;
-                }
-                if (!killed.Contains(monster)) continue; // a concurrent player/pet owns that lethal resolution
-                await monsters.KillAsync(monster);
-                foreach (var other in sessions.All().Where(o => o.Attack?.Target == monster))
-                {
-                    other.Attack = null;
-                    await other.SendGameAsync(SkillEnd, new SkillEndNotify
+                    var (damage, result) = Damage(attacker, defender, row);
+                    foreach (var adjust in MonsterDamageAdjusters) damage = adjust(monster, damage, false);
+                    long previousHp = monster.Hp;
+                    monster.Hp = Math.Max(0, monster.Hp - damage);
+                    if (monster.Hp == 0) killed.Add(monster); // reserve before awaited callbacks
+                    await SettleMonsterHitAsync(owner, monster, previousHp, damage);
+                    hit.Dsts.Add(new DamageInfo
                     {
-                        SrcID = other.Role!.Id, SessionId = castId, Type = SkillEndNotify.Types.SkillEndType.Interrupted,
-                        InterruptedInfo = new SkillInterruptedInfo { Type = SkillInterruptedInfo.Types.SkillInterruptType.LockerInvalid },
+                        DstID = monster.Uid, Damage = damage, HitResult = result,
+                        DstElement = monster.Template.Element, IsDead = monster.Hp == 0
                     });
                 }
-                await PublishDurableKillAsync(owner, monster, () => ReferenceEquals(owner.Role, castingRole)
-                    && ReferenceEquals(owner.Attachment, castingAttachment) && !owner.SceneLoading
-                    && owner.SceneGeneration == castingSceneGeneration && owner.WorldScene == monster.WorldScene);
-            }
+                foreach (var viewer in processed.SelectMany(m => m.Viewers).Append(owner).Distinct())
+                    await viewer.SendGameAsync(SkillHit, hit);
+                foreach (var monster in processed)
+                {
+                    if (a.Settled || owner.Dead) return;
+                    if (monster.Hp == 0 && !monster.DeathDurable) continue; // another cast's uncommitted death
+                    await world.ToUnitViewersAsync(monster, AoiAttrChange, MonsterService.Hp(monster));
+                    if (monster.Hp > 0)
+                    {
+                        monsters.Engage(monster, pet);
+                        await FightingAsync(monster);
+                        continue;
+                    }
+                    if (!killed.Contains(monster)) continue; // a concurrent player/pet owns that lethal resolution
+                    await monsters.KillAsync(monster);
+                    foreach (var other in sessions.All().Where(o => o.Attack?.Target == monster))
+                    {
+                        other.Attack = null;
+                        await other.SendGameAsync(SkillEnd, new SkillEndNotify
+                        {
+                            SrcID = other.Role!.Id, SessionId = castId, Type = SkillEndNotify.Types.SkillEndType.Interrupted,
+                            InterruptedInfo = new SkillInterruptedInfo { Type = SkillInterruptedInfo.Types.SkillInterruptType.LockerInvalid },
+                        });
+                    }
+                    await PublishDurableKillAsync(owner, monster, () => ReferenceEquals(owner.Role, castingRole)
+                        && ReferenceEquals(owner.Attachment, castingAttachment) && !owner.SceneLoading
+                        && owner.SceneGeneration == castingSceneGeneration && owner.WorldScene == monster.WorldScene);
+                }
             }
             finally
             {
@@ -500,7 +503,7 @@ public sealed partial class CombatService : IGameTicker
             monster.Template.Cri, monster.Template.Level, monster.Template.Element);
         var stats = pet.CombatStats;
         var defender = new Fighter(0, 0, 0, 0, pet.Level, pet.Element)
-            { Def = stats[105], Mdef = stats[106], Flee = stats[110], ResCri = stats[112] };
+        { Def = stats[105], Mdef = stats[106], Flee = stats[110], ResCri = stats[112] };
         var (damage, result) = row is { } r ? Damage(attacker, defender, r)
             : (Math.Max(1, monster.Template.Atk), DamageHitResult.Normal);
         damage = ScaleMonsterDamage(damage, monster.DamageRatio);
@@ -573,19 +576,19 @@ public sealed partial class CombatService : IGameTicker
             (damage, long hp, _, long shieldDamage) = committed.Value;
             try
             {
-            foreach (var handler in Taken) handler(m, p, damage, hp == 0);
-            var hit = new SkillHitInfo
-            {
-                SrcID = m.Uid, SkillId = m.Template.NormalSkill, ShowPoint = 1000002, SessionId = session, SrcElement = m.Template.Element,
-                Dsts = { new DamageInfo { DstID = p.Role.Id, Damage = damage, SheildDamage = shieldDamage, HitResult = result, DstElement = 1, IsDead = hp == 0 } },
-            };
-            await world.ToUnitViewersAsync(m, SkillHit, hit);
-            if (!m.Viewers.Contains(p)) await p.SendGameAsync(SkillHit, hit);
-            await character.SetHpSpAsync(p, null, null); // publish the reserved/current HP; never undo a later hit
-            foreach (var handler in TakenAsync) await handler(m, p, damage);
-            await FightingAsync(p);
-            await FightingAsync(m);
-            if (hp == 0) await PlayerDiesAsync(p);
+                foreach (var handler in Taken) handler(m, p, damage, hp == 0);
+                var hit = new SkillHitInfo
+                {
+                    SrcID = m.Uid, SkillId = m.Template.NormalSkill, ShowPoint = 1000002, SessionId = session, SrcElement = m.Template.Element,
+                    Dsts = { new DamageInfo { DstID = p.Role.Id, Damage = damage, SheildDamage = shieldDamage, HitResult = result, DstElement = 1, IsDead = hp == 0 } },
+                };
+                await world.ToUnitViewersAsync(m, SkillHit, hit);
+                if (!m.Viewers.Contains(p)) await p.SendGameAsync(SkillHit, hit);
+                await character.SetHpSpAsync(p, null, null); // publish the reserved/current HP; never undo a later hit
+                foreach (var handler in TakenAsync) await handler(m, p, damage);
+                await FightingAsync(p);
+                await FightingAsync(m);
+                if (hp == 0) await PlayerDiesAsync(p);
             }
             finally { if (hp == 0) ReleaseDeathPublication(p); }
         });
@@ -746,20 +749,20 @@ public sealed partial class CombatService : IGameTicker
         lock (_reviveClaims) ownsPublication = _deathPublications.Add(p);
         try
         {
-        eventAttacks.Remove(p);
-        if (!p.Dead || p.ReviveDeathSource == null)
-            p.ReviveDeathSource = RewardSourceId.ProcessRun + "/" + Guid.NewGuid().ToString("N");
-        p.Dead = true;
-        await ClearSkillsAsync(p);
-        await buffs.ClearOnDeathAsync(p);
-        log.LogInformation("{Name} died", p.Role?.Name);
-        await ToPlayerAndViewersAsync(p, EntityBaseChange, LifeState(p));
-        if (!ReviveInfoOwners.Any(owns => owns(p)))
-            await p.SendGameAsync(ReviveInfo, new SyncClientPlayerReviveInfoNtf
-            {
-                BDead = true, ReviveTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 30, SceneEntry = p.SceneEntry,
-            });
-        foreach (var handler in PlayerDied) await handler(p);
+            eventAttacks.Remove(p);
+            if (!p.Dead || p.ReviveDeathSource == null)
+                p.ReviveDeathSource = RewardSourceId.ProcessRun + "/" + Guid.NewGuid().ToString("N");
+            p.Dead = true;
+            await ClearSkillsAsync(p);
+            await buffs.ClearOnDeathAsync(p);
+            log.LogInformation("{Name} died", p.Role?.Name);
+            await ToPlayerAndViewersAsync(p, EntityBaseChange, LifeState(p));
+            if (!ReviveInfoOwners.Any(owns => owns(p)))
+                await p.SendGameAsync(ReviveInfo, new SyncClientPlayerReviveInfoNtf
+                {
+                    BDead = true, ReviveTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 30, SceneEntry = p.SceneEntry,
+                });
+            foreach (var handler in PlayerDied) await handler(p);
         }
         finally { if (ownsPublication) ReleaseDeathPublication(p); }
     }
@@ -914,15 +917,15 @@ public sealed partial class CombatService : IGameTicker
         {
             if (s.Role == null || s.Progress == null) continue;
             if (s.SkillObjects.Count > 0)
-        foreach (var unit in s.SkillObjects.ToArray()) loop.TrackRuntimeDetached("skill object tick", () => TickSkillObjectAsync(unit));
+                foreach (var unit in s.SkillObjects.ToArray()) loop.TrackRuntimeDetached("skill object tick", () => TickSkillObjectAsync(unit));
             if (s.Attack is { } a && !s.Dead && now >= a.NextSwingMs)
             {
                 if (s.SceneLoading || !CanHitMonster(s, a.Target) || MonsterService.Distance(a.Target, s) > 30)
                 {
                     s.Attack = null;
                     if (s.SkillCast?.Request.SkillId == a.SkillId)
-            loop.TrackRuntimeDetached("cast cancellation", () => CancelCastAsync(s, SkillInterruptedInfo.Types.SkillInterruptType.LockerInvalid));
-        else loop.TrackRuntimeDetached("skill end send", () => s.SendGameAsync(SkillEnd, new SkillEndNotify
+                        loop.TrackRuntimeDetached("cast cancellation", () => CancelCastAsync(s, SkillInterruptedInfo.Types.SkillInterruptType.LockerInvalid));
+                    else loop.TrackRuntimeDetached("skill end send", () => s.SendGameAsync(SkillEnd, new SkillEndNotify
                     {
                         SrcID = s.Role.Id, Type = SkillEndNotify.Types.SkillEndType.Interrupted,
                         InterruptedInfo = new SkillInterruptedInfo { Type = SkillInterruptedInfo.Types.SkillInterruptType.LockerInvalid },
@@ -931,13 +934,13 @@ public sealed partial class CombatService : IGameTicker
                 else if (s.SkillCast == null && EffectiveSkillRow(s, a.SkillId) is { } row && MonsterService.Distance(a.Target, s) <= Range(row) + 1.5f)
                 {
                     a.NextSwingMs = now + SkillMs(s, row);
-                loop.TrackRuntimeDetached("combat swing", () => SwingAsync(s, a.Target, a.SkillId, ++_sessionIds));
+                    loop.TrackRuntimeDetached("combat swing", () => SwingAsync(s, a.Target, a.SkillId, ++_sessionIds));
                 }
             }
             if ((s.StatusBits & FightBit) != 0 && now - s.LastCombatMs > OutOfCombatMs)
             {
                 s.StatusBits &= ~FightBit;
-        loop.TrackRuntimeDetached("combat status send", () => ToPlayerAndViewersAsync(s, AoiAttrChange, Status(s.Role.Id, s.StatusBits)));
+                loop.TrackRuntimeDetached("combat status send", () => ToPlayerAndViewersAsync(s, AoiAttrChange, Status(s.Role.Id, s.StatusBits)));
             }
         }
         if (_fightingMonsters.Count > 0)
@@ -946,7 +949,7 @@ public sealed partial class CombatService : IGameTicker
                 _fightingMonsters.Remove(m);
                 if ((m.StatusBits & FightBit) == 0) continue;
                 m.StatusBits &= ~FightBit;
-        loop.TrackRuntimeDetached("monster status send", () => world.ToUnitViewersAsync(m, AoiAttrChange, Status(m.Uid, m.StatusBits)));
+                loop.TrackRuntimeDetached("monster status send", () => world.ToUnitViewersAsync(m, AoiAttrChange, Status(m.Uid, m.StatusBits)));
             }
         // Every role still regenerates once per AutoRecoverInterval, but in its own phase (role id slot), so one
         // tick no longer computes every online stat sheet at once (150 roles = a 116 ms tick every 5 s).
@@ -962,7 +965,7 @@ public sealed partial class CombatService : IGameTicker
                 {
                     long phase = (s.Role.Id % slots + slots) % slots;
                     for (long k = first; k <= slot; k++)
-                if (k % slots == phase) { loop.TrackRuntimeDetached("combat regeneration", () => RegenAsync(s)); break; }
+                        if (k % slots == phase) { loop.TrackRuntimeDetached("combat regeneration", () => RegenAsync(s)); break; }
                 }
         }
     }

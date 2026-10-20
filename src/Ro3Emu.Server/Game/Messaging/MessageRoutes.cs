@@ -138,7 +138,10 @@ public sealed class MessageRoutes
     /// <summary>Slowest routes by total loop time (diagnostics).</summary>
     public object Snapshot(int top = 20) => _exact.Values.Concat(_ranges)
         .Where(r => r.Calls > 0).OrderByDescending(r => r.TotalMs).Take(top)
-        .Select(r => new { id = r.From == r.To ? r.From.ToString() : $"{r.From}-{r.To}", owner = r.Owner, calls = r.Calls,
-            totalMs = Math.Round(r.TotalMs, 1), avgMs = Math.Round(r.TotalMs / r.Calls, 3), failures = r.Failures })
+        .Select(r => new
+        {
+            id = r.From == r.To ? r.From.ToString() : $"{r.From}-{r.To}", owner = r.Owner, calls = r.Calls,
+            totalMs = Math.Round(r.TotalMs, 1), avgMs = Math.Round(r.TotalMs / r.Calls, 3), failures = r.Failures
+        })
         .ToArray();
 }

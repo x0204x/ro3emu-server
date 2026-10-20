@@ -227,8 +227,14 @@ public sealed class EconomyMixedFamilyTests : IDisposable
         Assert.False(corrupted.CompleteHistory);
         Assert.Contains(corrupted.Issues, x => x.Kind == EconomyIssueKind.Corruption &&
             x.Key.Contains(damagedKind switch
-            { "e01" => shopOp, "e05b" => familyOp, "e04" => rewardOp, "e03" => escrowOp,
-                "e05e" => eventOp, _ => semanticOp }, StringComparison.Ordinal));
+            {
+                "e01" => shopOp,
+                "e05b" => familyOp,
+                "e04" => rewardOp,
+                "e03" => escrowOp,
+                "e05e" => eventOp,
+                _ => semanticOp
+            }, StringComparison.Ordinal));
         Assert.Equal(EconomyVerdict.Fail, EconomyExactnessChecker.Check(opening, closing, corrupted).Verdict);
     }
 

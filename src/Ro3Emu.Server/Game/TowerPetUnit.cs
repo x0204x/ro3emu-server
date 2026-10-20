@@ -166,9 +166,12 @@ public sealed class TowerPetUnit : WorldUnit
                     world.TrackDetached("tower pet move", () => world.MoveUnitAsync(this, new MovementChangeNtf
                     {
                         Uid = Uid, TransType = MovementTransitionType.MoveTransNormal,
-                        MovementInfo = new MovementInfo { Pos = Pos, Face = Face, ServerTime = now,
+                        MovementInfo = new MovementInfo
+                        {
+                            Pos = Pos, Face = Face, ServerTime = now,
                             MoveType = MovementType.MoveTypeWalk, MoveDuration = 200,
-                            MovementWalk = new MovementWalk { Dir = Face, Speed = SpeedCm / 100f, EndHeight = Y } },
+                            MovementWalk = new MovementWalk { Dir = Face, Speed = SpeedCm / 100f, EndHeight = Y }
+                        },
                     }));
                 }
             }
@@ -191,8 +194,11 @@ public sealed class TowerPetUnit : WorldUnit
         world.TrackDetached("tower pet stop", () => world.MoveUnitAsync(this, new MovementChangeNtf
         {
             Uid = Uid, TransType = MovementTransitionType.MoveTransNormal,
-            MovementInfo = new MovementInfo { Pos = Pos, Face = Face, ServerTime = MonsterService.NowMs,
-                MoveType = MovementType.MoveTypeNone },
+            MovementInfo = new MovementInfo
+            {
+                Pos = Pos, Face = Face, ServerTime = MonsterService.NowMs,
+                MoveType = MovementType.MoveTypeNone
+            },
         }));
     }
 

@@ -155,48 +155,48 @@ public sealed partial class AdventureGroupService
                 code = await HelperApplyAsync(s, store.Get(req.AdventureGroupId), resp);
                 break;
             case OpeType.OpeHelperCancel:
-            {
-                var g = store.Get(req.AdventureGroupId) ?? Own(s);
-                if (g == null || g.Status == StatusNormal) { code = ErrNotHelperGroup; break; }
-                resp.AdventureGroupId = g.Id;
-                if (g.Applications.Remove(self, out var applicant))
-                    code = await SaveAsync(g) ? 0 : ErrorCodes.Unknown;
-                else if (g.Members.ContainsKey(self) && g.Owner != self)
-                    code = await RemoveAsync(g, self, kicked: false, self) ? 0 : ErrorCodes.Unknown; // QuitResponse
-                else { code = ErrNoApplication; break; }
-                if (code == 0 && applicant != null) await BroadcastApplicantAsync(g, applicant, added: false);
-                break;
-            }
+                {
+                    var g = store.Get(req.AdventureGroupId) ?? Own(s);
+                    if (g == null || g.Status == StatusNormal) { code = ErrNotHelperGroup; break; }
+                    resp.AdventureGroupId = g.Id;
+                    if (g.Applications.Remove(self, out var applicant))
+                        code = await SaveAsync(g) ? 0 : ErrorCodes.Unknown;
+                    else if (g.Members.ContainsKey(self) && g.Owner != self)
+                        code = await RemoveAsync(g, self, kicked: false, self) ? 0 : ErrorCodes.Unknown; // QuitResponse
+                    else { code = ErrNoApplication; break; }
+                    if (code == 0 && applicant != null) await BroadcastApplicantAsync(g, applicant, added: false);
+                    break;
+                }
             case OpeType.OpeAgree or OpeType.OpeReject or OpeType.OpeKick:
-            {
-                var g = Own(s);
-                code = g == null ? ErrNotInGroup : g.Owner != self ? ErrPermission : g.Status == StatusNormal ? ErrNotHelperGroup : 0;
-                if (code != 0) break;
-                resp.AdventureGroupId = g!.Id;
-                long target = req.TargetPlayerid;
-                if (req.Op == OpeType.OpeKick)
                 {
-                    code = target == self || !g.Members.ContainsKey(target) ? ErrorCodes.Parameter
-                        : await RemoveAsync(g, target, kicked: true, self) ? 0 : ErrorCodes.Unknown;
+                    var g = Own(s);
+                    code = g == null ? ErrNotInGroup : g.Owner != self ? ErrPermission : g.Status == StatusNormal ? ErrNotHelperGroup : 0;
+                    if (code != 0) break;
+                    resp.AdventureGroupId = g!.Id;
+                    long target = req.TargetPlayerid;
+                    if (req.Op == OpeType.OpeKick)
+                    {
+                        code = target == self || !g.Members.ContainsKey(target) ? ErrorCodes.Parameter
+                            : await RemoveAsync(g, target, kicked: true, self) ? 0 : ErrorCodes.Unknown;
+                        break;
+                    }
+                    if (!g.Applications.TryGetValue(target, out var applicant)) { code = ErrNoApplication; break; }
+                    if (req.Op == OpeType.OpeReject)
+                    {
+                        g.Applications.Remove(target);
+                        code = await SaveAsync(g) ? 0 : ErrorCodes.Unknown;
+                        if (code == 0) await BroadcastApplicantAsync(g, applicant, added: false);
+                        break;
+                    }
+                    code = store.ForRole(target) != null ? ErrInGroup : g.Members.Count >= MemberLimit ? ErrHelperLimit : 0;
+                    if (code == ErrInGroup)
+                    {
+                        g.Applications.Remove(target);
+                        if (await SaveAsync(g)) await BroadcastApplicantAsync(g, applicant, added: false);
+                    }
+                    if (code == 0 && !await AdmitAsync(g, target)) code = ErrInGroup;
                     break;
                 }
-                if (!g.Applications.TryGetValue(target, out var applicant)) { code = ErrNoApplication; break; }
-                if (req.Op == OpeType.OpeReject)
-                {
-                    g.Applications.Remove(target);
-                    code = await SaveAsync(g) ? 0 : ErrorCodes.Unknown;
-                    if (code == 0) await BroadcastApplicantAsync(g, applicant, added: false);
-                    break;
-                }
-                code = store.ForRole(target) != null ? ErrInGroup : g.Members.Count >= MemberLimit ? ErrHelperLimit : 0;
-                if (code == ErrInGroup)
-                {
-                    g.Applications.Remove(target);
-                    if (await SaveAsync(g)) await BroadcastApplicantAsync(g, applicant, added: false);
-                }
-                if (code == 0 && !await AdmitAsync(g, target)) code = ErrInGroup;
-                break;
-            }
             default:
                 code = ErrorCodes.Parameter;
                 break;

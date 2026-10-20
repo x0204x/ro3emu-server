@@ -4,25 +4,29 @@
 # with RO3Emu.exe join <address>. Without building anything: the release's RO3Emu-server-linux-x64.tar.gz has its own
 # server.sh (tools/release/server.sh).
 #
-# usage: ./server.sh [--client DIR] [--host ADDRESS] [--gm ACCOUNT] [--service] [--reexport]
+# usage: ./server.sh [--client DIR] [--host ADDRESS] [--gm ACCOUNT] [--voice-port PORT] [--service] [--reexport]
 #   --client DIR    the client folder copied from Windows (at least its ro3_Data/StreamingAssets); first run only
 #   --host ADDRESS  the address players connect to (default: this machine's first address)
 #   --gm ACCOUNT    an account that gets GM commands in game (repeatable)
+#   --voice-port PORT  turn on party voice chat on this TCP port, for example 33101 (off by default)
 #   --service       install and start a systemd service (needs sudo) instead of running in this terminal
 #   --reexport      export the game data again (after a client update)
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 root=$(pwd)
 
-client=""; host=""; service=0; reexport=0; gms=()
+client=""; host=""; voice=""; service=0; reexport=0; gms=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --client) client="$2"; shift 2 ;;
     --host) host="$2"; shift 2 ;;
     --gm) gms+=("$2"); shift 2 ;;
+    --voice-port)
+      [[ "$2" =~ ^[0-9]+$ ]] && [ "$2" -gt 0 ] && [ "$2" -lt 65536 ] || { echo "--voice-port needs a port number"; exit 1; }
+      voice="$2"; shift 2 ;;
     --service) service=1; shift ;;
     --reexport) reexport=1; shift ;;
-    -h|--help) sed -n '2,11p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
     *) echo "unknown option $1 (see ./server.sh --help)"; exit 1 ;;
   esac
 done
@@ -77,12 +81,17 @@ settings=(
   "Ro3Emu__Pass__FreePremium=true"
 )
 for i in "${!gms[@]}"; do settings+=("Ro3Emu__GmAccounts__$i=${gms[$i]}"); done
+[ -z "$voice" ] || settings+=("Ro3Emu__Voice__Port=$voice")
 [ ${#gms[@]} -gt 0 ] || echo '  No --gm account: nobody has GM commands in game.'
 
 ports_note() {
-  echo "Open TCP ports 5380, 20000 and 33100 for players (firewall, and port forwarding behind a router)."
+  if [ -n "$voice" ]; then
+    echo "Open TCP ports 5380, 20000, 33100 and $voice (voice) for players (firewall, and port forwarding behind a router)."
+  else
+    echo "Open TCP ports 5380, 20000 and 33100 for players (firewall, and port forwarding behind a router)."
+  fi
   if command -v ufw >/dev/null && sudo -n ufw status 2>/dev/null | grep -q 'Status: active'; then
-    echo "  ufw: sudo ufw allow 5380/tcp && sudo ufw allow 20000/tcp && sudo ufw allow 33100/tcp"
+    echo "  ufw: sudo ufw allow 5380/tcp && sudo ufw allow 20000/tcp && sudo ufw allow 33100/tcp${voice:+ && sudo ufw allow $voice/tcp}"
   fi
   echo "Players: RO3Emu.exe join $host"
 }

@@ -131,21 +131,21 @@ public sealed partial class CombatService
             case BossSkillArea.AroundTarget:
                 return MonsterService.Distance(center.X, center.Z, x, z) <= skill.Radius + 0.1f;
             case BossSkillArea.Fan:
-            {
-                float dx = x - origin.X, dz = z - origin.Z;
-                if (MathF.Sqrt(dx * dx + dz * dz) > skill.Radius + 0.1f) return false;
-                if (dx * dx + dz * dz < 0.25f) return true; // standing on the boss
-                double radians = face * Math.PI / 180;
-                double forward = dx * Math.Sin(radians) + dz * Math.Cos(radians), side = dx * Math.Cos(radians) - dz * Math.Sin(radians);
-                return Math.Atan2(Math.Abs(side), forward) <= skill.AngleDeg * Math.PI / 360;
-            }
+                {
+                    float dx = x - origin.X, dz = z - origin.Z;
+                    if (MathF.Sqrt(dx * dx + dz * dz) > skill.Radius + 0.1f) return false;
+                    if (dx * dx + dz * dz < 0.25f) return true; // standing on the boss
+                    double radians = face * Math.PI / 180;
+                    double forward = dx * Math.Sin(radians) + dz * Math.Cos(radians), side = dx * Math.Cos(radians) - dz * Math.Sin(radians);
+                    return Math.Atan2(Math.Abs(side), forward) <= skill.AngleDeg * Math.PI / 360;
+                }
             case BossSkillArea.Rect:
-            {
-                float dx = x - origin.X, dz = z - origin.Z;
-                double radians = face * Math.PI / 180;
-                double forward = dx * Math.Sin(radians) + dz * Math.Cos(radians), side = dx * Math.Cos(radians) - dz * Math.Sin(radians);
-                return forward >= -0.5 && forward <= skill.Radius + 0.1f && Math.Abs(side) <= skill.Width / 2 + 0.1f;
-            }
+                {
+                    float dx = x - origin.X, dz = z - origin.Z;
+                    double radians = face * Math.PI / 180;
+                    double forward = dx * Math.Sin(radians) + dz * Math.Cos(radians), side = dx * Math.Cos(radians) - dz * Math.Sin(radians);
+                    return forward >= -0.5 && forward <= skill.Radius + 0.1f && Math.Abs(side) <= skill.Width / 2 + 0.1f;
+                }
             default:
                 return false;
         }

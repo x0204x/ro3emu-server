@@ -334,8 +334,11 @@ public sealed class TerritoryEscortTests : IAsyncLifetime
         for (int i = 0; i < 19; i++)
         {
             var member = roles.Create("territory-escort-fixture", 1, "Member" + i, 1, 1000, 1)!;
-            guild.Members[member.Id] = new GuildStore.Member { RoleId = member.Id,
-                Name = member.Name, Official = 20 };
+            guild.Members[member.Id] = new GuildStore.Member
+            {
+                RoleId = member.Id,
+                Name = member.Name, Official = 20
+            };
         }
         Assert.True(guilds.Save(guild));
         var escort = Service<TerritoryEscortService>();
@@ -524,8 +527,11 @@ public sealed class TerritoryEscortTests : IAsyncLifetime
             await Assert.ThrowsAnyAsync<Exception>(() => OnLoop(async () =>
             {
                 await escort.HandleSharedAsync(Session(raider), SceneService.NpcInteraction,
-                    new NpcInteractionReq { NpcUid = actor.Uid, InteractionId = 491000301,
-                        SceneConfigId = 30303 }.ToByteArray());
+                    new NpcInteractionReq
+                    {
+                        NpcUid = actor.Uid, InteractionId = 491000301,
+                        SceneConfigId = 30303
+                    }.ToByteArray());
             }));
         }
         finally { escort.BeforeCargoApplyForTest = null; }

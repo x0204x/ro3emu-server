@@ -212,8 +212,11 @@ public sealed class PassPlayTests : IAsyncLifetime
         await Gm(alice, "!item 132 120000");
         await Service<NewActivityService>().ReconcileAsync(Session(alice));
         Assert.Equal(60, (await Pass(alice)).Level);
-        await OnLoop(() => { var p = Session(alice).ActivityRuntime!.PassPlay ??= new(); p.Earned = 120000;
-            p.Instance = Session(alice).NewActivities!.ActivityInfo[200].ActivityInstance; return 0; });
+        await OnLoop(() =>
+        {
+            var p = Session(alice).ActivityRuntime!.PassPlay ??= new(); p.Earned = 120000;
+            p.Instance = Session(alice).NewActivities!.ActivityInfo[200].ActivityInstance; return 0;
+        });
         // Today's draw would add a daily challenge to some steps; this test checks the sources without it.
         await Event(alice, []);
         await OnLoop(() => { Session(alice).ActivityRuntime!.PassPlay!.Daily.Clear(); return 0; });

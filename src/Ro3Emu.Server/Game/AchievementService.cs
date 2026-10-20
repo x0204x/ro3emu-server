@@ -390,7 +390,12 @@ public sealed class AchievementService : IGameTicker
     /// <summary>LC_InteractCondition operator table (lua :313-356): 1 ==, 2 ~=, 3 &gt;, 4 &gt;=, 5 &lt;, 6 &lt;=.</summary>
     private static bool Compare(long op, long value, long param) => op switch
     {
-        1 => value == param, 2 => value != param, 3 => value > param, 4 => value >= param, 5 => value < param, 6 => value <= param,
+        1 => value == param,
+        2 => value != param,
+        3 => value > param,
+        4 => value >= param,
+        5 => value < param,
+        6 => value <= param,
         _ => false,
     };
 
@@ -887,7 +892,7 @@ public sealed class AchievementService : IGameTicker
         if (code == 0 && ids.Count == 0)
             foreach (var level in levels)
                 await s.SendGameAsync(GetPointReward, new GetAchievementPointRewardResp
-                    { Type = level.Type, Result = 0, CurLevelRewardLevel = level.To });
+                { Type = level.Type, Result = 0, CurLevelRewardLevel = level.To });
         if (code == 0) await CharacterService.SyncAsync(s, Sync, s.Achievements!.Clone());
     }
 

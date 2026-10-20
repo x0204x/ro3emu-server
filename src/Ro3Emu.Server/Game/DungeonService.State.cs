@@ -51,12 +51,15 @@ public sealed partial class DungeonService
         long start = seasons.StartTime;
         // Key progress by configured season identity; preserve role-level job preference (inferred season policy).
         return previous.PlayBook == seasons.PlayBook && previous.SeasonStart == start ? Copy(previous)
-            : new State { PlayBook = seasons.PlayBook, SeasonStart = start,
+            : new State
+            {
+                PlayBook = seasons.PlayBook, SeasonStart = start,
                 JobPosition = previous.JobPosition, FirstSetted = previous.FirstSetted,
                 PendingJourney = new(previous.PendingJourney),
                 // Valhalla layers are one-time for good (no season reset in HeroicSpirit data).
                 Records = previous.Records.Where(r => r.Key.StartsWith(ValhallaPrefix, StringComparison.Ordinal))
-                    .ToDictionary(r => r.Key, r => r.Value) };
+                    .ToDictionary(r => r.Key, r => r.Value)
+            };
     }
 
     public async Task LoginAsync(GameSession s)

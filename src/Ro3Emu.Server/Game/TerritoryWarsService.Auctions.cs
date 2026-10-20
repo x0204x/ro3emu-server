@@ -54,8 +54,11 @@ public sealed partial class TerritoryWarsService
         var r = new AuctionRound { Round = round, FinalEnd = final == null ? 0 : Math.Min(final.EndTime, final.StartTime + seconds) };
         foreach (int id in AuctionZones(round))
         {
-            var z = new AuctionZone { Id = id, Seats = (int)Param(round == 1 ? "TerritoryAuctionPointSeatCount"
-                : round == 2 ? "TerritoryAuctionStateSeatCount" : "TerritoryAuctionSiegeSeatCount", round == 1 ? 9 : 2) };
+            var z = new AuctionZone
+            {
+                Id = id, Seats = (int)Param(round == 1 ? "TerritoryAuctionPointSeatCount"
+                : round == 2 ? "TerritoryAuctionStateSeatCount" : "TerritoryAuctionSiegeSeatCount", round == 1 ? 9 : 2)
+            };
             // Qualified owners occupy reserved seats, as isOccupier in LC_DAL_TerritoryWarsAuction.lua:194-223.
             long owner = OwnerOf(id);
             if (owner == 0 && round > 1)
@@ -138,8 +141,11 @@ public sealed partial class TerritoryWarsService
         if ((legacy ? guild.Materials : guild.AuctionMaterials) < delta) return (ErrorCodes.TerritoryAuctionFunds, []);
         if (legacy) guild.Materials -= delta; else guild.AuctionMaterials -= delta;
         z.Entries.RemoveAll(e => e.GuildId == guildId);
-        z.Entries.Add(new BidEntry { GuildId = guildId, Amount = amount, Time = clock.Now, Legacy = legacy,
-            EscortScore = GuildEscortScore(guildId, round.Round) });
+        z.Entries.Add(new BidEntry
+        {
+            GuildId = guildId, Amount = amount, Time = clock.Now, Legacy = legacy,
+            EscortScore = GuildEscortScore(guildId, round.Round)
+        });
         z.Bidded.Add(guildId);
         var treasury = new Dictionary<long, GuildStore.State> { [guildId] = guild };
         var ranking = Ranked(z);
@@ -181,9 +187,12 @@ public sealed partial class TerritoryWarsService
         var msg = new TerritoryAuctionRankDataNtf { IsSettled = round.Settled };
         foreach (var z in round.Zones.Values.OrderBy(z => z.Id))
         {
-            var info = new TerritoryZoneRankData { ZoneId = z.Id, SeatCount = z.Seats,
+            var info = new TerritoryZoneRankData
+            {
+                ZoneId = z.Id, SeatCount = z.Seats,
                 SelfGuildBidded = own != null && z.Bidded.Contains(own.Id),
-                SelfGuildCanBid = BidEligibility(s, own, Round(), z.Id, false) == 0 };
+                SelfGuildCanBid = BidEligibility(s, own, Round(), z.Id, false) == 0
+            };
             int rank = 0;
             foreach (var e in Ranked(z)) info.Entries.Add(new TerritoryBidRankEntry { Rank = ++rank, GuildId = e.GuildId, BidAmount = (long)BidValue(e), IsOccupier = e.Occupier });
             msg.Zones.Add(info);
@@ -251,8 +260,11 @@ public sealed partial class TerritoryWarsService
         if (error == 0 && (int)req.Style is < 1 or > 3) error = ErrorCodes.Parameter;
         if (error != 0) { await Error(s, AutoSet, error); return; }
         var next = Copy(state);
-        next.Rounds[clock.Current.Round].Auto[g!.Id] = new AutoBidPlan { Creator = s.Role!.Id, Zone = req.ZoneId, Initial = req.InitialBid,
-            Maximum = req.MaxBid, Style = (int)req.Style, State = 1, Next = clock.Now + AutoDelay((int)req.Style) };
+        next.Rounds[clock.Current.Round].Auto[g!.Id] = new AutoBidPlan
+        {
+            Creator = s.Role!.Id, Zone = req.ZoneId, Initial = req.InitialBid,
+            Maximum = req.MaxBid, Style = (int)req.Style, State = 1, Next = clock.Now + AutoDelay((int)req.Style)
+        };
         await CommitAsync(next);
         await Send(s, AutoSet, new TerritoryAutoBidSetRes());
         await NotifyAutoGuildAsync(g.Id);
@@ -273,8 +285,10 @@ public sealed partial class TerritoryWarsService
     private Task SendAutoAsync(GameSession s)
     {
         var auto = Round()?.Auto.GetValueOrDefault(Own(s)?.Id ?? 0);
-        return Send(s, AutoNotify, auto == null ? new TerritoryAutoBidSettingChangeNtf() : new TerritoryAutoBidSettingChangeNtf {
-            ZoneId = auto.Zone, IsActive = (TerritoryAutoBidState)auto.State, InitialBid = auto.Initial, MaxBid = auto.Maximum, Style = (TerritoryAutoBidStyle)auto.Style });
+        return Send(s, AutoNotify, auto == null ? new TerritoryAutoBidSettingChangeNtf() : new TerritoryAutoBidSettingChangeNtf
+        {
+            ZoneId = auto.Zone, IsActive = (TerritoryAutoBidState)auto.State, InitialBid = auto.Initial, MaxBid = auto.Maximum, Style = (TerritoryAutoBidStyle)auto.Style
+        });
     }
 
     private async Task AuctionClockAsync()

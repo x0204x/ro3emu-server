@@ -37,8 +37,11 @@ public sealed partial class CharacterService
         var stats = Stats(session);
         var info = new RoleDetailInfo
         {
-            Rolebase = new RolePublicBaseInfo { Roleid = role.Id, Name = role.Name, Career = p.Career, BaseLevel = p.Level,
-                JobLevel = p.JobLevel, Gender = role.Sex },
+            Rolebase = new RolePublicBaseInfo
+            {
+                Roleid = role.Id, Name = role.Name, Career = p.Career, BaseLevel = p.Level,
+                JobLevel = p.JobLevel, Gender = role.Sex
+            },
             EquipInfo = BuildEquip(session),
             Selfproperty = new AllProperty { EntityID = role.Id },
         };

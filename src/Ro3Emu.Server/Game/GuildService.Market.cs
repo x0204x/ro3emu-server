@@ -9,7 +9,7 @@ namespace Ro3Emu.Server.Game;
 
 public sealed partial class GuildService
 {
-    private long MarketNowMs() => marketClock.GetUtcNow().ToUnixTimeMilliseconds();
+    private long MarketNowMs() => clock.GetUtcNow().ToUnixTimeMilliseconds();
     internal Func<Task>? AfterMarketNoticeSendForTest { get; set; }
 
     private EscrowEconomyIntent MarketEconomy(GameSession? session, string command, object evidence) =>
@@ -163,29 +163,38 @@ public sealed partial class GuildService
     private async Task<Func<Task>?> MarketCoreAsync(GameSession s, uint id, ReadOnlyMemory<byte> body,
         GuildStore.MarketState market, GuildStore.State? guild, long now, OwnerNotices notices)
     {
-            Func<Task>? reply = null;
-            int gate = MarketGate(s, guild, id is MarketList or MarketUnlist or MarketBuy or MarketUpdate);
-            switch (id)
-            {
-                case MarketBooth:
+        Func<Task>? reply = null;
+        int gate = MarketGate(s, guild, id is MarketList or MarketUnlist or MarketBuy or MarketUpdate);
+        switch (id)
+        {
+            case MarketBooth:
                 {
                     GuildStore.MarketStall[] booths = guild == null ? [] : market.Stalls.Where(x => x.GuildId == guild.Id).ToArray();
-                    var rsp = new GetBlackMarketBoothRsp { Result = gate != 0 ? gate : booths.Length == 0 ? ErrorCodes.GuildMissing : 0,
-                        RecentAvgPrice = market.RecentAvgPrice };
-                    rsp.Booths.AddRange(booths.Select(x => new BlackMarketBoothInfo { StallUniqueId = x.Id,
+                    var rsp = new GetBlackMarketBoothRsp
+                    {
+                        Result = gate != 0 ? gate : booths.Length == 0 ? ErrorCodes.GuildMissing : 0,
+                        RecentAvgPrice = market.RecentAvgPrice
+                    };
+                    rsp.Booths.AddRange(booths.Select(x => new BlackMarketBoothInfo
+                    {
+                        StallUniqueId = x.Id,
                         UnitPrice = x.UnitPrice, TotalCount = x.TotalCount, RemainCount = x.RemainCount,
-                        DisplayAvailableTimeMs = x.AvailableMs, ExpireTimeMs = x.ExpiresMs }));
+                        DisplayAvailableTimeMs = x.AvailableMs, ExpireTimeMs = x.ExpiresMs
+                    }));
                     rsp.PriceHistory.AddRange(market.PriceHistory.Select(x => new BlackMarketPriceHistoryInfo
                     { AvgPrice = x.Average, DateHour = x.DateHour }));
                     reply = () => s.SendGameAsync(id, rsp);
                     break;
                 }
-                case MarketItems:
+            case MarketItems:
                 {
                     var items = market.Stalls.Where(x => x.AvailableMs <= now && x.ExpiresMs > now && x.RemainCount > 0)
                         .GroupBy(x => x.UnitPrice).OrderBy(x => x.Key).ToArray();
-                    var rsp = new GetBlackMarketItemsRsp { Result = gate != 0 ? gate : items.Length == 0 ? ErrorCodes.GuildMissing : 0,
-                        RecentAvgPrice = market.RecentAvgPrice };
+                    var rsp = new GetBlackMarketItemsRsp
+                    {
+                        Result = gate != 0 ? gate : items.Length == 0 ? ErrorCodes.GuildMissing : 0,
+                        RecentAvgPrice = market.RecentAvgPrice
+                    };
                     rsp.Items.AddRange(items.Select(x => new BlackMarketBigStack
                     { UnitPrice = x.Key, TotalRemainCount = x.Sum(y => y.RemainCount) }));
                     rsp.PriceHistory.AddRange(market.PriceHistory.Select(x => new BlackMarketPriceHistoryInfo
@@ -193,7 +202,7 @@ public sealed partial class GuildService
                     reply = () => s.SendGameAsync(id, rsp);
                     break;
                 }
-                case MarketList:
+            case MarketList:
                 {
                     var req = ListOnBlackMarketReq.Parser.ParseFrom(body.Span);
                     int code = gate != 0 ? gate : CheckMarketPrice(req.UnitPrice, market);
@@ -208,9 +217,12 @@ public sealed partial class GuildService
                         var delay = MarketArray("BlackMarketDelayRangeSec", 300, 600);
                         long seconds = delay.Length == 0 ? 300 : Math.Max(0, delay[0]);
                         guild!.Materials -= req.Count;
-                        market.Stalls.Add(new GuildStore.MarketStall { Id = $"stall-{++market.NextId}", GuildId = guild.Id,
+                        market.Stalls.Add(new GuildStore.MarketStall
+                        {
+                            Id = $"stall-{++market.NextId}", GuildId = guild.Id,
                             UnitPrice = req.UnitPrice, TotalCount = req.Count, RemainCount = req.Count, CreatedMs = listedAt,
-                            AvailableMs = listedAt + seconds * 1000, ExpiresMs = listedAt + MarketParam("BlackMarketItemValidSec", 86400) * 1000 });
+                            AvailableMs = listedAt + seconds * 1000, ExpiresMs = listedAt + MarketParam("BlackMarketItemValidSec", 86400) * 1000
+                        });
                         market.LastListedMs[guild.Id] = listedAt;
                         if (!await store.SaveMarketAsync(market, [guild], MarketEconomy(s, "list", req))) code = ErrorCodes.GuildMissing;
                         else CaptureMarketResources(notices, guild);
@@ -219,7 +231,7 @@ public sealed partial class GuildService
                     reply = () => s.SendGameAsync(id, response);
                     break;
                 }
-                case MarketUnlist:
+            case MarketUnlist:
                 {
                     var req = UnlistFromBlackMarketReq.Parser.ParseFrom(body.Span);
                     var stall = market.Stalls.FirstOrDefault(x => x.Id == req.StallUniqueId && x.GuildId == guild?.Id);
@@ -230,8 +242,11 @@ public sealed partial class GuildService
                     {
                         long before = guild!.Materials;
                         guild!.Materials = Math.Min(cap, guild.Materials + stall!.RemainCount);
-                        var economy = MarketEconomy(s, "unlist", new { Request = req, Cap = cap, Before = before,
-                            Escrow = stall.RemainCount, Stored = guild.Materials });
+                        var economy = MarketEconomy(s, "unlist", new
+                        {
+                            Request = req, Cap = cap, Before = before,
+                            Escrow = stall.RemainCount, Stored = guild.Materials
+                        });
                         MarketDiscard(economy, checked(before + stall.RemainCount - guild.Materials));
                         market.Stalls.Remove(stall);
                         if (!await store.SaveMarketAsync(market, [guild], economy)) code = ErrorCodes.GuildMissing;
@@ -241,7 +256,7 @@ public sealed partial class GuildService
                     reply = () => s.SendGameAsync(id, response);
                     break;
                 }
-                case MarketBuy:
+            case MarketBuy:
                 {
                     var req = BuyBlackMarketItemReq.Parser.ParseFrom(body.Span);
                     int code = gate != 0 ? gate : req.UnitPrice <= 0 || req.BuyCount <= 0 ? ErrorCodes.Parameter : 0;
@@ -301,9 +316,12 @@ public sealed partial class GuildService
                                 seller.Money = checked(seller.Money + amount - fee);
                                 stall.RemainCount -= count;
                                 remain -= count;
-                                market.Trades.Add(new GuildStore.MarketTrade { Id = $"order-{++market.NextId}",
+                                market.Trades.Add(new GuildStore.MarketTrade
+                                {
+                                    Id = $"order-{++market.NextId}",
                                     SellerGuildId = seller.Id, BuyerGuildId = guild!.Id, UnitPrice = req.UnitPrice,
-                                    Count = count, Fee = fee, TimeMs = tradedAt });
+                                    Count = count, Fee = fee, TimeMs = tradedAt
+                                });
                             }
                             market.Stalls.RemoveAll(x => x.RemainCount == 0);
                             guild!.Money -= total;
@@ -318,9 +336,12 @@ public sealed partial class GuildService
                                 market.PriceHistory[^1].Average = market.RecentAvgPrice;
                             else market.PriceHistory.Add(new GuildStore.MarketPrice { Average = market.RecentAvgPrice, DateHour = hour });
                             if (market.PriceHistory.Count > 168) market.PriceHistory.RemoveRange(0, market.PriceHistory.Count - 168);
-                            var economy = MarketEconomy(s, "buy", new { Request = req, Cap = cap,
+                            var economy = MarketEconomy(s, "buy", new
+                            {
+                                Request = req, Cap = cap,
                                 Before = beforeMaterials, Stored = guild.Materials, Paid = total, Fee = totalFees,
-                                Sellers = sellers.Keys.Order().ToArray() });
+                                Sellers = sellers.Keys.Order().ToArray()
+                            });
                             if (totalFees > 0) economy.Sink(new(EconomyAssetKind.GuildResource, EconomyDenominations.GuildMoney),
                                 totalFees, EconomyReason.GuildMarketFee);
                             MarketDiscard(economy, checked(beforeMaterials + req.BuyCount - guild.Materials));
@@ -342,13 +363,16 @@ public sealed partial class GuildService
                     reply = () => s.SendGameAsync(id, response);
                     break;
                 }
-                case MarketSellRecords:
+            case MarketSellRecords:
                 {
                     var records = market.Trades.Where(x => x.SellerGuildId == guild?.Id).OrderByDescending(x => x.TimeMs).ToArray();
                     var rsp = new GetBlackMarketSellRecordsRsp { Result = gate != 0 ? gate : records.Length == 0 ? ErrorCodes.GuildMissing : 0 };
-                    rsp.Records.AddRange(records.Select(x => new BlackMarketSellRecordInfo { OrderId = x.Id,
+                    rsp.Records.AddRange(records.Select(x => new BlackMarketSellRecordInfo
+                    {
+                        OrderId = x.Id,
                         UnitPrice = x.UnitPrice, Count = x.Count, Fee = x.Fee, CounterpartGuildId = x.BuyerGuildId,
-                        TradeTimeMs = x.TimeMs, IsRead = x.Read }));
+                        TradeTimeMs = x.TimeMs, IsRead = x.Read
+                    }));
                     if (gate == 0 && records.Length > 0)
                     {
                         foreach (var record in records) record.Read = true;
@@ -357,16 +381,19 @@ public sealed partial class GuildService
                     reply = () => s.SendGameAsync(id, rsp);
                     break;
                 }
-                case MarketBuyRecords:
+            case MarketBuyRecords:
                 {
                     var records = market.Trades.Where(x => x.BuyerGuildId == guild?.Id).OrderByDescending(x => x.TimeMs).ToArray();
                     var rsp = new GetBlackMarketBuyRecordsRsp { Result = gate != 0 ? gate : records.Length == 0 ? ErrorCodes.GuildMissing : 0 };
-                    rsp.Records.AddRange(records.Select(x => new BlackMarketBuyRecordInfo { OrderId = x.Id,
-                        UnitPrice = x.UnitPrice, Count = x.Count, TradeTimeMs = x.TimeMs }));
+                    rsp.Records.AddRange(records.Select(x => new BlackMarketBuyRecordInfo
+                    {
+                        OrderId = x.Id,
+                        UnitPrice = x.UnitPrice, Count = x.Count, TradeTimeMs = x.TimeMs
+                    }));
                     reply = () => s.SendGameAsync(id, rsp);
                     break;
                 }
-                case MarketUpdate:
+            case MarketUpdate:
                 {
                     var req = UpdateBlackMarketBoothReq.Parser.ParseFrom(body.Span);
                     var stall = market.Stalls.FirstOrDefault(x => x.Id == req.StallUniqueId && x.GuildId == guild?.Id);
@@ -384,8 +411,11 @@ public sealed partial class GuildService
                         stall!.UnitPrice = req.UnitPrice;
                         stall.TotalCount += difference;
                         stall.RemainCount = req.Count;
-                        var economy = MarketEconomy(s, "update", new { Request = req, Cap = cap, Before = before,
-                            Difference = difference, Stored = guild.Materials });
+                        var economy = MarketEconomy(s, "update", new
+                        {
+                            Request = req, Cap = cap, Before = before,
+                            Difference = difference, Stored = guild.Materials
+                        });
                         MarketDiscard(economy, checked(before - difference - guild.Materials));
                         if (!await store.SaveMarketAsync(market, [guild], economy)) code = ErrorCodes.GuildMissing;
                         else CaptureMarketResources(notices, guild);
@@ -394,9 +424,9 @@ public sealed partial class GuildService
                     reply = () => s.SendGameAsync(id, response);
                     break;
                 }
-            }
-            return reply;
         }
+        return reply;
+    }
 
     private async Task ExpireMarketAsync(GuildStore.MarketState market, HashSet<string> expiredIds,
         OwnerNotices notices)
@@ -406,8 +436,11 @@ public sealed partial class GuildService
             .Select(stall => (Stall: stall, Guild: store.Get(stall.GuildId))).ToArray();
         if (stale.Length == 0) return;
         var guilds = new Dictionary<long, GuildStore.State>();
-        var economy = MarketEconomy(null, "expire", new { Stalls = expiredIds.Order().ToArray(),
-            Cap = Setting("GuildMaterialsMax", 1000000)[0] });
+        var economy = MarketEconomy(null, "expire", new
+        {
+            Stalls = expiredIds.Order().ToArray(),
+            Cap = Setting("GuildMaterialsMax", 1000000)[0]
+        });
         foreach (var (stall, owner) in stale)
         {
             if (owner == null)

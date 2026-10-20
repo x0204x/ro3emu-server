@@ -153,9 +153,12 @@ public sealed partial class EquipmentService
                     {
                         tx.RoleBlob(session.Role!.Id, "equip_levels", JsonSerializer.SerializeToUtf8Bytes(nextLevels));
                         tx.WithEconomy(character.FamilyEconomy(session, "cd13a/equipment-refine", cost, [],
-                            new { Grid = grid, Before = level, BeforeLuck = luck, After = nextLevels.Refine.GetValueOrDefault(grid),
+                            new
+                            {
+                                Grid = grid, Before = level, BeforeLuck = luck, After = nextLevels.Refine.GetValueOrDefault(grid),
                                 AfterLuck = nextLevels.Luck.GetValueOrDefault(grid), Success = success, SuccessRoll = successRoll,
-                                DemoteRoll = demoteRoll, Protect = protect, Bonus = bonus }));
+                                DemoteRoll = demoteRoll, Protect = protect, Bonus = bonus
+                            }));
                     }, committed: () => session.EquipLevels = nextLevels) == null)
                     error = new(ErrorCodes.RefineMaterials, "payment short");
             }

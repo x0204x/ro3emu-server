@@ -53,7 +53,8 @@ public sealed partial class TradeService
                 {
                     "item_id" => l.Entry.ToString(CultureInfo.InvariantCulture),
                     "item_type" => data.Row("TradeConfig", l.Entry) is { } row ? GameData.Int(row, "_iType").ToString(CultureInfo.InvariantCulture) : "",
-                    "sku_id" => l.Sku, "spu_id" => l.Spu,
+                    "sku_id" => l.Sku,
+                    "spu_id" => l.Spu,
                     "item_price" => l.UnitPrice.ToString(CultureInfo.InvariantCulture),
                     "currency_type" => l.Currency.ToString(CultureInfo.InvariantCulture),
                     _ => "",

@@ -185,8 +185,11 @@ public sealed class RankServiceTests : IAsyncLifetime
 
         InvItem Equip(long role, long value, bool appraised)
         {
-            var item = new InvItem { Entry = 2010120, Stack = 1, Pack = 1, Sort = 1,
-                Attrs = new() { [3] = appraised ? 1 : 0, [30] = 1, [60] = value } };
+            var item = new InvItem
+            {
+                Entry = 2010120, Stack = 1, Pack = 1, Sort = 1,
+                Attrs = new() { [3] = appraised ? 1 : 0, [30] = 1, [60] = value }
+            };
             items.Insert(role, item);
             return item;
         }
@@ -216,8 +219,11 @@ public sealed class RankServiceTests : IAsyncLifetime
         var local = DateTimeOffset.Now;
         var day = local.AddHours(-5).Date;
         long week = new DateTimeOffset(day.AddDays(-(((int)day.DayOfWeek + 6) % 7)).AddHours(5), local.Offset).ToUnixTimeSeconds();
-        var guild = new GuildStore.State { Name = name, Reputation = reputation, Announce = "Join " + name,
-            CurActivity = activity, ActivityWeek = week };
+        var guild = new GuildStore.State
+        {
+            Name = name, Reputation = reputation, Announce = "Join " + name,
+            CurActivity = activity, ActivityWeek = week
+        };
         guild.Members[leader] = new GuildStore.Member { RoleId = leader, Name = leaderName, Official = 1, Career = 1100, Level = 30 };
         Assert.True(store.Save(guild));
         return guild.Id;

@@ -55,8 +55,11 @@ public sealed partial class DungeonService
                 // keeps it, as MonsterUnit does.
                 Face = Face, State = EntityState.Alive, BornTimeMs = EntityType == 2 ? 0 : BornMs,
                 NotifyType = EntityBase.Types.NotifyType.All,
-                MovementInfo = new MovementInfo { Pos = Pos, Face = Face, ServerTime = MonsterService.NowMs,
-                    MoveType = MovementType.MoveTypeNone },
+                MovementInfo = new MovementInfo
+                {
+                    Pos = Pos, Face = Face, ServerTime = MonsterService.NowMs,
+                    MoveType = MovementType.MoveTypeNone
+                },
             };
             if (Template is { } t)
                 foreach (var (idx, value) in new (long, long)[] { (101, t.MaxHp), (2000, t.MaxHp), (2002, t.Level), (113, t.SpeedCm),

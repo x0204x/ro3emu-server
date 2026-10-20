@@ -565,7 +565,8 @@ public sealed class BotClient : IAsyncDisposable
     private async Task AnswerEncryptTokenAsync(PhonestChannel channel, ReadOnlyMemory<byte> body, ushort confirmKey)
     {
         long token = EncryptToken.Parser.ParseFrom(body.Span).Token;
-        var sessionKey = SHA1.HashData(RandomNumberGenerator.GetBytes(16));
+        // The client hashes 16 random bytes with SHA-1; 20 random bytes are the same to the server.
+        var sessionKey = RandomNumberGenerator.GetBytes(20);
         var key = new EncryptKey
         {
             HeadPadding = ByteString.CopyFrom(RandomNumberGenerator.GetBytes(8)),

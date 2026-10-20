@@ -64,6 +64,8 @@ namespace Ro3Emu.ClientHooks
         // 10 s stats line while joined (Interlocked: capture, writer and reader threads count).
         private static int _captured, _peak, _linkDropped, _heard;
         private static string _lastNote;
+        private static readonly VoiceOffHint OffHint = new VoiceOffHint();
+        private const string OffHintText = "Voice chat is off on this server.";
 
         // ---- Called by the patched VoiceCallAdapter (main thread). Nothing may throw back into the game. ----
 
@@ -80,7 +82,7 @@ namespace Ro3Emu.ClientHooks
         {
             Guard("JoinChannel", () =>
             {
-                if (!IsTeamChannel(channel)) { Note("not a team channel, ignored: " + channel); return; }
+                if (!IsServedChannel(channel)) { Note("not a party or guild channel, ignored: " + channel); return; }
                 if (_wanted != null && _wanted != channel) LeaveCurrent();
                 _wanted = channel;
                 if (_link != null && _link.Authed) { _link.Send(VoiceProtocol.ChannelFrame(VoiceProtocol.Join, channel)); return; }
@@ -112,6 +114,7 @@ namespace Ro3Emu.ClientHooks
             Guard("SetMicrophoneMute", () =>
             {
                 if (channel == null || channel != _wanted) return;
+                if (OffHint.ShowOnMicChange(mute)) ShowTip(OffHintText);
                 _micOn = !mute;
                 if (_joined != null) _link?.Send(VoiceProtocol.SwitchFrame(VoiceProtocol.Mic, _micOn));
                 UpdateCapture();
@@ -141,6 +144,7 @@ namespace Ro3Emu.ClientHooks
         {
             Guard("Shutdown", () =>
             {
+                OffHint.Reset();
                 if (_wanted == null && _link == null) return;
                 Debug.Log("[Ro3Emu.Voice] game connection closed: voice off");
                 _wanted = null;
@@ -182,6 +186,7 @@ namespace Ro3Emu.ClientHooks
         {
             _ticketAskedAt = -TicketRetryMs;
             if (ticket == null) { Debug.LogWarning("[Ro3Emu.Voice] malformed ticket"); return; }
+            OffHint.OnTicket(ticket.Port == 0);
             if (ticket.Port == 0) { _rejoinAt = 0; Note("voice is off on this server"); return; }
             if (string.IsNullOrEmpty(ticket.Host)) { Debug.LogWarning("[Ro3Emu.Voice] the ticket names no relay host"); return; }
             if (_wanted == null || _link != null) return; // left meanwhile, or already connected
@@ -386,10 +391,29 @@ namespace Ro3Emu.ClientHooks
             manager.Obf_OD(util, name, args);
         }
 
-        private static bool IsTeamChannel(string channel)
+        /// <summary>The game's own short pop-up, LC_TipHelper.PopCommonTips(text) (it skips a repeat within 3 s).</summary>
+        private static void ShowTip(string text)
         {
-            if (string.IsNullOrEmpty(channel)) return false;
-            foreach (char c in channel)
+            var manager = SingletonMonoBehaviour<LA_LuaManager>.Instance;
+            if (manager == null) return;
+            var tips = manager.Obf_jD()?.Obf_A?.Obf_RuA<Obf_R.Obf_ff>("LC_TipHelper");
+            if (tips == null) { Note("LC_TipHelper not loaded; hint dropped"); return; }
+            manager.Obf_OD(tips, "PopCommonTips", text);
+        }
+
+        /// <summary>What the relay serves: a party (its team id) or a guild voice channel "2_&lt;guildId&gt;_&lt;index&gt;"
+        /// (LC_VoiceHelper.GetGuildVoiceChannelId); the relay checks the rest (Ro3Emu.Server.Voice.VoiceRoomKey).</summary>
+        private static bool IsServedChannel(string channel)
+        {
+            if (IsDigits(channel)) return true;
+            var parts = channel?.Split('_');
+            return parts != null && parts.Length == 3 && parts[0] == "2" && IsDigits(parts[1]) && IsDigits(parts[2]);
+        }
+
+        private static bool IsDigits(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return false;
+            foreach (char c in text)
                 if (c < '0' || c > '9') return false;
             return true;
         }
@@ -424,12 +448,15 @@ namespace Ro3Emu.ClientHooks
 
         /// <summary>
         /// One TCP connection to the relay: connect and read on one thread, every write on another. Send/SendAudio only
-        /// queue (control frames bounded, audio dropping its oldest), so no caller ever waits on the network.
+        /// queue (control frames bounded, audio dropping its oldest), so no caller ever waits on the network. Every frame
+        /// but Auth is sealed with the ticket's secret by the writer (one thread, so the counters follow the wire order)
+        /// and every frame read is opened by the reader; one that fails to open ends the link.
         /// </summary>
         private sealed class Link
         {
             private const int MaxControl = 64;
             private const int MaxAudio = 8; // 160 ms; older frames are stale anyway
+            private const int WriterJoinMs = 2000;
 
             private readonly VoiceProtocol.Ticket _ticket;
             private readonly object _queue = new object();
@@ -437,11 +464,17 @@ namespace Ro3Emu.ClientHooks
             private readonly Queue<byte[]> _audio = new Queue<byte[]>();
             private TcpClient _tcp;
             private NetworkStream _stream;
+            private Thread _writer;
             /// <summary>Requested close vs failure: only a failure is reported to the main thread, exactly once.</summary>
             private readonly VoiceLinkState _state = new VoiceLinkState();
+            private readonly VoiceCipher _cipher;
             public volatile bool Authed;
 
-            public Link(VoiceProtocol.Ticket ticket) { _ticket = ticket; }
+            public Link(VoiceProtocol.Ticket ticket)
+            {
+                _ticket = ticket;
+                _cipher = VoiceCipher.ForClient(ticket.Secret);
+            }
 
             public void Start() => new Thread(Run) { IsBackground = true, Name = "Ro3Emu voice" }.Start();
 
@@ -509,10 +542,19 @@ namespace Ro3Emu.ClientHooks
                             if (_state.Closed) return;
                             frame = _control.Count > 0 ? _control.Dequeue() : _audio.Dequeue();
                         }
+                        if (frame[2] != VoiceProtocol.Auth) frame = Seal(frame);
                         _stream.Write(frame, 0, frame.Length);
                     }
                 }
                 catch (Exception e) { Fail("send failed: " + e.GetType().Name + ": " + e.Message); }
+            }
+
+            /// <summary>The same frame with its payload sealed (writer thread only).</summary>
+            private byte[] Seal(byte[] frame)
+            {
+                var payload = new byte[frame.Length - VoiceProtocol.HeaderSize];
+                Buffer.BlockCopy(frame, VoiceProtocol.HeaderSize, payload, 0, payload.Length);
+                return VoiceProtocol.Frame(frame[2], _cipher.Seal(frame[2], payload));
             }
 
             private void Run()
@@ -528,16 +570,19 @@ namespace Ro3Emu.ClientHooks
                     _stream = _tcp.GetStream();
                     if (!_state.Closed)
                     {
-                        new Thread(Write) { IsBackground = true, Name = "Ro3Emu voice send" }.Start();
-                        Send(VoiceProtocol.AuthFrame(_ticket.RoleId, _ticket.Token));
+                        _writer = new Thread(Write) { IsBackground = true, Name = "Ro3Emu voice send" };
+                        _writer.Start();
+                        Send(VoiceProtocol.AuthFrame(_ticket.RoleId, _ticket.Token, _ticket.Secret));
                         var header = new byte[VoiceProtocol.HeaderSize];
                         while (!_state.Closed)
                         {
                             if (!ReadFully(header)) break;
                             int length = VoiceProtocol.PayloadLength(header);
                             if (length < 0) { why = "bad frame"; break; }
-                            var payload = new byte[length];
-                            if (!ReadFully(payload)) break;
+                            var sealedPayload = new byte[length];
+                            if (!ReadFully(sealedPayload)) break;
+                            byte[] payload = _cipher.Open(header[2], sealedPayload);
+                            if (payload == null) { why = "a frame failed authentication"; break; }
                             if (!Handle(header[2], payload, ref why)) break;
                         }
                     }
@@ -549,6 +594,9 @@ namespace Ro3Emu.ClientHooks
                 // The reader is done, so the link is too. A no-op after the game's own Close (that is not news) or after
                 // the writer already failed (that failure was reported, once).
                 Fail(why);
+                // Only once neither thread can still seal or open: the reader is this thread, the writer ends on Closed
+                // (a write blocked on the closed socket throws at once). A writer still stuck after that is left to the GC.
+                if (_writer == null || _writer.Join(WriterJoinMs)) _cipher.Dispose();
             }
 
             /// <summary>One received frame; false ends the connection.</summary>

@@ -104,7 +104,7 @@ public sealed class CardCrashRecoveryTests
             long role = long.Parse(source[0]); int card = int.Parse(source[1]);
             await KillAtBarrierAsync(child, source);
             using (var db = new SqliteConnection(new SqliteConnectionStringBuilder
-                { DataSource = Path.Combine(dataDir, "ro3emu.db"), Mode = SqliteOpenMode.ReadWrite, Pooling = false }.ToString()))
+            { DataSource = Path.Combine(dataDir, "ro3emu.db"), Mode = SqliteOpenMode.ReadWrite, Pooling = false }.ToString()))
             {
                 db.Open();
                 using (var integrity = db.CreateCommand())
@@ -142,7 +142,7 @@ public sealed class CardCrashRecoveryTests
                     // Task Login settled before CardService loaded 5057. An interruption here must
                     // leave the natural card source pending and must not deliver a reward.
                     using (var db = new SqliteConnection(new SqliteConnectionStringBuilder
-                        { DataSource = Path.Combine(dataDir, "ro3emu.db"), Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString()))
+                    { DataSource = Path.Combine(dataDir, "ro3emu.db"), Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString()))
                     {
                         db.Open();
                         using var command = db.CreateCommand();

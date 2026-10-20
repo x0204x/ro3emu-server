@@ -113,14 +113,18 @@ public sealed class SkillGrowthTests : IAsyncLifetime
         {
             await Next(novice, SkillService.SkillDataSync, DBSkillDataIncrement.Parser);
             await novice.SendGameAsync(SkillService.SkillLoad, new SkillLoadReq
-                { OpType = SkillLoadOperation.SkillLoadOpLoad, IsManual = true, SocketNum = 2,
-                    Info = new SkillData { SkillId = 10000, SkillLevel = 2 } });
+            {
+                OpType = SkillLoadOperation.SkillLoadOpLoad, IsManual = true, SocketNum = 2,
+                Info = new SkillData { SkillId = 10000, SkillLevel = 2 }
+            });
             Assert.Equal(ErrorCodes.SkillNotLearned,
                 (await Next(novice, SkillService.SkillLoad, SkillLoadResp.Parser)).Result);
 
             await novice.SendGameAsync(SkillService.SkillLoad, new SkillLoadReq
-                { OpType = SkillLoadOperation.SkillLoadOpLoad, IsManual = true, SocketNum = 2,
-                    Info = new SkillData { SkillId = 10000, SkillLevel = 1 } });
+            {
+                OpType = SkillLoadOperation.SkillLoadOpLoad, IsManual = true, SocketNum = 2,
+                Info = new SkillData { SkillId = 10000, SkillLevel = 1 }
+            });
             Assert.Equal(0, (await Next(novice, SkillService.SkillLoad, SkillLoadResp.Parser)).Result);
         }
 
@@ -237,28 +241,36 @@ public sealed class SkillGrowthTests : IAsyncLifetime
             Assert.Equal(0, (await Next(alice, SkillService.PlanUpdate, SkillGrowthSkillPlanUpdateResp.Parser)).Result);
 
             await alice.SendGameAsync(SkillService.SkillLoad, new SkillLoadReq
-                { OpType = SkillLoadOperation.SkillLoadOpLoad, IsManual = true, SocketNum = 2,
-                    Info = new SkillData { SkillId = 13006, SkillLevel = 1 } });
+            {
+                OpType = SkillLoadOperation.SkillLoadOpLoad, IsManual = true, SocketNum = 2,
+                Info = new SkillData { SkillId = 13006, SkillLevel = 1 }
+            });
             Assert.Equal(0, (await Next(alice, SkillService.SkillLoad, SkillLoadResp.Parser)).Result);
             var wheel = await Next(alice, SkillService.SkillDataSync, DBSkillDataIncrement.Parser,
                 m => !m.SyncAllMark && m.SkillWheel?.Inc?.WhellSkills.ContainsKey(3) == true);
             Assert.Equal(1300601, wheel.SkillWheel.Inc.WhellSkills[3].All.SkillConfigId);
             await alice.SendGameAsync(SkillService.QueueUpdate, new SkillQueueUpdateReq
-                { Plan = 0, OpType = SkillLoadOperation.SkillLoadOpLoad, QueueIndex = 0,
-                    Info = new SkillData { SkillId = 13006, SkillLevel = 1 } });
+            {
+                Plan = 0, OpType = SkillLoadOperation.SkillLoadOpLoad, QueueIndex = 0,
+                Info = new SkillData { SkillId = 13006, SkillLevel = 1 }
+            });
             Assert.Equal(0, (await Next(alice, SkillService.QueueUpdate, SkillQueueUpdateResp.Parser)).Result);
             var loaded = await Next(alice, SkillService.SkillDataSync, DBSkillDataIncrement.Parser,
                 m => !m.SyncAllMark && m.SkillAssignPlans?.Inc?.Value[0].SkillQueue.ContainsKey(0) == true);
             Assert.Equal(13006, loaded.SkillAssignPlans.Inc.Value[0].SkillQueue[0].Inc.SkillId);
 
             await alice.SendGameAsync(SkillService.QueueUpdate, new SkillQueueUpdateReq
-                { Plan = 0, OpType = SkillLoadOperation.SkillLoadOpLoad, QueueIndex = 12,
-                    Info = new SkillData { SkillId = 13006, SkillLevel = 1 } });
+            {
+                Plan = 0, OpType = SkillLoadOperation.SkillLoadOpLoad, QueueIndex = 12,
+                Info = new SkillData { SkillId = 13006, SkillLevel = 1 }
+            });
             Assert.Equal(ErrorCodes.Parameter,
                 (await Next(alice, SkillService.QueueUpdate, SkillQueueUpdateResp.Parser)).Result);
             await alice.SendGameAsync(SkillService.SkillLoad, new SkillLoadReq
-                { OpType = SkillLoadOperation.SkillLoadOpLoad, IsManual = true, SocketNum = 6,
-                    Info = new SkillData { SkillId = 13006, SkillLevel = 1 } });
+            {
+                OpType = SkillLoadOperation.SkillLoadOpLoad, IsManual = true, SocketNum = 6,
+                Info = new SkillData { SkillId = 13006, SkillLevel = 1 }
+            });
             Assert.Equal(ErrorCodes.Parameter,
                 (await Next(alice, SkillService.SkillLoad, SkillLoadResp.Parser)).Result);
             await alice.SendGameAsync(SkillService.SkillReset, new SkillResetReq { Plan = 0 });

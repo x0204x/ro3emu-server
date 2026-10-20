@@ -215,8 +215,11 @@ public sealed partial class AuctionService(AuctionStore store, RoleStore roles, 
                 continue;
             var transaction = roles.NewTransaction();
             var economy = AuctionIntent("auction/finalize-run", sourceKey: $"auction/run/{runId}/finalize")
-                .Evidence(new { RunId = runId, run.GuildId, run.SrcType, run.PlayBook,
-                    Eligible = run.Eligible.ToArray(), Group = group, Goods = goods, OpenDay = rewardOpenDay });
+                .Evidence(new
+                {
+                    RunId = runId, run.GuildId, run.SrcType, run.PlayBook,
+                    Eligible = run.Eligible.ToArray(), Group = group, Goods = goods, OpenDay = rewardOpenDay
+                });
             int index = 0;
             foreach (var (entry, amount, bind) in goods)
             {
@@ -292,8 +295,11 @@ public sealed partial class AuctionService(AuctionStore store, RoleStore roles, 
         IsBidded = r.Joined.Contains(s.Role!.Id), IsBidding = r.Owner == s.Role.Id,
         State = r.State, GuildId = r.GuildId, BiddingPrice = r.Owner == s.Role.Id ? r.Reserve : 0,
         IsGiveup = r.GiveUp.Contains(s.Role.Id), TypeAttr = r.TypeAttr, LastBiddingTime = r.LastBid,
-        CurMaxAutoBidding = r.Auto && r.Owner == s.Role.Id ? new DBAutoBidding { RoleId = r.Owner, MaxPrice = r.Reserve,
-            BiddingTime = r.LastBid, IsPaused = r.AutoPaused } : null,
+        CurMaxAutoBidding = r.Auto && r.Owner == s.Role.Id ? new DBAutoBidding
+        {
+            RoleId = r.Owner, MaxPrice = r.Reserve,
+            BiddingTime = r.LastBid, IsPaused = r.AutoPaused
+        } : null,
         DungeonAuctionData = r.Type == AuctionType.Dungeon ? new DungeonAuctionData
         { QuUniqueId = r.RunId, DungeonBeginTime = r.Start, GiveupUsers = { r.GiveUp } } : null,
     };
@@ -310,17 +316,20 @@ public sealed partial class AuctionService(AuctionStore store, RoleStore roles, 
                 && (req.AuctionItemTypes.Count == 0 || req.AuctionItemTypes.Contains(GameData.Int(
                     data.Row("AuctionConfig", r.Entry)!.Value, "_iType")))))))
         {
-        var rows = store.Items().Where(r => r.Type == req.AuctionType && r.State != AuctionState.Settled && Visible(s, r)
-            && (req.SrcType == 0 || r.SrcType == req.SrcType)
-            && (req.GuildId == 0 || r.GuildId == req.GuildId)
-            && (req.AuctionItemTypes.Count == 0 || req.AuctionItemTypes.Contains(GameData.Int(data.Row("AuctionConfig", r.Entry)!.Value, "_iType"))))
-            .OrderBy(r => r.End).ThenBy(r => r.Id).ToArray();
-        int from = Math.Max(0, req.StartIndex - 1), count = Math.Clamp(req.EndIndex - req.StartIndex + 1, 0, 500);
-        res = new QueryAuctionRes { AuctionType = req.AuctionType, StartIndex = req.StartIndex,
-            EndIndex = req.EndIndex, SrcType = req.SrcType, TotalNum = rows.Length };
-        res.AuctionItemTypes.Add(req.AuctionItemTypes);
-        res.SrvAuctionItemTypes.Add(rows.Select(r => GameData.Int(data.Row("AuctionConfig", r.Entry)!.Value, "_iType")).Distinct());
-        res.Auctions.Add(rows.Skip(from).Take(count).Select(r => View(s, r)));
+            var rows = store.Items().Where(r => r.Type == req.AuctionType && r.State != AuctionState.Settled && Visible(s, r)
+                && (req.SrcType == 0 || r.SrcType == req.SrcType)
+                && (req.GuildId == 0 || r.GuildId == req.GuildId)
+                && (req.AuctionItemTypes.Count == 0 || req.AuctionItemTypes.Contains(GameData.Int(data.Row("AuctionConfig", r.Entry)!.Value, "_iType"))))
+                .OrderBy(r => r.End).ThenBy(r => r.Id).ToArray();
+            int from = Math.Max(0, req.StartIndex - 1), count = Math.Clamp(req.EndIndex - req.StartIndex + 1, 0, 500);
+            res = new QueryAuctionRes
+            {
+                AuctionType = req.AuctionType, StartIndex = req.StartIndex,
+                EndIndex = req.EndIndex, SrcType = req.SrcType, TotalNum = rows.Length
+            };
+            res.AuctionItemTypes.Add(req.AuctionItemTypes);
+            res.SrvAuctionItemTypes.Add(rows.Select(r => GameData.Int(data.Row("AuctionConfig", r.Entry)!.Value, "_iType")).Distinct());
+            res.Auctions.Add(rows.Skip(from).Take(count).Select(r => View(s, r)));
         }
         await SendSessionAuctionAsync(s, requestRole, requestLease, Query, res);
     }
@@ -334,10 +343,10 @@ public sealed partial class AuctionService(AuctionStore store, RoleStore roles, 
             store.Items().Where(r => r.Type == req.AuctionType && Visible(s, r)
                 && (r.Type == AuctionType.Dungeon || r.Joined.Contains(role) || r.Owner == role)))))
         {
-        res = new QuerySelfAuctionRes { AuctionType = req.AuctionType };
-        res.SelfAuctions.Add(store.Items().Where(r => r.Type == req.AuctionType && Visible(s, r)
-            && (r.Type == AuctionType.Dungeon || r.Joined.Contains(s.Role!.Id) || r.Owner == s.Role.Id))
-            .OrderByDescending(r => r.LastBid).Select(r => View(s, r)));
+            res = new QuerySelfAuctionRes { AuctionType = req.AuctionType };
+            res.SelfAuctions.Add(store.Items().Where(r => r.Type == req.AuctionType && Visible(s, r)
+                && (r.Type == AuctionType.Dungeon || r.Joined.Contains(s.Role!.Id) || r.Owner == s.Role.Id))
+                .OrderByDescending(r => r.LastBid).Select(r => View(s, r)));
         }
         // The recovered no_decode_default_array client Lua iterates nil for a truly empty repeated field.
         // No valid server-side encoding can force a zero-length repeated field to be present; never mint a dummy row.
@@ -354,12 +363,12 @@ public sealed partial class AuctionService(AuctionStore store, RoleStore roles, 
                 && (req.GuildId == 0 || r.GuildId == req.GuildId)
                 && (req.SrcType == 0 || r.SrcType == req.SrcType) && req.AuctionIds.Contains(r.Id)))))
         {
-        var rows = store.Items().Where(r => r.Type == req.AuctionType && Visible(s, r)
-            && (req.GuildId == 0 || r.GuildId == req.GuildId) && (req.SrcType == 0 || r.SrcType == req.SrcType)
-            && req.AuctionIds.Contains(r.Id)).ToArray();
-        res = new GetAuctionRes { AuctionType = req.AuctionType, SrcType = req.SrcType, TotalNum = rows.Length };
-        res.AuctionIds.Add(req.AuctionIds);
-        res.Auctions.Add(rows.Select(r => View(s, r)));
+            var rows = store.Items().Where(r => r.Type == req.AuctionType && Visible(s, r)
+                && (req.GuildId == 0 || r.GuildId == req.GuildId) && (req.SrcType == 0 || r.SrcType == req.SrcType)
+                && req.AuctionIds.Contains(r.Id)).ToArray();
+            res = new GetAuctionRes { AuctionType = req.AuctionType, SrcType = req.SrcType, TotalNum = rows.Length };
+            res.AuctionIds.Add(req.AuctionIds);
+            res.Auctions.Add(rows.Select(r => View(s, r)));
         }
         await SendSessionAuctionAsync(s, requestRole, requestLease, Get, res);
     }
@@ -373,16 +382,18 @@ public sealed partial class AuctionService(AuctionStore store, RoleStore roles, 
             store.Items().Where(r => r.Type == req.AuctionType && r.State == AuctionState.Settled
                 && Visible(s, r) && (req.GuildId == 0 || r.GuildId == req.GuildId)))))
         {
-        res = new QueryHistoryAuctionRes { AuctionType = req.AuctionType };
-        res.HistoryAuctions.Add(store.Items().Where(r => r.Type == req.AuctionType && r.State == AuctionState.Settled
-            && Visible(s, r) && (req.GuildId == 0 || r.GuildId == req.GuildId))
-            .OrderByDescending(r => r.End).Take(req.AuctionType == AuctionType.World ? WorldRecordLimit : RecordLimit)
-            .Select(HistoryOf));
+            res = new QueryHistoryAuctionRes { AuctionType = req.AuctionType };
+            res.HistoryAuctions.Add(store.Items().Where(r => r.Type == req.AuctionType && r.State == AuctionState.Settled
+                && Visible(s, r) && (req.GuildId == 0 || r.GuildId == req.GuildId))
+                .OrderByDescending(r => r.End).Take(req.AuctionType == AuctionType.World ? WorldRecordLimit : RecordLimit)
+                .Select(HistoryOf));
         }
         await SendSessionAuctionAsync(s, requestRole, requestLease, History, res);
     }
 
     private static HistoryAuctionItem HistoryOf(AuctionStore.Item r) => new()
-    { AuctionId = r.Id, AuctionType = (long)r.Type, ItemId = r.Entry, ItemPrice = r.Price,
-        EndTime = r.End, SrcType = r.SrcType, UserId = r.Winner };
+    {
+        AuctionId = r.Id, AuctionType = (long)r.Type, ItemId = r.Entry, ItemPrice = r.Price,
+        EndTime = r.End, SrcType = r.SrcType, UserId = r.Winner
+    };
 }

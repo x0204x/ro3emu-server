@@ -15,7 +15,8 @@ namespace Ro3Emu.ClientHooks
 
         public const int HeaderSize = 5;
         public const int MaxPayload = 0xFFFF;
-        public const byte Version = 1;
+        /// <summary>Auth version: 2 = every frame after Auth is sealed with the ticket's secret (VoiceCipher).</summary>
+        public const byte Version = 2;
         public const int TokenSize = 16;
 
         // Up.
@@ -27,7 +28,8 @@ namespace Ro3Emu.ClientHooks
         /// <summary>Audio payload codec ids (first payload byte; the server does not look inside).</summary>
         public const byte CodecMuLaw = 1;
 
-        /// <summary>The 77016 body: where the relay is and the one-time token for it. Port 0 = voice off on this server.</summary>
+        /// <summary>The 77016 body: where the relay is, the one-time token and the stream secret for it. Port 0 = voice
+        /// off on this server.</summary>
         public sealed class Ticket
         {
             public int Port;
@@ -35,18 +37,22 @@ namespace Ro3Emu.ClientHooks
             public long RoleId;
             public byte[] Token;
             public uint TtlSeconds;
+            public byte[] Secret;
         }
 
-        /// <summary>u16 port | u8 host length | host ASCII | i64 role id | 16-byte token | u32 ttl seconds; null if malformed.</summary>
+        /// <summary>u16 port | u8 host length | host ASCII | i64 role id | 16-byte token | u32 ttl seconds | 32-byte
+        /// secret; null if malformed (a relay from before encryption sends no secret).</summary>
         public static Ticket ParseTicket(byte[] body)
         {
             if (body == null || body.Length < 3) return null;
             int port = body[0] | (body[1] << 8);
             int hostLength = body[2];
             int at = 3 + hostLength;
-            if (body.Length < at + 8 + TokenSize + 4) return null;
+            if (body.Length < at + 8 + TokenSize + 4 + VoiceCipher.SecretSize) return null;
             var token = new byte[TokenSize];
             Buffer.BlockCopy(body, at + 8, token, 0, TokenSize);
+            var secret = new byte[VoiceCipher.SecretSize];
+            Buffer.BlockCopy(body, at + 8 + TokenSize + 4, secret, 0, secret.Length);
             return new Ticket
             {
                 Port = port,
@@ -54,6 +60,7 @@ namespace Ro3Emu.ClientHooks
                 RoleId = BitConverter.ToInt64(body, at),
                 Token = token,
                 TtlSeconds = BitConverter.ToUInt32(body, at + 8 + TokenSize),
+                Secret = secret,
             };
         }
 
@@ -79,13 +86,15 @@ namespace Ro3Emu.ClientHooks
             return header[3] | (header[4] << 8);
         }
 
-        public static byte[] AuthFrame(long roleId, byte[] token)
+        /// <summary>Version | role id | token | proof of the secret (sent in the clear: the one unsealed frame).</summary>
+        public static byte[] AuthFrame(long roleId, byte[] token, byte[] secret)
         {
             if (token == null || token.Length != TokenSize) throw new ArgumentException("voice token must be 16 bytes");
-            var payload = new byte[1 + 8 + TokenSize];
+            var payload = new byte[1 + 8 + TokenSize + VoiceCipher.AuthProofSize];
             payload[0] = Version;
             BitConverter.GetBytes(roleId).CopyTo(payload, 1);
             Buffer.BlockCopy(token, 0, payload, 9, TokenSize);
+            Buffer.BlockCopy(VoiceCipher.AuthProof(secret, roleId, token), 0, payload, 9 + TokenSize, VoiceCipher.AuthProofSize);
             return Frame(Auth, payload);
         }
 

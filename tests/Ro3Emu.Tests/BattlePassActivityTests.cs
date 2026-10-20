@@ -194,8 +194,11 @@ public sealed class BattlePassActivityTests : IAsyncLifetime
         var month = Session(alice).NewActivities!.ActivityInfo[199].ActivityParam.MonthCard;
         Assert.Equal(31, month.Infos[1001].LastDays); // client parser displays lastDays - 1
         Assert.Equal(31, month.Infos[1002].LastDays);
-        var claim = new CommonActivityReq { ActivityId = 199,
-            GainMonthCardDailyAward = new GainMonthCardDailyAwardReq { MonthCardId = { 1001, 1002 } } };
+        var claim = new CommonActivityReq
+        {
+            ActivityId = 199,
+            GainMonthCardDailyAward = new GainMonthCardDailyAwardReq { MonthCardId = { 1001, 1002 } }
+        };
         Assert.Equal(0, (await Common(alice, claim)).Result);
         Assert.Equal(ErrorCodes.MonthCardClaimed, (await Common(alice, claim)).Result);
         await alice.DisposeAsync();

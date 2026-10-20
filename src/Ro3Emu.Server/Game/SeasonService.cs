@@ -265,8 +265,11 @@ public sealed class SeasonService : IGameTicker
             },
         };
         foreach (var (id, previous) in history)
-            info.History[id] = new SeasonInfo { SeasonId = id, PlayBookId = previous.PlayBook, SeasonAreaId = 1,
-                StartTime = Unix(previous.Start), EndTime = Unix(previous.End) };
+            info.History[id] = new SeasonInfo
+            {
+                SeasonId = id, PlayBookId = previous.PlayBook, SeasonAreaId = 1,
+                StartTime = Unix(previous.Start), EndTime = Unix(previous.End)
+            };
         await CharacterService.SyncAsync(session, SeasonSync, info);
         if (times.StageTimeInfo.Count > 0) await session.SendGameAsync(TimeInfoNotify, times);
     }

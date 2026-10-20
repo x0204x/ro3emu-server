@@ -21,7 +21,7 @@ public sealed class VoiceProtocolUnitTests
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
 
         public override int Read(byte[] buffer, int offset, int count) =>
-            ReadAsync(buffer.AsMemory(offset, count)).GetAwaiter().GetResult();
+            ReadAsync(buffer.AsMemory(offset, count)).AsTask().GetAwaiter().GetResult();
 
         public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
         {
@@ -119,26 +119,54 @@ public sealed class VoiceProtocolUnitTests
     {
         var clock = new FakeClock();
         var registry = new VoiceTicketRegistry(clock);
-        byte[] first = registry.Issue("alice", 1001, ttlSeconds: 60);
-        Assert.Equal("alice", registry.Consume(1001, first));
-        Assert.Null(registry.Consume(1001, first)); // single use
+        var first = registry.Issue("alice", 1001, ttlSeconds: 60);
+        Assert.Equal("alice", registry.Consume(1001, first.Token, Proof(first, 1001))?.Account);
+        Assert.Null(registry.Consume(1001, first.Token, Proof(first, 1001))); // single use
 
-        byte[] second = registry.Issue("alice", 1001, ttlSeconds: 60);
-        byte[] third = registry.Issue("alice", 1001, ttlSeconds: 60); // replaces "second" before it was ever used
-        Assert.Null(registry.Consume(1001, second));
-        Assert.Equal("alice", registry.Consume(1001, third));
+        var second = registry.Issue("alice", 1001, ttlSeconds: 60);
+        var third = registry.Issue("alice", 1001, ttlSeconds: 60); // replaces "second" before it was ever used
+        Assert.Null(registry.Consume(1001, second.Token, Proof(second, 1001)));
+        Assert.Equal("alice", registry.Consume(1001, third.Token, Proof(third, 1001))?.Account);
     }
+
+    [Fact]
+    public void TicketRegistryHandsTheIssuedSecretBackOnlyToItsOwnTicket()
+    {
+        var registry = new VoiceTicketRegistry(new FakeClock());
+        var a = registry.Issue("alice", 1001, ttlSeconds: 60);
+        var b = registry.Issue("bob", 1002, ttlSeconds: 60);
+        Assert.Equal(Ro3Emu.ClientHooks.VoiceCipher.SecretSize, a.Secret.Length);
+        Assert.NotEqual(a.Secret, b.Secret);
+        Assert.Equal(a.Secret, registry.Consume(1001, a.Token, Proof(a, 1001))?.Secret);
+        Assert.Equal(b.Secret, registry.Consume(1002, b.Token, Proof(b, 1002))?.Secret);
+    }
+
+    [Fact]
+    public void TicketRegistryRefusesTheRightTokenWithoutTheSecretAndKeepsTheTicket()
+    {
+        // Someone who saw the Auth frame on the wire has the token but not the secret: they must not use the ticket
+        // up (or replace the player's live voice connection); the player's own Auth still works afterwards.
+        var registry = new VoiceTicketRegistry(new FakeClock());
+        var ticket = registry.Issue("alice", 1001, ttlSeconds: 60);
+        byte[] guessed = Ro3Emu.ClientHooks.VoiceCipher.AuthProof(Ro3Emu.ClientHooks.VoiceCipher.NewSecret(), 1001, ticket.Token);
+        Assert.Null(registry.Consume(1001, ticket.Token, guessed));
+        Assert.Null(registry.Consume(1001, ticket.Token, new byte[Ro3Emu.ClientHooks.VoiceCipher.AuthProofSize]));
+        Assert.Equal("alice", registry.Consume(1001, ticket.Token, Proof(ticket, 1001))?.Account);
+    }
+
+    private static byte[] Proof(VoiceTicketGrant grant, long roleId) =>
+        Ro3Emu.ClientHooks.VoiceCipher.AuthProof(grant.Secret, roleId, grant.Token);
 
     [Fact]
     public void TicketRegistryRejectsWrongTokenButKeepsTheTicketValid()
     {
         var clock = new FakeClock();
         var registry = new VoiceTicketRegistry(clock);
-        byte[] token = registry.Issue("alice", 1001, ttlSeconds: 60);
-        byte[] wrong = token.ToArray();
+        var ticket = registry.Issue("alice", 1001, ttlSeconds: 60);
+        byte[] wrong = ticket.Token.ToArray();
         wrong[0] ^= 0xFF;
-        Assert.Null(registry.Consume(1001, wrong));
-        Assert.Equal("alice", registry.Consume(1001, token));
+        Assert.Null(registry.Consume(1001, wrong, Ro3Emu.ClientHooks.VoiceCipher.AuthProof(ticket.Secret, 1001, wrong)));
+        Assert.Equal("alice", registry.Consume(1001, ticket.Token, Proof(ticket, 1001))?.Account);
     }
 
     [Fact]
@@ -146,8 +174,8 @@ public sealed class VoiceProtocolUnitTests
     {
         var clock = new FakeClock();
         var registry = new VoiceTicketRegistry(clock);
-        byte[] token = registry.Issue("alice", 1001, ttlSeconds: 60);
+        var ticket = registry.Issue("alice", 1001, ttlSeconds: 60);
         clock.Advance(TimeSpan.FromSeconds(61));
-        Assert.Null(registry.Consume(1001, token));
+        Assert.Null(registry.Consume(1001, ticket.Token, Proof(ticket, 1001)));
     }
 }

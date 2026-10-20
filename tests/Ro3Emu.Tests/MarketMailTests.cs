@@ -659,7 +659,9 @@ public sealed class MarketMailTests : IAsyncLifetime
         var session = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == role);
         session.Progress!.Currency[1] = long.MaxValue - 1;
         const string id = "1790000000000000201";
-        var box = new MailService.Mailbox { Letters =
+        var box = new MailService.Mailbox
+        {
+            Letters =
         [
             new MailService.Letter
             {
@@ -667,7 +669,8 @@ public sealed class MarketMailTests : IAsyncLifetime
                 Attachments = [new(1000000, 1, 1), new(1, 1)],
                 Currency = new() { [1] = 1 },
             },
-        ] };
+        ]
+        };
         var roles = app.Services.GetRequiredService<RoleStore>();
         roles.SaveMailbox(role, JsonSerializer.SerializeToUtf8Bytes(box));
         await alice.SendGameAsync(MailService.ClaimMail, new ClaimMailReq { MailUid = { id } });
@@ -689,8 +692,11 @@ public sealed class MarketMailTests : IAsyncLifetime
         var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var raw = Task.Run(async () => { await start.Task; return await mail.SendRawAsync(role, "Raw", "Body", [new(1000000, 1)]); });
         var template = Task.Run(async () => { await start.Task; return await mail.SendTemplateAsync(role, 1024, [new(2, 3)]); });
-        var market = Task.Run(async () => { await start.Task; return await Deliver(role, 1064,
-            [new InvItem { Entry = 2010121, Stack = 1, Attrs = new() { [30] = 91 } }]); });
+        var market = Task.Run(async () =>
+        {
+            await start.Task; return await Deliver(role, 1064,
+            [new InvItem { Entry = 2010121, Stack = 1, Attrs = new() { [30] = 91 } }]);
+        });
         start.SetResult();
         await Task.WhenAll(raw, template, market);
         var initial = await List(alice, role);
