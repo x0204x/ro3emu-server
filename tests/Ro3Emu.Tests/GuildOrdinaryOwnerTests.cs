@@ -23,16 +23,16 @@ public sealed partial class GuildTests
             await Next(bot, GuildService.SceneGuildId, SwitchSceneSyncGuildId.Parser);
         await Level("holdfounder");
         long guildId = await CreateGuild(founder, "HeldOne");
-        var store = app.Services.GetRequiredService<GuildStore>();
+        var store = _app.Services.GetRequiredService<GuildStore>();
         var guild = store.Get(guildId)!;
         guild.AutoAccept = true;
         Assert.True(store.Save(guild));
-        var accounts = app.Services.GetRequiredService<AccountStore>();
-        var loop = app.Services.GetRequiredService<GameLoop>();
-        var service = app.Services.GetRequiredService<GuildService>();
-        var roles = app.Services.GetRequiredService<RoleStore>();
+        var accounts = _app.Services.GetRequiredService<AccountStore>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
+        var service = _app.Services.GetRequiredService<GuildService>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
         long recruitId = (long)recruit.Self!.Uuid;
-        var session = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == recruitId);
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == recruitId);
         var reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         int held = 0;
@@ -52,7 +52,7 @@ public sealed partial class GuildTests
             Assert.Equal(0, session.Guild!.GuildId);
             Assert.Equal(0, DBRoleGuildInfo.Parser.ParseFrom(roles.LoadGuildInfo(recruitId)!).GuildId);
             timer = loop.InvokeAsync(service.ReconcileAsync);
-            gm = httpClient.PostAsync(http + "/ro3emu/gm?account=holdrecruit", new StringContent("!item 1 17"));
+            gm = httpClient.PostAsync(_http + "/ro3emu/gm?account=holdrecruit", new StringContent("!item 1 17"));
             await unrelated.SendGameBytesAsync(MsgId.SaveSetting, [0x0a, 1, 5, 0x12, 4, 0x2a, 2, 16, 1]);
             Assert.Equal(0, (await Next(unrelated, MsgId.SaveSetting, SaveSettingResp.Parser)).Result);
             Assert.False(timer.IsCompleted);
@@ -77,16 +77,16 @@ public sealed partial class GuildTests
         await using var recruit = await InWorld("FailRecruit");
         await Level("failfounder");
         long guildId = await CreateGuild(founder, "Atomics");
-        var store = app.Services.GetRequiredService<GuildStore>();
+        var store = _app.Services.GetRequiredService<GuildStore>();
         var guild = store.Get(guildId)!;
         guild.AutoAccept = true;
         Assert.True(store.Save(guild));
         long id = (long)recruit.Self!.Uuid;
-        var accounts = app.Services.GetRequiredService<AccountStore>();
-        var roles = app.Services.GetRequiredService<RoleStore>();
-        var loop = app.Services.GetRequiredService<GameLoop>();
-        var session = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == id);
-        var service = app.Services.GetRequiredService<GuildService>();
+        var accounts = _app.Services.GetRequiredService<AccountStore>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == id);
+        var service = _app.Services.GetRequiredService<GuildService>();
         FixtureSql.Execute(accounts, $"CREATE TRIGGER fail_guild_view BEFORE UPDATE OF guild_info ON role WHEN NEW.id={id} BEGIN SELECT RAISE(ABORT,'guild view failure'); END");
         try
         {
@@ -113,7 +113,7 @@ public sealed partial class GuildTests
         await using var founder = await InWorld("RecoverGuild");
         await Level("recoverguild");
         long guildId = await CreateGuild(founder, "Recover");
-        var store = app.Services.GetRequiredService<GuildStore>();
+        var store = _app.Services.GetRequiredService<GuildStore>();
         var guild = store.Get(guildId)!;
         guild.Money = 101; guild.Contribute = 202; guild.Materials = 303; guild.Reputation = 404; guild.AuctionMaterials = 505;
         Assert.True(store.Save(guild));
@@ -128,15 +128,15 @@ public sealed partial class GuildTests
             Assert.True(store.SaveMarket(market, []));
         }
         var catalog = EconomyCatalog.Load(Path.Combine(RepoRoot(), "data"));
-        var opening = S3EconomyReader.Read(dataDir, catalog);
-        var session = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == (long)founder.Self!.Uuid);
-        await app.Services.GetRequiredService<GameLoop>().InvokeAsync(() => app.Services.GetRequiredService<GuildService>().LeaveAsync(session));
+        var opening = S3EconomyReader.Read(_dataDir, catalog);
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == (long)founder.Self!.Uuid);
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() => _app.Services.GetRequiredService<GuildService>().LeaveAsync(session));
         Assert.Equal(0, (await Next(founder, GuildService.Leave, GuildMemberLeaveResp.Parser)).Result);
-        var closing = S3EconomyReader.Read(dataDir, catalog);
+        var closing = S3EconomyReader.Read(_dataDir, catalog);
         Assert.Null(store.Get(guildId));
         Assert.True(store.HasRecovery(guildId));
         Assert.Null(store.ForRole((long)founder.Self!.Uuid));
-        var ledger = S3EconomyReader.ReadLedger(dataDir, catalog, opening, closing)!;
+        var ledger = S3EconomyReader.ReadLedger(_dataDir, catalog, opening, closing)!;
         Assert.True(ledger.CompleteHistory, string.Join(";", ledger.Issues.Select(x => x.Detail)));
         Assert.Single(ledger.Receipts);
         Assert.Equal(escrow == 0 ? 10 : 12, ledger.Legs.Count);
@@ -154,6 +154,6 @@ public sealed partial class GuildTests
         Assert.All(check.Locations, x => Assert.Equal("0", x.Residual));
         await founder.SendGameAsync(GuildService.Leave, new GuildMemberLeaveReq());
         Assert.Equal(ErrorCodes.NotInGuild, (await Next(founder, GuildService.Leave, GuildMemberLeaveResp.Parser)).Result);
-        Assert.Equal(closing.Cut.CommitSequence, S3EconomyReader.Read(dataDir, catalog).Cut.CommitSequence);
+        Assert.Equal(closing.Cut.CommitSequence, S3EconomyReader.Read(_dataDir, catalog).Cut.CommitSequence);
     }
 }

@@ -12,47 +12,47 @@ namespace Ro3Emu.Tests;
 /// <summary>Ticket-only 83410 draw, 5011 state, durable cap and a guaranteed pet over the game gate.</summary>
 public sealed partial class LotteryActivityTests : IAsyncLifetime
 {
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-lottery-" + Guid.NewGuid().ToString("N"));
-    private readonly FixedClock clock = new();
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-lottery-" + Guid.NewGuid().ToString("N"));
+    private readonly FixedClock _clock = new();
+    private WebApplication _app = null!;
+    private string _http = "";
 
     private sealed class FixedClock : TimeProvider
     {
-        private long milliseconds = new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero).ToUnixTimeMilliseconds();
-        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeMilliseconds(Interlocked.Read(ref milliseconds));
-        public void AdvanceDays(int days) => Interlocked.Add(ref milliseconds, days * 86400000L);
-        public void Set(DateTimeOffset value) => Interlocked.Exchange(ref milliseconds, value.ToUnixTimeMilliseconds());
+        private long _milliseconds = new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero).ToUnixTimeMilliseconds();
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeMilliseconds(Interlocked.Read(ref _milliseconds));
+        public void AdvanceDays(int days) => Interlocked.Add(ref _milliseconds, days * 86400000L);
+        public void Set(DateTimeOffset value) => Interlocked.Exchange(ref _milliseconds, value.ToUnixTimeMilliseconds());
     }
 
     public async Task InitializeAsync()
     {
         var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
-        app = ServerHost.Create([], options =>
+        _app = ServerHost.Create([], options =>
         {
-            options.DataDir = dataDir;
+            options.DataDir = _dataDir;
             options.GameDataDir = Path.Combine(RepoRoot(), "data");
             options.HttpPort = httpPort;
             options.MicroGatePort = microPort;
             options.GameGatePort = gamePort;
             options.PlayBook = 101;
             options.SeasonStart = "2026-10-05";
-        }, clock);
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{httpPort}";
+        }, _clock);
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{httpPort}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(bool create)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync("lottery", "pw");
         await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync("Lottery")).RoleBaseInfo.Id : bot.Roles.Single().Id;
@@ -70,7 +70,7 @@ public sealed partial class LotteryActivityTests : IAsyncLifetime
     private async Task Gm(string line)
     {
         using var client = new HttpClient();
-        var response = await client.PostAsync($"{http}/ro3emu/gm?account=lottery", new StringContent(line));
+        var response = await client.PostAsync($"{_http}/ro3emu/gm?account=lottery", new StringContent(line));
         response.EnsureSuccessStatusCode();
     }
 
@@ -78,7 +78,7 @@ public sealed partial class LotteryActivityTests : IAsyncLifetime
     public async Task RoleSwitchKeepsEachLotteryCounterWithItsOwnRole()
     {
         await using var bot = await InWorld(create: true);
-        var firstRole = app.Services.GetRequiredService<SessionRegistry>().All()
+        var firstRole = _app.Services.GetRequiredService<SessionRegistry>().All()
             .Single(s => s.Role?.Name == "Lottery").Role!.Id;
         await Next(bot, LotteryService.LotterySync, DBLotteryDataIncrement.Parser, sync => sync.SyncAllMark);
         await Gm("!lvl 99");
@@ -95,10 +95,10 @@ public sealed partial class LotteryActivityTests : IAsyncLifetime
         await bot.EnterWorldAsync(second.RoleBaseInfo.Id);
         var secondFull = await Next(bot, LotteryService.LotterySync, DBLotteryDataIncrement.Parser, sync => sync.SyncAllMark);
         Assert.Equal(0, secondFull.LotteryPool[201].All.DailyCount);
-        var current = app.Services.GetRequiredService<SessionRegistry>().All()
+        var current = _app.Services.GetRequiredService<SessionRegistry>().All()
             .Single(s => s.Role?.Id == second.RoleBaseInfo.Id);
         Assert.Empty(current.Pets!.ListPet);
-        var secondBlob = app.Services.GetRequiredService<RoleStore>().LoadLottery(second.RoleBaseInfo.Id);
+        var secondBlob = _app.Services.GetRequiredService<RoleStore>().LoadLottery(second.RoleBaseInfo.Id);
         Assert.NotNull(secondBlob);
         using (var envelope = System.Text.Json.JsonDocument.Parse(secondBlob))
         {
@@ -147,7 +147,7 @@ public sealed partial class LotteryActivityTests : IAsyncLifetime
         await using var reconnect = await InWorld(create: false);
         var saved = await Next(reconnect, LotteryService.LotterySync, DBLotteryDataIncrement.Parser);
         Assert.Equal(2, saved.LotteryPool[201].All.DailyCount);
-        clock.AdvanceDays(1);
+        _clock.AdvanceDays(1);
         await reconnect.DisposeAsync();
         await using var nextDay = await InWorld(create: false);
         var reset = await Next(nextDay, LotteryService.LotterySync, DBLotteryDataIncrement.Parser);
@@ -161,7 +161,7 @@ public sealed partial class LotteryActivityTests : IAsyncLifetime
         await Gm("!lvl 99");
         await Gm("!quest done 10105010");
         await Gm("!item 1250709 21");
-        var registry = app.Services.GetRequiredService<SessionRegistry>();
+        var registry = _app.Services.GetRequiredService<SessionRegistry>();
         var session = registry.All().Single(s => s.Role?.Name == "Lottery");
         int initialTickets = session.Items.Where(i => i.Entry == 1250709).Sum(i => i.Stack);
         Assert.True(initialTickets >= 20);

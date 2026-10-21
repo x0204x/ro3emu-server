@@ -44,7 +44,7 @@ public sealed partial class TradeTests
             var item = p.Items.Single(i => i.Guid == original);
             item.Attrs = new() { [999] = 71 }; item.StringAttrs = new() { [510] = "e03-instance" };
         });
-        var before = MarketEconomyEvidence.Cut(dataDir, RepoRoot());
+        var before = MarketEconomyEvidence.Cut(_dataDir, RepoRoot());
         await seller.SendGameAsync(TradeService.PutOn, new TradePutOnItemReq
         { ItemGuid = original, ItemPrice = 600, CurrencyType = 1, Quantity = 2 });
         var listed = await Next(seller, TradeService.PutOn, TradePutOnItemResp.Parser);
@@ -59,8 +59,8 @@ public sealed partial class TradeTests
         var claimed = Assert.Single(Items(buyer), i => i.Entry == 1254013);
         Assert.NotEqual(original, claimed.Guid); Assert.Equal(1, claimed.Stack);
         Assert.Equal(71, claimed.Attrs![999]); Assert.Equal("e03-instance", claimed.StringAttrs![510]);
-        var after = MarketEconomyEvidence.Cut(dataDir, RepoRoot());
-        var ledger = MarketEconomyEvidence.Exact(dataDir, RepoRoot(), before, after);
+        var after = MarketEconomyEvidence.Cut(_dataDir, RepoRoot());
+        var ledger = MarketEconomyEvidence.Exact(_dataDir, RepoRoot(), before, after);
         Assert.DoesNotContain(ledger.Legs, x => x.Kind == EconomyLegKind.Source);
         var fee = Assert.Single(ledger.Legs, x => x.Kind == EconomyLegKind.Sink);
         Assert.Equal((EconomyReason.MarketTax, 2L, -700L), (fee.Reason, fee.Asset.Id, fee.Delta));
@@ -69,7 +69,7 @@ public sealed partial class TradeTests
         var unchanged = after.Cut.CommitSequence;
         await buyer.SendGameAsync(MailService.ClaimMail, new ClaimMailReq { MailUid = { mail.Id } });
         Assert.Equal(ErrorCodes.MailAlreadyClaimed, (await Next(buyer, MailService.ClaimMail, ClaimMailRsp.Parser)).Result);
-        Assert.Equal(unchanged, MarketEconomyEvidence.Cut(dataDir, RepoRoot()).Cut.CommitSequence);
+        Assert.Equal(unchanged, MarketEconomyEvidence.Cut(_dataDir, RepoRoot()).Cut.CommitSequence);
     }
 }
 
@@ -80,17 +80,17 @@ public sealed partial class StallsTests
     {
         await using var buyer = await InWorld("RestockLedger");
         await Warp(buyer, 10111, 251, 2);
-        var before = MarketEconomyEvidence.Cut(dataDir, RepoRoot());
+        var before = MarketEconomyEvidence.Cut(_dataDir, RepoRoot());
         var oldStock = before.Holdings.Where(x => x.Location.Owner.Kind == EconomyOwnerKind.System
             && x.Location.Compartment == EconomyCompartment.Stall).ToArray();
         Assert.NotEmpty(oldStock);
         await Service<GameLoop>().InvokeAsync(async () =>
         {
-            clock.Advance(TimeSpan.FromDays(4));
+            _clock.Advance(TimeSpan.FromDays(4));
             await Service<StallsService>().RefreshWorldMaintenanceAsync();
         });
-        var after = MarketEconomyEvidence.Cut(dataDir, RepoRoot());
-        var ledger = MarketEconomyEvidence.Exact(dataDir, RepoRoot(), before, after);
+        var after = MarketEconomyEvidence.Cut(_dataDir, RepoRoot());
+        var ledger = MarketEconomyEvidence.Exact(_dataDir, RepoRoot(), before, after);
         foreach (var holding in oldStock)
             Assert.Equal(-holding.Quantity, ledger.Legs.Where(x => x.Asset == holding.Asset
                 && x.Location == holding.Location && x.Reason == EconomyReason.SystemRetire).Sum(x => x.Delta));
@@ -107,7 +107,7 @@ public sealed partial class StallsTests
         await Ready(seller); await Ready(buyer);
         await Gm(seller, "!item 1000100 3"); await Gm(buyer, "!item 2 20000");
         long guid = Items(seller).Single(i => i.Entry == 1000100).Guid;
-        var before = MarketEconomyEvidence.Cut(dataDir, RepoRoot());
+        var before = MarketEconomyEvidence.Cut(_dataDir, RepoRoot());
         var opened = await Open(seller, Offer(guid)); Assert.Equal(0, opened.Result);
         long offer = Service<MarketStore>().ReadCurrent<StallsService.StallRow>("stall", "p:" + Id(seller))!.Stock.Single().Id;
         Assert.Equal(0, await Purchase(buyer, Id(seller), offer));
@@ -120,7 +120,7 @@ public sealed partial class StallsTests
         Assert.Equal(1, Items(buyer).Single(i => i.Entry == 1000100).Stack);
         Assert.Equal(2, Items(seller).Where(i => i.Entry == 1000100).Sum(i => i.Stack));
         Assert.Equal(9100, Money(seller, 2)); Assert.Equal(10000, Money(buyer, 2));
-        var ledger = MarketEconomyEvidence.Exact(dataDir, RepoRoot(), before, MarketEconomyEvidence.Cut(dataDir, RepoRoot()));
+        var ledger = MarketEconomyEvidence.Exact(_dataDir, RepoRoot(), before, MarketEconomyEvidence.Cut(_dataDir, RepoRoot()));
         Assert.DoesNotContain(ledger.Legs, x => x.Kind == EconomyLegKind.Source);
         Assert.Equal(-20, ledger.Legs.Where(x => x.Reason == EconomyReason.StallOpenFee).Sum(x => x.Delta));
         Assert.Equal(-900, ledger.Legs.Where(x => x.Reason == EconomyReason.StallTax).Sum(x => x.Delta));
@@ -135,19 +135,19 @@ public sealed partial class GuildTests
     {
         await using var seller = await InWorld("CapEditor"); await Level("capeditor");
         using (var client = new HttpClient())
-            (await client.PostAsync($"{http}/ro3emu/gm?account=capeditor", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
+            (await client.PostAsync($"{_http}/ro3emu/gm?account=capeditor", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
         long guildId = await CreateGuild(seller, "Edits");
-        var store = app.Services.GetRequiredService<GuildStore>();
+        var store = _app.Services.GetRequiredService<GuildStore>();
         var state = store.Get(guildId)!; state.Materials = 20; Assert.True(store.Save(state));
         await seller.SendGameAsync(GuildService.MarketList, new ListOnBlackMarketReq { UnitPrice = 500, Count = 20 });
         Assert.Equal(0, (await Next(seller, GuildService.MarketList, ListOnBlackMarketRsp.Parser)).Result);
         string stallId = Assert.Single(store.LoadMarket().Stalls).Id;
         state = store.Get(guildId)!; state.Materials = 999995; Assert.True(store.Save(state));
-        var before = MarketEconomyEvidence.Cut(dataDir, RepoRoot());
+        var before = MarketEconomyEvidence.Cut(_dataDir, RepoRoot());
         var request = new UpdateBlackMarketBoothReq { StallUniqueId = stallId, UnitPrice = 1000, Count = 10 };
         await seller.SendGameAsync(GuildService.MarketUpdate, request);
         Assert.Equal(ErrorCodes.Parameter, (await Next(seller, GuildService.MarketUpdate, UpdateBlackMarketBoothRsp.Parser)).Result);
-        Assert.Equal(before.Cut.CommitSequence, MarketEconomyEvidence.Cut(dataDir, RepoRoot()).Cut.CommitSequence);
+        Assert.Equal(before.Cut.CommitSequence, MarketEconomyEvidence.Cut(_dataDir, RepoRoot()).Cut.CommitSequence);
         Assert.Equal(999995, store.Get(guildId)!.Materials);
         var unchanged = Assert.Single(store.LoadMarket().Stalls);
         Assert.Equal((20L, 20L, 500L), (unchanged.RemainCount, unchanged.TotalCount, unchanged.UnitPrice));
@@ -159,7 +159,7 @@ public sealed partial class GuildTests
         var remaining = Assert.Single(store.LoadMarket().Stalls);
         Assert.Equal(stallId, remaining.Id);
         Assert.Equal((10L, 10L, 1000L), (remaining.RemainCount, remaining.TotalCount, remaining.UnitPrice));
-        var ledger = MarketEconomyEvidence.Exact(dataDir, RepoRoot(), before, MarketEconomyEvidence.Cut(dataDir, RepoRoot()));
+        var ledger = MarketEconomyEvidence.Exact(_dataDir, RepoRoot(), before, MarketEconomyEvidence.Cut(_dataDir, RepoRoot()));
         var sink = Assert.Single(ledger.Legs, x => x.Kind == EconomyLegKind.Sink);
         Assert.Equal((EconomyReason.GuildMarketCapDiscard, -5L), (sink.Reason, sink.Delta));
         Assert.Contains(ledger.Legs, x => x.Location.Compartment == EconomyCompartment.GuildTreasury && x.Delta == 5);
@@ -174,27 +174,27 @@ public sealed partial class GuildTests
         {
             await Level(name);
             using var client = new HttpClient();
-            (await client.PostAsync($"{http}/ro3emu/gm?account={name}", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
+            (await client.PostAsync($"{_http}/ro3emu/gm?account={name}", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
         }
         long sellerId = await CreateGuild(seller, "Vendor"), buyerId = await CreateGuild(buyer, "Buyer");
-        var store = app.Services.GetRequiredService<GuildStore>();
+        var store = _app.Services.GetRequiredService<GuildStore>();
         var guild = store.Get(sellerId)!; guild.Materials = 10; Assert.True(store.Save(guild));
         guild = store.Get(buyerId)!; guild.Money = 5000; guild.Materials = 999995; Assert.True(store.Save(guild));
         await seller.SendGameAsync(GuildService.MarketList, new ListOnBlackMarketReq { UnitPrice = 500, Count = 10 });
         Assert.Equal(0, (await Next(seller, GuildService.MarketList, ListOnBlackMarketRsp.Parser)).Result);
         var market = store.LoadMarket(); Assert.Single(market.Stalls).AvailableMs = 0; Assert.True(store.SaveMarket(market, []));
-        var before = MarketEconomyEvidence.Cut(dataDir, RepoRoot());
+        var before = MarketEconomyEvidence.Cut(_dataDir, RepoRoot());
         var request = new BuyBlackMarketItemReq { UnitPrice = 500, BuyCount = 10 };
         await buyer.SendGameAsync(GuildService.MarketBuy, request);
         Assert.Equal(ErrorCodes.Parameter, (await Next(buyer, GuildService.MarketBuy, BuyBlackMarketItemRsp.Parser)).Result);
-        Assert.Equal(before.Cut.CommitSequence, MarketEconomyEvidence.Cut(dataDir, RepoRoot()).Cut.CommitSequence);
+        Assert.Equal(before.Cut.CommitSequence, MarketEconomyEvidence.Cut(_dataDir, RepoRoot()).Cut.CommitSequence);
         Assert.Equal(5000, store.Get(buyerId)!.Money); Assert.Equal(10, Assert.Single(store.LoadMarket().Stalls).RemainCount);
         request.Confirm = true;
         await buyer.SendGameAsync(GuildService.MarketBuy, request);
         Assert.Equal(0, (await Next(buyer, GuildService.MarketBuy, BuyBlackMarketItemRsp.Parser)).Result);
         Assert.Equal(0, store.Get(buyerId)!.Money); Assert.Equal(1000000, store.Get(buyerId)!.Materials);
         Assert.Equal(4875, store.Get(sellerId)!.Money); Assert.Empty(store.LoadMarket().Stalls);
-        var ledger = MarketEconomyEvidence.Exact(dataDir, RepoRoot(), before, MarketEconomyEvidence.Cut(dataDir, RepoRoot()));
+        var ledger = MarketEconomyEvidence.Exact(_dataDir, RepoRoot(), before, MarketEconomyEvidence.Cut(_dataDir, RepoRoot()));
         Assert.Equal(-125, ledger.Legs.Where(x => x.Reason == EconomyReason.GuildMarketFee).Sum(x => x.Delta));
         Assert.Equal(-5, ledger.Legs.Where(x => x.Reason == EconomyReason.GuildMarketCapDiscard).Sum(x => x.Delta));
         Assert.DoesNotContain(ledger.Legs, x => x.Kind == EconomyLegKind.Source);
@@ -207,16 +207,16 @@ public sealed partial class GuildTests
     {
         await using var seller = await InWorld("CapSeller"); await Level("capseller");
         using (var client = new HttpClient())
-            (await client.PostAsync($"{http}/ro3emu/gm?account=capseller", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
+            (await client.PostAsync($"{_http}/ro3emu/gm?account=capseller", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
         long guildId = await CreateGuild(seller, "Caps");
-        var store = app.Services.GetRequiredService<GuildStore>();
+        var store = _app.Services.GetRequiredService<GuildStore>();
         var state = store.Get(guildId)!; state.Materials = 10; Assert.True(store.Save(state));
         await seller.SendGameAsync(GuildService.MarketList, new ListOnBlackMarketReq { UnitPrice = 500, Count = 10 });
         Assert.Equal(0, (await Next(seller, GuildService.MarketList, ListOnBlackMarketRsp.Parser)).Result);
         var market = store.LoadMarket(); var stall = Assert.Single(market.Stalls);
         state = store.Get(guildId)!; state.Materials = 999995; Assert.True(store.Save(state));
         if (expire) { stall.ExpiresMs = 0; Assert.True(store.SaveMarket(market, [])); }
-        var before = MarketEconomyEvidence.Cut(dataDir, RepoRoot());
+        var before = MarketEconomyEvidence.Cut(_dataDir, RepoRoot());
         if (expire)
         {
             await seller.SendGameAsync(GuildService.MarketItems, new GetBlackMarketItemsReq());
@@ -226,13 +226,13 @@ public sealed partial class GuildTests
         {
             await seller.SendGameAsync(GuildService.MarketUnlist, new UnlistFromBlackMarketReq { StallUniqueId = stall.Id });
             Assert.Equal(ErrorCodes.Parameter, (await Next(seller, GuildService.MarketUnlist, UnlistFromBlackMarketRsp.Parser)).Result);
-            Assert.Equal(before.Cut.CommitSequence, MarketEconomyEvidence.Cut(dataDir, RepoRoot()).Cut.CommitSequence);
+            Assert.Equal(before.Cut.CommitSequence, MarketEconomyEvidence.Cut(_dataDir, RepoRoot()).Cut.CommitSequence);
             Assert.Equal(999995, store.Get(guildId)!.Materials);
             await seller.SendGameAsync(GuildService.MarketUnlist, new UnlistFromBlackMarketReq { StallUniqueId = stall.Id, Confirm = true });
             Assert.Equal(0, (await Next(seller, GuildService.MarketUnlist, UnlistFromBlackMarketRsp.Parser)).Result);
         }
         Assert.Equal(1000000, store.Get(guildId)!.Materials); Assert.Empty(store.LoadMarket().Stalls);
-        var ledger = MarketEconomyEvidence.Exact(dataDir, RepoRoot(), before, MarketEconomyEvidence.Cut(dataDir, RepoRoot()));
+        var ledger = MarketEconomyEvidence.Exact(_dataDir, RepoRoot(), before, MarketEconomyEvidence.Cut(_dataDir, RepoRoot()));
         var sink = Assert.Single(ledger.Legs, x => x.Kind == EconomyLegKind.Sink);
         Assert.Equal((EconomyReason.GuildMarketCapDiscard, -5L), (sink.Reason, sink.Delta));
         Assert.Contains(ledger.Legs, x => x.Location.Compartment == EconomyCompartment.GuildTreasury && x.Delta == 5);

@@ -17,28 +17,28 @@ public sealed class SeasonRefineService
     public const uint SeasonRefineSync = 5023, Recast = 83220, SelectAttr = 83221, GiveUp = 83222;
 
     private const int ChoiceCount = 3; // UI_Sys_StrengthenPropertyPanelCtrl.lua:27.
-    private readonly GameData data;
-    private readonly CharacterService character;
-    private readonly RoleStore roles;
-    private readonly ILogger<SeasonRefineService> log;
+    private readonly GameData _data;
+    private readonly CharacterService _character;
+    private readonly RoleStore _roles;
+    private readonly ILogger<SeasonRefineService> _log;
 
     public SeasonRefineService(GameData data, CharacterService character, RoleStore roles, EquipmentService equipment,
         ILogger<SeasonRefineService> log)
     {
         equipment.Refined.Add(OnRefinedAsync);
-        this.data = data;
-        this.character = character;
-        this.roles = roles;
-        this.log = log;
+        this._data = data;
+        this._character = character;
+        this._roles = roles;
+        this._log = log;
         character.ExtraAttributes.Add(ActiveAttributes);
     }
 
     /// <summary>Load before the first character stat snapshot; the active groups are part of that snapshot.</summary>
     public void Load(GameSession session)
     {
-        var saved = roles.LoadSeasonRefine(session.Role!.Id);
+        var saved = _roles.LoadSeasonRefine(session.Role!.Id);
         var state = saved == null ? new DBSeasonRefine() : DBSeasonRefine.Parser.ParseFrom(saved);
-        foreach (var row in data.Table("RefiningSeasonTable").Values)
+        foreach (var row in _data.Table("RefiningSeasonTable").Values)
         {
             int part = (int)GameData.Int(row, "_iEquipType"), slot = (int)GameData.Int(row, "_iID");
             if (part <= 0 || slot <= 0) continue;
@@ -53,13 +53,13 @@ public sealed class SeasonRefineService
     {
         if (session.SeasonRefine == null) Load(session);
         var state = session.SeasonRefine!;
-        if (session.SeasonState?.PlayBookId != 101 || data.Table("RefiningSeasonTable").Count == 0 || state.EquipParts.Count == 0) return;
+        if (session.SeasonState?.PlayBookId != 101 || _data.Table("RefiningSeasonTable").Count == 0 || state.EquipParts.Count == 0) return;
         var initial = state.Clone();
         if (RollFirstOffers(session, initial))
         {
-            var transaction = roles.NewTransaction();
+            var transaction = _roles.NewTransaction();
             transaction.RoleBlob(session.Role!.Id, "season_refine", initial.ToByteArray());
-            await roles.CommitAsync(transaction, "season-refine/initial-offers", _ => session.SeasonRefine = initial);
+            await _roles.CommitAsync(transaction, "season-refine/initial-offers", _ => session.SeasonRefine = initial);
         }
         state = session.SeasonRefine!;
         // Missing config: an empty 5023 makes the DAL call pairs(nil).
@@ -107,9 +107,9 @@ public sealed class SeasonRefineService
         using var _ = await CharacterService.Lock(session);
         var next = session.SeasonRefine!.Clone();
         if (!RollFirstOffers(session, next)) return;
-        var transaction = roles.NewTransaction();
+        var transaction = _roles.NewTransaction();
         transaction.RoleBlob(session.Role!.Id, "season_refine", next.ToByteArray());
-        await roles.CommitAsync(transaction, "season-refine/refined-offers", _ => session.SeasonRefine = next);
+        await _roles.CommitAsync(transaction, "season-refine/refined-offers", _ => session.SeasonRefine = next);
         await SyncAsync(session);
     }
 
@@ -129,7 +129,7 @@ public sealed class SeasonRefineService
     {
         if (!Ready(session))
         {
-            log.LogWarning("Season recast before role selection by {Account}", session.Account);
+            _log.LogWarning("Season recast before role selection by {Account}", session.Account);
             await session.SendGameAsync(Recast, new SeasonRefineRecastResp { EquipType = req.EquipType, Result = ErrorCodes.FeatureUnavailable });
             return;
         }
@@ -146,19 +146,19 @@ public sealed class SeasonRefineService
             slot.CanSelectedAttr.Clear();
             // The DAL uses map keys as group IDs; its values are ignored. Zero payload is (inferred).
             foreach (int group in offered) slot.CanSelectedAttr[group] = 0;
-            var economy = character.ProgressionEconomy(session, "cd13c/season-refine-recast", cost!, [],
+            var economy = _character.ProgressionEconomy(session, "cd13c/season-refine-recast", cost!, [],
                 new { req.EquipType, req.RefineId, Offers = offered.ToArray() });
-            var paid = await character.ExchangeLockedAsync(session, cost!, [], popup: false, sync: false,
+            var paid = await _character.ExchangeLockedAsync(session, cost!, [], popup: false, sync: false,
                 persist: tx => { tx.RoleBlob(session.Role!.Id, "season_refine", next.ToByteArray()); tx.WithEconomy(economy); },
                 committed: () => session.SeasonRefine = next, asyncCommit: true);
-            if (paid == null) result = character.ShortageOf(session, cost!); // (inferred) ordinary item/currency shortage codes.
+            if (paid == null) result = _character.ShortageOf(session, cost!); // (inferred) ordinary item/currency shortage codes.
             else
             {
-                await character.ItemsChangedAsync(session, stats: false);
+                await _character.ItemsChangedAsync(session, stats: false);
                 await SyncAsync(session);
             }
         }
-        log.LogInformation("{Name} recasts season part {Part}, slot {Slot}: {Result}", session.Role?.Name ?? session.Account,
+        _log.LogInformation("{Name} recasts season part {Part}, slot {Slot}: {Result}", session.Role?.Name ?? session.Account,
             req.EquipType, req.RefineId, result);
         await session.SendGameAsync(Recast, new SeasonRefineRecastResp { EquipType = req.EquipType, Result = result });
     }
@@ -168,7 +168,7 @@ public sealed class SeasonRefineService
     {
         if (!Ready(session))
         {
-            log.LogWarning("Season group selection before role selection by {Account}", session.Account);
+            _log.LogWarning("Season group selection before role selection by {Account}", session.Account);
             await session.SendGameAsync(SelectAttr, new SeasonRefineSelectAttrResp { EquipType = req.EquipType, Result = ErrorCodes.FeatureUnavailable });
             return;
         }
@@ -176,7 +176,7 @@ public sealed class SeasonRefineService
         var (row, result) = Validate(session, req.EquipType, req.RefineId);
         if (result == 0 && !session.SeasonRefine!.EquipParts[req.EquipType].RefineSlots[req.RefineId]
             .CanSelectedAttr.ContainsKey(req.GroupId)) result = ErrorCodes.SeasonRefineChoice;
-        if (result == 0 && (data.Row("RefiningSeasonAttrConfig", req.GroupId) == null
+        if (result == 0 && (_data.Row("RefiningSeasonAttrConfig", req.GroupId) == null
             || !GameData.Pairs(row!.Value, "_kAttrsId").Any(p => p.Id == req.GroupId))) result = ErrorCodes.SeasonRefineConfig;
         if (result == 0)
         {
@@ -184,13 +184,13 @@ public sealed class SeasonRefineService
             var slot = next.EquipParts[req.EquipType].RefineSlots[req.RefineId];
             slot.ActiveAttr = req.GroupId;
             slot.CanSelectedAttr.Clear();
-            var transaction = roles.NewTransaction();
+            var transaction = _roles.NewTransaction();
             transaction.RoleBlob(session.Role!.Id, "season_refine", next.ToByteArray());
-            await roles.CommitAsync(transaction, "season-refine/select", _ => session.SeasonRefine = next);
+            await _roles.CommitAsync(transaction, "season-refine/select", _ => session.SeasonRefine = next);
             await SyncAsync(session);
-            await character.RefreshStatsAsync(session);
+            await _character.RefreshStatsAsync(session);
         }
-        log.LogInformation("{Name} selects season group {Group} for {Part}/{Slot}: {Result}", session.Role?.Name ?? session.Account,
+        _log.LogInformation("{Name} selects season group {Group} for {Part}/{Slot}: {Result}", session.Role?.Name ?? session.Account,
             req.GroupId, req.EquipType, req.RefineId, result);
         await session.SendGameAsync(SelectAttr, new SeasonRefineSelectAttrResp { EquipType = req.EquipType, Result = result });
     }
@@ -200,7 +200,7 @@ public sealed class SeasonRefineService
     {
         if (!Ready(session))
         {
-            log.LogWarning("Season offer giveup before role selection by {Account}", session.Account);
+            _log.LogWarning("Season offer giveup before role selection by {Account}", session.Account);
             await session.SendGameAsync(GiveUp, new SeasonRefineGiveUpResp { Result = ErrorCodes.FeatureUnavailable });
             return;
         }
@@ -212,12 +212,12 @@ public sealed class SeasonRefineService
         {
             var next = session.SeasonRefine!.Clone();
             next.EquipParts[req.EquipType].RefineSlots[req.RefineId].CanSelectedAttr.Clear();
-            var transaction = roles.NewTransaction();
+            var transaction = _roles.NewTransaction();
             transaction.RoleBlob(session.Role!.Id, "season_refine", next.ToByteArray());
-            await roles.CommitAsync(transaction, "season-refine/give-up", _ => session.SeasonRefine = next);
+            await _roles.CommitAsync(transaction, "season-refine/give-up", _ => session.SeasonRefine = next);
             await SyncAsync(session);
         }
-        log.LogInformation("{Name} gives up season offer for {Part}/{Slot}: {Result}", session.Role?.Name ?? session.Account,
+        _log.LogInformation("{Name} gives up season offer for {Part}/{Slot}: {Result}", session.Role?.Name ?? session.Account,
             req.EquipType, req.RefineId, result);
         await session.SendGameAsync(GiveUp, new SeasonRefineGiveUpResp { Result = result });
     }
@@ -234,7 +234,7 @@ public sealed class SeasonRefineService
             return (null, ErrorCodes.SeasonRefineConfig);
         if (!session.SeasonRefine.EquipParts.TryGetValue(part, out var equip) || !equip.RefineSlots.ContainsKey(slot))
             return (null, ErrorCodes.SeasonRefineConfig);
-        var row = data.Row("RefiningSeasonTable", slot);
+        var row = _data.Row("RefiningSeasonTable", slot);
         if (row is not { } r || GameData.Int(r, "_iEquipType") != part) return (null, ErrorCodes.SeasonRefineConfig);
         if (GameData.Int(r, "ilevel") > session.EquipLevels.Refine.GetValueOrDefault(part))
             return (null, ErrorCodes.SeasonRefineLevel);
@@ -259,7 +259,7 @@ public sealed class SeasonRefineService
     {
         // (inferred) The config weights are relative, and one offer has three different choices.
         var pool = GameData.Pairs(row, "_kAttrsId")
-            .Where(p => p.Id > 0 && p.Id <= int.MaxValue && p.Value > 0 && data.Row("RefiningSeasonAttrConfig", p.Id) != null)
+            .Where(p => p.Id > 0 && p.Id <= int.MaxValue && p.Value > 0 && _data.Row("RefiningSeasonAttrConfig", p.Id) != null)
             .GroupBy(p => (int)p.Id).Select(g => (Id: g.Key, Weight: g.Sum(p => p.Value))).ToList();
         var result = new List<int>();
         while (result.Count < ChoiceCount && pool.Count > 0)
@@ -287,7 +287,7 @@ public sealed class SeasonRefineService
                 var (row, error) = Validate(session, part, slotId);
                 if (slot.ActiveAttr <= 0 || error != 0 || row is not { } configured
                     || !GameData.Pairs(configured, "_kAttrsId").Any(p => p.Id == slot.ActiveAttr)
-                    || data.Row("RefiningSeasonAttrConfig", slot.ActiveAttr) is not { } group) continue;
+                    || _data.Row("RefiningSeasonAttrConfig", slot.ActiveAttr) is not { } group) continue;
                 yield return group;
             }
     }

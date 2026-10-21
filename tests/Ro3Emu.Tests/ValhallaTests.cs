@@ -19,45 +19,45 @@ public sealed class ValhallaTests : IAsyncLifetime
     private const long FirstLayer = 100001, SecondLayer = 100002, Scene = 3301101;
     private const int FirstBoss = 5900011, Coin = 2000001;
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(15);
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-valhalla-" + Guid.NewGuid().ToString("N"));
-    private readonly ManualClock clock = new(new DateTimeOffset(2026, 10, 16, 12, 0, 0, TimeSpan.FromHours(2)));
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-valhalla-" + Guid.NewGuid().ToString("N"));
+    private readonly ManualClock _clock = new(new DateTimeOffset(2026, 10, 16, 12, 0, 0, TimeSpan.FromHours(2)));
 
     private sealed class ManualClock(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;
         public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
     }
-    private WebApplication app = null!;
-    private string http = "";
+    private WebApplication _app = null!;
+    private string _http = "";
 
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private Task OnLoop(Func<Task> work) => Service<GameLoop>().InvokeAsync(work);
 
     public async Task InitializeAsync()
     {
         var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir; o.GameDataDir = Path.Combine(ClientData.RepoRoot, "data");
+            o.DataDir = _dataDir; o.GameDataDir = Path.Combine(ClientData.RepoRoot, "data");
             o.SeasonStart = "2026-10-08";
             o.HttpPort = httpPort; o.MicroGatePort = microPort; o.GameGatePort = gamePort;
             o.OpenContent.Enabled = true;
-        }, clock);
-        SureHitRolls.Install(app);
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{httpPort}";
+        }, _clock);
+        SureHitRolls.Install(_app);
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{httpPort}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         await bot.EnterWorldAsync((await bot.CreateRoleAsync(name)).RoleBaseInfo.Id);
         return bot;
@@ -73,7 +73,7 @@ public sealed class ValhallaTests : IAsyncLifetime
     private async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     private GameSession Session(BotClient bot) => Service<SessionRegistry>().All().Single(s => s.Account == bot.Account && s.Role != null);

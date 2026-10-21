@@ -72,8 +72,8 @@ public sealed partial class CombatService
             if (owned != null ? !owned.Skills.Contains(req.SkillId) : !Learned(s, row!.Value)) error = ErrorCodes.SkillNotLearned;
             else if (!SkillModeAllowed(s, row!.Value)) error = ErrorCodes.SkillRequirements;
             else if (GameData.Int(row!.Value, "_iBasicType") != 1) error = ErrorCodes.SkillPassive;
-            else if (buffs.HasForbidden(s, skills.IsCurrentNormalAttack(s, req.SkillId) ? 5 : 4)) error = ErrorCodes.SkillBadState;
-            else if (req.SkillId == PublicSkill("WorldTreeSkillId") && buffs.HasForbidden(s, 12)) error = ErrorCodes.ItemUseForbidden;
+            else if (_buffs.HasForbidden(s, _skills.IsCurrentNormalAttack(s, req.SkillId) ? 5 : 4)) error = ErrorCodes.SkillBadState;
+            else if (req.SkillId == PublicSkill("WorldTreeSkillId") && _buffs.HasForbidden(s, 12)) error = ErrorCodes.ItemUseForbidden;
             else if (req.SkillId == PublicSkill("WorldTreeSkillId") && !ItemAllowedInMap(s, (int)PublicSkill("WorldTreeItemId"))) error = ErrorCodes.ItemUseAreaForbidden;
             else if (req.IsExtraSkill && owned == null && GameData.Int(row.Value, "_iExtraType") == 0) error = ErrorCodes.SkillRequirements;
         }
@@ -90,7 +90,7 @@ public sealed partial class CombatService
         var costs = row is { } value ? ResolveCosts(s, value) : new CastCosts();
         long errorParam = 0;
         if (error == 0) (error, errorParam) = ValidateCosts(s, costs);
-        if (error == 0 && !buffs.CanSpendEnergy(s, row!.Value)) error = ErrorCodes.SkillEnergyShort;
+        if (error == 0 && !_buffs.CanSpendEnergy(s, row!.Value)) error = ErrorCodes.SkillEnergyShort;
         if (error != 0)
         {
             await RefuseCastAsync(s, req, error, errorParam);
@@ -110,16 +110,16 @@ public sealed partial class CombatService
         if (lease?.Cancelled == true || !ReferenceEquals(s.Attachment, lease) ||
             s.SceneGeneration != scene || s.WorldScene != worldScene || s.SceneLoading) return;
         await CancelCastAsync(s, SkillInterruptedInfo.Types.SkillInterruptType.Skill);
-        eventAttacks.Remove(s);
+        _eventAttacks.Remove(s);
         await PayCostsAsync(s, costs);
-        await buffs.SpendEnergyAsync(s, row!.Value);
+        await _buffs.SpendEnergyAsync(s, row!.Value);
         await s.SendGameAsync(UseSkill, new CastSkillRsp { SessionId = id, IsAutoCast = req.IsAutoCast });
         var target = FindMonster(s.WorldScene, req.TargetId);
         var playerTarget = EventTarget(s, req.TargetId);
         // _iIfAutoAtk 2 (enum_AutoNormalAttackType.AutoNormalAttack) follows the cast with the career's normal attack
         // (LC_AutoAttackAppendState: GetNormalSkill). Repeating the cast skill itself bypassed its cooldown: Blade
         // Smash and Sonic Slash fired every swing.
-        int loopSkill = skills.IsCurrentNormalAttack(s, req.SkillId) ? req.SkillId : skills.NormalAttack(s);
+        int loopSkill = _skills.IsCurrentNormalAttack(s, req.SkillId) ? req.SkillId : _skills.NormalAttack(s);
         if (GameData.Int(row!.Value, "_iIfAutoAtk") == 2 && owned == null && target != null && CanHitMonster(s, target))
         {
             s.Attack = new AttackLoop
@@ -131,7 +131,7 @@ public sealed partial class CombatService
         }
         else s.Attack = null;
         if (GameData.Int(row.Value, "_iIfAutoAtk") == 2 && owned == null && playerTarget != null)
-            eventAttacks[s] = new EventAttack(playerTarget, loopSkill,
+            _eventAttacks[s] = new EventAttack(playerTarget, loopSkill,
                 Now + SkillMs(s, row.Value) + Math.Max(0, GameData.Int(row.Value, "_iChantFix") + GameData.Int(row.Value, "_iChantVar")) + 1,
                 s.Position.X, s.Position.Z);
         await StartCooldownAsync(s, row.Value);
@@ -143,7 +143,7 @@ public sealed partial class CombatService
     private async Task<bool> AdmitCastCostAsync(GameSession s, JsonElement row, CastSkillReq request, CastCosts costs, long id)
     {
         if (costs.Items.Count == 0) return true;
-        var mutation = character.ProgressionEconomy(s, "cd13c/cast-admit", costs.Items, [],
+        var mutation = _character.ProgressionEconomy(s, "cd13c/cast-admit", costs.Items, [],
             new
             {
                 SessionId = id, Skill = row.GetRawText(), Request = Convert.ToBase64String(Google.Protobuf.MessageExtensions.ToByteArray(request)),
@@ -151,7 +151,7 @@ public sealed partial class CombatService
                 s.WorldScene, s.SceneGeneration, AttributeCosts = costs.Attrs, BuffCosts = costs.Buffs,
                 EnergyCosts = costs.Energy, Outcome = "admitted"
             });
-        return await character.ExchangeLockedAsync(s, costs.Items, [], popup: false,
+        return await _character.ExchangeLockedAsync(s, costs.Items, [], popup: false,
             persist: tx => tx.WithEconomy(mutation), asyncCommit: true) != null;
     }
 
@@ -176,14 +176,14 @@ public sealed partial class CombatService
         if (GameData.Int(row, "_iID") == PublicSkill("WorldTreeSkillId")) return true; // paid item skill, LC_ReviveHelper.
         // A Survivor Battle career owns the match skill set (TimedBattleService.Chicken), not the job tree.
         if (MatchSkillRule?.Invoke(s, (int)GameData.Int(row, "_iID")) is { } granted) return granted;
-        if (skills.IsCareerNormalAttack(s.Progress!.Career, (int)GameData.Int(row, "_iID")))
-            return GameData.Int(row, "_iID") == skills.NormalAttack(s);
-        return skills.Level(s.Progress!, (int)GameData.Int(row, "_iSkillID")) >= GameData.Int(row, "_iLevel");
+        if (_skills.IsCareerNormalAttack(s.Progress!.Career, (int)GameData.Int(row, "_iID")))
+            return GameData.Int(row, "_iID") == _skills.NormalAttack(s);
+        return _skills.Level(s.Progress!, (int)GameData.Int(row, "_iSkillID")) >= GameData.Int(row, "_iLevel");
     }
 
-    private MonsterUnit? FindMonster(long sceneId, long uid) => world.Map(sceneId).Units.OfType<MonsterUnit>().FirstOrDefault(m => m.Uid == uid && !m.Dead);
-    private GameSession? FindPlayer(GameSession s, long uid, bool dead = false) => world.PlayersIn(s.WorldScene).FirstOrDefault(p => p.Role?.Id == uid && p.Dead == dead);
-    private long PublicSkill(string key) => data.Table("PublicParamConfig").TryGetValue(key, out var value) ? (long)(GameData.Number(value) ?? 0) : 0;
+    private MonsterUnit? FindMonster(long sceneId, long uid) => _world.Map(sceneId).Units.OfType<MonsterUnit>().FirstOrDefault(m => m.Uid == uid && !m.Dead);
+    private GameSession? FindPlayer(GameSession s, long uid, bool dead = false) => _world.PlayersIn(s.WorldScene).FirstOrDefault(p => p.Role?.Id == uid && p.Dead == dead);
+    private long PublicSkill(string key) => _data.Table("PublicParamConfig").TryGetValue(key, out var value) ? (long)(GameData.Number(value) ?? 0) : 0;
     private static bool Finite(Vec3 p) => float.IsFinite(p.X) && float.IsFinite(p.Y) && float.IsFinite(p.Z);
     private static float Distance(Vec3 a, Vec3 b) => MonsterService.Distance(a.X, a.Z, b.X, b.Z);
     private static float Range(JsonElement row) => Math.Max(0, GameData.Int(row, "_iDistanceMax") / 100f);
@@ -195,7 +195,7 @@ public sealed partial class CombatService
 
     private bool Relation(JsonElement row, bool friendly, bool self = false, int race = 0, bool dead = false)
     {
-        var template = data.SkillTemplate(GameData.Int(row, "_iScriptShow"));
+        var template = _data.SkillTemplate(GameData.Int(row, "_iScriptShow"));
         if (template is not { } t || !t.TryGetProperty("m_kSelectInfo", out var selectors) || selectors.ValueKind != JsonValueKind.Array)
             return friendly == (GameData.Int(row, "_iDmgType") == 3); // (inferred) typed recovery fallback for rows without a visual selector.
         foreach (var select in selectors.EnumerateArray())
@@ -229,7 +229,7 @@ public sealed partial class CombatService
             if (monster != null && CanHitMonster(s, monster) && Relation(row, false, race: monster.Template.Race)) targetPosition = monster.Pos;
             else if (!revive && enemyPlayer != null) targetPosition = enemyPlayer.Position;
             else if (player != null && player.Dead == revive && Relation(row, true, player == s, dead: revive)
-                && (!revive || !buffs.HasForbidden(player, 16))) targetPosition = player.Position;
+                && (!revive || !_buffs.HasForbidden(player, 16))) targetPosition = player.Position;
             else if (req.TargetId == 0 && Relation(row, true, true)) { req.TargetId = s.Role.Id; targetPosition = s.Position; }
             else return ErrorCodes.SkillTargetInvalid;
             req.TargetPos = targetPosition.Clone();
@@ -251,7 +251,7 @@ public sealed partial class CombatService
         if (d < GameData.Int(row, "_iDistanceMin") / 100f - slack || d > Range(row) + 0.5f + slack) return ErrorCodes.SkillDistance;
         float height = GameData.Int(row, "_iHeightRange") / 100f;
         if (height > 0 && MathF.Abs(origin.Y - targetPosition.Y) > height) return ErrorCodes.SkillHeight;
-        if (GameData.Int(row, "_iPassBlock") == 2 && worldData.Map(s.SceneEntry)?.Nav is { } nav
+        if (GameData.Int(row, "_iPassBlock") == 2 && _worldData.Map(s.SceneEntry)?.Nav is { } nav
             && !nav.CanWalk(origin.X, origin.Y, origin.Z, targetPosition.X, targetPosition.Z)
             && (release != 1 || monster == null
                 || BlockedMonsterEndpointAllowed?.Invoke(s, monster, origin, targetPosition) != true))
@@ -262,7 +262,7 @@ public sealed partial class CombatService
     /// <summary>LC_ItemHelper.ItemCanUseInCurrentMap: MapConfig type/subtype blacklist (1) or whitelist (2).</summary>
     private bool ItemAllowedInMap(GameSession s, int entry)
     {
-        if (data.Row("MapConfig", s.SceneEntry) is not { } map || data.Row("ItemConfig", entry) is not { } item) return false;
+        if (_data.Row("MapConfig", s.SceneEntry) is not { } map || _data.Row("ItemConfig", entry) is not { } item) return false;
         int mode = (int)GameData.Int(map, "_iLimitType");
         if (mode is not (1 or 2)) return true;
         bool listed = Tuples(map, "_kLimitItem").Any(t => t.GetArrayLength() >= 2 && GameData.Number(t[1]) ==
@@ -282,7 +282,7 @@ public sealed partial class CombatService
     private CastCosts ResolveCosts(GameSession s, JsonElement row)
     {
         var result = new CastCosts();
-        var stats = character.Stats(s);
+        var stats = _character.Stats(s);
         foreach (var tuple in Tuples(row, "_kCost"))
         {
             var c = tuple.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).ToArray();
@@ -314,11 +314,11 @@ public sealed partial class CombatService
     private (int Error, long Parameter) ValidateCosts(GameSession s, CastCosts costs)
     {
         if (costs.Invalid) return (ErrorCodes.SkillRequirements, 0);
-        var stats = character.Stats(s);
+        var stats = _character.Stats(s);
         foreach (var (attr, cost) in costs.Attrs)
             if (cost > stats[attr] || attr == 2000 && cost >= stats[attr]) return (ErrorCodes.SkillCostShort, attr);
         foreach (var (group, count) in costs.Buffs)
-            if (!buffs.HasBuffPiles(s, group, (int)count))
+            if (!_buffs.HasBuffPiles(s, group, (int)count))
                 return (ErrorCodes.SkillBuffCostShort, group);
         return (0, 0);
     }
@@ -327,11 +327,11 @@ public sealed partial class CombatService
     {
         if (costs.Attrs.Count > 0)
         {
-            var stats = character.Stats(s);
-            await character.SetHpSpAsync(s, stats[2000] - costs.Attrs.GetValueOrDefault(2000), stats[2001] - costs.Attrs.GetValueOrDefault(2001));
+            var stats = _character.Stats(s);
+            await _character.SetHpSpAsync(s, stats[2000] - costs.Attrs.GetValueOrDefault(2000), stats[2001] - costs.Attrs.GetValueOrDefault(2001));
         }
         foreach (var (group, count) in costs.Buffs)
-            await buffs.ConsumeBuffPilesAsync(s, group, (int)count);
+            await _buffs.ConsumeBuffPilesAsync(s, group, (int)count);
     }
 
     private async Task StartCooldownAsync(GameSession s, JsonElement row)
@@ -354,7 +354,7 @@ public sealed partial class CombatService
         for (int i = 0; i < Math.Min(shared.Length, groups.Length); i++)
         {
             int sibling = (int)groups[i];
-            if (data.Row("SkillConfig", sibling) is { } siblingRow) sibling = (int)GameData.Int(siblingRow, "_iSkillID");
+            if (_data.Row("SkillConfig", sibling) is { } siblingRow) sibling = (int)GameData.Int(siblingRow, "_iSkillID");
             if (sibling > 0) Set(sibling, 0, (long)shared[i], true);
         }
         if (notice.Infos.Count > 0) await s.SendGameAsync(SkillCdUpdate, notice);
@@ -367,7 +367,7 @@ public sealed partial class CombatService
         using var held = await CharacterService.Lock(s);
         if (target != null && !CanHitMonster(s, target)) return;
         if (EffectiveSkillRow(s, skillId) is not { } row || !Learned(s, row) || !SkillModeAllowed(s, row)
-            || buffs.HasForbidden(s, 5) || s.SkillCast is { Cancelled: false }) return;
+            || _buffs.HasForbidden(s, 5) || s.SkillCast is { Cancelled: false }) return;
         var request = new CastSkillReq
         {
             SkillId = (int)GameData.Int(row, "_iID"), TargetId = target?.Uid ?? 0,
@@ -381,14 +381,14 @@ public sealed partial class CombatService
     {
         var costs = ResolveCosts(s, row);
         if (costs.Items.Count == 0) return true;
-        if (ValidateCosts(s, costs).Error != 0 || !buffs.CanSpendEnergy(s, row)) return false;
+        if (ValidateCosts(s, costs).Error != 0 || !_buffs.CanSpendEnergy(s, row)) return false;
         var lease = s.Attachment;
         long scene = s.SceneGeneration, worldScene = s.WorldScene;
         bool Current() => lease?.Cancelled != true && ReferenceEquals(s.Attachment, lease) &&
             s.SceneGeneration == scene && s.WorldScene == worldScene && !s.SceneLoading && !s.Dead;
         if (!await AdmitCastCostAsync(s, row, request, costs, id) || !Current()) return false;
         await PayCostsAsync(s, costs);
-        await buffs.SpendEnergyAsync(s, row);
+        await _buffs.SpendEnergyAsync(s, row);
         return Current();
     }
 
@@ -412,7 +412,7 @@ public sealed partial class CombatService
             SrcID = action.SourceId, SkillID = req.SkillId, TargetId = req.TargetId, TargetPos = req.TargetPos ?? origin,
             Face = face, SessionId = id, ChantMs = action.ChantMs, SkillMs = action.ActionMs, StartTime = action.StartMs, PlayAct = true,
         }, highLevel: GameData.Int(row, "_iSkillEffectLevel") > 0, extra: actor != null || req.IsExtraSkill);
-        var template = data.SkillTemplate(GameData.Int(row, "_iScriptShow"));
+        var template = _data.SkillTemplate(GameData.Int(row, "_iScriptShow"));
         var points = template is { } t ? Numbers(t, "m_kAtkPoints") : [];
         double point = points.FirstOrDefault(0.2);
         int at = Script(row) == "Resurrection" ? action.ChantMs : ImpactOffset(template, point, action.ChantMs, action.ActionMs);
@@ -478,7 +478,7 @@ public sealed partial class CombatService
 
     private int SkillMs(GameSession s, JsonElement row)
     {
-        double aspd = Math.Clamp(character.Stats(s)[115] / 100.0, 0.1, 5);
+        double aspd = Math.Clamp(_character.Stats(s)[115] / 100.0, 0.1, 5);
         double influence = GameData.Int(row, "_iActionTimeInfluence") / 100.0;
         return (int)Math.Round(Math.Max(1, GameData.Int(row, "_iActionTime")) / Math.Max(0.1, 1 + (aspd - 1) * influence));
     }
@@ -486,12 +486,12 @@ public sealed partial class CombatService
     public async Task InterruptAsync(GameSession s, SkillInterruptReq? req = null)
     {
         bool valid = req == null || req.InterruptSkillId == 0 || req.InterruptSkillId == s.SkillCast?.Request.SkillId
-            || req.InterruptSkillId == s.Attack?.SkillId || eventAttacks.TryGetValue(s, out var eventAttack) && req.InterruptSkillId == eventAttack.SkillId;
-        bool interrupted = valid && (s.SkillCast != null || s.Attack != null || eventAttacks.ContainsKey(s));
+            || req.InterruptSkillId == s.Attack?.SkillId || _eventAttacks.TryGetValue(s, out var eventAttack) && req.InterruptSkillId == eventAttack.SkillId;
+        bool interrupted = valid && (s.SkillCast != null || s.Attack != null || _eventAttacks.ContainsKey(s));
         if (interrupted)
         {
             s.Attack = null;
-            eventAttacks.Remove(s);
+            _eventAttacks.Remove(s);
             await CancelCastAsync(s, req?.NxtSkill != null ? SkillInterruptedInfo.Types.SkillInterruptType.Skill : SkillInterruptedInfo.Types.SkillInterruptType.Move);
         }
         await s.SendGameAsync(SkillInterrupt, new SkillInterruptResp { IsInterruptSucc = interrupted });
@@ -513,8 +513,8 @@ public sealed partial class CombatService
 
     public void PlayerMoved(GameSession s)
     {
-        if (eventAttacks.TryGetValue(s, out var eventAttack)
-            && MonsterService.Distance(eventAttack.StartX, eventAttack.StartZ, s.Position.X, s.Position.Z) > 1.5f) eventAttacks.Remove(s);
+        if (_eventAttacks.TryGetValue(s, out var eventAttack)
+            && MonsterService.Distance(eventAttack.StartX, eventAttack.StartZ, s.Position.X, s.Position.Z) > 1.5f) _eventAttacks.Remove(s);
         if (s.Attack is { } a && MonsterService.Distance(a.StartX, a.StartZ, s.Position.X, s.Position.Z) > 0.1f) s.Attack = null;
         if (s.SkillCast is not { } cast || Distance(cast.Origin, s.Position) <= 0.1f || GameData.Int(cast.Row, "_bMovement") != 0) return;
         // The client casts on reaching range and stops 1 ms later (in-game 11.10): that first stop is the cast's real
@@ -526,6 +526,6 @@ public sealed partial class CombatService
             cast.StartedWalking = false;
             return;
         }
-        loop.TrackRuntimeDetached("cast movement cancellation", () => CancelCastAsync(s, SkillInterruptedInfo.Types.SkillInterruptType.Move));
+        _loop.TrackRuntimeDetached("cast movement cancellation", () => CancelCastAsync(s, SkillInterruptedInfo.Types.SkillInterruptType.Move));
     }
 }

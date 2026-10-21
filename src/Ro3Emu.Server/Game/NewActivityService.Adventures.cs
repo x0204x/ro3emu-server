@@ -46,7 +46,7 @@ public sealed partial class NewActivityService
     private DBWorldExploration CreateWorldExploration()
     {
         var state = new DBWorldExploration { DropData = new DBWorldExplorationDropData() };
-        foreach (var row in data.Table("ExplorePhaseConfig").Values.Where(r => GameData.Int(r, "_iActivityid") == 111))
+        foreach (var row in _data.Table("ExplorePhaseConfig").Values.Where(r => GameData.Int(r, "_iActivityid") == 111))
         {
             long phaseId = GameData.Int(row, "_iPhaseID");
             if (phaseId == 0 || !row.TryGetProperty("_kNodes", out var nodes) || nodes.ValueKind != JsonValueKind.Array) continue;
@@ -54,7 +54,7 @@ public sealed partial class NewActivityService
             foreach (var id in nodes.EnumerateArray())
             {
                 long nodeId = (long)(GameData.Number(id) ?? 0);
-                if (nodeId > 0 && data.Row("ExploreNodeConfig", nodeId) != null)
+                if (nodeId > 0 && _data.Row("ExploreNodeConfig", nodeId) != null)
                     phase.NodeInfos[nodeId] = new DBWorldExplorationPhaseNode { NodeCfgId = nodeId };
             }
             state.PhaseInfos[phaseId] = phase;
@@ -64,7 +64,7 @@ public sealed partial class NewActivityService
 
     private DBJourneyInfo CreateJourney()
     {
-        var first = data.Table("JourneyNodeConfig").Values.OrderBy(r => GameData.Int(r, "_iChapter"))
+        var first = _data.Table("JourneyNodeConfig").Values.OrderBy(r => GameData.Int(r, "_iChapter"))
             .ThenBy(r => GameData.Int(r, "_iID")).FirstOrDefault();
         var state = new DBJourneyInfo
         {
@@ -88,7 +88,7 @@ public sealed partial class NewActivityService
     private PlayerActivitySeasonEve CreateSeasonEve()
     {
         var state = new PlayerActivitySeasonEve();
-        foreach (var row in data.Table("SeasonEveChapterConfig").Values)
+        foreach (var row in _data.Table("SeasonEveChapterConfig").Values)
         {
             long id = GameData.Int(row, "_iId");
             if (id > 0) state.ChapterInfo[id] = new PlayerSeasonEveChapterInfo();
@@ -132,10 +132,10 @@ public sealed partial class NewActivityService
     private async Task<int> WorldFillCoreAsync(GameSession session, long activityId, WorldExplorationFillPhaseNodeReq req)
     {
         if (ActivityError(session, activityId, 14) is var error and not 0) return error;
-        if (data.Row("ExplorePhaseConfig", req.PhaseCfgId) is not { } phaseRow
+        if (_data.Row("ExplorePhaseConfig", req.PhaseCfgId) is not { } phaseRow
             || GameData.Int(phaseRow, "_iActivityid") != activityId
             || !WorldPhaseOpen(session, phaseRow)
-            || data.Row("ExploreNodeConfig", req.NodeCfgId) is not { } nodeRow
+            || _data.Row("ExploreNodeConfig", req.NodeCfgId) is not { } nodeRow
             || !Contains(phaseRow, "_kNodes", req.NodeCfgId)
             || !nodeRow.TryGetProperty("_kPiecesID", out var pieces) || pieces.ValueKind != JsonValueKind.Array
             || req.Position < 1 || req.Position > pieces.GetArrayLength()
@@ -148,7 +148,7 @@ public sealed partial class NewActivityService
         node.Items[req.Position] = req.ItemId;
         node.IsFinished = node.Items.Count == pieces.GetArrayLength();
         int slots = phase.NodeInfos.Keys.Sum(nodeId =>
-            data.Row("ExploreNodeConfig", nodeId) is { } configured
+            _data.Row("ExploreNodeConfig", nodeId) is { } configured
             && configured.TryGetProperty("_kPiecesID", out var list) && list.ValueKind == JsonValueKind.Array
                 ? list.GetArrayLength() : 0);
         // (inferred) GetChapterProgress divides totalRate by 100 for the displayed
@@ -159,7 +159,7 @@ public sealed partial class NewActivityService
 
     private bool WorldPhaseOpen(GameSession session, JsonElement row)
     {
-        var stages = seasons.Clock(Playbook(session)).StageTimeInfo;
+        var stages = _seasons.Clock(Playbook(session)).StageTimeInfo;
         static bool Bound(JsonElement phase, string field, Google.Protobuf.Collections.MapField<long, SeasonStageTimeInfo> stages, out long seconds)
         {
             seconds = 0;
@@ -175,7 +175,7 @@ public sealed partial class NewActivityService
         // ClientHooks.ServerDayGates opens LC_SeasonExplorationHelper.IsChapterInActivityTime to match.
         return Bound(row, "_kStartTime", stages, out long start)
             && Bound(row, "_kEndTime", stages, out long end)
-            && (seasons.OpenContent.Enabled && seasons.OpenContent.PerpetualWindows || start <= Now && Now <= end);
+            && (_seasons.OpenContent.Enabled && _seasons.OpenContent.PerpetualWindows || start <= Now && Now <= end);
     }
 
     private static bool Contains(JsonElement row, string field, long id) =>
@@ -185,7 +185,7 @@ public sealed partial class NewActivityService
     private async Task<int> SelectWishAsync(GameSession session, long activityId, SeasonEveSelectWishReq req)
     {
         if (ActivityError(session, activityId, 19) is var error and not 0) return error;
-        if (data.Row("SeasonEveWishConfig", req.WishId) is not { } wish || GameData.Int(wish, "_iId") != req.WishId) return ErrorCodes.Parameter;
+        if (_data.Row("SeasonEveWishConfig", req.WishId) is not { } wish || GameData.Int(wish, "_iId") != req.WishId) return ErrorCodes.Parameter;
         if (ReadEveGlobal(session, activityId).Progress < EveConstant("SeasonEveTotalProgress")) return ErrorCodes.TaskRequirements;
         var next = session.NewActivities!.Clone();
         var state = next.ActivityInfo[activityId].ActivityParam.SeasonEve;
@@ -197,11 +197,11 @@ public sealed partial class NewActivityService
     private async Task<int> FindClueAsync(GameSession session, long activityId, SeasonEveFindClueReq req, SeasonEveFindClueResp res)
     {
         if (ActivityError(session, activityId, 19) is var error and not 0) return error;
-        var clue = data.Row("SeasonEveClueConfig", req.ClueId);
+        var clue = _data.Row("SeasonEveClueConfig", req.ClueId);
         if (clue == null || GameData.Int(clue.Value, "_iMapId") != session.SceneEntry
-            || scene.ConfiguredPoint(session.SceneEntry, GameData.Int(clue.Value, "_iPointId")) is not { } point
+            || _scene.ConfiguredPoint(session.SceneEntry, GameData.Int(clue.Value, "_iPointId")) is not { } point
             || MonsterService.Distance(session.Position.X, session.Position.Z, point.X, point.Z) > 12f
-            || data.Table("SeasonEveChapterConfig").Values.FirstOrDefault(c => Contains(c, "_kClueList", req.ClueId)) is not { ValueKind: JsonValueKind.Object } chapter)
+            || _data.Table("SeasonEveChapterConfig").Values.FirstOrDefault(c => Contains(c, "_kClueList", req.ClueId)) is not { ValueKind: JsonValueKind.Object } chapter)
             return ErrorCodes.Parameter;
         long chapterId = GameData.Int(chapter, "_iId");
         if (Now < EveChapterOpenTime(session, activityId, chapter)) return ErrorCodes.TaskRequirements;
@@ -219,7 +219,7 @@ public sealed partial class NewActivityService
         if (!res.IsFirst) return 0;
         progress.Clues[req.ClueId] = true;
         progress.Notes[index] = noteId;
-        await adventureSocialGate.WaitAsync();
+        await _adventureSocialGate.WaitAsync();
         try
         {
             var global = ReadEveGlobal(session, activityId);
@@ -228,13 +228,13 @@ public sealed partial class NewActivityService
             globalChapter.Clues[req.ClueId] = previous + 1;
             return await CommitAdventureAsync(session, next, persist: tx => SaveEveGlobal(session, activityId, global, tx));
         }
-        finally { adventureSocialGate.Release(); }
+        finally { _adventureSocialGate.Release(); }
     }
 
     private async Task<int> PlayChapterAsync(GameSession session, long activityId, SeasonEvePlayChapterReq req)
     {
         if (ActivityError(session, activityId, 19) is var error and not 0) return error;
-        if (data.Row("SeasonEveChapterConfig", req.ChapterId) is not { } chapter
+        if (_data.Row("SeasonEveChapterConfig", req.ChapterId) is not { } chapter
             || GameData.Int(chapter, "_iId") != req.ChapterId) return ErrorCodes.Parameter;
         if (Now < EveChapterOpenTime(session, activityId, chapter)) return ErrorCodes.TaskRequirements;
         int count = EveConstant("SeasonEveChapterNoteCount");
@@ -250,7 +250,7 @@ public sealed partial class NewActivityService
             return ErrorCodes.TaskRequirements;
         foreach (var (key, value) in req.NoteIds) progress.Notes[key] = value;
         progress.IsFinish = true;
-        await adventureSocialGate.WaitAsync();
+        await _adventureSocialGate.WaitAsync();
         try
         {
             var global = ReadEveGlobal(session, activityId);
@@ -263,7 +263,7 @@ public sealed partial class NewActivityService
             return await CommitAdventureAsync(session, next, [GameData.Int(chapter, "_iAward")],
                 persist: tx => SaveEveGlobal(session, activityId, global, tx));
         }
-        finally { adventureSocialGate.Release(); }
+        finally { _adventureSocialGate.Release(); }
     }
 
     private async Task<int> ClaimEveAsync(GameSession session, long activityId, SeasonEveClaimAwardReq req)
@@ -287,7 +287,7 @@ public sealed partial class NewActivityService
         var global = ReadEveGlobal(session, activityId);
         var result = new SeasonEveGetGlobalInfoResp { Progress = global.Progress };
         result.BulletInfo.AddRange(global.PlayerBullet);
-        foreach (var row in data.Table("SeasonEveChapterConfig").Values)
+        foreach (var row in _data.Table("SeasonEveChapterConfig").Values)
         {
             long id = GameData.Int(row, "_iId");
             if (id < 1) continue;
@@ -300,12 +300,12 @@ public sealed partial class NewActivityService
         return result;
     }
 
-    private int EveConstant(string key) => data.Table("ActivityConstant").TryGetValue(key, out var value)
+    private int EveConstant(string key) => _data.Table("ActivityConstant").TryGetValue(key, out var value)
         ? (int)(GameData.Number(value) ?? 0) : 0;
 
     private IEnumerable<(long Id, long Threshold, long Award)> EveProgressAwards()
     {
-        if (!data.Table("ActivityConstant").TryGetValue("SeasonEveProgressAward", out var awards)) yield break;
+        if (!_data.Table("ActivityConstant").TryGetValue("SeasonEveProgressAward", out var awards)) yield break;
         foreach (var tuple in awards.EnumerateArray())
             if (tuple.ValueKind == JsonValueKind.Array && tuple.GetArrayLength() == 3)
                 yield return ((long)(GameData.Number(tuple[0]) ?? 0),
@@ -318,7 +318,7 @@ public sealed partial class NewActivityService
     private long EveChapterOpenTime(GameSession session, long activityId, JsonElement chapter)
     {
         long start = session.NewActivities!.ActivityInfo[activityId].CurStartTime;
-        if (data.Row("LC_ConditionList", GameData.Int(chapter, "_iCondition")) is not { } condition
+        if (_data.Row("LC_ConditionList", GameData.Int(chapter, "_iCondition")) is not { } condition
             || !condition.TryGetProperty("m_kSubConditionList", out var clauses)) return start;
         foreach (var clause in clauses.EnumerateArray())
         {
@@ -331,7 +331,7 @@ public sealed partial class NewActivityService
 
     private DBSeasonEveInfo ReadEveGlobal(GameSession session, long activityId)
     {
-        return accounts.ReadSync<byte[]?>(new AdventureEveGlobalReadPlan(activityId,
+        return _accounts.ReadSync<byte[]?>(new AdventureEveGlobalReadPlan(activityId,
             session.NewActivities!.ActivityInfo[activityId].CycleStartTime)) is { } bytes
             ? DBSeasonEveInfo.Parser.ParseFrom(bytes) : new DBSeasonEveInfo();
     }
@@ -350,19 +350,19 @@ public sealed partial class NewActivityService
 
     private async Task ReconcileEveGlobalAsync(GameSession session, long activityId)
     {
-        await adventureSocialGate.WaitAsync();
+        await _adventureSocialGate.WaitAsync();
         try
         {
             var global = ReadEveGlobal(session, activityId);
             if (!AdvanceEveGlobal(session, activityId, global)) return;
-            var transaction = accounts.NewTransaction();
+            var transaction = _accounts.NewTransaction();
             SaveEveGlobal(session, activityId, global, transaction);
             transaction.WithEscrowEconomy(new EscrowEconomyIntent("activity/eve-reconcile",
                 session.Account ?? "", session.Role!.Id).Evidence(new
                 { Role = session.Role.Id, Activity = activityId, global.LastCalcTime, global.Progress }));
-            await roles.CommitAsync(transaction, "adventure/eve-reconcile");
+            await _roles.CommitAsync(transaction, "adventure/eve-reconcile");
         }
-        finally { adventureSocialGate.Release(); }
+        finally { _adventureSocialGate.Release(); }
     }
 
     private bool AdvanceEveGlobal(GameSession session, long activityId, DBSeasonEveInfo global)
@@ -385,7 +385,7 @@ public sealed partial class NewActivityService
         }
 
         long until = Math.Min(Now, end);
-        int population = sessions.All().Count(s => ActivityError(s, activityId, 19) == 0);
+        int population = _sessions.All().Count(s => ActivityError(s, activityId, 19) == 0);
         long coefficient = EveCoefficient(population);
         for (long tick = global.LastCalcTime + interval; tick <= until; tick += interval)
         {
@@ -400,7 +400,7 @@ public sealed partial class NewActivityService
 
     private long EveCheckpointTarget(long elapsed)
     {
-        if (!data.Table("ActivityConstant").TryGetValue("SeasonEveProgressCheckPoint", out var configured)) return 0;
+        if (!_data.Table("ActivityConstant").TryGetValue("SeasonEveProgressCheckPoint", out var configured)) return 0;
         long previousTime = 0, previousTarget = 0;
         foreach (var point in configured.EnumerateArray())
         {
@@ -418,7 +418,7 @@ public sealed partial class NewActivityService
 
     private long EveCoefficient(int population)
     {
-        if (!data.Table("ActivityConstant").TryGetValue("SeasonEveProgressCheckCoefficient", out var configured)) return 10000;
+        if (!_data.Table("ActivityConstant").TryGetValue("SeasonEveProgressCheckCoefficient", out var configured)) return 10000;
         foreach (var band in configured.EnumerateArray())
             if (band.ValueKind == JsonValueKind.Array && band.GetArrayLength() >= 2
                 && GameData.Number(band[0]) is { } ceiling && population <= ceiling)
@@ -462,7 +462,7 @@ public sealed partial class NewActivityService
     private async Task<int> JourneyRestartAsync(GameSession session, long activityId)
     {
         if (ActivityError(session, activityId, 15) is var error and not 0) return error;
-        return await dungeons.RestartJourneyAsync(session);
+        return await _dungeons.RestartJourneyAsync(session);
     }
 
     private async Task<int> CompleteJourneyAsync(GameSession session, long activityId, JourneyCompleteReq req, bool serverVictory = false,
@@ -476,7 +476,7 @@ public sealed partial class NewActivityService
         var journey = next.ActivityInfo[activityId].ActivityParam.Journey;
         long id = req.CompleteId;
         long nodeId = journey.CurNodeId;
-        var node = data.Row("JourneyNodeConfig", nodeId);
+        var node = _data.Row("JourneyNodeConfig", nodeId);
         if (node == null && (req.Type is EJourneyCompleteType.Act or EJourneyCompleteType.Node))
             return ErrorCodes.Parameter;
         long chapter = node == null ? 0 : GameData.Int(node.Value, "_iChapter");
@@ -490,22 +490,22 @@ public sealed partial class NewActivityService
                 if (req.Type == EJourneyCompleteType.Game)
                 {
                     id = journey.CurActIds.Keys.FirstOrDefault(candidate =>
-                        data.Row("JourneyActConfig", candidate) is { } gameAct
+                        _data.Row("JourneyActConfig", candidate) is { } gameAct
                         && JourneyAction(gameAct) == 406 && JourneyGameLevel(gameAct) == req.CompleteId);
                     if (id == 0) return ErrorCodes.TaskRequirements;
                 }
-                if (journey.CompleteAct.ContainsKey(id) && data.Row("JourneyActConfig", id) is { } completedAct
+                if (journey.CompleteAct.ContainsKey(id) && _data.Row("JourneyActConfig", id) is { } completedAct
                     && JourneyBossScene(completedAct) > 0) return 0;
-                if (!journey.CurActIds.ContainsKey(id) || data.Row("JourneyActConfig", id) is not { } act
+                if (!journey.CurActIds.ContainsKey(id) || _data.Row("JourneyActConfig", id) is not { } act
                     || GameData.Int(act, "_iNode") != nodeId || journey.CompleteAct.ContainsKey(id)
                     || JourneyBossScene(act) > 0 && !serverVictory
                     || (JourneyAction(act) == 406) != (req.Type == EJourneyCompleteType.Game)
-                    || !earnedVictory && !functions.ConditionMet(session, GameData.Int(act, "_iCondition"))) return ErrorCodes.TaskRequirements;
+                    || !earnedVictory && !_functions.ConditionMet(session, GameData.Int(act, "_iCondition"))) return ErrorCodes.TaskRequirements;
                 journey.CompleteAct[id] = done;
                 journey.CurActIds.Remove(id);
                 // LC_JourneyHelperPartialAction.FindActIdByCondition selects one act from a
                 // predecessor's candidate set. Its siblings are alternative dialogue branches.
-                foreach (var predecessor in data.Table("JourneyActConfig").Values)
+                foreach (var predecessor in _data.Table("JourneyActConfig").Values)
                 {
                     long previousId = GameData.Int(predecessor, "_iID");
                     if (!journey.CompleteAct.ContainsKey(previousId) || !Contains(predecessor, "_kNext", id)
@@ -520,24 +520,24 @@ public sealed partial class NewActivityService
                     foreach (var successor in successors.EnumerateArray())
                     {
                         long nextId = (long)(GameData.Number(successor) ?? 0);
-                        if (nextId > 0 && data.Row("JourneyActConfig", nextId) != null) journey.CurActIds[nextId] = true;
+                        if (nextId > 0 && _data.Row("JourneyActConfig", nextId) != null) journey.CurActIds[nextId] = true;
                     }
                 break;
             case EJourneyCompleteType.Node:
                 if (id != nodeId || journey.CurActIds.Count > 0 || journey.CompleteNode.ContainsKey(id)) return ErrorCodes.TaskRequirements;
                 journey.CompleteNode[id] = done;
                 journey.CurNodeId = GameData.Int(node!.Value, "_iNext");
-                if (data.Row("JourneyNodeConfig", journey.CurNodeId) is { } nextNode && GameData.Int(nextNode, "_iFirstAct") is var first and > 0)
+                if (_data.Row("JourneyNodeConfig", journey.CurNodeId) is { } nextNode && GameData.Int(nextNode, "_iFirstAct") is var first and > 0)
                     journey.CurActIds[first] = true;
                 break;
             case EJourneyCompleteType.AwardNode:
                 if (!journey.CompleteNode.ContainsKey(id) || journey.CompleteAwardNode.ContainsKey(id)
-                    || data.Row("JourneyNodeConfig", id) is not { } awardedNode) return ErrorCodes.TaskRequirements;
+                    || _data.Row("JourneyNodeConfig", id) is not { } awardedNode) return ErrorCodes.TaskRequirements;
                 journey.CompleteAwardNode[id] = true;
                 reward = GameData.Int(awardedNode, "_iAward");
                 break;
             case EJourneyCompleteType.Travel:
-                if (data.Row("JourneyTravelConfig", id) is not { } travel || !JourneyTravelOpen(journey)
+                if (_data.Row("JourneyTravelConfig", id) is not { } travel || !JourneyTravelOpen(journey)
                     || journey.EventInfo.EventId != 0 || journey.TravelInfo.CurDay is < 1 or > 7
                     || GameData.Int(travel, "_iTime") <= 0
                     || GameData.Int(travel, "_iTime") > journey.TravelInfo.RemainHour) return ErrorCodes.TaskRequirements;
@@ -563,10 +563,10 @@ public sealed partial class NewActivityService
                     // (inferred) Finishing the authored seventh day settles action 408
                     // and exposes its dialogue successor without an extra client request.
                     long travelActId = journey.CurActIds.Keys.First(x =>
-                        data.Row("JourneyActConfig", x) is { } travelAct && JourneyAction(travelAct) == 408);
+                        _data.Row("JourneyActConfig", x) is { } travelAct && JourneyAction(travelAct) == 408);
                     journey.CurActIds.Remove(travelActId);
                     journey.CompleteAct[travelActId] = done;
-                    if (data.Row("JourneyActConfig", travelActId) is { } finished
+                    if (_data.Row("JourneyActConfig", travelActId) is { } finished
                         && finished.TryGetProperty("_kNext", out var daySuccessors)
                         && daySuccessors.ValueKind == JsonValueKind.Array)
                         foreach (var successor in daySuccessors.EnumerateArray())
@@ -575,8 +575,8 @@ public sealed partial class NewActivityService
                 break;
             case EJourneyCompleteType.Event:
                 long pendingId = journey.EventInfo.EventId;
-                if (pendingId == 0 || data.Row("JourneyEventConfig", pendingId) is not { } pending
-                    || data.Row("JourneyEventConfig", id) is not { } eventRow) return ErrorCodes.TaskRequirements;
+                if (pendingId == 0 || _data.Row("JourneyEventConfig", pendingId) is not { } pending
+                    || _data.Row("JourneyEventConfig", id) is not { } eventRow) return ErrorCodes.TaskRequirements;
                 bool branch = pending.TryGetProperty("_kBtn", out var buttons)
                     && buttons.ValueKind == JsonValueKind.Array && buttons.GetArrayLength() > 0;
                 if (branch ? !Contains(pending, "_kBtn", id) : id != pendingId) return ErrorCodes.TaskRequirements;
@@ -605,13 +605,13 @@ public sealed partial class NewActivityService
 
     private IEnumerable<JsonElement> JourneyPublicArray(string key)
     {
-        if (data.Table("PublicParamConfig").TryGetValue(key, out var value)
+        if (_data.Table("PublicParamConfig").TryGetValue(key, out var value)
             && value.ValueKind == JsonValueKind.Array) return value.EnumerateArray().ToArray();
         return [];
     }
 
     private bool JourneyTravelOpen(DBJourneyInfo journey) => journey.CurActIds.Keys.Any(id =>
-        data.Row("JourneyActConfig", id) is { } row && JourneyAction(row) == 408
+        _data.Row("JourneyActConfig", id) is { } row && JourneyAction(row) == 408
         && GameData.Int(row, "_iNode") == journey.CurNodeId);
 
     private static long JourneyAction(JsonElement row) => row.TryGetProperty("_iAction", out var actions)
@@ -633,7 +633,7 @@ public sealed partial class NewActivityService
     private bool StartJourneyEvent(DBJourneyInfo journey, IEnumerable<long> groupIds, List<AwardGrant> grants)
     {
         var groups = groupIds.Where(id => id > 0).ToHashSet();
-        var candidates = data.Table("JourneyEventConfig").Values
+        var candidates = _data.Table("JourneyEventConfig").Values
             .Where(row => groups.Contains(GameData.Int(row, "_iGroup"))
                 && GameData.Int(row, "_iWeight") > 0 && JourneyEventCondition(journey, GameData.Int(row, "_iCondition")))
             .OrderBy(row => GameData.Int(row, "_iID")).ToArray();
@@ -655,7 +655,7 @@ public sealed partial class NewActivityService
     private bool JourneyEventCondition(DBJourneyInfo journey, long conditionId)
     {
         if (conditionId == 0) return true;
-        if (data.Row("LC_ConditionList", conditionId) is not { } condition
+        if (_data.Row("LC_ConditionList", conditionId) is not { } condition
             || !condition.TryGetProperty("m_kSubConditionList", out var subs) || subs.ValueKind != JsonValueKind.Array) return false;
         foreach (var sub in subs.EnumerateArray())
         {
@@ -729,13 +729,13 @@ public sealed partial class NewActivityService
             var journey = Journey(session, 112);
             if (journey.CompleteAct.ContainsKey(victory.ActId))
             {
-                var transaction = roles.NewTransaction();
+                var transaction = _roles.NewTransaction();
                 persist(transaction);
-                await roles.CommitAsync(transaction, "dungeon/journey-acknowledge", _ => committed());
+                await _roles.CommitAsync(transaction, "dungeon/journey-acknowledge", _ => committed());
                 return true;
             }
             if (journey.CurNodeId != victory.NodeId || !journey.CurActIds.ContainsKey(victory.ActId)
-                || data.Row("JourneyActConfig", victory.ActId) is not { } row
+                || _data.Row("JourneyActConfig", victory.ActId) is not { } row
                 || JourneyBossScene(row) != victory.SceneEntry) return false;
             return await CompleteJourneyAsync(session, 112, new JourneyCompleteReq
             { CompleteId = victory.ActId, Type = EJourneyCompleteType.Act }, serverVictory: true,

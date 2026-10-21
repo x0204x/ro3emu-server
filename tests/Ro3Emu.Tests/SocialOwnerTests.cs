@@ -222,7 +222,7 @@ public sealed class SocialOwnerTests : IAsyncLifetime
         }));
 
         // Alice's own micro session (bound to her verified account), called directly so the exception is observable.
-        var aliceMicro = new MicroSession(null!) { Account = alice.Account };
+        var aliceMicro = new MicroSession(null!, 1) { Account = alice.Account };
         await Assert.ThrowsAsync<OwnerRevisionConflictException>(async () =>
         {
             await Service<FriendService>().InvokeAsync(aliceMicro, "refuseAll",
@@ -289,7 +289,7 @@ public sealed class SocialOwnerTests : IAsyncLifetime
         await using var w = await FriendWorld("Anon");
 
         // A micro connection that never completed verifySdk: no account is bound to it.
-        var anonymous = new MicroSession(null!);
+        var anonymous = new MicroSession(null!, 2);
         var router = Service<MicroServiceRouter>();
         async Task<Dictionary<object, object?>> Call(string method, Dictionary<string, object?> args) =>
             MessagePackSerializer.Deserialize<Dictionary<object, object?>>(
@@ -299,7 +299,7 @@ public sealed class SocialOwnerTests : IAsyncLifetime
         {
             var reply = await Call(method, args);
             Assert.False(Ok(reply), method);
-            Assert.Equal("no selected role", Message(reply));
+            Assert.Equal("not verified", Message(reply)); // the micro gate refuses it before FriendService
         }
         foreach (var (method, uid, field) in new[]
         {

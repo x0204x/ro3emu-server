@@ -80,16 +80,16 @@ public sealed class AchievementService : IGameTicker
         public Dictionary<int, Tier[]> Tiers { get; } = new();
     }
 
-    private readonly GameData data;
-    private readonly RoleStore roles;
-    private readonly CharacterService character;
-    private readonly AwardService awards;
-    private readonly TowerService tower;
-    private readonly Micro.SocialOwnerCache social;
-    private readonly SessionRegistry sessions;
-    private readonly GameLoop loop;
-    private readonly TimeProvider clock;
-    private readonly ILogger<AchievementService> log;
+    private readonly GameData _data;
+    private readonly RoleStore _roles;
+    private readonly CharacterService _character;
+    private readonly AwardService _awards;
+    private readonly TowerService _tower;
+    private readonly Micro.SocialOwnerCache _social;
+    private readonly SessionRegistry _sessions;
+    private readonly GameLoop _loop;
+    private readonly TimeProvider _clock;
+    private readonly ILogger<AchievementService> _log;
     private Catalog? _catalog;
     private readonly HashSet<GameSession> _recheckQueued = new();
     private readonly HashSet<GameSession> _dirty = new();
@@ -106,8 +106,8 @@ public sealed class AchievementService : IGameTicker
         DungeonService dungeons, GuildService guilds, Micro.FriendService friends, Micro.SocialOwnerCache social,
         SessionRegistry sessions, GameLoop loop, GmCommands gm, TimeProvider clock, ILogger<AchievementService> log)
     {
-        this.data = data; this.roles = roles; this.character = character; this.awards = awards; this.tower = tower;
-        this.social = social; this.sessions = sessions; this.loop = loop; this.clock = clock; this.log = log;
+        this._data = data; this._roles = roles; this._character = character; this._awards = awards; this._tower = tower;
+        this._social = social; this._sessions = sessions; this._loop = loop; this._clock = clock; this._log = log;
         // Snapshot sources: every hook only queues a re-read on the owner loop, so the firing service's locks are
         // released first (several fire inside the character lock or a commit's apply).
         character.StateChanged.Add(QueueRecheck);
@@ -164,7 +164,7 @@ public sealed class AchievementService : IGameTicker
     private Catalog Load()
     {
         var catalog = new Catalog();
-        foreach (var row in data.Table("AchievementConfig").Values)
+        foreach (var row in _data.Table("AchievementConfig").Values)
         {
             long id = GameData.Int(row, "_iID");
             if (id <= 0) continue;
@@ -177,7 +177,7 @@ public sealed class AchievementService : IGameTicker
             bool blocked = targets.Length == 0 || targets.Any(IsBlocked);
             if (required.Any(r => r <= 0))
             {
-                log.LogWarning("Achievement {Id}: unsupported target {Targets}; it stays not reached", id,
+                _log.LogWarning("Achievement {Id}: unsupported target {Targets}; it stays not reached", id,
                     string.Join(" ", targets.Select(t => "[" + string.Join(",", t) + "]")));
                 blocked = true;
             }
@@ -186,16 +186,16 @@ public sealed class AchievementService : IGameTicker
                 targets.Select(t => t is [CTeamBoss, _, var multi, var npc] ? BossRecord(multi, npc) : null).ToArray(),
                 targets.Select(t => t is [CGodBoss, var npc, ..] ? GodRealms.Select(m => BossRecord(m, npc)).OfType<string>().ToArray() : []).ToArray());
         }
-        catalog.Tiers[0] = data.Table("AchievementLevel").Values.Select(r =>
+        catalog.Tiers[0] = _data.Table("AchievementLevel").Values.Select(r =>
                 new Tier((int)GameData.Int(r, "_iLevel"), GameData.Int(r, "_iPoint"), GameData.Int(r, "_iAward")))
             .OrderBy(t => t.Level).ToArray();
-        foreach (var group in data.Table("AchievementType").Values.GroupBy(r => (int)GameData.Int(r, "_iTypeID")))
+        foreach (var group in _data.Table("AchievementType").Values.GroupBy(r => (int)GameData.Int(r, "_iTypeID")))
             if (group.Key > 0)
                 catalog.Tiers[group.Key] = group.Select(r =>
                         new Tier((int)GameData.Int(r, "_iLevel"), GameData.Int(r, "_iPoint"), GameData.Int(r, "_iAward")))
                     .OrderBy(t => t.Level).ToArray();
         int blockedCount = catalog.Rows.Values.Count(r => r.Blocked);
-        log.LogInformation("Achievements: {Rows} rows, {Blocked} blocked, {Types} level tables", catalog.Rows.Count, blockedCount, catalog.Tiers.Count);
+        _log.LogInformation("Achievements: {Rows} rows, {Blocked} blocked, {Types} level tables", catalog.Rows.Count, blockedCount, catalog.Tiers.Count);
         return catalog;
     }
 
@@ -221,7 +221,7 @@ public sealed class AchievementService : IGameTicker
     /// <summary>DungeonService record key "{multiId}:{mark}"; the mark is the 1-based _kBoss position whose npc matches.</summary>
     private string? BossRecord(long multi, long npc)
     {
-        if (data.Row("TenGameplayConfig", multi) is not { } row || !row.TryGetProperty("_kBoss", out var bosses)
+        if (_data.Row("TenGameplayConfig", multi) is not { } row || !row.TryGetProperty("_kBoss", out var bosses)
             || bosses.ValueKind != JsonValueKind.Array) return null;
         int mark = 0;
         foreach (var boss in bosses.EnumerateArray())
@@ -249,7 +249,7 @@ public sealed class AchievementService : IGameTicker
         return level;
     }
 
-    private (long Type, long SubType, long Quality) Item(int entry) => _items.GetOrAdd(entry, id => data.Row("ItemConfig", id) is { } row
+    private (long Type, long SubType, long Quality) Item(int entry) => _items.GetOrAdd(entry, id => _data.Row("ItemConfig", id) is { } row
         ? (GameData.Int(row, "_iType"), GameData.Int(row, "_iSubType"), GameData.Int(row, "_iQuality")) : (-1, -1, -1));
 
     private long Quality(int entry) => Item(entry).Quality;
@@ -319,7 +319,7 @@ public sealed class AchievementService : IGameTicker
         return true;
     }
 
-    private long NowMs => clock.GetUtcNow().ToUnixTimeMilliseconds();
+    private long NowMs => _clock.GetUtcNow().ToUnixTimeMilliseconds();
 
     // ---------------------------------------------------------------- condition readers
 
@@ -349,7 +349,7 @@ public sealed class AchievementService : IGameTicker
                 if (!s.Emblems.Plans.TryGetValue(s.Emblems.CurrentPlan, out var emblems)) return 0;
                 return emblems.Slots.Values.Count(guid => s.Items.FirstOrDefault(i => i.Guid == guid) is { } item && Quality(item.Entry) >= t[1]);
             case CResonance: // [stage, n]: Echo Resonances at stage >= p1 (EmblemService.Resonances)
-                return EmblemService.Resonances(s, data).Values.Count(stage => stage >= t[1]);
+                return EmblemService.Resonances(s, _data).Values.Count(stage => stage >= t[1]);
             case CPetQuality: // [quality, n]: owned pets of PetBaseConfig quality >= p1
                 return s.Pets == null ? null : s.Pets.ListPet.Values.Count(p => PetQuality(p.PetId) >= t[1]);
             case CPetRank: // [n, quality]: owned pets of quality >= p2 (5 = S rank)
@@ -357,7 +357,7 @@ public sealed class AchievementService : IGameTicker
             case CHatch: // eggs hatched in total (inferred: hatch count, not lottery draws)
                 return s.Pets?.IncubationCount;
             case CTowerFloor:
-                return s.Tower == null ? null : tower.HighestClearedFloor(s);
+                return s.Tower == null ? null : _tower.HighestClearedFloor(s);
             case CTeamBoss: // [1, multi, npc]: that boss's record passed
                 return s.Dungeons == null ? null
                     : row.RecordKeys[index] is { } key && s.Dungeons.Records.TryGetValue(key, out var record) && record.Passed ? r : 0;
@@ -374,10 +374,10 @@ public sealed class AchievementService : IGameTicker
                 if (s.Wardrobe == null && s.Mounts == null) return null;
                 var types = t.Skip(3).Take((int)Math.Max(0, t[2])).ToHashSet();
                 return OwnedAppearances(s).Count(id => types.Contains(_wardrobeType.GetOrAdd(id,
-                    key => data.Row("WardRobeConfig", key) is { } w ? GameData.Int(w, "_iType") : -1)));
+                    key => _data.Row("WardRobeConfig", key) is { } w ? GameData.Int(w, "_iType") : -1)));
             case CJobRank: // [rank]: JobConfig._iJobRank >= p1
                 return s.Progress == null ? null
-                    : data.Row("JobConfig", s.Progress.Career) is { } job && GameData.Int(job, "_iJobRank") >= t[1] ? r : 0;
+                    : _data.Row("JobConfig", s.Progress.Career) is { } job && GameData.Int(job, "_iJobRank") >= t[1] ? r : 0;
             default:
                 return null; // counters, friends and blocked conditions are not snapshots
         }
@@ -385,7 +385,7 @@ public sealed class AchievementService : IGameTicker
 
     private bool CardOf(int entry, long type, long subtype) => Item(entry) is var item && item.Type == type && item.SubType == subtype;
 
-    private long PetQuality(int pet) => _petQuality.GetOrAdd(pet, id => data.Row("PetBaseConfig", id) is { } row ? GameData.Int(row, "_iQuality") : -1);
+    private long PetQuality(int pet) => _petQuality.GetOrAdd(pet, id => _data.Row("PetBaseConfig", id) is { } row ? GameData.Int(row, "_iQuality") : -1);
 
     /// <summary>LC_InteractCondition operator table (lua :313-356): 1 ==, 2 ~=, 3 &gt;, 4 &gt;=, 5 &lt;, 6 &lt;=.</summary>
     private static bool Compare(long op, long value, long param) => op switch
@@ -483,7 +483,7 @@ public sealed class AchievementService : IGameTicker
         var rows = Rows().Rows.Values.Where(r => !r.Blocked && !Reached(state.Infos.GetValueOrDefault(r.Id))
             && r.Targets.Any(t => FriendConditions.Contains(t[0]))).ToList();
         if (rows.Count == 0) return false;
-        var snapshot = (await social.LoadSocialAsync([s.Role!.Id])).GetValueOrDefault(s.Role.Id);
+        var snapshot = (await _social.LoadSocialAsync([s.Role!.Id])).GetValueOrDefault(s.Role.Id);
         if (snapshot == null) return false;
         var levels = snapshot.Friends.Select(f => FriendLevel(snapshot.Intimacy.GetValueOrDefault(f))).ToList();
         bool changed = false;
@@ -507,7 +507,7 @@ public sealed class AchievementService : IGameTicker
         return changed;
     }
 
-    private long FriendLevel(int intimacy) => data.Table("FriendlinessConfig").Values
+    private long FriendLevel(int intimacy) => _data.Table("FriendlinessConfig").Values
         .Where(r => GameData.Int(r, "_iFriendNum") <= intimacy).Select(r => GameData.Int(r, "_iFriendlev")).DefaultIfEmpty(0).Max();
 
     /// <summary>101011: one more login day per 05:00 local boundary (DailyActivityService.Boundary), at login and
@@ -530,9 +530,9 @@ public sealed class AchievementService : IGameTicker
 
     private long DayBoundary()
     {
-        var now = clock.GetLocalNow().DateTime;
+        var now = _clock.GetLocalNow().DateTime;
         var start = (now.TimeOfDay >= TimeSpan.FromHours(5) ? now.Date : now.Date.AddDays(-1)).AddHours(5);
-        return new DateTimeOffset(DateTime.SpecifyKind(start, DateTimeKind.Unspecified), clock.LocalTimeZone.GetUtcOffset(start)).ToUnixTimeSeconds();
+        return new DateTimeOffset(DateTime.SpecifyKind(start, DateTimeKind.Unspecified), _clock.LocalTimeZone.GetUtcOffset(start)).ToUnixTimeSeconds();
     }
 
     // ---------------------------------------------------------------- lock, persistence, sync
@@ -576,13 +576,13 @@ public sealed class AchievementService : IGameTicker
     {
         RefreshLevels(next);
         if (next.Equals(s.Achievements)) return;
-        roles.SaveAchievements(s.Role!.Id, next.ToByteArray());
+        _roles.SaveAchievements(s.Role!.Id, next.ToByteArray());
         s.Achievements = next;
         await CharacterService.SyncAsync(s, Sync, next.Clone());
     }
 
     private void SaveRuntime(GameSession s) =>
-        roles.SaveAchievementRuntime(s.Role!.Id, JsonSerializer.SerializeToUtf8Bytes(s.AchievementRuntime));
+        _roles.SaveAchievementRuntime(s.Role!.Id, JsonSerializer.SerializeToUtf8Bytes(s.AchievementRuntime));
 
     private bool Ready(GameSession s) => s.Role != null && s.Achievements != null && s.AchievementRuntime != null;
 
@@ -597,9 +597,9 @@ public sealed class AchievementService : IGameTicker
     {
         using var gate = await LockAsync(s);
         long role = s.Role!.Id, now = NowMs;
-        var saved = roles.LoadAchievements(role);
+        var saved = _roles.LoadAchievements(role);
         var state = saved != null ? DBRoleAchievementInfo.Parser.ParseFrom(saved) : new DBRoleAchievementInfo();
-        var runtime = roles.LoadAchievementRuntime(role) is { } raw
+        var runtime = _roles.LoadAchievementRuntime(role) is { } raw
             ? JsonSerializer.Deserialize<RuntimeState>(raw) ?? new RuntimeState() : new RuntimeState();
         var original = state.Clone();
         Normalize(state);
@@ -607,7 +607,7 @@ public sealed class AchievementService : IGameTicker
         EvaluateSnapshots(s, state, now);
         await EvaluateFriendsAsync(s, state, now);
         RefreshLevels(state);
-        if (saved == null || !state.Equals(original)) roles.SaveAchievements(role, state.ToByteArray());
+        if (saved == null || !state.Equals(original)) _roles.SaveAchievements(role, state.ToByteArray());
         s.Achievements = state;
         s.AchievementRuntime = runtime;
         if (runtimeChanged) SaveRuntime(s);
@@ -626,7 +626,7 @@ public sealed class AchievementService : IGameTicker
     private void PostRecheck(GameSession s)
     {
         if (!Ready(s) || !_recheckQueued.Add(s)) return;
-        loop.PostOwned(s, async () =>
+        _loop.PostOwned(s, async () =>
         {
             _recheckQueued.Remove(s);
             if (!Ready(s)) return;
@@ -639,9 +639,9 @@ public sealed class AchievementService : IGameTicker
 
     private void QueueFriendRecheck(long roleId)
     {
-        var s = sessions.All().FirstOrDefault(x => x.Role?.Id == roleId);
+        var s = _sessions.All().FirstOrDefault(x => x.Role?.Id == roleId);
         if (s == null || !Ready(s) || !_friendQueued.Add(s)) return;
-        loop.PostOwned(s, async () =>
+        _loop.PostOwned(s, async () =>
         {
             _friendQueued.Remove(s);
             if (!Ready(s)) return;
@@ -655,7 +655,7 @@ public sealed class AchievementService : IGameTicker
     private void PostEvent(GameSession s, Func<long[], long> amount)
     {
         if (!Ready(s)) return;
-        loop.PostOwned(s, async () =>
+        _loop.PostOwned(s, async () =>
         {
             if (!Ready(s)) return;
             using var gate = await LockAsync(s);
@@ -668,7 +668,7 @@ public sealed class AchievementService : IGameTicker
     private void QueueLoginDay(GameSession s)
     {
         if (!Ready(s) || !_recheckQueued.Add(s)) return;
-        loop.PostOwned(s, async () =>
+        _loop.PostOwned(s, async () =>
         {
             _recheckQueued.Remove(s);
             if (!Ready(s)) return;
@@ -692,7 +692,7 @@ public sealed class AchievementService : IGameTicker
     {
         if (time.Now - _lastTick < ProbeEvery) return;
         _lastTick = time.Now;
-        var all = sessions.All();
+        var all = _sessions.All();
         var probe = new HashSet<GameSession>(_dirty);
         _dirty.Clear();
         if (all.Count > 0)
@@ -757,18 +757,18 @@ public sealed class AchievementService : IGameTicker
         try
         {
             int? playBook = PlayBook(s);
-            plans = awardGroups.Select(group => awards.Resolve(s, group, playBook)).ToArray();
+            plans = awardGroups.Select(group => _awards.Resolve(s, group, playBook)).ToArray();
         }
         catch (AwardResolutionException e)
         {
-            log.LogWarning("Achievement {Kind} {What} reward held for {Role}: {Reason}", kind, description, role, e.Message);
+            _log.LogWarning("Achievement {Kind} {What} reward held for {Role}: {Reason}", kind, description, role, e.Message);
             return RewardMissing;
         }
         var grants = plans.SelectMany(p => p.Grants).ToArray();
         byte[] bytes = next.ToByteArray();
         if (grants.Length == 0)
         {
-            roles.SaveAchievements(role, bytes);
+            _roles.SaveAchievements(role, bytes);
             s.Achievements = next;
             return 0;
         }
@@ -777,8 +777,8 @@ public sealed class AchievementService : IGameTicker
             source = $"achievement/{role}/{kind}/{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(description)))}";
         try
         {
-            bool ok = await character.ApplyAwardAsync(s, new AwardPlan(0, 0, grants),
-                persist: tx => roles.SaveAchievements(role, bytes, tx),
+            bool ok = await _character.ApplyAwardAsync(s, new AwardPlan(0, 0, grants),
+                persist: tx => _roles.SaveAchievements(role, bytes, tx),
                 committed: () => s.Achievements = next,
                 ownedAward: new CharacterService.OwnedAwardSource("cd13e/achievement-award", source,
                     new { Version = 1, Kind = kind, Claim = description, Awards = plans.Select(p => p.AwardId).ToArray(), Outcome = outcome }));
@@ -786,7 +786,7 @@ public sealed class AchievementService : IGameTicker
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            log.LogError(e, "Achievement {Kind} {What} transaction failed for {Role}", kind, description, role);
+            _log.LogError(e, "Achievement {Kind} {What} transaction failed for {Role}", kind, description, role);
             return ErrorCodes.Unknown;
         }
     }
@@ -815,7 +815,7 @@ public sealed class AchievementService : IGameTicker
         }
         resp.Result = code;
         if (code == 0) resp.ID.AddRange(ids);
-        log.LogInformation("{Name} claims achievements {Ids}: {Result}", s.Role!.Name, string.Join(",", req.ID), code);
+        _log.LogInformation("{Name} claims achievements {Ids}: {Result}", s.Role!.Name, string.Join(",", req.ID), code);
         await s.SendGameAsync(GetReward, resp);
         if (code == 0) await CharacterService.SyncAsync(s, Sync, s.Achievements!.Clone());
     }
@@ -837,7 +837,7 @@ public sealed class AchievementService : IGameTicker
         }
         resp.Result = code;
         if (code == 0) resp.CurLevelRewardLevel = req.Level;
-        log.LogInformation("{Name} claims achievement level {Type}:{Level}: {Result}", s.Role!.Name, req.Type, req.Level, code);
+        _log.LogInformation("{Name} claims achievement level {Type}:{Level}: {Result}", s.Role!.Name, req.Type, req.Level, code);
         await s.SendGameAsync(GetPointReward, resp);
         if (code == 0) await CharacterService.SyncAsync(s, Sync, s.Achievements!.Clone());
     }
@@ -887,7 +887,7 @@ public sealed class AchievementService : IGameTicker
             resp.SuccessTaskIds.AddRange(ids);
             resp.SuccessLevelRewards.AddRange(levels.Select(l => new LevelRewardInfo { Type = l.Type, Level = l.To }));
         }
-        log.LogInformation("{Name} claims all achievements: {Ids} / {Levels}: {Result}", s.Role!.Name, ids.Count, levels.Count, code);
+        _log.LogInformation("{Name} claims all achievements: {Ids} / {Levels}: {Result}", s.Role!.Name, ids.Count, levels.Count, code);
         await s.SendGameAsync(GetAllReward, resp);
         if (code == 0 && ids.Count == 0)
             foreach (var level in levels)

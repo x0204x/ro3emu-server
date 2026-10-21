@@ -23,8 +23,8 @@ namespace Ro3Emu.Server.Game;
 /// </summary>
 public sealed partial class AdventureGroupService
 {
-    private readonly Dictionary<long, (long Group, long Caller, long Scene, MapPoint Point, long Expires)> rallies = new();
-    private long lastMaintenance;
+    private readonly Dictionary<long, (long Group, long Caller, long Scene, MapPoint Point, long Expires)> _rallies = new();
+    private long _lastMaintenance;
 
     // ---------------------------------------------------------------- EXP and level
 
@@ -40,7 +40,7 @@ public sealed partial class AdventureGroupService
     /// <summary>Adds group EXP (weekly cap), levels up, publishes. Runs posted under the Realm reservation.</summary>
     internal async Task<long> AddExpAsync(long roleId, long amount)
     {
-        if (store.ForRole(roleId) is not { Status: StatusNormal } g || amount <= 0) return 0;
+        if (_store.ForRole(roleId) is not { Status: StatusNormal } g || amount <= 0) return 0;
         Roll(g);
         long gained = Math.Min(amount, Math.Max(0, WeeklyExpLimit - g.WeekMoney));
         if (gained <= 0) return 0;
@@ -53,7 +53,7 @@ public sealed partial class AdventureGroupService
         await BroadcastBaseAsync(g);
         if (after != before)
         {
-            log.LogInformation("Adventure group {Id} {Name} reaches level {Level}", g.Id, g.Name, after);
+            _log.LogInformation("Adventure group {Id} {Name} reaches level {Level}", g.Id, g.Name, after);
             foreach (var member in OnlineMembers(g)) await SyncRelationAsync(member, g);
         }
         return gained;
@@ -76,11 +76,11 @@ public sealed partial class AdventureGroupService
         {
             int? playBook = s.Synced.GetValueOrDefault(SeasonService.SeasonSync) is DBSeasonInfo { Current: { } current }
                 ? (int)current.PlayBookId : null;
-            plan = awards.Resolve(s, row.Award, playBook);
+            plan = _awards.Resolve(s, row.Award, playBook);
         }
         catch (AwardResolutionException e)
         {
-            log.LogWarning("Adventure group level {Level} reward unresolved for {Role}: {Reason}", level, role, e.Message);
+            _log.LogWarning("Adventure group level {Level} reward unresolved for {Role}: {Reason}", level, role, e.Message);
             return ErrorCodes.Unknown;
         }
         byte[] bytes = next.ToByteArray();
@@ -89,20 +89,20 @@ public sealed partial class AdventureGroupService
         {
             ok = plan.Grants.Count == 0
                 ? await SaveClaimOnlyAsync(s, next)
-                : await character.ApplyAwardAsync(s, plan,
-                    persist: tx => roles.SaveAdventureGroup(role, bytes, tx),
+                : await _character.ApplyAwardAsync(s, plan,
+                    persist: tx => _roles.SaveAdventureGroup(role, bytes, tx),
                     committed: () => s.AdventureGroupRole = next,
                     ownedAward: new CharacterService.OwnedAwardSource("cd13e/advguild-award", $"advguild-level/{role}/{level}",
                         new { Version = 1, Group = g.Id, Level = level, Award = row.Award, plan.AwardId }));
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            log.LogError(e, "Adventure group level {Level} reward failed for {Role}", level, role);
+            _log.LogError(e, "Adventure group level {Level} reward failed for {Role}", level, role);
             return ErrorCodes.Unknown;
         }
         if (!ok) return ErrorCodes.Unknown;
         await SyncRelationAsync(s, g);
-        log.LogInformation("{Name} claims adventure group level {Level} reward", s.Role!.Name, level);
+        _log.LogInformation("{Name} claims adventure group level {Level} reward", s.Role!.Name, level);
         return 0;
     }
 
@@ -117,7 +117,7 @@ public sealed partial class AdventureGroupService
     /// <summary>DungeonConfig (instances) or MapConfig _kAdventureGroupWhitelist[index] == 1.</summary>
     private bool Whitelisted(GameSession s, int index)
     {
-        var row = (s.InstanceId != 0 ? data.Row("DungeonConfig", s.SceneEntry) : null) ?? data.Row("MapConfig", s.SceneEntry);
+        var row = (s.InstanceId != 0 ? _data.Row("DungeonConfig", s.SceneEntry) : null) ?? _data.Row("MapConfig", s.SceneEntry);
         if (row is not { } r || !r.TryGetProperty("_kAdventureGroupWhitelist", out var list)
             || list.ValueKind != System.Text.Json.JsonValueKind.Array || list.GetArrayLength() <= index) return false;
         return GameData.Number(list[index]) == 1;
@@ -146,7 +146,7 @@ public sealed partial class AdventureGroupService
         await s.SendGameAsync(Convene, new AdventureGroupConveneRes { Result = code, UseConveneTimes = g?.ConveneUseTime ?? 0 });
         if (code != 0) return;
         long token = NewToken();
-        rallies[token] = (g!.Id, self, s.SceneEntry, new MapPoint(s.Position.X, s.Position.Y, s.Position.Z, s.Face),
+        _rallies[token] = (g!.Id, self, s.SceneEntry, new MapPoint(s.Position.X, s.Position.Y, s.Position.Z, s.Face),
             Now + Number("AdventureGroupConveneTime", 30));
         await BroadcastBaseAsync(g);
         foreach (var member in OnlineMembers(g).Where(m => m.Role!.Id != self))
@@ -156,7 +156,7 @@ public sealed partial class AdventureGroupService
     public async Task ConfirmConveneAsync(GameSession s, AdventureGroupConfirmConveneReq req)
     {
         var g = Own(s);
-        int code = !rallies.TryGetValue(req.Token, out var rally) || g == null || rally.Group != g.Id ? ErrNoInvite
+        int code = !_rallies.TryGetValue(req.Token, out var rally) || g == null || rally.Group != g.Id ? ErrNoInvite
             : rally.Expires < Now ? ErrInviteExpired : 0;
         if (code == 0 && req.IsAgree)
             code = (s.StatusBits & (1L << 15)) != 0 ? ErrRallyBattle
@@ -164,8 +164,8 @@ public sealed partial class AdventureGroupService
                 : rally.Caller == s.Role!.Id ? ErrorCodes.Parameter : 0;
         await s.SendGameAsync(ConfirmConvene, new AdventureGroupConfirmConveneRes { Result = code });
         if (code != 0 || !req.IsAgree) return;
-        if (rally.Scene == s.SceneEntry) await scene.TeleportInMapAsync(s, rally.Point);
-        else await scene.EnterSceneAsync(s, rally.Scene, rally.Point);
+        if (rally.Scene == s.SceneEntry) await _scene.TeleportInMapAsync(s, rally.Point);
+        else await _scene.EnterSceneAsync(s, rally.Scene, rally.Point);
     }
 
     // ---------------------------------------------------------------- periods
@@ -175,17 +175,17 @@ public sealed partial class AdventureGroupService
     public void Tick(GameTime time)
     {
         long now = Now;
-        if (now - lastMaintenance < 60) return;
-        lastMaintenance = now;
-        foreach (var (token, invite) in invites.ToArray()) if (invite.Expires < now) invites.Remove(token);
-        foreach (var (token, rally) in rallies.ToArray()) if (rally.Expires < now) rallies.Remove(token);
-        foreach (var (id, ritual) in rituals.ToArray()) if (ritual.Room.Closed && ritual.Step < 3) rituals.Remove(id);
-        loop.PostLegacy(ExpireSupportGroupsAsync);
+        if (now - _lastMaintenance < 60) return;
+        _lastMaintenance = now;
+        foreach (var (token, invite) in _invites.ToArray()) if (invite.Expires < now) _invites.Remove(token);
+        foreach (var (token, rally) in _rallies.ToArray()) if (rally.Expires < now) _rallies.Remove(token);
+        foreach (var (id, ritual) in _rituals.ToArray()) if (ritual.Room.Closed && ritual.Step < 3) _rituals.Remove(id);
+        _loop.PostLegacy(ExpireSupportGroupsAsync);
     }
 
     private async Task ExpireSupportGroupsAsync()
     {
-        foreach (var g in store.List().Where(g => g.Status == StatusHelper && !HelperLive(g) && RitualOf(g.Id) == null))
+        foreach (var g in _store.List().Where(g => g.Status == StatusHelper && !HelperLive(g) && RitualOf(g.Id) == null))
             await DisbandAsync(g);
     }
 
@@ -208,7 +208,7 @@ public sealed partial class AdventureGroupService
                 {
                     string name = string.Join(' ', args.Skip(1));
                     if (Own(s) != null) { reply = "Already in an adventure group."; break; }
-                    if (store.NameExists(name)) { reply = "Name taken."; break; }
+                    if (_store.NameExists(name)) { reply = "Name taken."; break; }
                     var g = new AdventureGroupStore.State
                     {
                         Name = name, Status = StatusNormal, CreateType = 2, CreateTime = Now, Owner = self, Level = 1,
@@ -226,10 +226,10 @@ public sealed partial class AdventureGroupService
             case "add" when args.Length > 1:
                 {
                     var g = Own(s);
-                    var target = await roles.FindByNameAsync(string.Join(' ', args.Skip(1)));
+                    var target = await _roles.FindByNameAsync(string.Join(' ', args.Skip(1)));
                     if (g == null) { reply = "Not in an adventure group."; break; }
                     if (target == null) { reply = "No such role."; break; }
-                    if (store.ForRole(target.Id) != null) { reply = "That role is already in a group."; break; }
+                    if (_store.ForRole(target.Id) != null) { reply = "That role is already in a group."; break; }
                     if (g.Members.Count >= MemberLimit) { reply = "Group full."; break; }
                     reply = await AdmitAsync(g, target.Id) ? $"{target.Name} joined {g.Name}." : "Add failed.";
                     break;
@@ -249,7 +249,7 @@ public sealed partial class AdventureGroupService
                         if (got <= 0) break;
                         gained += got;
                         left -= step;
-                        if (left > 0 && store.ForRole(self) is { } again)
+                        if (left > 0 && _store.ForRole(self) is { } again)
                         {
                             again.WeekMoney = 0;
                             await SaveAsync(again);

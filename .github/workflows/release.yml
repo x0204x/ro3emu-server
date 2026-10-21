@@ -1,7 +1,8 @@
 name: release
 
 # A tag v* builds the two release archives (tools/release/pack.ps1) and attaches them to a draft release. A manual
-# run with a version does the same for the commit it runs on; publishing that draft creates the tag.
+# run with a version does the same for the commit it runs on; publishing that draft creates the tag. With publish, a
+# manual run publishes the release itself (creating the tag), with the given notes.
 # CI has no game client, so the client hooks/loc DLLs come from prebuilt/client: built against the 20 Oct 2026 client
 # with `pwsh tools/release/pack.ps1 -UpdatePrebuiltClientDlls` and committed; pack.ps1 refuses them
 # when they were built from other hooks/loc sources than the tagged ones. Run tools/release/smoke.ps1 locally (it needs
@@ -14,12 +15,41 @@ on:
       version:
         description: Version to draft, e.g. 1.0.5 (empty builds the archives only)
         required: false
+      publish:
+        description: Publish the release instead of leaving a draft
+        type: boolean
+        default: false
+      notes:
+        description: Release notes (Markdown); empty uses the download line
+        required: false
 
 permissions:
   contents: write
 
 jobs:
+  # Publishing a draft pushes its tag, which starts this workflow again; a tag whose release is already published needs
+  # nothing more (the API finds published releases by tag, not drafts).
+  published:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      exists: ${{ steps.check.outputs.exists }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ] && gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "$TAG is already published; nothing to build."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
   pack:
+    needs: published
+    if: needs.published.outputs.exists != 'true'
     runs-on: windows-latest
     env:
       TAG: ${{ github.ref_type == 'tag' && github.ref_name || (inputs.version && format('v{0}', inputs.version) || '') }}
@@ -45,9 +75,14 @@ jobs:
           path: |
             dist/RO3Emu-win-x64.zip
             dist/RO3Emu-server-linux-x64.tar.gz
-      - name: Draft release
+      - name: Release
         if: env.TAG != ''
         env:
           GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ inputs.notes }}
+          PUBLISH: ${{ inputs.publish }}
         run: |
-          gh release create "$env:TAG" dist/RO3Emu-win-x64.zip dist/RO3Emu-server-linux-x64.tar.gz --draft --target "$env:GITHUB_SHA" --title "RO3Emu $env:TAG" --notes "Download RO3Emu-win-x64.zip, extract it and double-click RO3Emu.exe. Server hosts on Linux: RO3Emu-server-linux-x64.tar.gz."
+          $notes = if ($env:NOTES) { $env:NOTES } else { 'Download RO3Emu-win-x64.zip, extract it and double-click RO3Emu.exe. Server hosts on Linux: RO3Emu-server-linux-x64.tar.gz.' }
+          Set-Content -Path release-notes.md -Value $notes -Encoding utf8
+          $draft = if ($env:PUBLISH -eq 'true') { @() } else { @('--draft') }
+          gh release create "$env:TAG" dist/RO3Emu-win-x64.zip dist/RO3Emu-server-linux-x64.tar.gz @draft --target "$env:GITHUB_SHA" --title "RO3Emu $env:TAG" --notes-file release-notes.md

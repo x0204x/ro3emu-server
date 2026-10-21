@@ -55,42 +55,42 @@ public sealed partial class WorldCoreService : IGameTicker
     public const uint FreeFall = 31087, FixLand = 31088, TeleportObject = 31089, PerformanceWatch = 31090, StuckEscape = 31136;
     public const uint TeamTargets = 30111;
 
-    private readonly World world;
-    private readonly WorldData worldData;
-    private readonly GameData data;
-    private readonly RoleStore roles;
-    private readonly SessionRegistry sessions;
-    private readonly SceneService scene;
-    private readonly CharacterService character;
-    private readonly CombatService combat;
-    private readonly TeamService teams;
-    private readonly DungeonService dungeons;
-    private readonly DailyActivityService daily;
-    private readonly SeasonRefineService seasonRefine;
-    private readonly FirstHeartService firstHeart;
-    private readonly PersonalService personal;
-    private readonly TimeProvider clock;
-    private readonly GameLoop loop;
-    private readonly PublicLineManager lines;
-    private bool ticking;
-    private long nextSnapshotMs;
-    private readonly ulong serverOpenSeconds;
+    private readonly World _world;
+    private readonly WorldData _worldData;
+    private readonly GameData _data;
+    private readonly RoleStore _roles;
+    private readonly SessionRegistry _sessions;
+    private readonly SceneService _scene;
+    private readonly CharacterService _character;
+    private readonly CombatService _combat;
+    private readonly TeamService _teams;
+    private readonly DungeonService _dungeons;
+    private readonly DailyActivityService _daily;
+    private readonly SeasonRefineService _seasonRefine;
+    private readonly FirstHeartService _firstHeart;
+    private readonly PersonalService _personal;
+    private readonly TimeProvider _clock;
+    private readonly GameLoop _loop;
+    private readonly PublicLineManager _lines;
+    private bool _ticking;
+    private long _nextSnapshotMs;
+    private readonly ulong _serverOpenSeconds;
 
     public WorldCoreService(World world, WorldData worldData, GameData data, RoleStore roles, SessionRegistry sessions,
         SceneService scene, CharacterService character, CombatService combat, MonsterService monsters, TeamService teams,
         GameLoop loop, TimeProvider clock, GmCommands gm, DungeonService dungeons, SeasonService seasons,
         DailyActivityService daily, SeasonRefineService seasonRefine, FirstHeartService firstHeart, PersonalService personal, PublicLineManager lines, ChatService chat)
     {
-        this.world = world; this.worldData = worldData; this.data = data; this.roles = roles; this.sessions = sessions;
-        this.scene = scene; this.character = character; this.combat = combat; this.teams = teams; this.clock = clock;
-        this.loop = loop;
-        this.lines = lines;
-        this.dungeons = dungeons;
-        this.daily = daily;
-        this.seasonRefine = seasonRefine;
-        this.firstHeart = firstHeart;
-        this.personal = personal;
-        serverOpenSeconds = (ulong)seasons.StartTime;
+        this._world = world; this._worldData = worldData; this._data = data; this._roles = roles; this._sessions = sessions;
+        this._scene = scene; this._character = character; this._combat = combat; this._teams = teams; this._clock = clock;
+        this._loop = loop;
+        this._lines = lines;
+        this._dungeons = dungeons;
+        this._daily = daily;
+        this._seasonRefine = seasonRefine;
+        this._firstHeart = firstHeart;
+        this._personal = personal;
+        _serverOpenSeconds = (ulong)seasons.StartTime;
         scene.AddOwnedAfterLoaded(LoadedAsync);
         scene.Leaving.Add(LeavingAsync);
         monsters.TargetChanged.Add(TargetChangedAsync);
@@ -105,7 +105,7 @@ public sealed partial class WorldCoreService : IGameTicker
         lines.HasPendingWork.Add(combat.HasPendingMapWork);
         lines.Retiring.Add(monsters.RetireRuntimeAsync);
         lines.Retiring.Add(chat.RetireLineAsync);
-        lines.Retiring.Add(key => { sceneVariables.Remove(key.WorldScene); return Task.CompletedTask; });
+        lines.Retiring.Add(key => { _sceneVariables.Remove(key.WorldScene); return Task.CompletedTask; });
         gm.Register("line", "[n|new|info] (TEST AID)", scene.LineCommandAsync);
         gm.Register("worldcustom", "id value", async (s, a) => await SetCustomAsync(s, new CustomData
         { Id = long.Parse(a[0]), CustomParam = new CustomParam { Tp = (CustomParam.Types.ParamType)3, LongParam = long.Parse(a[1]) } }));
@@ -113,12 +113,12 @@ public sealed partial class WorldCoreService : IGameTicker
         gm.Register("scenevar", "id value", (s, a) => SetSceneVariableAsync(s.WorldScene, new CommonPublicVar { VarId = int.Parse(a[0]), Vi64 = { long.Parse(a[1]) } }));
     }
 
-    private long Now => clock.GetUtcNow().ToUnixTimeMilliseconds();
-    private GameSession? Player(long uid) => sessions.All().FirstOrDefault(s => s.Role?.Id == uid);
+    private long Now => _clock.GetUtcNow().ToUnixTimeMilliseconds();
+    private GameSession? Player(long uid) => _sessions.All().FirstOrDefault(s => s.Role?.Id == uid);
     private int PreferredLine(GameSession s, long map)
     {
         if (s.Role == null) return 0;
-        long leader = teams.TeamOf(s.Role.Id).Leader;
+        long leader = _teams.TeamOf(s.Role.Id).Leader;
         var target = leader != 0 && leader != s.Role.Id ? Player(leader) : null;
         return target is { InstanceId: 0, SceneLoading: false } && target.SceneEntry == map ? target.LineNumber : 0;
     }
@@ -129,12 +129,12 @@ public sealed partial class WorldCoreService : IGameTicker
     {
         s.WorldState = new WorldSessionState
         {
-            Saved = roles.LoadWorldState(s.Role!.Id) is { } saved
+            Saved = _roles.LoadWorldState(s.Role!.Id) is { } saved
                 ? JsonSerializer.Deserialize<WorldRoleState>(saved) ?? new() : new(),
         };
         await s.SendGameAsync(ServerInfo, new ServerBasicInfo
         {
-            ServerOpenTime = serverOpenSeconds, ServerLogicTime = (ulong)(Now / 1000),
+            ServerOpenTime = _serverOpenSeconds, ServerLogicTime = (ulong)(Now / 1000),
         });
         if (s.WorldState.Saved.VisitedMaps.Count > 0) await VisitsAsync(s);
     }
@@ -171,10 +171,10 @@ public sealed partial class WorldCoreService : IGameTicker
                 if (!s.Synced.TryGetValue(id, out var snapshot)) continue;
                 present = true;
                 if (!emitted.Add(id)) continue;
-                if (id == DailyActivityService.StageSync) { await daily.ReplayClaimsAsync(s); continue; }
-                if (id == SeasonRefineService.SeasonRefineSync) { await seasonRefine.ReplayAsync(s); continue; }
-                if (id == FirstHeartService.Sync) { await firstHeart.ReplayAsync(s); continue; }
-                if (id == PersonalService.Sync) { await personal.ReplayAsync(s); continue; }
+                if (id == DailyActivityService.StageSync) { await _daily.ReplayClaimsAsync(s); continue; }
+                if (id == SeasonRefineService.SeasonRefineSync) { await _seasonRefine.ReplayAsync(s); continue; }
+                if (id == FirstHeartService.Sync) { await _firstHeart.ReplayAsync(s); continue; }
+                if (id == PersonalService.Sync) { await _personal.ReplayAsync(s); continue; }
                 s.Synced.Remove(id); // Force the existing AUTO_SYNC encoder's full-state path.
                 await CharacterService.SyncAsync(s, id, snapshot);
             }
@@ -194,9 +194,9 @@ public sealed partial class WorldCoreService : IGameTicker
         {
             var next = new WorldRoleState { VisitedMaps = new(s.WorldState.Saved.VisitedMaps) };
             next.VisitedMaps.Add(s.SceneEntry);
-            var transaction = roles.NewTransaction();
+            var transaction = _roles.NewTransaction();
             transaction.RoleBlob(s.Role!.Id, "world_state", JsonSerializer.SerializeToUtf8Bytes(next));
-            await roles.CommitAsync(transaction, "world/visited-map", _ => s.WorldState.Saved = next);
+            await _roles.CommitAsync(transaction, "world/visited-map", _ => s.WorldState.Saved = next);
             if (!CurrentScene()) return;
             await VisitsAsync(s);
         }
@@ -205,7 +205,7 @@ public sealed partial class WorldCoreService : IGameTicker
         var info = new AoIInfoTotal { AoITickMs = 50, TickNowMs = (ulong)Now };
         info.AoiData.Add(new AoIInfoSingle { EntityUuid = (ulong)s.Role!.Id });
         info.EntityTypes[(ulong)s.Role.Id] = 3;
-        foreach (var other in world.Viewers(s))
+        foreach (var other in _world.Viewers(s))
         {
             info.AoiData.Add(new AoIInfoSingle { EntityUuid = (ulong)other.Role!.Id });
             info.EntityTypes[(ulong)other.Role.Id] = 3;
@@ -229,8 +229,8 @@ public sealed partial class WorldCoreService : IGameTicker
 
     public async Task LeavingAsync(GameSession s)
     {
-        admissions.Remove(s);
-        if (s.InstanceId != 0 && world.PlayersIn(s.WorldScene).Count <= 1) sceneVariables.Remove(s.WorldScene);
+        _admissions.Remove(s);
+        if (s.InstanceId != 0 && _world.PlayersIn(s.WorldScene).Count <= 1) _sceneVariables.Remove(s.WorldScene);
         var state = s.WorldState;
         state.ResurrectionCastId = 0;
         if (state.Hatred.Count > 0)
@@ -274,9 +274,9 @@ public sealed partial class WorldCoreService : IGameTicker
     private async Task MiniMapSnapshotAsync(GameSession s)
     {
         var response = new MiniMapMsg();
-        foreach (var p in world.PlayersIn(s.WorldScene).Where(Ready))
-            response.MiniInfo.Add(new MiniMapInfo { Uid = (ulong)p.Role!.Id, Pos = p.Position.Clone(), Camp = 1, Hp = (ulong)Math.Max(0, character.Stats(p)[2000]) });
-        foreach (var m in world.AllUnits().OfType<MonsterUnit>().Where(m => m.WorldScene == s.WorldScene && !m.Dead))
+        foreach (var p in _world.PlayersIn(s.WorldScene).Where(Ready))
+            response.MiniInfo.Add(new MiniMapInfo { Uid = (ulong)p.Role!.Id, Pos = p.Position.Clone(), Camp = 1, Hp = (ulong)Math.Max(0, _character.Stats(p)[2000]) });
+        foreach (var m in _world.AllUnits().OfType<MonsterUnit>().Where(m => m.WorldScene == s.WorldScene && !m.Dead))
             response.MiniInfo.Add(new MiniMapInfo { Uid = (ulong)m.Uid, Pos = m.Pos, Camp = (ulong)(m.CampOverride ?? m.Template.Camp), NpcConfigId = (ulong)m.Template.NpcId, Hp = (ulong)Math.Max(0, m.Hp) });
         await s.SendGameAsync(MiniMap, response);
     }
@@ -299,7 +299,7 @@ public sealed partial class WorldCoreService : IGameTicker
             return board;
         }
         var response = new NameBoardListNotify();
-        foreach (var p in world.PlayersIn(s.WorldScene).Where(p => p != s && Ready(p) && !s.Visible.Contains(p))
+        foreach (var p in _world.PlayersIn(s.WorldScene).Where(p => p != s && Ready(p) && !s.Visible.Contains(p))
                      .OrderBy(p => Distance(s.Position, p.Position)).Take((int)s.WorldState.NameBoardLimit))
             response.Datas.Add(Board(p));
         // (inferred compatibility) pb.no_decode_default_array makes an empty datas field nil, but the
@@ -319,7 +319,7 @@ public sealed partial class WorldCoreService : IGameTicker
         // per player per second (113 ms per snapshot at 150 players in one map).
         long maxHp = 0;
         foreach (var (id, value) in p.EntityProperties) if (id == 101) { maxHp = value; break; }
-        if (maxHp <= 0) maxHp = character.Stats(p)[101]; // properties not built yet
+        if (maxHp <= 0) maxHp = _character.Stats(p)[101]; // properties not built yet
         long hp = Math.Clamp(p.CurrentHp ?? maxHp, 0, maxHp);
         return new EntityNameBoard
         {
@@ -335,10 +335,10 @@ public sealed partial class WorldCoreService : IGameTicker
     public Task QueryNpcAsync(GameSession s, QueryCurrentNpcReq req)
     {
         var response = new QueryCurrentNpcResp();
-        var map = worldData.Map(s.SceneEntry);
+        var map = _worldData.Map(s.SceneEntry);
         foreach (var point in req.PointIDs.Distinct().Take(256))
             if (map?.Npcs.Any(n => n.NpcId == req.NpcConfigID && (GameData.Int(n.Entry, "Id") == point || GameData.Int(n.Entry, "AreaID") == point)) == true
-                || world.AllUnits().OfType<MonsterUnit>().Any(m => m.WorldScene == s.WorldScene && !m.Dead && m.Home.Id == point && m.Template.NpcId == req.NpcConfigID))
+                || _world.AllUnits().OfType<MonsterUnit>().Any(m => m.WorldScene == s.WorldScene && !m.Dead && m.Home.Id == point && m.Template.NpcId == req.NpcConfigID))
                 response.PointIDs.Add(point);
         return s.SendGameAsync(QueryNpc, response);
     }
@@ -405,20 +405,20 @@ public sealed partial class WorldCoreService : IGameTicker
     {
         if (Player(id) is { } p && Ready(p) && p.WorldScene == viewer.WorldScene && (p == viewer || viewer.Visible.Contains(p))) return RoleSessionService.PlayerEntity(p);
         if (viewer.VisibleUnits.FirstOrDefault(u => u.Uid == id && u.WorldScene == viewer.WorldScene) is { } unit) return unit.Entity();
-        return worldData.Npc(id) is { } npc && npc.SceneEntry == viewer.SceneEntry ? SceneService.NpcEntity(npc) : null;
+        return _worldData.Npc(id) is { } npc && npc.SceneEntry == viewer.SceneEntry ? SceneService.NpcEntity(npc) : null;
     }
 
     public async Task EscapeAsync(GameSession s, StuckEscapeReq req)
     {
         int error = !Ready(s) ? ErrorCodes.SwitchingScenes : s.Dead ? ErrorCodes.UseWhileDead
-            : data.Row("MapConfig", s.SceneEntry) is not { } row || GameData.Int(row, "_StuckEscape") == 0 ? ErrorCodes.Parameter
+            : _data.Row("MapConfig", s.SceneEntry) is not { } row || GameData.Int(row, "_StuckEscape") == 0 ? ErrorCodes.Parameter
             : Now - s.WorldState.LastEscapeMs < 10_000 ? ErrorCodes.Cooldown : 0;
-        var at = worldData.Map(s.SceneEntry)?.Born;
+        var at = _worldData.Map(s.SceneEntry)?.Born;
         if (at == null) error = ErrorCodes.SceneMissing;
         await s.SendGameAsync(StuckEscape, new StuckEscapeRsp { Result = error });
         if (error != 0) return;
         s.WorldState.LastEscapeMs = Now; // (inferred) 10-second repeat guard; client MapConfig controls availability.
-        await scene.TeleportInMapAsync(s, at!.Value);
+        await _scene.TeleportInMapAsync(s, at!.Value);
     }
 
     public async Task RecoverAsync(GameSession s)
@@ -430,22 +430,22 @@ public sealed partial class WorldCoreService : IGameTicker
 
     public void Tick(GameTime time)
     {
-        if (ticking) return;
-        ticking = true;
+        if (_ticking) return;
+        _ticking = true;
         // Queue admissions can await a scene callback while another player cancels/replaces an admission.
         // Durable leaving hooks acquire their own owner scopes before their existing gates.
-        loop.PostRuntime(async () => { try { await TickAsync(); } finally { ticking = false; } });
+        _loop.PostRuntime(async () => { try { await TickAsync(); } finally { _ticking = false; } });
     }
 
     private async Task TickAsync()
     {
-        foreach (var s in sessions.All().Where(Ready)) await SyncFightAsync(s);
-        if (Now < nextSnapshotMs) return;
-        nextSnapshotMs = Now + 1000;
-        foreach (var s in sessions.All()) scene.ExpireLineLoad(s);
-        await lines.RetireEmptyAsync();
+        foreach (var s in _sessions.All().Where(Ready)) await SyncFightAsync(s);
+        if (Now < _nextSnapshotMs) return;
+        _nextSnapshotMs = Now + 1000;
+        foreach (var s in _sessions.All()) _scene.ExpireLineLoad(s);
+        await _lines.RetireEmptyAsync();
         var boards = new Dictionary<GameSession, EntityNameBoard>();
-        foreach (var s in sessions.All().Where(Ready))
+        foreach (var s in _sessions.All().Where(Ready))
         {
             await BoardsAsync(s, boards);
             if (s.WorldState.MiniMap) await MiniMapSnapshotAsync(s);
@@ -453,15 +453,15 @@ public sealed partial class WorldCoreService : IGameTicker
             if (s.WorldState.TemporaryLeaveUntilMs > 0 && s.WorldState.TemporaryLeaveUntilMs <= Now) await ForceLeaveAsync(s);
         }
         await AdmitQueuedAsync();
-        foreach (var s in sessions.All().Where(s => Ready(s) && teams.TeamOf(s.Role!.Id).TeamId == 0 && s.WorldState.TeamTargetSnapshot.Length > 0))
+        foreach (var s in _sessions.All().Where(s => Ready(s) && _teams.TeamOf(s.Role!.Id).TeamId == 0 && s.WorldState.TeamTargetSnapshot.Length > 0))
         {
             await s.SendGameAsync(TeamTargets, new TeamTargetAndEnemy());
             s.WorldState.TeamTargetSnapshot = "";
         }
-        foreach (var group in sessions.All().Where(Ready).GroupBy(s => (Team: teams.TeamOf(s.Role!.Id).TeamId, Scene: s.WorldScene)).Where(g => g.Key.Team != 0))
+        foreach (var group in _sessions.All().Where(Ready).GroupBy(s => (Team: _teams.TeamOf(s.Role!.Id).TeamId, Scene: s.WorldScene)).Where(g => g.Key.Team != 0))
         {
             var member = group.First();
-            var leader = Player(teams.TeamOf(member.Role!.Id).Leader);
+            var leader = Player(_teams.TeamOf(member.Role!.Id).Leader);
             var packet = new TeamTargetAndEnemy { LeaderTargetId = leader?.WorldScene == group.Key.Scene ? leader.LockTarget : 0 };
             packet.TeamEnemyList.Add(group.SelectMany(s => s.WorldState.Hatred).Distinct().Order());
             string signature = Convert.ToBase64String(packet.ToByteArray());
@@ -478,7 +478,7 @@ public sealed partial class WorldCoreService : IGameTicker
     {
         var prepared = new PreparedMessage(id, body);
         await s.SendPreparedAsync(prepared);
-        foreach (var p in world.Viewers(s)) await p.SendPreparedAsync(prepared);
+        foreach (var p in _world.Viewers(s)) await p.SendPreparedAsync(prepared);
     }
 
     /// <summary>Request-without-result errors use APIError, with a nonempty parameter list for the Lua decoder.</summary>

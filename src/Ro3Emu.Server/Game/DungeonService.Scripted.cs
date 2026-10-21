@@ -26,8 +26,8 @@ public sealed partial class DungeonService
     internal const long SceneActorUidBase = 1L << 47;
     /// <summary>The interaction reach (inferred): SceneService's 4 m plus its walk-report slack of 8 m.</summary>
     private const float SceneActorReach = 12f;
-    private static long sceneActorSerial;
-    private static long sceneActorBuffGuid = 1L << 56;
+    private long _sceneActorSerial;
+    private long _sceneActorBuffGuid = 1L << 56;
 
     /// <summary>
     /// A scene actor: NPCConfig _iNPCType 1 is created by the client as a monster unit (entity type 1, with its HP
@@ -106,30 +106,30 @@ public sealed partial class DungeonService
         foreach (var gone in shown)
         {
             a.SceneActors.Remove(gone);
-            await instances.RemovePropAsync(a.Room, gone);
+            await _instances.RemovePropAsync(a.Room, gone);
         }
         foreach (var (unit, spec) in kept) await SetActorBuffsAsync(unit, spec.Buffs);
         foreach (var spec in added)
         {
             if (a.Settled || a.Room.Closed) return;
-            if (catalog.ScenePoint(a.Plan.SceneEntry, spec.Point) is not { } at || data.Row("NPCConfig", spec.NpcId) is not { } row)
+            if (_catalog.ScenePoint(a.Plan.SceneEntry, spec.Point) is not { } at || _data.Row("NPCConfig", spec.NpcId) is not { } row)
                 continue; // the catalog validated both; a changed export only loses the actor
             int type = (int)GameData.Int(row, "_iNPCType");
             var unit = new SceneActorUnit
             {
-                Uid = SceneActorUidBase | Interlocked.Increment(ref sceneActorSerial), SceneEntry = a.Plan.SceneEntry,
+                Uid = SceneActorUidBase | Interlocked.Increment(ref _sceneActorSerial), SceneEntry = a.Plan.SceneEntry,
                 InstanceId = a.Room.Id, X = at.X, Y = at.Y, Z = at.Z, Face = at.Face, NpcId = spec.NpcId, Point = spec.Point,
-                EntityType = type, Camp = GameData.Int(row, "_iCamp"), Name = type == 2 ? data.ClientTextOf(row, "_kName") : "",
-                Template = type == 1 ? monsters.Template(spec.NpcId) : null, BornMs = MonsterService.NowMs,
+                EntityType = type, Camp = GameData.Int(row, "_iCamp"), Name = type == 2 ? _data.ClientTextOf(row, "_kName") : "",
+                Template = type == 1 ? _monsters.Template(spec.NpcId) : null, BornMs = MonsterService.NowMs,
             };
             unit.Buffs.AddRange(spec.Buffs.Select(id => ActorBuff(unit, id)));
-            if (await instances.AddPropAsync(a.Room, unit)) a.SceneActors.Add(unit);
+            if (await _instances.AddPropAsync(a.Room, unit)) a.SceneActors.Add(unit);
         }
     }
 
-    private static BuffInfo ActorBuff(SceneActorUnit unit, int configId) => new()
+    private BuffInfo ActorBuff(SceneActorUnit unit, int configId) => new()
     {
-        BuffGuid = Interlocked.Increment(ref sceneActorBuffGuid), ConfigId = configId, ExpireTime = 0, Duration = 0,
+        BuffGuid = Interlocked.Increment(ref _sceneActorBuffGuid), ConfigId = configId, ExpireTime = 0, Duration = 0,
         PileCount = 1, SourceId = unit.Uid,
     };
 
@@ -141,13 +141,13 @@ public sealed partial class DungeonService
         foreach (var buff in removed) unit.Buffs.Remove(buff);
         unit.Buffs.AddRange(added);
         if (removed.Length > 0)
-            await world.ToUnitViewersAsync(unit, BuffService.BuffRemove,
+            await _world.ToUnitViewersAsync(unit, BuffService.BuffRemove,
                 new BuffRemoveNotify { UnitId = unit.Uid, BuffGuids = { removed.Select(b => b.BuffGuid) } });
         if (added.Length > 0)
-            await world.ToUnitViewersAsync(unit, BuffService.BuffUpdate,
+            await _world.ToUnitViewersAsync(unit, BuffService.BuffUpdate,
                 new BuffUpdateNotify { UnitId = unit.Uid, Buffs = { added.Select(b => b.Clone()) } });
         if (removed.Length > 0 || added.Length > 0)
-            await world.ToUnitViewersAsync(unit, CombatService.AoiAttrChange, new AOIAttrChange
+            await _world.ToUnitViewersAsync(unit, CombatService.AoiAttrChange, new AOIAttrChange
             {
                 EntityUuid = (ulong)unit.Uid,
                 BuffInfo = new AoIBuffInfo { AddBuffs = { added.Select(b => b.Clone()) }, RemoveBuffs = { removed.Select(b => b.BuffGuid) } },
@@ -166,10 +166,10 @@ public sealed partial class DungeonService
         var actor = a?.SceneActors.FirstOrDefault(u => u.Uid == req.NpcUid);
         int code = actor == null ? ErrorCodes.NpcMissing
             : req.SceneConfigId != 0 && req.SceneConfigId != s.SceneEntry ? ErrorCodes.NpcParameter
-            : !catalog.Interactions(actor.NpcId).Contains(req.InteractionId) ? ErrorCodes.NpcParameter
+            : !_catalog.Interactions(actor.NpcId).Contains(req.InteractionId) ? ErrorCodes.NpcParameter
             : MonsterService.Distance(s.Position.X, s.Position.Z, actor.X, actor.Z) > SceneActorReach ? ErrorCodes.NpcTooFar
             : a!.Dracula is { } lair ? lair.Owner.InteractionError(a, s, actor.NpcId) : 0;
-        log.LogInformation("{Name} interacts {Interaction} with scene actor {Npc} {Uid} (scene {Scene}, config scene {ConfigScene}, "
+        _log.LogInformation("{Name} interacts {Interaction} with scene actor {Npc} {Uid} (scene {Scene}, config scene {ConfigScene}, "
             + "distance {Distance:0.0} m): {Result}", s.Role?.Name, req.InteractionId, actor?.NpcId, req.NpcUid, s.SceneEntry,
             req.SceneConfigId, actor == null ? -1 : MonsterService.Distance(s.Position.X, s.Position.Z, actor.X, actor.Z), code);
         await s.SendGameAsync(SceneService.NpcInteraction, new NpcInteractionRsp { Result = code, Req = req });
@@ -177,7 +177,7 @@ public sealed partial class DungeonService
         // Dracula's Lair: a bush search may find the key; its finder is the rescuer, the only one the cage opens for.
         if (a!.Dracula is { } dracula) await dracula.Owner.InteractedAsync(a, s, actor!.NpcId);
         var events = new List<(Kind, long)> { (Kind.Interaction, req.InteractionId) };
-        if (catalog.DungeonMessage(req.InteractionId) is { } message) events.Add((Kind.Message, message));
+        if (_catalog.DungeonMessage(req.InteractionId) is { } message) events.Add((Kind.Message, message));
         await StepEventAsync(a!, s, events);
         return true;
     }
@@ -207,7 +207,7 @@ public sealed partial class DungeonService
             if (Active(s) is not { } used || Step(used) is not { } current || used.StepDone)
                 throw new ArgumentException("not in a scripted scene step that is waiting");
             var t = current.Complete[0];
-            log.LogWarning("GM test aid: {Role} completes scripted scene {Scene} step {Step} with {Kind} {Id}",
+            _log.LogWarning("GM test aid: {Role} completes scripted scene {Scene} step {Step} with {Kind} {Id}",
                 s.Role?.Id, used.Plan.SceneEntry, used.Wave + 1, t.Kind, t.Id);
             await StepEventAsync(used, s, [(t.Kind, t.Id)]);
             await GmCommands.ReplyAsync(s, $"TEST AID: step {used.Wave + 1} '{current.Stage}' completed with {t.Kind} {t.Id}.");
@@ -219,7 +219,7 @@ public sealed partial class DungeonService
             // the player's own last step: jump there, then run the same check a walk report runs.
             var to = new MapPoint(float.Parse(args[1], System.Globalization.CultureInfo.InvariantCulture), s.Position.Y,
                 float.Parse(args[2], System.Globalization.CultureInfo.InvariantCulture), s.Face);
-            await scenes.TeleportInMapAsync(s, to);
+            await _scenes.TeleportInMapAsync(s, to);
             await PlayerMovedAsync(s);
             await GmCommands.ReplyAsync(s, FormattableString.Invariant($"Walked to {to.X:0.0},{to.Z:0.0} (test aid: the walk report's region check ran)."));
             return;
@@ -229,12 +229,12 @@ public sealed partial class DungeonService
             await GmCommands.ReplyAsync(s, "Not in a scripted scene step.");
             return;
         }
-        string Reach(SceneActorUnit u) => data.Row("NPCConfig", u.NpcId) is { } row
+        string Reach(SceneActorUnit u) => _data.Row("NPCConfig", u.NpcId) is { } row
             ? (GameData.Number(row.GetProperty("_iInteractDistance")) ?? 0).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) : "?";
         if (args.Length == 0)
         {
             var actors = a.SceneActors.Select(u => FormattableString.Invariant(
-                $"{u.NpcId} (entity type {u.EntityType}, uid {u.Uid}) at {u.X:0.0},{u.Y:0.0},{u.Z:0.0} reach {Reach(u)} m interactions [{string.Join(',', catalog.Interactions(u.NpcId))}] buffs [{string.Join(',', u.Buffs.Select(b => b.ConfigId))}]"));
+                $"{u.NpcId} (entity type {u.EntityType}, uid {u.Uid}) at {u.X:0.0},{u.Y:0.0},{u.Z:0.0} reach {Reach(u)} m interactions [{string.Join(',', _catalog.Interactions(u.NpcId))}] buffs [{string.Join(',', u.Buffs.Select(b => b.ConfigId))}]"));
             await GmCommands.ReplyAsync(s, $"Step {a.Wave + 1}/{a.Plan.Waves.Count} '{step.Stage}' completes on "
                 + string.Join(" or ", step.Complete.Select(t => $"{t.Kind} {t.Id}")) + ". Actors: "
                 + (a.SceneActors.Count == 0 ? "none" : string.Join("; ", actors)));
@@ -245,7 +245,7 @@ public sealed partial class DungeonService
         // One metre beside it (inside every reach used here, 2-5 m), not on its exact point: a zero-length
         // line-of-sight test (LC_InteractManager's CheckDirectPass) is not something to rely on. The jump goes in the
         // form the client applies to its own unit (ResetPos in the reverse dungeon 1000301, SceneService.MovesOnSurface).
-        await scenes.TeleportInMapAsync(s, new MapPoint(actor.X + 1, actor.Y, actor.Z, s.Face));
+        await _scenes.TeleportInMapAsync(s, new MapPoint(actor.X + 1, actor.Y, actor.Z, s.Face));
         await GmCommands.ReplyAsync(s, FormattableString.Invariant($"Beside {npc} at {actor.X + 1:0.0},{actor.Z:0.0}, 1 m from it (reach {Reach(actor)} m)."));
     }
 
@@ -257,8 +257,8 @@ public sealed partial class DungeonService
         {
             bool inside = t.Kind switch
             {
-                Kind.Region => catalog.SceneRegion(a.Plan.SceneEntry, t.Id) is { } region && region.Contains(s.Position.X, s.Position.Z),
-                Kind.Point => catalog.ScenePoint(a.Plan.SceneEntry, t.Id) is { } p
+                Kind.Region => _catalog.SceneRegion(a.Plan.SceneEntry, t.Id) is { } region && region.Contains(s.Position.X, s.Position.Z),
+                Kind.Point => _catalog.ScenePoint(a.Plan.SceneEntry, t.Id) is { } p
                     && MonsterService.Distance(s.Position.X, s.Position.Z, p.X, p.Z) <= t.Radius,
                 _ => false,
             };
@@ -273,18 +273,18 @@ public sealed partial class DungeonService
         if (!step.Complete.Any(Matches))
         {
             if (step.Ignore.Any(Matches))
-                log.LogInformation("Scripted scene {Scene} step {Step}: {Role} sent {Events}, which does not advance it",
+                _log.LogInformation("Scripted scene {Scene} step {Step}: {Role} sent {Events}, which does not advance it",
                     a.Plan.SceneEntry, a.Wave + 1, s.Role?.Id, string.Join(", ", events));
             return;
         }
         a.StepDone = true;
-        log.LogInformation("Scripted scene {Scene} step {Step} '{Stage}' completed by {Role} ({Events})",
+        _log.LogInformation("Scripted scene {Scene} step {Step} '{Stage}' completed by {Role} ({Events})",
             a.Plan.SceneEntry, a.Wave + 1, step.Stage, s.Role?.Id, string.Join(", ", events));
-        if (step.TeleportAfter != 0 && catalog.ScenePoint(a.Plan.SceneEntry, step.TeleportAfter) is { } to)
+        if (step.TeleportAfter != 0 && _catalog.ScenePoint(a.Plan.SceneEntry, step.TeleportAfter) is { } to)
             foreach (var member in Present(a).Where(m => a.Loaded.Contains(m) && !m.SceneLoading))
-                await scenes.TeleportInMapAsync(member, to);
+                await _scenes.TeleportInMapAsync(member, to);
         // The next step or the settlement runs in its own owner scope, like the room's timers: the message that
         // completed the step (a walk, an interaction, a plot end) reserves only what its own route needs.
-        loop.PostLegacy(() => AdvanceAsync(a), "dungeon scripted step");
+        _loop.PostLegacy(() => AdvanceAsync(a), "dungeon scripted step");
     }
 }

@@ -19,23 +19,23 @@ namespace Ro3Emu.Server.Game;
 public sealed partial class DungeonService
 {
     public const uint RandomDungeon = 82591;
-    private readonly HashSet<GameSession> rolling = new();
+    private readonly HashSet<GameSession> _rolling = new();
 
     private static bool IsRandom(DungeonCatalog.Plan plan) => plan.Origin == null && plan.Multi is { } multi
         && GameData.Int(multi, "_iIsRandomDungeon") == 1;
 
-    private int RandomSeconds() => data.Table("PublicParamConfig").TryGetValue("FiveGamePlay_RandomDuration", out var value)
+    private int RandomSeconds() => _data.Table("PublicParamConfig").TryGetValue("FiveGamePlay_RandomDuration", out var value)
         ? (int)Math.Clamp(GameData.Number(value) ?? 10, 0, 600) : 10;
 
     /// <summary>Every boss a party could be drawn: resolvable, in this playbook, unlocked for all members.</summary>
     internal List<DungeonCatalog.Plan> RandomPool(DungeonCatalog.Plan origin, IReadOnlyCollection<GameSession> members)
     {
         var pool = new List<DungeonCatalog.Plan>();
-        foreach (var multi in catalog.MultiRows.Where(r => GameData.Int(r, "_iRandom") == 1).OrderBy(r => GameData.Int(r, "_iID")))
+        foreach (var multi in _catalog.MultiRows.Where(r => GameData.Int(r, "_iRandom") == 1).OrderBy(r => GameData.Int(r, "_iID")))
             for (int mark = 1; mark <= DungeonCatalog.Marks(multi); mark++)
             {
-                if (catalog.Boss(multi, mark) is not { } boss || members.Any(s => !Meets(s, multi) || !Meets(s, boss))) continue;
-                var plan = catalog.Resolve(new EnterDungeonReq
+                if (_catalog.Boss(multi, mark) is not { } boss || members.Any(s => !Meets(s, multi) || !Meets(s, boss))) continue;
+                var plan = _catalog.Resolve(new EnterDungeonReq
                 {
                     SceneEntry = GameData.Int(boss, "_iDungeon"),
                     InitData = new DungeonInitData
@@ -55,20 +55,20 @@ public sealed partial class DungeonService
         var pool = RandomPool(origin, members);
         var drawn = pool.Count > 0 ? pool[Random.Shared.Next(pool.Count)]
             : origin with { Origin = new DungeonCatalog.RandomOrigin(origin.Multi!.Value, origin.Boss!.Value, origin.Mark) };
-        long enterTime = clock.GetUtcNow().ToUnixTimeSeconds() + RandomSeconds();
+        long enterTime = _clock.GetUtcNow().ToUnixTimeSeconds() + RandomSeconds();
         var notify = new RandomDungeonNotify
         {
             EnterTime = enterTime,
             Origin = new MultiDungeonInfo { MultiDungeonId = origin.MultiId, MarkId = origin.Mark },
             Random = new MultiDungeonInfo { MultiDungeonId = drawn.MultiId, MarkId = drawn.Mark }
         };
-        foreach (var member in members) rolling.Add(member);
+        foreach (var member in members) _rolling.Add(member);
         await Task.WhenAll(members.Select(member => SendQuietAsync(member, RandomDungeon, notify)));
-        loop.ScheduleLegacy(TimeSpan.FromSeconds(RandomSeconds()), async () =>
+        _loop.ScheduleLegacy(TimeSpan.FromSeconds(RandomSeconds()), async () =>
         {
-            foreach (var member in members) rolling.Remove(member);
+            foreach (var member in members) _rolling.Remove(member);
             // A member who went offline, died or entered elsewhere during the card's countdown stays behind (inferred).
-            var going = members.Where(s => sessions.All().Contains(s) && Admission(s, drawn, continuation: true) == 0).ToArray();
+            var going = members.Where(s => _sessions.All().Contains(s) && Admission(s, drawn, continuation: true) == 0).ToArray();
             if (going.Length == 0) return;
             await BeginAsync(drawn, going, going.Any(s => s.Role!.Id == leader) ? leader : going[0].Role!.Id, team, matched);
         });

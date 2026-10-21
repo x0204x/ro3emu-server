@@ -19,7 +19,7 @@ public sealed partial class TaskService
     {
         if (action.Length == 0 || action[0] == "") return 0;
         if (!int.TryParse(action[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int op)
-            || data.Row("ActionConfig", op) is not { } row) return -1;
+            || _data.Row("ActionConfig", op) is not { } row) return -1;
         return GameData.Int(row, "_iEXECHost") is 1 or 2 ? op : 0;
     }
 
@@ -53,19 +53,19 @@ public sealed partial class TaskService
                     break;
                 case 412 when action.Length == 2
                     && int.TryParse(action[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int ride)
-                    && mounts.IsConfigured(ride):
+                    && _mounts.IsConfigured(ride):
                     questMount = ride;
                     break;
                 case 54 when action.Length == 3
                     && long.TryParse(action[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out long originTask)
-                    && data.Row("TaskConfig", originTask) != null
+                    && _data.Row("TaskConfig", originTask) != null
                     && int.TryParse(action[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int recycle)
-                    && mounts.IsConfigured(recycle):
+                    && _mounts.IsConfigured(recycle):
                     if ((questMount ?? session.MountState.QuestMount) == recycle) questMount = 0;
                     break;
                 case 621 when action.Length == 1: cutScene = true; break;
                 default:
-                    log.LogWarning("Task {Task} held at server action {Action}: resource semantics not implemented", def.Id, string.Join(',', action));
+                    _log.LogWarning("Task {Task} held at server action {Action}: resource semantics not implemented", def.Id, string.Join(',', action));
                     return false;
             }
         }
@@ -82,7 +82,7 @@ public sealed partial class TaskService
                 foreach (var action in row.Actions.Where(a => ServerOpcode(a) == 20 && a.Length == 3))
                     if (int.TryParse(action[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int item)
                         && int.TryParse(action[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int count)
-                        && count > 0 && ItemExists(item) && character.CountOf(session, item) >= count)
+                        && count > 0 && ItemExists(item) && _character.CountOf(session, item) >= count)
                         costs.Add((item, count));
         return true;
     }
@@ -90,7 +90,7 @@ public sealed partial class TaskService
     private List<(long Id, string[][] Actions)>? _dialogueRows;
 
     /// <summary>Every DialogueConfig row with its _iEXECAction slots (a dialogue id holds an array of rows).</summary>
-    private List<(long Id, string[][] Actions)> DialogueRows() => _dialogueRows ??= data.Table("DialogueConfig")
+    private List<(long Id, string[][] Actions)> DialogueRows() => _dialogueRows ??= _data.Table("DialogueConfig")
         .SelectMany(kv => kv.Value.ValueKind == JsonValueKind.Array ? kv.Value.EnumerateArray() : Enumerable.Repeat(kv.Value, 1))
         .Select(r => ((long)GameData.Int(r, "_iID"), Actions(r, "_iEXECAction"))).Where(r => r.Item2.Length > 0).ToList();
 
@@ -123,12 +123,12 @@ public sealed partial class TaskService
     {
         if (args.Length < 5 || session.SceneEntry != args[2] || session.SceneLoading) return ErrorCodes.TaskRequirements;
         float x, z;
-        if (worldData.Npc(uid) is { } npc)
+        if (_worldData.Npc(uid) is { } npc)
         {
             if (npc.NpcId != args[1] || npc.SceneEntry != args[2]) return ErrorCodes.TaskRequirements;
             (x, z) = (npc.X, npc.Z);
         }
-        else if (worldData.Map(args[2])?.Points.TryGetValue(args[3], out var point) == true)
+        else if (_worldData.Map(args[2])?.Points.TryGetValue(args[3], out var point) == true)
             (x, z) = (point.X, point.Z);
         else return ErrorCodes.TaskRequirements;
         return NearPoint(session, x, z) ? 0 : ErrorCodes.TaskRequirements;

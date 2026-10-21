@@ -21,21 +21,21 @@ public sealed class ItemBoxService : IGameTicker
     private const int ManifestCommon = 2;
     private const int ErrUseParam = 155; // ErrorCodeConfig 155 "Invalid item use parameters"
 
-    private readonly CharacterService character;
-    private readonly AwardService awards;
-    private readonly SeasonService seasons;
-    private readonly SessionRegistry sessions;
-    private readonly GameLoop loop;
-    private readonly TimeProvider clock;
-    private readonly ILogger<ItemBoxService> log;
-    private TimeSpan lastTick;
-    private DateTime gameDay;
+    private readonly CharacterService _character;
+    private readonly AwardService _awards;
+    private readonly SeasonService _seasons;
+    private readonly SessionRegistry _sessions;
+    private readonly GameLoop _loop;
+    private readonly TimeProvider _clock;
+    private readonly ILogger<ItemBoxService> _log;
+    private TimeSpan _lastTick;
+    private DateTime _gameDay;
 
     public ItemBoxService(CharacterService character, AwardService awards, SeasonService seasons, SessionRegistry sessions,
         GameLoop loop, TimeProvider clock, ILogger<ItemBoxService> log)
     {
-        this.character = character; this.awards = awards; this.seasons = seasons; this.sessions = sessions;
-        this.loop = loop; this.clock = clock; this.log = log;
+        this._character = character; this._awards = awards; this._seasons = seasons; this._sessions = sessions;
+        this._loop = loop; this._clock = clock; this._log = log;
         character.UseClock = clock;
         character.SpecialItemUse.Add(TryOpenAsync);
     }
@@ -43,26 +43,26 @@ public sealed class ItemBoxService : IGameTicker
     /// <summary>At the 05:00 game day the online roles with use-time counts get 5009 again (ended periods drop out).</summary>
     public void Tick(GameTime time)
     {
-        if (time.Now - lastTick < TimeSpan.FromSeconds(1)) return;
-        lastTick = time.Now;
-        var day = DailyActivityService.GameDay(clock.GetLocalNow().DateTime);
-        if (day == gameDay) return;
-        bool first = gameDay == default;
-        gameDay = day;
+        if (time.Now - _lastTick < TimeSpan.FromSeconds(1)) return;
+        _lastTick = time.Now;
+        var day = DailyActivityService.GameDay(_clock.GetLocalNow().DateTime);
+        if (day == _gameDay) return;
+        bool first = _gameDay == default;
+        _gameDay = day;
         if (first) return;
-        foreach (var session in sessions.All())
-            if (session.Role != null && character.HasUseTimes(session))
-                loop.PostOwned(session, () => session.Role != null ? character.SyncUseTimesAsync(session) : Task.CompletedTask);
+        foreach (var session in _sessions.All())
+            if (session.Role != null && _character.HasUseTimes(session))
+                _loop.PostOwned(session, () => session.Role != null ? _character.SyncUseTimesAsync(session) : Task.CompletedTask);
     }
 
     /// <summary>Server open day as LC_InteractCondition's iOpenDayCount: day 1 is the season start.</summary>
-    private int OpenDay() => Math.Max(1, (int)Math.Floor((clock.GetUtcNow().ToUnixTimeSeconds() - seasons.StartTime) / 86400d) + 1);
+    private int OpenDay() => Math.Max(1, (int)Math.Floor((_clock.GetUtcNow().ToUnixTimeSeconds() - _seasons.StartTime) / 86400d) + 1);
 
     private async Task<int?> TryOpenAsync(GameSession s, ItemUseReq req, InvItem item, JsonElement row, int count)
     {
-        if (!character.IsAwardBox(row)) return null;
+        if (!_character.IsAwardBox(row)) return null;
         var param = req.ItemParam.Count == 1 ? req.ItemParam[0] : null;
-        bool choice = character.IsChoiceBox(row);
+        bool choice = _character.IsChoiceBox(row);
         if (req.ItemParam.Count > 1 || (choice ? param?.VarCase != ItemUseParamInfo.VarOneofCase.SelfChooseGift
                 : param != null && param.VarCase != ItemUseParamInfo.VarOneofCase.IsFirstHeartBox))
             return ErrUseParam;
@@ -72,7 +72,7 @@ public sealed class ItemBoxService : IGameTicker
         {
             if (choice)
             {
-                var options = awards.ResolveItemAward(s, group, seasons.PlayBook, OpenDay()).Grants;
+                var options = _awards.ResolveItemAward(s, group, _seasons.PlayBook, OpenDay()).Grants;
                 var picks = param!.SelfChooseGift.ChooseGift;
                 if (picks.Count == 0 || picks.Any(p => p.Key < 1 || p.Key > options.Count || p.Value <= 0)
                     || picks.Values.Sum(v => (long)v) != count) return ErrUseParam;
@@ -84,13 +84,13 @@ public sealed class ItemBoxService : IGameTicker
             }
             else
                 for (int n = 0; n < count; n++)
-                    foreach (var grant in awards.ResolveItemAward(s, group, seasons.PlayBook, OpenDay()).Grants)
+                    foreach (var grant in _awards.ResolveItemAward(s, group, _seasons.PlayBook, OpenDay()).Grants)
                         goods.Add((grant.Entry, grant.Count, grant.BindType));
         }
         catch (AwardConditionException) { return CharacterService.ErrLevelNeed; }
         catch (AwardResolutionException error)
         {
-            log.LogWarning("Box {Item} award {Group} does not resolve: {Reason}", item.Entry, group, error.Message);
+            _log.LogWarning("Box {Item} award {Group} does not resolve: {Reason}", item.Entry, group, error.Message);
             return ErrorCodes.ItemNoConfig;
         }
         goods = goods.GroupBy(g => (g.Entry, g.Bind)).Select(g => (g.Key.Entry, checked(g.Sum(x => x.Count)), g.Key.Bind)).ToList();
@@ -98,17 +98,17 @@ public sealed class ItemBoxService : IGameTicker
         if (goods.Count == 0 || goods.Any(g => g.Entry is 100 or 101 || g.Bind == 2)) return ErrorCodes.FeatureUnavailable;
         var plain = goods.Where(g => g.Bind == 0).Select(g => (g.Entry, g.Count)).ToList();
         var bound = goods.Where(g => g.Bind != 0).ToList();
-        if (character.PlainGrantError(s, plain, boundGoods: bound) is var full and not 0) return full;
-        var granted = await character.ExchangeLockedAsync(s, [], plain, new Dictionary<long, int> { [item.Guid] = count },
+        if (_character.PlainGrantError(s, plain, boundGoods: bound) is var full and not 0) return full;
+        var granted = await _character.ExchangeLockedAsync(s, [], plain, new Dictionary<long, int> { [item.Guid] = count },
             popup: false, sync: false, boundGoods: bound,
-            persist: tx => tx.WithEconomy(character.FamilyEconomy(s, BoxKind, [(item.Entry, (long)count)],
+            persist: tx => tx.WithEconomy(_character.FamilyEconomy(s, BoxKind, [(item.Entry, (long)count)],
                 goods.Select(g => (g.Entry, g.Count)).ToList(),
                 new { Item = item.Entry, ItemGuid = item.Guid, Count = count, Award = group, Goods = goods })),
             asyncCommit: true);
         if (granted == null) return ErrorCodes.ItemsShort;
         var performance = row.TryGetProperty("_kAwardperformance", out var shown) && shown.ValueKind == JsonValueKind.Array
             && shown.GetArrayLength() > 0 && GameData.Number(shown[0]) is { } manifest and > 0 ? (int)manifest : ManifestCommon;
-        await s.SendGameAsync(CharacterService.GetRewardNotify, character.BoxRewardNotify(s, goods, granted, performance));
+        await s.SendGameAsync(CharacterService.GetRewardNotify, _character.BoxRewardNotify(s, goods, granted, performance));
         return 0;
     }
 }

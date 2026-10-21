@@ -13,29 +13,29 @@ namespace Ro3Emu.Tests;
 /// <summary>C/D 14: one-snapshot role reads, invalidation by committed writes, and login without loop SQL reads.</summary>
 public sealed class RoleSnapshotTests(ITestOutputHelper output) : IAsyncLifetime
 {
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-snap-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-snap-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "";
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
 
     public async Task InitializeAsync()
     {
         var (hp, mp, gp) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = hp; o.MicroGatePort = mp; o.GameGatePort = gp;
         });
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{hp}";
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{hp}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private static string RepoRoot()
@@ -165,7 +165,7 @@ public sealed class RoleSnapshotTests(ITestOutputHelper output) : IAsyncLifetime
     {
         var accounts = Service<AccountStore>();
         var roles = Service<RoleStore>();
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync("sessionsnap", "pw");
         await bot.EnterGateAsync();
         long id = (await bot.CreateRoleAsync("SessionSnap")).RoleBaseInfo.Id;
@@ -206,7 +206,7 @@ public sealed class RoleSnapshotTests(ITestOutputHelper output) : IAsyncLifetime
     {
         var accounts = Service<AccountStore>();
         Service<RoleStore>().LoginSnapshots = snapshots;
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw");
         await bot.EnterGateAsync();
         long id = returning ? bot.Roles.Single().Id : (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id;

@@ -27,12 +27,12 @@ public static partial class EconomySnapshotReader
             {
                 using var identities = Command("SELECT id FROM guild");
                 using var row = identities.ExecuteReader();
-                while (row.Read()) guilds.Add(row.GetInt64(0));
+                while (row.Read()) _guilds.Add(row.GetInt64(0));
             }
             foreach (var group in roleParts.GroupBy(p => p.RoleId))
             {
                 long role = group.Key;
-                roles.Add(role);
+                _roles.Add(role);
                 using (var identity = Command("SELECT deleted_time FROM role WHERE id=$role"))
                 {
                     identity.Parameters.AddWithValue("$role", role);

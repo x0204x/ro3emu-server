@@ -11,7 +11,7 @@ public sealed partial class GuildTests
     [ClientDataFact]
     public async Task FounderApprovesResponsesAndInvitesUntilTheGuildForms()
     {
-        app.Services.GetRequiredService<IOptions<ServerOptions>>().Value.GuildFounding = "responders";
+        _app.Services.GetRequiredService<IOptions<ServerOptions>>().Value.GuildFounding = "responders";
         await using var founder = await InWorld("Founder");
         await using var anna = await InWorld("Anna");
         await using var ben = await InWorld("Ben");
@@ -46,7 +46,7 @@ public sealed partial class GuildTests
         await founder.SendGameAsync(GuildService.PullHelperApply, new PullCreateHelperApplyReq());
         Assert.Equal(annaId, Assert.Single((await Next(founder, GuildService.PullHelperApply,
             PullCreateHelperApplyRes.Parser)).CreateHelperApplyData).PlayerID);
-        Assert.Single(app.Services.GetRequiredService<Ro3Emu.Server.Accounts.GuildStore>().Get(pre.Guid)!.Members);
+        Assert.Single(_app.Services.GetRequiredService<Ro3Emu.Server.Accounts.GuildStore>().Get(pre.Guid)!.Members);
         Assert.Equal([annaId], (await Decide(false, annaId)).PlayerIDList);
         Assert.True(Assert.Single((await Respond(anna)).HelperResult).Success);
         var approved = await Decide(true);

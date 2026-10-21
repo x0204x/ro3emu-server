@@ -14,38 +14,38 @@ namespace Ro3Emu.Tests;
 public sealed class TowerAtomicExchangeTests : IAsyncLifetime
 {
     private const int Token = 1250709, OtherReward = 1250701;
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-tower-atomic-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-tower-atomic-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "";
 
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
 
     public async Task InitializeAsync()
     {
         var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir;
+            o.DataDir = _dataDir;
             o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = httpPort;
             o.MicroGatePort = microPort;
             o.GameGatePort = gamePort;
         });
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{httpPort}";
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{httpPort}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw");
         await bot.EnterGateAsync();
         long id = (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id;

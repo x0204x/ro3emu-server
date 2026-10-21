@@ -17,32 +17,32 @@ namespace Ro3Emu.Tests;
 /// </summary>
 public sealed class PowerTests : IAsyncLifetime
 {
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-power-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-power-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(15);
-    private WebApplication app = null!;
-    private string httpUrl = "";
+    private WebApplication _app = null!;
+    private string _httpUrl = "";
 
     public async Task InitializeAsync()
     {
         var (http, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir;
+            o.DataDir = _dataDir;
             o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = http;
             o.MicroGatePort = micro;
             o.GameGatePort = game;
         });
-        await app.StartAsync();
-        httpUrl = $"http://127.0.0.1:{http}";
+        await _app.StartAsync();
+        _httpUrl = $"http://127.0.0.1:{http}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private static string RepoRoot()
@@ -52,12 +52,12 @@ public sealed class PowerTests : IAsyncLifetime
         return dir?.FullName ?? throw new InvalidOperationException("repo root not found");
     }
 
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private GameData Data => Service<GameData>();
 
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var bot = new BotClient(httpUrl, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_httpUrl, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw");
         await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
@@ -75,7 +75,7 @@ public sealed class PowerTests : IAsyncLifetime
     private async Task Gm(string account, string command)
     {
         using var http = new HttpClient();
-        var response = await http.PostAsync($"{httpUrl}/ro3emu/gm?account={account}", new StringContent(command));
+        var response = await http.PostAsync($"{_httpUrl}/ro3emu/gm?account={account}", new StringContent(command));
         response.EnsureSuccessStatusCode();
     }
 

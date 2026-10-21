@@ -13,7 +13,8 @@ namespace Ro3Emu.Server.Game;
 /// 42007 / 42008 / 42050. A 2 s ticker keeps the member cards live: 42050 when a member's map, level, job or online state
 /// changes, 42051 when HP, SP, position or life state does. Parties live in memory (a server restart dissolves them).
 /// </summary>
-public sealed partial class TeamService : IGameTicker
+public sealed partial class TeamService(SessionRegistry sessions, CharacterService character, ChatService chat, RoleStore roles, FriendStore friends,
+    GameData data, SeasonService seasons, IOptions<ServerOptions> options, GameLoop loop, ILogger<TeamService> log) : IGameTicker
 {
     /// <summary>DungeonService supplies the authoritative role preference, allowances and Light of Bonds projection.</summary>
     public Func<GameSession, IReadOnlyList<long>, TeamMultiDungeonInfo>? MultiDungeonInfo { get; set; }
@@ -58,36 +59,21 @@ public sealed partial class TeamService : IGameTicker
         public readonly Dictionary<long, string> LastBattle = new();
     }
 
-    private readonly SessionRegistry sessions;
-    private readonly CharacterService character;
-    private readonly ChatService chat;
-    private readonly RoleStore roles;
-    private readonly FriendStore friends;
-    private readonly GameData data;
-    private readonly SeasonService seasons;
-    private readonly IOptions<ServerOptions> options;
-    private readonly ILogger<TeamService> log;
-    private readonly GameLoop loop;
+    private readonly SessionRegistry _sessions = sessions;
+    private readonly CharacterService _character = character;
+    private readonly ChatService _chat = chat;
+    private readonly RoleStore _roles = roles;
+    private readonly FriendStore _friends = friends;
+    private readonly GameData _data = data;
+    private readonly SeasonService _seasons = seasons;
+    private readonly IOptions<ServerOptions> _options = options;
+    private readonly ILogger<TeamService> _log = log;
+    private readonly GameLoop _loop = loop;
     private readonly Dictionary<long, Team> _teams = new();
     private readonly Dictionary<long, Team> _byMember = new();
     private readonly Dictionary<(long Target, long Team), DateTime> _invites = new();
     private long _nextId = 1L << 24;
     private TimeSpan _sinceUpdate;
-
-    public TeamService(SessionRegistry sessions, CharacterService character, ChatService chat, RoleStore roles, FriendStore friends,
-        GameData data, SeasonService seasons, IOptions<ServerOptions> options, GameLoop loop, ILogger<TeamService> log)
-    {
-        this.sessions = sessions;
-        this.character = character;
-        this.chat = chat;
-        this.roles = roles;
-        this.friends = friends;
-        this.data = data;
-        this.seasons = seasons;
-        this.options = options;
-        this.log = log;
-        this.loop = loop;
-    }
 
     /// <summary>Party EXP multiplier for a kill (‱ of TeamExpBuffNum by same-map members; the split rule itself is inferred).</summary>
     public int ExpBonus(GameSession killer)
@@ -130,12 +116,12 @@ public sealed partial class TeamService : IGameTicker
         {
             Id = ++_nextId, Type = req.TeamType == TeamType.Forty ? TeamType.Forty : TeamType.Five, Leader = self,
             Target = req.TargetId != 0 ? req.TargetId : NoTarget, Created = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-            Description = req.TeamDesc, Area = req.TeamAreaInfo.Length > 0 ? req.TeamAreaInfo : options.Value.ClusterId.ToString(),
-            MinBattlePoint = req.LimitScore, PlayBook = req.PlayBookId != 0 ? req.PlayBookId : seasons.PlayBook,
+            Description = req.TeamDesc, Area = req.TeamAreaInfo.Length > 0 ? req.TeamAreaInfo : _options.Value.ClusterId.ToString(),
+            MinBattlePoint = req.LimitScore, PlayBook = req.PlayBookId != 0 ? req.PlayBookId : _seasons.PlayBook,
         };
         _teams[team.Id] = team;
         await RecordAndJoinAsync(team, self);
-        log.LogInformation("{Name} creates party {Team} ({Type})", s.Role.Name, team.Id, team.Type);
+        _log.LogInformation("{Name} creates party {Team} ({Type})", s.Role.Name, team.Id, team.Type);
         await s.SendGameAsync(TeamCreate, new TeamCreateResp { Result = 0, TeamId = team.Id, TeamType = team.Type });
         await s.SendGameAsync(TeamNewMember, new BroadCastNewMemberEnter { TeamType = team.Type, DetailInfo = Detail(team, self) });
         await s.SendGameAsync(TeamAll, All(team));
@@ -155,12 +141,12 @@ public sealed partial class TeamService : IGameTicker
             : team!.Members.Count >= Capacity(team) ? ErrorCodes.PartyFull : 0;
         bool ok = code == 0;
         await s.SendGameAsync(TeamInvite, new InviteIntoTeamResp { Result = code });
-        log.LogInformation("{Name} invites {Target} to party: {Result}", s.Role.Name, req.Guid, ok ? "ok" : "refused");
+        _log.LogInformation("{Name} invites {Target} to party: {Result}", s.Role.Name, req.Guid, ok ? "ok" : "refused");
         if (!ok) return;
         DateTime expires = DateTime.UtcNow + InviteLife;
         _invites[(req.Guid, team!.Id)] = expires;
         long invitedTeam = team.Id;
-        loop.ScheduleRuntime(InviteLife, () => RunTeamAsync("team/invite-expiry", [req.Guid], invitedTeam, () =>
+        _loop.ScheduleRuntime(InviteLife, () => RunTeamAsync("team/invite-expiry", [req.Guid], invitedTeam, () =>
         {
             if (_invites.TryGetValue((req.Guid, invitedTeam), out var current) && current == expires
                 && current <= DateTime.UtcNow) _invites.Remove((req.Guid, invitedTeam));
@@ -195,7 +181,7 @@ public sealed partial class TeamService : IGameTicker
         _invites.Remove((self, req.TeamId));
         await s.SendGameAsync(TeamInviteeResp, new InviteeRespResp { Result = code, TeamId = req.TeamId });
         if (!ok) return;
-        log.LogInformation("{Name} joins party {Team}", s.Role.Name, team!.Id);
+        _log.LogInformation("{Name} joins party {Team}", s.Role.Name, team!.Id);
         await PublishAdmissionAsync(team, self);
     }
 
@@ -264,7 +250,7 @@ public sealed partial class TeamService : IGameTicker
 
     private async Task RemoveAsync(Team team, long role, int leaveType, bool notifyLeaver = true)
     {
-        string name = Session(role)?.Role?.Name ?? roles.Get(role)?.Name ?? "";
+        string name = Session(role)?.Role?.Name ?? _roles.Get(role)?.Name ?? "";
         team.Members.Remove(role);
         team.Applicants.Remove(role);
         team.ViceLeaders.Remove(role);
@@ -276,7 +262,7 @@ public sealed partial class TeamService : IGameTicker
         team.LastCard.Remove(role);
         team.LastBattle.Remove(role);
         _byMember.Remove(role);
-        log.LogInformation("{Name} leaves party {Team} ({Left} left)", name, team.Id, team.Members.Count);
+        _log.LogInformation("{Name} leaves party {Team} ({Left} left)", name, team.Id, team.Members.Count);
         if (team.Members.Count == 0)
         {
             _teams.Remove(team.Id);
@@ -308,7 +294,7 @@ public sealed partial class TeamService : IGameTicker
         if (_sinceUpdate < TimeSpan.FromSeconds(2)) return;
         _sinceUpdate = TimeSpan.Zero;
         foreach (var team in _teams.Values.ToList())
-            loop.TrackRuntimeDetached("team refresh", () => RunTeamAsync("team/refresh", team.Members.ToArray(),
+            _loop.TrackRuntimeDetached("team refresh", () => RunTeamAsync("team/refresh", team.Members.ToArray(),
                 team.Id, () => RefreshAsync(team)));
     }
 
@@ -367,7 +353,7 @@ public sealed partial class TeamService : IGameTicker
     private TeamMemberDetailInfo Detail(Team team, long role)
     {
         var s = Session(role);
-        var r = s?.Role ?? roles.Get(role);
+        var r = s?.Role ?? _roles.Get(role);
         var p = s?.Progress;
         var detail = new TeamMemberDetailInfo
         {
@@ -383,7 +369,7 @@ public sealed partial class TeamService : IGameTicker
         var battle = new TeamMemberBattleInfo { Pos = new Vec3(), MaxHpValue = 1, MaxMpValue = 1 };
         if (s?.Progress != null)
         {
-            var stats = character.Stats(s);
+            var stats = _character.Stats(s);
             battle.MaxHpValue = Math.Max(1, stats[MaxHp]);
             battle.MaxMpValue = Math.Max(1, stats[MaxSp]);
             battle.HpPercent = (int)Math.Min(int.MaxValue, s.CurrentHp ?? battle.MaxHpValue);
@@ -398,7 +384,7 @@ public sealed partial class TeamService : IGameTicker
 
     private static int Capacity(Team team) => team.Type == TeamType.Forty ? 40 : 5;
 
-    private GameSession? Session(long role) => sessions.All().FirstOrDefault(s => s.Role?.Id == role);
+    private GameSession? Session(long role) => _sessions.All().FirstOrDefault(s => s.Role?.Id == role);
 
     private async Task ToOthersAsync(Team team, long except, uint msgId, IMessage body)
     {

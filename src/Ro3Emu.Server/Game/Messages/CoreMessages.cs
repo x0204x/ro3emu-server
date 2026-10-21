@@ -15,11 +15,20 @@ public sealed class CoreMessages(RoleSessionService roleSessions, ChatService ch
 
     public void Map(Messaging.MessageRoutes routes)
     {
+        // What the client sends before its role is in the world; anything else is refused until then.
+        // NW_NetworkManager pings with HEARTBEAT from the moment it connects, before the account signs in.
+        routes.AllowFrom(Messaging.SessionStage.Connected, id => id == MsgId.Heartbeat);
+        // LC_LoginManager on the role screen: LOGIN_ROLE_CREATE, LOGIN_ROLE_SELECT, and UPLOAD_CLIENT_SDK_INFO in
+        // OnChooseRoleLoginCallback, the answer to the selection.
+        routes.AllowFrom(Messaging.SessionStage.RoleScreen,
+            id => id is MsgId.LoginRoleCreate or MsgId.LoginRoleSelect or MsgId.UploadClientSdkInfo);
         routes.AdmitRuntime(id => id is MsgId.SceneLoaded or MsgId.PreSwitchRole or MsgId.LoginRoleSelect or MsgId.Logout
             or MsgId.Heartbeat, "dispatcher/owned continuation");
         // Role creation writes only its new role (the unique name index decides between accounts).
         routes.AdmitAccount(id => id == MsgId.LoginRoleCreate);
-        routes.AdmitRole(id => id is MsgId.Walk or MsgId.SaveSetting or MsgId.ClientEnterMainUi or MsgId.UploadClientSdkInfo);
+        routes.AdmitRole(id => id is MsgId.Walk or MsgId.SaveSetting or MsgId.ClientEnterMainUi);
+        // The SDK info report is not kept: its empty handler reserves nothing, also on the role screen.
+        routes.AdmitRuntime(id => id == MsgId.UploadClientSdkInfo, "dispatcher/ignored report");
         routes.AdmitRole(id => id is FeedbackService.SubmitMsg); // reads the sender, appends to its own report file
 
         routes.Map(GuildChallengeService.Notify, "handler", async (session, msgId, body) =>

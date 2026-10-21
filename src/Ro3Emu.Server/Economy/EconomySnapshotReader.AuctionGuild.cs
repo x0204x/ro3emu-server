@@ -9,7 +9,7 @@ public static partial class EconomySnapshotReader
 {
     private sealed partial class State
     {
-        private readonly Dictionary<long, long> auctionCurrency = [];
+        private readonly Dictionary<long, long> _auctionCurrency = [];
 
         internal void ReadAuctions()
         {
@@ -39,7 +39,7 @@ public static partial class EconomySnapshotReader
                             { Issue(EconomyIssueKind.Coverage, key, "Auction currency is not catalogued."); return; }
                             if (owner < 0 || reserve < 0 || winner < 0 || status <= (int)AuctionState.Snone || status > (int)AuctionState.Settled)
                                 throw new FormatException("Invalid auction state or reserve.");
-                            auctionCurrency[id] = currency;
+                            _auctionCurrency[id] = currency;
                             if (status == (int)AuctionState.Settled)
                             {
                                 if (winner == 0)
@@ -54,8 +54,8 @@ public static partial class EconomySnapshotReader
                                     }
                                     Issue(EconomyIssueKind.RecoveryDebt, key, "Settled unsold lot retains ownership; retirement/return policy is unresolved.");
                                 }
-                                else if (!mailDeliveryKeys.Contains(winner + "/auction:" + id + ":award")
-                                    && !mailDeliveryKeys.Contains(winner + "/auction:" + id + ":unsold"))
+                                else if (!_mailDeliveryKeys.Contains(winner + "/auction:" + id + ":award")
+                                    && !_mailDeliveryKeys.Contains(winner + "/auction:" + id + ":unsold"))
                                     Issue(EconomyIssueKind.RecoveryDebt, key, "Settled winner mail linkage is absent or already claimed/deleted.");
                                 return;
                             }
@@ -109,10 +109,10 @@ public static partial class EconomySnapshotReader
                             if (claimed == 1) return; // Current writer records delivered bonus with claimed=1.
                             string[] parts = group.Split(':');
                             if (parts.Length < 2 || !long.TryParse(parts[^1], NumberStyles.None, CultureInfo.InvariantCulture, out long lot)
-                                || !auctionCurrency.ContainsKey(lot))
+                                || !_auctionCurrency.ContainsKey(lot))
                             { Issue(EconomyIssueKind.Coverage, key, "Legacy unclaimed bonus lot/source linkage is ambiguous."); return; }
-                            if (mailDeliveryKeys.Contains(role + "/auction:" + lot + ":dividend:" + role)
-                                || mailDeliveryKeys.Contains(role + "/auction:bonus:" + group + ":" + role))
+                            if (_mailDeliveryKeys.Contains(role + "/auction:" + lot + ":dividend:" + role)
+                                || _mailDeliveryKeys.Contains(role + "/auction:bonus:" + group + ":" + role))
                                 Issue(EconomyIssueKind.Corruption, key, "Unclaimed bonus has an already-delivered mail entitlement.");
                             Currency(catalog.AuctionBonusCurrency, amount, Role(role, key), EconomyCompartment.AuctionBonus, key);
                         });
@@ -140,7 +140,7 @@ public static partial class EconomySnapshotReader
                 {
                     Guard("guild/row/" + rowNumber++, () =>
                     {
-                        long id = SqlLong(r, 0); guilds.Add(id); string key = "guild/" + id;
+                        long id = SqlLong(r, 0); _guilds.Add(id); string key = "guild/" + id;
                         byte[] bytes = SqlBlob(r, 1); Measure("guild", bytes.Length, true);
                         Guard(key, () =>
                         {
@@ -175,7 +175,7 @@ public static partial class EconomySnapshotReader
                         byte[] bytes = SqlBlob(r, 1); Measure("guild_recovery", bytes.Length, true);
                         Guard(key, () =>
                         {
-                            if (id <= 0 || guilds.Contains(id) || !recoveredGuilds.Add(id) || SqlLong(r, 2) <= 0)
+                            if (id <= 0 || _guilds.Contains(id) || !_recoveredGuilds.Add(id) || SqlLong(r, 2) <= 0)
                                 throw new FormatException("Invalid or live guild recovery identity.");
                             using var doc = Json(bytes);
                             var state = doc.RootElement;

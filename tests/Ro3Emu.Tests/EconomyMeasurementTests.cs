@@ -78,47 +78,47 @@ public sealed class EconomyMeasurementTests(ITestOutputHelper output)
         long AllocatedBytes, long WalBytes, string JournalMode, long Synchronous);
     private sealed class Probe : IDisposable
     {
-        private readonly AccountStore accounts;
-        private readonly RoleStore roles;
-        private readonly ItemStore items;
-        private readonly string directory;
-        private readonly bool ledger;
-        private readonly long role;
-        private int purchases;
+        private readonly AccountStore _accounts;
+        private readonly RoleStore _roles;
+        private readonly ItemStore _items;
+        private readonly string _directory;
+        private readonly bool _ledger;
+        private readonly long _role;
+        private int _purchases;
         internal Probe(string directory, bool ledger)
         {
-            this.directory = directory; this.ledger = ledger;
-            accounts = new AccountStore(Options.Create(new ServerOptions { DataDir = directory }));
-            roles = new RoleStore(accounts); items = new ItemStore(accounts);
-            role = roles.Create("probe", 1, "Probe", 1, 1000, 1)!.Id;
-            var progress = roles.LoadProgress(role); progress.Currency[1] = 1_000_000;
-            roles.SaveProgress(role, progress);
-            items.Insert(role, new InvItem { Entry = 1000000, Stack = 20, Pack = 1, Sort = 1 });
+            this._directory = directory; this._ledger = ledger;
+            _accounts = new AccountStore(Options.Create(new ServerOptions { DataDir = directory }));
+            _roles = new RoleStore(_accounts); _items = new ItemStore(_accounts);
+            _role = _roles.Create("probe", 1, "Probe", 1, 1000, 1)!.Id;
+            var progress = _roles.LoadProgress(_role); progress.Currency[1] = 1_000_000;
+            _roles.SaveProgress(_role, progress);
+            _items.Insert(_role, new InvItem { Entry = 1000000, Stack = 20, Pack = 1, Sort = 1 });
         }
-        internal double WriterMs() => JsonSerializer.SerializeToElement(accounts.AccessMetrics.Snapshot())
+        internal double WriterMs() => JsonSerializer.SerializeToElement(_accounts.AccessMetrics.Snapshot())
             .GetProperty("writerExecutionMs").GetDouble();
         internal double Buy()
         {
-            int next = ++purchases;
-            var progress = roles.LoadProgress(role); progress.Currency[1] -= 100;
-            var before = items.Load(role); var after = before.Select(i => i.Clone()).ToList(); after[0].Stack++;
-            var builder = roles.NewTransaction();
-            builder.ItemDelta(role, before, after); builder.Progress(role, progress);
-            builder.RoleBlob(role, "shop", Encoding.UTF8.GetBytes($"{{\"Bought\":{{\"118\":{{\"Count\":{next},\"Period\":\"\"}}}},\"Favorites\":[]}}"));
-            if (ledger)
+            int next = ++_purchases;
+            var progress = _roles.LoadProgress(_role); progress.Currency[1] -= 100;
+            var before = _items.Load(_role); var after = before.Select(i => i.Clone()).ToList(); after[0].Stack++;
+            var builder = _roles.NewTransaction();
+            builder.ItemDelta(_role, before, after); builder.Progress(_role, progress);
+            builder.RoleBlob(_role, "shop", Encoding.UTF8.GetBytes($"{{\"Bought\":{{\"118\":{{\"Count\":{next},\"Period\":\"\"}}}},\"Favorites\":[]}}"));
+            if (_ledger)
             {
                 string op = Guid.NewGuid().ToString("N");
-                builder.WithEconomy(new EconomyMutation(op, "probe", role, "npc-shop-buy", "118/1/100", "npc-shop/" + op,
+                builder.WithEconomy(new EconomyMutation(op, "probe", _role, "npc-shop-buy", "118/1/100", "npc-shop/" + op,
                     DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), [new(new(EconomyAssetKind.Currency, 1), 100)],
                     [new(new(EconomyAssetKind.Item, 1000000), 1)], Encoding.UTF8.GetBytes($"{{\"BuyTimes\":{next}}}")));
             }
             long started = Stopwatch.GetTimestamp();
-            roles.Commit(builder, "test/e01-control");
+            _roles.Commit(builder, "test/e01-control");
             return Stopwatch.GetElapsedTime(started).TotalMilliseconds;
         }
         internal ProbeState State()
         {
-            using var db = accounts.Open();
+            using var db = _accounts.Open();
             long Scalar(string sql)
             {
                 using var c = db.CreateCommand(); c.CommandText = sql; return Convert.ToInt64(c.ExecuteScalar());
@@ -139,13 +139,13 @@ public sealed class EconomyMeasurementTests(ITestOutputHelper output)
                     };
             }
             using var mode = db.CreateCommand(); mode.CommandText = "PRAGMA journal_mode";
-            string wal = Path.Combine(directory, "ro3emu.db-wal");
-            return new(JsonSerializer.SerializeToElement(accounts.AccessMetrics.Snapshot()).GetProperty("writerCompleted").GetInt64(),
+            string wal = Path.Combine(_directory, "ro3emu.db-wal");
+            return new(JsonSerializer.SerializeToElement(_accounts.AccessMetrics.Snapshot()).GetProperty("writerCompleted").GetInt64(),
                 Scalar("SELECT count(*) FROM operation_receipt"), Scalar("SELECT count(*) FROM economy_entry"), bytes,
                 Scalar("PRAGMA page_count") * Scalar("PRAGMA page_size"), File.Exists(wal) ? new FileInfo(wal).Length : 0,
                 (string)mode.ExecuteScalar()!, Scalar("PRAGMA synchronous"));
         }
-        public void Dispose() => accounts.Dispose();
+        public void Dispose() => _accounts.Dispose();
     }
 
     private static string RepoRoot()

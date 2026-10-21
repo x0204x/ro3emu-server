@@ -32,34 +32,34 @@ public sealed class SeasonService : IGameTicker
     /// <summary>Legacy identity-only fallback when this playbook has no supported stage clock.</summary>
     private const long SeasonLengthSeconds = 999_999_999;
 
-    private readonly GameData data;
-    private readonly AccountStore accounts;
-    private int playBook;
-    private int seasonId;
-    private readonly Dictionary<int, Season> history;
-    private readonly TimeProvider clock;
-    private readonly GameLoop loop;
-    private readonly SessionRegistry sessions;
-    private readonly ILogger<SeasonService> log;
-    private SeasonTimeInfoNotify? timing;
+    private readonly GameData _data;
+    private readonly AccountStore _accounts;
+    private int _playBook;
+    private int _seasonId;
+    private readonly Dictionary<int, Season> _history;
+    private readonly TimeProvider _clock;
+    private readonly GameLoop _loop;
+    private readonly SessionRegistry _sessions;
+    private readonly ILogger<SeasonService> _log;
+    private SeasonTimeInfoNotify? _timing;
     // Stage G: the clock of a playbook is a pure function of the season start and the tables, yet logins and activity
     // windows rebuilt it each time (290 MB per 500 logins). Shared and read-only; cleared with timing.
-    private readonly Dictionary<int, SeasonTimeInfoNotify> clocks = new();
+    private readonly Dictionary<int, SeasonTimeInfoNotify> _clocks = new();
 
     /// <summary>The playbook's stage clock for the current season start. Shared: callers must not modify it.</summary>
     internal SeasonTimeInfoNotify Clock(int book)
     {
-        lock (clocks)
+        lock (_clocks)
         {
-            if (!clocks.TryGetValue(book, out var built)) clocks[book] = built = new SeasonClock(data, Start, book, Zone).Build();
+            if (!_clocks.TryGetValue(book, out var built)) _clocks[book] = built = new SeasonClock(_data, Start, book, Zone).Build();
             return built;
         }
     }
     private SeasonTimeInfoNotify Shared(int book) => book == 101 ? Clock(101) : Empty;
     private static readonly SeasonTimeInfoNotify Empty = new();
-    private TimeSpan lastTick;
-    private bool checking;
-    private TimeSpan checkingSince;
+    private TimeSpan _lastTick;
+    private bool _checking;
+    private TimeSpan _checkingSince;
     internal Action? TickBatchCompletedForTest { get; set; }
 
     public sealed record Season(int Id, int PlayBook, DateTime Start, DateTime End);
@@ -67,17 +67,17 @@ public sealed class SeasonService : IGameTicker
     public SeasonService(GameData data, IOptions<ServerOptions> options, AccountStore accounts,
         TimeProvider clock, GameLoop loop, SessionRegistry sessions, ILogger<SeasonService> log)
     {
-        this.data = data;
-        this.accounts = accounts;
-        this.clock = clock;
-        this.loop = loop;
-        this.sessions = sessions;
-        this.log = log;
+        this._data = data;
+        this._accounts = accounts;
+        this._clock = clock;
+        this._loop = loop;
+        this._sessions = sessions;
+        this._log = log;
         OpenContent = options.Value.OpenContent;
-        playBook = int.TryParse(Get("playbook"), CultureInfo.InvariantCulture, out int saved) ? saved : options.Value.PlayBook;
-        seasonId = int.TryParse(Get("season_id"), CultureInfo.InvariantCulture, out int savedId) && savedId > 0 ? savedId : 1;
-        history = JsonSerializer.Deserialize<Dictionary<int, Season>>(Get("season_history") ?? "{}") ?? new();
-        Start = seasonId > 1 && DateTime.TryParseExact(Get("season_start"), "yyyy-MM-dd", CultureInfo.InvariantCulture,
+        _playBook = int.TryParse(Get("playbook"), CultureInfo.InvariantCulture, out int saved) ? saved : options.Value.PlayBook;
+        _seasonId = int.TryParse(Get("season_id"), CultureInfo.InvariantCulture, out int savedId) && savedId > 0 ? savedId : 1;
+        _history = JsonSerializer.Deserialize<Dictionary<int, Season>>(Get("season_history") ?? "{}") ?? new();
+        Start = _seasonId > 1 && DateTime.TryParseExact(Get("season_start"), "yyyy-MM-dd", CultureInfo.InvariantCulture,
             DateTimeStyles.None, out var rolled) ? rolled : options.Value.SeasonStart is { Length: > 0 } configured
             ? DateTime.ParseExact(configured, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None)
             : FirstStart();
@@ -90,7 +90,7 @@ public sealed class SeasonService : IGameTicker
     public DateTime Start { get; private set; }
 
     /// <summary>The realm time zone: the injected clock's, as every daily reset and activity window uses.</summary>
-    public TimeZoneInfo Zone => clock.LocalTimeZone;
+    public TimeZoneInfo Zone => _clock.LocalTimeZone;
 
     /// <summary>Unix seconds of the season start (realm midnight).</summary>
     public long StartTime => Unix(Start);
@@ -106,39 +106,39 @@ public sealed class SeasonService : IGameTicker
 
     /// <summary>The "everything open" policy; every server-day and season gate asks it.</summary>
     public OpenContentOptions OpenContent { get; }
-    public int SeasonId => seasonId;
-    public IReadOnlyDictionary<int, Season> History => history;
+    public int SeasonId => _seasonId;
+    public IReadOnlyDictionary<int, Season> History => _history;
 
-    public int PlayBook => playBook;
+    public int PlayBook => _playBook;
 
-    public Season Current() => Current(playBook);
+    public Season Current() => Current(_playBook);
 
-    private Season Current(int book) => new(seasonId, book, Start, Civil(
+    private Season Current(int book) => new(_seasonId, book, Start, Civil(
         Shared(book).StageTimeInfo.Values.Select(s => s.EndTime).DefaultIfEmpty(StartTime + SeasonLengthSeconds).Max(), Zone));
 
     /// <summary>Only playbook 101's stage semantics are qualified by this implementation.</summary>
-    public SeasonTimeInfoNotify Times() => Times(playBook);
+    public SeasonTimeInfoNotify Times() => Times(_playBook);
 
     private SeasonTimeInfoNotify Times(int book) => book == 101
-        ? (timing ??= new SeasonClock(data, Start, book, Zone).Build()).Clone() : new SeasonTimeInfoNotify();
+        ? (_timing ??= new SeasonClock(_data, Start, book, Zone).Build()).Clone() : new SeasonTimeInfoNotify();
 
-    public long StageId => StageAt(clock.GetUtcNow().ToUnixTimeSeconds(), playBook);
+    public long StageId => StageAt(_clock.GetUtcNow().ToUnixTimeSeconds(), _playBook);
 
     /// <summary>Intervals include their start and exclude their end (inferred boundary convention).</summary>
-    public long StageAt(long unixSeconds) => StageAt(unixSeconds, playBook);
+    public long StageAt(long unixSeconds) => StageAt(unixSeconds, _playBook);
 
     private long StageAt(long unixSeconds, int book) => Shared(book).StageTimeInfo.Values
         .FirstOrDefault(s => s.StartTime <= unixSeconds && unixSeconds < s.EndTime)?.StageId ?? 0;
 
     /// <summary>The playbooks the client has a MultiverseConfig row for.</summary>
-    public IEnumerable<int> PlayBooks => data.Table("MultiverseConfig").Values.Select(r => (int)GameData.Int(r, "_iID")).Order();
+    public IEnumerable<int> PlayBooks => _data.Table("MultiverseConfig").Values.Select(r => (int)GameData.Int(r, "_iID")).Order();
 
     /// <summary>GM: switch the live playbook (kept across restarts); players see it after their next login.</summary>
     public string SetPlayBook(int value)
     {
         if (!PlayBooks.Contains(value)) return $"No playbook {value}; the client knows {string.Join(", ", PlayBooks)}.";
-        playBook = value;
-        timing = null; lock (clocks) clocks.Clear();
+        _playBook = value;
+        _timing = null; lock (_clocks) _clocks.Clear();
         Set("playbook", value.ToString(CultureInfo.InvariantCulture));
         foreach (var changed in ScheduleChanged) changed();
         return $"Playbook {value} from the next login.";
@@ -147,16 +147,16 @@ public sealed class SeasonService : IGameTicker
     /// <summary>GM path: persist the clock setting before publishing it to active owners.</summary>
     public async Task<string> SetPlayBookAsync(int value)
     {
-        if (!loop.IsOnLoop) return await loop.InvokeAsync(() => SetPlayBookAsync(value));
-        using var scope = loop.Owners is { } owners
+        if (!_loop.IsOnLoop) return await _loop.InvokeAsync(() => SetPlayBookAsync(value));
+        using var scope = _loop.Owners is { } owners
             ? await owners.EnterAsync("season/set-playbook", [Ownership.ReservationKey.Realm]) : null;
         if (!PlayBooks.Contains(value)) return $"No playbook {value}; the client knows {string.Join(", ", PlayBooks)}.";
-        var transaction = accounts.NewTransaction();
+        var transaction = _accounts.NewTransaction();
         transaction.Add(new SeasonStateWritePlan("playbook", value.ToString(CultureInfo.InvariantCulture)));
-        await transaction.CommitAsync(accounts, "season/set-playbook", _ =>
+        await transaction.CommitAsync(_accounts, "season/set-playbook", _ =>
         {
-            playBook = value;
-            timing = null; lock (clocks) clocks.Clear();
+            _playBook = value;
+            _timing = null; lock (_clocks) _clocks.Clear();
             foreach (var changed in ScheduleChanged) changed();
         });
         return $"Playbook {value} from the next login.";
@@ -170,76 +170,76 @@ public sealed class SeasonService : IGameTicker
     public string AdvanceCycle(int book, DateTime start)
     {
         if (!PlayBooks.Contains(book)) return $"No playbook {book}.";
-        if (playBook != 101) return "Current playbook has no supported season clock/content.";
+        if (_playBook != 101) return "Current playbook has no supported season clock/content.";
         if (book != 101) return $"Playbook {book} has no supported season clock/content.";
-        if (start.TimeOfDay != TimeSpan.Zero || start <= Start || start > clock.GetLocalNow().Date)
+        if (start.TimeOfDay != TimeSpan.Zero || start <= Start || start > _clock.GetLocalNow().Date)
             return "New season start must be a past or current local midnight after the current start.";
         long breakTime = Times().SeasonBreakStartTime;
-        if (clock.GetUtcNow().ToUnixTimeSeconds() < breakTime)
+        if (_clock.GetUtcNow().ToUnixTimeSeconds() < breakTime)
             return "Current season has not reached its break.";
         if (Unix(start) < breakTime)
             return "New season start cannot precede the current season break.";
-        if (seasonId == int.MaxValue) return "Season ID exhausted.";
+        if (_seasonId == int.MaxValue) return "Season ID exhausted.";
         // The operator-supplied next start closes the otherwise open 101005 tail (inferred historical boundary).
         var previous = Current() with { End = start };
-        var nextHistory = new Dictionary<int, Season>(history) { [previous.Id] = previous };
-        var transaction = accounts.NewTransaction();
+        var nextHistory = new Dictionary<int, Season>(_history) { [previous.Id] = previous };
+        var transaction = _accounts.NewTransaction();
         transaction.Add(new SeasonStateWritePlan("season_history", JsonSerializer.Serialize(nextHistory)));
-        transaction.Add(new SeasonStateWritePlan("season_id", (seasonId + 1).ToString(CultureInfo.InvariantCulture)));
+        transaction.Add(new SeasonStateWritePlan("season_id", (_seasonId + 1).ToString(CultureInfo.InvariantCulture)));
         transaction.Add(new SeasonStateWritePlan("season_start", start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
         transaction.Add(new SeasonStateWritePlan("playbook", book.ToString(CultureInfo.InvariantCulture)));
-        transaction.Commit(accounts, "season/advance-cycle");
-        history.Clear();
-        foreach (var (id, value) in nextHistory) history[id] = value;
-        seasonId++;
-        playBook = book;
+        transaction.Commit(_accounts, "season/advance-cycle");
+        _history.Clear();
+        foreach (var (id, value) in nextHistory) _history[id] = value;
+        _seasonId++;
+        _playBook = book;
         Start = start;
-        timing = null; lock (clocks) clocks.Clear();
+        _timing = null; lock (_clocks) _clocks.Clear();
         foreach (var changed in ScheduleChanged) changed();
-        return $"Season {seasonId}, playbook {book}, from next login.";
+        return $"Season {_seasonId}, playbook {book}, from next login.";
     }
 
     /// <summary>GM path: publish a new epoch only after all four server-state parts commit.</summary>
     public async Task<string> AdvanceCycleAsync(int book, DateTime start)
     {
-        if (!loop.IsOnLoop) return await loop.InvokeAsync(() => AdvanceCycleAsync(book, start));
-        using var scope = loop.Owners is { } owners
+        if (!_loop.IsOnLoop) return await _loop.InvokeAsync(() => AdvanceCycleAsync(book, start));
+        using var scope = _loop.Owners is { } owners
             ? await owners.EnterAsync("season/advance-cycle", [Ownership.ReservationKey.Realm]) : null;
         if (!PlayBooks.Contains(book)) return $"No playbook {book}.";
-        if (playBook != 101) return "Current playbook has no supported season clock/content.";
+        if (_playBook != 101) return "Current playbook has no supported season clock/content.";
         if (book != 101) return $"Playbook {book} has no supported season clock/content.";
-        if (start.TimeOfDay != TimeSpan.Zero || start <= Start || start > clock.GetLocalNow().Date)
+        if (start.TimeOfDay != TimeSpan.Zero || start <= Start || start > _clock.GetLocalNow().Date)
             return "New season start must be a past or current local midnight after the current start.";
         long breakTime = Times().SeasonBreakStartTime;
-        if (clock.GetUtcNow().ToUnixTimeSeconds() < breakTime)
+        if (_clock.GetUtcNow().ToUnixTimeSeconds() < breakTime)
             return "Current season has not reached its break.";
         if (Unix(start) < breakTime)
             return "New season start cannot precede the current season break.";
-        if (seasonId == int.MaxValue) return "Season ID exhausted.";
+        if (_seasonId == int.MaxValue) return "Season ID exhausted.";
         var previous = Current() with { End = start };
-        var nextHistory = new Dictionary<int, Season>(history) { [previous.Id] = previous };
-        var transaction = accounts.NewTransaction();
+        var nextHistory = new Dictionary<int, Season>(_history) { [previous.Id] = previous };
+        var transaction = _accounts.NewTransaction();
         transaction.Add(new SeasonStateWritePlan("season_history", JsonSerializer.Serialize(nextHistory)));
-        transaction.Add(new SeasonStateWritePlan("season_id", (seasonId + 1).ToString(CultureInfo.InvariantCulture)));
+        transaction.Add(new SeasonStateWritePlan("season_id", (_seasonId + 1).ToString(CultureInfo.InvariantCulture)));
         transaction.Add(new SeasonStateWritePlan("season_start", start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
         transaction.Add(new SeasonStateWritePlan("playbook", book.ToString(CultureInfo.InvariantCulture)));
-        await transaction.CommitAsync(accounts, "season/advance-cycle", _ =>
+        await transaction.CommitAsync(_accounts, "season/advance-cycle", _ =>
         {
-            history.Clear();
-            foreach (var (id, value) in nextHistory) history[id] = value;
-            seasonId++;
-            playBook = book;
+            _history.Clear();
+            foreach (var (id, value) in nextHistory) _history[id] = value;
+            _seasonId++;
+            _playBook = book;
             Start = start;
-            timing = null; lock (clocks) clocks.Clear();
+            _timing = null; lock (_clocks) _clocks.Clear();
             foreach (var changed in ScheduleChanged) changed();
         });
-        return $"Season {seasonId}, playbook {book}, from next login.";
+        return $"Season {_seasonId}, playbook {book}, from next login.";
     }
 
-    public string Describe() => string.Create(CultureInfo.InvariantCulture, $"Season {seasonId}, playbook {playBook}, since {Start:yyyy-MM-dd}.");
+    public string Describe() => string.Create(CultureInfo.InvariantCulture, $"Season {_seasonId}, playbook {_playBook}, since {Start:yyyy-MM-dd}.");
 
     /// <summary>Capture the login's playbook before its first stat refresh; GM changes apply on the next login.</summary>
-    public void Load(GameSession session) => session.SeasonState = State(playBook);
+    public void Load(GameSession session) => session.SeasonState = State(_playBook);
 
     public async Task LoginAsync(GameSession session)
     {
@@ -249,7 +249,7 @@ public sealed class SeasonService : IGameTicker
         session.SeasonState = state;
     }
 
-    private SeasonState State(int book) => new() { SeasonId = seasonId, PlayBookId = book, StageId = StageAt(clock.GetUtcNow().ToUnixTimeSeconds(), book) };
+    private SeasonState State(int book) => new() { SeasonId = _seasonId, PlayBookId = book, StageId = StageAt(_clock.GetUtcNow().ToUnixTimeSeconds(), book) };
 
     private async Task SendClockAsync(GameSession session, SeasonState state)
     {
@@ -264,7 +264,7 @@ public sealed class SeasonService : IGameTicker
                 BreakTime = times.SeasonBreakStartTime, StageId = state.StageId,
             },
         };
-        foreach (var (id, previous) in history)
+        foreach (var (id, previous) in _history)
             info.History[id] = new SeasonInfo
             {
                 SeasonId = id, PlayBookId = previous.PlayBook, SeasonAreaId = 1,
@@ -281,7 +281,7 @@ public sealed class SeasonService : IGameTicker
         using var guard = await CharacterService.Lock(session);
         if (session.Role == null || session.SeasonState == null) return;
         var previous = session.SeasonState;
-        if (previous.SeasonId != seasonId) return; // Next login will migrate 5022 before exposing this cycle.
+        if (previous.SeasonId != _seasonId) return; // Next login will migrate 5022 before exposing this cycle.
         // Keep this login's playbook and continue its clock after a GM change to the next-login setting.
         var current = State((int)previous.PlayBookId);
         if (previous.Equals(current)) return;
@@ -291,29 +291,29 @@ public sealed class SeasonService : IGameTicker
     }
 
     /// <summary>Check wall-clock boundaries once a second on the existing game loop; no client request is required.</summary>
-    private long checkingBatch;
+    private long _checkingBatch;
     public void Tick(GameTime time)
     {
         // A batch whose operation was neither run nor discarded (an admission fault) cannot stall the clock for good.
-        if (checking && time.Now - checkingSince < TimeSpan.FromSeconds(10) || time.Now - lastTick < TimeSpan.FromSeconds(1)) return;
-        lastTick = time.Now;
+        if (_checking && time.Now - _checkingSince < TimeSpan.FromSeconds(10) || time.Now - _lastTick < TimeSpan.FromSeconds(1)) return;
+        _lastTick = time.Now;
         // C/D 16: only roles whose season state moved reconcile, each as its own role-owned operation. One Realm
         // operation for all sessions every second waited behind owned work for up to 16 s (S3).
-        var changed = sessions.All().Where(session => session.Role != null && session.SeasonState is { } state
-            && state.SeasonId == seasonId && !state.Equals(State((int)state.PlayBookId))).ToArray();
+        var changed = _sessions.All().Where(session => session.Role != null && session.SeasonState is { } state
+            && state.SeasonId == _seasonId && !state.Equals(State((int)state.PlayBookId))).ToArray();
         if (changed.Length == 0) { TickBatchCompletedForTest?.Invoke(); return; }
-        checking = true;
-        checkingSince = time.Now;
+        _checking = true;
+        _checkingSince = time.Now;
         int remaining = changed.Length;
         // Only the current batch clears the flag: a batch overtaken by the 10 s fallback must not end its successor.
-        long batch = ++checkingBatch;
-        void Done() { if (--remaining == 0 && batch == checkingBatch) { checking = false; TickBatchCompletedForTest?.Invoke(); } }
+        long batch = ++_checkingBatch;
+        void Done() { if (--remaining == 0 && batch == _checkingBatch) { _checking = false; TickBatchCompletedForTest?.Invoke(); } }
         foreach (var session in changed)
-            loop.PostOwned(session, async () =>
+            _loop.PostOwned(session, async () =>
             {
                 try { await ReconcileAsync(session); }
                 catch (Exception e) when (e is IOException or ObjectDisposedException or System.Net.Sockets.SocketException)
-                { log.LogDebug(e, "Season transition skipped for closed session"); }
+                { _log.LogDebug(e, "Season transition skipped for closed session"); }
                 finally { Done(); }
             }, "season reconcile", discarded: Done);
     }
@@ -321,12 +321,12 @@ public sealed class SeasonService : IGameTicker
     private DateTime FirstStart()
     {
         if (DateTime.TryParseExact(Get("season_start"), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var saved)) return saved;
-        var today = clock.GetLocalNow().Date;
+        var today = _clock.GetLocalNow().Date;
         Set("season_start", today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
         return today;
     }
 
-    private string? Get(string key) => accounts.ReadSync<string?>(new SeasonStateReadPlan(key));
+    private string? Get(string key) => _accounts.ReadSync<string?>(new SeasonStateReadPlan(key));
 
-    private void Set(string key, string value) => accounts.WriteLegacySync<int>(new SeasonStateWritePlan(key, value));
+    private void Set(string key, string value) => _accounts.WriteLegacySync<int>(new SeasonStateWritePlan(key, value));
 }

@@ -14,44 +14,44 @@ namespace Ro3Emu.Tests;
 
 public sealed class GuildCampfireTests : IAsyncLifetime
 {
-    private readonly string dir = Path.Combine(Path.GetTempPath(), "ro3emu-campfire-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ro3emu-campfire-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(8);
-    private readonly TestClock clock = new();
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly TestClock _clock = new();
+    private WebApplication _app = null!;
+    private string _http = "";
 
     private sealed class TestClock : TimeProvider
     {
-        private long seconds = new DateTimeOffset(2026, 10, 8, 19, 59, 50, TimeSpan.Zero).ToUnixTimeSeconds();
-        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref seconds));
+        private long _seconds = new DateTimeOffset(2026, 10, 8, 19, 59, 50, TimeSpan.Zero).ToUnixTimeSeconds();
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref _seconds));
         public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
-        public void Advance(int count) => Interlocked.Add(ref seconds, count);
+        public void Advance(int count) => Interlocked.Add(ref _seconds, count);
     }
 
     public async Task InitializeAsync()
     {
         var (web, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _dir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game;
             o.SeasonStart = "2026-10-05"; o.PlayBook = 101;
-        }, clock);
-        SureHitRolls.Install(app); // lethal hits are prepared; a FLEE miss would only be noise
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{web}";
+        }, _clock);
+        SureHitRolls.Install(_app); // lethal hits are prepared; a FLEE miss would only be noise
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{web}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dir, true); } catch (IOException) { }
+        try { Directory.Delete(_dir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         long role = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
         await bot.EnterWorldAsync(role);
@@ -68,15 +68,15 @@ public sealed class GuildCampfireTests : IAsyncLifetime
     private async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
-    private GameSession Session(BotClient bot) => app.Services.GetRequiredService<SessionRegistry>()
+    private GameSession Session(BotClient bot) => _app.Services.GetRequiredService<SessionRegistry>()
         .All().Single(s => s.Account == bot.Account && s.Role != null);
 
     private (int Receipts, long Cost, int Reason) FuelLedger(long role)
     {
-        using var db = app.Services.GetRequiredService<Ro3Emu.Server.Accounts.AccountStore>().Open();
+        using var db = _app.Services.GetRequiredService<Ro3Emu.Server.Accounts.AccountStore>().Open();
         using var cmd = db.CreateCommand();
         cmd.CommandText = "SELECT COUNT(*) FROM operation_receipt WHERE command_kind='guild-campfire-fuel' AND actor_role=$role";
         cmd.Parameters.AddWithValue("$role", role);
@@ -89,7 +89,7 @@ public sealed class GuildCampfireTests : IAsyncLifetime
         return (receipts, row.GetInt64(0), row.GetInt32(1));
     }
 
-    private Task Move(BotClient bot, Vec3 position) => app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+    private Task Move(BotClient bot, Vec3 position) => _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
     {
         Session(bot).Position = position.Clone();
         return Task.CompletedTask;
@@ -112,7 +112,7 @@ public sealed class GuildCampfireTests : IAsyncLifetime
             Name = "Campers", Icon = new GuildHeadIcon { BackgroundType = 100101, IconType = 200101 },
         });
         Assert.Equal(0, (await Next(alice, GuildService.Create, GuildCreateResp.Parser)).Result);
-        await QuestProbe.AcceptAsync(app, http, "alice", 1602000); // [106018,1] "Guild Event - Campfire Quest"
+        await QuestProbe.AcceptAsync(_app, _http, "alice", 1602000); // [106018,1] "Guild Event - Campfire Quest"
         // The guild home itself is always open (GuildHomeService); before 20:00 it shows no event content.
         await alice.SendGameAsync(DungeonService.Enter, new EnterDungeonReq { SceneEntry = GuildCampfireService.Dungeon });
         Assert.Equal(0, (await Next(alice, DungeonService.Enter, EnterDungeonRsp.Parser)).Result);
@@ -126,16 +126,16 @@ public sealed class GuildCampfireTests : IAsyncLifetime
         Assert.DoesNotContain(alice.Inbox.Snapshot(), e => e.IsGame(GuildCampfireService.Stage)
             || e.IsGame(GameAoiSink.SyncAoiView) && AoIViewChangeData.Parser.ParseFrom(e.Body).Bases.Any(b => b.EntityTemplateID == 7020004));
 
-        Assert.Equal(0, (await QuestProbe.ReadAsync(app, "alice", 1602000))!.CompleteNum[0]); // no event yet
+        Assert.Equal(0, (await QuestProbe.ReadAsync(_app, "alice", 1602000))!.CompleteNum[0]); // no event yet
         // 20:00: the member already inside gets the fire, the seeds and stage 1.
-        clock.Advance(20);
+        _clock.Advance(20);
         var ao = await Next(alice, GameAoiSink.SyncAoiView, AoIViewChangeData.Parser,
             r => r.Bases.Any(b => b.EntityTemplateID == 7020004));
         var fire = ao.Bases.Single(b => b.EntityTemplateID == 7020004);
         var seed = ao.Bases.First(b => b.EntityTemplateID == 7020001);
         Assert.Equal(1, (await Next(alice, GuildCampfireService.Stage, GuildCampFireStageInfo.Parser)).NowStage);
         // Present at the bonfire as the event starts: quest target 106018 is met.
-        await QuestProbe.DoneAsync(app, "alice", 1602000); // delivery waits on its action 115
+        await QuestProbe.DoneAsync(_app, "alice", 1602000); // delivery waits on its action 115
 
         await alice.SendGameAsync(GuildCampfireService.Info, new GetGuildCampFireReq());
         var info = await Next(alice, GuildCampfireService.Info, GetGuildCampFireRsp.Parser);
@@ -173,7 +173,7 @@ public sealed class GuildCampfireTests : IAsyncLifetime
             (await Next(alice, GuildCampfireService.Accelerant, GuildCampFireAddAccelerantRsp.Parser)).Result);
         Assert.Equal((1, -1L, (int)EconomyReason.GuildActivityCost), FuelLedger((long)alice.Self!.Uuid));
 
-        clock.Advance(30);
+        _clock.Advance(30);
         Assert.Equal(2, (await Next(alice, GuildCampfireService.Stage, GuildCampFireStageInfo.Parser,
             r => r.NowStage == 2)).NowStage);
         var lucky = await Next(alice, GuildCampfireService.Lucky, GuildCampFireLuckyPlayerNotify.Parser);
@@ -182,16 +182,16 @@ public sealed class GuildCampfireTests : IAsyncLifetime
         MonsterUnit? fruit = null;
         for (int i = 0; i < 100 && fruit == null; i++)
         {
-            await app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+            await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
             {
-                fruit = app.Services.GetRequiredService<World>().AllUnits().OfType<MonsterUnit>()
+                fruit = _app.Services.GetRequiredService<World>().AllUnits().OfType<MonsterUnit>()
                     .FirstOrDefault(m => m.InstanceId == change.SceneID && m.Template.NpcId == 7020018 && !m.Dead);
                 return Task.CompletedTask;
             });
             if (fruit == null) await Task.Delay(20);
         }
         Assert.NotNull(fruit);
-        await app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
         {
             fruit!.Hp = 1;
             return Task.CompletedTask;
@@ -205,22 +205,22 @@ public sealed class GuildCampfireTests : IAsyncLifetime
         Assert.Single(nextFruit.Infos);
         Assert.True(nextFruit.Infos[0].NpcGuid > 0);
 
-        clock.Advance(860); // 20:15, configured client boss stage 4
+        _clock.Advance(860); // 20:15, configured client boss stage 4
         Assert.Equal(4, (await Next(alice, GuildCampfireService.Stage, GuildCampFireStageInfo.Parser,
             r => r.NowStage == 4)).NowStage);
         MonsterUnit? boss = null;
         for (int i = 0; i < 100 && boss == null; i++)
         {
-            await app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+            await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
             {
-                boss = app.Services.GetRequiredService<World>().AllUnits().OfType<MonsterUnit>()
+                boss = _app.Services.GetRequiredService<World>().AllUnits().OfType<MonsterUnit>()
                     .FirstOrDefault(m => m.InstanceId == change.SceneID && m.Template.NpcId == 7020012 && !m.Dead);
                 return Task.CompletedTask;
             });
             if (boss == null) await Task.Delay(20);
         }
         Assert.NotNull(boss);
-        await app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
         {
             boss!.Hp = 1;
             return Task.CompletedTask;
@@ -238,14 +238,14 @@ public sealed class GuildCampfireTests : IAsyncLifetime
         await using var again = await InWorld("Alice", create: false);
         await again.SendGameAsync(GuildCampfireService.PlayerInfo, new NullArg());
         Assert.Equal(1, (await Next(again, GuildCampfireService.PlayerInfo, CampFirePlayerInfo.Parser)).AddSeedCount);
-        clock.Advance(600);
+        _clock.Advance(600);
         // 20:25, after the event: the home is still enterable, and a room that never saw the event gets no Finish.
         await again.SendGameAsync(DungeonService.Enter, new EnterDungeonReq { SceneEntry = GuildCampfireService.Dungeon });
         Assert.Equal(0, (await Next(again, DungeonService.Enter, EnterDungeonRsp.Parser)).Result);
         await Next(again, MsgId.SwitchSceneLine, SwitchSceneLineResp.Parser, r => r.SceneEntry == GuildCampfireService.Dungeon);
         await again.SendGameAsync(MsgId.SceneLoaded, new SceneLoadedReq { SceneId = GuildCampfireService.Dungeon });
         Assert.Equal(0, (await Next(again, MsgId.SceneLoaded, SceneLoadedResp.Parser)).Result);
-        clock.Advance(2);
+        _clock.Advance(2);
         await Task.Delay(200);
         Assert.DoesNotContain(again.Inbox.Snapshot(), e => e.IsGame(GuildCampfireService.Finish));
     }
@@ -259,7 +259,7 @@ public sealed class GuildCampfireTests : IAsyncLifetime
         await alice.SendGameAsync(GuildService.Create, new GuildCreateReq
         { Name = "Campers", Icon = new GuildHeadIcon { BackgroundType = 100101, IconType = 200101 } });
         Assert.Equal(0, (await Next(alice, GuildService.Create, GuildCreateResp.Parser)).Result);
-        clock.Advance(20);
+        _clock.Advance(20);
         await alice.SendGameAsync(DungeonService.Enter, new EnterDungeonReq { SceneEntry = GuildCampfireService.Dungeon });
         Assert.Equal(0, (await Next(alice, DungeonService.Enter, EnterDungeonRsp.Parser)).Result);
         _ = await Next(alice, MsgId.SwitchSceneLine, SwitchSceneLineResp.Parser,
@@ -272,11 +272,11 @@ public sealed class GuildCampfireTests : IAsyncLifetime
         await Move(alice, fire.MovementInfo.Pos);
         await Gm(alice, "!item 1201031 1");
         long role = (long)alice.Self!.Uuid;
-        Assert.Equal(1, app.Services.GetRequiredService<CharacterService>().CountOf(Session(alice), 1201031));
+        Assert.Equal(1, _app.Services.GetRequiredService<CharacterService>().CountOf(Session(alice), 1201031));
 
-        var accounts = app.Services.GetRequiredService<AccountStore>();
-        var owners = app.Services.GetRequiredService<OwnerRegistry>();
-        var loop = app.Services.GetRequiredService<GameLoop>();
+        var accounts = _app.Services.GetRequiredService<AccountStore>();
+        var owners = _app.Services.GetRequiredService<OwnerRegistry>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var gmDeferred = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -294,13 +294,13 @@ public sealed class GuildCampfireTests : IAsyncLifetime
             owners.DeferredForTest = origin => { if (origin == "GM") gmDeferred.TrySetResult(); };
             var fuel = new GuildCampFireAddAccelerantReq
             { CampFireId = (long)fire.Uuid, AcceleantCfgId = 1 };
-            fuelTask = loop.InvokeAsync(() => app.Services.GetRequiredService<GuildCampfireService>()
+            fuelTask = loop.InvokeAsync(() => _app.Services.GetRequiredService<GuildCampfireService>()
                 .AccelerantAsync(Session(alice), fuel));
             await entered.Task.WaitAsync(Wait);
             Assert.Equal(0, FuelLedger(role).Receipts);
-            Assert.Equal(1, app.Services.GetRequiredService<CharacterService>().CountOf(Session(alice), 1201031));
+            Assert.Equal(1, _app.Services.GetRequiredService<CharacterService>().CountOf(Session(alice), 1201031));
             // Bob's independent role-owned write can commit while Alice's fuel is parked.
-            string letter = await app.Services.GetRequiredService<MailService>()
+            string letter = await _app.Services.GetRequiredService<MailService>()
                 .SendRawAsync((long)bob.Self!.Uuid, "Unrelated", "While fuel is held").WaitAsync(Wait);
             Assert.NotEmpty(letter);
             gmTask = Gm(alice, "!item 1201031 1");
@@ -313,7 +313,7 @@ public sealed class GuildCampfireTests : IAsyncLifetime
                 GuildCampFireAddAccelerantRsp.Parser)).Result);
             await gmTask.WaitAsync(Wait);
             Assert.Equal((1, -1L, (int)EconomyReason.GuildActivityCost), FuelLedger(role));
-            Assert.Equal(1, app.Services.GetRequiredService<CharacterService>().CountOf(Session(alice), 1201031));
+            Assert.Equal(1, _app.Services.GetRequiredService<CharacterService>().CountOf(Session(alice), 1201031));
         }
         finally
         {

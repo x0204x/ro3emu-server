@@ -65,23 +65,23 @@ public sealed partial class AdventureGroupService : IGameTicker
     internal static readonly int[] SaplingNpcs = [200032, 200033, 200034, 200035, 200036, 200037, 200038, 200039, 200040, 200041];
     internal const int OathNpc = 200042;
 
-    private readonly GameData data;
-    private readonly AdventureGroupStore store;
-    private readonly RoleStore roles;
-    private readonly FriendStore friends;
-    private readonly SessionRegistry sessions;
-    private readonly CharacterService character;
-    private readonly FunctionService functions;
-    private readonly AwardService awards;
-    private readonly TaskService tasks;
-    private readonly DailyActivityService daily;
-    private readonly TeamService teams;
-    private readonly InstanceService instances;
-    private readonly SceneService scene;
-    private readonly GameLoop loop;
-    private readonly TimeProvider clock;
-    private readonly IOptions<ServerOptions> options;
-    private readonly ILogger<AdventureGroupService> log;
+    private readonly GameData _data;
+    private readonly AdventureGroupStore _store;
+    private readonly RoleStore _roles;
+    private readonly FriendStore _friends;
+    private readonly SessionRegistry _sessions;
+    private readonly CharacterService _character;
+    private readonly FunctionService _functions;
+    private readonly AwardService _awards;
+    private readonly TaskService _tasks;
+    private readonly DailyActivityService _daily;
+    private readonly TeamService _teams;
+    private readonly InstanceService _instances;
+    private readonly SceneService _scene;
+    private readonly GameLoop _loop;
+    private readonly TimeProvider _clock;
+    private readonly IOptions<ServerOptions> _options;
+    private readonly ILogger<AdventureGroupService> _log;
 
     public AdventureGroupService(GameData data, AdventureGroupStore store, RoleStore roles, FriendStore friends,
         SessionRegistry sessions, CharacterService character, FunctionService functions, AwardService awards,
@@ -89,10 +89,10 @@ public sealed partial class AdventureGroupService : IGameTicker
         Maps.WorldData world, GmCommands gm, GameLoop loop, TimeProvider clock, IOptions<ServerOptions> options,
         ILogger<AdventureGroupService> log)
     {
-        this.data = data; this.store = store; this.roles = roles; this.friends = friends; this.sessions = sessions;
-        this.character = character; this.functions = functions; this.awards = awards; this.tasks = tasks;
-        this.daily = daily; this.teams = teams; this.instances = instances; this.scene = scene; this.loop = loop;
-        this.clock = clock; this.options = options; this.log = log;
+        this._data = data; this._store = store; this._roles = roles; this._friends = friends; this._sessions = sessions;
+        this._character = character; this._functions = functions; this._awards = awards; this._tasks = tasks;
+        this._daily = daily; this._teams = teams; this._instances = instances; this._scene = scene; this._loop = loop;
+        this._clock = clock; this._options = options; this._log = log;
         character.RegisterItemAction(UnlockBackgroundAction, UseBackgroundItemAsync, keys: _ => [Ownership.ReservationKey.Realm]);
         // The creation instance's saplings and mentor: scene-editor monster points 26..36 of sc_prontera_001_dg02 carry
         // npcId 0 (HLP:70-97 tSaplingToMonsterAreaMap / iDungeonOathNpc), so the server places them.
@@ -106,7 +106,7 @@ public sealed partial class AdventureGroupService : IGameTicker
 
     // ---------------------------------------------------------------- config
 
-    private JsonElement? Param(string key) => data.Table("PublicParamConfig").TryGetValue(key, out var value) ? value : null;
+    private JsonElement? Param(string key) => _data.Table("PublicParamConfig").TryGetValue(key, out var value) ? value : null;
     private long Number(string key, long fallback) => Param(key) is { } v && GameData.Number(v) is { } n ? (long)n : fallback;
     private (long Min, long Max) Range(string key, long min, long max) =>
         Param(key) is { ValueKind: JsonValueKind.Array } v && v.GetArrayLength() >= 2
@@ -132,7 +132,7 @@ public sealed partial class AdventureGroupService : IGameTicker
     private SortedDictionary<int, (long Num, long Award, int Convene)> Levels()
     {
         var levels = new SortedDictionary<int, (long, long, int)>();
-        foreach (var row in data.Table("AdventureGroupLevelAwardConfig").Values)
+        foreach (var row in _data.Table("AdventureGroupLevelAwardConfig").Values)
         {
             int level = (int)GameData.Int(row, "_iLevel");
             if (level > 0) levels[level] = (GameData.Int(row, "_iNum"), GameData.Int(row, "_iLevelAward"), (int)GameData.Int(row, "_iConveneNum"));
@@ -141,21 +141,21 @@ public sealed partial class AdventureGroupService : IGameTicker
     }
 
     private bool CardUnlocked(AdventureGroupStore.State g, int card) =>
-        data.Row("AdventureGroupCardConfig", card) is { } row
+        _data.Row("AdventureGroupCardConfig", card) is { } row
         && (GameData.Int(row, "_iDefaultUnlock") == 1 || g.AvailableBackgrounds.Contains(card));
 
-    private bool DefaultCard(int card) => data.Row("AdventureGroupCardConfig", card) is { } row && GameData.Int(row, "_iDefaultUnlock") == 1;
+    private bool DefaultCard(int card) => _data.Row("AdventureGroupCardConfig", card) is { } row && GameData.Int(row, "_iDefaultUnlock") == 1;
 
     // ---------------------------------------------------------------- time
 
-    private long Now => clock.GetUtcNow().ToUnixTimeSeconds();
+    private long Now => _clock.GetUtcNow().ToUnixTimeSeconds();
 
     /// <summary>Unix seconds of today's 05:00 local boundary (the daily reset of the To-Do system, inferred here).</summary>
     private long DayStart
     {
         get
         {
-            var local = clock.GetLocalNow();
+            var local = _clock.GetLocalNow();
             var day = local.AddHours(-5).Date.AddHours(5);
             return new DateTimeOffset(day, local.Offset).ToUnixTimeSeconds();
         }
@@ -165,7 +165,7 @@ public sealed partial class AdventureGroupService : IGameTicker
     {
         get
         {
-            var local = clock.GetLocalNow();
+            var local = _clock.GetLocalNow();
             var day = local.AddHours(-5).Date;
             int sinceMonday = ((int)day.DayOfWeek + 6) % 7;
             return new DateTimeOffset(day.AddDays(-sinceMonday).AddHours(5), local.Offset).ToUnixTimeSeconds();
@@ -186,12 +186,12 @@ public sealed partial class AdventureGroupService : IGameTicker
 
     // ---------------------------------------------------------------- sessions
 
-    private GameSession? Online(long id) => sessions.All().FirstOrDefault(s => s.Role?.Id == id && s.Progress != null);
-    private AdventureGroupStore.State? Own(GameSession s) => s.Role == null ? null : store.ForRole(s.Role.Id);
-    private bool Open(GameSession s) => functions.IsOpen(s, Function);
+    private GameSession? Online(long id) => _sessions.All().FirstOrDefault(s => s.Role?.Id == id && s.Progress != null);
+    private AdventureGroupStore.State? Own(GameSession s) => s.Role == null ? null : _store.ForRole(s.Role.Id);
+    private bool Open(GameSession s) => _functions.IsOpen(s, Function);
     private static bool Normal(AdventureGroupStore.State? g) => g?.Status == StatusNormal;
 
-    private bool Banned(string text) => options.Value.GuildBlockedWords.Any(word =>
+    private bool Banned(string text) => _options.Value.GuildBlockedWords.Any(word =>
         !string.IsNullOrWhiteSpace(word) && text.Contains(word, StringComparison.OrdinalIgnoreCase));
 
     private static int TextLength(string text) => new System.Globalization.StringInfo(text).LengthInTextElements;
@@ -203,7 +203,7 @@ public sealed partial class AdventureGroupService : IGameTicker
         int length = TextLength(name);
         if (length < min || length > max || name != name.Trim()) return ErrNameInvalid;
         if (Banned(name)) return ErrBanned;
-        return store.NameExists(name, except) ? ErrNameTaken : 0;
+        return _store.NameExists(name, except) ? ErrNameTaken : 0;
     }
 
     private int CheckAnnounce(string announce)
@@ -246,8 +246,8 @@ public sealed partial class AdventureGroupService : IGameTicker
     {
         var info = new PlayerBaseInfo
         {
-            PlayerID = m.RoleId, EnterTime = (int)m.EnterTime, BornAreaId = (int)options.Value.ClusterId,
-            OffTime = Online(m.RoleId) != null ? 0 : (int)(roles.Get(m.RoleId)?.LastLoginTime ?? 0),
+            PlayerID = m.RoleId, EnterTime = (int)m.EnterTime, BornAreaId = (int)_options.Value.ClusterId,
+            OffTime = Online(m.RoleId) != null ? 0 : (int)(_roles.Get(m.RoleId)?.LastLoginTime ?? 0),
             Nickname = m.Nickname, WateringCount = TodayWatering(m), UserName = m.Name,
         };
         if (m.Declaration is { } d)
@@ -261,8 +261,8 @@ public sealed partial class AdventureGroupService : IGameTicker
 
     private PlayerBaseInfo ApplicantInfo(AdventureGroupStore.Applicant a) => new()
     {
-        PlayerID = a.RoleId, EnterTime = (int)a.Time, BornAreaId = (int)options.Value.ClusterId, UserName = a.Name,
-        OffTime = Online(a.RoleId) != null ? 0 : (int)(roles.Get(a.RoleId)?.LastLoginTime ?? 0),
+        PlayerID = a.RoleId, EnterTime = (int)a.Time, BornAreaId = (int)_options.Value.ClusterId, UserName = a.Name,
+        OffTime = Online(a.RoleId) != null ? 0 : (int)(_roles.Get(a.RoleId)?.LastLoginTime ?? 0),
     };
 
     /// <summary>memberData[1] is read as the owner (Assemble_ConfirmWidget:131, HomePanel:951): owner first.</summary>
@@ -289,7 +289,7 @@ public sealed partial class AdventureGroupService : IGameTicker
     private DBAdventureGroupRelationData Personal(GameSession s)
     {
         if (s.AdventureGroupRole is { } loaded) return loaded;
-        var bytes = roles.LoadAdventureGroup(s.Role!.Id);
+        var bytes = _roles.LoadAdventureGroup(s.Role!.Id);
         s.AdventureGroupRole = bytes is { Length: > 0 } ? DBAdventureGroupRelationData.Parser.ParseFrom(bytes) : new DBAdventureGroupRelationData();
         return s.AdventureGroupRole;
     }
@@ -315,9 +315,9 @@ public sealed partial class AdventureGroupService : IGameTicker
     /// <summary>Persist the role's own values, then publish them (a plain role blob write: no goods move).</summary>
     private async Task SavePersonalAsync(GameSession s, DBAdventureGroupRelationData next)
     {
-        var transaction = roles.NewTransaction();
+        var transaction = _roles.NewTransaction();
         transaction.RoleBlob(s.Role!.Id, "adventure_group", next.ToByteArray());
-        await roles.CommitAsync(transaction, "advguild/personal", _ => s.AdventureGroupRole = next);
+        await _roles.CommitAsync(transaction, "advguild/personal", _ => s.AdventureGroupRole = next);
     }
 
     // ---------------------------------------------------------------- pushes
@@ -365,18 +365,18 @@ public sealed partial class AdventureGroupService : IGameTicker
     private async Task<bool> SaveAsync(AdventureGroupStore.State g, Action<Accounts.Persistence.RoleItemPlanBuilder>? also = null)
     {
         g.LastUpdateTime = Now;
-        var transaction = roles.NewTransaction();
-        store.EnlistSave(g, transaction);
+        var transaction = _roles.NewTransaction();
+        _store.EnlistSave(g, transaction);
         also?.Invoke(transaction);
-        try { await roles.CommitAsync(transaction, "advguild/save"); return true; }
+        try { await _roles.CommitAsync(transaction, "advguild/save"); return true; }
         catch (Exception e) when (AdventureGroupStore.IsConflict(e)) { return false; }
     }
 
     private async Task<bool> DeleteAsync(AdventureGroupStore.State g)
     {
-        var transaction = roles.NewTransaction();
-        store.EnlistDelete(g, transaction);
-        try { await roles.CommitAsync(transaction, "advguild/delete"); return true; }
+        var transaction = _roles.NewTransaction();
+        _store.EnlistDelete(g, transaction);
+        try { await _roles.CommitAsync(transaction, "advguild/delete"); return true; }
         catch (Exception e) when (AdventureGroupStore.IsConflict(e)) { return false; }
     }
 
@@ -408,11 +408,11 @@ public sealed partial class AdventureGroupService : IGameTicker
     /// Adventure Party's level").</summary>
     private void OnTaskDelivered(GameSession s, long taskId, AwardPlan plan)
     {
-        if (s.Role == null || tasks.TypeOf(taskId) != GroupQuestType) return;
+        if (s.Role == null || _tasks.TypeOf(taskId) != GroupQuestType) return;
         long amount = plan.Grants.Where(g => g.Entry == BondPoints).Sum(g => (long)g.Count);
         if (amount <= 0) return;
         long role = s.Role.Id;
-        loop.PostLegacy(() => AddExpAsync(role, amount));
+        _loop.PostLegacy(() => AddExpAsync(role, amount));
     }
 
     /// <summary>enum_TaskType.AdventureGroup (Lua_GameDefine; HLP:1659-1697 GetTrackingTasks).</summary>
@@ -429,7 +429,7 @@ public sealed partial class AdventureGroupService : IGameTicker
 
     public Task DetailAsync(GameSession s, GetAdventureGroupDetailDataReq req)
     {
-        var g = store.Get(req.LastAdventureGroupId);
+        var g = _store.Get(req.LastAdventureGroupId);
         var resp = new GetAdventureGroupDetailDataRes { Result = g == null ? ErrNoGroup : 0 };
         if (g != null) resp.Data = GroupData(g, s.Role?.Id ?? 0);
         return s.SendGameAsync(Detail, resp);
@@ -451,7 +451,7 @@ public sealed partial class AdventureGroupService : IGameTicker
     public Task SaplingDataAsync(GameSession s, GetSaplingDataReq req)
     {
         var resp = new GetSaplingDataRes();
-        resp.SaplingDataList.Add(store.List().Where(g => g.SaplingId != 0 && g.SaplingId == req.SaplingId && g.Status != StatusHelper)
+        resp.SaplingDataList.Add(_store.List().Where(g => g.SaplingId != 0 && g.SaplingId == req.SaplingId && g.Status != StatusHelper)
             .OrderByDescending(g => g.SaplingWatering).ThenBy(g => g.Id)
             .Select(g => new AdventureGroupSaplingData
             {
@@ -482,7 +482,7 @@ public sealed partial class AdventureGroupService : IGameTicker
     public Task HelperListAsync(GameSession s, PullHelperAdventureGroupListReq req)
     {
         long self = s.Role!.Id;
-        var all = store.List();
+        var all = _store.List();
         var matches = all.Where(g => HelperLive(g) && Matches(g, req.SearchName, req.ConditionJoinData)).ToList();
         var resp = new PullHelperAdventureGroupListRes
         {
@@ -498,7 +498,7 @@ public sealed partial class AdventureGroupService : IGameTicker
     public Task NormalListAsync(GameSession s, PullAdventureGroupReq req)
     {
         long self = s.Role!.Id;
-        var matches = store.List().Where(g => g.Status == StatusNormal && g.Members.Count < MemberLimit
+        var matches = _store.List().Where(g => g.Status == StatusNormal && g.Members.Count < MemberLimit
             && Matches(g, req.SearchName, req.ConditionJoinData)).ToList();
         var resp = new PullAdventureGroupRes
         {
@@ -511,7 +511,7 @@ public sealed partial class AdventureGroupService : IGameTicker
 
     public Task HelperApplicantsAsync(GameSession s, PullHelperAdventureGroupApplyerReq req)
     {
-        var g = store.Get(req.AdventureGroupId);
+        var g = _store.Get(req.AdventureGroupId);
         int code = g == null ? ErrNoGroup : g.Owner != s.Role!.Id ? ErrPermission : 0;
         var resp = new PullHelperAdventureGroupApplyerRes { Result = code, AdventureGroupId = req.AdventureGroupId };
         if (code == 0) resp.Applyer.Add(g!.Applications.Values.OrderBy(a => a.Time).Select(ApplicantInfo));

@@ -25,7 +25,7 @@ public sealed partial class AuctionService(AuctionStore store, RoleStore roles, 
         DungeonChanged = 82013, BatchBid = 82014, HasAuto = 82015, Resume = 82016, PreStack = 82017,
         BatchCancel = 82018, Count = 82019, Reddot = 82020;
 
-    private readonly ConcurrentDictionary<long, byte> pendingReady = new();
+    private readonly ConcurrentDictionary<long, byte> _pendingReady = new();
     internal Func<Task>? BeforeNoticeForTest { get; set; }
     private long Now => clock.GetUtcNow().ToUnixTimeSeconds();
     private int RecordLimit => (int)Math.Clamp(Param("AuctionRecordLimit", 50), 1, 500);
@@ -74,7 +74,7 @@ public sealed partial class AuctionService(AuctionStore store, RoleStore roles, 
     {
         try
         {
-            foreach (long id in pendingReady.Keys)
+            foreach (long id in _pendingReady.Keys)
             {
                 try { await MarkDungeonRunReadyAsync(id); }
                 catch (Exception e) { log.LogWarning(e, "Dungeon auction ready marker retry deferred for {Run}", id); }
@@ -134,12 +134,12 @@ public sealed partial class AuctionService(AuctionStore store, RoleStore roles, 
     {
         // This in-memory handoff distinguishes a completed live producer from a still-arriving participant journal.
         // A failed DB Ready write retries in Sweep; boot promotes only orphaned journals after producers are gone.
-        pendingReady.TryAdd(runId, 0);
+        _pendingReady.TryAdd(runId, 0);
         var snapshot = store.GetRunSnapshot(runId);
         var run = snapshot.Run;
         if (run == null || run.Finalized || run.Ready)
         {
-            pendingReady.TryRemove(runId, out _);
+            _pendingReady.TryRemove(runId, out _);
             return;
         }
         run.Ready = true;
@@ -148,19 +148,19 @@ public sealed partial class AuctionService(AuctionStore store, RoleStore roles, 
         builder.WithEscrowEconomy(AuctionIntent("auction/run-ready")
             .Evidence(new { RunId = runId, Ready = true }));
         roles.Commit(builder, "auction/run-ready");
-        pendingReady.TryRemove(runId, out _);
+        _pendingReady.TryRemove(runId, out _);
     }
 
     public async Task MarkDungeonRunReadyAsync(long runId)
     {
         // Record the producer handoff before waiting for the durable-write reservation so a
         // later sweep can retry it if the original continuation is interrupted.
-        pendingReady.TryAdd(runId, 0);
+        _pendingReady.TryAdd(runId, 0);
         using var scope = await EnterAuctionAsync("auction/run-ready", () =>
             [Ownership.ReservationKey.Entity("auction_run", runId.ToString(System.Globalization.CultureInfo.InvariantCulture))]);
         var snapshot = store.GetRunSnapshot(runId);
         var run = snapshot.Run;
-        if (run == null || run.Finalized || run.Ready) { pendingReady.TryRemove(runId, out _); return; }
+        if (run == null || run.Finalized || run.Ready) { _pendingReady.TryRemove(runId, out _); return; }
         run.Ready = true;
         var builder = roles.NewTransaction();
         store.EnlistRunSave(run, snapshot.Raw, builder);
@@ -168,7 +168,7 @@ public sealed partial class AuctionService(AuctionStore store, RoleStore roles, 
             .Evidence(new { RunId = runId, Ready = true }));
         RequireScope(scope, builder);
         await roles.CommitAsync(builder, "auction/run-ready");
-        pendingReady.TryRemove(runId, out _);
+        _pendingReady.TryRemove(runId, out _);
     }
 
     public async Task FinalizeDungeonRunAsync(long runId)

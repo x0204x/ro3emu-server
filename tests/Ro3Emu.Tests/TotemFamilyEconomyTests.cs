@@ -16,37 +16,37 @@ namespace Ro3Emu.Tests;
 /// <summary>Neutral setup/down and bound instance transformation retain one covered source each.</summary>
 public sealed class TotemFamilyEconomyTests : IAsyncLifetime
 {
-    private readonly string directory = Path.Combine(Path.GetTempPath(), "ro3-totem-family-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), "ro3-totem-family-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "";
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private GameSession Session => Service<SessionRegistry>().All().Single(s => s.Account == "alice" && s.Role != null);
-    private string Database => Path.Combine(directory, "ro3emu.db");
+    private string Database => Path.Combine(_directory, "ro3emu.db");
 
     public async Task InitializeAsync()
     {
         var (web, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game;
         });
-        await app.StartAsync(); http = $"http://127.0.0.1:{web}";
+        await _app.StartAsync(); _http = $"http://127.0.0.1:{web}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         SqliteConnection.ClearAllPools();
-        try { Directory.Delete(directory, true); } catch (IOException) { }
+        try { Directory.Delete(_directory, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> Enter()
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(directory, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_directory, "gate_rsa_public.pem")));
         await bot.LoginAsync("alice", "pw"); await bot.EnterGateAsync();
         long id = (await bot.CreateRoleAsync("Alice")).RoleBaseInfo.Id;
-        await bot.EnterWorldAsync(id); await WorldSettle.StallsAsync(app.Services);
+        await bot.EnterWorldAsync(id); await WorldSettle.StallsAsync(_app.Services);
         await Gm("!lvl 60");
         return bot;
     }
@@ -54,7 +54,7 @@ public sealed class TotemFamilyEconomyTests : IAsyncLifetime
     private async Task Gm(string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync(http + "/ro3emu/gm?account=alice", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync(_http + "/ro3emu/gm?account=alice", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     private async Task<long> Give(int entry)
@@ -66,9 +66,9 @@ public sealed class TotemFamilyEconomyTests : IAsyncLifetime
     private static async Task<T> Next<T>(BotClient bot, uint id, MessageParser<T> parser) where T : IMessage<T> =>
         parser.ParseFrom((await bot.Inbox.WaitAsync(e => e.IsGame(id), TimeSpan.FromSeconds(10))).Body);
     private const string QuestAward = "cd13e/quest-award";
-    private EconomySnapshot Cut() => S3EconomyReader.Read(directory, EconomyCatalog.Load(Path.Combine(RepoRoot(), "data")));
+    private EconomySnapshot Cut() => S3EconomyReader.Read(_directory, EconomyCatalog.Load(Path.Combine(RepoRoot(), "data")));
     private EconomyLedgerWindow Window(EconomySnapshot a, EconomySnapshot b) =>
-        S3EconomyReader.ReadLedger(directory, EconomyCatalog.Load(Path.Combine(RepoRoot(), "data")), a, b)!;
+        S3EconomyReader.ReadLedger(_directory, EconomyCatalog.Load(Path.Combine(RepoRoot(), "data")), a, b)!;
 
     [ClientDataFact]
     public async Task SetupAndDownCommitMarkersAndBlobWithVerifiableMetadataReceipts()

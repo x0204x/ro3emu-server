@@ -21,24 +21,24 @@ public sealed class GuildHomeService : IGameTicker
     /// <summary>SwitchSceneReason_EnterDungeon, as 30400 (inferred for 32256).</summary>
     private const int EnterReason = 3;
 
-    private readonly GameData data;
-    private readonly GuildStore guilds;
-    private readonly FunctionService functions;
-    private readonly InstanceService instances;
-    private readonly SceneService scene;
-    private readonly DungeonService dungeons;
-    private readonly GameLoop loop;
-    private readonly Dictionary<long, InstanceService.Room> homes = new();
-    private readonly Dictionary<long, long> guildOfRoom = new();
-    private readonly HashSet<GameSession> ejecting = new();
-    private long lastSecond = -1;
-    private readonly TimeProvider time;
+    private readonly GameData _data;
+    private readonly GuildStore _guilds;
+    private readonly FunctionService _functions;
+    private readonly InstanceService _instances;
+    private readonly SceneService _scene;
+    private readonly DungeonService _dungeons;
+    private readonly GameLoop _loop;
+    private readonly Dictionary<long, InstanceService.Room> _homes = new();
+    private readonly Dictionary<long, long> _guildOfRoom = new();
+    private readonly HashSet<GameSession> _ejecting = new();
+    private long _lastSecond = -1;
+    private readonly TimeProvider _time;
 
     public GuildHomeService(GameData data, GuildStore guilds, FunctionService functions, InstanceService instances,
         SceneService scene, DungeonService dungeons, GameLoop loop, TimeProvider time)
     {
-        this.data = data; this.guilds = guilds; this.functions = functions; this.instances = instances;
-        this.scene = scene; this.dungeons = dungeons; this.loop = loop; this.time = time;
+        this._data = data; this._guilds = guilds; this._functions = functions; this._instances = instances;
+        this._scene = scene; this._dungeons = dungeons; this._loop = loop; this._time = time;
         Scene = data.Table("GuildSettingConfig").TryGetValue("GuildMap", out var row)
             && row.TryGetProperty("_kValue", out var value) && GameData.Number(value) is { } map && map > 0
             ? (long)map : DefaultScene;
@@ -51,20 +51,20 @@ public sealed class GuildHomeService : IGameTicker
 
     /// <summary>The guild's live home room, or null when nobody is inside.</summary>
     public InstanceService.Room? RoomOf(long guildId) =>
-        homes.TryGetValue(guildId, out var room) && !room.Closed ? room : null;
+        _homes.TryGetValue(guildId, out var room) && !room.Closed ? room : null;
 
     public long? GuildOfRoom(long roomId) =>
-        guildOfRoom.TryGetValue(roomId, out long guild) && RoomOf(guild)?.Id == roomId ? guild : null;
+        _guildOfRoom.TryGetValue(roomId, out long guild) && RoomOf(guild)?.Id == roomId ? guild : null;
 
     /// <summary>Every live home room with its guild (event owners iterate these).</summary>
     public IReadOnlyList<(long Guild, InstanceService.Room Room)> Rooms =>
-        homes.Where(p => !p.Value.Closed).Select(p => (p.Key, p.Value)).ToArray();
+        _homes.Where(p => !p.Value.Closed).Select(p => (p.Key, p.Value)).ToArray();
 
     /// <summary>The session's guild when the durable roster and the session's own guild view agree.</summary>
     public long? GuildId(GameSession session)
     {
         if (session.Role == null || session.Guild?.GuildId is not > 0) return null;
-        var owned = guilds.ForRole(session.Role.Id);
+        var owned = _guilds.ForRole(session.Role.Id);
         return owned?.Id == session.Guild.GuildId && owned.Members.ContainsKey(session.Role.Id) ? owned.Id : null;
     }
 
@@ -85,21 +85,21 @@ public sealed class GuildHomeService : IGameTicker
         if (s.Role == null || s.Progress == null) return ErrorCodes.Parameter;
         if (GuildId(s) is not { } id) return ErrorCodes.NotInGuild;
         guild = id;
-        if (!functions.IsOpen(s, GuildFunction)) return ErrorCodes.FeatureUnavailable;
+        if (!_functions.IsOpen(s, GuildFunction)) return ErrorCodes.FeatureUnavailable;
         if (s.SceneLoading || s.Handoff is { Completing: false } || s.SceneRecoveryRequired
             || s.SceneTransitionGate.CurrentCount == 0) return ErrorCodes.SwitchingScenes;
         if (s.InstanceId != 0 && s.SceneEntry == Scene && RoomOf(id)?.Id == s.InstanceId)
             return ErrorCodes.AlreadyInGuildHome;
         if (s.InstanceId != 0 || s.TowerAttempt != null || s.DungeonAttempt != null) return ErrorCodes.DungeonBusy;
-        if (dungeons.Preparing(s)) return ErrorCodes.DungeonPreparing;
+        if (_dungeons.Preparing(s)) return ErrorCodes.DungeonPreparing;
         if (s.Dead) return ErrorCodes.FeatureUnavailable;
         if ((s.StatusBits & (1L << 15)) != 0) return ErrorCodes.ActionInBattle;
-        if (scene.BornPoint(Scene) == null) return ErrorCodes.DungeonDataMissing;
+        if (_scene.BornPoint(Scene) == null) return ErrorCodes.DungeonDataMissing;
         if (RoomOf(id) is { } room && room.ActiveMembers.Count >= Capacity()) return ErrorCodes.DungeonBusy;
         return 0;
     }
 
-    private int Capacity() => data.Row("DungeonConfig", Scene) is { } row && GameData.Int(row, "_iRoleCntLimit") is > 0 and var limit
+    private int Capacity() => _data.Row("DungeonConfig", Scene) is { } row && GameData.Int(row, "_iRoleCntLimit") is > 0 and var limit
         ? (int)Math.Min(limit, int.MaxValue) : 300;
 
     /// <summary>Create or join the guild's room. No await separates the lookup from the store, so two first entries
@@ -109,11 +109,11 @@ public sealed class GuildHomeService : IGameTicker
         int result = Admission(s, out long guild);
         if (result != 0) return (result, null);
         if (RoomOf(guild) is { } room)
-            return instances.AddParticipant(room, s) ? (0, room) : (ErrorCodes.DungeonBusy, null);
-        if (homes.TryGetValue(guild, out var closed)) guildOfRoom.Remove(closed.Id);
-        room = instances.Create(Scene, [s]);
-        homes[guild] = room;
-        guildOfRoom[room.Id] = guild;
+            return _instances.AddParticipant(room, s) ? (0, room) : (ErrorCodes.DungeonBusy, null);
+        if (_homes.TryGetValue(guild, out var closed)) _guildOfRoom.Remove(closed.Id);
+        room = _instances.Create(Scene, [s]);
+        _homes[guild] = room;
+        _guildOfRoom[room.Id] = guild;
         return (0, room);
     }
 
@@ -123,7 +123,7 @@ public sealed class GuildHomeService : IGameTicker
         var (result, room) = Reserve(s);
         await s.SendGameAsync(EnterHome, new GuildEnterHomeResp { Result = result, GuildSceneId = room?.Id ?? 0 });
         // A refused or failed handoff already detached this member inside InstanceService.
-        if (room != null) await instances.EnterAsync(room, s, EnterReason);
+        if (room != null) await _instances.EnterAsync(room, s, EnterReason);
     }
 
     /// <summary>30400 for the home scene (the GM tool's GmEnterDungeon 4000101): same rules, EnterDungeonRsp reply.</summary>
@@ -132,21 +132,21 @@ public sealed class GuildHomeService : IGameTicker
         if (req.SceneEntry != Scene) return false;
         var (result, room) = Reserve(s);
         await s.SendGameAsync(DungeonService.Enter, new EnterDungeonRsp { Result = result });
-        if (room != null) await instances.EnterAsync(room, s, EnterReason);
+        if (room != null) await _instances.EnterAsync(room, s, EnterReason);
         return true;
     }
 
     public void Tick(GameTime gameTime)
     {
-        long second = time.GetUtcNow().ToUnixTimeSeconds();
-        if (lastSecond == second) return;
-        lastSecond = second;
-        foreach (var (guild, room) in homes.ToArray())
+        long second = _time.GetUtcNow().ToUnixTimeSeconds();
+        if (_lastSecond == second) return;
+        _lastSecond = second;
+        foreach (var (guild, room) in _homes.ToArray())
         {
             if (room.Closed)
             {
-                homes.Remove(guild);
-                guildOfRoom.Remove(room.Id);
+                _homes.Remove(guild);
+                _guildOfRoom.Remove(room.Id);
                 continue;
             }
             foreach (var member in room.ActiveMembers)
@@ -155,17 +155,17 @@ public sealed class GuildHomeService : IGameTicker
                 // (inferred) A member who left, was kicked or whose guild dissolved is moved back outside without a
                 // 30402 reply; one still loading is checked again once loaded.
                 if (s.Role == null || s.SceneLoading || s.InstanceId != room.Id || s.SceneEntry != Scene
-                    || GuildId(s) == guild || !ejecting.Add(s)) continue;
+                    || GuildId(s) == guild || !_ejecting.Add(s)) continue;
                 var role = s.Role;
-                loop.TrackLegacyDetached("guild home eject", async () =>
+                _loop.TrackLegacyDetached("guild home eject", async () =>
                 {
                     try
                     {
                         if (ReferenceEquals(s.Role, role) && !s.SceneLoading && s.InstanceId == room.Id
                             && s.SceneEntry == Scene && GuildId(s) != guild)
-                            await instances.LeaveAsync(s, recoverDeadOnReturn: true);
+                            await _instances.LeaveAsync(s, recoverDeadOnReturn: true);
                     }
-                    finally { ejecting.Remove(s); }
+                    finally { _ejecting.Remove(s); }
                 });
             }
         }

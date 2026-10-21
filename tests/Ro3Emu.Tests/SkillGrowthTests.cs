@@ -12,37 +12,37 @@ namespace Ro3Emu.Tests;
 /// <summary>Skill plans and allocation requests over the ordinary game wire.</summary>
 public sealed class SkillGrowthTests : IAsyncLifetime
 {
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-skill-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-skill-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);
-    private WebApplication app = null!;
-    private string http = "";
+    private WebApplication _app = null!;
+    private string _http = "";
 
     public async Task InitializeAsync()
     {
         var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir;
+            o.DataDir = _dataDir;
             o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = httpPort;
             o.MicroGatePort = microPort;
             o.GameGatePort = gamePort;
         });
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{httpPort}";
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{httpPort}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw");
         await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
@@ -60,7 +60,7 @@ public sealed class SkillGrowthTests : IAsyncLifetime
     private async Task Gm(string account, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     private static string RepoRoot()
@@ -85,11 +85,11 @@ public sealed class SkillGrowthTests : IAsyncLifetime
         }
 
         // Simulate an existing role saved before Novices had a visible normal-attack slot.
-        var roles = app.Services.GetRequiredService<RoleStore>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
         var old = DBSkillData.Parser.ParseFrom(roles.LoadSkillPlans(roleId)!);
         old.SkillWheel.WhellSkills.Clear();
         old.OriginSkillWheel.WhellSkills.Clear();
-        Assert.Equal(1, FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(),
+        Assert.Equal(1, FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(),
             "UPDATE role SET skill_plans = $plans WHERE id = $id",
             ("$plans", old.ToByteArray()), ("$id", roleId)));
 
@@ -312,7 +312,7 @@ public sealed class SkillGrowthTests : IAsyncLifetime
                 QueueLevels = index == 1 ? new Dictionary<int, int> { [0] = 1 } : new(),
             }).ToArray(),
         };
-        Assert.Equal(1, FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(),
+        Assert.Equal(1, FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(),
             "UPDATE role SET skill_plans = $plans WHERE id = $id",
             ("$plans", System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(legacy)), ("$id", roleId)));
 
@@ -332,11 +332,11 @@ public sealed class SkillGrowthTests : IAsyncLifetime
             Assert.Equal(13006, plan.SkillQueue[0].SkillId);
             Assert.Equal(1, plan.SkillQueue[0].SkillLevel);
             Assert.Equal(1300601, loaded.SkillWheel.All.WhellSkills[3].SkillConfigId);
-            Assert.Equal(2, app.Services.GetRequiredService<SessionRegistry>().All()
+            Assert.Equal(2, _app.Services.GetRequiredService<SessionRegistry>().All()
                 .Single(s => s.Role?.Id == roleId).Progress!.Skills[13006]);
         }
 
-        using var persistedDb = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(dataDir, "ro3emu.db")}");
+        using var persistedDb = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(_dataDir, "ro3emu.db")}");
         persistedDb.Open();
         using var read = persistedDb.CreateCommand();
         read.CommandText = "SELECT skill_plans FROM role WHERE id = $id";

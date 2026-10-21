@@ -9,37 +9,37 @@ namespace Ro3Emu.Tests;
 
 public sealed class LifeItemPublicationTests : IAsyncLifetime
 {
-    private readonly string dir = Path.Combine(Path.GetTempPath(), "ro3emu-life-publish-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ro3emu-life-publish-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "";
 
     public async Task InitializeAsync()
     {
         var (h, m, g) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dir;
+            o.DataDir = _dir;
             o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = h;
             o.MicroGatePort = m;
             o.GameGatePort = g;
         });
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{h}";
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{h}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dir, true); } catch (IOException) { }
+        try { Directory.Delete(_dir, true); } catch (IOException) { }
     }
 
     [ClientDataFact]
     public async Task FirstSpecializedExchangeHookSeesCommittedLifeAndCooldown()
     {
-        await using var bot = new BotClient(http, File.ReadAllText(Path.Combine(dir, "gate_rsa_public.pem")));
+        await using var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dir, "gate_rsa_public.pem")));
         await bot.LoginAsync("alice", "pw");
         await bot.EnterGateAsync();
         long role = (await bot.CreateRoleAsync("Alice")).RoleBaseInfo.Id;
@@ -47,11 +47,11 @@ public sealed class LifeItemPublicationTests : IAsyncLifetime
         await Gm("!lvl 34");
         await Gm("!item 1001801 1");
 
-        await app.Services.GetRequiredService<GameLoop>().InvokeAsync(async () =>
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(async () =>
         {
-            var session = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
+            var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
             long guid = session.Items.Single(i => i.Entry == 1001801).Guid;
-            var character = app.Services.GetRequiredService<CharacterService>();
+            var character = _app.Services.GetRequiredService<CharacterService>();
             int calls = 0;
             void Observe(GameSession changed)
             {
@@ -73,7 +73,7 @@ public sealed class LifeItemPublicationTests : IAsyncLifetime
     private async Task Gm(string line)
     {
         using var client = new HttpClient();
-        using var response = await client.PostAsync($"{http}/ro3emu/gm?account=alice", new StringContent(line));
+        using var response = await client.PostAsync($"{_http}/ro3emu/gm?account=alice", new StringContent(line));
         response.EnsureSuccessStatusCode();
     }
 

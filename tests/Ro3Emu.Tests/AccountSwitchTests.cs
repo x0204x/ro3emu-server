@@ -16,37 +16,37 @@ namespace Ro3Emu.Tests;
 /// </summary>
 public sealed class AccountSwitchTests : IAsyncLifetime
 {
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-switch-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "", pem = "";
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-switch-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "", _pem = "";
 
     public async Task InitializeAsync()
     {
         var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir;
+            o.DataDir = _dataDir;
             o.GameDataDir = SyntheticData.Dir;
             o.HttpPort = httpPort;
             o.MicroGatePort = microPort;
             o.GameGatePort = gamePort;
         });
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{httpPort}";
-        pem = File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem"));
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{httpPort}";
+        _pem = File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem"));
     }
 
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
 
     private Task<T> OnLoop<T>(Func<T> read) => Service<GameLoop>().InvokeAsync(() => Task.FromResult(read()));
 
     [Fact]
     public async Task AnotherAccountOnTheGameConnectionLeavesNoKeyOfTheFirst()
     {
-        await using var alice = new BotClient(http, pem);
+        await using var alice = new BotClient(_http, _pem);
         await alice.LoginAsync("alice", "pw");
         await alice.EnterGateAsync();
-        await using var bob = new BotClient(http, pem);
+        await using var bob = new BotClient(_http, _pem);
         await bob.LoginAsync("bob", "pw");
 
         Assert.Equal(ConnectServerResp.Types.RespType.Connected, await alice.ConnectAgainAsync(bob.EngineToken));
@@ -58,11 +58,11 @@ public sealed class AccountSwitchTests : IAsyncLifetime
     [Fact]
     public async Task AnotherAccountIsRefusedWhileARoleIsInTheWorld()
     {
-        await using var alice = new BotClient(http, pem);
+        await using var alice = new BotClient(_http, _pem);
         await alice.LoginAsync("alice", "pw");
         await alice.EnterGateAsync();
         await alice.EnterWorldAsync((await alice.CreateRoleAsync("Alice")).RoleBaseInfo.Id);
-        await using var bob = new BotClient(http, pem);
+        await using var bob = new BotClient(_http, _pem);
         await bob.LoginAsync("bob", "pw");
 
         Assert.Equal(ConnectServerResp.Types.RespType.ConnectRefused, await alice.ConnectAgainAsync(bob.EngineToken));
@@ -79,7 +79,7 @@ public sealed class AccountSwitchTests : IAsyncLifetime
         var accounts = Service<AccountStore>();
         await accounts.SignInAsync("alice", "pw");
         await accounts.SignInAsync("bob", "pw");
-        var session = new MicroSession(null!);
+        var session = new MicroSession(null!, 1);
         async Task Verify(string account) => await router.InvokeAsync(session, "LoginService", "verifySdk",
             MessagePackSerializer.Serialize(new Dictionary<string, object> { ["Ticket"] = await accounts.IssueSdkTokenAsync(account) }));
 
@@ -93,9 +93,9 @@ public sealed class AccountSwitchTests : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 }

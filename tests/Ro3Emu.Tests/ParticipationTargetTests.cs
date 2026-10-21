@@ -17,36 +17,36 @@ namespace Ro3Emu.Tests;
 public sealed class ParticipationTargetTests : IAsyncLifetime
 {
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(20);
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-partquests-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-partquests-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "";
 
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private Task<T> Read<T>(Func<T> read) => Service<GameLoop>().InvokeAsync(() => Task.FromResult(read()));
     private GameSession Session => Service<SessionRegistry>().All().Single(s => s.Account == "alice" && s.Role != null);
 
     public async Task InitializeAsync()
     {
         var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir; o.GameDataDir = Path.Combine(ClientData.RepoRoot, "data");
+            o.DataDir = _dataDir; o.GameDataDir = Path.Combine(ClientData.RepoRoot, "data");
             o.HttpPort = httpPort; o.MicroGatePort = microPort; o.GameGatePort = gamePort;
         });
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{httpPort}";
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{httpPort}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(bool create = true)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync("alice", "pw"); await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync("Alice")).RoleBaseInfo.Id : bot.Roles.Single().Id;
         await bot.EnterWorldAsync(id);
@@ -56,7 +56,7 @@ public sealed class ParticipationTargetTests : IAsyncLifetime
     private async Task<BotClient> Relog(BotClient bot)
     {
         await bot.DisposeAsync();
-        await QuestProbe.OfflineAsync(app, "alice");
+        await QuestProbe.OfflineAsync(_app, "alice");
         return await InWorld(create: false);
     }
 
@@ -67,10 +67,10 @@ public sealed class ParticipationTargetTests : IAsyncLifetime
         return parser.ParseFrom(e.Body);
     }
 
-    private Task Gm(string command) => QuestProbe.GmAsync(http, "alice", command);
-    private Task Accept(long task) => QuestProbe.AcceptAsync(app, http, "alice", task);
-    private Task At(long task, long progress) => QuestProbe.AtAsync(app, "alice", task, progress);
-    private Task<TaskInfo> Done(long task) => QuestProbe.DoneAsync(app, "alice", task);
+    private Task Gm(string command) => QuestProbe.GmAsync(_http, "alice", command);
+    private Task Accept(long task) => QuestProbe.AcceptAsync(_app, _http, "alice", task);
+    private Task At(long task, long progress) => QuestProbe.AtAsync(_app, "alice", task, progress);
+    private Task<TaskInfo> Done(long task) => QuestProbe.DoneAsync(_app, "alice", task);
 
     private async Task<long> Give(int entry, int count = 1)
     {
@@ -95,7 +95,7 @@ public sealed class ParticipationTargetTests : IAsyncLifetime
         var bot = await InWorld();
         // 705060 [302005,1,0,0,3] "Reach a total of 3 Stunts on equipped gear" (growth emblem title 5).
         await Accept(705060);
-        long before = (await QuestProbe.ReadAsync(app, "alice", 705060))!.CompleteNum[0];
+        long before = (await QuestProbe.ReadAsync(_app, "alice", 705060))!.CompleteNum[0];
         Assert.Equal(await Read(() => Session.Items.LongCount(i => i.Grid > 0 && EquipmentAffixes.Specials(i).Any())), before);
         Assert.True(before < 3);
         // EquipConfig _kFixedSpecialAttribute gear for grids 2, 4 and 5: every instance carries Stunts.
@@ -103,7 +103,7 @@ public sealed class ParticipationTargetTests : IAsyncLifetime
         var guids = new List<long>();
         foreach (var (entry, _) in gear) guids.Add(await Give(entry));
         Assert.True(await Read(() => guids.All(guid => EquipmentAffixes.Specials(Session.Items.Single(i => i.Guid == guid)).Any())));
-        Assert.Equal(before, (await QuestProbe.ReadAsync(app, "alice", 705060))!.CompleteNum[0]); // carried, not worn
+        Assert.Equal(before, (await QuestProbe.ReadAsync(_app, "alice", 705060))!.CompleteNum[0]); // carried, not worn
         await Wear(bot, guids[0], gear[0].Grid);
         await At(705060, Math.Min(3, before + 1));
         await Wear(bot, guids[1], gear[1].Grid);
@@ -239,14 +239,14 @@ public sealed class ParticipationTargetTests : IAsyncLifetime
         var siege = Service<TerritoryWarsService>();
         await Service<GameLoop>().InvokeAsync(() => { foreach (var h in siege.SiegeSettled) h(role, 19, false); return Task.CompletedTask; });
         await Task.Delay(300);
-        Assert.Equal(0, (await QuestProbe.ReadAsync(app, "alice", 1602040))!.CompleteNum[0]);
+        Assert.Equal(0, (await QuestProbe.ReadAsync(_app, "alice", 1602040))!.CompleteNum[0]);
         await Done(120011);
-        Assert.Equal(0, (await QuestProbe.ReadAsync(app, "alice", 120013))!.CompleteNum[0]); // lost
+        Assert.Equal(0, (await QuestProbe.ReadAsync(_app, "alice", 120013))!.CompleteNum[0]); // lost
         await Service<GameLoop>().InvokeAsync(() => { foreach (var h in siege.SiegeSettled) h(role, 20, true); return Task.CompletedTask; });
-        await QuestProbe.DoneAsync(app, "alice", 1602040); // delivery waits on its action 115
+        await QuestProbe.DoneAsync(_app, "alice", 1602040); // delivery waits on its action 115
         await Done(120013);
         bot = await Relog(bot);
-        Assert.Equal(1, (await QuestProbe.DoneAsync(app, "alice", 1602040)).CompleteNum[0]);
+        Assert.Equal(1, (await QuestProbe.DoneAsync(_app, "alice", 1602040)).CompleteNum[0]);
         await bot.DisposeAsync();
     }
 }

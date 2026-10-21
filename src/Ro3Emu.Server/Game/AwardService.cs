@@ -9,18 +9,11 @@ namespace Ro3Emu.Server.Game;
 public sealed record AwardGrant(int Entry, int Count, int BindType = 0, long ExpireTimeStamp = 0);
 
 /// <summary>A resolved and validated AwardConfig grant. Source services own eligibility and once-only claims.</summary>
-public sealed class AwardPlan
+public sealed class AwardPlan(long groupId, long awardId, IEnumerable<AwardGrant> grants)
 {
-    public long GroupId { get; }
-    public long AwardId { get; }
-    public IReadOnlyList<AwardGrant> Grants { get; }
-
-    public AwardPlan(long groupId, long awardId, IEnumerable<AwardGrant> grants)
-    {
-        GroupId = groupId;
-        AwardId = awardId;
-        Grants = new ReadOnlyCollection<AwardGrant>(grants.ToArray());
-    }
+    public long GroupId { get; } = groupId;
+    public long AwardId { get; } = awardId;
+    public IReadOnlyList<AwardGrant> Grants { get; } = new ReadOnlyCollection<AwardGrant>(grants.ToArray());
 }
 
 public sealed class AwardResolutionException(string message) : InvalidOperationException(message);

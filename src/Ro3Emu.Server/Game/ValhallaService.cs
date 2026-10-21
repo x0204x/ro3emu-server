@@ -22,19 +22,19 @@ public sealed class ValhallaService
     public const int ErrDone = 7101, ErrCoins = 7102, ErrNoLayer = 7103, ErrPrevious = 7104, ErrLevel = 7105, ErrConfig = 7108;
     private const int GamePlayType = 23;
 
-    private readonly GameData data;
-    private readonly DungeonCatalog catalog;
-    private readonly DungeonService dungeons;
-    private readonly CharacterService character;
-    private readonly FunctionService functions;
-    private readonly TaskService tasks;
-    private readonly RoleStore roles;
+    private readonly GameData _data;
+    private readonly DungeonCatalog _catalog;
+    private readonly DungeonService _dungeons;
+    private readonly CharacterService _character;
+    private readonly FunctionService _functions;
+    private readonly TaskService _tasks;
+    private readonly RoleStore _roles;
 
     public ValhallaService(GameData data, DungeonCatalog catalog, DungeonService dungeons, CharacterService character,
         FunctionService functions, TaskService tasks, RoleStore roles)
     {
-        this.data = data; this.catalog = catalog; this.dungeons = dungeons; this.character = character;
-        this.functions = functions; this.tasks = tasks; this.roles = roles;
+        this._data = data; this._catalog = catalog; this._dungeons = dungeons; this._character = character;
+        this._functions = functions; this._tasks = tasks; this._roles = roles;
         dungeons.Completed.Add(ClearedAsync);
     }
 
@@ -42,14 +42,14 @@ public sealed class ValhallaService
     private int CoinItem => Param("HeroSpiritItemId", 2000001);
     private int ExpPerCoin => Math.Max(1, Param("HeroSpiritItemExp", 2));
 
-    private int Param(string key, int fallback) => data.Table("PublicParamConfig").TryGetValue(key, out var row)
+    private int Param(string key, int fallback) => _data.Table("PublicParamConfig").TryGetValue(key, out var row)
         ? (int)(GameData.Number(row) ?? fallback) : fallback;
 
     // ------------------------------------------------------------------ state / 5046
 
     public void Load(GameSession s)
     {
-        var bytes = roles.LoadHeroicSpirit(s.Role!.Id);
+        var bytes = _roles.LoadHeroicSpirit(s.Role!.Id);
         // A role that never prayed: statue level 0 (the level-0 row exists, attribute 0; inferred start).
         s.OdinStatue = bytes is { Length: > 0 } ? DBOdinStatue.Parser.ParseFrom(bytes) : new DBOdinStatue { Inited = 1 };
     }
@@ -61,7 +61,7 @@ public sealed class ValhallaService
     public async Task LoginAsync(GameSession s)
     {
         await SyncAsync(s);
-        if (DungeonService.ValhallaCleared(s.Dungeons).Any()) await tasks.RefreshAsync(s);
+        if (DungeonService.ValhallaCleared(s.Dungeons).Any()) await _tasks.RefreshAsync(s);
     }
 
     private Task SyncAsync(GameSession s) => CharacterService.SyncAsync(s, Sync, Snapshot(s));
@@ -75,13 +75,13 @@ public sealed class ValhallaService
     }
 
     private Task ClearedAsync(GameSession s, int scene, bool paid) =>
-        data.Row("DungeonConfig", scene) is { } row && GameData.Int(row, "_iGamePlayType") == GamePlayType
+        _data.Row("DungeonConfig", scene) is { } row && GameData.Int(row, "_iGamePlayType") == GamePlayType
             ? RefreshAsync(s) : Task.CompletedTask;
 
     private async Task RefreshAsync(GameSession s)
     {
         await SyncAsync(s);
-        await tasks.RefreshAsync(s); // 334001 "Clear Valhalla ${1}"
+        await _tasks.RefreshAsync(s); // 334001 "Clear Valhalla ${1}"
     }
 
     // ------------------------------------------------------------------ 83490 challenge
@@ -91,8 +91,8 @@ public sealed class ValhallaService
     {
         layer = default;
         if (s.Role == null || s.Progress == null || s.Dungeons == null) return ErrorCodes.FeatureUnavailable;
-        if (!functions.IsOpen(s, Function)) return ErrorCodes.FunctionLocked;
-        if (data.Row("HeroicSpiritLayerConfig", layerId) is not { } row) return ErrNoLayer;
+        if (!_functions.IsOpen(s, Function)) return ErrorCodes.FunctionLocked;
+        if (_data.Row("HeroicSpiritLayerConfig", layerId) is not { } row) return ErrNoLayer;
         layer = row;
         var cleared = DungeonService.ValhallaCleared(s.Dungeons).ToHashSet();
         if (cleared.Contains(layerId)) return ErrDone;
@@ -105,9 +105,9 @@ public sealed class ValhallaService
     public async Task ChallengeAsync(GameSession s, HeroicSpiritChallengeReq req)
     {
         int error = ChallengeError(s, req.ChallengeId, out var layer);
-        var plan = error == 0 ? catalog.Valhalla(layer) : null;
+        var plan = error == 0 ? _catalog.Valhalla(layer) : null;
         if (error == 0 && plan == null) error = ErrConfig;
-        if (error == 0) error = await dungeons.AdmitValhallaAsync(s, plan!);
+        if (error == 0) error = await _dungeons.AdmitValhallaAsync(s, plan!);
         await s.SendGameAsync(Challenge, new HeroicSpiritChallengeRes { Err = error });
         if (error != 0)
         {
@@ -116,12 +116,12 @@ public sealed class ValhallaService
             return;
         }
         s.ValhallaLatest = req.ChallengeId;
-        await dungeons.BeginValhallaAsync(s, plan!);
+        await _dungeons.BeginValhallaAsync(s, plan!);
     }
 
     // ------------------------------------------------------------------ 83491 pray
 
-    private JsonElement? LevelRow(long level) => data.Table("HeroicSpiritLevelConfig").Values
+    private JsonElement? LevelRow(long level) => _data.Table("HeroicSpiritLevelConfig").Values
         .Where(r => GameData.Int(r, "_iLevel") == level).Select(r => (JsonElement?)r).FirstOrDefault();
 
     /// <summary>
@@ -133,7 +133,7 @@ public sealed class ValhallaService
     {
         using var gate = await CharacterService.Lock(s);
         int error = s.Role == null || s.OdinStatue == null ? ErrorCodes.FeatureUnavailable
-            : !functions.IsOpen(s, Function) ? ErrorCodes.FunctionLocked : 0;
+            : !_functions.IsOpen(s, Function) ? ErrorCodes.FunctionLocked : 0;
         DBOdinStatue? next = null;
         (int Entry, long Count)[] cost = [];
         if (error == 0)
@@ -153,16 +153,16 @@ public sealed class ValhallaService
                     next.CurExp -= exp;
                     next.CurLv++;
                 }
-                if (character.CountOf(s, CoinItem) < cost[0].Count) error = ErrCoins;
+                if (_character.CountOf(s, CoinItem) < cost[0].Count) error = ErrCoins;
             }
         }
         if (error == 0)
         {
             var saved = next!;
-            if (await character.ExchangeLockedAsync(s, cost, [], popup: false, persist: tx =>
+            if (await _character.ExchangeLockedAsync(s, cost, [], popup: false, persist: tx =>
                 {
                     tx.RoleBlob(s.Role!.Id, "heroic_spirit", saved.ToByteArray());
-                    tx.WithEconomy(character.FamilyEconomy(s, "cd13b/valhalla-pray", cost, [],
+                    tx.WithEconomy(_character.FamilyEconomy(s, "cd13b/valhalla-pray", cost, [],
                         new { saved.CurLv, saved.CurExp }));
                 }, committed: () => s.OdinStatue = saved) == null)
                 error = ErrCoins;

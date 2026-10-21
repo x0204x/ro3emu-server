@@ -12,7 +12,7 @@ namespace Ro3Emu.Server.Voice;
 /// Frames are queued in the clear and sealed by that one writer, in wire order, once <see cref="Cipher"/> is set
 /// (after Auth); reads are opened with it, and a frame that fails to open ends the connection.
 /// </summary>
-public sealed class VoiceConnection : IDisposable
+public sealed class VoiceConnection(Socket socket) : IDisposable
 {
     /// <summary>Audio frames queued for one slow listener before the oldest is dropped.</summary>
     public const int MaxQueuedAudio = 64;
@@ -20,8 +20,8 @@ public sealed class VoiceConnection : IDisposable
     /// <summary>Control frames queued before the connection is considered stuck and closed.</summary>
     public const int MaxQueuedControl = 256;
 
-    private readonly Socket _socket;
-    private readonly NetworkStream _stream;
+    private readonly Socket _socket = socket;
+    private readonly NetworkStream _stream = new NetworkStream(socket, ownsSocket: false);
     private readonly CancellationTokenSource _cts = new();
     private readonly object _sync = new();
     private readonly Queue<(byte Type, byte[] Payload)> _control = new();
@@ -30,15 +30,7 @@ public sealed class VoiceConnection : IDisposable
     private volatile bool _closed;
     private volatile bool _closeAfterDrain;
 
-    public VoiceConnection(Socket socket)
-    {
-        _socket = socket;
-        _stream = new NetworkStream(socket, ownsSocket: false);
-        RemoteAddress = ((IPEndPoint)socket.RemoteEndPoint!).Address;
-        LastActivityAtMs = Environment.TickCount64;
-    }
-
-    public IPAddress RemoteAddress { get; }
+    public IPAddress RemoteAddress { get; } = ((IPEndPoint)socket.RemoteEndPoint!).Address;
     public CancellationToken StopToken => _cts.Token;
 
     /// <summary>Set once the Auth frame is accepted; everything but Auth is refused before that.</summary>
@@ -79,7 +71,7 @@ public sealed class VoiceConnection : IDisposable
     // limiter all need real elapsed time, and the injected clock is also the one VoiceTicketRegistry tests
     // advance by hand to expire a ticket without a real wait; sharing it here would freeze these too.
     public long LastAudioAtMs { get; set; }
-    public long LastActivityAtMs { get; set; }
+    public long LastActivityAtMs { get; set; } = Environment.TickCount64;
 
     public void Touch() => LastActivityAtMs = Environment.TickCount64;
 

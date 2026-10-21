@@ -15,30 +15,30 @@ namespace Ro3Emu.Tests;
 /// <summary>C/D 18: lazy public position - no loop write per walk, bounded window, never older than a barrier.</summary>
 public sealed class PositionPersistenceTests(ITestOutputHelper output) : IAsyncLifetime
 {
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-pos-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-pos-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
-    private WebApplication app = null!;
-    private string http = "";
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private WebApplication _app = null!;
+    private string _http = "";
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
 
     public async Task InitializeAsync()
     {
         var (hp, mp, gp) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = hp; o.MicroGatePort = mp; o.GameGatePort = gp;
         });
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{hp}";
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{hp}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private static string RepoRoot()
@@ -50,7 +50,7 @@ public sealed class PositionPersistenceTests(ITestOutputHelper output) : IAsyncL
 
     private async Task<(BotClient Bot, GameSession Session)> InWorld(string name)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw");
         await bot.EnterGateAsync();
         long id = (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id;
@@ -231,7 +231,7 @@ public sealed class PositionPersistenceTests(ITestOutputHelper output) : IAsyncL
             Assert.Equal(RoleOwnerState.Detached, owner.State);
             Assert.Equal(finalX, StoredX(role), 3);
 
-            await using var again = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+            await using var again = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
             await again.LoginAsync("latelazy", "pw");
             await again.EnterGateAsync();
             var self = await again.EnterWorldAsync(role);

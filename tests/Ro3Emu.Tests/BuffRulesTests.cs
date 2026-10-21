@@ -25,39 +25,39 @@ public sealed class BuffRulesTests : IAsyncLifetime
     private static GameData Data => Exported.Value;
     private static BuffRuleTables Rules => BuffRuleTables.For(Data);
 
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-buffrules-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-buffrules-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(8);
-    private WebApplication? app;
-    private string http = "";
+    private WebApplication? _app;
+    private string _http = "";
 
     public Task InitializeAsync() => Task.CompletedTask;
 
     public async Task DisposeAsync()
     {
-        if (app == null) return;
-        await app.StopAsync();
-        await app.DisposeAsync();
+        if (_app == null) return;
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private async Task<WebApplication> Server()
     {
         var ports = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir; o.GameDataDir = Path.Combine(ClientData.RepoRoot, "data");
+            o.DataDir = _dataDir; o.GameDataDir = Path.Combine(ClientData.RepoRoot, "data");
             o.HttpPort = ports.Item1; o.MicroGatePort = ports.Item2; o.GameGatePort = ports.Item3;
         });
-        SureHitRolls.Install(app);
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{ports.Item1}";
-        return app;
+        SureHitRolls.Install(_app);
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{ports.Item1}";
+        return _app;
     }
 
     private async Task<BotClient> InWorld(string name)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw");
         await bot.EnterGateAsync();
         var role = await bot.CreateRoleAsync(name);
@@ -72,13 +72,13 @@ public sealed class BuffRulesTests : IAsyncLifetime
     private async Task Gm(string account, string line)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={account}", new StringContent(line))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(line))).EnsureSuccessStatusCode();
     }
 
-    private GameSession Session(string name) => app!.Services.GetRequiredService<SessionRegistry>().All()
+    private GameSession Session(string name) => _app!.Services.GetRequiredService<SessionRegistry>().All()
         .Single(s => s.Account == name.ToLowerInvariant());
-    private GameLoop Loop => app!.Services.GetRequiredService<GameLoop>();
-    private BuffService Buffs => app!.Services.GetRequiredService<BuffService>();
+    private GameLoop Loop => _app!.Services.GetRequiredService<GameLoop>();
+    private BuffService Buffs => _app!.Services.GetRequiredService<BuffService>();
     private Task Run(Func<Task> work) => Loop.InvokeAsync(work);
 
     private async Task Eventually(Func<bool> check, string what)
@@ -97,7 +97,7 @@ public sealed class BuffRulesTests : IAsyncLifetime
     private Task<MonsterUnit> Monster(string name, float dx = 0) => Loop.InvokeAsync(async () =>
     {
         var s = Session(name);
-        var monsters = app!.Services.GetRequiredService<MonsterService>();
+        var monsters = _app!.Services.GetRequiredService<MonsterService>();
         var template = monsters.Template(5000001)! with { RoamDistance = 0, Atk = 1, Matk = 1 }; // a harmless applier
         var unit = await monsters.SpawnSingleAsync(s.SceneEntry, 5000001,
             new MapPoint(s.Position.X + dx, s.Position.Y, s.Position.Z, 0), s.InstanceId, customTemplate: template);
@@ -134,7 +134,7 @@ public sealed class BuffRulesTests : IAsyncLifetime
         await Server();
         await using var alice = await InWorld("Alice");
         var monster = await Monster("alice", 1);
-        var combat = app!.Services.GetRequiredService<CombatService>();
+        var combat = _app!.Services.GetRequiredService<CombatService>();
         // Head Crush's _kBuff2 [[1120210 Slow, 10000, 1000]], with its damage cut to the 1-point minimum.
         var node = System.Text.Json.Nodes.JsonNode.Parse(Data.Row("SkillConfig", 1120201)!.Value.GetRawText())!.AsObject();
         node["_kDamageParam1"] = new System.Text.Json.Nodes.JsonArray(0);
@@ -153,7 +153,7 @@ public sealed class BuffRulesTests : IAsyncLifetime
         {
             await Buffs.RemoveAsync(p, p.Buffs.Single(b => b.ConfigId == 1120210));
             await Buffs.AddAsync(p, 11531701, 60000, p.Role!.Id);
-            Assert.Equal(1000, app.Services.GetRequiredService<CharacterService>().Stats(p)[728]);
+            Assert.Equal(1000, _app.Services.GetRequiredService<CharacterService>().Stats(p)[728]);
             await combat.MonsterSkillHitAsync(monster, headCrush, [p], monster.Uid);
         });
         await Eventually(() => p.Buffs.Any(b => b.ConfigId == 1120210), "the resisted slow");
@@ -264,13 +264,13 @@ public sealed class BuffRulesTests : IAsyncLifetime
         await using var bob = await InWorld("Bob");
         var a = Session("alice");
         var b = Session("bob");
-        await Run(() => app!.Services.GetRequiredService<SceneService>().TeleportInMapAsync(b,
+        await Run(() => _app!.Services.GetRequiredService<SceneService>().TeleportInMapAsync(b,
             new MapPoint(a.Position.X + 2, a.Position.Y, a.Position.Z, 0)));
         await Run(() => Buffs.AddAsync(a, 15302101, 30000, a.Role!.Id)); // Focus Orbit: allies and self, 10 m
         await Eventually(() => a.Buffs.Any(x => x.ConfigId == 15302201) && b.Buffs.Any(x => x.ConfigId == 15302201), "Focus Orbit on both");
         Assert.Equal(a.Role!.Id, b.Buffs.Single(x => x.ConfigId == 15302201).SourceId);
         Assert.Equal(1, Buffs.HaloCount);
-        await Run(() => app!.Services.GetRequiredService<SceneService>().TeleportInMapAsync(b,
+        await Run(() => _app!.Services.GetRequiredService<SceneService>().TeleportInMapAsync(b,
             new MapPoint(a.Position.X + 40, a.Position.Y, a.Position.Z, 0)));
         await Eventually(() => !b.Buffs.Any(x => x.ConfigId == 15302201), "Bob leaving the aura");
         Assert.Contains(a.Buffs, x => x.ConfigId == 15302201);
@@ -349,7 +349,7 @@ public sealed class BuffRulesTests : IAsyncLifetime
         await alice.SendGameAsync(SkillService.PlanUpdate, learn);
         Assert.Equal(0, (await Next(alice, SkillService.PlanUpdate, SkillGrowthSkillPlanUpdateResp.Parser)).Result);
         var p = Session("alice");
-        var combat = app!.Services.GetRequiredService<CombatService>();
+        var combat = _app!.Services.GetRequiredService<CombatService>();
         long baseRatio = combat.EffectiveSkillRow(p, 1100101)!.Value.GetProperty("_kDamageParam1")[0].GetInt64();
         await Run(() => Buffs.AddAsync(p, 1130301, 10000, p.Role!.Id));
         var affected = await Next(alice, CombatService.SkillAffectedEx, SkillBeAffectedParamExNotify.Parser,
@@ -395,7 +395,7 @@ public sealed class BuffRulesTests : IAsyncLifetime
         long before = 0;
         await Run(async () =>
         {
-            before = app!.Services.GetRequiredService<CharacterService>().Stats(p)[2000];
+            before = _app!.Services.GetRequiredService<CharacterService>().Stats(p)[2000];
             await Buffs.AddAsync(p, 5001801, 15000, monster.Uid);
             Assert.Equal(1, Buffs.PeriodicCount);
         });
@@ -406,7 +406,7 @@ public sealed class BuffRulesTests : IAsyncLifetime
         Assert.Equal(0, hit.SkillId);
         long damage = hit.Dsts.Single().Damage;
         Assert.True(damage >= 1);
-        await Eventually(() => app!.Services.GetRequiredService<CharacterService>().Stats(p)[2000] <= before - damage, "the HP loss");
+        await Eventually(() => _app!.Services.GetRequiredService<CharacterService>().Stats(p)[2000] <= before - damage, "the HP loss");
         // Removing the curse ends the ticks.
         await Run(() => Buffs.RemoveAsync(p, p.Buffs.Single(b => b.ConfigId == 5001801)));
         await Eventually(() => Buffs.PeriodicCount == 0, "the tick entry dropping");
@@ -438,7 +438,7 @@ public sealed class BuffRulesTests : IAsyncLifetime
         await Server();
         await using var alice = await InWorld("Alice");
         var p = Session("alice");
-        var character = app!.Services.GetRequiredService<CharacterService>();
+        var character = _app!.Services.GetRequiredService<CharacterService>();
         await Run(async () =>
         {
             await character.SetHpSpAsync(p, 10, null);

@@ -17,12 +17,12 @@ namespace Ro3Emu.Tests;
 /// </summary>
 public sealed class ItemBoxTests : IAsyncLifetime
 {
-    private readonly string directory = Path.Combine(Path.GetTempPath(), "ro3emu-boxes-" + Guid.NewGuid().ToString("N"));
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), "ro3emu-boxes-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(8);
-    private readonly RealmClock clock = new();
-    private WebApplication app = null!;
-    private string http = "";
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private readonly RealmClock _clock = new();
+    private WebApplication _app = null!;
+    private string _http = "";
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
 
     /// <summary>A realm at UTC-03 (unlike the test host): the periods must follow the realm's zone.</summary>
     private sealed class RealmClock : TimeProvider
@@ -36,25 +36,25 @@ public sealed class ItemBoxTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         var (web, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game;
-        }, clock);
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{web}";
+        }, _clock);
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{web}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         SqliteConnection.ClearAllPools();
-        try { Directory.Delete(directory, true); } catch (IOException) { }
+        try { Directory.Delete(_directory, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> Enter(string name, int sex = 1, bool create = true)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(directory, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_directory, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync(name, sex)).RoleBaseInfo.Id : bot.Roles.Single().Id;
         await bot.EnterWorldAsync(id);
@@ -64,7 +64,7 @@ public sealed class ItemBoxTests : IAsyncLifetime
     private async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     private static async Task<T> Next<T>(BotClient bot, uint id, MessageParser<T> parser, Func<T, bool>? match = null) where T : IMessage<T>
@@ -213,10 +213,10 @@ public sealed class ItemBoxTests : IAsyncLifetime
         await using var again = await Enter("Daily", create: false);
         await UseTimesSync(again, 1300000, 10);
         Assert.Equal(CharacterService.ErrUseTimes, (await Use(again, 1300000)).Result);
-        clock.Now = clock.Now.AddHours(5).AddMinutes(29); // Wednesday 04:59: still Tuesday's game day
+        _clock.Now = _clock.Now.AddHours(5).AddMinutes(29); // Wednesday 04:59: still Tuesday's game day
         Assert.Equal(CharacterService.ErrUseTimes, (await Use(again, 1300000)).Result);
 
-        clock.Now = clock.Now.AddMinutes(2); // 05:01: the online role is told the count is gone
+        _clock.Now = _clock.Now.AddMinutes(2); // 05:01: the online role is told the count is gone
         await UseTimesSync(again, 1300000, null);
         var fresh = await Use(again, 1300000);
         Assert.Equal(0, fresh.Result);
@@ -236,9 +236,9 @@ public sealed class ItemBoxTests : IAsyncLifetime
         Assert.Equal(0, used.Result);
         Assert.Equal(20, used.ItemTimes);
         Assert.Equal(CharacterService.ErrUseTimes, (await Use(bot, 1302000)).Result);
-        clock.Now = new DateTimeOffset(2026, 10, 19, 4, 59, 0, TimeSpan.FromHours(-3)); // Monday before 05:00
+        _clock.Now = new DateTimeOffset(2026, 10, 19, 4, 59, 0, TimeSpan.FromHours(-3)); // Monday before 05:00
         Assert.Equal(CharacterService.ErrUseTimes, (await Use(bot, 1302000)).Result);
-        clock.Now = clock.Now.AddMinutes(2);
+        _clock.Now = _clock.Now.AddMinutes(2);
         Assert.Equal(0, (await Use(bot, 1302000)).Result);
         Assert.Equal(1, Count(bot, 1302000));
     }

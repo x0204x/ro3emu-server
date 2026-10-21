@@ -13,29 +13,29 @@ namespace Ro3Emu.Tests;
 /// </summary>
 public sealed class GuildVoiceTests : IAsyncLifetime
 {
-    private readonly string dir = Path.Combine(Path.GetTempPath(), "ro3emu-guildvoice-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ro3emu-guildvoice-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(8);
-    private WebApplication app = null!;
-    private string http = "";
+    private WebApplication _app = null!;
+    private string _http = "";
 
     public async Task InitializeAsync()
     {
         var (web, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _dir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game;
         });
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{web}";
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{web}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
-        using var db = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(dir, "ro3emu.db")}");
+        await _app.StopAsync(); await _app.DisposeAsync();
+        using var db = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(_dir, "ro3emu.db")}");
         Microsoft.Data.Sqlite.SqliteConnection.ClearPool(db);
-        try { Directory.Delete(dir, true); } catch (IOException) { }
+        try { Directory.Delete(_dir, true); } catch (IOException) { }
     }
 
     private static string RepoRoot()
@@ -47,7 +47,7 @@ public sealed class GuildVoiceTests : IAsyncLifetime
 
     private async Task<(BotClient Bot, long Id)> InWorld(string name)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         long id = (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id;
         await bot.EnterWorldAsync(id);
@@ -72,7 +72,7 @@ public sealed class GuildVoiceTests : IAsyncLifetime
     private async Task Gm(string name, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={name.ToLowerInvariant()}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={name.ToLowerInvariant()}", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     /// <summary>Alice founds a guild with auto-accept on and Bob joins it (GuildCaravanTests' shortest path).</summary>
@@ -338,7 +338,7 @@ public sealed class GuildVoiceTests : IAsyncLifetime
 
         var log = new System.Collections.Concurrent.ConcurrentQueue<string>();
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-        await BotGuildVoice.JoinGuildAsync(bob, http, "bob", guild, log.Enqueue, stop.Token);
+        await BotGuildVoice.JoinGuildAsync(bob, _http, "bob", guild, log.Enqueue, stop.Token);
         Assert.Contains(log, l => l == $"in guild {guild}");
         Assert.Equal(0, (await Join(alice, 0)).ErrorCode);
         var sitting = BotGuildVoice.SitAsync(bob, bobId, 0, askMic: true, log.Enqueue, stop.Token);

@@ -86,7 +86,7 @@ public sealed partial class CharacterService(RoleStore roles, ItemStore itemStor
     /// <summary>LifeJobService owns action 607/315 item transactions; null means ordinary item effects.</summary>
     internal Func<GameSession, InvItem, JsonElement, int, Task<int?>>? LifeItemUse { get; set; }
 
-    private static readonly AsyncLocal<LifeItemExchangeScope?> lifeItemExchange = new();
+    private static readonly AsyncLocal<LifeItemExchangeScope?> LifeItemExchange = new();
 
     private sealed class LifeItemExchangeScope(GameSession session, Action<RoleItemPlanBuilder> persist, Action publish)
     {
@@ -104,7 +104,7 @@ public sealed partial class CharacterService(RoleStore roles, ItemStore itemStor
     /// <summary>For CardService: item, stat and look updates after socket changes (caller holds the lock).</summary>
     internal async Task ItemsChangedAsync(GameSession session, bool stats)
     {
-        var lifeUse = lifeItemExchange.Value;
+        var lifeUse = LifeItemExchange.Value;
         if (lifeUse is { Active: true, Committed: true, PendingStateChanged: { } pending }
             && ReferenceEquals(lifeUse.Session, session))
         {

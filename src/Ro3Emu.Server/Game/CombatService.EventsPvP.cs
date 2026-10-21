@@ -12,23 +12,23 @@ namespace Ro3Emu.Server.Game;
 public sealed partial class CombatService
 {
     private sealed record EventAttack(GameSession Target, int SkillId, long NextSwing, float StartX, float StartZ);
-    private readonly Dictionary<GameSession, EventAttack> eventAttacks = new();
-    private Func<GameSession, GameSession, bool>? eventCanFight;
-    private Func<GameSession, GameSession, Task>? eventPlayerKilled;
+    private readonly Dictionary<GameSession, EventAttack> _eventAttacks = new();
+    private Func<GameSession, GameSession, bool>? _eventCanFight;
+    private Func<GameSession, GameSession, Task>? _eventPlayerKilled;
 
     public void SetEventPvPHandlers(Func<GameSession, GameSession, bool> canFight,
         Func<GameSession, GameSession, Task> playerKilled)
-    { eventCanFight = canFight; eventPlayerKilled = playerKilled; }
+    { _eventCanFight = canFight; _eventPlayerKilled = playerKilled; }
 
     private bool CanEventHit(GameSession source, GameSession target) => source != target
         && source.Role != null && target.Role != null && !source.Dead && !target.Dead
         && !source.SceneLoading && !target.SceneLoading && source.InstanceId != 0
-        && source.InstanceId == target.InstanceId && eventCanFight?.Invoke(source, target) == true;
+        && source.InstanceId == target.InstanceId && _eventCanFight?.Invoke(source, target) == true;
 
     private bool CanPlayerHit(GameSession source, GameSession target) =>
         CanEventHit(source, target) || CanTerritoryHit(source, target);
 
-    private GameSession? EventTarget(GameSession source, long id) => sessions.All()
+    private GameSession? EventTarget(GameSession source, long id) => _sessions.All()
         .FirstOrDefault(target => target.Role?.Id == id && CanPlayerHit(source, target));
 
     private static float PlayerDistance(GameSession a, GameSession b) =>
@@ -38,7 +38,7 @@ public sealed partial class CombatService
     {
         float radius = (row.TryGetProperty("_kRange", out var range) && range.ValueKind == JsonValueKind.Array
             && range.GetArrayLength() > 0 ? (float)(Data.GameData.Number(range[0]) ?? 300) : 300) / 100f;
-        return sessions.All().Where(p => CanPlayerHit(source, p) && PlayerDistance(source, p) <= radius + .5f).ToArray();
+        return _sessions.All().Where(p => CanPlayerHit(source, p) && PlayerDistance(source, p) <= radius + .5f).ToArray();
     }
 
     private async Task SwingEventAsync(GameSession source, GameSession target, int skillId, long session)
@@ -47,13 +47,13 @@ public sealed partial class CombatService
         using var held = await CharacterService.Lock(source);
         if (!CanPlayerHit(source, target) || source.SkillCast is { Cancelled: false }
             || EffectiveSkillRow(source, skillId) is not { } row || !Learned(source, row)
-            || !SkillModeAllowed(source, row) || buffs.HasForbidden(source, 5)) return;
+            || !SkillModeAllowed(source, row) || _buffs.HasForbidden(source, 5)) return;
         var request = new CastSkillReq
         {
             SkillId = (int)Data.GameData.Int(row, "_iID"), TargetId = target.Role!.Id,
             TargetPos = target.Position.Clone(), Face = MonsterService.Angle(source.Position.X, source.Position.Z, target.Position.X, target.Position.Z),
         };
-        if (!await AdmitAutomaticCostAsync(source, row, request, session)) { eventAttacks.Remove(source); return; }
+        if (!await AdmitAutomaticCostAsync(source, row, request, session)) { _eventAttacks.Remove(source); return; }
         await StartCastAsync(source, row, request, session);
     }
     private async Task HitEventPlayersAsync(GameSession source, GameSession[] targets, JsonElement row,
@@ -68,7 +68,7 @@ public sealed partial class CombatService
             var attackerRole = source.Role!;
             var targetRole = target.Role!;
             long sceneId = source.WorldScene;
-            var attack = character.Stats(source); var defend = character.Stats(target);
+            var attack = _character.Stats(source); var defend = _character.Stats(target);
             var a = new Fighter(attack[103], attack[104], attack[109], attack[111], source.Progress!.Level, 1);
             var b = new Fighter(0, 0, 0, 0, target.Progress!.Level, 1)
             { Def = defend[105], Mdef = defend[106], Flee = defend[110], ResCri = defend[112] };
@@ -94,11 +94,11 @@ public sealed partial class CombatService
                     DstElement = 1, IsDead = hp == 0 } }
                 };
                 var sourceViewers = CurrentPlayerHit(source, target, attackerRole, targetRole, sceneId)
-                    ? world.Viewers(source).Append(source) : Enumerable.Empty<GameSession>();
-                foreach (var viewer in sourceViewers.Concat(world.Viewers(target)).Append(target).Distinct())
+                    ? _world.Viewers(source).Append(source) : Enumerable.Empty<GameSession>();
+                foreach (var viewer in sourceViewers.Concat(_world.Viewers(target)).Append(target).Distinct())
                     await viewer.SendGameAsync(SkillHit, hit);
                 if (!ReferenceEquals(target.Role, targetRole)) continue;
-                await character.SetHpSpAsync(target, null, null); // publish current HP after the serialized reservation
+                await _character.SetHpSpAsync(target, null, null); // publish current HP after the serialized reservation
                 if (!ReferenceEquals(target.Role, targetRole)) continue;
                 if (CurrentPlayerHit(source, target, attackerRole, targetRole, sceneId)) await FightingAsync(source);
                 await FightingAsync(target);
@@ -107,7 +107,7 @@ public sealed partial class CombatService
                     if (!ReferenceEquals(target.Role, targetRole)) continue;
                     await PlayerDiesAsync(target);
                     if (effective <= 0 || !CurrentPlayerHit(source, target, attackerRole, targetRole, sceneId)) continue;
-                    if (eventFight && eventPlayerKilled != null) await eventPlayerKilled(source, target);
+                    if (eventFight && _eventPlayerKilled != null) await _eventPlayerKilled(source, target);
                     foreach (var handler in PlayerKilled)
                     {
                         if (!CurrentPlayerHit(source, target, attackerRole, targetRole, sceneId)) break;
@@ -121,15 +121,15 @@ public sealed partial class CombatService
 
     private void TickEventPvP(long now)
     {
-        foreach (var (source, attack) in eventAttacks.ToArray())
+        foreach (var (source, attack) in _eventAttacks.ToArray())
         {
             if (!CanPlayerHit(source, attack.Target) || PlayerDistance(source, attack.Target) > 30
                 || MonsterService.Distance(attack.StartX, attack.StartZ, source.Position.X, source.Position.Z) > 1.5f)
-            { eventAttacks.Remove(source); continue; }
-            if (now < attack.NextSwing || source.SkillCast is { Cancelled: false } || data.Row("SkillConfig", attack.SkillId) is not { } row
+            { _eventAttacks.Remove(source); continue; }
+            if (now < attack.NextSwing || source.SkillCast is { Cancelled: false } || _data.Row("SkillConfig", attack.SkillId) is not { } row
                 || PlayerDistance(source, attack.Target) > Range(row) + 1.5f) continue;
-            eventAttacks[source] = attack with { NextSwing = now + SkillMs(source, row) };
-            loop.PostRuntime(() => SwingEventAsync(source, attack.Target, attack.SkillId, ++_sessionIds));
+            _eventAttacks[source] = attack with { NextSwing = now + SkillMs(source, row) };
+            _loop.PostRuntime(() => SwingEventAsync(source, attack.Target, attack.SkillId, ++_sessionIds));
         }
     }
 }

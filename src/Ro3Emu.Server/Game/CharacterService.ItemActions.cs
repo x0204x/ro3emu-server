@@ -28,8 +28,8 @@ public sealed partial class CharacterService
     private sealed record ItemAction(Func<ItemActionUse, Task<int>> Handler, bool TakesParam,
         Func<GameSession, Ownership.ReservationKey[]>? Keys);
 
-    private readonly Dictionary<int, ItemAction> itemActions = new();
-    private readonly ConditionalWeakTable<GameSession, Func<Task>> itemActionAfterReply = new();
+    private readonly Dictionary<int, ItemAction> _itemActions = new();
+    private readonly ConditionalWeakTable<GameSession, Func<Task>> _itemActionAfterReply = new();
 
     /// <summary>
     /// Client-hosted actions an item may consist of alone. The client runs them after a successful 31323
@@ -49,8 +49,8 @@ public sealed partial class CharacterService
     internal void RegisterItemAction(int action, Func<ItemActionUse, Task<int>> handler, bool takesParam = false,
         Func<GameSession, Ownership.ReservationKey[]>? keys = null)
     {
-        if (itemActions.Count == 0) SpecialItemUse.Add(UseItemActionAsync);
-        itemActions.Add(action, new ItemAction(handler, takesParam, keys));
+        if (_itemActions.Count == 0) SpecialItemUse.Add(UseItemActionAsync);
+        _itemActions.Add(action, new ItemAction(handler, takesParam, keys));
     }
 
     /// <summary>The single registered action among the item's server-hosted use effects, if any.</summary>
@@ -58,13 +58,13 @@ public sealed partial class CharacterService
     {
         if (GameData.Int(row, "_iIsUse") == 0) return null;
         var server = UseActions(row).Where(a => !ClientHosted(a)).Distinct().ToList();
-        return server.Count == 1 && itemActions.ContainsKey(server[0]) ? server[0] : null;
+        return server.Count == 1 && _itemActions.ContainsKey(server[0]) ? server[0] : null;
     }
 
     /// <summary>An item made only of one <see cref="ClientOnlyActions"/> action.</summary>
     private int? ClientOnlyActionOf(JsonElement row)
     {
-        if (GameData.Int(row, "_iIsUse") == 0 || itemActions.Count == 0) return null;
+        if (GameData.Int(row, "_iIsUse") == 0 || _itemActions.Count == 0) return null;
         var actions = UseActions(row).Distinct().ToList();
         return actions.Count == 1 && ClientOnlyActions.ContainsKey(actions[0]) ? actions[0] : null;
     }
@@ -74,14 +74,14 @@ public sealed partial class CharacterService
 
     /// <summary>The 31323 parameter gate (Bag.cs): an action registered with takesParam accepts exactly one.</summary>
     private bool AcceptsItemActionParam(JsonElement row, ItemUseReq req) =>
-        ItemActionOf(row) is { } action && itemActions[action].TakesParam && req.ItemParam.Count == 1;
+        ItemActionOf(row) is { } action && _itemActions[action].TakesParam && req.ItemParam.Count == 1;
 
     /// <summary>The keys a use of this bag item reserves beyond the role, null for a role-only use.</summary>
     private Ownership.ReservationKey[]? ItemUseKeys(GameSession session, long guid)
     {
         if (session.Role == null || session.Items.FirstOrDefault(i => i.Guid == guid && i.Grid == 0) is not { } item
             || data.Row("ItemConfig", item.Entry) is not { } row || ItemActionOf(row) is not { } action
-            || itemActions[action].Keys is not { } keys) return null;
+            || _itemActions[action].Keys is not { } keys) return null;
         return keys(session);
     }
 
@@ -117,7 +117,7 @@ public sealed partial class CharacterService
         if (ClientOnlyActionOf(row) is { } client)
             return req.ItemParam.Count > 0 ? ErrorCodes.Parameter : await UseClientOnlyItemAsync(session, req, item, row, count, client);
         if (ItemActionOf(row) is not { } action) return null;
-        var owner = itemActions[action];
+        var owner = _itemActions[action];
         if (!owner.TakesParam && req.ItemParam.Count > 0) return ErrorCodes.Parameter;
         if (owner.Keys is { } keys && session.Owners is { } owners && !owners.CurrentCovers(keys(session)))
             return ErrorCodes.FeatureUnavailable;
@@ -127,15 +127,15 @@ public sealed partial class CharacterService
             .ToList();
         var use = new ItemActionUse(session, req, item, row, count, effects);
         int result = await owner.Handler(use);
-        if (result == 0 && use.AfterReply != null) itemActionAfterReply.AddOrUpdate(session, use.AfterReply);
+        if (result == 0 && use.AfterReply != null) _itemActionAfterReply.AddOrUpdate(session, use.AfterReply);
         return result;
     }
 
     /// <summary>Bag.cs, after the 31323 reply of a specialized use: the action's follow-up, if it left one.</summary>
     private async Task AfterItemActionAsync(GameSession session)
     {
-        if (!itemActionAfterReply.TryGetValue(session, out var after)) return;
-        itemActionAfterReply.Remove(session);
+        if (!_itemActionAfterReply.TryGetValue(session, out var after)) return;
+        _itemActionAfterReply.Remove(session);
         await after();
     }
 
@@ -185,7 +185,7 @@ public sealed partial class CharacterService
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), [sink], []);
         // E05d freezes the staged children when it binds, so the item use's cooldown (the 31323 scope's bag_state) is
         // staged here, before it, and the scope is published with the commit instead of by the exchange.
-        var scope = lifeItemExchange.Value is { Active: true, Committed: false } live && ReferenceEquals(live.Session, s) ? live : null;
+        var scope = LifeItemExchange.Value is { Active: true, Committed: false } live && ReferenceEquals(live.Session, s) ? live : null;
         if (scope != null) scope.Active = false;
         try
         {

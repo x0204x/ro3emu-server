@@ -8,7 +8,7 @@ namespace Ro3Emu.Server.Game;
 
 public sealed partial class NewActivityService
 {
-    private EconomyAsset AdventureAsset(int entry) => data.Row("ItemConfig", entry) is { } row
+    private EconomyAsset AdventureAsset(int entry) => _data.Row("ItemConfig", entry) is { } row
         ? new(GameData.Int(row, "_iType") == 1 ? EconomyAssetKind.Currency : EconomyAssetKind.Item, entry)
         : throw new InvalidOperationException($"Adventure economy entry {entry} is not configured.");
 

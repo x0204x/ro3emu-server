@@ -11,7 +11,7 @@ public sealed class ProfessionTalentChoiceTests
 {
     private sealed class Fixture : IAsyncDisposable
     {
-        private readonly string configRoot = Path.Combine(Path.GetTempPath(), "ro3emu-profession-" + Guid.NewGuid().ToString("N"));
+        private readonly string _configRoot = Path.Combine(Path.GetTempPath(), "ro3emu-profession-" + Guid.NewGuid().ToString("N"));
         public SyntheticHost Host { get; private set; } = null!;
         public GameSession Session => Host.Service<SessionRegistry>().All().Single(s => s.Role != null);
         public SeasonTalentService Talents => Host.Service<SeasonTalentService>();
@@ -20,7 +20,7 @@ public sealed class ProfessionTalentChoiceTests
         {
             foreach (string path in Directory.EnumerateFiles(SyntheticData.Dir, "*", SearchOption.AllDirectories))
             {
-                string dest = Path.Combine(configRoot, Path.GetRelativePath(SyntheticData.Dir, path));
+                string dest = Path.Combine(_configRoot, Path.GetRelativePath(SyntheticData.Dir, path));
                 Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
                 File.Copy(path, dest);
             }
@@ -52,11 +52,11 @@ public sealed class ProfessionTalentChoiceTests
             {
                 _iGroup = 100 + id, _iLevel = 1, _iJobId = new[] { id == 8 ? 0 : id is 6 or 7 ? 2000 : 1000 },
             }));
-            Host = await SyntheticHost.StartAsync(o => { o.GameDataDir = configRoot; o.PlayBook = 101; });
+            Host = await SyntheticHost.StartAsync(o => { o.GameDataDir = _configRoot; o.PlayBook = 101; });
         }
 
         private void Write(string table, object value) =>
-            File.WriteAllText(Path.Combine(configRoot, "config", table + ".json"), JsonSerializer.Serialize(value));
+            File.WriteAllText(Path.Combine(_configRoot, "config", table + ".json"), JsonSerializer.Serialize(value));
 
         public Task Unlock(bool parentPurchased = true) => Host.Service<GameLoop>().InvokeAsync(async () =>
         {
@@ -74,7 +74,7 @@ public sealed class ProfessionTalentChoiceTests
         public async ValueTask DisposeAsync()
         {
             if (Host != null) await Host.DisposeAsync();
-            Directory.Delete(configRoot, true);
+            Directory.Delete(_configRoot, true);
         }
     }
 

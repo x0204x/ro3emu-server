@@ -27,12 +27,12 @@ public sealed partial class NewActivityService
         if (ActivityError(session, activityId, 21) is var error and not 0) return error;
         if (activityId != 199 || req.MonthCardId.Count == 0 || req.MonthCardId.Count != req.MonthCardId.Distinct().Count())
             return ErrorCodes.Parameter;
-        long day = activityClock.Day(Now);
+        long day = _activityClock.Day(Now);
         var current = session.NewActivities!.ActivityInfo[199].ActivityParam.MonthCard;
         var groups = new List<long>();
         foreach (long id in req.MonthCardId)
         {
-            if (data.Row("MonthCardConfig", id) is not { } config) return ErrorCodes.Parameter;
+            if (_data.Row("MonthCardConfig", id) is not { } config) return ErrorCodes.Parameter;
             if (!current.Infos.TryGetValue(id, out var card) || card.MonthCardId != id) return ErrorCodes.MonthCardNotOwned;
             if (card.ExpireTs <= Now) return ErrorCodes.MonthCardExpired;
             if (card.DayAward || session.ActivityRuntime!.MonthCards.GetValueOrDefault(id)?.ClaimedDay == day)
@@ -56,23 +56,23 @@ public sealed partial class NewActivityService
     private async Task ReconcileMonthCardAsync(GameSession session)
     {
         if (session.NewActivities == null || session.ActivityRuntime == null || ActivityError(session, 199, 21, allowInitializing: true) != 0) return;
-        foreach (var row in data.Table("MonthCardConfig").Values)
+        foreach (var row in _data.Table("MonthCardConfig").Values)
         {
             long id = GameData.Int(row, "_iId");
             int token = checked((int)GameData.Int(row, "_iItem"));
             int days = checked((int)GameData.Int(row, "_iDay"));
             int maxDays = checked((int)GameData.Int(row, "_iDayLimit"));
             if (id <= 0 || token <= 0 || days <= 0 || maxDays < days) continue;
-            long today = activityClock.Day(Now);
+            long today = _activityClock.Day(Now);
             var existing = session.NewActivities.ActivityInfo[199].ActivityParam.MonthCard.Infos.GetValueOrDefault(id);
-            long expiryDay = existing?.ExpireTs > 0 ? activityClock.Day(existing.ExpireTs - 1) + 1 : today;
+            long expiryDay = existing?.ExpireTs > 0 ? _activityClock.Day(existing.ExpireTs - 1) + 1 : today;
             bool expired = existing == null || existing.ExpireTs <= Now;
             long baseDay = expired ? today : expiryDay;
             int available = (int)Math.Min(Owned(session, token), (maxDays - (baseDay - today)) / days);
             available = Math.Clamp(available, 0, 4); // config 143 days admits at most four fresh months
             long newExpiryDay = baseDay + (long)available * days;
             long newExpiry = available > 0 ? StartOfLocalDay(newExpiryDay) : existing?.ExpireTs ?? 0;
-            long lastDays = newExpiry > Now ? Math.Max(1, activityClock.Day(newExpiry - 1) - today + 2) : 0;
+            long lastDays = newExpiry > Now ? Math.Max(1, _activityClock.Day(newExpiry - 1) - today + 2) : 0;
             var oldRuntime = session.ActivityRuntime.MonthCards.GetValueOrDefault(id);
             long claimDay = oldRuntime?.ClaimedDay ?? (existing?.DayAward == true ? today : 0);
             bool dayAward = newExpiry <= Now || claimDay == today;
@@ -95,7 +95,7 @@ public sealed partial class NewActivityService
     private long StartOfLocalDay(long dayNumber)
     {
         DateTime date = DateOnly.FromDayNumber(checked((int)dayNumber)).ToDateTime(TimeOnly.MinValue);
-        return new DateTimeOffset(date, activityClock.LocalTimeZone.GetUtcOffset(date)).ToUnixTimeSeconds();
+        return new DateTimeOffset(date, _activityClock.LocalTimeZone.GetUtcOffset(date)).ToUnixTimeSeconds();
     }
 }
 

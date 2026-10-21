@@ -12,44 +12,44 @@ namespace Ro3Emu.Tests;
 
 public sealed class TotemEffectsTests : IAsyncLifetime
 {
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-totem-effects-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-totem-effects-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "";
 
     public async Task InitializeAsync()
     {
         var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = httpPort; o.MicroGatePort = microPort; o.GameGatePort = gamePort;
         });
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{httpPort}";
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{httpPort}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     [ClientDataFact]
     public async Task EffectiveAttributesStacksPassiveOwnershipAndHpConditionFollowCurrentPlan()
     {
-        await using var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        await using var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync("effect", "pw");
         await bot.EnterGateAsync();
         long role = (await bot.CreateRoleAsync("Effect")).RoleBaseInfo.Id;
         await bot.EnterWorldAsync(role);
 
-        var registry = app.Services.GetRequiredService<SessionRegistry>();
+        var registry = _app.Services.GetRequiredService<SessionRegistry>();
         var session = registry.All().Single(s => s.Role?.Id == role);
-        var effects = app.Services.GetRequiredService<TotemEffects>();
-        var combat = app.Services.GetRequiredService<CombatService>();
-        var data = app.Services.GetRequiredService<GameData>();
+        var effects = _app.Services.GetRequiredService<TotemEffects>();
+        var combat = _app.Services.GetRequiredService<CombatService>();
+        var data = _app.Services.GetRequiredService<GameData>();
         var magic = data.Table("SkillConfig").Values.First(r => GameData.Int(r, "_iDmgType") == 2);
         Assert.Equal(1d, effects.OutgoingMultiplier(session, magic, DamageHitResult.Normal));
         Assert.Equal(1d, effects.IncomingMultiplier(session, DamageHitResult.Normal));
@@ -91,7 +91,7 @@ public sealed class TotemEffectsTests : IAsyncLifetime
         Assert.Equal(1.025, effects.OutgoingMultiplier(session, magic, DamageHitResult.Normal), 3);
 
         // An ordinary buff with the same config must not replace the source-owned totem stack.
-        var buffs = app.Services.GetRequiredService<BuffService>();
+        var buffs = _app.Services.GetRequiredService<BuffService>();
         await buffs.AddAsync(session, 2500401, 30000, role);
         Assert.Equal(2, session.Buffs.Count(b => b.ConfigId == 2500401));
         Assert.Contains(session.Buffs, b => b.ConfigId == 2500401 && !b.IsTotemOwned && b.SourceId == role);
@@ -110,16 +110,16 @@ public sealed class TotemEffectsTests : IAsyncLifetime
     [ClientDataFact]
     public async Task RoleSwitchRemovesOldTotemStacksWithoutPreWorldPropertyPackets()
     {
-        await using var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        await using var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync("effectswitch", "pw");
         await bot.EnterGateAsync();
         long first = (await bot.CreateRoleAsync("EffectA")).RoleBaseInfo.Id;
         long second = (await bot.CreateRoleAsync("EffectB")).RoleBaseInfo.Id;
         var firstSelf = await bot.EnterWorldAsync(first);
         long attack = firstSelf.Property.Single(p => p.Idx == 103).Data;
-        var registry = app.Services.GetRequiredService<SessionRegistry>();
+        var registry = _app.Services.GetRequiredService<SessionRegistry>();
         var session = registry.All().Single(s => s.Role?.Id == first);
-        var buffs = app.Services.GetRequiredService<BuffService>();
+        var buffs = _app.Services.GetRequiredService<BuffService>();
         await buffs.AddStackAsync(session, 2500301, 60000, 990002, 2);
         await bot.Inbox.WaitAsync(e => e.IsGame(CharacterService.OnePropertyChange), TimeSpan.FromSeconds(10));
         Assert.Contains(session.Buffs, b => b.IsTotemOwned && b.ConfigId == 2500301);

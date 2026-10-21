@@ -12,7 +12,6 @@ public sealed class RoleFanoutTests
         var second = new GameSession(null!, null!);
         var third = new GameSession(null!, null!);
         var ran = new List<GameSession>();
-        long skipped = RoleFanout.Skipped;
         await RoleFanout.EachAsync([quitting, second, third], s =>
         {
             if (s == quitting) throw new OperationCanceledException("Role is not admitting new mutations.");
@@ -20,7 +19,6 @@ public sealed class RoleFanoutTests
             return Task.CompletedTask;
         });
         Assert.Equal([second, third], ran);
-        Assert.True(RoleFanout.Skipped > skipped);
     }
 
     [Fact]

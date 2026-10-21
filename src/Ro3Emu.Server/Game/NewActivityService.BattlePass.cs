@@ -29,7 +29,7 @@ public sealed partial class NewActivityService
     /// </summary>
     private bool PassTurnReached(GameSession session, long activityId, DBNewActivityInfo? state)
     {
-        if (!passPlay || PassBefore(activityId) is not long before || PassConfig(before) is not { } config) return true;
+        if (!_passPlay || PassBefore(activityId) is not long before || PassConfig(before) is not { } config) return true;
         var infos = (state ?? session.NewActivities)?.ActivityInfo;
         return infos != null && infos.TryGetValue(before, out var info)
             && info.ActivityParam?.BattlePass is { } pass && pass.Level >= GameData.Int(config, "_iMaxLevel");
@@ -75,9 +75,9 @@ public sealed partial class NewActivityService
         return false;
     }
 
-    private JsonElement? PassConfig(long activityId) => PassIds.Contains(activityId) ? data.Row("BattlePassConfig", activityId) : null;
+    private JsonElement? PassConfig(long activityId) => PassIds.Contains(activityId) ? _data.Row("BattlePassConfig", activityId) : null;
 
-    private JsonElement? PassReward(long activityId, int level) => data.Table("BattlePassRewardConfig").Values
+    private JsonElement? PassReward(long activityId, int level) => _data.Table("BattlePassRewardConfig").Values
         .FirstOrDefault(r => GameData.Int(r, "_iActivityId") == activityId && GameData.Int(r, "_iLevel") == level) is
     { ValueKind: JsonValueKind.Object } row ? row : null;
 
@@ -113,7 +113,7 @@ public sealed partial class NewActivityService
         AwardGrant[]? direct = null;
         if (activityId == 9201)
         {
-            try { direct = groups.SelectMany(id => awards.ResolveDirect(session, id).Grants).ToArray(); }
+            try { direct = groups.SelectMany(id => _awards.ResolveDirect(session, id).Grants).ToArray(); }
             catch (AwardResolutionException) { return ErrorCodes.RewardMissing; }
         }
         int result = await CommitAsync(session, next, activityId == 9201 ? null : groups, extra: direct,
@@ -164,7 +164,7 @@ public sealed partial class NewActivityService
         if (token == 0 || Owned(session, token) < 1) return ErrorCodes.BattlePassGiftItem;
         if (req.GiftMessage.Length > 200) return ErrorCodes.BattlePassGiftMessage;
         int entitlement = checked((int)GameData.Int(config, "_iPremiumItemId"));
-        if (entitlement <= 0 || data.Row("ItemConfig", entitlement) == null) return ErrorCodes.BattlePassClosed;
+        if (entitlement <= 0 || _data.Row("ItemConfig", entitlement) == null) return ErrorCodes.BattlePassClosed;
         MailService.ActivityDeliveryLease? delivered = null;
         int result;
         await session.StateLock.WaitAsync();
@@ -174,7 +174,7 @@ public sealed partial class NewActivityService
             // (inferred) Gift product 8 grants item 1020001; the client opens its friend-gift UI on item use.
             // Deliver the configured premium entitlement through ordinary claimable mail, with token debit in
             // the same SQLite transaction. Recipient mail gate prevents a concurrent mailbox overwrite.
-            using var delivery = await mail.PrepareActivityDeliveryAsync(req.TargetPlayerId, session.Role.Id,
+            using var delivery = await _mail.PrepareActivityDeliveryAsync(req.TargetPlayerId, session.Role.Id,
                 session.Role.Name, activityId, req.GiftMessage, entitlement);
             if (delivery.Pending) return ErrorCodes.BattlePassGiftPending;
             var economy = new EscrowEconomyIntent("activity/pass-gift", session.Account ?? "", session.Role.Id)
@@ -193,13 +193,13 @@ public sealed partial class NewActivityService
         finally { session.StateLock.Release(); }
         if (delivered != null)
         {
-            var recipient = AttachedSocialSession(loop.Owners!.Get(req.TargetPlayerId));
-            var notices = loop.Owners.Current?.Notices;
+            var recipient = AttachedSocialSession(_loop.Owners!.Get(req.TargetPlayerId));
+            var notices = _loop.Owners.Current?.Notices;
             if (recipient != null && notices != null)
                 notices.Add(recipient, async () =>
                 {
                     try { await delivered.NotifyAsync(); }
-                    catch (Exception e) { log.LogWarning(e, "Pass gift committed but mail notice failed for {Recipient}", req.TargetPlayerId); }
+                    catch (Exception e) { _log.LogWarning(e, "Pass gift committed but mail notice failed for {Recipient}", req.TargetPlayerId); }
                 });
         }
         return result;
@@ -220,7 +220,7 @@ public sealed partial class NewActivityService
             long balance = Owned(session, expItem);
             // A following pass starts from the balance it opens with: that EXP already went into the pass before it.
             long earned = reset ? 0 : runtime.Initialized ? Math.Max(0, balance - runtime.LastBalance)
-                : passPlay && PassBefore(activityId) != null ? 0 : balance;
+                : _passPlay && PassBefore(activityId) != null ? 0 : balance;
             bool changed = reset || !runtime.Initialized || runtime.LastBalance != balance;
             int max = checked((int)GameData.Int(config, "_iMaxLevel"));
             int level = reset ? 0 : current.Level, exp = reset ? 0 : current.Exp;
@@ -240,7 +240,7 @@ public sealed partial class NewActivityService
             int premiumItem = checked((int)GameData.Int(config, "_iPremiumItemId"));
             // Ro3Emu:Pass:FreePremium: the premium track opens without spending the item.
             bool owned = Owned(session, premiumItem) > 0;
-            bool activate = (reset || !current.Premium) && (freePremiumPass || owned);
+            bool activate = (reset || !current.Premium) && (_freePremiumPass || owned);
             changed |= activate;
             if (!changed) continue;
             var next = session.NewActivities.Clone();
@@ -259,7 +259,7 @@ public sealed partial class NewActivityService
             var nextRuntime = CloneRuntime(session);
             nextRuntime.PassProgress[activityId] = new PassProgressRuntime
             { Initialized = true, LastBalance = balance, ActivityInstance = info.ActivityInstance };
-            var costs = activate && !freePremiumPass ? new[] { (Entry: premiumItem, Count: 1) } : [];
+            var costs = activate && !_freePremiumPass ? new[] { (Entry: premiumItem, Count: 1) } : [];
             if (await CommitAsync(session, next, costs: costs, runtime: nextRuntime,
                 source: $"pass/activate/{activityId}/{info.ActivityInstance}/{premiumItem}") != 0) return;
         }

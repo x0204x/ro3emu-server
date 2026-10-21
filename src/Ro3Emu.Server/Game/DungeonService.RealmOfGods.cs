@@ -41,16 +41,16 @@ public sealed partial class DungeonService
     private const int HonorFinished = 1, HonorReceived = 2;
     private const long Day = 86400;
 
-    private DBMultiDungeonServerInfo? serverInfo;
+    private DBMultiDungeonServerInfo? _serverInfo;
 
     /// <summary>The realm's Realm of the Gods records (server_state "multi_dungeon_server", base64 protobuf).</summary>
-    internal DBMultiDungeonServerInfo ServerInfo => serverInfo ??= accounts.ReadSync<string?>(new SeasonStateReadPlan(ServerInfoKey))
+    internal DBMultiDungeonServerInfo ServerInfo => _serverInfo ??= _accounts.ReadSync<string?>(new SeasonStateReadPlan(ServerInfoKey))
         is { Length: > 0 } saved ? DBMultiDungeonServerInfo.Parser.ParseFrom(Convert.FromBase64String(saved)) : new DBMultiDungeonServerInfo();
 
     private async Task SaveServerInfoAsync(DBMultiDungeonServerInfo next)
     {
-        await accounts.WriteLegacyAsync<int>(new SeasonStateWritePlan(ServerInfoKey, Convert.ToBase64String(next.ToByteArray())));
-        serverInfo = next;
+        await _accounts.WriteLegacyAsync<int>(new SeasonStateWritePlan(ServerInfoKey, Convert.ToBase64String(next.ToByteArray())));
+        _serverInfo = next;
     }
 
     private static Ownership.ReservationKey ServerInfoReservation =>
@@ -78,19 +78,19 @@ public sealed partial class DungeonService
         var record = new DBMultiDungeonHallOfFame
         {
             MultiDungeonBossId = bossId,
-            PassTime = (int)Math.Min(int.MaxValue, (loop.Now - a.StartedAt).TotalSeconds),
-            PassTimestamp = clock.GetUtcNow().ToUnixTimeMilliseconds(),
+            PassTime = (int)Math.Min(int.MaxValue, (_loop.Now - a.StartedAt).TotalSeconds),
+            PassTimestamp = _clock.GetUtcNow().ToUnixTimeMilliseconds(),
             TeamLeaderId = leader.Role!.Id, TeamLeaderName = leader.Role.Name
         };
         // The MVP panel shows up to ten roles (UI_Sys_Dungeon_Group_MvpPanelCtrl m_kWT_Role01..10), leader first.
         foreach (var member in party.OrderBy(s => s == leader ? 0 : 1).ThenBy(s => Slot(a, s.Role!.Id)).Take(10))
-            record.RoleInfo.Add(character.DetailInfo(member));
-        loop.TrackRuntimeDetached("dungeon hall of fame", () => StoreFirstClearAsync(record));
+            record.RoleInfo.Add(_character.DetailInfo(member));
+        _loop.TrackRuntimeDetached("dungeon hall of fame", () => StoreFirstClearAsync(record));
     }
 
     internal async Task StoreFirstClearAsync(DBMultiDungeonHallOfFame record, bool replace = false)
     {
-        using (loop.Owners is { } owners ? await owners.EnterAsync("dungeon/hall-of-fame", ServerInfoReservation) : null)
+        using (_loop.Owners is { } owners ? await owners.EnterAsync("dungeon/hall-of-fame", ServerInfoReservation) : null)
         {
             if (!replace && ServerInfo.HallOfFame.ContainsKey(record.MultiDungeonBossId)) return;
             var next = ServerInfo.Clone();
@@ -98,8 +98,8 @@ public sealed partial class DungeonService
             await SaveServerInfoAsync(next);
         }
         // A first clear can unlock a Sacred Blessing for everyone: refresh the online 5062s.
-        foreach (var session in sessions.All().Where(s => s.Dungeons != null && s.Role != null))
-            loop.PostOwned(session, () => SyncAsync(session), "dungeon blessing sync");
+        foreach (var session in _sessions.All().Where(s => s.Dungeons != null && s.Role != null))
+            _loop.PostOwned(session, () => SyncAsync(session), "dungeon blessing sync");
     }
 
     // ---- Sacred Blessings ----
@@ -107,7 +107,7 @@ public sealed partial class DungeonService
     /// <summary>The boss whose first clear unlocks a blessing and the days after it (LC_ConditionList [3034, boss, days]).</summary>
     private (int Boss, long Days)? FirstClearCondition(long conditionId)
     {
-        if (data.Row("LC_ConditionList", conditionId) is not { } condition
+        if (_data.Row("LC_ConditionList", conditionId) is not { } condition
             || !condition.TryGetProperty("m_kSubConditionList", out var subs) || subs.ValueKind != JsonValueKind.Array) return null;
         foreach (var sub in subs.EnumerateArray())
             if (sub.TryGetProperty("m_kData", out var args) && args.ValueKind == JsonValueKind.Array && args.GetArrayLength() >= 2
@@ -134,10 +134,10 @@ public sealed partial class DungeonService
             FirstPassTeamLeaderName = first.TeamLeaderName,
             TeamLeaderId = first.TeamLeaderId, FirstUnlockTime = unlock
         };
-        long now = clock.GetUtcNow().ToUnixTimeSeconds();
+        long now = _clock.GetUtcNow().ToUnixTimeSeconds();
         JsonElement? level = null;
         if (now >= unlock)
-            foreach (var row in data.Table("TenGameplayBuffConfig").Values
+            foreach (var row in _data.Table("TenGameplayBuffConfig").Values
                 .Where(r => GameData.Int(r, "_iGroupType") == group).OrderBy(r => GameData.Int(r, "_iLevel")))
                 if (now >= unlock + GameData.Int(row, "_iUnlockDay") * Day) level = row;
         if (level is { } current) info.UnlockSacredBlessingID = GameData.Int(current, "_iID");
@@ -150,8 +150,8 @@ public sealed partial class DungeonService
 
     private static int BlessingRevives(Attempt a) => a.Blessing is { } row ? (int)Math.Max(0, GameData.Int(row, "_iAddReviveNum")) : 0;
 
-    private JsonElement? BossOf(int multiId, int mark) => catalog.MultiRows
-        .Where(r => GameData.Int(r, "_iID") == multiId).Select(r => catalog.Boss(r, mark)).FirstOrDefault();
+    private JsonElement? BossOf(int multiId, int mark) => _catalog.MultiRows
+        .Where(r => GameData.Int(r, "_iID") == multiId).Select(r => _catalog.Boss(r, mark)).FirstOrDefault();
 
     /// <summary>82588: the role has seen its blessing's current level; 5062 drops isNeedTip until the next level.</summary>
     public async Task MarkBlessingsAsync(GameSession s, MultiDungeonMarkSacredBlessingsReq req)
@@ -201,7 +201,7 @@ public sealed partial class DungeonService
         string key = RecordKey(a.Plan);
         if (!next.Honors.TryGetValue(key, out var honors)) next.Honors[key] = honors = new();
         int revivesLeft = Math.Max(0, (int)GameData.Int(boss, "_iOriginalReviveNum")) + BlessingRevives(a) - a.RevivesUsed.Values.Sum();
-        long enrageLeft = options.RaidEnrageSeconds - durationMs / 1000;
+        long enrageLeft = _options.RaidEnrageSeconds - durationMs / 1000;
         bool Holds(JsonElement sub)
         {
             if (!sub.TryGetProperty("m_kData", out var args) || args.ValueKind != JsonValueKind.Array || args.GetArrayLength() < 2) return false;
@@ -219,8 +219,8 @@ public sealed partial class DungeonService
         for (int pass = 0; pass < 2; pass++)
             foreach (long id in ids)
             {
-                if (honors.GetValueOrDefault(id) >= HonorFinished || data.Row("TenGameplayFinalTrialConfig", id) is not { } goal
-                    || data.Row("LC_ConditionList", GameData.Int(goal, "_kAchieveConditions")) is not { } condition
+                if (honors.GetValueOrDefault(id) >= HonorFinished || _data.Row("TenGameplayFinalTrialConfig", id) is not { } goal
+                    || _data.Row("LC_ConditionList", GameData.Int(goal, "_kAchieveConditions")) is not { } condition
                     || !condition.TryGetProperty("m_kSubConditionList", out var subs) || subs.ValueKind != JsonValueKind.Array
                     || subs.GetArrayLength() == 0) continue;
                 if (subs.EnumerateArray().All(Holds)) honors[id] = HonorFinished;
@@ -248,7 +248,7 @@ public sealed partial class DungeonService
     {
         string key = $"{req.MultiDungeonId}:{req.MarkId}";
         long roleId = s.Role?.Id ?? 0;
-        using var scope = roleId > 0 && loop.Owners is { } owners
+        using var scope = roleId > 0 && _loop.Owners is { } owners
             ? await owners.EnterAsync("dungeon honor claim", [Ownership.ReservationKey.Role(roleId),
                 Ownership.ReservationKey.Lifecycle(roleId), Ownership.ReservationKey.Entity("dungeon_honor_claim", $"{roleId}/{key}")]) : null;
         if (s.Role?.Id != roleId) throw new OperationCanceledException("Role changed before honor claim admission.");
@@ -261,24 +261,24 @@ public sealed partial class DungeonService
                 ? ErrorCodes.RewardClaimed : 0;
         foreach (long id in error == 0 ? wanted : [])
         {
-            var goal = data.Row("TenGameplayFinalTrialConfig", id)!.Value;
+            var goal = _data.Row("TenGameplayFinalTrialConfig", id)!.Value;
             long group = GameData.Int(goal, "_iPersonAward");
             long awardId = 0;
-            if (data.Row("MultiverseGroupConfig", group) is { } mg)
-                awardId = GameData.Int(mg, $"_iValue_{seasons.PlayBook}") is var v and > 0 ? v : GameData.Int(mg, "_iValue_default");
+            if (_data.Row("MultiverseGroupConfig", group) is { } mg)
+                awardId = GameData.Int(mg, $"_iValue_{_seasons.PlayBook}") is var v and > 0 ? v : GameData.Int(mg, "_iValue_default");
             AwardPlan? plan = null;
-            try { if (awardId > 0) plan = awards.ResolveDirect(s, awardId); }
-            catch (AwardResolutionException e) { log.LogWarning(e, "Final Trial award {Award} rejected", awardId); }
+            try { if (awardId > 0) plan = _awards.ResolveDirect(s, awardId); }
+            catch (AwardResolutionException e) { _log.LogWarning(e, "Final Trial award {Award} rejected", awardId); }
             if (plan == null || plan.Grants.Count == 0) { error = ErrorCodes.RewardMissing; break; }
             var next = CurrentState(s.Dungeons!);
             if (!next.Honors.TryGetValue(key, out var honors)) next.Honors[key] = honors = new();
             honors[id] = HonorReceived;
             var bytes = JsonSerializer.SerializeToUtf8Bytes(next);
-            if (!await character.ApplyAwardAsync(s, plan, persist: tx =>
+            if (!await _character.ApplyAwardAsync(s, plan, persist: tx =>
                 {
                     tx.RoleBlob(s.Role!.Id, "dungeons", bytes);
                     if (plan.Grants.Any(grant => grant.Entry is not (100 or 101)))
-                        tx.WithEventEconomy(EventEconomy.ForRole(data, s, "dungeon/honor-award",
+                        tx.WithEventEconomy(EventEconomy.ForRole(_data, s, "dungeon/honor-award",
                             $"dungeon/honor-award/{s.Role.Id}/{key}/{id}/{next.SeasonStart}", [], plan.Grants,
                             new { Multi = req.MultiDungeonId, Mark = req.MarkId, Honor = id, Award = awardId }));
                 }, committed: () => s.Dungeons = next))
@@ -323,10 +323,10 @@ public sealed partial class DungeonService
     private async Task FirstClearGmAsync(GameSession s, string[] args)
     {
         if (args.Length < 1 || !int.TryParse(args[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int boss)
-            || data.Row("TenGameplayBossConfig", boss) == null) throw new ArgumentException("<TenGameplayBossConfig boss id> [daysAgo] | <boss> clear");
+            || _data.Row("TenGameplayBossConfig", boss) == null) throw new ArgumentException("<TenGameplayBossConfig boss id> [daysAgo] | <boss> clear");
         if (args.Length > 1 && args[1].Equals("clear", StringComparison.OrdinalIgnoreCase))
         {
-            using (loop.Owners is { } owners ? await owners.EnterAsync("dungeon/hall-of-fame gm", ServerInfoReservation) : null)
+            using (_loop.Owners is { } owners ? await owners.EnterAsync("dungeon/hall-of-fame gm", ServerInfoReservation) : null)
             {
                 var next = ServerInfo.Clone();
                 next.HallOfFame.Remove(boss);
@@ -340,8 +340,8 @@ public sealed partial class DungeonService
         var record = new DBMultiDungeonHallOfFame
         {
             MultiDungeonBossId = boss, PassTime = 0,
-            PassTimestamp = clock.GetUtcNow().AddDays(-days).ToUnixTimeMilliseconds(),
-            TeamLeaderId = s.Role!.Id, TeamLeaderName = s.Role.Name, RoleInfo = { character.DetailInfo(s) }
+            PassTimestamp = _clock.GetUtcNow().AddDays(-days).ToUnixTimeMilliseconds(),
+            TeamLeaderId = s.Role!.Id, TeamLeaderName = s.Role.Name, RoleInfo = { _character.DetailInfo(s) }
         };
         await StoreFirstClearAsync(record, replace: true);
         await SyncAsync(s);

@@ -6,7 +6,7 @@ namespace Ro3Emu.Server.Game;
 
 public sealed partial class TerritoryWarsService
 {
-    private JsonElement? ResultRule(int id) => data.Table("TerritoryWarResultRuleConfig").Values
+    private JsonElement? ResultRule(int id) => _data.Table("TerritoryWarResultRuleConfig").Values
         .Where(r => GameData.Int(r, "_iRuleID") == id).Select(r => (JsonElement?)r).FirstOrDefault();
 
     /// <summary>
@@ -16,7 +16,7 @@ public sealed partial class TerritoryWarsService
     /// </summary>
     private IReadOnlyCollection<GuildStore.State> ApplyAuctionResultRule(WorldState next, AuctionRound round)
     {
-        int id = clock.RoundStage(round.Round, 16, 17, 18)?.ResultRule ?? 0;
+        int id = _clock.RoundStage(round.Round, 16, 17, 18)?.ResultRule ?? 0;
         var rule = ResultRule(id);
         if (rule == null || GameData.Int(rule.Value, "_iRuleType") != 1) return [];
         int limit = (int)Math.Max(0, GameData.Int(rule.Value, "_iLimitCount"));
@@ -30,7 +30,7 @@ public sealed partial class TerritoryWarsService
             foreach (var entry in zone.Entries.Where(e => !selected.Contains(e.GuildId) && !e.Occupier))
             {
                 if (!refunds.TryGetValue(entry.GuildId, out var guild))
-                { guild = guildStore.Get(entry.GuildId); if (guild != null) refunds[guild.Id] = guild; }
+                { guild = _guildStore.Get(entry.GuildId); if (guild != null) refunds[guild.Id] = guild; }
                 if (guild != null)
                 { if (entry.Legacy) guild.Materials = checked(guild.Materials + entry.Amount); else guild.AuctionMaterials = checked(guild.AuctionMaterials + entry.Amount); }
             }
@@ -46,7 +46,7 @@ public sealed partial class TerritoryWarsService
     /// </summary>
     private async Task ApplyBattleResultRulesAsync()
     {
-        foreach (var stage in clock.Stages.Where(s => s.Type is 6 or 10 or 14 && s.EndTime <= clock.Now))
+        foreach (var stage in _clock.Stages.Where(s => s.Type is 6 or 10 or 14 && s.EndTime <= _clock.Now))
         {
             if (state.RuleResults.ContainsKey(stage.ResultRule) || ResultRule(stage.ResultRule) is not { } rule
                 || GameData.Int(rule, "_iRuleType") != 2) continue;

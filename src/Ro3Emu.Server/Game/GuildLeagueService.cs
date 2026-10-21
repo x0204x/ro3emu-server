@@ -24,33 +24,33 @@ public sealed partial class GuildLeagueService : IGameTicker
         TitleNotify = 30432, EventNotify = 30433;
     public const int Function = 60;
 
-    private readonly GameData data;
-    private readonly AccountStore accounts;
-    private readonly RoleStore roles;
-    private readonly GuildStore guilds;
-    private readonly GuildService guildService;
-    private readonly FunctionService functions;
-    private readonly SeasonService seasons;
-    private readonly GuildLeagueCalendar calendar;
-    private readonly SessionRegistry sessions;
-    private readonly InstanceService instances;
-    private readonly SceneService scene;
-    private readonly WorldData maps;
-    private readonly CombatService combat;
-    private readonly BuffService buffs;
-    private readonly MailService mail;
-    private readonly AuctionService auctions;
-    private readonly World world;
-    private readonly IOptions<ServerOptions> options;
-    private readonly TimeProvider clock;
-    private readonly GameLoop loop;
-    private readonly ILogger<GuildLeagueService> log;
+    private readonly GameData _data;
+    private readonly AccountStore _accounts;
+    private readonly RoleStore _roles;
+    private readonly GuildStore _guilds;
+    private readonly GuildService _guildService;
+    private readonly FunctionService _functions;
+    private readonly SeasonService _seasons;
+    private readonly GuildLeagueCalendar _calendar;
+    private readonly SessionRegistry _sessions;
+    private readonly InstanceService _instances;
+    private readonly SceneService _scene;
+    private readonly WorldData _maps;
+    private readonly CombatService _combat;
+    private readonly BuffService _buffs;
+    private readonly MailService _mail;
+    private readonly AuctionService _auctions;
+    private readonly World _world;
+    private readonly IOptions<ServerOptions> _options;
+    private readonly TimeProvider _clock;
+    private readonly GameLoop _loop;
+    private readonly ILogger<GuildLeagueService> _log;
 
     /// <summary>A newly committed match outcome: its round (1-3) and each fighter's personal points (quest targets
     /// 106603 and 106019). Runs inside the Realm settlement; listeners post their work.</summary>
     public List<Action<int, IReadOnlyDictionary<long, long>>> MatchCommitted { get; } = new();
-    private readonly SemaphoreSlim gate = new(1, 1);
-    private LeagueState state;
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private LeagueState _state;
 
     public sealed class LeagueState
     {
@@ -138,11 +138,11 @@ public sealed partial class GuildLeagueService : IGameTicker
         InstanceService instances, SceneService scene, WorldData maps, CombatService combat, BuffService buffs, MailService mail,
         AuctionService auctions, World world, GmCommands gm, IOptions<ServerOptions> options, TimeProvider clock, GameLoop loop, ILogger<GuildLeagueService> log)
     {
-        this.data = data; this.accounts = accounts; this.roles = roles; this.guilds = guilds; this.guildService = guildService;
-        this.functions = functions; this.seasons = seasons; this.calendar = calendar; this.sessions = sessions;
-        this.instances = instances; this.scene = scene; this.maps = maps; this.combat = combat; this.buffs = buffs;
-        this.mail = mail; this.auctions = auctions; this.world = world; this.options = options; this.clock = clock; this.loop = loop; this.log = log;
-        state = accounts.ReadSync<byte[]?>(new TerritoryRealmReadPlan(RealmStateKind.GuildLeague)) is { } saved
+        this._data = data; this._accounts = accounts; this._roles = roles; this._guilds = guilds; this._guildService = guildService;
+        this._functions = functions; this._seasons = seasons; this._calendar = calendar; this._sessions = sessions;
+        this._instances = instances; this._scene = scene; this._maps = maps; this._combat = combat; this._buffs = buffs;
+        this._mail = mail; this._auctions = auctions; this._world = world; this._options = options; this._clock = clock; this._loop = loop; this._log = log;
+        _state = accounts.ReadSync<byte[]?>(new TerritoryRealmReadPlan(RealmStateKind.GuildLeague)) is { } saved
             ? JsonSerializer.Deserialize<LeagueState>(saved)! : new();
         guildService.League = new GuildService.LeagueHooks(MgrDataCoreAsync, InfoCoreAsync, GroupInfoCoreAsync);
         HookBattle();
@@ -156,26 +156,26 @@ public sealed partial class GuildLeagueService : IGameTicker
         else if (args.Length > 0 && args[0] == "fill") reply = await FillNowAsync(s);
         else
         {
-            var info = calendar.Info(Now);
-            var own = s.Role == null ? null : guilds.ForRole(s.Role.Id);
+            var info = _calendar.Info(Now);
+            var own = s.Role == null ? null : _guilds.ForRole(s.Role.Id);
             var group = own == null ? null : GroupOf(own.Id);
             reply = $"Tournament {info.Index} {info.EStatus} open={info.Open} start={info.StartTime} end={info.EndTime}; "
-                + $"registered {state.Index}, groups {state.Cup?.Groups.Count ?? 0}, round settled {state.Cup?.SettledRound ?? 0}"
+                + $"registered {_state.Index}, groups {_state.Cup?.Groups.Count ?? 0}, round settled {_state.Cup?.SettledRound ?? 0}"
                 + (group == null ? "; your guild is not placed" : $"; your guild: tier {group.Tier} group {group.Order}");
         }
         await GmCommands.ReplyAsync(s, reply);
     }
 
-    private long Now => clock.GetUtcNow().ToUnixTimeSeconds();
-    internal LeagueState State => state;
+    private long Now => _clock.GetUtcNow().ToUnixTimeSeconds();
+    internal LeagueState State => _state;
 
-    private long Setting(string name, long fallback) => data.Table("GuildSettingConfig").TryGetValue(name, out var row)
+    private long Setting(string name, long fallback) => _data.Table("GuildSettingConfig").TryGetValue(name, out var row)
         && row.TryGetProperty("_kValue", out var value) && GameData.Number(value) is { } n ? (long)n : fallback;
-    private long[] Param(string name) => data.Table("PublicParamConfig").TryGetValue(name, out var v) && v.ValueKind == JsonValueKind.Array
+    private long[] Param(string name) => _data.Table("PublicParamConfig").TryGetValue(name, out var v) && v.ValueKind == JsonValueKind.Array
         ? v.EnumerateArray().Select(x => (long)(GameData.Number(x) ?? 0)).ToArray() : [];
-    private JsonElement? Rank(int tier) => data.Table("GuildLeagueRankConfig").Values
+    private JsonElement? Rank(int tier) => _data.Table("GuildLeagueRankConfig").Values
         .Where(r => GameData.Int(r, "_iRank") == tier).Select(r => (JsonElement?)r).FirstOrDefault();
-    private int[] Tiers => data.Table("GuildLeagueRankConfig").Values.Select(r => (int)GameData.Int(r, "_iRank")).Order().ToArray();
+    private int[] Tiers => _data.Table("GuildLeagueRankConfig").Values.Select(r => (int)GameData.Int(r, "_iRank")).Order().ToArray();
     /// <summary>Groups of a tier hold 8 guilds (GetAllRankGroupNum, Lua_CFG_GuildLeagueRankConfig.lua:214-232: _iGroupNum * 8).</summary>
     private int Groups(int tier) => Rank(tier) is { } row ? (int)Math.Max(1, GameData.Int(row, "_iGroupNum")) : 1;
 
@@ -187,18 +187,18 @@ public sealed partial class GuildLeagueService : IGameTicker
 
     private async Task CommitAsync(LeagueState next, string label, Action<RoleItemPlanBuilder>? more = null)
     {
-        var tx = roles.NewTransaction();
+        var tx = _roles.NewTransaction();
         Save(next, tx);
         more?.Invoke(tx);
-        await roles.CommitAsync(tx, "guild-league/" + label);
-        state = next;
+        await _roles.CommitAsync(tx, "guild-league/" + label);
+        _state = next;
     }
 
     /// <summary>Realm work of this service: the league gate under the operation's own scope (a borrowed Realm keeps it).</summary>
     private async Task<IDisposable?> EnterAsync(string origin)
     {
-        if (loop.Owners is not { } owners) { await gate.WaitAsync(); return null; }
-        return await owners.EnterWithGateAsync("guild-league/" + origin, gate, [ReservationKey.Realm]);
+        if (_loop.Owners is not { } owners) { await _gate.WaitAsync(); return null; }
+        return await owners.EnterWithGateAsync("guild-league/" + origin, _gate, [ReservationKey.Realm]);
     }
 
     // ---- registration ------------------------------------------------------------------------------------------------
@@ -211,18 +211,18 @@ public sealed partial class GuildLeagueService : IGameTicker
     /// </summary>
     private async Task RegisterAsync(GuildLeagueCalendar.Tournament t)
     {
-        var next = Copy(state);
-        bool newSeason = next.Season != seasons.SeasonId;
-        if (newSeason) { next.Season = seasons.SeasonId; next.Guilds.Clear(); }
-        int minMembers = options.Value.GuildLeagueMinMembers ?? (int)Setting("GuildLeaguePeopleNum", 40);
+        var next = Copy(_state);
+        bool newSeason = next.Season != _seasons.SeasonId;
+        if (newSeason) { next.Season = _seasons.SeasonId; next.Guilds.Clear(); }
+        int minMembers = _options.Value.GuildLeagueMinMembers ?? (int)Setting("GuildLeaguePeopleNum", 40);
         long minActivity = Setting("GuildLeagueActive", 0);
         int dropAfter = MailCount(1037, 2);
         var warned = new List<(long Leader, int Template)>();
         var eligible = new List<GuildStore.State>();
-        foreach (var g in guilds.List())
+        foreach (var g in _guilds.List())
         {
             bool ok = g.Status == (int)GuildStatus.Normal && g.Members.Count >= minMembers
-                && guildService.LastWeekActivityOf(g) >= minActivity;
+                && _guildService.LastWeekActivityOf(g) >= minActivity;
             if (ok) { eligible.Add(g); continue; }
             if (!next.Guilds.TryGetValue(g.Id, out var standing) || standing.Tier == 0) continue;
             standing.Misses++;
@@ -230,7 +230,7 @@ public sealed partial class GuildLeagueService : IGameTicker
             if (standing.Misses >= dropAfter) { next.Guilds.Remove(g.Id); warned.Add((leader, (int)Setting("GuildLeagueLevelNoticeMailID", 1037))); }
             else warned.Add((leader, (int)Setting("GuildLeagueLevelWarnMailID", 1036)));
         }
-        foreach (long gone in next.Guilds.Keys.Where(id => guilds.Get(id) == null).ToArray()) next.Guilds.Remove(gone);
+        foreach (long gone in next.Guilds.Keys.Where(id => _guilds.Get(id) == null).ToArray()) next.Guilds.Remove(gone);
         foreach (var g in eligible)
         {
             var standing = next.Guilds.TryGetValue(g.Id, out var known) ? known : next.Guilds[g.Id] = new Standing();
@@ -257,7 +257,7 @@ public sealed partial class GuildLeagueService : IGameTicker
             {
                 // (inferred) Guilds are dealt round-robin in ladder order so the groups of a tier are even.
                 var dealt = members.Where((_, i) => i % count == order - 1).ToList();
-                var random = new Random(HashCode.Combine(t.Index, tier, order, seasons.SeasonId));
+                var random = new Random(HashCode.Combine(t.Index, tier, order, _seasons.SeasonId));
                 var group = new Group { Tier = tier, Order = order };
                 group.Pairs.AddRange(GuildLeagueBracket.Draw(dealt, random).Select(p => new[] { p.Blue, p.Red }));
                 cup.Groups.Add(group);
@@ -267,22 +267,22 @@ public sealed partial class GuildLeagueService : IGameTicker
         foreach (var standing in next.Guilds.Values.Where(s => s.Tier > 0)) standing.Lift = 0;
         next.Index = t.Index;
         next.Cup = cup;
-        var letters = warned.Where(w => w.Leader > 0 && roles.Get(w.Leader) != null).ToArray();
-        using (await mail.LockRecipientsAsync(letters.Select(w => w.Leader)))
+        var letters = warned.Where(w => w.Leader > 0 && _roles.Get(w.Leader) != null).ToArray();
+        using (await _mail.LockRecipientsAsync(letters.Select(w => w.Leader)))
             await CommitAsync(next, "register", tx =>
             {
                 foreach (var (leader, template) in letters)
-                    mail.QueueTemplateLocked(leader, $"guild-league:{t.Index}:placement:{leader}", template, [], tx);
+                    _mail.QueueTemplateLocked(leader, $"guild-league:{t.Index}:placement:{leader}", template, [], tx);
             });
         foreach (var (leader, _) in letters)
-            try { await mail.NotifyRecipientAsync(leader); }
-            catch (Exception e) { log.LogWarning(e, "Guild League placement mail notice deferred for {Role}", leader); }
-        log.LogInformation("Guild League tournament {Index} registered: {Guilds} guilds in {Groups} groups",
+            try { await _mail.NotifyRecipientAsync(leader); }
+            catch (Exception e) { _log.LogWarning(e, "Guild League placement mail notice deferred for {Role}", leader); }
+        _log.LogInformation("Guild League tournament {Index} registered: {Guilds} guilds in {Groups} groups",
             t.Index, eligible.Count, cup.Groups.Count);
     }
 
     /// <summary>The count a MailConfig template carries as its first content parameter (1036/1037: "2").</summary>
-    private int MailCount(int template, int fallback) => data.Row("MailConfig", template) is { } row
+    private int MailCount(int template, int fallback) => _data.Row("MailConfig", template) is { } row
         && row.TryGetProperty("_iContent", out var content) && content.ValueKind == JsonValueKind.Array && content.GetArrayLength() > 1
         && int.TryParse(content[1].ValueKind == JsonValueKind.String ? content[1].GetString() : content[1].ToString(), out int n) ? n : fallback;
 
@@ -324,7 +324,7 @@ public sealed partial class GuildLeagueService : IGameTicker
     // ---- 30410 / 30411 / 30412 ---------------------------------------------------------------------------------------
 
     private Group? GroupOf(long guild) => guild == 0 ? null
-        : state.Cup?.Groups.FirstOrDefault(g => g.Pairs.Any(p => p[0] == guild || p[1] == guild));
+        : _state.Cup?.Groups.FirstOrDefault(g => g.Pairs.Any(p => p[0] == guild || p[1] == guild));
 
     /// <summary>A guild's cumulative score in its group after <paramref name="throughRound"/> rounds.</summary>
     private static Dictionary<long, int> Scores(Group group, int throughRound = 3)
@@ -344,8 +344,8 @@ public sealed partial class GuildLeagueService : IGameTicker
         var data = new GuildLeagueGuildDungeonData { GuildID = guild };
         if (pairIndex >= 0) data.Matcharea = GuildLeagueBracket.Area(pairIndex);
         if (guild == 0) return data;
-        var live = guilds.Get(guild);
-        var standing = state.Guilds.GetValueOrDefault(guild);
+        var live = _guilds.Get(guild);
+        var standing = _state.Guilds.GetValueOrDefault(guild);
         data.Name = live?.Name ?? standing?.Name ?? "";
         data.Icon = live != null ? new GuildHeadIcon { BackgroundType = live.Background, IconType = live.Icon }
             : new GuildHeadIcon { BackgroundType = standing?.Background ?? 0, IconType = standing?.Icon ?? 0 };
@@ -357,9 +357,9 @@ public sealed partial class GuildLeagueService : IGameTicker
         // rankNum is the guild's number inside the group: its seed until the finals are scored, then its place
         // (8 - score); GenerateRankData numbers empty slots 1-8 per group the same way (inferred reading).
         int seed = group.Pairs.FindIndex(p => p[0] == guild || p[1] == guild);
-        data.RankNum = state.Cup?.SettledRound >= 3 ? GuildLeagueBracket.Place(data.Score)
+        data.RankNum = _state.Cup?.SettledRound >= 3 ? GuildLeagueBracket.Place(data.Score)
             : seed < 0 ? 0 : group.Pairs[seed][0] == guild ? seed + 1 : seed + 5;
-        if (state.Cup?.Settled == true && standing != null) data.RankLift = (GuildLeagueRankLift)standing.Lift;
+        if (_state.Cup?.Settled == true && standing != null) data.RankLift = (GuildLeagueRankLift)standing.Lift;
         if (pairIndex < 0 && seed >= 0) data.Matcharea = GuildLeagueBracket.Area(seed);
         return data;
     }
@@ -367,9 +367,9 @@ public sealed partial class GuildLeagueService : IGameTicker
     /// <summary>30410: the timeline, every placed guild by tier and the caller's own guild (LC_DAL_GuildLeague.lua:114-293).</summary>
     private Task MgrDataCoreAsync(GameSession s, uint msgId)
     {
-        var own = s.Role == null ? null : guilds.ForRole(s.Role.Id);
-        var rsp = new GetGuildLeagueMgrDataRsp { ActivityInfo = calendar.Info(Now) };
-        var cup = state.Cup;
+        var own = s.Role == null ? null : _guilds.ForRole(s.Role.Id);
+        var rsp = new GetGuildLeagueMgrDataRsp { ActivityInfo = _calendar.Info(Now) };
+        var cup = _state.Cup;
         if (cup != null && rsp.ActivityInfo.EStatus != GuildLeagueStatus.NotOpen)
             foreach (var group in cup.Groups)
                 foreach (long id in group.Pairs.SelectMany(p => p).Where(id => id > 0))
@@ -382,10 +382,10 @@ public sealed partial class GuildLeagueService : IGameTicker
     /// <summary>30411: the caller's guild's recent match reports, at most GuildLeagueHistoryReportNum.</summary>
     private Task InfoCoreAsync(GameSession s, uint msgId)
     {
-        var own = s.Role == null ? null : guilds.ForRole(s.Role.Id);
+        var own = s.Role == null ? null : _guilds.ForRole(s.Role.Id);
         var info = new GuildLeagueInfo();
         if (own != null)
-            info.History.AddRange(state.Reports.Where(r => r.Guilds.Contains(own.Id)).OrderByDescending(r => r.Time)
+            info.History.AddRange(_state.Reports.Where(r => r.Guilds.Contains(own.Id)).OrderByDescending(r => r.Time)
                 .Take((int)Setting("GuildLeagueHistoryReportNum", 10)).Select(r => GuildLeagueHistory.Parser.ParseFrom(r.History)));
         return s.SendGameAsync(msgId, new GetGuildLeagueInfoRsp { Info = info });
     }
@@ -396,8 +396,8 @@ public sealed partial class GuildLeagueService : IGameTicker
     /// </summary>
     private Task GroupInfoCoreAsync(GameSession s, uint msgId)
     {
-        var own = s.Role == null ? null : guilds.ForRole(s.Role.Id);
-        var rsp = new GetGuildLeagueGroupInfoRsp { EStatus = calendar.Info(Now).EStatus };
+        var own = s.Role == null ? null : _guilds.ForRole(s.Role.Id);
+        var rsp = new GetGuildLeagueGroupInfoRsp { EStatus = _calendar.Info(Now).EStatus };
         if (own != null && GroupOf(own.Id) is { } group)
             for (int i = 0; i < group.Pairs.Count; i++)
                 rsp.Info.Add(new GuildLeagueMatchInfo
@@ -410,44 +410,44 @@ public sealed partial class GuildLeagueService : IGameTicker
 
     // ---- clock -------------------------------------------------------------------------------------------------------
 
-    private long lastSweep;
-    private bool sweeping, settling;
+    private long _lastSweep;
+    private bool _sweeping, _settling;
 
     /// <summary>Tests: the per-second work of <paramref name="at"/> and any reconcile it started are done.</summary>
-    internal bool Idle(long at) => lastSweep == at && !sweeping && !settling;
+    internal bool Idle(long at) => _lastSweep == at && !_sweeping && !_settling;
 
     public void Tick(GameTime _)
     {
         long now = Now;
-        if (sweeping || now == lastSweep) return;
-        lastSweep = now;
-        bool live = matches.Count > 0;
-        bool due = !settling && (RegistrationDue(now) != null || SettlementDue(now) || ElitesDue(now));
+        if (_sweeping || now == _lastSweep) return;
+        _lastSweep = now;
+        bool live = _matches.Count > 0;
+        bool due = !_settling && (RegistrationDue(now) != null || SettlementDue(now) || ElitesDue(now));
         if (!live && !due) return;
-        sweeping = true;
-        loop.PostRuntime(async () =>
+        _sweeping = true;
+        _loop.PostRuntime(async () =>
         {
             try
             {
                 if (live) await BattleClockAsync(now);
-                if (!settling && (RegistrationDue(now) != null || SettlementDue(now) || ElitesDue(now)))
+                if (!_settling && (RegistrationDue(now) != null || SettlementDue(now) || ElitesDue(now)))
                 {
-                    settling = true;
-                    loop.PostLegacy(async () => { try { await ReconcileAsync(); } finally { settling = false; } }, "guild league reconcile");
+                    _settling = true;
+                    _loop.PostLegacy(async () => { try { await ReconcileAsync(); } finally { _settling = false; } }, "guild league reconcile");
                 }
             }
-            finally { sweeping = false; }
+            finally { _sweeping = false; }
         }, "guild league sweep");
     }
 
     private GuildLeagueCalendar.Tournament? RegistrationDue(long now) =>
-        calendar.Current(now) is { } t && (state.Index < t.Index || state.Season != seasons.SeasonId && state.Index > 0)
+        _calendar.Current(now) is { } t && (_state.Index < t.Index || _state.Season != _seasons.SeasonId && _state.Index > 0)
             && now < t.Final.End ? t : null;
 
     private bool SettlementDue(long now)
     {
-        if (matches.Values.Any(m => m.Ended && !m.Committed)) return true;
-        if (state.Cup is not { } cup) return false;
+        if (_matches.Values.Any(m => m.Ended && !m.Committed)) return true;
+        if (_state.Cup is not { } cup) return false;
         if (cup.Groups.Any(g => g.Outcomes.Any(o => !o.Rewarded || !o.AuctionDone))) return true;
         return cup.SettledRound < 3 ? now >= cup.Round(cup.SettledRound + 1).End : !cup.Settled;
     }
@@ -460,27 +460,27 @@ public sealed partial class GuildLeagueService : IGameTicker
         {
             long now = Now;
             if (RegistrationDue(now) is { } t) await RegisterAsync(t);
-            foreach (var match in matches.Values.Where(m => m.Ended && !m.Committed).ToArray())
+            foreach (var match in _matches.Values.Where(m => m.Ended && !m.Committed).ToArray())
                 await CommitMatchAsync(match);
             await CloseRoundsAsync(now);
             await ElitesAsync(now);
             await RewardPendingAsync();
-            if (state.Cup is { Settled: false, SettledRound: >= 3 }) await SettleCupAsync();
+            if (_state.Cup is { Settled: false, SettledRound: >= 3 }) await SettleCupAsync();
         }
-        finally { gate.Release(); }
+        finally { _gate.Release(); }
     }
 
     /// <summary>GM aid: register the current or next tournament now, as if its 05:03 had come.</summary>
     internal async Task<string> RegisterNowAsync()
     {
-        var t = calendar.Current(Now) is { } current && state.Index < current.Index ? current : calendar.Next(Now);
+        var t = _calendar.Current(Now) is { } current && _state.Index < current.Index ? current : _calendar.Next(Now);
         using var scope = await EnterAsync("gm register");
         try
         {
-            if (state.Index >= t.Index && state.Season == seasons.SeasonId) return $"Tournament {t.Index} is already registered.";
+            if (_state.Index >= t.Index && _state.Season == _seasons.SeasonId) return $"Tournament {t.Index} is already registered.";
             await RegisterAsync(t);
-            return $"Tournament {t.Index} registered: {state.Cup!.Groups.Count} groups.";
+            return $"Tournament {t.Index} registered: {_state.Cup!.Groups.Count} groups.";
         }
-        finally { gate.Release(); }
+        finally { _gate.Release(); }
     }
 }

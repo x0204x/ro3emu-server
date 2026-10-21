@@ -19,33 +19,33 @@ public sealed class StageRewardTests : IAsyncLifetime
 {
     private const int Coins = 1, Points = 118, ChickenPoints = 7, Lunatic = 1420100;
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-stage-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string httpUrl = "";
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-stage-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _httpUrl = "";
 
     public async Task InitializeAsync()
     {
         var (http, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir; o.GameDataDir = Path.Combine(ClientData.RepoRoot, "data");
+            o.DataDir = _dataDir; o.GameDataDir = Path.Combine(ClientData.RepoRoot, "data");
             o.HttpPort = http; o.MicroGatePort = micro; o.GameGatePort = game;
         });
-        await app.StartAsync();
-        httpUrl = $"http://127.0.0.1:{http}";
+        await _app.StartAsync();
+        _httpUrl = $"http://127.0.0.1:{http}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var bot = new BotClient(httpUrl, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_httpUrl, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw");
         await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
@@ -63,22 +63,22 @@ public sealed class StageRewardTests : IAsyncLifetime
     private async Task Gm(string account, string line)
     {
         using var http = new HttpClient();
-        (await http.PostAsync($"{httpUrl}/ro3emu/gm?account={account}", new StringContent(line))).EnsureSuccessStatusCode();
+        (await http.PostAsync($"{_httpUrl}/ro3emu/gm?account={account}", new StringContent(line))).EnsureSuccessStatusCode();
     }
 
     private async Task<T> State<T>(Func<GameSession, T> read) =>
-        await app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
-            Task.FromResult(read(app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role != null))));
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+            Task.FromResult(read(_app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role != null))));
 
     private Task<long> Count(int entry) =>
-        State(s => app.Services.GetRequiredService<CharacterService>().CountOf(s, entry));
+        State(s => _app.Services.GetRequiredService<CharacterService>().CountOf(s, entry));
 
     private async Task LoggedOut(BotClient bot)
     {
         string? account = bot.Account;
         await bot.DisposeAsync();
         var deadline = DateTime.UtcNow + Wait;
-        while (app.Services.GetRequiredService<SessionRegistry>().All().Any(s => s.Account == account && s.Role != null)
+        while (_app.Services.GetRequiredService<SessionRegistry>().All().Any(s => s.Account == account && s.Role != null)
                && DateTime.UtcNow < deadline)
             await Task.Delay(20);
         await Task.Delay(200);
@@ -86,7 +86,7 @@ public sealed class StageRewardTests : IAsyncLifetime
 
     private long OwnedSourceCount(string source, string kind)
     {
-        using var db = app.Services.GetRequiredService<AccountStore>().Open();
+        using var db = _app.Services.GetRequiredService<AccountStore>().Open();
         using var command = db.CreateCommand();
         command.CommandText = """
             SELECT COUNT(*) FROM operation_source s JOIN operation_receipt r ON r.operation_id=s.operation_id
@@ -118,7 +118,7 @@ public sealed class StageRewardTests : IAsyncLifetime
     /// <summary>The coins of a stage's award (every type-3/4/6 award here pays item 1 first).</summary>
     private long StageCoins(int stage)
     {
-        var data = app.Services.GetRequiredService<GameData>();
+        var data = _app.Services.GetRequiredService<GameData>();
         long group = GameData.Int(data.Row("GenericStageRewardsConfig", stage)!.Value, "_iAward");
         if (group == 0) return 0;
         long award = GameData.Int(data.Row("MultiverseGroupConfig", group)!.Value, "_iValue_default");
@@ -252,7 +252,7 @@ public sealed class StageRewardTests : IAsyncLifetime
     [ClientDataFact]
     public async Task ACardCollectionUnlockPaysItsCollectionPointsOnce()
     {
-        var data = app.Services.GetRequiredService<GameData>();
+        var data = _app.Services.GetRequiredService<GameData>();
         int Reward(long quality) => data.Table("PublicParamConfig")["LibraryCardUnlockReward"].GetProperty(quality.ToString())
             .GetProperty("PointValue").GetProperty("0").GetInt32();
         int treasurable = (int)GameData.Int(data.Table("ItemConfig").Values.First(row => GameData.Int(row, "_iType") == 4
@@ -262,7 +262,7 @@ public sealed class StageRewardTests : IAsyncLifetime
         await Gm("alice", $"!item {Lunatic} 1");
         await Gm("alice", $"!item {treasurable} 1");
         long role = await State(s => s.Role!.Id);
-        var roles = app.Services.GetRequiredService<RoleStore>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
         async Task<int> Unlock(BotClient client, int card, bool treasure)
         {
             await client.SendGameAsync(CardService.LibraryCardUnlock, new LibraryCardUnlockReq { CardId = card, IsTreasure = treasure });
@@ -270,10 +270,10 @@ public sealed class StageRewardTests : IAsyncLifetime
         }
 
         // The points ride the unlock's own commit: a failed write leaves neither the entry, the points nor a follow-up.
-        FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(),
+        FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(),
             "CREATE TRIGGER fail_card_points BEFORE UPDATE OF currency ON role BEGIN SELECT RAISE(ABORT, 'card points fault'); END");
         Assert.Equal(ErrorCodes.Unknown, await Unlock(bot, Lunatic, false));
-        FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(), "DROP TRIGGER fail_card_points");
+        FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(), "DROP TRIGGER fail_card_points");
         Assert.False(await State(s => s.Library!.Cards[Lunatic].Unlock));
         Assert.False(DBLibraryInfo.Parser.ParseFrom(roles.LoadLibrary(role)!).Cards[Lunatic].Unlock);
         Assert.False(roles.HasTaskFollowup(role));

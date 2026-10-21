@@ -20,43 +20,43 @@ public sealed class E02KillHooksTests : IAsyncLifetime
 {
     private const int Card = 1420100, Npc = 5000055;
     private const long Quest = 10104080;
-    private readonly string directory = Path.Combine(RepoRoot(), ".loadtest-temp", "e02-hooks-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private readonly string _directory = Path.Combine(RepoRoot(), ".loadtest-temp", "e02-hooks-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "";
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private Task OnLoop(Func<Task> action) => Service<GameLoop>().InvokeAsync(action);
     private GameSession Session(BotClient bot) => Service<SessionRegistry>().All().Single(s => s.Account == bot.Account && s.Role != null);
     public async Task InitializeAsync()
     {
         var (web, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game;
         });
         Service<SeasonService>().SetPlayBook(101);
-        await app.StartAsync(); http = $"http://127.0.0.1:{web}";
+        await _app.StartAsync(); _http = $"http://127.0.0.1:{web}";
     }
     public async Task DisposeAsync()
     {
         Service<AccountStore>().BeforeOwnedCommitForTest = null;
         Service<AccountStore>().BeforeOwnedApplyForTest = null;
-        await app.StopAsync(); await app.DisposeAsync(); SqliteConnection.ClearAllPools();
-        try { Directory.Delete(directory, true); } catch (IOException) { }
+        await _app.StopAsync(); await _app.DisposeAsync(); SqliteConnection.ClearAllPools();
+        try { Directory.Delete(_directory, true); } catch (IOException) { }
     }
     private async Task<BotClient> Enter(string name, bool create = true)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(directory, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_directory, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         long role = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
-        await bot.EnterWorldAsync(role); await WorldSettle.StallsAsync(app.Services);
+        await bot.EnterWorldAsync(role); await WorldSettle.StallsAsync(_app.Services);
         await bot.Inbox.WaitAsync(e => e.IsGame(ShopService.ShopSync), TimeSpan.FromSeconds(10));
         return bot;
     }
     private async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync(http + "/ro3emu/gm?account=" + bot.Account, new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync(_http + "/ro3emu/gm?account=" + bot.Account, new StringContent(command))).EnsureSuccessStatusCode();
     }
     private async Task Prepare(BotClient bot)
     {
@@ -106,7 +106,7 @@ public sealed class E02KillHooksTests : IAsyncLifetime
         long aliceRole = alice.Role!.Id, bobRole = bob.Role!.Id;
         await Credit(bob, monster);
         var catalog = EconomyCatalog.Load(Path.Combine(RepoRoot(), "data"));
-        var opening = S3EconomyReader.Read(directory, catalog);
+        var opening = S3EconomyReader.Read(_directory, catalog);
         long beforeKills = alice.WildAfk!.Info.TodayKillCount;
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -143,8 +143,8 @@ public sealed class E02KillHooksTests : IAsyncLifetime
         Assert.Equal(3, saved.TotalDrops[1000000]); Assert.Equal(7, saved.TotalDrops[1]);
         Assert.Equal(1, saved.TotalDrops[Card]); Assert.Equal(3, saved.TotalDrops[100]); Assert.Equal(4, saved.TotalDrops[101]);
         Assert.Equal(1, Receipts());
-        var closing = S3EconomyReader.Read(directory, catalog);
-        var ledger = S3EconomyReader.ReadLedger(directory, catalog, opening, closing)!;
+        var closing = S3EconomyReader.Read(_directory, catalog);
+        var ledger = S3EconomyReader.ReadLedger(_directory, catalog, opening, closing)!;
         var check = EconomyExactnessChecker.Check(opening, closing, ledger);
         Assert.DoesNotContain(check.Issues, x => x.Kind == EconomyIssueKind.Corruption);
         Assert.All(check.Assets, x => { Assert.Equal("0", x.Residual); Assert.Equal("0", x.LegResidual); });
@@ -184,7 +184,7 @@ public sealed class E02KillHooksTests : IAsyncLifetime
         Assert.True(DBLibraryInfo.Parser.ParseFrom(Service<RoleStore>().LoadLibrary(role)).Cards.ContainsKey(Card));
         var source = monster.RewardSource;
         // Rebuild the entire service graph from the same database; no old settlement/session survives.
-        await app.StopAsync(); await app.DisposeAsync(); SqliteConnection.ClearAllPools();
+        await _app.StopAsync(); await _app.DisposeAsync(); SqliteConnection.ClearAllPools();
         await InitializeAsync();
         await using var again = await Enter("Alice", create: false);
         var recovered = Session(again);

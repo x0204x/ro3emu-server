@@ -62,12 +62,12 @@ public sealed partial class DungeonService
                 a.TerminalMonster = monster;
                 a.TerminalKillerRole = roleId;
                 a.TerminalKillerAttachment = attachment;
-                monster.RewardSource ??= new RewardSourceId(character.RewardRealmId,
+                monster.RewardSource ??= new RewardSourceId(_character.RewardRealmId,
                     RewardSourceId.ProcessRun, monster.SpawnGeneration);
                 a.TerminalKillSource = monster.RewardSource.Key;
                 if (AfterTerminalKillsPrecountedForTest is { } afterPrecounted)
                     await afterPrecounted(a);
-                await FreezeLockedAsync(a, loop.Now - a.StartedAt < TimeSpan.FromMilliseconds(a.Plan.DurationMs),
+                await FreezeLockedAsync(a, _loop.Now - a.StartedAt < TimeSpan.FromMilliseconds(a.Plan.DurationMs),
                     a.TerminalKillSource);
             }
             catch
@@ -103,10 +103,10 @@ public sealed partial class DungeonService
 
     private async Task FreezeLockedAsync(Attempt a, bool won, string? killSourceKey = null)
     {
-        bool success = won && a.PlayBook == seasons.PlayBook && a.SeasonId == seasons.SeasonId;
+        bool success = won && a.PlayBook == _seasons.PlayBook && a.SeasonId == _seasons.SeasonId;
         var observed = Present(a).Where(a.Loaded.Contains)
             .Select(s => (Session: s, Role: s.Role!.Id, Attachment: s.Attachment)).ToArray();
-        using var ownerScope = await owners.EnterAsync("dungeon/freeze",
+        using var ownerScope = await _owners.EnterAsync("dungeon/freeze",
             observed.Select(p => Ownership.ReservationKey.Role(p.Role)).ToArray());
         if (a.Settled || a.Room.Closed) throw new OperationCanceledException("Dungeon room ended before reward freeze.");
         var participants = observed.Where(p => p.Session.Role?.Id == p.Role
@@ -114,7 +114,7 @@ public sealed partial class DungeonService
             && Present(a).Contains(p.Session)).OrderBy(p => p.Role).Select(p => p.Session).ToArray();
         foreach (var participant in participants)
             if (participant.Owner is { } owner) ownerScope.Context.Pin(owner);
-        long duration = Math.Max(1, (long)(loop.Now - a.StartedAt).TotalMilliseconds);
+        long duration = Math.Max(1, (long)(_loop.Now - a.StartedAt).TotalMilliseconds);
         var rows = new List<DungeonRewardObligation>();
         long lethalDamage = killSourceKey != null ? a.TerminalMonster?.StagedLethalDamage ?? 0 : 0;
         if (lethalDamage > 0) a.Stats[a.TerminalKillerRole].TotalDamage += lethalDamage;
@@ -139,7 +139,7 @@ public sealed partial class DungeonService
                         goods = (Award(GameData.Int(boss, "_iPersonAward"), s)
                             ?? throw new InvalidOperationException("Missing dungeon award config"))
                             .Select(g => new DungeonRewardGood(g.Entry, g.Count, g.Bind,
-                                GameData.Int(data.Row("ItemConfig", g.Entry)!.Value, "_iType") == 1
+                                GameData.Int(_data.Row("ItemConfig", g.Entry)!.Value, "_iType") == 1
                                     ? EconomyAssetKind.Currency : EconomyAssetKind.Item)).ToList();
                         auctionEligible = true;
                         if (!first) allowance.Remaining--;
@@ -157,7 +157,7 @@ public sealed partial class DungeonService
                         goods = (Award(GameData.Int(layer, "_iPassReward"), s)
                             ?? throw new InvalidOperationException("Missing Valhalla layer award config"))
                             .Select(g => new DungeonRewardGood(g.Entry, g.Count, g.Bind,
-                                GameData.Int(data.Row("ItemConfig", g.Entry)!.Value, "_iType") == 1
+                                GameData.Int(_data.Row("ItemConfig", g.Entry)!.Value, "_iType") == 1
                                     ? EconomyAssetKind.Currency : EconomyAssetKind.Item)).ToList();
                         next.Records[key] = new Record { Passed = true, FastestMs = duration };
                     }
@@ -165,7 +165,7 @@ public sealed partial class DungeonService
                 StoreHistory(next, a);
                 if (success && GameData.Int(a.Plan.Config, "_iGamePlayType") == 24
                     && CaptureJourneyVictory(s, a.Plan.SceneEntry,
-                        $"journey/dungeon/{character.RewardRealmId}/{a.Room.Id}/{roleId}") is { } victory)
+                        $"journey/dungeon/{_character.RewardRealmId}/{a.Room.Id}/{roleId}") is { } victory)
                     next.PendingJourney[victory.Source] = victory;
                 var tiers = new Dictionary<int, long>();
                 if (a.Plan.RewardBoss is { } auctionBoss && auctionBoss.TryGetProperty("_iGuildAward", out var tierRows)
@@ -175,13 +175,13 @@ public sealed partial class DungeonService
                             tiers[(int)(GameData.Number(tier[0]) ?? 0)] = (long)(GameData.Number(tier[1]) ?? 0);
                 rows.Add(new DungeonRewardObligation
                 {
-                    Key = $"dungeon/{character.RewardRealmId}/{a.Room.Id}/{roleId}", RoleId = roleId,
+                    Key = $"dungeon/{_character.RewardRealmId}/{a.Room.Id}/{roleId}", RoleId = roleId,
                     RoomId = a.Room.Id, SceneEntry = a.Plan.SceneEntry, Success = success,
                     DurationMs = duration, NewRecord = newRecord, BaseState = original,
                     NextState = JsonSerializer.SerializeToUtf8Bytes(next), Goods = goods,
-                    GuildId = guilds.ForRole(roleId)?.Id ?? 0,
+                    GuildId = _guilds.ForRole(roleId)?.Id ?? 0,
                     AuctionSourceType = auctionEligible && a.Plan.RewardMulti is { } selected
-                        ? auctions.DungeonSrcType((int)GameData.Int(selected, "_iDifficulty")) : 0,
+                        ? _auctions.DungeonSrcType((int)GameData.Int(selected, "_iDifficulty")) : 0,
                     PlayBook = a.PlayBook, AuctionTiers = auctionEligible ? tiers : new(),
                     RequiresKill = killSourceKey != null, KillSourceKey = killSourceKey ?? "",
                 });
@@ -189,12 +189,12 @@ public sealed partial class DungeonService
         }
         finally { if (lethalDamage > 0) a.Stats[a.TerminalKillerRole].TotalDamage -= lethalDamage; }
         // One writer transaction establishes every recipient, including disconnected roles present at the barrier.
-        try { await obligations.FreezeAsync(rows); }
+        try { await _obligations.FreezeAsync(rows); }
         catch
         {
             // A lost writer acknowledgement may follow a committed freeze. Adopt its exact stored
             // outcome; never roll a replacement award or let the death resume without its recipients.
-            var stored = obligations.FrozenRoom(a.Room.Id);
+            var stored = _obligations.FrozenRoom(a.Room.Id);
             if (stored.Count != rows.Count || rows.Any(row => !stored.Any(old => old.Key == row.Key
                 && JsonSerializer.SerializeToUtf8Bytes(old).AsSpan()
                     .SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(row)))))
@@ -217,7 +217,7 @@ public sealed partial class DungeonService
             throw new InvalidOperationException("Dungeon activation has a different kill source.");
         if (ReferenceEquals(a.ActivationSettlement, settlement)) return;
         var persist = settlement.Enlist;
-        settlement.Enlist = tx => { persist?.Invoke(tx); obligations.EnlistActivate(a.Room.Id, source, tx); };
+        settlement.Enlist = tx => { persist?.Invoke(tx); _obligations.EnlistActivate(a.Room.Id, source, tx); };
         var applied = settlement.Applied;
         settlement.Applied = () => { applied?.Invoke(); a.ObligationsActivated = true; };
         a.ActivationSettlement = settlement;
@@ -231,15 +231,15 @@ public sealed partial class DungeonService
         a.FreezeGate.Release();
         if (a.TerminalMonster?.RewardCommit is { } commit)
             try { await commit; } catch { /* An absent receipt below decides the failed hit. */ }
-        if (obligations.IsActivated(a.Room.Id))
+        if (_obligations.IsActivated(a.Room.Id))
         {
             a.ObligationsActivated = true;
             return true;
         }
-        int canceled = await obligations.CancelPreparedAsync(a.Room.Id);
+        int canceled = await _obligations.CancelPreparedAsync(a.Room.Id);
         if (canceled == 0)
         {
-            if (obligations.IsActivated(a.Room.Id))
+            if (_obligations.IsActivated(a.Room.Id))
             {
                 a.ObligationsActivated = true;
                 return true;
@@ -330,7 +330,7 @@ public sealed partial class DungeonService
             if (s.Role?.Id != row.RoleId || s.Dungeons == null) return (false, []);
             var next = ApplyFrozenState(s.Dungeons, row);
             var oldStacks = s.Items.ToDictionary(item => item.Guid, item => item.Stack);
-            var granted = await character.ExchangeLockedAsync(s, [], [], popup: false, sync: false,
+            var granted = await _character.ExchangeLockedAsync(s, [], [], popup: false, sync: false,
                 boundGoods: row.Goods.Where(g => g.Entry is not (100 or 101))
                     .Select(g => (g.Entry, g.Count, g.Bind)).ToArray(),
                 baseExp: row.Goods.Where(g => g.Entry == 100).Sum(g => (long)g.Count),
@@ -339,32 +339,32 @@ public sealed partial class DungeonService
                 {
                     tx.RoleBlob(row.RoleId, "dungeons", JsonSerializer.SerializeToUtf8Bytes(next));
                     if (row.Success && row.AuctionSourceType != 0 && row.AuctionTiers.Count > 0)
-                        auctions.RecordDungeonClear(tx, row.RoomId, row.RoleId, row.GuildId,
+                        _auctions.RecordDungeonClear(tx, row.RoomId, row.RoleId, row.GuildId,
                             row.AuctionSourceType, row.PlayBook, row.AuctionTiers);
-                    obligations.EnlistComplete(row.Key, tx);
+                    _obligations.EnlistComplete(row.Key, tx);
                 }, rewardSettlement: settlement, asyncCommit: true, committed: () => s.Dungeons = next);
             if (granted == null || !settlement.Committed)
                 throw new InvalidOperationException("Validated dungeon obligation was refused.");
             foreach (var item in granted.DistinctBy(item => item.Guid))
             {
-                var info = character.ItemInfoOf(item);
+                var info = _character.ItemInfoOf(item);
                 info.Stack = item.Stack - oldStacks.GetValueOrDefault(item.Guid);
                 if (info.Stack > 0) shown.Add(info);
             }
-            foreach (var good in row.Goods.Where(g => data.Row("ItemConfig", g.Entry) is { } item
+            foreach (var good in row.Goods.Where(g => _data.Row("ItemConfig", g.Entry) is { } item
                 && GameData.Int(item, "_iType") == 1))
-                shown.Add(character.ItemInfoOf(new InvItem
+                shown.Add(_character.ItemInfoOf(new InvItem
                 { Entry = good.Entry, Stack = good.Count, BindType = good.Bind }));
         }
         try { await settlement.PresentAsync(); }
-        catch (Exception e) { log.LogWarning(e, "Dungeon reward presentation failed after commit for {Source}", row.Key); }
+        catch (Exception e) { _log.LogWarning(e, "Dungeon reward presentation failed after commit for {Source}", row.Key); }
         await DeliverJourneyPendingAsync(s);
-        if (row.Success && row.AuctionSourceType != 0 && obligations.PendingRoom(row.RoomId).Count == 0)
+        if (row.Success && row.AuctionSourceType != 0 && _obligations.PendingRoom(row.RoomId).Count == 0)
         {
             // The publication reserves every participant of the run. Inside a narrower durable scope (the role select
             // delivering the last pending obligation, C/D 15) it runs as its own operation right after.
-            if (loop.Owners is { } owners && !owners.CurrentCovers(Ownership.ReservationKey.Realm))
-                loop.TrackRuntimeDetached("dungeon auction publication", () => PublishAuctionAsync(row.RoomId));
+            if (_loop.Owners is { } owners && !owners.CurrentCovers(Ownership.ReservationKey.Realm))
+                _loop.TrackRuntimeDetached("dungeon auction publication", () => PublishAuctionAsync(row.RoomId));
             else await PublishAuctionAsync(row.RoomId);
         }
         return (true, shown);
@@ -374,10 +374,10 @@ public sealed partial class DungeonService
     {
         try
         {
-            await auctions.MarkDungeonRunReadyAsync(room);
-            await auctions.FinalizeDungeonRunAsync(room);
+            await _auctions.MarkDungeonRunReadyAsync(room);
+            await _auctions.FinalizeDungeonRunAsync(room);
         }
-        catch (Exception e) { log.LogError(e, "Auction publication deferred for dungeon {Room}", room); }
+        catch (Exception e) { _log.LogError(e, "Auction publication deferred for dungeon {Room}", room); }
     }
 
     private static Ownership.ReservationKey RunKey(long room) =>
@@ -386,25 +386,25 @@ public sealed partial class DungeonService
     /// <summary>C/D 15: the auction runs of the role's pending obligations, read before the role select admits so it
     /// can reserve them up front.</summary>
     internal async Task<Ownership.ReservationKey[]> LoginKeysAsync(long roleId) =>
-        [.. (await obligations.PendingAsync(roleId)).Select(row => RunKey(row.RoomId)).Distinct()];
+        [.. (await _obligations.PendingAsync(roleId)).Select(row => RunKey(row.RoomId)).Distinct()];
 
     /// <summary>Login and new entry both drain already earned grants before a later dungeon can spend allowances.</summary>
     public async Task DeliverPendingAsync(GameSession s)
     {
         if (s.Role == null || s.Dungeons == null) return;
-        foreach (var row in obligations.Pending(s.Role.Id))
+        foreach (var row in _obligations.Pending(s.Role.Id))
         {
             // Inside the role select only the obligations it reserved are delivered; one frozen after its admission
             // stays durable and pending for the next entry or login.
-            if (loop.Owners is { } owners && !owners.CurrentCovers(RunKey(row.RoomId))) continue;
+            if (_loop.Owners is { } owners && !owners.CurrentCovers(RunKey(row.RoomId))) continue;
             try
             {
                 var delivered = await DeliverAsync(s, row);
-                if (delivered.Committed) await character.ItemsChangedAsync(s, stats: false);
+                if (delivered.Committed) await _character.ItemsChangedAsync(s, stats: false);
             }
             catch (Exception e)
             {
-                log.LogError(e, "Dungeon obligation {Source} remains pending for {Role}", row.Key, s.Role.Id);
+                _log.LogError(e, "Dungeon obligation {Source} remains pending for {Role}", row.Key, s.Role.Id);
                 if (s.Owner?.State == Ownership.RoleOwnerState.RecoveryRequired)
                 {
                     s.CancelPendingCharacterIntents();

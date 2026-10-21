@@ -22,10 +22,10 @@ public sealed partial class WorldCoreService
         var s = use.Session;
         long map = use.Arg(1), point = use.Arg(2);
         if (s.InstanceId != 0 || s.SceneLoading) return ErrorCodes.FeatureUnavailable;
-        if (data.Row("MapConfig", s.SceneEntry) is not { } here || GameData.Int(here, "_iFly") != 1) return ErrorCodes.FeatureUnavailable;
-        if (data.Row("MapConfig", map) == null || worldData.Map(map)?.Points.ContainsKey(point) != true) return ErrorCodes.ItemNoConfig;
-        if (!await character.CommitItemActionAsync(use, null, null, new { Map = map, Point = point })) return ErrorCodes.ItemsShort;
-        use.AfterReply = () => scene.TaskTrackTeleportAsync(s, map, point);
+        if (_data.Row("MapConfig", s.SceneEntry) is not { } here || GameData.Int(here, "_iFly") != 1) return ErrorCodes.FeatureUnavailable;
+        if (_data.Row("MapConfig", map) == null || _worldData.Map(map)?.Points.ContainsKey(point) != true) return ErrorCodes.ItemNoConfig;
+        if (!await _character.CommitItemActionAsync(use, null, null, new { Map = map, Point = point })) return ErrorCodes.ItemsShort;
+        use.AfterReply = () => _scene.TaskTrackTeleportAsync(s, map, point);
         return 0;
     }
 }

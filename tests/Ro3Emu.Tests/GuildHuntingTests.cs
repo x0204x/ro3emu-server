@@ -26,15 +26,15 @@ public abstract class GuildHuntingHost : IAsyncLifetime
     protected readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-guildhunt-" + Guid.NewGuid().ToString("N"));
     protected readonly Clock clock = new();
     protected WebApplication app = null!;
-    private string http = "";
+    private string _http = "";
 
     protected sealed class Clock : TimeProvider
     {
         // Thursday 2026-10-15, ten seconds before the 20:30 candidate phase (TimeLimitConfig 86).
-        private long seconds = new DateTimeOffset(2026, 10, 15, 20, 29, 50, TimeSpan.Zero).ToUnixTimeSeconds();
-        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref seconds));
+        private long _seconds = new DateTimeOffset(2026, 10, 15, 20, 29, 50, TimeSpan.Zero).ToUnixTimeSeconds();
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref _seconds));
         public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
-        public void Set(int hour, int minute, int second) => Interlocked.Exchange(ref seconds,
+        public void Set(int hour, int minute, int second) => Interlocked.Exchange(ref _seconds,
             new DateTimeOffset(2026, 10, 15, hour, minute, second, TimeSpan.Zero).ToUnixTimeSeconds());
     }
 
@@ -54,7 +54,7 @@ public abstract class GuildHuntingHost : IAsyncLifetime
         }, clock);
         SureHitRolls.Install(app); // the felling hit is prepared; a FLEE miss would only be noise
         await app.StartAsync();
-        http = $"http://127.0.0.1:{web}";
+        _http = $"http://127.0.0.1:{web}";
     }
 
     protected async Task StopAsync()
@@ -71,7 +71,7 @@ public abstract class GuildHuntingHost : IAsyncLifetime
 
     protected async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         long role = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
         await bot.EnterWorldAsync(role);
@@ -88,7 +88,7 @@ public abstract class GuildHuntingHost : IAsyncLifetime
     protected async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     protected async Task<long> Founder(BotClient bot, string guild)

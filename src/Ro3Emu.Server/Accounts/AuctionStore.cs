@@ -5,14 +5,9 @@ using Romsg;
 namespace Ro3Emu.Server.Accounts;
 
 /// <summary>Server-owned auction rows and idempotent dungeon clear journal (MG_Auction.proto).</summary>
-public sealed class AuctionStore
+public sealed class AuctionStore(AccountStore accounts)
 {
-    private readonly AccountStore accounts;
-
-    public AuctionStore(AccountStore accounts)
-    {
-        this.accounts = accounts;
-    }
+    private readonly AccountStore _accounts = accounts;
 
     public sealed class Item
     {
@@ -65,10 +60,10 @@ public sealed class AuctionStore
     }
 
     public IReadOnlyList<Item> Items()
-        => accounts.ReadSync<List<Item>>(new AuctionReadPlan(AuctionReadKind.Items));
+        => _accounts.ReadSync<List<Item>>(new AuctionReadPlan(AuctionReadKind.Items));
 
     public Item? Get(long id)
-        => accounts.ReadSync<Item?>(new AuctionReadPlan(AuctionReadKind.Item, id));
+        => _accounts.ReadSync<Item?>(new AuctionReadPlan(AuctionReadKind.Item, id));
 
     internal void EnlistSave(Item item, RoleItemPlanBuilder transaction)
     {
@@ -105,7 +100,7 @@ public sealed class AuctionStore
     }
 
     internal bool HasSource(string key) =>
-        accounts.ReadSync<bool>(new AuctionReadPlan(AuctionReadKind.SourceExists, sourceKey: key));
+        _accounts.ReadSync<bool>(new AuctionReadPlan(AuctionReadKind.SourceExists, sourceKey: key));
 
     internal void EnlistRunSave(Run run, byte[]? expected, RoleItemPlanBuilder transaction)
     {
@@ -131,19 +126,19 @@ public sealed class AuctionStore
     }
 
     public IReadOnlyList<Prebuy> Prebuys(bool pendingOnly = true)
-        => accounts.ReadSync<List<Prebuy>>(new AuctionReadPlan(AuctionReadKind.Prebuys, pendingOnly: pendingOnly));
+        => _accounts.ReadSync<List<Prebuy>>(new AuctionReadPlan(AuctionReadKind.Prebuys, pendingOnly: pendingOnly));
 
     public IReadOnlyList<Run> PendingRuns()
-        => accounts.ReadSync<List<Run>>(new AuctionReadPlan(AuctionReadKind.PendingRuns));
+        => _accounts.ReadSync<List<Run>>(new AuctionReadPlan(AuctionReadKind.PendingRuns));
 
     internal AuctionRunSnapshot GetRunSnapshot(long id)
-        => accounts.ReadSync<AuctionRunSnapshot>(new AuctionReadPlan(AuctionReadKind.RunSnapshot, id));
+        => _accounts.ReadSync<AuctionRunSnapshot>(new AuctionReadPlan(AuctionReadKind.RunSnapshot, id));
 
     public Run? GetRun(long id) => GetRunSnapshot(id).Run;
 
     public sealed record Bonus(long Role, string Key, int Amount, bool Claimed, long Guild);
 
     public IReadOnlyList<Bonus> Bonuses(long role)
-        => accounts.ReadSync<List<Bonus>>(new AuctionReadPlan(AuctionReadKind.Bonuses, role));
+        => _accounts.ReadSync<List<Bonus>>(new AuctionReadPlan(AuctionReadKind.Bonuses, role));
 
 }

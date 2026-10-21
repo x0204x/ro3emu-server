@@ -11,18 +11,18 @@ namespace Ro3Emu.Tests;
 
 public sealed class TerritoryPersistenceCaptureTests : IDisposable
 {
-    private readonly string directory = Path.Combine(Path.GetTempPath(), "ro3-territory-capture-" + Guid.NewGuid().ToString("N"));
-    private readonly AccountStore accounts;
-    private readonly RoleStore roles;
-    private readonly GuildStore guilds;
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), "ro3-territory-capture-" + Guid.NewGuid().ToString("N"));
+    private readonly AccountStore _accounts;
+    private readonly RoleStore _roles;
+    private readonly GuildStore _guilds;
 
     public TerritoryPersistenceCaptureTests()
     {
-        accounts = new AccountStore(Options.Create(new ServerOptions { DataDir = directory }));
-        roles = new RoleStore(accounts);
-        guilds = new GuildStore(accounts);
-        accounts.WriteSync<int>(new TerritorySchemaPlan(RealmStateKind.TerritoryWars));
-        accounts.WriteSync<int>(new TerritorySchemaPlan(RealmStateKind.TerritoryEscort));
+        _accounts = new AccountStore(Options.Create(new ServerOptions { DataDir = _directory }));
+        _roles = new RoleStore(_accounts);
+        _guilds = new GuildStore(_accounts);
+        _accounts.WriteSync<int>(new TerritorySchemaPlan(RealmStateKind.TerritoryWars));
+        _accounts.WriteSync<int>(new TerritorySchemaPlan(RealmStateKind.TerritoryEscort));
     }
 
     [Theory]
@@ -32,24 +32,26 @@ public sealed class TerritoryPersistenceCaptureTests : IDisposable
     {
         var kind = wars ? RealmStateKind.TerritoryWars : RealmStateKind.TerritoryEscort;
         string column = wars ? "territory_wars" : "territory_escort";
-        long role = roles.Create("territory", 1, wars ? "WarsRole" : "EscortRole", 1, 1000, 1)!.Id;
+        long role = _roles.Create("territory", 1, wars ? "WarsRole" : "EscortRole", 1, 1000, 1)!.Id;
         byte[] initialRealm = [1, 2], initialRole = [3, 4];
-        accounts.WriteLegacySync<int>(new RealmStatePlan(kind, initialRealm));
-        if (wars) roles.SaveTerritoryWars(role, initialRole);
-        else roles.SaveTerritoryEscort(role, initialRole);
+        _accounts.WriteLegacySync<int>(new RealmStatePlan(kind, initialRealm));
+        if (wars) _roles.SaveTerritoryWars(role, initialRole);
+        else _roles.SaveTerritoryEscort(role, initialRole);
 
         byte[] candidateRealm = [5, 6], candidateRole = [7, 8];
-        var transaction = new RoleItemPlanBuilder(accounts);
+        var transaction = new RoleItemPlanBuilder(_accounts);
         transaction.Add(new RealmStatePlan(kind, candidateRealm));
         transaction.RoleBlob(role, column, candidateRole);
-        guilds.EnlistSave(new GuildStore.State { Id = long.MaxValue, Name = "VanishedGuild" }, transaction,
+        _guilds.EnlistSave(new GuildStore.State { Id = long.MaxValue, Name = "VanishedGuild" }, transaction,
             "Territory guild disappeared");
         candidateRealm[0] = 99;
         candidateRole[0] = 99;
 
-        Assert.Throws<InvalidOperationException>(() => transaction.Commit(accounts, "test/territory-missing-guild"));
-        Assert.Equal(initialRealm, accounts.ReadSync<byte[]?>(new TerritoryRealmReadPlan(kind)));
-        Assert.Equal(initialRole, wars ? roles.LoadTerritoryWars(role) : roles.LoadTerritoryEscort(role));
+        var gone = Assert.Throws<RowMissingException>(
+            () => transaction.Commit(_accounts, "test/territory-missing-guild"));
+        Assert.True(gone.Is(GuildStore.Table, long.MaxValue));
+        Assert.Equal(initialRealm, _accounts.ReadSync<byte[]?>(new TerritoryRealmReadPlan(kind)));
+        Assert.Equal(initialRole, wars ? _roles.LoadTerritoryWars(role) : _roles.LoadTerritoryEscort(role));
     }
 
     [Fact]
@@ -57,17 +59,17 @@ public sealed class TerritoryPersistenceCaptureTests : IDisposable
     {
         byte[] current = JsonSerializer.SerializeToUtf8Bytes(new TerritoryWarsService.WorldState { Epoch = "current" });
         byte[] fallback = JsonSerializer.SerializeToUtf8Bytes(new TerritoryWarsService.WorldState { Epoch = "fallback" });
-        accounts.WriteLegacySync<int>(new RealmStatePlan(RealmStateKind.TerritoryWars, current));
-        accounts.WriteLegacySync<byte[]>(new TerritoryWarsSeasonTransitionPlan("corrupt", Encoding.UTF8.GetBytes("{broken"),
+        _accounts.WriteLegacySync<int>(new RealmStatePlan(RealmStateKind.TerritoryWars, current));
+        _accounts.WriteLegacySync<byte[]>(new TerritoryWarsSeasonTransitionPlan("corrupt", Encoding.UTF8.GetBytes("{broken"),
             "absent", fallback));
-        accounts.WriteLegacySync<int>(new RealmStatePlan(RealmStateKind.TerritoryWars, current));
+        _accounts.WriteLegacySync<int>(new RealmStatePlan(RealmStateKind.TerritoryWars, current));
 
-        Assert.Throws<JsonException>(() => accounts.WriteLegacySync<byte[]>(
+        Assert.Throws<JsonException>(() => _accounts.WriteLegacySync<byte[]>(
             new TerritoryWarsSeasonTransitionPlan("attempt", current, "corrupt", fallback)));
 
-        Assert.Equal(current, accounts.ReadSync<byte[]?>(new TerritoryRealmReadPlan(RealmStateKind.TerritoryWars)));
+        Assert.Equal(current, _accounts.ReadSync<byte[]?>(new TerritoryRealmReadPlan(RealmStateKind.TerritoryWars)));
         // If the failed transaction had archived "attempt", this would find it and restore current instead of fallback.
-        var next = accounts.WriteLegacySync<byte[]>(new TerritoryWarsSeasonTransitionPlan("probe", current, "attempt", fallback));
+        var next = _accounts.WriteLegacySync<byte[]>(new TerritoryWarsSeasonTransitionPlan("probe", current, "attempt", fallback));
         Assert.Equal("fallback", JsonSerializer.Deserialize<TerritoryWarsService.WorldState>(next)!.Epoch);
     }
 
@@ -78,22 +80,22 @@ public sealed class TerritoryPersistenceCaptureTests : IDisposable
         first.WorldDrops[7] = new TerritoryWarsService.WorldDrop { Id = 7, Scene = 30311, Amount = 42 };
         byte[] firstBytes = JsonSerializer.SerializeToUtf8Bytes(first);
         byte[] secondBytes = JsonSerializer.SerializeToUtf8Bytes(new TerritoryWarsService.WorldState { Epoch = "second" });
-        accounts.WriteLegacySync<int>(new RealmStatePlan(RealmStateKind.TerritoryWars, firstBytes));
+        _accounts.WriteLegacySync<int>(new RealmStatePlan(RealmStateKind.TerritoryWars, firstBytes));
 
-        accounts.WriteLegacySync<byte[]>(new TerritoryWarsSeasonTransitionPlan("first", firstBytes, "second", secondBytes));
-        Assert.NotNull(accounts.ReadSync<byte[]?>(new TerritoryWarsSeasonArchiveReadPlan("first")));
-        byte[] second = accounts.ReadSync<byte[]?>(new TerritoryRealmReadPlan(RealmStateKind.TerritoryWars))!;
-        var restored = accounts.WriteLegacySync<byte[]>(new TerritoryWarsSeasonTransitionPlan("second", second, "first", secondBytes));
+        _accounts.WriteLegacySync<byte[]>(new TerritoryWarsSeasonTransitionPlan("first", firstBytes, "second", secondBytes));
+        Assert.NotNull(_accounts.ReadSync<byte[]?>(new TerritoryWarsSeasonArchiveReadPlan("first")));
+        byte[] second = _accounts.ReadSync<byte[]?>(new TerritoryRealmReadPlan(RealmStateKind.TerritoryWars))!;
+        var restored = _accounts.WriteLegacySync<byte[]>(new TerritoryWarsSeasonTransitionPlan("second", second, "first", secondBytes));
 
-        Assert.Null(accounts.ReadSync<byte[]?>(new TerritoryWarsSeasonArchiveReadPlan("first")));
-        Assert.NotNull(accounts.ReadSync<byte[]?>(new TerritoryWarsSeasonArchiveReadPlan("second")));
+        Assert.Null(_accounts.ReadSync<byte[]?>(new TerritoryWarsSeasonArchiveReadPlan("first")));
+        Assert.NotNull(_accounts.ReadSync<byte[]?>(new TerritoryWarsSeasonArchiveReadPlan("second")));
         Assert.Equal(42, JsonSerializer.Deserialize<TerritoryWarsService.WorldState>(restored)!.WorldDrops[7].Amount);
     }
 
     public void Dispose()
     {
-        accounts.Dispose();
+        _accounts.Dispose();
         SqliteConnection.ClearAllPools();
-        try { Directory.Delete(directory, true); } catch (IOException) { }
+        try { Directory.Delete(_directory, true); } catch (IOException) { }
     }
 }

@@ -28,8 +28,8 @@ public sealed partial class GuildService
     private const int RallyRight = 22;
 
     private sealed record Rally(long GuildId, long Caller, long Scene, MapPoint Point, long ExpiresMs);
-    private readonly Dictionary<long, Rally> rallies = new();
-    private readonly Dictionary<long, long> lastRallyMs = new();
+    private readonly Dictionary<long, Rally> _rallies = new();
+    private readonly Dictionary<long, long> _lastRallyMs = new();
 
     private bool GuildWhitelisted(GameSession s, int index)
     {
@@ -49,7 +49,7 @@ public sealed partial class GuildService
         long price = cost.Length > 1 ? cost[1] : 5;
         int code = g == null ? ErrorCodes.NotInGuild : g.Status != (int)GuildStatus.Normal ? ErrorCodes.FeatureUnavailable
             : !HasRight(g, s.Role!.Id, RallyRight) ? ErrorCodes.GuildPermission
-            : lastRallyMs.GetValueOrDefault(g.Id) + Setting("GuildGatherCD", 300)[0] * 1000 > now ? ErrRallyCooldown
+            : _lastRallyMs.GetValueOrDefault(g.Id) + Setting("GuildGatherCD", 300)[0] * 1000 > now ? ErrRallyCooldown
             : !GuildWhitelisted(s, 0) ? ErrRallyArea
             : (s.StatusBits & (1L << 15)) != 0 ? ErrRallyArea
             : g.Money < price ? ErrorCodes.GuildFundsShort : 0;
@@ -64,10 +64,10 @@ public sealed partial class GuildService
         }
         await s.SendGameAsync(Convene, new GuildConveneRes { Result = code });
         if (code != 0) return;
-        lastRallyMs[g!.Id] = now;
-        foreach (var stale in rallies.Where(r => r.Value.ExpiresMs <= now).Select(r => r.Key).ToArray()) rallies.Remove(stale);
-        long token = ++nextToken;
-        rallies[token] = new Rally(g.Id, s.Role!.Id, s.SceneEntry,
+        _lastRallyMs[g!.Id] = now;
+        foreach (var stale in _rallies.Where(r => r.Value.ExpiresMs <= now).Select(r => r.Key).ToArray()) _rallies.Remove(stale);
+        long token = ++_nextToken;
+        _rallies[token] = new Rally(g.Id, s.Role!.Id, s.SceneEntry,
             new MapPoint(s.Position.X, s.Position.Y, s.Position.Z, s.Face), now + Setting("GuildGatherInviteTime", 60)[0] * 1000);
         await PushBase(g, new GuildBaseInfoChangeNtf { Tp = GuildBaseInfoChangeNtf.Types.ChangeType.ChangeResource, Resource = Resource(g) });
         foreach (var member in g.Members.Values.Where(m => m.RoleId != s.Role.Id))
@@ -88,7 +88,7 @@ public sealed partial class GuildService
     private async Task<Rally?> ConfirmConveneCoreAsync(GameSession s, ConfirmConveneReq req)
     {
         var g = Own(s);
-        int code = !rallies.TryGetValue(req.Token, out var rally) || g == null || rally.GuildId != g.Id
+        int code = !_rallies.TryGetValue(req.Token, out var rally) || g == null || rally.GuildId != g.Id
             || rally.Caller == s.Role!.Id ? ErrInvitationInvalid
             : rally.ExpiresMs < NowMs() ? ErrRallyExpired
             : (s.StatusBits & (1L << 15)) != 0 || s.SceneLoading || s.InstanceId != 0 || !GuildWhitelisted(s, 1)

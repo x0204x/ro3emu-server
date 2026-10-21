@@ -15,21 +15,21 @@ public sealed class OfflineMailOwnerTests : IAsyncLifetime
 {
     private sealed class Clock : TimeProvider
     {
-        private long seconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref seconds));
-        public void Advance(long amount) => Interlocked.Add(ref seconds, amount);
+        private long _seconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref _seconds));
+        public void Advance(long amount) => Interlocked.Add(ref _seconds, amount);
     }
 
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
-    private readonly string directory = Path.Combine(RepoRoot(), ".loadtest-temp", "step11-mail-" + Guid.NewGuid().ToString("N"));
-    private readonly Clock clock = new();
-    private WebApplication app = null!;
-    private string url = "";
-    private GameLoop Loop => app.Services.GetRequiredService<GameLoop>();
-    private OwnerRegistry Owners => app.Services.GetRequiredService<OwnerRegistry>();
-    private AccountStore Accounts => app.Services.GetRequiredService<AccountStore>();
-    private RoleStore Roles => app.Services.GetRequiredService<RoleStore>();
-    private MailService Mail => app.Services.GetRequiredService<MailService>();
+    private readonly string _directory = Path.Combine(RepoRoot(), ".loadtest-temp", "step11-mail-" + Guid.NewGuid().ToString("N"));
+    private readonly Clock _clock = new();
+    private WebApplication _app = null!;
+    private string _url = "";
+    private GameLoop Loop => _app.Services.GetRequiredService<GameLoop>();
+    private OwnerRegistry Owners => _app.Services.GetRequiredService<OwnerRegistry>();
+    private AccountStore Accounts => _app.Services.GetRequiredService<AccountStore>();
+    private RoleStore Roles => _app.Services.GetRequiredService<RoleStore>();
+    private MailService Mail => _app.Services.GetRequiredService<MailService>();
     private static TaskCompletionSource Signal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private static string RepoRoot()
@@ -42,30 +42,30 @@ public sealed class OfflineMailOwnerTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         var (http, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = directory; o.GameDataDir = SyntheticData.Dir;
+            o.DataDir = _directory; o.GameDataDir = SyntheticData.Dir;
             o.HttpPort = http; o.MicroGatePort = micro; o.GameGatePort = game;
-        }, clock);
-        await app.StartAsync();
-        url = $"http://127.0.0.1:{http}";
+        }, _clock);
+        await _app.StartAsync();
+        _url = $"http://127.0.0.1:{http}";
     }
 
     public async Task DisposeAsync()
     {
         Accounts.BeforeOwnedCommitForTest = null; Accounts.BeforeOwnedApplyForTest = null;
         await Loop.InvokeAsync(() => { Owners.DeferredForTest = null; return Task.CompletedTask; });
-        await app.StopAsync(); await app.DisposeAsync();
-        Directory.Delete(directory, true);
+        await _app.StopAsync(); await _app.DisposeAsync();
+        Directory.Delete(_directory, true);
     }
 
     private async Task<(BotClient Bot, GameSession Session)> Login(string name)
     {
-        var bot = new BotClient(url, File.ReadAllText(Path.Combine(directory, "gate_rsa_public.pem")));
+        var bot = new BotClient(_url, File.ReadAllText(Path.Combine(_directory, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         long id = (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id;
         await bot.EnterWorldAsync(id);
-        var session = await Loop.InvokeAsync(() => Task.FromResult(app.Services.GetRequiredService<SessionRegistry>()
+        var session = await Loop.InvokeAsync(() => Task.FromResult(_app.Services.GetRequiredService<SessionRegistry>()
             .All().Single(s => s.Role?.Id == id)));
         return (bot, session);
     }
@@ -136,7 +136,7 @@ public sealed class OfflineMailOwnerTests : IAsyncLifetime
         var (bot, session) = await Login("MailboxRace"); await using var client = bot;
         long role = session.Role!.Id;
         string id = await Mail.SendRawAsync(role, "race", "body", [new(1, 7)],
-            expiresAt: clock.GetUtcNow().AddMinutes(1));
+            expiresAt: _clock.GetUtcNow().AddMinutes(1));
         long before = session.Progress!.Currency.GetValueOrDefault(1);
         var entered = Signal(); var release = Signal(); var deferred = Signal();
         string heldLabel = microFirst ? purge ? "mail/micro-purge" : "mail/micro-read" : "character/exchange";
@@ -165,7 +165,7 @@ public sealed class OfflineMailOwnerTests : IAsyncLifetime
         {
             if (microFirst)
             {
-                if (purge) clock.Advance(60);
+                if (purge) _clock.Advance(60);
                 micro = StartMicro();
             }
             else claim = StartClaim();
@@ -173,7 +173,7 @@ public sealed class OfflineMailOwnerTests : IAsyncLifetime
             if (microFirst) claim = StartClaim();
             else
             {
-                if (purge) clock.Advance(60);
+                if (purge) _clock.Advance(60);
                 micro = StartMicro();
             }
             await deferred.Task.WaitAsync(Wait);

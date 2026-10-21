@@ -16,11 +16,11 @@ namespace Ro3Emu.Tests;
 /// </summary>
 public sealed class AdventureGroupTests : IAsyncLifetime
 {
-    private readonly string dir = Path.Combine(Path.GetTempPath(), "ro3emu-advguild-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ro3emu-advguild-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
-    private readonly TestClock clock = new();
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly TestClock _clock = new();
+    private WebApplication _app = null!;
+    private string _http = "";
 
     private const long Ritual = 1010001, Prontera = 10100;
     private const int Sapling = 200033;
@@ -28,10 +28,10 @@ public sealed class AdventureGroupTests : IAsyncLifetime
     /// <summary>Thursday 2026-10-08 12:00 UTC.</summary>
     private sealed class TestClock : TimeProvider
     {
-        private long seconds = new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
-        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref seconds));
+        private long _seconds = new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref _seconds));
         public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
-        public void Advance(long count) => Interlocked.Add(ref seconds, count);
+        public void Advance(long count) => Interlocked.Add(ref _seconds, count);
     }
 
     public Task InitializeAsync() => StartServerAsync();
@@ -39,36 +39,36 @@ public sealed class AdventureGroupTests : IAsyncLifetime
     private async Task StartServerAsync()
     {
         var (web, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _dir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game;
             o.SeasonStart = "2026-10-05"; o.PlayBook = 101;
             o.OpenContent.Enabled = true; // function 1000000 is base level 9999 in the export
             o.GuildBlockedWords = ["ban"];
-        }, clock);
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{web}";
+        }, _clock);
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{web}";
     }
 
     private async Task RestartAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         ClearOwnPool();
         await StartServerAsync();
     }
 
     private void ClearOwnPool()
     {
-        using var db = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(dir, "ro3emu.db")}");
+        using var db = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(_dir, "ro3emu.db")}");
         Microsoft.Data.Sqlite.SqliteConnection.ClearPool(db);
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         ClearOwnPool();
-        try { Directory.Delete(dir, true); } catch (IOException) { }
+        try { Directory.Delete(_dir, true); } catch (IOException) { }
     }
 
     private static string RepoRoot()
@@ -78,13 +78,13 @@ public sealed class AdventureGroupTests : IAsyncLifetime
         throw new DirectoryNotFoundException("repository root");
     }
 
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private Task OnLoop(Func<Task> work) => Service<GameLoop>().InvokeAsync(work);
     private AdventureGroupStore Store => Service<AdventureGroupStore>();
 
     private async Task<BotClient> InWorld(string name, bool create = true, int level = 40)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         long role = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
         await bot.EnterWorldAsync(role);
@@ -108,7 +108,7 @@ public sealed class AdventureGroupTests : IAsyncLifetime
     private async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     private GameSession Session(BotClient bot) => Service<SessionRegistry>()
@@ -161,7 +161,7 @@ public sealed class AdventureGroupTests : IAsyncLifetime
     {
         var g = new AdventureGroupStore.State
         {
-            Name = name, Status = status, Owner = owner, CreateTime = clock.GetUtcNow().ToUnixTimeSeconds(), Level = 1,
+            Name = name, Status = status, Owner = owner, CreateTime = _clock.GetUtcNow().ToUnixTimeSeconds(), Level = 1,
             CreateType = status == AdventureGroupService.StatusHelper ? 1 : 2,
         };
         for (int i = 0; i < members; i++) g.Members[owner + i] = new AdventureGroupStore.Member { RoleId = owner + i, Name = $"{name}{i}" };
@@ -319,9 +319,9 @@ public sealed class AdventureGroupTests : IAsyncLifetime
         Assert.Equal(0, (await Helper(bob, OpeType.OpeHelperCancel, b, helpers[0].Id)).Result);
         Assert.Equal(0, (await Helper(bob, OpeType.OpeHelperApply, b, helpers[5].Id)).Result);
         // An expired support post (AdventureGroupHelperCreateTimeLimit 12 h) refuses responses.
-        clock.Advance(-13 * 3600);
+        _clock.Advance(-13 * 3600);
         var late = Seed("Late", AdventureGroupService.StatusHelper, 9_100_000);
-        clock.Advance(13 * 3600);
+        _clock.Advance(13 * 3600);
         Assert.Equal(AdventureGroupService.ErrRecruitExpired, (await Helper(bob, OpeType.OpeHelperApply, b, late.Id)).Result);
 
         // Joining: a group's application list holds AdventureGroupNormalApplyLimit (20), a full group refuses.
@@ -412,7 +412,7 @@ public sealed class AdventureGroupTests : IAsyncLifetime
         var refused = await Ope(alice, OpeType.OpeApply, new NormalOpeData { AdventureId = group });
         Assert.Equal(AdventureGroupService.ErrCooldown, refused.Result);
         Assert.InRange(refused.PunishTime, 1700, 1800);
-        clock.Advance(1801);
+        _clock.Advance(1801);
         Assert.Equal(0, (await Ope(alice, OpeType.OpeApply, new NormalOpeData { AdventureId = group })).Result);
         // A kicked member has no cooldown (inferred).
         Assert.Equal(0, (await Ope(carol, OpeType.OpeApply, new NormalOpeData { AdventureId = group })).Result);
@@ -467,7 +467,7 @@ public sealed class AdventureGroupTests : IAsyncLifetime
         Assert.Equal(1, Assert.Single(tree.SaplingDataList, x => x.AdventureId == group).WateringCount);
 
         // Next day (05:00 boundary) the member may water again.
-        clock.Advance(24 * 3600);
+        _clock.Advance(24 * 3600);
         Assert.Equal(0, await Result(alice, AdventureGroupService.Water,
             new WateringSaplingReq { SaplingId = sapling }, body => WateringSaplingRes.Parser.ParseFrom(body).Result));
         Assert.Equal(2, Store.Get(group)!.SaplingWatering);
@@ -507,7 +507,7 @@ public sealed class AdventureGroupTests : IAsyncLifetime
 
         // The claim belongs to the role: in another group the same level is not paid twice.
         Assert.Equal(0, (await Ope(alice, OpeType.OpeLeave, new NormalOpeData { AdventureId = group })).Result);
-        clock.Advance(1801);
+        _clock.Advance(1801);
         await GmCreate(alice, "Again");
         Assert.Equal(AdventureGroupService.ErrClaimed, (await Ope(alice, OpeType.OpeTakenLevelUpReward, new NormalOpeData { LevelReward = 1 })).Result);
     }
@@ -565,7 +565,7 @@ public sealed class AdventureGroupTests : IAsyncLifetime
         await Until(() => Store.Get(group)!.Level == 2, "level 2");
         Assert.Equal(AdventureGroupService.ErrRallyCooldown, await Result(alice, AdventureGroupService.Convene,
             new AdventureGroupConveneReq(), body => AdventureGroupConveneRes.Parser.ParseFrom(body).Result));
-        clock.Advance(11);
+        _clock.Advance(11);
         Assert.Equal(0, await Result(alice, AdventureGroupService.Convene,
             new AdventureGroupConveneReq(), body => AdventureGroupConveneRes.Parser.ParseFrom(body).Result));
         await Next(bob, AdventureGroupService.ConveneNotify, AdventureGroupConveneNtf.Parser, n => n.Token != notice.Token);
@@ -577,7 +577,7 @@ public sealed class AdventureGroupTests : IAsyncLifetime
             body => AdventureGroupConfirmConveneRes.Parser.ParseFrom(body).Result));
         await Next(bob, MsgId.SwitchSceneLine, SwitchSceneLineResp.Parser, r => r.SceneEntry == Prontera);
         // The rally count resets with the day.
-        clock.Advance(24 * 3600);
+        _clock.Advance(24 * 3600);
         Assert.Equal(0, await Result(alice, AdventureGroupService.Convene,
             new AdventureGroupConveneReq(), body => AdventureGroupConveneRes.Parser.ParseFrom(body).Result));
     }

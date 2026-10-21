@@ -16,34 +16,34 @@ namespace Ro3Emu.Tests;
 public sealed class FamilyExpiryOwnerTests : IAsyncLifetime
 {
     private const int Hair = 70000000, TimedHead = 10030417;
-    private readonly string directory = Path.Combine(Path.GetTempPath(), "ro3-family-expiry-" + Guid.NewGuid().ToString("N"));
-    private readonly ManualClock clock = new(DateTimeOffset.UtcNow);
-    private WebApplication app = null!;
-    private string http = "";
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), "ro3-family-expiry-" + Guid.NewGuid().ToString("N"));
+    private readonly ManualClock _clock = new(DateTimeOffset.UtcNow);
+    private WebApplication _app = null!;
+    private string _http = "";
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private GameSession Session => Service<SessionRegistry>().All().Single(s => s.Account == "alice" && s.Role != null);
 
     public async Task InitializeAsync()
     {
         var (web, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game;
-        }, clock);
-        await app.StartAsync(); http = $"http://127.0.0.1:{web}";
+        }, _clock);
+        await _app.StartAsync(); _http = $"http://127.0.0.1:{web}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         SqliteConnection.ClearAllPools();
-        try { Directory.Delete(directory, true); } catch (IOException) { }
+        try { Directory.Delete(_directory, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> Enter()
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(directory, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_directory, "gate_rsa_public.pem")));
         await bot.LoginAsync("alice", "pw"); await bot.EnterGateAsync();
         long id = (await bot.CreateRoleAsync("Alice")).RoleBaseInfo.Id;
         await bot.EnterWorldAsync(id); return bot;
@@ -52,7 +52,7 @@ public sealed class FamilyExpiryOwnerTests : IAsyncLifetime
     private async Task Gm(string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync(http + "/ro3emu/gm?account=alice", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync(_http + "/ro3emu/gm?account=alice", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     private static async Task<T> Next<T>(BotClient bot, uint id, MessageParser<T> parser, Func<T, bool>? match = null) where T : IMessage<T> =>
@@ -68,7 +68,7 @@ public sealed class FamilyExpiryOwnerTests : IAsyncLifetime
         await bot.SendGameAsync(CharacterService.ItemUse, new ItemUseReq { ItemGuid = voucher, ItemCount = 1 });
         Assert.Equal(0, (await Next(bot, CharacterService.ItemUse, ItemUseResp.Parser)).Result);
         long due = Session.Mounts!.Mounts[60040010].OverdueTimeMs;
-        Assert.True(due > clock.GetUtcNow().ToUnixTimeMilliseconds());
+        Assert.True(due > _clock.GetUtcNow().ToUnixTimeMilliseconds());
 
         var staged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -82,7 +82,7 @@ public sealed class FamilyExpiryOwnerTests : IAsyncLifetime
             await Service<GameLoop>().InvokeAsync(() =>
             {
                 Assert.False(Session.Mounts!.MountIds.ContainsKey(1));
-                clock.Set(DateTimeOffset.FromUnixTimeMilliseconds(due));
+                _clock.Set(DateTimeOffset.FromUnixTimeMilliseconds(due));
                 Service<Deadlines>().Tick(default);
                 return Task.CompletedTask;
             });
@@ -105,7 +105,7 @@ public sealed class FamilyExpiryOwnerTests : IAsyncLifetime
     public async Task WardrobeExpiryRemovesAHeadWornBySuspendedCommand()
     {
         await using var bot = await Enter();
-        var due = DateTimeOffset.FromUnixTimeMilliseconds(clock.GetUtcNow().ToUnixTimeMilliseconds() + 1250);
+        var due = DateTimeOffset.FromUnixTimeMilliseconds(_clock.GetUtcNow().ToUnixTimeMilliseconds() + 1250);
         await Service<GameLoop>().InvokeAsync(async () =>
         {
             var info = Session.Wardrobe!.Clone();
@@ -126,7 +126,7 @@ public sealed class FamilyExpiryOwnerTests : IAsyncLifetime
             await Service<GameLoop>().InvokeAsync(() =>
             {
                 Assert.False(Session.Wardrobe!.CurUseAppearances.ContainsKey(1));
-                clock.Set(due);
+                _clock.Set(due);
                 Service<Deadlines>().Tick(default);
                 return Task.CompletedTask;
             });
@@ -167,9 +167,9 @@ public sealed class FamilyExpiryOwnerTests : IAsyncLifetime
 
     private sealed class ManualClock(DateTimeOffset initial) : TimeProvider
     {
-        private long ticks = initial.UtcTicks;
-        public void Set(DateTimeOffset value) => Interlocked.Exchange(ref ticks, value.UtcTicks);
-        public override DateTimeOffset GetUtcNow() => new(Interlocked.Read(ref ticks), TimeSpan.Zero);
+        private long _ticks = initial.UtcTicks;
+        public void Set(DateTimeOffset value) => Interlocked.Exchange(ref _ticks, value.UtcTicks);
+        public override DateTimeOffset GetUtcNow() => new(Interlocked.Read(ref _ticks), TimeSpan.Zero);
     }
 
     private static string RepoRoot()

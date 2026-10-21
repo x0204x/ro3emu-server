@@ -83,8 +83,8 @@ public sealed class EventEconomyMutation
 /// <summary>Family-local semantic capture; EXP is result progression rather than a spendable ItemConfig purse.</summary>
 public static class EventEconomy
 {
-    private static readonly ConditionalWeakTable<GameData, EconomyCatalog> catalogs = new();
-    public static EconomyCatalog Catalog(GameData data) => catalogs.GetValue(data, value =>
+    private static readonly ConditionalWeakTable<GameData, EconomyCatalog> Catalogs = new();
+    public static EconomyCatalog Catalog(GameData data) => Catalogs.GetValue(data, value =>
         new EconomyCatalog(value.Table("ItemConfig").ToDictionary(row => long.Parse(row.Key, CultureInfo.InvariantCulture),
             row => GameData.Int(row.Value, "_iType") == 1 ? EconomyAssetKind.Currency : EconomyAssetKind.Item),
             value.Table("PublicParamConfig").TryGetValue("AUCTION_CURRENCY", out var bonus) ? bonus.GetInt64() : 1));

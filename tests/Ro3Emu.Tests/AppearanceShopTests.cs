@@ -29,39 +29,39 @@ public sealed class AppearanceShopTests : IAsyncLifetime
     private const int Stroll = 5000007, StrollSuit = 40030010;        // [3,680], no award, no pieces.
     private const int Potions = 12105, PotionItem = 1003100;          // [1,1000], cd13a/shop-buy.
     private const int BigPoringLook = 5000038, BigPoring = 60030010;  // class 50202 [3,980]; WardRobeConfig type 6 -> MountsConfig.
-    private readonly string directory = Path.Combine(RepoRoot(), ".loadtest-temp", "fashion-shop-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly string _directory = Path.Combine(RepoRoot(), ".loadtest-temp", "fashion-shop-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "";
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
     private static readonly Lazy<EconomyCatalog> Catalog = new(() => EconomyCatalog.Load(Path.Combine(RepoRoot(), "data")));
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private GameSession Alice => Service<SessionRegistry>().All().Single(s => s.Account == "fashionalice" && s.Role != null);
-    private EconomySnapshot Cut() => S3EconomyReader.Read(directory, Catalog.Value);
-    private EconomyLedgerWindow Window(EconomySnapshot a, EconomySnapshot b) => S3EconomyReader.ReadLedger(directory, Catalog.Value, a, b)!;
+    private EconomySnapshot Cut() => S3EconomyReader.Read(_directory, Catalog.Value);
+    private EconomyLedgerWindow Window(EconomySnapshot a, EconomySnapshot b) => S3EconomyReader.ReadLedger(_directory, Catalog.Value, a, b)!;
 
     public async Task InitializeAsync()
     {
         var (web, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game;
             o.PlayBook = 101;
         });
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{web}";
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{web}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         SqliteConnection.ClearAllPools();
-        try { Directory.Delete(directory, true); } catch (IOException) { }
+        try { Directory.Delete(_directory, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> Enter()
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(directory, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_directory, "gate_rsa_public.pem")));
         await bot.LoginAsync("fashionalice", "pw"); await bot.EnterGateAsync();
         long role = (await bot.CreateRoleAsync("FashionAlice")).RoleBaseInfo.Id;
         await bot.EnterWorldAsync(role);
@@ -78,7 +78,7 @@ public sealed class AppearanceShopTests : IAsyncLifetime
     private async Task Gm(string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync(http + "/ro3emu/gm?account=fashionalice", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync(_http + "/ro3emu/gm?account=fashionalice", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     private static async Task<T> Next<T>(BotClient bot, uint id, MessageParser<T> parser, Func<T, bool>? match = null) where T : IMessage<T> =>

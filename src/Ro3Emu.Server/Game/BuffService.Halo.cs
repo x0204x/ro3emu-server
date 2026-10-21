@@ -83,7 +83,7 @@ public sealed partial class BuffService
                 halo.Desired.Clear();
                 if (halo.Affected.Count == 0) continue;
                 halo.Busy = true;
-                loop.TrackRuntimeDetached("aura end", () => ReconcileHaloAsync(halo, 0));
+                _loop.TrackRuntimeDetached("aura end", () => ReconcileHaloAsync(halo, 0));
                 continue;
             }
             CollectHaloTargets(halo);
@@ -97,7 +97,7 @@ public sealed partial class BuffService
             long remaining = carried.ExpireMs == long.MaxValue ? 3_600_000 : carried.ExpireMs - now;
             int duration = (int)Math.Clamp(remaining, halo.Rule.TickMs * 3L, int.MaxValue);
             halo.Busy = true;
-            loop.TrackRuntimeDetached("aura tick", () => ReconcileHaloAsync(halo, duration));
+            _loop.TrackRuntimeDetached("aura tick", () => ReconcileHaloAsync(halo, duration));
         }
     }
 
@@ -110,7 +110,7 @@ public sealed partial class BuffService
         long scene = carrier.WorldScene;
         _haloCandidates.Clear();
         _haloPlayers.Clear();
-        world.CollectPlayers(scene, x, z, rule.Radius, _haloPlayers);
+        _world.CollectPlayers(scene, x, z, rule.Radius, _haloPlayers);
         foreach (var p in _haloPlayers)
         {
             if (p.Role == null || p.Dead || p.SceneLoading) continue;
@@ -126,7 +126,7 @@ public sealed partial class BuffService
         if (rule.Hostile)
         {
             _haloUnits.Clear();
-            world.Map(scene).CollectNear(x, z, rule.Radius, _haloUnits);
+            _world.Map(scene).CollectNear(x, z, rule.Radius, _haloUnits);
             foreach (var unit in _haloUnits)
             {
                 if (unit is not MonsterUnit m || m.Dead || m.Hp <= 0 || HaloEnemyMonster?.Invoke(carrier, m) == false) continue;
@@ -181,7 +181,7 @@ public sealed partial class BuffService
                 if (p.Role == null || p.Buffs.Any(b => b.ConfigId == id && b.ExpireMs > halo.RefreshBefore)) continue;
                 await AddAsync(p, id, durationMs, halo.CarrierId);
             }
-            else if (target is WorldUnit unit && world.Map(unit.WorldScene).Contains(unit))
+            else if (target is WorldUnit unit && _world.Map(unit.WorldScene).Contains(unit))
             {
                 if (_unitBuffs.TryGetValue(unit.Uid, out var list) && list.Any(b => b.ConfigId == id && b.ExpireMs > halo.RefreshBefore)) continue;
                 await AddSupportAsync(unit, id, durationMs, halo.CarrierId);

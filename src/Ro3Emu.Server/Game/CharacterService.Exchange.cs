@@ -178,7 +178,7 @@ public sealed partial class CharacterService
         context.AssertRole(session.Role!.Id);
         context.BindPresentation(session);
         var attachment = session.Attachment;
-        var lifeUse = lifeItemExchange.Value;
+        var lifeUse = LifeItemExchange.Value;
         if (lifeUse is null || !lifeUse.Active || !ReferenceEquals(lifeUse.Session, session) || lifeUse.Committed) lifeUse = null;
         if (baseExp < 0 || jobExp < 0) throw new ArgumentOutOfRangeException(nameof(baseExp));
         var nextProgress = CloneProgress(session.Progress!);

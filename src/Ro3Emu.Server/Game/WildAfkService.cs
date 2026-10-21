@@ -24,14 +24,14 @@ public sealed class WildAfkService : IGameTicker
         OfflineReward = 43405, Magnification = 43406, DungeonStart = 43408, Start = 43409, Pause = 43410,
         Snapshot = 43411, SuspendReason = 43412;
 
-    private readonly GameData data;
-    private readonly RoleStore roles;
-    private readonly FunctionService functions;
-    private readonly TaskService tasks;
-    private readonly DailyActivityService daily;
-    private readonly SessionRegistry sessions;
-    private readonly World world;
-    private readonly GameLoop loop;
+    private readonly GameData _data;
+    private readonly RoleStore _roles;
+    private readonly FunctionService _functions;
+    private readonly TaskService _tasks;
+    private readonly DailyActivityService _daily;
+    private readonly SessionRegistry _sessions;
+    private readonly World _world;
+    private readonly GameLoop _loop;
 
     /// <summary>Durable dataset and reset/accounting metadata; clock anchors and the UI power-saving flag are session-only.</summary>
     public sealed class State
@@ -57,14 +57,14 @@ public sealed class WildAfkService : IGameTicker
     public WildAfkService(GameData data, RoleStore roles, FunctionService functions, TaskService tasks, DailyActivityService daily,
         SessionRegistry sessions, World world, GameLoop loop, SceneService scene, CombatService combat, RewardService rewards)
     {
-        this.data = data;
-        this.roles = roles;
-        this.functions = functions;
-        this.tasks = tasks;
-        this.daily = daily;
-        this.sessions = sessions;
-        this.world = world;
-        this.loop = loop;
+        this._data = data;
+        this._roles = roles;
+        this._functions = functions;
+        this._tasks = tasks;
+        this._daily = daily;
+        this._sessions = sessions;
+        this._world = world;
+        this._loop = loop;
         scene.Leaving.Add(s => SuspendAsync(s));
         scene.Loaded.Add(s => ReconcileAsync(s));
         combat.PlayerDied.Add(s => SuspendAsync(s));
@@ -75,7 +75,7 @@ public sealed class WildAfkService : IGameTicker
         daily.PlanAfkRollover = PlanDailyRollover;
     }
 
-    private long Param(string key, long fallback) => data.Table("PublicParamConfig").TryGetValue(key, out var value)
+    private long Param(string key, long fallback) => _data.Table("PublicParamConfig").TryGetValue(key, out var value)
         ? (long)(GameData.Number(value) ?? fallback) : fallback;
     private long DailySeconds => Param("OnHookDailyFightTime", 60) * 60;
     private long CapSeconds => Param("OnHookFightTimeLimit", 180) * 60;
@@ -87,20 +87,20 @@ public sealed class WildAfkService : IGameTicker
     {
         long? role = s.Role?.Id;
         if (role is null || !Owns(s, state)) return null;
-        if (loop.Owners is not { } owners) return null;
+        if (_loop.Owners is not { } owners) return null;
         var scope = await owners.EnterAsync("wild-afk/" + origin, [ReservationKey.Role(role.Value)]);
         if (s.Role?.Id != role || !Owns(s, state)) { scope.Dispose(); return null; }
         try { if (s.Owner is { } owner) scope.Context.Pin(owner); }
         catch { scope.Dispose(); throw; }
         return scope;
     }
-    private bool Unlocked(GameSession s) => s.Progress != null && functions.IsOpen(s, 18);
-    private bool Field(GameSession s) => s.InstanceId == 0 && data.Row("MapConfig", s.SceneEntry) is { } map
+    private bool Unlocked(GameSession s) => s.Progress != null && _functions.IsOpen(s, 18);
+    private bool Field(GameSession s) => s.InstanceId == 0 && _data.Row("MapConfig", s.SceneEntry) is { } map
         && GameData.Int(map, "_iSceneType") == 1; // enum scene type: field; private/dungeon maps never qualify.
-    private bool Ordinary(MonsterUnit monster) => data.Row("NPCConfig", monster.Template.NpcId) is { } npc
+    private bool Ordinary(MonsterUnit monster) => _data.Row("NPCConfig", monster.Template.NpcId) is { } npc
         && GameData.Int(npc, "_iWildMonsters") == 1 && GameData.Int(npc, "_iNPCSubType") is 1 or 2;
-    private bool MvpAggro(GameSession s) => world.AllUnits().OfType<MonsterUnit>().Any(m => !m.Dead && !m.Returning
-        && m.WorldScene == s.WorldScene && m.Target == s && data.Row("NPCConfig", m.Template.NpcId) is { } npc
+    private bool MvpAggro(GameSession s) => _world.AllUnits().OfType<MonsterUnit>().Any(m => !m.Dead && !m.Returning
+        && m.WorldScene == s.WorldScene && m.Target == s && _data.Row("NPCConfig", m.Template.NpcId) is { } npc
         && GameData.Int(npc, "_iNPCSubType") is 3 or 4);
 
     private long Epoch(long nowMs)
@@ -113,7 +113,7 @@ public sealed class WildAfkService : IGameTicker
     /// <summary>Before quest login: persisted seconds, rollover and a safe full 5035 even for a locked new role.</summary>
     public void Load(GameSession s)
     {
-        var saved = roles.LoadWildAfk(s.Role!.Id);
+        var saved = _roles.LoadWildAfk(s.Role!.Id);
         var state = saved == null ? new State() : JsonSerializer.Deserialize<State>(saved) ?? new State();
         s.WildAfk = state;
         s.AutoBattle = false;
@@ -125,10 +125,10 @@ public sealed class WildAfkService : IGameTicker
             state.Info.IsHighMagnification = true; // daily auto-enable: UIWords 37014 (initial default inferred).
             state.DailyEpoch = Epoch(now);
         }
-        var dailyBytes = roles.LoadDaily(s.Role.Id);
+        var dailyBytes = _roles.LoadDaily(s.Role.Id);
         var oldDaily = dailyBytes == null ? null : JsonSerializer.Deserialize<DailyActivityService.DailyState>(dailyBytes);
         var oldRows = oldDaily == null ? null : DBDailyActivityInfo.Parser.ParseFrom(oldDaily.Rows);
-        var questBytes = roles.LoadTasks(s.Role.Id);
+        var questBytes = _roles.LoadTasks(s.Role.Id);
         var oldQuests = questBytes == null ? null : DBTaskInfo.Parser.ParseFrom(questBytes);
         if (!PendingDailyAward(state, oldDaily, oldQuests, oldRows)) Restore(state, now);
         state.Info.IsSuspended = state.Info.IsHighMagnification;
@@ -148,7 +148,7 @@ public sealed class WildAfkService : IGameTicker
         var state = s.WildAfk!;
         var bytes = JsonSerializer.SerializeToUtf8Bytes(state);
         if (state.Persisted is { } last && last.AsSpan().SequenceEqual(bytes)) return;
-        roles.SaveWildAfk(s.Role!.Id, bytes);
+        _roles.SaveWildAfk(s.Role!.Id, bytes);
         state.Persisted = bytes;
     }
 
@@ -202,7 +202,7 @@ public sealed class WildAfkService : IGameTicker
         bool running = info.IsHighMagnification && !info.IsSuspended;
         // Settle the old day's eligible interval before adding the new allowance, even if the loop crossed 05:00.
         bool reset = Epoch(now) > state.DailyEpoch;
-        if (reset && publish && s.DailyReady) await daily.ReconcileAsync(s);
+        if (reset && publish && s.DailyReady) await _daily.ReconcileAsync(s);
         if (reset && running) ConsumeUntil(state, Math.Min(now, Epoch(now) * 1000));
         if (reset && !publish && PendingDailyAward(state, s.Daily, s.Tasks, s.DailyRows))
         {
@@ -230,7 +230,7 @@ public sealed class WildAfkService : IGameTicker
         Save(s);
         if (!publish) return; // Disconnected sockets must not interrupt durable accounting or world cleanup.
         if ((reset || consumed > 0 || PendingDailyAward(state, s.Daily, s.Tasks, s.DailyRows))
-            && s.Tasks != null && s.DailyReady) await tasks.RefreshAsync(s);
+            && s.Tasks != null && s.DailyReady) await _tasks.RefreshAsync(s);
         await SyncAsync(s);
         if (info.IsSuspended && reason.Length > 0 && reason != state.LastReason)
             await s.SendGameAsync(SuspendReason, new SuspendReasonRes { Reason = reason });
@@ -249,7 +249,7 @@ public sealed class WildAfkService : IGameTicker
             ConsumeUntil(state, boundary * 1000);
             Save(s);
         }
-        if (PendingDailyAward(state, s.Daily, s.Tasks, s.DailyRows)) await tasks.SettleOwnerProgressCoreAsync(s);
+        if (PendingDailyAward(state, s.Daily, s.Tasks, s.DailyRows)) await _tasks.SettleOwnerProgressCoreAsync(s);
         if (!Owns(s, state)) return true;
         return !PendingDailyAward(state, s.Daily, s.Tasks, s.DailyRows);
     }
@@ -328,7 +328,7 @@ public sealed class WildAfkService : IGameTicker
     {
         if (s.WildAfk is not { } state || s.Role == null) return;
         using var scope = await EnterStateScopeAsync(s, state, "suspend");
-        if (loop.Owners != null && scope == null) return;
+        if (_loop.Owners != null && scope == null) return;
         await state.Gate.WaitAsync();
         try
         {
@@ -371,7 +371,7 @@ public sealed class WildAfkService : IGameTicker
     {
         if (s.WildAfk is not { } state) return;
         using var scope = await EnterStateScopeAsync(s, state, "auto-battle");
-        if (loop.Owners != null && scope == null) return;
+        if (_loop.Owners != null && scope == null) return;
         await state.Gate.WaitAsync();
         try
         {
@@ -388,7 +388,7 @@ public sealed class WildAfkService : IGameTicker
     {
         if (s.WildAfk is not { } state) return;
         using var scope = await EnterStateScopeAsync(s, state, "settings");
-        if (loop.Owners != null && scope == null) return;
+        if (_loop.Owners != null && scope == null) return;
         await state.Gate.WaitAsync();
         try
         {
@@ -410,7 +410,7 @@ public sealed class WildAfkService : IGameTicker
     {
         if (s.WildAfk is not { } state) return;
         using var scope = await EnterStateScopeAsync(s, state, "info");
-        if (loop.Owners != null && scope == null) return;
+        if (_loop.Owners != null && scope == null) return;
         await state.Gate.WaitAsync();
         try
         {
@@ -426,7 +426,7 @@ public sealed class WildAfkService : IGameTicker
     {
         if (s.WildAfk is not { } state) return;
         using var scope = await EnterStateScopeAsync(s, state, "toggle");
-        if (loop.Owners != null && scope == null) return;
+        if (_loop.Owners != null && scope == null) return;
         await state.Gate.WaitAsync();
         try
         {
@@ -467,7 +467,7 @@ public sealed class WildAfkService : IGameTicker
     {
         if (s.WildAfk is not { } state) return;
         using var scope = await EnterStateScopeAsync(s, state, "collect");
-        if (loop.Owners != null && scope == null) return;
+        if (_loop.Owners != null && scope == null) return;
         await state.Gate.WaitAsync();
         try
         {
@@ -475,7 +475,7 @@ public sealed class WildAfkService : IGameTicker
             var list = state.Info.MonsterCollection;
             bool exists = list.Contains(req.MonsterId);
             int error = !Unlocked(s) ? ErrorCodes.FeatureUnavailable
-                : data.Row("NPCConfig", req.MonsterId) is not { } npc || GameData.Int(npc, "_iWildMonsters") != 1 ? ErrorCodes.AfkCollectionInvalid
+                : _data.Row("NPCConfig", req.MonsterId) is not { } npc || GameData.Int(npc, "_iWildMonsters") != 1 ? ErrorCodes.AfkCollectionInvalid
                 : req.IsAdd && exists ? ErrorCodes.AfkCollectionExists
                 : !req.IsAdd && !exists ? ErrorCodes.AfkCollectionMissing
                 : req.IsAdd && list.Count >= Param("OnHookMonsterNum", 7) ? ErrorCodes.AfkCollectionFull : 0;
@@ -497,7 +497,7 @@ public sealed class WildAfkService : IGameTicker
     {
         if (s.WildAfk is not { } state) return;
         using var scope = await EnterStateScopeAsync(s, state, "snapshot");
-        if (loop.Owners != null && scope == null) return;
+        if (_loop.Owners != null && scope == null) return;
         await state.Gate.WaitAsync();
         try
         {
@@ -583,7 +583,7 @@ public sealed class WildAfkService : IGameTicker
         settlement.Enlist = builder =>
         {
             priorEnlist?.Invoke(builder);
-            byte[]? stored = roles.ReadWildAfk(builder, s.Role.Id);
+            byte[]? stored = _roles.ReadWildAfk(builder, s.Role.Id);
             if (stored == null || !stored.AsSpan().SequenceEqual(before))
                 throw new InvalidOperationException("AFK kill source changed before parent admission.");
             builder.RoleBlob(s.Role.Id, "wild_afk", after);
@@ -620,7 +620,7 @@ public sealed class WildAfkService : IGameTicker
         state.Gate.Release();
         if (!Owns(s, state)) return;
         using var scope = await EnterStateScopeAsync(s, state, "kill-drops");
-        if (loop.Owners != null && scope == null) return;
+        if (_loop.Owners != null && scope == null) return;
         await state.Gate.WaitAsync();
         try
         {
@@ -648,29 +648,29 @@ public sealed class WildAfkService : IGameTicker
         finally { state.Gate.Release(); }
     }
 
-    private readonly HashSet<State> pendingReconciles = [];
+    private readonly HashSet<State> _pendingReconciles = [];
     internal Action<GameSession>? TickAttemptCompletedForTest { get; set; }
     public void Tick(GameTime time)
     {
         // Still every session once a second (accrual and suspension follow the clock), each in its own tick.
         if (_phases.Due(time.Now) is not { } due) return;
-        foreach (var s in sessions.All().Where(s => s.Role != null && s.WildAfk != null && due[SecondPhases.PhaseOf(s)]).ToArray())
+        foreach (var s in _sessions.All().Where(s => s.Role != null && s.WildAfk != null && due[SecondPhases.PhaseOf(s)]).ToArray())
         {
             var state = s.WildAfk!;
-            if (!pendingReconciles.Add(state)) continue;
+            if (!_pendingReconciles.Add(state)) continue;
             var role = s.Role;
             var attachment = s.Attachment;
             var owner = s.Owner;
             bool CurrentTick() => ReferenceEquals(s.Role, role) && ReferenceEquals(s.WildAfk, state) &&
                 ReferenceEquals(s.Attachment, attachment) &&
-                (loop.Owners?.IsCurrentAttachedTimer(s, owner, attachment) ?? true);
-            loop.PostRuntime(async () =>
+                (_loop.Owners?.IsCurrentAttachedTimer(s, owner, attachment) ?? true);
+            _loop.PostRuntime(async () =>
             {
                 try
                 {
                     if (CurrentTick()) await ReconcileAsync(s, CurrentTick);
                 }
-                finally { pendingReconciles.Remove(state); TickAttemptCompletedForTest?.Invoke(s); }
+                finally { _pendingReconciles.Remove(state); TickAttemptCompletedForTest?.Invoke(s); }
             });
         }
     }

@@ -18,7 +18,7 @@ public sealed partial class EmblemService
     internal void ApplyGenreMarkers(IEnumerable<InvItem> inventory, EmblemState state)
     {
         var slots = state.Plans[state.CurrentPlan].Slots;
-        foreach (var item in inventory.Where(i => IsEmblem(data, i.Entry)))
+        foreach (var item in inventory.Where(i => IsEmblem(_data, i.Entry)))
         {
             int slot = slots.FirstOrDefault(s => s.Value == item.Guid).Key;
             item.Attrs ??= new();
@@ -52,7 +52,7 @@ public sealed partial class EmblemService
             else if (code == 0)
                 foreach (long guid in target.Slots.Values)
                 {
-                    var item = session.Items.FirstOrDefault(i => i.Guid == guid && i.Grid == 0 && IsEmblem(data, i.Entry));
+                    var item = session.Items.FirstOrDefault(i => i.Guid == guid && i.Grid == 0 && IsEmblem(_data, i.Entry));
                     if (item == null) { code = ErrorCodes.EmblemInvalid; break; }
                     if (!SeasonValid(item.Entry)) { code = ErrorCodes.EmblemOtherSeason; break; }
                 }
@@ -72,7 +72,7 @@ public sealed partial class EmblemService
                 }
                 catch (SqliteException e)
                 {
-                    log.LogWarning(e, "Soul Echo plan switch rolled back for {Role}", session.Role!.Id);
+                    _log.LogWarning(e, "Soul Echo plan switch rolled back for {Role}", session.Role!.Id);
                     code = ErrorCodes.Parameter;
                 }
                 if (code == 0)
@@ -110,7 +110,7 @@ public sealed partial class EmblemService
             }
             catch (SqliteException e)
             {
-                log.LogWarning(e, "Soul Echo plan rename rolled back for {Role}", session.Role!.Id);
+                _log.LogWarning(e, "Soul Echo plan rename rolled back for {Role}", session.Role!.Id);
                 code = ErrorCodes.Parameter;
             }
             if (code == 0) await SyncAsync(session);

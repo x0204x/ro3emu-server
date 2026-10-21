@@ -23,7 +23,7 @@ public sealed partial class TaskService
     private List<(long Chapter, long[] Children)>? _growthTitles;
 
     /// <summary>NewbieTitlesConfig rows in _iLev order: chapter task and child tasks.</summary>
-    private List<(long Chapter, long[] Children)> GrowthTitles() => _growthTitles ??= data.Table("NewbieTitlesConfig").Values
+    private List<(long Chapter, long[] Children)> GrowthTitles() => _growthTitles ??= _data.Table("NewbieTitlesConfig").Values
         .Where(r => r.ValueKind == System.Text.Json.JsonValueKind.Object && GameData.Int(r, "_iTaskID") > 0)
         .OrderBy(r => GameData.Int(r, "_iLev")).ThenBy(r => GameData.Int(r, "_iID"))
         .Select(r => (GameData.Int(r, "_iTaskID"), Longs(r, "_iSubTaskId")))
@@ -43,7 +43,7 @@ public sealed partial class TaskService
                 accepted++;
             }
             if (session.Tasks!.Infos.TryGetValue(chapter, out var info))
-                info.IsChapterLocked = Defs()[chapter].Condition != 0 && !functions.ConditionMet(session, Defs()[chapter].Condition);
+                info.IsChapterLocked = Defs()[chapter].Condition != 0 && !_functions.ConditionMet(session, Defs()[chapter].Condition);
             break;
         }
         return accepted;

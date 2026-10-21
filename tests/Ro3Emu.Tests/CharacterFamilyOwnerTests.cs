@@ -17,37 +17,37 @@ namespace Ro3Emu.Tests;
 /// <summary>C/D 13a/E05a: real dispatcher, deadline and GM competitors, and exact economic outcomes.</summary>
 public sealed class CharacterFamilyOwnerTests : IAsyncLifetime
 {
-    private readonly string directory = Path.Combine(RepoRoot(), ".loadtest-temp", "cd13a-character-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private readonly string _directory = Path.Combine(RepoRoot(), ".loadtest-temp", "cd13a-character-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "";
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private GameSession Alice => Service<SessionRegistry>().All().Single(s => s.Account == "alice");
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
     private static readonly Lazy<EconomyCatalog> Catalog = new(() => EconomyCatalog.Load(Path.Combine(RepoRoot(), "data")));
-    private EconomySnapshot Cut() => S3EconomyReader.Read(directory, Catalog.Value);
+    private EconomySnapshot Cut() => S3EconomyReader.Read(_directory, Catalog.Value);
     private EconomyLedgerWindow Window(EconomySnapshot a, EconomySnapshot b) =>
-        S3EconomyReader.ReadLedger(directory, Catalog.Value, a, b)!;
+        S3EconomyReader.ReadLedger(_directory, Catalog.Value, a, b)!;
 
     public async Task InitializeAsync()
     {
         var (web, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game;
         });
-        await app.StartAsync(); http = $"http://127.0.0.1:{web}";
+        await _app.StartAsync(); _http = $"http://127.0.0.1:{web}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync(); SqliteConnection.ClearAllPools();
-        try { Directory.Delete(directory, true); } catch (IOException) { }
+        await _app.StopAsync(); await _app.DisposeAsync(); SqliteConnection.ClearAllPools();
+        try { Directory.Delete(_directory, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> Enter(string name = "Alice")
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(directory, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_directory, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         long role = (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id;
         await bot.EnterWorldAsync(role);
@@ -61,7 +61,7 @@ public sealed class CharacterFamilyOwnerTests : IAsyncLifetime
     private async Task Gm(string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync(http + "/ro3emu/gm?account=alice", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync(_http + "/ro3emu/gm?account=alice", new StringContent(command))).EnsureSuccessStatusCode();
     }
     private static async Task<T> Next<T>(BotClient bot, uint id, MessageParser<T> parser) where T : IMessage<T> =>
         parser.ParseFrom((await bot.Inbox.WaitAsync(e => e.IsGame(id), Wait)).Body);

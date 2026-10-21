@@ -36,8 +36,8 @@ public sealed partial class GuildService
     private const int ChestType = 9, DividendMarker = 0, DividendFunction = 1333;
     private const long Week = 7 * 86400;
 
-    private readonly HashSet<GameSession> depositQueued = new();
-    private bool depositHooked;
+    private readonly HashSet<GameSession> _depositQueued = new();
+    private bool _depositHooked;
 
     /// <summary>Monday 05:00 local of this week, unix seconds (the guild activity reset, UITips 17019).</summary>
     private long WeekStart
@@ -87,17 +87,17 @@ public sealed partial class GuildService
     /// <summary>After any committed award: a member holding guild currencies hands them to the guild.</summary>
     private void HookDeposits()
     {
-        if (depositHooked) return;
-        depositHooked = true;
+        if (_depositHooked) return;
+        _depositHooked = true;
         character.StateChanged.Add(s =>
         {
             if (s.Role == null || s.Progress is not { } p || !GuildCurrencies.Any(c => p.Currency.GetValueOrDefault(c) > 0)
-                || store.ForRole(s.Role.Id) == null || !depositQueued.Add(s)) return;
+                || store.ForRole(s.Role.Id) == null || !_depositQueued.Add(s)) return;
             // Detached runtime work: the guild write reserves the guild and its members, which a role-owned post
             // could not widen to (a nested scope may not expand).
             loop.TrackRuntimeDetached("guild/deposit", async () =>
             {
-                depositQueued.Remove(s);
+                _depositQueued.Remove(s);
                 if (s.Role != null && s.Attachment?.Cancelled != true) await DepositAsync(s);
             });
         });

@@ -49,23 +49,23 @@ public sealed class CasualBattleService : IGameTicker
     // Scene 2220104's two born points (scene editor m_kAllPoints 23 and 34), one a camp (inferred: camp 1 at 23).
     private static readonly long[] CampPoints = [23, 34];
 
-    private readonly GameData data;
-    private readonly ActivityClock activityClock;
-    private readonly TimeProvider time;
-    private readonly FunctionService functions;
-    private readonly TeamService teams;
-    private readonly SessionRegistry sessions;
-    private readonly InstanceService instances;
-    private readonly SceneService scene;
-    private readonly WorldData worldData;
-    private readonly CharacterService character;
-    private readonly RewardService rewards;
-    private readonly TimedBattleService timedBattles;
-    private readonly PraiseService praise;
-    private readonly GameLoop loop;
-    private readonly RoleStore roles;
-    private readonly AccountStore accounts;
-    private readonly ILogger<CasualBattleService> log;
+    private readonly GameData _data;
+    private readonly ActivityClock _activityClock;
+    private readonly TimeProvider _time;
+    private readonly FunctionService _functions;
+    private readonly TeamService _teams;
+    private readonly SessionRegistry _sessions;
+    private readonly InstanceService _instances;
+    private readonly SceneService _scene;
+    private readonly WorldData _worldData;
+    private readonly CharacterService _character;
+    private readonly RewardService _rewards;
+    private readonly TimedBattleService _timedBattles;
+    private readonly PraiseService _praise;
+    private readonly GameLoop _loop;
+    private readonly RoleStore _roles;
+    private readonly AccountStore _accounts;
+    private readonly ILogger<CasualBattleService> _log;
 
     private sealed record Group(GameSession[] Members, long Window);
 
@@ -102,10 +102,10 @@ public sealed class CasualBattleService : IGameTicker
         public long Deadline => Open + BattleSeconds;
     }
 
-    private readonly List<Group> queue = new();
-    private readonly Dictionary<GameSession, Match> active = new();
-    private readonly List<Match> matches = new();
-    private long lastSecond = -1, formedWindow = -1;
+    private readonly List<Group> _queue = new();
+    private readonly Dictionary<GameSession, Match> _active = new();
+    private readonly List<Match> _matches = new();
+    private long _lastSecond = -1, _formedWindow = -1;
 
     /// <summary>TEST AID set by GM "!casual open" (not original behaviour): sign-ups outside the Matching window, and
     /// "!casual start" forms the match at once. In memory only.</summary>
@@ -117,11 +117,11 @@ public sealed class CasualBattleService : IGameTicker
         CombatService combat, DungeonService dungeons, GameLoop loop, GmCommands gm, RoleStore roles, AccountStore accounts,
         ILogger<CasualBattleService> log)
     {
-        this.data = data; this.activityClock = activityClock; this.time = time; this.functions = functions; this.teams = teams;
-        this.sessions = sessions; this.instances = instances; this.scene = scene; this.worldData = worldData;
-        this.character = character; this.rewards = rewards; this.timedBattles = timedBattles; this.praise = praise;
-        this.loop = loop; this.roles = roles; this.accounts = accounts; this.log = log;
-        obligations = new RoleObligations<CasualBattleObligationRow>("Mock Battle payout", accounts, loop, time, Online,
+        this._data = data; this._activityClock = activityClock; this._time = time; this._functions = functions; this._teams = teams;
+        this._sessions = sessions; this._instances = instances; this._scene = scene; this._worldData = worldData;
+        this._character = character; this._rewards = rewards; this._timedBattles = timedBattles; this._praise = praise;
+        this._loop = loop; this._roles = roles; this._accounts = accounts; this._log = log;
+        _obligations = new RoleObligations<CasualBattleObligationRow>("Mock Battle payout", accounts, loop, time, Online,
             s => s.TimedBattle != null && s.Progress != null, PayAsync, ObligationRetry.TickWithBackoff, log);
         scene.Loaded.Add(LoadedAsync);
         scene.Leaving.Add(LeavingAsync);
@@ -131,24 +131,24 @@ public sealed class CasualBattleService : IGameTicker
         gm.Register("casual", "open|close|start (Mock Battle test aid: sign-ups outside the window, start the battle now)", GmAsync);
     }
 
-    private long Now => time.GetUtcNow().ToUnixTimeSeconds();
-    private long Param(string key, long fallback) => data.Table("PublicParamConfig").TryGetValue(key, out var v)
+    private long Now => _time.GetUtcNow().ToUnixTimeSeconds();
+    private long Param(string key, long fallback) => _data.Table("PublicParamConfig").TryGetValue(key, out var v)
         ? (long)(GameData.Number(v) ?? fallback) : fallback;
 
-    private Match? Live(GameSession s) => active.TryGetValue(s, out var m) && !m.Ending && s.InstanceId == m.Room.Id ? m : null;
+    private Match? Live(GameSession s) => _active.TryGetValue(s, out var m) && !m.Ending && s.InstanceId == m.Room.Id ? m : null;
 
     /// <summary>The TimeLimitConfig 1084 window of a state ("Matching" / "Battling") open now, or null.</summary>
-    private ActivityClock.Window? Window(string state) => activityClock.Segments(TimeLimit, Now)
+    private ActivityClock.Window? Window(string state) => _activityClock.Segments(TimeLimit, Now)
         .FirstOrDefault(w => w.State == state && w.Contains(Now));
 
-    private bool Queued(GameSession s) => queue.Any(g => g.Members.Contains(s));
+    private bool Queued(GameSession s) => _queue.Any(g => g.Members.Contains(s));
 
     private int Admission(GameSession s)
     {
         if (s.Role == null || s.Progress == null || s.TimedBattle == null) return ErrorCodes.Parameter;
-        if (s.Progress.Level < GameData.Int(data.Row("DailyActivityConfig", ActivityId)!.Value, "_iiLv") || !functions.IsOpen(s, Function))
+        if (s.Progress.Level < GameData.Int(_data.Row("DailyActivityConfig", ActivityId)!.Value, "_iiLv") || !_functions.IsOpen(s, Function))
             return ErrorCodes.FeatureUnavailable;
-        if (s.SceneLoading || s.InstanceId != 0 || s.Dead || active.ContainsKey(s) || Queued(s)) return ErrorCodes.DungeonBusy;
+        if (s.SceneLoading || s.InstanceId != 0 || s.Dead || _active.ContainsKey(s) || Queued(s)) return ErrorCodes.DungeonBusy;
         return 0;
     }
 
@@ -159,18 +159,18 @@ public sealed class CasualBattleService : IGameTicker
         int error = req.ActivityId != ActivityId ? ErrorCodes.Parameter
             : window == null && !OpenForTest ? ErrorCodes.ActivityPeriod : Admission(s);
         var members = new List<GameSession> { s };
-        if (error == 0 && s.Role != null && teams.TeamOf(s.Role.Id) is { TeamId: > 0 } team)
+        if (error == 0 && s.Role != null && _teams.TeamOf(s.Role.Id) is { TeamId: > 0 } team)
         {
             if (team.Leader != s.Role.Id) error = ErrorCodes.NoPermission;
-            var online = sessions.All().Where(p => p.Role != null).ToDictionary(p => p.Role!.Id);
-            foreach (long id in teams.MembersOf(s.Role.Id).Where(id => id != s.Role.Id))
+            var online = _sessions.All().Where(p => p.Role != null).ToDictionary(p => p.Role!.Id);
+            foreach (long id in _teams.MembersOf(s.Role.Id).Where(id => id != s.Role.Id))
             {
                 if (error != 0) break;
                 if (!online.TryGetValue(id, out var member)) error = ErrorCodes.PlayerOffline;
                 else { error = Admission(member); members.Add(member); }
             }
         }
-        if (error == 0) queue.Add(new Group(members.ToArray(), window?.Start ?? -1));
+        if (error == 0) _queue.Add(new Group(members.ToArray(), window?.Start ?? -1));
         await s.SendGameAsync(DailyActivityService.RingAccept, new CommonDailyActivityRes
         { Result = error, ActivityId = req.ActivityId, RequestId = req.RequestId, CasualBattleSignUp = new CasualBattleRes() });
     }
@@ -178,39 +178,39 @@ public sealed class CasualBattleService : IGameTicker
     public void Tick(GameTime _)
     {
         long now = Now;
-        if (now == lastSecond) return;
-        lastSecond = now;
-        if (queue.Count > 0 && Window("Battling") is { } battling && formedWindow != battling.Start)
+        if (now == _lastSecond) return;
+        _lastSecond = now;
+        if (_queue.Count > 0 && Window("Battling") is { } battling && _formedWindow != battling.Start)
         {
-            formedWindow = battling.Start;
-            loop.PostLegacy(FormAsync, "casual battle start");
+            _formedWindow = battling.Start;
+            _loop.PostLegacy(FormAsync, "casual battle start");
         }
-        else if (queue.Count > 0 && !OpenForTest && Window("Matching") == null && Window("Battling") == null) queue.Clear();
-        foreach (var match in matches.ToArray())
-            loop.PostLegacy(() => AdvanceAsync(match), "casual battle timeline");
-        obligations.Tick();
+        else if (_queue.Count > 0 && !OpenForTest && Window("Matching") == null && Window("Battling") == null) _queue.Clear();
+        foreach (var match in _matches.ToArray())
+            _loop.PostLegacy(() => AdvanceAsync(match), "casual battle timeline");
+        _obligations.Tick();
     }
 
     /// <summary>The queued groups become two camps (whole groups to the smaller camp, at most 40 each) and enter.</summary>
     private async Task FormAsync()
     {
-        queue.RemoveAll(g => g.Members.Any(m => !sessions.All().Contains(m) || m.InstanceId != 0 || m.Dead || m.SceneLoading));
+        _queue.RemoveAll(g => g.Members.Any(m => !_sessions.All().Contains(m) || m.InstanceId != 0 || m.Dead || m.SceneLoading));
         var camps = new Dictionary<int, List<GameSession>> { [1] = [], [2] = [] };
-        foreach (var group in queue.OrderByDescending(g => g.Members.Length).ToArray())
+        foreach (var group in _queue.OrderByDescending(g => g.Members.Length).ToArray())
         {
             int camp = camps[1].Count <= camps[2].Count ? 1 : 2;
             if (camps[camp].Count + group.Members.Length > 40) continue;
             camps[camp].AddRange(group.Members);
-            queue.Remove(group);
+            _queue.Remove(group);
         }
         if (camps[1].Count == 0 || camps[2].Count == 0)
         {
             // One camp only: nobody to fight; the groups wait for the next window (inferred).
-            foreach (var camp in camps.Values.Where(c => c.Count > 0)) queue.Add(new Group(camp.ToArray(), -1));
+            foreach (var camp in camps.Values.Where(c => c.Count > 0)) _queue.Add(new Group(camp.ToArray(), -1));
             return;
         }
         var everyone = camps[1].Concat(camps[2]).ToArray();
-        var room = instances.Create(Scene, everyone);
+        var room = _instances.Create(Scene, everyone);
         var match = new Match { Room = room, Open = Now };
         foreach (var (camp, members) in camps)
             foreach (var member in members)
@@ -220,17 +220,17 @@ public sealed class CasualBattleService : IGameTicker
                     Session = member, Id = member.Role!.Id, Name = member.Role.Name,
                     Career = member.Progress!.Career, Camp = camp
                 };
-                active[member] = match;
+                _active[member] = match;
                 member.EventFaction = camp;
             }
-        matches.Add(match);
-        praise.Remember(room.Id, Scene, everyone.Select(m => m.Role!.Id)); // likes on the report
+        _matches.Add(match);
+        _praise.Remember(room.Id, Scene, everyone.Select(m => m.Role!.Id)); // likes on the report
         foreach (var member in everyone)
         {
             bool entered = false;
-            try { entered = await instances.EnterAsync(room, member, 5); }
-            catch (Exception e) { log.LogWarning(e, "Mock Battle entry failed for {Role}", member.Role?.Id); }
-            if (!entered) { active.Remove(member); member.EventFaction = 0; match.Players[member].Left = true; }
+            try { entered = await _instances.EnterAsync(room, member, 5); }
+            catch (Exception e) { _log.LogWarning(e, "Mock Battle entry failed for {Role}", member.Role?.Id); }
+            if (!entered) { _active.Remove(member); member.EventFaction = 0; match.Players[member].Left = true; }
         }
     }
 
@@ -272,18 +272,18 @@ public sealed class CasualBattleService : IGameTicker
 
     private async Task LoadedAsync(GameSession s)
     {
-        if (!active.TryGetValue(s, out var match) || match.Room.Id != s.InstanceId || match.Ending) return;
+        if (!_active.TryGetValue(s, out var match) || match.Room.Id != s.InstanceId || match.Ending) return;
         match.Loaded.Add(s);
         await s.SendGameAsync(DungeonService.BaseInfo, Info(match));
-        if (worldData.Map(Scene)?.Points.TryGetValue(CampPoints[match.Players[s].Camp - 1], out var start) == true)
-            await scene.TeleportInMapAsync(s, start);
+        if (_worldData.Map(Scene)?.Points.TryGetValue(CampPoints[match.Players[s].Camp - 1], out var start) == true)
+            await _scene.TeleportInMapAsync(s, start);
     }
 
     private Task LeavingAsync(GameSession s)
     {
         // Leaving the public map on the way in is not leaving the match.
-        if (!active.TryGetValue(s, out var match) || match.Ending || s.InstanceId != match.Room.Id) return Task.CompletedTask;
-        active.Remove(s);
+        if (!_active.TryGetValue(s, out var match) || match.Ending || s.InstanceId != match.Room.Id) return Task.CompletedTask;
+        _active.Remove(s);
         match.Players[s].Left = true;
         s.EventFaction = 0;
         // A camp with nobody left loses (inferred).
@@ -323,7 +323,7 @@ public sealed class CasualBattleService : IGameTicker
 
     private void Score(Match m, GameSession player, int row)
     {
-        if (data.Row("BattleEventPointConfig", row) is not { } config || !config.TryGetProperty("_kScore", out var pairs)
+        if (_data.Row("BattleEventPointConfig", row) is not { } config || !config.TryGetProperty("_kScore", out var pairs)
             || pairs.ValueKind != JsonValueKind.Array) return;
         var values = pairs.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).ToArray();
         for (int i = 0; i + 1 < values.Length; i += 2)
@@ -389,7 +389,7 @@ public sealed class CasualBattleService : IGameTicker
 
     /// <summary>The frozen payouts: saved before the match counts as settled, paid once each, retried by the tick
     /// while the role is online and paid at login after a disconnect or a restart.</summary>
-    private readonly RoleObligations<CasualBattleObligationRow> obligations;
+    private readonly RoleObligations<CasualBattleObligationRow> _obligations;
 
     internal static string SourceKey(long match, long role) =>
         string.Create(CultureInfo.InvariantCulture, $"casual-battle/{match}/{role}");
@@ -412,7 +412,7 @@ public sealed class CasualBattleService : IGameTicker
         var rows = new List<CasualBattleObligationRow>();
         foreach (var p in match.Players.Values.Where(p => !p.Left).OrderBy(p => p.Id))
         {
-            active.Remove(p.Session);
+            _active.Remove(p.Session);
             p.Session.EventFaction = 0;
             bool won = winCamp != 0 && p.Camp == winCamp;
             var payout = new Payout
@@ -446,7 +446,7 @@ public sealed class CasualBattleService : IGameTicker
     private void RequestSettle(Match match)
     {
         End(match);
-        loop.PostLegacy(() => SettleAsync(match), "casual battle settlement");
+        _loop.PostLegacy(() => SettleAsync(match), "casual battle settlement");
     }
 
     /// <summary>
@@ -463,16 +463,16 @@ public sealed class CasualBattleService : IGameTicker
         {
             match.Announced = true;
             await BroadcastAsync(match);
-            loop.ScheduleLegacy(TimeSpan.FromSeconds(ExitSeconds), async () =>
+            _loop.ScheduleLegacy(TimeSpan.FromSeconds(ExitSeconds), async () =>
             {
                 foreach (var p in match.Players.Values)
-                    if (p.Session.InstanceId == match.Room.Id) await instances.LeaveAsync(p.Session);
+                    if (p.Session.InstanceId == match.Room.Id) await _instances.LeaveAsync(p.Session);
             });
         }
         match.Persisting = true;
         try
         {
-            if (!await obligations.FreezeAsync(match.Frozen!, "casual-battle/freeze", match.Room.Id))
+            if (!await _obligations.FreezeAsync(match.Frozen!, "casual-battle/freeze", match.Room.Id))
             {
                 match.Failures++;
                 match.RetryAt = Now + Backoff(match.Failures);
@@ -481,22 +481,22 @@ public sealed class CasualBattleService : IGameTicker
         }
         finally { match.Persisting = false; }
         match.Settled = true;
-        matches.Remove(match);
+        _matches.Remove(match);
         // Pending (not yet due for the tick) until the first attempt below sets its retry.
-        foreach (var row in match.Frozen!) obligations.Track(row);
+        foreach (var row in match.Frozen!) _obligations.Track(row);
         foreach (var row in match.Frozen!)
         {
             var player = match.Players.Values.First(p => p.Id == row.RoleId);
             var s = player.Session.Role?.Id == row.RoleId ? player.Session : Online(row.RoleId);
-            if (s?.TimedBattle == null || s.Progress == null) { obligations.Forget(row.SourceKey); continue; } // paid at login
-            await obligations.TryPayAsync(s, row);
+            if (s?.TimedBattle == null || s.Progress == null) { _obligations.Forget(row.SourceKey); continue; } // paid at login
+            await _obligations.TryPayAsync(s, row);
             if (s.Role?.Id == row.RoleId && match.Notices.TryGetValue(row.RoleId, out var notice))
                 try { await s.SendGameAsync(ResultNotify, notice); }
                 catch (Exception e) when (e is IOException or ObjectDisposedException) { }
         }
     }
 
-    private GameSession? Online(long roleId) => sessions.All().FirstOrDefault(s => s.Role?.Id == roleId);
+    private GameSession? Online(long roleId) => _sessions.All().FirstOrDefault(s => s.Role?.Id == roleId);
 
     /// <summary>
     /// One player's rating, record, best/lifetime numbers and DungeonAwardModule reward in one receipt
@@ -529,33 +529,33 @@ public sealed class CasualBattleService : IGameTicker
                 t.DamageTaken += p.DamageTaken; t.Healing += p.Healing;
                 var grants = new List<AwardGrant>();
                 foreach (long pool in payout.Pools)
-                    grants.AddRange(rewards.RollPoolBound(pool, s.Progress).Select(g => new AwardGrant(g.Entry, g.Count, g.Bind)));
+                    grants.AddRange(_rewards.RollPoolBound(pool, s.Progress).Select(g => new AwardGrant(g.Entry, g.Count, g.Bind)));
                 var bytes = JsonSerializer.SerializeToUtf8Bytes(next);
-                if (!await character.ApplyAwardAsync(s, new AwardPlan(0, 0, grants), persist: tx =>
+                if (!await _character.ApplyAwardAsync(s, new AwardPlan(0, 0, grants), persist: tx =>
                     {
                         tx.RoleBlob(row.RoleId, "timed_battle", bytes);
                         tx.Add(RoleObligations<CasualBattleObligationRow>.DeliverPlan(row));
                         if (grants.Any(g => g.Entry is not (100 or 101)))
-                            tx.WithEventEconomy(Economy.EventEconomy.ForRole(data, s, "casual-battle", row.SourceKey, [], grants,
+                            tx.WithEventEconomy(Economy.EventEconomy.ForRole(_data, s, "casual-battle", row.SourceKey, [], grants,
                                 new { Match = row.MatchId, payout.Won, Score = payout.Stats.PersonalScore }));
                     }, stateLockHeld: true, committed: () => s.TimedBattle = next))
                     throw new InvalidOperationException("Mock Battle settlement refused.");
                 paid = true;
             }
         }
-        if (paid) await timedBattles.CasualSettledAsync(s);
+        if (paid) await _timedBattles.CasualSettledAsync(s);
         return true;
     }
 
     /// <summary>C/D 15: the role's pending payouts, read before the role select admits so it can reserve them.</summary>
-    internal Task<ReservationKey[]> LoginKeysAsync(long roleId) => obligations.LoginKeysAsync(roleId);
+    internal Task<ReservationKey[]> LoginKeysAsync(long roleId) => _obligations.LoginKeysAsync(roleId);
 
     /// <summary>Login pays what a failure, a disconnect or a restart left pending (after the timed-battle state).</summary>
     public async Task LoginAsync(GameSession s)
     {
         if (s.Role == null || s.TimedBattle == null) return;
         long roleId = s.Role.Id;
-        await obligations.DeliverPendingAsync(s, roleId, () => s.Role?.Id == roleId);
+        await _obligations.DeliverPendingAsync(s, roleId, () => s.Role?.Id == roleId);
     }
 
     private async Task GmAsync(GameSession s, string[] args)
@@ -564,7 +564,7 @@ public sealed class CasualBattleService : IGameTicker
         {
             case "open": OpenForTest = true; await GmCommands.ReplyAsync(s, "Mock Battle sign-ups open (test aid)."); break;
             case "close": OpenForTest = false; await GmCommands.ReplyAsync(s, "Mock Battle back on its schedule."); break;
-            case "start": await FormAsync(); await GmCommands.ReplyAsync(s, $"Mock Battle started, {matches.Count} match(es) running (test aid)."); break;
+            case "start": await FormAsync(); await GmCommands.ReplyAsync(s, $"Mock Battle started, {_matches.Count} match(es) running (test aid)."); break;
             default: throw new ArgumentException("open|close|start");
         }
     }

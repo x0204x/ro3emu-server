@@ -19,7 +19,7 @@ public sealed partial class GuildService
     public const uint RecommendPlayers = 82211;
     public const int ErrRecommendTooFrequent = 10023;
     private const long RecommendCooldownMs = 3000;
-    private readonly Dictionary<long, long> lastRecommendMs = new();
+    private readonly Dictionary<long, long> _lastRecommendMs = new();
 
     public Task RecommendPlayersAsync(GameSession s, PullRecommendPlayersReq req) =>
         RunGuildAsync(s, [], [], () => RecommendPlayersCoreAsync(s, req));
@@ -36,13 +36,13 @@ public sealed partial class GuildService
             : req.Label == RecommendLabel.InviteJoinGuildHelper
                 ? g.Status != (int)GuildStatus.PreCreate || g.Members[s.Role.Id].Official != 1 ? ErrorCodes.GuildPermission : 0
             : ErrorCodes.Parameter;
-        if (resp.Result == 0 && lastRecommendMs.TryGetValue(s.Role!.Id, out long last) && now - last < RecommendCooldownMs)
+        if (resp.Result == 0 && _lastRecommendMs.TryGetValue(s.Role!.Id, out long last) && now - last < RecommendCooldownMs)
             resp.Result = ErrRecommendTooFrequent;
         if (resp.Result == 0)
         {
-            lastRecommendMs[s.Role!.Id] = now;
+            _lastRecommendMs[s.Role!.Id] = now;
             int level = s.Progress!.Level;
-            var invited = invites.Values.Where(i => i.GuildId == g!.Id && i.ExpiresMs > now).Select(i => i.Recipient).ToHashSet();
+            var invited = _invites.Values.Where(i => i.GuildId == g!.Id && i.ExpiresMs > now).Select(i => i.Recipient).ToHashSet();
             var picks = sessions.All()
                 .Where(p => p.Role != null && p.Progress != null && p.Role.Id != s.Role.Id)
                 .Where(p => p.Progress!.Level >= g!.JoinLevelLimit && !(p.Guild?.CantBeInvited ?? false))

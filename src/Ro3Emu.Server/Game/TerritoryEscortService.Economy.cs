@@ -84,7 +84,7 @@ public sealed partial class TerritoryEscortService
             .Concat(extraCosts ?? []).ToArray();
         var goods = totals.Where(x => x.Delta > 0).Select(x => new EconomyQuantity(x.Asset, x.Delta))
             .Concat(extraGoods ?? []).ToArray();
-        return new EventEconomyMutation(EventEconomy.Catalog(data), Guid.NewGuid().ToString("N"),
+        return new EventEconomyMutation(EventEconomy.Catalog(_data), Guid.NewGuid().ToString("N"),
             actor?.Account ?? "realm", actor?.Role?.Id ?? 0, "event/escort-" + kind, sourceKey,
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), costs, goods, deltas,
             JsonSerializer.SerializeToUtf8Bytes(new

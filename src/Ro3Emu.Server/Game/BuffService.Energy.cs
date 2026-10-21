@@ -39,7 +39,7 @@ public sealed partial class BuffService
         int mounts = OwnedEnergyMounts(p);
         if (p.EnergyCareer == p.Progress.Career && p.EnergyMounts == mounts) return;
         int career = p.Progress.Career;
-        var applicable = data.Table("EnergyConfig").Values
+        var applicable = _data.Table("EnergyConfig").Values
             .Where(row => BelongsToJob(row, career) || BelongsToOwnedMount(row, p))
             .Select(row => (Id: (int)GameData.Int(row, "_iID"), Row: row))
             .Where(x => x.Id > 0).ToList();
@@ -83,7 +83,7 @@ public sealed partial class BuffService
 
     private long[]? _energyMounts;
 
-    private long[] EnergyMounts() => _energyMounts ??= data.Table("EnergyConfig").Values
+    private long[] EnergyMounts() => _energyMounts ??= _data.Table("EnergyConfig").Values
         .Select(row => GameData.Int(row, "_iBelongMount")).Where(id => id > 0).Distinct().ToArray();
 
     /// <summary>
@@ -101,7 +101,7 @@ public sealed partial class BuffService
             if (GameData.Number(entry[0]) != 8) continue;
             if (entry.GetArrayLength() < 4) return false;
             int id = (int)(GameData.Number(entry[1]) ?? 0);
-            if (id <= 0 || data.Row("EnergyConfig", id) is not { } config) return false;
+            if (id <= 0 || _data.Row("EnergyConfig", id) is not { } config) return false;
             long limit = GameData.Int(config, "_iLimitValue");
             double? ratio = GameData.Number(entry[2]), minimum = GameData.Number(entry[3]);
             if (limit < 0 || ratio is null or < 0 || minimum is null or < 0) return false;
@@ -139,7 +139,7 @@ public sealed partial class BuffService
             || hit.GetArrayLength() < 2) return;
         int id = (int)(GameData.Number(hit[0]) ?? 0);
         long amount = (long)(GameData.Number(hit[1]) ?? 0);
-        if (amount <= 0 || !p.Energy.TryGetValue(id, out var meter) || data.Row("EnergyConfig", id) is not { } config) return;
+        if (amount <= 0 || !p.Energy.TryGetValue(id, out var meter) || _data.Row("EnergyConfig", id) is not { } config) return;
         meter.Value = Math.Clamp(meter.Value + amount, 0, GameData.Int(config, "_iLimitValue"));
         await SendEnergyAsync(p, id, (EPlayerEnergyChangeReason)2);
     }
@@ -149,7 +149,7 @@ public sealed partial class BuffService
         if (p.Role == null) return;
         foreach (var (id, meter) in p.Energy)
         {
-            if (meter.NextRecoverMs == 0 || meter.NextRecoverMs > now || data.Row("EnergyConfig", id) is not { } row) continue;
+            if (meter.NextRecoverMs == 0 || meter.NextRecoverMs > now || _data.Row("EnergyConfig", id) is not { } row) continue;
             long interval = GameData.Int(row, "_iAutoRecoverInterval");
             if (interval <= 0) { meter.NextRecoverMs = 0; continue; }
             long ticks = 1 + (now - meter.NextRecoverMs) / interval;
@@ -157,7 +157,7 @@ public sealed partial class BuffService
             meter.Value = Math.Clamp(meter.Value + ticks * change, 0, GameData.Int(row, "_iLimitValue"));
             meter.LastRecoverMs = meter.NextRecoverMs + (ticks - 1) * interval;
             meter.NextRecoverMs += ticks * interval;
-            loop.TrackLegacyDetached("energy recovery send", () => SendEnergyAsync(p, id, (EPlayerEnergyChangeReason)1));
+            _loop.TrackLegacyDetached("energy recovery send", () => SendEnergyAsync(p, id, (EPlayerEnergyChangeReason)1));
         }
     }
 

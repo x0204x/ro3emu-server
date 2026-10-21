@@ -13,27 +13,27 @@ namespace Ro3Emu.Tests;
 /// <summary>World subscriptions, owner validation, flight, revive invitations and durable visits over the game wire.</summary>
 public sealed class WorldCoreTests : IAsyncLifetime
 {
-    private readonly string directory = Path.Combine(Path.GetTempPath(), "ro3-world-core-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), "ro3-world-core-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "";
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(8);
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private GameSession Player(string account) => Service<SessionRegistry>().All().Single(s => s.Account == account);
 
     public async Task InitializeAsync()
     {
         var (hp, mp, gp) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o => { o.DataDir = directory; o.GameDataDir = Path.Combine(RepoRoot(), "data"); o.HttpPort = hp; o.MicroGatePort = mp; o.GameGatePort = gp; });
-        await app.StartAsync(); http = $"http://127.0.0.1:{hp}";
+        _app = ServerHost.Create([], o => { o.DataDir = _directory; o.GameDataDir = Path.Combine(RepoRoot(), "data"); o.HttpPort = hp; o.MicroGatePort = mp; o.GameGatePort = gp; });
+        await _app.StartAsync(); _http = $"http://127.0.0.1:{hp}";
     }
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync(); Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(directory, true); } catch (IOException) { }
+        await _app.StopAsync(); await _app.DisposeAsync(); Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        try { Directory.Delete(_directory, true); } catch (IOException) { }
     }
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(directory, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_directory, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
         await bot.EnterWorldAsync(id); return bot;

@@ -55,7 +55,7 @@ public sealed partial class TimedBattleService
         PickupNotify = 82642, ItemUpgrade = 82678, ItemUpgradeAll = 82679;
     /// <summary>Chest units: their own UID namespace below 2^53 (see DungeonService.SceneActorUidBase).</summary>
     private const long ChestUidBase = 1L << 48;
-    private static long chestSerial;
+    private long _chestSerial;
     /// <summary>(inferred) Bar slots: the client's InitChickenBar drops key 0, so slots start at 1.</summary>
     private const int MaxBarSlot = 10;
     private const int ItemTypeItem = 1, ItemTypeSkill = 2, ItemTypeEquip = 3, ItemTypeCard = 5;
@@ -137,7 +137,7 @@ public sealed partial class TimedBattleService
     private List<(int Entry, int Amount)> RollPool(Random rng, int pool)
     {
         var drops = new List<(int, int)>();
-        if (data.Row("EatChickenDropPoolConfig", pool) is not { } row) return drops;
+        if (_data.Row("EatChickenDropPoolConfig", pool) is not { } row) return drops;
         for (int n = 1; n <= 9; n++)
         {
             if (!row.TryGetProperty($"_iDropGroup_{n}", out var spec) || spec.ValueKind != JsonValueKind.Array || spec.GetArrayLength() < 2)
@@ -145,7 +145,7 @@ public sealed partial class TimedBattleService
             int group = (int)(GameData.Number(spec[0]) ?? 0), chance = (int)(GameData.Number(spec[1]) ?? 0);
             int rolls = spec.GetArrayLength() > 2 ? (int)(GameData.Number(spec[2]) ?? 1) : 1;
             int count = spec.GetArrayLength() > 3 ? (int)(GameData.Number(spec[3]) ?? 1) : 1;
-            if (rng.Next(10000) >= chance || data.Row("EatChickenDropGroupConfig", group) is not { } rows
+            if (rng.Next(10000) >= chance || _data.Row("EatChickenDropGroupConfig", group) is not { } rows
                 || rows.ValueKind != JsonValueKind.Array) continue;
             var choices = rows.EnumerateArray().Select(r => (Row: r, Weight: Math.Max(0, GameData.Int(r, "_iWeights")))).ToArray();
             long total = choices.Sum(c => c.Weight);
@@ -184,15 +184,15 @@ public sealed partial class TimedBattleService
     private async Task<ChickenChestUnit?> SpawnChestAsync(Match match, ChickenRun run, int npcId, MapPoint at,
         Action<ChickenChestUnit> fill)
     {
-        if (data.Row("NPCConfig", npcId) is not { } npc) return null;
+        if (_data.Row("NPCConfig", npcId) is not { } npc) return null;
         var chest = new ChickenChestUnit
         {
-            Uid = ChestUidBase | Interlocked.Increment(ref chestSerial), SceneEntry = ChickenScene, InstanceId = match.Room!.Id,
-            X = at.X, Y = at.Y, Z = at.Z, Face = at.Face, NpcId = npcId, Name = data.ClientTextOf(npc, "_kName"),
+            Uid = ChestUidBase | Interlocked.Increment(ref _chestSerial), SceneEntry = ChickenScene, InstanceId = match.Room!.Id,
+            X = at.X, Y = at.Y, Z = at.Z, Face = at.Face, NpcId = npcId, Name = _data.ClientTextOf(npc, "_kName"),
             Quality = BoxDrop.ContainsKey(npcId) && npcId < 15000600 ? npcId - 15000500 : 0, Wire = item => Wire(item),
         };
         fill(chest);
-        if (!await instances.AddPropAsync(match.Room, chest)) return null;
+        if (!await _instances.AddPropAsync(match.Room, chest)) return null;
         run.Chests.Add(chest);
         return chest;
     }
@@ -221,10 +221,10 @@ public sealed partial class TimedBattleService
         if (chest.Items.Count == 0)
         {
             run.Chests.Remove(chest);
-            if (match.Room != null) await instances.RemovePropAsync(match.Room, chest);
+            if (match.Room != null) await _instances.RemovePropAsync(match.Room, chest);
             return;
         }
-        await world.ToUnitViewersAsync(chest, CharacterService.EntityBaseChange, chest.Change());
+        await _world.ToUnitViewersAsync(chest, CharacterService.EntityBaseChange, chest.Change());
     }
 
     internal IReadOnlyList<ChickenChestUnit> ChestsForTest(GameSession session) =>
@@ -346,7 +346,7 @@ public sealed partial class TimedBattleService
                 }
                 result = 0;
                 resp.NpcId = target?.Uid ?? 0;
-                if (equipChanged) await character.RefreshStatsAsync(session);
+                if (equipChanged) await _character.RefreshStatsAsync(session);
                 await SyncRoundAsync(match, run, session);
             });
         resp.Result = result;
@@ -400,7 +400,7 @@ public sealed partial class TimedBattleService
                     }
                 }
                 result = 0;
-                if (equipChanged) await character.RefreshStatsAsync(session);
+                if (equipChanged) await _character.RefreshStatsAsync(session);
                 await SyncRoundAsync(match, run, session);
             });
         await session.SendGameAsync(InsertItem, new InsertChickenItemResp
@@ -459,9 +459,9 @@ public sealed partial class TimedBattleService
     /// </summary>
     private async Task ApplyItemBuffAsync(GameSession session, ChickenPlayer me, int buffId, long now)
     {
-        await buffs.AddAsync(session, buffId, 0, session.Role!.Id);
-        if (data.Row("BuffConfig", buffId) is not { } buff) return;
-        long perTick = PetCombatRules.AttributeAmount(buff, character.Stats(session), character.Stats(session));
+        await _buffs.AddAsync(session, buffId, 0, session.Role!.Id);
+        if (_data.Row("BuffConfig", buffId) is not { } buff) return;
+        long perTick = PetCombatRules.AttributeAmount(buff, _character.Stats(session), _character.Stats(session));
         if (perTick <= 0) return;
         long duration = Math.Max(1000, GameData.Int(buff, "_iTime"));
         await HealAsync(session, me, perTick);
@@ -471,11 +471,11 @@ public sealed partial class TimedBattleService
     private async Task HealAsync(GameSession session, ChickenPlayer me, long amount)
     {
         if (session.Dead || amount <= 0) return;
-        var stats = character.Stats(session);
+        var stats = _character.Stats(session);
         long before = stats[2000], after = Math.Min(stats[101], before + amount);
         if (after <= before) return;
         me.Cure += after - before;
-        await character.SetHpSpAsync(session, after, null);
+        await _character.SetHpSpAsync(session, after, null);
     }
 
     private async Task TickHealsAsync(Match match, ChickenRun run, long now)

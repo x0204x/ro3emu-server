@@ -4,20 +4,20 @@ namespace Ro3Emu.Server.Game;
 
 public sealed partial class CombatService
 {
-    private readonly Dictionary<long, int> pendingSceneWork = new();
+    private readonly Dictionary<long, int> _pendingSceneWork = new();
 
     /// <summary>Scheduled hit/end work and suspended hit settlement pin their original public line.</summary>
-    public bool HasPendingMapWork(RuntimeMapKey map) => pendingSceneWork.GetValueOrDefault(map.WorldScene) != 0;
+    public bool HasPendingMapWork(RuntimeMapKey map) => _pendingSceneWork.GetValueOrDefault(map.WorldScene) != 0;
 
     private void ScheduleRuntime(long map, TimeSpan delay, Func<Task> callback)
     {
-        pendingSceneWork[map] = pendingSceneWork.GetValueOrDefault(map) + 1;
-        loop.ScheduleRuntime(delay, async () =>
+        _pendingSceneWork[map] = _pendingSceneWork.GetValueOrDefault(map) + 1;
+        _loop.ScheduleRuntime(delay, async () =>
         {
             try { await callback(); }
             finally
             {
-                if (--pendingSceneWork[map] == 0) pendingSceneWork.Remove(map);
+                if (--_pendingSceneWork[map] == 0) _pendingSceneWork.Remove(map);
             }
         });
     }

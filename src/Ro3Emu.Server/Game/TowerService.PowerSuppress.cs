@@ -23,30 +23,30 @@ public sealed partial class TowerService
 {
     internal readonly record struct Suppression(int Buff, long Dealt, long Taken);
 
-    private readonly ConditionalWeakTable<MonsterUnit, StrongBox<Suppression>> suppressed = new();
+    private readonly ConditionalWeakTable<MonsterUnit, StrongBox<Suppression>> _suppressed = new();
 
     private void RegisterSuppression()
     {
-        combat.DamageAdjusters.Add((_, monster, _, _, damage) => SuppressTaken(monster, damage));
-        combat.MonsterDamageAdjusters.Add((monster, damage, monsterAttacks) =>
+        _combat.DamageAdjusters.Add((_, monster, _, _, damage) => SuppressTaken(monster, damage));
+        _combat.MonsterDamageAdjusters.Add((monster, damage, monsterAttacks) =>
             monsterAttacks ? SuppressDealt(monster, damage) : SuppressTaken(monster, damage));
     }
 
     /// <summary>A floor monster's hit with its suppression buff's 215 (per_dmg).</summary>
     internal long SuppressDealt(MonsterUnit monster, long damage) =>
-        damage > 0 && suppressed.TryGetValue(monster, out var box) && box.Value.Dealt != 0
+        damage > 0 && _suppressed.TryGetValue(monster, out var box) && box.Value.Dealt != 0
             ? Math.Max(0, damage * (10000 + box.Value.Dealt) / 10000) : damage;
 
     /// <summary>A hit on a floor monster with its suppression buff's 216 (per_res_dmg, damage reduction).</summary>
     internal long SuppressTaken(MonsterUnit monster, long damage) =>
-        damage > 0 && suppressed.TryGetValue(monster, out var box) && box.Value.Taken != 0
+        damage > 0 && _suppressed.TryGetValue(monster, out var box) && box.Value.Taken != 0
             ? Math.Max(0, damage * (10000 - box.Value.Taken) / 10000) : damage;
 
     /// <summary>The PowerSuppressConfig buff and its 215/216 values for a role entering a floor.</summary>
     internal Suppression Suppress(GameSession s, JsonElement floor, int difficultyRatio)
     {
         var power = PowerService.Current(s); // the full character power (PowerService), not only the Soul Echo part
-        return Suppress(data, floor, power.NormalPower + power.SeasonPower, difficultyRatio);
+        return Suppress(_data, floor, power.NormalPower + power.SeasonPower, difficultyRatio);
     }
 
     internal static Suppression Suppress(GameData data, JsonElement floor, long power, int difficultyRatio)

@@ -12,27 +12,27 @@ namespace Ro3Emu.Tests;
 /// <summary>Build window wire and durable composition; uses ordinary game messages and isolated ports.</summary>
 public sealed partial class GenreTests : IAsyncLifetime
 {
-    private readonly string dir = Path.Combine(Path.GetTempPath(), "ro3emu-genre-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ro3emu-genre-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "";
 
     public async Task InitializeAsync()
     {
         var (web, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _dir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game;
         });
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{web}";
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{web}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dir, true); } catch (IOException) { }
+        try { Directory.Delete(_dir, true); } catch (IOException) { }
     }
 
     private static string RepoRoot()
@@ -44,7 +44,7 @@ public sealed partial class GenreTests : IAsyncLifetime
 
     private async Task<BotClient> Enter(string name, bool create = true)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
         await bot.EnterWorldAsync(id); return bot;
@@ -60,7 +60,7 @@ public sealed partial class GenreTests : IAsyncLifetime
     private async Task Level(string account, int level)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={account}", new StringContent($"!lvl {level} 5"))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent($"!lvl {level} 5"))).EnsureSuccessStatusCode();
     }
 
     [ClientDataFact]
@@ -72,7 +72,7 @@ public sealed partial class GenreTests : IAsyncLifetime
             Assert.Equal(5, initial.GenreMap.All.SystemMap.Count);
             await Level("builder", 40);
             using (var client = new HttpClient())
-                (await client.PostAsync($"{http}/ro3emu/gm?account=builder", new StringContent("!job 1100"))).EnsureSuccessStatusCode();
+                (await client.PostAsync($"{_http}/ro3emu/gm?account=builder", new StringContent("!job 1100"))).EnsureSuccessStatusCode();
             var attrs = new AllocateAttrPointReq { PlanIndex = 1 };
             foreach (var (stat, value) in new[] { (1, 5), (2, 1), (3, 1), (4, 1), (5, 1), (6, 1) }) attrs.Points[stat] = value;
             await player.SendGameAsync(CharacterService.AllocateAttrPoints, attrs);
@@ -115,22 +115,22 @@ public sealed partial class GenreTests : IAsyncLifetime
             Assert.NotEqual(0, (await Next(player, 82806, SwitchGenrePlanResp.Parser)).Result);
 
             // Abort after genre and stat_plans were written, proving the enclosing role transaction rolls back.
-            FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(),
+            FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(),
                 "CREATE TRIGGER genre_abort BEFORE UPDATE OF skill_plans ON role BEGIN SELECT RAISE(ABORT, 'genre test abort'); END");
             await player.SendGameAsync(82806, new SwitchGenrePlanReq
             {
                 TargetPlan = 1, IsApply = true, ChildSystem = { [2] = 1, [3] = 1 },
             });
             Assert.NotEqual(0, (await Next(player, 82806, SwitchGenrePlanResp.Parser)).Result);
-            FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(), "DROP TRIGGER genre_abort");
-            FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(),
+            FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(), "DROP TRIGGER genre_abort");
+            FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(),
                 "CREATE TRIGGER genre_save_abort BEFORE UPDATE OF genre ON role BEGIN SELECT RAISE(ABORT, 'genre save abort'); END");
             await player.SendGameAsync(82806, new SwitchGenrePlanReq
             {
                 TargetPlan = 1, IsApply = false, ChildSystem = { [2] = 1 },
             });
             Assert.NotEqual(0, (await Next(player, 82806, SwitchGenrePlanResp.Parser)).Result);
-            FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(), "DROP TRIGGER genre_save_abort");
+            FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(), "DROP TRIGGER genre_save_abort");
         }
         await using var again = await Enter("Invalid", create: false);
         var restored = await Next(again, GenreService.GenreSync, DBGenreIncrement.Parser);
@@ -155,7 +155,7 @@ public sealed partial class GenreTests : IAsyncLifetime
         await Next(missing, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser);
         await Level("donor", 40); await Level("owner", 40); await Level("missing", 40);
         using (var client = new HttpClient())
-            (await client.PostAsync($"{http}/ro3emu/gm?account=missing", new StringContent("!delitem 2010121 1"))).EnsureSuccessStatusCode();
+            (await client.PostAsync($"{_http}/ro3emu/gm?account=missing", new StringContent("!delitem 2010121 1"))).EnsureSuccessStatusCode();
 
         async Task<long> SentTo(BotClient seeker)
         {
@@ -212,14 +212,14 @@ public sealed partial class GenreTests : IAsyncLifetime
             Assert.Contains(10000, initial.SkillAssignPlans.All.Value[0].SkillAssigns.Keys);
             await Level("attackplan", 40);
             using (var client = new HttpClient())
-                (await client.PostAsync($"{http}/ro3emu/gm?account=attackplan", new StringContent("!job 1100"))).EnsureSuccessStatusCode();
+                (await client.PostAsync($"{_http}/ro3emu/gm?account=attackplan", new StringContent("!job 1100"))).EnsureSuccessStatusCode();
 
             await player.SendGameAsync(SkillService.SwitchPlan, new SwitchPlanReq { Plan = 1 });
             Assert.Equal(0, (await Next(player, SkillService.SwitchPlan, SwitchPlanResp.Parser)).Result);
             // This migration test switches after SchemeCD; cooldown refusal is covered by SkillGrowthTests.
-            await app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+            await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
             {
-                app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == roleId)
+                _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == roleId)
                     .SkillPlanSwitchUtc = default;
                 return Task.CompletedTask;
             });
@@ -232,7 +232,7 @@ public sealed partial class GenreTests : IAsyncLifetime
             Assert.Equal(0, (await Next(player, SkillService.PlanUpdate, SkillGrowthSkillPlanUpdateResp.Parser)).Result);
         }
 
-        using (var db = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(dir, "ro3emu.db")}"))
+        using (var db = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(_dir, "ro3emu.db")}"))
         {
             db.Open();
             using var read = db.CreateCommand();
@@ -243,7 +243,7 @@ public sealed partial class GenreTests : IAsyncLifetime
             // An obsolete plan from another career fails tree validation before reaching Bash.
             saved.SkillAssignPlans[0].SkillAssigns.Clear();
             saved.SkillAssignPlans[0].SkillAssigns[12100] = new SkillData { SkillId = 12100, SkillLevel = 1 };
-            Assert.Equal(1, FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(),
+            Assert.Equal(1, FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(),
                 "UPDATE role SET skill_plans = $plans WHERE id = $id",
                 ("$plans", saved.ToByteArray()), ("$id", roleId)));
         }
@@ -252,7 +252,7 @@ public sealed partial class GenreTests : IAsyncLifetime
         var restored = await Next(again, SkillService.SkillDataSync, DBSkillDataIncrement.Parser);
         Assert.Equal(0, restored.CurrentPlanIndex);
         Assert.Equal(1001001, restored.CurrentAtkSkillId);
-        var session = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == roleId);
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == roleId);
         Assert.Equal(3, session.Progress!.Skills[11001]);
         Assert.DoesNotContain(12100, session.Progress.Skills.Keys);
         Assert.DoesNotContain(12100, session.SkillPlans!.SkillAssignPlans[0].SkillAssigns.Keys);
@@ -266,7 +266,7 @@ public sealed partial class GenreTests : IAsyncLifetime
             await Next(player, GenreService.GenreSync, DBGenreIncrement.Parser);
             await Level("scholar", 40);
             using (var client = new HttpClient())
-                (await client.PostAsync($"{http}/ro3emu/gm?account=scholar", new StringContent("!job 1100"))).EnsureSuccessStatusCode();
+                (await client.PostAsync($"{_http}/ro3emu/gm?account=scholar", new StringContent("!job 1100"))).EnsureSuccessStatusCode();
 
             var allocation = new AllocateAttrPointReq { PlanIndex = 1 };
             for (int stat = 1; stat <= 6; stat++) allocation.Points[stat] = stat == 1 ? 5 : 1;
@@ -296,12 +296,12 @@ public sealed partial class GenreTests : IAsyncLifetime
                 TargetPlan = 1, IsApply = true, ChildSystem = { [2] = 1 },
             });
             Assert.Equal(0, (await Next(player, 82806, SwitchGenrePlanResp.Parser)).Result);
-            var session = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == (long)player.Self!.Uuid);
+            var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == (long)player.Self!.Uuid);
             Assert.Equal(default, session.TotemSwitchUtc);
             Assert.Equal(default, session.EmblemPlanSwitchUtc);
             Assert.Equal(default, session.TalentPlanSwitchUtc);
 
-            using var db = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(dir, "ro3emu.db")}");
+            using var db = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(_dir, "ro3emu.db")}");
             db.Open();
             byte[] PersistedPlans()
             {
@@ -311,7 +311,7 @@ public sealed partial class GenreTests : IAsyncLifetime
                 return (byte[])command.ExecuteScalar()!;
             }
             byte[] before = PersistedPlans();
-            FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(),
+            FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(),
                 "CREATE TRIGGER genre_stat_abort BEFORE UPDATE OF skill_plans ON role BEGIN SELECT RAISE(ABORT, 'genre stat abort'); END");
             await player.SendGameAsync(82806, new SwitchGenrePlanReq
             {
@@ -322,7 +322,7 @@ public sealed partial class GenreTests : IAsyncLifetime
             Assert.Equal(default, session.TotemSwitchUtc);
             Assert.Equal(default, session.EmblemPlanSwitchUtc);
             Assert.Equal(default, session.TalentPlanSwitchUtc);
-            FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(), "DROP TRIGGER genre_stat_abort");
+            FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(), "DROP TRIGGER genre_stat_abort");
         }
 
         await using var again = await Enter("Scholar", create: false);
@@ -344,14 +344,14 @@ public sealed partial class GenreTests : IAsyncLifetime
         await Level("talentbuild", 40);
         using (var client = new HttpClient())
             foreach (string command in new[] { "!job 1100", "!quest done 10101170", "!quest done 10103160" })
-                (await client.PostAsync($"{http}/ro3emu/gm?account=talentbuild", new StringContent(command))).EnsureSuccessStatusCode();
+                (await client.PostAsync($"{_http}/ro3emu/gm?account=talentbuild", new StringContent(command))).EnsureSuccessStatusCode();
 
         await player.SendGameAsync(82806, new SwitchGenrePlanReq
         {
             TargetPlan = 1, IsApply = true, ChildSystem = { [2] = 1 },
         });
         Assert.Equal(0, (await Next(player, 82806, SwitchGenrePlanResp.Parser)).Result);
-        var session = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == (long)player.Self!.Uuid);
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == (long)player.Self!.Uuid);
         Assert.Equal(default, session.TalentPlanSwitchUtc);
 
         await player.SendGameAsync(SeasonTalentService.SetPlan, new SeasonTalentSetCurPlanReq { PlanId = 1 });
@@ -368,8 +368,8 @@ public sealed partial class GenreTests : IAsyncLifetime
             await Level("echobuild", 40);
             using (var client = new HttpClient())
                 foreach (string command in new[] { "!job 1100", "!quest done 10103040", "!item 1830101", "!item 1830101" })
-                    (await client.PostAsync($"{http}/ro3emu/gm?account=echobuild", new StringContent(command))).EnsureSuccessStatusCode();
-            var session = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == (long)player.Self!.Uuid);
+                    (await client.PostAsync($"{_http}/ro3emu/gm?account=echobuild", new StringContent(command))).EnsureSuccessStatusCode();
+            var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == (long)player.Self!.Uuid);
             var guids = session.Items.Where(i => i.Entry == 1830101).Select(i => i.Guid).Order().ToArray();
             Assert.Equal(2, guids.Length);
             (first, second) = (guids[0], guids[1]);
@@ -386,7 +386,7 @@ public sealed partial class GenreTests : IAsyncLifetime
             session.EmblemPlanSwitchUtc = DateTime.UtcNow.AddSeconds(-4);
             DateTime before = session.EmblemPlanSwitchUtc;
 
-            FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(),
+            FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(),
                 "CREATE TRIGGER genre_echo_abort BEFORE UPDATE OF skill_plans ON role BEGIN SELECT RAISE(ABORT, 'genre echo abort'); END");
             await player.SendGameAsync(82806, new SwitchGenrePlanReq { TargetPlan = 1, IsApply = true, ChildSystem = { [6] = 1 } });
             Assert.NotEqual(0, (await Next(player, 82806, SwitchGenrePlanResp.Parser)).Result);
@@ -394,7 +394,7 @@ public sealed partial class GenreTests : IAsyncLifetime
             Assert.Equal(0, session.Emblems.CurrentPlan);
             Assert.Equal(2, session.Items.Single(i => i.Guid == first).Attrs![10001]);
             Assert.Equal(0, session.Items.Single(i => i.Guid == second).Attrs![10001]);
-            FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(), "DROP TRIGGER genre_echo_abort");
+            FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(), "DROP TRIGGER genre_echo_abort");
 
             await player.SendGameAsync(82806, new SwitchGenrePlanReq { TargetPlan = 1, IsApply = true, ChildSystem = { [6] = 1 } });
             Assert.Equal(0, (await Next(player, 82806, SwitchGenrePlanResp.Parser)).Result);

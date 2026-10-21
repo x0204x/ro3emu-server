@@ -20,12 +20,12 @@ public sealed class MarketServerCollection;
 [Collection("Market server")]
 public sealed partial class StallsTests : IAsyncLifetime
 {
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-stalls-" + Guid.NewGuid().ToString("N"));
-    private readonly MutableClock clock = new();
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-stalls-" + Guid.NewGuid().ToString("N"));
+    private readonly MutableClock _clock = new();
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
-    private WebApplication app = null!;
-    private string http = "";
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private WebApplication _app = null!;
+    private string _http = "";
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private GameSession Session(BotClient bot) => Service<SessionRegistry>().All().Single(s => s.Account == bot.Account && s.Role != null);
     private long Id(BotClient bot) => (long)bot.Self!.Uuid;
     private List<InvItem> Items(BotClient bot) => Service<ItemStore>().Load(Id(bot));
@@ -34,24 +34,24 @@ public sealed partial class StallsTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         var (port, microPort, gamePort) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = port; o.MicroGatePort = microPort; o.GameGatePort = gamePort;
-        }, clock);
-        await app.StartAsync(); http = $"http://127.0.0.1:{port}";
+        }, _clock);
+        await _app.StartAsync(); _http = $"http://127.0.0.1:{port}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
         await bot.EnterWorldAsync(id); await SettleStalls(); return bot;
@@ -63,7 +63,7 @@ public sealed partial class StallsTests : IAsyncLifetime
     private async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     private async Task Warp(BotClient bot, long map = 10100, int x = 156, int z = 191)
@@ -277,7 +277,7 @@ public sealed partial class StallsTests : IAsyncLifetime
             Assert.Equal(0, (await Open(seller, Offer(Items(seller).Single(i => i.Entry == 1000100).Guid))).Result);
         }
 
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         await InitializeAsync(); // Same market DB; no owner connected and no saved login line.
         await using var buyer = await InWorld("Buyer");
@@ -313,7 +313,7 @@ public sealed partial class StallsTests : IAsyncLifetime
         await Edit(seller, p =>
         {
             var i = p.Items.Single(i => i.Guid == guid); i.Attrs = new() { [999] = 42 };
-            i.StringAttrs = new() { [510] = "history" }; i.BindType = 2; i.BindExpire = clock.GetUtcNow().ToUnixTimeSeconds() - 1;
+            i.StringAttrs = new() { [510] = "history" }; i.BindType = 2; i.BindExpire = _clock.GetUtcNow().ToUnixTimeSeconds() - 1;
             i.Enchantments[7] = new ItemEnchantment { Attr = new() { [103] = 5 }, GetTime = 123 };
         });
         await seller.SendGameAsync(StallsService.Prices, new PlayerStallsQueryItemPriceReq { ItemID = { 1000100 } });
@@ -465,7 +465,7 @@ public sealed partial class StallsTests : IAsyncLifetime
         await returning.SendGameAsync(StallsService.Info, new PlayerStallsInfoReq());
         var restored = await Next(returning, StallsService.Info, PlayerStallsInfoResp.Parser);
         Assert.Equal("New goods", restored.Info.Baseinfo.StallsTitle); Assert.Equal(2, restored.Info.Itembase[0].Itembase.Stack);
-        clock.Advance(TimeSpan.FromDays(8));
+        _clock.Advance(TimeSpan.FromDays(8));
         await returning.SendGameAsync(StallsService.Info, new PlayerStallsInfoReq());
         Assert.Equal(0, (await Next(returning, StallsService.Info, PlayerStallsInfoResp.Parser)).CurrentStallsID);
         await Claim(returning, 1031);
@@ -499,7 +499,7 @@ public sealed partial class StallsTests : IAsyncLifetime
             Assert.Equal(0, await Purchase(buyer, 0, 1, num: 99, system: 1));
         }
 
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         await InitializeAsync(); // Same database, fresh services, sessions, world and inventory objects.
         await using var returningBuyer = await InWorld("Buyer", create: false);
@@ -537,8 +537,8 @@ public sealed partial class StallsTests : IAsyncLifetime
     }
     private sealed class MutableClock : TimeProvider
     {
-        private DateTimeOffset now = DateTimeOffset.UtcNow;
-        public override DateTimeOffset GetUtcNow() => now;
-        public void Advance(TimeSpan amount) => now += amount;
+        private DateTimeOffset _now = DateTimeOffset.UtcNow;
+        public override DateTimeOffset GetUtcNow() => _now;
+        public void Advance(TimeSpan amount) => _now += amount;
     }
 }

@@ -20,37 +20,37 @@ public sealed class CardPackSyncTests : IAsyncLifetime
     private const int Lunatic = 1420100, Mimic = 1430606, Fragment = 1200500;
     private const int ItemTypeCard = 4;
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-cardpack-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string httpUrl = "";
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-cardpack-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _httpUrl = "";
 
     public async Task InitializeAsync()
     {
         var (http, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir;
+            o.DataDir = _dataDir;
             o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = http;
             o.MicroGatePort = micro;
             o.GameGatePort = game;
         });
-        await app.StartAsync();
-        httpUrl = $"http://127.0.0.1:{http}";
+        await _app.StartAsync();
+        _httpUrl = $"http://127.0.0.1:{http}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     [ClientDataFact]
     public async Task LoginCardPackHoldsOnlyCardsWhenFragmentAndUnupgradedCardShareAQuality()
     {
-        var data = app.Services.GetRequiredService<GameData>();
+        var data = _app.Services.GetRequiredService<GameData>();
         // The failing in-game bag: an upgraded Q2 card, a fresh Q3 card and the Q3 Blue-Green Card Fragment.
         Assert.Equal(GameData.Int(data.Row("ItemConfig", Mimic)!.Value, "_iQuality"), GameData.Int(data.Row("ItemConfig", Fragment)!.Value, "_iQuality"));
         Assert.Equal(3, GameData.Int(data.Row("ItemConfig", Fragment)!.Value, "_iBagTab"));
@@ -75,8 +75,8 @@ public sealed class CardPackSyncTests : IAsyncLifetime
     [ClientDataFact]
     public async Task SavedNonCardInCardPackMovesToItemPackBeforeLoginSync()
     {
-        var data = app.Services.GetRequiredService<GameData>();
-        var items = app.Services.GetRequiredService<ItemStore>();
+        var data = _app.Services.GetRequiredService<GameData>();
+        var items = _app.Services.GetRequiredService<ItemStore>();
         long role;
         await using (var alice = await InWorld("Alice"))
             role = (long)alice.Self!.Uuid;
@@ -122,7 +122,7 @@ public sealed class CardPackSyncTests : IAsyncLifetime
 
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var bot = new BotClient(httpUrl, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_httpUrl, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw");
         await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
@@ -133,7 +133,7 @@ public sealed class CardPackSyncTests : IAsyncLifetime
     private async Task Gm(string account, string command)
     {
         using var http = new HttpClient();
-        (await http.PostAsync($"{httpUrl}/ro3emu/gm?account={account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await http.PostAsync($"{_httpUrl}/ro3emu/gm?account={account}", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     private static string RepoRoot()

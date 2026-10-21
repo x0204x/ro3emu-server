@@ -22,9 +22,9 @@ public abstract class MailTestsHost : IAsyncLifetime
 
     protected sealed class TestClock : TimeProvider
     {
-        private long seconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref seconds));
-        public void Advance(long amount) => Interlocked.Add(ref seconds, amount);
+        private long _seconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref _seconds));
+        public void Advance(long amount) => Interlocked.Add(ref _seconds, amount);
     }
 
     protected readonly string dir = Path.Combine(Path.GetTempPath(), "ro3emu-mail-" + Guid.NewGuid().ToString("N"));

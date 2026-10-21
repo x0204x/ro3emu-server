@@ -28,7 +28,7 @@ public sealed partial class CardService
     /// <summary>A kill of a Codex monster counts in <paramref name="library"/>; false when the NPC is not one.</summary>
     private bool CountMonsterKill(DBLibraryInfo library, int npc)
     {
-        if (npc <= 0 || data.Row("NPCConfig", npc) is not { } row || GameData.Int(row, "_iWildMonsters") != 1) return false;
+        if (npc <= 0 || _data.Row("NPCConfig", npc) is not { } row || GameData.Int(row, "_iWildMonsters") != 1) return false;
         if (!library.Monsters.TryGetValue(npc, out var entry)) library.Monsters[npc] = entry = new LibraryMonsterInfo { MonsterId = npc };
         if (entry.KillCount < int.MaxValue) entry.KillCount++;
         return true;
@@ -42,7 +42,7 @@ public sealed partial class CardService
         {
             var entry = req.MonsterId is > 0 and <= int.MaxValue ? session.Library?.Monsters.GetValueOrDefault((int)req.MonsterId) : null;
             result = session.Library == null ? ErrorCodes.Unknown
-                : !functions.IsOpen(session, MonsterLibraryFunction) ? ErrorCodes.FunctionLocked
+                : !_functions.IsOpen(session, MonsterLibraryFunction) ? ErrorCodes.FunctionLocked
                 : entry == null ? ErrorCodes.CodexUnavailable
                 : entry.Unlock ? ErrorCodes.AlreadyUnlocked
                 : await CommitMonsterUnlockAsync(session, (int)req.MonsterId);
@@ -61,20 +61,20 @@ public sealed partial class CardService
         byte[] bytes = next.ToByteArray();
         try
         {
-            bool ok = await character.ApplyAwardAsync(session, plan, persist: tx => roles.SaveLibrary(role, bytes, tx),
+            bool ok = await _character.ApplyAwardAsync(session, plan, persist: tx => _roles.SaveLibrary(role, bytes, tx),
                 stateLockHeld: true, committed: () => session.Library = next,
                 ownedAward: new CharacterService.OwnedAwardSource("cd13e/library-award", $"library-monster/{role}/{monster}",
                     new { Version = 1, Monster = monster, Item = item, Points = points }));
-            if (ok) log.LogInformation("{Name} unlocks Codex monster {Monster}: {Points} x {Item}", session.Role.Name, monster, points, item);
+            if (ok) _log.LogInformation("{Name} unlocks Codex monster {Monster}: {Points} x {Item}", session.Role.Name, monster, points, item);
             return ok ? 0 : ErrorCodes.Unknown;
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            log.LogError(e, "Codex monster {Monster} unlock failed for {Role}", monster, role);
+            _log.LogError(e, "Codex monster {Monster} unlock failed for {Role}", monster, role);
             return ErrorCodes.Unknown;
         }
     }
 
-    private int Param(string key) => data.Table("PublicParamConfig").TryGetValue(key, out var value)
+    private int Param(string key) => _data.Table("PublicParamConfig").TryGetValue(key, out var value)
         && value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out int number) ? number : 0;
 }

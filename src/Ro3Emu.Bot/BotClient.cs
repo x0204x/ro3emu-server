@@ -167,16 +167,22 @@ public sealed class BotClient : IAsyncDisposable
 
     // ---------------------------------------------------------------- game gate
 
+    /// <summary>The game gate's encrypted handshake alone: no account signs in on the connection yet.</summary>
+    public Task OpenGateAsync() => OpenGameAsync();
+
+    private async Task<PhonestChannel> OpenGameAsync() =>
+        _game = await StageAsync("game-handshake", () => ConnectAsync(GameGate, OnGameFrame, requestToken: 1, confirmKey: 2));
+
     /// <summary>Game gate handshake + ConnectServerReq, then waits for the role screen trigger (OnQueueFinishedNotify).</summary>
     public async Task EnterGateAsync()
     {
-        _game = await StageAsync("game-handshake", () => ConnectAsync(GameGate, OnGameFrame, requestToken: 1, confirmKey: 2));
+        var game = await OpenGameAsync();
         await StageAsync("game-connect", async () =>
         {
             using var connectExpected = _inbox.Expect(e => e.Kind == BotEventKind.ConnectResponse);
             using var accountExpected = _inbox.Expect(e => e.Kind == BotEventKind.Entity && e.Name == "ClientAccount");
             using var queueExpected = _inbox.Expect(e => e.Kind == BotEventKind.Rpc && e.Name == "OnQueueFinishedNotify");
-            await SendWithDrainAsync(_game, 3, new ConnectServerReq { Type = ConnectServerReq.Types.ReqType.NewConnection, Token = ByteString.CopyFrom(EngineToken) });
+            await SendWithDrainAsync(game, 3, new ConnectServerReq { Type = ConnectServerReq.Types.ReqType.NewConnection, Token = ByteString.CopyFrom(EngineToken) });
             var connected = await connectExpected.WaitAsync(Timeout, _cts.Token);
             if (connected.ConnectResult != ConnectServerResp.Types.RespType.Connected)
                 throw Refused("game-connect", connected.ConnectResult, $"gate refused: {connected.ConnectResult}");

@@ -17,8 +17,8 @@ public sealed partial class CombatService
     internal StatSheet TowerPetStats(TowerPetUnit pet)
     {
         var raw = pet.BaseAttributes.ToDictionary(p => p.Key, p => p.Value);
-        foreach (var (id, value) in buffs.UnitAttributes(pet)) raw[(int)id] = raw.GetValueOrDefault((int)id) + value;
-        var stats = StatCalculator.Compute(raw, data);
+        foreach (var (id, value) in _buffs.UnitAttributes(pet)) raw[(int)id] = raw.GetValueOrDefault((int)id) + value;
+        var stats = StatCalculator.Compute(raw, _data);
         stats[101] = Math.Max(1, stats[101]);
         stats[2000] = pet.Hp;
         stats[2001] = stats[102];
@@ -26,7 +26,7 @@ public sealed partial class CombatService
         return stats;
     }
 
-    internal void PopulateTowerPetBuffs(TowerPetUnit pet, EntityBase entity) => buffs.PopulateEntity(pet, entity);
+    internal void PopulateTowerPetBuffs(TowerPetUnit pet, EntityBase entity) => _buffs.PopulateEntity(pet, entity);
 
     private Task PublishTowerPetStatsAsync(WorldUnit unit)
     {
@@ -39,7 +39,7 @@ public sealed partial class CombatService
             changed.Property.Add(new AoIProperty { Idx = id, Data = stats[id], BaseData = stats.Base.GetValueOrDefault(id) });
             pet.PublishedAttributeIds.Add(id);
         }
-        return world.ToUnitViewersAsync(pet, AoiAttrChange, changed);
+        return _world.ToUnitViewersAsync(pet, AoiAttrChange, changed);
     }
 
     private bool LiveTowerPet(GameSession owner, TowerPetUnit pet) => ReferenceEquals(owner, pet.Owner)
@@ -55,7 +55,7 @@ public sealed partial class CombatService
     /// </summary>
     public async Task TowerPetSupportAsync(GameSession owner, TowerPetUnit pet, int skillId)
     {
-        if (!LiveTowerPet(owner, pet) || data.Row("SkillConfig", skillId) is not { } row
+        if (!LiveTowerPet(owner, pet) || _data.Row("SkillConfig", skillId) is not { } row
             || PetCombatRules.SupportFor(row) is not { } support
             || pet.SupportSkills.FirstOrDefault(s => s.Id == skillId) is not { } skill
             || !pet.TryBeginCast(skill, Now)) return;
@@ -67,7 +67,7 @@ public sealed partial class CombatService
             SrcID = pet.Uid, SkillID = skillId, PetConfigId = pet.PetId, TargetId = pet.Uid,
             TargetPos = pet.Pos, Face = pet.Face, SessionId = castId, SkillMs = actionMs, StartTime = Now,
         };
-        await world.ToUnitViewersAsync(pet, UseInSkill, use);
+        await _world.ToUnitViewersAsync(pet, UseInSkill, use);
         if (!pet.Viewers.Contains(owner)) await owner.SendGameAsync(UseInSkill, use);
         ScheduleRuntime(pet.WorldScene, TimeSpan.FromMilliseconds(actionMs * 0.4), async () =>
         {
@@ -92,13 +92,13 @@ public sealed partial class CombatService
                          .ThenBy(r => r.Distance).ThenBy(r => r.Id).Take(maximum))
             {
                 if (!LiveTowerPet(owner, pet) || !ReferenceEquals(role, owner.Role)) return;
-                var stats = recipient.Pet?.CombatStats ?? character.Stats(owner);
+                var stats = recipient.Pet?.CombatStats ?? _character.Stats(owner);
                 foreach (var tuple in Tuples(row, "_kBuff1"))
                 {
-                    if (!RollBuff(tuple, out int id, out int duration) || data.Row("BuffConfig", id) is not { } buff) continue;
+                    if (!RollBuff(tuple, out int id, out int duration) || _data.Row("BuffConfig", id) is not { } buff) continue;
                     long shield = PetCombatRules.AttributeAmount(buff, casterStats, stats);
-                    if (recipient.Pet is { } ally) await buffs.AddSupportAsync(ally, id, duration, pet.Uid, shield);
-                    else await buffs.AddSupportAsync(owner, id, duration, pet.Uid, shield);
+                    if (recipient.Pet is { } ally) await _buffs.AddSupportAsync(ally, id, duration, pet.Uid, shield);
+                    else await _buffs.AddSupportAsync(owner, id, duration, pet.Uid, shield);
                 }
                 long amount = support.Kind switch
                 {
@@ -113,15 +113,15 @@ public sealed partial class CombatService
                 if (recipient.Pet is { } healed)
                 {
                     healed.Hp += actual;
-                    await world.ToUnitViewersAsync(healed, AoiAttrChange, healed.HpChange());
+                    await _world.ToUnitViewersAsync(healed, AoiAttrChange, healed.HpChange());
                 }
                 else
                 {
                     using var held = await CharacterService.Lock(owner);
                     if (owner.Dead || owner.SceneLoading || !ReferenceEquals(role, owner.Role)) return;
-                    var current = character.Stats(owner);
+                    var current = _character.Stats(owner);
                     actual = Math.Min(amount, Math.Max(0, current[101] - current[2000]));
-                    await character.SetHpSpAsync(owner, current[2000] + actual, null);
+                    await _character.SetHpSpAsync(owner, current[2000] + actual, null);
                 }
                 hit.Dsts.Add(new DamageInfo { DstID = recipient.Id, Damage = actual, DamageType = DamageType.Heal });
                 foreach (var handler in Healed) handler(owner, actual);

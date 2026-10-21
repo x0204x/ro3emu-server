@@ -33,24 +33,24 @@ public sealed partial class PetService
         if (count != 1 || choice is not { Count: 1 }) return ErrorCodes.Parameter;
         var (index, petId) = choice.Single();
         if (index < 0 || index >= options.Length || options[index] != petId) return ErrorCodes.Parameter;
-        if (data.Row("PetBaseConfig", petId) is not { } pet || !stars.ContainsKey((petId, 1, 0))) return ErrorCodes.PetNoConfig;
+        if (_data.Row("PetBaseConfig", petId) is not { } pet || !_stars.ContainsKey((petId, 1, 0))) return ErrorCodes.PetNoConfig;
         var next = s.Pets.Clone();
         var goods = new List<(int, int)>();
         if (!next.ListPet.ContainsKey(petId)) next.ListPet[petId] = NewPet(petId);
         else
         {
             var broken = Flat(pet, "_kDecompose");
-            if (broken.Length != 2 || broken[1] <= 0 || broken[1] > int.MaxValue || data.Row("ItemConfig", broken[0]) == null)
+            if (broken.Length != 2 || broken[1] <= 0 || broken[1] > int.MaxValue || _data.Row("ItemConfig", broken[0]) == null)
                 return ErrorCodes.PetNoConfig;
             goods.Add(((int)broken[0], (int)broken[1]));
         }
         UpdatePower(next);
         byte[] saved = next.ToByteArray();
-        if (await character.ExchangeLockedAsync(s, [], goods, new Dictionary<long, int> { [item.Guid] = 1 }, popup: false,
+        if (await _character.ExchangeLockedAsync(s, [], goods, new Dictionary<long, int> { [item.Guid] = 1 }, popup: false,
             persist: tx =>
             {
                 tx.RoleBlob(s.Role!.Id, "pets", saved);
-                tx.WithEconomy(character.FamilyEconomy(s, "cd13b/pet-self-choose", [(item.Entry, 1L)], goods,
+                tx.WithEconomy(_character.FamilyEconomy(s, "cd13b/pet-self-choose", [(item.Entry, 1L)], goods,
                     new
                     {
                         Item = item.Entry, Pet = petId, Duplicate = goods.Count > 0,

@@ -14,15 +14,15 @@ namespace Ro3Emu.Server.Game;
 /// </summary>
 public sealed class TotemEffects : IGameTicker
 {
-    private readonly GameData data;
-    private readonly CharacterService character;
-    private readonly BuffService buffs;
-    private readonly MonsterService monsters;
-    private readonly SessionRegistry sessions;
-    private readonly GameLoop loop;
-    private readonly ConditionalWeakTable<GameSession, Runtime> runtime = new();
-    private long nextShieldSweepMs;
-    [ThreadStatic] private static bool calculatingHpCondition;
+    private readonly GameData _data;
+    private readonly CharacterService _character;
+    private readonly BuffService _buffs;
+    private readonly MonsterService _monsters;
+    private readonly SessionRegistry _sessions;
+    private readonly GameLoop _loop;
+    private readonly ConditionalWeakTable<GameSession, Runtime> _runtime = new();
+    private long _nextShieldSweepMs;
+    [ThreadStatic] private static bool _calculatingHpCondition;
 
     private sealed class Runtime
     {
@@ -51,9 +51,9 @@ public sealed class TotemEffects : IGameTicker
     public TotemEffects(GameData data, CharacterService character, BuffService buffs, CombatService combat,
         MonsterService monsters, SessionRegistry sessions, GameLoop loop)
     {
-        this.data = data; this.character = character; this.buffs = buffs;
-        this.monsters = monsters; this.sessions = sessions;
-        this.loop = loop;
+        this._data = data; this._character = character; this._buffs = buffs;
+        this._monsters = monsters; this._sessions = sessions;
+        this._loop = loop;
         character.DynamicProperties.Add(ShieldProperties);
         combat.CastLanded.Add(OnCastAsync);
         combat.DamageAdjusters.Add(AdjustDamage);
@@ -79,20 +79,20 @@ public sealed class TotemEffects : IGameTicker
     {
         if (s.Totems?.TotemPlans.TryGetValue(s.Totems.CurrentPlan, out var plan) != true) yield break;
         var equipped = plan.SetUpTotem.Values.Where(g => g != 0)
-            .Select(g => s.Items.FirstOrDefault(i => i.Guid == g && TotemService.IsTotem(data, i.Entry)))
+            .Select(g => s.Items.FirstOrDefault(i => i.Guid == g && TotemService.IsTotem(_data, i.Entry)))
             .OfType<InvItem>().ToArray();
         var all = equipped.SelectMany(TotemService.Skills).ToHashSet();
         var used = new HashSet<int>();
         foreach (var item in equipped)
             foreach (int skill in TotemService.Skills(item))
             {
-                if (data.Row("TotemSkillConfig", skill) is not { } row) continue;
+                if (_data.Row("TotemSkillConfig", skill) is not { } row) continue;
                 bool suppressed = false;
                 var chain = new HashSet<int>();
                 for (int upper = (int)GameData.Int(row, "_iSuperiorSkillID"); upper > 0 && chain.Add(upper);)
                 {
                     if (all.Contains(upper)) suppressed = true;
-                    upper = data.Row("TotemSkillConfig", upper) is { } next ? (int)GameData.Int(next, "_iSuperiorSkillID") : 0;
+                    upper = _data.Row("TotemSkillConfig", upper) is { } next ? (int)GameData.Int(next, "_iSuperiorSkillID") : 0;
                 }
                 if (suppressed || (GameData.Int(row, "_iIsCoexist") == 0 && !used.Add(skill))) continue;
                 yield return (item, skill, row);
@@ -104,9 +104,9 @@ public sealed class TotemEffects : IGameTicker
         {
             if (!row.TryGetProperty("_kSpecialAttribute", out var refs) || refs.ValueKind != JsonValueKind.Array) continue;
             foreach (var id in refs.EnumerateArray())
-                if (data.Row("SpecialEffectConfig", (long)(GameData.Number(id) ?? 0)) is { } effect)
+                if (_data.Row("SpecialEffectConfig", (long)(GameData.Number(id) ?? 0)) is { } effect)
                     foreach (var op in Ops(effect))
-                        if (op.Length == 2 && op[0] == 2 && data.Row("BuffConfig", op[1]) is { } buff)
+                        if (op.Length == 2 && op[0] == 2 && _data.Row("BuffConfig", op[1]) is { } buff)
                             yield return new Passive(item, skill, (int)op[1], buff);
         }
     }
@@ -114,12 +114,12 @@ public sealed class TotemEffects : IGameTicker
     /// <summary>Skill attributes only. TotemService adds item roll attributes and applies effective-skill filtering.</summary>
     public IEnumerable<(long Id, double Value)> Attributes(GameSession s, InvItem item, int skill)
     {
-        if (data.Row("TotemSkillConfig", skill) is not { } row) yield break;
+        if (_data.Row("TotemSkillConfig", skill) is not { } row) yield break;
         foreach (var attr in GameData.Pairs(row, "_kBasicAttribute")) yield return attr;
         if (!row.TryGetProperty("_kSpecialAttribute", out var refs) || refs.ValueKind != JsonValueKind.Array) yield break;
         foreach (var id in refs.EnumerateArray())
         {
-            if (data.Row("SpecialEffectConfig", (long)(GameData.Number(id) ?? 0)) is not { } effect) continue;
+            if (_data.Row("SpecialEffectConfig", (long)(GameData.Number(id) ?? 0)) is not { } effect) continue;
             var ops = Ops(effect).ToArray();
             foreach (var op in ops)
             {
@@ -128,14 +128,14 @@ public sealed class TotemEffects : IGameTicker
                     yield return (op[2], TotemService.Skills(item).Count() / op[1] * op[3]);
                 else if (op.Length == 3 && op[0] == 9)
                     yield return (op[1], Math.Floor(s.Progress!.Level * op[2] / 10000d));
-                else if (op.Length == 7 && op[0] == 10 && !calculatingHpCondition)
+                else if (op.Length == 7 && op[0] == 10 && !_calculatingHpCondition)
                 {
                     // Stats() asks this provider for attributes; recurse once with HP conditions disabled to obtain
                     // the authoritative maximum. None of the totem op-10 rows changes MaxHP.
-                    calculatingHpCondition = true;
+                    _calculatingHpCondition = true;
                     long maxHp;
-                    try { maxHp = character.Stats(s)[101]; }
-                    finally { calculatingHpCondition = false; }
+                    try { maxHp = _character.Stats(s)[101]; }
+                    finally { _calculatingHpCondition = false; }
                     long hp = s.CurrentHp ?? maxHp;
                     long q = op[2] == 1 ? maxHp > 0 ? (long)Math.Floor(hp * 10000d / maxHp) : 0 : hp;
                     bool active = op[1] switch
@@ -169,16 +169,16 @@ public sealed class TotemEffects : IGameTicker
     }
 
     private int StackCount(GameSession s, long source, long category) => s.Buffs.Where(b => b.IsTotemOwned && !b.IsPassive && b.SourceId == source && TimedStackIds.Contains(b.ConfigId)
-        && data.Row("BuffConfig", b.ConfigId) is { } row && HasCategory(row, category)).Sum(b => b.PileCount);
+        && _data.Row("BuffConfig", b.ConfigId) is { } row && HasCategory(row, category)).Sum(b => b.PileCount);
 
     private int StackCap(GameSession s, InvItem item, int activeId)
     {
-        if (data.Row("BuffConfig", activeId) is not { } active) return 0;
+        if (_data.Row("BuffConfig", activeId) is not { } active) return 0;
         int cap = (int)Math.Max(1, GameData.Int(active, "_iMaxStack"));
         foreach (var (_, _, row) in Effective(s).Where(e => e.Item.Guid == item.Guid))
             if (row.TryGetProperty("_kSpecialAttribute", out var refs) && refs.ValueKind == JsonValueKind.Array)
                 foreach (var id in refs.EnumerateArray())
-                    if (data.Row("SpecialEffectConfig", (long)(GameData.Number(id) ?? 0)) is { } effect)
+                    if (_data.Row("SpecialEffectConfig", (long)(GameData.Number(id) ?? 0)) is { } effect)
                         foreach (var op in Ops(effect))
                             if (op.Length == 3 && op[0] == 18 && HasCategory(active, op[1])) cap += (int)op[2];
         return cap;
@@ -218,24 +218,24 @@ public sealed class TotemEffects : IGameTicker
     {
         var wanted = Passives(s).Select(p => (p.Item.Guid, p.Id)).ToHashSet();
         var activeSources = wanted.Select(p => p.Guid).ToHashSet();
-        var state = runtime.GetOrCreateValue(s);
+        var state = _runtime.GetOrCreateValue(s);
         foreach (var stale in s.Buffs.Where(b => b.IsTotemOwned && (b.IsPassive && !wanted.Contains((b.SourceId, b.ConfigId))
             || !b.IsPassive && StackSources.TryGetValue(b.ConfigId, out int stackSource)
                 && !wanted.Contains((b.SourceId, stackSource))
             || !b.IsPassive && ProcSources.TryGetValue(b.ConfigId, out int sourcePassive)
                 && !wanted.Contains((b.SourceId, sourcePassive)))).ToArray())
-            await buffs.RemoveAsync(s, stale);
+            await _buffs.RemoveAsync(s, stale);
         foreach (var (guid, id) in wanted)
-            await buffs.AddPassiveAsync(s, id, guid);
+            await _buffs.AddPassiveAsync(s, id, guid);
         lock (state) foreach (long source in state.Shields.Keys.Where(g => !activeSources.Contains(g)).ToArray()) state.Shields.Remove(source);
         // Login rebuilds the authoritative snapshot before ENTITYSELF; live changes also notify the unit.
-        if (s.SceneLoading) character.Refresh(s);
-        else await character.RefreshStatsAsync(s);
+        if (s.SceneLoading) _character.Refresh(s);
+        else await _character.RefreshStatsAsync(s);
     }
 
     private IEnumerable<(int Id, long Value)> ShieldProperties(GameSession s)
     {
-        var state = runtime.GetOrCreateValue(s);
+        var state = _runtime.GetOrCreateValue(s);
         long total;
         lock (state) total = state.Shields.Values.Where(x => x.ExpireMs > MonsterService.NowMs).Sum(x => x.Amount);
         yield return (2003, total);
@@ -244,11 +244,11 @@ public sealed class TotemEffects : IGameTicker
     public void Tick(GameTime time)
     {
         long now = MonsterService.NowMs;
-        if (now < nextShieldSweepMs) return;
-        nextShieldSweepMs = now + 500;
-        foreach (var s in sessions.All().Where(s => s.Role != null))
+        if (now < _nextShieldSweepMs) return;
+        _nextShieldSweepMs = now + 500;
+        foreach (var s in _sessions.All().Where(s => s.Role != null))
         {
-            var state = runtime.GetOrCreateValue(s);
+            var state = _runtime.GetOrCreateValue(s);
             bool expired;
             lock (state)
             {
@@ -256,14 +256,14 @@ public sealed class TotemEffects : IGameTicker
                 foreach (long id in ids) state.Shields.Remove(id);
                 expired = ids.Length > 0;
             }
-            if (expired) loop.TrackLegacyDetached("totem shield expiration", () => PublishExpiredShieldAsync(s));
+            if (expired) _loop.TrackLegacyDetached("totem shield expiration", () => PublishExpiredShieldAsync(s));
         }
     }
 
     private async Task PublishExpiredShieldAsync(GameSession s)
     {
         if (s.Role == null || s.Progress == null) return;
-        try { await character.RefreshStatsAsync(s); }
+        try { await _character.RefreshStatsAsync(s); }
         catch (Exception e) when (e is IOException or ObjectDisposedException or InvalidOperationException) { }
     }
 
@@ -277,7 +277,7 @@ public sealed class TotemEffects : IGameTicker
     private bool Proc(GameSession s, long source, int effect, int chanceBp, int cooldownMs)
     {
         if (chanceBp <= 0) return false;
-        var state = runtime.GetOrCreateValue(s);
+        var state = _runtime.GetOrCreateValue(s);
         lock (state)
         {
             long now = MonsterService.NowMs;
@@ -296,7 +296,7 @@ public sealed class TotemEffects : IGameTicker
             int duration = passive.Row.TryGetProperty("_kLogicData", out var logic) && logic.ValueKind == JsonValueKind.Array
                 && logic.GetArrayLength() > 0 ? (int)(GameData.Number(logic[0]) ?? 0) : 0;
             if (duration <= 0) continue;
-            await buffs.AddStackAsync(s, activeId, duration, passive.Item.Guid, StackCap(s, passive.Item, activeId));
+            await _buffs.AddStackAsync(s, activeId, duration, passive.Item.Guid, StackCap(s, passive.Item, activeId));
         }
     }
 
@@ -333,7 +333,7 @@ public sealed class TotemEffects : IGameTicker
             int cooldown = desc.ValueKind == JsonValueKind.Array && desc.GetArrayLength() >= 3 ? (int)((GameData.Number(desc[2]) ?? 0) * 1000) : 0;
             if (!Proc(s, passive.Item.Guid, passive.Id, chance, cooldown)) continue;
             double coefficient = desc.ValueKind == JsonValueKind.Array && desc.GetArrayLength() >= 2 ? GameData.Number(desc[1]) ?? 0 : 0;
-            extra += (long)Math.Floor(character.Stats(s)[magic ? 104 : 103] * coefficient / 100d);
+            extra += (long)Math.Floor(_character.Stats(s)[magic ? 104 : 103] * coefficient / 100d);
         }
         return extra;
     }
@@ -346,7 +346,7 @@ public sealed class TotemEffects : IGameTicker
             var logic = passive.Row.GetProperty("_kLogicData");
             int chance = logic.ValueKind == JsonValueKind.Array && logic.GetArrayLength() > 0 ? (int)(GameData.Number(logic[0]) ?? 0) : 0;
             int cooldown = logic.ValueKind == JsonValueKind.Array && logic.GetArrayLength() > 1 ? (int)(GameData.Number(logic[1]) ?? 0) : 0;
-            if (Proc(s, passive.Item.Guid, passive.Id, chance, cooldown)) await buffs.AddSourcedAsync(s, 2502101, 5000, passive.Item.Guid);
+            if (Proc(s, passive.Item.Guid, passive.Id, chance, cooldown)) await _buffs.AddSourcedAsync(s, 2502101, 5000, passive.Item.Guid);
         }
     }
 
@@ -365,14 +365,14 @@ public sealed class TotemEffects : IGameTicker
             if (Proc(s, passive.Item.Guid, passive.Id, chance, cooldown))
             {
                 double coefficient = GameData.Number(desc[1]) ?? 0;
-                extra += (long)Math.Floor(character.Stats(s)[104] * coefficient / 100d);
+                extra += (long)Math.Floor(_character.Stats(s)[104] * coefficient / 100d);
             }
         }
         foreach (var passive in Passives(s).Where(p => p.Id is 2504401 or 2514401).DistinctBy(p => (p.Item.Guid, p.Id)))
         {
             var logic = passive.Row.GetProperty("_kLogicData");
             int threshold = (int)(GameData.Number(logic[0]) ?? 0);
-            if (character.Stats(s)[2000] * 100 <= character.Stats(s)[101] * threshold)
+            if (_character.Stats(s)[2000] * 100 <= _character.Stats(s)[101] * threshold)
                 extra += (long)Math.Floor(heal * (GameData.Number(logic[2]) ?? 0) / 10000d);
         }
         return (long)Math.Floor((heal + extra) * HealingMultiplier(s));
@@ -383,7 +383,7 @@ public sealed class TotemEffects : IGameTicker
         if (damage <= 0) return damage;
         damage = (long)Math.Floor(damage * IncomingMultiplier(s, result));
         if (damage <= 0) return 0;
-        var state = runtime.GetOrCreateValue(s);
+        var state = _runtime.GetOrCreateValue(s);
         long oldShield;
         lock (state) oldShield = state.Shields.Values.Where(x => x.ExpireMs > MonsterService.NowMs).Sum(x => x.Amount);
         lock (state)
@@ -401,7 +401,7 @@ public sealed class TotemEffects : IGameTicker
                             && list.GetArrayLength() > 0 && list[0].ValueKind == JsonValueKind.Array && list[0].GetArrayLength() > 4)
                             chance += (int)(GameData.Number(list[0][4]) ?? 0);
                     if (!Proc(s, source, passive.Id, chance, 10000)) continue;
-                    long maximum = character.Stats(s)[101];
+                    long maximum = _character.Stats(s)[101];
                     shield = new Shield(Math.Max(1, maximum * 5 / 100), now + 5000, 0);
                 }
                 while (damage > 0 && shield.Amount > 0)
@@ -410,7 +410,7 @@ public sealed class TotemEffects : IGameTicker
                     damage -= absorbed;
                     shield = shield with { Amount = shield.Amount - absorbed };
                     if (shield.Amount == 0 && shield.Stage == 0)
-                        shield = new Shield(Math.Max(1, character.Stats(s)[101] * 5 / 100), now + 5000, 1);
+                        shield = new Shield(Math.Max(1, _character.Stats(s)[101] * 5 / 100), now + 5000, 1);
                 }
                 if (shield.Amount > 0) state.Shields[source] = shield;
                 else state.Shields.Remove(source);
@@ -418,26 +418,26 @@ public sealed class TotemEffects : IGameTicker
         }
         long newShield;
         lock (state) newShield = state.Shields.Values.Where(x => x.ExpireMs > MonsterService.NowMs).Sum(x => x.Amount);
-        if (newShield != oldShield) await character.RefreshStatsAsync(s);
+        if (newShield != oldShield) await _character.RefreshStatsAsync(s);
         return damage;
     }
 
     private async Task OnTakenAsync(MonsterUnit attacker, GameSession s, long damage)
     {
-        if (damage <= 0 || s.Dead || character.Stats(s)[2000] <= 0) return;
+        if (damage <= 0 || s.Dead || _character.Stats(s)[2000] <= 0) return;
         foreach (var passive in Passives(s).Where(p => p.Id == 2502301).DistinctBy(p => (p.Item.Guid, p.Id)))
         {
             var desc = passive.Row.GetProperty("_kDescData");
-            long max = character.Stats(s)[101], hp = character.Stats(s)[2000];
+            long max = _character.Stats(s)[101], hp = _character.Stats(s)[2000];
             if (max > 0 && hp * 100 < max * (GameData.Number(desc[0]) ?? 0)
                 && Proc(s, passive.Item.Guid, passive.Id, 10000, (int)((GameData.Number(desc[3]) ?? 0) * 1000)))
-                await buffs.AddSourcedAsync(s, 2502501, (int)((GameData.Number(desc[2]) ?? 0) * 1000), passive.Item.Guid);
+                await _buffs.AddSourcedAsync(s, 2502501, (int)((GameData.Number(desc[2]) ?? 0) * 1000), passive.Item.Guid);
         }
         foreach (var passive in Passives(s).Where(p => p.Id == 2501301).DistinctBy(p => (p.Item.Guid, p.Id)))
             if (StackCount(s, passive.Item.Guid, 4005) > 0 && Proc(s, passive.Item.Guid, passive.Id, 1000, 15000))
             {
-                await monsters.ApplySlowAsync(attacker, 1000, 5000);
-                await buffs.ShowOnUnitAsync(attacker, 2501701, 5000, s.Role!.Id);
+                await _monsters.ApplySlowAsync(attacker, 1000, 5000);
+                await _buffs.ShowOnUnitAsync(attacker, 2501701, 5000, s.Role!.Id);
             }
     }
 
@@ -455,7 +455,7 @@ public sealed class TotemEffects : IGameTicker
             };
             var desc = passive.Row.GetProperty("_kDescData");
             if (Proc(s, passive.Item.Guid, passive.Id, 10000, (int)((GameData.Number(desc[2]) ?? 0) * 1000)))
-                await buffs.AddSourcedAsync(s, active, (int)((GameData.Number(desc[1]) ?? 0) * 1000), passive.Item.Guid);
+                await _buffs.AddSourcedAsync(s, active, (int)((GameData.Number(desc[1]) ?? 0) * 1000), passive.Item.Guid);
         }
     }
 
@@ -466,7 +466,7 @@ public sealed class TotemEffects : IGameTicker
         {
             var desc = passive.Row.GetProperty("_kDescData");
             if (Proc(s, passive.Item.Guid, passive.Id, 10000, (int)((GameData.Number(desc[2]) ?? 0) * 1000)))
-                await buffs.AddSourcedAsync(s, passive.Id == 2516501 ? 2516701 : 2508501,
+                await _buffs.AddSourcedAsync(s, passive.Id == 2516501 ? 2516701 : 2508501,
                     (int)((GameData.Number(desc[1]) ?? 0) * 1000), passive.Item.Guid);
         }
     }

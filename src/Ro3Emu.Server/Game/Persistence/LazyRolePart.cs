@@ -13,7 +13,7 @@ namespace Ro3Emu.Server.Game.Persistence;
 /// - **Barriers:** saves that must be durable now (leave world, coupled state) stay synchronous and call
 ///   <see cref="Persisted"/>.
 /// </summary>
-public abstract class LazyRolePart : IGameTicker
+public abstract class LazyRolePart(GameLoop loop, Accounts.RoleStore roles, ILogger log) : IGameTicker
 {
     public sealed class State
     {
@@ -24,19 +24,12 @@ public abstract class LazyRolePart : IGameTicker
         public int FailureStreak;        // consecutive failed writes (not overtaken captures)
     }
 
-    private readonly GameLoop loop;
-    private readonly Accounts.RoleStore roles;
-    private readonly ILogger log;
-    private readonly HashSet<GameSession> dirty = new(ReferenceEqualityComparer.Instance);
+    private readonly GameLoop _loop = loop;
+    private readonly Accounts.RoleStore _roles = roles;
+    private readonly ILogger _log = log;
+    private readonly HashSet<GameSession> _dirty = new(ReferenceEqualityComparer.Instance);
     private long _writes, _overtaken, _failures;
     private double _maxDirtyMs;
-
-    protected LazyRolePart(GameLoop loop, Accounts.RoleStore roles, ILogger log)
-    {
-        this.loop = loop;
-        this.roles = roles;
-        this.log = log;
-    }
 
     /// <summary>The revision part guarded by the CAS chain (RevisionStore part name).</summary>
     protected abstract string RevisionPart { get; }
@@ -60,7 +53,7 @@ public abstract class LazyRolePart : IGameTicker
         if (part.InFlight) { if (part.DirtyAfterCapture == 0) part.DirtyAfterCapture = now; }
         else if (part.DirtySince == 0) part.DirtySince = now;
         part.Urgent |= urgent;
-        dirty.Add(s);
+        _dirty.Add(s);
     }
 
     /// <summary>A barrier saved the session's current value durably: nothing older may be written after it.</summary>
@@ -70,7 +63,7 @@ public abstract class LazyRolePart : IGameTicker
         part.Persisted = part.Applied;
         part.DirtySince = part.DirtyAfterCapture = 0;
         part.Urgent = false;
-        if (!part.InFlight) dirty.Remove(s);
+        if (!part.InFlight) _dirty.Remove(s);
     }
 
     /// <summary>Whether a change has not been persisted yet (a barrier then has something to save).</summary>
@@ -78,14 +71,14 @@ public abstract class LazyRolePart : IGameTicker
 
     public void Tick(GameTime time)
     {
-        if (dirty.Count == 0) return;
+        if (_dirty.Count == 0) return;
         long now = Stopwatch.GetTimestamp();
-        foreach (var s in dirty.ToArray())
+        foreach (var s in _dirty.ToArray())
         {
             var part = Get(s);
-            if (part == null || s.Role == null) { dirty.Remove(s); continue; }
+            if (part == null || s.Role == null) { _dirty.Remove(s); continue; }
             if (part.InFlight) continue;
-            if (part.Applied <= part.Persisted) { dirty.Remove(s); part.DirtySince = 0; continue; }
+            if (part.Applied <= part.Persisted) { _dirty.Remove(s); part.DirtySince = 0; continue; }
             if (!part.Urgent && Stopwatch.GetElapsedTime(part.DirtySince, now) < Interval) continue;
             Submit(s, part);
         }
@@ -98,7 +91,7 @@ public abstract class LazyRolePart : IGameTicker
         if (!Eligible(s) || owner == null || owner.State is not (Ownership.RoleOwnerState.Attached or Ownership.RoleOwnerState.Loading)
             || !owner.Revisions.TryGetValue(RevisionPart, out long revision))
         {
-            dirty.Remove(s); // detached or ineligible: the barrier path owns the value now
+            _dirty.Remove(s); // detached or ineligible: the barrier path owns the value now
             return;
         }
         var write = Capture(s);
@@ -106,7 +99,7 @@ public abstract class LazyRolePart : IGameTicker
         part.InFlight = true;
         part.Urgent = false;
         part.Submitted = version;
-        loop.TrackDetached("lazy/" + RevisionPart, async () =>
+        _loop.TrackDetached("lazy/" + RevisionPart, async () =>
         {
             bool written = false, failed = false;
             try
@@ -123,7 +116,7 @@ public abstract class LazyRolePart : IGameTicker
                     // Overtaken by another write of the part (a barrier): drop this capture, refresh the chain from
                     // the committed vector and write the current value on the next tick.
                     Interlocked.Increment(ref _overtaken);
-                    var vector = await roles.ReadRevisionVectorAsync(role.Id);
+                    var vector = await _roles.ReadRevisionVectorAsync(role.Id);
                     // The read is asynchronous: a barrier recorded meanwhile may be newer. Revisions only grow
                     // within an epoch, so keep the larger one.
                     if (ReferenceEquals(s.Owner, owner) && owner.LifecycleEpoch == vector.Epoch && !vector.Deleted
@@ -139,7 +132,7 @@ public abstract class LazyRolePart : IGameTicker
                 failed = true;
                 // A full lazy lane fails every capture: log the first of a streak and every hundredth.
                 if (++part.FailureStreak % 100 == 1)
-                    log.LogWarning(e, "Lazy {Part} write for role {Role} failed ({Streak} in a row); it stays dirty",
+                    _log.LogWarning(e, "Lazy {Part} write for role {Role} failed ({Streak} in a row); it stays dirty",
                         RevisionPart, role.Id, part.FailureStreak);
             }
             finally
@@ -154,7 +147,7 @@ public abstract class LazyRolePart : IGameTicker
                     part.DirtySince = written ? (part.DirtyAfterCapture != 0 ? part.DirtyAfterCapture : Stopwatch.GetTimestamp())
                         : failed ? Stopwatch.GetTimestamp() : part.DirtySince;
                     if (failed) part.Urgent = false;
-                    if (ReferenceEquals(s.Role, role)) dirty.Add(s);
+                    if (ReferenceEquals(s.Role, role)) _dirty.Add(s);
                 }
                 else part.DirtySince = 0;
                 part.DirtyAfterCapture = 0;
@@ -165,6 +158,6 @@ public abstract class LazyRolePart : IGameTicker
     public object Snapshot() => new
     {
         lazyWrites = Interlocked.Read(ref _writes), overtaken = Interlocked.Read(ref _overtaken),
-        failures = Interlocked.Read(ref _failures), dirty = dirty.Count, maxFirstDirtyToCommitMs = _maxDirtyMs,
+        failures = Interlocked.Read(ref _failures), dirty = _dirty.Count, maxFirstDirtyToCommitMs = _maxDirtyMs,
     };
 }

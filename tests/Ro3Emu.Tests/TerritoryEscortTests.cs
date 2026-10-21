@@ -27,18 +27,18 @@ public sealed class TerritoryEscortTests : IAsyncLifetime
         { if (level >= LogLevel.Error) Messages.Enqueue(format(state, error) + " " + error); }
         public void Dispose() { }
     }
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-escort-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-escort-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(8);
     private sealed class Clock : TimeProvider
     {
-        private long seconds = 1779189400; // TerritoryWarStageConfig 1: escort trading, absolute UTC.
-        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref seconds));
-        public void Set(long t) => Interlocked.Exchange(ref seconds, t);
+        private long _seconds = 1779189400; // TerritoryWarStageConfig 1: escort trading, absolute UTC.
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref _seconds));
+        public void Set(long t) => Interlocked.Exchange(ref _seconds, t);
     }
-    private readonly Clock clock = new();
-    private WebApplication app = null!;
-    private string http = "";
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private readonly Clock _clock = new();
+    private WebApplication _app = null!;
+    private string _http = "";
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private Task OnLoop(Func<Task> work) => Service<GameLoop>().InvokeAsync(work);
     private GameSession Session(BotClient bot) => Service<SessionRegistry>().All()
         .Single(s => s.Role?.Id == (long)bot.Self!.Uuid);
@@ -71,26 +71,26 @@ public sealed class TerritoryEscortTests : IAsyncLifetime
     private async Task StartAsync()
     {
         var (web, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game;
             o.PlayBook = 101; o.SeasonStart = "2026-05-19";
-        }, clock);
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{web}";
+        }, _clock);
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{web}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
         await bot.EnterWorldAsync(id);
@@ -106,7 +106,7 @@ public sealed class TerritoryEscortTests : IAsyncLifetime
     private async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     private static GuildCreateReq Create(string name) => new()
@@ -180,7 +180,7 @@ public sealed class TerritoryEscortTests : IAsyncLifetime
         Assert.NotEqual(0, (await Next(seller, TerritoryEscortService.Operate, TerritoryWarsEscortOperateApplyRes.Parser, x => x.Result != 0)).Result);
         Assert.Equal(1600, store.Get(buyId)!.Money);
 
-        clock.Set(1779190300); // configured escort playing window.
+        _clock.Set(1779190300); // configured escort playing window.
         await escort.ReconcileAsync();
         await Warp(buyer, 30303, 294.86f, 258.95f);
         await Service<GameLoop>().InvokeAsync(() => { Session(buyer).Dead = true; return Task.CompletedTask; });
@@ -196,7 +196,7 @@ public sealed class TerritoryEscortTests : IAsyncLifetime
         await buyer.SendGameAsync(TerritoryEscortService.Cart, new TerritoryWarsEscortCartReq { CartType = 0, PointId = 3001 });
         Assert.NotEqual(0, (await Next(buyer, TerritoryEscortService.Cart, TerritoryWarsEscortCartRes.Parser, x => x.Result != 0)).Result);
         await Warp(buyer, 30312, 273.29f, 392.25f);
-        clock.Set(1779190310);
+        _clock.Set(1779190310);
         await Service<GameLoop>().InvokeAsync(() => { Session(buyer).Dead = true; return Task.CompletedTask; });
         await buyer.SendGameAsync(TerritoryEscortService.Submit, new TerritoryWarsEscortSubmitReq { CartId = cart.CartId, PointId = 12001 });
         await buyer.SendGameAsync(TerritoryEscortService.GuildPlay, new TerritoryWarsEscortGuildPlayInfoReq());
@@ -278,7 +278,7 @@ public sealed class TerritoryEscortTests : IAsyncLifetime
                 escort.CreditGuildGoodsAsync(guild, 20, "test:escort:once"));
             Assert.Equal(25, escort.GetGuildGoods(guild));
         }
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         await StartAsync();
         await using var restored = await InWorld("SourceLeader", create: false);
@@ -302,7 +302,7 @@ public sealed class TerritoryEscortTests : IAsyncLifetime
             Assert.Equal(0, (await Next(seller, TerritoryEscortService.Sell, TerritoryWarsEscortGuildSellRes.Parser)).Result);
             Assert.Equal(10, escort.GetGuildGoods(id));
         }
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         await StartAsync();
         await using var restored = await InWorld("RestartSeller", create: false);
@@ -349,7 +349,7 @@ public sealed class TerritoryEscortTests : IAsyncLifetime
         await escort.ReconcileAsync();
         Assert.Equal(12_005, escort.GetGuildGoods(id));
         Assert.Equal(stockReceipts, SqlCount("SELECT count(*) FROM operation_receipt WHERE command_kind=$source", "event/escort-reconcile"));
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         await StartAsync();
         escort = Service<TerritoryEscortService>();
@@ -376,7 +376,7 @@ public sealed class TerritoryEscortTests : IAsyncLifetime
         long raiderGuild = await Guild(raider, "CargoB");
         var escort = Service<TerritoryEscortService>();
         await escort.CreditGuildGoodsAsync(ownerGuild, 3000, "test:escort:cargo:initial-stock");
-        clock.Set(1779190300);
+        _clock.Set(1779190300);
         await escort.ReconcileAsync();
         await Warp(owner, 30303, 294.86f, 258.95f);
         await Warp(raider, 30303, 294.86f, 258.95f);
@@ -494,7 +494,7 @@ public sealed class TerritoryEscortTests : IAsyncLifetime
         await Guild(raider, "FaultB");
         var escort = Service<TerritoryEscortService>();
         await escort.CreditGuildGoodsAsync(ownerGuild, 3000, "test:escort:fault:stock");
-        clock.Set(1779190300);
+        _clock.Set(1779190300);
         await escort.ReconcileAsync();
         await Warp(owner, 30303, 294.86f, 258.95f);
         await Warp(raider, 30303, 294.86f, 258.95f);
@@ -544,7 +544,7 @@ public sealed class TerritoryEscortTests : IAsyncLifetime
         Assert.Equal(1, DurablePickedCargo());
         Assert.Equal(0, SqlCount("SELECT count(*) FROM operation_source WHERE source_key=$source",
             "test:escort:fault:blocked-credit"));
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         await StartAsync();
         Assert.Equal(1, DurablePickedCargo());

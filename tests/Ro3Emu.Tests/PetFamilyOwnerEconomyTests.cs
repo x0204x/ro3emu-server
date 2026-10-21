@@ -16,38 +16,38 @@ namespace Ro3Emu.Tests;
 /// <summary>One covered pet command: staged state stays private until the ledger and blob commit together.</summary>
 public sealed class PetFamilyOwnerEconomyTests : IAsyncLifetime
 {
-    private readonly string directory = Path.Combine(Path.GetTempPath(), "ro3-pet-family-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), "ro3-pet-family-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "";
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private GameSession Session => Service<SessionRegistry>().All().Single(s => s.Account == "alice" && s.Role != null);
 
     public async Task InitializeAsync()
     {
         var (web, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = directory;
+            o.DataDir = _directory;
             o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game;
         });
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{web}";
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{web}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         SqliteConnection.ClearAllPools();
-        try { Directory.Delete(directory, true); } catch (IOException) { }
+        try { Directory.Delete(_directory, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> Enter()
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(directory, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_directory, "gate_rsa_public.pem")));
         await bot.LoginAsync("alice", "pw"); await bot.EnterGateAsync();
         long role = (await bot.CreateRoleAsync("Alice")).RoleBaseInfo.Id;
-        await bot.EnterWorldAsync(role); await WorldSettle.StallsAsync(app.Services);
+        await bot.EnterWorldAsync(role); await WorldSettle.StallsAsync(_app.Services);
         await Gm("!quest done 10104330");
         await Gm("!lvl 1");
         await Gm("!item 1610001 20");
@@ -57,12 +57,12 @@ public sealed class PetFamilyOwnerEconomyTests : IAsyncLifetime
     private async Task Gm(string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync(http + "/ro3emu/gm?account=alice", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync(_http + "/ro3emu/gm?account=alice", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
-    private EconomySnapshot Cut() => S3EconomyReader.Read(directory, EconomyCatalog.Load(Path.Combine(RepoRoot(), "data")));
+    private EconomySnapshot Cut() => S3EconomyReader.Read(_directory, EconomyCatalog.Load(Path.Combine(RepoRoot(), "data")));
     private EconomyLedgerWindow Window(EconomySnapshot a, EconomySnapshot b) =>
-        S3EconomyReader.ReadLedger(directory, EconomyCatalog.Load(Path.Combine(RepoRoot(), "data")), a, b)!;
+        S3EconomyReader.ReadLedger(_directory, EconomyCatalog.Load(Path.Combine(RepoRoot(), "data")), a, b)!;
     private static async Task<PetCombineResp> Combine(BotClient bot)
     {
         await bot.SendGameAsync(PetService.Combine, new PetCombineReq { PetId = 10001 });
@@ -96,7 +96,7 @@ public sealed class PetFamilyOwnerEconomyTests : IAsyncLifetime
         var closing = Cut();
         var receipt = Assert.Single(Window(opening, closing).Receipts);
         Assert.Equal(1, receipt.LegCount);
-        Assert.Equal("cd13b/pet-combine", EconomyReceiptReader.Read(Path.Combine(directory, "ro3emu.db"), receipt.OperationId)!.CommandKind);
+        Assert.Equal("cd13b/pet-combine", EconomyReceiptReader.Read(Path.Combine(_directory, "ro3emu.db"), receipt.OperationId)!.CommandKind);
         Assert.True(s.Pets!.ListPet.ContainsKey(10001));
         Assert.Equal(0, s.Items.Where(i => i.Entry == 1610001).Sum(i => i.Stack));
     }
@@ -176,7 +176,7 @@ public sealed class PetFamilyOwnerEconomyTests : IAsyncLifetime
         var closing = Cut();
         var window = Window(opening, closing);
         var receipt = Assert.Single(window.Receipts);
-        Assert.Equal("cd13b/pet-rebirth", EconomyReceiptReader.Read(Path.Combine(directory, "ro3emu.db"), receipt.OperationId)!.CommandKind);
+        Assert.Equal("cd13b/pet-rebirth", EconomyReceiptReader.Read(Path.Combine(_directory, "ro3emu.db"), receipt.OperationId)!.CommandKind);
         var source = Assert.Single(window.Legs, leg => leg.Kind == EconomyLegKind.Source);
         Assert.Equal((1250701L, 2L), (source.Asset.Id, source.Delta));
         Assert.Equal(2, Session.Items.Where(i => i.Entry == 1250701).Sum(i => i.Stack));

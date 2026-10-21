@@ -15,7 +15,7 @@ public sealed partial class NewActivityTests
         await OnLoop(() => { Service<GameLoop>().Remove(defense); return Task.CompletedTask; });
         Assert.True(Service<ActivityClock>().TryWindow(1012, out var start, out _));
         long first = start.ToUnixTimeSeconds() + 122400;
-        clock.AdvanceSeconds(checked((int)(first - 1 - clock.GetUtcNow().ToUnixTimeSeconds())));
+        _clock.AdvanceSeconds(checked((int)(first - 1 - _clock.GetUtcNow().ToUnixTimeSeconds())));
         await Reconcile(bot);
         var session = Session(bot);
         Assert.Equal(0, session.NewActivities!.ActivityInfo[118].ActivityParam.PronteraDefense.GlobalInfo.CurRound);
@@ -23,7 +23,7 @@ public sealed partial class NewActivityTests
         foreach (var (offset, round, intensity) in new[]
             { (0, 1, 80000L), (600, 1, 100000L), (1200, 1, 120000L), (1560, 1, 140000L), (1800, 0, 0L) })
         {
-            clock.AdvanceSeconds(checked((int)(first + offset - clock.GetUtcNow().ToUnixTimeSeconds())));
+            _clock.AdvanceSeconds(checked((int)(first + offset - _clock.GetUtcNow().ToUnixTimeSeconds())));
             await Eventually(() =>
             {
                 var saved = DBNewActivityInfo.Parser.ParseFrom(Service<RoleStore>().LoadNewActivities(session.Role!.Id));

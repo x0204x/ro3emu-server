@@ -27,7 +27,7 @@ public sealed partial class NewActivityService
 {
     private const int PreCrystal = 1350001;
     private const int PreCrystalScore = 50_000;
-    private readonly SemaphoreSlim adventureSocialGate = new(1, 1);
+    private readonly SemaphoreSlim _adventureSocialGate = new(1, 1);
 
     /// <summary>Shared Pre progress is durable across roles and server restart, keyed by cycle and realm area.</summary>
     private void InitializeAdventureServices(AccountStore accountStore, ItemStore itemStore)
@@ -36,12 +36,12 @@ public sealed partial class NewActivityService
 
     private (long Cycle, int Area, long Day) PreKey(GameSession session, long id) =>
         (session.NewActivities!.ActivityInfo[id].CycleStartTime, session.Role!.Area,
-            DateOnly.FromDateTime(clock.GetLocalNow().Date).DayNumber);
+            DateOnly.FromDateTime(_clock.GetLocalNow().Date).DayNumber);
 
     private (long Score, long Today, long Submitters) PreTotals(GameSession session, long id)
     {
         var (cycle, area, day) = PreKey(session, id);
-        var totals = accounts.ReadSync<AdventurePreTotals>(
+        var totals = _accounts.ReadSync<AdventurePreTotals>(
             new AdventurePreTotalsReadPlan(id, cycle, area, day, session.Role!.Id));
         return (totals.Score, totals.Today, totals.Submitters);
     }
@@ -109,7 +109,7 @@ public sealed partial class NewActivityService
             {
                 var score = PreTotals(session, req.ActivityID).Score;
                 var requested = req.RewardIDs.Distinct().ToArray();
-                var rows = requested.Select(id => data.Row("SeasonPreProgressRewardConfig", id)).ToArray();
+                var rows = requested.Select(id => _data.Row("SeasonPreProgressRewardConfig", id)).ToArray();
                 var current = session.NewActivities!.ActivityTypeState[2].ActivityState[req.ActivityID].SelfData.SeasonPre;
                 if (requested.Length == 0 || requested.Length != req.RewardIDs.Count
                     || rows.Any(r => r == null || GameData.Int(r.Value, "_iActivityid") != req.ActivityID
@@ -140,7 +140,7 @@ public sealed partial class NewActivityService
         if (!FragmentItems.Any(i => i == req.ItemConfigID)) return ErrorCodes.Parameter;
         var next = session.NewActivities!.Clone();
         var gather = next.ActivityInfo[activityId].ActivityParam.FragmentGather;
-        long dayEnd = new DateTimeOffset(clock.GetLocalNow().Date.AddDays(1), clock.LocalTimeZone.GetUtcOffset(clock.GetLocalNow().Date.AddDays(1))).ToUnixTimeSeconds();
+        long dayEnd = new DateTimeOffset(_clock.GetLocalNow().Date.AddDays(1), _clock.LocalTimeZone.GetUtcOffset(_clock.GetLocalNow().Date.AddDays(1))).ToUnixTimeSeconds();
         if (gather.DailyData.ExpireTs <= Now) gather.DailyData = new FragmentGatherDaily { ExpireTs = dayEnd };
         if (gather.DailyData.AskTimes >= 20) return ErrorCodes.Cooldown;
         var runtime = CloneRuntime(session);
@@ -177,11 +177,11 @@ public sealed partial class NewActivityService
         if (ActivityError(session, activityId, 5) is var error and not 0) return error;
         if (req.UserID <= 0 || req.AskID <= 0) return ErrorCodes.Parameter;
         var targetOwner = await PinSocialRecipientAsync(req.UserID);
-        if (targetOwner == null || await roles.GetAsync(req.UserID) is not { } target
+        if (targetOwner == null || await _roles.GetAsync(req.UserID) is not { } target
             || target.Area != session.Role!.Area) return ErrorCodes.Parameter;
         var online = AttachedSocialSession(targetOwner);
         var blob = online == null
-            ? (await accounts.ReadAsync<RoleBlobSnapshot>(new RoleBlobSnapshotRead(req.UserID, "activity_runtime"))).Value
+            ? (await _accounts.ReadAsync<RoleBlobSnapshot>(new RoleBlobSnapshotRead(req.UserID, "activity_runtime"))).Value
             : null;
         var state = online?.ActivityRuntime ?? (blob == null ? new ActivityRuntimeState()
             : JsonSerializer.Deserialize<ActivityRuntimeState>(blob) ?? new());
@@ -213,7 +213,7 @@ public sealed partial class NewActivityService
     private async Task<int> FragmentProgressCoreAsync(GameSession session, long activityId, NewActivityFragmentGatherProgressReq req)
     {
         if (ActivityError(session, activityId, 5) is var error and not 0) return error;
-        var row = data.Row("SeasonPrepProgressReward", req.GatherTimes);
+        var row = _data.Row("SeasonPrepProgressReward", req.GatherTimes);
         if (row == null || GameData.Int(row.Value, "_iActivityid") != activityId) return ErrorCodes.Parameter;
         var next = session.NewActivities!.Clone();
         var gather = next.ActivityInfo[activityId].ActivityParam.FragmentGather;
@@ -241,7 +241,7 @@ public sealed partial class NewActivityService
             session.ActivityGate.Release();
             scope.Dispose();
             try { await notices.FlushAsync(); }
-            catch (Exception e) { log.LogWarning(e, "Committed fragment notice failed for {Role}", session.Role?.Id); }
+            catch (Exception e) { _log.LogWarning(e, "Committed fragment notice failed for {Role}", session.Role?.Id); }
         }
         if (error != 0) await session.SendGameAsync(2, new CommonErrorNtf { ErrorCode = error });
         await session.SendGameAsync(82964, new NewActivityFragmentGatherSendResp());
@@ -257,11 +257,11 @@ public sealed partial class NewActivityService
     {
         if (ActivityError(sender, activityId, 5) is var error and not 0) return error;
         if (req.ToUserID <= 0 || req.ToUserID == sender.Role!.Id || req.AskID <= 0
-            || !FragmentItems.Any(i => i == req.ItemID) || character.CountOf(sender, checked((int)req.ItemID)) < 1)
+            || !FragmentItems.Any(i => i == req.ItemID) || _character.CountOf(sender, checked((int)req.ItemID)) < 1)
             return ErrorCodes.Parameter;
         var receiverOwner = await PinSocialRecipientAsync(req.ToUserID);
         if (receiverOwner == null) return ErrorCodes.Parameter;
-        var receiverRole = await roles.GetAsync(req.ToUserID);
+        var receiverRole = await _roles.GetAsync(req.ToUserID);
         if (receiverRole == null || receiverRole.Area != sender.Role.Area) return ErrorCodes.Parameter;
         var receiver = AttachedSocialSession(receiverOwner);
         if (receiver != null && !receiver.ActivityGate.Wait(0)) return ErrorCodes.Cooldown;
@@ -270,14 +270,14 @@ public sealed partial class NewActivityService
             var ordered = receiver == null ? [sender] : new[] { sender, receiver }.OrderBy(s => s.Role!.Id).ToArray();
             using var first = await CharacterService.Lock(ordered[0]);
             using var second = ordered.Length == 2 ? await CharacterService.Lock(ordered[1]) : null;
-            var senderVector = await roles.ReadRevisionVectorAsync(sender.Role.Id);
-            var receiverVector = await roles.ReadRevisionVectorAsync(req.ToUserID);
-            var transaction = accounts.NewTransaction();
+            var senderVector = await _roles.ReadRevisionVectorAsync(sender.Role.Id);
+            var receiverVector = await _roles.ReadRevisionVectorAsync(req.ToUserID);
+            var transaction = _accounts.NewTransaction();
             transaction.ExpectRole(senderVector);
             transaction.ExpectRole(receiverVector);
-            var targetNewSnapshot = await accounts.ReadAsync<RoleBlobSnapshot>(
+            var targetNewSnapshot = await _accounts.ReadAsync<RoleBlobSnapshot>(
                 new RoleBlobSnapshotRead(req.ToUserID, "new_activities"));
-            var targetRuntimeSnapshot = await accounts.ReadAsync<RoleBlobSnapshot>(
+            var targetRuntimeSnapshot = await _accounts.ReadAsync<RoleBlobSnapshot>(
                 new RoleBlobSnapshotRead(req.ToUserID, "activity_runtime"));
             transaction.Guard(new RoleBlobGuardPlan(req.ToUserID, "new_activities", targetNewSnapshot));
             transaction.Guard(new RoleBlobGuardPlan(req.ToUserID, "activity_runtime", targetRuntimeSnapshot));
@@ -301,7 +301,7 @@ public sealed partial class NewActivityService
                 && !i.IsLocked && !EmblemService.IsReserved(sender, i));
             if (source == null) return ErrorCodes.ItemsShort;
             var targetOriginal = receiver?.Items.Select(i => i.Clone()).ToList()
-                ?? await accounts.ReadAsync<List<InvItem>>(new ActivityInventoryReadPlan(req.ToUserID));
+                ?? await _accounts.ReadAsync<List<InvItem>>(new ActivityInventoryReadPlan(req.ToUserID));
             var targetItems = targetOriginal.Select(i => i.Clone()).ToList();
             source.Stack--;
             if (source.Stack == 0) sourceItems.Remove(source);
@@ -318,7 +318,7 @@ public sealed partial class NewActivityService
             ask.Finished = true;
             var gather = targetInfo.ActivityParam.FragmentGather;
             if (gather.DailyData == null) gather.DailyData = new FragmentGatherDaily();
-            long dayEnd = new DateTimeOffset(clock.GetLocalNow().Date.AddDays(1), clock.LocalTimeZone.GetUtcOffset(clock.GetLocalNow().Date.AddDays(1))).ToUnixTimeSeconds();
+            long dayEnd = new DateTimeOffset(_clock.GetLocalNow().Date.AddDays(1), _clock.LocalTimeZone.GetUtcOffset(_clock.GetLocalNow().Date.AddDays(1))).ToUnixTimeSeconds();
             if (gather.DailyData.ExpireTs <= Now) gather.DailyData = new FragmentGatherDaily { ExpireTs = dayEnd };
             gather.DailyData.ReceiveTimes++;
             transaction.Guard(new ActivityInventoryGuardPlan(sender.Role!.Id, senderOriginal));
@@ -337,7 +337,7 @@ public sealed partial class NewActivityService
                     AskId = req.AskID, Donor = sender.Role.Id, Recipient = req.ToUserID,
                     Item = req.ItemID, SourceGuid = source.Guid, ConsumedAsk = true
                 }));
-            await roles.CommitAsync(transaction, "activity/fragment-transfer", _ =>
+            await _roles.CommitAsync(transaction, "activity/fragment-transfer", _ =>
             {
                 sender.Items = sourceItems;
                 if (receiver != null)
@@ -349,10 +349,10 @@ public sealed partial class NewActivityService
             });
             // Run authoritative observers while both owners are still pinned. OwnerNotices freezes
             // their packets; the wrapper flushes transport only after releasing the reservation.
-            await character.ItemsChangedAsync(sender, false);
+            await _character.ItemsChangedAsync(sender, false);
             if (receiver != null)
             {
-                await character.ItemsChangedAsync(receiver, false);
+                await _character.ItemsChangedAsync(receiver, false);
                 await SyncAsync(receiver);
             }
             return 0;

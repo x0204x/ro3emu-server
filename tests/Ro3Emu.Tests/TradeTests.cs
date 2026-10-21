@@ -15,34 +15,34 @@ namespace Ro3Emu.Tests;
 [Collection("Market server")]
 public sealed partial class TradeTests : IAsyncLifetime
 {
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-trade-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-trade-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);
-    private readonly MutableClock clock = new();
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly MutableClock _clock = new();
+    private WebApplication _app = null!;
+    private string _http = "";
 
     public async Task InitializeAsync()
     {
         var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = httpPort; o.MicroGatePort = microPort; o.GameGatePort = gamePort;
-        }, clock);
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{httpPort}";
+        }, _clock);
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{httpPort}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw");
         await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
@@ -57,16 +57,16 @@ public sealed partial class TradeTests : IAsyncLifetime
     private async Task Gm(string name, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={name}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={name}", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
-    private List<InvItem> Items(BotClient bot) => app.Services.GetRequiredService<ItemStore>().Load((long)bot.Self!.Uuid);
+    private List<InvItem> Items(BotClient bot) => _app.Services.GetRequiredService<ItemStore>().Load((long)bot.Self!.Uuid);
 
     private async Task Stage(BotClient bot, Action<MarketParticipant> edit)
     {
-        var loop = app.Services.GetRequiredService<GameLoop>();
-        var registry = app.Services.GetRequiredService<SessionRegistry>();
-        var store = app.Services.GetRequiredService<MarketStore>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
+        var registry = _app.Services.GetRequiredService<SessionRegistry>();
+        var store = _app.Services.GetRequiredService<MarketStore>();
         long role = (long)bot.Self!.Uuid;
         int result = await loop.InvokeAsync(async () =>
         {
@@ -131,7 +131,7 @@ public sealed partial class TradeTests : IAsyncLifetime
         Assert.Equal(2, tradeUpdate.TradeTimes[1254013].All);
         Assert.Equal(2, commodity.Quantity);
         // Commodity times are Unix seconds (the client compares them with GetSystemTime); the listing is not expired.
-        long nowSeconds = clock.GetUtcNow().ToUnixTimeSeconds();
+        long nowSeconds = _clock.GetUtcNow().ToUnixTimeSeconds();
         Assert.InRange(commodity.SaleTime, nowSeconds - 5, nowSeconds + 5);
         Assert.True(commodity.SuspensionTime > nowSeconds && commodity.SuspensionTime == commodity.TakeDownTime);
         Assert.Equal(1254013, ItemBaseInfo.Parser.ParseFrom(commodity.ItemBaseInfo).ItemEntry);
@@ -174,7 +174,7 @@ public sealed partial class TradeTests : IAsyncLifetime
         Assert.NotEqual(originalGuid, claimed.Guid); // split-off bag copy gets a new GUID (inferred).
         await buyer.SendGameAsync(MailService.ClaimMail, new ClaimMailReq { MailUid = { award.Id } });
         Assert.Equal(ErrorCodes.MailAlreadyClaimed, (await Next(buyer, MailService.ClaimMail, ClaimMailRsp.Parser)).Result);
-        clock.Advance(TimeSpan.FromHours(24) + TimeSpan.FromSeconds(1));
+        _clock.Advance(TimeSpan.FromHours(24) + TimeSpan.FromSeconds(1));
         await seller.SendGameAsync(TradeService.OwnBooth, new QueryPlayerBoothInfoRequest());
         Assert.Equal(0, (await Next(seller, TradeService.OwnBooth, CQueryPlayerBoothInfoResp.Parser)).Data.TotalCount);
         Assert.Equal(1, (await Next(seller, 32630, TradeCommonNtf.Parser, n => n.ExpireNtf != null)).ExpireNtf.ExpiredCount);
@@ -228,7 +228,7 @@ public sealed partial class TradeTests : IAsyncLifetime
         await buyer.SendGameAsync(TradeService.BuyTop, new TradeBuyItemsReq
         { ItemId = 1450100, SkuId = sku, Price = 2000000, TotalPrice = 2000000, TotalQuantity = 1 });
         Assert.NotEqual(0, (await Next(buyer, TradeService.BuyTop, TradeBuyItemsResp.Parser)).Result);
-        clock.Advance(TimeSpan.FromSeconds(1801));
+        _clock.Advance(TimeSpan.FromSeconds(1801));
         await buyer.SendGameAsync(TradeService.BuyTop, new TradeBuyItemsReq
         { ItemId = 1450100, SkuId = sku, Price = 2000000, TotalPrice = 2000000, TotalQuantity = 1 });
         Assert.Equal(0, (await Next(buyer, TradeService.BuyTop, TradeBuyItemsResp.Parser)).Result);
@@ -295,7 +295,7 @@ public sealed partial class TradeTests : IAsyncLifetime
             // 32622: "You have joined the Lineup... In ${1} seconds" counts down to the end of publicity.
             var lineup = await Next(bot, TradeService.InQueue, skuQueueNtf.Parser);
             Assert.Equal((1450100, 2000000, 1, listing.SkuId), (lineup.ItemId, lineup.Price, lineup.Quantity, lineup.SkuId));
-            Assert.InRange(lineup.SaleTime - clock.GetUtcNow().ToUnixTimeSeconds(), 1, 1801); // _kHideTimeMin 1800 s, rounded up
+            Assert.InRange(lineup.SaleTime - _clock.GetUtcNow().ToUnixTimeSeconds(), 1, 1801); // _kHideTimeMin 1800 s, rounded up
         }
         Assert.Single(locked.Inbox.Snapshot(), e => e.IsGame(TradeService.InQueue)); // the refused attempt joined nothing
         await first.SendGameAsync(TradeService.QueryPreorders, new CPreTradeTopQueryRequest { PageNo = 1, PageSize = 10 });
@@ -307,7 +307,7 @@ public sealed partial class TradeTests : IAsyncLifetime
         Assert.NotEqual(0, (await Next(first, TradeService.RefundPreorder, CRefundPreTradeTopResponse.Parser)).Errno);
         Assert.Empty(await Mail(first, (long)first.Self!.Uuid));
 
-        clock.Advance(TimeSpan.FromSeconds(1801));
+        _clock.Advance(TimeSpan.FromSeconds(1801));
         await seller.SendGameAsync(TradeService.OwnBooth, new QueryPlayerBoothInfoRequest());
         Assert.Equal(0, (await Next(seller, TradeService.OwnBooth, CQueryPlayerBoothInfoResp.Parser)).Data.TotalCount);
         var winner = Assert.Single(await Mail(first, (long)first.Self!.Uuid), m => m.Template == 1064);
@@ -368,18 +368,18 @@ public sealed partial class TradeTests : IAsyncLifetime
 
     private sealed class MutableClock : TimeProvider
     {
-        private DateTimeOffset now = DateTimeOffset.UtcNow;
-        public override DateTimeOffset GetUtcNow() => now;
-        public void Advance(TimeSpan by) => now += by;
+        private DateTimeOffset _now = DateTimeOffset.UtcNow;
+        public override DateTimeOffset GetUtcNow() => _now;
+        public void Advance(TimeSpan by) => _now += by;
     }
 
     [Fact]
     public async Task MaintenanceRunsOnlyAfterAMarketCommitOrWhenAListingIsDue()
     {
         // Stage G: every trade message and the 1 s stall maintenance ran a full market transaction here.
-        var trade = app.Services.GetRequiredService<TradeService>();
-        var market = app.Services.GetRequiredService<MarketStore>();
-        var loop = app.Services.GetRequiredService<GameLoop>();
+        var trade = _app.Services.GetRequiredService<TradeService>();
+        var market = _app.Services.GetRequiredService<MarketStore>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
         await loop.InvokeAsync(() => trade.TickMaintenanceAsync());
         long passes = trade.MaintenancePasses;
         await loop.InvokeAsync(() => trade.TickMaintenanceAsync());

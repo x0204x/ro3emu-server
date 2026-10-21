@@ -130,7 +130,9 @@ internal sealed class AdventureGroupSavePlan : DbPlan
             update.Parameters.AddWithValue("$name", _name);
             update.Parameters.AddWithValue("$state", state);
             update.Parameters.AddWithValue("$id", id);
-            if (update.ExecuteNonQuery() != 1) throw new InvalidOperationException("Adventure group disappeared during save.");
+            if (update.ExecuteNonQuery() != 1)
+                throw new RowMissingException(AdventureGroupStore.Table, id,
+                    "Adventure group disappeared during save.");
         }
         using (var clear = DbSql.Command(db, tx, "DELETE FROM adventure_group_member WHERE group_id=$id"))
         {

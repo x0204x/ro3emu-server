@@ -17,7 +17,7 @@ public sealed partial class GuildLeagueService
     /// <summary>Commit a decided match: its outcome and report, then 30414 to everyone still on either battlefield.</summary>
     private async Task CommitMatchAsync(Match m)
     {
-        var next = Copy(state);
+        var next = Copy(_state);
         var group = next.Cup is { } cup && cup.Index == m.Index
             ? cup.Groups.FirstOrDefault(g => g.Tier == m.Tier && g.Order == m.Order) : null;
         if (group == null || group.Outcomes.Any(o => o.Round == m.Round && o.Pair == m.Pair)) { m.Committed = true; return; }
@@ -40,7 +40,7 @@ public sealed partial class GuildLeagueService
         var scores = outcome.Players.ToDictionary(p => p.Key, p => p.Value[1]);
         foreach (var handler in MatchCommitted)
             try { handler(m.Round, scores); }
-            catch (Exception e) { log.LogError(e, "Guild League match hook failed for {Match}", m.Key); }
+            catch (Exception e) { _log.LogError(e, "Guild League match hook failed for {Match}", m.Key); }
         await SendAllAsync(Present(m), ResultNotify, new GuildLeagueDungeonResultNtf { History = history });
     }
 
@@ -80,13 +80,13 @@ public sealed partial class GuildLeagueService
     /// </summary>
     private async Task CloseRoundsAsync(long now)
     {
-        while (state.Cup is { Settled: false } cup && cup.SettledRound < 3 && now >= cup.Round(cup.SettledRound + 1).End)
+        while (_state.Cup is { Settled: false } cup && cup.SettledRound < 3 && now >= cup.Round(cup.SettledRound + 1).End)
         {
             int round = cup.SettledRound + 1;
-            foreach (var m in matches.Values.Where(m => m.Index == cup.Index && m.Round == round && !m.Ended).ToArray()) End(m, now);
-            foreach (var m in matches.Values.Where(m => m.Index == cup.Index && m.Round == round && !m.Committed).ToArray())
+            foreach (var m in _matches.Values.Where(m => m.Index == cup.Index && m.Round == round && !m.Ended).ToArray()) End(m, now);
+            foreach (var m in _matches.Values.Where(m => m.Index == cup.Index && m.Round == round && !m.Committed).ToArray())
                 await CommitMatchAsync(m);
-            var next = Copy(state);
+            var next = Copy(_state);
             var nextCup = next.Cup!;
             foreach (var group in nextCup.Groups)
             {
@@ -117,7 +117,7 @@ public sealed partial class GuildLeagueService
     /// </summary>
     private async Task RewardPendingAsync()
     {
-        if (state.Cup is not { } cup) return;
+        if (_state.Cup is not { } cup) return;
         foreach (var group in cup.Groups)
             foreach (var outcome in group.Outcomes.ToArray())
             {
@@ -139,24 +139,24 @@ public sealed partial class GuildLeagueService
         if (Rank(group.Tier) is { } rank)
             foreach (var (role, row) in outcome.Players)
             {
-                if (row[1] < need || roles.Get(role) == null) continue;
+                if (row[1] < need || _roles.Get(role) == null) continue;
                 long award = GameData.Int(rank, row[0] == outcome.Winner ? "_iPersonAwardID" : "_iPersonLoseAwardID");
                 var goods = Award(award);
                 if (goods.Count > 0) awards[role] = goods;
             }
-        var next = Copy(state);
+        var next = Copy(_state);
         Find(next, group, outcome).Rewarded = true;
         int template = (int)Setting("GuildLeagueJoinAwardMailID", 1038);
-        using (await mail.LockRecipientsAsync(awards.Keys))
+        using (await _mail.LockRecipientsAsync(awards.Keys))
             await CommitAsync(next, "rewards", tx =>
             {
                 foreach (var (role, goods) in awards)
-                    mail.QueueTemplateLocked(role, $"guild-league:{key}:{role}", template, goods, tx);
+                    _mail.QueueTemplateLocked(role, $"guild-league:{key}:{role}", template, goods, tx);
                 if (AwardSource(awards, "guild-league-award:" + key) is { } economy) tx.WithEventEconomy(economy);
             });
         foreach (long role in awards.Keys)
-            try { await mail.NotifyRecipientAsync(role); }
-            catch (Exception e) { log.LogWarning(e, "Guild League reward mail notice deferred for {Role}", role); }
+            try { await _mail.NotifyRecipientAsync(role); }
+            catch (Exception e) { _log.LogWarning(e, "Guild League reward mail notice deferred for {Role}", role); }
     }
 
     private async Task AuctionAsync(int index, Group group, Outcome outcome)
@@ -171,43 +171,43 @@ public sealed partial class GuildLeagueService
             var players = outcome.Players.Where(p => p.Value[0] == guild && p.Value[1] >= personalNeed).Select(p => p.Key).ToArray();
             if (points >= guildNeed && players.Length >= countNeed)
             {
-                int result = await auctions.PublishGuildLeagueAsync(key, guild, group.Tier, guild == outcome.Winner, players);
-                if (result != 0) log.LogWarning("Guild League auction {Key} for guild {Guild} refused: {Result}", key, guild, result);
+                int result = await _auctions.PublishGuildLeagueAsync(key, guild, group.Tier, guild == outcome.Winner, players);
+                if (result != 0) _log.LogWarning("Guild League auction {Key} for guild {Guild} refused: {Result}", key, guild, result);
             }
-            else refused.AddRange(outcome.Players.Where(p => p.Value[0] == guild).Select(p => p.Key).Where(r => roles.Get(r) != null));
+            else refused.AddRange(outcome.Players.Where(p => p.Value[0] == guild).Select(p => p.Key).Where(r => _roles.Get(r) != null));
         }
-        var next = Copy(state);
+        var next = Copy(_state);
         Find(next, group, outcome).AuctionDone = true;
         int template = (int)Setting("GuildLeagueJoinAwardFailedMailID", 1124);
-        using (await mail.LockRecipientsAsync(refused))
+        using (await _mail.LockRecipientsAsync(refused))
             await CommitAsync(next, "auctions", tx =>
             {
                 foreach (long role in refused)
-                    mail.QueueTemplateLocked(role, $"guild-league:{key}:no-auction:{role}", template, [], tx, guildNeed, countNeed);
+                    _mail.QueueTemplateLocked(role, $"guild-league:{key}:no-auction:{role}", template, [], tx, guildNeed, countNeed);
             });
         foreach (long role in refused)
-            try { await mail.NotifyRecipientAsync(role); }
-            catch (Exception e) { log.LogWarning(e, "Guild League auction mail notice deferred for {Role}", role); }
+            try { await _mail.NotifyRecipientAsync(role); }
+            catch (Exception e) { _log.LogWarning(e, "Guild League auction mail notice deferred for {Role}", role); }
     }
 
     /// <summary>A MultiverseGroupConfig reward group's fixed AwardConfig items, as the Siege settlement reads them.</summary>
     private List<MailService.Attachment> Award(long groupId)
     {
-        if (data.Row("MultiverseGroupConfig", groupId) is not { } group || GameData.Int(group, "_itype") != 0) return [];
-        long id = GameData.Int(group, $"_iValue_{seasons.PlayBook}");
+        if (_data.Row("MultiverseGroupConfig", groupId) is not { } group || GameData.Int(group, "_itype") != 0) return [];
+        long id = GameData.Int(group, $"_iValue_{_seasons.PlayBook}");
         if (id == 0) id = GameData.Int(group, "_iValue_default");
-        if (data.Row("AwardConfig", id) is not { } raw) return [];
+        if (_data.Row("AwardConfig", id) is not { } raw) return [];
         var row = raw.ValueKind == JsonValueKind.Array ? raw[0] : raw;
         if (!row.TryGetProperty("_kAward", out var items) || items.ValueKind != JsonValueKind.Array) return [];
         return items.EnumerateArray().Where(a => a.ValueKind == JsonValueKind.Array && a.GetArrayLength() >= 2)
             .Select(a => new MailService.Attachment((int)(GameData.Number(a[0]) ?? 0), (int)(GameData.Number(a[1]) ?? 0),
                 a.GetArrayLength() > 2 ? (int)(GameData.Number(a[2]) ?? 0) : 0))
-            .Where(a => a.Count > 0 && data.Row("ItemConfig", a.Entry) != null).ToList();
+            .Where(a => a.Count > 0 && _data.Row("ItemConfig", a.Entry) != null).ToList();
     }
 
     private EventEconomyMutation? AwardSource(IReadOnlyDictionary<long, List<MailService.Attachment>> awards, string sourceKey)
     {
-        var catalog = EventEconomy.Catalog(data);
+        var catalog = EventEconomy.Catalog(_data);
         var grants = awards.SelectMany(pair => pair.Value.Where(g => g.Count > 0)
             .Select(grant => (Role: pair.Key, Grant: grant,
                 Asset: catalog.TryAsset(grant.Entry, out var asset) ? asset
@@ -235,7 +235,7 @@ public sealed partial class GuildLeagueService
     /// </summary>
     private async Task SettleCupAsync()
     {
-        var next = Copy(state);
+        var next = Copy(_state);
         var cup = next.Cup!;
         var tiers = Tiers;
         var letters = new List<(long Leader, string Tier, int Place)>();
@@ -259,20 +259,20 @@ public sealed partial class GuildLeagueService
             }
             if (real.Count > 0 && rank is { } row && row.TryGetProperty("_iGuildIconID", out var icons)
                 && icons.ValueKind == JsonValueKind.Array && icons.GetArrayLength() > 0
-                && guilds.Get(real[0]) is { } winner && winner.Members.Values.FirstOrDefault(m => m.Official == 1) is { } leader)
-                letters.Add((leader.RoleId, data.TextOf(row, "_iName"), 1));
+                && _guilds.Get(real[0]) is { } winner && winner.Members.Values.FirstOrDefault(m => m.Official == 1) is { } leader)
+                letters.Add((leader.RoleId, _data.TextOf(row, "_iName"), 1));
         }
         cup.Settled = true;
         int template = (int)Setting("GuildLeagueGuildIconNoticeMailID", 1039);
-        using (await mail.LockRecipientsAsync(letters.Select(l => l.Leader)))
+        using (await _mail.LockRecipientsAsync(letters.Select(l => l.Leader)))
             await CommitAsync(next, "settle", tx =>
             {
                 foreach (var (leader, tier, place) in letters)
-                    mail.QueueTemplateLocked(leader, $"guild-league:{cup.Index}:honor:{leader}", template, [], tx, tier, place);
+                    _mail.QueueTemplateLocked(leader, $"guild-league:{cup.Index}:honor:{leader}", template, [], tx, tier, place);
             });
         foreach (var (leader, _, _) in letters)
-            try { await mail.NotifyRecipientAsync(leader); }
-            catch (Exception e) { log.LogWarning(e, "Guild League honor mail notice deferred for {Role}", leader); }
-        log.LogInformation("Guild League tournament {Index} settled", cup.Index);
+            try { await _mail.NotifyRecipientAsync(leader); }
+            catch (Exception e) { _log.LogWarning(e, "Guild League honor mail notice deferred for {Role}", leader); }
+        _log.LogInformation("Guild League tournament {Index} settled", cup.Index);
     }
 }

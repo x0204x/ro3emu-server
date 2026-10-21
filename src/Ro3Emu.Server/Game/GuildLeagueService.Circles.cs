@@ -19,13 +19,13 @@ public sealed partial class GuildLeagueService
     /// <summary>LC_DunGeon_VarDefine 10103 PGuildLeagueOccupyNpcId: the circle the player stands in (the BattleVS bar).</summary>
     private const int OccupyNpcVar = 10103;
     private const long CircleUidBase = 1L << 54;
-    private static long circleSerial;
+    private long _circleSerial;
 
     /// <summary>GuildSettingConfig GuildLeagueOccupyNoticeType [[42,1],[43,2],[44,0]]: region -> circle 0-2, the a/b/c of
     /// Lua_ImageDefine.GuildLeagueOccupationCircleMap[state * 3 + id].</summary>
     private int CircleId(int region)
     {
-        if (data.Table("GuildSettingConfig").TryGetValue("GuildLeagueOccupyNoticeType", out var row)
+        if (_data.Table("GuildSettingConfig").TryGetValue("GuildLeagueOccupyNoticeType", out var row)
             && row.TryGetProperty("_kValue", out var pairs) && pairs.ValueKind == System.Text.Json.JsonValueKind.Array)
             foreach (var pair in pairs.EnumerateArray())
                 if (pair.ValueKind == System.Text.Json.JsonValueKind.Array && pair.GetArrayLength() > 1
@@ -114,7 +114,7 @@ public sealed partial class GuildLeagueService
     }
 
     /// <summary>FlagState follows Carriers in the carrier's own scope: 1 while carrying, 0 after (Lua IsHaveFlag is "&gt; 0").</summary>
-    private void PostFlag(GameSession s) => loop.PostOwned(s, () => SyncFlagAsync(s), "guild league flag");
+    private void PostFlag(GameSession s) => _loop.PostOwned(s, () => SyncFlagAsync(s), "guild league flag");
 
     private async Task SyncFlagAsync(GameSession s)
     {
@@ -126,6 +126,6 @@ public sealed partial class GuildLeagueService
         var value = LongData(FlagStateKey, wanted);
         s.WorldState.CustomData[FlagStateKey] = value.Clone();
         var change = new CustomDataChange { EntityId = s.Role.Id, CustomDatas = { value } };
-        await SendAllAsync(world.Viewers(s).Prepend(s).ToArray(), WorldCoreService.CustomChange, change);
+        await SendAllAsync(_world.Viewers(s).Prepend(s).ToArray(), WorldCoreService.CustomChange, change);
     }
 }

@@ -16,42 +16,42 @@ namespace Ro3Emu.Tests;
 
 public sealed partial class GuildTests : IAsyncLifetime
 {
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-guild-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-guild-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);
-    private WebApplication app = null!;
-    private string http = "";
+    private WebApplication _app = null!;
+    private string _http = "";
 
     public async Task InitializeAsync()
     {
         var (web, micro, gate) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir;
+            o.DataDir = _dataDir;
             o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = web;
             o.MicroGatePort = micro;
             o.GameGatePort = gate;
             o.GuildBlockedWords = ["ban"];
-        }, clock);
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{web}";
+        }, _clock);
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{web}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw");
         await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
-        await bot.EnterWorldAsync(id); await WorldSettle.StallsAsync(app.Services);
+        await bot.EnterWorldAsync(id); await WorldSettle.StallsAsync(_app.Services);
         return bot;
     }
 
@@ -65,7 +65,7 @@ public sealed partial class GuildTests : IAsyncLifetime
     private async Task Level(string name)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={name.ToLowerInvariant()}", new StringContent("!lvl 21"))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={name.ToLowerInvariant()}", new StringContent("!lvl 21"))).EnsureSuccessStatusCode();
     }
 
     private static GuildCreateReq Create(string name, string notice = "") => new()
@@ -113,9 +113,9 @@ public sealed partial class GuildTests : IAsyncLifetime
         Assert.Equal(ErrorCodes.GuildNameTaken, (await Next(carol, GuildService.Create, GuildCreateResp.Parser)).Result);
 
         long bobId;
-        var sessions = app.Services.GetRequiredService<SessionRegistry>();
-        var handover = app.Services.GetRequiredService<RoleHandover>();
-        var owners = app.Services.GetRequiredService<OwnerRegistry>();
+        var sessions = _app.Services.GetRequiredService<SessionRegistry>();
+        var handover = _app.Services.GetRequiredService<RoleHandover>();
+        var owners = _app.Services.GetRequiredService<OwnerRegistry>();
         var detached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var unregistered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         GameSession? bobSession = null;
@@ -144,7 +144,7 @@ public sealed partial class GuildTests : IAsyncLifetime
             await unregistered.Task.WaitAsync(Wait);
         }
         finally { handover.PhaseForTest = null; sessions.UnregisteredForTest = null; }
-        await app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
         {
             Assert.Equal(RoleOwnerState.Detached, owners.Get(bobId).State);
             Assert.DoesNotContain(sessions.All(), s => s.Role?.Id == bobId);
@@ -182,7 +182,7 @@ public sealed partial class GuildTests : IAsyncLifetime
         Assert.Equal(0, (await Next(alice, GuildService.Leave, GuildMemberLeaveResp.Parser)).Result);
         await carol.SendGameAsync(GuildService.Leave, new GuildMemberLeaveReq());
         Assert.Equal(0, (await Next(carol, GuildService.Leave, GuildMemberLeaveResp.Parser)).Result);
-        Assert.Null(app.Services.GetRequiredService<GuildStore>().Get(guildId));
+        Assert.Null(_app.Services.GetRequiredService<GuildStore>().Get(guildId));
     }
 
     [ClientDataFact]
@@ -218,12 +218,12 @@ public sealed partial class GuildTests : IAsyncLifetime
             Announce = "Publish me", JoinLevelLimit = 0, AutoAcceptApply = false, IsOpeRecruit = true
         });
         Assert.Equal(0, (await Next(alice, GuildService.Edit, GuildEditResp.Parser, x => x.IsOpeRecruit)).Result);
-        Assert.Equal("Publish me", app.Services.GetRequiredService<GuildStore>().Get(id)!.Announce);
-        Assert.True(app.Services.GetRequiredService<GuildStore>().Get(id)!.LastRecruitMs > 0);
+        Assert.Equal("Publish me", _app.Services.GetRequiredService<GuildStore>().Get(id)!.Announce);
+        Assert.True(_app.Services.GetRequiredService<GuildStore>().Get(id)!.LastRecruitMs > 0);
         await alice.SendGameAsync(GuildService.BuildUpgrade, new GuildBuildLevelUpReq { BuildingID = 1 });
         Assert.Equal(ErrorCodes.GuildContributeShort, (await Next(alice, GuildService.BuildUpgrade, GuildBuildLevelUpResp.Parser)).Result);
 
-        var store = app.Services.GetRequiredService<GuildStore>();
+        var store = _app.Services.GetRequiredService<GuildStore>();
         var guild = store.Get(id)!;
         guild.Contribute = 8_000_000; // fixture balance; no unverified earning endpoint
         Assert.True(store.Save(guild));
@@ -237,7 +237,7 @@ public sealed partial class GuildTests : IAsyncLifetime
         guild = store.Get(id)!;
         guild.BuildingEndTimes[1] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - 1;
         Assert.True(store.Save(guild));
-        await app.Services.GetRequiredService<GameLoop>().InvokeAsync(() => app.Services.GetRequiredService<GuildService>().ReconcileAsync());
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() => _app.Services.GetRequiredService<GuildService>().ReconcileAsync());
         guild = store.Get(id)!;
         Assert.Equal(2, guild.Buildings[1]);
         Assert.Equal(2, guild.Level);
@@ -284,7 +284,7 @@ public sealed partial class GuildTests : IAsyncLifetime
         await alice.SendGameAsync(GuildService.Kick, new GuildMemberKickReq { TarPlayerIDs = { bobId }, IfSingleKick = true });
         Assert.Equal(0, (await Next(alice, GuildService.Kick, GuildMemberKickResp.Parser, x => x.Result == 0)).Result);
         // The success response is the persistence boundary; no delay or retry may conceal a stale guild view.
-        var personal = DBRoleGuildInfo.Parser.ParseFrom(app.Services.GetRequiredService<RoleStore>().LoadGuildInfo(bobId));
+        var personal = DBRoleGuildInfo.Parser.ParseFrom(_app.Services.GetRequiredService<RoleStore>().LoadGuildInfo(bobId));
         Assert.Equal(0, personal.GuildId);
         Assert.Equal(id, personal.LastGuildId);
         await using var rejoinedBob = await InWorld("Bob", create: false);
@@ -316,7 +316,7 @@ public sealed partial class GuildTests : IAsyncLifetime
         var pre = await Next(founder, GuildService.Full, GuildFullInfoNtf.Parser, x => x.Guid > 0);
         Assert.Equal(GuildStatus.PreCreate, pre.Status);
         using (var client = new HttpClient())
-            (await client.PostAsync($"{http}/ro3emu/gm?account=founder", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
+            (await client.PostAsync($"{_http}/ro3emu/gm?account=founder", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
         await founder.SendGameAsync(GuildService.MarketList, new ListOnBlackMarketReq { UnitPrice = 500, Count = 10 });
         Assert.Equal(ErrorCodes.FeatureUnavailable,
             (await Next(founder, GuildService.MarketList, ListOnBlackMarketRsp.Parser)).Result);
@@ -328,7 +328,7 @@ public sealed partial class GuildTests : IAsyncLifetime
         Assert.Equal(0, (await Next(founder, GuildService.Edit, GuildEditResp.Parser, x => x.Tp == 10)).Result);
         Assert.Equal(GuildStatus.PreCreate, (await Next(founder, GuildService.BaseChange,
             GuildBaseInfoChangeNtf.Parser, x => x.Base?.Announce == "Help build")).Base.Status);
-        Assert.Equal((int)GuildStatus.PreCreate, app.Services.GetRequiredService<GuildStore>().Get(pre.Guid)!.Status);
+        Assert.Equal((int)GuildStatus.PreCreate, _app.Services.GetRequiredService<GuildStore>().Get(pre.Guid)!.Status);
         await helper1.SendGameAsync(GuildService.HelperList, new GuildCreateHelperListReq());
         var list = await Next(helper1, GuildService.HelperList, GuildCreateHelperListResp.Parser);
         Assert.Equal(0, list.Result);
@@ -372,7 +372,7 @@ public sealed partial class GuildTests : IAsyncLifetime
         await Level("buyer");
         long sellerId = await CreateGuild(seller, "Sell");
         long buyerId = await CreateGuild(buyer, "Buy");
-        var store = app.Services.GetRequiredService<GuildStore>();
+        var store = _app.Services.GetRequiredService<GuildStore>();
         var sellGuild = store.Get(sellerId)!;
         sellGuild.Materials = 100;
         Assert.True(store.Save(sellGuild));
@@ -383,8 +383,8 @@ public sealed partial class GuildTests : IAsyncLifetime
         Assert.Equal(ErrorCodes.FeatureUnavailable, (await Next(seller, GuildService.MarketList, ListOnBlackMarketRsp.Parser)).Result);
         using (var client = new HttpClient())
         {
-            (await client.PostAsync($"{http}/ro3emu/gm?account=seller", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
-            (await client.PostAsync($"{http}/ro3emu/gm?account=buyer", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
+            (await client.PostAsync($"{_http}/ro3emu/gm?account=seller", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
+            (await client.PostAsync($"{_http}/ro3emu/gm?account=buyer", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
         }
         await seller.SendGameAsync(GuildService.MarketList, new ListOnBlackMarketReq { UnitPrice = 500, Count = 20 });
         Assert.Equal(0, (await Next(seller, GuildService.MarketList, ListOnBlackMarketRsp.Parser, x => x.Result == 0)).Result);
@@ -427,12 +427,12 @@ public sealed partial class GuildTests : IAsyncLifetime
         {
             await Level(name);
             using var client = new HttpClient();
-            (await client.PostAsync($"{http}/ro3emu/gm?account={name}", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
+            (await client.PostAsync($"{_http}/ro3emu/gm?account={name}", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
         }
         long orphanId = await CreateGuild(orphan, "Gone");
         long sellerId = await CreateGuild(seller, "Remain");
         long buyerId = await CreateGuild(buyer, "Buyers");
-        var store = app.Services.GetRequiredService<GuildStore>();
+        var store = _app.Services.GetRequiredService<GuildStore>();
         foreach (long id in new[] { orphanId, sellerId })
         {
             var guild = store.Get(id)!;
@@ -452,7 +452,7 @@ public sealed partial class GuildTests : IAsyncLifetime
         foreach (var stall in market.Stalls) stall.AvailableMs = 0;
         Assert.True(store.SaveMarket(market, []));
         store.Delete(orphanId); // guild dissolution can delete the seller while its market escrow remains
-        var openingEconomy = MarketEconomyEvidence.Cut(dataDir, RepoRoot());
+        var openingEconomy = MarketEconomyEvidence.Cut(_dataDir, RepoRoot());
         await buyer.SendGameAsync(GuildService.MarketItems, new GetBlackMarketItemsReq());
         var visible = await Next(buyer, GuildService.MarketItems, GetBlackMarketItemsRsp.Parser);
         Assert.Equal(10, Assert.Single(visible.Items).TotalRemainCount);
@@ -460,8 +460,8 @@ public sealed partial class GuildTests : IAsyncLifetime
         var recovered = Assert.Single(store.LoadMarket().RecoveryStalls);
         Assert.Equal(orphanId, recovered.GuildId);
         Assert.Equal(10, recovered.RemainCount);
-        var recoveryLedger = MarketEconomyEvidence.Exact(dataDir, RepoRoot(), openingEconomy,
-            MarketEconomyEvidence.Cut(dataDir, RepoRoot()), recovery: true);
+        var recoveryLedger = MarketEconomyEvidence.Exact(_dataDir, RepoRoot(), openingEconomy,
+            MarketEconomyEvidence.Cut(_dataDir, RepoRoot()), recovery: true);
         Assert.DoesNotContain(recoveryLedger.Legs, x => x.Kind is Ro3Emu.Server.Economy.EconomyLegKind.Source
             or Ro3Emu.Server.Economy.EconomyLegKind.Sink);
         Assert.Contains(recoveryLedger.Legs, x => x.Location.Compartment == Ro3Emu.Server.Economy.EconomyCompartment.Recovery && x.Delta == 10);
@@ -492,24 +492,24 @@ public sealed partial class GuildTests : IAsyncLifetime
             Assert.Equal(0, (await Next(member, ChatService.JoinChannel, JoinChatChannelRsp.Parser)).Result);
         }
 
-        var sessions = app.Services.GetRequiredService<SessionRegistry>();
+        var sessions = _app.Services.GetRequiredService<SessionRegistry>();
         var bobSession = sessions.All().Single(x => x.Role?.Id == (long)bob.Self!.Uuid);
         var carolSession = sessions.All().Single(x => x.Role?.Id == (long)carol.Self!.Uuid);
         var aliceSession = sessions.All().Single(x => x.Role?.Id == (long)alice.Self!.Uuid);
-        var roles = app.Services.GetRequiredService<RoleStore>();
-        var guilds = app.Services.GetRequiredService<GuildStore>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
+        var guilds = _app.Services.GetRequiredService<GuildStore>();
         long bobId = bobSession.Role!.Id, carolId = carolSession.Role!.Id;
         byte[] bobBefore = roles.LoadGuildInfo(bobId)!, carolBefore = roles.LoadGuildInfo(carolId)!;
         var request = new GuildMemberKickReq { TarPlayerIDs = { bobId, carolId }, IfSingleKick = false };
 
-        FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(),
+        FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(),
             $"CREATE TRIGGER fail_second_kick BEFORE UPDATE OF guild_info ON role WHEN NEW.id = {carolId} "
             + "BEGIN SELECT RAISE(ABORT, 'second personal view failure'); END");
         try
         {
             await Assert.ThrowsAsync<Microsoft.Data.Sqlite.SqliteException>(() =>
-                app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
-                    app.Services.GetRequiredService<GuildService>().KickAsync(aliceSession, request)));
+                _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+                    _app.Services.GetRequiredService<GuildService>().KickAsync(aliceSession, request)));
             Assert.Equal(guildId, guilds.ForRole(bobId)!.Id);
             Assert.Equal(guildId, guilds.ForRole(carolId)!.Id);
             Assert.Equal(bobBefore, roles.LoadGuildInfo(bobId));
@@ -521,7 +521,7 @@ public sealed partial class GuildTests : IAsyncLifetime
         }
         finally
         {
-            FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(), "DROP TRIGGER fail_second_kick");
+            FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(), "DROP TRIGGER fail_second_kick");
         }
 
         await alice.SendGameAsync(GuildService.Kick, request);
@@ -545,26 +545,26 @@ public sealed partial class GuildTests : IAsyncLifetime
         long id = await CreateGuild(alice, "First");
         await alice.SendGameAsync(GuildService.Edit, new GuildEditReq { Tp = (GuildEditReq.Types.EditType)2, Name = "Second" });
         Assert.Equal(ErrorCodes.ItemsShort, (await Next(alice, GuildService.Edit, GuildEditResp.Parser)).Result);
-        Assert.Equal("First", app.Services.GetRequiredService<GuildStore>().Get(id)!.Name);
+        Assert.Equal("First", _app.Services.GetRequiredService<GuildStore>().Get(id)!.Name);
         using (var client = new HttpClient())
-            (await client.PostAsync($"{http}/ro3emu/gm?account=alice", new StringContent("!item 3 20"))).EnsureSuccessStatusCode();
-        var session = app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role?.Id == (long)alice.Self!.Uuid);
+            (await client.PostAsync($"{_http}/ro3emu/gm?account=alice", new StringContent("!item 3 20"))).EnsureSuccessStatusCode();
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role?.Id == (long)alice.Self!.Uuid);
         long funded = session.Progress!.Currency.GetValueOrDefault(3);
         Assert.Equal(20, funded);
         await alice.SendGameAsync(GuildService.Edit, new GuildEditReq { Tp = (GuildEditReq.Types.EditType)2, Name = "Second" });
         Assert.Equal(0, (await Next(alice, GuildService.Edit, GuildEditResp.Parser, x => x.Name == "Second")).Result);
-        Assert.Equal("Second", app.Services.GetRequiredService<GuildStore>().Get(id)!.Name);
+        Assert.Equal("Second", _app.Services.GetRequiredService<GuildStore>().Get(id)!.Name);
         Assert.Equal(10, session.Progress.Currency.GetValueOrDefault(3));
 
-        var guild = app.Services.GetRequiredService<GuildStore>().Get(id)!;
+        var guild = _app.Services.GetRequiredService<GuildStore>().Get(id)!;
         guild.LastChangeNameTime = 0; // permit the queued second rename in this race fixture
-        Assert.True(app.Services.GetRequiredService<GuildStore>().Save(guild));
+        Assert.True(_app.Services.GetRequiredService<GuildStore>().Save(guild));
         await session.StateLock.WaitAsync();
         Task? pendingRename = null;
         try
         {
-            var loop = app.Services.GetRequiredService<GameLoop>();
-            var service = app.Services.GetRequiredService<GuildService>();
+            var loop = _app.Services.GetRequiredService<GameLoop>();
+            var service = _app.Services.GetRequiredService<GuildService>();
             // Start on the game loop and return only after EditAsync reaches the held StateLock.
             await loop.InvokeAsync(() =>
             {
@@ -578,7 +578,7 @@ public sealed partial class GuildTests : IAsyncLifetime
         finally { session.StateLock.Release(); }
         await pendingRename!;
         Assert.NotEqual(0, (await Next(alice, GuildService.Edit, GuildEditResp.Parser, x => x.Name == "Third" || x.Result != 0)).Result);
-        Assert.Null(app.Services.GetRequiredService<GuildStore>().Get(id));
+        Assert.Null(_app.Services.GetRequiredService<GuildStore>().Get(id));
         Assert.Equal(10, session.Progress.Currency.GetValueOrDefault(3));
     }
 
@@ -596,16 +596,16 @@ public sealed partial class GuildTests : IAsyncLifetime
     {
         var alice = await InWorld("Alice");
         await Level("alice");
-        await QuestProbe.AcceptAsync(app, http, "alice", 100026); // [104007,1], claimed in the panel
-        await QuestProbe.AtAsync(app, "alice", 100026, 0);
-        await QuestProbe.AcceptAsync(app, http, "alice", 10200080); // [104007,1], delivered automatically
+        await QuestProbe.AcceptAsync(_app, _http, "alice", 100026); // [104007,1], claimed in the panel
+        await QuestProbe.AtAsync(_app, "alice", 100026, 0);
+        await QuestProbe.AcceptAsync(_app, _http, "alice", 10200080); // [104007,1], delivered automatically
         await CreateGuild(alice, "Joiners");
-        await QuestProbe.DoneAsync(app, "alice", 100026);
-        await QuestProbe.WaitAsync(app, "alice", 10200080, i => i.Status == TaskState.Delivery, "delivered");
+        await QuestProbe.DoneAsync(_app, "alice", 100026);
+        await QuestProbe.WaitAsync(_app, "alice", 10200080, i => i.Status == TaskState.Delivery, "delivered");
 
         await alice.DisposeAsync();
-        await QuestProbe.OfflineAsync(app, "alice");
+        await QuestProbe.OfflineAsync(_app, "alice");
         await using var again = await InWorld("Alice", create: false);
-        Assert.Equal(1, (await QuestProbe.DoneAsync(app, "alice", 100026)).CompleteNum[0]);
+        Assert.Equal(1, (await QuestProbe.DoneAsync(_app, "alice", 100026)).CompleteNum[0]);
     }
 }

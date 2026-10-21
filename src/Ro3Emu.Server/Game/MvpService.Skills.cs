@@ -70,7 +70,7 @@ public sealed partial class MvpService
 
     internal IReadOnlyList<BossSkillPlan> Plans(int bossNpc)
     {
-        if (!_plans.TryGetValue(bossNpc, out var plans)) _plans[bossNpc] = plans = ResolveBossSkills(data, bossNpc);
+        if (!_plans.TryGetValue(bossNpc, out var plans)) _plans[bossNpc] = plans = ResolveBossSkills(_data, bossNpc);
         return plans;
     }
 
@@ -139,7 +139,7 @@ public sealed partial class MvpService
             if (st.LastFightMs == 0 && st.UnFightApplied)
             {
                 st.UnFightApplied = false;
-                loop.TrackRuntimeDetached("MVP back in combat", () => EnterCombatAsync(boss));
+                _loop.TrackRuntimeDetached("MVP back in combat", () => EnterCombatAsync(boss));
             }
             st.LastFightMs = now;
             if (st.SkillsStopped || now < st.NextCastMs || boss.BusyUntilMs > now) return;
@@ -147,13 +147,13 @@ public sealed partial class MvpService
             if (plan == null)
             {
                 // Its own plans first, then the generic specials of its family (BossSkillSets), on the same gap.
-                monsters.TryBossSkill(boss, now);
+                _monsters.TryBossSkill(boss, now);
                 return;
             }
             st.SkillReadyMs[plan.Skill] = now + Math.Max(1000, plan.CdMs);
             st.NextCastMs = now + Math.Max(plan.ActionMs, plan.PublicCdMs);
             boss.NextSpecialMs = Math.Max(boss.NextSpecialMs, st.NextCastMs);
-            loop.TrackRuntimeDetached("MVP skill", () => CastAsync(st, boss, plan));
+            _loop.TrackRuntimeDetached("MVP skill", () => CastAsync(st, boss, plan));
         }
         else if (st.LastFightMs > 0 && now - st.LastFightMs >= UnFight(boss.Template.NpcId).Ms)
         {
@@ -161,7 +161,7 @@ public sealed partial class MvpService
             st.SkillReadyMs.Clear();
             st.NextCastMs = 0;
             st.UnFightApplied = true;
-            loop.TrackRuntimeDetached("MVP left combat", () => LeaveCombatAsync(st, boss));
+            _loop.TrackRuntimeDetached("MVP left combat", () => LeaveCombatAsync(st, boss));
         }
     }
 
@@ -172,7 +172,7 @@ public sealed partial class MvpService
         try
         {
             var target = boss.Target;
-            await world.ToUnitViewersAsync(boss, CombatService.UseInSkill, new UseInSkillInfo
+            await _world.ToUnitViewersAsync(boss, CombatService.UseInSkill, new UseInSkillInfo
             {
                 SrcID = boss.Uid, SkillID = plan.Skill, TargetId = target?.Role?.Id ?? 0,
                 TargetPos = plan.Kind == BossSkillKind.Field && target != null ? target.Position.Clone() : boss.Pos,
@@ -198,49 +198,49 @@ public sealed partial class MvpService
     /// (the blast has _bMovement 0 and outlasts its life, inferred), others fight the boss's target.</summary>
     private async Task SummonAsync(State st, MonsterUnit boss, MinionPlan plan)
     {
-        if (st.Retired || boss.Dead || st.Unit != boss || monsters.Template(plan.Npc) is not { } template) return;
-        var blastRow = plan.BlastSkill > 0 ? data.Row("SkillConfig", plan.BlastSkill) : null;
+        if (st.Retired || boss.Dead || st.Unit != boss || _monsters.Template(plan.Npc) is not { } template) return;
+        var blastRow = plan.BlastSkill > 0 ? _data.Row("SkillConfig", plan.BlastSkill) : null;
         if (blastRow != null) template = template with { SpeedCm = 0, AttackRange = 0, RoamDistance = 0 };
         for (int i = 0; i < plan.Count; i++)
         {
             if (st.Retired) break;
             double a = _random.NextDouble() * Math.PI * 2;
             var at = new MapPoint(boss.X + (float)Math.Cos(a) * 3, boss.Y, boss.Z + (float)Math.Sin(a) * 3, boss.Face);
-            if (await monsters.SpawnSingleAsync(st.Runtime, plan.Npc, at, customTemplate: template) is not { } m) continue;
+            if (await _monsters.SpawnSingleAsync(st.Runtime, plan.Npc, at, customTemplate: template) is not { } m) continue;
             if (st.Retired) break;
             st.Minions.Add(m);
             await ApplyBornBuffsAsync(m);
             if (blastRow is { } blast)
             {
-                await world.ToUnitViewersAsync(m, CombatService.UseInSkill, new UseInSkillInfo
+                await _world.ToUnitViewersAsync(m, CombatService.UseInSkill, new UseInSkillInfo
                 {
                     SrcID = m.Uid, SkillID = plan.BlastSkill, TargetPos = m.Pos, Face = m.Face,
                     SkillMs = (int)GameData.Int(blast, "_iActionTime"), StartTime = MonsterService.NowMs,
                 });
             }
-            else if (boss.Target is { } target) monsters.Engage(m, target);
+            else if (boss.Target is { } target) _monsters.Engage(m, target);
             Schedule(st, TimeSpan.FromMilliseconds(plan.LifeMs), () => MinionLifeEndsAsync(st, m, plan), m);
         }
-        log.LogInformation("MVP {Cfg} summons {Count} x {Minion}", st.Def.CfgId, plan.Count, plan.Npc);
+        _log.LogInformation("MVP {Cfg} summons {Count} x {Minion}", st.Def.CfgId, plan.Count, plan.Npc);
     }
 
     /// <summary>Self-destruct at the end of life: a blast minion first hits the players in its blast range.</summary>
     private async Task MinionLifeEndsAsync(State st, MonsterUnit m, MinionPlan plan)
     {
-        if (!st.Retired && !m.Dead && m.Hp > 0 && plan.BlastSkill > 0 && data.Row("SkillConfig", plan.BlastSkill) is { } row)
+        if (!st.Retired && !m.Dead && m.Hp > 0 && plan.BlastSkill > 0 && _data.Row("SkillConfig", plan.BlastSkill) is { } row)
         {
-            var targets = world.PlayersIn(m.WorldScene)
+            var targets = _world.PlayersIn(m.WorldScene)
                 .Where(p => p.Role != null && !p.Dead && MonsterService.Distance(m, p) <= plan.BlastRadius + 0.5f)
                 .OrderBy(p => MonsterService.Distance(m, p)).Take(plan.BlastTargets).ToArray();
-            int hit = await combat.MonsterSkillHitAsync(m, row, targets, m.Uid);
-            log.LogInformation("MVP {Cfg} minion {Npc} explodes on {Hit} player(s)", st.Def.CfgId, m.Template.NpcId, hit);
+            int hit = await _combat.MonsterSkillHitAsync(m, row, targets, m.Uid);
+            _log.LogInformation("MVP {Cfg} minion {Npc} explodes on {Hit} player(s)", st.Def.CfgId, m.Template.NpcId, hit);
         }
         await DespawnMinionAsync(st, m);
     }
 
     private async Task DespawnMinionAsync(State st, MonsterUnit m)
     {
-        if (!st.Retired && !m.Dead) await monsters.KillAsync(m);
+        if (!st.Retired && !m.Dead) await _monsters.KillAsync(m);
         st.Minions.Remove(m);
         st.Deadlines.RemoveAll(d => d.Actor == m);
     }
@@ -250,21 +250,21 @@ public sealed partial class MvpService
     {
         if (st.Retired || boss.Dead || st.Unit != boss) return;
         foreach (var unit in st.Minions.Where(m => !m.Dead).Prepend(boss).ToArray())
-            await buffs.AddSupportAsync(unit, plan.Buff, plan.BuffMs, boss.Uid);
+            await _buffs.AddSupportAsync(unit, plan.Buff, plan.BuffMs, boss.Uid);
     }
 
     private async Task MarkAsync(State st, MonsterUnit boss, BossSkillPlan plan)
     {
         var field = plan.Field!;
-        var marked = world.PlayersIn(boss.WorldScene)
+        var marked = _world.PlayersIn(boss.WorldScene)
             .Where(p => p.Role != null && !p.Dead && !p.SceneLoading && MonsterService.Distance(boss, p) <= field.SelectRadius)
             .OrderBy(p => MonsterService.Distance(boss, p)).Take(field.Targets)
             .Select(p => (Session: p, Role: p.Role!, p.SceneGeneration)).ToArray();
         foreach (var (p, _, _) in marked)
-            if (field.MarkBuff > 0) await buffs.AddAsync(p, field.MarkBuff, field.MarkMs, boss.Uid);
+            if (field.MarkBuff > 0) await _buffs.AddAsync(p, field.MarkBuff, field.MarkMs, boss.Uid);
         Schedule(st, TimeSpan.FromMilliseconds(Math.Max(0, field.MarkMs)), async () =>
         {
-            if (st.Retired || boss.Dead || st.Unit != boss || data.Row("SkillConfig", plan.Skill) is not { } row) return;
+            if (st.Retired || boss.Dead || st.Unit != boss || _data.Row("SkillConfig", plan.Skill) is not { } row) return;
             foreach (var (p, role, generation) in marked)
             {
                 if (!ReferenceEquals(p.Role, role) || p.Dead || p.SceneLoading || p.SceneGeneration != generation
@@ -277,7 +277,7 @@ public sealed partial class MvpService
     private async Task PlaceFieldAsync(State st, MonsterUnit boss, BossSkillPlan plan, JsonElement row, Vec3 at)
     {
         var spec = plan.Field!;
-        if (data.Row("NPCConfig", spec.Npc) is not { } npcRow) return;
+        if (_data.Row("NPCConfig", spec.Npc) is not { } npcRow) return;
         long now = MonsterService.NowMs;
         var field = new MvpFieldUnit
         {
@@ -286,7 +286,7 @@ public sealed partial class MvpService
             X = at.X, Y = at.Y, Z = at.Z, Face = boss.Face,
         };
         st.Fields.Add(field);
-        await world.AddUnitAsync(field);
+        await _world.AddUnitAsync(field);
         if (st.Retired || boss.Dead) { await RemoveFieldAsync(st, field); return; }
         Schedule(st, TimeSpan.FromMilliseconds(spec.TickMs), () => TickFieldAsync(st, boss, field, plan), boss);
     }
@@ -296,14 +296,14 @@ public sealed partial class MvpService
     {
         if (field.Gone) return;
         var spec = plan.Field!;
-        if (st.Retired || boss.Dead || st.Unit != boss || data.Row("SkillConfig", plan.Skill) is not { } row)
+        if (st.Retired || boss.Dead || st.Unit != boss || _data.Row("SkillConfig", plan.Skill) is not { } row)
         {
             await RemoveFieldAsync(st, field);
             return;
         }
-        var targets = world.PlayersIn(field.WorldScene)
+        var targets = _world.PlayersIn(field.WorldScene)
             .Where(p => p.Role != null && !p.Dead && MonsterService.Distance(field, p) <= spec.Radius).ToArray();
-        if (targets.Length > 0) await combat.MonsterSkillHitAsync(boss, row, targets, field.Uid);
+        if (targets.Length > 0) await _combat.MonsterSkillHitAsync(boss, row, targets, field.Uid);
         if (MonsterService.NowMs + spec.TickMs > field.EndMs) await RemoveFieldAsync(st, field);
         else Schedule(st, TimeSpan.FromMilliseconds(spec.TickMs), () => TickFieldAsync(st, boss, field, plan), boss);
     }
@@ -313,7 +313,7 @@ public sealed partial class MvpService
         if (field.Gone) return;
         field.Gone = true;
         st.Fields.Remove(field);
-        await world.RemoveUnitAsync(field);
+        await _world.RemoveUnitAsync(field);
     }
 
     /// <summary>The boss's minions and ground fields end with it (death, reset, retired line).</summary>
@@ -332,7 +332,7 @@ public sealed partial class MvpService
         {
             st.Deadlines.RemoveAll(d => d.Actor == boss);
             await ClearAddsAsync(st);
-            foreach (int buff in UnFight(boss.Template.NpcId).Buffs) await buffs.AddPermanentAsync(boss, buff, boss.Uid);
+            foreach (int buff in UnFight(boss.Template.NpcId).Buffs) await _buffs.AddPermanentAsync(boss, buff, boss.Uid);
         }
         finally { EndPending(st); }
     }
@@ -340,13 +340,13 @@ public sealed partial class MvpService
     private async Task EnterCombatAsync(MonsterUnit boss)
     {
         if (boss.Dead) return;
-        foreach (int buff in UnFight(boss.Template.NpcId).Buffs) await buffs.RemoveUnitConfigAsync(boss, buff);
+        foreach (int buff in UnFight(boss.Template.NpcId).Buffs) await _buffs.RemoveUnitConfigAsync(boss, buff);
     }
 
     /// <summary>AIConfig _iUnFightType 1 = out of combat for _iUnFightParam ms, then _iUnFightBUFF (20200001: 5000 ms, 901401).</summary>
     private (long Ms, int[] Buffs) UnFight(int npc)
     {
-        if (data.Row("NPCConfig", npc) is not { } npcRow || data.Row("AIConfig", GameData.Int(npcRow, "_iAI")) is not { } ai)
+        if (_data.Row("NPCConfig", npc) is not { } npcRow || _data.Row("AIConfig", GameData.Int(npcRow, "_iAI")) is not { } ai)
             return (5000, []);
         var types = Ints(ai, "_iUnFightType");
         var param = Ints(ai, "_iUnFightParam");
@@ -358,13 +358,13 @@ public sealed partial class MvpService
     /// 904101) carry no _kChangeAttri: they are sent so the client has them; their effects are server-only.</summary>
     private async Task ApplyBornBuffsAsync(MonsterUnit unit)
     {
-        unit.EntityExtras = entity => buffs.PopulateEntity(unit, entity);
-        if (data.Row("NPCConfig", unit.Template.NpcId) is not { } npcRow) return;
+        unit.EntityExtras = entity => _buffs.PopulateEntity(unit, entity);
+        if (_data.Row("NPCConfig", unit.Template.NpcId) is not { } npcRow) return;
         foreach (var (buff, ms, chance) in BornBuffs(npcRow))
         {
             if (unit.Dead || _random.Next(10000) >= chance) continue;
-            if (ms < 0) await buffs.AddPermanentAsync(unit, buff, unit.Uid);
-            else await buffs.AddSupportAsync(unit, buff, ms, unit.Uid);
+            if (ms < 0) await _buffs.AddPermanentAsync(unit, buff, unit.Uid);
+            else await _buffs.AddSupportAsync(unit, buff, ms, unit.Uid);
         }
     }
 
@@ -392,7 +392,7 @@ public sealed partial class MvpService
     }
 
     private long Attribute(MonsterUnit m, long id) =>
-        (long)buffs.UnitAttributes(m).Where(a => a.Id == id).Sum(a => a.Value);
+        (long)_buffs.UnitAttributes(m).Where(a => a.Id == id).Sum(a => a.Value);
 
     /// <summary>Outgoing monster damage × (1 + attribute 215). ASPD 114 is not applied: swings are timed by MonsterService.</summary>
     internal long FrenzyDealt(MonsterUnit m, long damage)

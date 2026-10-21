@@ -9,7 +9,7 @@ namespace Ro3Emu.Server.Game;
 
 public sealed partial class StallsService
 {
-    private int PlayerGate(GameSession s) => !functions.IsOpen(s, 3) ? ErrorCodes.FunctionLocked
+    private int PlayerGate(GameSession s) => !_functions.IsOpen(s, 3) ? ErrorCodes.FunctionLocked
         : s.SceneLoading ? ErrorCodes.SwitchingScenes
         : s.Dead || (s.StatusBits & (1L << 15)) != 0 || s.InstanceId != 0 ? ErrorCodes.FeatureUnavailable : 0;
 
@@ -19,15 +19,15 @@ public sealed partial class StallsService
     /// Localization 37824 "${1}'s Stall" (LC_StallHelper.OnGetStallTitle), is accepted at any length.
     /// </summary>
     private int NameError(GameSession s, string title) => string.IsNullOrWhiteSpace(title) || title.Any(char.IsControl)
-        || title.EnumerateRunes().Count() > nameMaxLength && title != DefaultTitle(s) ? ErrorCodes.StallName : 0;
+        || title.EnumerateRunes().Count() > _nameMaxLength && title != DefaultTitle(s) ? ErrorCodes.StallName : 0;
 
-    private string DefaultTitle(GameSession s) => data.ClientText(37824).Replace("${1}", s.Role?.Name ?? "");
+    private string DefaultTitle(GameSession s) => _data.ClientText(37824).Replace("${1}", s.Role?.Name ?? "");
 
     private int MaxGrid(GameSession s)
     {
         int skill = (int)Param("StallsPlaidMerchantSkill", 16005);
         int level = s.Progress!.Skills.GetValueOrDefault(skill);
-        var row = data.Table("SkillConfig").Values.FirstOrDefault(r => GameData.Int(r, "_iSkillID") == skill && GameData.Int(r, "_iLevel") == level);
+        var row = _data.Table("SkillConfig").Values.FirstOrDefault(r => GameData.Int(r, "_iSkillID") == skill && GameData.Int(r, "_iLevel") == level);
         var param = row.ValueKind == System.Text.Json.JsonValueKind.Object ? Field(row, "_kSpSkillParam") : [];
         return (int)Param("StallsDefaultPlaidNum", 10) + (param.Length > 1 ? (int)param[1] : 0);
     }
@@ -43,7 +43,7 @@ public sealed partial class StallsService
         StallRow? row = null;
         try
         {
-            int code = await market.RunAsync(s, tx =>
+            int code = await _market.RunAsync(s, tx =>
             {
                 if (!ReferenceEquals(s.Role, role) || !ReferenceEquals(s.Attachment, attachment)) return ErrorCodes.FeatureUnavailable;
                 if (PlayerGate(s) is var gate and not 0) return gate;
@@ -105,7 +105,7 @@ public sealed partial class StallsService
         if (row.Stock.Count >= row.MaxGrid) return ErrorCodes.StallFull;
         var item = seller.Items.FirstOrDefault(i => i.Guid == put.Itemid);
         if (item == null) return ErrorCodes.ItemMissing;
-        if (trade.TransactionItemError(s, item) is var error and not 0) return error;
+        if (_trade.TransactionItemError(s, item) is var error and not 0) return error;
         if (SaleConfig(item.Entry) is not { } config) return ErrorCodes.NotForSale;
         if (put.Itemnum <= 0 || put.Itemnum > item.Stack || put.Itemnum > GameData.Int(config, "_iShelveLimit")) return ErrorCodes.StallQuantity;
         if (!ValidPrice(config, put.Price, put.Pricetype)) return ErrorCodes.TradePrice;
@@ -120,7 +120,7 @@ public sealed partial class StallsService
     private async Task PutAsync(GameSession s, PlayerStallsPutItemReq req)
     {
         StallRow? row = null;
-        int code = await market.RunAsync(s, tx =>
+        int code = await _market.RunAsync(s, tx =>
         {
             if (PlayerGate(s) is var gate and not 0) return gate;
             row = Own(tx, s);
@@ -138,7 +138,7 @@ public sealed partial class StallsService
     private async Task RemoveAsync(GameSession s, PlayerStallsRemoveItemReq req)
     {
         StallRow? row = null;
-        int code = await market.RunAsync(s, tx =>
+        int code = await _market.RunAsync(s, tx =>
         {
             row = Own(tx, s);
             if (!Active(row)) return ErrorCodes.StallNotOpen;
@@ -156,7 +156,7 @@ public sealed partial class StallsService
     private async Task UpdateAsync(GameSession s, PlayerStallsUpdateItemPriceReq req)
     {
         StallRow? row = null;
-        int code = await market.RunAsync(s, tx =>
+        int code = await _market.RunAsync(s, tx =>
         {
             row = Own(tx, s);
             if (!Active(row)) return ErrorCodes.StallNotOpen;
@@ -172,7 +172,7 @@ public sealed partial class StallsService
                 if (PlayerGate(s) is var gate and not 0) return gate;
                 var seller = tx.Role(s.Role!.Id);
                 // Quantity edits have no item GUID. Only truly identical, tradable bag instances can replenish it.
-                var matching = seller.Items.Where(i => i.Entry == offer.Item.Entry && trade.TransactionItemError(s, i) == 0 && SameItem(i, offer.Item)).ToList();
+                var matching = seller.Items.Where(i => i.Entry == offer.Item.Entry && _trade.TransactionItemError(s, i) == 0 && SameItem(i, offer.Item)).ToList();
                 if (matching.Sum(i => (long)i.Stack) < req.Num) return ErrorCodes.StallQuantity;
                 int left = req.Num;
                 foreach (var item in matching)
@@ -199,7 +199,7 @@ public sealed partial class StallsService
 
     private bool SameItem(InvItem a, InvItem b)
     {
-        var x = character.ItemInfoOf(a); var y = character.ItemInfoOf(b);
+        var x = _character.ItemInfoOf(a); var y = _character.ItemInfoOf(b);
         x.ItemGuid = y.ItemGuid = 0; x.Stack = y.Stack = 1;
         return x.Equals(y);
     }
@@ -207,7 +207,7 @@ public sealed partial class StallsService
     private async Task BuyAsync(GameSession s, PlayerStallsBuyItemReq req)
     {
         StallRow? row = null;
-        int code = await market.RunAsync(s, tx =>
+        int code = await _market.RunAsync(s, tx =>
         {
             if (req.Num <= 0 || req.StallsID < 0 || req.SystemStallID < 0 || (req.StallsID == 0) == (req.SystemStallID == 0)) return ErrorCodes.Parameter;
             if (s.Dead || s.InstanceId != 0 || (s.StatusBits & (1L << 15)) != 0) return ErrorCodes.FeatureUnavailable;
@@ -223,14 +223,14 @@ public sealed partial class StallsService
             if (req.Num > offer.Item.Stack) return ErrorCodes.StallQuantity;
             if (row.SystemId > 0)
             {
-                if (data.Row("StallSystemItem", offer.SystemConfig) is not { } config || !SystemItemAvailable(config)) return ErrorCodes.NotForSale;
+                if (_data.Row("StallSystemItem", offer.SystemConfig) is not { } config || !SystemItemAvailable(config)) return ErrorCodes.NotForSale;
                 // Cumulative per role for this generated stall's lifetime (inferred reset scope).
                 if ((long)offer.Bought.GetValueOrDefault(s.Role.Id) + req.Num > GameData.Int(config, "_iBuyLimit")) return ErrorCodes.PurchaseLimit;
                 offer.Bought[s.Role.Id] = offer.Bought.GetValueOrDefault(s.Role.Id) + req.Num;
             }
             else
             {
-                if (!functions.IsOpen(s, 3)) return ErrorCodes.FunctionLocked;
+                if (!_functions.IsOpen(s, 3)) return ErrorCodes.FunctionLocked;
                 if (SaleConfig(offer.Item.Entry) is not { } config) return ErrorCodes.NotForSale;
                 if (req.Num > GameData.Int(config, "_iBuyLimit")) return ErrorCodes.StallQuantity;
             }
@@ -252,7 +252,7 @@ public sealed partial class StallsService
                 long net = gross - tax;
                 if (net > 0) tx.DeliverMail(row.Owner, (int)Param("StallsSellItemMailId", 1029),
                     currency: new Dictionary<int, long> { [offer.Currency] = net }, contentParams:
-                    [data.ItemName(bought.Entry), req.Num.ToString(CultureInfo.InvariantCulture), s.Role.Name,
+                    [_data.ItemName(bought.Entry), req.Num.ToString(CultureInfo.InvariantCulture), s.Role.Name,
                         DateTimeOffset.FromUnixTimeSeconds(Now).UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture),
                         tax.ToString(CultureInfo.InvariantCulture), net.ToString(CultureInfo.InvariantCulture)]); // (inferred) UTC display format.
                 row.Gains[offer.Currency] = checked(row.Gains.GetValueOrDefault(offer.Currency) + net);
@@ -283,7 +283,7 @@ public sealed partial class StallsService
     private async Task InfoAsync(GameSession s)
     {
         StallRow? row = null; DBStallsInfo? meta = null;
-        await market.RunAsync(s, tx => { row = Own(tx, s); meta = Metadata(tx, s.Role!.Id); return 0; });
+        await _market.RunAsync(s, tx => { row = Own(tx, s); meta = Metadata(tx, s.Role!.Id); return 0; });
         await s.SendGameAsync(Info, new PlayerStallsInfoResp
         {
             CurrentStallsID = Active(row) ? row!.Owner : 0,
@@ -294,7 +294,7 @@ public sealed partial class StallsService
     private async Task ViewAsync(GameSession s, PlayerStallsSyncBuyerStallsInfoReq req)
     {
         StallRow? row = null;
-        int code = await market.RunAsync(s, tx =>
+        int code = await _market.RunAsync(s, tx =>
         {
             if (req.StallsID < 0 || req.SystemStallID < 0 || (req.StallsID == 0) == (req.SystemStallID == 0)) return ErrorCodes.Parameter;
             row = tx.Get<StallRow>(Kind, req.SystemStallID > 0 ? SystemKey(req.SystemStallID) : PlayerKey(req.StallsID));
@@ -330,7 +330,7 @@ public sealed partial class StallsService
     private async Task EndAsync(GameSession s)
     {
         StallRow? row = null;
-        int code = await market.RunAsync(s, tx =>
+        int code = await _market.RunAsync(s, tx =>
         {
             row = Own(tx, s);
             if (!Active(row)) return ErrorCodes.StallNotOpen;
@@ -344,7 +344,7 @@ public sealed partial class StallsService
     private async Task RenameAsync(GameSession s, PlayerUpdateStallsNameReq req)
     {
         StallRow? row = null;
-        int code = await market.RunAsync(s, tx =>
+        int code = await _market.RunAsync(s, tx =>
         {
             if (NameError(s, req.StallsTitle) is var error and not 0) return error;
             row = Own(tx, s);
@@ -358,7 +358,7 @@ public sealed partial class StallsService
     private async Task TopAsync(GameSession s, PlayerStallsTopItemReq req)
     {
         StallRow? row = null;
-        int code = await market.RunAsync(s, tx =>
+        int code = await _market.RunAsync(s, tx =>
         {
             row = Own(tx, s);
             if (!Active(row)) return ErrorCodes.StallNotOpen;
@@ -374,9 +374,9 @@ public sealed partial class StallsService
     {
         // SellerWidgetCtrl allows empty text and caps it at StallsShareWordCount; rune counting is (inferred).
         int code = req.ShareData.Any(char.IsControl) || req.ShareData.EnumerateRunes().Count() > Param("StallsShareWordCount", 20) ? ErrorCodes.Parameter
-            : lastShare.TryGetValue(s.Role!.Id, out var then) && Now - then < Param("StallsShareCDTime", 180) ? ErrorCodes.StallShareCooldown : 0;
+            : _lastShare.TryGetValue(s.Role!.Id, out var then) && Now - then < Param("StallsShareCDTime", 180) ? ErrorCodes.StallShareCooldown : 0;
         // No profanity dictionary was recovered; this only validates shape/cooldown (inferred), and sends no chat.
-        if (code == 0) lastShare[s.Role!.Id] = Now;
+        if (code == 0) _lastShare[s.Role!.Id] = Now;
         return s.SendGameAsync(Share, new PlayerStallsShareCheckResp { Result = code });
     }
 

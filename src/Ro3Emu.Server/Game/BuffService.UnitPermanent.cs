@@ -10,15 +10,15 @@ public sealed partial class BuffService
     /// expiry, sent like a passive (expire_time 0). Rows without effects are still sent so the client has them.</summary>
     public async Task AddPermanentAsync(WorldUnit unit, int configId, long sourceId)
     {
-        if (data.Row("BuffConfig", configId) is not { } row || GameData.Int(row, "_iBuffID") <= 0) return;
+        if (_data.Row("BuffConfig", configId) is not { } row || GameData.Int(row, "_iBuffID") <= 0) return;
         if (!_unitBuffs.TryGetValue(unit.Uid, out var list)) _unitBuffs[unit.Uid] = list = new();
         if (list.Any(b => b.ConfigId == configId && b.IsPassive)) return;
         var buff = new ActiveBuff(Interlocked.Increment(ref _guids), configId, long.MaxValue, 0,
             GameData.Pairs(row, "_kChangeAttri").Where(c => c.Value != 0).ToArray(), sourceId, IsPassive: true);
         list.Add(buff);
         var info = Wire(buff);
-        await world.ToUnitViewersAsync(unit, BuffUpdate, new BuffUpdateNotify { UnitId = unit.Uid, Buffs = { info } });
-        await world.ToUnitViewersAsync(unit, AoiAttrChange, new AOIAttrChange
+        await _world.ToUnitViewersAsync(unit, BuffUpdate, new BuffUpdateNotify { UnitId = unit.Uid, Buffs = { info } });
+        await _world.ToUnitViewersAsync(unit, AoiAttrChange, new AOIAttrChange
         {
             EntityUuid = (ulong)unit.Uid, BuffInfo = new AoIBuffInfo { AddBuffs = { info } },
         });

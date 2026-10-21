@@ -6,8 +6,8 @@ public sealed partial class CombatService
     private JobResonance? _resonance;
     private TotemRestraint? _totemRestraint;
 
-    internal JobResonance Resonance => _resonance ??= new JobResonance(data);
-    internal TotemRestraint TotemRestraints => _totemRestraint ??= new TotemRestraint(data);
+    internal JobResonance Resonance => _resonance ??= new JobResonance(_data);
+    internal TotemRestraint TotemRestraints => _totemRestraint ??= new TotemRestraint(_data);
 
     /// <summary>The role's active Job Resonance id (<see cref="JobResonance.Inactive"/> for none).</summary>
     public int ResonanceOf(GameSession s) => s.Progress is { } p ? Resonance.ResonanceId(p) : JobResonance.Inactive;

@@ -9,8 +9,8 @@ namespace Ro3Emu.Tests;
 
 public sealed partial class SkillCombatTests
 {
-    private AccountStore Accounts => app.Services.GetRequiredService<AccountStore>();
-    private RoleStore Roles => app.Services.GetRequiredService<RoleStore>();
+    private AccountStore Accounts => _app.Services.GetRequiredService<AccountStore>();
+    private RoleStore Roles => _app.Services.GetRequiredService<RoleStore>();
 
     private long CountReceipts(string kind)
     {
@@ -38,7 +38,7 @@ public sealed partial class SkillCombatTests
         await using var bob = await InWorld("Bob");
         var a = Session("alice"); var b = Session("bob");
         await Ready(a, b);
-        var skills = app.Services.GetRequiredService<SkillService>();
+        var skills = _app.Services.GetRequiredService<SkillService>();
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         Accounts.BeforeOwnedCommitForTest = async label =>
@@ -92,17 +92,17 @@ public sealed partial class SkillCombatTests
         };
         Accounts.FailNextEconomyAcknowledgementForTest();
         var opening = EconomySnapshotReader.Read(Accounts.DatabasePath,
-            EventEconomy.Catalog(app.Services.GetRequiredService<Ro3Emu.Server.Data.GameData>()), "auto");
+            EventEconomy.Catalog(_app.Services.GetRequiredService<Ro3Emu.Server.Data.GameData>()), "auto");
         Task? planChange = null;
         try
         {
             await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 2200101, TargetId = b.Role!.Id });
             await entered.Task.WaitAsync(Wait);
             Assert.Equal(2, a.Items.Where(i => i.Entry == 1002004).Sum(i => i.Stack));
-            Assert.Equal(2, app.Services.GetRequiredService<ItemStore>().Load(a.Role!.Id).Where(i => i.Entry == 1002004).Sum(i => i.Stack));
+            Assert.Equal(2, _app.Services.GetRequiredService<ItemStore>().Load(a.Role!.Id).Where(i => i.Entry == 1002004).Sum(i => i.Stack));
             Assert.Null(a.SkillCast); Assert.True(b.Dead);
             Assert.Equal(0, CountReceipts("cd13c/cast-admit"));
-            planChange = Loop.InvokeAsync(() => app.Services.GetRequiredService<SkillService>()
+            planChange = Loop.InvokeAsync(() => _app.Services.GetRequiredService<SkillService>()
                 .SwitchPlanAsync(a, new SwitchPlanReq { Plan = 1 }));
             await bob.SendGameAsync(SkillService.RenamePlan, new SkillPlanChangeNameReq { Plan = 0, Name = "Free" });
             Assert.Equal(0, (await Next(bob, SkillService.RenamePlan, SkillPlanChangeNameResp.Parser)).Result);
@@ -115,7 +115,7 @@ public sealed partial class SkillCombatTests
         Assert.Equal(1, a.SkillPlans!.CurrentPlanIndex);
         Assert.Equal(1, a.Items.Where(i => i.Entry == 1002004).Sum(i => i.Stack));
         Assert.Equal(1, CountReceipts("cd13c/cast-admit"));
-        var catalog = EventEconomy.Catalog(app.Services.GetRequiredService<Ro3Emu.Server.Data.GameData>());
+        var catalog = EventEconomy.Catalog(_app.Services.GetRequiredService<Ro3Emu.Server.Data.GameData>());
         var closing = EconomySnapshotReader.Read(Accounts.DatabasePath, catalog, "auto");
         var ledger = EconomyLedgerReader.Read(Accounts.DatabasePath, catalog, "auto",
             opening.Cut.CommitSequence!.Value, closing.Cut.CommitSequence!.Value);
@@ -139,7 +139,7 @@ public sealed partial class SkillCombatTests
         var a = Session("alice"); var b = Session("bob");
         await Ready(a, b);
         await Loop.InvokeAsync(async () => { b.Dead = true; await Character.SetHpSpAsync(b, 0, 0); });
-        var combat = app.Services.GetRequiredService<CombatService>();
+        var combat = _app.Services.GetRequiredService<CombatService>();
         Accounts.BeforeOwnedApplyForTest = label =>
         {
             if (label == "economy/cd13c/cast-admit") a.Attachment!.Cancelled = true;

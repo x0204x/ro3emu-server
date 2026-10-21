@@ -14,24 +14,24 @@ namespace Ro3Emu.Tests;
 /// <summary>All four envelope families must coexist in one retained receipt prefix after the merge.</summary>
 public sealed class MergedEconomyEnvelopeTests : IDisposable
 {
-    private readonly string directory = Path.Combine(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+    private readonly string _directory = Path.Combine(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
         "..", "..", "..", "..", "..")), ".loadtest-temp", "merged-economy-" + Guid.NewGuid().ToString("N"));
-    private readonly AccountStore accounts;
-    private readonly RoleStore roles;
-    private readonly ItemStore items;
-    private readonly long role;
+    private readonly AccountStore _accounts;
+    private readonly RoleStore _roles;
+    private readonly ItemStore _items;
+    private readonly long _role;
     private static readonly EconomyCatalog Catalog = new(new Dictionary<long, EconomyAssetKind>
     { [1] = EconomyAssetKind.Currency, [3] = EconomyAssetKind.Item });
 
     public MergedEconomyEnvelopeTests()
     {
-        accounts = new(Options.Create(new ServerOptions { DataDir = directory }));
-        roles = new(accounts);
-        items = new(accounts);
-        role = roles.Create("merged-account", 1, "MergedActor", 1, 1000, 1)!.Id;
-        var progress = roles.LoadProgress(role);
+        _accounts = new(Options.Create(new ServerOptions { DataDir = _directory }));
+        _roles = new(_accounts);
+        _items = new(_accounts);
+        _role = _roles.Create("merged-account", 1, "MergedActor", 1, 1000, 1)!.Id;
+        var progress = _roles.LoadProgress(_role);
         progress.Currency[1] = 100;
-        roles.SaveProgress(role, progress);
+        _roles.SaveProgress(_role, progress);
     }
 
     [Theory]
@@ -39,33 +39,33 @@ public sealed class MergedEconomyEnvelopeTests : IDisposable
     [InlineData(true)]
     public async Task FourFamiliesRetainOneOutcomeEachAcrossReplayAndLostAcknowledgements(bool loseAcknowledgement)
     {
-        var opening = EconomySnapshotReader.Read(accounts.DatabasePath, Catalog, "auto");
+        var opening = EconomySnapshotReader.Read(_accounts.DatabasePath, Catalog, "auto");
         string[] kinds = ["npc-shop-buy", "cd13b/pet-feed", "monster-kill", "event/test-draw"];
         foreach (string kind in kinds)
         {
             var first = Plan(kind);
             var replay = Plan(kind); // frozen before the original, including identical event child values
-            if (loseAcknowledgement) accounts.FailNextEconomyAcknowledgementForTest();
+            if (loseAcknowledgement) _accounts.FailNextEconomyAcknowledgementForTest();
             if (kind == "npc-shop-buy")
             {
                 // 13a gave NPC purchases asynchronous owner admission (covered by EconomyTransactionTests); this
                 // test keeps the synchronous commit and replay of the E01 receipt.
-                roles.Commit(first, "test/merged");
-                roles.Commit(replay, "test/merged-replay");
+                _roles.Commit(first, "test/merged");
+                _roles.Commit(replay, "test/merged-replay");
             }
             else
             {
-                var receipt = await roles.CommitAsync(first, "test/merged");
-                var repeated = await roles.CommitAsync(replay, "test/merged-replay");
+                var receipt = await _roles.CommitAsync(first, "test/merged");
+                var repeated = await _roles.CommitAsync(replay, "test/merged-replay");
                 Assert.Equal((long[])receipt[0]!, (long[])repeated[0]!);
             }
         }
 
-        Assert.Equal(84, roles.LoadProgress(role).Currency[1]);
-        Assert.Equal(10, roles.LoadProgress(role).Exp);
-        Assert.Equal(5, items.Load(role).Sum(item => item.Stack));
-        var closing = EconomySnapshotReader.Read(accounts.DatabasePath, Catalog, "auto");
-        var ledger = EconomyLedgerReader.Read(accounts.DatabasePath, Catalog, "auto", 0, 4);
+        Assert.Equal(84, _roles.LoadProgress(_role).Currency[1]);
+        Assert.Equal(10, _roles.LoadProgress(_role).Exp);
+        Assert.Equal(5, _items.Load(_role).Sum(item => item.Stack));
+        var closing = EconomySnapshotReader.Read(_accounts.DatabasePath, Catalog, "auto");
+        var ledger = EconomyLedgerReader.Read(_accounts.DatabasePath, Catalog, "auto", 0, 4);
         Assert.True(ledger.CompleteHistory, string.Join("; ", ledger.Issues));
         Assert.Equal(4, closing.Cut.CommitSequence);
         Assert.Equal(kinds, ledger.Receipts.Select(receipt => receipt.CommandKind));
@@ -78,22 +78,22 @@ public sealed class MergedEconomyEnvelopeTests : IDisposable
 
     private RoleItemPlanBuilder Plan(string kind)
     {
-        var tx = roles.NewTransaction();
+        var tx = _roles.NewTransaction();
         bool reward = kind == "monster-kill", family = kind.StartsWith("cd13b/"), isEvent = kind.StartsWith("event/");
         int cost = reward ? 0 : family ? 3 : 10;
         int itemCount = reward ? 0 : family ? 1 : 2;
-        var before = items.Load(role);
+        var before = _items.Load(_role);
         var after = before.Select(item => item.Clone()).ToList();
         if (itemCount != 0) after.Add(new InvItem { Entry = 3, Stack = itemCount, Pack = 1, Sort = after.Count + 1 });
-        tx.ItemDelta(role, before, after);
-        var progress = roles.LoadProgress(role);
+        tx.ItemDelta(_role, before, after);
+        var progress = _roles.LoadProgress(_role);
         long beforeExp = progress.Exp;
         progress.Currency[1] += reward ? 7 : -cost;
         if (reward) progress.Exp += 10;
-        tx.Progress(role, progress);
-        if (family) tx.RoleBlob(role, "pets", new DBPetInfo { CurrentPlan = 1 }.ToByteArray());
-        else if (isEvent) tx.RoleBlob(role, "lottery", JsonSerializer.SerializeToUtf8Bytes(new { Data = Array.Empty<byte>(), Day = 1L }));
-        else if (!reward) tx.RoleBlob(role, "shop", JsonSerializer.SerializeToUtf8Bytes(new ShopService.ShopState
+        tx.Progress(_role, progress);
+        if (family) tx.RoleBlob(_role, "pets", new DBPetInfo { CurrentPlan = 1 }.ToByteArray());
+        else if (isEvent) tx.RoleBlob(_role, "lottery", JsonSerializer.SerializeToUtf8Bytes(new { Data = Array.Empty<byte>(), Day = 1L }));
+        else if (!reward) tx.RoleBlob(_role, "shop", JsonSerializer.SerializeToUtf8Bytes(new ShopService.ShopState
         {
             Bought = new() { [118] = new ShopService.Counter { Count = 1, Period = "" } }
         }));
@@ -101,11 +101,11 @@ public sealed class MergedEconomyEnvelopeTests : IDisposable
         EconomyQuantity[] goods = reward ? [new(new(EconomyAssetKind.Currency, 1), 7)] : [new(new(EconomyAssetKind.Item, 3), itemCount)];
         if (isEvent)
         {
-            var owner = new EconomyOwner(EconomyOwnerKind.Role, role.ToString(CultureInfo.InvariantCulture));
-            tx.WithEventEconomy(new(Catalog, kind, "merged-account", role, kind, "merged/" + kind, 1_000_000,
+            var owner = new EconomyOwner(EconomyOwnerKind.Role, _role.ToString(CultureInfo.InvariantCulture));
+            tx.WithEventEconomy(new(Catalog, kind, "merged-account", _role, kind, "merged/" + kind, 1_000_000,
                 costs, goods, [new(owner, costs[0].Asset, -cost), new(owner, goods[0].Asset, itemCount)], [7]));
         }
-        else tx.WithEconomy(new EconomyMutation(kind, "merged-account", role, kind, kind, "merged/" + kind, 1_000_000,
+        else tx.WithEconomy(new EconomyMutation(kind, "merged-account", _role, kind, kind, "merged/" + kind, 1_000_000,
             costs, goods, [7], reward ? new EconomyRewardEvidence(progress.Level, beforeExp, progress.Level, progress.Exp,
                 progress.JobLevel, progress.JobExp, progress.JobLevel, progress.JobExp, 10, 0) : null));
         return tx;
@@ -113,10 +113,10 @@ public sealed class MergedEconomyEnvelopeTests : IDisposable
 
     public void Dispose()
     {
-        accounts.Dispose();
+        _accounts.Dispose();
         string root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", ".loadtest-temp"));
-        if (!Path.GetFullPath(directory).StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        if (!Path.GetFullPath(_directory).StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Fixture escaped local worktree.");
-        if (Directory.Exists(directory)) Directory.Delete(directory, true);
+        if (Directory.Exists(_directory)) Directory.Delete(_directory, true);
     }
 }

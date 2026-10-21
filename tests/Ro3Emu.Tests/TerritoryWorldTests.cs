@@ -14,19 +14,19 @@ namespace Ro3Emu.Tests;
 
 public sealed class TerritoryWorldTests : IAsyncLifetime
 {
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-territory-world-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-territory-world-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(20);
     private sealed class TestClock : TimeProvider
     {
-        private long frozenSeconds;
-        public void Freeze() => Interlocked.Exchange(ref frozenSeconds, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-        public override DateTimeOffset GetUtcNow() => Interlocked.Read(ref frozenSeconds) is > 0 and var frozen
+        private long _frozenSeconds;
+        public void Freeze() => Interlocked.Exchange(ref _frozenSeconds, DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        public override DateTimeOffset GetUtcNow() => Interlocked.Read(ref _frozenSeconds) is > 0 and var frozen
             ? DateTimeOffset.FromUnixTimeSeconds(frozen) : DateTimeOffset.UtcNow;
     }
-    private readonly TestClock clock = new();
-    private WebApplication app = null!;
-    private string http = "";
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private readonly TestClock _clock = new();
+    private WebApplication _app = null!;
+    private string _http = "";
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private Task OnLoop(Func<Task> work) => Service<GameLoop>().InvokeAsync(work);
     // World units belong to the loop; a test reads a snapshot taken there (a concurrent spawn tick changes the list).
     private Task<List<WorldUnit>> Units() => Service<GameLoop>().InvokeAsync(() => Task.FromResult(Service<World>().AllUnits().ToList()));
@@ -35,21 +35,21 @@ public sealed class TerritoryWorldTests : IAsyncLifetime
     private async Task StartAsync()
     {
         var (web, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir;
+            o.DataDir = _dataDir;
             o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game;
-        }, clock);
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{web}";
+        }, _clock);
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{web}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private static string RepoRoot()
@@ -61,7 +61,7 @@ public sealed class TerritoryWorldTests : IAsyncLifetime
 
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         long role = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
         await bot.EnterWorldAsync(role);
@@ -220,7 +220,7 @@ public sealed class TerritoryWorldTests : IAsyncLifetime
     {
         // Keep the configured game deadline fixed while the process restarts. Wall-clock startup
         // can outlast a short respawn timer, which is a valid new occurrence rather than a replay.
-        clock.Freeze();
+        _clock.Freeze();
         const long mapId = 30330;
         int initialCount;
         string slot;
@@ -250,12 +250,12 @@ public sealed class TerritoryWorldTests : IAsyncLifetime
             slot = occurrence.Key;
             Assert.Equal(1, occurrence.Value.Ordinal);
             due = occurrence.Value.NextEligible;
-            Assert.True(due > clock.GetUtcNow().ToUnixTimeSeconds());
+            Assert.True(due > _clock.GetUtcNow().ToUnixTimeSeconds());
             await bot.SendGameAsync(SceneService.NpcInteraction, request);
             Assert.Equal(ErrorCodes.NpcMissing, (await Next(bot, SceneService.NpcInteraction, NpcInteractionRsp.Parser)).Result);
             Assert.Equal(1, PickupSources());
         }
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         SqliteConnection.ClearAllPools();
         await StartAsync();
         await using var restored = await InWorld("WorldOnce", create: false);
@@ -306,7 +306,7 @@ public sealed class TerritoryWorldTests : IAsyncLifetime
             Assert.Equal(1, Assert.Single(DurableWars().WorldPickupOccurrences).Value.Ordinal);
             Assert.DoesNotContain((await Units()), current => current.Uid == unit.Uid);
         }
-        await app.StopAsync(); await app.DisposeAsync(); SqliteConnection.ClearAllPools();
+        await _app.StopAsync(); await _app.DisposeAsync(); SqliteConnection.ClearAllPools();
         await StartAsync();
         Assert.Equal(1, PickupSources());
         Assert.Equal(1, Assert.Single(DurableWars().WorldPickupOccurrences).Value.Ordinal);
@@ -346,7 +346,7 @@ public sealed class TerritoryWorldTests : IAsyncLifetime
             Assert.Equal(1, DropSources());
             Assert.Single((await Units()), u => u.SceneEntry == mapId && u.Entity().EntityTemplateID == 4910104);
         }
-        await app.StopAsync(); await app.DisposeAsync(); SqliteConnection.ClearAllPools();
+        await _app.StopAsync(); await _app.DisposeAsync(); SqliteConnection.ClearAllPools();
         await StartAsync();
         Assert.Single(DurableWars().WorldDrops);
         Assert.Equal(1, DropSources());

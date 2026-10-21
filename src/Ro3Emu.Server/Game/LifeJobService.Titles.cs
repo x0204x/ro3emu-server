@@ -13,19 +13,19 @@ public sealed partial class LifeJobService
         if (error == 0)
         {
             var job = s.LifeJob!.LifeJobInfoMap[req.JobId];
-            var row = data.Table("LifeJobTitleConfig").Values.FirstOrDefault(r => GameData.Int(r, "_iJobId") == req.JobId
+            var row = _data.Table("LifeJobTitleConfig").Values.FirstOrDefault(r => GameData.Int(r, "_iJobId") == req.JobId
                 && GameData.Int(r, "_iLevel") == job.TitleInfo.JobLevel + 1);
             error = row.ValueKind != System.Text.Json.JsonValueKind.Object ? ErrorCodes.LifeTitleMissing
-                : !functions.ConditionMet(s, GameData.Int(row, "_iCondition")) ? ErrorCodes.LifeTitleRequirements : 0;
+                : !_functions.ConditionMet(s, GameData.Int(row, "_iCondition")) ? ErrorCodes.LifeTitleRequirements : 0;
             if (error == 0)
             {
                 var next = s.LifeJob.Clone(); var title = next.LifeJobInfoMap[req.JobId].TitleInfo;
                 title.JobLevel++;
-                if (data.Row("LifeSkillSlots", GameData.Int(row, "_iSlotId")) is { } slot)
+                if (_data.Row("LifeSkillSlots", GameData.Int(row, "_iSlotId")) is { } slot)
                     title.JobTitleDetail[(int)GameData.Int(slot, "_iSort")] = Offer(slot);
                 var cost = Costs(row, "_kUnlockcost");
                 if (await CommitAsync(s, "cd13c/life-title-upgrade", next, s.Restrictions!.Clone(), Copy(s.LifeRuntime), cost, [],
-                    result: new { Job = req.JobId, Level = title.JobLevel }) == null) error = character.ShortageOf(s, cost);
+                    result: new { Job = req.JobId, Level = title.JobLevel }) == null) error = _character.ShortageOf(s, cost);
             }
         }
         await s.SendGameAsync(UpgradeTitle, new UpGradeJobTileResp { Result = error });
@@ -35,7 +35,7 @@ public sealed partial class LifeJobService
     private LifeJobTitleSkillInfo Offer(System.Text.Json.JsonElement slot, int original = 0)
     {
         var pool = GameData.Pairs(slot, "_kSkillpool").Where(p => p.Value > 0 && CanActivateLifeSkill((int)p.Id))
-            .Select(p => (p.Id, Value: p.Value * GameData.Int(data.Row("LifeSkillConfig", p.Id)!.Value, "_iProbability")))
+            .Select(p => (p.Id, Value: p.Value * GameData.Int(_data.Row("LifeSkillConfig", p.Id)!.Value, "_iProbability")))
             .Where(p => p.Value > 0).ToList();
         var info = new LifeJobTitleSkillInfo { OriginalSkill = original, SelectedSkill = original };
         for (int n = 0; n < 3 && pool.Count > 0; n++)
@@ -79,7 +79,7 @@ public sealed partial class LifeJobService
         {
             var next = s.LifeJob!.Clone(); var title = next.LifeJobInfoMap[job].TitleInfo;
             var slots = extra ? title.SkillExtraSkill : title.JobTitleDetail;
-            var row = data.Table("LifeSkillSlots").Values.FirstOrDefault(r => GameData.Int(r, "_iJobId") == job && GameData.Int(r, "_iSort") == level);
+            var row = _data.Table("LifeSkillSlots").Values.FirstOrDefault(r => GameData.Int(r, "_iJobId") == job && GameData.Int(r, "_iSort") == level);
             if (!slots.TryGetValue((int)level, out var old) || row.ValueKind != System.Text.Json.JsonValueKind.Object) error = ErrorCodes.LifeSkillMissing;
             else
             {
@@ -91,7 +91,7 @@ public sealed partial class LifeJobService
                     {
                         Job = job, Slot = level, Extra = extra,
                         Offered = slots[(int)level].OptionalSkills.Keys.ToArray()
-                    }) == null) error = character.ShortageOf(s, cost);
+                    }) == null) error = _character.ShortageOf(s, cost);
             }
         }
         if (extra) await s.SendGameAsync(RefreshTitleEx, new RefreshTitlePointExResp { Result = error });
@@ -120,24 +120,24 @@ public sealed partial class LifeJobService
             var slots = active.SelectMany(job => life.LifeJobInfoMap[job].TitleInfo.JobTitleDetail.Values
                 .Concat(life.LifeJobInfoMap[job].TitleInfo.SkillExtraSkill.Where(p => eligible[job].Contains(p.Key)).Select(p => p.Value))
                 .Select(chosen => (Job: job, Chosen: chosen))).ToArray();
-            long ascension = slots.Sum(p => data.Row("LifeSkillConfig", p.Chosen.OriginalSkill) is { } row
+            long ascension = slots.Sum(p => _data.Row("LifeSkillConfig", p.Chosen.OriginalSkill) is { } row
                 && GameData.Int(row, "_iFuctionType") == 43 ? Numbers(row, "_kFuctionDatas").FirstOrDefault() : 0);
             foreach (var (_, chosen) in slots)
             {
-                if (data.Row("LifeSkillConfig", chosen.OriginalSkill) is not { } original) continue;
+                if (_data.Row("LifeSkillConfig", chosen.OriginalSkill) is not { } original) continue;
                 long own = GameData.Int(original, "_iFuctionType") == 43 ? Numbers(original, "_kFuctionDatas").FirstOrDefault() : 0;
                 long rank = GameData.Int(original, "_iLevel") + ascension - own;
-                var effective = data.Table("LifeSkillConfig").Values.Where(r => GameData.Int(r, "_iGroup") == GameData.Int(original, "_iGroup")
+                var effective = _data.Table("LifeSkillConfig").Values.Where(r => GameData.Int(r, "_iGroup") == GameData.Int(original, "_iGroup")
                     && GameData.Int(r, "_iLevel") <= rank).OrderByDescending(r => GameData.Int(r, "_iLevel")).FirstOrDefault();
                 chosen.SelectedSkill = effective.ValueKind == System.Text.Json.JsonValueKind.Object
                     ? checked((int)GameData.Int(effective, "_iID")) : chosen.OriginalSkill;
             }
             bool changed = false;
             foreach (var (job, chosen) in slots)
-                if (data.Row("LifeSkillConfig", chosen.SelectedSkill) is { } effect && GameData.Int(effect, "_iFuctionType") == 46)
+                if (_data.Row("LifeSkillConfig", chosen.SelectedSkill) is { } effect && GameData.Int(effect, "_iFuctionType") == 46)
                     foreach (long sort in Numbers(effect, "_kFuctionExtraData"))
                     {
-                        var config = data.Table("LifeSkillSlots").Values.FirstOrDefault(r => GameData.Int(r, "_iJobId") == job && GameData.Int(r, "_iSort") == sort);
+                        var config = _data.Table("LifeSkillSlots").Values.FirstOrDefault(r => GameData.Int(r, "_iJobId") == job && GameData.Int(r, "_iSort") == sort);
                         if (config.ValueKind != System.Text.Json.JsonValueKind.Object || !eligible[job].Add((int)sort)) continue;
                         changed = true;
                         var extra = life.LifeJobInfoMap[job].TitleInfo.SkillExtraSkill;

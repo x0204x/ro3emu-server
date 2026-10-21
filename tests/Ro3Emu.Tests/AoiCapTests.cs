@@ -23,18 +23,18 @@ public sealed class AoiCapTests
         private Task Add(string e) { lock (Events) Events.Add(e); return Task.CompletedTask; }
     }
 
-    private readonly RecordingSink sink = new();
-    private readonly World world;
-    private int nextId = 1;
+    private readonly RecordingSink _sink = new();
+    private readonly World _world;
+    private int _nextId = 1;
 
-    public AoiCapTests() => world = new World(sink, new GameLoop(NullLogger<GameLoop>.Instance), NullLogger<World>.Instance);
+    public AoiCapTests() => _world = new World(_sink, new GameLoop(NullLogger<GameLoop>.Instance), NullLogger<World>.Instance);
 
     private GameSession Player(string name, float x, float z, int limit = World.MaxViewLimit)
     {
         var channel = new PhonestChannel(new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp), NullLogger.Instance);
         return new GameSession(channel, null!)
         {
-            Role = new Role(nextId++, "acc", 1, name, 1, 1000, 1, 0, 0, 0, 10111, x, 0, z, 0),
+            Role = new Role(_nextId++, "acc", 1, name, 1, 1000, 1, 0, 0, 0, 10111, x, 0, z, 0),
             SceneEntry = 10111,
             Position = new Vec3 { X = x, Z = z },
             ViewLimit = limit,
@@ -47,16 +47,16 @@ public sealed class AoiCapTests
     public async Task LowCapViewerShowsTheNearestWhileEveryoneStillSeesIt()
     {
         var others = new[] { Player("B", 105, 100), Player("C", 110, 100), Player("D", 120, 100), Player("E", 130, 100) };
-        foreach (var o in others) await world.JoinAsync(o);
+        foreach (var o in others) await _world.JoinAsync(o);
         var low = Player("A", 100, 100, limit: 2);
-        await world.JoinAsync(low);
+        await _world.JoinAsync(low);
 
         Assert.Equal("B,C", Names(low.Visible));                 // the two nearest
         Assert.Equal("B,C,D,E", Names(low.Observers));           // directed: all of them still show A
-        Assert.Equal("B,C,D,E", Names(world.Viewers(low)));      // broadcasts about A reach its observers
+        Assert.Equal("B,C,D,E", Names(_world.Viewers(low)));      // broadcasts about A reach its observers
         Assert.All(others, o => Assert.Contains(low, o.Visible));
-        Assert.DoesNotContain("A+D", sink.Events);
-        Assert.Contains("D+A", sink.Events);
+        Assert.DoesNotContain("A+D", _sink.Events);
+        Assert.Contains("D+A", _sink.Events);
     }
 
     [Fact]
@@ -64,26 +64,26 @@ public sealed class AoiCapTests
     {
         var b = Player("B", 125, 100);
         var c = Player("C", 130, 100);
-        foreach (var o in new[] { b, c }) await world.JoinAsync(o);
+        foreach (var o in new[] { b, c }) await _world.JoinAsync(o);
         var low = Player("A", 100, 100, limit: 2);
-        await world.JoinAsync(low);
+        await _world.JoinAsync(low);
         var near = Player("D", 101, 100);   // arrives while A is full: A only gets its name board
         var edge = Player("E", 126, 100);   // nearer than C, but within the margin of B once C is gone
-        await world.JoinAsync(near);
-        await world.JoinAsync(edge);
+        await _world.JoinAsync(near);
+        await _world.JoinAsync(edge);
         Assert.Equal("B,C", Names(low.Visible));
-        sink.Events.Clear();
+        _sink.Events.Clear();
 
-        Assert.Equal(1, await world.RebalanceAsync(_ => true));
+        Assert.Equal(1, await _world.RebalanceAsync(_ => true));
         Assert.Equal("B,D", Names(low.Visible));
-        Assert.Equal(new[] { "A-C", "A+D" }, sink.Events.ToArray());
+        Assert.Equal(new[] { "A-C", "A+D" }, _sink.Events.ToArray());
         Assert.Contains(low, near.Observers);
         Assert.DoesNotContain(low, c.Observers);
 
         // Stable afterwards: E (26) is not 5 units nearer than B (25), and nobody else qualifies.
-        sink.Events.Clear();
-        Assert.Equal(0, await world.RebalanceAsync(_ => true));
-        Assert.Empty(sink.Events);
+        _sink.Events.Clear();
+        Assert.Equal(0, await _world.RebalanceAsync(_ => true));
+        Assert.Empty(_sink.Events);
     }
 
     [Fact]
@@ -91,9 +91,9 @@ public sealed class AoiCapTests
     {
         var a = Player("A", 100, 100, limit: 3);
         var b = Player("B", 140, 100);
-        await world.JoinAsync(a);
-        await world.JoinAsync(b);
-        Assert.Equal(0, await world.RebalanceAsync(_ => true));
+        await _world.JoinAsync(a);
+        await _world.JoinAsync(b);
+        Assert.Equal(0, await _world.RebalanceAsync(_ => true));
         Assert.Equal("B", Names(a.Visible));
     }
 
@@ -103,22 +103,22 @@ public sealed class AoiCapTests
         var b = Player("B", 105, 100);
         var c = Player("C", 110, 100);
         var d = Player("D", 120, 100);
-        foreach (var o in new[] { b, c, d }) await world.JoinAsync(o);
+        foreach (var o in new[] { b, c, d }) await _world.JoinAsync(o);
         var low = Player("A", 100, 100, limit: 2);
-        await world.JoinAsync(low);
-        sink.Events.Clear();
+        await _world.JoinAsync(low);
+        _sink.Events.Clear();
 
-        await world.LeaveAsync(b);
+        await _world.LeaveAsync(b);
         Assert.Equal("C,D", Names(low.Visible));
         // The leaver's observers are told first, then the viewer that had a free slot takes the next nearest.
-        Assert.Equal(4, sink.Events.Count);
-        Assert.Equal(new[] { "A-B", "C-B", "D-B" }, sink.Events.Take(3).Order().ToArray());
-        Assert.Equal("A+D", sink.Events[^1]);
+        Assert.Equal(4, _sink.Events.Count);
+        Assert.Equal(new[] { "A-B", "C-B", "D-B" }, _sink.Events.Take(3).Order().ToArray());
+        Assert.Equal("A+D", _sink.Events[^1]);
 
         // Walking away from C: C leaves both ways, A refills with nobody new (D is still shown).
-        sink.Events.Clear();
+        _sink.Events.Clear();
         c.Position = new Vec3 { X = 300, Z = 100 };
-        await world.MoveAsync(c, new WalkReq { Pos = c.Position });
+        await _world.MoveAsync(c, new WalkReq { Pos = c.Position });
         Assert.Equal("D", Names(low.Visible));
         Assert.DoesNotContain(low, c.Observers);
     }
@@ -127,23 +127,23 @@ public sealed class AoiCapTests
     public async Task ChangingTheCapDropsTheFarthestAndRaisingItRefills()
     {
         var players = new[] { Player("B", 105, 100), Player("C", 110, 100), Player("D", 120, 100) };
-        foreach (var p in players) await world.JoinAsync(p);
+        foreach (var p in players) await _world.JoinAsync(p);
         var a = Player("A", 100, 100);
-        await world.JoinAsync(a);
+        await _world.JoinAsync(a);
         Assert.Equal("B,C,D", Names(a.Visible));
 
-        sink.Events.Clear();
-        await world.SetViewLimitAsync(a, 1);
+        _sink.Events.Clear();
+        await _world.SetViewLimitAsync(a, 1);
         Assert.Equal("B", Names(a.Visible));
-        Assert.Equal(new[] { "A-D", "A-C" }, sink.Events);
+        Assert.Equal(new[] { "A-D", "A-C" }, _sink.Events);
         Assert.Equal("B,C,D", Names(a.Observers)); // others' views are not the viewer's business
 
-        sink.Events.Clear();
-        await world.SetViewLimitAsync(a, 149);
+        _sink.Events.Clear();
+        await _world.SetViewLimitAsync(a, 149);
         Assert.Equal("B,C,D", Names(a.Visible));
-        Assert.Equal(new[] { "A+C", "A+D" }, sink.Events);
+        Assert.Equal(new[] { "A+C", "A+D" }, _sink.Events);
 
-        await world.SetViewLimitAsync(a, 0); // absent: keep the current cap
+        await _world.SetViewLimitAsync(a, 0); // absent: keep the current cap
         Assert.Equal(149, a.ViewLimit);
     }
 
@@ -154,28 +154,28 @@ public sealed class AoiCapTests
         var a = Player("A", 67, 67);
         var b = Player("B", 69, 69);
         var far = Player("F", 400, 400);
-        await world.JoinAsync(a);
-        await world.JoinAsync(b);
-        await world.JoinAsync(far);
+        await _world.JoinAsync(a);
+        await _world.JoinAsync(b);
+        await _world.JoinAsync(far);
         Assert.Equal("B", Names(a.Visible));
         Assert.Empty(far.Visible);
 
         // F walks next to A over several cells: it appears both ways once in range.
-        sink.Events.Clear();
+        _sink.Events.Clear();
         foreach (var step in new[] { 300f, 200f, 120f, 80f })
         {
             far.Position = new Vec3 { X = step, Z = step };
-            await world.MoveAsync(far, new WalkReq { Pos = far.Position });
+            await _world.MoveAsync(far, new WalkReq { Pos = far.Position });
         }
         Assert.Contains(far, a.Visible);
         Assert.Contains(a, far.Visible);
-        Assert.Contains("A+F", sink.Events);
-        Assert.Contains("F+A", sink.Events);
+        Assert.Contains("A+F", _sink.Events);
+        Assert.Contains("F+A", _sink.Events);
 
         // A moving player's observers get its movement, nobody else.
-        sink.Events.Clear();
+        _sink.Events.Clear();
         a.Position = new Vec3 { X = 70, Z = 70 };
-        await world.MoveAsync(a, new WalkReq { Pos = a.Position });
-        Assert.Equal(new[] { "B~A", "F~A" }, sink.Events.Order().ToArray());
+        await _world.MoveAsync(a, new WalkReq { Pos = a.Position });
+        Assert.Equal(new[] { "B~A", "F~A" }, _sink.Events.Order().ToArray());
     }
 }

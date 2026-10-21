@@ -13,26 +13,26 @@ namespace Ro3Emu.Tests;
 
 public sealed class LifeJobSkillTests : IAsyncLifetime
 {
-    private readonly string dir = Path.Combine(Path.GetTempPath(), "ro3emu-life-skill-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ro3emu-life-skill-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "";
 
     public async Task InitializeAsync()
     {
         var (h, m, g) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _dir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = h; o.MicroGatePort = m; o.GameGatePort = g;
         });
-        await app.StartAsync(); http = $"http://127.0.0.1:{h}";
+        await _app.StartAsync(); _http = $"http://127.0.0.1:{h}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dir, true); } catch (IOException) { }
+        try { Directory.Delete(_dir, true); } catch (IOException) { }
     }
 
     private static string RepoRoot()
@@ -42,13 +42,13 @@ public sealed class LifeJobSkillTests : IAsyncLifetime
         return p?.FullName ?? throw new DirectoryNotFoundException("repository");
     }
 
-    private Task<T> OnLoop<T>(Func<GameSession, Task<T>> fn) => app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
-        fn(app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice")));
+    private Task<T> OnLoop<T>(Func<GameSession, Task<T>> fn) => _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+        fn(_app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice")));
 
     private async Task Gm(string line)
     {
         using var c = new HttpClient();
-        var r = await c.PostAsync($"{http}/ro3emu/gm?account=alice", new StringContent(line));
+        var r = await c.PostAsync($"{_http}/ro3emu/gm?account=alice", new StringContent(line));
         r.EnsureSuccessStatusCode();
     }
 
@@ -61,7 +61,7 @@ public sealed class LifeJobSkillTests : IAsyncLifetime
     [ClientDataFact]
     public async Task SelectedMinerReductionChangesQuoteAndCommittedGatherCost()
     {
-        await using (var b = new BotClient(http, File.ReadAllText(Path.Combine(dir, "gate_rsa_public.pem"))))
+        await using (var b = new BotClient(_http, File.ReadAllText(Path.Combine(_dir, "gate_rsa_public.pem"))))
         {
             await b.LoginAsync("alice", "pw"); await b.EnterGateAsync();
             long role = (await b.CreateRoleAsync("Alice")).RoleBaseInfo.Id;
@@ -85,7 +85,7 @@ public sealed class LifeJobSkillTests : IAsyncLifetime
             int result = await OnLoop(async s =>
             {
                 using var gate = await CharacterService.Lock(s);
-                return await app.Services.GetRequiredService<LifeJobService>()
+                return await _app.Services.GetRequiredService<LifeJobService>()
                     .CompleteGatherAsync(s, 100100, sceneEntry: 10522, pointId: 312);
             });
             Assert.Equal(0, result);
@@ -102,7 +102,7 @@ public sealed class LifeJobSkillTests : IAsyncLifetime
                 Tokens: s.Items.Where(i => i.Entry == 1290999).Sum(i => i.Stack))));
             Assert.Equal(1000, refreshed.Skill); Assert.Equal(0, refreshed.Tokens);
         }
-        await using var again = new BotClient(http, File.ReadAllText(Path.Combine(dir, "gate_rsa_public.pem")));
+        await using var again = new BotClient(_http, File.ReadAllText(Path.Combine(_dir, "gate_rsa_public.pem")));
         await again.LoginAsync("alice", "pw"); await again.EnterGateAsync();
         await again.EnterWorldAsync(again.Roles.Single().Id);
         var persisted = await OnLoop(s => Task.FromResult((
@@ -114,7 +114,7 @@ public sealed class LifeJobSkillTests : IAsyncLifetime
     [ClientDataFact]
     public async Task TwentiethGatherAddsOneMainUnitAndStagesCounterOnly()
     {
-        await using var b = new BotClient(http, File.ReadAllText(Path.Combine(dir, "gate_rsa_public.pem")));
+        await using var b = new BotClient(_http, File.ReadAllText(Path.Combine(_dir, "gate_rsa_public.pem")));
         await b.LoginAsync("alice", "pw"); await b.EnterGateAsync();
         long role = (await b.CreateRoleAsync("Alice")).RoleBaseInfo.Id;
         await b.EnterWorldAsync(role);
@@ -137,10 +137,10 @@ public sealed class LifeJobSkillTests : IAsyncLifetime
             var baseMain = new AwardGrant(1291010, 4);
             var grants = new List<AwardGrant> { baseMain };
             var costs = new List<(int Entry, long Count)>();
-            var service = app.Services.GetRequiredService<LifeJobService>();
+            var service = _app.Services.GetRequiredService<LifeJobService>();
             var method = typeof(LifeJobService).GetMethod("ApplySkillRewards", BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.NotNull(method);
-            method!.Invoke(service, [s, next, app.Services.GetRequiredService<GameData>().Row("LifeCollectionConfig", 100100)!.Value,
+            method!.Invoke(service, [s, next, _app.Services.GetRequiredService<GameData>().Row("LifeCollectionConfig", 100100)!.Value,
                 false, grants, costs, new List<AwardGrant> { baseMain }, 0]);
             return Task.FromResult((
                 Total: grants.Where(x => x.Entry == 1291010).Sum(x => x.Count),
@@ -154,11 +154,11 @@ public sealed class LifeJobSkillTests : IAsyncLifetime
     [ClientDataFact]
     public async Task AscensionPromotesOneForManyAndLostGrantRemovesExtraSlots()
     {
-        await using var b = new BotClient(http, File.ReadAllText(Path.Combine(dir, "gate_rsa_public.pem")));
+        await using var b = new BotClient(_http, File.ReadAllText(Path.Combine(_dir, "gate_rsa_public.pem")));
         await b.LoginAsync("alice", "pw"); await b.EnterGateAsync();
         long role = (await b.CreateRoleAsync("Alice")).RoleBaseInfo.Id;
         await b.EnterWorldAsync(role);
-        var service = app.Services.GetRequiredService<LifeJobService>();
+        var service = _app.Services.GetRequiredService<LifeJobService>();
         var normalize = typeof(LifeJobService).GetMethod("NormalizeTitles", BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(normalize);
 

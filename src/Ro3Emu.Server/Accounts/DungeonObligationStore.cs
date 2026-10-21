@@ -5,35 +5,30 @@ using Ro3Emu.Server.Economy;
 namespace Ro3Emu.Server.Accounts;
 
 /// <summary>Frozen personal dungeon outcomes. A completed row remains a natural-source tombstone.</summary>
-public sealed class DungeonObligationStore
+public sealed class DungeonObligationStore(AccountStore accounts)
 {
-    private readonly AccountStore accounts;
-
-    public DungeonObligationStore(AccountStore accounts)
-    {
-        this.accounts = accounts;
-    }
+    private readonly AccountStore _accounts = accounts;
 
     public Task FreezeAsync(IReadOnlyList<DungeonRewardObligation> obligations) =>
-        accounts.WriteAsync<int>(new DungeonObligationFreezePlan(obligations));
+        _accounts.WriteAsync<int>(new DungeonObligationFreezePlan(obligations));
 
     public IReadOnlyList<DungeonRewardObligation> Pending(long role) =>
-        accounts.ReadSync<List<DungeonRewardObligation>>(new DungeonObligationReadPlan(role));
+        _accounts.ReadSync<List<DungeonRewardObligation>>(new DungeonObligationReadPlan(role));
 
     public async Task<IReadOnlyList<DungeonRewardObligation>> PendingAsync(long role) =>
-        await accounts.ReadAsync<List<DungeonRewardObligation>>(new DungeonObligationReadPlan(role));
+        await _accounts.ReadAsync<List<DungeonRewardObligation>>(new DungeonObligationReadPlan(role));
 
     public IReadOnlyList<DungeonRewardObligation> PendingRoom(long room) =>
-        accounts.ReadSync<List<DungeonRewardObligation>>(new DungeonObligationReadPlan(0, room));
+        _accounts.ReadSync<List<DungeonRewardObligation>>(new DungeonObligationReadPlan(0, room));
 
     public IReadOnlyList<DungeonRewardObligation> FrozenRoom(long room) =>
-        accounts.ReadSync<List<DungeonRewardObligation>>(new DungeonObligationReadPlan(0, room, includePrepared: true));
+        _accounts.ReadSync<List<DungeonRewardObligation>>(new DungeonObligationReadPlan(0, room, includePrepared: true));
 
     public bool IsActivated(long room) =>
-        accounts.ReadSync<bool>(new DungeonObligationActivatedReadPlan(room));
+        _accounts.ReadSync<bool>(new DungeonObligationActivatedReadPlan(room));
 
     public Task<int> CancelPreparedAsync(long room) =>
-        accounts.WriteAsync<int>(new DungeonObligationCancelPreparedPlan(room));
+        _accounts.WriteAsync<int>(new DungeonObligationCancelPreparedPlan(room));
 
     internal void EnlistActivate(long room, string killSourceKey, RoleItemPlanBuilder transaction) =>
         transaction.Add(new DungeonObligationActivatePlan(room, killSourceKey));

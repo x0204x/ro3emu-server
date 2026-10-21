@@ -19,13 +19,13 @@ public sealed class RewardService
     private const int BaseExpItem = 100, JobExpItem = 101;
     private const int RewardDrop = 8; // ManifestType Drop
 
-    private readonly CharacterService character;
-    private readonly TeamService teams;
-    private readonly GameData data;
-    private readonly ILogger<RewardService> log;
+    private readonly CharacterService _character;
+    private readonly TeamService _teams;
+    private readonly GameData _data;
+    private readonly ILogger<RewardService> _log;
     private readonly Random _random = new();
     private Dictionary<int, long>? _expCorrection;
-    private readonly DropAttenuation attenuation;
+    private readonly DropAttenuation _attenuation;
 
     /// <summary>Field AFK selects the enhanced _iDrop table only for qualified ordinary field kills.
     /// Other kills use environment 0, preserving ordinary rewards (localization 10960000077; mapping inferred).</summary>
@@ -40,11 +40,11 @@ public sealed class RewardService
 
     public RewardService(CombatService combat, CharacterService character, TeamService teams, GameData data, ILogger<RewardService> log)
     {
-        this.character = character;
-        this.teams = teams;
-        this.data = data;
-        this.log = log;
-        attenuation = new DropAttenuation(data);
+        this._character = character;
+        this._teams = teams;
+        this._data = data;
+        this._log = log;
+        _attenuation = new DropAttenuation(data);
         combat.BeforeKilled.Add(PrepareKilledAsync);
         combat.Killed.Add(KilledAsync);
     }
@@ -57,7 +57,7 @@ public sealed class RewardService
         internal long JobExp;
         internal bool Published;
     }
-    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<MonsterUnit, KillOutcome> outcomes = new();
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<MonsterUnit, KillOutcome> _outcomes = new();
     internal Func<GameSession, MonsterUnit, (List<(int Entry, int Count)> Items, long BaseExp, long JobExp)>? ResolveKillForTest { get; set; }
 
     /// <summary>Resolve and admit once before any lethal hit/death packet. A rejected pre-admission hit is
@@ -70,7 +70,7 @@ public sealed class RewardService
         if (monster.RewardRecipient != 0 && monster.RewardRecipient != player.Role.Id)
             throw new InvalidOperationException("Staged kill belongs to another recipient.");
         monster.RewardRecipient = player.Role.Id;
-        monster.RewardSource ??= new RewardSourceId(character.RewardRealmId, RewardSourceId.ProcessRun, monster.SpawnGeneration);
+        monster.RewardSource ??= new RewardSourceId(_character.RewardRealmId, RewardSourceId.ProcessRun, monster.SpawnGeneration);
         monster.RewardSettlement ??= new RewardSettlement(monster.RewardSource.Key, "monster-kill", autoDecompose: true)
         { DeferPresentation = true };
         return monster.RewardCommit = CommitKillAsync(player, monster);
@@ -85,27 +85,27 @@ public sealed class RewardService
         var settlement = monster.RewardSettlement!;
         try
         {
-            if (await character.RewardSourceCommittedAsync(settlement.SourceKey))
+            if (await _character.RewardSourceCommittedAsync(settlement.SourceKey))
             { settlement.Committed = true; return; }
             // Bonus eligibility may wait on the AFK owner; no successful lethal output precedes admission.
             bool bonus = QualifiesForBonus != null && await QualifiesForBonus(player, monster);
-            var taskParticipants = character.GetKillTaskParticipantKeys?.Invoke(player, monster) ?? [];
+            var taskParticipants = _character.GetKillTaskParticipantKeys?.Invoke(player, monster) ?? [];
             using var held = await CharacterService.Lock(player, taskParticipants);
             if (!SameRole()) throw new OperationCanceledException("Kill recipient detached before reward admission.");
-            if (outcomes.TryGetValue(monster, out var stale) && stale.Role.Id != role.Id) outcomes.Remove(monster);
-            if (!outcomes.TryGetValue(monster, out var outcome))
+            if (_outcomes.TryGetValue(monster, out var stale) && stale.Role.Id != role.Id) _outcomes.Remove(monster);
+            if (!_outcomes.TryGetValue(monster, out var outcome))
             {
                 var (items, baseExp, jobExp) = ResolveKill(player, monster, bonus);
                 outcome = new KillOutcome { Role = role, Items = items, BaseExp = baseExp, JobExp = jobExp };
-                outcomes.Add(monster, outcome);
+                _outcomes.Add(monster, outcome);
             }
-            character.StageKillTaskObligations?.Invoke(player, monster, settlement);
+            _character.StageKillTaskObligations?.Invoke(player, monster, settlement);
             // A retry re-stages: the later stage is undone first, so the AFK reset never restores a stale wrapper.
             settlement.ResetHuntStage?.Invoke();
             StageAfkKill?.Invoke(player, monster, settlement, outcome.Items, outcome.BaseExp, outcome.JobExp);
             StageHuntKill?.Invoke(player, monster, settlement);
             settlement.LibraryMonster = monster.Template.NpcId;
-            await character.ExchangeLockedAsync(player, [], outcome.Items, popup: false, sync: outcome.Items.Count > 0,
+            await _character.ExchangeLockedAsync(player, [], outcome.Items, popup: false, sync: outcome.Items.Count > 0,
                 baseExp: outcome.BaseExp, jobExp: outcome.JobExp, rewardSettlement: settlement,
                 persist: settlement.Enlist, committed: settlement.Applied);
         }
@@ -115,7 +115,7 @@ public sealed class RewardService
             // ambiguous/failed live state; restart and login reload the durable bag and progression.
             try
             {
-                if (await character.RewardSourceCommittedAsync(settlement.SourceKey))
+                if (await _character.RewardSourceCommittedAsync(settlement.SourceKey))
                 {
                     settlement.Committed = true;
                     // Failed Apply cannot safely run room/quest callbacks on an old owner snapshot.
@@ -141,19 +141,19 @@ public sealed class RewardService
         // Team-boss personal awards have their own durable dungeon obligation; ordinary loot stays empty.
         if (player.DungeonAttempt is { Plan.Multi: not null } dungeon && monster.InstanceId == dungeon.Room.Id)
             return ([], 0, 0);
-        if (data.Row("NPCConfig", monster.Template.NpcId) is not { } npc) return ([], 0, 0);
+        if (_data.Row("NPCConfig", monster.Template.NpcId) is not { } npc) return ([], 0, 0);
         var drops = new List<(int Entry, int Count)>();
         // (inferred) NPCDropConfig environment 0 is reduced and 1 is Bonus Time: the former carries
         // small EXP at player levels 1-99, the latter larger EXP. Fatigue environment 2 has no proven trigger.
         // _iNormalDrop remains additive under its own level/map conditions; no numeric multiplier is invented.
-        if (Resolve(GameData.Int(npc, "_iDrop")) is var dropId and > 0 && data.Row("NPCDropConfig", dropId) is { } nd
+        if (Resolve(GameData.Int(npc, "_iDrop")) is var dropId and > 0 && _data.Row("NPCDropConfig", dropId) is { } nd
             && nd.ValueKind == JsonValueKind.Object && nd.TryGetProperty(bonus ? "1" : "0", out var env))
             RollPools(env, player, drops, monster.Template.Level);
         if (npc.TryGetProperty("_iNormalDrop", out var normals) && normals.ValueKind == JsonValueKind.Array)
         {
             foreach (var n in normals.EnumerateArray())
             {
-                if (GameData.Number(n) is not { } nid || Resolve((long)nid) is not (var id and > 0) || data.Row("NpcNormalDropConfig", id) is not { } row) continue;
+                if (GameData.Number(n) is not { } nid || Resolve((long)nid) is not (var id and > 0) || _data.Row("NpcNormalDropConfig", id) is not { } row) continue;
                 if (row.TryGetProperty("_iMapId", out var maps) && maps.ValueKind == JsonValueKind.Array && maps.GetArrayLength() > 0
                     && !maps.EnumerateArray().Any(m => GameData.Number(m) == player.SceneEntry))
                     continue;
@@ -163,21 +163,21 @@ public sealed class RewardService
 
         if (ExtraKillDrops != null) drops.AddRange(ExtraKillDrops(player, monster));
         long baseExp = drops.Where(d => d.Entry == BaseExpItem).Sum(d => (long)d.Count);
-        var items = drops.Where(d => d.Entry is not (BaseExpItem or JobExpItem) && data.Row("ItemConfig", d.Entry) != null).ToList();
+        var items = drops.Where(d => d.Entry is not (BaseExpItem or JobExpItem) && _data.Row("ItemConfig", d.Entry) != null).ToList();
         if (baseExp > 0)
         {
             long gap = player.Progress!.Level - monster.Template.Level;
             baseExp = baseExp * Correction((int)Math.Clamp(gap, -200, 200)) / 10000;
-            baseExp = Math.Max(1, baseExp * teams.ExpBonus(player) / 10000);
+            baseExp = Math.Max(1, baseExp * _teams.ExpBonus(player) / 10000);
         }
         // BaseExpAddConfig catch-up below the server level raises Base EXP only (CharacterService.LevelRules).
-        return (items, character.WithPursueBonus(player.Progress!.Level, baseExp), baseExp);
+        return (items, _character.WithPursueBonus(player.Progress!.Level, baseExp), baseExp);
     }
 
     private async Task KilledAsync(GameSession player, MonsterUnit monster)
     {
         await PrepareKilledAsync(player, monster); // also covers existing service/test callbacks
-        if (!outcomes.TryGetValue(monster, out var outcome) || outcome.Published) return;
+        if (!_outcomes.TryGetValue(monster, out var outcome) || outcome.Published) return;
         outcome.Published = true;
         var role = outcome.Role;
         if (!ReferenceEquals(player.Role, role) || player.Attachment?.Cancelled == true) return;
@@ -209,12 +209,12 @@ public sealed class RewardService
             if (!ReferenceEquals(player.Role, role) || player.Attachment?.Cancelled == true) return;
             await handler(player, monster, granted);
         }
-        log.LogInformation("{Name} durable loot from {Npc}: exp {Exp}, source {Source}",
+        _log.LogInformation("{Name} durable loot from {Npc}: exp {Exp}, source {Source}",
             role.Name, monster.Template.NpcId, outcome.BaseExp, monster.RewardSource!.Key);
     }
     /// <summary>MultiverseGroupConfig id → the playbook's value, else _iValue_default (playbook 0 here).</summary>
     private long Resolve(long multiverseId) =>
-        multiverseId > 0 && data.Row("MultiverseGroupConfig", multiverseId) is { } mg ? GameData.Int(mg, "_iValue_default") : 0;
+        multiverseId > 0 && _data.Row("MultiverseGroupConfig", multiverseId) is { } mg ? GameData.Int(mg, "_iValue_default") : 0;
 
     /// <summary>
     /// Every _iDropPoolN of a row; each pool slot [group, chance per million, rolls, picks] is rolled "rolls" times
@@ -233,7 +233,7 @@ public sealed class RewardService
     private void RollPool(long poolId, RoleProgress progress, List<(int, int)> drops, List<(int Entry, int Count, int Bind)>? bound = null,
         int monsterLevel = DropAttenuation.NoMonster)
     {
-        if (data.Row("DropPoolConfig", poolId) is not { } pool) return;
+        if (_data.Row("DropPoolConfig", poolId) is not { } pool) return;
         for (int slot = 1; slot <= 16; slot++)
         {
             if (!pool.TryGetProperty($"_iDropGroup_{slot}", out var g) || g.ValueKind != JsonValueKind.Array || g.GetArrayLength() < 2) continue;
@@ -256,7 +256,7 @@ public sealed class RewardService
     public List<(int Entry, int Count)> RollAward(long multiverseId, GameSession player)
     {
         var drops = new List<(int, int)>();
-        if (Resolve(multiverseId) is var awardId and > 0 && data.Row("AwardConfig", awardId) is { ValueKind: JsonValueKind.Array } rows
+        if (Resolve(multiverseId) is var awardId and > 0 && _data.Row("AwardConfig", awardId) is { ValueKind: JsonValueKind.Array } rows
             && rows.GetArrayLength() > 0 && GameData.Int(rows[0], "_iDropPool") is var pool and > 0)
             RollPool(pool, player, drops);
         return drops.GroupBy(d => d.Item1).Select(g => (g.Key, g.Sum(d => d.Item2))).ToList();
@@ -278,7 +278,7 @@ public sealed class RewardService
     public List<(int Entry, int Count, int Bind)> RollAwardBound(long awardId, RoleProgress progress)
     {
         var bound = new List<(int Entry, int Count, int Bind)>();
-        if (data.Row("AwardConfig", awardId) is { } raw)
+        if (_data.Row("AwardConfig", awardId) is { } raw)
         {
             var row = raw.ValueKind == JsonValueKind.Array && raw.GetArrayLength() > 0 ? raw[0] : raw;
             if (row.ValueKind == JsonValueKind.Object && GameData.Int(row, "_iDropPool") is var pool and > 0)
@@ -295,7 +295,7 @@ public sealed class RewardService
     /// </summary>
     public List<(int Entry, int Count, int Bind)> RollAuctionAwardBound(long awardId, RoleProgress progress, int serverOpenDay)
     {
-        if (data.Row("AwardConfig", awardId) is not { } raw)
+        if (_data.Row("AwardConfig", awardId) is not { } raw)
             throw new InvalidOperationException($"Invalid auction award {awardId}.");
         var candidates = raw.ValueKind == JsonValueKind.Array ? raw.EnumerateArray().ToArray() : [raw];
         var row = candidates.FirstOrDefault(candidate => candidate.ValueKind == JsonValueKind.Object
@@ -324,7 +324,7 @@ public sealed class RewardService
     internal void PickFromGroup(long group, RoleProgress progress, List<(int, int)> drops, List<(int Entry, int Count, int Bind)>? bound = null,
         int monsterLevel = DropAttenuation.NoMonster)
     {
-        if (data.Row("DropGroupConfig", group) is not { } raw || !GameData.TryGroupedRows(raw, out var rows)) return;
+        if (_data.Row("DropGroupConfig", group) is not { } raw || !GameData.TryGroupedRows(raw, out var rows)) return;
         var p = progress;
         // D Asia omits _iWeights for an unweighted row; that row still participates with weight one (for example
         // group 105, and the equal-choice item groups). An explicitly serialized zero remains disabled. Groups
@@ -357,7 +357,7 @@ public sealed class RewardService
             if (min <= 0 || max < min) return;
             int count = _random.Next(min, max + 1);
             int entry = r.TryGetProperty("_kDropItem", out _) ? (int)GameData.Int(r, "_kDropItem") : BaseExpItem;
-            int amount = attenuation.Apply(r, count, p.Level, monsterLevel, _random);
+            int amount = _attenuation.Apply(r, count, p.Level, monsterLevel, _random);
             if (amount <= 0) return;
             drops.Add((entry, amount));
             bound?.Add((entry, amount, (int)GameData.Int(r, "_iBind")));
@@ -368,7 +368,7 @@ public sealed class RewardService
     /// <summary>LvExpCorrectionConfig: player level − monster level → ratio per 10000.</summary>
     private long Correction(int gap)
     {
-        _expCorrection ??= data.Table("LvExpCorrectionConfig").Values
+        _expCorrection ??= _data.Table("LvExpCorrectionConfig").Values
             .GroupBy(r => (int)GameData.Int(r, "_iBaseLvGap"))
             .ToDictionary(g => g.Key, g => GameData.Int(g.First(), "_iLvDifferenceCorrection"));
         return _expCorrection.GetValueOrDefault(gap, 10000);

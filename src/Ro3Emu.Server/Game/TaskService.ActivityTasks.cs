@@ -27,7 +27,7 @@ public sealed partial class TaskService
     private Dictionary<long, int>? _activityTasks;
 
     /// <summary>Type 13 task id → its _iTaskSonType.</summary>
-    private Dictionary<long, int> ActivityTasks() => _activityTasks ??= data.Table("TaskConfig").Values
+    private Dictionary<long, int> ActivityTasks() => _activityTasks ??= _data.Table("TaskConfig").Values
         .Where(r => r.ValueKind == JsonValueKind.Object && GameData.Int(r, "_iTaskType") == SeasonTreasureType
             && Defs().ContainsKey(GameData.Int(r, "_iTaskID")))
         .ToDictionary(r => GameData.Int(r, "_iTaskID"), r => (int)GameData.Int(r, "_iTaskSonType"));

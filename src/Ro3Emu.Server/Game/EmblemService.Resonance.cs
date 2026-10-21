@@ -59,21 +59,21 @@ public sealed partial class EmblemService
         if (session.Progress == null) yield break;
         var line = new HashSet<long>();
         for (long c = session.Progress.Career; c > 0 && line.Count < 8 && line.Add(c);)
-            c = data.Row("JobConfig", c) is { } job ? GameData.Int(job, "_iParentId") : 0;
-        foreach (var op in ResonanceOps(session, data).Where(op => op.Length >= 2 && op[0] == OpSkillInUse).DistinctBy(op => op[1]))
-            if (data.Row("SkillConfig", op[1]) is { } row && GameData.Int(row, "_iJob") is var job && (job == 0 || line.Contains(job)))
+            c = _data.Row("JobConfig", c) is { } job ? GameData.Int(job, "_iParentId") : 0;
+        foreach (var op in ResonanceOps(session, _data).Where(op => op.Length >= 2 && op[0] == OpSkillInUse).DistinctBy(op => op[1]))
+            if (_data.Row("SkillConfig", op[1]) is { } row && GameData.Int(row, "_iJob") is var job && (job == 0 || line.Contains(job)))
                 yield return (int)op[1];
     }
 
     /// <summary>Raw contributions of the resonance: stage _kBasicAttribute, Attr (1) and held SkillInUse rows' _kAttri.</summary>
     private IEnumerable<(long Id, double Value)> ResonanceAttributes(GameSession session)
     {
-        foreach (var stage in ReachedStages(Worn(session), data))
+        foreach (var stage in ReachedStages(Worn(session), _data))
             foreach (var attr in GameData.Pairs(stage, "_kBasicAttribute")) yield return attr;
-        foreach (var op in ResonanceOps(session, data))
+        foreach (var op in ResonanceOps(session, _data))
             if (op.Length == 3 && op[0] == OpAttr) yield return (op[1], op[2]);
         foreach (int skill in ResonanceSkills(session))
-            if (data.Row("SkillConfig", skill) is { } row && GameData.Int(row, "_iBasicType") == 0)
+            if (_data.Row("SkillConfig", skill) is { } row && GameData.Int(row, "_iBasicType") == 0)
                 foreach (var attr in GameData.Pairs(row, "_kAttri")) yield return attr;
     }
 

@@ -62,14 +62,14 @@ public static partial class EconomySnapshotReader
             ScanJsonEvidence("territory_escort", "id", "state", DecodeEscort);
         }
 
-        private readonly HashSet<string> activeWarsEpochs = [];
+        private readonly HashSet<string> _activeWarsEpochs = [];
         private void DecodeWarsWorld(JsonElement state, string key, bool archived)
         {
             Fields(state, "Epoch LastStage Owners Rounds Battles Results SiegeHistory SiegeRuns Donations RuleResults WorldDrops NextWorldDropId WorldActivityRespawns WorldActivityOccurrences WorldPickupOccurrences");
             string epoch = String(state, "Epoch");
-            if (archived && (epoch.Length == 0 || activeWarsEpochs.Contains(epoch)))
+            if (archived && (epoch.Length == 0 || _activeWarsEpochs.Contains(epoch)))
             { Issue(EconomyIssueKind.Coverage, key, "Archive epoch absent or duplicates active state."); return; }
-            if (!archived && epoch.Length > 0) activeWarsEpochs.Add(epoch);
+            if (!archived && epoch.Length > 0) _activeWarsEpochs.Add(epoch);
             if (Try(state, "WorldActivityOccurrences", out var activityOccurrences))
                 foreach (var occurrence in Properties(activityOccurrences))
                 {

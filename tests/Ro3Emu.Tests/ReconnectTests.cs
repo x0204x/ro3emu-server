@@ -15,49 +15,49 @@ namespace Ro3Emu.Tests;
 /// <summary>The Phonest silent reconnect of the game gate (test plan §5.2).</summary>
 public sealed class ReconnectTests : IAsyncLifetime
 {
-    private readonly string directory = Path.Combine(Path.GetTempPath(), "ro3-reconnect-" + Guid.NewGuid().ToString("N"));
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), "ro3-reconnect-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(15);
     private static readonly ConnectServerResp.Types.RespType Reconnected = ConnectServerResp.Types.RespType.Reconnected;
     private static readonly ConnectServerResp.Types.RespType Refused = ConnectServerResp.Types.RespType.ReconnectRefused;
-    private WebApplication? app;
-    private bool stopped;
-    private string http = "";
-    private readonly ConcurrentQueue<(string Phase, GameSession Session)> phases = new();
-    private readonly ConcurrentQueue<(string Step, GameSession Session)> cleanupSteps = new();
+    private WebApplication? _app;
+    private bool _stopped;
+    private string _http = "";
+    private readonly ConcurrentQueue<(string Phase, GameSession Session)> _phases = new();
+    private readonly ConcurrentQueue<(string Step, GameSession Session)> _cleanupSteps = new();
 
     public Task InitializeAsync() => Task.CompletedTask;
 
     private async Task StartAsync(int graceSeconds = 60, bool gameData = false)
     {
         var (hp, mp, gp) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = directory;
+            o.DataDir = _directory;
             if (gameData) o.GameDataDir = SyntheticData.Dir;
             o.HttpPort = hp;
             o.MicroGatePort = mp;
             o.GameGatePort = gp;
             o.ReconnectGraceSeconds = graceSeconds;
         });
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{hp}";
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{hp}";
         // Probes: every handover phase and every role cleanup step (none may run while a role waits for its client).
-        Service<Ro3Emu.Server.Game.Ownership.RoleHandover>().PhaseForTest = (phase, session) => phases.Enqueue((phase, session));
-        Service<RoleSessionService>().CleanupFailureForTest = (step, session) => { cleanupSteps.Enqueue((step, session)); return null; };
+        Service<Ro3Emu.Server.Game.Ownership.RoleHandover>().PhaseForTest = (phase, session) => _phases.Enqueue((phase, session));
+        Service<RoleSessionService>().CleanupFailureForTest = (step, session) => { _cleanupSteps.Enqueue((step, session)); return null; };
     }
 
     public async Task DisposeAsync()
     {
-        if (app != null)
+        if (_app != null)
         {
-            if (!stopped) await app.StopAsync();
-            await app.DisposeAsync();
+            if (!_stopped) await _app.StopAsync();
+            await _app.DisposeAsync();
         }
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(directory, true); } catch (IOException) { }
+        try { Directory.Delete(_directory, true); } catch (IOException) { }
     }
 
-    private T Service<T>() where T : notnull => app!.Services.GetRequiredService<T>();
+    private T Service<T>() where T : notnull => _app!.Services.GetRequiredService<T>();
 
     private Task<T> OnLoop<T>(Func<T> read) => Service<GameLoop>().InvokeAsync(() => Task.FromResult(read()));
 
@@ -71,7 +71,7 @@ public sealed class ReconnectTests : IAsyncLifetime
         }
     }
 
-    private BotClient NewBot() => new(http, File.ReadAllText(Path.Combine(directory, "gate_rsa_public.pem")));
+    private BotClient NewBot() => new(_http, File.ReadAllText(Path.Combine(_directory, "gate_rsa_public.pem")));
 
     /// <summary>A role in the world. <paramref name="gateAuth"/>: the bot answers OnGetAuth like the real client.</summary>
     private async Task<BotClient> InWorldAsync(string name, bool gateAuth = true)
@@ -94,7 +94,7 @@ public sealed class ReconnectTests : IAsyncLifetime
     private Task WaitGraceAsync(GameSession session) =>
         Until(() => Service<ReconnectService>().TicketOf(session)?.GraceUntil != null, "reconnect grace");
 
-    private int Detached(GameSession session) => phases.Count(p => p.Phase == "Detached" && ReferenceEquals(p.Session, session));
+    private int Detached(GameSession session) => _phases.Count(p => p.Phase == "Detached" && ReferenceEquals(p.Session, session));
 
     private static AoIViewChangeData View(BotEvent e) => AoIViewChangeData.Parser.ParseFrom(e.Body);
 
@@ -134,8 +134,8 @@ public sealed class ReconnectTests : IAsyncLifetime
         Assert.Same(role, await OnLoop(() => session.Role));
         Assert.Equal(Ro3Emu.Server.Game.Ownership.RoleOwnerState.Attached, await OnLoop(() => session.Owner!.State));
         Assert.False(await OnLoop(() => session.TransportLost));
-        Assert.Empty(cleanupSteps);
-        Assert.Empty(phases);
+        Assert.Empty(_cleanupSteps);
+        Assert.Empty(_phases);
         Assert.Equal(1, Service<ReconnectService>().Reconnects);
 
         // The new connection is the session's transport: a walk is accepted on it.
@@ -196,7 +196,7 @@ public sealed class ReconnectTests : IAsyncLifetime
         Assert.Equal(handovers, Service<Ro3Emu.Server.Game.Ownership.OwnerRegistry>().HandoverCount);
         Assert.Same(session, SessionOf("alice"));
         Assert.NotNull(await OnLoop(() => session.Role));
-        Assert.Empty(cleanupSteps);
+        Assert.Empty(_cleanupSteps);
     }
 
     [Fact]
@@ -216,7 +216,7 @@ public sealed class ReconnectTests : IAsyncLifetime
         await alice.DropGameAsync(BotDrop.Graceful);
         await Until(() => Detached(session) == 1, "grace expiry handover");
         await bob.Inbox.WaitAsync(e => e.IsGame(GameAoiSink.SyncAoiView) && View(e).LeaveAoi.Contains(aliceId), Wait);
-        Assert.Contains(cleanupSteps, s => s.Step == "position" && ReferenceEquals(s.Session, session));
+        Assert.Contains(_cleanupSteps, s => s.Step == "position" && ReferenceEquals(s.Session, session));
         Assert.Equal(walkedX, Service<RoleStore>().Get(roleId)!.X);
         Assert.Equal(1, Service<ReconnectService>().GracesExpired);
         Assert.Null(await OnLoop(() => session.Role));
@@ -250,7 +250,7 @@ public sealed class ReconnectTests : IAsyncLifetime
         Assert.Equal(Refused, await alice.TryReconnectGateAsync(auth: [0xC1]));
         Assert.Equal(Refused, await alice.TryReconnectGateAsync(auth: MessagePackSerializer.Serialize("not hex")));
         Assert.True(await InGrace(session));
-        Assert.Empty(phases);
+        Assert.Empty(_phases);
 
         // Five refusals from this address inside 10 s: the sixth attempt is refused unseen, even with valid credentials.
         Assert.Equal(Refused, await alice.TryReconnectGateAsync());
@@ -260,8 +260,8 @@ public sealed class ReconnectTests : IAsyncLifetime
         await OnLoop(() => { Service<ReconnectService>().ResetRefusalsForTest(); return true; });
         var result = await alice.ReconnectGameAsync();
         Assert.Equal(Reconnected, result.Result);
-        Assert.Empty(phases);
-        Assert.Empty(cleanupSteps);
+        Assert.Empty(_phases);
+        Assert.Empty(_cleanupSteps);
     }
 
     [Fact]
@@ -284,7 +284,7 @@ public sealed class ReconnectTests : IAsyncLifetime
         await again.EnterWorldAsync(roleId);
         await Task.Delay(300);
         Assert.Equal(1, Detached(session));
-        Assert.Equal(1, cleanupSteps.Count(s => s.Step == "world" && ReferenceEquals(s.Session, session)));
+        Assert.Equal(1, _cleanupSteps.Count(s => s.Step == "world" && ReferenceEquals(s.Session, session)));
         Assert.Equal(0, Service<ReconnectService>().GracesExpired);
     }
 
@@ -311,7 +311,7 @@ public sealed class ReconnectTests : IAsyncLifetime
         var session = SessionOf("alice");
         using var switched = alice.Inbox.Expect(e => e.IsGame(MsgId.SwitchSceneLine));
         using (var client = new HttpClient())
-            (await client.PostAsync($"{http}/ro3emu/gm?account=alice", new StringContent("!warp 10100"))).EnsureSuccessStatusCode();
+            (await client.PostAsync($"{_http}/ro3emu/gm?account=alice", new StringContent("!warp 10100"))).EnsureSuccessStatusCode();
         var change = SwitchSceneLineResp.Parser.ParseFrom((await switched.WaitAsync(Wait)).Body);
         Assert.Equal(10100, change.SceneEntry);
 
@@ -331,7 +331,7 @@ public sealed class ReconnectTests : IAsyncLifetime
         await aoiExpected.WaitAsync(Wait);
         Assert.Equal(10100, await OnLoop(() => session.SceneEntry));
         Assert.False(await OnLoop(() => session.SceneLoading));
-        Assert.Empty(phases);
+        Assert.Empty(_phases);
     }
 
     [Fact]
@@ -391,11 +391,11 @@ public sealed class ReconnectTests : IAsyncLifetime
         await alice.DropGameAsync(BotDrop.Graceful);
         await WaitGraceAsync(session);
 
-        stopped = true;
-        await app!.StopAsync();
+        _stopped = true;
+        await _app!.StopAsync();
         Assert.Equal(1, Detached(session));
-        Assert.Contains(cleanupSteps, s => s.Step == "world" && ReferenceEquals(s.Session, session));
-        Assert.Contains(phases, p => p.Phase == "BeforeFence" && ReferenceEquals(p.Session, session));
+        Assert.Contains(_cleanupSteps, s => s.Step == "world" && ReferenceEquals(s.Session, session));
+        Assert.Contains(_phases, p => p.Phase == "BeforeFence" && ReferenceEquals(p.Session, session));
         Assert.Null(session.Role); // the loop has stopped: its state is quiet now
         Assert.Null(session.Owner);
         Assert.True(Service<GameLoop>().DrainStatus.Clean);
@@ -436,10 +436,10 @@ public sealed class ReconnectTests : IAsyncLifetime
         var session = SessionOf("alice");
         await alice.DropGameAsync(BotDrop.HalfOpen); // the bot stops using it; the server drops it
         using (var client = new HttpClient())
-            (await client.PostAsync($"{http}/ro3emu/gm?account=alice", new StringContent("!netdrop " + mode))).EnsureSuccessStatusCode();
+            (await client.PostAsync($"{_http}/ro3emu/gm?account=alice", new StringContent("!netdrop " + mode))).EnsureSuccessStatusCode();
         await WaitGraceAsync(session);
         var result = await alice.ReconnectGameAsync();
         Assert.Equal(Reconnected, result.Result);
-        Assert.Empty(phases);
+        Assert.Empty(_phases);
     }
 }

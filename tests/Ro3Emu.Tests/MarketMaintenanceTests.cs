@@ -15,43 +15,43 @@ namespace Ro3Emu.Tests;
 [Collection("Market server")]
 public sealed class MarketMaintenanceTests : IAsyncLifetime
 {
-    private readonly string directory = Path.Combine(Path.GetTempPath(), "ro3-market-maintenance-" + Guid.NewGuid().ToString("N"));
-    private readonly MutableClock clock = new();
-    private WebApplication app = null!;
-    private string url = "";
-    private GameLoop Loop => app.Services.GetRequiredService<GameLoop>();
-    private OwnerRegistry Owners => app.Services.GetRequiredService<OwnerRegistry>();
-    private AccountStore Accounts => app.Services.GetRequiredService<AccountStore>();
-    private RoleStore Roles => app.Services.GetRequiredService<RoleStore>();
-    private MarketStore Market => app.Services.GetRequiredService<MarketStore>();
-    private StallsService Stalls => app.Services.GetRequiredService<StallsService>();
-    private TradeService Trade => app.Services.GetRequiredService<TradeService>();
-    private MailService Mail => app.Services.GetRequiredService<MailService>();
-    private World World => app.Services.GetRequiredService<World>();
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), "ro3-market-maintenance-" + Guid.NewGuid().ToString("N"));
+    private readonly MutableClock _clock = new();
+    private WebApplication _app = null!;
+    private string _url = "";
+    private GameLoop Loop => _app.Services.GetRequiredService<GameLoop>();
+    private OwnerRegistry Owners => _app.Services.GetRequiredService<OwnerRegistry>();
+    private AccountStore Accounts => _app.Services.GetRequiredService<AccountStore>();
+    private RoleStore Roles => _app.Services.GetRequiredService<RoleStore>();
+    private MarketStore Market => _app.Services.GetRequiredService<MarketStore>();
+    private StallsService Stalls => _app.Services.GetRequiredService<StallsService>();
+    private TradeService Trade => _app.Services.GetRequiredService<TradeService>();
+    private MailService Mail => _app.Services.GetRequiredService<MailService>();
+    private World World => _app.Services.GetRequiredService<World>();
     private static TaskCompletionSource Signal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public async Task InitializeAsync()
     {
         var (http, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = http; o.MicroGatePort = micro; o.GameGatePort = game;
-        }, clock);
+        }, _clock);
         // Exact AOI snapshots below assume market maintenance is the only producer changing world units.
         // Stop the unrelated MVP ticker before the loop starts so its delayed boss spawns cannot enter a snapshot.
-        app.Services.GetRequiredService<GameLoop>().Remove(app.Services.GetRequiredService<MvpService>());
-        await app.StartAsync();
-        url = $"http://127.0.0.1:{http}";
+        _app.Services.GetRequiredService<GameLoop>().Remove(_app.Services.GetRequiredService<MvpService>());
+        await _app.StartAsync();
+        _url = $"http://127.0.0.1:{http}";
     }
 
     public async Task DisposeAsync()
     {
         Accounts.BeforeOwnedCommitForTest = null;
         Owners.DeferredForTest = null;
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(directory, true); } catch (IOException) { }
+        try { Directory.Delete(_directory, true); } catch (IOException) { }
     }
 
     private static string RepoRoot()
@@ -63,21 +63,21 @@ public sealed class MarketMaintenanceTests : IAsyncLifetime
 
     private async Task<(BotClient Bot, GameSession Session)> Login(string name)
     {
-        var bot = new BotClient(url, File.ReadAllText(Path.Combine(directory, "gate_rsa_public.pem")));
+        var bot = new BotClient(_url, File.ReadAllText(Path.Combine(_directory, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         long id = (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id;
         await bot.EnterWorldAsync(id);
         // C/D 15: the login and scene load request their scene's stall maintenance; run it now, so its system stalls
         // exist before a test's AOI or ledger baseline.
         await Loop.InvokeAsync(() => Stalls.RefreshWorldMaintenanceAsync());
-        var session = await Loop.InvokeAsync(() => Task.FromResult(app.Services.GetRequiredService<SessionRegistry>()
+        var session = await Loop.InvokeAsync(() => Task.FromResult(_app.Services.GetRequiredService<SessionRegistry>()
             .All().Single(s => s.Role?.Id == id)));
         return (bot, session);
     }
 
     private async Task SeedAsync(long stallOwner, long tradeSeller)
     {
-        long now = clock.GetUtcNow().ToUnixTimeSeconds();
+        long now = _clock.GetUtcNow().ToUnixTimeSeconds();
         await Loop.InvokeAsync(async () => Assert.Equal(0, await Market.RunMaintenanceAsync(tx =>
         {
             if (stallOwner > 0) tx.Economy.Source(new(EconomyAssetKind.Item, 1000100), 2, EconomyReason.GmGrant);
@@ -161,7 +161,7 @@ public sealed class MarketMaintenanceTests : IAsyncLifetime
             };
             settlement = Loop.InvokeAsync(() =>
             {
-                clock.Advance(TimeSpan.FromSeconds(10));
+                _clock.Advance(TimeSpan.FromSeconds(10));
                 stallSweep = Loop.TrackAsync("test/stall maintenance", () =>
                 {
                     stallWorkId = Loop.CurrentWork!.Id;
@@ -235,7 +235,7 @@ public sealed class MarketMaintenanceTests : IAsyncLifetime
             Owners.DeferredForTest = origin => { if (origin == "state holder to realm") realmDeferred.TrySetResult(); };
             trade = Loop.InvokeAsync(async () =>
             {
-                clock.Advance(TimeSpan.FromSeconds(10));
+                _clock.Advance(TimeSpan.FromSeconds(10));
                 await Trade.TickMaintenanceAsync();
             });
             await commitEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -278,7 +278,7 @@ public sealed class MarketMaintenanceTests : IAsyncLifetime
         await SeedAsync(0, seller);
         await Loop.InvokeAsync(async () =>
         {
-            clock.Advance(TimeSpan.FromSeconds(10));
+            _clock.Advance(TimeSpan.FromSeconds(10));
             var lease = incidental.Attachment!;
             lease.Cancelled = true;
             try { await Trade.TickAsync(incidental); }
@@ -292,8 +292,8 @@ public sealed class MarketMaintenanceTests : IAsyncLifetime
 
     private sealed class MutableClock : TimeProvider
     {
-        private DateTimeOffset now = DateTimeOffset.UtcNow;
-        public override DateTimeOffset GetUtcNow() => now;
-        public void Advance(TimeSpan amount) => now += amount;
+        private DateTimeOffset _now = DateTimeOffset.UtcNow;
+        public override DateTimeOffset GetUtcNow() => _now;
+        public void Advance(TimeSpan amount) => _now += amount;
     }
 }

@@ -26,7 +26,7 @@ public sealed partial class NewActivityService
             return request.PronteraDefenseDonate != null || request.PronteraDefenseGuildDefense != null
                 || request.ActivityCase == CommonActivityReq.ActivityOneofCase.None;
         return request.LevelAwardGetReward != null || request.FunctionPreviewGetReward != null
-            || request.GetRewardCommon != null && data.Row("NewActivityConfig", request.ActivityId) is { } row
+            || request.GetRewardCommon != null && _data.Row("NewActivityConfig", request.ActivityId) is { } row
                 && Ro3Emu.Server.Data.GameData.Int(row, "_iActivityType") == 8
             || request.BattlePassClaimReward != null || request.BattlePassMarkUnlockViewed != null
             || request.BattlePassBuyLevel != null || request.GainMonthCardDailyAward != null;
@@ -36,7 +36,7 @@ public sealed partial class NewActivityService
     /// loads, reserved up front by the role select.</summary>
     internal ReservationKey[] LoginKeys(long roleId)
     {
-        var saved = roles.LoadNewActivities(roleId);
+        var saved = _roles.LoadNewActivities(roleId);
         var loaded = saved == null ? new DBNewActivityInfo() : DBNewActivityInfo.Parser.ParseFrom(saved);
         return loaded.ActivityInfo.TryGetValue(117, out var eve) && eve.CycleStartTime > 0
             ? [EveKey(eve.CycleStartTime, EveSettlementNear(eve))] : [];
@@ -67,7 +67,7 @@ public sealed partial class NewActivityService
     private async Task<LegacyOwnerScope> EnterLocalWithGateAsync(GameSession session, string origin,
         CommonActivityReq? request = null, long? loadedEveCycle = null, bool? loadedEveEnded = null)
     {
-        var owners = loop.Owners ?? throw new InvalidOperationException("Activity owner registry is unavailable.");
+        var owners = _loop.Owners ?? throw new InvalidOperationException("Activity owner registry is unavailable.");
         var role = session.Role ?? throw new OperationCanceledException("Activity role disappeared before admission.");
         var owner = session.Owner ?? throw new OperationCanceledException("Activity owner disappeared before admission.");
         var attachment = session.Attachment;
@@ -75,7 +75,7 @@ public sealed partial class NewActivityService
         {
             var keys = new List<ReservationKey> { ReservationKey.Role(role.Id), ReservationKey.Lifecycle(role.Id) };
             if (EveKeyFor(session, request, loadedEveCycle, loadedEveEnded) is { } eveKey) keys.Add(eveKey);
-            if (request?.ActivityId == 118) keys.AddRange(defense.OwnerKeys(session, request));
+            if (request?.ActivityId == 118) keys.AddRange(_defense.OwnerKeys(session, request));
             var scope = await owners.EnterWithGateAsync(origin, session.ActivityGate, keys.ToArray());
             try
             {
@@ -84,7 +84,7 @@ public sealed partial class NewActivityService
                     throw new OperationCanceledException("Activity attachment changed before admission.");
                 var currentKeys = new List<ReservationKey> { ReservationKey.Role(role.Id), ReservationKey.Lifecycle(role.Id) };
                 if (EveKeyFor(session, request, loadedEveCycle, loadedEveEnded) is { } currentEveKey) currentKeys.Add(currentEveKey);
-                if (request?.ActivityId == 118) currentKeys.AddRange(defense.OwnerKeys(session, request));
+                if (request?.ActivityId == 118) currentKeys.AddRange(_defense.OwnerKeys(session, request));
                 if (!keys.SequenceEqual(currentKeys))
                 {
                     session.ActivityGate.Release();
@@ -106,7 +106,7 @@ public sealed partial class NewActivityService
     private async Task<LegacyOwnerScope> EnterSocialWithGateAsync(GameSession sender, long recipient,
         string origin, long ask = 0)
     {
-        var owners = loop.Owners ?? throw new InvalidOperationException("Activity owner registry is unavailable.");
+        var owners = _loop.Owners ?? throw new InvalidOperationException("Activity owner registry is unavailable.");
         var role = sender.Role ?? throw new OperationCanceledException("Activity sender has no role.");
         var owner = sender.Owner ?? throw new OperationCanceledException("Activity sender has no owner.");
         var attachment = sender.Attachment;
@@ -150,16 +150,16 @@ public sealed partial class NewActivityService
     /// <summary>SessionRegistry supplies only a presentation endpoint; RoleOwner remains the durable identity.</summary>
     private GameSession? AttachedSocialSession(RoleOwner owner) =>
         owner.State == RoleOwnerState.Attached && owner.Attachment is { } attachment
-            ? sessions.All().FirstOrDefault(session => ReferenceEquals(session.Owner, owner)
+            ? _sessions.All().FirstOrDefault(session => ReferenceEquals(session.Owner, owner)
                 && ReferenceEquals(session.Attachment, attachment) && session.Role?.Id == owner.RoleId)
             : null;
 
     private async Task<RoleOwner?> PinSocialRecipientAsync(long roleId)
     {
-        var owners = loop.Owners ?? throw new InvalidOperationException("Activity owner registry is unavailable.");
+        var owners = _loop.Owners ?? throw new InvalidOperationException("Activity owner registry is unavailable.");
         var context = owners.Current ?? throw new InvalidOperationException("Activity gift needs an owner reservation.");
-        if (await roles.GetAsync(roleId) == null) return null;
-        var vector = await roles.ReadRevisionVectorAsync(roleId);
+        if (await _roles.GetAsync(roleId) == null) return null;
+        var vector = await _roles.ReadRevisionVectorAsync(roleId);
         if (vector.Deleted) return null;
         var owner = owners.GetOrRegister(vector);
         if (!context.CanPin(owner) || owner.State == RoleOwnerState.Loading) return null;

@@ -21,8 +21,8 @@ public sealed partial class CombatService
 
     private void WireBossSkills()
     {
-        monsters.CastBossSkill = CastBossSkillAsync;
-        monsters.BossSkillsEnded = EndBossSkillsAsync;
+        _monsters.CastBossSkill = CastBossSkillAsync;
+        _monsters.BossSkillsEnded = EndBossSkillsAsync;
     }
 
     private static bool BossCastCurrent(MonsterUnit boss, long serial) =>
@@ -32,7 +32,7 @@ public sealed partial class CombatService
     {
         if (!BossCastCurrent(boss, serial)) return;
         var rt = boss.BossSkills!;
-        var options = monsters.BossOptions;
+        var options = _monsters.BossOptions;
         long now = Now;
         long session = ++_sessionIds;
         rt.ActiveSession = session;
@@ -65,7 +65,7 @@ public sealed partial class CombatService
             ScheduleRuntime(boss.WorldScene, TimeSpan.FromMilliseconds(skill.HitMs[i]), () =>
                 BossSkillHitAsync(boss, player, role, pet, skill, serial, session, origin, center, face, show, first, options));
         }
-        log.LogDebug("Boss {Npc} casts {Skill} (phase {Phase})", boss.Template.NpcId, skill.Id, rt.Phase);
+        _log.LogDebug("Boss {Npc} casts {Skill} (phase {Phase})", boss.Template.NpcId, skill.Id, rt.Phase);
     }
 
     private async Task BossSkillHitAsync(MonsterUnit boss, GameSession? player, Role? role, TowerPetUnit? pet, BossSkill skill,
@@ -76,7 +76,7 @@ public sealed partial class CombatService
         if (first)
         {
             foreach (var (buff, chance, ms) in skill.SelfBuffs)
-                if (ms > 0 && Rolls.Proc(10000) < chance) await buffs.AddSupportAsync(boss, buff, ms, boss.Uid);
+                if (ms > 0 && Rolls.Proc(10000) < chance) await _buffs.AddSupportAsync(boss, buff, ms, boss.Uid);
         }
         if (skill.SummonNpc > 0)
         {
@@ -99,12 +99,12 @@ public sealed partial class CombatService
         {
             float reach = skill.Area == BossSkillArea.Rect ? MathF.Sqrt(skill.Radius * skill.Radius + skill.Width * skill.Width) : skill.Radius;
             var near = new List<GameSession>();
-            world.CollectPlayers(boss.WorldScene, center.X, center.Z, reach + 0.5f, near);
+            _world.CollectPlayers(boss.WorldScene, center.X, center.Z, reach + 0.5f, near);
             foreach (var p in near)
                 if (p.Role != null && !p.Dead && !p.SceneLoading && p.WorldScene == boss.WorldScene
                     && InBossArea(skill, origin, center, face, p.Position.X, p.Position.Z)) victims.Add(p);
             if (boss.InstanceId != 0)
-                foreach (var unit in world.Map(boss.WorldScene).Near(center.X, center.Z, reach + 0.5f))
+                foreach (var unit in _world.Map(boss.WorldScene).Near(center.X, center.Z, reach + 0.5f))
                     if (unit is TowerPetUnit tp && !tp.Dead && tp.Hp > 0 && InBossArea(skill, origin, center, face, tp.X, tp.Z)) pets.Add(tp);
             victims.Sort((a, b) => MonsterService.Distance(center.X, center.Z, a.Position.X, a.Position.Z)
                 .CompareTo(MonsterService.Distance(center.X, center.Z, b.Position.X, b.Position.Z)));
@@ -162,12 +162,12 @@ public sealed partial class CombatService
         var end = WalkableEnd(boss.SceneEntry, start, dx / length * go, dz / length * go);
         boss.Moving = false;
         boss.X = end.X; boss.Y = end.Y; boss.Z = end.Z;
-        await world.ToUnitViewersAsync(boss, SkillMove, new SkillStartMoveNotify
+        await _world.ToUnitViewersAsync(boss, SkillMove, new SkillStartMoveNotify
         {
             EntityID = (ulong)boss.Uid, StartPos = start, EndPos = end, SkillConfigId = skill.Id, EffectId = skill.ChargeEffect,
             MoveType = 1, StartTimestampMs = Now, Face = MonsterService.Angle(start.X, start.Z, end.X, end.Z), MoveTimeMs = skill.ChargeMs,
         });
-        await world.MoveUnitAsync(boss, new MovementChangeNtf { Uid = boss.Uid, MovementInfo = boss.CurrentMovement(Now) });
+        await _world.MoveUnitAsync(boss, new MovementChangeNtf { Uid = boss.Uid, MovementInfo = boss.CurrentMovement(Now) });
     }
 
     /// <summary>
@@ -178,18 +178,18 @@ public sealed partial class CombatService
     private async Task SummonAsync(MonsterUnit boss, BossSkillRuntime rt, BossSkill skill, GameSession? target)
     {
         rt.Summons.RemoveAll(m => m.Removed);
-        if (rt.Summons.Count(m => !m.Dead) >= skill.SummonCount * 3 || monsters.Template(skill.SummonNpc) is not { } template) return;
-        var blast = skill.SummonBlast > 0 ? data.Row("SkillConfig", skill.SummonBlast) : null;
+        if (rt.Summons.Count(m => !m.Dead) >= skill.SummonCount * 3 || _monsters.Template(skill.SummonNpc) is not { } template) return;
+        var blast = skill.SummonBlast > 0 ? _data.Row("SkillConfig", skill.SummonBlast) : null;
         if (blast != null) template = template with { SpeedCm = 0, AttackRange = 0, RoamDistance = 0 };
         for (int i = 0; i < skill.SummonCount; i++)
         {
             double angle = Random.Shared.NextDouble() * Math.PI * 2;
             var at = new MapPoint(boss.X + (float)Math.Cos(angle) * 3, boss.Y, boss.Z + (float)Math.Sin(angle) * 3, boss.Face);
-            if (await monsters.SpawnSingleAsync(boss.RuntimeMap, skill.SummonNpc, at, customTemplate: template) is not { } minion) continue;
+            if (await _monsters.SpawnSingleAsync(boss.RuntimeMap, skill.SummonNpc, at, customTemplate: template) is not { } minion) continue;
             if (boss.Dead || !ReferenceEquals(boss.BossSkills, rt))
             {
                 minion.Dead = true;
-                await world.RemoveUnitAsync(minion);
+                await _world.RemoveUnitAsync(minion);
                 return;
             }
             rt.Summons.Add(minion);
@@ -199,39 +199,39 @@ public sealed partial class CombatService
                     SrcID = minion.Uid, SkillID = skill.SummonBlast, TargetPos = minion.Pos, Face = minion.Face,
                     SessionId = ++_sessionIds, SkillMs = (int)GameData.Int(row, "_iActionTime"), StartTime = Now,
                 });
-            else if (target != null && !target.Dead) monsters.Engage(minion, target);
+            else if (target != null && !target.Dead) _monsters.Engage(minion, target);
             ScheduleRuntime(boss.WorldScene, TimeSpan.FromMilliseconds(skill.SummonLifeMs), () => SummonLifeEndsAsync(rt, minion, skill));
         }
-        log.LogInformation("Boss {Npc} summons {Count} x {Minion}", boss.Template.NpcId, skill.SummonCount, skill.SummonNpc);
+        _log.LogInformation("Boss {Npc} summons {Count} x {Minion}", boss.Template.NpcId, skill.SummonCount, skill.SummonNpc);
     }
 
     private async Task SummonLifeEndsAsync(BossSkillRuntime rt, MonsterUnit minion, BossSkill skill)
     {
         if (minion.Dead) return;
-        if (skill.SummonBlast > 0 && data.Row("SkillConfig", skill.SummonBlast) is { } row)
+        if (skill.SummonBlast > 0 && _data.Row("SkillConfig", skill.SummonBlast) is { } row)
         {
             float radius = BossSkillRadius(row);
             int max = (int)Math.Max(1, GameData.Int(row, "_iTargetMax"));
             var near = new List<GameSession>();
-            world.CollectPlayers(minion.WorldScene, minion.X, minion.Z, radius + 0.5f, near);
+            _world.CollectPlayers(minion.WorldScene, minion.X, minion.Z, radius + 0.5f, near);
             near.RemoveAll(p => p.Role == null || p.Dead || p.SceneLoading);
             near.Sort((a, b) => MonsterService.Distance(minion, a).CompareTo(MonsterService.Distance(minion, b)));
             if (near.Count > max) near.RemoveRange(max, near.Count - max);
-            await MonsterSkillHitAsync(minion, row, near, minion.Uid, damagePercent: monsters.BossOptions.DamagePercent);
+            await MonsterSkillHitAsync(minion, row, near, minion.Uid, damagePercent: _monsters.BossOptions.DamagePercent);
         }
         // The corpse stays in Summons until it is removed: the boss's end removes any that are still there.
-        if (!minion.Dead) await monsters.KillAsync(minion);
+        if (!minion.Dead) await _monsters.KillAsync(minion);
     }
 
     /// <summary>A blast row's radius: _kRange in cm when real, else the default.</summary>
     private float BossSkillRadius(JsonElement row) => Numbers(row, "_kRange") is { Length: > 0 } range && range[0] >= 100
-        ? (float)range[0] / 100 : monsters.BossOptions.DefaultRadius;
+        ? (float)range[0] / 100 : _monsters.BossOptions.DefaultRadius;
 
     /// <summary>The boss's specials ended: interrupt the cast in flight (31103, its warnings cleared) and despawn its summons.</summary>
     private async Task EndBossSkillsAsync(MonsterUnit boss, BossSkillRuntime rt, bool interrupt)
     {
         if (interrupt && rt.ActiveSession != 0)
-            await world.ToUnitViewersAsync(boss, SkillEnd, new SkillEndNotify
+            await _world.ToUnitViewersAsync(boss, SkillEnd, new SkillEndNotify
             {
                 SrcID = boss.Uid, SessionId = rt.ActiveSession, Type = SkillEndNotify.Types.SkillEndType.Interrupted, ClearEffect = true,
                 InterruptedInfo = new SkillInterruptedInfo { Type = SkillInterruptedInfo.Types.SkillInterruptType.State },
@@ -240,7 +240,7 @@ public sealed partial class CombatService
         foreach (var minion in rt.Summons.ToArray())
         {
             minion.Dead = true;
-            await world.RemoveUnitAsync(minion);
+            await _world.RemoveUnitAsync(minion);
         }
         rt.Summons.Clear();
     }

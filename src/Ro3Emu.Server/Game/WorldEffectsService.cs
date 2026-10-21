@@ -25,19 +25,19 @@ public sealed class WorldEffectsService
         public Dictionary<int, int>? Animations;
     }
 
-    private readonly World world;
-    private readonly GameData data;
-    private readonly GameLoop loop;
-    private readonly Dictionary<long, Dictionary<uint, ForceFieldInfo>> fields = new();
-    private readonly Dictionary<long, long> latency = new();
-    private readonly Dictionary<MonsterUnit, UnitEffects> units = new();
+    private readonly World _world;
+    private readonly GameData _data;
+    private readonly GameLoop _loop;
+    private readonly Dictionary<long, Dictionary<uint, ForceFieldInfo>> _fields = new();
+    private readonly Dictionary<long, long> _latency = new();
+    private readonly Dictionary<MonsterUnit, UnitEffects> _units = new();
 
     public WorldEffectsService(World world, GameData data, SceneService scene, MonsterService monsters,
         GmCommands gm, GameLoop loop, ILogger<WorldEffectsService> log)
     {
-        this.world = world;
-        this.data = data;
-        this.loop = loop;
+        this._world = world;
+        this._data = data;
+        this._loop = loop;
         scene.AfterLoaded.Add(ReplayAsync);
         scene.Resync.Add(ReplayAsync); // presentation only: the reconnected client lost the scene's latency/force fields
         world.UnitEntered.Add(UnitEnteredAsync);
@@ -54,17 +54,17 @@ public sealed class WorldEffectsService
     private static bool Finite(float value) => float.IsFinite(value);
     private static bool FiniteVec(Vec3? value) => value != null && Finite(value.X) && Finite(value.Y) && Finite(value.Z);
     private static bool ValidScene(GameSession s) => s.Role != null && !s.SceneLoading;
-    private bool Active(MonsterUnit unit) => !unit.Dead && world.AllUnits().Contains(unit);
+    private bool Active(MonsterUnit unit) => !unit.Dead && _world.AllUnits().Contains(unit);
     private static bool Angle(float value) => Finite(value) && value >= 0 && value <= 360;
 
     /// <summary>31091 is per scene and replayed after scene load. The client uses (ms + 75)/1000 smoothing.</summary>
     public async Task<bool> SetMovementLatencyAsync(long worldScene, long milliseconds)
     {
         if (milliseconds is < 0 or > 2000) return false;
-        latency[worldScene] = milliseconds;
+        _latency[worldScene] = milliseconds;
         var packet = new MovementConfigSyncNtf();
         packet.Params["movement_latency_ms"] = milliseconds;
-        foreach (var player in world.PlayersIn(worldScene)) await player.SendGameAsync(MovementConfig, packet);
+        foreach (var player in _world.PlayersIn(worldScene)) await player.SendGameAsync(MovementConfig, packet);
         return true;
     }
 
@@ -78,12 +78,12 @@ public sealed class WorldEffectsService
             || !Finite(custom.ForceSpeed) || custom.ForceSpeed <= 0 || custom.ForceSpeed > 100
             || custom.ForceRangeInfo is not { } range || !ValidRange(range)
             || lifetime <= TimeSpan.Zero || lifetime > TimeSpan.FromMinutes(5)) return false;
-        if (!fields.TryGetValue(worldScene, out var scene)) fields[worldScene] = scene = new();
+        if (!_fields.TryGetValue(worldScene, out var scene)) _fields[worldScene] = scene = new();
         if (scene.ContainsKey(field.Uuid)) return false;
         var copy = field.Clone();
         scene.Add(copy.Uuid, copy);
         await BroadcastSceneAsync(worldScene, ForceFields, new ForceFieldNotify { ForceFields = { copy } });
-        loop.ScheduleLegacy(lifetime, () => RemoveForceFieldAsync(worldScene, copy.Uuid, copy));
+        _loop.ScheduleLegacy(lifetime, () => RemoveForceFieldAsync(worldScene, copy.Uuid, copy));
         return true;
     }
 
@@ -99,10 +99,10 @@ public sealed class WorldEffectsService
 
     private async Task<bool> RemoveForceFieldAsync(long worldScene, uint id, ForceFieldInfo? expected)
     {
-        if (!fields.TryGetValue(worldScene, out var scene) || !scene.TryGetValue(id, out var current)
+        if (!_fields.TryGetValue(worldScene, out var scene) || !scene.TryGetValue(id, out var current)
             || expected != null && !ReferenceEquals(expected, current)) return false;
         scene.Remove(id);
-        if (scene.Count == 0) fields.Remove(worldScene);
+        if (scene.Count == 0) _fields.Remove(worldScene);
         await BroadcastSceneAsync(worldScene, ForceFields, new ForceFieldNotify
         { ForceFields = { new ForceFieldInfo { Uuid = id, Remove = true } } });
         return true;
@@ -111,14 +111,14 @@ public sealed class WorldEffectsService
     /// <summary>31028 is transient text. The ID must resolve through ChatConfig; no historical trigger is inferred.</summary>
     public async Task<bool> ShoutAsync(MonsterUnit boss, int chatId)
     {
-        if (!Active(boss) || data.Row("ChatConfig", chatId) is not { } chat ||
-            data.Row("NPCConfig", boss.Template.NpcId) is not { } npc ||
+        if (!Active(boss) || _data.Row("ChatConfig", chatId) is not { } chat ||
+            _data.Row("NPCConfig", boss.Template.NpcId) is not { } npc ||
             GameData.Int(npc, "_iNPCSubType") is not (3 or 4 or 6)) return false;
-        string content = data.TextOf(chat, "_iContent");
+        string content = _data.TextOf(chat, "_iContent");
         // MessagePush has no parameter payload on 31028; templated messages belong to 1022.
         if (string.IsNullOrWhiteSpace(content) || content.Contains("${", StringComparison.Ordinal)
             || content.Contains("@{", StringComparison.Ordinal) || content.Contains("^{", StringComparison.Ordinal)) return false;
-        await world.ToUnitViewersAsync(boss, BossShout, new SceneBossShoutNotify
+        await _world.ToUnitViewersAsync(boss, BossShout, new SceneBossShoutNotify
         { MonsterId = boss.Template.NpcId, ShoutId = chatId });
         return true;
     }
@@ -128,7 +128,7 @@ public sealed class WorldEffectsService
     {
         if (!Active(unit) || !Angle(face) || !Finite(degreesPerSecond) || degreesPerSecond < 0 || durationMs < 0 || durationMs > 30000) return false;
         unit.Face = face;
-        await world.ToUnitViewersAsync(unit, Turning, new ContinueTurningChangeNtf
+        await _world.ToUnitViewersAsync(unit, Turning, new ContinueTurningChangeNtf
         {
             Uid = unit.Uid, TurningInfo = new ContinueTurningInfo
             { Face = face, ServerTime = MonsterService.NowMs, AngleSpeed = degreesPerSecond, TurnDuration = durationMs },
@@ -149,7 +149,7 @@ public sealed class WorldEffectsService
         if (!ValidScene(player) || !Angle(face)) return false;
         player.Face = face;
         await player.SendGameAsync(LocalFace, new LocalPlayerFaceChangeNtf { Face = face });
-        await world.TurnAsync(player, face);
+        await _world.TurnAsync(player, face);
         return true;
     }
 
@@ -158,28 +158,28 @@ public sealed class WorldEffectsService
         if (!Active(unit) || info.EnforceType < 0 || !Finite(info.EnforceSpeed) || info.EnforceSpeed < 0
             || !Finite(info.EnforceDir) || info.Size.Any(v => !Finite(v) || v < 0)) return false;
         Effects(unit).EnforceInfo = info.Clone();
-        await world.ToUnitViewersAsync(unit, Enforce, new EntityEnforceChange { Uuid = unit.Uid, EnforceInfo = info });
+        await _world.ToUnitViewersAsync(unit, Enforce, new EntityEnforceChange { Uuid = unit.Uid, EnforceInfo = info });
         return true;
     }
 
     public async Task<bool> SetBeEnforcedAsync(MonsterUnit unit, IReadOnlyCollection<long> sourceUids)
     {
         if (!Active(unit) || sourceUids.Count > 32 || sourceUids.Any(id => id <= 0 ||
-            !world.AllUnits().Any(other => other.Uid == id && other.WorldScene == unit.WorldScene))) return false;
+            !_world.AllUnits().Any(other => other.Uid == id && other.WorldScene == unit.WorldScene))) return false;
         Effects(unit).BeEnforcedUids = sourceUids.ToArray();
-        await world.ToUnitViewersAsync(unit, BeEnforced, new EntityBeEnforcedChange
+        await _world.ToUnitViewersAsync(unit, BeEnforced, new EntityBeEnforcedChange
         { Uuid = unit.Uid, BeEnforcedUids = { sourceUids } });
         return true;
     }
 
     public async Task<bool> SetPendantsAsync(MonsterUnit unit, IReadOnlyDictionary<int, PendantData> pendants)
     {
-        if (!Active(unit) || pendants.Count > 16 || pendants.Any(p => data.Row("PendantConfig", p.Key) == null
+        if (!Active(unit) || pendants.Count > 16 || pendants.Any(p => _data.Row("PendantConfig", p.Key) == null
             || p.Value.PendantId != p.Key || p.Value.Piles < 0)) return false;
         Effects(unit).Pendants = pendants.ToDictionary(p => p.Key, p => p.Value.Clone());
         var packet = new PendantUpdate { EntityID = unit.Uid };
         foreach (var (id, pendant) in pendants) packet.PendantInfo[id] = pendant;
-        await world.ToUnitViewersAsync(unit, Pendant, packet);
+        await _world.ToUnitViewersAsync(unit, Pendant, packet);
         return true;
     }
 
@@ -187,7 +187,7 @@ public sealed class WorldEffectsService
     {
         if (!Active(unit) || rules.Count > 32 || rules.Any(id => id < 0)) return false;
         Effects(unit).HitDecorateRules = rules.ToArray();
-        await world.ToUnitViewersAsync(unit, HitRules, new HitDecorateRulesNotify
+        await _world.ToUnitViewersAsync(unit, HitRules, new HitDecorateRulesNotify
         { EntityId = unit.Uid, HitDecorateRules = { rules } });
         return true;
     }
@@ -198,7 +198,7 @@ public sealed class WorldEffectsService
         Effects(unit).Animations = overrides.ToDictionary(p => p.Key, p => p.Value);
         var packet = new UpdateEntityAnimation { EntityID = unit.Uid };
         foreach (var (id, animation) in overrides) packet.AnimationInfo[id] = animation;
-        await world.ToUnitViewersAsync(unit, Animation, packet);
+        await _world.ToUnitViewersAsync(unit, Animation, packet);
         return true;
     }
 
@@ -207,22 +207,22 @@ public sealed class WorldEffectsService
     {
         if (!Active(unit) || camp <= 0) return false;
         unit.CampOverride = camp;
-        await world.ToUnitViewersAsync(unit, Camp, new EntityChangeCampNotify { EntityId = unit.Uid, Camp = camp });
+        await _world.ToUnitViewersAsync(unit, Camp, new EntityChangeCampNotify { EntityId = unit.Uid, Camp = camp });
         return true;
     }
 
-    private UnitEffects Effects(MonsterUnit unit) => units.TryGetValue(unit, out var state) ? state : units[unit] = new();
-    private Task RemovedAsync(WorldUnit unit) { if (unit is MonsterUnit monster) units.Remove(monster); return Task.CompletedTask; }
+    private UnitEffects Effects(MonsterUnit unit) => _units.TryGetValue(unit, out var state) ? state : _units[unit] = new();
+    private Task RemovedAsync(WorldUnit unit) { if (unit is MonsterUnit monster) _units.Remove(monster); return Task.CompletedTask; }
 
     private async Task ReplayAsync(GameSession player)
     {
-        if (latency.TryGetValue(player.WorldScene, out long ms))
+        if (_latency.TryGetValue(player.WorldScene, out long ms))
         {
             var packet = new MovementConfigSyncNtf();
             packet.Params["movement_latency_ms"] = ms;
             await player.SendGameAsync(MovementConfig, packet);
         }
-        if (fields.TryGetValue(player.WorldScene, out var scene) && scene.Count > 0)
+        if (_fields.TryGetValue(player.WorldScene, out var scene) && scene.Count > 0)
             await player.SendGameAsync(ForceFields, new ForceFieldNotify { ForceFields = { scene.Values } });
     }
 
@@ -230,7 +230,7 @@ public sealed class WorldEffectsService
     {
         if (entered is not MonsterUnit unit) return;
         if (!player.VisibleUnits.Contains(unit)) return;
-        if (!units.TryGetValue(unit, out var state)) return;
+        if (!_units.TryGetValue(unit, out var state)) return;
         if (state.EnforceInfo != null) await player.SendGameAsync(Enforce, new EntityEnforceChange { Uuid = unit.Uid, EnforceInfo = state.EnforceInfo });
         if (state.BeEnforcedUids != null) await player.SendGameAsync(BeEnforced, new EntityBeEnforcedChange { Uuid = unit.Uid, BeEnforcedUids = { state.BeEnforcedUids } });
         if (state.Pendants != null) { var packet = new PendantUpdate { EntityID = unit.Uid }; packet.PendantInfo.Add(state.Pendants); await player.SendGameAsync(Pendant, packet); }
@@ -240,7 +240,7 @@ public sealed class WorldEffectsService
 
     private async Task BroadcastSceneAsync(long worldScene, uint msg, Google.Protobuf.IMessage payload)
     {
-        foreach (var player in world.PlayersIn(worldScene)) await player.SendGameAsync(msg, payload);
+        foreach (var player in _world.PlayersIn(worldScene)) await player.SendGameAsync(msg, payload);
     }
 
     private static int I(string s) => int.Parse(s, CultureInfo.InvariantCulture);
@@ -260,7 +260,7 @@ public sealed class WorldEffectsService
     private async Task BossShoutCommandAsync(GameSession s, string[] args)
     {
         if (!ValidScene(s) || args.Length != 2) throw new ArgumentException("boss shout");
-        var boss = world.AllUnits().OfType<MonsterUnit>().FirstOrDefault(m => m.Uid == L(args[0]) && m.WorldScene == s.WorldScene && m.Viewers.Contains(s));
+        var boss = _world.AllUnits().OfType<MonsterUnit>().FirstOrDefault(m => m.Uid == L(args[0]) && m.WorldScene == s.WorldScene && m.Viewers.Contains(s));
         if (boss == null || !await ShoutAsync(boss, I(args[1]))) throw new ArgumentException("visible boss or ChatConfig id");
         await GmCommands.ReplyAsync(s, "Boss shout sent.");
     }

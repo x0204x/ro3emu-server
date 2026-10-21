@@ -13,45 +13,45 @@ namespace Ro3Emu.Tests;
 /// <summary>PLAYER_ASSET replays the exact client-safe full encodings before acknowledging reconnect.</summary>
 public sealed class AssetReconnectTests : IAsyncLifetime
 {
-    private readonly string directory = Path.Combine(Path.GetTempPath(), "ro3-asset-reconnect-" + Guid.NewGuid().ToString("N"));
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), "ro3-asset-reconnect-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);
-    private WebApplication app = null!;
-    private string http = "";
+    private WebApplication _app = null!;
+    private string _http = "";
 
     public async Task InitializeAsync()
     {
         var (hp, mp, gp) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = directory;
+            o.DataDir = _directory;
             o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = hp;
             o.MicroGatePort = mp;
             o.GameGatePort = gp;
         });
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{hp}";
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{hp}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(directory, true); } catch (IOException) { }
+        try { Directory.Delete(_directory, true); } catch (IOException) { }
     }
 
     [ClientDataFact]
     public async Task EqualClientVersionsStillReplayEmptyClaimsAndRefineMapsBeforeAcknowledgment()
     {
-        await using var bot = new BotClient(http, File.ReadAllText(Path.Combine(directory, "gate_rsa_public.pem")));
+        await using var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_directory, "gate_rsa_public.pem")));
         await bot.LoginAsync("alice", "pw");
         await bot.EnterGateAsync();
         long id = (await bot.CreateRoleAsync("Alice")).RoleBaseInfo.Id;
         await bot.EnterWorldAsync(id);
 
-        var session = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice" && s.Role != null);
-        var roles = app.Services.GetRequiredService<RoleStore>();
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice" && s.Role != null);
+        var roles = _app.Services.GetRequiredService<RoleStore>();
         Assert.Empty(session.Daily!.Claims);
         Assert.True(session.SeasonRefine!.EquipParts[1].RefineSlots[1].CanSelectedAttr.Count == 0);
         var dailyBefore = JsonSerializer.SerializeToUtf8Bytes(session.Daily);

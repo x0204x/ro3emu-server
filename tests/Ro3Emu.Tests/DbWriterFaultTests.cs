@@ -71,11 +71,11 @@ public sealed class DbWriterFaultTests : IDisposable
 
     private sealed class RolePlan(long role, RoleRevisionVector vector, ConcurrentQueue<string> executed) : DbPlan
     {
-        private readonly Plan inner = new("role-write", executed);
+        private readonly Plan _inner = new("role-write", executed);
         internal override int Bytes => 64;
         internal override string Label => "test/role-write";
         internal override IReadOnlyList<RoleRevisionKey> RoleWrites => [RevisionStore.Role(role, RevisionStore.Identity)];
-        internal override object Execute(SqliteConnection db, SqliteTransaction tx) => inner.Execute(db, tx);
+        internal override object Execute(SqliteConnection db, SqliteTransaction tx) => _inner.Execute(db, tx);
         internal RolePlan Captured() { Expect([vector]); return this; }
     }
 
@@ -155,12 +155,12 @@ public sealed class DbWriterFaultTests : IDisposable
     /// <summary>Writes its row, then fails: its own partial write must be rolled back, nobody else's.</summary>
     private sealed class PartialPlan(string name, ConcurrentQueue<string> executed) : DbPlan
     {
-        private readonly Plan inner = new(name, executed);
+        private readonly Plan _inner = new(name, executed);
         internal override int Bytes => 64;
         internal override string Label => "test/" + name;
         internal override object Execute(SqliteConnection db, SqliteTransaction tx)
         {
-            inner.Execute(db, tx);
+            _inner.Execute(db, tx);
             throw new InvalidOperationException("Test-only failure after a partial write.");
         }
     }

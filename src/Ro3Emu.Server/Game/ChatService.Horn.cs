@@ -28,20 +28,20 @@ public sealed partial class ChatService
         if (use.Count != 1 || use.Request.ItemParam.Count != 1
             || use.Request.ItemParam[0].VarCase != ItemUseParamInfo.VarOneofCase.ChatCustomizeData
             || use.Request.ItemParam[0].ChatCustomizeData.SoundTransmission is not { } horn) return ErrorCodes.Parameter;
-        if (data.Row("ChatConfig", chatId) == null) return ErrorCodes.ItemNoConfig;
+        if (_data.Row("ChatConfig", chatId) == null) return ErrorCodes.ItemNoConfig;
         string words = horn.Words ?? "";
-        long limit = data.Table("PublicParamConfig").TryGetValue("TrumpetWordLimit", out var v) && GameData.Number(v) is { } n ? (long)n : 50;
+        long limit = _data.Table("PublicParamConfig").TryGetValue("TrumpetWordLimit", out var v) && GameData.Number(v) is { } n ? (long)n : 50;
         int length = new StringInfo(words).LengthInTextElements;
         if (words.Trim().Length == 0 || length > limit) return ErrorCodes.Parameter;
-        if (options.Value.GuildBlockedWords.Any(word => !string.IsNullOrWhiteSpace(word)
+        if (_options.Value.GuildBlockedWords.Any(word => !string.IsNullOrWhiteSpace(word)
             && words.Contains(word, StringComparison.OrdinalIgnoreCase))) return ErrorCodes.TextSensitive;
-        if (!await character.CommitItemActionAsync(use, null, null, new { ChatId = chatId, Words = words }))
+        if (!await _character.CommitItemActionAsync(use, null, null, new { ChatId = chatId, Words = words }))
             return ErrorCodes.ItemsShort;
         var ntf = new SystemBoardCastMsgNtf { Source = MsgSource.Player, ChatId = chatId, PlayerId = s.Role!.Id };
         ntf.ParamList[1] = new ChatParameter { Params = { $"{s.Role.Id}:{s.Role.Name}" }, Type = ChatParamType.ChatParamString };
         ntf.ParamList[2] = new ChatParameter { Params = { words }, Type = ChatParamType.ChatParamString };
-        await RoleFanout.EachAsync(sessions.All().Where(p => p.Role != null), p => p.SendGameAsync(SystemBroadcast, ntf));
-        log.LogInformation("{Name} horn {Item}: {Words}", s.Role.Name, use.Item.Entry, words);
+        await RoleFanout.EachAsync(_sessions.All().Where(p => p.Role != null), p => p.SendGameAsync(SystemBroadcast, ntf));
+        _log.LogInformation("{Name} horn {Item}: {Words}", s.Role.Name, use.Item.Entry, words);
         return 0;
     }
 }

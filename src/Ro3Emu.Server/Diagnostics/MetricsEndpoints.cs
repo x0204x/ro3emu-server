@@ -8,8 +8,8 @@ public static class MetricsEndpoints
 {
     public static void Map(WebApplication app)
     {
-        app.MapGet("/ro3emu/metrics", (HttpContext context, ServerMetrics metrics, SessionRegistry sessions, PublicLineManager lines) =>
-            Local(context) ? Results.Json(metrics.Snapshot(sessions, lines)) : Results.NotFound());
+        app.MapGet("/ro3emu/metrics", (HttpContext context, ServerMetrics metrics, SessionCensus census, PublicLineManager lines) =>
+            Local(context) ? Results.Json(metrics.Snapshot(census.Current, lines)) : Results.NotFound());
         app.MapPost("/ro3emu/metrics/reset", (HttpContext context, ServerMetrics metrics) =>
             Local(context) ? Results.Json(new { epoch = metrics.Reset() }) : Results.NotFound());
         // Slowest game messages by total loop time (MessageRoutes, audit F4.1).

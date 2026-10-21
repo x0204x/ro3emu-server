@@ -8,16 +8,16 @@ namespace Ro3Emu.Tests;
 
 public sealed class ActivityFragmentCaptureTests : IDisposable
 {
-    private readonly string directory = Path.Combine(Path.GetTempPath(), "ro3-fragment-capture-" + Guid.NewGuid().ToString("N"));
-    private readonly AccountStore accounts;
-    private readonly RoleStore roles;
-    private readonly ItemStore items;
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), "ro3-fragment-capture-" + Guid.NewGuid().ToString("N"));
+    private readonly AccountStore _accounts;
+    private readonly RoleStore _roles;
+    private readonly ItemStore _items;
 
     public ActivityFragmentCaptureTests()
     {
-        accounts = new AccountStore(Options.Create(new ServerOptions { DataDir = directory }));
-        roles = new RoleStore(accounts);
-        items = new ItemStore(accounts);
+        _accounts = new AccountStore(Options.Create(new ServerOptions { DataDir = _directory }));
+        _roles = new RoleStore(_accounts);
+        _items = new ItemStore(_accounts);
     }
 
     [Theory]
@@ -25,17 +25,17 @@ public sealed class ActivityFragmentCaptureTests : IDisposable
     [InlineData(true)]
     public void FragmentTransferGuardsBothInventoriesAndAppliesRecipientGuidOnlyAfterWholeCommit(bool conflict)
     {
-        long sender = roles.Create("fragment", 1, "Sender", 1, 1000, 1)!.Id;
-        long recipient = roles.Create("fragment", 1, "Recipient", 1, 1000, 1)!.Id;
+        long sender = _roles.Create("fragment", 1, "Sender", 1, 1000, 1)!.Id;
+        long recipient = _roles.Create("fragment", 1, "Recipient", 1, 1000, 1)!.Id;
         var original = new InvItem { Entry = 1111001, Stack = 2, Pack = 1 };
-        items.Insert(sender, original);
-        var senderBefore = accounts.ReadSync<List<InvItem>>(new ActivityInventoryReadPlan(sender));
-        var recipientBefore = accounts.ReadSync<List<InvItem>>(new ActivityInventoryReadPlan(recipient));
+        _items.Insert(sender, original);
+        var senderBefore = _accounts.ReadSync<List<InvItem>>(new ActivityInventoryReadPlan(sender));
+        var recipientBefore = _accounts.ReadSync<List<InvItem>>(new ActivityInventoryReadPlan(recipient));
         var senderAfter = senderBefore.Select(i => i.Clone()).ToList();
         senderAfter[0].Stack = 1;
         var gift = new InvItem { Entry = 1111001, Stack = 1, Pack = 1 };
         var recipientAfter = new List<InvItem> { gift };
-        var transaction = new RoleItemPlanBuilder(accounts);
+        var transaction = new RoleItemPlanBuilder(_accounts);
         transaction.Guard(new ActivityInventoryGuardPlan(sender, senderBefore));
         transaction.Guard(new ActivityInventoryGuardPlan(recipient, recipientBefore));
         transaction.Add(new ItemSnapshotWritePlan(sender, senderAfter), receipt =>
@@ -47,45 +47,45 @@ public sealed class ActivityFragmentCaptureTests : IDisposable
         if (conflict)
         {
             original.Stack = 3;
-            items.Update(original);
-            Assert.ThrowsAny<InvalidOperationException>(() => transaction.Commit(accounts, "test/fragment-conflict"));
+            _items.Update(original);
+            Assert.ThrowsAny<InvalidOperationException>(() => transaction.Commit(_accounts, "test/fragment-conflict"));
             Assert.Equal(0, gift.Guid);
-            Assert.Equal(3, Assert.Single(items.Load(sender)).Stack);
-            Assert.Empty(items.Load(recipient));
-            Assert.Null(roles.LoadActivityRuntime(recipient));
+            Assert.Equal(3, Assert.Single(_items.Load(sender)).Stack);
+            Assert.Empty(_items.Load(recipient));
+            Assert.Null(_roles.LoadActivityRuntime(recipient));
         }
         else
         {
-            transaction.Commit(accounts, "test/fragment-success");
+            transaction.Commit(_accounts, "test/fragment-success");
             Assert.True(gift.Guid > 0);
-            Assert.Equal(gift.Guid, Assert.Single(items.Load(recipient)).Guid);
-            Assert.Equal(1, Assert.Single(items.Load(sender)).Stack);
-            Assert.Equal(new byte[] { 1, 2, 3 }, roles.LoadActivityRuntime(recipient));
+            Assert.Equal(gift.Guid, Assert.Single(_items.Load(recipient)).Guid);
+            Assert.Equal(1, Assert.Single(_items.Load(sender)).Stack);
+            Assert.Equal(new byte[] { 1, 2, 3 }, _roles.LoadActivityRuntime(recipient));
         }
     }
 
     [Fact]
     public void InventoryGuardComparesRowsIndependentOfLiveBagOrder()
     {
-        long role = roles.Create("fragment", 1, "Ordered", 1, 1000, 1)!.Id;
+        long role = _roles.Create("fragment", 1, "Ordered", 1, 1000, 1)!.Id;
         var first = new InvItem { Entry = 1111001, Stack = 1, Pack = 1 };
         var second = new InvItem { Entry = 1111002, Stack = 1, Pack = 1 };
-        items.Insert(role, first);
-        items.Insert(role, second);
-        var reversed = items.Load(role);
+        _items.Insert(role, first);
+        _items.Insert(role, second);
+        var reversed = _items.Load(role);
         reversed.Reverse();
-        var builder = new RoleItemPlanBuilder(accounts);
+        var builder = new RoleItemPlanBuilder(_accounts);
         builder.Guard(new ActivityInventoryGuardPlan(role, reversed));
         builder.RoleBlob(role, "activity_runtime", [3]);
 
-        builder.Commit(accounts, "test/fragment-order-independent");
+        builder.Commit(_accounts, "test/fragment-order-independent");
 
-        Assert.Equal(new byte[] { 3 }, roles.LoadActivityRuntime(role));
+        Assert.Equal(new byte[] { 3 }, _roles.LoadActivityRuntime(role));
     }
 
     public void Dispose()
     {
         SqliteConnection.ClearAllPools();
-        try { Directory.Delete(directory, true); } catch (IOException) { }
+        try { Directory.Delete(_directory, true); } catch (IOException) { }
     }
 }

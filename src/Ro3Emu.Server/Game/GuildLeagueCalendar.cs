@@ -34,7 +34,7 @@ public sealed class GuildLeagueCalendar(GameData data, ActivityClock clock, Time
     private int Activity(int slot, int fallback) => data.Table("GuildSettingConfig").TryGetValue($"GuildLeagueActivityID{slot}", out var row)
         && row.TryGetProperty("_kValue", out var value) && GameData.Number(value) is { } n ? (int)n : fallback;
 
-    private (long Opened, int Count, Tournament[] Prefix, DateTime Anchor)? memo;
+    private (long Opened, int Count, Tournament[] Prefix, DateTime Anchor)? _memo;
 
     /// <summary>The latest tournament registered at or before <paramref name="now"/>, or null before the first one.</summary>
     public Tournament? Current(long now)
@@ -123,7 +123,7 @@ public sealed class GuildLeagueCalendar(GameData data, ActivityClock clock, Time
     {
         long opened = clock.ServerOpen;
         int count = data.Table("DailyActivityCustomConfig").Count;
-        if (memo is { } m && m.Opened == opened && m.Count == count) return (m.Prefix, m.Anchor);
+        if (_memo is { } m && m.Opened == opened && m.Count == count) return (m.Prefix, m.Anchor);
         var opening = Local(opened).Date;
         var firstMonday = Monday(opening);
         var rows = data.Table("DailyActivityCustomConfig").Values.ToArray();
@@ -170,8 +170,8 @@ public sealed class GuildLeagueCalendar(GameData data, ActivityClock clock, Time
             }
         }
         var anchor = firstMonday.AddDays(weeks * 7);
-        memo = (opened, count, prefix.ToArray(), anchor);
-        return (memo.Value.Prefix, anchor);
+        _memo = (opened, count, prefix.ToArray(), anchor);
+        return (_memo.Value.Prefix, anchor);
     }
 
     private ((int Day, int Start, int End) Init, (int Day, int Start, int End)[] Rounds)? Steady()

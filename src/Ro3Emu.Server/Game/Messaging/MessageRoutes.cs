@@ -72,6 +72,20 @@ public sealed class MessageRoutes
     /// <summary>Messages that change only the sender's account (role creation on the role screen).</summary>
     public void AdmitAccount(Func<uint, bool> ids) => _account.Add(ids);
 
+    private readonly List<(SessionStage Stage, Func<uint, bool> Ids)> _early = [];
+
+    /// <summary>
+    /// Messages the client sends before its role is in the world, from <paramref name="stage"/> on. Every message not
+    /// declared here needs a role; the dispatcher refuses it earlier (<see cref="Accepts"/>).
+    /// </summary>
+    public void AllowFrom(SessionStage stage, Func<uint, bool> ids) => _early.Add((stage, ids));
+
+    /// <summary>The earliest stage that accepts a message: the lowest it is declared for, else the world.</summary>
+    public SessionStage RequiredStage(uint msgId) =>
+        _early.Where(early => early.Ids(msgId)).Select(early => early.Stage).DefaultIfEmpty(SessionStage.World).Min();
+
+    public bool Accepts(GameSession session, uint msgId) => SessionStages.Of(session) >= RequiredStage(msgId);
+
     /// <summary>
     /// How a message is admitted: economic, then runtime, then an id the client never sends, else under the sender's
     /// account, its role, or the whole realm for whatever is not declared narrower.

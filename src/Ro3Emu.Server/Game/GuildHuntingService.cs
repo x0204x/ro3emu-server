@@ -34,26 +34,26 @@ public sealed class GuildHuntingService : IGameTicker
     /// <summary>(inferred) The server top kept and rewarded: GuildHuntRewardConfig group 2 ends at rank 20 (row 1009).</summary>
     private const int TopSize = 20;
     /// <summary>(inferred) Commander skills reroll every 60 s; the client only shows nextSkillMs (HC:229-315).</summary>
-    internal static long SkillRefreshMs { get; set; } = 60_000;
+    private const long SkillRefreshMs = 60_000;
 
-    private readonly GameData data;
-    private readonly AccountStore accounts;
-    private readonly GuildStore guilds;
-    private readonly GuildService guildService;
-    private readonly SessionRegistry sessions;
-    private readonly FunctionService functions;
-    private readonly TimedTodoSchedule schedule;
-    private readonly TimeProvider time;
-    private readonly InstanceService instances;
-    private readonly WorldData maps;
-    private readonly BuffService buffs;
-    private readonly GameLoop loop;
-    private readonly GuildHomeService home;
-    private readonly MailService mail;
-    private readonly AwardService awards;
-    private readonly SeasonService seasons;
-    private readonly TaskService tasks;
-    private readonly ILogger<GuildHuntingService> log;
+    private readonly GameData _data;
+    private readonly AccountStore _accounts;
+    private readonly GuildStore _guilds;
+    private readonly GuildService _guildService;
+    private readonly SessionRegistry _sessions;
+    private readonly FunctionService _functions;
+    private readonly TimedTodoSchedule _schedule;
+    private readonly TimeProvider _time;
+    private readonly InstanceService _instances;
+    private readonly WorldData _maps;
+    private readonly BuffService _buffs;
+    private readonly GameLoop _loop;
+    private readonly GuildHomeService _home;
+    private readonly MailService _mail;
+    private readonly AwardService _awards;
+    private readonly SeasonService _seasons;
+    private readonly TaskService _tasks;
+    private readonly ILogger<GuildHuntingService> _log;
 
     public GuildHuntingService(GameData data, AccountStore accounts, GuildStore guilds, GuildService guildService,
         SessionRegistry sessions, FunctionService functions, TimedTodoSchedule schedule, TimeProvider time,
@@ -61,10 +61,10 @@ public sealed class GuildHuntingService : IGameTicker
         GuildHomeService home, MailService mail, AwardService awards, SeasonService seasons, TaskService tasks,
         ILogger<GuildHuntingService> log)
     {
-        this.data = data; this.accounts = accounts; this.guilds = guilds; this.guildService = guildService;
-        this.sessions = sessions; this.functions = functions; this.schedule = schedule; this.time = time;
-        this.instances = instances; this.maps = maps; this.buffs = buffs; this.loop = loop; this.home = home;
-        this.mail = mail; this.awards = awards; this.seasons = seasons; this.tasks = tasks; this.log = log;
+        this._data = data; this._accounts = accounts; this._guilds = guilds; this._guildService = guildService;
+        this._sessions = sessions; this._functions = functions; this._schedule = schedule; this._time = time;
+        this._instances = instances; this._maps = maps; this._buffs = buffs; this._loop = loop; this._home = home;
+        this._mail = mail; this._awards = awards; this._seasons = seasons; this._tasks = tasks; this._log = log;
         scene.Loaded.Add(LoadedAsync);
         combat.Killed.Add(KilledAsync);
         combat.Dealt.Add(Dealt);
@@ -120,28 +120,28 @@ public sealed class GuildHuntingService : IGameTicker
         public long NextMs { get; set; }
     }
 
-    private bool loaded;
-    private Week? current;
-    private Week? lastSettled;
-    private long lastSecond = -1, lastSave, mailRetryAt;
-    private bool settling, mailing, broadcasting;
+    private bool _loaded;
+    private Week? _current;
+    private Week? _lastSettled;
+    private long _lastSecond = -1, _lastSave, _mailRetryAt;
+    private bool _settling, _mailing, _broadcasting;
     /// <summary>A failed save is retried this many seconds later (the periodic save's own interval).</summary>
     private const int RetrySeconds = 5;
-    private readonly Dictionary<long, (InstanceService.Room Room, MonsterUnit Boss)> bosses = new();
-    private readonly HashSet<long> spawning = new();
-    private readonly Dictionary<long, CommandSlots> commands = new();
+    private readonly Dictionary<long, (InstanceService.Room Room, MonsterUnit Boss)> _bosses = new();
+    private readonly HashSet<long> _spawning = new();
+    private readonly Dictionary<long, CommandSlots> _commands = new();
 
-    private long Now => time.GetUtcNow().ToUnixTimeSeconds();
-    private long NowMs => time.GetUtcNow().ToUnixTimeMilliseconds();
+    private long Now => _time.GetUtcNow().ToUnixTimeSeconds();
+    private long NowMs => _time.GetUtcNow().ToUnixTimeMilliseconds();
 
     private void Load()
     {
-        loaded = true;
-        var rows = accounts.ReadSync<List<(long Cycle, byte[] Data, byte[] Runtime)>>(new GuildHuntingReadPlan(8));
+        _loaded = true;
+        var rows = _accounts.ReadSync<List<(long Cycle, byte[] Data, byte[] Runtime)>>(new GuildHuntingReadPlan(8));
         var weeks = rows.Select(r => new Week(r.Cycle, DBGveHuntingActivityData.Parser.ParseFrom(r.Data),
             JsonSerializer.Deserialize<Runtime>(r.Runtime) ?? new Runtime())).ToArray();
-        current = weeks.FirstOrDefault();
-        lastSettled = weeks.FirstOrDefault(w => w.Data.IsSettled);
+        _current = weeks.FirstOrDefault();
+        _lastSettled = weeks.FirstOrDefault(w => w.Data.IsSettled);
     }
 
     /// <summary>
@@ -150,7 +150,7 @@ public sealed class GuildHuntingService : IGameTicker
     /// </summary>
     private async Task<bool> SaveAsync(Week week)
     {
-        try { return await loop.TrackAsync("guild hunt save", () => SaveCoreAsync(week)); }
+        try { return await _loop.TrackAsync("guild hunt save", () => SaveCoreAsync(week)); }
         catch (OperationCanceledException)
         {
             week.Dirty = true;
@@ -175,17 +175,17 @@ public sealed class GuildHuntingService : IGameTicker
             {
                 long covers = week.Requested;
                 week.Dirty = false;
-                lastSave = Now;
+                _lastSave = Now;
                 try
                 {
-                    await accounts.WriteAsync<int>(new GuildHuntingSavePlan(week.Cycle, week.Data.ToByteArray(),
+                    await _accounts.WriteAsync<int>(new GuildHuntingSavePlan(week.Cycle, week.Data.ToByteArray(),
                         JsonSerializer.SerializeToUtf8Bytes(week.Runtime)));
                 }
                 catch (Exception e)
                 {
                     week.Dirty = true;
                     week.RetryAt = Now + RetrySeconds;
-                    log.LogError(e, "Guild hunt week {Cycle} save failed", week.Cycle);
+                    _log.LogError(e, "Guild hunt week {Cycle} save failed", week.Cycle);
                     break;
                 }
                 week.Committed = covers;
@@ -210,8 +210,8 @@ public sealed class GuildHuntingService : IGameTicker
     /// </summary>
     private Phases? PhasesAt(long now)
     {
-        if (schedule.CurrentOrNext(Activity, now) is not { } occurrence || !occurrence.Contains(now)) return null;
-        var rows = data.Table("TimeLimitConfig").Values.Where(r => GameData.Int(r, "_iTimeLimitId") == TimeCtrl)
+        if (_schedule.CurrentOrNext(Activity, now) is not { } occurrence || !occurrence.Contains(now)) return null;
+        var rows = _data.Table("TimeLimitConfig").Values.Where(r => GameData.Int(r, "_iTimeLimitId") == TimeCtrl)
             .ToDictionary(r => r.TryGetProperty("_strStateName", out var name) ? name.GetString() ?? "" : "", r => r);
         long Offset(string state, string side) => rows.TryGetValue(state, out var row)
             ? GameData.Int(row, "_iWeek" + side) - GameData.Int(rows["GveHuntCandidate"], "_iWeekStart") : -1;
@@ -226,13 +226,13 @@ public sealed class GuildHuntingService : IGameTicker
     /// <summary>GM test aid only: the 3303 occurrence starts now (process-local, like !guildchallenge).</summary>
     public void TestWindow(bool open)
     {
-        if (open) schedule.TestWindows[Activity] = new(Now, Now + 1800);
-        else schedule.TestWindows.Remove(Activity);
+        if (open) _schedule.TestWindows[Activity] = new(Now, Now + 1800);
+        else _schedule.TestWindows.Remove(Activity);
     }
 
     private bool Unsettled([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out Week? week)
     {
-        week = current;
+        week = _current;
         return week is { Data.IsSettled: false };
     }
 
@@ -246,9 +246,9 @@ public sealed class GuildHuntingService : IGameTicker
     private bool Busy(long guild) => Unsettled(out var week) && NowMs < week.Data.StartPhaseEndMs && GroupOf(week, guild) != null;
 
     /// <summary>A guild member who may take part in DailyActivity 3303 (_iiLv 30, function 1329 = condition 2000116).</summary>
-    private bool Eligible(GameSession s) => s.ActivitiesReady && s.Progress != null && home.GuildId(s) != null
-        && data.Row("DailyActivityConfig", Activity) is { } daily && s.Progress.Level >= GameData.Int(daily, "_iiLv")
-        && functions.IsOpen(s, Function);
+    private bool Eligible(GameSession s) => s.ActivitiesReady && s.Progress != null && _home.GuildId(s) != null
+        && _data.Row("DailyActivityConfig", Activity) is { } daily && s.Progress.Level >= GameData.Int(daily, "_iiLv")
+        && _functions.IsOpen(s, Function);
 
     private Score ScoreOf(Week week, long guild) =>
         week.Runtime.Scores.TryGetValue(guild, out var score) ? score : week.Runtime.Scores[guild] = new Score();
@@ -258,39 +258,39 @@ public sealed class GuildHuntingService : IGameTicker
     public void Tick(GameTime gameTime)
     {
         long now = Now;
-        if (now == lastSecond) return;
-        lastSecond = now;
-        if (!loaded) Load();
+        if (now == _lastSecond) return;
+        _lastSecond = now;
+        if (!_loaded) Load();
         if (Unsettled(out var week) && NowMs >= week.Data.StartPhaseEndMs)
         {
-            if (!settling) { settling = true; loop.TrackRuntimeDetached("guild hunt settle", () => SettleAsync(week)); }
+            if (!_settling) { _settling = true; _loop.TrackRuntimeDetached("guild hunt settle", () => SettleAsync(week)); }
             return;
         }
         // Settled in memory but not yet committed: retry the save; nothing is announced or mailed before it lands.
-        if (current is { Data.IsSettled: true, Published: false } held)
+        if (_current is { Data.IsSettled: true, Published: false } held)
         {
-            if (!settling && now >= held.RetryAt)
+            if (!_settling && now >= held.RetryAt)
             {
-                settling = true;
-                loop.TrackRuntimeDetached("guild hunt settle", () => SettleAsync(held));
+                _settling = true;
+                _loop.TrackRuntimeDetached("guild hunt settle", () => SettleAsync(held));
             }
             return;
         }
         // Finished weeks too: a failed save of the mailed flag (or of anything after the result) is retried.
-        foreach (var finished in new[] { current, lastSettled }.Distinct())
+        foreach (var finished in new[] { _current, _lastSettled }.Distinct())
             if (finished is { Data.IsSettled: true, Dirty: true, Saving: false } && now >= finished.RetryAt) _ = SaveAsync(finished);
-        if (current is { Data.IsSettled: true, Runtime.Mailed: false } done && !mailing && now >= mailRetryAt)
+        if (_current is { Data.IsSettled: true, Runtime.Mailed: false } done && !_mailing && now >= _mailRetryAt)
         {
-            mailing = true;
-            loop.TrackRuntimeDetached("guild hunt mail", () => MailAsync(done));
+            _mailing = true;
+            _loop.TrackRuntimeDetached("guild hunt mail", () => MailAsync(done));
         }
-        if ((current == null || current.Data.IsSettled) && PhasesAt(now) is { } phases && now < phases.StartEnd
-            && current?.Cycle != phases.Cycle)
+        if ((_current == null || _current.Data.IsSettled) && PhasesAt(now) is { } phases && now < phases.StartEnd
+            && _current?.Cycle != phases.Cycle)
             Begin(phases);
         if (!Unsettled(out week)) return;
         if (NowMs < week.Data.CandidateEndMs) { if (now % 5 == 0) MatchLate(week); }
         else Combat(week);
-        if (week.Dirty && now - lastSave >= 5) _ = SaveAsync(week);
+        if (week.Dirty && now - _lastSave >= 5) _ = SaveAsync(week);
     }
 
     /// <summary>
@@ -299,15 +299,15 @@ public sealed class GuildHuntingService : IGameTicker
     /// </summary>
     private void Begin(Phases phases)
     {
-        if (current is { Data.IsSettled: true }) lastSettled = current;
+        if (_current is { Data.IsSettled: true }) _lastSettled = _current;
         var week = new Week(phases.Cycle, new DBGveHuntingActivityData
         {
             CandidateEndMs = phases.CandidateEnd * 1000, StartPhaseEndMs = phases.StartEnd * 1000,
             SettlementPhaseEndMs = phases.SettleEnd * 1000,
         }, new Runtime());
-        current = week;
-        bosses.Clear(); spawning.Clear(); commands.Clear();
-        var ordered = Candidates().Select(id => guilds.Get(id)).OfType<GuildStore.State>()
+        _current = week;
+        _bosses.Clear(); _spawning.Clear(); _commands.Clear();
+        var ordered = Candidates().Select(id => _guilds.Get(id)).OfType<GuildStore.State>()
             .OrderByDescending(g => g.Level).ThenBy(g => g.Id).Select(g => g.Id).ToArray();
         for (int i = 0; i < ordered.Length; i += GroupSize)
         {
@@ -315,14 +315,14 @@ public sealed class GuildHuntingService : IGameTicker
             group.GuildIds.AddRange(ordered.Skip(i).Take(GroupSize));
             week.Data.GroupMap[group.GroupId] = group;
         }
-        log.LogInformation("Guild hunt {Cycle}: {Guilds} guilds in {Groups} groups", week.Cycle, ordered.Length,
+        _log.LogInformation("Guild hunt {Cycle}: {Guilds} guilds in {Groups} groups", week.Cycle, ordered.Length,
             week.Data.GroupMap.Count);
         _ = SaveAsync(week);
         var groups = week.Data.GroupMap.Values.ToArray();
-        loop.TrackRuntimeDetached("guild hunt matched", () => NotifyMatchedAsync(week, groups));
+        _loop.TrackRuntimeDetached("guild hunt matched", () => NotifyMatchedAsync(week, groups));
     }
 
-    private IEnumerable<long> Candidates() => sessions.All().Where(Eligible).Select(s => home.GuildId(s)!.Value).Distinct();
+    private IEnumerable<long> Candidates() => _sessions.All().Where(Eligible).Select(s => _home.GuildId(s)!.Value).Distinct();
 
     /// <summary>(inferred) A guild whose first eligible member comes online during the candidate phase joins the last
     /// group with room, or a new one; the whole group gets the new list.</summary>
@@ -342,7 +342,7 @@ public sealed class GuildHuntingService : IGameTicker
         }
         if (joined.Count == 0) return;
         week.Dirty = true;
-        loop.TrackRuntimeDetached("guild hunt matched", () => NotifyMatchedAsync(week, joined));
+        _loop.TrackRuntimeDetached("guild hunt matched", () => NotifyMatchedAsync(week, joined));
     }
 
     private void Combat(Week week)
@@ -355,11 +355,11 @@ public sealed class GuildHuntingService : IGameTicker
             foreach (long guild in group.GuildIds)
             {
                 var score = ScoreOf(week, guild);
-                var room = home.RoomOf(guild);
-                if (bosses.TryGetValue(guild, out var held) && (held.Room.Closed || room?.Id != held.Room.Id
+                var room = _home.RoomOf(guild);
+                if (_bosses.TryGetValue(guild, out var held) && (held.Room.Closed || room?.Id != held.Room.Id
                     || !held.Room.Monsters.Contains(held.Boss)))
                 {
-                    bosses.Remove(guild); // the room closed with its last member; a reopened home gets the boss back
+                    _bosses.Remove(guild); // the room closed with its last member; a reopened home gets the boss back
                     held = default;
                 }
                 if (held.Boss is { } boss && !boss.Dead)
@@ -371,35 +371,35 @@ public sealed class GuildHuntingService : IGameTicker
                 if (room == null) continue;
                 if (held.Boss == null) EnsureBoss(week, guild, room);
                 foreach (var session in Loaded(room))
-                    if (home.GuildId(session) == guild) Participate(week, guild, session);
-                if (!commands.TryGetValue(guild, out var slots) || nowMs >= slots.NextMs)
+                    if (_home.GuildId(session) == guild) Participate(week, guild, session);
+                if (!_commands.TryGetValue(guild, out var slots) || nowMs >= slots.NextMs)
                 {
-                    commands[guild] = slots = Roll(nowMs);
+                    _commands[guild] = slots = Roll(nowMs);
                     var notice = SkillsNotify(group, slots);
                     foreach (var session in Loaded(room)) rolled.Add((session, Skills, notice));
                 }
             }
             var rank = new GveHuntingLiveRankNotify { Guilds = { RankOf(week, group) } };
             foreach (long guild in group.GuildIds)
-                if (home.RoomOf(guild) is { } room)
+                if (_home.RoomOf(guild) is { } room)
                     foreach (var session in Loaded(room)) sends.Add((session, LiveRank, rank));
         }
-        if (rolled.Count > 0) loop.TrackRuntimeDetached("guild hunt skills", async () =>
+        if (rolled.Count > 0) _loop.TrackRuntimeDetached("guild hunt skills", async () =>
         {
             foreach (var (session, id, message) in rolled) await session.SendGameAsync(id, message);
         });
         // 43511 every second (brief: live rank every 1-2 s); one batch at a time, a busy second is skipped.
-        if (sends.Count == 0 || broadcasting) return;
-        broadcasting = true;
-        loop.TrackRuntimeDetached("guild hunt live rank", async () =>
+        if (sends.Count == 0 || _broadcasting) return;
+        _broadcasting = true;
+        _loop.TrackRuntimeDetached("guild hunt live rank", async () =>
         {
             try { foreach (var (session, id, message) in sends) await session.SendGameAsync(id, message); }
-            finally { broadcasting = false; }
+            finally { _broadcasting = false; }
         });
     }
 
     private IEnumerable<GameSession> Loaded(InstanceService.Room room) => room.ActiveMembers.Select(m => m.Session)
-        .Where(s => s.Role != null && s.InstanceId == room.Id && s.SceneEntry == home.Scene && !s.SceneLoading);
+        .Where(s => s.Role != null && s.InstanceId == room.Id && s.SceneEntry == _home.Scene && !s.SceneLoading);
 
     /// <summary>Task target 210011 (TaskConfig 1602120) once per member and event.</summary>
     private void Participate(Week week, long guild, GameSession session)
@@ -407,57 +407,57 @@ public sealed class GuildHuntingService : IGameTicker
         if (!week.Runtime.Participants.TryGetValue(guild, out var roles)) week.Runtime.Participants[guild] = roles = new();
         if (!roles.Add(session.Role!.Id)) return;
         week.Dirty = true;
-        loop.PostOwned(session, () => tasks.OnGuildHuntAsync(session), "guild hunt task");
+        _loop.PostOwned(session, () => _tasks.OnGuildHuntAsync(session), "guild hunt task");
     }
 
     /// <summary>The guild's boss in its live home room during combat, unless it was already felled.</summary>
     private void EnsureBoss(Week week, long guild, InstanceService.Room room)
     {
-        if (bosses.TryGetValue(guild, out var held) && (held.Room.Closed || held.Room.Id != room.Id)) bosses.Remove(guild);
-        if (bosses.ContainsKey(guild) || ScoreOf(week, guild).Killed || !spawning.Add(guild)) return;
-        loop.TrackLegacyDetached("guild hunt boss", () => SpawnBossAsync(week, guild, room));
+        if (_bosses.TryGetValue(guild, out var held) && (held.Room.Closed || held.Room.Id != room.Id)) _bosses.Remove(guild);
+        if (_bosses.ContainsKey(guild) || ScoreOf(week, guild).Killed || !_spawning.Add(guild)) return;
+        _loop.TrackLegacyDetached("guild hunt boss", () => SpawnBossAsync(week, guild, room));
     }
 
     private async Task SpawnBossAsync(Week week, long guild, InstanceService.Room room)
     {
         try
         {
-            if (current != week || !InCombat(week) || room.Closed || bosses.ContainsKey(guild)
-                || maps.Map(home.Scene)?.DungeonGroups.GetValueOrDefault(ArenaGroup)?.FirstOrDefault(p => p.Id == BossPoint)
+            if (_current != week || !InCombat(week) || room.Closed || _bosses.ContainsKey(guild)
+                || _maps.Map(_home.Scene)?.DungeonGroups.GetValueOrDefault(ArenaGroup)?.FirstOrDefault(p => p.Id == BossPoint)
                     is not { } point) return;
-            var boss = await instances.SpawnAsync(room, BossNpc, new MapPoint(point.X, point.Y, point.Z, point.Face));
+            var boss = await _instances.SpawnAsync(room, BossNpc, new MapPoint(point.X, point.Y, point.Z, point.Face));
             if (boss == null) return;
-            if (current != week || !InCombat(week))
+            if (_current != week || !InCombat(week))
             {
-                await instances.RemoveMonsterAsync(room, boss);
+                await _instances.RemoveMonsterAsync(room, boss);
                 return;
             }
             // (inferred) A boss spawned again (restart, or a home reopened mid-combat) keeps the damage already scored.
             long scored = ScoreOf(week, guild).Damage;
             if (scored > 0) boss.Hp = Math.Max(1, boss.Template.MaxHp - scored);
-            bosses[guild] = (room, boss);
+            _bosses[guild] = (room, boss);
         }
-        finally { spawning.Remove(guild); }
+        finally { _spawning.Remove(guild); }
     }
 
     private void Dealt(GameSession session, MonsterUnit monster, long damage)
     {
         if (damage <= 0 || !Unsettled(out var week) || !InCombat(week)) return;
-        foreach (var (guild, held) in bosses)
-            if (held.Boss == monster && home.GuildId(session) == guild) { Participate(week, guild, session); return; }
+        foreach (var (guild, held) in _bosses)
+            if (held.Boss == monster && _home.GuildId(session) == guild) { Participate(week, guild, session); return; }
     }
 
     private Task KilledAsync(GameSession killer, MonsterUnit monster)
     {
         if (!Unsettled(out var week)) return Task.CompletedTask;
-        foreach (var (guild, held) in bosses.ToArray())
+        foreach (var (guild, held) in _bosses.ToArray())
         {
             if (held.Boss != monster) continue;
-            bosses.Remove(guild);
+            _bosses.Remove(guild);
             var score = ScoreOf(week, guild);
             // (inferred) A felled boss is the full score; reachTs then orders the guilds by how fast they got there.
             if (!score.Killed) { score.Killed = true; score.Damage = monster.Template.MaxHp; score.ReachMs = NowMs; }
-            if (home.GuildId(killer) == guild) Participate(week, guild, killer);
+            if (_home.GuildId(killer) == guild) Participate(week, guild, killer);
             week.Dirty = true;
         }
         return Task.CompletedTask;
@@ -505,8 +505,8 @@ public sealed class GuildHuntingService : IGameTicker
     private Dictionary<long, List<GameSession>> OnlineByGuild()
     {
         var result = new Dictionary<long, List<GameSession>>();
-        foreach (var session in sessions.All())
-            if (home.GuildId(session) is { } guild)
+        foreach (var session in _sessions.All())
+            if (_home.GuildId(session) is { } guild)
                 (result.TryGetValue(guild, out var list) ? list : result[guild] = new()).Add(session);
         return result;
     }
@@ -514,11 +514,11 @@ public sealed class GuildHuntingService : IGameTicker
     /// <summary>A member loading into the home mid-event gets the HUD back (LG Init calls InitGuildHunt).</summary>
     private async Task LoadedAsync(GameSession session)
     {
-        if (!Unsettled(out var week) || !home.InHome(session, out long guild) || GroupOf(week, guild) is not { } group) return;
+        if (!Unsettled(out var week) || !_home.InHome(session, out long guild) || GroupOf(week, guild) is not { } group) return;
         await session.SendGameAsync(Matched, MatchedNotify(week, group));
         if (!InCombat(week)) return;
-        if (home.RoomOf(guild) is { } room) EnsureBoss(week, guild, room); // the first member opened the home mid-combat
-        if (commands.TryGetValue(guild, out var slots)) await session.SendGameAsync(Skills, SkillsNotify(group, slots));
+        if (_home.RoomOf(guild) is { } room) EnsureBoss(week, guild, room); // the first member opened the home mid-combat
+        if (_commands.TryGetValue(guild, out var slots)) await session.SendGameAsync(Skills, SkillsNotify(group, slots));
         await session.SendGameAsync(LiveRank, new GveHuntingLiveRankNotify { Guilds = { RankOf(week, group) } });
     }
 
@@ -538,7 +538,7 @@ public sealed class GuildHuntingService : IGameTicker
             var all = week.Data.GroupMap.Values.SelectMany(g => g.GuildIds).ToArray();
             if (!week.Data.IsSettled)
             {
-                foreach (var (guild, held) in bosses.ToArray())
+                foreach (var (guild, held) in _bosses.ToArray())
                 {
                     if (!held.Boss.Dead)
                     {
@@ -546,10 +546,10 @@ public sealed class GuildHuntingService : IGameTicker
                         long dealt = Math.Clamp(held.Boss.Template.MaxHp - held.Boss.Hp, 0, held.Boss.Template.MaxHp);
                         if (dealt > score.Damage) { score.Damage = dealt; score.ReachMs = Math.Min(NowMs, week.Data.StartPhaseEndMs); }
                     }
-                    bosses.Remove(guild);
-                    await instances.RemoveMonsterAsync(held.Room, held.Boss);
+                    _bosses.Remove(guild);
+                    await _instances.RemoveMonsterAsync(held.Room, held.Boss);
                 }
-                commands.Clear();
+                _commands.Clear();
                 foreach (var group in week.Data.GroupMap.Values)
                 {
                     var result = new GveHuntingGroupMatchResult { GuildResults = { RankOf(week, group) } };
@@ -563,11 +563,11 @@ public sealed class GuildHuntingService : IGameTicker
             if (!await SaveAsync(week))
             {
                 week.RetryAt = Now + RetrySeconds;
-                log.LogWarning("Guild hunt {Cycle}: the result is held back until it is saved", week.Cycle);
+                _log.LogWarning("Guild hunt {Cycle}: the result is held back until it is saved", week.Cycle);
                 return;
             }
             week.Published = true;
-            lastSettled = week;
+            _lastSettled = week;
             var byGuild = OnlineByGuild();
             foreach (long guild in all)
             {
@@ -575,13 +575,13 @@ public sealed class GuildHuntingService : IGameTicker
                 foreach (var session in byGuild.GetValueOrDefault(guild) ?? [])
                     await session.SendGameAsync(MatchResult, notice);
             }
-            if (!mailing)
+            if (!_mailing)
             {
-                mailing = true;
+                _mailing = true;
                 await MailAsync(week);
             }
         }
-        finally { settling = false; }
+        finally { _settling = false; }
     }
 
     private static GveHuntingMatchResultNotify ResultOf(Week? week, long guild)
@@ -620,16 +620,16 @@ public sealed class GuildHuntingService : IGameTicker
                     {
                         try
                         {
-                            var owners = loop.Owners;
+                            var owners = _loop.Owners;
                             using var scope = owners == null ? null
                                 : await owners.EnterAsync("guild-hunt/reward", ReservationKey.Role(role));
-                            await mail.SendTemplateOnceAsync(role, letter.Template, letter.Attachments,
+                            await _mail.SendTemplateOnceAsync(role, letter.Template, letter.Attachments,
                                 $"guild-hunt:{week.Cycle}:{guild}:{letter.Kind}", _ => { }, scope?.Context);
                         }
                         catch (Exception e)
                         {
-                            log.LogError(e, "Guild hunt {Cycle} {Kind} mail to role {Role} failed", week.Cycle, letter.Kind, role);
-                            mailRetryAt = Now + 60; // retried later; delivered letters are skipped by their keys
+                            _log.LogError(e, "Guild hunt {Cycle} {Kind} mail to role {Role} failed", week.Cycle, letter.Kind, role);
+                            _mailRetryAt = Now + 60; // retried later; delivered letters are skipped by their keys
                             return;
                         }
                     }
@@ -637,30 +637,30 @@ public sealed class GuildHuntingService : IGameTicker
             week.Runtime.Mailed = true;
             await SaveAsync(week);
         }
-        finally { mailing = false; }
+        finally { _mailing = false; }
     }
 
     /// <summary>GuildHuntRewardConfig: the row of the group whose _iRank is the first threshold at or above rank.</summary>
     private IReadOnlyList<MailService.Attachment>? Reward(int group, int rank)
     {
-        var row = data.Table("GuildHuntRewardConfig").Values
+        var row = _data.Table("GuildHuntRewardConfig").Values
             .Where(r => GameData.Int(r, "_iGroup") == group && GameData.Int(r, "_iRank") >= rank)
             .OrderBy(r => GameData.Int(r, "_iRank")).FirstOrDefault();
         long award = row.ValueKind == JsonValueKind.Object ? GameData.Int(row, "_iAward") : 0;
         if (award <= 0) return null;
         // Fixed AwardConfig rows (Zeny / Guild Contribution): no recipient state is read.
-        return awards.Resolve(null!, award, seasons.PlayBook).Grants
+        return _awards.Resolve(null!, award, _seasons.PlayBook).Grants
             .Select(g => new MailService.Attachment(g.Entry, g.Count, g.BindType)).ToArray();
     }
 
     // ------------------------------------------------------------------ commander skills
 
     /// <summary>SkillConfig rows whose _kScriptLogic is GveHunting_CommandSkill* (16321401-16322201, proven names).</summary>
-    private long[] CommandPool() => commandPool ??= data.Table("SkillConfig").Values
+    private long[] CommandPool() => _commandPool ??= _data.Table("SkillConfig").Values
         .Where(r => r.TryGetProperty("_kScriptLogic", out var logic) && logic.ValueKind == JsonValueKind.String
             && logic.GetString()!.StartsWith("GveHunting_CommandSkill", StringComparison.Ordinal))
         .Select(r => GameData.Int(r, "_iID")).Order().ToArray();
-    private long[]? commandPool;
+    private long[]? _commandPool;
 
     /// <summary>(inferred) Three distinct random skills per refresh (the widget has slots 1-3).</summary>
     private CommandSlots Roll(long nowMs)
@@ -682,7 +682,7 @@ public sealed class GuildHuntingService : IGameTicker
     /// <summary>The skill's visual template selects the caster's own guild (m_kSelectSubType MySelf = 2, only 16322201's
     /// 163222 "all super armor"); every other commander skill picks another guild of the group (HuntCommandWidget:292-326).</summary>
     private bool OwnGuildSkill(JsonElement row) =>
-        data.SkillTemplate(GameData.Int(row, "_iScriptShow")) is { } template
+        _data.SkillTemplate(GameData.Int(row, "_iScriptShow")) is { } template
         && template.TryGetProperty("m_kSelectInfo", out var select) && select.ValueKind == JsonValueKind.Array
         && select.EnumerateArray().Any(s => (GameData.Int(s, "m_kSelectSubType") & 2) != 0);
 
@@ -702,27 +702,27 @@ public sealed class GuildHuntingService : IGameTicker
             await WorldCoreService.ErrorAsync(s, UseSkill, error);
             return;
         }
-        var week = current!;
-        var slots = commands[guild];
+        var week = _current!;
+        var slots = _commands[guild];
         slots.Skills[Array.IndexOf(slots.Skills, req.SkillConfigId)] = 0;
         ScoreOf(week, guild).SkillUses++;
         week.Dirty = true;
         long source = s.Role!.Id;
         var group = GroupOf(week, guild)!;
-        var targetRoom = home.RoomOf(req.ToGuildId);
+        var targetRoom = _home.RoomOf(req.ToGuildId);
         if (targetRoom != null)
         {
             foreach (var (buff, ms) in Buffs(row, "_kBuff2"))
                 foreach (var member in Loaded(targetRoom).ToArray())
-                    if (home.GuildId(member) == req.ToGuildId) await buffs.AddAsync(member, buff, ms, source);
-            if (bosses.TryGetValue(req.ToGuildId, out var held) && !held.Boss.Dead)
-                foreach (var (buff, ms) in Buffs(row, "_kBuff1")) await buffs.AddSupportAsync(held.Boss, buff, ms, source);
+                    if (_home.GuildId(member) == req.ToGuildId) await _buffs.AddAsync(member, buff, ms, source);
+            if (_bosses.TryGetValue(req.ToGuildId, out var held) && !held.Boss.Dead)
+                foreach (var (buff, ms) in Buffs(row, "_kBuff1")) await _buffs.AddSupportAsync(held.Boss, buff, ms, source);
         }
         var used = new UseHuntingSkillNtf { SourceGuildId = guild, TargetGuildId = req.ToGuildId, SkillConfigId = req.SkillConfigId };
         foreach (long side in new[] { guild, req.ToGuildId }.Distinct())
-            if (home.RoomOf(side) is { } room)
+            if (_home.RoomOf(side) is { } room)
                 foreach (var member in Loaded(room).ToArray()) await member.SendGameAsync(SkillUsed, used);
-        if (home.RoomOf(guild) is { } own)
+        if (_home.RoomOf(guild) is { } own)
         {
             var notice = SkillsNotify(group, slots);
             foreach (var member in Loaded(own).ToArray()) await member.SendGameAsync(Skills, notice);
@@ -733,13 +733,13 @@ public sealed class GuildHuntingService : IGameTicker
     {
         guild = 0;
         row = default;
-        if (s.Role == null || home.GuildId(s) is not { } own) return ErrorCodes.NotInGuild;
+        if (s.Role == null || _home.GuildId(s) is not { } own) return ErrorCodes.NotInGuild;
         guild = own;
         if (!Unsettled(out var week) || !InCombat(week) || GroupOf(week, own) is not { } group
-            || !home.InHome(s, out _)) return ErrorCodes.FeatureUnavailable;
-        if (!guildService.HasRight(own, s.Role.Id, CommanderRight)) return ErrorCodes.GuildPermission;
-        if (!commands.TryGetValue(own, out var slots) || req.SkillConfigId <= 0 || !slots.Skills.Contains(req.SkillConfigId)
-            || data.Row("SkillConfig", req.SkillConfigId) is not { } skill) return ErrorCodes.Parameter;
+            || !_home.InHome(s, out _)) return ErrorCodes.FeatureUnavailable;
+        if (!_guildService.HasRight(own, s.Role.Id, CommanderRight)) return ErrorCodes.GuildPermission;
+        if (!_commands.TryGetValue(own, out var slots) || req.SkillConfigId <= 0 || !slots.Skills.Contains(req.SkillConfigId)
+            || _data.Row("SkillConfig", req.SkillConfigId) is not { } skill) return ErrorCodes.Parameter;
         row = skill;
         bool self = OwnGuildSkill(skill);
         if (!group.GuildIds.Contains(req.ToGuildId) || self != (req.ToGuildId == own)) return ErrorCodes.Parameter;
@@ -759,18 +759,18 @@ public sealed class GuildHuntingService : IGameTicker
     /// HC UpdateHuntResult keeps the panel's data). An unsettled event answers the previous week (inferred).</summary>
     public async Task HistoryAsync(GameSession s)
     {
-        if (!loaded) Load();
-        await s.SendGameAsync(History, ResultOf(lastSettled, home.GuildId(s) ?? 0));
+        if (!_loaded) Load();
+        await s.SendGameAsync(History, ResultOf(_lastSettled, _home.GuildId(s) ?? 0));
     }
 
     /// <summary>43504 branch 200 gveHuntingQueryResult: the same results in CommonDailyActivityRes (HC UpdateDailyActivityResult).
     /// The client never sends it in this build; activity ids other than 3303 are refused (inferred).</summary>
     public async Task QueryResultAsync(GameSession s, CommonDailyActivityReq req)
     {
-        if (!loaded) Load();
+        if (!_loaded) Load();
         var rsp = new CommonDailyActivityRes { ActivityId = req.ActivityId, RequestId = req.RequestId };
         if (req.ActivityId != Activity || s.Role == null) rsp.Result = ErrorCodes.Parameter;
-        else rsp.GveHuntingQueryResult = ResultOf(lastSettled, home.GuildId(s) ?? 0);
+        else rsp.GveHuntingQueryResult = ResultOf(_lastSettled, _home.GuildId(s) ?? 0);
         await s.SendGameAsync(DailyActivityService.RingAccept, rsp);
     }
 }

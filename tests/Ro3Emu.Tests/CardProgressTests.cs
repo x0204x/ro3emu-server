@@ -14,36 +14,36 @@ public sealed class CardProgressTests : IAsyncLifetime
 {
     private const int Lunatic = 1420100, Fragment = 1200500, Dagger = 2010121;
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-card-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string httpUrl = "";
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-card-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _httpUrl = "";
 
     public async Task InitializeAsync()
     {
         var (http, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir;
+            o.DataDir = _dataDir;
             o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = http;
             o.MicroGatePort = micro;
             o.GameGatePort = game;
         });
-        await app.StartAsync();
-        httpUrl = $"http://127.0.0.1:{http}";
+        await _app.StartAsync();
+        _httpUrl = $"http://127.0.0.1:{http}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var bot = new BotClient(httpUrl, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_httpUrl, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw");
         await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
@@ -61,7 +61,7 @@ public sealed class CardProgressTests : IAsyncLifetime
     private async Task Gm(string account, string command)
     {
         using var http = new HttpClient();
-        (await http.PostAsync($"{httpUrl}/ro3emu/gm?account={account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await http.PostAsync($"{_httpUrl}/ro3emu/gm?account={account}", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     private static ItemBaseInfo FullCard(DBItemsInfoIncrement sync, long guid = 0)
@@ -75,11 +75,11 @@ public sealed class CardProgressTests : IAsyncLifetime
     {
         await using var alice = await InWorld("Alice");
         long role = (long)alice.Self!.Uuid;
-        var accounts = app.Services.GetRequiredService<AccountStore>();
-        var roles = app.Services.GetRequiredService<RoleStore>();
-        var items = app.Services.GetRequiredService<ItemStore>();
-        var loop = app.Services.GetRequiredService<GameLoop>();
-        var session = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == role);
+        var accounts = _app.Services.GetRequiredService<AccountStore>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
+        var items = _app.Services.GetRequiredService<ItemStore>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == role);
         using var entered = new ManualResetEventSlim();
         using var release = new ManualResetEventSlim();
         accounts.BeforeCommitForTest = label =>
@@ -90,7 +90,7 @@ public sealed class CardProgressTests : IAsyncLifetime
         };
         try
         {
-            var exchange = loop.InvokeAsync(() => app.Services.GetRequiredService<CharacterService>()
+            var exchange = loop.InvokeAsync(() => _app.Services.GetRequiredService<CharacterService>()
                 .ExchangeAsync(session, [], [(Lunatic, 1)], popup: false, sync: false));
             Assert.True(await Task.Run(() => entered.Wait(Wait)));
             Assert.False(exchange.IsCompleted);
@@ -110,7 +110,7 @@ public sealed class CardProgressTests : IAsyncLifetime
     public async Task HeldTaskFollowupClearKeepsDebtAndUnlockReplyPendingWhileLoopAdvances()
     {
         await using var alice = await InWorld("Alice");
-        var data = app.Services.GetRequiredService<Ro3Emu.Server.Data.GameData>();
+        var data = _app.Services.GetRequiredService<Ro3Emu.Server.Data.GameData>();
         int card = (int)Ro3Emu.Server.Data.GameData.Int(data.Table("ItemConfig").Values.First(row =>
             Ro3Emu.Server.Data.GameData.Int(row, "_iType") == 4 &&
             Ro3Emu.Server.Data.GameData.Int(row, "_iSubType") == 400 &&
@@ -118,9 +118,9 @@ public sealed class CardProgressTests : IAsyncLifetime
         await Gm("alice", "!quest accept 1700212");
         await Gm("alice", $"!item {card} 1");
         long role = (long)alice.Self!.Uuid;
-        var accounts = app.Services.GetRequiredService<AccountStore>();
-        var roles = app.Services.GetRequiredService<RoleStore>();
-        var loop = app.Services.GetRequiredService<GameLoop>();
+        var accounts = _app.Services.GetRequiredService<AccountStore>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
         using var entered = new ManualResetEventSlim();
         using var release = new ManualResetEventSlim();
         accounts.BeforeCommitForTest = label =>
@@ -149,7 +149,7 @@ public sealed class CardProgressTests : IAsyncLifetime
     {
         await using var alice = await InWorld("Alice");
         await Gm("alice", $"!item {Lunatic} 1");
-        var cards = app.Services.GetRequiredService<CardService>();
+        var cards = _app.Services.GetRequiredService<CardService>();
         int callbacks = 0;
         Func<GameSession, Task> failing = _ =>
         {
@@ -162,7 +162,7 @@ public sealed class CardProgressTests : IAsyncLifetime
             await alice.SendGameAsync(CardService.LibraryCardUnlock, new LibraryCardUnlockReq { CardId = Lunatic });
             Assert.Equal(0, (await Next(alice, CardService.LibraryCardUnlock, LibraryCardUnlockResp.Parser)).Result);
             Assert.Equal(1, Volatile.Read(ref callbacks));
-            var bytes = app.Services.GetRequiredService<RoleStore>().LoadLibrary((long)alice.Self!.Uuid);
+            var bytes = _app.Services.GetRequiredService<RoleStore>().LoadLibrary((long)alice.Self!.Uuid);
             Assert.NotNull(bytes);
             Assert.True(DBLibraryInfo.Parser.ParseFrom(bytes).Cards[Lunatic].Unlock);
         }
@@ -195,11 +195,11 @@ public sealed class CardProgressTests : IAsyncLifetime
             outputGuid = result.Guid;
             outputEntry = (int)result.Itemid;
             Assert.True(outputGuid > 0);
-            var pool = app.Services.GetRequiredService<Ro3Emu.Server.Data.GameData>().Table("FlashCardPoolConfig").Values
+            var pool = _app.Services.GetRequiredService<Ro3Emu.Server.Data.GameData>().Table("FlashCardPoolConfig").Values
                 .Where(row => Ro3Emu.Server.Data.GameData.Int(row, "_iGroupID") == 1004)
                 .SelectMany(row => row.GetProperty("_kCardList").EnumerateArray().Select(x => x.GetInt32())).ToHashSet();
             Assert.Contains(outputEntry, pool);
-            Assert.Equal(3, app.Services.GetRequiredService<SessionRegistry>().All()
+            Assert.Equal(3, _app.Services.GetRequiredService<SessionRegistry>().All()
                 .Single(s => s.Role?.Id == (long)alice.Self!.Uuid).Items.Single(i => i.Guid == normalGuid).Stack);
 
             // Lua presents a confirmation for a Flash ingredient, then sends the same 31469 request.
@@ -217,7 +217,7 @@ public sealed class CardProgressTests : IAsyncLifetime
         Assert.Equal(0, flashes[0].ItemInfos[501].LongVal);
         Assert.Equal(0, flashes[0].ItemInfos[502].LongVal);
         Assert.DoesNotContain(saved.PackInfo[3].All.Items.Values, i => i.ItemEntry == ingredient && i.ItemInfos.GetValueOrDefault(530)?.LongVal != 1);
-        var library = app.Services.GetRequiredService<RoleStore>().LoadLibrary((long)relog.Self!.Uuid);
+        var library = _app.Services.GetRequiredService<RoleStore>().LoadLibrary((long)relog.Self!.Uuid);
         Assert.NotNull(library);
         Assert.True(DBLibraryInfo.Parser.ParseFrom(library).Cards.ContainsKey(flashes[0].ItemEntry));
     }
@@ -232,7 +232,7 @@ public sealed class CardProgressTests : IAsyncLifetime
         await Gm("alice", $"!item {otherQuality} 1");
         var bag = await Next(alice, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser,
             m => m.PackInfo.TryGetValue(3, out var p) && p.All?.Items.Values.Any(i => i.ItemEntry == ingredient) == true);
-        var session = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == (long)alice.Self!.Uuid);
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == (long)alice.Self!.Uuid);
         long normalGuid = session.Items.Single(i => i.Entry == ingredient).Guid;
         long mixedGuid = session.Items.Single(i => i.Entry == otherQuality).Guid;
         async Task<int> Send(int source, params long[] guids)
@@ -247,54 +247,54 @@ public sealed class CardProgressTests : IAsyncLifetime
         Assert.Equal(ErrorCodes.ItemMissing, await Send(1, long.MaxValue, normalGuid, normalGuid, normalGuid));
         Assert.Equal(ErrorCodes.ItemsShort, await Send(1, mixedGuid, mixedGuid, mixedGuid, mixedGuid));
         Assert.NotEqual(0, await Send(1, normalGuid, normalGuid, normalGuid, mixedGuid));
-        await app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
         {
             var card = session.Items.Single(i => i.Guid == normalGuid);
             card.IsLocked = true;
-            app.Services.GetRequiredService<ItemStore>().Update(card);
+            _app.Services.GetRequiredService<ItemStore>().Update(card);
             return Task.CompletedTask;
         });
         Assert.Equal(ErrorCodes.ItemLocked, await Send(1, normalGuid, normalGuid, normalGuid, normalGuid));
-        await app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
         {
             var card = session.Items.Single(i => i.Guid == normalGuid);
             card.IsLocked = false;
             card.Attrs ??= new();
             card.Attrs[502] = 1;
-            app.Services.GetRequiredService<ItemStore>().Update(card);
+            _app.Services.GetRequiredService<ItemStore>().Update(card);
             return Task.CompletedTask;
         });
         Assert.NotEqual(0, await Send(1, normalGuid, normalGuid, normalGuid, normalGuid));
-        await app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
         {
             var card = session.Items.Single(i => i.Guid == normalGuid);
             card.Attrs![502] = 0;
-            app.Services.GetRequiredService<ItemStore>().Update(card);
+            _app.Services.GetRequiredService<ItemStore>().Update(card);
             return Task.CompletedTask;
         });
-        FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(),
+        FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(),
             "CREATE TRIGGER fail_flash BEFORE INSERT ON item WHEN json_extract(NEW.attrs, '$.530') = 1 BEGIN SELECT RAISE(ABORT, 'flash grant fault'); END");
         Assert.Equal(ErrorCodes.Unknown, await Send(1, normalGuid, normalGuid, normalGuid, normalGuid));
         Assert.Equal(4, session.Items.Single(i => i.Guid == normalGuid).Stack);
-        FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(), "DROP TRIGGER fail_flash");
-        var roles = app.Services.GetRequiredService<RoleStore>();
+        FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(), "DROP TRIGGER fail_flash");
+        var roles = _app.Services.GetRequiredService<RoleStore>();
         byte[]? beforeLibrary = roles.LoadLibrary((long)alice.Self!.Uuid);
-        FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(),
+        FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(),
             "CREATE TRIGGER fail_flash_library BEFORE UPDATE OF library ON role BEGIN SELECT RAISE(ABORT, 'flash library fault'); END");
         Assert.Equal(ErrorCodes.Unknown, await Send(1, normalGuid, normalGuid, normalGuid, normalGuid));
         Assert.Equal(4, session.Items.Single(i => i.Guid == normalGuid).Stack);
         Assert.Equal(beforeLibrary, roles.LoadLibrary((long)alice.Self.Uuid));
-        FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(), "DROP TRIGGER fail_flash_library");
+        FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(), "DROP TRIGGER fail_flash_library");
         Assert.Equal(0, await Send(1, normalGuid, normalGuid, normalGuid, normalGuid));
         Assert.DoesNotContain(session.Items, i => i.Guid == normalGuid);
         await Gm("alice", $"!item {ingredient} 4");
         var gray = session.Items.Single(i => i.Entry == ingredient && (i.Attrs?.GetValueOrDefault(530) ?? 0) == 0);
-        await app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
         {
             gray.Attrs ??= new();
             gray.Attrs[530] = 2; // Client selection has no card-type filter (LC_CardViewHelper.lua:528-608).
             gray.BindType = 1;
-            app.Services.GetRequiredService<ItemStore>().Update(gray);
+            _app.Services.GetRequiredService<ItemStore>().Update(gray);
             return Task.CompletedTask;
         });
         var grayReq = new CardTreasuredReq { SourceType = (CardLevelSourceType)1 };
@@ -372,7 +372,7 @@ public sealed class CardProgressTests : IAsyncLifetime
     public async Task GenreCardSelectionKeepsMastersMissingCopyPolicy()
     {
         await using var alice = await InWorld("Alice");
-        var session = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Name == "Alice");
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Name == "Alice");
         long dagger = session.Items.Single(i => i.Entry == Dagger).Guid;
         await Gm("alice", "!lvl 40");
         await Gm("alice", $"!item {Lunatic} 1");
@@ -396,7 +396,7 @@ public sealed class CardProgressTests : IAsyncLifetime
         Assert.DoesNotContain(session.Items, i => i.Grid < 0);
         Assert.All(session.CardPlans.StoragePlans[1].CardInfo.Values.SelectMany(g => g.CardSlotInfo.Values),
             slot => Assert.Equal(0, slot.ItemId));
-        var saved = app.Services.GetRequiredService<RoleStore>().LoadCardPlans(session.Role!.Id);
+        var saved = _app.Services.GetRequiredService<RoleStore>().LoadCardPlans(session.Role!.Id);
         Assert.NotNull(saved);
         Assert.Equal(1, DBStorageHoleInfo.Parser.ParseFrom(saved).CurrentPlan);
     }
@@ -545,7 +545,7 @@ public sealed class CardProgressTests : IAsyncLifetime
             Assert.Equal(0, (await Next(alice, CardService.LevelUp, CardLevelUpResp.Parser)).Result);
         }
         // Fixture for a historical bound flash cost: no current RPC produces flash cards in this packet.
-        Assert.Equal(1, FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(),
+        Assert.Equal(1, FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(),
             "UPDATE item SET str_attrs = $a WHERE guid = $g",
             ("$a", System.Text.Json.JsonSerializer.Serialize(new Dictionary<int, string>
             {

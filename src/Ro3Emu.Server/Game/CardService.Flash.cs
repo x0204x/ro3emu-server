@@ -23,7 +23,7 @@ public sealed partial class CardService
         var selected = new Dictionary<long, int>();
         int quality = 0;
 
-        if (!functions.IsOpen(session, 1504)) error = ErrorCodes.FeatureUnavailable;
+        if (!_functions.IsOpen(session, 1504)) error = ErrorCodes.FeatureUnavailable;
         if (error == 0 && ((int)req.SourceType != 1 || req.Guids.Count != 4 || req.Guids.Any(guid => guid <= 0)))
             error = ErrorCodes.Parameter;
         if (error == 0)
@@ -33,7 +33,7 @@ public sealed partial class CardService
             foreach (var (guid, count) in selected)
             {
                 var card = session.Items.FirstOrDefault(item => item.Guid == guid);
-                if (card == null || card.Grid != 0 || !character.IsCard(card.Entry))
+                if (card == null || card.Grid != 0 || !_character.IsCard(card.Entry))
                 {
                     error = ErrorCodes.ItemMissing;
                     break;
@@ -55,7 +55,7 @@ public sealed partial class CardService
                     error = ErrorCodes.Parameter;
                     break;
                 }
-                var itemRow = data.Row("ItemConfig", card.Entry);
+                var itemRow = _data.Row("ItemConfig", card.Entry);
                 int thisQuality = itemRow is { } row ? (int)GameData.Int(row, "_iQuality") : 0;
                 if (thisQuality is not (4 or 5 or 6) || quality != 0 && thisQuality != quality)
                 {
@@ -72,7 +72,7 @@ public sealed partial class CardService
         if (error == 0)
         {
             int playBook = (int)(session.SeasonState?.PlayBookId ?? 0);
-            outputRow = data.Table("FlashCardOutputConfig").Values.FirstOrDefault(row =>
+            outputRow = _data.Table("FlashCardOutputConfig").Values.FirstOrDefault(row =>
                 GameData.Int(row, "_iQuality") == quality &&
                 row.TryGetProperty("_kMultiverseArray", out var books) && books.ValueKind == JsonValueKind.Array &&
                 books.EnumerateArray().Any(book => book.GetInt32() == playBook));
@@ -80,15 +80,15 @@ public sealed partial class CardService
             else
             {
                 int openDay = (int)GameData.Int(outputRow.Value, "_iOpenDay");
-                int currentDay = (clock.GetLocalNow().Date - season.Start.Date).Days + 1;
-                if (openDay <= 0 || currentDay < openDay && !season.OpenContent.ServerDayFree || session.SeasonState!.SeasonId != season.SeasonId)
+                int currentDay = (_clock.GetLocalNow().Date - _season.Start.Date).Days + 1;
+                if (openDay <= 0 || currentDay < openDay && !_season.OpenContent.ServerDayFree || session.SeasonState!.SeasonId != _season.SeasonId)
                     error = ErrorCodes.FeatureUnavailable;
             }
         }
         if (error == 0)
         {
             output = RollFlashOutput(outputRow!.Value);
-            if (output == 0 || !character.IsCard(output)) error = ErrorCodes.ItemNoConfig;
+            if (output == 0 || !_character.IsCard(output)) error = ErrorCodes.ItemNoConfig;
         }
 
         if (error == 0)
@@ -102,11 +102,11 @@ public sealed partial class CardService
             long bindExpire = bindType == 2 ? inputs.Where(item => item.BindType == 2).Max(item => item.BindExpire) : 0;
             try
             {
-                var result = await character.ExchangeLockedAsync(session, [], [], selected,
+                var result = await _character.ExchangeLockedAsync(session, [], [], selected,
                     popup: false, sync: false,
                     persist: builder =>
                     {
-                        builder.WithEconomy(character.FamilyEconomy(session, "cd13a/card-flash",
+                        builder.WithEconomy(_character.FamilyEconomy(session, "cd13a/card-flash",
                             inputs.Select(item => (item.Entry, (long)selected[item.Guid])).ToArray(),
                             [(output, 1)], new { Output = output, bindType, bindExpire }));
                     },
@@ -117,14 +117,14 @@ public sealed partial class CardService
             }
             catch (SqliteException exception)
             {
-                log.LogError(exception, "Flash card synthesis transaction failed for role {RoleId}", session.Role!.Id);
+                _log.LogError(exception, "Flash card synthesis transaction failed for role {RoleId}", session.Role!.Id);
                 error = ErrorCodes.Unknown;
             }
         }
         if (granted != null)
         {
             await CharacterService.SyncAsync(session, LibrarySync, session.Library!.Clone());
-            await character.ItemsChangedAsync(session, stats: false); // 5009 must precede 31469 presentation.
+            await _character.ItemsChangedAsync(session, stats: false); // 5009 must precede 31469 presentation.
         }
         await session.SendGameAsync(Treasured, new CardTreasuredResp
         {
@@ -138,7 +138,7 @@ public sealed partial class CardService
             return 0;
         var eligible = new List<JsonElement>();
         foreach (var group in groups.EnumerateArray())
-            eligible.AddRange(data.Table("FlashCardPoolConfig").Values.Where(row =>
+            eligible.AddRange(_data.Table("FlashCardPoolConfig").Values.Where(row =>
                 GameData.Int(row, "_iGroupID") == group.GetInt32() && GameData.Int(row, "_iWeight") > 0 &&
                 row.TryGetProperty("_kCardList", out var cards) && cards.ValueKind == JsonValueKind.Array && cards.GetArrayLength() > 0));
         long total = eligible.Sum(row => GameData.Int(row, "_iWeight"));

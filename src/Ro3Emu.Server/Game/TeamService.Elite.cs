@@ -39,12 +39,12 @@ public sealed partial class TeamService
             team = new Team
             {
                 Id = ++_nextId, Type = TeamType.Forty, Leader = self, Target = NoTarget,
-                Created = DateTimeOffset.UtcNow.ToUnixTimeSeconds(), Area = options.Value.ClusterId.ToString(),
-                PlayBook = seasons.PlayBook,
+                Created = DateTimeOffset.UtcNow.ToUnixTimeSeconds(), Area = _options.Value.ClusterId.ToString(),
+                PlayBook = _seasons.PlayBook,
             };
             _teams[team.Id] = team;
             await RecordAndJoinAsync(team, self);
-            log.LogInformation("{Name} creates elite team {Team}", s.Role.Name, team.Id);
+            _log.LogInformation("{Name} creates elite team {Team}", s.Role.Name, team.Id);
             await s.SendGameAsync(TeamNewMember, new BroadCastNewMemberEnter { TeamType = team.Type, DetailInfo = Detail(team, self) });
             await s.SendGameAsync(TeamAll, All(team));
         }
@@ -56,7 +56,7 @@ public sealed partial class TeamService
             if (_byMember.ContainsKey(id) || team.Members.Count >= Capacity(team) || Session(id) is not { } target) continue;
             _invites[(id, teamId)] = expires;
             long invited = id;
-            loop.ScheduleRuntime(InviteLife, () => RunTeamAsync("team/invite-expiry", [invited], teamId, () =>
+            _loop.ScheduleRuntime(InviteLife, () => RunTeamAsync("team/invite-expiry", [invited], teamId, () =>
             {
                 if (_invites.TryGetValue((invited, teamId), out var current) && current == expires
                     && current <= DateTime.UtcNow) _invites.Remove((invited, teamId));

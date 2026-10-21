@@ -43,7 +43,7 @@ public sealed partial class SkillCombatTests
     [InlineData(5000001, 5001101)]   // a field Poring keeps its flagged _kSkills row
     public void ABossSwingsItsOwnNormalAttack(int npc, int skill)
     {
-        var template = app.Services.GetRequiredService<MonsterService>().Template(npc);
+        var template = _app.Services.GetRequiredService<MonsterService>().Template(npc);
         Assert.NotNull(template);
         Assert.Equal(skill, template.NormalSkill);
     }
@@ -52,13 +52,13 @@ public sealed partial class SkillCombatTests
     public void ThePyramidIsNoVariantOfPharaoh()
     {
         // "RaidFive_Boss07_Jzt1" is the pyramid (UnitConfig 33124), not a difficulty of "RaidFive_Boss07".
-        Assert.Equal(0, app.Services.GetRequiredService<MonsterService>().Template(4370003)!.NormalSkill);
+        Assert.Equal(0, _app.Services.GetRequiredService<MonsterService>().Template(4370003)!.NormalSkill);
     }
 
     [ClientDataFact]
     public void EveryAiScriptAttackIsANamedSwingOfABossRunningThatScript()
     {
-        var data = app.Services.GetRequiredService<GameData>();
+        var data = _app.Services.GetRequiredService<GameData>();
         var scripts = data.Table("NPCConfig").Values.Where(n => GameData.Int(n, "_iNPCType") == 1)
             .Select(n => n.TryGetProperty("_iAISpecial", out var ai) ? ai.GetString() ?? "" : "").ToHashSet();
         foreach (var (script, skill) in BossNormalAttacks.AiScriptAttacks)
@@ -77,7 +77,7 @@ public sealed partial class SkillCombatTests
         await using var alice = await InWorld("Alice");
         var maya = await Target("alice", stationary: true, npcId: 4340000); // 4340001 "Maya Normal Attack", _iSkillEffectLevel 1
         Assert.Equal(4340001, maya.Template.NormalSkill);
-        await Loop.InvokeAsync(() => app.Services.GetRequiredService<MonsterService>().Attack!(maya, Session("alice")));
+        await Loop.InvokeAsync(() => _app.Services.GetRequiredService<MonsterService>().Attack!(maya, Session("alice")));
         var swing = await Next(alice, CombatService.UseInSkillHigh, UseInSkillInfo.Parser, u => u.SrcID == maya.Uid);
         Assert.Equal(4340001, swing.SkillID);
         Assert.DoesNotContain(alice.Inbox.Snapshot(), e => e.IsGame(CombatService.UseInSkill)
@@ -91,9 +91,9 @@ public sealed partial class SkillCombatTests
         // 4300005 has _iImportantSkill 1 and swings 4300201 (2 s cooldown, effect level 0).
         var bug = await Target("alice", stationary: true, npcId: 4300005);
         Assert.Equal(4300201, bug.Template.NormalSkill);
-        await Loop.InvokeAsync(() => app.Services.GetRequiredService<MonsterService>().Attack!(bug, Session("alice")));
+        await Loop.InvokeAsync(() => _app.Services.GetRequiredService<MonsterService>().Attack!(bug, Session("alice")));
         await Next(alice, CombatService.UseInSkill, UseInSkillInfo.Parser, u => u.SrcID == bug.Uid && u.SkillID == 4300201);
-        var combat = app.Services.GetRequiredService<CombatService>();
+        var combat = _app.Services.GetRequiredService<CombatService>();
         await Loop.InvokeAsync(() => combat.BossCooldownStartedAsync(bug, 4300201, MonsterService.NowMs + 2000));
         Assert.DoesNotContain(4300201, bug.BossSkillCds.Keys);
         // A boss skill still reaches the panel: 4301201 "Pyroblast".

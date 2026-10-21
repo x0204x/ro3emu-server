@@ -33,7 +33,9 @@ dotnet format whitespace --folder
 ```
 
 Use the SDK feature band that `global.json` pins (10.0.4xx): other bands lay out some statements differently and
-would reformat unrelated files.
+would reformat unrelated files, and they count some analyzer rules differently. CI checks the analyzer baseline in
+`.editorconfig` with `dotnet run --project tools/AnalyzerBaseline -c Release`; when an SDK update changes a count, the
+check prints the new numbers to write.
 
 Package versions live in `Directory.Packages.props`: a `PackageReference` names the package without a version.
 

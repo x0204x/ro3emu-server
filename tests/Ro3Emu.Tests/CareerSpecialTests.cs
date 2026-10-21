@@ -13,28 +13,28 @@ namespace Ro3Emu.Tests;
 /// <summary>Special Class Items over the wire: 5002 DBCareerSpecial, 32721 lease, 32722 cancel, pendants, battle mount.</summary>
 public sealed class CareerSpecialTests : IAsyncLifetime
 {
-    private readonly string dir = Path.Combine(Path.GetTempPath(), "ro3emu-career-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ro3emu-career-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "";
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
     private const int Cart = 1500000, BirchCart = 1500001, Falcon = 1500100, GrandPeco = 1500203, KnightPeco = 1500201;
 
     public async Task InitializeAsync()
     {
         var (h, m, g) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o => { o.DataDir = dir; o.GameDataDir = Path.Combine(RepoRoot(), "data"); o.HttpPort = h; o.MicroGatePort = m; o.GameGatePort = g; });
-        await app.StartAsync(); http = $"http://127.0.0.1:{h}";
+        _app = ServerHost.Create([], o => { o.DataDir = _dir; o.GameDataDir = Path.Combine(RepoRoot(), "data"); o.HttpPort = h; o.MicroGatePort = m; o.GameGatePort = g; });
+        await _app.StartAsync(); _http = $"http://127.0.0.1:{h}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync(); Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dir, true); } catch (IOException) { }
+        await _app.StopAsync(); await _app.DisposeAsync(); Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        try { Directory.Delete(_dir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var b = new BotClient(http, File.ReadAllText(Path.Combine(dir, "gate_rsa_public.pem")));
+        var b = new BotClient(_http, File.ReadAllText(Path.Combine(_dir, "gate_rsa_public.pem")));
         await b.LoginAsync(name.ToLowerInvariant(), "pw"); await b.EnterGateAsync();
         long id = create ? (await b.CreateRoleAsync(name)).RoleBaseInfo.Id : b.Roles.Single().Id;
         await b.EnterWorldAsync(id); return b;
@@ -44,16 +44,16 @@ public sealed class CareerSpecialTests : IAsyncLifetime
     { var e = await b.Inbox.WaitAsync(e => e.IsGame(id) && (match == null || match(p.ParseFrom(e.Body))), Wait); return p.ParseFrom(e.Body); }
 
     private async Task Gm(string account, string command)
-    { using var h = new HttpClient(); (await h.PostAsync($"{http}/ro3emu/gm?account={account}", new StringContent(command))).EnsureSuccessStatusCode(); }
+    { using var h = new HttpClient(); (await h.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(command))).EnsureSuccessStatusCode(); }
 
-    private GameSession Session(string account) => app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == account && s.Role != null);
+    private GameSession Session(string account) => _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == account && s.Role != null);
 
     /// <summary>A career, base level and learned skill groups, persisted like a real learn (the skill tree is not driven here).</summary>
     private async Task Become(string account, int career, int level, params int[] skillGroups)
     {
         await Gm(account, $"!job {career}");
         await Gm(account, $"!lvl {level}");
-        var loop = app.Services.GetRequiredService<GameLoop>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
         for (var until = DateTime.UtcNow + Wait; ; await Task.Delay(20)) // the GM commits finish on the loop
         {
             bool applied = false;
@@ -70,7 +70,7 @@ public sealed class CareerSpecialTests : IAsyncLifetime
                 {
                     var s = Session(account);
                     foreach (int group in skillGroups) s.Progress!.Skills[group] = 1;
-                    app.Services.GetRequiredService<RoleStore>().SaveProgress(s.Role!.Id, s.Progress!);
+                    _app.Services.GetRequiredService<RoleStore>().SaveProgress(s.Role!.Id, s.Progress!);
                     return Task.CompletedTask;
                 });
                 return;
@@ -110,7 +110,7 @@ public sealed class CareerSpecialTests : IAsyncLifetime
         Assert.Equal(CareerSpecialService.ErrLevel, await LeaseAsync(a, Falcon)); // _iUnlockBaseLv 30
         Assert.Equal(CareerSpecialService.ErrNotLeased, await CancelAsync(a, Falcon));
         Assert.Equal(0, Session("alice").CareerSpecial!.PendantSlot.CartRemouldCfg);
-        var stored = app.Services.GetRequiredService<RoleStore>().LoadCareerSpecial(Session("alice").Role!.Id);
+        var stored = _app.Services.GetRequiredService<RoleStore>().LoadCareerSpecial(Session("alice").Role!.Id);
         Assert.True(stored == null || DBCareerSpecial.Parser.ParseFrom(stored).PendantSlot?.CartRemouldCfg is null or 0);
     }
 
@@ -131,7 +131,7 @@ public sealed class CareerSpecialTests : IAsyncLifetime
                 Assert.Equal(51001, shown.PendantInfo[51001].PendantId);
                 Assert.False(shown.PendantInfo[51001].IsHide);
             }
-            Assert.True(CareerSpecialService.HoldsSubType(Session("alice"), app.Services.GetRequiredService<GameData>(), 1));
+            Assert.True(CareerSpecialService.HoldsSubType(Session("alice"), _app.Services.GetRequiredService<GameData>(), 1));
 
             // Another cart replaces the first one in the same slot; the old pendant goes hidden.
             Assert.Equal(0, await LeaseAsync(a, BirchCart));

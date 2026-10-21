@@ -16,18 +16,18 @@ namespace Ro3Emu.Tests;
 
 public sealed class TerritoryWarsTests : IAsyncLifetime
 {
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-territory-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-territory-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(12);
     private sealed class Clock : TimeProvider
     {
-        private long seconds = 1779535900; // round 2 free auction, exported absolute calendar.
-        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref seconds));
-        public void Set(long value) => Interlocked.Exchange(ref seconds, value);
+        private long _seconds = 1779535900; // round 2 free auction, exported absolute calendar.
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref _seconds));
+        public void Set(long value) => Interlocked.Exchange(ref _seconds, value);
     }
-    private readonly Clock clock = new();
-    private WebApplication app = null!;
-    private string http = "";
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private readonly Clock _clock = new();
+    private WebApplication _app = null!;
+    private string _http = "";
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private long SourceCount(string prefix)
     {
         using var db = new Microsoft.Data.Sqlite.SqliteConnection(
@@ -63,18 +63,18 @@ public sealed class TerritoryWarsTests : IAsyncLifetime
     private async Task StartAsync()
     {
         var (web, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game; o.PlayBook = 101; o.SeasonStart = "2026-05-19";
-        }, clock);
-        SureHitRolls.Install(app); // lethal hits are prepared; a FLEE miss would only be noise
-        await app.StartAsync(); http = $"http://127.0.0.1:{web}";
+        }, _clock);
+        SureHitRolls.Install(_app); // lethal hits are prepared; a FLEE miss would only be noise
+        await _app.StartAsync(); _http = $"http://127.0.0.1:{web}";
     }
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync(); Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        await _app.StopAsync(); await _app.DisposeAsync(); Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
     private static string RepoRoot()
     {
@@ -84,7 +84,7 @@ public sealed class TerritoryWarsTests : IAsyncLifetime
     }
     private async Task<BotClient> Bot(string name, bool create = true)
     {
-        var b = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var b = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await b.LoginAsync(name.ToLowerInvariant(), "pw"); await b.EnterGateAsync();
         long id = create ? (await b.CreateRoleAsync(name)).RoleBaseInfo.Id : b.Roles.Single(r => r.Name == name).Id;
         await b.EnterWorldAsync(id); return b;
@@ -169,7 +169,7 @@ public sealed class TerritoryWarsTests : IAsyncLifetime
         Assert.Equal(3900, store.Get(gb)!.AuctionMaterials);
         await b.SendGameAsync(TerritoryWarsService.Bid, new TerritoryAuctionBidReq { ZoneId = 13, TargetBid = 1000 });
         Assert.Equal(ErrorCodes.TerritoryOtherRegion, (await Next(b, 2, CommonErrorNtf.Parser)).ErrorCode);
-        clock.Set(1779622201); await OnLoop(wars.ReconcileAsync); // round 2 capital battle.
+        _clock.Set(1779622201); await OnLoop(wars.ReconcileAsync); // round 2 capital battle.
         await a.SendGameAsync(30400, new EnterDungeonReq { SceneEntry = 3030401 });
         Assert.Equal(ErrorCodes.TerritoryNotQualified, (await Next(a, 30400, EnterDungeonRsp.Parser)).Result);
         long outsideB = Session(b).SceneEntry, outsideC = Session(c).SceneEntry;
@@ -216,7 +216,7 @@ public sealed class TerritoryWarsTests : IAsyncLifetime
         await c.SendGameAsync(TerritoryWarsService.ResultNotify, new TerritoryWarsDungeonResultNotify { CommonResultInfo = new DungeonResultInfo { WinEntityId = gc } });
         await c.SendGameAsync(30106, new ClientDungeonEvent { StrCmd = "win" });
         Assert.Equal(0, wars.OwnerOf(2));
-        clock.Set(1779625801); await OnLoop(wars.ReconcileAsync);
+        _clock.Set(1779625801); await OnLoop(wars.ReconcileAsync);
         var br = await Next(b, TerritoryWarsService.ResultNotify, TerritoryWarsDungeonResultNotify.Parser);
         var cr = await Next(c, TerritoryWarsService.ResultNotify, TerritoryWarsDungeonResultNotify.Parser);
         Assert.Equal(gb, br.CommonResultInfo.WinEntityId); Assert.Equal(br, cr); Assert.Equal(gb, wars.OwnerOf(2));
@@ -233,7 +233,7 @@ public sealed class TerritoryWarsTests : IAsyncLifetime
         await c.SendGameAsync(30114, new DungeonStatisticsInfoWithDungeonReq { StaisticsIds = { br.CommonResultInfo.StatisticsId } });
         var report = await Next(c, 30114, DungeonStatisticsInfoWithDungeonResp.Parser);
         Assert.Equal(0, report.Result); Assert.Equal(2, Assert.Single(report.DungeonStatistics).SceneStatistics.Values.Single().RoleStatistics.Count);
-        clock.Set(1779625810); await OnLoop(wars.ReconcileAsync);
+        _clock.Set(1779625810); await OnLoop(wars.ReconcileAsync);
         await Next(b, MsgId.SwitchSceneLine, SwitchSceneLineResp.Parser, sw => sw.SceneEntry == outsideB);
         await Next(c, MsgId.SwitchSceneLine, SwitchSceneLineResp.Parser, sw => sw.SceneEntry == outsideC);
         Assert.True(battle.Room.Closed);
@@ -249,9 +249,9 @@ public sealed class TerritoryWarsTests : IAsyncLifetime
         long guild = await Guild(bot, "TwPnts");
         await bot.JoinChatAsync("4_1");
         var wars = Service<TerritoryWarsService>();
-        clock.Set(1779276700); await OnLoop(wars.ReconcileAsync); // TerritoryWarStageConfig 5: round 1 auction.
+        _clock.Set(1779276700); await OnLoop(wars.ReconcileAsync); // TerritoryWarStageConfig 5: round 1 auction.
         await Bid(bot, 1000);
-        clock.Set(1779362200); await OnLoop(wars.ReconcileAsync); // stage 7: round 1 preparation, auction settled.
+        _clock.Set(1779362200); await OnLoop(wars.ReconcileAsync); // stage 7: round 1 preparation, auction settled.
         long[] expected = [34, 41, 49, 51, 55, 56, 57, 59, 63, 66, 74, 81, 83, 85, 86]; // DungeonLua_3030101 UIModule_NpcData
         async Task<(GlobalScenePointDataNotify Points, Dictionary<int, GlobalObjectData> Markers)> EnterStronghold()
         {
@@ -349,7 +349,7 @@ public sealed class TerritoryWarsTests : IAsyncLifetime
             var g = store.Get(guild)!; g.Members[Session(bot).Role!.Id].Official = 20; g.Rights[25] = [];
             Assert.True(store.Save(g)); return Task.CompletedTask;
         });
-        clock.Set(1779535920); await OnLoop(wars.ReconcileAsync);
+        _clock.Set(1779535920); await OnLoop(wars.ReconcileAsync);
         Assert.Equal(5000, store.Get(guild)!.AuctionMaterials);
         await Next(bot, TerritoryWarsService.AutoNotify, TerritoryAutoBidSettingChangeNtf.Parser, n => (int)n.IsActive == 2);
         await OnLoop(() => { var g = store.Get(guild)!; g.Members[Session(bot).Role!.Id].Official = 1; Assert.True(store.Save(g)); return Task.CompletedTask; });
@@ -359,7 +359,7 @@ public sealed class TerritoryWarsTests : IAsyncLifetime
         {
             // This phase observes exactly one refused projection before explicitly retrying it.
             // Drain existing passes and drive the remaining clock transitions from this test.
-            typeof(TerritoryWarsService).GetField("lastTick",
+            typeof(TerritoryWarsService).GetField("_lastTick",
                 System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
                 .SetValue(wars, TimeSpan.MaxValue);
             await wars.ReconcileAsync();
@@ -473,7 +473,7 @@ public sealed class TerritoryWarsTests : IAsyncLifetime
             {
                 // Reconcile must publish an actual full panel, even though its values have not changed.
                 session.Synced.Remove(5020);
-                typeof(TerritoryWarsService).GetField("siegePublishedState",
+                typeof(TerritoryWarsService).GetField("_siegePublishedState",
                     System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
                     .SetValue(wars, "");
                 await wars.ReconcileAsync();
@@ -498,12 +498,12 @@ public sealed class TerritoryWarsTests : IAsyncLifetime
             guild = await Guild(b, "TwRetry");
             await b.SendGameAsync(TerritoryWarsService.AutoSet, new TerritoryAutoBidSetReq { ZoneId = 2, InitialBid = 1000, MaxBid = 3000, Style = (TerritoryAutoBidStyle)1 });
             await Next(b, TerritoryWarsService.AutoSet, TerritoryAutoBidSetRes.Parser);
-            clock.Set(1779535920); await OnLoop(Service<TerritoryWarsService>().ReconcileAsync);
+            _clock.Set(1779535920); await OnLoop(Service<TerritoryWarsService>().ReconcileAsync);
             Assert.Equal(4000, Service<GuildStore>().Get(guild)!.AuctionMaterials);
         }
-        await app.StopAsync(); await app.DisposeAsync(); await StartAsync();
+        await _app.StopAsync(); await _app.DisposeAsync(); await StartAsync();
         await using var again = await Bot("TerrRestart", false);
-        clock.Set(1779535940); await OnLoop(Service<TerritoryWarsService>().ReconcileAsync);
+        _clock.Set(1779535940); await OnLoop(Service<TerritoryWarsService>().ReconcileAsync);
         Assert.Equal(4000, Service<GuildStore>().Get(guild)!.AuctionMaterials);
         await again.SendGameAsync(TerritoryWarsService.AutoQuery, new TerritoryAutoBidQueryReq());
         var setting = await Next(again, TerritoryWarsService.AutoNotify, TerritoryAutoBidSettingChangeNtf.Parser, x => x.ZoneId == 2);
@@ -523,7 +523,7 @@ public sealed class TerritoryWarsTests : IAsyncLifetime
             var session = Session(bot);
             var before = Assert.IsType<DBNewActivityInfo>(session.Synced[NewActivityService.ActivitySync]);
             long oldType = (long)before.ActivityInfo[2000].ActivityParam.TerritoryWar.TerritoryWarStage.StageType;
-            clock.Set(1779622200L);
+            _clock.Set(1779622200L);
             await Service<TerritoryWarsService>().ReconcileAsync();
             var current = Assert.IsType<DBNewActivityInfo>(session.Synced[NewActivityService.ActivitySync]);
             var projected = current.ActivityInfo[2000].ActivityParam.TerritoryWar.TerritoryWarStage;
@@ -553,7 +553,7 @@ public sealed class TerritoryWarsTests : IAsyncLifetime
             var expected = session.NewActivities!.ActivityInfo.Keys.Order().ToArray();
             foreach (long now in new[] { 1779535900L, 1779622200L })
             {
-                clock.Set(now);
+                _clock.Set(now);
                 await Service<TerritoryWarsService>().ReconcileAsync();
                 await Service<NewActivityService>().ReconcileAsync(session);
                 var snapshot = Assert.IsType<DBNewActivityInfo>(session.Synced[NewActivityService.ActivitySync]);
@@ -567,7 +567,7 @@ public sealed class TerritoryWarsTests : IAsyncLifetime
             }
         });
 
-        clock.Set(new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds());
+        _clock.Set(new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds());
         await OnLoop(async () =>
         {
             await Service<TerritoryWarsService>().ReconcileAsync();

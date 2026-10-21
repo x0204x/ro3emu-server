@@ -38,16 +38,16 @@ public sealed class RoleProgress
 }
 
 /// <summary>Characters in the same SQLite file as the accounts.</summary>
-public sealed class RoleStore
+public sealed class RoleStore(AccountStore accounts)
 {
     /// <summary>PublicParamConfig.SpawnSceneEntry (Prontera field 08) and SpawnScenePos {x, z}.</summary>
     public const long SpawnSceneEntry = 10111;
     public const float SpawnX = 156f;
     public const float SpawnZ = 192f;
 
-    private readonly AccountStore _accounts;
-    private string? rewardRealm;
-    internal string RewardRealmId => rewardRealm ??= _accounts.ReadSync<string>(new RewardSourceReadPlan());
+    private readonly AccountStore _accounts = accounts;
+    private string? _rewardRealm;
+    internal string RewardRealmId => _rewardRealm ??= _accounts.ReadSync<string>(new RewardSourceReadPlan());
     internal Task<bool> RewardSourceCommittedAsync(string source) => _accounts.ReadAsync<bool>(new RewardSourceReadPlan(source));
 
     public RoleItemPlanBuilder NewTransaction() => new(_accounts);
@@ -77,11 +77,6 @@ public sealed class RoleStore
     public long AllocateInstanceId()
     {
         return _accounts.WriteLegacySync<long>(new RoleIdentityWritePlan(RoleIdentityWriteKind.AllocateInstance));
-    }
-
-    public RoleStore(AccountStore accounts)
-    {
-        _accounts = accounts;
     }
 
     /// <summary>Durable lifecycle epoch and storage-part revisions for a staged role operation.</summary>

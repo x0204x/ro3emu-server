@@ -2,3 +2,6 @@
 
 # Format C# layout with dotnet format whitespace
 857e47518bbcf211933296702a81bf67f869d783
+
+# Private fields renamed to _camelCase, primary constructors
+10df90d0644bf99921b5119ce2aeebfa27eb374b

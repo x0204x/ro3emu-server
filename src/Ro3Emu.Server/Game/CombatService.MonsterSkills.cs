@@ -35,7 +35,7 @@ public sealed partial class CombatService
             var lease = p.Attachment;
             bool Current() => ReferenceEquals(p.Role, targetRole) && p.WorldScene == scene && p.SceneGeneration == generation
                 && ReferenceEquals(p.Attachment, lease) && lease?.Cancelled != true;
-            var stats = character.Stats(p);
+            var stats = _character.Stats(p);
             var defender = new Fighter(0, 0, 0, 0, p.Progress.Level, 1) { Def = stats[105], Mdef = stats[106], Flee = stats[110], ResCri = stats[112] };
             var (damage, result) = Damage(attacker, defender, row);
             damage = ScaleMonsterDamage(damage, caster.DamageRatio);
@@ -55,8 +55,8 @@ public sealed partial class CombatService
                     Dsts = { new DamageInfo { DstID = targetRole.Id, Damage = damage, SheildDamage = shieldDamage, HitResult = result,
                         DstElement = 1, IsDead = hp == 0 } },
                 };
-                foreach (var viewer in world.Viewers(p).Append(p).Distinct()) await viewer.SendGameAsync(SkillHit, hit);
-                await character.SetHpSpAsync(p, null, null);
+                foreach (var viewer in _world.Viewers(p).Append(p).Distinct()) await viewer.SendGameAsync(SkillHit, hit);
+                await _character.SetHpSpAsync(p, null, null);
                 foreach (var handler in TakenAsync) await handler(caster, p, damage);
                 await FightingAsync(p);
                 if (hp == 0)
@@ -65,7 +65,7 @@ public sealed partial class CombatService
                     continue;
                 }
                 foreach (var tuple in Tuples(row, "_kBuff2"))
-                    if (Current() && (!bossDebuffsOnly || BossDebuff(tuple)) && RollHostileBuff(tuple, null, caster, p, null, out int buff, out int ms)) await buffs.AddAsync(p, buff, ms, caster.Uid);
+                    if (Current() && (!bossDebuffsOnly || BossDebuff(tuple)) && RollHostileBuff(tuple, null, caster, p, null, out int buff, out int ms)) await _buffs.AddAsync(p, buff, ms, caster.Uid);
             }
             finally { if (hp == 0) ReleaseDeathPublication(p); }
         }
@@ -73,5 +73,5 @@ public sealed partial class CombatService
     }
 
     private bool BossDebuff(JsonElement tuple) => tuple.GetArrayLength() >= 3 && GameData.Number(tuple[2]) > 0
-        && GameData.Number(tuple[0]) is double id && !(data.Row("BuffConfig", (long)id) is { } buff && GameData.Int(buff, "_iType") == 1);
+        && GameData.Number(tuple[0]) is double id && !(_data.Row("BuffConfig", (long)id) is { } buff && GameData.Int(buff, "_iType") == 1);
 }

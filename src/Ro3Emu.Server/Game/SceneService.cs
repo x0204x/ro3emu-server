@@ -33,7 +33,7 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
     public List<Func<GameSession, Task>> Loaded { get; } = new();
     /// <summary>Replays require the entity bases installed by JoinAsync.</summary>
     public List<Func<GameSession, Task>> AfterLoaded { get; } = new();
-    private readonly HashSet<Func<GameSession, Task>> ownedAfterLoaded = new();
+    private readonly HashSet<Func<GameSession, Task>> _ownedAfterLoaded = new();
     /// <summary>Shared keys a loaded hook writes for this session (a hook that writes beyond the role declares them
     /// here when it registers).</summary>
     public List<Func<GameSession, Ownership.ReservationKey[]>> LoadedKeys { get; } = new();
@@ -57,7 +57,7 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
     }
     /// <summary>Keep the original hook order while an opted-in hook admits its own participants.</summary>
     internal void AddOwnedAfterLoaded(Func<GameSession, Task> handler)
-    { AfterLoaded.Add(handler); ownedAfterLoaded.Add(handler); }
+    { AfterLoaded.Add(handler); _ownedAfterLoaded.Add(handler); }
     public Func<GameSession, WorldNpc, NpcInteractionReq, int>? ValidateInteraction { get; set; }
     public Func<GameSession, WorldNpc, NpcInteractionReq, Task>? ApplyInteraction { get; set; }
     /// <summary>Optional source-bound work begins only when capacity is granted for the actual handoff.</summary>
@@ -287,7 +287,7 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
             }
             foreach (var handler in AfterLoaded)
             {
-                using var hookScope = !ownedAfterLoaded.Contains(handler) && s.Owners is { } hookOwners
+                using var hookScope = !_ownedAfterLoaded.Contains(handler) && s.Owners is { } hookOwners
                     ? await EnterHooksAsync(hookOwners, "scene after-loaded hook", s) : null;
                 if (!CurrentScene() || s.SceneLoading) return;
                 await handler(s);

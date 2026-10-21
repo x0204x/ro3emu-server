@@ -23,9 +23,9 @@ public sealed class PetTests : IAsyncLifetime
     private readonly TestClock _clock = new();
     private sealed class TestClock : TimeProvider
     {
-        private long seconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref seconds));
-        public void Advance(long count) => Interlocked.Add(ref seconds, count);
+        private long _seconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref _seconds));
+        public void Advance(long count) => Interlocked.Add(ref _seconds, count);
     }
 
     public async Task InitializeAsync()

@@ -29,26 +29,26 @@ public sealed class GrowthClassService
 {
     public const uint Sync = 5045, GetRankReward = 33830;
 
-    private readonly GameData data;
-    private readonly TaskService tasks;
-    private readonly CharacterService character;
-    private readonly AwardService awards;
-    private readonly FunctionService functions;
-    private readonly RoleStore roles;
-    private readonly ILogger<GrowthClassService> log;
+    private readonly GameData _data;
+    private readonly TaskService _tasks;
+    private readonly CharacterService _character;
+    private readonly AwardService _awards;
+    private readonly FunctionService _functions;
+    private readonly RoleStore _roles;
+    private readonly ILogger<GrowthClassService> _log;
     private List<(int Id, long Standard, long Reward)>? _ranks;
 
     public GrowthClassService(GameData data, TaskService tasks, CharacterService character, AwardService awards,
         FunctionService functions, RoleStore roles, GmCommands gm, ILogger<GrowthClassService> log)
     {
-        this.data = data; this.tasks = tasks; this.character = character; this.awards = awards;
-        this.functions = functions; this.roles = roles; this.log = log;
+        this._data = data; this._tasks = tasks; this._character = character; this._awards = awards;
+        this._functions = functions; this._roles = roles; this._log = log;
         tasks.SyncGrowthClass = SyncAsync;
         gm.Register("growthclass", "done <module> <stage> | info (Growth Classroom test aid: deliver a module's quests through a stage)", GmAsync);
     }
 
     /// <summary>BecomeStrongerRankConfig rows in id order: (rank, _iStandard, _iReward).</summary>
-    private List<(int Id, long Standard, long Reward)> Ranks() => _ranks ??= data.Table("BecomeStrongerRankConfig").Values
+    private List<(int Id, long Standard, long Reward)> Ranks() => _ranks ??= _data.Table("BecomeStrongerRankConfig").Values
         .SelectMany(v => v.ValueKind == JsonValueKind.Array ? v.EnumerateArray().ToArray() : [v])
         .Where(r => r.ValueKind == JsonValueKind.Object && GameData.Int(r, "_iID") > 0)
         .Select(r => ((int)GameData.Int(r, "_iID"), GameData.Int(r, "_iStandard"), GameData.Int(r, "_iReward")))
@@ -56,7 +56,7 @@ public sealed class GrowthClassService
 
     public void Load(GameSession s)
     {
-        var bytes = roles.LoadGrowthClass(s.Role!.Id);
+        var bytes = _roles.LoadGrowthClass(s.Role!.Id);
         s.GrowthClass = bytes is { Length: > 0 } ? DBGrowthClassInfo.Parser.ParseFrom(bytes) : new DBGrowthClassInfo();
     }
 
@@ -71,11 +71,11 @@ public sealed class GrowthClassService
         var info = new DBGrowthClassInfo();
         foreach (var (rank, claimed) in s.GrowthClass!.RankReward) info.RankReward[rank] = claimed;
         int total = 0;
-        foreach (var module in tasks.GrowthClassTasks().Values.Select(t => t.Module).Distinct().Order())
+        foreach (var module in _tasks.GrowthClassTasks().Values.Select(t => t.Module).Distinct().Order())
         {
-            int done = tasks.GrowthClassTasks().Count(t => t.Value.Module == module && TaskService.IsDelivered(s, t.Key));
+            int done = _tasks.GrowthClassTasks().Count(t => t.Value.Module == module && TaskService.IsDelivered(s, t.Key));
             info.ModuleTaskCompleteNum[(int)module] = done;
-            info.ModuleUnlockedStage[(int)module] = tasks.GrowthStage(s, module);
+            info.ModuleUnlockedStage[(int)module] = _tasks.GrowthStage(s, module);
             total += done;
         }
         info.RankProgress = total;
@@ -83,7 +83,7 @@ public sealed class GrowthClassService
     }
 
     /// <summary>The growth quests delivered so far (rankProgress).</summary>
-    private int Progress(GameSession s) => tasks.GrowthClassTasks().Keys.Count(id => TaskService.IsDelivered(s, id));
+    private int Progress(GameSession s) => _tasks.GrowthClassTasks().Keys.Count(id => TaskService.IsDelivered(s, id));
 
     /// <summary>33830: one reached rank's reward, once.</summary>
     public async Task ClaimAsync(GameSession s, GrowthClassGetRankRewardReq req)
@@ -93,7 +93,7 @@ public sealed class GrowthClassService
         {
             int index = Ranks().FindIndex(r => r.Id == req.RankId);
             result = s.GrowthClass == null || s.Tasks == null ? ErrorCodes.Unknown
-                : !functions.IsOpen(s, TaskService.BecomeStrongerFunction) ? ErrorCodes.FunctionLocked
+                : !_functions.IsOpen(s, TaskService.BecomeStrongerFunction) ? ErrorCodes.FunctionLocked
                 : index < 0 ? ErrorCodes.RewardMissing
                 : s.GrowthClass.RankReward.GetValueOrDefault(req.RankId) == 1 ? ErrorCodes.RewardClaimed
                 : Ranks().Take(index + 1).Sum(r => r.Standard) > Progress(s) ? ErrorCodes.NoRankReward
@@ -112,15 +112,15 @@ public sealed class GrowthClassService
         int? playBook = s.Synced.GetValueOrDefault(SeasonService.SeasonSync) is DBSeasonInfo { Current: { } current }
             ? (int)current.PlayBookId : null;
         AwardPlan plan;
-        try { plan = awards.Resolve(s, group, playBook); }
+        try { plan = _awards.Resolve(s, group, playBook); }
         catch (AwardResolutionException e) when (FixedAward(group, playBook) is { } items)
         {
-            log.LogInformation("Growth Classroom rank {Rank} pays the fixed items of its award: {Reason}", rank, e.Message);
+            _log.LogInformation("Growth Classroom rank {Rank} pays the fixed items of its award: {Reason}", rank, e.Message);
             plan = items;
         }
         catch (AwardResolutionException e)
         {
-            log.LogWarning("Growth Classroom rank {Rank} reward unresolved for {Role}: {Reason}", rank, role, e.Message);
+            _log.LogWarning("Growth Classroom rank {Rank} reward unresolved for {Role}: {Reason}", rank, role, e.Message);
             return ErrorCodes.RewardMissing;
         }
         try
@@ -128,20 +128,20 @@ public sealed class GrowthClassService
             bool ok;
             if (plan.Grants.Count == 0)
             {
-                roles.SaveGrowthClass(role, bytes);
+                _roles.SaveGrowthClass(role, bytes);
                 s.GrowthClass = next;
                 ok = true;
             }
-            else ok = await character.ApplyAwardAsync(s, plan, persist: tx => roles.SaveGrowthClass(role, bytes, tx),
+            else ok = await _character.ApplyAwardAsync(s, plan, persist: tx => _roles.SaveGrowthClass(role, bytes, tx),
                 stateLockHeld: true, committed: () => s.GrowthClass = next,
                 ownedAward: new CharacterService.OwnedAwardSource("cd13e/growthclass-award", $"growthclass/{role}/{rank}",
                     new { Version = 1, Rank = rank, Award = group, plan.AwardId }));
-            if (ok) log.LogInformation("{Name} claims Growth Classroom rank {Rank} reward", s.Role.Name, rank);
+            if (ok) _log.LogInformation("{Name} claims Growth Classroom rank {Rank} reward", s.Role.Name, rank);
             return ok ? 0 : ErrorCodes.Unknown;
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            log.LogError(e, "Growth Classroom rank {Rank} reward failed for {Role}", rank, role);
+            _log.LogError(e, "Growth Classroom rank {Rank} reward failed for {Role}", rank, role);
             return ErrorCodes.Unknown;
         }
     }
@@ -153,10 +153,10 @@ public sealed class GrowthClassService
     /// </summary>
     private AwardPlan? FixedAward(long group, int? playBook)
     {
-        if (data.Row("MultiverseGroupConfig", group) is not { } mg || GameData.Int(mg, "_itype") != 0) return null;
+        if (_data.Row("MultiverseGroupConfig", group) is not { } mg || GameData.Int(mg, "_itype") != 0) return null;
         long id = playBook is > 0 && GameData.Int(mg, $"_iValue_{playBook}") is var selected and > 0
             ? selected : GameData.Int(mg, "_iValue_default");
-        if (data.Row("AwardConfig", id) is not { ValueKind: JsonValueKind.Array } rows || rows.GetArrayLength() != 1
+        if (_data.Row("AwardConfig", id) is not { ValueKind: JsonValueKind.Array } rows || rows.GetArrayLength() != 1
             || GameData.Int(rows[0], "_iDropPool") != 0
             || !rows[0].TryGetProperty("_kAward", out var items) || items.ValueKind != JsonValueKind.Array) return null;
         var grants = new List<AwardGrant>();
@@ -164,7 +164,7 @@ public sealed class GrowthClassService
         {
             if (t.ValueKind != JsonValueKind.Array || t.GetArrayLength() != 3 || !t[0].TryGetInt32(out int entry)
                 || !t[1].TryGetInt32(out int count) || !t[2].TryGetInt32(out int bind) || bind is < 0 or > 1
-                || count <= 0 || data.Row("ItemConfig", entry) == null) return null;
+                || count <= 0 || _data.Row("ItemConfig", entry) == null) return null;
             grants.Add(new AwardGrant(entry, count, bind));
         }
         return grants.Count > 0 ? new AwardPlan(group, id, grants) : null;
@@ -177,9 +177,9 @@ public sealed class GrowthClassService
         else if (args is ["done", var moduleText, var stageText] && long.TryParse(moduleText, out long module)
             && int.TryParse(stageText, out int stage))
         {
-            var ids = tasks.GrowthClassTasks().Where(t => t.Value.Module == module && t.Value.Stage <= stage)
+            var ids = _tasks.GrowthClassTasks().Where(t => t.Value.Module == module && t.Value.Stage <= stage)
                 .Select(t => t.Key).Order().ToList();
-            foreach (long id in ids.Where(id => !TaskService.IsDelivered(s, id))) await tasks.GmAsync(s, "done", id);
+            foreach (long id in ids.Where(id => !TaskService.IsDelivered(s, id))) await _tasks.GmAsync(s, "done", id);
             reply = $"Module {module} through stage {stage}: {ids.Count} quests delivered. {Describe(s)}";
         }
         else if (args is ["info"]) reply = Describe(s);

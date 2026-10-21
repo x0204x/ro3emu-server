@@ -14,40 +14,40 @@ namespace Ro3Emu.Tests;
 public sealed class GuildHomeTests : IAsyncLifetime
 {
     private const long Home = GuildHomeService.DefaultScene;
-    private readonly string dir = Path.Combine(Path.GetTempPath(), "ro3emu-guildhome-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ro3emu-guildhome-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(8);
-    private readonly TestClock clock = new();
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly TestClock _clock = new();
+    private WebApplication _app = null!;
+    private string _http = "";
 
     /// <summary>Thursday 2026-10-08 12:00 UTC: a Bonfire Party day, outside the 20:00-20:25 event.</summary>
     private sealed class TestClock : TimeProvider
     {
-        private long seconds = new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
-        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref seconds));
+        private long _seconds = new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref _seconds));
         public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
-        public void Advance(long count) => Interlocked.Add(ref seconds, count);
-        public void Set(DateTimeOffset at) => Interlocked.Exchange(ref seconds, at.ToUnixTimeSeconds());
+        public void Advance(long count) => Interlocked.Add(ref _seconds, count);
+        public void Set(DateTimeOffset at) => Interlocked.Exchange(ref _seconds, at.ToUnixTimeSeconds());
     }
 
     public async Task InitializeAsync()
     {
         var (web, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _dir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game;
             o.SeasonStart = "2026-10-05"; o.PlayBook = 101;
-        }, clock);
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{web}";
+        }, _clock);
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{web}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dir, true); } catch (IOException) { }
+        try { Directory.Delete(_dir, true); } catch (IOException) { }
     }
 
     private static string RepoRoot()
@@ -57,12 +57,12 @@ public sealed class GuildHomeTests : IAsyncLifetime
         throw new DirectoryNotFoundException("repository root");
     }
 
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private Task OnLoop(Func<Task> work) => Service<GameLoop>().InvokeAsync(work);
 
     private async Task<BotClient> InWorld(string name, bool create = true, int level = 40)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         long role = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
         await bot.EnterWorldAsync(role);
@@ -80,7 +80,7 @@ public sealed class GuildHomeTests : IAsyncLifetime
     private async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     private GameSession Session(BotClient bot) => Service<SessionRegistry>()
@@ -330,7 +330,7 @@ public sealed class GuildHomeTests : IAsyncLifetime
 
         await alice.SendGameAsync(GuildService.Kick, new GuildMemberKickReq { TarPlayerIDs = { (long)bob.Self!.Uuid }, IfSingleKick = true });
         Assert.Equal(0, (await Next(alice, GuildService.Kick, GuildMemberKickResp.Parser, x => x.Result == 0)).Result);
-        clock.Advance(1);
+        _clock.Advance(1);
         await Next(bob, MsgId.SwitchSceneLine, SwitchSceneLineResp.Parser, r => r.SceneEntry == outside);
         await Load(bob, outside);
         Assert.Equal(0, Session(bob).InstanceId);
@@ -338,7 +338,7 @@ public sealed class GuildHomeTests : IAsyncLifetime
 
         await carol.SendGameAsync(GuildService.Leave, new GuildMemberLeaveReq());
         Assert.Equal(0, (await Next(carol, GuildService.Leave, GuildMemberLeaveResp.Parser)).Result);
-        clock.Advance(1);
+        _clock.Advance(1);
         await Next(carol, MsgId.SwitchSceneLine, SwitchSceneLineResp.Parser, r => r.SceneEntry == outside);
         await Load(carol, outside);
 
@@ -398,19 +398,19 @@ public sealed class GuildHomeTests : IAsyncLifetime
         long room = await Enter(alice);
 
         // 20:00: the members already inside get the fire, the seeds and stage 1.
-        clock.Set(new DateTimeOffset(2026, 10, 8, 20, 0, 10, TimeSpan.Zero));
+        _clock.Set(new DateTimeOffset(2026, 10, 8, 20, 0, 10, TimeSpan.Zero));
         var view = await Next(alice, GameAoiSink.SyncAoiView, AoIViewChangeData.Parser,
             r => r.Bases.Any(b => b.EntityTemplateID == 7020004));
         Assert.Contains(view.Bases, b => b.EntityTemplateID == 7020001);
         Assert.Equal(1, (await Next(alice, GuildCampfireService.Stage, GuildCampFireStageInfo.Parser)).NowStage);
         ulong fire = view.Bases.Single(b => b.EntityTemplateID == 7020004).Uuid;
 
-        clock.Set(new DateTimeOffset(2026, 10, 8, 20, 15, 0, TimeSpan.Zero));
+        _clock.Set(new DateTimeOffset(2026, 10, 8, 20, 15, 0, TimeSpan.Zero));
         await Next(alice, GuildCampfireService.Stage, GuildCampFireStageInfo.Parser, r => r.NowStage == 4);
         var firstBoss = await Boss(room);
 
         // 20:25: Finish, the fire leaves, the event's actors are cleared; the room itself stays.
-        clock.Set(new DateTimeOffset(2026, 10, 8, 20, 25, 0, TimeSpan.Zero));
+        _clock.Set(new DateTimeOffset(2026, 10, 8, 20, 25, 0, TimeSpan.Zero));
         await Next(alice, GuildCampfireService.Finish, GuildCampFireFinishNotify.Parser);
         await Next(alice, GameAoiSink.SyncAoiView, AoIViewChangeData.Parser, r => r.LeaveAoi.Contains(fire));
         await Until(() => !Service<World>().AllUnits().OfType<MonsterUnit>().Any(m => m.InstanceId == room && !m.Dead),
@@ -418,7 +418,7 @@ public sealed class GuildHomeTests : IAsyncLifetime
         Assert.Equal(room, Service<GuildHomeService>().RoomOf(guild)?.Id);
 
         // Saturday's event in the same room spawns its boss again.
-        clock.Set(new DateTimeOffset(2026, 10, 10, 20, 15, 0, TimeSpan.Zero));
+        _clock.Set(new DateTimeOffset(2026, 10, 10, 20, 15, 0, TimeSpan.Zero));
         Assert.Equal(4, (await Next(alice, GuildCampfireService.Stage, GuildCampFireStageInfo.Parser, r => r.NowStage == 4)).NowStage);
         await Next(alice, GameAoiSink.SyncAoiView, AoIViewChangeData.Parser, r => r.Bases.Any(b => b.EntityTemplateID == 7020004));
         var secondBoss = await Boss(room);
@@ -431,11 +431,11 @@ public sealed class GuildHomeTests : IAsyncLifetime
     {
         await using var alice = await InWorld("Alice");
         await CreateGuild(alice, "Hearth");
-        clock.Set(new DateTimeOffset(2026, 10, 8, 20, 30, 0, TimeSpan.Zero));
+        _clock.Set(new DateTimeOffset(2026, 10, 8, 20, 30, 0, TimeSpan.Zero));
         await Enter(alice);
-        clock.Advance(2);
+        _clock.Advance(2);
         await Task.Delay(300);
-        clock.Advance(2);
+        _clock.Advance(2);
         await Task.Delay(300);
         Assert.DoesNotContain(alice.Inbox.Snapshot(), e => e.IsGame(GuildCampfireService.Finish) || e.IsGame(GuildCampfireService.Stage));
     }

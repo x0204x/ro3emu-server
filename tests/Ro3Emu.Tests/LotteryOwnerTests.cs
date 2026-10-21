@@ -13,7 +13,7 @@ public sealed partial class LotteryActivityTests
 {
     private async Task<BotClient> OtherWorld()
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync("lotteryother", "pw");
         await bot.EnterGateAsync();
         long id = (await bot.CreateRoleAsync("LotteryOther")).RoleBaseInfo.Id;
@@ -24,7 +24,7 @@ public sealed partial class LotteryActivityTests
 
     private long LotteryReceipts()
     {
-        using var db = new SqliteConnection($"Data Source={Path.Combine(dataDir, "ro3emu.db")}");
+        using var db = new SqliteConnection($"Data Source={Path.Combine(_dataDir, "ro3emu.db")}");
         db.Open();
         using var cmd = db.CreateCommand();
         cmd.CommandText = "SELECT count(*) FROM operation_receipt WHERE command_kind='event/lottery-draw'";
@@ -33,7 +33,7 @@ public sealed partial class LotteryActivityTests
 
     private (string Source, long Legs) LatestLotteryReceipt()
     {
-        using var db = new SqliteConnection($"Data Source={Path.Combine(dataDir, "ro3emu.db")}");
+        using var db = new SqliteConnection($"Data Source={Path.Combine(_dataDir, "ro3emu.db")}");
         db.Open();
         using var cmd = db.CreateCommand();
         cmd.CommandText = "SELECT source_key,leg_count FROM operation_receipt WHERE command_kind='event/lottery-draw' ORDER BY commit_seq DESC LIMIT 1";
@@ -49,19 +49,19 @@ public sealed partial class LotteryActivityTests
         await using var other = await OtherWorld();
         await Gm("!lvl 99");
         await Gm("!item 1250717 1");
-        var session = app.Services.GetRequiredService<SessionRegistry>().All()
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All()
             .Single(s => s.Role?.Name == "Lottery");
         int ticketBefore = session.Items.Where(i => i.Entry == 1250717).Sum(i => i.Stack);
         var itemsBefore = session.Items.GroupBy(i => i.Entry).ToDictionary(g => g.Key, g => g.Sum(i => i.Stack));
         var moneyBefore = session.Progress!.Currency.ToDictionary(pair => pair.Key, pair => pair.Value);
         int countBefore = session.Lottery!.LotteryPool[201].DailyCount;
         long receiptsBefore = LotteryReceipts();
-        var catalog = EventEconomy.Catalog(app.Services.GetRequiredService<GameData>());
-        string database = app.Services.GetRequiredService<AccountStore>().DatabasePath;
+        var catalog = EventEconomy.Catalog(_app.Services.GetRequiredService<GameData>());
+        string database = _app.Services.GetRequiredService<AccountStore>().DatabasePath;
         var opening = EconomySnapshotReader.Read(database, catalog, "auto");
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var accounts = app.Services.GetRequiredService<AccountStore>();
+        var accounts = _app.Services.GetRequiredService<AccountStore>();
         accounts.BeforeOwnedCommitForTest = label =>
         {
             if (label != "economy/event/lottery-draw") return Task.CompletedTask;
@@ -90,7 +90,7 @@ public sealed partial class LotteryActivityTests
         if (item.IsPet) Assert.True(session.Pets!.ListPet.ContainsKey(item.ItemId));
         else
         {
-            var row = app.Services.GetRequiredService<GameData>().Row("ItemConfig", item.ItemId);
+            var row = _app.Services.GetRequiredService<GameData>().Row("ItemConfig", item.ItemId);
             Assert.NotNull(row);
             if (GameData.Int(row.Value, "_iType") == 1)
                 Assert.True(session.Progress.Currency.GetValueOrDefault(item.ItemId)

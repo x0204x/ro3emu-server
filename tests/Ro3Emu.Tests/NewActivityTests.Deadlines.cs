@@ -31,7 +31,7 @@ public sealed partial class NewActivityTests
 
     private Task WaitForActivityRefreshDrain(GameSession session)
     {
-        var queuedField = typeof(NewActivityService).GetField("queued",
+        var queuedField = typeof(NewActivityService).GetField("_queued",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         Assert.NotNull(queuedField);
         return Eventually(() =>
@@ -47,7 +47,7 @@ public sealed partial class NewActivityTests
     {
         await using var bot = await InWorld("ActMidnight");
         await Gm(bot, "!lvl 30");
-        clock.SetLocal(2026, 10, 8, 23, 59, 59);
+        _clock.SetLocal(2026, 10, 8, 23, 59, 59);
         await Reconcile(bot);
         var session = Session(bot);
         Assert.Equal(1, session.NewActivities!.ActivityInfo[113].ActivityParam.SevenDay.LoginDays);
@@ -56,7 +56,7 @@ public sealed partial class NewActivityTests
         // can otherwise sample the old day before an await and the new day after it.
         await OnLoop(() => Service<OwnerRegistry>().RunAsync("test/activity-clock", [ReservationKey.Realm], () =>
         {
-            clock.AdvanceSeconds(1);
+            _clock.AdvanceSeconds(1);
             return Task.CompletedTask;
         }));
         await Eventually(() => session.NewActivities!.ActivityInfo[113].ActivityParam.SevenDay.LoginDays == 2
@@ -68,7 +68,7 @@ public sealed partial class NewActivityTests
 
         await OnLoop(() => Service<OwnerRegistry>().RunAsync("test/activity-clock", [ReservationKey.Realm], () =>
         {
-            clock.AdvanceDays(3);
+            _clock.AdvanceDays(3);
             return Task.CompletedTask;
         }));
         await Eventually(() => session.NewActivities!.ActivityInfo[113].ActivityParam.SevenDay.LoginDays == 3
@@ -83,27 +83,27 @@ public sealed partial class NewActivityTests
     {
         await using var bot = await InWorld("ActExpiry");
         await Gm(bot, "!lvl 99");
-        clock.SetLocal(2026, 10, 8, 23, 59, 59);
+        _clock.SetLocal(2026, 10, 8, 23, 59, 59);
         await Reconcile(bot);
         var session = Session(bot);
         long id = GameData.Int(Service<GameData>().Table("MonthCardConfig").Values.First(), "_iId");
-        long today = Service<ActivityClock>().Day(clock.GetUtcNow().ToUnixTimeSeconds());
+        long today = Service<ActivityClock>().Day(_clock.GetUtcNow().ToUnixTimeSeconds());
         var expiryLocal = new DateTime(2026, 10, 12);
-        long expiry = new DateTimeOffset(expiryLocal, clock.LocalTimeZone.GetUtcOffset(expiryLocal)).ToUnixTimeSeconds();
+        long expiry = new DateTimeOffset(expiryLocal, _clock.LocalTimeZone.GetUtcOffset(expiryLocal)).ToUnixTimeSeconds();
         await OnLoop(() =>
         {
             session.NewActivities!.ActivityInfo[199].ActivityParam.MonthCard.Infos[id] =
                 new MonthCardInfo { MonthCardId = id, ExpireTs = expiry, LastDays = 5, DayAward = true };
             session.ActivityRuntime.MonthCards[id] = new MonthCardRuntime { ClaimedDay = today };
             session.ActivityRuntime.AdventureTreasure = new AdventureTreasureCursor
-            { PointId = 1, GroupId = 1, ItemId = 1112001, Began = clock.GetUtcNow().ToUnixTimeSeconds() - 10799 };
+            { PointId = 1, GroupId = 1, ItemId = 1112001, Began = _clock.GetUtcNow().ToUnixTimeSeconds() - 10799 };
             Service<RoleStore>().SaveNewActivities(session.Role!.Id, session.NewActivities.ToByteArray());
             Service<RoleStore>().SaveActivityRuntime(session.Role.Id,
                 System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(session.ActivityRuntime));
             return Task.CompletedTask;
         });
         await Reconcile(bot); // re-arm from the committed state
-        clock.AdvanceSeconds(1);
+        _clock.AdvanceSeconds(1);
         await Eventually(() => session.NewActivities!.ActivityInfo[199].ActivityParam.MonthCard.Infos[id].LastDays == 4
             && !session.NewActivities.ActivityInfo[199].ActivityParam.MonthCard.Infos[id].DayAward
             && session.ActivityRuntime.AdventureTreasure.PointId == 0,
@@ -117,7 +117,7 @@ public sealed partial class NewActivityTests
         var runtime = System.Text.Json.JsonSerializer.Deserialize<ActivityRuntimeState>(Service<RoleStore>().LoadActivityRuntime(role)!)!;
         Assert.Equal(0, runtime.AdventureTreasure.PointId);
 
-        clock.SetLocal(2026, 10, 12, 0, 0);
+        _clock.SetLocal(2026, 10, 12, 0, 0);
         await Eventually(() => session.NewActivities!.ActivityInfo[199].ActivityParam.MonthCard.Infos[id].LastDays == 0
             && session.NewActivities.ActivityInfo[199].ActivityParam.MonthCard.Infos[id].DayAward);
         saved = DBNewActivityInfo.Parser.ParseFrom(Service<RoleStore>().LoadNewActivities(role));
@@ -130,11 +130,11 @@ public sealed partial class NewActivityTests
     {
         await using var bot = await InWorld("ActCalEnd");
         await Gm(bot, "!lvl 99");
-        clock.SetLocal(2026, 10, 19, 23, 59, 59);
+        _clock.SetLocal(2026, 10, 19, 23, 59, 59);
         await Reconcile(bot);
         var session = Session(bot);
         Assert.NotEqual("_close", session.NewActivities!.ActivityInfo[200].State);
-        clock.AdvanceSeconds(1);
+        _clock.AdvanceSeconds(1);
         await Eventually(() => session.NewActivities!.ActivityInfo[200].State == "_close"
             && DBNewActivityInfo.Parser.ParseFrom(Service<RoleStore>().LoadNewActivities(session.Role!.Id))
                 .ActivityInfo[200].State == "_close");
@@ -147,11 +147,11 @@ public sealed partial class NewActivityTests
     {
         await using var bot = await InWorld("ActCalStart");
         await Gm(bot, "!lvl 99");
-        clock.SetLocal(2026, 10, 13, 23, 59, 59);
+        _clock.SetLocal(2026, 10, 13, 23, 59, 59);
         await Reconcile(bot);
         var session = Session(bot);
         Assert.Equal("_close", session.NewActivities!.ActivityInfo[118].State);
-        clock.AdvanceSeconds(1);
+        _clock.AdvanceSeconds(1);
         await Eventually(() => session.NewActivities!.ActivityInfo[118].State == "Start"
             && DBNewActivityInfo.Parser.ParseFrom(Service<RoleStore>().LoadNewActivities(session.Role!.Id))
                 .ActivityInfo[118].State == "Start");
@@ -163,7 +163,7 @@ public sealed partial class NewActivityTests
     public async Task LockedExpiredMonthCardDoesNotRepeatImmediateDeadline()
     {
         await using var bot = await InWorld("ActCardLock"); // level one does not satisfy activity 199's level-20 gate
-        clock.SetLocal(2026, 10, 8, 23, 59, 59);
+        _clock.SetLocal(2026, 10, 8, 23, 59, 59);
         await Reconcile(bot);
         var session = Session(bot);
         long id = GameData.Int(Service<GameData>().Table("MonthCardConfig").Values.First(), "_iId");
@@ -173,7 +173,7 @@ public sealed partial class NewActivityTests
             session.NewActivities!.ActivityInfo[199].ActivityParam.MonthCard.Infos[id] =
                 new MonthCardInfo
                 {
-                    MonthCardId = id, ExpireTs = clock.GetUtcNow().ToUnixTimeSeconds() - 1,
+                    MonthCardId = id, ExpireTs = _clock.GetUtcNow().ToUnixTimeSeconds() - 1,
                     LastDays = 4, DayAward = false
                 };
             Service<RoleStore>().SaveNewActivities(session.Role!.Id, session.NewActivities.ToByteArray());
@@ -185,7 +185,7 @@ public sealed partial class NewActivityTests
         });
         await Reconcile(bot);
         int before = Volatile.Read(ref projections);
-        clock.AdvanceSeconds(1);
+        _clock.AdvanceSeconds(1);
         await OnLoop(() => { Service<Deadlines>().Tick(default); return Task.CompletedTask; });
         await Eventually(() => Volatile.Read(ref projections) > before);
         int settled = Volatile.Read(ref projections);
@@ -201,9 +201,9 @@ public sealed partial class NewActivityTests
     [ClientDataFact]
     public async Task EveDeadlineWaitingOnSocialGateCannotSettleIntoNewRole()
     {
-        var eveWindow = Assert.Single(Service<ActivityClock>().Segments(1011, clock.GetUtcNow().ToUnixTimeSeconds()));
-        clock.SetLocal(2026, 10, 8, 0, 1);
-        Assert.True(eveWindow.Contains(clock.GetUtcNow().ToUnixTimeSeconds()));
+        var eveWindow = Assert.Single(Service<ActivityClock>().Segments(1011, _clock.GetUtcNow().ToUnixTimeSeconds()));
+        _clock.SetLocal(2026, 10, 8, 0, 1);
+        Assert.True(eveWindow.Contains(_clock.GetUtcNow().ToUnixTimeSeconds()));
         await using var bot = await InWorld("EveOld");
         // Finish the preceding SceneLoaded handler on this connection before the
         // test deliberately blocks activity work and requests a role switch.
@@ -220,7 +220,7 @@ public sealed partial class NewActivityTests
         long oldRole = session.Role!.Id;
         Assert.True(session.NewActivities!.ActivityTypeState[19].ActivityState[117].EnterTime > 0);
         var gate = (SemaphoreSlim)typeof(NewActivityService)
-            .GetField("adventureSocialGate", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetField("_adventureSocialGate", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
             .GetValue(Service<NewActivityService>())!;
         var socialWaiter = typeof(SemaphoreSlim).GetField("m_asyncHead",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
@@ -231,7 +231,7 @@ public sealed partial class NewActivityTests
         long newRole = 0;
         try
         {
-            clock.SetLocal(2026, 10, 12, 0, 0, 1);
+            _clock.SetLocal(2026, 10, 12, 0, 0, 1);
             await OnLoop(() => { Service<Deadlines>().Tick(default); return Task.CompletedTask; });
             // ActivityGate alone can be held before SettleEveExpiredAsync reaches
             // WaitAsync. Observe the actual queued waiter before role-switch cancellation.
@@ -261,11 +261,11 @@ public sealed partial class NewActivityTests
         await Gm(bot, "!lvl 99");
         var deadlines = Service<Deadlines>();
         await OnLoop(() => { Service<GameLoop>().Remove(deadlines); return Task.CompletedTask; });
-        clock.SetLocal(2026, 10, 8, 23, 59, 59);
+        _clock.SetLocal(2026, 10, 8, 23, 59, 59);
         await Reconcile(bot);
         var session = Session(bot);
         var queued = (HashSet<(GameSession Session, long Attachment)>)typeof(NewActivityService)
-            .GetField("queued", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetField("_queued", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
             .GetValue(Service<NewActivityService>())!;
         bool RefreshIdle()
         {
@@ -274,8 +274,8 @@ public sealed partial class NewActivityTests
         }
         long cardId = GameData.Int(Service<GameData>().Table("MonthCardConfig").Values.First(), "_iId");
         var expiryLocal = new DateTime(2026, 10, 12);
-        long expiry = new DateTimeOffset(expiryLocal, clock.LocalTimeZone.GetUtcOffset(expiryLocal)).ToUnixTimeSeconds();
-        long today = Service<ActivityClock>().Day(clock.GetUtcNow().ToUnixTimeSeconds());
+        long expiry = new DateTimeOffset(expiryLocal, _clock.LocalTimeZone.GetUtcOffset(expiryLocal)).ToUnixTimeSeconds();
+        long today = Service<ActivityClock>().Day(_clock.GetUtcNow().ToUnixTimeSeconds());
         const string activityDeadline = "new-activity";
         DeadlineLease firstLease = default;
         bool firstCompleted = false;
@@ -307,14 +307,14 @@ public sealed partial class NewActivityTests
             Assert.True(scheduled.HasValue);
             firstLease = scheduled.Value;
             Assert.True(deadlines.ScheduledDue(session, activityDeadline) is { } due
-                && due <= clock.GetUtcNow().AddSeconds(1));
+                && due <= _clock.GetUtcNow().AddSeconds(1));
             deadlines.CallbackCompletedForTest = completed =>
             {
                 if (completed != firstLease) return;
                 deadlines.CallbackCompletedForTest = null;
                 firstCompleted = true;
             };
-            clock.AdvanceSeconds(1);
+            _clock.AdvanceSeconds(1);
             int waiting;
             do { waiting = deadlines.WaitingCount; deadlines.Tick(default); }
             while (deadlines.WaitingCount < waiting);
@@ -339,14 +339,14 @@ public sealed partial class NewActivityTests
         {
             var retry = deadlines.ScheduledLease(session, activityDeadline);
             Assert.True(retry.HasValue && retry.Value != firstLease);
-            Assert.Equal(clock.GetUtcNow().AddSeconds(1), deadlines.ScheduledDue(session, activityDeadline));
+            Assert.Equal(_clock.GetUtcNow().AddSeconds(1), deadlines.ScheduledDue(session, activityDeadline));
             deadlines.CallbackCompletedForTest = completed =>
             {
                 if (completed != retry.Value) return;
                 deadlines.CallbackCompletedForTest = null;
                 retryCompleted = true;
             };
-            clock.AdvanceSeconds(1);
+            _clock.AdvanceSeconds(1);
             int waiting;
             do { waiting = deadlines.WaitingCount; deadlines.Tick(default); }
             while (deadlines.WaitingCount < waiting);
@@ -364,7 +364,7 @@ public sealed partial class NewActivityTests
     {
         // Every activity path (local, social, login) settles an ended Eve cycle before refreshing the calendar, so
         // the Eve global key must be exclusive by the time a settlement can be due, not only once it is.
-        clock.SetLocal(2026, 10, 8, 0, 1);
+        _clock.SetLocal(2026, 10, 8, 0, 1);
         await using var bot = await InWorld("EveKey");
         await Gm(bot, "!lvl 99");
         await Reconcile(bot);
@@ -378,12 +378,12 @@ public sealed partial class NewActivityTests
         }
         long end = 0;
         await OnLoop(() => { end = session.NewActivities!.ActivityInfo[117].CycleEndTime; return Task.CompletedTask; });
-        Assert.True(end > clock.GetUtcNow().ToUnixTimeSeconds());
+        Assert.True(end > _clock.GetUtcNow().ToUnixTimeSeconds());
 
         Assert.Equal("shared", Key()!.Value.Part);
         Assert.NotEqual("shared", Key(new CommonActivityReq { ActivityId = 117 })!.Value.Part); // Eve adventures write
 
-        clock.AdvanceSeconds((int)(end - clock.GetUtcNow().ToUnixTimeSeconds() - 299));
+        _clock.AdvanceSeconds((int)(end - _clock.GetUtcNow().ToUnixTimeSeconds() - 299));
         Assert.NotEqual("shared", Key()!.Value.Part);
     }
 }

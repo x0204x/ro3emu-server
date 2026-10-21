@@ -7,12 +7,12 @@ namespace Ro3Emu.Tests;
 /// <summary>The durability model the hardening plan states: WAL journal, synchronous FULL on every pooled connection.</summary>
 public sealed class DatabaseSettingsTests : IDisposable
 {
-    private readonly string dir = Path.Combine(Path.GetTempPath(), "ro3-db-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ro3-db-" + Guid.NewGuid().ToString("N"));
 
     [Fact]
     public void StoreOpensWalWithFullSync()
     {
-        using var store = new AccountStore(Options.Create(new ServerOptions { DataDir = dir }));
+        using var store = new AccountStore(Options.Create(new ServerOptions { DataDir = _dir }));
         for (int i = 0; i < 3; i++) // fresh and pooled connections alike
         {
             using var db = store.Open();
@@ -27,6 +27,6 @@ public sealed class DatabaseSettingsTests : IDisposable
     public void Dispose()
     {
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dir, true); } catch (IOException) { }
+        try { Directory.Delete(_dir, true); } catch (IOException) { }
     }
 }

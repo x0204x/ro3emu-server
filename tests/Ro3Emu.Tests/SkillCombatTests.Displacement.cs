@@ -13,7 +13,7 @@ namespace Ro3Emu.Tests;
 /// </summary>
 public sealed partial class SkillCombatTests
 {
-    private CombatService Combat => app.Services.GetRequiredService<CombatService>();
+    private CombatService Combat => _app.Services.GetRequiredService<CombatService>();
     private static string Script(System.Text.Json.JsonElement row) =>
         row.TryGetProperty("_kScriptLogic", out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() ?? "" : "";
 
@@ -27,7 +27,7 @@ public sealed partial class SkillCombatTests
         Assert.Equal((11308105, 250), Combat.MovementEffect(113081));  // PhantomThrust pull (8-digit show)
         Assert.Equal((1542903, 180), Combat.MovementEffect(15429));    // RetreatingShadows
         Assert.Equal((0, 0), Combat.MovementEffect(15112));            // Disguise: _bMovement 1, no displacement
-        var data = app.Services.GetRequiredService<GameData>();
+        var data = _app.Services.GetRequiredService<GameData>();
         var skills = data.Table("SkillConfig").Values.ToList();
         // Every displacement rule meets a skill whose show has its effect and whose description has the distance.
         foreach (var (script, _) in CombatService.Displacements)
@@ -65,7 +65,7 @@ public sealed partial class SkillCombatTests
         await using var alice = await InWorld("Alice");
         await Gm("alice", "!job 3100"); await Teach("alice", 13005);
         var session = Session("alice");
-        var nav = app.Services.GetRequiredService<WorldData>().Map(session.SceneEntry)!.Nav;
+        var nav = _app.Services.GetRequiredService<WorldData>().Map(session.SceneEntry)!.Nav;
         var start = session.Position.Clone();
         // A stationary target 2 m away with walkable ground behind it.
         var (dx, dz) = new[] { (2f, 0f), (-2f, 0f), (0f, 2f), (0f, -2f) }.First(o => nav == null

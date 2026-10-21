@@ -18,31 +18,31 @@ namespace Ro3Emu.Tests;
 /// <summary>Real gate tests of the season page and server clock; the game client is deliberately not started.</summary>
 public sealed class SeasonPageTests : IAsyncLifetime
 {
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-season-page-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-season-page-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(8);
-    private WebApplication app = null!;
-    private string http = "";
-    private readonly TestClock clock = new();
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private WebApplication _app = null!;
+    private string _http = "";
+    private readonly TestClock _clock = new();
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
 
     private sealed class TestClock : TimeProvider
     {
-        private long seconds = new DateTimeOffset(new DateTime(2026, 10, 5, 12, 0, 0, DateTimeKind.Local)).ToUnixTimeSeconds();
-        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref seconds));
-        public void Set(long value) => Interlocked.Exchange(ref seconds, value);
+        private long _seconds = new DateTimeOffset(new DateTime(2026, 10, 5, 12, 0, 0, DateTimeKind.Local)).ToUnixTimeSeconds();
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref _seconds));
+        public void Set(long value) => Interlocked.Exchange(ref _seconds, value);
     }
 
     public async Task InitializeAsync()
     {
         var (port, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = port; o.MicroGatePort = micro; o.GameGatePort = game;
             o.PlayBook = 101; o.SeasonStart = "2026-10-05";
-        }, clock);
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{port}";
+        }, _clock);
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{port}";
         // The 20 Oct 2026 client closes the season page (function 69, condition 2000062 now [1002,9999]); these tests
         // pin the page's own rules, so they keep it open at the level the 16 Oct client asked for.
         var functions = Service<FunctionService>();
@@ -54,14 +54,14 @@ public sealed class SeasonPageTests : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name, bool create = true, DBSeasonPage? page = null)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
         if (page != null) Service<RoleStore>().SaveSeasonPage(id, page.ToByteArray());
@@ -78,7 +78,7 @@ public sealed class SeasonPageTests : IAsyncLifetime
     private async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     private GameSession Session(BotClient bot) => Service<SessionRegistry>().All().Single(s => s.Account == bot.Account && s.Role != null);
@@ -146,7 +146,7 @@ public sealed class SeasonPageTests : IAsyncLifetime
         Assert.True(session.SeasonPage!.HonorBadgeData.ContainsKey(1300046));
 
         await Gm(bot, "!item 11 200");
-        clock.Set(Service<SeasonService>().Times().SeasonBreakStartTime);
+        _clock.Set(Service<SeasonService>().Times().SeasonBreakStartTime);
         FixtureSql.Execute(Service<AccountStore>(),
             "CREATE TRIGGER season_snapshot_abort BEFORE UPDATE OF season_page_meta ON role BEGIN SELECT RAISE(ABORT, 'snapshot test'); END");
         await Assert.ThrowsAsync<Microsoft.Data.Sqlite.SqliteException>(() => Service<GameLoop>().InvokeAsync(
@@ -166,13 +166,13 @@ public sealed class SeasonPageTests : IAsyncLifetime
         Assert.Equal(200, (await Page(bot)).RankScore[17]);
         var oldId = Session(bot).Role!.Id;
         long breakTime = Service<SeasonService>().Times().SeasonBreakStartTime;
-        clock.Set(breakTime);
+        _clock.Set(breakTime);
         Assert.Equal(101005, (await Page(bot)).StageID);
         Assert.Equal(200, Session(bot).SeasonPage!.HistorySnapshot.FunctionScore[17]);
         Assert.Contains("cannot precede", Service<SeasonService>().AdvanceCycle(101, Service<SeasonService>().Start.AddDays(1)));
         Assert.Equal(1, Service<SeasonService>().SeasonId);
         var nextStart = FirstLocalMidnightAtOrAfter(breakTime);
-        clock.Set(new DateTimeOffset(nextStart).ToUnixTimeSeconds());
+        _clock.Set(new DateTimeOffset(nextStart).ToUnixTimeSeconds());
         string result = Service<SeasonService>().AdvanceCycle(101, nextStart);
         Assert.Contains("Season 2", result);
         Assert.Equal(2, Service<SeasonService>().SeasonId);
@@ -201,7 +201,7 @@ public sealed class SeasonPageTests : IAsyncLifetime
         list = await third.MicroAsync("MailService", "getUserMailList", new Dictionary<string, object?>
         { ["Uid"] = oldId.ToString(), ["Start"] = 0, ["Limit"] = 150, ["MailType"] = 1 });
         Assert.Single((object?[])list["MailList"]!);
-        using var db = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(dataDir, "ro3emu.db")}");
+        using var db = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(_dataDir, "ro3emu.db")}");
         db.Open();
         using var receipt = db.CreateCommand();
         receipt.CommandText = """
@@ -225,9 +225,9 @@ public sealed class SeasonPageTests : IAsyncLifetime
         long role = session.Role!.Id;
         var seasons = Service<SeasonService>();
         long breakTime = seasons.Times().SeasonBreakStartTime;
-        clock.Set(breakTime);
+        _clock.Set(breakTime);
         var nextStart = FirstLocalMidnightAtOrAfter(breakTime);
-        clock.Set(new DateTimeOffset(nextStart).ToUnixTimeSeconds());
+        _clock.Set(new DateTimeOffset(nextStart).ToUnixTimeSeconds());
         Assert.Contains("Season 2", seasons.AdvanceCycle(101, nextStart));
         seasons.Load(session); // emulate the new login identity before its page sync
         FixtureSql.Execute(Service<AccountStore>(),
@@ -294,7 +294,7 @@ public sealed class SeasonPageTests : IAsyncLifetime
         long boundary = initial.StageTimeInfo[101001].EndTime;
         Assert.Equal(101001, Service<SeasonService>().StageAt(boundary - 1));
         Assert.Equal(101002, Service<SeasonService>().StageAt(boundary));
-        clock.Set(boundary);
+        _clock.Set(boundary);
         var change = await Next(bot, SeasonService.StateChangeNotify, SeasonStateChangeNotify.Parser);
         Assert.Equal((1L, 101L, 101001L), (change.OldSeasonState.SeasonId, change.OldSeasonState.PlayBookId, change.OldSeasonState.StageId));
         Assert.Equal(101002, change.NewSeasonState.StageId);
@@ -339,7 +339,7 @@ public sealed class SeasonPageTests : IAsyncLifetime
         Assert.Equal(102, login.Current.All.PlayBookId);
         Assert.Equal(ErrorCodes.FeatureUnavailable, (await Page(bob)).Result);
 
-        clock.Set(times.StageTimeInfo[101001].EndTime);
+        _clock.Set(times.StageTimeInfo[101001].EndTime);
         var change = await Next(alice, SeasonService.StateChangeNotify, SeasonStateChangeNotify.Parser);
         Assert.Equal(101, change.NewSeasonState.PlayBookId);
         Assert.Equal(101002, change.NewSeasonState.StageId);
@@ -350,14 +350,15 @@ public sealed class SeasonPageTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task PageMessagesBeforeRoleSelectionReturnRefusals()
+    public async Task PageMessagesBeforeRoleSelectionAreRefusedUnanswered()
     {
-        await using var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        await using var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync("alice", "pw"); await bot.EnterGateAsync();
-        Assert.Equal(ErrorCodes.FeatureUnavailable, (await Page(bot)).Result);
-        Assert.Equal(ErrorCodes.FeatureUnavailable, (await Claim(bot, (2, 17))).Result);
-        await bot.SendGameAsync(SeasonPageService.PutOnHonorBadge, new SeasonPagePutOnHonorBadgeReq { Id = 1300046, IsPutOn = true });
-        Assert.Equal(ErrorCodes.FeatureUnavailable, (await Next(bot, SeasonPageService.PutOnHonorBadge, SeasonPagePutOnHonorBadgeResp.Parser)).Result);
+        await StageGate.AssertUnansweredAsync(bot, SeasonPageService.GetData, new SeasonPageGetDataReq());
+        var claim = new SeasonPageReceiveRankRewardReq();
+        claim.RankReward[2] = 17;
+        await StageGate.AssertUnansweredAsync(bot, SeasonPageService.ReceiveRankReward, claim);
+        await StageGate.AssertUnansweredAsync(bot, SeasonPageService.PutOnHonorBadge, new SeasonPagePutOnHonorBadgeReq { Id = 1300046, IsPutOn = true });
     }
 
     [ClientDataFact]
@@ -428,7 +429,7 @@ public sealed class SeasonPageTests : IAsyncLifetime
         await Gm(bot, "!item 11 100");
         var session = Session(bot);
         var catalog = EconomyCatalog.Load(Path.Combine(RepoRoot(), "data"));
-        var before = S3EconomyReader.Read(dataDir, catalog);
+        var before = S3EconomyReader.Read(_dataDir, catalog);
         var staged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var deferred = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -470,11 +471,11 @@ public sealed class SeasonPageTests : IAsyncLifetime
         await gm!.WaitAsync(Wait);
         Assert.Equal(2, session.Items.Where(item => item.Entry == 1200000).Sum(item => item.Stack));
         Assert.Contains(17, session.SeasonPage!.RankRewardReceiveInfo[2].Functions);
-        var window = S3EconomyReader.ReadLedger(dataDir, catalog, before, S3EconomyReader.Read(dataDir, catalog))!;
+        var window = S3EconomyReader.ReadLedger(_dataDir, catalog, before, S3EconomyReader.Read(_dataDir, catalog))!;
         // The deferred GM grant commits its own 13a receipt in the same window; the claim has exactly one.
         var receipt = Assert.Single(window.Receipts, r => r.CommandKind == "cd13c/season-page-claim");
         Assert.Equal("cd13c/season-page-claim",
-            EconomyReceiptReader.Read(Path.Combine(dataDir, "ro3emu.db"), receipt.OperationId)!.CommandKind);
+            EconomyReceiptReader.Read(Path.Combine(_dataDir, "ro3emu.db"), receipt.OperationId)!.CommandKind);
         Assert.Contains(window.Legs, leg => leg.Kind == EconomyLegKind.Source && leg.Asset.Id == 1200000 && leg.Delta == 2);
     }
 
@@ -485,15 +486,15 @@ public sealed class SeasonPageTests : IAsyncLifetime
         await Gm(bot, "!lvl 50");
         await Gm(bot, "!item 11 100");
         var catalog = EconomyCatalog.Load(Path.Combine(RepoRoot(), "data"));
-        var before = S3EconomyReader.Read(dataDir, catalog);
+        var before = S3EconomyReader.Read(_dataDir, catalog);
         Service<AccountStore>().FailNextEconomyAcknowledgementForTest();
         Assert.Equal(0, (await Claim(bot, (2, 17))).Result);
         Assert.Equal(ErrorCodes.RewardClaimed, (await Claim(bot, (2, 17))).Result);
         Assert.Equal(2, Session(bot).Items.Where(item => item.Entry == 1200000).Sum(item => item.Stack));
-        var window = S3EconomyReader.ReadLedger(dataDir, catalog, before, S3EconomyReader.Read(dataDir, catalog))!;
+        var window = S3EconomyReader.ReadLedger(_dataDir, catalog, before, S3EconomyReader.Read(_dataDir, catalog))!;
         var receipt = Assert.Single(window.Receipts);
         Assert.Equal("cd13c/season-page-claim",
-            EconomyReceiptReader.Read(Path.Combine(dataDir, "ro3emu.db"), receipt.OperationId)!.CommandKind);
+            EconomyReceiptReader.Read(Path.Combine(_dataDir, "ro3emu.db"), receipt.OperationId)!.CommandKind);
         Assert.Single(window.Legs, leg => leg.Kind == EconomyLegKind.Source && leg.Asset.Id == 1200000);
     }
 
@@ -507,9 +508,9 @@ public sealed class SeasonPageTests : IAsyncLifetime
         Assert.Empty(Session(bot).SeasonPage!.RankRewardReceiveInfo);
         foreach (int function in new[] { 17, 67, 60 }) Assert.Equal(0, (await Claim(bot, (2, function))).Result);
         var catalog = EconomyCatalog.Load(Path.Combine(RepoRoot(), "data"));
-        var beforeCapRefusal = S3EconomyReader.Read(dataDir, catalog);
+        var beforeCapRefusal = S3EconomyReader.Read(_dataDir, catalog);
         Assert.Equal(ErrorCodes.SeasonRankReward, (await Claim(bot, (2, 36))).Result);
-        Assert.Equal(beforeCapRefusal.Cut.CommitSequence, S3EconomyReader.Read(dataDir, catalog).Cut.CommitSequence);
+        Assert.Equal(beforeCapRefusal.Cut.CommitSequence, S3EconomyReader.Read(_dataDir, catalog).Cut.CommitSequence);
         Assert.Equal(3, Session(bot).SeasonPage!.RankRewardReceiveInfo[2].Functions.Count);
         Assert.Equal(0, (await Claim(bot, (3, 36))).Result); // another dan has its own pool
     }
@@ -520,7 +521,7 @@ public sealed class SeasonPageTests : IAsyncLifetime
         // Persisted earned-award fixture, not a fabricated client claim. Award acquisition is a separate system.
         var state = new DBSeasonPage();
         foreach (int id in new[] { 1300046, 1300047, 1300048 })
-            state.HonorBadgeData[id] = new() { Id = id, GetTime = clock.GetUtcNow().ToUnixTimeSeconds(), GetSeasonId = 1, GetPlayBookId = 101 };
+            state.HonorBadgeData[id] = new() { Id = id, GetTime = _clock.GetUtcNow().ToUnixTimeSeconds(), GetSeasonId = 1, GetPlayBookId = 101 };
         async Task<int> Wear(BotClient bot, int id, bool on)
         {
             await bot.SendGameAsync(SeasonPageService.PutOnHonorBadge, new SeasonPagePutOnHonorBadgeReq { Id = id, IsPutOn = on });

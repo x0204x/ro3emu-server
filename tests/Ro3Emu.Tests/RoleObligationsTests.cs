@@ -20,13 +20,13 @@ namespace Ro3Emu.Tests;
 public sealed class RoleObligationsTests : IAsyncLifetime
 {
     private const string PayLabel = "test/pay", FreezeLabel = "test/freeze";
-    private readonly string dir = Path.Combine(Path.GetTempPath(), "ro3-obligations-" + Guid.NewGuid().ToString("N"));
-    private readonly Clock clock = new(new DateTimeOffset(2026, 10, 18, 12, 0, 0, TimeSpan.Zero));
-    private readonly GameLoop loop = new(NullLogger<GameLoop>.Instance);
-    private readonly Dictionary<long, GameSession> online = new();
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ro3-obligations-" + Guid.NewGuid().ToString("N"));
+    private readonly Clock _clock = new(new DateTimeOffset(2026, 10, 18, 12, 0, 0, TimeSpan.Zero));
+    private readonly GameLoop _loop = new(NullLogger<GameLoop>.Instance);
+    private readonly Dictionary<long, GameSession> _online = new();
     /// <summary>Committed payments per source: the "goods" of a payment, counted in its commit's publish.</summary>
-    private readonly ConcurrentDictionary<string, int> paid = new(StringComparer.Ordinal);
-    private AccountStore accounts = null!;
+    private readonly ConcurrentDictionary<string, int> _paid = new(StringComparer.Ordinal);
+    private AccountStore _accounts = null!;
 
     private sealed class Clock(DateTimeOffset now) : TimeProvider
     {
@@ -37,51 +37,51 @@ public sealed class RoleObligationsTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        accounts = Open();
-        await loop.StartAsync(default);
+        _accounts = Open();
+        await _loop.StartAsync(default);
     }
 
     public async Task DisposeAsync()
     {
-        await loop.StopAsync(default);
-        loop.Dispose();
-        accounts.Dispose();
+        await _loop.StopAsync(default);
+        _loop.Dispose();
+        _accounts.Dispose();
         SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dir, true); } catch (IOException) { }
+        try { Directory.Delete(_dir, true); } catch (IOException) { }
     }
 
-    private AccountStore Open() => new(Microsoft.Extensions.Options.Options.Create(new ServerOptions { DataDir = dir }));
+    private AccountStore Open() => new(Microsoft.Extensions.Options.Options.Create(new ServerOptions { DataDir = _dir }));
 
     /// <summary>A process restart: the database is reopened (its schema plans run again) and nothing in memory stays.</summary>
     private void Restart()
     {
-        accounts.Dispose();
+        _accounts.Dispose();
         SqliteConnection.ClearAllPools();
-        accounts = Open();
+        _accounts = Open();
     }
 
-    private Task<T> OnLoop<T>(Func<Task<T>> work) => loop.InvokeAsync(work);
-    private Task OnLoop(Func<Task> work) => loop.InvokeAsync(work);
+    private Task<T> OnLoop<T>(Func<Task<T>> work) => _loop.InvokeAsync(work);
+    private Task OnLoop(Func<Task> work) => _loop.InvokeAsync(work);
 
     private GameSession Online(long role)
     {
         var session = new GameSession(null!, null!);
-        online[role] = session;
+        _online[role] = session;
         return session;
     }
 
     /// <summary>The activity's payment: its goods (counted on commit) and the delivered mark in one transaction.</summary>
     private async Task<bool> Pay<TRow>(GameSession _, TRow row) where TRow : class, IRoleObligationRow<TRow>
     {
-        var tx = accounts.NewTransaction();
+        var tx = _accounts.NewTransaction();
         tx.Add(RoleObligations<TRow>.DeliverPlan(row));
-        await tx.CommitAsync(accounts, PayLabel, _ => paid.AddOrUpdate(row.SourceKey, 1, (_, n) => n + 1));
+        await tx.CommitAsync(_accounts, PayLabel, _ => _paid.AddOrUpdate(row.SourceKey, 1, (_, n) => n + 1));
         return true;
     }
 
     private RoleObligations<TRow> Obligations<TRow>(ObligationRetry retry = ObligationRetry.TickWithBackoff,
         Func<GameSession, TRow, Task<bool>>? pay = null) where TRow : class, IRoleObligationRow<TRow> =>
-        new("Test payout", accounts, loop, clock, role => online.GetValueOrDefault(role), _ => true, pay ?? Pay,
+        new("Test payout", _accounts, _loop, _clock, role => _online.GetValueOrDefault(role), _ => true, pay ?? Pay,
             retry, NullLogger.Instance);
 
     private static CasualBattleObligationRow Casual(long match, long role, int score = 40) =>
@@ -94,7 +94,7 @@ public sealed class RoleObligationsTests : IAsyncLifetime
 
     private long Rows(string table, int delivered)
     {
-        using var db = accounts.Open();
+        using var db = _accounts.Open();
         using var cmd = db.CreateCommand();
         cmd.CommandText = $"SELECT count(*) FROM {table} WHERE delivered=$delivered";
         cmd.Parameters.AddWithValue("$delivered", delivered);
@@ -119,7 +119,7 @@ public sealed class RoleObligationsTests : IAsyncLifetime
         CasualBattleObligationRow[] rows = [Casual(7, 1), Casual(7, 2, score: 0)];
         Assert.True(await OnLoop(() => obligations.FreezeAsync(rows, FreezeLabel, 7)));
         int refuse = 1, refused = 0;
-        accounts.BeforeCommitForTest = label =>
+        _accounts.BeforeCommitForTest = label =>
         {
             if (label != PayLabel || Interlocked.Exchange(ref refuse, 0) != 1) return;
             Interlocked.Increment(ref refused);
@@ -132,28 +132,28 @@ public sealed class RoleObligationsTests : IAsyncLifetime
             Assert.True(await obligations.TryPayAsync(bob, rows[1]));
         });
         Assert.Equal(1, refused);
-        Assert.False(paid.ContainsKey(rows[0].SourceKey));
-        Assert.Equal(1, paid[rows[1].SourceKey]);
+        Assert.False(_paid.ContainsKey(rows[0].SourceKey));
+        Assert.Equal(1, _paid[rows[1].SourceKey]);
         Assert.Equal(1, Rows("casual_battle_obligation", delivered: 0));
         Assert.Equal(1, obligations.TrackedCount);
 
         // Not due before its 5-second backoff.
         await Ticks(obligations);
-        Assert.False(paid.ContainsKey(rows[0].SourceKey));
-        clock.Advance(TimeSpan.FromSeconds(5));
+        Assert.False(_paid.ContainsKey(rows[0].SourceKey));
+        _clock.Advance(TimeSpan.FromSeconds(5));
         await Ticks(obligations);
-        for (int i = 0; i < 100 && !paid.ContainsKey(rows[0].SourceKey); i++) await Task.Delay(10);
-        Assert.Equal(1, paid[rows[0].SourceKey]);
+        for (int i = 0; i < 100 && !_paid.ContainsKey(rows[0].SourceKey); i++) await Task.Delay(10);
+        Assert.Equal(1, _paid[rows[0].SourceKey]);
         for (int i = 0; i < 100 && await OnLoop(() => Task.FromResult(obligations.TrackedCount)) > 0; i++) await Task.Delay(10);
         Assert.Equal(0, await OnLoop(() => Task.FromResult(obligations.TrackedCount)));
 
         // Later ticks, a second login pass and a direct second payment change nothing.
-        clock.Advance(TimeSpan.FromMinutes(10));
+        _clock.Advance(TimeSpan.FromMinutes(10));
         await Ticks(obligations, 3);
         await OnLoop(() => obligations.DeliverPendingAsync(alice, 1, () => true));
         await Assert.ThrowsAnyAsync<Exception>(() => OnLoop(() => Pay<CasualBattleObligationRow>(alice, rows[0])));
-        Assert.Equal(1, paid[rows[0].SourceKey]);
-        Assert.Equal(1, paid[rows[1].SourceKey]);
+        Assert.Equal(1, _paid[rows[0].SourceKey]);
+        Assert.Equal(1, _paid[rows[1].SourceKey]);
         Assert.Equal(2, Rows("casual_battle_obligation", delivered: 1));
         Assert.Equal(1, refused);
     }
@@ -164,7 +164,7 @@ public sealed class RoleObligationsTests : IAsyncLifetime
         var obligations = Obligations<CasualBattleObligationRow>();
         CasualBattleObligationRow[] rows = [Casual(8, 1), Casual(8, 2)];
         int refused = 0;
-        accounts.BeforeCommitForTest = label =>
+        _accounts.BeforeCommitForTest = label =>
         {
             if (label == FreezeLabel && Interlocked.Increment(ref refused) == 1) throw new IOException("Test-only refused save.");
         };
@@ -180,9 +180,9 @@ public sealed class RoleObligationsTests : IAsyncLifetime
     {
         var obligations = Obligations<CasualBattleObligationRow>();
         CasualBattleObligationRow[] rows = [Casual(9, 1), Casual(9, 2)];
-        accounts.BeforeOwnedApplyForTest = _ => throw new IOException("Test-only lost acknowledgement.");
+        _accounts.BeforeOwnedApplyForTest = _ => throw new IOException("Test-only lost acknowledgement.");
         Assert.True(await OnLoop(() => obligations.FreezeAsync(rows, FreezeLabel, 9)));
-        accounts.BeforeOwnedApplyForTest = null;
+        _accounts.BeforeOwnedApplyForTest = null;
         Assert.Equal(2, Rows("casual_battle_obligation", 0));
         // A different result for the same match is never adopted (and cannot overwrite the stored one).
         CasualBattleObligationRow[] other = [Casual(9, 1, score: 1), Casual(9, 2)];
@@ -198,24 +198,24 @@ public sealed class RoleObligationsTests : IAsyncLifetime
         var alice = Online(1);
         var row = Casual(10, 1);
         Assert.True(await OnLoop(() => obligations.FreezeAsync([row], FreezeLabel, 10)));
-        accounts.BeforeCommitForTest = label => { if (label == PayLabel) throw new IOException("Test-only refused payout."); };
+        _accounts.BeforeCommitForTest = label => { if (label == PayLabel) throw new IOException("Test-only refused payout."); };
         await OnLoop(async () => { obligations.Track(row); Assert.False(await obligations.TryPayAsync(alice, row)); });
-        clock.Advance(TimeSpan.FromSeconds(5));
+        _clock.Advance(TimeSpan.FromSeconds(5));
         await Ticks(obligations); // the retry is refused too
-        accounts.BeforeCommitForTest = null;
-        Assert.Empty(paid);
+        _accounts.BeforeCommitForTest = null;
+        Assert.Empty(_paid);
 
         for (int restart = 0; restart < 2; restart++)
         {
             Restart();
-            online.Clear();
+            _online.Clear();
             var fresh = Obligations<CasualBattleObligationRow>();
             var keys = await OnLoop(() => fresh.LoginKeysAsync(1));
             Assert.Equal(restart == 0 ? new[] { RoleObligations<CasualBattleObligationRow>.Key(row.SourceKey) }
                 : Array.Empty<ReservationKey>(), keys);
             var session = Online(1);
             await OnLoop(() => fresh.DeliverPendingAsync(session, 1, () => true));
-            Assert.Equal(1, paid[row.SourceKey]);
+            Assert.Equal(1, _paid[row.SourceKey]);
             Assert.Equal(1, Rows("casual_battle_obligation", delivered: 1));
             Assert.Equal(0, fresh.TrackedCount);
         }
@@ -237,7 +237,7 @@ public sealed class RoleObligationsTests : IAsyncLifetime
         var alice = Online(1);
         await OnLoop(() => obligations.DeliverPendingAsync(alice, 1, () => true));
         Assert.Equal(new[] { first[0].SourceKey }, calls); // in payment order (match_id), stopped at the refusal
-        Assert.Empty(paid);
+        Assert.Empty(_paid);
         Assert.Equal(0, obligations.TrackedCount); // no tick retry in this mode
         var failing = Obligations<CasualBattleObligationRow>(ObligationRetry.NextRecovery,
             (_, _) => throw new InvalidOperationException("Test-only failed payout."));
@@ -254,7 +254,7 @@ public sealed class RoleObligationsTests : IAsyncLifetime
     public async Task PendingRowsWrittenBeforeTheSharedComponentArePaidExactlyOnce()
     {
         Restart(); // the schema exists
-        using (var db = new SqliteConnection($"Data Source={accounts.DatabasePath};Pooling=False"))
+        using (var db = new SqliteConnection($"Data Source={_accounts.DatabasePath};Pooling=False"))
         {
             db.Open();
             void Exec(string sql, params (string, object)[] args)
@@ -285,7 +285,7 @@ public sealed class RoleObligationsTests : IAsyncLifetime
             await Migrated<MvpObligationRow>("mvp/kill/1/1000/1", restart == 0);
             await Migrated<TimedBattleObligationRow>("timed_battle/30/1", restart == 0);
         }
-        using var check = accounts.Open();
+        using var check = _accounts.Open();
         using var revisions = check.CreateCommand();
         revisions.CommandText = """
             SELECT kind || '=' || revision FROM owner_revision
@@ -300,7 +300,7 @@ public sealed class RoleObligationsTests : IAsyncLifetime
 
     private async Task Migrated<TRow>(string source, bool pending) where TRow : class, IRoleObligationRow<TRow>
     {
-        online.Clear();
+        _online.Clear();
         var obligations = Obligations<TRow>(typeof(TRow) == typeof(MvpObligationRow)
             ? ObligationRetry.NextRecovery : ObligationRetry.TickWithBackoff);
         var keys = await OnLoop(() => obligations.LoginKeysAsync(1));
@@ -309,7 +309,7 @@ public sealed class RoleObligationsTests : IAsyncLifetime
         Assert.Equal(pending, row != null);
         if (row != null) Assert.Equal(source, row.SourceKey);
         await OnLoop(() => obligations.DeliverPendingAsync(Online(1), 1, () => true));
-        Assert.Equal(1, paid[source]);
+        Assert.Equal(1, _paid[source]);
         Assert.Empty(await OnLoop(() => obligations.PendingAsync(1)));
         Assert.Equal(1, Rows(TRow.Table.Table, delivered: 1));
     }
@@ -329,7 +329,7 @@ public sealed class RoleObligationsTests : IAsyncLifetime
             kinds.Select(type => type.Name).Order(StringComparer.Ordinal).ToArray());
         var known = (Dictionary<string, string>)typeof(EconomySnapshotReader)
             .GetField("KnownColumns", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
-        using var db = accounts.Open();
+        using var db = _accounts.Open();
         foreach (var type in kinds)
         {
             var table = (RoleObligationTable)type.GetProperty("Table", BindingFlags.Public | BindingFlags.Static)!.GetValue(null)!;

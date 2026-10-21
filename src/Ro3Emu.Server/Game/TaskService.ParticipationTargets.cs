@@ -26,7 +26,7 @@ public sealed partial class TaskService
     public void QueueFriendCount(GameSession s)
     {
         if (s.Tasks == null || LoadFriendCount is not { } load) return;
-        loop.PostOwned(s, async () =>
+        _loop.PostOwned(s, async () =>
         {
             var attachment = s.Attachment;
             if (attachment == null || s.Tasks == null || s.Role == null) return;
@@ -39,7 +39,7 @@ public sealed partial class TaskService
     /// <summary>FriendService.RelationChanged: the role's friend list changed.</summary>
     public void OnRelationChanged(long role)
     {
-        if (sessions.All().FirstOrDefault(s => s.Role?.Id == role) is { } session) QueueFriendCount(session);
+        if (_sessions.All().FirstOrDefault(s => s.Role?.Id == role) is { } session) QueueFriendCount(session);
     }
 
     /// <summary>A state change outside CharacterService (guild membership): re-read the snapshot targets.</summary>
@@ -62,11 +62,11 @@ public sealed partial class TaskService
 
     /// <summary>106802: one committed dig at the Treasure Map's point.</summary>
     public void OnTreasureDug(GameSession s) =>
-        loop.PostOwned(s, () => ProgressAsync(s, TTreasureDig, t => t.Length == 2 ? 1 : 0), "quest treasure dig");
+        _loop.PostOwned(s, () => ProgressAsync(s, TTreasureDig, t => t.Length == 2 ? 1 : 0), "quest treasure dig");
 
     /// <summary>103014: present at a settled Ilmata (Guild Challenge) stage attempt.</summary>
     public void OnGveJoined(GameSession s) =>
-        loop.PostOwned(s, () => ProgressAsync(s, TGveJoin, t => t.Length == 2 ? 1 : 0), "quest gve");
+        _loop.PostOwned(s, () => ProgressAsync(s, TGveJoin, t => t.Length == 2 ? 1 : 0), "quest gve");
 
     /// <summary>
     /// 106603 / 106019: one committed Guild League match of <paramref name="round"/> (1 preliminaries, 2 semifinals,
@@ -74,10 +74,10 @@ public sealed partial class TaskService
     /// </summary>
     public void OnGuildLeagueMatch(int round, IReadOnlyDictionary<long, long> scores)
     {
-        foreach (var s in sessions.All().Where(s => s.Role != null && scores.ContainsKey(s.Role.Id)).ToArray())
+        foreach (var s in _sessions.All().Where(s => s.Role != null && scores.ContainsKey(s.Role.Id)).ToArray())
         {
             long score = scores[s.Role!.Id];
-            loop.PostOwned(s, () => ProgressAsync(s, null, t => t switch
+            _loop.PostOwned(s, () => ProgressAsync(s, null, t => t switch
             {
                 [TLeagueJoin, var stage, _] when stage == 0 || stage == round => 1,
                 [TLeagueScore, var stage, var points, _] when stage + 1 == round && score > points => 1,
@@ -90,8 +90,8 @@ public sealed partial class TaskService
     /// guild won.</summary>
     public void OnSiegeSettled(long role, long score, bool won)
     {
-        if (sessions.All().FirstOrDefault(s => s.Role?.Id == role) is not { } session) return;
-        loop.PostOwned(session, () => ProgressAsync(session, null, t => t switch
+        if (_sessions.All().FirstOrDefault(s => s.Role?.Id == role) is not { } session) return;
+        _loop.PostOwned(session, () => ProgressAsync(session, null, t => t switch
         {
             [TSiegeScore, var points, _] when score >= points => 1,
             [TGvgJoin, _] => 1,
@@ -104,12 +104,12 @@ public sealed partial class TaskService
     public void OnEchoUpgraded(GameSession s, int levels)
     {
         if (levels <= 0) return;
-        loop.PostOwned(s, () => ProgressAsync(s, TEchoUpgrade, t => t.Length == 2 ? levels : 0), "quest echo upgrade");
+        _loop.PostOwned(s, () => ProgressAsync(s, TEchoUpgrade, t => t.Length == 2 ? levels : 0), "quest echo upgrade");
     }
 
     /// <summary>101007 / 101010: one settled Spirit Tower floor attempt, and whether it was won.</summary>
     public void OnTowerSettled(GameSession s, bool won) =>
-        loop.PostOwned(s, () => ProgressAsync(s, null, t => t switch
+        _loop.PostOwned(s, () => ProgressAsync(s, null, t => t switch
         {
             [TTowerJoin, _] => 1,
             [TTowerWin, _] when won => 1,
@@ -118,9 +118,9 @@ public sealed partial class TaskService
 
     /// <summary>106902: one committed like of another role's profile.</summary>
     public void OnProfileLiked(GameSession s) =>
-        loop.PostOwned(s, () => ProgressAsync(s, TLike, t => t.Length == 2 ? 1 : 0), "quest like");
+        _loop.PostOwned(s, () => ProgressAsync(s, TLike, t => t.Length == 2 ? 1 : 0), "quest like");
 
     /// <summary>106018: the member is at the Bonfire Party (once per event day, GuildCampfireService).</summary>
     public void OnCampfireJoined(GameSession s) =>
-        loop.PostOwned(s, () => ProgressAsync(s, TCampfire, t => t.Length == 2 ? 1 : 0), "quest campfire");
+        _loop.PostOwned(s, () => ProgressAsync(s, TCampfire, t => t.Length == 2 ? 1 : 0), "quest campfire");
 }

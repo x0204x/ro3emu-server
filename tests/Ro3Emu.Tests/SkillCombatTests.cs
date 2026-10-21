@@ -12,34 +12,34 @@ namespace Ro3Emu.Tests;
 /// <summary>Real game-wire casts with deterministic owned-world fixtures and negative lifecycle checks.</summary>
 public sealed partial class SkillCombatTests : IAsyncLifetime
 {
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-skillcombat-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-skillcombat-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(8);
-    private WebApplication app = null!;
-    private string http = "";
-    private GameLoop Loop => app.Services.GetRequiredService<GameLoop>();
-    private CharacterService Character => app.Services.GetRequiredService<CharacterService>();
-    private GameSession Session(string name) => app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == name.ToLowerInvariant());
+    private WebApplication _app = null!;
+    private string _http = "";
+    private GameLoop Loop => _app.Services.GetRequiredService<GameLoop>();
+    private CharacterService Character => _app.Services.GetRequiredService<CharacterService>();
+    private GameSession Session(string name) => _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == name.ToLowerInvariant());
 
     public async Task InitializeAsync()
     {
         var ports = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = ports.Item1; o.MicroGatePort = ports.Item2; o.GameGatePort = ports.Item3;
         });
-        SureHitRolls.Install(app); // lethal hits are prepared; a FLEE miss would only be noise
-        await app.StartAsync(); http = $"http://127.0.0.1:{ports.Item1}";
+        SureHitRolls.Install(_app); // lethal hits are prepared; a FLEE miss would only be noise
+        await _app.StartAsync(); _http = $"http://127.0.0.1:{ports.Item1}";
     }
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
     private async Task<BotClient> InWorld(string name)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         var role = await bot.CreateRoleAsync(name); await bot.EnterWorldAsync(role.RoleBaseInfo.Id);
         return bot;
@@ -53,7 +53,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
     private async Task Gm(string account, string line)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={account}", new StringContent(line))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(line))).EnsureSuccessStatusCode();
     }
     private static string RepoRoot()
     {
@@ -65,7 +65,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
     private Task<MonsterUnit> Target(string name, bool stationary = false, int npcId = 5000001) => Loop.InvokeAsync(async () =>
     {
         var s = Session(name);
-        var monsters = app.Services.GetRequiredService<MonsterService>();
+        var monsters = _app.Services.GetRequiredService<MonsterService>();
         MonsterTemplate? template = null;
         if (stationary)
         {
@@ -96,9 +96,9 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         await Loop.InvokeAsync(() =>
         {
             first.Hp = second.Hp = 100000;
-            app.Services.GetRequiredService<RoleHandover>().BeforeCleanupForTest = session =>
+            _app.Services.GetRequiredService<RoleHandover>().BeforeCleanupForTest = session =>
                 session == player ? releaseCleanup.Task : Task.CompletedTask;
-            app.Services.GetRequiredService<CombatService>().DealtAsync.Add(async (source, target, _, _) =>
+            _app.Services.GetRequiredService<CombatService>().DealtAsync.Add(async (source, target, _, _) =>
             {
                 if (source != player || target != first && target != second) return;
                 dealt++;
@@ -116,7 +116,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
             await entered.Task.WaitAsync(Wait);
             await Loop.InvokeAsync(() =>
             {
-                detach = app.Services.GetRequiredService<RoleHandover>().Begin(player);
+                detach = _app.Services.GetRequiredService<RoleHandover>().Begin(player);
                 Assert.True(player.Attachment!.Cancelled);
                 Assert.Equal(generation, player.SceneGeneration); // cleanup has not changed the scene yet
                 return Task.CompletedTask;
@@ -149,7 +149,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         {
             first.Hp = 1;
             second.Hp = 100000;
-            var combat = app.Services.GetRequiredService<CombatService>();
+            var combat = _app.Services.GetRequiredService<CombatService>();
             combat.MonsterDamageApplied.Add((source, target, _) =>
             {
                 if (source == player && target == first) applied++;
@@ -256,7 +256,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         {
             var session = Session("alice");
             var start = session.Position;
-            var nav = app.Services.GetRequiredService<WorldData>().Map(session.SceneEntry)!.Nav;
+            var nav = _app.Services.GetRequiredService<WorldData>().Map(session.SceneEntry)!.Nav;
             var offset = new[] { (4f, 0f), (-4f, 0f), (0f, 4f), (0f, -4f) }
                 .First(o => nav == null || nav.CanWalk(start.X, start.Y, start.Z, start.X + o.Item1, start.Z + o.Item2));
             target.X = start.X + offset.Item1;
@@ -330,7 +330,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         var spawn = await Next(bob, GameAoiSink.SyncAoiView, AoIViewChangeData.Parser, x => x.Bases.Any(b => b.EntityTemplateID == 1200004));
         var field = Assert.Single(spawn.Bases, b => b.EntityTemplateID == 1200004);
         Assert.Equal((long)alice.Self!.Uuid, field.Owner); Assert.Equal(point, field.MovementInfo.Pos);
-        await Loop.InvokeAsync(() => app.Services.GetRequiredService<CombatService>().ClearSkillsAsync(Session("alice")));
+        await Loop.InvokeAsync(() => _app.Services.GetRequiredService<CombatService>().ClearSkillsAsync(Session("alice")));
         await Next(bob, GameAoiSink.SyncAoiView, AoIViewChangeData.Parser, x => x.LeaveAoi.Contains(field.Uuid));
         Assert.Empty(Session("alice").SkillObjects);
     }
@@ -359,7 +359,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         await using var alice = await InWorld("Alice");
         var player = Session("alice");
         var monster = await Target("alice");
-        var combat = app.Services.GetRequiredService<CombatService>();
+        var combat = _app.Services.GetRequiredService<CombatService>();
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var settled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -376,7 +376,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
                 if (target == player) settled.TrySetResult();
                 return Task.CompletedTask;
             });
-            await app.Services.GetRequiredService<MonsterService>().Attack!(monster, player);
+            await _app.Services.GetRequiredService<MonsterService>().Attack!(monster, player);
         });
         try
         {
@@ -406,7 +406,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         await Teach("alice", 11001);
         await Teach("bob", 11001);
         var target = await Target("alice");
-        var combat = app.Services.GetRequiredService<CombatService>();
+        var combat = _app.Services.GetRequiredService<CombatService>();
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var killed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -461,8 +461,8 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         await Teach("alice", 12004);
         var a = Session("alice");
         var b = Session("bob");
-        var combat = app.Services.GetRequiredService<CombatService>();
-        var instances = app.Services.GetRequiredService<InstanceService>();
+        var combat = _app.Services.GetRequiredService<CombatService>();
+        var instances = _app.Services.GetRequiredService<InstanceService>();
         var room = await Loop.InvokeAsync(() => Task.FromResult(instances.Create(a.SceneEntry, [a, b])));
         foreach (var (bot, session) in new[] { (alice, a), (bob, b) })
         {
@@ -485,7 +485,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         await Loop.InvokeAsync(async () =>
         {
             var cast = a.SkillCast!;
-            await app.Services.GetRequiredService<SceneService>().TeleportInMapAsync(b,
+            await _app.Services.GetRequiredService<SceneService>().TeleportInMapAsync(b,
                 new MapPoint(b.Position.X + 40, b.Position.Y, b.Position.Z, b.Face));
             Loop.Schedule(TimeSpan.FromMilliseconds(cast.ChantMs + cast.ActionMs + 100),
                 () => { afterImpact.TrySetResult(); return Task.CompletedTask; });
@@ -499,9 +499,9 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
 
         await Loop.InvokeAsync(async () =>
         {
-            await app.Services.GetRequiredService<SceneService>().TeleportInMapAsync(b,
+            await _app.Services.GetRequiredService<SceneService>().TeleportInMapAsync(b,
                 new MapPoint(a.Position.X, a.Position.Y, a.Position.Z, b.Face));
-            await app.Services.GetRequiredService<BuffService>().AddAsync(b, 2052101, 60000, b.Role.Id);
+            await _app.Services.GetRequiredService<BuffService>().AddAsync(b, 2052101, 60000, b.Role.Id);
             await Character.SetHpSpAsync(b, 1, null);
             await Character.SetHpSpAsync(a, null, long.MaxValue);
             a.SkillCds.Clear(); a.SkillModeCds.Clear();
@@ -524,7 +524,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         await Gm("alice", "!job 1100");
         await Teach("alice", 11001);
         var target = await Target("alice");
-        var combat = app.Services.GetRequiredService<CombatService>();
+        var combat = _app.Services.GetRequiredService<CombatService>();
         int landed = 0, adjusted = 0, extra = 0, dealt = 0, healed = 0;
         long delivered = 0;
         await Loop.InvokeAsync(() =>
@@ -566,7 +566,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         await using var alice = await InWorld("Alice"); await using var bob = await InWorld("Bob");
         await Gm("alice", "!item 1002004 2");
         await Loop.InvokeAsync(async () => { Session("bob").Dead = true; await Character.SetHpSpAsync(Session("bob"), 0, 0); });
-        var combat = app.Services.GetRequiredService<CombatService>();
+        var combat = _app.Services.GetRequiredService<CombatService>();
         var ownerCheck = combat.ReviveCheck;
         await Loop.InvokeAsync(() => { combat.ReviveCheck = _ => ErrorCodes.FeatureUnavailable; return Task.CompletedTask; });
         await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 2200101, TargetId = (long)bob.Self!.Uuid });
@@ -593,7 +593,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         await Gm("alice", "!job 5100"); await Teach("alice", 15104);
         var session = Session("alice");
         var start = session.Position.Clone();
-        var nav = app.Services.GetRequiredService<WorldData>().Map(session.SceneEntry)!.Nav;
+        var nav = _app.Services.GetRequiredService<WorldData>().Map(session.SceneEntry)!.Nav;
         int direction = Enumerable.Range(0, 8).Select(i => i * 45).First(angle => nav == null ||
             nav.CanWalk(start.X, start.Y, start.Z, start.X + 2 * MathF.Sin(angle * MathF.PI / 180),
                 start.Z + 2 * MathF.Cos(angle * MathF.PI / 180)));
@@ -617,7 +617,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         var target = await Target("alice", stationary: true);
         var start = Session("alice").Position.Clone();
         // 5 m (beyond the 3 m basic attack) in a direction the nav grid lets the attack through.
-        var nav = app.Services.GetRequiredService<WorldData>().Map(Session("alice").SceneEntry)!.Nav!;
+        var nav = _app.Services.GetRequiredService<WorldData>().Map(Session("alice").SceneEntry)!.Nav!;
         var away = new[] { (5f, 0f), (-5f, 0f), (0f, 5f), (0f, -5f), (3.6f, 3.6f), (-3.6f, -3.6f) }
             .Select(o => new Vec3 { X = start.X + o.Item1, Y = start.Y, Z = start.Z + o.Item2 })
             .First(p => nav.IsWalkable(p.X, p.Y, p.Z) && nav.CanWalk(p.X, p.Y, p.Z, start.X, start.Z));
@@ -655,7 +655,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
             new EquipItemOprReq { Opr = 0, Pos = (EquipGridType)1, ItemGUID = bow });
         Assert.Equal(0, (await Next(alice, CharacterService.EquipItemOpr, EquipItemOprResp.Parser)).Result);
         var live = Session("alice");
-        int normalAttack = app.Services.GetRequiredService<SkillService>().NormalAttack(live);
+        int normalAttack = _app.Services.GetRequiredService<SkillService>().NormalAttack(live);
         Assert.True(normalAttack == 1300001,
             $"career={live.Progress!.Career}, attack={normalAttack}, items={string.Join(';', live.Items.Select(i => $"{i.Entry}/{i.Pack}/{i.Grid}"))}");
         var target = await Target("alice", stationary: true, npcId: 5000007);
@@ -665,7 +665,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         Assert.Equal(target.Uid, (long)(double)wireUid); // the client's shared-memory path uses doubles
 
         var start = Session("alice").Position.Clone();
-        var nav = app.Services.GetRequiredService<WorldData>().Map(Session("alice").SceneEntry)!.Nav!;
+        var nav = _app.Services.GetRequiredService<WorldData>().Map(Session("alice").SceneEntry)!.Nav!;
         var approach = Enumerable.Range(0, 32).Select(i => i * MathF.Tau / 32)
             .Select(angle => (
                 Far: new Vec3

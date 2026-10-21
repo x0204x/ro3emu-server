@@ -14,12 +14,12 @@ namespace Ro3Emu.Tests;
 /// <summary>Core activity wire, schedule, replay and transaction checks.</summary>
 public sealed partial class NewActivityTests : IAsyncLifetime
 {
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-activities-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-activities-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(8);
-    private WebApplication app = null!;
-    private string http = "";
-    private readonly TestClock clock = new();
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private WebApplication _app = null!;
+    private string _http = "";
+    private readonly TestClock _clock = new();
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private static string RepoRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
@@ -33,40 +33,40 @@ public sealed partial class NewActivityTests : IAsyncLifetime
 
     private sealed class TestClock : TimeProvider
     {
-        private long seconds = new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
-        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref seconds));
-        public void AdvanceDays(int count) => Interlocked.Add(ref seconds, count * 86400L);
+        private long _seconds = new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref _seconds));
+        public void AdvanceDays(int count) => Interlocked.Add(ref _seconds, count * 86400L);
         public void SetLocal(int year, int month, int day, int hour, int minute, int second = 0)
         {
             var local = new DateTime(year, month, day, hour, minute, second);
-            Interlocked.Exchange(ref seconds, new DateTimeOffset(local, LocalTimeZone.GetUtcOffset(local)).ToUnixTimeSeconds());
+            Interlocked.Exchange(ref _seconds, new DateTimeOffset(local, LocalTimeZone.GetUtcOffset(local)).ToUnixTimeSeconds());
         }
-        public void AdvanceSeconds(int count) => Interlocked.Add(ref seconds, count);
+        public void AdvanceSeconds(int count) => Interlocked.Add(ref _seconds, count);
     }
 
     public async Task InitializeAsync()
     {
         var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = httpPort; o.MicroGatePort = microPort; o.GameGatePort = gamePort;
             o.PlayBook = 101; o.SeasonStart = "2026-10-05";
-        }, clock);
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{httpPort}";
+        }, _clock);
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{httpPort}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
         await bot.EnterWorldAsync(id);
@@ -82,16 +82,16 @@ public sealed partial class NewActivityTests : IAsyncLifetime
     private async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     private GameSession Session(BotClient bot) => Service<SessionRegistry>().All().Single(s => s.Account == bot.Account && s.Role != null);
     private Task Reconcile(BotClient bot) => Service<NewActivityService>().ReconcileAsync(Session(bot));
 
-    private static long serial;
+    private static long _serial;
     private static async Task<CommonActivityRes> Common(BotClient bot, CommonActivityReq req)
     {
-        req.RequestId = Interlocked.Increment(ref serial);
+        req.RequestId = Interlocked.Increment(ref _serial);
         await bot.SendGameAsync(NewActivityService.Common, req);
         return await Next(bot, NewActivityService.Common, CommonActivityRes.Parser, r => r.RequestId == req.RequestId);
     }
@@ -115,7 +115,7 @@ public sealed partial class NewActivityTests : IAsyncLifetime
         await using var again = await InWorld("LoginDays", false);
         Assert.True(Session(again).NewActivities!.ActivityInfo[113].ActivityParam.SevenDay.RewardStatus[1]);
         Assert.Equal(1, Session(again).NewActivities!.ActivityInfo[113].ActivityParam.SevenDay.LoginDays);
-        clock.AdvanceDays(3);
+        _clock.AdvanceDays(3);
         await Reconcile(again);
         Assert.Equal(2, Session(again).NewActivities!.ActivityInfo[113].ActivityParam.SevenDay.LoginDays);
         await again.SendGameAsync(NewActivityService.GetReward, new NewActivityGetRewardCommonReq { ActivityID = 113, Index = 3 });
@@ -214,9 +214,8 @@ public sealed partial class NewActivityTests : IAsyncLifetime
         await bot.SendGameAsync(MsgId.Logout, new LogoutReq());
         await Next(bot, MsgId.Logout, LogoutResp.Parser);
         Assert.False(session.ActivitiesReady);
-        Assert.Equal(ErrorCodes.FeatureUnavailable, (await Common(bot, request)).Result);
-        await bot.SendGameAsync(NewActivityService.GetReward, new NewActivityGetRewardCommonReq { ActivityID = 113, Index = 1 });
-        Assert.Equal(ErrorCodes.FeatureUnavailable, (await Next(bot, NewActivityService.GetReward, NewActivityGetRewardCommonResp.Parser)).Result);
+        await StageGate.AssertUnansweredAsync(bot, NewActivityService.Common, request);
+        await StageGate.AssertUnansweredAsync(bot, NewActivityService.GetReward, new NewActivityGetRewardCommonReq { ActivityID = 113, Index = 1 });
         Assert.False(session.NewActivities.ActivityInfo[103].ActivityParam.LevelAward.AwardData.ContainsKey(1));
         Assert.Empty(session.NewActivities.ActivityInfo[113].ActivityParam.SevenDay.RewardStatus);
         await bot.EnterWorldAsync(roleId);
@@ -242,7 +241,7 @@ public sealed partial class NewActivityTests : IAsyncLifetime
         var pass = list.ActivityList.Single(a => a.Id == 200);
         Assert.Equal(calendar.ServerOpen, pass.BeginTime);
         Assert.Equal(15 * 86400, pass.EndTime - pass.BeginTime);
-        var friday = new DateTimeOffset(2026, 10, 9, 18, 32, 0, clock.LocalTimeZone.GetUtcOffset(new DateTime(2026, 10, 9))).ToUnixTimeSeconds();
+        var friday = new DateTimeOffset(2026, 10, 9, 18, 32, 0, _clock.LocalTimeZone.GetUtcOffset(new DateTime(2026, 10, 9))).ToUnixTimeSeconds();
         Assert.Equal("Ready", calendar.Segments(1083, friday).Single(w => w.Contains(friday)).State);
     }
 

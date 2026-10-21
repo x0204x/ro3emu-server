@@ -35,7 +35,7 @@ public sealed partial class GuildService
         ErrResponseInviteExpired = 10022;
 
     private sealed record HelperInvitation(long GuildId, long Recipient, long Inviter, long ExpiresMs);
-    private readonly Dictionary<long, HelperInvitation> helperInvites = new();
+    private readonly Dictionary<long, HelperInvitation> _helperInvites = new();
 
     private int ResponderLimit => (int)Setting("GuildResponsePeopleLimit", 3)[0];
 
@@ -177,15 +177,15 @@ public sealed partial class GuildService
             : target?.Role == null ? ErrorCodes.PlayerOffline
             : store.ForRole(target.Role.Id) != null ? ErrorCodes.AlreadyInGuild
             : target.Progress!.Level < g.JoinLevelLimit ? ErrorCodes.GuildJoinLevel
-            : helperInvites.Values.Any(i => i.GuildId == g.Id && i.Recipient == target.Role.Id && i.ExpiresMs > now)
+            : _helperInvites.Values.Any(i => i.GuildId == g.Id && i.Recipient == target.Role.Id && i.ExpiresMs > now)
             ? ErrInviteAgainLater : 0;
         long token = 0;
         if (code == 0)
         {
-            foreach (var stale in helperInvites.Where(i => i.Value.ExpiresMs <= now).Select(i => i.Key).ToArray())
-                helperInvites.Remove(stale);
-            token = ++nextToken;
-            helperInvites[token] = new HelperInvitation(g!.Id, target!.Role!.Id, s.Role!.Id,
+            foreach (var stale in _helperInvites.Where(i => i.Value.ExpiresMs <= now).Select(i => i.Key).ToArray())
+                _helperInvites.Remove(stale);
+            token = ++_nextToken;
+            _helperInvites[token] = new HelperInvitation(g!.Id, target!.Role!.Id, s.Role!.Id,
                 now + Setting("GuildResponseInviteTime", 30)[0] * 1000);
             await target.SendGameAsync(InviteHelperNotify, new InviteCreateHelperNotify
             {
@@ -197,16 +197,16 @@ public sealed partial class GuildService
     }
 
     public Task InviteHelperOpeAsync(GameSession s, InviteCreateHelperOpeReq req) => RunGuildAsync(s,
-        helperInvites.GetValueOrDefault(req.Token) is { } invite ? [invite.GuildId] : [], [], () => InviteHelperOpeCoreAsync(s, req));
+        _helperInvites.GetValueOrDefault(req.Token) is { } invite ? [invite.GuildId] : [], [], () => InviteHelperOpeCoreAsync(s, req));
 
     private async Task InviteHelperOpeCoreAsync(GameSession s, InviteCreateHelperOpeReq req)
     {
-        var invite = helperInvites.GetValueOrDefault(req.Token);
+        var invite = _helperInvites.GetValueOrDefault(req.Token);
         int code = s.Role == null || invite == null || invite.Recipient != s.Role.Id
             ? ErrInvitationInvalid : invite.ExpiresMs < NowMs() ? ErrResponseInviteExpired : 0;
         if (code == 0)
         {
-            helperInvites.Remove(req.Token);
+            _helperInvites.Remove(req.Token);
             if (req.Agree)
             {
                 var g = store.Get(invite!.GuildId);

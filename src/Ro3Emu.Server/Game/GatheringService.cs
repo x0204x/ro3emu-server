@@ -24,28 +24,28 @@ public sealed class GatheringService : IGameTicker
     private readonly Dictionary<(RuntimeMapKey Runtime, int Group, int Refresh), GatherGroup> _groups = new();
     private readonly Dictionary<RuntimeMapKey, GatherRuntime> _runtimes = new();
     private readonly Random _random = new();
-    private readonly World world;
-    private readonly WorldData worldData;
-    private readonly GameData data;
-    private readonly GameLoop loop;
-    private readonly LifeJobService lifeJobs;
-    private readonly CharacterService character;
-    private readonly FunctionService functions;
-    private readonly ILogger<GatheringService> log;
+    private readonly World _world;
+    private readonly WorldData _worldData;
+    private readonly GameData _data;
+    private readonly GameLoop _loop;
+    private readonly LifeJobService _lifeJobs;
+    private readonly CharacterService _character;
+    private readonly FunctionService _functions;
+    private readonly ILogger<GatheringService> _log;
     private long _serial;
 
     public GatheringService(SceneService scene, World world, WorldData worldData, GameData data, GameLoop loop,
         LifeJobService lifeJobs, CharacterService character, FunctionService functions, PublicLineManager lines,
         ILogger<GatheringService> log)
     {
-        this.world = world;
-        this.worldData = worldData;
-        this.data = data;
-        this.loop = loop;
-        this.lifeJobs = lifeJobs;
-        this.character = character;
-        this.functions = functions;
-        this.log = log;
+        this._world = world;
+        this._worldData = worldData;
+        this._data = data;
+        this._loop = loop;
+        this._lifeJobs = lifeJobs;
+        this._character = character;
+        this._functions = functions;
+        this._log = log;
         scene.Loaded.Add(s => s.InstanceId == 0 ? EnsureSpawnedAsync(s.RuntimeMap) : Task.CompletedTask);
         scene.Leaving.Add(s => InterruptAsync(s));
         lines.HasPendingWork.Add(HasPendingWork);
@@ -94,7 +94,7 @@ public sealed class GatheringService : IGameTicker
 
     public async Task EnsureSpawnedAsync(RuntimeMapKey runtime)
     {
-        if (runtime.Kind != RuntimeMapKind.PublicLine || worldData.Map(runtime.SceneEntry) is not { } map
+        if (runtime.Kind != RuntimeMapKind.PublicLine || _worldData.Map(runtime.SceneEntry) is not { } map
             || _runtimes.ContainsKey(runtime)) return;
         var owner = new GatherRuntime();
         _runtimes[runtime] = owner;
@@ -124,7 +124,7 @@ public sealed class GatheringService : IGameTicker
 
     private void Schedule(GatherRuntime owner, TimeSpan delay, Func<Task> work, GameSession? session = null)
     {
-        if (!owner.Retired) owner.Deadlines.Add((loop.Now + delay, work, session));
+        if (!owner.Retired) owner.Deadlines.Add((_loop.Now + delay, work, session));
     }
 
     public void Tick(GameTime time)
@@ -137,7 +137,7 @@ public sealed class GatheringService : IGameTicker
             foreach (var deadline in due)
             {
                 owner.Pending++;
-                loop.TrackRuntimeDetached("gathering deadline", () => RunDeadlineAsync(owner, deadline.Work));
+                _loop.TrackRuntimeDetached("gathering deadline", () => RunDeadlineAsync(owner, deadline.Work));
             }
         }
     }
@@ -145,7 +145,7 @@ public sealed class GatheringService : IGameTicker
     private async Task RunDeadlineAsync(GatherRuntime owner, Func<Task> work)
     {
         try { if (!owner.Retired) await work(); }
-        catch (Exception e) { log.LogError(e, "Gathering deadline failed"); }
+        catch (Exception e) { _log.LogError(e, "Gathering deadline failed"); }
         finally { EndPending(owner); }
     }
 
@@ -161,7 +161,7 @@ public sealed class GatheringService : IGameTicker
         {
             _nodes.Remove(node.Uid);
             _settlingNodes.Remove(node.Uid);
-            await world.RemoveUnitAsync(node);
+            await _world.RemoveUnitAsync(node);
         }
         foreach (var key in _groups.Keys.Where(k => k.Runtime == runtime).ToArray()) _groups.Remove(key);
     }
@@ -175,18 +175,18 @@ public sealed class GatheringService : IGameTicker
     private async Task FillAsync(GatherGroup group, int target)
     {
         if (group.Owner.Retired) return;
-        var map = worldData.Map(group.Runtime.SceneEntry);
+        var map = _worldData.Map(group.Runtime.SceneEntry);
         if (map == null) return;
         foreach (var point in group.Points)
         {
             if (group.Owner.Retired || group.Occupied.Count >= target) break;
             if (group.Occupied.Contains(point.Id)) continue;
             var npcId = WeightedTemplate(point.Candidates);
-            if (npcId == 0 || data.Row("NPCConfig", npcId) is not { } npc) continue;
+            if (npcId == 0 || _data.Row("NPCConfig", npcId) is not { } npc) continue;
             long collectionId = GameData.Int(npc, "_iSubTypeValue");
-            if (data.Row("LifeCollectionConfig", collectionId) == null) continue;
+            if (_data.Row("LifeCollectionConfig", collectionId) == null) continue;
             int interactionId = FirstInt(npc, "_iInteractID");
-            if (interactionId <= 0 || data.Row("NPCInteractConfig", interactionId) is not { } interaction
+            if (interactionId <= 0 || _data.Row("NPCInteractConfig", interactionId) is not { } interaction
                 || GameData.Int(interaction, "_iStatusID") != 5) continue;
             var pos = map.Grounded(point.Position);
             var node = new GatheringUnit
@@ -195,7 +195,7 @@ public sealed class GatheringService : IGameTicker
                 X = pos.X, Y = pos.Y, Z = pos.Z, Face = point.Position.Face,
                 Source = point, NpcId = npcId, CollectionId = collectionId, InteractionId = interactionId,
                 GenerationId = Guid.NewGuid().ToString("N"),
-                Name = data.ClientTextOf(npc, "_kName"), Camp = (int)GameData.Int(npc, "_iCamp"),
+                Name = _data.ClientTextOf(npc, "_kName"), Camp = (int)GameData.Int(npc, "_iCamp"),
                 InteractDistance = Math.Max(1, GameData.Int(npc, "_iInteractDistance")),
                 SharedLimit = NthInt(npc, "_iCTimes", 0), PersonalLimit = NthInt(npc, "_iCTimes", 1),
                 CooldownSeconds = Math.Max(0, (int)GameData.Int(npc, "_iInterval")),
@@ -203,10 +203,10 @@ public sealed class GatheringService : IGameTicker
             };
             group.Occupied.Add(point.Id);
             _nodes[node.Uid] = node;
-            await world.AddUnitAsync(node);
-            if (group.Owner.Retired && _nodes.Remove(node.Uid)) await world.RemoveUnitAsync(node);
+            await _world.AddUnitAsync(node);
+            if (group.Owner.Retired && _nodes.Remove(node.Uid)) await _world.RemoveUnitAsync(node);
         }
-        log.LogInformation("Gathering group {Group}/{Refresh} on {Scene}: {Count}/{Target} authored points live",
+        _log.LogInformation("Gathering group {Group}/{Refresh} on {Scene}: {Count}/{Target} authored points live",
             group.Points[0].GroupId, group.Points[0].RefreshId, group.Runtime, group.Occupied.Count, group.Target);
     }
 
@@ -239,12 +239,12 @@ public sealed class GatheringService : IGameTicker
 
     private int InteractionCondition(GameSession session, GatheringUnit node)
     {
-        if (data.Row("NPCInteractConfig", node.InteractionId) is not { } interaction
-            || data.Row("NPCConfig", node.NpcId) is not { } npc) return ErrorCodes.NpcParameter;
+        if (_data.Row("NPCInteractConfig", node.InteractionId) is not { } interaction
+            || _data.Row("NPCConfig", node.NpcId) is not { } npc) return ErrorCodes.NpcParameter;
         if (GameData.Int(interaction, "_iNPCCondition") != 0) return ErrorCodes.NpcParameter;
-        return !functions.ConditionMet(session, GameData.Int(npc, "_kNpcShowCondition"))
-            || !functions.ConditionMet(session, GameData.Int(interaction, "_iCondition"))
-            || !functions.ConditionMet(session, GameData.Int(interaction, "_iButtenCond"))
+        return !_functions.ConditionMet(session, GameData.Int(npc, "_kNpcShowCondition"))
+            || !_functions.ConditionMet(session, GameData.Int(interaction, "_iCondition"))
+            || !_functions.ConditionMet(session, GameData.Int(interaction, "_iButtenCond"))
             ? ErrorCodes.LifeRequirements : 0;
     }
 
@@ -265,19 +265,19 @@ public sealed class GatheringService : IGameTicker
             : node.PersonalLimit > 0 && PersonalCount(session, node) >= node.PersonalLimit ? ErrorCodes.Cooldown
             : node.Cooldowns.GetValueOrDefault(session.Role.Id) >= now / 1000 ? ErrorCodes.Cooldown
             : interactionError != 0 ? interactionError
-            : lifeJobs.CheckGather(session, node.CollectionId);
+            : _lifeJobs.CheckGather(session, node.CollectionId);
         await session.SendGameAsync(Interaction, new NpcInteractionRsp { Result = code, Req = req });
         if (code != 0) return true;
 
-        var collection = data.Row("LifeCollectionConfig", node.CollectionId)!.Value;
-        int duration = Math.Max(1, lifeJobs.GatheringDuration(session, node.CollectionId));
+        var collection = _data.Row("LifeCollectionConfig", node.CollectionId)!.Value;
+        int duration = Math.Max(1, _lifeJobs.GatheringDuration(session, node.CollectionId));
         int playId = FirstInt(collection, "_iPlayParam");
         int gameId = SelectedGame(collection);
-        if (gameId > 0 && data.Row("LifeGameConfig", gameId) is { } game)
+        if (gameId > 0 && _data.Row("LifeGameConfig", gameId) is { } game)
         {
             // The client starts the game after PublicParamConfig's countdown, then runs
             // LifeGameConfig._iDuration before posting 33516 (inferred from UI/config).
-            var param = data.Table("PublicParamConfig");
+            var param = _data.Table("PublicParamConfig");
             int countdown = param.TryGetValue("LifeJobGameCountdown", out var seconds)
                 ? Math.Max(0, (int)(GameData.Number(seconds) ?? 0)) * 1000 : 0;
             duration = countdown + Math.Max(1, (int)GameData.Int(game, "_iDuration"));
@@ -329,7 +329,7 @@ public sealed class GatheringService : IGameTicker
         foreach (var (weight, gameId) in choices)
         {
             roll -= weight;
-            if (roll < 0) return gameId > 0 && data.Row("LifeGameConfig", gameId) != null ? gameId : 0;
+            if (roll < 0) return gameId > 0 && _data.Row("LifeGameConfig", gameId) != null ? gameId : 0;
         }
         return 0;
     }
@@ -360,7 +360,7 @@ public sealed class GatheringService : IGameTicker
     {
         int code = !_pending.TryGetValue(session, out var pending) || pending.GameId == 0
             || pending.GameId != req.GameId || pending.Node.Uid != req.NpcGuid
-            || req.Rating is < 1 or > 5 || data.Row("LifeGamePlayAward", req.Rating) is null
+            || req.Rating is < 1 or > 5 || _data.Row("LifeGamePlayAward", req.Rating) is null
             ? ErrorCodes.NpcParameter : 0;
         if (code == 0)
         {
@@ -370,7 +370,7 @@ public sealed class GatheringService : IGameTicker
             {
                 // The exact rating is client-reported; the server bounds it to the selected pending
                 // game, configured rating rows and completed game window. Scoring is not observable here.
-                int extra = Math.Max(0, (int)GameData.Int(data.Row("LifeGamePlayAward", req.Rating)!.Value, "_iExtraAwardNum"));
+                int extra = Math.Max(0, (int)GameData.Int(_data.Row("LifeGamePlayAward", req.Rating)!.Value, "_iExtraAwardNum"));
                 code = await SettleAsync(session, pending, extra);
             }
         }
@@ -408,7 +408,7 @@ public sealed class GatheringService : IGameTicker
                 if (pending.Failures > 0)
                 {
                     bool claimed;
-                    try { claimed = await character.RewardSourceCommittedAsync(pending.SourceKey); }
+                    try { claimed = await _character.RewardSourceCommittedAsync(pending.SourceKey); }
                     catch { retainReservation = true; throw; }
                     if (claimed)
                     {
@@ -424,7 +424,7 @@ public sealed class GatheringService : IGameTicker
                     code = ValidatePending(session, pending);
                     if (code == 0 && pending.Resolution == null)
                     {
-                        var resolved = lifeJobs.ResolveGather(session, node.CollectionId, extraAwards,
+                        var resolved = _lifeJobs.ResolveGather(session, node.CollectionId, extraAwards,
                             node.SceneEntry, node.Source.Id);
                         code = resolved.Error;
                         pending.Resolution = resolved.Resolution;
@@ -438,7 +438,7 @@ public sealed class GatheringService : IGameTicker
                     {
                         try
                         {
-                            code = await lifeJobs.CompleteGatherAsync(session, pending.Resolution!,
+                            code = await _lifeJobs.CompleteGatherAsync(session, pending.Resolution!,
                                 pending.Settlement!, () =>
                                 {
                                     // The callback runs after the writer commit and before any economic notice.
@@ -453,13 +453,13 @@ public sealed class GatheringService : IGameTicker
                         {
                             if (pending.Committed && pending.Settlement!.Committed)
                             {
-                                log.LogWarning(e, "Committed gathering {Source} failed to publish a later notice", pending.SourceKey);
+                                _log.LogWarning(e, "Committed gathering {Source} failed to publish a later notice", pending.SourceKey);
                                 code = 0;
                             }
                             else
                             {
                                 bool committed;
-                                try { committed = await character.RewardSourceCommittedAsync(pending.SourceKey); }
+                                try { committed = await _character.RewardSourceCommittedAsync(pending.SourceKey); }
                                 catch
                                 {
                                     retainReservation = true;
@@ -470,7 +470,7 @@ public sealed class GatheringService : IGameTicker
                                     retainReservation = true;
                                     throw new InvalidOperationException("Committed gathering source requires role reload", e);
                                 }
-                                log.LogError(e, "Gathering {Source} failed before commit", pending.SourceKey);
+                                _log.LogError(e, "Gathering {Source} failed before commit", pending.SourceKey);
                                 if (++pending.Failures == 1 && !owner.Retired)
                                 {
                                     Schedule(owner, TimeSpan.FromSeconds(1), async () =>
@@ -488,7 +488,7 @@ public sealed class GatheringService : IGameTicker
             _pending.Remove(session); // settlement is terminal before any fallible AOI presentation
             if (code == 0)
             {
-                try { await world.ToUnitViewersAsync(node, EntityBaseChange, node.CollectionChange()); }
+                try { await _world.ToUnitViewersAsync(node, EntityBaseChange, node.CollectionChange()); }
                 finally { if (node.Depleted) await DepleteAsync(node); }
             }
             await SendIdleAsync(session, interrupted: code != 0);
@@ -523,7 +523,7 @@ public sealed class GatheringService : IGameTicker
         // Source reconciliation needs only a read and this resource's runtime; it must still run.
         try
         {
-            loop.ScheduleRuntime(delay, async () =>
+            _loop.ScheduleRuntime(delay, async () =>
         {
             if (owner.Retired || !owner.Deadlines.Remove(deadline)) return;
             owner.Pending++;
@@ -537,7 +537,7 @@ public sealed class GatheringService : IGameTicker
     {
         if (owner.Retired) return;
         bool paid;
-        try { paid = await character.RewardSourceCommittedAsync(pending.SourceKey); }
+        try { paid = await _character.RewardSourceCommittedAsync(pending.SourceKey); }
         catch
         {
             ScheduleSourceRecovery(session, pending, owner);
@@ -573,14 +573,14 @@ public sealed class GatheringService : IGameTicker
             || node.Cooldowns.GetValueOrDefault(session.Role.Id) >= DateTimeOffset.UtcNow.ToUnixTimeSeconds())
             return ErrorCodes.Cooldown;
         int interactionError = InteractionCondition(session, node);
-        return interactionError != 0 ? interactionError : lifeJobs.CheckGather(session, node.CollectionId);
+        return interactionError != 0 ? interactionError : _lifeJobs.CheckGather(session, node.CollectionId);
     }
 
     private async Task DepleteAsync(GatheringUnit node)
     {
         if (!_nodes.Remove(node.Uid)) return;
         var key = (node.RuntimeMap, node.Source.GroupId, node.Source.RefreshId);
-        if (!_groups.TryGetValue(key, out var group)) { await world.RemoveUnitAsync(node); return; }
+        if (!_groups.TryGetValue(key, out var group)) { await _world.RemoveUnitAsync(node); return; }
         group.Occupied.Remove(node.Source.Id);
         Schedule(group.Owner, TimeSpan.FromSeconds(group.RefreshSeconds), async () =>
         {
@@ -590,7 +590,7 @@ public sealed class GatheringService : IGameTicker
             await FillAsync(group, group.Occupied.Count < group.Minimum
                 ? group.Target : Math.Min(group.Target, group.Occupied.Count + 1));
         });
-        await world.RemoveUnitAsync(node);
+        await _world.RemoveUnitAsync(node);
     }
 
     /// <summary>An accepted WALK interrupts only once the authoritative position actually moved (spec §4).</summary>

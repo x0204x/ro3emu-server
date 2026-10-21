@@ -19,7 +19,7 @@ public sealed partial class TeamService
 
     private async Task RunTeamAsync(string origin, IEnumerable<long> roles, long teamId, Func<Task> work)
     {
-        var owners = loop.Owners ?? throw new InvalidOperationException("Team owner registry is unavailable.");
+        var owners = _loop.Owners ?? throw new InvalidOperationException("Team owner registry is unavailable.");
         long[] participants = roles.ToArray();
         while (true)
         {
@@ -81,7 +81,7 @@ public sealed partial class TeamService
     private async Task RecordAndJoinAsync(Team team, long role)
     {
         if (team.Members.Count != 0)
-            await friends.RecordTeammatesAsync(role, team.Members);
+            await _friends.RecordTeammatesAsync(role, team.Members);
         Join(team, role);
     }
 }

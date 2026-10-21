@@ -76,20 +76,17 @@ public static partial class EconomySnapshotReader
         db.Open();
         using (var only = db.CreateCommand()) { only.CommandText = "PRAGMA query_only=ON"; only.ExecuteNonQuery(); }
         using var tx = db.BeginTransaction(deferred: true);
-        // Pin the WAL view with the actual persisted watermark as the first SELECT when E01 is installed.
+        // The first read (this schema check) pins the WAL view; the persisted watermark is read from that same view.
+        // A legacy baseline without E01 has no cut, and none is fabricated.
         string? persistedRealm = null;
         long? commitSequence = null;
-        try
+        if (EconomySchema.Has(db, tx, "economy_meta"))
         {
             using var cutCommand = db.CreateCommand();
             cutCommand.Transaction = tx;
             cutCommand.CommandText = "SELECT realm_id,next_sequence FROM economy_meta WHERE singleton=1";
             using var cutRow = cutCommand.ExecuteReader();
             if (cutRow.Read()) { persistedRealm = cutRow.GetString(0); commitSequence = cutRow.GetInt64(1); }
-        }
-        catch (SqliteException error) when (error.SqliteErrorCode == 1 && error.Message.Contains("no such table", StringComparison.Ordinal))
-        {
-            // Legacy baseline: schema read below is its first successful SELECT and no cut is fabricated.
         }
         var schema = new List<(string Name, string Sql)>();
         using (var metadata = db.CreateCommand())
@@ -141,22 +138,20 @@ public static partial class EconomySnapshotReader
             issues.Add(new(EconomyIssueKind.Coverage, "progress/revision", "Role progress revision table is missing."));
             return result;
         }
+        if (!EconomySchema.Has(db, tx, "owner_revision", "id", "revision", "kind", "part"))
+        {
+            issues.Add(new(EconomyIssueKind.UnknownSchema, "progress/revision", "Role progress revision columns are missing."));
+            return result;
+        }
         using var command = db.CreateCommand();
         command.Transaction = tx;
         command.CommandText = "SELECT id,revision FROM owner_revision WHERE kind='role' AND part='progress'";
-        try
+        using var rows = command.ExecuteReader();
+        while (rows.Read())
         {
-            using var rows = command.ExecuteReader();
-            while (rows.Read())
-            {
-                if (!long.TryParse(rows.GetString(0), NumberStyles.None, CultureInfo.InvariantCulture, out long role) ||
-                    role <= 0 || rows.GetInt64(1) < 0 || !result.TryAdd(role, rows.GetInt64(1)))
-                    issues.Add(new(EconomyIssueKind.Corruption, "progress/revision", "Invalid or duplicate role progress revision."));
-            }
-        }
-        catch (SqliteException error) when (error.SqliteErrorCode == 1 && error.Message.Contains("no such column", StringComparison.Ordinal))
-        {
-            issues.Add(new(EconomyIssueKind.UnknownSchema, "progress/revision", "Role progress revision columns are missing."));
+            if (!long.TryParse(rows.GetString(0), NumberStyles.None, CultureInfo.InvariantCulture, out long role) ||
+                role <= 0 || rows.GetInt64(1) < 0 || !result.TryAdd(role, rows.GetInt64(1)))
+                issues.Add(new(EconomyIssueKind.Corruption, "progress/revision", "Invalid or duplicate role progress revision."));
         }
         return result;
     }
@@ -166,24 +161,22 @@ public static partial class EconomySnapshotReader
     {
         var result = new Dictionary<long, EconomyProgress>();
         if (!tables.Contains("role")) return result;
+        if (!EconomySchema.Has(db, tx, "role", "id", "level", "exp", "job_level", "job_exp"))
+        {
+            issues.Add(new(EconomyIssueKind.UnknownSchema, "progress/schema", "Role progression columns are missing."));
+            return result;
+        }
         using var command = db.CreateCommand();
         command.Transaction = tx;
         command.CommandText = "SELECT id,level,exp,job_level,job_exp FROM role ORDER BY id";
-        try
+        using var row = command.ExecuteReader();
+        while (row.Read())
         {
-            using var row = command.ExecuteReader();
-            while (row.Read())
-            {
-                long role = row.GetInt64(0);
-                var value = new EconomyProgress(row.GetInt32(1), row.GetInt64(2), row.GetInt32(3), row.GetInt64(4));
-                if (role <= 0 || value.BaseLevel <= 0 || value.JobLevel <= 0 || value.BaseExp < 0 || value.JobExp < 0 ||
-                    !result.TryAdd(role, value))
-                    issues.Add(new(EconomyIssueKind.Corruption, "progress/" + role, "Invalid or duplicate role progression."));
-            }
-        }
-        catch (SqliteException error) when (error.SqliteErrorCode == 1 && error.Message.Contains("no such column", StringComparison.Ordinal))
-        {
-            issues.Add(new(EconomyIssueKind.UnknownSchema, "progress/schema", "Role progression columns are missing."));
+            long role = row.GetInt64(0);
+            var value = new EconomyProgress(row.GetInt32(1), row.GetInt64(2), row.GetInt32(3), row.GetInt64(4));
+            if (role <= 0 || value.BaseLevel <= 0 || value.JobLevel <= 0 || value.BaseExp < 0 || value.JobExp < 0 ||
+                !result.TryAdd(role, value))
+                issues.Add(new(EconomyIssueKind.Corruption, "progress/" + role, "Invalid or duplicate role progression."));
         }
         return result;
     }
@@ -220,13 +213,13 @@ public static partial class EconomySnapshotReader
         internal List<EconomyHolding> Holdings { get; } = [];
         internal List<EconomyIssue> Issues { get; } = [];
         internal Dictionary<string, (long Rows, long Blobs, long Bytes)> Metrics { get; } = new(StringComparer.Ordinal);
-        private readonly HashSet<long> roles = [];
-        private readonly HashSet<long> deletedRoles = [];
-        private readonly HashSet<long> unknownRoleDeletion = [];
-        private readonly HashSet<long> deletionRecoveryNoted = [];
-        private readonly HashSet<long> guilds = [];
-        private readonly HashSet<long> recoveredGuilds = [];
-        private readonly HashSet<string> mailDeliveryKeys = [];
+        private readonly HashSet<long> _roles = [];
+        private readonly HashSet<long> _deletedRoles = [];
+        private readonly HashSet<long> _unknownRoleDeletion = [];
+        private readonly HashSet<long> _deletionRecoveryNoted = [];
+        private readonly HashSet<long> _guilds = [];
+        private readonly HashSet<long> _recoveredGuilds = [];
+        private readonly HashSet<string> _mailDeliveryKeys = [];
 
         internal void Issue(EconomyIssueKind kind, string key, string detail) => Issues.Add(new(kind, key, detail));
         internal void ReadDungeonPending()
@@ -270,11 +263,11 @@ public static partial class EconomySnapshotReader
         private static string Id(long value) => value.ToString(CultureInfo.InvariantCulture);
         private EconomyOwner Role(long role, string key)
         {
-            if (roles.Contains(role))
+            if (_roles.Contains(role))
             {
-                if (deletedRoles.Contains(role) || unknownRoleDeletion.Contains(role))
+                if (_deletedRoles.Contains(role) || _unknownRoleDeletion.Contains(role))
                 {
-                    if (deletedRoles.Contains(role) && deletionRecoveryNoted.Add(role))
+                    if (_deletedRoles.Contains(role) && _deletionRecoveryNoted.Add(role))
                         Issue(EconomyIssueKind.RecoveryDebt, "role/" + Id(role) + "/deleted_time",
                             "Soft-deleted role retains assets; recovery ownership requires policy.");
                     return new(EconomyOwnerKind.Recovery, "role:" + Id(role));
@@ -286,7 +279,7 @@ public static partial class EconomySnapshotReader
         }
         private EconomyOwner Guild(long guild, string key)
         {
-            if (guilds.Contains(guild) || recoveredGuilds.Contains(guild)) return new(EconomyOwnerKind.Guild, Id(guild));
+            if (_guilds.Contains(guild) || _recoveredGuilds.Contains(guild)) return new(EconomyOwnerKind.Guild, Id(guild));
             Issue(EconomyIssueKind.RecoveryDebt, key, $"Guild {guild} has persisted assets but no guild row.");
             return new(EconomyOwnerKind.Recovery, "guild:" + Id(guild));
         }

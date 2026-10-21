@@ -21,43 +21,43 @@ namespace Ro3Emu.Tests;
 public sealed class RoleObligationsLoginTests : IAsyncLifetime
 {
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(15);
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-obligations-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-obligations-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "";
 
     public Task InitializeAsync() => StartAsync();
 
     private async Task StartAsync()
     {
         var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir;
+            o.DataDir = _dataDir;
             o.GameDataDir = Path.Combine(ClientData.RepoRoot, "data");
             o.HttpPort = httpPort; o.MicroGatePort = microPort; o.GameGatePort = gamePort;
         });
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{httpPort}";
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{httpPort}";
     }
 
     private async Task StopAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         SqliteConnection.ClearAllPools();
     }
 
     public async Task DisposeAsync()
     {
         await StopAsync();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
-    private BotClient Bot() => new(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+    private BotClient Bot() => new(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
 
     private SqliteConnection Db()
     {
-        var db = new SqliteConnection($"Data Source={Path.Combine(dataDir, "ro3emu.db")};Pooling=False");
+        var db = new SqliteConnection($"Data Source={Path.Combine(_dataDir, "ro3emu.db")};Pooling=False");
         db.Open();
         return db;
     }
@@ -124,7 +124,7 @@ public sealed class RoleObligationsLoginTests : IAsyncLifetime
         {
             await StartAsync();
             var audit = new ConcurrentQueue<string>();
-            app.Services.GetRequiredService<OwnerRegistry>().UncoveredForTest = audit.Enqueue;
+            _app.Services.GetRequiredService<OwnerRegistry>().UncoveredForTest = audit.Enqueue;
             await using (var bot = Bot())
             {
                 await bot.LoginAsync("relog", "pw");
@@ -141,14 +141,14 @@ public sealed class RoleObligationsLoginTests : IAsyncLifetime
                     Assert.DoesNotContain(bot.Inbox.Snapshot(), e => e.IsGame(MvpService.ResultNtf) || e.IsGame(TimedBattleService.ChickenResult));
                 }
             }
-            app.Services.GetRequiredService<OwnerRegistry>().UncoveredForTest = null;
+            _app.Services.GetRequiredService<OwnerRegistry>().UncoveredForTest = null;
             // The role select reserved every pending row its login paid.
             Assert.Empty(audit);
             Assert.Equal(0, Scalar("SELECT count(*) FROM casual_battle_obligation WHERE delivered=0")
                 + Scalar("SELECT count(*) FROM mvp_award_obligation WHERE delivered=0")
                 + Scalar("SELECT count(*) FROM timed_battle_obligation WHERE delivered=0"));
             var state = JsonSerializer.Deserialize<TimedBattleService.State>(
-                app.Services.GetRequiredService<RoleStore>().LoadTimedBattle(role)!)!;
+                _app.Services.GetRequiredService<RoleStore>().LoadTimedBattle(role)!)!;
             Assert.Contains(match, state.CasualSettled);
             Assert.Single(state.CasualRecords);
             Assert.Equal(1005, state.CasualMmr);

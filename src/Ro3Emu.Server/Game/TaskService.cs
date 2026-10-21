@@ -44,20 +44,20 @@ public sealed partial class TaskService
     private sealed record TaskDef(long Id, int Type, long[] Pre, long Condition, int Accept, int Deliver, long[][] Targets,
         long Award, long Exp, long[] AcceptArgs, long[] DeliverArgs, string[][] AcceptActions, string[][] ExecActions, string[][] Track);
 
-    private readonly GameData data;
-    private readonly CharacterService character;
-    private readonly SkillService skills;
-    private readonly FunctionService functions;
-    private readonly RoleStore roles;
-    private readonly WorldData worldData;
-    private readonly GameLoop loop;
-    private readonly AwardService awards;
-    private readonly SessionRegistry sessions;
-    private readonly ILogger<TaskService> log;
-    private readonly SeasonTalentService talents;
-    private readonly MountService mounts;
-    private readonly SceneService scene;
-    private readonly TimeProvider clock;
+    private readonly GameData _data;
+    private readonly CharacterService _character;
+    private readonly SkillService _skills;
+    private readonly FunctionService _functions;
+    private readonly RoleStore _roles;
+    private readonly WorldData _worldData;
+    private readonly GameLoop _loop;
+    private readonly AwardService _awards;
+    private readonly SessionRegistry _sessions;
+    private readonly ILogger<TaskService> _log;
+    private readonly SeasonTalentService _talents;
+    private readonly MountService _mounts;
+    private readonly SceneService _scene;
+    private readonly TimeProvider _clock;
     private Dictionary<long, TaskDef>? _defs;
     private Dictionary<long, List<long>>? _children;
 
@@ -72,20 +72,20 @@ public sealed partial class TaskService
         EquipmentService equipment, CardService cards, SeasonTalentService talents, SceneService scene, MountService mounts, TimeProvider clock,
         ILogger<TaskService> log)
     {
-        this.data = data;
-        this.character = character;
-        this.skills = skills;
-        this.functions = functions;
-        this.roles = roles;
-        this.worldData = worldData;
-        this.loop = loop;
-        this.awards = awards;
-        this.sessions = sessions;
-        this.log = log;
-        this.talents = talents;
-        this.mounts = mounts;
-        this.scene = scene;
-        this.clock = clock;
+        this._data = data;
+        this._character = character;
+        this._skills = skills;
+        this._functions = functions;
+        this._roles = roles;
+        this._worldData = worldData;
+        this._loop = loop;
+        this._awards = awards;
+        this._sessions = sessions;
+        this._log = log;
+        this._talents = talents;
+        this._mounts = mounts;
+        this._scene = scene;
+        this._clock = clock;
         combat.Killed.Add(OnKillAsync);
         combat.Dealt.Add((s, m, damage) => { if (damage > 0 && s.Role != null) _participants.GetOrCreateValue(m).Add(s.Role.Id); });
         character.JobChanged.Add(s => { QueueRefresh(s); return Task.CompletedTask; });
@@ -137,9 +137,9 @@ public sealed partial class TaskService
             session.Tasks = null; // no client data (TaskConfig) loaded: no quests, nothing quest-gated
             return;
         }
-        var saved = roles.LoadTasks(role.Id);
+        var saved = _roles.LoadTasks(role.Id);
         session.Tasks = saved != null ? DBTaskInfo.Parser.ParseFrom(saved) : new DBTaskInfo();
-        session.TaskRuntime = roles.LoadTaskRuntime(role.Id) is { } runtime ? JsonSerializer.Deserialize<TaskRuntimeState>(runtime) ?? new() : new();
+        session.TaskRuntime = _roles.LoadTaskRuntime(role.Id) is { } runtime ? JsonSerializer.Deserialize<TaskRuntimeState>(runtime) ?? new() : new();
         if (saved == null) Start(session);
         // Drop ids the client cannot decode (an unknown id breaks the update it is in).
         foreach (var id in session.Tasks.Infos.Keys.Where(id => !_defs!.ContainsKey(id)).ToList()) session.Tasks.Infos.Remove(id);
@@ -176,14 +176,14 @@ public sealed partial class TaskService
             Accept(session, FirstTask);
             return;
         }
-        long stop = (data.Row("JobConfig", p.Career) is { } job ? GameData.Int(job, "_iJobRank") : 1) >= 2 ? FirstJobResume : NoviceResume;
+        long stop = (_data.Row("JobConfig", p.Career) is { } job ? GameData.Int(job, "_iJobRank") : 1) >= 2 ? FirstJobResume : NoviceResume;
         for (long id = FirstTask; id != 0 && id != stop;)
         {
             session.Tasks!.Infos[id] = NewInfo(id, Delivered);
             session.Tasks.CompleteTaskNum[id] = 1;
             id = _children!.GetValueOrDefault(id)?.FirstOrDefault(c => _defs![c].Type == 1) ?? 0;
         }
-        log.LogInformation("{Name} predates quests: main story resumes at {Task}", session.Role!.Name, stop);
+        _log.LogInformation("{Name} predates quests: main story resumes at {Task}", session.Role!.Name, stop);
     }
 
     // ---- client events ----
@@ -191,11 +191,11 @@ public sealed partial class TaskService
     /// <summary>31208 CLIENT_NPCINTERACT: a task dialog ended (target 104001 [npcOrPoint, map, dialog]).</summary>
     public Task OnDialogAsync(GameSession session, ClientNpcInteractReq req)
     {
-        long npcId = req.NpcUid != 0 && worldData.Npc(req.NpcUid) is { } npc && npc.SceneEntry == session.SceneEntry
+        long npcId = req.NpcUid != 0 && _worldData.Npc(req.NpcUid) is { } npc && npc.SceneEntry == session.SceneEntry
             && NearPoint(session, npc.X, npc.Z) ? npc.NpcId : 0;
         return ProgressAsync(session, TDialog, t =>
             t.Length == 4 && t[3] == req.DialogID && t[2] == session.SceneEntry
-            && ((t[1] == req.Areapointid && worldData.Map(session.SceneEntry)?.Points.TryGetValue(t[1], out var point) == true
+            && ((t[1] == req.Areapointid && _worldData.Map(session.SceneEntry)?.Points.TryGetValue(t[1], out var point) == true
                     && NearPoint(session, point.X, point.Z))
                 || (npcId != 0 && t[1] == npcId)) ? 1 : 0);
     }
@@ -335,7 +335,7 @@ public sealed partial class TaskService
             : def.Accept == ReceiveNpc ? ValidateNpc(session, def.AcceptArgs, req.NpcId) : 0;
         bool ok = result == 0;
         if (ok) Accept(session, req.Id);
-        log.LogInformation("{Name} accepts task {Task}: {Result}", session.Role?.Name, req.Id, ok ? "ok" : "refused");
+        _log.LogInformation("{Name} accepts task {Task}: {Result}", session.Role?.Name, req.Id, ok ? "ok" : "refused");
         await session.SendGameAsync(TaskAccept, new TaskAcceptResp { Result = result, Id = req.Id, NpcId = req.NpcId });
         if (ok) await SettleAsync(session);
     }
@@ -379,7 +379,7 @@ public sealed partial class TaskService
         if (BeforeProgress is { } before) await before(session);
         int result = session.Tasks == null ? ErrorCodes.Unknown
             : !session.Tasks.Infos.ContainsKey(req.Id) ? ErrorCodes.TaskMissing
-            : data.Row("TaskConfig", req.Id) is not { } row ? ErrorCodes.TaskNoConfig
+            : _data.Row("TaskConfig", req.Id) is not { } row ? ErrorCodes.TaskNoConfig
             : !Active(session, req.Id) ? ErrorCodes.TaskStatus
             : GameData.Int(row, "_iIfGiveUp") != 1 ? ErrorCodes.TaskNoGiveUp : 0;
         bool ok = result == 0;
@@ -429,7 +429,7 @@ public sealed partial class TaskService
 
     public string Describe(GameSession session) => session.Tasks == null ? "-" :
         string.Join(", ", session.Tasks.Infos.Values.Where(i => i.Status is Running or Finished)
-            .Select(i => $"{i.TaskId} {data.TextOf(data.Row("TaskConfig", i.TaskId)!.Value, "_iName")} [{string.Join('/', i.CompleteNum)}]"));
+            .Select(i => $"{i.TaskId} {_data.TextOf(_data.Row("TaskConfig", i.TaskId)!.Value, "_iName")} [{string.Join('/', i.CompleteNum)}]"));
 
     // ---- engine ----
 
@@ -485,7 +485,7 @@ public sealed partial class TaskService
         using var gate = await LockTasksAsync(session);
         if (BeforeProgress is { } before) await before(session);
         await RefreshCoreAsync(session);
-        return !roles.HasTaskFollowup(session.Role.Id);
+        return !_roles.HasTaskFollowup(session.Role.Id);
     }
 
     private async Task RefreshCoreAsync(GameSession session)
@@ -502,7 +502,7 @@ public sealed partial class TaskService
         if (session.Tasks == null) return;
         var context = RequireTaskOwner(session);
         bool debtIncomplete = false;
-        bool requiredFollowup = roles.HasTaskFollowup(session.Role!.Id);
+        bool requiredFollowup = _roles.HasTaskFollowup(session.Role!.Id);
         for (int round = 0; round < 64; round++)
         {
             bool moved = false, storageFailed = false;
@@ -545,8 +545,8 @@ public sealed partial class TaskService
 
     private async Task FlushAsync(GameSession session, bool settled = false)
     {
-        if (settled && roles.HasTaskFollowup(session.Role!.Id))
-            await roles.SaveSettledTasksAsync(session.Role.Id, session.Tasks!.ToByteArray(), JsonSerializer.SerializeToUtf8Bytes(session.TaskRuntime));
+        if (settled && _roles.HasTaskFollowup(session.Role!.Id))
+            await _roles.SaveSettledTasksAsync(session.Role.Id, session.Tasks!.ToByteArray(), JsonSerializer.SerializeToUtf8Bytes(session.TaskRuntime));
         else Save(session);
         if (!session.DeferTaskSync)
         {
@@ -554,8 +554,8 @@ public sealed partial class TaskService
             if (SyncGrowthClass is { } growth) await growth(session); // 5045 reads the delivered growth quests
         }
         if (session.DailyReady && RefreshDailyTracking is { } refresh) await refresh(session);
-        await talents.SyncAsync(session); // 5050 before 5056 when quest 10103160 opens function 1003
-        await functions.SyncAsync(session);
+        await _talents.SyncAsync(session); // 5050 before 5056 when quest 10103160 opens function 1003
+        await _functions.SyncAsync(session);
     }
 
     /// <summary>Rewards first (the delivery events open UI that reads them), then status 4 and completeTaskNum.</summary>
@@ -586,38 +586,38 @@ public sealed partial class TaskService
             // 5021 is the authoritative season snapshot sent to this session, also used by client previews.
             int? playBook = session.Synced.GetValueOrDefault(SeasonService.SeasonSync) is DBSeasonInfo { Current: { } current }
                 ? (int)current.PlayBookId : null;
-            var plan = awards.Resolve(session, def.Award, playBook);
+            var plan = _awards.Resolve(session, def.Award, playBook);
             var runtime = new TaskRuntimeState { CompletedGuides = session.TaskRuntime.CompletedGuides.ToHashSet(), InCutScene = session.InCutScene || cutScene };
             string awardSource = $"task/{session.Role!.Id}/{id}/{next.CompleteTaskNum[id]}/" +
                 $"{session.Daily?.DailyEpoch ?? 0}/{session.Daily?.WeeklyEpoch ?? 0}";
-            if (!await character.ApplyAwardAsync(session, plan, def.Exp, costs, next.ToByteArray(),
+            if (!await _character.ApplyAwardAsync(session, plan, def.Exp, costs, next.ToByteArray(),
                 JsonSerializer.SerializeToUtf8Bytes(runtime), expectedDaily: daily?.Before, nextDaily: daily?.After,
-                expectedTasks: expectedTasks, persist: questMount is { } ride ? tx => mounts.PersistQuestRide(session, ride, tx) : null,
-                committed: questMount is { } appliedRide ? () => mounts.ApplyQuestRideCore(session, context, appliedRide) : null,
+                expectedTasks: expectedTasks, persist: questMount is { } ride ? tx => _mounts.PersistQuestRide(session, ride, tx) : null,
+                committed: questMount is { } appliedRide ? () => _mounts.ApplyQuestRideCore(session, context, appliedRide) : null,
                 ownedAward: new CharacterService.OwnedAwardSource("cd13e/quest-award", awardSource,
                     new { Version = 1, Task = id, Count = next.CompleteTaskNum[id], plan.AwardId })))
                 return daily == null ? ErrorCodes.ItemsShort : ErrorCodes.Unknown;
             session.TaskRuntime = runtime;
             deliveredPlan = plan;
             if (questMount is { } selectedRide && attachment?.Cancelled != true && ReferenceEquals(session.Attachment, attachment))
-                await mounts.PublishQuestRideAsync(session, selectedRide);
+                await _mounts.PublishQuestRideAsync(session, selectedRide);
         }
         catch (AwardResolutionException e)
         {
-            log.LogWarning("Task {Task} reward held: {Reason}", id, e.Message);
+            _log.LogWarning("Task {Task} reward held: {Reason}", id, e.Message);
             return ErrorCodes.TaskRequirements;
         }
-        catch (Exception e) when (daily != null || roles.HasTaskFollowup(session.Role!.Id))
+        catch (Exception e) when (daily != null || _roles.HasTaskFollowup(session.Role!.Id))
         {
-            log.LogError(e, "Task {Task} transaction failed for {Role}", id, session.Role?.Id);
+            _log.LogError(e, "Task {Task} transaction failed for {Role}", id, session.Role?.Id);
             return ErrorCodes.Unknown;
         }
         session.Tasks = next;
         if (daily?.MirrorChanged == true && SyncDailyDelivery is { } sync) await sync(session);
         if (cutScene) session.InCutScene = true;
         if (deliveredPlan != null) foreach (var handler in QuestDelivered) handler(session, id, deliveredPlan);
-        log.LogInformation("{Name} delivers task {Task} {TaskName}: exp {Exp}", session.Role?.Name, id,
-            data.TextOf(data.Row("TaskConfig", id)!.Value, "_iName"), def.Exp);
+        _log.LogInformation("{Name} delivers task {Task} {TaskName}: exp {Exp}", session.Role?.Name, id,
+            _data.TextOf(_data.Row("TaskConfig", id)!.Value, "_iName"), def.Exp);
         return 0;
     }
 
@@ -647,7 +647,7 @@ public sealed partial class TaskService
     }
 
     private bool Ready(GameSession session, TaskDef def) =>
-        def.Pre.All(p => IsDelivered(session, p)) && (def.Condition == 0 || functions.ConditionMet(session, def.Condition))
+        def.Pre.All(p => IsDelivered(session, p)) && (def.Condition == 0 || _functions.ConditionMet(session, def.Condition))
         && AcceptActionsSupported(def);
 
     private void Accept(GameSession session, long id)
@@ -661,12 +661,12 @@ public sealed partial class TaskService
         var info = session.Tasks.Infos[id];
         int step = Enumerable.Range(0, def.Targets.Length).FirstOrDefault(i => info.CompleteNum[i] != Required(session, def.Targets[i]), -1);
         if (step >= 0 && step < def.AcceptActions.Length && ServerOpcode(def.AcceptActions[step]) == 621) session.InCutScene = true;
-        log.LogInformation("{Name} accepts task {Task} {TaskName}", session.Role?.Name, id, data.TextOf(data.Row("TaskConfig", id)!.Value, "_iName"));
+        _log.LogInformation("{Name} accepts task {Task} {TaskName}", session.Role?.Name, id, _data.TextOf(_data.Row("TaskConfig", id)!.Value, "_iName"));
     }
 
     private TaskInfo NewInfo(long id, TaskState status)
     {
-        var info = new TaskInfo { TaskId = id, Status = status, Follow = true, StartTime = clock.GetUtcNow().ToUnixTimeMilliseconds() };
+        var info = new TaskInfo { TaskId = id, Status = status, Follow = true, StartTime = _clock.GetUtcNow().ToUnixTimeMilliseconds() };
         // One completeNum per target, zeros at accept (an empty list breaks the client's decode, §1.3); [0] without targets.
         int n = Math.Max(1, Defs()[id].Targets.Length);
         for (int i = 0; i < n; i++) info.CompleteNum.Add(0);
@@ -709,8 +709,8 @@ public sealed partial class TaskService
     {
         if (session.Role is { } role && session.Tasks != null)
         {
-            roles.SaveTasks(role.Id, session.Tasks.ToByteArray());
-            roles.SaveTaskRuntime(role.Id, JsonSerializer.SerializeToUtf8Bytes(session.TaskRuntime));
+            _roles.SaveTasks(role.Id, session.Tasks.ToByteArray());
+            _roles.SaveTaskRuntime(role.Id, JsonSerializer.SerializeToUtf8Bytes(session.TaskRuntime));
         }
     }
 
@@ -718,7 +718,7 @@ public sealed partial class TaskService
     {
         if (_defs != null) return _defs;
         var defs = new Dictionary<long, TaskDef>();
-        foreach (var row in data.Table("TaskConfig").Values)
+        foreach (var row in _data.Table("TaskConfig").Values)
         {
             long id = GameData.Int(row, "_iTaskID");
             if (id == 0) continue;
@@ -733,7 +733,7 @@ public sealed partial class TaskService
                 (children.TryGetValue(pre, out var list) ? list : children[pre] = new()).Add(def.Id);
         _children = children;
         _defs = defs;
-        log.LogInformation("Tasks: {Count} TaskConfig rows", defs.Count);
+        _log.LogInformation("Tasks: {Count} TaskConfig rows", defs.Count);
         return defs;
     }
 

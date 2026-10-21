@@ -16,45 +16,45 @@ namespace Ro3Emu.Tests;
 public sealed class GuildActivityTests : IAsyncLifetime
 {
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-guildact-" + Guid.NewGuid().ToString("N"));
-    private readonly Clock clock = new();
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-guildact-" + Guid.NewGuid().ToString("N"));
+    private readonly Clock _clock = new();
+    private WebApplication _app = null!;
+    private string _http = "";
 
     private sealed class Clock : TimeProvider
     {
         // A Thursday afternoon.
-        private long seconds = new DateTimeOffset(2026, 10, 15, 14, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
-        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref seconds));
+        private long _seconds = new DateTimeOffset(2026, 10, 15, 14, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref _seconds));
         public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
-        public void AdvanceDays(int days) => Interlocked.Add(ref seconds, days * 86400L);
+        public void AdvanceDays(int days) => Interlocked.Add(ref _seconds, days * 86400L);
     }
 
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private Task<T> Read<T>(Func<T> read) => Service<GameLoop>().InvokeAsync(() => Task.FromResult(read()));
 
     public async Task InitializeAsync()
     {
         var (web, micro, gate) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir; o.GameDataDir = Path.Combine(ClientData.RepoRoot, "data");
+            o.DataDir = _dataDir; o.GameDataDir = Path.Combine(ClientData.RepoRoot, "data");
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = gate;
-        }, clock);
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{web}";
+        }, _clock);
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{web}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         await bot.EnterWorldAsync((await bot.CreateRoleAsync(name)).RoleBaseInfo.Id);
         return bot;
@@ -70,7 +70,7 @@ public sealed class GuildActivityTests : IAsyncLifetime
     private async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     private GameSession Session(BotClient bot) => Service<SessionRegistry>().All().Single(s => s.Account == bot.Account && s.Role != null);
@@ -142,7 +142,7 @@ public sealed class GuildActivityTests : IAsyncLifetime
         Assert.NotEqual(0, (await Dividend(alice)).Result);
 
         // Next week: activity starts over, last week's chests expired, last week's dividend is claimable once.
-        clock.AdvanceDays(7);
+        _clock.AdvanceDays(7);
         Assert.Equal(GuildService.ErrActivityShort, await Chest(alice, 9001));
         long zeny = await Read(() => Service<CharacterService>().CountOf(s, 1));
         var paid = await Dividend(alice);

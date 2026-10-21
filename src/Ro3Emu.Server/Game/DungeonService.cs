@@ -38,35 +38,35 @@ public sealed partial class DungeonService
     /// <summary>Another private-room owner whose 30402 exit revives a dead member on return (the guild home).</summary>
     internal Func<long, bool>? RecoverDeadOnLeave { get; set; }
     /// <summary>A preformed-team ready check is waiting on this member.</summary>
-    internal bool Preparing(GameSession s) => pending.ContainsKey(s) || rolling.Contains(s);
+    internal bool Preparing(GameSession s) => _pending.ContainsKey(s) || _rolling.Contains(s);
 
-    private readonly GameData data;
-    private readonly DungeonCatalog catalog;
-    private readonly RoleStore roles;
-    private readonly Ownership.OwnerRegistry owners;
-    private readonly DungeonObligationStore obligations;
-    private readonly CharacterService character;
-    private readonly FunctionService functions;
-    private readonly SeasonService seasons;
-    private readonly InstanceService instances;
-    private readonly TeamService teams;
-    private readonly SessionRegistry sessions;
-    private readonly RewardService rewards;
-    private readonly AuctionService auctions;
-    private readonly GuildStore guilds;
-    private readonly MonsterService monsters;
-    private readonly CombatService combat;
-    private readonly BuffService buffs;
-    private readonly SceneService scenes;
-    private readonly World world;
-    private readonly GameLoop loop;
-    private readonly TimeProvider clock;
-    private readonly ILogger<DungeonService> log;
-    private readonly AccountStore accounts;
-    private readonly AwardService awards;
-    private readonly ServerOptions options;
-    private readonly PraiseService praise;
-    private readonly Dictionary<GameSession, Preparation> pending = new();
+    private readonly GameData _data;
+    private readonly DungeonCatalog _catalog;
+    private readonly RoleStore _roles;
+    private readonly Ownership.OwnerRegistry _owners;
+    private readonly DungeonObligationStore _obligations;
+    private readonly CharacterService _character;
+    private readonly FunctionService _functions;
+    private readonly SeasonService _seasons;
+    private readonly InstanceService _instances;
+    private readonly TeamService _teams;
+    private readonly SessionRegistry _sessions;
+    private readonly RewardService _rewards;
+    private readonly AuctionService _auctions;
+    private readonly GuildStore _guilds;
+    private readonly MonsterService _monsters;
+    private readonly CombatService _combat;
+    private readonly BuffService _buffs;
+    private readonly SceneService _scenes;
+    private readonly World _world;
+    private readonly GameLoop _loop;
+    private readonly TimeProvider _clock;
+    private readonly ILogger<DungeonService> _log;
+    private readonly AccountStore _accounts;
+    private readonly AwardService _awards;
+    private readonly ServerOptions _options;
+    private readonly PraiseService _praise;
+    private readonly Dictionary<GameSession, Preparation> _pending = new();
 
     public DungeonService(GameData data, DungeonCatalog catalog, RoleStore roles, Ownership.OwnerRegistry owners,
         DungeonObligationStore obligations, CharacterService character,
@@ -76,19 +76,19 @@ public sealed partial class DungeonService
         GmCommands gm, AccountStore accounts, AwardService awards, Microsoft.Extensions.Options.IOptions<ServerOptions> options,
         PraiseService praise)
     {
-        this.accounts = accounts; this.awards = awards; this.options = options.Value; this.praise = praise;
+        this._accounts = accounts; this._awards = awards; this._options = options.Value; this._praise = praise;
         gm.Register("firstclear", "<bossId> [daysAgo] | <bossId> clear (Realm of the Gods test aid: the server's first clear "
             + "of a boss, which unlocks its hall of fame entry and Sacred Blessing)", FirstClearGmAsync);
-        this.data = data; this.catalog = catalog; this.roles = roles; this.owners = owners;
-        this.obligations = obligations; this.character = character;
-        this.functions = functions; this.seasons = seasons; this.instances = instances; this.teams = teams;
-        this.sessions = sessions; this.rewards = rewards; this.auctions = auctions; this.guilds = guilds;
-        this.monsters = monsters; this.loop = loop;
-        this.clock = clock; this.log = log;
-        this.combat = combat;
-        this.buffs = buffs;
-        this.scenes = scene;
-        this.world = world;
+        this._data = data; this._catalog = catalog; this._roles = roles; this._owners = owners;
+        this._obligations = obligations; this._character = character;
+        this._functions = functions; this._seasons = seasons; this._instances = instances; this._teams = teams;
+        this._sessions = sessions; this._rewards = rewards; this._auctions = auctions; this._guilds = guilds;
+        this._monsters = monsters; this._loop = loop;
+        this._clock = clock; this._log = log;
+        this._combat = combat;
+        this._buffs = buffs;
+        this._scenes = scene;
+        this._world = world;
         gm.Register("actors", "[npcId | walk <x> <z> | use] (scripted scene test aid: the step's scene actors, jump beside one, arrive at x z as a walk would, or complete the step server-side)", ActorsGmAsync);
         teams.MultiDungeonInfo = TeamDungeonInfo;
         combat.DamageAdjusters.Add((s, m, _, _, damage) => BondDamage(s, m, damage, incoming: false));
@@ -182,19 +182,19 @@ public sealed partial class DungeonService
     private int Admission(GameSession s, DungeonCatalog.Plan plan, bool continuation = false)
     {
         if (s.Role == null || s.Dungeons == null || s.Progress == null) return ErrorCodes.Parameter;
-        if (s.SeasonState is not { } state || state.SeasonId != seasons.SeasonId || state.PlayBookId != seasons.PlayBook)
+        if (s.SeasonState is not { } state || state.SeasonId != _seasons.SeasonId || state.PlayBookId != _seasons.PlayBook)
             return ErrorCodes.FeatureUnavailable;
         if (s.SceneLoading) return ErrorCodes.SwitchingScenes;
         if (s.Dead) return ErrorCodes.FeatureUnavailable;
         if (s.InstanceId != 0 && !(continuation && s.DungeonAttempt is { Settled: true })) return ErrorCodes.DungeonBusy;
-        if (!functions.ConditionMet(s, GameData.Int(plan.Config, "_iDungoenLockCondition"))
-            || !functions.ConditionMet(s, GameData.Int(plan.Config, "_iDungeonConditionConfig"))) return ErrorCodes.FeatureUnavailable;
+        if (!_functions.ConditionMet(s, GameData.Int(plan.Config, "_iDungoenLockCondition"))
+            || !_functions.ConditionMet(s, GameData.Int(plan.Config, "_iDungeonConditionConfig"))) return ErrorCodes.FeatureUnavailable;
         if (GameData.Int(plan.Config, "_iGamePlayType") == 24 && !JourneyCanEnter(s, plan.SceneEntry))
             return ErrorCodes.TaskRequirements;
         if (plan.Multi is { } multi)
         {
             int function = GameData.Int(multi, "_iDungeonType") == 10 ? 61 : 62;
-            if (!TowerService.FitsPlayBook(multi, seasons.PlayBook) || !functions.IsOpen(s, function)
+            if (!TowerService.FitsPlayBook(multi, _seasons.PlayBook) || !_functions.IsOpen(s, function)
                 || !Meets(s, multi) || plan.Boss is not { } boss || !Meets(s, boss))
                 return ErrorCodes.FeatureUnavailable;
         }
@@ -205,12 +205,12 @@ public sealed partial class DungeonService
     {
         await DeliverPendingAsync(s);
         if (GuildChallengeEnter != null && await GuildChallengeEnter(s, req)) return;
-        var plan = catalog.Resolve(req);
+        var plan = _catalog.Resolve(req);
         int error = plan == null ? ErrorCodes.DungeonDataMissing : Admission(s, plan, continuation: true);
         if (error == 0 && Preparing(s)) error = ErrorCodes.DungeonPreparing;
-        var membership = s.Role != null ? teams.TeamOf(s.Role.Id) : default;
-        long[] ids = s.Role == null ? [] : plan?.MaxPlayers == 1 ? [s.Role.Id] : teams.MembersOf(s.Role.Id).ToArray();
-        var online = sessions.All().Where(p => p.Role != null).ToDictionary(p => p.Role!.Id);
+        var membership = s.Role != null ? _teams.TeamOf(s.Role.Id) : default;
+        long[] ids = s.Role == null ? [] : plan?.MaxPlayers == 1 ? [s.Role.Id] : _teams.MembersOf(s.Role.Id).ToArray();
+        var online = _sessions.All().Where(p => p.Role != null).ToDictionary(p => p.Role!.Id);
         var members = ids.Where(online.ContainsKey).Select(id => online[id]).ToArray();
         if (error == 0 && ids.Length > 1 && membership.Leader != s.Role!.Id) error = ErrorCodes.NoPermission;
         // GM "!dungeonsolo on" (test aid, not original behaviour): a lone role may also enter a team boss with 30400.
@@ -235,11 +235,11 @@ public sealed partial class DungeonService
         if (members.Length == 1) { await BeginAsync(plan!, members, s.Role!.Id, membership.TeamId); return; }
         var p = new Preparation { Plan = plan!, Members = members, Leader = s, TeamId = membership.TeamId };
         p.Ready.Add(s); // Initiating the request is the leader's affirmative answer (inferred).
-        foreach (var member in members) pending[member] = p;
+        foreach (var member in members) _pending[member] = p;
         await BroadcastReadyAsync(p);
-        int seconds = data.Table("PublicParamConfig").TryGetValue("GetInPositionMaxTime", out var timeout)
+        int seconds = _data.Table("PublicParamConfig").TryGetValue("GetInPositionMaxTime", out var timeout)
             ? (int)(GameData.Number(timeout) ?? 30) : 30;
-        loop.ScheduleLegacy(TimeSpan.FromSeconds(seconds), () => p.Closed ? Task.CompletedTask : CancelAsync(p, ErrorCodes.Parameter, 0));
+        _loop.ScheduleLegacy(TimeSpan.FromSeconds(seconds), () => p.Closed ? Task.CompletedTask : CancelAsync(p, ErrorCodes.Parameter, 0));
     }
 
     /// <summary>
@@ -279,16 +279,16 @@ public sealed partial class DungeonService
     {
         if (p.Closed) return;
         p.Closed = true;
-        foreach (var member in p.Members) if (pending.GetValueOrDefault(member) == p) pending.Remove(member);
+        foreach (var member in p.Members) if (_pending.GetValueOrDefault(member) == p) _pending.Remove(member);
         await BroadcastReadyAsync(p, true, error, role);
     }
 
     public async Task ConfirmAsync(GameSession s, ConfirmTeamDungeonReq req)
     {
-        var p = pending.GetValueOrDefault(s);
+        var p = _pending.GetValueOrDefault(s);
         int error = p == null || p.Closed ? ErrorCodes.Parameter : Admission(s, p.Plan, continuation: true);
-        if (error == 0 && (teams.TeamOf(p!.Leader.Role!.Id) != (p.TeamId, p.Leader.Role.Id)
-            || !teams.MembersOf(p.Leader.Role.Id).Order().SequenceEqual(p.Members.Select(m => m.Role?.Id ?? 0).Order())))
+        if (error == 0 && (_teams.TeamOf(p!.Leader.Role!.Id) != (p.TeamId, p.Leader.Role.Id)
+            || !_teams.MembersOf(p.Leader.Role.Id).Order().SequenceEqual(p.Members.Select(m => m.Role?.Id ?? 0).Order())))
             error = ErrorCodes.MemberLeft;
         await s.SendGameAsync(Confirm, new ConfirmTeamDungeonRsp { Result = error });
         if (p == null || p.Closed) return;
@@ -299,18 +299,18 @@ public sealed partial class DungeonService
         // Revalidate everyone after the last confirmation; no member can enter dead/offline/in another scene.
         foreach (var member in p.Members)
         {
-            error = sessions.All().Contains(member) ? Admission(member, p.Plan, continuation: true) : ErrorCodes.PlayerOffline;
+            error = _sessions.All().Contains(member) ? Admission(member, p.Plan, continuation: true) : ErrorCodes.PlayerOffline;
             if (error != 0) { await CancelAsync(p, error, member.Role?.Id ?? 0); return; }
         }
         p.Closed = true;
-        foreach (var member in p.Members) pending.Remove(member);
+        foreach (var member in p.Members) _pending.Remove(member);
         await BeginAsync(p.Plan, p.Members, p.Leader.Role!.Id, p.TeamId);
     }
 
     /// <summary>42047 reminds a member of this live 42033 ready vote (LC_DAL_Team:3641-3715).</summary>
     public async Task RemindAsync(GameSession s, TeamConfirmRemindersReq req)
     {
-        var p = pending.GetValueOrDefault(s);
+        var p = _pending.GetValueOrDefault(s);
         // PreparePanel passes (selfGuid, selectedUnreadyGuid) to TeamConfirmReminder.
         var target = p?.Members.FirstOrDefault(m => m.Role?.Id == req.RemindersGuid);
         int code = p == null || p.Closed || p.Leader != s || target == null || p.Ready.Contains(target)
@@ -324,15 +324,15 @@ public sealed partial class DungeonService
     private async Task BeginAsync(DungeonCatalog.Plan plan, GameSession[] members, long leader, long team, bool matched = false)
     {
         if (IsRandom(plan)) { await RollAsync(plan, members, leader, team, matched); return; } // DungeonService.HiddenRealm
-        var room = instances.Create(plan.SceneEntry, members);
-        praise.Remember(room.Id, plan.SceneEntry, members.Select(m => m.Role!.Id)); // MVP likes on its result screen
+        var room = _instances.Create(plan.SceneEntry, members);
+        _praise.Remember(room.Id, plan.SceneEntry, members.Select(m => m.Role!.Id)); // MVP likes on its result screen
         // (inferred) 30107 acknowledges a real room allocation; this client build has no Lua handler beyond PB registration.
         foreach (var member in members)
             await SendQuietAsync(member, CreateResult, new CreateDungeonResultNotify());
         var a = new Attempt
         {
             Room = room, Plan = plan, Leader = leader, TeamId = team,
-            PlayBook = seasons.PlayBook, SeasonId = seasons.SeasonId, Matched = matched,
+            PlayBook = _seasons.PlayBook, SeasonId = _seasons.SeasonId, Matched = matched,
             Blessing = plan.Boss is { } blessed ? Blessing(blessed)?.Row : null
         };
         foreach (var member in members)
@@ -352,7 +352,7 @@ public sealed partial class DungeonService
             try
             {
                 if (member.DungeonAttempt != null) await member.SendGameAsync(Reset, new DungeonResetNtf());
-                if (await instances.EnterAsync(room, member, members.Length > 1 ? 5 : 3))
+                if (await _instances.EnterAsync(room, member, members.Length > 1 ? 5 : 3))
                 {
                     member.DungeonAttempt = a;
                     // (inferred) actual scene/room identities after successful handoff, never on a failed transfer.
@@ -361,20 +361,20 @@ public sealed partial class DungeonService
                         SceneId = plan.SceneEntry, DungeonId = room.Id,
                     });
                 }
-                else await instances.AbandonAsync(room, member);
+                else await _instances.AbandonAsync(room, member);
             }
             catch (Exception e)
             {
-                log.LogWarning(e, "Dungeon transfer failed for {Role}, instance {Instance}", member.Role?.Id, room.Id);
-                await instances.AbandonAsync(room, member);
+                _log.LogWarning(e, "Dungeon transfer failed for {Role}, instance {Instance}", member.Role?.Id, room.Id);
+                await _instances.AbandonAsync(room, member);
             }
         }
         a.Entering = false;
         if (ReadyToStart(a)) await StartAsync(a);
         // A client that never acknowledges scene loading cannot retain a room indefinitely (inferred timeout).
-        loop.ScheduleLegacy(TimeSpan.FromSeconds(60), async () =>
+        _loop.ScheduleLegacy(TimeSpan.FromSeconds(60), async () =>
         {
-            foreach (var member in Present(a).Where(s => !a.Loaded.Contains(s))) await instances.LeaveAsync(member);
+            foreach (var member in Present(a).Where(s => !a.Loaded.Contains(s))) await _instances.LeaveAsync(member);
         });
     }
 
@@ -429,7 +429,7 @@ public sealed partial class DungeonService
         {
             // (inferred) The preparation phase is the map's initializing state, ending when the boss fight begins.
             snapshot.StageModuleData.MapState = 0;
-            snapshot.StageModuleData.MapStateEndTime = a.StartMs + options.RaidPreparationSeconds * 1000L;
+            snapshot.StageModuleData.MapStateEndTime = a.StartMs + _options.RaidPreparationSeconds * 1000L;
             snapshot.StageModuleData.StageEndTime = snapshot.StageModuleData.MapStateEndTime;
         }
         return snapshot;
@@ -452,7 +452,7 @@ public sealed partial class DungeonService
     {
         if (a.Wave >= a.Plan.Waves.Count || a.Plan.Waves[a.Wave].Quest is not (> 0 and var current)) return null;
         var v = new DungeonVar { VarId = 10001 };
-        v.Vi64.Add(data.Table("DungeonQuestConfig").Values
+        v.Vi64.Add(_data.Table("DungeonQuestConfig").Values
             .Where(q => GameData.Int(q, "_iDungeonID") == a.Plan.SceneEntry && GameData.Int(q, "_iQuestID") <= current)
             .Select(q => GameData.Int(q, "_iQuestID")).Distinct().Order());
         return v;
@@ -480,7 +480,7 @@ public sealed partial class DungeonService
     private async Task SendQuietAsync(GameSession s, uint id, IMessage msg)
     {
         try { await s.SendGameAsync(id, msg); }
-        catch (Exception e) { log.LogWarning(e, "Dungeon notification {Message} failed for {Role}", id, s.Role?.Id); }
+        catch (Exception e) { _log.LogWarning(e, "Dungeon notification {Message} failed for {Role}", id, s.Role?.Id); }
     }
 
     private Task BroadcastAsync(Attempt a, uint id, IMessage msg) =>
@@ -511,7 +511,7 @@ public sealed partial class DungeonService
     {
         if (a.Slots.Count == 0)
         {
-            if (a.TeamId != 0 && teams.TeamOf(a.Leader).TeamId == a.TeamId) a.Slots.AddRange(teams.MembersOf(a.Leader));
+            if (a.TeamId != 0 && _teams.TeamOf(a.Leader).TeamId == a.TeamId) a.Slots.AddRange(_teams.MembersOf(a.Leader));
             else a.Slots.Add(a.Leader);
         }
         int slot = a.Slots.IndexOf(role);
@@ -523,14 +523,14 @@ public sealed partial class DungeonService
     private async Task StartAsync(Attempt a)
     {
         if (a.Started || a.Settled || a.Room.Closed) return;
-        a.Started = true; a.StartedAt = loop.Now; a.StartMs = MonsterService.NowMs;
+        a.Started = true; a.StartedAt = _loop.Now; a.StartMs = MonsterService.NowMs;
         if (StartBattleScenes.Contains(a.Plan.SceneEntry) && a.Plan.Multi != null)
         {
             // A Realm of the Gods raid opens with its preparation phase: the leader's Start Battle (30125) or the
             // configured time begins the fight (DungeonService.RealmOfGods).
             a.Preparing = true;
             await BroadcastAsync(a, BaseInfo, Snapshot(a));
-            loop.ScheduleLegacy(TimeSpan.FromSeconds(Math.Max(0, options.RaidPreparationSeconds)), () => EndPreparationAsync(a));
+            _loop.ScheduleLegacy(TimeSpan.FromSeconds(Math.Max(0, _options.RaidPreparationSeconds)), () => EndPreparationAsync(a));
             return;
         }
         await BeginFightAsync(a);
@@ -538,10 +538,10 @@ public sealed partial class DungeonService
 
     private async Task BeginFightAsync(Attempt a)
     {
-        a.StartedAt = loop.Now; a.StartMs = MonsterService.NowMs;
+        a.StartedAt = _loop.Now; a.StartMs = MonsterService.NowMs;
         await BroadcastAsync(a, BaseInfo, Snapshot(a));
         await SpawnWaveAsync(a);
-        loop.ScheduleLegacy(TimeSpan.FromMilliseconds(a.Plan.DurationMs), () => a.Settled || a.Room.Closed ? Task.CompletedTask : SettleAsync(a, false));
+        _loop.ScheduleLegacy(TimeSpan.FromMilliseconds(a.Plan.DurationMs), () => a.Settled || a.Room.Closed ? Task.CompletedTask : SettleAsync(a, false));
     }
 
     private async Task SpawnWaveAsync(Attempt a)
@@ -573,7 +573,7 @@ public sealed partial class DungeonService
         {
             if (a.Settled || a.Room.Closed) { a.Spawning = false; return; }
             MonsterTemplate? waveTemplate = null;
-            if (a.Plan.SceneEntry == EggThiefDungeon && monsters.Template(spawn.NpcId) is { } template)
+            if (a.Plan.SceneEntry == EggThiefDungeon && _monsters.Template(spawn.NpcId) is { } template)
             {
                 // The missing original encounter script sent these three portal waves toward the player. The
                 // reconstructed first-wave Pupa is immobile and all three authored portals lie outside its normal
@@ -585,11 +585,11 @@ public sealed partial class DungeonService
                     LeashDistance = Math.Max(template.LeashDistance, EggThiefWaveLeash),
                 };
             }
-            var monster = await instances.SpawnAsync(a.Room, spawn.NpcId, spawn.Point, customTemplate: waveTemplate);
+            var monster = await _instances.SpawnAsync(a.Room, spawn.NpcId, spawn.Point, customTemplate: waveTemplate);
             if (a.Settled || a.Room.Closed)
             {
                 a.Spawning = false;
-                await instances.ClearMonstersAsync(a.Room);
+                await _instances.ClearMonstersAsync(a.Room);
                 return;
             }
             if (monster == null) { a.Spawning = false; await SettleAsync(a, false); return; }
@@ -601,7 +601,7 @@ public sealed partial class DungeonService
             // No five-player preparation duration/start-button contract was recovered; GVE/Whale's
             // DungeonStart preparation UI belongs to other gameplay types. Story-wave engagement is unchanged.
             if (a.Plan.Multi == null && Present(a).FirstOrDefault(s => !s.Dead && !s.SceneLoading) is { } target)
-                monsters.Engage(monster, target);
+                _monsters.Engage(monster, target);
         }
         a.Spawning = false;
         await AdvanceAsync(a);
@@ -632,7 +632,7 @@ public sealed partial class DungeonService
         if (a.Settled || a.Preparing || a.Spawning || a.Precounted.Count != 0 || a.Killed.Count != a.Spawned || a.Advancing) return;
         if (Step(a) != null && !a.StepDone) return;
         a.Advancing = true;
-        if (loop.Now - a.StartedAt >= TimeSpan.FromMilliseconds(a.Plan.DurationMs)) await SettleAsync(a, false);
+        if (_loop.Now - a.StartedAt >= TimeSpan.FromMilliseconds(a.Plan.DurationMs)) await SettleAsync(a, false);
         else if (a.Wave + 1 == a.Plan.Waves.Count) await SettleAsync(a, true);
         else { a.Wave++; await SpawnWaveAsync(a); }
         a.Advancing = false;
@@ -701,7 +701,7 @@ public sealed partial class DungeonService
     {
         if (Active(s) is not { } a) return;
         int delay = AutoReviveDelay(a);
-        if (delay > 0) a.AutoReviveAt.TryAdd(s.Role!.Id, clock.GetUtcNow().ToUnixTimeSeconds() + delay);
+        if (delay > 0) a.AutoReviveAt.TryAdd(s.Role!.Id, _clock.GetUtcNow().ToUnixTimeSeconds() + delay);
         await SendReviveInfoAsync(s, a);
         if (Defeated(a)) await SettleAsync(a, false);
     }
@@ -722,10 +722,10 @@ public sealed partial class DungeonService
         int error = !s.Dead ? ErrorCodes.TargetAlive : a == null || s.Role == null ? ErrorCodes.FeatureUnavailable
             : req.ReviveParam != 0 || (int)req.Type != 0 || (int)req.ReqType != 0 ? ErrorCodes.Parameter
             : a.Reviving.Contains(s) || (autoAt > 0
-                ? clock.GetUtcNow().ToUnixTimeSeconds() < autoAt
+                ? _clock.GetUtcNow().ToUnixTimeSeconds() < autoAt
                 : !ImmediateRevive(a) && a.RevivesUsed.GetValueOrDefault(roleId) >= ReviveLimit(a))
                 ? ErrorCodes.FeatureUnavailable : 0;
-        if (error == 0 && !combat.TryClaimRevive(s)) error = s.Dead ? ErrorCodes.FeatureUnavailable : ErrorCodes.TargetAlive;
+        if (error == 0 && !_combat.TryClaimRevive(s)) error = s.Dead ? ErrorCodes.FeatureUnavailable : ErrorCodes.TargetAlive;
         if (error != 0)
         {
             await s.SendGameAsync(CombatService.Relive, new EntityReliveAck { Result = error, EntityID = (ulong)(s.Role?.Id ?? 0) });
@@ -735,7 +735,7 @@ public sealed partial class DungeonService
         bool counted = autoAt == 0 && !ImmediateRevive(a);
         try
         {
-            await combat.ReviveClaimedAsync(s, () =>
+            await _combat.ReviveClaimedAsync(s, () =>
             {
                 if (counted) a.RevivesUsed[roleId] = a.RevivesUsed.GetValueOrDefault(roleId) + 1;
                 a.AutoReviveAt.Remove(roleId);
@@ -786,7 +786,7 @@ public sealed partial class DungeonService
     public async Task LeaveAsync(GameSession s)
     {
         var role = s.Role;
-        var room = instances.Find(s.InstanceId);
+        var room = _instances.Find(s.InstanceId);
         var member = room?.MemberFor(s);
         bool valid = role != null && !s.SceneLoading && room != null && member != null
             && s.SceneEntry == room.SceneEntry;
@@ -797,9 +797,9 @@ public sealed partial class DungeonService
             && ReferenceEquals(attempt.Room, room) || attempt == null && RecoverDeadOnLeave?.Invoke(room!.Id) == true);
         await s.SendGameAsync(Leave, new LeaveDungeonRsp { Result = valid ? 0 : ErrorCodes.SceneMissing });
         if (!valid || !ReferenceEquals(s.Role, role) || s.SceneLoading || s.InstanceId != room!.Id
-            || s.SceneEntry != room.SceneEntry || !ReferenceEquals(instances.Find(room.Id), room)
+            || s.SceneEntry != room.SceneEntry || !ReferenceEquals(_instances.Find(room.Id), room)
             || room.MemberFor(s) != member || !ReferenceEquals(s.DungeonAttempt, attempt)) return;
-        await instances.LeaveAsync(s, recoverDeadOnReturn: dungeonReturn);
+        await _instances.LeaveAsync(s, recoverDeadOnReturn: dungeonReturn);
     }
 
     /// <summary>
@@ -808,12 +808,12 @@ public sealed partial class DungeonService
     /// </summary>
     public async Task AbandonAsync(GameSession s)
     {
-        if (pending.TryGetValue(s, out var p)) await CancelAsync(p, ErrorCodes.MemberLeft, s.Role?.Id ?? 0);
+        if (_pending.TryGetValue(s, out var p)) await CancelAsync(p, ErrorCodes.MemberLeft, s.Role?.Id ?? 0);
         if (s.DungeonAttempt is not { } a) return;
         s.DungeonAttempt = null; s.Attack = null;
         if (a.Dracula is { } dracula) await dracula.Owner.LeftAsync(a, s);
         await ClearBondsAsync(s, a);
-        await instances.AbandonAsync(s);
+        await _instances.AbandonAsync(s);
         var remaining = Present(a);
         if (remaining.Length == 0) { a.Settled = true; return; }
         await RefreshBondsAsync(a);
@@ -832,7 +832,7 @@ public sealed partial class DungeonService
         if (a.GuildChallenge is { } challenge)
         {
             a.Settled = true;
-            await instances.ClearMonstersAsync(a.Room);
+            await _instances.ClearMonstersAsync(a.Room);
             await BroadcastAsync(a, BaseInfo, Snapshot(a));
             await challenge.Owner.SettleAsync(a, won);
             return;
@@ -840,7 +840,7 @@ public sealed partial class DungeonService
         if (a.Dracula is { } dracula)
         {
             a.Settled = true;
-            await instances.ClearMonstersAsync(a.Room);
+            await _instances.ClearMonstersAsync(a.Room);
             a.SceneActors.Clear(); // removed with the room's monsters
             await BroadcastAsync(a, BaseInfo, Snapshot(a));
             await dracula.Owner.SettleAsync(a, won);
@@ -854,14 +854,14 @@ public sealed partial class DungeonService
         var participants = Present(a).Where(a.Loaded.Contains).Select(s => (Session: s, Role: s.Role!.Id)).ToArray();
         var notifications = new List<Func<Task>>();
         var auctionAwards = new List<ItemBaseInfo>();
-        await instances.ClearMonstersAsync(a.Room);
+        await _instances.ClearMonstersAsync(a.Room);
         a.SceneActors.Clear(); // removed with the room's monsters
         foreach (var (s, roleId) in participants)
         {
             if (s.Role?.Id != roleId) continue;
             s.Attack = null;
-            var sourceKey = $"dungeon/{character.RewardRealmId}/{a.Room.Id}/{roleId}";
-            var row = obligations.Pending(roleId).SingleOrDefault(p => p.Key == sourceKey);
+            var sourceKey = $"dungeon/{_character.RewardRealmId}/{a.Room.Id}/{roleId}";
+            var row = _obligations.Pending(roleId).SingleOrDefault(p => p.Key == sourceKey);
             if (row == null) throw new InvalidOperationException("Frozen dungeon recipient obligation is missing.");
             bool success = row.Success;
             var goods = row.Goods;
@@ -879,7 +879,7 @@ public sealed partial class DungeonService
                 }
                 catch (Exception e)
                 {
-                    log.LogError(e, "Dungeon settlement failed for {Role}, instance {Instance}", roleId, a.Room.Id);
+                    _log.LogError(e, "Dungeon settlement failed for {Role}, instance {Instance}", roleId, a.Room.Id);
                     if (s.Owner?.State == Ownership.RoleOwnerState.RecoveryRequired)
                     {
                         s.CancelPendingCharacterIntents();
@@ -895,13 +895,13 @@ public sealed partial class DungeonService
             {
                 foreach (var handler in Completed)
                     try { await handler(s, (int)a.Plan.SceneEntry, goods.Count > 0); }
-                    catch (Exception e) { log.LogError(e, "Dungeon clear callback failed for {Role}, instance {Instance}", roleId, a.Room.Id); }
+                    catch (Exception e) { _log.LogError(e, "Dungeon clear callback failed for {Role}, instance {Instance}", roleId, a.Room.Id); }
                 if (a.Plan.Boss is { } boss)
                 {
                     var party = participants.Select(p => p.Session).ToArray();
                     foreach (var handler in MultiBossCleared)
                         try { await handler(s, GameData.Int(boss, "_iBoss"), party); }
-                        catch (Exception e) { log.LogError(e, "Dungeon boss clear callback failed for {Role}, instance {Instance}", roleId, a.Room.Id); }
+                        catch (Exception e) { _log.LogError(e, "Dungeon boss clear callback failed for {Role}, instance {Instance}", roleId, a.Room.Id); }
                 }
             }
             var result = new DungeonResNotify { DungeonEntry = a.Plan.SceneEntry, Res = (DungeonRes)(success ? 1 : 2) };
@@ -918,7 +918,7 @@ public sealed partial class DungeonService
                 if (s.Role?.Id != roleId) return;
                 try
                 {
-                    if (committed && goods.Count > 0) await character.ItemsChangedAsync(s, stats: false);
+                    if (committed && goods.Count > 0) await _character.ItemsChangedAsync(s, stats: false);
                     await s.SendGameAsync(Result, result);
                     if (success && a.Plan.Multi != null)
                     {
@@ -933,27 +933,27 @@ public sealed partial class DungeonService
                     }
                     if (committed) await SyncAsync(s);
                 }
-                catch (Exception e) { log.LogWarning(e, "Dungeon result delivery failed for {Role}, instance {Instance}", roleId, a.Room.Id); }
+                catch (Exception e) { _log.LogWarning(e, "Dungeon result delivery failed for {Role}, instance {Instance}", roleId, a.Room.Id); }
             });
         }
         if (won && a.Plan.Multi != null && a.Plan.Boss is { } cleared)
             RecordFirstClear(a, cleared, participants.Select(p => p.Session).Where(s => s.Role != null).ToArray());
         // Finalize only from committed personal entitlements; pending journals recover on restart.
-        if (won && a.Plan.Multi != null && obligations.PendingRoom(a.Room.Id).Count == 0)
+        if (won && a.Plan.Multi != null && _obligations.PendingRoom(a.Room.Id).Count == 0)
         {
             try
             {
-                await auctions.MarkDungeonRunReadyAsync(a.Room.Id);
-                await auctions.FinalizeDungeonRunAsync(a.Room.Id);
-                foreach (var group in auctions.DungeonRows(a.Room.Id).GroupBy(r => (r.Entry, r.Bind)))
-                    auctionAwards.Add(character.ItemInfoOf(new InvItem
+                await _auctions.MarkDungeonRunReadyAsync(a.Room.Id);
+                await _auctions.FinalizeDungeonRunAsync(a.Room.Id);
+                foreach (var group in _auctions.DungeonRows(a.Room.Id).GroupBy(r => (r.Entry, r.Bind)))
+                    auctionAwards.Add(_character.ItemInfoOf(new InvItem
                     { Entry = group.Key.Entry, Stack = group.Count(), BindType = group.Key.Bind }));
             }
             catch (Exception e)
             {
                 // Personal rewards already committed. The durable run journal lets the sweep retry auction
                 // publication; it must not suppress the dungeon result/normal award notifications.
-                log.LogError(e, "Auction publication deferred after committed dungeon {Instance}", a.Room.Id);
+                _log.LogError(e, "Auction publication deferred after committed dungeon {Instance}", a.Room.Id);
             }
         }
         // A disconnected member's channel must never prevent another participant's committed award.

@@ -9,23 +9,23 @@ namespace Ro3Emu.Tests;
 /// <summary>The connection layer on a real loopback socket pair: framing, limits and a reader that stopped reading.</summary>
 public sealed class PhonestChannelTests : IAsyncLifetime
 {
-    private Socket client = null!, server = null!;
+    private Socket _client = null!, _server = null!;
 
     public async Task InitializeAsync()
     {
         using var listener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
         listener.Bind(new IPEndPoint(IPAddress.Loopback, 0));
         listener.Listen(1);
-        client = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        _client = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
         var accept = listener.AcceptAsync();
-        await client.ConnectAsync((IPEndPoint)listener.LocalEndPoint!);
-        server = await accept;
+        await _client.ConnectAsync((IPEndPoint)listener.LocalEndPoint!);
+        _server = await accept;
     }
 
     public Task DisposeAsync()
     {
-        client.Dispose();
-        server.Dispose();
+        _client.Dispose();
+        _server.Dispose();
         return Task.CompletedTask;
     }
 
@@ -41,7 +41,7 @@ public sealed class PhonestChannelTests : IAsyncLifetime
     [Fact]
     public async Task ManyFramesInOneChunkAndASplitFrameArriveWholeAndInOrder()
     {
-        await using var channel = new PhonestChannel(server, NullLogger.Instance);
+        await using var channel = new PhonestChannel(_server, NullLogger.Instance);
         var seen = new List<(ushort, int)>();
         var done = new TaskCompletionSource();
         var run = channel.RunAsync((_, index, body) =>
@@ -52,27 +52,27 @@ public sealed class PhonestChannelTests : IAsyncLifetime
         }, CancellationToken.None);
         // 200 small frames in one write, then one frame split across two writes.
         var burst = Enumerable.Range(0, 200).SelectMany(i => Frame((ushort)i, i % 17)).ToArray();
-        await client.SendAsync(burst, SocketFlags.None);
+        await _client.SendAsync(burst, SocketFlags.None);
         var big = Frame(1000, 100_000);
-        await client.SendAsync(big.AsMemory(0, 3), SocketFlags.None);
+        await _client.SendAsync(big.AsMemory(0, 3), SocketFlags.None);
         await Task.Delay(50);
-        await client.SendAsync(big.AsMemory(3), SocketFlags.None);
-        await client.SendAsync(Frame(1001, 0), SocketFlags.None);
+        await _client.SendAsync(big.AsMemory(3), SocketFlags.None);
+        await _client.SendAsync(Frame(1001, 0), SocketFlags.None);
         await done.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal(Enumerable.Range(0, 200).Select(i => ((ushort)i, i % 17)), seen.Take(200));
         Assert.Equal(((ushort)1000, 100_000), seen[200]);
         Assert.Equal(((ushort)1001, 0), seen[201]);
-        client.Shutdown(SocketShutdown.Send);
+        _client.Shutdown(SocketShutdown.Send);
         await run.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     [Fact]
     public async Task OversizedFrameIsRefused()
     {
-        await using var channel = new PhonestChannel(server, NullLogger.Instance);
+        await using var channel = new PhonestChannel(_server, NullLogger.Instance);
         var header = new byte[6];
         BinaryPrimitives.WriteInt32LittleEndian(header, 2 * 1024 * 1024);
-        await client.SendAsync(header, SocketFlags.None);
+        await _client.SendAsync(header, SocketFlags.None);
         await Assert.ThrowsAsync<InvalidDataException>(() =>
             channel.RunAsync((_, _, _) => ValueTask.CompletedTask, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5)));
     }
@@ -80,8 +80,8 @@ public sealed class PhonestChannelTests : IAsyncLifetime
     [Fact]
     public async Task ClientThatStopsReadingIsClosedInsteadOfQueuingForever()
     {
-        await using var channel = new PhonestChannel(server, NullLogger.Instance);
-        client.ReceiveBufferSize = 4096;
+        await using var channel = new PhonestChannel(_server, NullLogger.Instance);
+        _client.ReceiveBufferSize = 4096;
         // 32 MB offered to a client that reads nothing: the queue stays bounded and the connection ends.
         for (int i = 0; i < 320; i++)
         {
@@ -95,7 +95,7 @@ public sealed class PhonestChannelTests : IAsyncLifetime
         while (DateTime.UtcNow < until)
         {
             int n;
-            try { n = await client.ReceiveAsync(buf, SocketFlags.None).WaitAsync(TimeSpan.FromSeconds(5)); }
+            try { n = await _client.ReceiveAsync(buf, SocketFlags.None).WaitAsync(TimeSpan.FromSeconds(5)); }
             catch (SocketException) { break; } // a reset is an end too
             if (n == 0) break;
             total += n;

@@ -24,7 +24,7 @@ public sealed partial class PetService
         next.IncubationExp = checked(next.IncubationExp + gain);
         UpdatePower(next);
         byte[] saved = next.ToByteArray();
-        if (!await character.CommitItemActionAsync(use, tx => tx.RoleBlob(s.Role!.Id, "pets", saved), () => s.Pets = next,
+        if (!await _character.CommitItemActionAsync(use, tx => tx.RoleBlob(s.Role!.Id, "pets", saved), () => s.Pets = next,
             new { Exp = gain, StateHash = Convert.ToHexString(SHA256.HashData(saved)) }, kind: "cd13b/pet-room-exp"))
             return ErrorCodes.ItemsShort;
         await AutoRoomLevelAsync(s);

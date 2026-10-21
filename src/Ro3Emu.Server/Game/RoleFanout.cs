@@ -8,15 +8,12 @@ namespace Ro3Emu.Server.Game;
 /// </summary>
 internal static class RoleFanout
 {
-    private static long _skipped;
-    internal static long Skipped => Interlocked.Read(ref _skipped);
-
     internal static async Task EachAsync(IEnumerable<GameSession> sessions, Func<GameSession, Task> work)
     {
         foreach (var session in sessions.ToArray())
         {
             try { await work(session); }
-            catch (OperationCanceledException) { Interlocked.Increment(ref _skipped); }
+            catch (OperationCanceledException) { } // that role reconciles on its next login
         }
     }
 }

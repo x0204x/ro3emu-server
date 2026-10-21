@@ -16,34 +16,34 @@ namespace Ro3Emu.Tests;
 /// <summary>E04 fixed rewards, real role ownership/writer and wire presentation. No load runs.</summary>
 public sealed class KillEconomyTests : IAsyncLifetime
 {
-    private readonly string directory = Path.Combine(RepoRoot(), ".loadtest-temp", "e04-kill-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private readonly string _directory = Path.Combine(RepoRoot(), ".loadtest-temp", "e04-kill-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "";
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private static readonly Lazy<EconomyCatalog> Catalog = new(() => EconomyCatalog.Load(Path.Combine(RepoRoot(), "data")));
     private GameSession Session => Service<SessionRegistry>().All().Single(s => s.Account == "killtest" && s.Role != null);
     private Task OnLoop(Func<Task> action) => Service<GameLoop>().InvokeAsync(action);
     public async Task InitializeAsync()
     {
         var (web, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game;
         });
-        SureHitRolls.Install(app);
-        await app.StartAsync(); http = $"http://127.0.0.1:{web}";
+        SureHitRolls.Install(_app);
+        await _app.StartAsync(); _http = $"http://127.0.0.1:{web}";
     }
     public async Task DisposeAsync()
     {
         Service<AccountStore>().BeforeOwnedCommitForTest = null;
         Service<AccountStore>().BeforeOwnedApplyForTest = null;
-        await app.StopAsync(); await app.DisposeAsync(); SqliteConnection.ClearAllPools();
-        try { Directory.Delete(directory, true); } catch (IOException) { }
+        await _app.StopAsync(); await _app.DisposeAsync(); SqliteConnection.ClearAllPools();
+        try { Directory.Delete(_directory, true); } catch (IOException) { }
     }
     private async Task<BotClient> Enter(bool create = true)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(directory, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_directory, "gate_rsa_public.pem")));
         await bot.LoginAsync("killtest", "pw"); await bot.EnterGateAsync();
         long role = create ? (await bot.CreateRoleAsync("KillTest")).RoleBaseInfo.Id : bot.Roles.Single().Id;
         await bot.EnterWorldAsync(role);
@@ -67,7 +67,7 @@ public sealed class KillEconomyTests : IAsyncLifetime
     };
     private Task Reward(GameSession player, MonsterUnit monster) => Service<CombatService>().Killed
         .Single(h => h.Target == Service<RewardService>())(player, monster);
-    private EconomySnapshot Cut() => S3EconomyReader.Read(directory, Catalog.Value);
+    private EconomySnapshot Cut() => S3EconomyReader.Read(_directory, Catalog.Value);
     private long ReceiptCount()
     {
         using var db = Service<AccountStore>().Open(); using var c = db.CreateCommand();
@@ -79,7 +79,7 @@ public sealed class KillEconomyTests : IAsyncLifetime
     {
         await using var bot = await Enter();
         using (var client = new HttpClient())
-            (await client.PostAsync(http + "/ro3emu/gm?account=killtest", new StringContent("!job 1100"))).EnsureSuccessStatusCode();
+            (await client.PostAsync(_http + "/ro3emu/gm?account=killtest", new StringContent("!job 1100"))).EnsureSuccessStatusCode();
         var player = Session;
         var monster = await Service<GameLoop>().InvokeAsync(async () =>
         {
@@ -123,7 +123,7 @@ public sealed class KillEconomyTests : IAsyncLifetime
     {
         await using var bot = await Enter();
         using (var client = new HttpClient())
-            (await client.PostAsync(http + "/ro3emu/gm?account=killtest", new StringContent("!job 1100"))).EnsureSuccessStatusCode();
+            (await client.PostAsync(_http + "/ro3emu/gm?account=killtest", new StringContent("!job 1100"))).EnsureSuccessStatusCode();
         var player = Session;
         var monster = await Service<GameLoop>().InvokeAsync(async () =>
         {
@@ -170,7 +170,7 @@ public sealed class KillEconomyTests : IAsyncLifetime
         Assert.Equal(23, player.Items.Single(i => i.Entry == 1000000).Stack);
         Assert.Single(player.Items, i => i.Entry == 2010121); // starter weapon, generated loot decomposed
         Assert.Equal(1, ReceiptCount());
-        var closing = Cut(); var ledger = S3EconomyReader.ReadLedger(directory, Catalog.Value, opening, closing)!;
+        var closing = Cut(); var ledger = S3EconomyReader.ReadLedger(_directory, Catalog.Value, opening, closing)!;
         var check = EconomyExactnessChecker.Check(opening, closing, ledger);
         Assert.DoesNotContain(check.Issues, x => x.Kind == EconomyIssueKind.Corruption);
         Assert.All(check.Assets, x => { Assert.Equal("0", x.Residual); Assert.Equal("0", x.LegResidual); });

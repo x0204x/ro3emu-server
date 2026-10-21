@@ -15,34 +15,34 @@ namespace Ro3Emu.Tests;
 /// <summary>C/D13c and E05c: LifeJob state, payment and receipt cross one owned commit boundary.</summary>
 public sealed class LifeJobOwnerEconomyTests : IAsyncLifetime
 {
-    private readonly string directory = Path.Combine(Path.GetTempPath(), "ro3-life-owner-" + Guid.NewGuid().ToString("N"));
-    private readonly ManualClock clock = new(DateTimeOffset.UtcNow);
-    private WebApplication app = null!;
-    private string http = "";
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), "ro3-life-owner-" + Guid.NewGuid().ToString("N"));
+    private readonly ManualClock _clock = new(DateTimeOffset.UtcNow);
+    private WebApplication _app = null!;
+    private string _http = "";
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private GameSession Session(string account) => Service<SessionRegistry>().All().Single(s => s.Account == account && s.Role != null);
 
     public async Task InitializeAsync()
     {
         var (web, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game;
-        }, clock);
-        await app.StartAsync(); http = $"http://127.0.0.1:{web}";
+        }, _clock);
+        await _app.StartAsync(); _http = $"http://127.0.0.1:{web}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         SqliteConnection.ClearAllPools();
-        try { Directory.Delete(directory, true); } catch (IOException) { }
+        try { Directory.Delete(_directory, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> Enter(string account)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(directory, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_directory, "gate_rsa_public.pem")));
         await bot.LoginAsync(account, "pw"); await bot.EnterGateAsync();
         long role = (await bot.CreateRoleAsync(account == "alice" ? "Alice" : "Bob")).RoleBaseInfo.Id;
         await bot.EnterWorldAsync(role); return bot;
@@ -51,7 +51,7 @@ public sealed class LifeJobOwnerEconomyTests : IAsyncLifetime
     private async Task Gm(string account, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync(http + $"/ro3emu/gm?account={account}", new StringContent(command)))
+        (await client.PostAsync(_http + $"/ro3emu/gm?account={account}", new StringContent(command)))
             .EnsureSuccessStatusCode();
     }
 
@@ -60,7 +60,7 @@ public sealed class LifeJobOwnerEconomyTests : IAsyncLifetime
 
     private SqliteConnection OpenDb()
     {
-        var db = new SqliteConnection($"Data Source={Path.Combine(directory, "ro3emu.db")}");
+        var db = new SqliteConnection($"Data Source={Path.Combine(_directory, "ro3emu.db")}");
         db.Open(); return db;
     }
 
@@ -267,7 +267,7 @@ public sealed class LifeJobOwnerEconomyTests : IAsyncLifetime
     {
         var localBefore = DateTime.Today.AddHours(4).AddMinutes(59);
         var beforeCutoff = new DateTimeOffset(localBefore, TimeZoneInfo.Local.GetUtcOffset(localBefore));
-        clock.Set(beforeCutoff);
+        _clock.Set(beforeCutoff);
         await using var alice = await Enter("alice");
         await Gm("alice", "!lvl 34"); await Gm("alice", "!item 1291000 1");
         await alice.SendGameAsync(LifeJobService.SwitchLife,
@@ -307,7 +307,7 @@ public sealed class LifeJobOwnerEconomyTests : IAsyncLifetime
             Assert.Equal(500, session.Restrictions!.RestrictCount[LifeJobService.VigorId].Count);
             Assert.Equal(8, session.Items.Where(i => i.Entry == 1293022).Sum(i => i.Stack));
             Assert.Equal(0, ReceiptCount("cd13c/life-forge"));
-            clock.Set(beforeCutoff.AddMinutes(2));
+            _clock.Set(beforeCutoff.AddMinutes(2));
             await alice.SendGameAsync(CharacterService.ItemUse,
                 new ItemUseReq { ItemGuid = potionGuid, ItemCount = 1 });
             potionReply = Next(alice, CharacterService.ItemUse, ItemUseResp.Parser);
@@ -344,9 +344,9 @@ public sealed class LifeJobOwnerEconomyTests : IAsyncLifetime
 
     private sealed class ManualClock(DateTimeOffset initial) : TimeProvider
     {
-        private long ticks = initial.UtcTicks;
-        public void Set(DateTimeOffset value) => Interlocked.Exchange(ref ticks, value.UtcTicks);
-        public override DateTimeOffset GetUtcNow() => new(Interlocked.Read(ref ticks), TimeSpan.Zero);
+        private long _ticks = initial.UtcTicks;
+        public void Set(DateTimeOffset value) => Interlocked.Exchange(ref _ticks, value.UtcTicks);
+        public override DateTimeOffset GetUtcNow() => new(Interlocked.Read(ref _ticks), TimeSpan.Zero);
     }
 
     private static string RepoRoot()

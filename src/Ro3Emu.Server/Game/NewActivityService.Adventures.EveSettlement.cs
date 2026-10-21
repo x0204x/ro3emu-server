@@ -22,7 +22,7 @@ public sealed partial class NewActivityService
         // Settlement ownership survives a replacement of this service's timer; only attachment/role changes abort it.
         var lease = scheduled is { } due
             ? due with { ScheduleGeneration = 0, Key = null }
-            : deadlines.Capture(session);
+            : _deadlines.Capture(session);
         long roleId = session.Role?.Id ?? 0;
         const long activityId = 117;
         if (session.Role == null || session.NewActivities == null || session.ActivityRuntime == null
@@ -31,16 +31,16 @@ public sealed partial class NewActivityService
             || session.ActivityRuntime.EveSettledCycleStart == info.CycleStartTime) return;
         // EveWriteLeadSeconds makes this unreachable with the shared key unless an operation outlives the lead window;
         // fail before any write rather than at the commit's reservation check.
-        if (loop.Owners is { } owners && !owners.CurrentCovers(EveKey(info.CycleStartTime, writes: true)))
+        if (_loop.Owners is { } owners && !owners.CurrentCovers(EveKey(info.CycleStartTime, writes: true)))
             throw new OperationCanceledException("Season Eve settlement needs the exclusive Eve key; the next admission settles it.");
 
         // No settlement plan has been admitted yet. A role-screen request may cancel this
         // speculative gate wait; once acquired, the complete transaction remains durable.
-        if (!deadlines.IsCurrent(session, lease) || session.Role?.Id != roleId) return;
-        await adventureSocialGate.WaitAsync(session.PendingCharacterIntent);
+        if (!_deadlines.IsCurrent(session, lease) || session.Role?.Id != roleId) return;
+        await _adventureSocialGate.WaitAsync(session.PendingCharacterIntent);
         try
         {
-            if (!deadlines.IsCurrent(session, lease) || session.Role?.Id != roleId) return;
+            if (!_deadlines.IsCurrent(session, lease) || session.Role?.Id != roleId) return;
             var global = ReadEveGlobal(session, activityId);
             AdvanceEveGlobal(session, activityId, global);
             var next = session.NewActivities.Clone();
@@ -53,7 +53,7 @@ public sealed partial class NewActivityService
             if (entered && eve != null)
             {
                 long wishAward = eve.SelectWish > 0
-                    ? data.Row("SeasonEveWishConfig", eve.SelectWish) is { } row
+                    ? _data.Row("SeasonEveWishConfig", eve.SelectWish) is { } row
                         ? GameData.Int(row, "_iRewardId") : 0
                     : EveConstant("SeasonEveNoWishAward");
                 if (wishAward <= 0) throw new InvalidOperationException("Invalid Season Eve wish award.");
@@ -72,9 +72,9 @@ public sealed partial class NewActivityService
                 && type.ActivityState.TryGetValue(activityId, out var reset)) reset.EnterTime = 0;
             byte[] activityBytes = next.ToByteArray();
             byte[] runtimeBytes = JsonSerializer.SerializeToUtf8Bytes(runtime);
-            await mail.DeliverActivityBatchAsync(session, deliveries, tx =>
+            await _mail.DeliverActivityBatchAsync(session, deliveries, tx =>
             {
-                if (!deadlines.IsCurrent(session, lease) || session.Role?.Id != roleId)
+                if (!_deadlines.IsCurrent(session, lease) || session.Role?.Id != roleId)
                     throw new OperationCanceledException("Activity attachment changed before Eve settlement commit.");
                 tx.RoleBlob(roleId, "new_activities", activityBytes);
                 tx.RoleBlob(roleId, "activity_runtime", runtimeBytes);
@@ -98,13 +98,13 @@ public sealed partial class NewActivityService
                 session.ActivityRuntime = runtime;
             });
         }
-        finally { adventureSocialGate.Release(); }
+        finally { _adventureSocialGate.Release(); }
     }
 
     private IReadOnlyList<MailService.Attachment> ResolveEveMailAttachments(GameSession session,
         IReadOnlyList<long> awardGroups)
     {
-        var grants = awardGroups.SelectMany(group => awards.Resolve(session, group, Playbook(session)).Grants).ToArray();
+        var grants = awardGroups.SelectMany(group => _awards.Resolve(session, group, Playbook(session)).Grants).ToArray();
         if (grants.Any(g => g.BindType != 0 || g.ExpireTimeStamp != 0))
             throw new InvalidOperationException("Season Eve mail requires plain configured item rewards.");
         return grants.GroupBy(g => g.Entry)

@@ -16,7 +16,7 @@ public sealed partial class StallsService
     {
         if (!InSeason(row)) return false;
         if (!row.TryGetProperty("_kCond", out var cond) || cond.ValueKind != JsonValueKind.Array) return true;
-        int day = seasons.OpenContent.ServerDayFree ? int.MaxValue : (clock.GetLocalNow().Date - seasons.Start.Date).Days + 1;
+        int day = _seasons.OpenContent.ServerDayFree ? int.MaxValue : (_clock.GetLocalNow().Date - _seasons.Start.Date).Days + 1;
         return cond.EnumerateArray().All(c => Numbers(c) is { Length: 3 } p && p[0] == 1 && p[1] == 1 && day >= p[2]);
     }
 
@@ -28,7 +28,7 @@ public sealed partial class StallsService
     private void PopulateSystems(MarketTransaction tx, IReadOnlySet<long> scenes, List<StallRow> changed)
     {
         if (scenes.Count == 0) return;
-        foreach (var trigger in data.Table("StallSystemTrigger").Values)
+        foreach (var trigger in _data.Table("StallSystemTrigger").Values)
         {
             if (!trigger.TryGetProperty("_kCond", out var cond) || cond.ValueKind != JsonValueKind.Array) continue;
             var location = cond.EnumerateArray().Select(Numbers).FirstOrDefault(p => p.Length == 5 && p[0] == 3 && p[1] == 2 && scenes.Contains(p[2]));
@@ -46,8 +46,8 @@ public sealed partial class StallsService
                             EconomyCompartment.Stall, new(EconomyOwnerKind.System, id.ToString(CultureInfo.InvariantCulture)));
                 row = new StallRow
                 {
-                    Key = SystemKey(id), SystemId = id, Scene = location[2], Title = data.ClientText(Param("StallsSystemDefaultName", 181000)),
-                    OwnerName = data.ClientText(Param("StallsSystemDefaultRoleName", 182000)), Career = (int)Field(trigger, "_kJob").FirstOrDefault(1000),
+                    Key = SystemKey(id), SystemId = id, Scene = location[2], Title = _data.ClientText(Param("StallsSystemDefaultName", 181000)),
+                    OwnerName = _data.ClientText(Param("StallsSystemDefaultRoleName", 182000)), Career = (int)Field(trigger, "_kJob").FirstOrDefault(1000),
                     Level = (int)Field(trigger, "_kLevel").FirstOrDefault(1), Sex = 1,
                     X = location[3], Z = location[4], OpenTime = Now, Timeout = Now + Param("StallsSystemTime", 259200),
                     MaxGrid = goods.Length, RestockTime = Now + Param("StallsSystemRestockCD", 600),
@@ -57,7 +57,7 @@ public sealed partial class StallsService
             bool touched = fresh;
             foreach (long entry in goods)
             {
-                if (data.Row("StallSystemItem", entry) is not { } config || !SystemItemAvailable(config)) continue;
+                if (_data.Row("StallSystemItem", entry) is not { } config || !SystemItemAvailable(config)) continue;
                 var stock = row!.Stock.FirstOrDefault(i => i.SystemConfig == entry);
                 var price = Field(config, "_kPrice");
                 var first = Field(config, "_iTakeFirst");
@@ -65,7 +65,7 @@ public sealed partial class StallsService
                 if (stock == null)
                 {
                     int itemId = (int)GameData.Int(config, "_iItemID");
-                    if (data.Row("ItemConfig", itemId) is not { } item) continue;
+                    if (_data.Row("ItemConfig", itemId) is not { } item) continue;
                     var bind = Field(config, "_kIsBindGive");
                     // These 54 catalogue rows are consumables/materials. Real per-instance metadata is persisted.
                     stock = new StallItem
@@ -110,22 +110,22 @@ public sealed partial class StallsService
 
     /// <summary>Ask the realm maintenance to keep this session's scene populated (login and scene load, C/D 15). Visited
     /// scenes stay in the set: the maintenance also replaces their expired system stalls and restocks them.</summary>
-    internal bool RequestScene(GameSession s) => s.InstanceId == 0 && s.SceneEntry > 0 && maintenanceScenes.Add(s.SceneEntry);
+    internal bool RequestScene(GameSession s) => s.InstanceId == 0 && s.SceneEntry > 0 && _maintenanceScenes.Add(s.SceneEntry);
 
     private void PopulateFirstVisit(GameSession s)
     {
-        if (RequestScene(s)) loop.TrackRuntimeDetached("stall first visit", RefreshWorldMaintenanceAsync);
+        if (RequestScene(s)) _loop.TrackRuntimeDetached("stall first visit", RefreshWorldMaintenanceAsync);
     }
 
     /// <summary>Use captured scene values only; timed settlement belongs to its own owner plan.</summary>
-    internal Task RefreshWorldMaintenanceAsync() => RefreshWorldCoreAsync(new HashSet<long>(maintenanceScenes));
+    internal Task RefreshWorldMaintenanceAsync() => RefreshWorldCoreAsync(new HashSet<long>(_maintenanceScenes));
 
     private async Task RefreshWorldCoreAsync(IReadOnlySet<long> sceneEntries)
     {
         var changed = new List<StallRow>();
         var restore = new List<StallRow>();
         var pins = new List<StallRow>();
-        int code = await market.RunMaintenanceAsync(tx =>
+        int code = await _market.RunMaintenanceAsync(tx =>
         {
             changed.Clear();
             restore.Clear();
@@ -150,31 +150,31 @@ public sealed partial class StallsService
                         row.TaxRate = meta.CurTax.Key;
                         Save(tx, row, meta); changed.Add(row);
                     }
-                    else if (activeLines.Contains(Ro3Emu.Server.Maps.RuntimeMapKey.Public(row.Scene, row.LineNumber))
-                        && !actors.ContainsKey((row.Key, row.LineNumber))) restore.Add(row);
+                    else if (_activeLines.Contains(Ro3Emu.Server.Maps.RuntimeMapKey.Public(row.Scene, row.LineNumber))
+                        && !_actors.ContainsKey((row.Key, row.LineNumber))) restore.Add(row);
                 }
             }
             PopulateSystems(tx, sceneEntries, changed);
             foreach (var row in tx.All<StallRow>(Kind).Where(r => r.SystemId > 0 && r.Timeout > Now))
-                if (activeLines.Any(line => line.SceneEntry == row.Scene && !actors.ContainsKey((row.Key, line.LineNumber)))
+                if (_activeLines.Any(line => line.SceneEntry == row.Scene && !_actors.ContainsKey((row.Key, line.LineNumber)))
                     && changed.All(r => r.Key != row.Key)) restore.Add(row);
             return 0;
         });
         if (code != 0) return;
         foreach (var row in pins)
         {
-            if (!lines.RestorePinnedLine(row.Scene, row.LineNumber))
+            if (!_lines.RestorePinnedLine(row.Scene, row.LineNumber))
                 throw new InvalidOperationException($"Cannot restore active player stall {row.Key} on line {row.LineNumber} of {row.Scene}.");
             ActivateLine(Ro3Emu.Server.Maps.RuntimeMapKey.Public(row.Scene, row.LineNumber));
             Pin(row);
-            if (!actors.ContainsKey((row.Key, row.LineNumber)) && restore.All(x => x.Key != row.Key)) restore.Add(row);
+            if (!_actors.ContainsKey((row.Key, row.LineNumber)) && restore.All(x => x.Key != row.Key)) restore.Add(row);
         }
         foreach (var row in restore) await PublishAsync(row, notify: false);
         foreach (var row in changed) await PublishAsync(row);
-        foreach (var actor in actors.Values.Where(a => a.Row.SystemId > 0 && a.Row.Timeout <= Now).ToList())
+        foreach (var actor in _actors.Values.Where(a => a.Row.SystemId > 0 && a.Row.Timeout <= Now).ToList())
         {
-            actors.Remove((actor.Row.Key, actor.RuntimeMap.LineNumber));
-            await world.RemoveUnitAsync(actor);
+            _actors.Remove((actor.Row.Key, actor.RuntimeMap.LineNumber));
+            await _world.RemoveUnitAsync(actor);
         }
     }
 
@@ -183,8 +183,8 @@ public sealed partial class StallsService
         try
         {
             await RefreshWorldMaintenanceAsync();
-            await trade.TickMaintenanceAsync();
+            await _trade.TickMaintenanceAsync();
         }
-        finally { loop.ScheduleRuntime(TimeSpan.FromSeconds(1), MaintainAsync); }
+        finally { _loop.ScheduleRuntime(TimeSpan.FromSeconds(1), MaintainAsync); }
     }
 }

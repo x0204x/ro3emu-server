@@ -27,8 +27,8 @@ public static partial class EconomySnapshotReader
                 {
                     long role = SqlLong(r, 0);
                     if (role <= 0) throw new FormatException("Invalid role id.");
-                    roles.Add(role);
-                    unknownRoleDeletion.Add(role); // Quarantine until a valid deletion state has been read.
+                    _roles.Add(role);
+                    _unknownRoleDeletion.Add(role); // Quarantine until a valid deletion state has been read.
                     Measure("role", 0);
                     for (int i = 1; i < r.FieldCount; i++)
                     {
@@ -40,8 +40,8 @@ public static partial class EconomySnapshotReader
                             {
                                 long deletedTime = SqlLong(r, i);
                                 if (deletedTime < 0) throw new FormatException("Negative role deletion time.");
-                                if (deletedTime > 0) deletedRoles.Add(role);
-                                unknownRoleDeletion.Remove(role);
+                                if (deletedTime > 0) _deletedRoles.Add(role);
+                                _unknownRoleDeletion.Remove(role);
                             });
                             continue;
                         }
@@ -256,9 +256,9 @@ public static partial class EconomySnapshotReader
                 Fields(letter, "Id Category CreatedTime RemoveTime Title Content Abstract Sender SenderId TemplateId ImportantType DeliveryKey SourceKey ContentParams Read Claimed Attachments Items Currency");
                 string id = String(letter, "Id", "index-" + index++);
                 string path = key + "/" + id;
-                mailDeliveryKeys.Add(role + "/" + id); // Legacy migration preserves row id, even after claim.
+                _mailDeliveryKeys.Add(role + "/" + id); // Legacy migration preserves row id, even after claim.
                 string delivery = String(letter, "DeliveryKey", String(letter, "SourceKey"));
-                if (delivery.Length > 0) mailDeliveryKeys.Add(role + "/" + delivery);
+                if (delivery.Length > 0) _mailDeliveryKeys.Add(role + "/" + delivery);
                 if (Bool(letter, "Claimed")) continue;
                 var owner = Role(role, key);
                 if (Try(letter, "Attachments", out var attachments))
@@ -387,7 +387,7 @@ public static partial class EconomySnapshotReader
                                     foreach (var p in Properties(legacyCurrency))
                                         Currency(long.Parse(p.Name, CultureInfo.InvariantCulture), p.Value.GetInt64(), receiver,
                                             EconomyCompartment.LegacyMail, key + "/currency-" + p.Name);
-                                if (mailDeliveryKeys.Contains(recipient + "/" + effectiveId))
+                                if (_mailDeliveryKeys.Contains(recipient + "/" + effectiveId))
                                     Issue(EconomyIssueKind.Corruption, key, "Legacy row appears already migrated to canonical mailbox.");
                                 break;
                             case "trade_history":

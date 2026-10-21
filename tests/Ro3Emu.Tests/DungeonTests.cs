@@ -25,42 +25,42 @@ public sealed partial class DungeonTests : IAsyncLifetime
     private const int Multi = 50101, Boss = 4300001;
     private const long Scene = 3120401;
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(15);
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-dungeons-" + Guid.NewGuid().ToString("N"));
-    private readonly ManualClock clock = new(new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.FromHours(2)));
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-dungeons-" + Guid.NewGuid().ToString("N"));
+    private readonly ManualClock _clock = new(new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.FromHours(2)));
+    private WebApplication _app = null!;
+    private string _http = "";
 
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private Task OnLoop(Func<Task> work) => Service<GameLoop>().InvokeAsync(work);
 
     public async Task InitializeAsync()
     {
         var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir;
+            o.DataDir = _dataDir;
             o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.SeasonStart = "2026-10-08";
             o.HttpPort = httpPort;
             o.MicroGatePort = microPort;
             o.GameGatePort = gamePort;
-        }, clock);
-        SureHitRolls.Install(app); // lethal hits are prepared; a FLEE miss would only be noise
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{httpPort}";
+        }, _clock);
+        SureHitRolls.Install(_app); // lethal hits are prepared; a FLEE miss would only be noise
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{httpPort}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw");
         await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
@@ -78,7 +78,7 @@ public sealed partial class DungeonTests : IAsyncLifetime
     private async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     private GameSession Session(BotClient bot) => Service<SessionRegistry>().All()
@@ -452,7 +452,7 @@ public sealed partial class DungeonTests : IAsyncLifetime
         long instance = await Load(alice, pointScene);
         var boss = await BossIn(instance, 5300001);
         Assert.Equal((271.16f, 138.13f), (boss.Home.X, boss.Home.Z));
-        long reviveAt = clock.GetUtcNow().ToUnixTimeSeconds() + 5;
+        long reviveAt = _clock.GetUtcNow().ToUnixTimeSeconds() + 5;
         await OnLoop(async () =>
         {
             var dead = Session(alice);
@@ -466,7 +466,7 @@ public sealed partial class DungeonTests : IAsyncLifetime
         await alice.SendGameAsync(CombatService.Relive, new EntityReliveReq());
         Assert.Equal(ErrorCodes.FeatureUnavailable,
             (await Next(alice, CombatService.Relive, EntityReliveAck.Parser)).Result);
-        clock.Advance(TimeSpan.FromSeconds(5));
+        _clock.Advance(TimeSpan.FromSeconds(5));
         await alice.SendGameAsync(CombatService.Relive, new EntityReliveReq());
         Assert.Equal(0, (await Next(alice, CombatService.Relive, EntityReliveAck.Parser)).Result);
         Assert.False(Session(alice).Dead);
@@ -541,8 +541,8 @@ public sealed partial class DungeonTests : IAsyncLifetime
         Assert.Equal(0, await Enter(alice));
         long instance = await Load(alice);
         var boss = await BossIn(instance);
-        clock.Advance(TimeSpan.FromDays(300));
-        string advanced = Service<SeasonService>().AdvanceCycle(101, clock.GetLocalNow().Date);
+        _clock.Advance(TimeSpan.FromDays(300));
+        string advanced = Service<SeasonService>().AdvanceCycle(101, _clock.GetLocalNow().Date);
         Assert.StartsWith("Season 2", advanced);
         Assert.Equal(1, Session(alice).SeasonState!.SeasonId); // old login remains on its captured cycle
         await Kill(alice, boss);
@@ -568,7 +568,7 @@ public sealed partial class DungeonTests : IAsyncLifetime
         string original = Service<GameData>().Row("DungeonConfig", story)!.Value
             .GetProperty("_kResSceneEditorName").GetString()!;
         string source = Path.Combine(RepoRoot(), "data", "sceneeditor", original + ".json");
-        string directory = Path.Combine(dataDir, "sceneeditor");
+        string directory = Path.Combine(_dataDir, "sceneeditor");
         Directory.CreateDirectory(directory);
         string stem = Path.Combine(directory, "synthetic_1054001");
         var editor = JsonNode.Parse(File.ReadAllText(source))!.AsObject();
@@ -656,10 +656,10 @@ public sealed partial class DungeonTests : IAsyncLifetime
         Assert.Equal(180000, Currency(alice, 2));
         Assert.Equal(200, Items(alice, 1250900));
 
-        clock.Advance(TimeSpan.FromDays(1));
+        _clock.Advance(TimeSpan.FromDays(1));
         await OnLoop(() => Service<DungeonService>().SyncAsync(Session(alice)));
         Assert.Equal(1, Session(alice).Dungeons!.Allowances["50101:101:1"].Remaining);
-        clock.Advance(TimeSpan.FromDays(10));
+        _clock.Advance(TimeSpan.FromDays(10));
         await OnLoop(() => Service<DungeonService>().SyncAsync(Session(alice)));
         Assert.Equal(2, Session(alice).Dungeons!.Allowances["50101:101:1"].Remaining);
         var saved = JsonSerializer.Deserialize<DungeonService.State>(Service<RoleStore>().LoadDungeons((long)alice.Self!.Uuid)!)!;

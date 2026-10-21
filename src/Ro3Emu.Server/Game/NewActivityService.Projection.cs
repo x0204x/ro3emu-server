@@ -30,7 +30,7 @@ public sealed partial class NewActivityService
                 foreach (var node in exploration.PhaseInfos.Values.SelectMany(p => p.NodeInfos.Values))
                     if (node.Items.Count == 0) { node.Items[0] = 0; changed = true; }
             if (changed) await CharacterService.SyncAsync(session, ActivitySync, wire);
-            if (!deadlines.IsCurrent(session, lease)) return;
+            if (!_deadlines.IsCurrent(session, lease)) return;
         }
         await CharacterService.SyncAsync(session, ActivitySync, state);
     }
@@ -38,7 +38,7 @@ public sealed partial class NewActivityService
     /// <summary>Compatibility endpoints in msgtable; the current sender uses the result-bearing 82976 envelope.</summary>
     public async Task LevelAwardAsync(GameSession session, GetThreeDayLevelAwardReq req)
     {
-        var ownerScope = loop.Owners != null ? await EnterLocalWithGateAsync(session, "activity/level-award") : null;
+        var ownerScope = _loop.Owners != null ? await EnterLocalWithGateAsync(session, "activity/level-award") : null;
         if (ownerScope == null) await session.ActivityGate.WaitAsync();
         try
         {
@@ -51,7 +51,7 @@ public sealed partial class NewActivityService
 
     public async Task FunctionPreviewAsync(GameSession session, GetThreeDayFunctionPreviewAwardReq req)
     {
-        var ownerScope = loop.Owners != null ? await EnterLocalWithGateAsync(session, "activity/function-preview") : null;
+        var ownerScope = _loop.Owners != null ? await EnterLocalWithGateAsync(session, "activity/function-preview") : null;
         if (ownerScope == null) await session.ActivityGate.WaitAsync();
         try
         {

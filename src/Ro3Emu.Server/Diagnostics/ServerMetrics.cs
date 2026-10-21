@@ -126,13 +126,13 @@ public sealed class ServerMetrics : IDisposable
     }
     public DatabaseOpenMeasurement MeasureDatabaseOpen() => new(this);
 
-    public object Snapshot(SessionRegistry? registry = null, PublicLineManager? publicLines = null)
+    public object Snapshot(SessionCensus.Snapshot? census = null, PublicLineManager? publicLines = null)
     {
         var e = Current;
         double elapsed = Stopwatch.GetElapsedTime(e.StartedAt).TotalSeconds;
         var tick = e.TickDurationMs.Snapshot();
         using var process = Process.GetCurrentProcess();
-        var sessions = registry?.All() ?? [];
+        census ??= SessionCensus.Snapshot.Empty;
         var connections = _connections.Values.ToArray();
         var operations = e.Database.ToDictionary(x => x.Key, x => new
         {
@@ -146,7 +146,7 @@ public sealed class ServerMetrics : IDisposable
         return new
         {
             schemaVersion = 1, epoch = e.Id, capturedUtc = DateTimeOffset.UtcNow, elapsedSeconds = elapsed,
-            semantics = "Cumulative epoch counters; database.routedAccess is cumulative for the AccountStore lifetime and requires start/end subtraction. Histogram buckets are disjoint upper bounds; snapshots are weakly consistent. Wire replies cover the first same-id response on the originating connection, after a full socket send. Egress gauges include the frame currently being sent and are lifetime gauges. DB commitStatementMs includes the statement causing an implicit commit, not only fsync. Sessions are approximate concurrent gauges.",
+            semantics = "Cumulative epoch counters; database.routedAccess is cumulative for the AccountStore lifetime and requires start/end subtraction. Histogram buckets are disjoint upper bounds; snapshots are weakly consistent. Wire replies cover the first same-id response on the originating connection, after a full socket send. Egress gauges include the frame currently being sent and are lifetime gauges. DB commitStatementMs includes the statement causing an implicit commit, not only fsync. Sessions are the game loop's census, taken once a second (sessions.capturedUtc).",
             loop = new
             {
                 lifecycle = new
@@ -200,16 +200,16 @@ public sealed class ServerMetrics : IDisposable
             ownership = Owners?.Snapshot(),
             sessions = new
             {
-                login = sessions.Count(s => s.Role == null), loading = sessions.Count(s => s.Role != null && s.SceneLoading),
-                inWorld = sessions.Count(s => s.Role != null && !s.SceneLoading),
-                byMap = sessions.Where(s => s.Role != null).Select(s => new { map = s.RuntimeMap, loading = s.SceneLoading })
-                    .GroupBy(s => s.map).Select(g => new
-                    {
-                        map = g.Key.SceneEntry, line = g.Key.LineNumber,
-                        kind = g.Key.Kind.ToString(), runtimeId = g.Key.Id, sceneId = g.Key.WorldScene,
-                        count = g.Count(), loading = g.Count(s => s.loading)
-                    }).ToArray(),
-                publicLines = publicLines == null ? null : sessions.Where(s => s.Role != null).Select(s => s.SceneEntry)
+                capturedUtc = census.CapturedUtc,
+                login = census.Login, loading = census.Roles.Count(s => s.Loading),
+                inWorld = census.Roles.Count(s => !s.Loading),
+                byMap = census.Roles.GroupBy(s => s.Map).Select(g => new
+                {
+                    map = g.Key.SceneEntry, line = g.Key.LineNumber,
+                    kind = g.Key.Kind.ToString(), runtimeId = g.Key.Id, sceneId = g.Key.WorldScene,
+                    count = g.Count(), loading = g.Count(s => s.Loading)
+                }).ToArray(),
+                publicLines = publicLines == null ? null : census.Roles.Select(s => s.Map.SceneEntry)
                     .Distinct().SelectMany(publicLines.Snapshot).Select(l => new
                     {
                         map = l.Map.SceneEntry,

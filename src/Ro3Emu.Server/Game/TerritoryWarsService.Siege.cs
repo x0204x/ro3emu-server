@@ -13,9 +13,9 @@ public sealed partial class TerritoryWarsService
     public const uint SiegeToolPrepay = 32270, SiegeToolBuild = 32271, SiegeToolCancel = 32272,
         SiegeToolAdd = 32275, SiegeVehicleUse = 32281;
     private const int SiegeActivity = 115;
-    private bool? siegeTestOpen;
-    private long siegeTestStart;
-    private long siegeTestClosedUntil;
+    private bool? _siegeTestOpen;
+    private long _siegeTestStart;
+    private long _siegeTestClosedUntil;
 
     /// <summary>
     /// DailyActivityConfig[115] gives the local weekly occurrence (Wednesday 20:30-21:30 in the 7 Oct 2026 client, Saturday 21:30-22:30 in the 16 Oct one). The GM override is
@@ -23,19 +23,19 @@ public sealed partial class TerritoryWarsService
     /// </summary>
     private TimedTodoSchedule.Occurrence? SiegeWindow()
     {
-        if (siegeTestOpen == true)
+        if (_siegeTestOpen == true)
         {
-            if (clock.Now < siegeTestStart + 3600) return new(siegeTestStart, siegeTestStart + 3600);
-            siegeTestOpen = null;
+            if (_clock.Now < _siegeTestStart + 3600) return new(_siegeTestStart, _siegeTestStart + 3600);
+            _siegeTestOpen = null;
         }
-        if (siegeTestOpen == false && clock.Now >= siegeTestClosedUntil) siegeTestOpen = null;
-        var scheduled = siegeSchedule.CurrentOrNext(SiegeActivity);
-        return siegeTestOpen == false && scheduled?.Contains(clock.Now) == true
-            ? siegeSchedule.CurrentOrNext(SiegeActivity, scheduled.End) : scheduled;
+        if (_siegeTestOpen == false && _clock.Now >= _siegeTestClosedUntil) _siegeTestOpen = null;
+        var scheduled = _siegeSchedule.CurrentOrNext(SiegeActivity);
+        return _siegeTestOpen == false && scheduled?.Contains(_clock.Now) == true
+            ? _siegeSchedule.CurrentOrNext(SiegeActivity, scheduled.End) : scheduled;
     }
 
     private SiegeCityActivityState SiegeActivityState(TimedTodoSchedule.Occurrence? window)
-        => window?.Contains(clock.Now) == true ? SiegeCityActivityState.Fighting : SiegeCityActivityState.NotOpen;
+        => window?.Contains(_clock.Now) == true ? SiegeCityActivityState.Fighting : SiegeCityActivityState.NotOpen;
 
     /// <summary>
     /// (inferred) The sole exported Territory Wars root is SiegeConfig area 1. Its sorted three capitals
@@ -58,13 +58,13 @@ public sealed partial class TerritoryWarsService
         int zone = SiegeZone(city);
         if (zone == 0) return (0, 0);
         long defense = OwnerOf(zone);
-        if (defense == 0 || guildStore.Get(defense) == null) return (0, 0);
+        if (defense == 0 || _guildStore.Get(defense) == null) return (0, 0);
         int round = ZoneType(zone) == 1 ? 3 : 2;
         var battle = state.Battles.GetValueOrDefault(BattleKey(round, zone));
         // (inferred) A live, recorded Territory challenger with the highest observed score attacks;
         // a tie resolves by stable guild id. No test aid creates guild qualifications.
         long attack = QualifiedFor(zone, round).Concat(battle?.Guilds ?? [])
-            .Distinct().Where(id => id != defense && guildStore.Get(id) != null)
+            .Distinct().Where(id => id != defense && _guildStore.Get(id) != null)
             .OrderByDescending(id => battle?.Scores.GetValueOrDefault(id) ?? 0).ThenBy(id => id).FirstOrDefault();
         return (attack, defense);
     }
@@ -74,7 +74,7 @@ public sealed partial class TerritoryWarsService
     {
         var window = SiegeWindow();
         var info = new SiegeBaseInfoNtf();
-        foreach (var row in data.Table("SiegeConfig").Values.OrderBy(r => GameData.Int(r, "_iID")))
+        foreach (var row in _data.Table("SiegeConfig").Values.OrderBy(r => GameData.Int(r, "_iID")))
         {
             int id = (int)GameData.Int(row, "_iID");
             var city = new SiegeCityBattleInfo
@@ -97,8 +97,8 @@ public sealed partial class TerritoryWarsService
             }
             else
             {
-                if (attack > 0 && guildStore.Get(attack) is { } attacker) city.AttackGuildInfo = SiegeSnapshot(attacker);
-                if (defense > 0 && guildStore.Get(defense) is { } defender) city.DefenseGuildInfo = SiegeSnapshot(defender);
+                if (attack > 0 && _guildStore.Get(attack) is { } attacker) city.AttackGuildInfo = SiegeSnapshot(attacker);
+                if (defense > 0 && _guildStore.Get(defense) is { } defender) city.DefenseGuildInfo = SiegeSnapshot(defender);
             }
             info.BattleInfos[id] = city;
         }
@@ -121,7 +121,7 @@ public sealed partial class TerritoryWarsService
 
     private GuildSnapInfo SiegeSnapshot(GuildStore.State guild)
     {
-        var snap = guilds.Snapshot(guild);
+        var snap = _guilds.Snapshot(guild);
         // GuildPositionConfig[4] is Commander; the Siege panel has a distinct strategist label.
         snap.StrategistName = guild.Members.Values.FirstOrDefault(m => m.Official == 4)?.Name ?? "";
         return snap;
@@ -138,7 +138,7 @@ public sealed partial class TerritoryWarsService
     {
         var ids = req.CityIds.Count > 0 ? req.CityIds.Distinct().ToArray() : req.CityId > 0 ? [req.CityId] : [];
         var response = new SiegeCityHistoryInfoResp { CityId = req.CityId };
-        if (ids.Length == 0 || ids.Length > 40 || ids.Any(id => data.Row("SiegeConfig", id) == null))
+        if (ids.Length == 0 || ids.Length > 40 || ids.Any(id => _data.Row("SiegeConfig", id) == null))
             response.Result = ErrorCodes.Parameter;
         else foreach (int id in ids)
             if (state.SiegeHistory.TryGetValue(id, out var history))
@@ -178,12 +178,12 @@ public sealed partial class TerritoryWarsService
         // A realm change goes to everyone; a session whose guild changed (or that has not had the panel yet) gets
         // it alone. Each login used to change one shared token and resend the panel, with DB reads, to every
         // online role: O(N^2) during a login storm.
-        bool realm = token != siegePublishedState;
-        siegePublishedState = token;
-        await RoleFanout.EachAsync(sessions.All().Where(s => s.Role != null && s.TerritoryWars != null), async s =>
+        bool realm = token != _siegePublishedState;
+        _siegePublishedState = token;
+        await RoleFanout.EachAsync(_sessions.All().Where(s => s.Role != null && s.TerritoryWars != null), async s =>
         {
             long guild = s.Guild?.GuildId ?? 0;
-            var last = siegePublishedGuild.GetValue(s, static _ => new(long.MinValue));
+            var last = _siegePublishedGuild.GetValue(s, static _ => new(long.MinValue));
             if (!realm && last.Value == guild) return;
             try
             {
@@ -194,7 +194,7 @@ public sealed partial class TerritoryWarsService
                 last.Value = guild;
             }
             catch (Exception e) when (e is IOException or ObjectDisposedException or System.Net.Sockets.SocketException)
-            { log.LogDebug(e, "Siege panel delivery deferred for disconnected role {Role}", s.Role?.Id); }
+            { _log.LogDebug(e, "Siege panel delivery deferred for disconnected role {Role}", s.Role?.Id); }
         });
     }
 
@@ -219,7 +219,7 @@ public sealed partial class TerritoryWarsService
                     int city = int.Parse(args[1]), zone = SiegeZone(city);
                     long attack = long.Parse(args[2]), defense = long.Parse(args[3]);
                     if (zone == 0) throw new ArgumentException($"no siege zone for city {city}");
-                    if (attack == defense || guildStore.Get(attack) == null || guildStore.Get(defense) == null)
+                    if (attack == defense || _guildStore.Get(attack) == null || _guildStore.Get(defense) == null)
                         throw new ArgumentException("two different existing guilds");
                     int round = ZoneType(zone) == 1 ? 3 : 2;
                     state.Owners[zone] = defense;
@@ -234,24 +234,24 @@ public sealed partial class TerritoryWarsService
                     // Reuse an active natural or test occurrence. Opening mid-window must not
                     // mint a second run key, settlement or reward stream for the same city.
                     var activeWindow = SiegeWindow();
-                    siegeTestStart = activeWindow?.Contains(clock.Now) == true ? activeWindow.Start : clock.Now;
-                    siegeTestOpen = true;
+                    _siegeTestStart = activeWindow?.Contains(_clock.Now) == true ? activeWindow.Start : _clock.Now;
+                    _siegeTestOpen = true;
                     break;
                 case "close":
                     var closingWindow = SiegeWindow();
-                    siegeTestClosedUntil = closingWindow?.Contains(clock.Now) == true ? closingWindow.End : clock.Now + 1;
-                    siegeTestOpen = false;
+                    _siegeTestClosedUntil = closingWindow?.Contains(_clock.Now) == true ? closingWindow.End : _clock.Now + 1;
+                    _siegeTestOpen = false;
                     foreach (var key in state.SiegeRuns.Where(x => !x.Value.Settled).Select(x => x.Key).ToArray())
                         await SiegeSettleAsync(key, state.SiegeRuns[key].Defense);
                     break;
             }
             await PublishSiegeIfChangedAsync();
             var window = SiegeWindow();
-            return $"Siege TEST AID: {SiegeActivityState(window)}; window {window?.Start ?? 0}-{window?.End ?? 0}; cities {data.Table("SiegeConfig").Count}. Override is in memory only.";
+            return $"Siege TEST AID: {SiegeActivityState(window)}; window {window?.Start ?? 0}-{window?.End ?? 0}; cities {_data.Table("SiegeConfig").Count}. Override is in memory only.";
         }
         finally
         {
-            stagedTerritoryState.Dispose(); gate.Release(); reservation?.Dispose();
+            stagedTerritoryState.Dispose(); _gate.Release(); reservation?.Dispose();
             await FlushActivityAsync();
         }
     }

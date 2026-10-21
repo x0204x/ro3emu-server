@@ -26,20 +26,20 @@ public sealed class CareerSpecialService
     public const int ErrNotLeased = 1107, ErrCartNotEmpty = 1111;
     private const int Function = 16, PendantType = 1, MountType = 2, CartSubType = 1, CartPack = 100, BattleSlotKey = 2;
 
-    private readonly GameData data;
-    private readonly CharacterService character;
-    private readonly SkillService skills;
-    private readonly FunctionService functions;
-    private readonly MountService mounts;
-    private readonly RoleStore roles;
-    private readonly World world;
-    private readonly GameLoop loop;
+    private readonly GameData _data;
+    private readonly CharacterService _character;
+    private readonly SkillService _skills;
+    private readonly FunctionService _functions;
+    private readonly MountService _mounts;
+    private readonly RoleStore _roles;
+    private readonly World _world;
+    private readonly GameLoop _loop;
 
     public CareerSpecialService(GameData data, CharacterService character, SkillService skills, FunctionService functions,
         MountService mounts, RoleStore roles, World world, GameLoop loop)
     {
-        this.data = data; this.character = character; this.skills = skills; this.functions = functions;
-        this.mounts = mounts; this.roles = roles; this.world = world; this.loop = loop;
+        this._data = data; this._character = character; this._skills = skills; this._functions = functions;
+        this._mounts = mounts; this._roles = roles; this._world = world; this._loop = loop;
         // A job change can leave a lease the new career may not hold (GM !job, or a line without the item; inferred).
         character.JobChanged.Add(ReconcileAsync);
     }
@@ -63,10 +63,10 @@ public sealed class CareerSpecialService
     /// <summary>Before MountService.Load: its battle slot entitlement reads the lease.</summary>
     public void Load(GameSession s)
     {
-        var bytes = roles.LoadCareerSpecial(s.Role!.Id);
+        var bytes = _roles.LoadCareerSpecial(s.Role!.Id);
         var info = bytes is { Length: > 0 } ? DBCareerSpecial.Parser.ParseFrom(bytes) : new DBCareerSpecial();
         Shape(info);
-        if (Repair(s, info)) roles.SaveCareerSpecial(s.Role.Id, info.ToByteArray());
+        if (Repair(s, info)) _roles.SaveCareerSpecial(s.Role.Id, info.ToByteArray());
         s.CareerSpecial = info;
         s.CareerPendants = Pendants(info);
     }
@@ -81,11 +81,11 @@ public sealed class CareerSpecialService
         info.MountsSlot ??= new DBCareerSpecialMountsSlot();
     }
 
-    private JsonElement? Row(long id) => id == 0 ? null : data.Row("CartRemouldTable", id);
+    private JsonElement? Row(long id) => id == 0 ? null : _data.Row("CartRemouldTable", id);
 
     private int[] Pendants(DBCareerSpecial info) => new[] { info.PendantSlot.CartRemouldCfg, info.MountsSlot.CartRemouldCfg }
         .Select(id => Row(id) is { } row ? (int)GameData.Int(row, "_iPendantId") : 0)
-        .Where(p => p != 0 && data.Row("PendantConfig", p) != null).Distinct().ToArray();
+        .Where(p => p != 0 && _data.Row("PendantConfig", p) != null).Distinct().ToArray();
 
     /// <summary>Who may lease: LC_EquipmentHelper.CanWearProfessionItem, plus the unused _iTaskId (error 1104).</summary>
     private int Entitlement(GameSession s, JsonElement? found)
@@ -98,8 +98,8 @@ public sealed class CareerSpecialService
         if (p.Level < GameData.Int(row, "_iUnlockBaseLv")) return ErrLevel;
         if (GameData.Int(row, "_iTaskId") is var task and > 0 && !TaskService.IsDelivered(s, task)) return ErrQuest;
         long skill = GameData.Int(row, "_kUnlockSkillID");
-        if (skill > 0 && (data.Row("SkillConfig", skill) is not { } config
-            || skills.Level(p, (int)GameData.Int(config, "_iSkillID")) <= 0)) return ErrSkill;
+        if (skill > 0 && (_data.Row("SkillConfig", skill) is not { } config
+            || _skills.Level(p, (int)GameData.Int(config, "_iSkillID")) <= 0)) return ErrSkill;
         return 0;
     }
 
@@ -131,7 +131,7 @@ public sealed class CareerSpecialService
         int type = row is { } r ? (int)GameData.Int(r, "_iType") : 0;
         int result = s.CareerSpecial == null ? ErrorCodes.FeatureUnavailable
             : row == null || type is not (PendantType or MountType) ? ErrMissing
-            : !functions.IsOpen(s, Function) ? ErrorCodes.FunctionLocked
+            : !_functions.IsOpen(s, Function) ? ErrorCodes.FunctionLocked
             : Entitlement(s, row);
         long previous = result != 0 ? 0 : type == PendantType ? s.CareerSpecial!.PendantSlot.CartRemouldCfg : s.CareerSpecial!.MountsSlot.CartRemouldCfg;
         // Trading the cart for a non-cart would strand pack 100 (the client's own 23034 rule, inferred for a swap).
@@ -191,17 +191,17 @@ public sealed class CareerSpecialService
 
     private async Task CommitAsync(GameSession s, DBCareerSpecial next, string action, DBMountsInfo? nextMounts)
     {
-        var tx = roles.NewTransaction();
+        var tx = _roles.NewTransaction();
         tx.ItemDelta(s.Role!.Id, s.Items, s.Items);
         tx.RoleBlob(s.Role.Id, "career_special", next.ToByteArray());
-        if (nextMounts != null) tx.RoleBlob(s.Role.Id, "mounts", mounts.EncodeBlob(s, nextMounts));
+        if (nextMounts != null) tx.RoleBlob(s.Role.Id, "mounts", _mounts.EncodeBlob(s, nextMounts));
         // Free and itemless: an empty family receipt (as MountService's own selection), no balance and no asset.
-        tx.WithEconomy(character.FamilyEconomy(s, "cd13b/mount-career", [], [], new
+        tx.WithEconomy(_character.FamilyEconomy(s, "cd13b/mount-career", [], [], new
         {
             Action = action, Pendant = next.PendantSlot.CartRemouldCfg, Mount = next.MountsSlot.CartRemouldCfg,
             Mounts = nextMounts == null ? null : Convert.ToHexString(SHA256.HashData(nextMounts.ToByteArray())),
         }));
-        await roles.CommitAsync(tx, "career-special/" + action, _ =>
+        await _roles.CommitAsync(tx, "career-special/" + action, _ =>
         {
             s.CareerSpecial = next;
             s.CareerPendants = Pendants(next);
@@ -213,9 +213,9 @@ public sealed class CareerSpecialService
     private async Task PublishAsync(GameSession s, bool mountSlot, int[] shown)
     {
         await LoginAsync(s);
-        if (mountSlot) await mounts.PublishAsync(s);
+        if (mountSlot) await _mounts.PublishAsync(s);
         if (!shown.SequenceEqual(s.CareerPendants)) await PendantsAsync(s, shown);
-        foreach (var handler in character.StateChanged) handler(s);
+        foreach (var handler in _character.StateChanged) handler(s);
     }
 
     /// <summary>
@@ -229,7 +229,7 @@ public sealed class CareerSpecialService
         foreach (int gone in shown.Except(s.CareerPendants)) packet.PendantInfo[gone] = new PendantData { PendantId = gone, Piles = 1, IsHide = true };
         await s.SendGameAsync(WorldEffectsService.Pendant, packet);
         if (!s.Owners!.AllowsPresentation(s)) return;
-        foreach (var viewer in world.Viewers(s))
+        foreach (var viewer in _world.Viewers(s))
         {
             if (!s.Owners!.AllowsPresentation(s)) break;
             await viewer.SendGameAsync(WorldEffectsService.Pendant, packet);
@@ -238,7 +238,7 @@ public sealed class CareerSpecialService
 
     // ------------------------------------------------------------------ job change
 
-    public Task ReconcileAsync(GameSession s) => loop.IsOnLoop ? ReconcileCoreAsync(s) : loop.InvokeAsync(() => ReconcileCoreAsync(s));
+    public Task ReconcileAsync(GameSession s) => _loop.IsOnLoop ? ReconcileCoreAsync(s) : _loop.InvokeAsync(() => ReconcileCoreAsync(s));
 
     private async Task ReconcileCoreAsync(GameSession s)
     {

@@ -42,12 +42,9 @@ public sealed record MetricHistogram(long Count, double Sum, double Min, double 
         node["buckets"]?.AsArray().Select(x => x!.GetValue<long>()).ToArray() ?? []);
 }
 
-public sealed class MetricsPair
+public sealed class MetricsPair(JsonNode before, JsonNode after)
 {
-    public MetricsPair(JsonNode before, JsonNode after) { Before = before; After = after; }
-    public JsonNode Before { get; }
-    public JsonNode After { get; }
-    public bool SameEpoch => Before["epoch"]?.ToString() == After["epoch"]?.ToString();
+    public JsonNode Before { get; } = before; public JsonNode After { get; } = after; public bool SameEpoch => Before["epoch"]?.ToString() == After["epoch"]?.ToString();
     public double Seconds => (After["elapsedSeconds"]?.GetValue<double>() ?? 0) -
                              (Before["elapsedSeconds"]?.GetValue<double>() ?? 0);
     public double Delta(string path) => Number(After, path) - Number(Before, path);

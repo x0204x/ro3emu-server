@@ -13,37 +13,37 @@ namespace Ro3Emu.Tests;
 /// <summary>Wire coverage of Soul Echo generation, quest gate, deployment, feeding, stats, power and persistence.</summary>
 public sealed partial class EmblemTests : IAsyncLifetime
 {
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-emblem-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-emblem-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);
-    private WebApplication app = null!;
-    private string httpUrl = "";
+    private WebApplication _app = null!;
+    private string _httpUrl = "";
 
     public async Task InitializeAsync()
     {
         var (http, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir;
+            o.DataDir = _dataDir;
             o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = http;
             o.MicroGatePort = micro;
             o.GameGatePort = game;
         });
-        await app.StartAsync();
-        httpUrl = $"http://127.0.0.1:{http}";
+        await _app.StartAsync();
+        _httpUrl = $"http://127.0.0.1:{http}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var bot = new BotClient(httpUrl, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_httpUrl, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw");
         await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
@@ -61,7 +61,7 @@ public sealed partial class EmblemTests : IAsyncLifetime
     private async Task Gm(string account, string command)
     {
         using var http = new HttpClient();
-        var response = await http.PostAsync($"{httpUrl}/ro3emu/gm?account={account}", new StringContent(command));
+        var response = await http.PostAsync($"{_httpUrl}/ro3emu/gm?account={account}", new StringContent(command));
         response.EnsureSuccessStatusCode();
     }
 
@@ -99,7 +99,7 @@ public sealed partial class EmblemTests : IAsyncLifetime
             Assert.True(generated.ItemInfos.ContainsKey(1051));
             Assert.True(generated.ItemInfos.ContainsKey(1071));
             Assert.False(generated.ItemInfos.ContainsKey(1052));
-            var data = app.Services.GetRequiredService<GameData>();
+            var data = _app.Services.GetRequiredService<GameData>();
             var subrow = data.Row("EmblemSubAttriGroupConfig", generated.ItemInfos[1051].LongVal)!.Value;
             Assert.Equal(3, GameData.Int(subrow, "_iGroup"));
             Assert.True(GameData.Int(subrow, "_iWeight") > 0);
@@ -359,23 +359,23 @@ public sealed partial class EmblemTests : IAsyncLifetime
         await Gm("alice", "!quest done 10103040");
         await Gm("alice", "!item 1830101 2");
         await Gm("alice", "!item 1257001 2");
-        var session = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
-        var store = app.Services.GetRequiredService<ItemStore>();
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
+        var store = _app.Services.GetRequiredService<ItemStore>();
         var emblems = session.Items.Where(i => i.Entry == 1830101).OrderBy(i => i.Guid).ToArray();
         long target = emblems[0].Guid, feed = emblems[1].Guid;
         long material = session.Items.Single(i => i.Entry == 1257001).Guid;
-        FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(),
+        FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(),
             $"CREATE TRIGGER reject_emblem_update BEFORE UPDATE OF attrs ON item WHEN NEW.guid = {target} BEGIN SELECT RAISE(ABORT, 'test emblem write failure'); END");
         var req = new UpgradeEmblemReq { EmblemGuid = target, ConsumeEmblemGuids = { feed }, ConsumeItems = { [1257001] = 1 } };
-        await Assert.ThrowsAsync<SqliteException>(() => app.Services.GetRequiredService<GameLoop>().InvokeAsync(
-            () => app.Services.GetRequiredService<EmblemService>().UpgradeAsync(session, req)));
+        await Assert.ThrowsAsync<SqliteException>(() => _app.Services.GetRequiredService<GameLoop>().InvokeAsync(
+            () => _app.Services.GetRequiredService<EmblemService>().UpgradeAsync(session, req)));
         foreach (var inventory in new[] { session.Items, store.Load(session.Role!.Id) })
         {
             Assert.Contains(inventory, i => i.Guid == feed && i.Stack == 1);
             Assert.Equal(2, inventory.Single(i => i.Guid == material).Stack);
             Assert.Equal(0, inventory.Single(i => i.Guid == target).Attrs![1003]);
         }
-        FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(), "DROP TRIGGER reject_emblem_update");
+        FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(), "DROP TRIGGER reject_emblem_update");
         await alice.SendGameAsync(EmblemService.Upgrade, req);
         Assert.Equal(0, (await Next(alice, EmblemService.Upgrade, UpgradeEmblemResp.Parser)).Result);
         var saved = store.Load(session.Role!.Id);
@@ -390,13 +390,13 @@ public sealed partial class EmblemTests : IAsyncLifetime
         await using var alice = await InWorld("Alice");
         await Gm("alice", "!item 1830101");
         long guid = Granted(await Next(alice, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser, m => m.PackInfo.ContainsKey(5)), 1830101).ItemGuid;
-        var session = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
         var quests = session.Tasks;
         session.Tasks = null;
         await alice.SendGameAsync(EmblemService.SetUp, new SetUpEmblemReq { EmblemPos = 1, EmblemGuid = guid });
         Assert.Equal(ErrorCodes.FunctionLocked, (await Next(alice, EmblemService.SetUp, SetUpEmblemResp.Parser)).Result);
         session.Tasks = quests;
-        var functions = (IDictionary<string, System.Text.Json.JsonElement>)app.Services.GetRequiredService<GameData>().Table("FunctionConfig");
+        var functions = (IDictionary<string, System.Text.Json.JsonElement>)_app.Services.GetRequiredService<GameData>().Table("FunctionConfig");
         functions.Remove("55"); // only this fixture's cache; shared config files remain read-only
         await alice.SendGameAsync(EmblemService.SetUp, new SetUpEmblemReq { EmblemPos = 1, EmblemGuid = guid });
         Assert.Equal(ErrorCodes.FunctionLocked, (await Next(alice, EmblemService.SetUp, SetUpEmblemResp.Parser)).Result);
@@ -416,9 +416,9 @@ public sealed partial class EmblemTests : IAsyncLifetime
         await Gm("alice", "!item 1890112");
         long valid = Granted(await Next(alice, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser,
             m => m.PackInfo.ContainsKey(5) && m.PackInfo[5].Inc?.Items.Values.Any(i => i.All?.ItemEntry == 1890112) == true), 1890112).ItemGuid;
-        var table = (IDictionary<string, System.Text.Json.JsonElement>)app.Services.GetRequiredService<GameData>().Table("ItemConfig");
+        var table = (IDictionary<string, System.Text.Json.JsonElement>)_app.Services.GetRequiredService<GameData>().Table("ItemConfig");
         var row = System.Text.Json.Nodes.JsonNode.Parse(table["1830101"].GetRawText())!;
-        row["_kMultiverseArray"] = new System.Text.Json.Nodes.JsonArray(app.Services.GetRequiredService<SeasonService>().PlayBook + 10000);
+        row["_kMultiverseArray"] = new System.Text.Json.Nodes.JsonArray(_app.Services.GetRequiredService<SeasonService>().PlayBook + 10000);
         table["1830101"] = System.Text.Json.JsonSerializer.SerializeToElement(row);
         await alice.SendGameAsync(EmblemService.SetUp, new SetUpEmblemReq { EmblemPos = 1, EmblemGuid = invalid });
         Assert.Equal(ErrorCodes.EmblemOtherSeason, (await Next(alice, EmblemService.SetUp, SetUpEmblemResp.Parser)).Result);
@@ -426,7 +426,7 @@ public sealed partial class EmblemTests : IAsyncLifetime
         Assert.Equal(ErrorCodes.EmblemOtherSeason, (await Next(alice, EmblemService.Upgrade, UpgradeEmblemResp.Parser)).Result);
         await alice.SendGameAsync(EmblemService.Upgrade, new UpgradeEmblemReq { EmblemGuid = valid, ConsumeEmblemGuids = { invalid } });
         Assert.Equal(ErrorCodes.EmblemInvalid, (await Next(alice, EmblemService.Upgrade, UpgradeEmblemResp.Parser)).Result);
-        var session = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
         Assert.All(session.Items.Where(i => i.Guid == invalid || i.Guid == valid), i => Assert.Equal(0, i.Attrs![1003]));
     }
 

@@ -12,8 +12,8 @@ namespace Ro3Emu.Server.Game;
 /// </summary>
 public sealed class SeasonClock(GameData data, DateTime start, int playBook, TimeZoneInfo zone)
 {
-    private readonly HashSet<(long, bool)> resolving = new();
-    private readonly Dictionary<(long, bool), long> resolved = new();
+    private readonly HashSet<(long, bool)> _resolving = new();
+    private readonly Dictionary<(long, bool), long> _resolved = new();
 
     public long StartTime => SeasonService.Unix(start, zone);
 
@@ -51,8 +51,8 @@ public sealed class SeasonClock(GameData data, DateTime start, int playBook, Tim
     private long Resolve(long stage, bool end)
     {
         var key = (stage, end);
-        if (resolved.TryGetValue(key, out long value)) return value;
-        if (!resolving.Add(key)) throw new InvalidDataException($"Cyclic season stage time {stage}/{end}");
+        if (_resolved.TryGetValue(key, out long value)) return value;
+        if (!_resolving.Add(key)) throw new InvalidDataException($"Cyclic season stage time {stage}/{end}");
         var row = data.Row("MultiverseStage", stage) ?? throw new InvalidDataException($"Missing season stage {stage}");
         if (GameData.Int(row, "_iMultiverseID") != playBook) throw new InvalidDataException("Cross-playbook stage reference");
         var spec = row.GetProperty(end ? "_iEndTime" : "_iOpenTime").EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).ToArray();
@@ -67,8 +67,8 @@ public sealed class SeasonClock(GameData data, DateTime start, int playBook, Tim
             9 when spec.Length == 3 => Resolve(spec[1], true) + spec[2],
             _ => throw new InvalidDataException($"Unsupported season time type {spec[0]}")
         };
-        resolving.Remove(key);
-        resolved[key] = value;
+        _resolving.Remove(key);
+        _resolved[key] = value;
         return value;
     }
 

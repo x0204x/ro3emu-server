@@ -56,15 +56,15 @@ public sealed partial class TimedBattleService
     private sealed record TreasurePay(GameSession Player, State Next, TimedBattleObligationRow Obligation,
         AwardGrant[] Grants, CharacterService.FirstCardSightPlan? TaskPlan);
 
-    private readonly Dictionary<GameSession, Treasure> treasure = new();
-    private readonly Dictionary<GameSession, RiftVote> riftVotes = new();
+    private readonly Dictionary<GameSession, Treasure> _treasure = new();
+    private readonly Dictionary<GameSession, RiftVote> _riftVotes = new();
 
     /// <summary>TEST AID set by GM "!rift party [min]" (not original behaviour): the smallest party a stone admits.</summary>
     internal int? RiftTestMinParty { get; set; }
 
     private long[] StoneInteractions(RiftStone stone)
     {
-        if (data.Row("NPCConfig", stone.StoneNpc) is not { } npc || !npc.TryGetProperty("_iInteractID", out var ids)
+        if (_data.Row("NPCConfig", stone.StoneNpc) is not { } npc || !npc.TryGetProperty("_iInteractID", out var ids)
             || ids.ValueKind != JsonValueKind.Array) return [];
         return ids.EnumerateArray().Select(GameData.Number).Where(x => x != null).Select(x => (long)x!.Value).ToArray();
     }
@@ -74,19 +74,19 @@ public sealed partial class TimedBattleService
     {
         if (await TryChestInteractAsync(session, req)) return true;
         if (!IsRiftUid(req.NpcUid)) return false;
-        using var scope = session.Role != null && loop.Owners is { } owners
+        using var scope = session.Role != null && _loop.Owners is { } owners
             ? await owners.EnterAsync("timed battle onepiece interaction", [ReservationKey.Role(session.Role.Id)]) : null;
         if (session.Owner != null) scope?.Context.Pin(session.Owner);
-        var stone = riftStones.GetValueOrDefault(req.NpcUid);
+        var stone = _riftStones.GetValueOrDefault(req.NpcUid);
         int result = session.Role == null || stone == null || session.SceneEntry != stone.Map
                 || !StoneInteractions(stone).Contains(req.InteractionId)
             ? ErrorCodes.NpcMissing : session.SceneLoading ? ErrorCodes.SwitchingScenes
             : !session.ActivitiesReady ? ErrorCodes.FeatureUnavailable
             : MonsterService.Distance(session.Position.X, session.Position.Z, stone.Point.X, stone.Point.Z) > 10f
                 ? ErrorCodes.NpcTooFar
-            : session.Progress?.Level < 44 || !schedule.IsOpen(200) || !functions.IsOpen(session, 95)
+            : session.Progress?.Level < 44 || !_schedule.IsOpen(200) || !_functions.IsOpen(session, 95)
                 ? ErrorCodes.FeatureUnavailable
-            : session.InstanceId != 0 || treasure.ContainsKey(session) || riftVotes.ContainsKey(session) ? ErrorCodes.DungeonBusy
+            : session.InstanceId != 0 || _treasure.ContainsKey(session) || _riftVotes.ContainsKey(session) ? ErrorCodes.DungeonBusy
             : stone.Challenger != null ? ErrorCodes.RiftStoneTaken : 0;
         // The dialog's Challenge option shows RestrictInfo1020 as "x/10" (_buildOnePieceExtraParams' caller).
         if (result == 0) await SyncRiftRestrictAsync(session);
@@ -96,19 +96,19 @@ public sealed partial class TimedBattleService
 
     public async Task OnePieceInfoAsync(GameSession session, HiddenTreasureRoundInfoReq _)
     {
-        using var scope = session.Role != null && loop.Owners is { } owners
+        using var scope = session.Role != null && _loop.Owners is { } owners
             ? await owners.EnterAsync("timed battle onepiece info", [ReservationKey.Role(session.Role.Id)]) : null;
         if (session.Owner != null) scope?.Context.Pin(session.Owner);
         var (start, end) = TreasureWindow();
-        bool open = session.Progress?.Level >= 44 && schedule.IsOpen(200) && functions.IsOpen(session, 95) && riftRound >= 0;
+        bool open = session.Progress?.Level >= 44 && _schedule.IsOpen(200) && _functions.IsOpen(session, 95) && _riftRound >= 0;
         var response = new HiddenTreasureRoundInfoResp
         {
             Result = session.Role == null ? ErrorCodes.Parameter : 0,
             IsOpen = open,
-            CurIndex = open ? (int)((riftRound - start) / RiftRoundSeconds) + 1 : 0,
+            CurIndex = open ? (int)((_riftRound - start) / RiftRoundSeconds) + 1 : 0,
             // Seconds, like 83350's endTime: UI_Sys_OnepieceWidgetCtrl compares iNextOpenTime with
             // TimerManager.GetSystemTime (seconds) and hands it to Lua_TimeHelper.GetWeekDayNum (os.date).
-            NextOpenTime = start > time.GetUtcNow().ToUnixTimeSeconds() ? start : 0,
+            NextOpenTime = start > _time.GetUtcNow().ToUnixTimeSeconds() ? start : 0,
         };
         for (long round = start, index = 1; round < end; round += RiftRoundSeconds, index++)
             response.TimeMap[(int)index] = new HiddenTreasureRoundInfo
@@ -124,7 +124,7 @@ public sealed partial class TimedBattleService
                 });
         }
         if (open)
-            foreach (var (map, total) in riftMapTotals)
+            foreach (var (map, total) in _riftMapTotals)
                 response.SceneInfo[map] = new HiddenTreasureSceneLineInfo
                 { SceneEntry = map, SceneUid = map, LineNum = 1, NpcRemainCount = RiftRemaining(map), NpcRoundCount = total };
         await SyncRiftRestrictAsync(session);
@@ -139,7 +139,7 @@ public sealed partial class TimedBattleService
     /// </summary>
     private IEnumerable<(int Item, long Restrict)> RiftVaultItems()
     {
-        var table = data.Table("PublicParamConfig");
+        var table = _data.Table("PublicParamConfig");
         foreach (var key in new[] { "OnePieceRewardPreview1", "OnePieceRewardPreview2" })
             if (table.TryGetValue(key, out var pair) && pair.ValueKind == JsonValueKind.Array && pair.GetArrayLength() == 2
                 && GameData.Number(pair[0]) is { } item && GameData.Number(pair[1]) is { } restrict)
@@ -147,11 +147,11 @@ public sealed partial class TimedBattleService
         if (PublicValue("OnePieceMapBoxId") is > 0 and var box) yield return ((int)box, PublicValue("OnePieceMapBoxReId"));
     }
 
-    private long RiftRestrictMax(long id) => data.Row("RestrictConfig", id) is { } row ? GameData.Int(row, "_iMaxRestrictNum") : 0;
+    private long RiftRestrictMax(long id) => _data.Row("RestrictConfig", id) is { } row ? GameData.Int(row, "_iMaxRestrictNum") : 0;
 
     /// <summary>The restriction day turns at 05:00 like the To-Do and life restrictions (inferred), as a DateOnly day number.</summary>
     private long RiftDay() =>
-        DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(time.GetUtcNow(), time.LocalTimeZone).DateTime.AddHours(-5)).DayNumber;
+        DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(_time.GetUtcNow(), _time.LocalTimeZone).DateTime.AddHours(-5)).DayNumber;
 
     /// <summary>The day number of the week's Monday (inferred week start).</summary>
     private static long RiftWeek(long day) => day - ((int)DateOnly.FromDayNumber((int)day).DayOfWeek + 6) % 7;
@@ -159,7 +159,7 @@ public sealed partial class TimedBattleService
     private long RiftDayStart(long day)
     {
         var local = DateOnly.FromDayNumber((int)day).ToDateTime(new TimeOnly(5, 0));
-        return new DateTimeOffset(local, time.LocalTimeZone.GetUtcOffset(local)).ToUnixTimeSeconds();
+        return new DateTimeOffset(local, _time.LocalTimeZone.GetUtcOffset(local)).ToUnixTimeSeconds();
     }
 
     /// <summary>
@@ -179,17 +179,17 @@ public sealed partial class TimedBattleService
         };
     }
 
-    private Task SyncRiftRestrictAsync(GameSession session) => life.SyncRestrictionsAsync(session);
+    private Task SyncRiftRestrictAsync(GameSession session) => _life.SyncRestrictionsAsync(session);
 
     /// <summary>83350 for the player's current map: the tracker's "Remaining on the current channel" and its countdown.</summary>
     private async Task SendOnePieceMapAsync(GameSession session)
     {
-        bool open = session.Progress?.Level >= 44 && schedule.IsOpen(200) && functions.IsOpen(session, 95) && riftRound >= 0;
+        bool open = session.Progress?.Level >= 44 && _schedule.IsOpen(200) && _functions.IsOpen(session, 95) && _riftRound >= 0;
         await session.SendGameAsync(OnePieceMap, new HiddenTreasureMapInfoNotify
         {
             RoundState = open ? EHiddenTreasureRoundState.Open : EHiddenTreasureRoundState.NotOpen,
             NpcCount = open ? RiftRemaining(session.SceneEntry) : 0,
-            MaxNpcCount = open ? riftMapTotals.GetValueOrDefault(session.SceneEntry) : 0,
+            MaxNpcCount = open ? _riftMapTotals.GetValueOrDefault(session.SceneEntry) : 0,
             // Seconds: LC_DAL_OnePiece keeps it as iEndTime, which the task tracker and the vault widget compare with
             // TimerManager.GetSystemTime (seconds); milliseconds showed "Time Limit: 20722840 Days".
             EndTime = RiftRoundEnd()
@@ -198,8 +198,8 @@ public sealed partial class TimedBattleService
 
     private (long Start, long End) TreasureWindow()
     {
-        var now = TimeZoneInfo.ConvertTime(time.GetUtcNow(), time.LocalTimeZone);
-        var row = data.Row("DailyActivityConfig", 200);
+        var now = TimeZoneInfo.ConvertTime(_time.GetUtcNow(), _time.LocalTimeZone);
+        var row = _data.Row("DailyActivityConfig", 200);
         if (row is not { } r || !r.TryGetProperty("_kTime", out var limits)
             || limits.ValueKind != System.Text.Json.JsonValueKind.Array || limits.GetArrayLength() < 2) return (0, 0);
         int from = (int)(GameData.Number(limits[0]) ?? 0), until = (int)(GameData.Number(limits[1]) ?? 0);
@@ -207,15 +207,15 @@ public sealed partial class TimedBattleService
         DateTime localEnd = now.Date.AddHours(until / 100).AddMinutes(until % 100);
         if (localEnd <= localStart) localEnd = localEnd.AddDays(1);
         if (now.DateTime >= localEnd) { localStart = localStart.AddDays(1); localEnd = localEnd.AddDays(1); }
-        return (new DateTimeOffset(localStart, time.LocalTimeZone.GetUtcOffset(localStart)).ToUnixTimeSeconds(),
-            new DateTimeOffset(localEnd, time.LocalTimeZone.GetUtcOffset(localEnd)).ToUnixTimeSeconds());
+        return (new DateTimeOffset(localStart, _time.LocalTimeZone.GetUtcOffset(localStart)).ToUnixTimeSeconds(),
+            new DateTimeOffset(localEnd, _time.LocalTimeZone.GetUtcOffset(localEnd)).ToUnixTimeSeconds());
     }
 
     /// <summary>PublicParamConfig.OnePieceMapMembersNum [3,5]: ErrorCodeConfig 6755/6754 refuse a smaller or larger party.</summary>
     private (int Min, int Max) RiftPartySize()
     {
         int min = 3, max = 5;
-        if (data.Table("PublicParamConfig").TryGetValue("OnePieceMapMembersNum", out var range)
+        if (_data.Table("PublicParamConfig").TryGetValue("OnePieceMapMembersNum", out var range)
             && range.ValueKind == JsonValueKind.Array && range.GetArrayLength() == 2)
         { min = (int)(GameData.Number(range[0]) ?? 3); max = Math.Max(min, (int)(GameData.Number(range[1]) ?? 5)); }
         if (RiftTestMinParty is { } test) min = Math.Min(test, max);
@@ -229,25 +229,25 @@ public sealed partial class TimedBattleService
     /// </summary>
     public async Task<bool> TryEnterOnePieceAsync(GameSession session, EnterDungeonReq req)
     {
-        if (data.Row("OnePieceRewardConfig", req.SceneEntry) == null) return false;
-        using var scope = loop.Owners is { } owners
+        if (_data.Row("OnePieceRewardConfig", req.SceneEntry) == null) return false;
+        using var scope = _loop.Owners is { } owners
             ? await owners.EnterAsync("timed battle onepiece entry", [ReservationKey.Realm]) : null;
         if (session.Owner != null) scope?.Context.Pin(session.Owner);
         // LC_SceneManagerNew.SendEnterDungeonWithOnePieceData names the stone by its unit uid; without one (or with a
         // stone NPC / interaction id) the nearest stone of that scene on the player's map is meant.
         var named = req.InitData?.HiddenTreasureInitData?.NpcId ?? 0;
-        var stone = riftStones.GetValueOrDefault(named) ?? NearestRiftStone(session, req.SceneEntry);
+        var stone = _riftStones.GetValueOrDefault(named) ?? NearestRiftStone(session, req.SceneEntry);
         int error = session.Role == null || session.Progress == null || session.TimedBattle == null ? ErrorCodes.Parameter
             : !session.ActivitiesReady ? ErrorCodes.FeatureUnavailable
-            : session.Progress.Level < 44 || !schedule.IsOpen(200) || !functions.IsOpen(session, 95)
+            : session.Progress.Level < 44 || !_schedule.IsOpen(200) || !_functions.IsOpen(session, 95)
                 ? ErrorCodes.FeatureUnavailable
             : stone == null || session.SceneEntry != stone.Map ? ErrorCodes.NpcMissing
             : MonsterService.Distance(session.Position.X, session.Position.Z, stone.Point.X, stone.Point.Z) > 10f
                 ? ErrorCodes.NpcTooFar
-            : session.SceneLoading || session.InstanceId != 0 || session.Dead || treasure.ContainsKey(session)
-                || riftVotes.ContainsKey(session) ? ErrorCodes.DungeonBusy
+            : session.SceneLoading || session.InstanceId != 0 || session.Dead || _treasure.ContainsKey(session)
+                || _riftVotes.ContainsKey(session) ? ErrorCodes.DungeonBusy
             : stone.Challenger != null ? ErrorCodes.RiftStoneTaken
-            : named != 0 && !riftStones.ContainsKey(named) && !IsStoneReference(named) || stone.Scene != req.SceneEntry
+            : named != 0 && !_riftStones.ContainsKey(named) && !IsStoneReference(named) || stone.Scene != req.SceneEntry
                 ? ErrorCodes.Parameter : 0;
         GameSession[] members = [];
         long teamId = 0;
@@ -261,11 +261,11 @@ public sealed partial class TimedBattleService
         if (members.Length == 1) { await BeginTreasureAsync(session, members, stone); return true; }
         var vote = new RiftVote { Leader = session, Members = members, Stone = stone, TeamId = teamId };
         vote.Ready.Add(session); // Asking is the leader's own answer, as DungeonService's ready check (inferred).
-        foreach (var member in members) riftVotes[member] = vote;
+        foreach (var member in members) _riftVotes[member] = vote;
         await BroadcastRiftVoteAsync(vote);
         // The prepare panel counts down GetInPositionMaxTime from the first 42033 (LC_DAL_Team).
         long seconds = PublicValue("GetInPositionMaxTime") is > 0 and var configured ? configured : 30;
-        loop.ScheduleRuntime(TimeSpan.FromSeconds(seconds),
+        _loop.ScheduleRuntime(TimeSpan.FromSeconds(seconds),
             () => vote.Closed ? Task.CompletedTask : CancelRiftVoteAsync(vote, ErrorCodes.Parameter, 0));
         return true;
     }
@@ -273,14 +273,14 @@ public sealed partial class TimedBattleService
     private (int Error, GameSession[] Members, long TeamId) RiftParty(GameSession leader, RiftStone stone)
     {
         long roleId = leader.Role!.Id;
-        var (teamId, head) = teams.TeamOf(roleId);
+        var (teamId, head) = _teams.TeamOf(roleId);
         if (teamId == 0) return (ErrorCodes.RiftNoParty, [], 0);
         if (head != roleId) return (ErrorCodes.NotPartyLeader, [], 0);
-        var ids = teams.MembersOf(roleId);
+        var ids = _teams.MembersOf(roleId);
         var (min, max) = RiftPartySize();
         if (ids.Count < min) return (ErrorCodes.RiftPartyTooSmall, [], 0);
         if (ids.Count > max) return (ErrorCodes.RiftPartyTooLarge, [], 0);
-        var online = sessions.All().Where(p => p.Role != null).GroupBy(p => p.Role!.Id).ToDictionary(g => g.Key, g => g.First());
+        var online = _sessions.All().Where(p => p.Role != null).GroupBy(p => p.Role!.Id).ToDictionary(g => g.Key, g => g.First());
         var members = new List<GameSession>();
         foreach (long id in ids)
         {
@@ -297,11 +297,11 @@ public sealed partial class TimedBattleService
     /// stone's map alive: the party enters from where the stone is (inferred; 6751 "not eligible").
     /// </summary>
     private int RiftMemberError(GameSession member, RiftStone stone, RiftVote? own) =>
-        treasure.ContainsKey(member) || riftVotes.GetValueOrDefault(member) is { } vote && vote != own
+        _treasure.ContainsKey(member) || _riftVotes.GetValueOrDefault(member) is { } vote && vote != own
             ? ErrorCodes.RiftMemberInVault
         : member.SceneLoading || member.InstanceId != 0 ? ErrorCodes.DungeonBusy
         : !member.ActivitiesReady || member.Progress == null || member.TimedBattle == null || member.Progress.Level < 44
-            || !functions.IsOpen(member, 95) ? ErrorCodes.RiftMemberLocked
+            || !_functions.IsOpen(member, 95) ? ErrorCodes.RiftMemberLocked
         : member.Dead || member.SceneEntry != stone.Map ? ErrorCodes.RiftMemberIneligible : 0;
 
     private static HiddenTreasureInitData RiftInit(RiftStone stone, IEnumerable<GameSession> members, long waveEnd)
@@ -332,28 +332,28 @@ public sealed partial class TimedBattleService
     {
         try { await session.SendGameAsync(id, msg); }
         catch (Exception e) when (e is not OperationCanceledException)
-        { log.LogWarning(e, "Rift notification {Message} failed for {Role}", id, session.Role?.Id); }
+        { _log.LogWarning(e, "Rift notification {Message} failed for {Role}", id, session.Role?.Id); }
     }
 
     private async Task CancelRiftVoteAsync(RiftVote vote, int error, long role)
     {
         if (vote.Closed) return;
         vote.Closed = true;
-        foreach (var member in vote.Members) if (riftVotes.GetValueOrDefault(member) == vote) riftVotes.Remove(member);
-        if (riftStones.GetValueOrDefault(vote.Stone.Uid) == vote.Stone && vote.Stone.Challenger == vote.Leader
-            && !treasure.ContainsKey(vote.Leader))
+        foreach (var member in vote.Members) if (_riftVotes.GetValueOrDefault(member) == vote) _riftVotes.Remove(member);
+        if (_riftStones.GetValueOrDefault(vote.Stone.Uid) == vote.Stone && vote.Stone.Challenger == vote.Leader
+            && !_treasure.ContainsKey(vote.Leader))
         { vote.Stone.Challenger = null; PostRiftState(vote.Stone); }
         await BroadcastRiftVoteAsync(vote, cancel: true, error, role);
     }
 
     private bool RiftVoteChanged(RiftVote vote) => vote.Leader.Role is not { } leader
-        || teams.TeamOf(leader.Id) != (vote.TeamId, leader.Id)
-        || !teams.MembersOf(leader.Id).Order().SequenceEqual(vote.Members.Select(m => m.Role?.Id ?? 0).Order());
+        || _teams.TeamOf(leader.Id) != (vote.TeamId, leader.Id)
+        || !_teams.MembersOf(leader.Id).Order().SequenceEqual(vote.Members.Select(m => m.Role?.Id ?? 0).Order());
 
     /// <summary>30406 from a member of a Rift ready check; false leaves the message to DungeonService.</summary>
     public async Task<bool> TryConfirmRiftAsync(GameSession session, ConfirmTeamDungeonReq req)
     {
-        if (riftVotes.GetValueOrDefault(session) is not { } vote) return false;
+        if (_riftVotes.GetValueOrDefault(session) is not { } vote) return false;
         int error = vote.Closed ? ErrorCodes.Parameter : RiftVoteChanged(vote) ? ErrorCodes.MemberLeft : 0;
         await session.SendGameAsync(DungeonService.Confirm, new ConfirmTeamDungeonRsp { Result = error });
         if (vote.Closed) return true;
@@ -368,14 +368,14 @@ public sealed partial class TimedBattleService
         // Everyone is checked again after the last answer; the stone must still be this party's.
         foreach (var member in vote.Members)
         {
-            error = !sessions.All().Contains(member) ? ErrorCodes.PlayerOffline
-                : riftRound < 0 || riftStones.GetValueOrDefault(vote.Stone.Uid) != vote.Stone
+            error = !_sessions.All().Contains(member) ? ErrorCodes.PlayerOffline
+                : _riftRound < 0 || _riftStones.GetValueOrDefault(vote.Stone.Uid) != vote.Stone
                     || vote.Stone.Challenger != vote.Leader ? ErrorCodes.NpcMissing
                 : RiftMemberError(member, vote.Stone, vote);
             if (error != 0) { await CancelRiftVoteAsync(vote, error, member.Role?.Id ?? 0); return true; }
         }
         vote.Closed = true;
-        foreach (var member in vote.Members) riftVotes.Remove(member);
+        foreach (var member in vote.Members) _riftVotes.Remove(member);
         await BeginTreasureAsync(vote.Leader, vote.Members, vote.Stone);
         return true;
     }
@@ -383,7 +383,7 @@ public sealed partial class TimedBattleService
     /// <summary>42047 from the leader of a Rift ready check (PreparePanel's remind button), as DungeonService.RemindAsync.</summary>
     public async Task<bool> TryRemindRiftAsync(GameSession session, TeamConfirmRemindersReq req)
     {
-        if (riftVotes.GetValueOrDefault(session) is not { } vote) return false;
+        if (_riftVotes.GetValueOrDefault(session) is not { } vote) return false;
         var target = vote.Members.FirstOrDefault(m => m.Role?.Id == req.RemindersGuid);
         int code = vote.Closed || vote.Leader != session || target == null || vote.Ready.Contains(target)
             || req.PlayerId != session.Role?.Id || req.RemindersGuid == session.Role?.Id ? ErrorCodes.NoPermission : 0;
@@ -393,13 +393,13 @@ public sealed partial class TimedBattleService
         return true;
     }
 
-    private RiftStone? NearestRiftStone(GameSession session, long scene) => riftStones.Values
+    private RiftStone? NearestRiftStone(GameSession session, long scene) => _riftStones.Values
         .Where(s => s.Map == session.SceneEntry && s.Scene == scene)
         .MinBy(s => MonsterService.Distance(session.Position.X, session.Position.Z, s.Point.X, s.Point.Z));
 
     /// <summary>A stone NPC (16100001-16100006) or one of its interaction ids.</summary>
-    private bool IsStoneReference(long id) => data.Table("OnePieceMonsterConfig").Values.Any(r =>
-        GameData.Int(r, "_iId") == id || data.Row("NPCConfig", GameData.Int(r, "_iId")) is { } npc
+    private bool IsStoneReference(long id) => _data.Table("OnePieceMonsterConfig").Values.Any(r =>
+        GameData.Int(r, "_iId") == id || _data.Row("NPCConfig", GameData.Int(r, "_iId")) is { } npc
             && npc.TryGetProperty("_iInteractID", out var ids) && ids.ValueKind == JsonValueKind.Array
             && ids.EnumerateArray().Any(x => GameData.Number(x) == id));
 
@@ -407,50 +407,50 @@ public sealed partial class TimedBattleService
     private async Task BeginTreasureAsync(GameSession leader, GameSession[] members, RiftStone stone)
     {
         InstanceService.Room room;
-        try { room = instances.Create(stone.Scene, members); }
+        try { room = _instances.Create(stone.Scene, members); }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            log.LogWarning(e, "OnePiece room create failed for {Role}", leader.Role?.Id);
-            if (riftStones.GetValueOrDefault(stone.Uid) == stone && stone.Challenger == leader)
+            _log.LogWarning(e, "OnePiece room create failed for {Role}", leader.Role?.Id);
+            if (_riftStones.GetValueOrDefault(stone.Uid) == stone && stone.Challenger == leader)
             { stone.Challenger = null; PostRiftState(stone); }
             return;
         }
         var a = new Treasure
         {
             Leader = leader, Members = members, Room = room, Monster = stone.Boss, Stone = stone,
-            Started = time.GetUtcNow().ToUnixTimeMilliseconds()
+            Started = _time.GetUtcNow().ToUnixTimeMilliseconds()
         };
-        foreach (var member in members) treasure[member] = a;
+        foreach (var member in members) _treasure[member] = a;
         foreach (var member in members)
         {
-            try { if (await instances.EnterAsync(room, member, members.Length > 1 ? 5 : 3)) continue; }
+            try { if (await _instances.EnterAsync(room, member, members.Length > 1 ? 5 : 3)) continue; }
             catch (Exception e) when (e is not OperationCanceledException)
-            { log.LogWarning(e, "OnePiece transfer failed for {Role}, instance {Instance}", member.Role?.Id, room.Id); }
-            if (treasure.GetValueOrDefault(member) == a) treasure.Remove(member);
+            { _log.LogWarning(e, "OnePiece transfer failed for {Role}, instance {Instance}", member.Role?.Id, room.Id); }
+            if (_treasure.GetValueOrDefault(member) == a) _treasure.Remove(member);
         }
-        if (!members.Any(m => treasure.GetValueOrDefault(m) == a)) { a.Settled = true; ReleaseRiftStone(a, cleared: false); return; }
+        if (!members.Any(m => _treasure.GetValueOrDefault(m) == a)) { a.Settled = true; ReleaseRiftStone(a, cleared: false); return; }
         // A client that never acknowledges the scene cannot hold the shared stone (60 s as DungeonService, inferred):
         // without a loaded member the run fails, a member still loading is sent back.
-        loop.ScheduleRuntime(TimeSpan.FromSeconds(60), async () =>
+        _loop.ScheduleRuntime(TimeSpan.FromSeconds(60), async () =>
         {
             if (a.Settled) return;
             if (a.Boss == null) { await SettleTreasureAsync(a, false); return; }
-            foreach (var member in Present(a).Where(m => !a.Loaded.Contains(m))) await instances.LeaveAsync(member);
+            foreach (var member in Present(a).Where(m => !a.Loaded.Contains(m))) await _instances.LeaveAsync(member);
         });
     }
 
     /// <summary>Members of the run still in its room (dead or alive).</summary>
     private GameSession[] Present(Treasure a) => a.Members
-        .Where(m => treasure.GetValueOrDefault(m) == a && m.InstanceId == a.Room.Id && m.Role != null).ToArray();
+        .Where(m => _treasure.GetValueOrDefault(m) == a && m.InstanceId == a.Room.Id && m.Role != null).ToArray();
 
     private async Task OnePieceLoadedAsync(GameSession session)
     {
         if (session.InstanceId == 0)
         {
-            await RiftViewAsync(session, [], riftStones.Values.Where(s => s.Map == session.SceneEntry).ToArray());
+            await RiftViewAsync(session, [], _riftStones.Values.Where(s => s.Map == session.SceneEntry).ToArray());
             await SendOnePieceMapAsync(session);
         }
-        if (!treasure.TryGetValue(session, out var a) || a.Room.Id != session.InstanceId || a.Settled) return;
+        if (!_treasure.TryGetValue(session, out var a) || a.Room.Id != session.InstanceId || a.Settled) return;
         a.Loaded.Add(session);
         var init = new DungeonInitData { HiddenTreasureInitData = RiftInit(a.Stone, a.Members, a.Started + RiftFightMilliseconds) };
         await session.SendGameAsync(DungeonService.BaseInfo, new DungeonBaseInfoNotify
@@ -465,27 +465,27 @@ public sealed partial class TimedBattleService
         });
         // The first member in raises the boss; later ones join the fight.
         if (a.Boss != null || a.Spawning) return;
-        var map = worldData.Map(a.Room.SceneEntry);
+        var map = _worldData.Map(a.Room.SceneEntry);
         MapPoint? point = map?.DungeonGroups.Values.SelectMany(x => x).FirstOrDefault() is { } spawn && spawn.Id != 0
             ? new MapPoint(spawn.X, spawn.Y, spawn.Z, spawn.Face) : map?.Born;
         if (point == null || a.Monster <= 0) return;
         a.Spawning = true;
-        try { a.Boss = await instances.SpawnAsync(a.Room, a.Monster, point.Value); }
+        try { a.Boss = await _instances.SpawnAsync(a.Room, a.Monster, point.Value); }
         finally { a.Spawning = false; }
-        loop.ScheduleRuntime(TimeSpan.FromMilliseconds(RiftFightMilliseconds), async () =>
+        _loop.ScheduleRuntime(TimeSpan.FromMilliseconds(RiftFightMilliseconds), async () =>
         { if (!a.Settled) await SettleTreasureAsync(a, false); });
     }
 
     /// <summary>A member who leaves gives up its share; the run ends when nobody is left or everyone left is dead.</summary>
     private Task OnePieceLeavingAsync(GameSession session)
     {
-        if (!treasure.TryGetValue(session, out var a) || session.InstanceId != a.Room.Id) return Task.CompletedTask;
-        treasure.Remove(session);
+        if (!_treasure.TryGetValue(session, out var a) || session.InstanceId != a.Room.Id) return Task.CompletedTask;
+        _treasure.Remove(session);
         a.Loaded.Remove(session);
         if (a.Settled) return Task.CompletedTask;
         var rest = Present(a).Where(m => m != session).ToArray();
         if (rest.Length == 0) { a.Settled = true; ReleaseRiftStone(a, cleared: false); }
-        else if (rest.All(m => m.Dead)) loop.PostRuntime(() => a.Settled ? Task.CompletedTask : SettleTreasureAsync(a, false));
+        else if (rest.All(m => m.Dead)) _loop.PostRuntime(() => a.Settled ? Task.CompletedTask : SettleTreasureAsync(a, false));
         return Task.CompletedTask;
     }
 
@@ -497,8 +497,8 @@ public sealed partial class TimedBattleService
     /// </summary>
     private Task OnePieceDiedAsync(GameSession player)
     {
-        if (treasure.GetValueOrDefault(player) is { } a && !a.Settled && a.Room.Id == player.InstanceId)
-            loop.ScheduleRuntime(TimeSpan.FromSeconds(3), async () =>
+        if (_treasure.GetValueOrDefault(player) is { } a && !a.Settled && a.Room.Id == player.InstanceId)
+            _loop.ScheduleRuntime(TimeSpan.FromSeconds(3), async () =>
             {
                 if (!a.Settled && Present(a) is { Length: > 0 } present && present.All(m => m.Dead))
                     await SettleTreasureAsync(a, false);
@@ -508,11 +508,11 @@ public sealed partial class TimedBattleService
 
     /// <summary>NoRevive: a dead member's own 31013 is refused; skill and item resurrection by others stays open.</summary>
     private bool InRiftFight(GameSession session) =>
-        treasure.GetValueOrDefault(session) is { Settled: false } a && a.Room.Id == session.InstanceId;
+        _treasure.GetValueOrDefault(session) is { Settled: false } a && a.Room.Id == session.InstanceId;
 
     private async Task OnePieceKilledAsync(GameSession killer, MonsterUnit monster)
     {
-        if (treasure.GetValueOrDefault(killer) is { } a && !a.Settled && a.Room.Id == monster.InstanceId
+        if (_treasure.GetValueOrDefault(killer) is { } a && !a.Settled && a.Room.Id == monster.InstanceId
             && a.Boss?.Uid == monster.Uid) await SettleTreasureAsync(a, true);
     }
 
@@ -530,11 +530,11 @@ public sealed partial class TimedBattleService
             .Concat(roleIds.Values.Select(id => Obligations.Key(TreasureSource(a, id))))
             .ToArray();
         TreasurePay[] paid = [];
-        using (var scope = loop.Owners is { } owners
+        using (var scope = _loop.Owners is { } owners
             ? await owners.EnterAsync("timed battle onepiece settlement", keys) : null)
         {
             if (a.Settled) return;
-            present = present.Where(m => m.Role?.Id == roleIds[m] && treasure.GetValueOrDefault(m) == a
+            present = present.Where(m => m.Role?.Id == roleIds[m] && _treasure.GetValueOrDefault(m) == a
                 && m.InstanceId == a.Room.Id).ToArray();
             if (win)
             {
@@ -546,7 +546,7 @@ public sealed partial class TimedBattleService
                     else await CommitTreasureAsync(a, paid);
                 }
                 catch (AwardResolutionException e)
-                { log.LogWarning(e, "OnePiece award rejected for room {Room}", a.Room.Id); win = false; paid = []; }
+                { _log.LogWarning(e, "OnePiece award rejected for room {Room}", a.Room.Id); win = false; paid = []; }
             }
             if (!win)
             {
@@ -562,19 +562,19 @@ public sealed partial class TimedBattleService
             try
             {
                 var deliveryKeys = new[] { ReservationKey.Role(pay.Obligation.RoleId), Obligations.Key(pay.Obligation.SourceKey) };
-                if (loop.Owners is { } owners)
+                if (_loop.Owners is { } owners)
                     await owners.RunSessionAsync("timed battle onepiece delivery", deliveryKeys, recipient,
                         () => DeliverOneAsync(recipient, pay.Obligation));
                 else await DeliverOneAsync(recipient, pay.Obligation);
             }
             catch (OperationCanceledException) { throw; /* Login will deliver this frozen obligation. */ }
-            catch (Exception error) { log.LogError(error, "OnePiece delivery deferred for role {Role}", pay.Obligation.RoleId); }
+            catch (Exception error) { _log.LogError(error, "OnePiece delivery deferred for role {Role}", pay.Obligation.RoleId); }
         });
-        foreach (var member in a.Members) if (treasure.GetValueOrDefault(member) == a) treasure.Remove(member);
+        foreach (var member in a.Members) if (_treasure.GetValueOrDefault(member) == a) _treasure.Remove(member);
         // A fallen member comes back alive outside, as TowerService returns its runs (the fight has no revive).
         foreach (var member in present)
-            if (member.InstanceId == a.Room.Id && !(member.Dead && await instances.LeaveAsync(member, recoverDeadOnReturn: true)))
-                await instances.LeaveAsync(member);
+            if (member.InstanceId == a.Room.Id && !(member.Dead && await _instances.LeaveAsync(member, recoverDeadOnReturn: true)))
+                await _instances.LeaveAsync(member);
     }
 
     /// <summary>
@@ -590,12 +590,12 @@ public sealed partial class TimedBattleService
         next.OnePieceGains = null; next.OnePieceItemGains = null;
         if (next.OnePieceExtraDay != day) { next.OnePieceExtraDay = day; next.OnePieceExtraUsed = 0; }
         if (next.OnePieceWeek != week) { next.OnePieceWeek = week; next.OnePieceWeekItems.Clear(); }
-        long elapsed = Math.Max(1, time.GetUtcNow().ToUnixTimeMilliseconds() - a.Started);
+        long elapsed = Math.Max(1, _time.GetUtcNow().ToUnixTimeMilliseconds() - a.Started);
         long previous = next.OnePieceBestMilliseconds.GetValueOrDefault(a.Room.SceneEntry);
         bool record = previous == 0 || elapsed < previous;
         if (record) next.OnePieceBestMilliseconds[a.Room.SceneEntry] = elapsed;
         var reward = StarRow(a.Stone.Star) ?? throw new AwardResolutionException($"OnePiece star {a.Stone.Star} has no row.");
-        var baseGrants = awards.Resolve(member, GameData.Int(reward, "_iAward"), 101).Grants.ToArray();
+        var baseGrants = _awards.Resolve(member, GameData.Int(reward, "_iAward"), 101).Grants.ToArray();
         var extraGrants = new List<AwardGrant>();
         if (next.OnePieceExtraUsed < RiftRestrictMax(RiftExtraRestrict))
         {
@@ -615,12 +615,12 @@ public sealed partial class TimedBattleService
         var obligation = new TimedBattleObligationRow(source, a.Room.Id, checked((int)a.Room.SceneEntry), roleId,
             JsonSerializer.SerializeToUtf8Bytes(grants), JsonSerializer.SerializeToUtf8Bytes(Array.Empty<object>()),
             JsonSerializer.SerializeToUtf8Bytes(next), TreasureResult(a, true, baseGrants, extraGrants, record).ToByteArray());
-        return new TreasurePay(member, next, obligation, grants, tasks.StageOnePieceReward(member, source));
+        return new TreasurePay(member, next, obligation, grants, _tasks.StageOnePieceReward(member, source));
     }
 
     private async Task CommitTreasureAsync(Treasure a, TreasurePay[] paid)
     {
-        var tx = roles.NewTransaction();
+        var tx = _roles.NewTransaction();
         foreach (var pay in paid)
         {
             tx.RoleBlob(pay.Obligation.RoleId, "timed_battle", pay.Obligation.NextState);
@@ -630,7 +630,7 @@ public sealed partial class TimedBattleService
         var economic = paid.SelectMany(p => p.Grants.Where(g => g.Entry is not (100 or 101)).Select(g => (Pay: p, Grant: g))).ToArray();
         if (economic.Length > 0)
         {
-            var catalog = EventEconomy.Catalog(data);
+            var catalog = EventEconomy.Catalog(_data);
             EconomyAsset Asset(int entry) => catalog.TryAsset(entry, out var asset) ? asset
                 : throw new InvalidDataException($"OnePiece grant {entry} is not catalogued.");
             tx.WithEventEconomy(new EventEconomyMutation(catalog, Guid.NewGuid().ToString("N"),
@@ -645,13 +645,13 @@ public sealed partial class TimedBattleService
                     Recipients = paid.Select(p => p.Obligation.RoleId).ToArray()
                 })));
         }
-        await roles.CommitAsync(tx, "timed-battle/onepiece-obligation", _ =>
+        await _roles.CommitAsync(tx, "timed-battle/onepiece-obligation", _ =>
         {
             foreach (var pay in paid)
             {
                 pay.Player.TimedBattle = pay.Next;
                 pay.TaskPlan?.Apply();
-                pendingDeliveryRoles.Add(pay.Obligation.RoleId);
+                _pendingDeliveryRoles.Add(pay.Obligation.RoleId);
             }
             a.Settled = true;
             ReleaseRiftStone(a, cleared: true);
@@ -662,7 +662,7 @@ public sealed partial class TimedBattleService
         IEnumerable<AwardGrant> extraGrants, bool record)
     {
         var res = new OnePieceDungeonResData
-        { PassTime = time.GetUtcNow().ToUnixTimeMilliseconds() - a.Started, BossLevel = a.Stone.Star, IsNewRecord = win && record };
+        { PassTime = _time.GetUtcNow().ToUnixTimeMilliseconds() - a.Started, BossLevel = a.Stone.Star, IsNewRecord = win && record };
         // LC_DunGeon_OnePiece.CELL_DUNGEON_RES_NOTIFY lists these as the settlement's normal and extra rewards.
         res.BaseReward.Add(baseGrants.Select(g => new ItemBaseInfo { ItemEntry = g.Entry, Stack = g.Count }));
         res.ExtraReward.Add(extraGrants.Select(g => new ItemBaseInfo { ItemEntry = g.Entry, Stack = g.Count }));
@@ -675,7 +675,7 @@ public sealed partial class TimedBattleService
 
     private long TreasureDay()
     {
-        var now = TimeZoneInfo.ConvertTime(time.GetUtcNow(), time.LocalTimeZone);
+        var now = TimeZoneInfo.ConvertTime(_time.GetUtcNow(), _time.LocalTimeZone);
         return now.Year * 10000L + now.Month * 100 + now.Day;
     }
 
@@ -684,11 +684,11 @@ public sealed partial class TimedBattleService
     /// <summary>OnePiece's fixed extra AwardConfig row has explicit per-item weekly restrictions and no replacement.</summary>
     private List<RestrictedItem> RestrictedExtra(long group)
     {
-        if (data.Row("MultiverseGroupConfig", group) is not { } route || GameData.Int(route, "_itype") != 0)
+        if (_data.Row("MultiverseGroupConfig", group) is not { } route || GameData.Int(route, "_itype") != 0)
             throw new AwardResolutionException($"OnePiece extra group {group} is invalid");
         long id = GameData.Int(route, "_iValue_101");
         if (id <= 0) id = GameData.Int(route, "_iValue_default");
-        if (data.Row("AwardConfig", id) is not { ValueKind: JsonValueKind.Array } rows || rows.GetArrayLength() != 1
+        if (_data.Row("AwardConfig", id) is not { ValueKind: JsonValueKind.Array } rows || rows.GetArrayLength() != 1
             || !rows[0].TryGetProperty("_kAward", out var fixedItems) || fixedItems.ValueKind != JsonValueKind.Array
             || GameData.Int(rows[0], "_iDropPool") != 0)
             throw new AwardResolutionException($"OnePiece extra award {id} is not one fixed row");
@@ -700,9 +700,9 @@ public sealed partial class TimedBattleService
                 || GameData.Number(item[2]) != 0)
                 throw new AwardResolutionException($"OnePiece extra award {id} has unsupported item tuple");
             int entry = checked((int)entryNumber), count = checked((int)countNumber);
-            if (entry <= 0 || count <= 0 || data.Row("ItemConfig", entry) == null)
+            if (entry <= 0 || count <= 0 || _data.Row("ItemConfig", entry) == null)
                 throw new AwardResolutionException($"OnePiece extra award {id} has invalid item {entry}");
-            var restrictions = data.Table("AwardRestricConfig").Values.Where(r =>
+            var restrictions = _data.Table("AwardRestricConfig").Values.Where(r =>
                 GameData.Int(r, "_iRewardID") == id && GameData.Int(r, "_iItemID") == entry).ToArray();
             if (restrictions.Length > 1) throw new AwardResolutionException($"OnePiece item {entry} has multiple restrictions");
             int? cap = null;
@@ -710,7 +710,7 @@ public sealed partial class TimedBattleService
             {
                 var restriction = restrictions[0];
                 long restrictId = GameData.Int(restriction, "_iRestricid");
-                var rule = data.Row("RestrictConfig", restrictId);
+                var rule = _data.Row("RestrictConfig", restrictId);
                 long max = rule is { } configured ? GameData.Int(configured, "_iMaxRestrictNum") : 0;
                 // _iRecoverType 2 is PBRestrictRecoverType_Weekly.
                 if (GameData.Int(restriction, "_iReplaceAward") != 0 || rule == null

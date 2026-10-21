@@ -22,57 +22,57 @@ public sealed class MonsterHuntService
     public const uint Sync = 5053, GainAreaAward = 83622, GainMonsterAward = 83623;
     public const int Function = 92;
 
-    private readonly GameData data;
-    private readonly CharacterService character;
-    private readonly FunctionService functions;
-    private readonly SeasonService seasons;
-    private readonly AwardService awards;
-    private readonly RewardService rewards;
-    private readonly TaskService tasks;
-    private readonly RoleStore roles;
-    private readonly ILogger<MonsterHuntService> log;
+    private readonly GameData _data;
+    private readonly CharacterService _character;
+    private readonly FunctionService _functions;
+    private readonly SeasonService _seasons;
+    private readonly AwardService _awards;
+    private readonly RewardService _rewards;
+    private readonly TaskService _tasks;
+    private readonly RoleStore _roles;
+    private readonly ILogger<MonsterHuntService> _log;
 
-    private readonly Dictionary<long, JsonElement> mapByScene = new();
-    private readonly Dictionary<(long Map, int Npc), JsonElement> monsterByMapNpc = new();
-    private readonly Dictionary<long, long> areaOfMap = new();
+    private readonly Dictionary<long, JsonElement> _mapByScene = new();
+    private readonly Dictionary<(long Map, int Npc), JsonElement> _monsterByMapNpc = new();
+    private readonly Dictionary<long, long> _areaOfMap = new();
 
     public MonsterHuntService(GameData data, CharacterService character, FunctionService functions, SeasonService seasons,
         AwardService awards, RewardService rewards, TaskService tasks, RoleStore roles, ILogger<MonsterHuntService> log)
     {
-        this.data = data; this.character = character; this.functions = functions; this.seasons = seasons;
-        this.awards = awards; this.rewards = rewards; this.tasks = tasks; this.roles = roles; this.log = log;
+        this._data = data; this._character = character; this._functions = functions; this._seasons = seasons;
+        this._awards = awards; this._rewards = rewards; this._tasks = tasks; this._roles = roles; this._log = log;
         foreach (var map in Rows("AreaConcurMapConfig"))
         {
             long id = GameData.Int(map, "_iID");
-            areaOfMap[id] = GameData.Int(map, "_iArea");
-            mapByScene.TryAdd(GameData.Int(map, "_iMap"), map);
+            _areaOfMap[id] = GameData.Int(map, "_iArea");
+            _mapByScene.TryAdd(GameData.Int(map, "_iMap"), map);
             // A cave of the map counts for it (_kNextMap, e.g. 10150 -> 10153; inferred attribution).
             if (map.TryGetProperty("_kNextMap", out var caves) && caves.ValueKind == JsonValueKind.Array)
                 foreach (var cave in caves.EnumerateArray())
-                    if (GameData.Number(cave) is { } scene) mapByScene.TryAdd((long)scene, map);
+                    if (GameData.Number(cave) is { } scene) _mapByScene.TryAdd((long)scene, map);
         }
         foreach (var monster in Rows("AreaConcurMonsterConfig"))
-            monsterByMapNpc.TryAdd((GameData.Int(monster, "_iMap"), (int)GameData.Int(monster, "_iNpc")), monster);
+            _monsterByMapNpc.TryAdd((GameData.Int(monster, "_iMap"), (int)GameData.Int(monster, "_iNpc")), monster);
         rewards.StageHuntKill = StageKill;
         rewards.ExtraKillDrops = AreaDrops;
         rewards.KillDropsGranted.Add(KilledAsync);
     }
 
     /// <summary>The rows of this playbook (all are _kMultiverseArray [101]).</summary>
-    private IEnumerable<JsonElement> Rows(string table) => data.Table(table).Values
+    private IEnumerable<JsonElement> Rows(string table) => _data.Table(table).Values
         .SelectMany(v => v.ValueKind == JsonValueKind.Array ? v.EnumerateArray().ToArray() : [v])
-        .Where(r => TowerService.FitsPlayBook(r, seasons.PlayBook));
+        .Where(r => TowerService.FitsPlayBook(r, _seasons.PlayBook));
 
-    private JsonElement? Area(long areaId) => data.Row("AreaConcurConfig", areaId);
+    private JsonElement? Area(long areaId) => _data.Row("AreaConcurConfig", areaId);
 
     /// <summary>The Hunt area the role may count in: function open, area _iCondition met (base level).</summary>
     private bool AreaOpen(GameSession s, JsonElement area) =>
-        functions.IsOpen(s, Function) && functions.ConditionMet(s, GameData.Int(area, "_iCondition"));
+        _functions.IsOpen(s, Function) && _functions.ConditionMet(s, GameData.Int(area, "_iCondition"));
 
     /// <summary>A field kill on an open Hunt map: its map row and area row.</summary>
     private (JsonElement Map, JsonElement Area)? Counting(GameSession s)
     {
-        if (s.Role == null || s.Progress == null || s.InstanceId != 0 || !mapByScene.TryGetValue(s.SceneEntry, out var map)) return null;
+        if (s.Role == null || s.Progress == null || s.InstanceId != 0 || !_mapByScene.TryGetValue(s.SceneEntry, out var map)) return null;
         return Area(GameData.Int(map, "_iArea")) is { } area && AreaOpen(s, area) ? (map, area) : null;
     }
 
@@ -80,7 +80,7 @@ public sealed class MonsterHuntService
 
     public void Load(GameSession s)
     {
-        var bytes = roles.LoadAreaConcur(s.Role!.Id);
+        var bytes = _roles.LoadAreaConcur(s.Role!.Id);
         s.AreaConcur = bytes is { Length: > 0 } ? DBAreaConcurInfo.Parser.ParseFrom(bytes) : new DBAreaConcurInfo();
         s.AreaConcurPersisted = bytes ?? [];
     }
@@ -94,7 +94,7 @@ public sealed class MonsterHuntService
     /// <summary>Hunt Medals and region points: the area's drop, rolled with the kill's own loot (word 74005).</summary>
     private IEnumerable<(int Entry, int Count)> AreaDrops(GameSession s, MonsterUnit monster) =>
         Counting(s) is { } hunt && GameData.Int(hunt.Area, "_iAreaDropAward") is var drop and > 0
-            ? rewards.RollAward(drop, s) : [];
+            ? _rewards.RollAward(drop, s) : [];
 
     /// <summary>
     /// The kill's counters, staged into its transaction like the AFK record: the stored blob must still be the one this
@@ -108,7 +108,7 @@ public sealed class MonsterHuntService
         var next = state.Clone();
         if (!next.MapInfo.TryGetValue(mapId, out var mapInfo)) next.MapInfo[mapId] = mapInfo = new AreaConcurMapInfo();
         if (mapInfo.CurScore < GameData.Int(hunt.Map, "_iMapLimit")) mapInfo.CurScore++;
-        if (monsterByMapNpc.TryGetValue((mapId, monster.Template.NpcId), out var row))
+        if (_monsterByMapNpc.TryGetValue((mapId, monster.Template.NpcId), out var row))
         {
             long id = GameData.Int(row, "_iID");
             if (!next.MonsterInfo.TryGetValue(id, out var info)) next.MonsterInfo[id] = info = new AreaConcurMonsterInfo();
@@ -122,7 +122,7 @@ public sealed class MonsterHuntService
         settlement.Enlist = builder =>
         {
             priorEnlist?.Invoke(builder);
-            if (!(roles.ReadAreaConcur(builder, role) ?? []).AsSpan().SequenceEqual(before))
+            if (!(_roles.ReadAreaConcur(builder, role) ?? []).AsSpan().SequenceEqual(before))
                 throw new InvalidOperationException("Monster Hunt state changed before the kill's admission.");
             builder.RoleBlob(role, "area_concur", after);
         };
@@ -169,7 +169,7 @@ public sealed class MonsterHuntService
     {
         long count = 0;
         foreach (var (id, info) in state.MonsterInfo)
-            if (data.Row("AreaConcurMonsterConfig", id) is { } row && areaOfMap.GetValueOrDefault(GameData.Int(row, "_iMap")) == areaId)
+            if (_data.Row("AreaConcurMonsterConfig", id) is { } row && _areaOfMap.GetValueOrDefault(GameData.Int(row, "_iMap")) == areaId)
                 count += info.ClaimedAward.Count(c => c.Value);
         return Math.Min(count, GameData.Int(area, "_iAreaLimit"));
     }
@@ -180,8 +180,8 @@ public sealed class MonsterHuntService
         using (await CharacterService.Lock(s))
         {
             var state = s.AreaConcur;
-            var row = data.Row("AreaConcurMonsterConfig", req.MonsterId);
-            long areaId = row is { } r ? areaOfMap.GetValueOrDefault(GameData.Int(r, "_iMap")) : 0;
+            var row = _data.Row("AreaConcurMonsterConfig", req.MonsterId);
+            long areaId = row is { } r ? _areaOfMap.GetValueOrDefault(GameData.Int(r, "_iMap")) : 0;
             if (state != null && row is { } monster && Area(areaId) is { } area && AreaOpen(s, area))
             {
                 long kills = state.MonsterInfo.GetValueOrDefault(req.MonsterId)?.CurScore ?? 0;
@@ -202,7 +202,7 @@ public sealed class MonsterHuntService
             await s.SendGameAsync(GainMonsterAward, new AreaConcurGainMonsterAwardResp { Req = req });
         }
         await SyncAsync(s);
-        await tasks.RefreshAsync(s); // 318004: the area's collection progress
+        await _tasks.RefreshAsync(s); // 318004: the area's collection progress
     }
 
     /// <summary>83622: an area stage once the area's claimed monster stages reach its threshold (one stage per request).</summary>
@@ -237,25 +237,25 @@ public sealed class MonsterHuntService
     {
         long role = s.Role!.Id;
         AwardPlan[] plans;
-        try { plans = groups.Select(g => awards.Resolve(s, g, PlayBook(s))).ToArray(); }
+        try { plans = groups.Select(g => _awards.Resolve(s, g, PlayBook(s))).ToArray(); }
         catch (AwardResolutionException e)
         {
-            log.LogWarning("Monster Hunt {Claim} reward unresolved for {Role}: {Reason}", claim, role, e.Message);
+            _log.LogWarning("Monster Hunt {Claim} reward unresolved for {Role}: {Reason}", claim, role, e.Message);
             return;
         }
         byte[] bytes = next.ToByteArray();
         try
         {
-            bool ok = await character.ApplyAwardAsync(s, new AwardPlan(0, 0, plans.SelectMany(p => p.Grants)),
-                persist: tx => roles.SaveAreaConcur(role, bytes, tx), stateLockHeld: true,
+            bool ok = await _character.ApplyAwardAsync(s, new AwardPlan(0, 0, plans.SelectMany(p => p.Grants)),
+                persist: tx => _roles.SaveAreaConcur(role, bytes, tx), stateLockHeld: true,
                 committed: () => { s.AreaConcur = next; s.AreaConcurPersisted = bytes; },
                 ownedAward: new CharacterService.OwnedAwardSource("cd13e/monsterhunt-award", $"monsterhunt/{role}/{claim}",
                     new { Version = 1, Claim = claim, Awards = plans.Select(p => p.AwardId).ToArray() }));
-            if (!ok) log.LogWarning("Monster Hunt {Claim} not paid for {Role}", claim, role);
+            if (!ok) _log.LogWarning("Monster Hunt {Claim} not paid for {Role}", claim, role);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            log.LogError(e, "Monster Hunt {Claim} transaction failed for {Role}", claim, role);
+            _log.LogError(e, "Monster Hunt {Claim} transaction failed for {Role}", claim, role);
         }
     }
 

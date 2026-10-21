@@ -12,28 +12,28 @@ namespace Ro3Emu.Tests;
 /// <summary>Profile card over the wire: 5016 DBPersonalInfo, 82553 appearance, 82559 preset, 82560 name, others' view.</summary>
 public sealed class PersonalTests : IAsyncLifetime
 {
-    private readonly string dir = Path.Combine(Path.GetTempPath(), "ro3emu-personal-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ro3emu-personal-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "";
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
     private const int Sticker = 1008001;
 
     public async Task InitializeAsync()
     {
         var (h, m, g) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o => { o.DataDir = dir; o.GameDataDir = Path.Combine(ClientData.RepoRoot, "data"); o.HttpPort = h; o.MicroGatePort = m; o.GameGatePort = g; });
-        await app.StartAsync(); http = $"http://127.0.0.1:{h}";
+        _app = ServerHost.Create([], o => { o.DataDir = _dir; o.GameDataDir = Path.Combine(ClientData.RepoRoot, "data"); o.HttpPort = h; o.MicroGatePort = m; o.GameGatePort = g; });
+        await _app.StartAsync(); _http = $"http://127.0.0.1:{h}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync(); Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dir, true); } catch (IOException) { }
+        await _app.StopAsync(); await _app.DisposeAsync(); Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        try { Directory.Delete(_dir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var b = new BotClient(http, File.ReadAllText(Path.Combine(dir, "gate_rsa_public.pem")));
+        var b = new BotClient(_http, File.ReadAllText(Path.Combine(_dir, "gate_rsa_public.pem")));
         await b.LoginAsync(name.ToLowerInvariant(), "pw"); await b.EnterGateAsync();
         long id = create ? (await b.CreateRoleAsync(name)).RoleBaseInfo.Id : b.Roles.Single().Id;
         await b.EnterWorldAsync(id); return b;
@@ -43,13 +43,13 @@ public sealed class PersonalTests : IAsyncLifetime
     { var e = await b.Inbox.WaitAsync(e => e.IsGame(id) && (match == null || match(p.ParseFrom(e.Body))), Wait); return p.ParseFrom(e.Body); }
 
     private async Task Gm(string account, string command)
-    { using var h = new HttpClient(); (await h.PostAsync($"{http}/ro3emu/gm?account={account}", new StringContent(command))).EnsureSuccessStatusCode(); }
+    { using var h = new HttpClient(); (await h.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(command))).EnsureSuccessStatusCode(); }
 
-    private GameSession Session(string account) => app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == account && s.Role != null);
+    private GameSession Session(string account) => _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == account && s.Role != null);
 
     private async Task WaitUntil(Func<bool> done, string what)
     {
-        var loop = app.Services.GetRequiredService<GameLoop>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
         for (var until = DateTime.UtcNow + Wait; ; await Task.Delay(20))
         {
             bool ok = false;
@@ -147,10 +147,10 @@ public sealed class PersonalTests : IAsyncLifetime
 
         // Persisted on both sides: the liked card offline, the liker's own likes after a relogin.
         await bob.DisposeAsync();
-        await WaitUntil(() => !app.Services.GetRequiredService<SessionRegistry>().All().Any(s => s.Account == "bob" && s.Role != null), "bob still online");
+        await WaitUntil(() => !_app.Services.GetRequiredService<SessionRegistry>().All().Any(s => s.Account == "bob" && s.Role != null), "bob still online");
         Assert.Equal(2, (await Likes(carol, bobId)).Count);
         await alice.DisposeAsync();
-        await WaitUntil(() => !app.Services.GetRequiredService<SessionRegistry>().All().Any(s => s.Account == "alice" && s.Role != null), "alice still online");
+        await WaitUntil(() => !_app.Services.GetRequiredService<SessionRegistry>().All().Any(s => s.Account == "alice" && s.Role != null), "alice still online");
         await using var again = await InWorld("Alice", create: false);
         var reloaded = await Next(again, PersonalService.Sync, DBPersonalInfoIncrement.Parser, i => i.SyncAllMark);
         Assert.Equal(at, reloaded.UpvoteTimes[bobId].All);
@@ -169,7 +169,7 @@ public sealed class PersonalTests : IAsyncLifetime
         Assert.Equal(0, (await Popularity(alice, b)).Popularity);
         await alice.MicroAsync("FriendService", "apply", new() { ["Uid"] = a.ToString(), ["Target"] = b.ToString() });
         await bob.MicroAsync("FriendService", "accept", new() { ["Uid"] = b.ToString(), ["Applicant"] = a.ToString() });
-        await WaitUntil(() => app.Services.GetRequiredService<Ro3Emu.Server.Accounts.FriendStore>().AreFriends(a, b), "not friends");
+        await WaitUntil(() => _app.Services.GetRequiredService<Ro3Emu.Server.Accounts.FriendStore>().AreFriends(a, b), "not friends");
 
         // 1004000: _iUseEffect [107,10] intimacy, [108,10] popularity, [109,10] charity, per unit.
         await Gm("alice", "!item 1004000 3");
@@ -190,7 +190,7 @@ public sealed class PersonalTests : IAsyncLifetime
         Assert.Equal((30, 0), (stale.Popularity, stale.PopularityWeekly));
 
         // Fashion: permanently lit appearances' _iFashionScore (WardRobeConfig 10030417 scores 10).
-        var data = app.Services.GetRequiredService<GameData>();
+        var data = _app.Services.GetRequiredService<GameData>();
         int Fashion(Dictionary<object, object?> seen) => RoleAdditionBaseInfo.Parser.ParseFrom((byte[])seen["Base"]!).FashionScore;
         long before = WardrobeService.FashionScore(data, Session("bob").Wardrobe);
         Assert.Equal(before, Fashion(await Card(alice, b, "Base")));
@@ -204,7 +204,7 @@ public sealed class PersonalTests : IAsyncLifetime
 
         // Persisted: bob offline still shows his popularity.
         await bob.DisposeAsync();
-        await WaitUntil(() => !app.Services.GetRequiredService<SessionRegistry>().All().Any(s => s.Account == "bob" && s.Role != null), "bob still online");
+        await WaitUntil(() => !_app.Services.GetRequiredService<SessionRegistry>().All().Any(s => s.Account == "bob" && s.Role != null), "bob still online");
         Assert.Equal(30, (await Popularity(alice, b)).Popularity);
     }
 
@@ -276,7 +276,7 @@ public sealed class PersonalTests : IAsyncLifetime
 
         // The pose is a PerformanceConfig emote the role has unlocked; the editor preselects one (50001) even for a sign edit.
         var unlockedPoses = Session("alice").EmojiPlay!.EmojiUnlocks.ToHashSet();
-        int lockedPose = app.Services.GetRequiredService<GameData>().Table("PerformanceConfig").Values
+        int lockedPose = _app.Services.GetRequiredService<GameData>().Table("PerformanceConfig").Values
             .Select(r => (int)GameData.Int(r, "_iID")).First(id => id > 0 && !unlockedPoses.Contains(id));
         var posed = stuck.Clone(); posed.RoleInfos.Add(new PersonalRoleInfo { ActionId = lockedPose });
         Assert.Equal(PersonalService.ErrLocked, (await Save(alice, 1, posed)).Result);
@@ -331,7 +331,7 @@ public sealed class PersonalTests : IAsyncLifetime
 
         // Persisted: offline alice is still seen, and her next login gets the same presets.
         await alice.DisposeAsync();
-        await WaitUntil(() => !app.Services.GetRequiredService<SessionRegistry>().All().Any(s => s.Account == "alice" && s.Role != null), "alice still online");
+        await WaitUntil(() => !_app.Services.GetRequiredService<SessionRegistry>().All().Any(s => s.Account == "alice" && s.Role != null), "alice still online");
         Assert.Equal("Hello there", PersonalInfo.Parser.ParseFrom((byte[])(await Card(bob, aliceId, "Base", "Personal"))["Personal"]!).Sign);
         await using var again = await InWorld("Alice", create: false);
         var reloaded = await Next(again, PersonalService.Sync, DBPersonalInfoIncrement.Parser, i => i.SyncAllMark);
@@ -353,25 +353,25 @@ public sealed class PersonalTests : IAsyncLifetime
         long a = (long)alice.Self!.Uuid, b = (long)bob.Self!.Uuid, c = (long)carol.Self!.Uuid;
         await Gm("alice", "!lvl 20");
         await WaitUntil(() => Session("alice").Progress!.Level == 20, "level 20 not applied");
-        await QuestProbe.AcceptAsync(app, http, "alice", 500201); // [106902,1] "Like Temporary Activity Quests"
-        await QuestProbe.AcceptAsync(app, http, "alice", 100022); // [103019,3] "Have 3 friends"
-        await QuestProbe.AtAsync(app, "alice", 100022, 0);
-        await QuestProbe.AtAsync(app, "alice", 500201, 0);
+        await QuestProbe.AcceptAsync(_app, _http, "alice", 500201); // [106902,1] "Like Temporary Activity Quests"
+        await QuestProbe.AcceptAsync(_app, _http, "alice", 100022); // [103019,3] "Have 3 friends"
+        await QuestProbe.AtAsync(_app, "alice", 100022, 0);
+        await QuestProbe.AtAsync(_app, "alice", 500201, 0);
 
         Assert.Equal(0, (await Like(alice, b)).Result);
-        await QuestProbe.DoneAsync(app, "alice", 500201);
+        await QuestProbe.DoneAsync(_app, "alice", 500201);
 
         foreach (var (bot, id) in new[] { (bob, b), (carol, c) })
         {
             await alice.MicroAsync("FriendService", "apply", new() { ["Uid"] = a.ToString(), ["Target"] = id.ToString() });
             await bot.MicroAsync("FriendService", "accept", new() { ["Uid"] = id.ToString(), ["Applicant"] = a.ToString() });
         }
-        await QuestProbe.AtAsync(app, "alice", 100022, 2);
+        await QuestProbe.AtAsync(_app, "alice", 100022, 2);
 
         await alice.DisposeAsync();
-        await QuestProbe.OfflineAsync(app, "alice");
+        await QuestProbe.OfflineAsync(_app, "alice");
         await using var again = await InWorld("Alice", create: false);
-        await QuestProbe.AtAsync(app, "alice", 100022, 2);
-        await QuestProbe.DoneAsync(app, "alice", 500201);
+        await QuestProbe.AtAsync(_app, "alice", 100022, 2);
+        await QuestProbe.DoneAsync(_app, "alice", 500201);
     }
 }

@@ -13,25 +13,25 @@ namespace Ro3Emu.Tests;
 /// <summary>MG_Mount ownership, transaction, riding properties, AOI, expiry and etchant plans over the wire.</summary>
 public sealed class MountTests : IAsyncLifetime
 {
-    private readonly string dir = Path.Combine(Path.GetTempPath(), "ro3emu-mount-" + Guid.NewGuid().ToString("N"));
-    private readonly ManualClock clock = new(DateTimeOffset.UtcNow);
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ro3emu-mount-" + Guid.NewGuid().ToString("N"));
+    private readonly ManualClock _clock = new(DateTimeOffset.UtcNow);
+    private WebApplication _app = null!;
+    private string _http = "";
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
     public async Task InitializeAsync()
     {
         var (h, m, g) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o => { o.DataDir = dir; o.GameDataDir = Path.Combine(RepoRoot(), "data"); o.HttpPort = h; o.MicroGatePort = m; o.GameGatePort = g; }, clock);
-        await app.StartAsync(); http = $"http://127.0.0.1:{h}";
+        _app = ServerHost.Create([], o => { o.DataDir = _dir; o.GameDataDir = Path.Combine(RepoRoot(), "data"); o.HttpPort = h; o.MicroGatePort = m; o.GameGatePort = g; }, _clock);
+        await _app.StartAsync(); _http = $"http://127.0.0.1:{h}";
     }
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync(); Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dir, true); } catch (IOException) { }
+        await _app.StopAsync(); await _app.DisposeAsync(); Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        try { Directory.Delete(_dir, true); } catch (IOException) { }
     }
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var b = new BotClient(http, File.ReadAllText(Path.Combine(dir, "gate_rsa_public.pem")));
+        var b = new BotClient(_http, File.ReadAllText(Path.Combine(_dir, "gate_rsa_public.pem")));
         await b.LoginAsync(name.ToLowerInvariant(), "pw"); await b.EnterGateAsync();
         long id = create ? (await b.CreateRoleAsync(name)).RoleBaseInfo.Id : b.Roles.Single().Id;
         await b.EnterWorldAsync(id); return b;
@@ -39,8 +39,8 @@ public sealed class MountTests : IAsyncLifetime
     private static async Task<T> Next<T>(BotClient b, uint id, MessageParser<T> p, Func<T, bool>? match = null) where T : IMessage<T>
     { var e = await b.Inbox.WaitAsync(e => e.IsGame(id) && (match == null || match(p.ParseFrom(e.Body))), Wait); return p.ParseFrom(e.Body); }
     private async Task Gm(string account, string command)
-    { using var h = new HttpClient(); (await h.PostAsync($"{http}/ro3emu/gm?account={account}", new StringContent(command))).EnsureSuccessStatusCode(); }
-    private GameSession Session(string account) => app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == account && s.Role != null);
+    { using var h = new HttpClient(); (await h.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(command))).EnsureSuccessStatusCode(); }
+    private GameSession Session(string account) => _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == account && s.Role != null);
     private async Task UnlockMount(BotClient b, string account, int item)
     {
         await Gm(account, "!lvl 14"); await Gm(account, $"!item {item} 1");
@@ -97,7 +97,7 @@ public sealed class MountTests : IAsyncLifetime
         await UnlockMount(a, "alice", 1501013);
         await Gm("alice", "!item 1501013 1");
         long guid = Session("alice").Items.Single(i => i.Entry == 1501013).Guid;
-        await app.Services.GetRequiredService<GameLoop>().InvokeAsync(() => { Session("alice").ItemCds.Clear(); return Task.CompletedTask; });
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() => { Session("alice").ItemCds.Clear(); return Task.CompletedTask; });
         await a.SendGameAsync(31323, new ItemUseReq { ItemGuid = guid, ItemCount = 1 });
         Assert.Equal(ErrorCodes.MountAlreadyOwned, (await Next(a, 31323, ItemUseResp.Parser)).Result);
         Assert.Contains(Session("alice").Items, i => i.Guid == guid);
@@ -110,7 +110,7 @@ public sealed class MountTests : IAsyncLifetime
         await UnlockMount(a, "alice", 1501023);
         await a.SendGameAsync(32743, new PlayerMountsSetCfgReq { MountId = 60040010 }); await Next(a, 32743, PlayerMountsSetCfgResp.Parser);
         await a.SendGameAsync(32745, new PlayerRiderMountReq { Tp = (eRiderType)1 }); await Next(a, 32745, PlayerRiderMountResp.Parser);
-        await app.Services.GetRequiredService<GameLoop>().InvokeAsync(() => { Session("alice").Mounts!.Mounts[60040010].OverdueTimeMs = clock.GetUtcNow().ToUnixTimeMilliseconds() - 1; return app.Services.GetRequiredService<MountService>().ReconcileAsync(Session("alice")); });
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() => { Session("alice").Mounts!.Mounts[60040010].OverdueTimeMs = _clock.GetUtcNow().ToUnixTimeMilliseconds() - 1; return _app.Services.GetRequiredService<MountService>().ReconcileAsync(Session("alice")); });
         Assert.False(Session("alice").Mounts!.Mounts.ContainsKey(60040010));
         Assert.Equal(0, MountService.Rider(Session("alice"))); Assert.Equal(700, Session("alice").Speed);
         await Next(a, 5012, DBMountsInfoIncrement.Parser, p => p.Mounts.TryGetValue(60040010, out var m) && m.Del);
@@ -134,11 +134,11 @@ public sealed class MountTests : IAsyncLifetime
                 p => p.Uuid == a.Self!.Uuid && p.NotifyType == EntityBase.Types.NotifyType.Rider && p.CurRider == 60040010);
         }
 
-        var loop = app.Services.GetRequiredService<GameLoop>();
-        var roles = app.Services.GetRequiredService<RoleStore>();
-        var mount = app.Services.GetRequiredService<MountService>();
-        var deadlines = app.Services.GetRequiredService<Deadlines>();
-        var due = DateTimeOffset.FromUnixTimeMilliseconds(clock.GetUtcNow().ToUnixTimeMilliseconds() + 1250);
+        var loop = _app.Services.GetRequiredService<GameLoop>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
+        var mount = _app.Services.GetRequiredService<MountService>();
+        var deadlines = _app.Services.GetRequiredService<Deadlines>();
+        var due = DateTimeOffset.FromUnixTimeMilliseconds(_clock.GetUtcNow().ToUnixTimeMilliseconds() + 1250);
         await loop.InvokeAsync(() =>
         {
             var session = Session("alice");
@@ -152,12 +152,12 @@ public sealed class MountTests : IAsyncLifetime
             return Task.CompletedTask;
         });
 
-        await loop.InvokeAsync(() => { clock.Set(due.AddTicks(-1)); deadlines.Tick(default); return Task.CompletedTask; });
+        await loop.InvokeAsync(() => { _clock.Set(due.AddTicks(-1)); deadlines.Tick(default); return Task.CompletedTask; });
         await loop.InvokeAsync(() => Task.CompletedTask);
         Assert.True(Session("alice").Mounts!.Mounts.ContainsKey(60040010));
         Assert.Equal(60040010, MountService.Rider(Session("alice")));
 
-        await loop.InvokeAsync(() => { clock.Set(due); deadlines.Tick(default); return Task.CompletedTask; });
+        await loop.InvokeAsync(() => { _clock.Set(due); deadlines.Tick(default); return Task.CompletedTask; });
         await Next(a, 5012, DBMountsInfoIncrement.Parser, p => p.Mounts.TryGetValue(60040010, out var m) && m.Del);
         foreach (var viewer in new[] { a, b })
             await Next(viewer, CharacterService.EntityBaseChange, EntityBase.Parser,
@@ -177,11 +177,11 @@ public sealed class MountTests : IAsyncLifetime
     {
         await using var a = await InWorld("Alice");
         await UnlockMount(a, "alice", 1501023);
-        var loop = app.Services.GetRequiredService<GameLoop>();
-        var roles = app.Services.GetRequiredService<RoleStore>();
-        var mount = app.Services.GetRequiredService<MountService>();
-        var deadlines = app.Services.GetRequiredService<Deadlines>();
-        var due = DateTimeOffset.FromUnixTimeMilliseconds(clock.GetUtcNow().ToUnixTimeMilliseconds() + 1250);
+        var loop = _app.Services.GetRequiredService<GameLoop>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
+        var mount = _app.Services.GetRequiredService<MountService>();
+        var deadlines = _app.Services.GetRequiredService<Deadlines>();
+        var due = DateTimeOffset.FromUnixTimeMilliseconds(_clock.GetUtcNow().ToUnixTimeMilliseconds() + 1250);
         var expiryCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await loop.InvokeAsync(() =>
         {
@@ -192,7 +192,7 @@ public sealed class MountTests : IAsyncLifetime
             stored.Info = info.ToByteArray();
             roles.SaveMounts(session.Role.Id, JsonSerializer.SerializeToUtf8Bytes(stored));
             mount.Load(session);
-            FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(),
+            FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(),
                 "CREATE TRIGGER reject_mount_expiry BEFORE UPDATE OF mounts ON role BEGIN SELECT RAISE(ABORT, 'retry test'); END");
             var scheduled = deadlines.ScheduledLease(session, "mount-expiry");
             Assert.True(scheduled.HasValue);
@@ -202,7 +202,7 @@ public sealed class MountTests : IAsyncLifetime
                 deadlines.CallbackCompletedForTest = null;
                 expiryCompleted.TrySetResult();
             };
-            clock.Set(due);
+            _clock.Set(due);
             deadlines.Tick(default);
             return Task.CompletedTask;
         });
@@ -213,8 +213,8 @@ public sealed class MountTests : IAsyncLifetime
 
         await loop.InvokeAsync(() =>
         {
-            FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(), "DROP TRIGGER reject_mount_expiry");
-            clock.Set(due.AddSeconds(1));
+            FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(), "DROP TRIGGER reject_mount_expiry");
+            _clock.Set(due.AddSeconds(1));
             deadlines.Tick(default);
             return Task.CompletedTask;
         });
@@ -246,7 +246,7 @@ public sealed class MountTests : IAsyncLifetime
     [ClientDataFact]
     public async Task QuestRideDeliveryPersistsAcrossRelogAndRecycleRemovesOnlyTemporaryRide()
     {
-        var roles = app.Services.GetRequiredService<RoleStore>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
         long role;
         await using (var a = await InWorld("Alice"))
         {
@@ -286,7 +286,7 @@ public sealed class MountTests : IAsyncLifetime
         var voucher = session.Items.Where(i => i.Entry == entry).OrderBy(i => i.Guid).First();
         long guid = voucher.Guid;
         int originalStack = voucher.Stack;
-        var character = app.Services.GetRequiredService<CharacterService>();
+        var character = _app.Services.GetRequiredService<CharacterService>();
         int uses = 0;
         character.ItemUsed.Add((s, item, count) => { if (s == session && item == entry) uses += count; });
 
@@ -301,7 +301,7 @@ public sealed class MountTests : IAsyncLifetime
         Assert.Equal(entry, cooldown.ItemId);
         Assert.True(cooldown.ItemCd > before);
         Assert.Equal(cooldown.ItemCd, session.ItemCds[entry]);
-        var saved = app.Services.GetRequiredService<RoleStore>().LoadBagState(session.Role!.Id);
+        var saved = _app.Services.GetRequiredService<RoleStore>().LoadBagState(session.Role!.Id);
         Assert.NotNull(saved);
         Assert.Equal(cooldown.ItemCd, DBItemsInfo.Parser.ParseFrom(saved).ItemCds.Data[entry]);
         Assert.Equal(1, session.Items.Where(i => i.Entry == entry).Sum(i => i.Stack));
@@ -319,14 +319,14 @@ public sealed class MountTests : IAsyncLifetime
     {
         await using var a = await InWorld("Alice");
         await Gm("alice", "!lvl 14"); await Gm("alice", "!item 1501013 1");
-        var session = Session("alice"); var roles = app.Services.GetRequiredService<RoleStore>();
+        var session = Session("alice"); var roles = _app.Services.GetRequiredService<RoleStore>();
         long guid = session.Items.Single(i => i.Entry == 1501013).Guid;
         byte[] before = roles.LoadMounts(session.Role!.Id)!;
         byte[]? beforeBag = roles.LoadBagState(session.Role.Id);
-        FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(),
+        FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(),
             "CREATE TRIGGER reject_mount_collection BEFORE UPDATE OF mounts ON role BEGIN SELECT RAISE(ABORT, 'mount test rollback'); END");
-        await Assert.ThrowsAsync<Microsoft.Data.Sqlite.SqliteException>(() => app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
-            app.Services.GetRequiredService<CharacterService>().UseItemAsync(session, new ItemUseReq { ItemGuid = guid, ItemCount = 1 })));
+        await Assert.ThrowsAsync<Microsoft.Data.Sqlite.SqliteException>(() => _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+            _app.Services.GetRequiredService<CharacterService>().UseItemAsync(session, new ItemUseReq { ItemGuid = guid, ItemCount = 1 })));
         Assert.Contains(session.Items, i => i.Guid == guid && i.Stack == 1);
         Assert.Empty(session.Mounts!.Mounts);
         Assert.Equal(before, roles.LoadMounts(session.Role.Id));
@@ -356,7 +356,7 @@ public sealed class MountTests : IAsyncLifetime
         Assert.Equal(0, lit.AllLightUpAppearances[BigPoring].All.OverdueTimeMs);
         Assert.Equal(0, (await Next(a, MountService.Unlock, PlayerMountUnLockNtf.Parser)).EndTime);
         Assert.DoesNotContain(a.Inbox.Snapshot().Skip(start), e => e.IsGame(WardrobeService.UnlockNotice));
-        var session = Session("alice"); var roles = app.Services.GetRequiredService<RoleStore>();
+        var session = Session("alice"); var roles = _app.Services.GetRequiredService<RoleStore>();
         Assert.Equal(0, session.Wardrobe!.AllLightUpAppearances[BigPoring].OverdueTimeMs);
         Assert.True(StoredWardrobe(roles, session.Role!.Id).AllLightUpAppearances.ContainsKey(BigPoring));
         Assert.True(StoredMounts(roles, session.Role.Id).Mounts.ContainsKey(BigPoring));
@@ -367,13 +367,13 @@ public sealed class MountTests : IAsyncLifetime
     {
         await using var a = await InWorld("Alice");
         await Gm("alice", "!lvl 14"); await Gm("alice", "!item 1501013 1");
-        var session = Session("alice"); var roles = app.Services.GetRequiredService<RoleStore>();
+        var session = Session("alice"); var roles = _app.Services.GetRequiredService<RoleStore>();
         long guid = session.Items.Single(i => i.Entry == 1501013).Guid;
         byte[] mounts = roles.LoadMounts(session.Role!.Id)!, wardrobe = roles.LoadWardrobe(session.Role.Id)!;
-        FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(),
+        FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(),
             "CREATE TRIGGER reject_mount_look BEFORE UPDATE OF wardrobe ON role BEGIN SELECT RAISE(ABORT, 'mount look rollback'); END");
-        await Assert.ThrowsAsync<Microsoft.Data.Sqlite.SqliteException>(() => app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
-            app.Services.GetRequiredService<CharacterService>().UseItemAsync(session, new ItemUseReq { ItemGuid = guid, ItemCount = 1 })));
+        await Assert.ThrowsAsync<Microsoft.Data.Sqlite.SqliteException>(() => _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+            _app.Services.GetRequiredService<CharacterService>().UseItemAsync(session, new ItemUseReq { ItemGuid = guid, ItemCount = 1 })));
         Assert.Contains(session.Items, i => i.Guid == guid && i.Stack == 1);
         Assert.Empty(session.Mounts!.Mounts);
         Assert.False(session.Wardrobe!.AllLightUpAppearances.ContainsKey(BigPoring));
@@ -386,10 +386,10 @@ public sealed class MountTests : IAsyncLifetime
     {
         await using var a = await InWorld("Alice");
         await UnlockMount(a, "alice", 1501023); // [201, 600 s, 60040010]
-        var session = Session("alice"); var roles = app.Services.GetRequiredService<RoleStore>();
-        var loop = app.Services.GetRequiredService<GameLoop>();
+        var session = Session("alice"); var roles = _app.Services.GetRequiredService<RoleStore>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
         long due = session.Mounts!.Mounts[TimedMount].OverdueTimeMs;
-        Assert.True(due > clock.GetUtcNow().ToUnixTimeMilliseconds());
+        Assert.True(due > _clock.GetUtcNow().ToUnixTimeMilliseconds());
         Assert.Equal(due, session.Wardrobe!.AllLightUpAppearances[TimedMount].OverdueTimeMs);
         Assert.Equal(due, (await Next(a, MountService.Unlock, PlayerMountUnLockNtf.Parser)).EndTime);
 
@@ -409,8 +409,8 @@ public sealed class MountTests : IAsyncLifetime
 
         await loop.InvokeAsync(() =>
         {
-            clock.Set(DateTimeOffset.FromUnixTimeMilliseconds(due));
-            return app.Services.GetRequiredService<MountService>().ReconcileAsync(session);
+            _clock.Set(DateTimeOffset.FromUnixTimeMilliseconds(due));
+            return _app.Services.GetRequiredService<MountService>().ReconcileAsync(session);
         });
         Assert.False(session.Mounts!.Mounts.ContainsKey(TimedMount));
         Assert.False(session.Wardrobe!.AllLightUpAppearances.ContainsKey(TimedMount));
@@ -425,9 +425,9 @@ public sealed class MountTests : IAsyncLifetime
     [ClientDataFact]
     public async Task LoginRepairsMountsOwnedBeforeTheWardrobeLink()
     {
-        var roles = app.Services.GetRequiredService<RoleStore>();
-        var loop = app.Services.GetRequiredService<GameLoop>();
-        long role, due = clock.GetUtcNow().ToUnixTimeMilliseconds() + 3_600_000;
+        var roles = _app.Services.GetRequiredService<RoleStore>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
+        long role, due = _clock.GetUtcNow().ToUnixTimeMilliseconds() + 3_600_000;
         await using (var a = await InWorld("Alice"))
         {
             var session = Session("alice"); role = session.Role!.Id;
@@ -442,8 +442,8 @@ public sealed class MountTests : IAsyncLifetime
                 roles.SaveMounts(role, JsonSerializer.SerializeToUtf8Bytes(stored));
                 Assert.False(StoredWardrobe(roles, role).AllLightUpAppearances.ContainsKey(BigPoring));
                 // The role-entry order: MountService.Load, then WardrobeService.LoginAsync.
-                app.Services.GetRequiredService<MountService>().Load(session);
-                await app.Services.GetRequiredService<WardrobeService>().LoginAsync(session);
+                _app.Services.GetRequiredService<MountService>().Load(session);
+                await _app.Services.GetRequiredService<WardrobeService>().LoginAsync(session);
             });
             await Next(a, WardrobeService.WardrobeSync, DBWardRobeInfoIncrement.Parser,
                 p => p.AllLightUpAppearances.ContainsKey(BigPoring) && p.AllLightUpAppearances.ContainsKey(TimedMount));
@@ -465,8 +465,8 @@ public sealed class MountTests : IAsyncLifetime
     public async Task LoginOwnsTheMountOfAShopLookBoughtBeforeThePurchaseGrantedIt()
     {
         const int DisabledLook = 60040032; // WardRobeConfig type 6 with _iDisable 1, though MountsConfig lists it.
-        var roles = app.Services.GetRequiredService<RoleStore>();
-        var loop = app.Services.GetRequiredService<GameLoop>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
         long role;
         await using (var a = await InWorld("Alice"))
         {
@@ -478,7 +478,7 @@ public sealed class MountTests : IAsyncLifetime
                 looks.AllLightUpAppearances[BigPoring] = new DBAppearanceInfo { AppearanceId = BigPoring };
                 looks.AllLightUpAppearances[DisabledLook] = new DBAppearanceInfo { AppearanceId = DisabledLook };
                 roles.SaveWardrobe(role, looks.ToByteArray());
-                app.Services.GetRequiredService<MountService>().Load(session);
+                _app.Services.GetRequiredService<MountService>().Load(session);
                 return Task.CompletedTask;
             });
             Assert.Equal(0, session.Mounts!.Mounts[BigPoring].OverdueTimeMs);
@@ -525,8 +525,8 @@ public sealed class MountTests : IAsyncLifetime
 
     private sealed class ManualClock(DateTimeOffset initial) : TimeProvider
     {
-        private long ticks = initial.UtcTicks;
-        public void Set(DateTimeOffset value) => Interlocked.Exchange(ref ticks, value.UtcTicks);
-        public override DateTimeOffset GetUtcNow() => new(Interlocked.Read(ref ticks), TimeSpan.Zero);
+        private long _ticks = initial.UtcTicks;
+        public void Set(DateTimeOffset value) => Interlocked.Exchange(ref _ticks, value.UtcTicks);
+        public override DateTimeOffset GetUtcNow() => new(Interlocked.Read(ref _ticks), TimeSpan.Zero);
     }
 }

@@ -12,24 +12,24 @@ namespace Ro3Emu.Server.Game;
 /// </summary>
 public sealed partial class MonsterService : MonsterBrain, IGameTicker
 {
-    private readonly World world;
-    private readonly WorldData worldData;
-    private readonly GameData data;
-    private readonly GameLoop loop;
-    private readonly ILogger<MonsterService> log;
-    private readonly ReconstructedDungeons? reconstructed;
-    private readonly BossSkillOptions bossOptions;
+    private readonly World _world;
+    private readonly WorldData _worldData;
+    private readonly GameData _data;
+    private readonly GameLoop _loop;
+    private readonly ILogger<MonsterService> _log;
+    private readonly ReconstructedDungeons? _reconstructed;
+    private readonly BossSkillOptions _bossOptions;
 
     public MonsterService(World world, WorldData worldData, GameData data, GameLoop loop, ILogger<MonsterService> log,
         ReconstructedDungeons? reconstructed = null, Microsoft.Extensions.Options.IOptions<ServerOptions>? options = null)
     {
-        this.reconstructed = reconstructed;
-        bossOptions = options?.Value.BossSkills ?? new BossSkillOptions();
-        this.world = world;
-        this.worldData = worldData;
-        this.data = data;
-        this.loop = loop;
-        this.log = log;
+        this._reconstructed = reconstructed;
+        _bossOptions = options?.Value.BossSkills ?? new BossSkillOptions();
+        this._world = world;
+        this._worldData = worldData;
+        this._data = data;
+        this._loop = loop;
+        this._log = log;
         world.UnitRemoved.Add(unit =>
         {
             if (unit is MonsterUnit monster && _spawns.TryGetValue(monster.RuntimeMap, out var owner))
@@ -74,40 +74,40 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
 
     private MonsterTemplate? Build(int npcId)
     {
-        if (data.Row("NPCConfig", npcId) is not { } npc || GameData.Int(npc, "_iNPCType") != 1) return null;
+        if (_data.Row("NPCConfig", npcId) is not { } npc || GameData.Int(npc, "_iNPCType") != 1) return null;
         int level = (int)GameData.Int(npc, "_iLevel");
         long attrId = GameData.Int(npc, "_iAttribute");
         if (attrId == 0) attrId = GameData.Int(npc, "_iAttributeVariated") * 1000 + level;
         var attr = new Dictionary<long, double>();
-        if (data.Row("AttriMonsterConfig", attrId) is { } am)
+        if (_data.Row("AttriMonsterConfig", attrId) is { } am)
             foreach (var (id, v) in GameData.Pairs(am, "_kAttri")) attr[id] = v;
         foreach (var (id, scale) in GameData.Pairs(npc, "_kAttriScale"))
             if (attr.ContainsKey(id)) attr[id] = attr[id] * scale / 10000;
         long A(long id) => (long)Math.Round(attr.GetValueOrDefault(id));
 
         int ai = (int)GameData.Int(npc, "_iAI");
-        var aiRow = data.Row("AIConfig", ai);
+        var aiRow = _data.Row("AIConfig", ai);
         float Cm(string field, float fallback) => aiRow is { } r && GameData.Int(r, field) is var v and > 0 ? v / 100f : fallback;
 
         int skill = 0, skillMs = 1000, swing = 2000;
         float hitPoint = 0.2f, range = 2f;
         long normal = NormalAttack(npcId, npc);
         // A template without a normal attack of its own: a reconstruction may name whose it borrows.
-        if (normal == 0 && reconstructed?.AttackSource(npcId) is int from && data.Row("NPCConfig", from) is { } source)
+        if (normal == 0 && _reconstructed?.AttackSource(npcId) is int from && _data.Row("NPCConfig", from) is { } source)
             normal = NormalAttack(from, source);
-        if (normal != 0 && data.Row("SkillConfig", normal) is { } row)
+        if (normal != 0 && _data.Row("SkillConfig", normal) is { } row)
         {
             skill = (int)normal;
             skillMs = (int)Math.Max(300, GameData.Int(row, "_iActionTime"));
             swing = (int)Math.Max(skillMs, GameData.Int(row, "_iCD"));
             range = Math.Max(1f, GameData.Int(row, "_iDistanceMax") / 100f);
-            if (data.SkillTemplate(GameData.Int(row, "_iScriptShow")) is { } tpl && tpl.TryGetProperty("m_kAtkPoints", out var pts)
+            if (_data.SkillTemplate(GameData.Int(row, "_iScriptShow")) is { } tpl && tpl.TryGetProperty("m_kAtkPoints", out var pts)
                 && pts.ValueKind == JsonValueKind.Array && pts.GetArrayLength() > 0 && GameData.Number(pts[0]) is { } hp)
                 hitPoint = (float)hp;
         }
         int speed = (int)(attr.ContainsKey(113) ? A(113) : GameData.Int(npc, "_iSpeed"));
         // A reconstructed story boss fought solo instead of beside its original NPC companions (inferred scaling).
-        if (reconstructed?.SoloTuning(npcId) is { } solo)
+        if (_reconstructed?.SoloTuning(npcId) is { } solo)
         {
             foreach (long id in new long[] { 101, 103, 104 }.Where(attr.ContainsKey))
                 attr[id] = attr[id] * (id == 101 ? solo.Hp : solo.Attack) / 10000;
@@ -128,7 +128,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
     }
 
     private BossNormalAttacks? _bossAttacks;
-    private BossNormalAttacks BossAttacks => _bossAttacks ??= new BossNormalAttacks(data);
+    private BossNormalAttacks BossAttacks => _bossAttacks ??= new BossNormalAttacks(_data);
 
     /// <summary>
     /// A monster's normal attack (0: none). A boss's own row (<see cref="BossNormalAttacks"/>) comes first, also ahead of a
@@ -143,7 +143,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         var listed = new List<(long Id, JsonElement Row)>();
         if (npc.TryGetProperty("_kSkills", out var skills) && skills.ValueKind == JsonValueKind.Array)
             foreach (var s in skills.EnumerateArray())
-                if (GameData.Number(s) is { } sid && data.Row("SkillConfig", (long)sid) is { } row) listed.Add(((long)sid, row));
+                if (GameData.Number(s) is { } sid && _data.Row("SkillConfig", (long)sid) is { } row) listed.Add(((long)sid, row));
         foreach (var (id, row) in listed) if (GameData.Int(row, "_iIsNormalAtk") == 1) return id;
         return listed.Where(s => BossNormalAttacks.IsNamedSwing(s.Row)).OrderBy(s => GameData.Int(s.Row, "_iCD"))
             .Select(s => s.Id).FirstOrDefault();
@@ -157,7 +157,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
     /// <summary>Spawn each public line independently from the same authored groups (inferred line policy).</summary>
     public async Task EnsureSpawnedAsync(RuntimeMapKey runtime)
     {
-        if (runtime.Kind != RuntimeMapKind.PublicLine || worldData.Map(runtime.SceneEntry) is not { } map) return;
+        if (runtime.Kind != RuntimeMapKind.PublicLine || _worldData.Map(runtime.SceneEntry) is not { } map) return;
         if (!_spawns.TryGetValue(runtime, out var state)) _spawns[runtime] = state = new SpawnState();
         if (state.InitialSpawned || state.Retired) return;
         state.InitialSpawned = true;
@@ -189,7 +189,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
             }
         }
         finally { EndPending(state); }
-        log.LogInformation("Spawned {Count} monsters on {Runtime} {Name}", count, runtime, data.MapName(runtime.SceneEntry));
+        _log.LogInformation("Spawned {Count} monsters on {Runtime} {Name}", count, runtime, _data.MapName(runtime.SceneEntry));
     }
 
     private async Task<bool> SpawnAsync(RuntimeMapKey runtime, SpawnState state, MapWorld map, SpawnGroup group, int npcId, SpawnPoint? at = null)
@@ -214,9 +214,9 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
             Brain = this,
         };
         state.Units.Add(monster);
-        await world.AddUnitAsync(monster);
+        await _world.AddUnitAsync(monster);
         if (!state.Retired) return true;
-        if (state.Units.Remove(monster)) await world.RemoveUnitAsync(monster);
+        if (state.Units.Remove(monster)) await _world.RemoveUnitAsync(monster);
         return false;
     }
 
@@ -230,7 +230,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         && (state.Pending > 0 || state.Deadlines.Count > 0);
 
     private void Schedule(SpawnState state, TimeSpan delay, Func<Task> work) =>
-        state.Deadlines.Add((loop.Now + delay, work));
+        state.Deadlines.Add((_loop.Now + delay, work));
 
     /// <summary>Owned deadlines can be dropped immediately when a runtime retires.</summary>
     public void Tick(GameTime time)
@@ -253,14 +253,14 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         foreach (var deadline in due)
         {
             state.Pending++;
-            loop.TrackRuntimeDetached("monster deadline", () => RunDeadlineAsync(state, deadline.Work));
+            _loop.TrackRuntimeDetached("monster deadline", () => RunDeadlineAsync(state, deadline.Work));
         }
     }
 
     private async Task RunDeadlineAsync(SpawnState state, Func<Task> work)
     {
         try { if (!state.Retired) await work(); }
-        catch (Exception e) { log.LogError(e, "Monster deadline failed"); }
+        catch (Exception e) { _log.LogError(e, "Monster deadline failed"); }
         finally { EndPending(state); }
     }
 
@@ -271,7 +271,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         state.Retired = true;
         state.Deadlines.Clear();
         foreach (var unit in state.Units.ToArray())
-            if (state.Units.Remove(unit)) await world.RemoveUnitAsync(unit);
+            if (state.Units.Remove(unit)) await _world.RemoveUnitAsync(unit);
         if (state.Pending > 0) await state.Quiesced.Task;
         state.UsedPoints.Clear();
     }
@@ -289,7 +289,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         int hpRatio = 10000, int damageRatio = 10000, MonsterTemplate? customTemplate = null)
     {
         if ((customTemplate ?? Template(npcId)) is not { } template || template.NpcId != npcId
-            || worldData.Map(runtime.SceneEntry) is not { } map
+            || _worldData.Map(runtime.SceneEntry) is not { } map
             || hpRatio is < 1 or > 10000 || damageRatio is < 1 or > 10000) return null;
         SpawnState? state = null;
         if (runtime.Kind == RuntimeMapKind.PublicLine)
@@ -316,9 +316,9 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
                 NextRoamMs = NowMs + _random.Next(template.RoamTimeMs), Brain = this,
             };
             state?.Units.Add(monster);
-            await world.AddUnitAsync(monster);
+            await _world.AddUnitAsync(monster);
             if (state is not { Retired: true }) return monster;
-            if (state.Units.Remove(monster)) await world.RemoveUnitAsync(monster);
+            if (state.Units.Remove(monster)) await _world.RemoveUnitAsync(monster);
             return null;
         }
         finally { if (state != null) EndPending(state); }
@@ -328,10 +328,10 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
 
     // Lambdas live in these helpers, not in Tick: a lambda over Tick's monster made the compiler allocate its closure
     // on every tick of every monster, whether or not it ran (~250 MB per two minutes with a populated world).
-    private void SendStop(MonsterUnit m, long now) => loop.TrackRuntimeDetached("monster stop", () => world.MoveUnitAsync(m, Stop(m, now)));
+    private void SendStop(MonsterUnit m, long now) => _loop.TrackRuntimeDetached("monster stop", () => _world.MoveUnitAsync(m, Stop(m, now)));
     private void SendSpeed(MonsterUnit m, long now) =>
-        loop.TrackRuntimeDetached("monster speed", () => world.ToUnitViewersAsync(m, CombatService.AoiAttrChange, SpeedChange(m, now)));
-    private void SendHealth(MonsterUnit m) => loop.TrackRuntimeDetached("monster health", () => world.ToUnitViewersAsync(m, CombatService.AoiAttrChange, Hp(m)));
+        _loop.TrackRuntimeDetached("monster speed", () => _world.ToUnitViewersAsync(m, CombatService.AoiAttrChange, SpeedChange(m, now)));
+    private void SendHealth(MonsterUnit m) => _loop.TrackRuntimeDetached("monster health", () => _world.ToUnitViewersAsync(m, CombatService.AoiAttrChange, Hp(m)));
 
     private static GameSession? NearestTarget(MonsterUnit m)
     {
@@ -423,11 +423,11 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         {
             m.Advance(now);
             m.Moving = false;
-            await world.MoveUnitAsync(m, Stop(m, now));
+            await _world.MoveUnitAsync(m, Stop(m, now));
         }
         m.NextChaseMs = 0;
-        await world.ToUnitViewersAsync(m, CombatService.AoiAttrChange, SpeedChange(m, now));
-        if (m.Returning && m.Target == null) WalkTo(m, world.Map(m.WorldScene), m.Home.X, m.Home.Z, 2f);
+        await _world.ToUnitViewersAsync(m, CombatService.AoiAttrChange, SpeedChange(m, now));
+        if (m.Returning && m.Target == null) WalkTo(m, _world.Map(m.WorldScene), m.Home.X, m.Home.Z, 2f);
     }
 
     private static AOIAttrChange SpeedChange(MonsterUnit m, long now) => new()
@@ -453,7 +453,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         var previous = monster.Target;
         if (ReferenceEquals(previous, target)) return;
         monster.Target = target;
-        foreach (var handler in TargetChanged) loop.TrackRuntimeDetached("monster target change", () => handler(monster, previous, target));
+        foreach (var handler in TargetChanged) _loop.TrackRuntimeDetached("monster target change", () => handler(monster, previous, target));
     }
 
     /// <summary>A tower pet's attack can draw aggro without losing the player fallback (inferred).</summary>
@@ -498,7 +498,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
             {
                 m.NextSwingMs = now + m.Template.SwingIntervalMs;
                 m.Face = Angle(m.X, m.Z, target.X, target.Z);
-                loop.TrackRuntimeDetached("monster pet attack", () => AttackPet(m, target));
+                _loop.TrackRuntimeDetached("monster pet attack", () => AttackPet(m, target));
             }
             return;
         }
@@ -546,7 +546,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
             {
                 m.NextSwingMs = now + m.Template.SwingIntervalMs;
                 m.Face = Angle(m.X, m.Z, target.Position.X, target.Position.Z);
-                loop.TrackRuntimeDetached("monster attack", () => Attack(m, target));
+                _loop.TrackRuntimeDetached("monster attack", () => Attack(m, target));
             }
             return;
         }
@@ -581,7 +581,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
     /// <summary>One straight Walk segment when the nav grid allows it.</summary>
     private void WalkTo(MonsterUnit m, MapInstance map, float x, float z, float speedFactor)
     {
-        var nav = worldData.Map(m.SceneEntry)?.Nav;
+        var nav = _worldData.Map(m.SceneEntry)?.Nav;
         float? y = nav?.WalkHeight(x, z, m.Y) ?? m.Y;
         if (y == null || nav != null && !nav.CanWalk(m.X, m.Y, m.Z, x, z)) return;
         float dx = x - m.X, dz = z - m.Z, len = MathF.Sqrt(dx * dx + dz * dz);
@@ -595,7 +595,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         m.SegmentSpeed = speed;
         m.Moving = true;
         m.Face = Angle(m.X, m.Z, x, z);
-        loop.TrackRuntimeDetached("monster move", () => world.MoveUnitAsync(m, new MovementChangeNtf
+        _loop.TrackRuntimeDetached("monster move", () => _world.MoveUnitAsync(m, new MovementChangeNtf
         {
             Uid = m.Uid,
             TransType = MovementTransitionType.MoveTransNormal,
@@ -638,13 +638,13 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         EndBossSkills(m, interrupt: true);
         SetTarget(m, null);
         m.PetTarget = null;
-        await world.ToUnitViewersAsync(m, CombatService.AoiAttrChange, Hp(m));
-        await world.ToUnitViewersAsync(m, CombatService.EntityBaseChange, m.StateChange());
+        await _world.ToUnitViewersAsync(m, CombatService.AoiAttrChange, Hp(m));
+        await _world.ToUnitViewersAsync(m, CombatService.EntityBaseChange, m.StateChange());
         if (m.RuntimeMap.Kind != RuntimeMapKind.PublicLine)
         {
             // Private/event room ownership stays with InstanceService; its one-shot corpse timer does not
             // retain a public-line spawn state after room teardown.
-            loop.ScheduleLegacy(TimeSpan.FromMilliseconds(m.Template.BodyRemainMs + 200), () => world.RemoveUnitAsync(m));
+            _loop.ScheduleLegacy(TimeSpan.FromMilliseconds(m.Template.BodyRemainMs + 200), () => _world.RemoveUnitAsync(m));
             return;
         }
         if (!_spawns.TryGetValue(m.RuntimeMap, out var state) || state.Retired) return;
@@ -652,13 +652,13 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         {
             if (state.Retired) return;
             if (!state.Units.Remove(m)) return;
-            await world.RemoveUnitAsync(m);
+            await _world.RemoveUnitAsync(m);
             if (state.Retired) return;
             if (m.Group.Id < 0) return; // single spawn: no group respawn
             if (state.UsedPoints.TryGetValue(m.Group.Id, out var used)) used.Remove(m.Home.Id);
             Schedule(state, TimeSpan.FromSeconds(Math.Max(1, m.Group.RespawnSeconds)), async () =>
             {
-                if (state.Retired || worldData.Map(m.SceneEntry) is not { } map) return;
+                if (state.Retired || _worldData.Map(m.SceneEntry) is not { } map) return;
                 await SpawnAsync(m.RuntimeMap, state, map, m.Group, m.Template.NpcId);
             });
         });

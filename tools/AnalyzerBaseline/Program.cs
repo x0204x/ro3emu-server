@@ -88,7 +88,7 @@ static string FindRoot(string start)
 
 // "# <count>: <title>" followed by "dotnet_diagnostic.<rule>.severity = suggestion".
 static Dictionary<string, int> ParseBaseline(string config) =>
-    Regex.Matches(config, @"^# (?<count>\d+): .*\r?\ndotnet_diagnostic\.(?<rule>CA\d+)\.severity = suggestion\r?$",
+    Regex.Matches(config, @"^# (?<count>\d+): .*\r?\ndotnet_diagnostic\.(?<rule>(?:CA|IDE)\d+)\.severity = suggestion\r?$",
             RegexOptions.Multiline)
         .ToDictionary(m => m.Groups["rule"].Value, m => int.Parse(m.Groups["count"].Value, CultureInfo.InvariantCulture));
 
@@ -125,7 +125,7 @@ static int Build(string root, string solution, IEnumerable<string> rules, String
 static Dictionary<string, int> CountViolations(string buildOutput, IEnumerable<string> rules)
 {
     var wanted = rules.ToHashSet(StringComparer.Ordinal);
-    return Regex.Matches(buildOutput, @"^\s*(?<file>[^\s].*?)\((?<line>\d+),(?<col>\d+)\): warning (?<rule>CA\d+):",
+    return Regex.Matches(buildOutput, @"^\s*(?<file>[^\s].*?)\((?<line>\d+),(?<col>\d+)\): warning (?<rule>(?:CA|IDE)\d+):",
             RegexOptions.Multiline)
         .Where(m => wanted.Contains(m.Groups["rule"].Value))
         .Select(m => (Rule: m.Groups["rule"].Value, Key: $"{m.Groups["file"].Value}|{m.Groups["line"].Value}|{m.Groups["col"].Value}"))

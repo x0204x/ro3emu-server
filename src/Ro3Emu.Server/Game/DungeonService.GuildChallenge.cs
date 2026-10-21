@@ -11,14 +11,14 @@ public sealed partial class DungeonService
         var a = existing;
         if (a == null)
         {
-            var room = instances.Create(plan.SceneEntry, [s]);
+            var room = _instances.Create(plan.SceneEntry, [s]);
             a = new Attempt
             {
                 Room = room, Plan = plan, Leader = s.Role!.Id, TeamId = 0,
-                PlayBook = seasons.PlayBook, SeasonId = seasons.SeasonId, GuildChallenge = run
+                PlayBook = _seasons.PlayBook, SeasonId = _seasons.SeasonId, GuildChallenge = run
             };
         }
-        else if (!instances.AddParticipant(a.Room, s, continuation: s.DungeonAttempt is { Settled: true })) return null;
+        else if (!_instances.AddParticipant(a.Room, s, continuation: s.DungeonAttempt is { Settled: true })) return null;
         a.Stats[s.Role!.Id] = new RoleStatisticsInfo
         {
             BaseInfo = new StatisticsRoleBaseInfo
@@ -29,16 +29,16 @@ public sealed partial class DungeonService
         };
         a.StartingItems[s] = Inventory(s);
         await SendQuietAsync(s, CreateResult, new CreateDungeonResultNotify());
-        if (!await instances.EnterAsync(a.Room, s, 3)) return null;
+        if (!await _instances.EnterAsync(a.Room, s, 3)) return null;
         s.DungeonAttempt = a;
         a.Entering = false;
         await SendQuietAsync(s, EnterSceneResult, new ToSceneEnterDungeonResult
         { SceneId = plan.SceneEntry, DungeonId = a.Room.Id });
         var entering = a;
-        loop.ScheduleLegacy(TimeSpan.FromSeconds(60), async () =>
+        _loop.ScheduleLegacy(TimeSpan.FromSeconds(60), async () =>
         {
             if (ReferenceEquals(s.DungeonAttempt, entering) && !entering.Loaded.Contains(s))
-                await instances.LeaveAsync(s);
+                await _instances.LeaveAsync(s);
         });
         return a;
     }

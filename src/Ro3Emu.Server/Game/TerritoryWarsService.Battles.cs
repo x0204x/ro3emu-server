@@ -69,7 +69,7 @@ public sealed partial class TerritoryWarsService
         public int Key { get; } = key;
         public string Epoch { get; } = owner.state.Epoch;
         public InstanceService.Room Room { get; } = room;
-        public BattleState State => owner.seasonCleanupState is { } retiring && retiring.Epoch == Epoch
+        public BattleState State => owner._seasonCleanupState is { } retiring && retiring.Epoch == Epoch
             ? retiring.Battles.GetValueOrDefault(Key)
               ?? throw new InvalidOperationException("Retiring territory battle state is missing.")
             : owner.state.Epoch == Epoch && owner.state.Battles.TryGetValue(Key, out var current) ? current
@@ -89,7 +89,7 @@ public sealed partial class TerritoryWarsService
         public long AwaySince;
     }
     private static int BattleKey(int round, int zone) => round * 100 + zone;
-    private TerritoryWarsClock.Stage? WarStage(int round) => clock.RoundStage(round, round == 1 ? 6 : round == 2 ? 10 : 14);
+    private TerritoryWarsClock.Stage? WarStage(int round) => _clock.RoundStage(round, round == 1 ? 6 : round == 2 ? 10 : 14);
     private IEnumerable<int> BattleZones(int round) => Zones.Where(z => GameData.Int(z, "_iType") == (round == 1 ? 3 : round == 2 ? 2 : 1)).Select(z => (int)Id(z));
 
     /// <summary>30400 is the shared dungeon ingress; all qualification and scene selection are server derived.</summary>
@@ -114,39 +114,39 @@ public sealed partial class TerritoryWarsService
             if (s.InstanceId != 0) { await Send(s, 30400, new EnterDungeonRsp { Result = ErrorCodes.Parameter }); return true; }
             if (InRoom(zone) >= Capacity(zone))
             {
-                queue[s] = new QueueEntry { Zone = zone, Scene = s.SceneEntry, Position = s.Position.Clone(), Joined = clock.Now };
+                _queue[s] = new QueueEntry { Zone = zone, Scene = s.SceneEntry, Position = s.Position.Clone(), Joined = _clock.Now };
                 await Send(s, 30400, new EnterDungeonRsp());
-                await SendQueueAsync(s, queue[s]);
+                await SendQueueAsync(s, _queue[s]);
             }
             else await AdmitAsync(s, zone, true);
         }
-        finally { stagedTerritoryState.Dispose(); gate.Release(); reservation?.Dispose(); }
+        finally { stagedTerritoryState.Dispose(); _gate.Release(); reservation?.Dispose(); }
         return true;
     }
     private int EntryError(GameSession s, int zone)
     {
-        var st = clock.Current;
+        var st = _clock.Current;
         var guild = Own(s);
         if (zone == 0 || !BattleZones(st.Round).Contains(zone)) return ErrorCodes.TerritoryInvalidPoint;
         if (st.Type is not (5 or 6 or 9 or 10 or 13 or 14)) return ErrorCodes.TerritoryWarClosed;
         if (s.Role == null || s.Progress == null || s.Dead || s.SceneLoading) return ErrorCodes.Parameter;
-        if (!functions.IsOpen(s, 72)) return ErrorCodes.FeatureUnavailable;
+        if (!_functions.IsOpen(s, 72)) return ErrorCodes.FeatureUnavailable;
         if (guild == null) return ErrorCodes.TerritoryGuild;
         if (!QualifiedFor(zone).Contains(guild.Id)) return ErrorCodes.TerritoryNotQualified;
         if (state.Battles.GetValueOrDefault(BattleKey(st.Round, zone))?.Settled == true) return ErrorCodes.TerritoryWarClosed;
         return 0;
     }
-    private int Capacity(int zone) => Zone(zone) is { } row && data.Row("DungeonConfig", GameData.Int(row, "_iDungeonID")) is { } dungeon
+    private int Capacity(int zone) => Zone(zone) is { } row && _data.Row("DungeonConfig", GameData.Int(row, "_iDungeonID")) is { } dungeon
         ? (int)(GameData.Int(dungeon, "_iRoleLimit") is > 0 and var n ? n : 200) : 200;
-    private int InRoom(int zone) => battles.GetValueOrDefault(BattleKey(clock.Current.Round, zone))?.Room.ActiveMembers.Count ?? 0;
+    private int InRoom(int zone) => _battles.GetValueOrDefault(BattleKey(_clock.Current.Round, zone))?.Room.ActiveMembers.Count ?? 0;
 
     private BattleState MakeBattle(int round, int zone, long statisticsId)
     {
         var cfg = Zone(zone)!.Value;
         var stage = WarStage(round)!;
         long entry = GameData.Int(cfg, "_iDungeonID");
-        var map = maps.Map(entry)!;
-        var born = scene.BornPoint(entry)!.Value;
+        var map = _maps.Map(entry)!;
+        var born = _scene.BornPoint(entry)!.Value;
         int editorId = (int)GameData.Int(cfg, "_iDungeonPointID");
         var usable = map.Points.Where(p => p.Value.X != 0 || p.Value.Z != 0).OrderBy(p => p.Key).ToArray();
         // Configured point 33 is authoritative. Other rows use a grounded non-born editor point (inferred
@@ -162,7 +162,7 @@ public sealed partial class TerritoryWarsService
         var record = new BattleState
         {
             Zone = zone, Round = round, Scene = entry, StatisticsId = statisticsId,
-            Start = stage.StartTime, End = stage.EndTime, LastTick = clock.Now, Guilds = QualifiedFor(zone, round).ToList(),
+            Start = stage.StartTime, End = stage.EndTime, LastTick = _clock.Now, Guilds = QualifiedFor(zone, round).ToList(),
             ScenePoints = DefaultScenePoints(entry)
         };
         record.Points[0] = new CapturePoint
@@ -194,11 +194,11 @@ public sealed partial class TerritoryWarsService
     }
     private async Task AdmitAsync(GameSession s, int zone, bool reply)
     {
-        int key = BattleKey(clock.Current.Round, zone);
+        int key = BattleKey(_clock.Current.Round, zone);
         if (!state.Battles.ContainsKey(key))
         {
             long statisticsId = await AllocateStatisticsIdAsync();
-            state.Battles[key] = MakeBattle(clock.Current.Round, zone, statisticsId);
+            state.Battles[key] = MakeBattle(_clock.Current.Round, zone, statisticsId);
             await SaveAsync(state);
         }
         var record = state.Battles[key];
@@ -213,38 +213,38 @@ public sealed partial class TerritoryWarsService
         bool added = record.Players.TryAdd(roleId, new Participant
         {
             Id = roleId, Guild = guild.Id, Name = s.Role.Name,
-            Job = s.Progress!.Career, Level = s.Progress.Level, Joined = clock.Now
+            Job = s.Progress!.Career, Level = s.Progress.Level, Joined = _clock.Now
         });
         var priorRole = LoadRole(roleId);
         var stagedRole = Copy(priorRole);
         stagedRole.Camp = 3;
-        stagedRole.LastFatigue = clock.Now;
-        var admission = roles.NewTransaction();
+        stagedRole.LastFatigue = _clock.Now;
+        var admission = _roles.NewTransaction();
         Save(state, admission);
         SaveRole(roleId, stagedRole, admission);
-        await roles.CommitAsync(admission, "territory/battle-admit");
-        committedState = Copy(state);
+        await _roles.CommitAsync(admission, "territory/battle-admit");
+        _committedState = Copy(state);
         async Task RollbackAdmissionAsync()
         {
             if (added) record.Players.Remove(roleId);
-            var rollback = roles.NewTransaction();
+            var rollback = _roles.NewTransaction();
             if (added) Save(state, rollback);
             SaveRole(roleId, priorRole, rollback);
-            await roles.CommitAsync(rollback, "territory/battle-admit-rollback");
-            if (added) committedState = Copy(state);
+            await _roles.CommitAsync(rollback, "territory/battle-admit-rollback");
+            if (added) _committedState = Copy(state);
         }
         // A refused durable admission must not leave a live instance member behind.
         Battle? battle = null;
         bool joined;
         try
         {
-            if (!battles.TryGetValue(key, out battle) || battle.Room.Closed)
+            if (!_battles.TryGetValue(key, out battle) || battle.Room.Closed)
             {
-                battle = new Battle(this, key, instances.Create(record.Scene, [s]));
-                battles[key] = battle;
+                battle = new Battle(this, key, _instances.Create(record.Scene, [s]));
+                _battles[key] = battle;
                 joined = true;
             }
-            else joined = instances.AddParticipant(battle.Room, s);
+            else joined = _instances.AddParticipant(battle.Room, s);
         }
         catch { await RollbackAdmissionAsync(); throw; }
         if (!joined)
@@ -255,16 +255,16 @@ public sealed partial class TerritoryWarsService
         }
         async Task AbandonRoomAsync()
         {
-            await instances.AbandonAsync(battle!.Room, s);
-            if (battle.Room.Closed && battles.TryGetValue(key, out var current) && ReferenceEquals(current, battle))
-                battles.Remove(key);
+            await _instances.AbandonAsync(battle!.Room, s);
+            if (battle.Room.Closed && _battles.TryGetValue(key, out var current) && ReferenceEquals(current, battle))
+                _battles.Remove(key);
         }
         // Assign after the scene switch: SceneService.Leaving runs while the old room still owns the session.
         bool entered;
         try
         {
             if (reply) await Send(s, 30400, new EnterDungeonRsp());
-            entered = await instances.EnterAsync(battle!.Room, s, 0);
+            entered = await _instances.EnterAsync(battle!.Room, s, 0);
         }
         catch
         {
@@ -291,14 +291,14 @@ public sealed partial class TerritoryWarsService
         b.Spawning = true;
         try
         {
-            foreach (var p in b.State.Points.Values.Where(p => p.Crystal && p.RespawnAt <= clock.Now))
+            foreach (var p in b.State.Points.Values.Where(p => p.Crystal && p.RespawnAt <= _clock.Now))
             {
                 if (b.Actors.GetValueOrDefault(p.Id) is { Dead: false }) continue;
                 // An attacker may leave while an awaited damage hook runs. The dead objective still
                 // recovers, but that abandoned hit cannot award capture to the session's next role.
                 if (b.Actors.GetValueOrDefault(p.Id) is { Dead: true } && p.RespawnAt == 0)
-                { p.Hp = 0; p.RespawnAt = clock.Now + Gvg("GVGEmperiumReviveTime", 30); continue; }
-                var actor = await instances.SpawnAsync(b.Room, p.Npc, p.Position);
+                { p.Hp = 0; p.RespawnAt = _clock.Now + Gvg("GVGEmperiumReviveTime", 30); continue; }
+                var actor = await _instances.SpawnAsync(b.Room, p.Npc, p.Position);
                 if (actor == null) throw new InvalidOperationException($"Configured territory objective {p.Npc} could not spawn");
                 if (p.Hp > 0) actor.Hp = Math.Min(actor.Hp, p.Hp);
                 p.Hp = actor.Hp;
@@ -308,7 +308,7 @@ public sealed partial class TerritoryWarsService
         }
         finally { b.Spawning = false; }
     }
-    private bool Active(Battle b) => !b.State.Settled && clock.Now >= b.State.Start && clock.Now < b.State.End;
+    private bool Active(Battle b) => !b.State.Settled && _clock.Now >= b.State.Start && _clock.Now < b.State.End;
     private bool Member(GameSession s, Battle b) => s.Role != null && s.InstanceId == b.Room.Id && !s.SceneLoading
         && b.Room.ActiveMembers.Any(m => ReferenceEquals(m.Session, s))
         && b.State.Players.TryGetValue(s.Role.Id, out var p) && OwnId(s) == p.Guild && b.State.Guilds.Contains(p.Guild);
@@ -327,7 +327,7 @@ public sealed partial class TerritoryWarsService
     {
         if (s.TerritoryBattle is not { } b || s.InstanceId != b.Room.Id) return;
         if (s.Role == null || !b.State.Players.TryGetValue(s.Role.Id, out var participant)
-            || Own(s)?.Id != participant.Guild) { await instances.LeaveAsync(s); return; }
+            || Own(s)?.Id != participant.Guild) { await _instances.LeaveAsync(s); return; }
         participant.Loaded = true;
         await SaveAsync(state);
         await Send(s, 30401, BaseInfo(b));
@@ -346,14 +346,14 @@ public sealed partial class TerritoryWarsService
         foreach (long g in r.Guilds)
         {
             init.GuildIds[g] = g;
-            if (guildStore.Get(g) is { } guild) init.GuildInfos[g] = guilds.Snapshot(guild);
+            if (_guildStore.Get(g) is { } guild) init.GuildInfos[g] = _guilds.Snapshot(guild);
         }
         init.PointWarZoneIdGuild[r.Zone] = r.Points[0].Owner;
-        int stage = r.Settled ? 3 : clock.Now < r.Start ? 1 : 2;
+        int stage = r.Settled ? 3 : _clock.Now < r.Start ? 1 : 2;
         return new DungeonBaseInfoNotify
         {
             DungeonEntry = r.Scene, DungeonId = b.Room.Id, Stage = stage, Level = 99,
-            InitData = new DungeonInitData { TerritoryWarInitData = init, PlaybookId = clock.PlayBook },
+            InitData = new DungeonInitData { TerritoryWarInitData = init, PlaybookId = _clock.PlayBook },
             StageModuleData = new DungeonStageModuleData
             {
                 MapState = stage, Stage = stage, StageStartTime = r.Start * 1000,
@@ -375,14 +375,14 @@ public sealed partial class TerritoryWarsService
         s.TerritoryMinimapOpen = false;
         if (role != null)
         {
-            using (var scope = loop.Owners is { } owners
+            using (var scope = _loop.Owners is { } owners
                 ? await owners.EnterAsync("territory/battle leave fatigue", Ownership.ReservationKey.Role(role.Id)) : null)
             {
                 if (!ReferenceEquals(s.Role, role) || !ReferenceEquals(s.Attachment, attachment)
                     || !ReferenceEquals(s.Owner, owner) || owner?.LifecycleEpoch != epoch) return;
                 if (owner != null) scope?.Context.Pin(owner);
                 var r = LoadRole(role.Id);
-                r.LastFatigue = clock.Now;
+                r.LastFatigue = _clock.Now;
                 await SaveRoleAsync(role.Id, r);
                 s.TerritoryWars = r;
             }
@@ -400,7 +400,7 @@ public sealed partial class TerritoryWarsService
     {
         if (s.TerritoryBattle == null && s.SiegeBattle == null) return false;
         await Send(s, 30402, new LeaveDungeonRsp());
-        await instances.LeaveAsync(s);
+        await _instances.LeaveAsync(s);
         return true;
     }
     private async Task SendCountsAsync(Battle b)
@@ -442,7 +442,7 @@ public sealed partial class TerritoryWarsService
                 DungeonPointId = p.EditorPoint, PointData = new GlobalPointData
                 {
                     GvgWarzoneId = b.State.Zone,
-                    LockTime = p.GuardUntil * 1000, IsLock = clock.Now < p.GuardUntil, GetCount = p.Captures
+                    LockTime = p.GuardUntil * 1000, IsLock = _clock.Now < p.GuardUntil, GetCount = p.Captures
                 }
             };
         }
@@ -461,7 +461,7 @@ public sealed partial class TerritoryWarsService
             foreach (var (id, actor) in b.Actors) if (actor == m) b.State.Points[id].Hp = actor.Hp;
             await SaveAsync(state);
         }
-        finally { stagedTerritoryState.Dispose(); gate.Release(); reservation?.Dispose(); }
+        finally { stagedTerritoryState.Dispose(); _gate.Release(); reservation?.Dispose(); }
     }
     private async Task BattleHealRecordedAsync(GameSession s, long amount)
     {
@@ -477,7 +477,7 @@ public sealed partial class TerritoryWarsService
                 await SaveAsync(state);
             }
         }
-        finally { stagedTerritoryState.Dispose(); gate.Release(); reservation?.Dispose(); }
+        finally { stagedTerritoryState.Dispose(); _gate.Release(); reservation?.Dispose(); }
     }
     private async Task PvpRecordedAsync(GameSession s, GameSession victim, long amount, bool lethal)
     {
@@ -494,20 +494,20 @@ public sealed partial class TerritoryWarsService
             {
                 attacker.Kills++; attacker.Score += 1; b.State.Scores[attacker.Guild] += 1;
                 var role = LoadRole(s.Role.Id); role.FatigueKills++;
-                if (data.Table("PublicParamConfig").TryGetValue("TerritoryFatigueBuffPileAddFromKill", out var tiers))
+                if (_data.Table("PublicParamConfig").TryGetValue("TerritoryFatigueBuffPileAddFromKill", out var tiers))
                     foreach (var tier in tiers.EnumerateArray())
                         if (role.FatigueKills >= GameData.Number(tier[0]) && role.FatigueKills <= GameData.Number(tier[1]))
                             role.Fatigue = (int)Math.Min(20, role.Fatigue + (GameData.Number(tier[2]) ?? 0));
                 nextRole = role;
             }
-            var transaction = roles.NewTransaction();
+            var transaction = _roles.NewTransaction();
             Save(state, transaction);
             if (nextRole != null) SaveRole(s.Role.Id, nextRole, transaction);
-            await roles.CommitAsync(transaction, "territory/battle-pvp");
+            await _roles.CommitAsync(transaction, "territory/battle-pvp");
             PublishCommitted(state);
             if (nextRole != null) s.TerritoryWars = nextRole;
         }
-        finally { stagedTerritoryState.Dispose(); gate.Release(); reservation?.Dispose(); }
+        finally { stagedTerritoryState.Dispose(); _gate.Release(); reservation?.Dispose(); }
     }
     private async Task KilledAsync(GameSession s, MonsterUnit m)
     {
@@ -526,12 +526,12 @@ public sealed partial class TerritoryWarsService
             long guild = Own(s)!.Id;
             await CaptureAsync(b, p, guild, async () =>
             {
-                p.Hp = 0; p.RespawnAt = clock.Now + Gvg("GVGEmperiumReviveTime", 30);
+                p.Hp = 0; p.RespawnAt = _clock.Now + Gvg("GVGEmperiumReviveTime", 30);
                 b.State.Players[role!.Id].Score += 50; // WarzoneTaskConfig type 1, 50; last-hit attribution inferred.
                 await SaveAsync(state);
             });
         }
-        finally { stagedTerritoryState.Dispose(); gate.Release(); reservation?.Dispose(); }
+        finally { stagedTerritoryState.Dispose(); _gate.Release(); reservation?.Dispose(); }
     }
     private async Task CaptureAsync(Battle b, CapturePoint p, long guild,
         Func<Task>? afterCapture = null)
@@ -540,7 +540,7 @@ public sealed partial class TerritoryWarsService
         if (changed)
         {
             p.Owner = guild; p.Challenger = 0; p.Progress = 0; p.Captures++;
-            p.GuardUntil = clock.Now + Gvg("GVGFieldGuardTime", 15);
+            p.GuardUntil = _clock.Now + Gvg("GVGFieldGuardTime", 15);
             b.State.Scores[guild] = b.State.Scores.GetValueOrDefault(guild) + 50;
             await SaveAsync(state);
         }
@@ -563,10 +563,10 @@ public sealed partial class TerritoryWarsService
             {
                 if (!ReferenceEquals(s.Role, role) || !ReferenceEquals(s.Attachment, attachment)
                     || !b.State.Players.TryGetValue(role.Id, out var p)) return;
-                p.Deaths++; p.DeadUntil = clock.Now + Gvg("GVGReviveCountDown", 15);
+                p.Deaths++; p.DeadUntil = _clock.Now + Gvg("GVGReviveCountDown", 15);
                 await SaveAsync(state);
             }
-            finally { stagedTerritoryState.Dispose(); gate.Release(); reservation?.Dispose(); }
+            finally { stagedTerritoryState.Dispose(); _gate.Release(); reservation?.Dispose(); }
         }
         var current = b.State.Players[role.Id];
         await Send(s, 30112, new SyncClientPlayerReviveInfoNtf { BDead = true, ReviveTime = current.DeadUntil, SceneEntry = s.SceneEntry });
@@ -574,7 +574,7 @@ public sealed partial class TerritoryWarsService
     public async Task<bool> ReviveAsync(GameSession s, EntityReliveReq req, CombatService combat)
     {
         if (s.TerritoryBattle is not { } b) return false;
-        if (!s.Dead || b.State.Players[s.Role!.Id].DeadUntil > clock.Now)
+        if (!s.Dead || b.State.Players[s.Role!.Id].DeadUntil > _clock.Now)
             await Send(s, 31013, new EntityReliveAck { Result = ErrorCodes.Parameter, EntityID = (ulong)s.Role!.Id });
         else await combat.ReviveAsync(s, req);
         return true;
@@ -582,7 +582,7 @@ public sealed partial class TerritoryWarsService
 
     private async Task BattleClockAsync()
     {
-        var stage = clock.Current;
+        var stage = _clock.Current;
         if (stage.Type is 5 or 6 or 9 or 10 or 13 or 14)
             foreach (int zone in BattleZones(stage.Round))
                 if (!state.Battles.ContainsKey(BattleKey(stage.Round, zone)) && QualifiedFor(zone).Length > 0)
@@ -590,23 +590,23 @@ public sealed partial class TerritoryWarsService
                         await AllocateStatisticsIdAsync());
         foreach (var (key, r) in state.Battles.ToArray())
         {
-            battles.TryGetValue(key, out var b);
+            _battles.TryGetValue(key, out var b);
             if (r.Settled)
             {
-                if (b != null && clock.Now >= r.End + Gvg("GVGEndAutoLeaveTime", 5))
+                if (b != null && _clock.Now >= r.End + Gvg("GVGEndAutoLeaveTime", 5))
                     await RoleFanout.EachAsync(b.Room.ActiveMembers.Select(m => m.Session), async s =>
-                    { if (s.TerritoryBattle == b && !s.SceneLoading) await instances.LeaveAsync(s); });
+                    { if (s.TerritoryBattle == b && !s.SceneLoading) await _instances.LeaveAsync(s); });
                 continue;
             }
-            if (clock.Now >= r.End) { await SettleAsync(key); continue; }
-            long elapsed = Math.Clamp(clock.Now - Math.Max(r.LastTick, r.Start), 0, 5);
-            r.LastTick = clock.Now;
-            if (b == null || b.Room.Closed || clock.Now < r.Start) continue;
+            if (_clock.Now >= r.End) { await SettleAsync(key); continue; }
+            long elapsed = Math.Clamp(_clock.Now - Math.Max(r.LastTick, r.Start), 0, 5);
+            r.LastTick = _clock.Now;
+            if (b == null || b.Room.Closed || _clock.Now < r.Start) continue;
             await RoleFanout.EachAsync(b.Room.ActiveMembers.Select(m => m.Session), async s =>
-            { if (!s.SceneLoading && s.TerritoryBattle == b && !Member(s, b)) await instances.LeaveAsync(s); });
+            { if (!s.SceneLoading && s.TerritoryBattle == b && !Member(s, b)) await _instances.LeaveAsync(s); });
             await SpawnObjectivesAsync(b);
             await SpawnScenePointsAsync(b);
-            foreach (var p in r.Points.Values.Where(p => !p.Crystal && clock.Now >= p.GuardUntil))
+            foreach (var p in r.Points.Values.Where(p => !p.Crystal && _clock.Now >= p.GuardUntil))
             {
                 var groups = b.Room.ActiveMembers.Select(m => m.Session).Where(s => !s.Dead && Member(s, b)
                     && MonsterService.Distance(s.Position.X, s.Position.Z, p.X, p.Z) <= 5)
@@ -638,12 +638,12 @@ public sealed partial class TerritoryWarsService
         {
             int count = b.State.Points.Values.Count(p => !p.Crystal && p.Owner == Own(s)?.Id);
             await RemoveBuffAsync(s, buff);
-            if (count > 0) await buffs.SetPileCountAsync(s, buff, (int)Math.Min(int.MaxValue, (b.State.End - clock.Now) * 1000), s.Role!.Id, count);
+            if (count > 0) await _buffs.SetPileCountAsync(s, buff, (int)Math.Min(int.MaxValue, (b.State.End - _clock.Now) * 1000), s.Role!.Id, count);
         });
     }
     private async Task RemoveBuffAsync(GameSession s, int id)
     {
-        foreach (var buff in s.Buffs.Where(b => b.ConfigId == id).ToArray()) await buffs.RemoveAsync(s, buff);
+        foreach (var buff in s.Buffs.Where(b => b.ConfigId == id).ToArray()) await _buffs.RemoveAsync(s, buff);
     }
     private Task SyncSiegeAsync(GameSession s, RoleState? committedRole = null)
     {
@@ -672,48 +672,48 @@ public sealed partial class TerritoryWarsService
         { await FatigueReturnAsync(s); return; }
         long period = Math.Max(1, Param("TerritoryFatigueBuffPileAddTime", 60000000) / 1000);
         int buffId = (int)Param("TerritoryFatigueBuffId", 4920001);
-        bool changed = clock.Now >= r.LastFatigue + period;
+        bool changed = _clock.Now >= r.LastFatigue + period;
         if (changed)
         {
-            r.Fatigue = (int)Math.Min(20, r.Fatigue + (clock.Now - r.LastFatigue) / period);
-            r.LastFatigue = clock.Now; await SaveRoleAsync(s.Role!.Id, r); s.TerritoryWars = r;
+            r.Fatigue = (int)Math.Min(20, r.Fatigue + (_clock.Now - r.LastFatigue) / period);
+            r.LastFatigue = _clock.Now; await SaveRoleAsync(s.Role!.Id, r); s.TerritoryWars = r;
         }
         if (changed || s.Buffs.FirstOrDefault(b => b.ConfigId == buffId)?.PileCount != (r.Fatigue == 0 ? null : r.Fatigue))
         {
             await SyncSiegeAsync(s);
             await RemoveBuffAsync(s, buffId);
-            if (r.Fatigue > 0) await buffs.SetPileCountAsync(s, buffId, int.MaxValue, s.Role.Id, r.Fatigue);
+            if (r.Fatigue > 0) await _buffs.SetPileCountAsync(s, buffId, int.MaxValue, s.Role.Id, r.Fatigue);
         }
         if (r.Fatigue >= 20) await FatigueReturnAsync(s);
     }
     private async Task FatigueReturnAsync(GameSession s)
     {
         await Send(s, FatigueNotify, new TerritoryWarsFatigueTeleportNtf());
-        await scene.EnterSceneAsync(s, Param("TerritoryFatigueBuffReturnMapId", 10100));
+        await _scene.EnterSceneAsync(s, Param("TerritoryFatigueBuffReturnMapId", 10100));
     }
     private async Task ClearFatigueAsync()
     {
-        await RoleFanout.EachAsync(sessions.All().Where(s => s.Role != null && !RoleRequiresRecovery(s.Role.Id)
+        await RoleFanout.EachAsync(_sessions.All().Where(s => s.Role != null && !RoleRequiresRecovery(s.Role.Id)
             && s.TerritoryWars != null && s.TerritoryBattle == null), async s =>
         {
             // Every fatigue write also replaces s.TerritoryWars, so a zero copy needs no per-second DB read.
             if (s.TerritoryWars!.Fatigue == 0) return;
             var r = LoadRole(s.Role!.Id);
-            if (r.Fatigue == 0 || clock.Now < r.LastFatigue + Math.Max(1, Param("TerritoryFatigueBuffPileDelTime", 1000) / 1000)) return;
+            if (r.Fatigue == 0 || _clock.Now < r.LastFatigue + Math.Max(1, Param("TerritoryFatigueBuffPileDelTime", 1000) / 1000)) return;
             r.Fatigue = Math.Max(0, r.Fatigue - (int)Param("TerritoryFatigueBuffPileDelStacks", 20));
-            r.LastFatigue = clock.Now; await SaveRoleAsync(s.Role.Id, r); s.TerritoryWars = r;
+            r.LastFatigue = _clock.Now; await SaveRoleAsync(s.Role.Id, r); s.TerritoryWars = r;
             await RemoveBuffAsync(s, (int)Param("TerritoryFatigueBuffId", 4920001)); await SyncSiegeAsync(s);
         });
     }
 
     private Task SendQueueAsync(GameSession s, QueueEntry e) => Send(s, QueueNotify, new TerritoryWarQueueNotify
     {
-        Channel = 1, AheadCount = queue.Count(p => p.Value.Zone == e.Zone && p.Value.Joined < e.Joined),
+        Channel = 1, AheadCount = _queue.Count(p => p.Value.Zone == e.Zone && p.Value.Joined < e.Joined),
         SceneEntryId = Zone(e.Zone) is { } z ? GameData.Int(z, "_iDungeonID") : 0
     });
     private async Task CancelQueueAsync(GameSession s, TerritoryWarQueueExitReason reason)
     {
-        if (!queue.Remove(s, out var e)) return;
+        if (!_queue.Remove(s, out var e)) return;
         await Send(s, QueueNotify, new TerritoryWarQueueNotify
         {
             Channel = 1, ExitReason = reason,
@@ -722,21 +722,21 @@ public sealed partial class TerritoryWarsService
     }
     private async Task QueueClockAsync()
     {
-        foreach (var (s, e) in queue.OrderBy(x => x.Value.Joined).ToArray())
+        foreach (var (s, e) in _queue.OrderBy(x => x.Value.Joined).ToArray())
         {
             if (s.Role == null || s.Dead || s.SceneEntry != e.Scene || EntryError(s, e.Zone) != 0)
             { await CancelQueueAsync(s, s.Dead ? TerritoryWarQueueExitReason.Dead : TerritoryWarQueueExitReason.SceneDestroyed); continue; }
             bool away = MonsterService.Distance(s.Position.X, s.Position.Z, e.Position.X, e.Position.Z) > 5;
             if (away)
             {
-                if (e.AwaySince == 0) { e.AwaySince = clock.Now; await Send(s, QueueArea, new TerritoryWarQueueAreaStatusNotify { Status = 1, ExpireTime = (clock.Now + 5) * 1000 }); }
-                if (clock.Now >= e.AwaySince + 5) await CancelQueueAsync(s, TerritoryWarQueueExitReason.LeaveArea);
+                if (e.AwaySince == 0) { e.AwaySince = _clock.Now; await Send(s, QueueArea, new TerritoryWarQueueAreaStatusNotify { Status = 1, ExpireTime = (_clock.Now + 5) * 1000 }); }
+                if (_clock.Now >= e.AwaySince + 5) await CancelQueueAsync(s, TerritoryWarQueueExitReason.LeaveArea);
                 continue;
             }
             if (e.AwaySince != 0) { e.AwaySince = 0; await Send(s, QueueArea, new TerritoryWarQueueAreaStatusNotify()); }
             if (InRoom(e.Zone) >= Capacity(e.Zone)) { e.EnterAt = 0; await SendQueueAsync(s, e); continue; }
-            if (e.EnterAt == 0) { e.EnterAt = clock.Now + 3; await Send(s, QueueEnter, new TerritoryWarQueueEnterNotify { EnterTime = e.EnterAt * 1000 }); }
-            else if (clock.Now >= e.EnterAt)
+            if (e.EnterAt == 0) { e.EnterAt = _clock.Now + 3; await Send(s, QueueEnter, new TerritoryWarQueueEnterNotify { EnterTime = e.EnterAt * 1000 }); }
+            else if (_clock.Now >= e.EnterAt)
             { await CancelQueueAsync(s, TerritoryWarQueueExitReason.EnterMatch); await AdmitAsync(s, e.Zone, false); }
         }
     }

@@ -27,7 +27,7 @@ public sealed partial class DungeonService
         long task = parts.Length >= 4 && long.TryParse(parts[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out long t) ? t : 0;
         if (task != 0 && !(s.Tasks?.Infos.TryGetValue(task, out var info) == true && info.Status is TaskState.Running or TaskState.Finish))
             return false;
-        log.LogInformation("{Name} enters region {Region}: dungeon {Scene} for task {Task}", s.Role?.Name, region.Id, scene, task);
+        _log.LogInformation("{Name} enters region {Region}: dungeon {Scene} for task {Task}", s.Role?.Name, region.Id, scene, task);
         await EnterAsync(s, new EnterDungeonReq { SceneEntry = scene });
         return true;
     }

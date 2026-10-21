@@ -92,7 +92,7 @@ public sealed partial class BuffService
             if (effect.NextMs <= now) effect.NextMs = now + effect.Rule.IntervalMs; // a late loop does not burst
             if (PeriodicTick is not { } tick) continue;
             effect.Busy = true;
-            loop.TrackRuntimeDetached("periodic buff tick", async () =>
+            _loop.TrackRuntimeDetached("periodic buff tick", async () =>
             {
                 try { await tick(effect, buff); }
                 finally { effect.Busy = false; }

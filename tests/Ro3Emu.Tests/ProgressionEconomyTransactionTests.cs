@@ -11,11 +11,11 @@ namespace Ro3Emu.Tests;
 
 public sealed class ProgressionEconomyTransactionTests : IDisposable
 {
-    private readonly string directory;
-    private readonly AccountStore accounts;
-    private readonly RoleStore roles;
-    private readonly ItemStore items;
-    private readonly long role;
+    private readonly string _directory;
+    private readonly AccountStore _accounts;
+    private readonly RoleStore _roles;
+    private readonly ItemStore _items;
+    private readonly long _role;
     private static readonly EconomyCatalog Catalog = new(new Dictionary<long, EconomyAssetKind>
     { [1] = EconomyAssetKind.Currency, [3] = EconomyAssetKind.Item });
     private static byte[] LifeBlob() => new DBLifeJobInfo { ActiveLifejob = { [1] = 3001 } }.ToByteArray();
@@ -23,32 +23,32 @@ public sealed class ProgressionEconomyTransactionTests : IDisposable
     public ProgressionEconomyTransactionTests()
     {
         string root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-        directory = Path.Combine(root, ".loadtest-temp", "e05c-core-" + Guid.NewGuid().ToString("N"));
-        accounts = new AccountStore(Options.Create(new ServerOptions { DataDir = directory }));
-        roles = new RoleStore(accounts);
-        items = new ItemStore(accounts);
-        role = roles.Create("progression-account", 1, "E05" + Guid.NewGuid().ToString("N")[..8], 1, 1000, 1)!.Id;
-        var progress = roles.LoadProgress(role);
+        _directory = Path.Combine(root, ".loadtest-temp", "e05c-core-" + Guid.NewGuid().ToString("N"));
+        _accounts = new AccountStore(Options.Create(new ServerOptions { DataDir = _directory }));
+        _roles = new RoleStore(_accounts);
+        _items = new ItemStore(_accounts);
+        _role = _roles.Create("progression-account", 1, "E05" + Guid.NewGuid().ToString("N")[..8], 1, 1000, 1)!.Id;
+        var progress = _roles.LoadProgress(_role);
         progress.Currency[1] = 100;
-        roles.SaveProgress(role, progress);
+        _roles.SaveProgress(_role, progress);
     }
 
     private RoleItemPlanBuilder Progression(string operation, string kind = "cd13c/life-feed", long cost = 0,
         long goods = 0, bool applyCost = true, bool applyGoods = true, InvItem? replacement = null)
     {
-        var tx = roles.NewTransaction();
-        var before = items.Load(role);
+        var tx = _roles.NewTransaction();
+        var before = _items.Load(_role);
         var after = replacement is null ? before.Select(x => x.Clone()).ToList() : new List<InvItem> { replacement };
         if (applyGoods && goods > 0) after.Add(new InvItem { Entry = 3, Stack = checked((int)goods), Pack = 1 });
-        tx.ItemDelta(role, before, after);
+        tx.ItemDelta(_role, before, after);
         if (cost > 0)
         {
-            var progress = roles.LoadProgress(role);
+            var progress = _roles.LoadProgress(_role);
             if (applyCost) progress.Currency[1] -= cost;
-            tx.Progress(role, progress);
+            tx.Progress(_role, progress);
         }
-        tx.RoleBlob(role, "lifejob", LifeBlob());
-        tx.WithEconomy(new EconomyMutation(operation, "progression-account", role, kind, "progression:" + operation,
+        tx.RoleBlob(_role, "lifejob", LifeBlob());
+        tx.WithEconomy(new EconomyMutation(operation, "progression-account", _role, kind, "progression:" + operation,
             "progression/" + operation, 1_000_000,
             cost == 0 ? [] : [new(new(EconomyAssetKind.Currency, 1), cost)],
             goods == 0 ? [] : [new(new(EconomyAssetKind.Item, 3), goods)], [7]));
@@ -61,18 +61,18 @@ public sealed class ProgressionEconomyTransactionTests : IDisposable
         string operation = Guid.NewGuid().ToString("N");
         var first = Progression(operation);
         var duplicate = Progression(operation);
-        long cut = EconomySnapshotReader.Read(accounts.DatabasePath, Catalog, "auto").Cut.CommitSequence!.Value;
-        await roles.CommitAsync(first, "test/progression-neutral");
-        var receipt = EconomyReceiptReader.Read(accounts.DatabasePath, operation)!;
+        long cut = EconomySnapshotReader.Read(_accounts.DatabasePath, Catalog, "auto").Cut.CommitSequence!.Value;
+        await _roles.CommitAsync(first, "test/progression-neutral");
+        var receipt = EconomyReceiptReader.Read(_accounts.DatabasePath, operation)!;
         Assert.Equal(0, receipt.LegCount);
         Assert.Equal(new[] { "inventory", "lifejob" },
-            roles.ReadRevisionVector(role).Parts.Keys.Where(x => x is "inventory" or "lifejob").Order().ToArray());
-        await roles.CommitAsync(duplicate, "test/progression-neutral-replay");
-        var ledger = EconomyLedgerReader.Read(accounts.DatabasePath, Catalog, "auto", cut, cut + 1);
+            _roles.ReadRevisionVector(_role).Parts.Keys.Where(x => x is "inventory" or "lifejob").Order().ToArray());
+        await _roles.CommitAsync(duplicate, "test/progression-neutral-replay");
+        var ledger = EconomyLedgerReader.Read(_accounts.DatabasePath, Catalog, "auto", cut, cut + 1);
         Assert.True(ledger.CompleteHistory, string.Join(";", ledger.Issues.Select(x => x.Detail)));
         Assert.Empty(ledger.Legs);
         Assert.Single(ledger.Receipts);
-        Assert.Equal(cut + 1, EconomySnapshotReader.Read(accounts.DatabasePath, Catalog, "auto").Cut.CommitSequence);
+        Assert.Equal(cut + 1, EconomySnapshotReader.Read(_accounts.DatabasePath, Catalog, "auto").Cut.CommitSequence);
     }
 
     [Fact]
@@ -80,45 +80,45 @@ public sealed class ProgressionEconomyTransactionTests : IDisposable
     {
         string rejected = Guid.NewGuid().ToString("N");
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            roles.CommitAsync(Progression(rejected, cost: 10, goods: 2, applyCost: false), "test/progression-mismatch"));
-        Assert.Null(EconomyReceiptReader.Read(accounts.DatabasePath, rejected));
-        Assert.Equal(100, roles.LoadProgress(role).Currency[1]);
+            _roles.CommitAsync(Progression(rejected, cost: 10, goods: 2, applyCost: false), "test/progression-mismatch"));
+        Assert.Null(EconomyReceiptReader.Read(_accounts.DatabasePath, rejected));
+        Assert.Equal(100, _roles.LoadProgress(_role).Currency[1]);
         string accepted = Guid.NewGuid().ToString("N");
-        long cut = EconomySnapshotReader.Read(accounts.DatabasePath, Catalog, "auto").Cut.CommitSequence!.Value;
-        await roles.CommitAsync(Progression(accepted, cost: 10, goods: 2), "test/progression-cost-goods");
-        var ledger = EconomyLedgerReader.Read(accounts.DatabasePath, Catalog, "auto", cut, cut + 1);
+        long cut = EconomySnapshotReader.Read(_accounts.DatabasePath, Catalog, "auto").Cut.CommitSequence!.Value;
+        await _roles.CommitAsync(Progression(accepted, cost: 10, goods: 2), "test/progression-cost-goods");
+        var ledger = EconomyLedgerReader.Read(_accounts.DatabasePath, Catalog, "auto", cut, cut + 1);
         Assert.True(ledger.CompleteHistory, string.Join(";", ledger.Issues.Select(x => x.Detail)));
         Assert.Equal(new long[] { -10, 2 }, ledger.Legs.Select(x => x.Delta).Order().ToArray());
-        Assert.Equal(90, roles.LoadProgress(role).Currency[1]);
-        Assert.Equal(2, Assert.Single(items.Load(role)).Stack);
+        Assert.Equal(90, _roles.LoadProgress(_role).Currency[1]);
+        Assert.Equal(2, Assert.Single(_items.Load(_role)).Stack);
     }
 
     [Fact]
     public async Task MetadataAndInventoryRelocationUseNeutralExactLegs()
     {
         var original = new InvItem { Entry = 3, Stack = 2, Pack = 1, Sort = 1 };
-        items.Insert(role, original);
+        _items.Insert(_role, original);
         var moved = original.Clone();
         moved.Stack = 1;
         moved.Pack = 2;
         moved.Attrs = new Dictionary<int, long> { [30] = 4 };
         var extra = new InvItem { Entry = 3, Stack = 1, Pack = 1, Sort = 2 };
-        var tx = roles.NewTransaction();
-        tx.ItemDelta(role, [original], [moved, extra]);
-        tx.RoleBlob(role, "lifejob", LifeBlob());
+        var tx = _roles.NewTransaction();
+        tx.ItemDelta(_role, [original], [moved, extra]);
+        tx.RoleBlob(_role, "lifejob", LifeBlob());
         string operation = Guid.NewGuid().ToString("N");
-        tx.WithEconomy(new EconomyMutation(operation, "progression-account", role, "cd13c/life-neutral",
+        tx.WithEconomy(new EconomyMutation(operation, "progression-account", _role, "cd13c/life-neutral",
             operation, "progression/" + operation, 1_000_000, [], [], [8]));
-        var opening = EconomySnapshotReader.Read(accounts.DatabasePath, Catalog, "auto");
+        var opening = EconomySnapshotReader.Read(_accounts.DatabasePath, Catalog, "auto");
         long cut = opening.Cut.CommitSequence!.Value;
-        await roles.CommitAsync(tx, "test/progression-relocation");
-        var closing = EconomySnapshotReader.Read(accounts.DatabasePath, Catalog, "auto");
-        var ledger = EconomyLedgerReader.Read(accounts.DatabasePath, Catalog, "auto", cut, cut + 1);
+        await _roles.CommitAsync(tx, "test/progression-relocation");
+        var closing = EconomySnapshotReader.Read(_accounts.DatabasePath, Catalog, "auto");
+        var ledger = EconomyLedgerReader.Read(_accounts.DatabasePath, Catalog, "auto", cut, cut + 1);
         Assert.True(ledger.CompleteHistory, string.Join(";", ledger.Issues.Select(x => x.Detail)));
         Assert.Equal(4, ledger.Legs.Count);
         Assert.All(ledger.Legs, leg => Assert.Equal(EconomyLegKind.Transfer, leg.Kind));
         Assert.Equal(2, ledger.Legs.Select(x => x.EdgeNumber).Distinct().Count());
-        Assert.Equal(2, items.Load(role).Sum(x => x.Stack));
+        Assert.Equal(2, _items.Load(_role).Sum(x => x.Stack));
         var exact = EconomyExactnessChecker.Check(opening, closing, ledger);
         Assert.DoesNotContain(exact.Issues, issue => issue.Kind == EconomyIssueKind.Corruption);
         Assert.All(exact.Assets, asset => Assert.Equal("0", asset.Residual));
@@ -132,11 +132,11 @@ public sealed class ProgressionEconomyTransactionTests : IDisposable
         var first = Progression(op);
         var changed = Progression(op);
         // A second child changes the exact state even though no denomination moved.
-        changed.RoleBlob(role, "life_runtime", System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new
+        changed.RoleBlob(_role, "life_runtime", System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new
         { EnergyDay = 1, EnergySpent = 0, PotionDay = 1, FoodBook = 101 }));
-        await roles.CommitAsync(first, "test/progression-original");
-        await Assert.ThrowsAsync<EconomyOperationConflictException>(() => roles.CommitAsync(changed, "test/progression-altered"));
-        Assert.Null(roles.LoadLifeRuntime(role));
+        await _roles.CommitAsync(first, "test/progression-original");
+        await Assert.ThrowsAsync<EconomyOperationConflictException>(() => _roles.CommitAsync(changed, "test/progression-altered"));
+        Assert.Null(_roles.LoadLifeRuntime(_role));
     }
 
     [Fact]
@@ -144,9 +144,9 @@ public sealed class ProgressionEconomyTransactionTests : IDisposable
     {
         string op = Guid.NewGuid().ToString("N");
         var tx = Progression(op);
-        tx.RoleBlob(role, "pets", new DBPetInfo().ToByteArray());
-        await Assert.ThrowsAsync<InvalidOperationException>(() => roles.CommitAsync(tx, "test/progression-foreign"));
-        Assert.Null(EconomyReceiptReader.Read(accounts.DatabasePath, op));
+        tx.RoleBlob(_role, "pets", new DBPetInfo().ToByteArray());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _roles.CommitAsync(tx, "test/progression-foreign"));
+        Assert.Null(EconomyReceiptReader.Read(_accounts.DatabasePath, op));
     }
 
     [Fact]
@@ -155,34 +155,34 @@ public sealed class ProgressionEconomyTransactionTests : IDisposable
         string op = Guid.NewGuid().ToString("N");
         var accepted = Progression(op, cost: 10, goods: 2);
         var replay = Progression(op, cost: 10, goods: 2);
-        accounts.FailNextEconomyAcknowledgementForTest();
-        await roles.CommitAsync(accepted, "test/progression-lost-ack");
-        await roles.CommitAsync(replay, "test/progression-replay");
-        Assert.Equal(90, roles.LoadProgress(role).Currency[1]);
-        Assert.Equal(2, Assert.Single(items.Load(role)).Stack);
-        Assert.Equal(1, EconomySnapshotReader.Read(accounts.DatabasePath, Catalog, "auto").Cut.CommitSequence);
-        Assert.NotNull(EconomyReceiptReader.Read(accounts.DatabasePath, op));
+        _accounts.FailNextEconomyAcknowledgementForTest();
+        await _roles.CommitAsync(accepted, "test/progression-lost-ack");
+        await _roles.CommitAsync(replay, "test/progression-replay");
+        Assert.Equal(90, _roles.LoadProgress(_role).Currency[1]);
+        Assert.Equal(2, Assert.Single(_items.Load(_role)).Stack);
+        Assert.Equal(1, EconomySnapshotReader.Read(_accounts.DatabasePath, Catalog, "auto").Cut.CommitSequence);
+        Assert.NotNull(EconomyReceiptReader.Read(_accounts.DatabasePath, op));
     }
 
     [Fact]
     public async Task LostAcknowledgementWithCorruptChildReceiptFailsClosed()
     {
         string op = Guid.NewGuid().ToString("N");
-        accounts.FailNextEconomyAcknowledgementForTest();
-        accounts.BeforeEconomyResolveForTest = _ =>
+        _accounts.FailNextEconomyAcknowledgementForTest();
+        _accounts.BeforeEconomyResolveForTest = _ =>
         {
-            FixtureSql.Execute(accounts, "UPDATE operation_receipt SET child_receipts=$c WHERE operation_id=$o",
+            FixtureSql.Execute(_accounts, "UPDATE operation_receipt SET child_receipts=$c WHERE operation_id=$o",
                 ("$c", EconomyTransactionPlan.EncodeChildReceipts(new object?[] { Array.Empty<long>() })), ("$o", op));
             return Task.CompletedTask;
         };
-        await Assert.ThrowsAsync<EconomyOutcomeUnknownException>(() => roles.CommitAsync(Progression(op), "test/progression-corrupt"));
-        Assert.NotNull(EconomyReceiptReader.Read(accounts.DatabasePath, op));
+        await Assert.ThrowsAsync<EconomyOutcomeUnknownException>(() => _roles.CommitAsync(Progression(op), "test/progression-corrupt"));
+        Assert.NotNull(EconomyReceiptReader.Read(_accounts.DatabasePath, op));
     }
 
     public void Dispose()
     {
-        accounts.Dispose();
+        _accounts.Dispose();
         SqliteConnection.ClearAllPools();
-        Directory.Delete(directory, recursive: true);
+        Directory.Delete(_directory, recursive: true);
     }
 }

@@ -25,8 +25,8 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
     public const uint ClaimMail = 31602;
     public string Name => "MailService";
 
-    private readonly SemaphoreSlim gate = new(1, 1);
-    private SemaphoreSlim Gate(long _) => gate;
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private SemaphoreSlim Gate(long _) => _gate;
     private async Task<IDisposable> EnterMailboxAsync(long role)
     {
         if (loop?.IsOnLoop == true && loop.Owners?.Current is { RuntimeOnly: false } context)
@@ -34,11 +34,11 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
             context.AssertRole(role);
             return new RecipientLock(null);
         }
-        await gate.WaitAsync();
-        return new RecipientLock(gate);
+        await _gate.WaitAsync();
+        return new RecipientLock(_gate);
     }
-    internal Task EnterTransactionAsync() => gate.WaitAsync();
-    internal void LeaveTransaction() => gate.Release();
+    internal Task EnterTransactionAsync() => _gate.WaitAsync();
+    internal void LeaveTransaction() => _gate.Release();
     private long Now => clock.GetUtcNow().ToUnixTimeSeconds();
 
     public sealed class Mailbox
@@ -196,8 +196,8 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
     internal async Task<IDisposable> LockRecipientsAsync(IEnumerable<long> recipients)
     {
         if (!recipients.Any()) return new RecipientLock(null);
-        await gate.WaitAsync();
-        return new RecipientLock(gate);
+        await _gate.WaitAsync();
+        return new RecipientLock(_gate);
     }
 
     private sealed class RecipientLock(SemaphoreSlim? held) : IDisposable

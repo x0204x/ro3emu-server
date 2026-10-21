@@ -19,28 +19,29 @@ public sealed partial class StallsService
         End = 33407, Info = 33408, View = 33409, Rename = 33410, Change = 33411, BuyerChange = 33413,
         Leave = 33414, Prices = 33415, Settlement = 33416, Top = 33417, Share = 33418;
     private const string Kind = "stall";
-    private readonly MarketStore market;
-    private readonly GameData data;
-    private readonly CharacterService character;
-    private readonly TradeService trade;
-    private readonly RoleStore roles;
-    private readonly SessionRegistry sessions;
-    private readonly FunctionService functions;
-    private readonly SeasonService seasons;
-    private readonly World world;
-    private readonly PublicLineManager lines;
-    private readonly TimeProvider clock;
-    private readonly GameLoop loop;
-    private readonly int nameMaxLength;
-    private readonly Dictionary<(string Key, int Line), StallActor> actors = new();
-    private readonly HashSet<RuntimeMapKey> activeLines = new();
-    private readonly Dictionary<RuntimeMapKey, int> pendingProjections = new();
-    private readonly Dictionary<RuntimeMapKey, int> openingClaims = new();
-    private readonly Dictionary<RuntimeMapKey, HashSet<string>> pinnedPlayerStalls = new();
-    private readonly Dictionary<long, long> lastShare = new();
+    private readonly MarketStore _market;
+    private readonly GameData _data;
+    private readonly CharacterService _character;
+    private readonly TradeService _trade;
+    private readonly RoleStore _roles;
+    private readonly SessionRegistry _sessions;
+    private readonly FunctionService _functions;
+    private readonly SeasonService _seasons;
+    private readonly World _world;
+    private readonly PublicLineManager _lines;
+    private readonly TimeProvider _clock;
+    private readonly GameLoop _loop;
+    private readonly int _nameMaxLength;
+    private readonly Dictionary<(string Key, int Line), StallActor> _actors = new();
+    private long _nextProjectionId = StallActor.ProjectionIdBase;
+    private readonly HashSet<RuntimeMapKey> _activeLines = new();
+    private readonly Dictionary<RuntimeMapKey, int> _pendingProjections = new();
+    private readonly Dictionary<RuntimeMapKey, int> _openingClaims = new();
+    private readonly Dictionary<RuntimeMapKey, HashSet<string>> _pinnedPlayerStalls = new();
+    private readonly Dictionary<long, long> _lastShare = new();
     // Visited public scenes whose system stalls the one-second maintenance populates, replaces and restocks (C/D 15:
     // logins and scene loads add their scene). Before, one scene (the last loaded) was kept.
-    private readonly HashSet<long> maintenanceScenes = [];
+    private readonly HashSet<long> _maintenanceScenes = [];
     internal Func<Task>? OpeningCommittedForTests { get; set; }
 
     public StallsService(MarketStore market, GameData data, CharacterService character, TradeService trade,
@@ -48,9 +49,9 @@ public sealed partial class StallsService
         World world, SceneService scenes, PublicLineManager lines, TimeProvider clock, GameLoop loop,
         Microsoft.Extensions.Options.IOptions<ServerOptions> options)
     {
-        this.market = market; this.data = data; this.character = character; this.trade = trade; this.roles = roles;
-        this.sessions = sessions; this.functions = functions; this.seasons = seasons; this.world = world;
-        this.lines = lines; this.clock = clock; this.loop = loop; nameMaxLength = options.Value.StallNameMaxLength;
+        this._market = market; this._data = data; this._character = character; this._trade = trade; this._roles = roles;
+        this._sessions = sessions; this._functions = functions; this._seasons = seasons; this._world = world;
+        this._lines = lines; this._clock = clock; this._loop = loop; _nameMaxLength = options.Value.StallNameMaxLength;
         // C/D 15: the realm-wide stall maintenance (stall collection, owner roles, AOI actors) no longer runs inside the
         // scene's hook scope, nor delays the scene handoff. A scene's first visit starts its system stall population
         // as its own operation; later loads of a visited scene leave it to the one-second maintenance.
@@ -106,7 +107,7 @@ public sealed partial class StallsService
     public async Task LoginAsync(GameSession s)
     {
         s.ViewedStall = s.ViewedSystemStall = 0;
-        s.Stalls = roles.LoadStalls(s.Role!.Id) is { } saved ? DBStallsInfo.Parser.ParseFrom(saved) : NewMetadata();
+        s.Stalls = _roles.LoadStalls(s.Role!.Id) is { } saved ? DBStallsInfo.Parser.ParseFrom(saved) : NewMetadata();
         await CharacterService.SyncAsync(s, Sync, s.Stalls.Clone());
         // C/D 15: the login no longer runs the realm stall maintenance (it reserved the stall collection and its
         // participants, and published AOI actors under Realm). The one-second maintenance restores and settles the
@@ -137,9 +138,9 @@ public sealed partial class StallsService
         return true;
     }
 
-    private long Now => clock.GetUtcNow().ToUnixTimeSeconds();
-    private long Param(string key, long fallback = 0) => data.Table("PublicParamConfig").TryGetValue(key, out var x) ? (long)(GameData.Number(x) ?? fallback) : fallback;
-    private long[] ParamList(string key) => data.Table("PublicParamConfig").TryGetValue(key, out var x) ? Numbers(x) : [];
+    private long Now => _clock.GetUtcNow().ToUnixTimeSeconds();
+    private long Param(string key, long fallback = 0) => _data.Table("PublicParamConfig").TryGetValue(key, out var x) ? (long)(GameData.Number(x) ?? fallback) : fallback;
+    private long[] ParamList(string key) => _data.Table("PublicParamConfig").TryGetValue(key, out var x) ? Numbers(x) : [];
     private static long[] Numbers(JsonElement x) => x.ValueKind == JsonValueKind.Array ? x.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).ToArray() : [];
     private static long[] Field(JsonElement row, string name) => row.TryGetProperty(name, out var x) ? Numbers(x) : [];
     private static string PlayerKey(long id) => "p:" + id.ToString(CultureInfo.InvariantCulture);
@@ -150,11 +151,11 @@ public sealed partial class StallsService
     private bool InSeason(JsonElement row)
     {
         var books = Field(row, "_kMultiverseArray");
-        return books.Length == 0 || books.Contains(0) || books.Contains(seasons.PlayBook);
+        return books.Length == 0 || books.Contains(0) || books.Contains(_seasons.PlayBook);
     }
 
     /// <summary>CheckCanStall in Lua_CFG_TradeConfig accepts _iTrade == Stall (2), not TradeAndStall (3).</summary>
-    private JsonElement? SaleConfig(int entry) => data.Row("TradeConfig", entry) is { } row
+    private JsonElement? SaleConfig(int entry) => _data.Row("TradeConfig", entry) is { } row
         && GameData.Int(row, "_iTrade") == 2 && InSeason(row) ? row : null;
 
     /// <summary>
@@ -197,7 +198,7 @@ public sealed partial class StallsService
 
     private StallsItemInfo ItemView(StallItem item) => new()
     {
-        StallsItemID = item.Id, Itembase = character.ItemInfoOf(item.Item), Price = item.Price,
+        StallsItemID = item.Id, Itembase = _character.ItemInfoOf(item.Item), Price = item.Price,
         Pricetype = item.Currency, SystemStallCfgID = item.SystemConfig,
     };
 
@@ -230,11 +231,11 @@ public sealed partial class StallsService
     private long WeekStart()
     {
         // Monday 00:00 UTC is the (inferred) weekly reset boundary; no original timezone was recovered.
-        var day = clock.GetUtcNow().Date;
+        var day = _clock.GetUtcNow().Date;
         return new DateTimeOffset(day.AddDays(-(((int)day.DayOfWeek + 6) % 7)), TimeSpan.Zero).ToUnixTimeSeconds();
     }
 
-    private long TaxRate(long gross) => data.Table("TradeConfigTax").Values.OrderBy(r => GameData.Int(r, "_iAmountBooth"))
+    private long TaxRate(long gross) => _data.Table("TradeConfigTax").Values.OrderBy(r => GameData.Int(r, "_iAmountBooth"))
         .Where(r => gross >= GameData.Int(r, "_iAmountBooth")).Select(r => GameData.Int(r, "_iTaxBooth")).LastOrDefault();
 
     private DBStallsInfo NewMetadata() => new()
@@ -263,19 +264,19 @@ public sealed partial class StallsService
 
     public void ActivateLine(RuntimeMapKey runtime)
     {
-        if (runtime.Kind == RuntimeMapKind.PublicLine) activeLines.Add(runtime);
+        if (runtime.Kind == RuntimeMapKind.PublicLine) _activeLines.Add(runtime);
     }
 
-    public bool HasPendingWork(RuntimeMapKey runtime) => pendingProjections.GetValueOrDefault(runtime) > 0
-        || openingClaims.GetValueOrDefault(runtime) > 0
-        || pinnedPlayerStalls.TryGetValue(runtime, out var pinned) && pinned.Count > 0;
+    public bool HasPendingWork(RuntimeMapKey runtime) => _pendingProjections.GetValueOrDefault(runtime) > 0
+        || _openingClaims.GetValueOrDefault(runtime) > 0
+        || _pinnedPlayerStalls.TryGetValue(runtime, out var pinned) && pinned.Count > 0;
 
-    private void OpeningStart(RuntimeMapKey runtime) => openingClaims[runtime] = openingClaims.GetValueOrDefault(runtime) + 1;
+    private void OpeningStart(RuntimeMapKey runtime) => _openingClaims[runtime] = _openingClaims.GetValueOrDefault(runtime) + 1;
 
     private void OpeningEnd(RuntimeMapKey runtime)
     {
-        if (openingClaims.GetValueOrDefault(runtime) <= 1) openingClaims.Remove(runtime);
-        else openingClaims[runtime]--;
+        if (_openingClaims.GetValueOrDefault(runtime) <= 1) _openingClaims.Remove(runtime);
+        else _openingClaims[runtime]--;
     }
 
     private void Pin(StallRow row)
@@ -284,12 +285,12 @@ public sealed partial class StallsService
         var runtime = RuntimeMapKey.Public(row.Scene, row.LineNumber);
         if (row.Ended)
         {
-            if (pinnedPlayerStalls.TryGetValue(runtime, out var pinned) && pinned.Remove(row.Key) && pinned.Count == 0)
-                pinnedPlayerStalls.Remove(runtime);
+            if (_pinnedPlayerStalls.TryGetValue(runtime, out var pinned) && pinned.Remove(row.Key) && pinned.Count == 0)
+                _pinnedPlayerStalls.Remove(runtime);
         }
         else
         {
-            if (!pinnedPlayerStalls.TryGetValue(runtime, out var pinned)) pinnedPlayerStalls[runtime] = pinned = new();
+            if (!_pinnedPlayerStalls.TryGetValue(runtime, out var pinned)) _pinnedPlayerStalls[runtime] = pinned = new();
             pinned.Add(row.Key);
         }
     }
@@ -298,20 +299,20 @@ public sealed partial class StallsService
     public async Task RetireLineAsync(RuntimeMapKey runtime)
     {
         if (HasPendingWork(runtime)) throw new InvalidOperationException($"Line {runtime} still owns a player stall or projection.");
-        activeLines.Remove(runtime);
-        foreach (var actor in actors.Where(x => x.Key.Line == runtime.LineNumber && x.Value.Row.Scene == runtime.SceneEntry)
+        _activeLines.Remove(runtime);
+        foreach (var actor in _actors.Where(x => x.Key.Line == runtime.LineNumber && x.Value.Row.Scene == runtime.SceneEntry)
                      .Select(x => x.Value).ToArray())
         {
-            actors.Remove((actor.Row.Key, runtime.LineNumber));
-            await world.RemoveUnitAsync(actor);
+            _actors.Remove((actor.Row.Key, runtime.LineNumber));
+            await _world.RemoveUnitAsync(actor);
         }
     }
 
-    private void ProjectionStart(RuntimeMapKey runtime) => pendingProjections[runtime] = pendingProjections.GetValueOrDefault(runtime) + 1;
+    private void ProjectionStart(RuntimeMapKey runtime) => _pendingProjections[runtime] = _pendingProjections.GetValueOrDefault(runtime) + 1;
     private void ProjectionEnd(RuntimeMapKey runtime)
     {
-        if (pendingProjections.GetValueOrDefault(runtime) <= 1) pendingProjections.Remove(runtime);
-        else pendingProjections[runtime]--;
+        if (_pendingProjections.GetValueOrDefault(runtime) <= 1) _pendingProjections.Remove(runtime);
+        else _pendingProjections[runtime]--;
     }
 
     /// <summary>Post-commit delivery; AOI actor and both UI views always reflect the same durable escrow.</summary>
@@ -320,11 +321,11 @@ public sealed partial class StallsService
         // The world projection retains its conservative bridge until the world family is converted.
         // Reload after admission: an older response may have waited behind a newer committed stall.
         Ownership.OwnerNotices? notices = null;
-        using (var scope = loop.Owners is { } owners
+        using (var scope = _loop.Owners is { } owners
             ? await owners.EnterAsync("stall projection", Ownership.ReservationKey.Realm) : null)
         {
             using var capture = scope == null ? null : notices = new(scope.Context);
-            row = market.ReadCurrent<StallRow>(Kind, row.Key)
+            row = _market.ReadCurrent<StallRow>(Kind, row.Key)
                 ?? throw new InvalidOperationException("Committed stall is missing before actor publication.");
             Pin(row);
             if (beforeProjection != null) await beforeProjection(row);
@@ -336,34 +337,35 @@ public sealed partial class StallsService
     private async Task PublishCoreAsync(StallRow row, bool notify)
     {
         var lines = row.SystemId == 0 ? new[] { RuntimeMapKey.Public(row.Scene, row.LineNumber) }
-            : activeLines.Where(x => x.SceneEntry == row.Scene).ToArray();
+            : _activeLines.Where(x => x.SceneEntry == row.Scene).ToArray();
         foreach (var runtime in lines)
         {
             ProjectionStart(runtime);
             try
             {
                 var key = (row.Key, runtime.LineNumber);
-                if (row.Ended || !activeLines.Contains(runtime))
+                if (row.Ended || !_activeLines.Contains(runtime))
                 {
-                    if (actors.Remove(key, out var old)) await world.RemoveUnitAsync(old);
+                    if (_actors.Remove(key, out var old)) await _world.RemoveUnitAsync(old);
                 }
-                else if (!actors.TryGetValue(key, out var actor))
+                else if (!_actors.TryGetValue(key, out var actor))
                 {
-                    actor = new StallActor(row, runtime, Param("StallsModelId", 25000002));
-                    actors.Add(key, actor);
-                    await world.AddUnitAsync(actor);
-                    if (!activeLines.Contains(runtime) && actors.Remove(key)) await world.RemoveUnitAsync(actor);
+                    actor = new StallActor(row, runtime, Param("StallsModelId", 25000002),
+                        () => Interlocked.Increment(ref _nextProjectionId));
+                    _actors.Add(key, actor);
+                    await _world.AddUnitAsync(actor);
+                    if (!_activeLines.Contains(runtime) && _actors.Remove(key)) await _world.RemoveUnitAsync(actor);
                 }
                 else
                 {
                     actor.Row = row;
-                    if (notify) await world.ToUnitViewersAsync(actor, CharacterService.EntityBaseChange, actor.Entity());
+                    if (notify) await _world.ToUnitViewersAsync(actor, CharacterService.EntityBaseChange, actor.Entity());
                 }
             }
             finally { ProjectionEnd(runtime); }
         }
         if (!notify) return;
-        foreach (var s in sessions.All().Where(s => s.Role != null))
+        foreach (var s in _sessions.All().Where(s => s.Role != null))
         {
             try
             {
@@ -394,14 +396,13 @@ public sealed partial class StallsService
     {
         /// <summary>Below 2^53: the client keeps unit ids in a double array (see DungeonService.SceneActorUidBase).</summary>
         internal const long ProjectionIdBase = 1L << 49;
-        private static long nextProjectionId = ProjectionIdBase;
         public StallRow Row { get; set; }
-        private readonly long template;
-        public StallActor(StallRow row, RuntimeMapKey runtime, long template)
+        private readonly long _template;
+        public StallActor(StallRow row, RuntimeMapKey runtime, long template, Func<long> nextProjectionId)
         {
-            Row = row; this.template = template;
+            Row = row; this._template = template;
             // Stable separate AOI IDs and StallsID=owner are (inferred); DAL compares StallsID with its role UUID.
-            Uid = row.SystemId != 0 && runtime.LineNumber > 1 ? Interlocked.Increment(ref nextProjectionId)
+            Uid = row.SystemId != 0 && runtime.LineNumber > 1 ? nextProjectionId()
                 : row.SystemId != 0 ? 7_100_000_000_000L + row.SystemId : 7_000_000_000_000L + row.Owner;
             SceneEntry = row.Scene; RuntimeMap = runtime; X = row.X; Y = row.Y; Z = row.Z;
         }
@@ -411,7 +412,7 @@ public sealed partial class StallsService
             stall.CurUseAppearances.Add(Row.Appearance);
             return new EntityBase
             {
-                Uuid = (ulong)Uid, EntityTemplateID = (ulong)template, EntityType = 9, Name = Row.Title,
+                Uuid = (ulong)Uid, EntityTemplateID = (ulong)_template, EntityType = 9, Name = Row.Title,
                 State = EntityState.Alive, StallsInfo = stall, NotifyType = EntityBase.Types.NotifyType.All,
                 MovementInfo = new MovementInfo { Pos = Pos, MoveType = MovementType.MoveTypeNone },
             };

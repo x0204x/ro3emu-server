@@ -24,30 +24,30 @@ public sealed partial class NewActivityService
     public Func<GameSession, PlayerActivityTerritoryWar>? TerritoryWarState { get; set; }
     public List<Action<GameSession>> ProjectionChanged { get; } = new();
 
-    private readonly GameData data;
-    private readonly CharacterService character;
-    private readonly FunctionService functions;
-    private readonly RoleStore roles;
-    private readonly AccountStore accounts;
-    private readonly ItemStore items;
-    private readonly MailService mail;
-    private readonly SeasonService seasons;
-    private readonly TimeProvider clock;
-    private readonly ActivityClock activityClock;
-    private readonly AwardService awards;
-    private readonly TaskService tasks;
-    private readonly SessionRegistry sessions;
-    private readonly GameLoop loop;
-    private readonly Deadlines deadlines;
-    private readonly SceneService scene;
-    private readonly InstanceService instances;
-    private readonly DungeonService dungeons;
-    private readonly PronteraDefenseService defense;
-    private readonly TeamService teams;
-    private readonly bool freePremiumPass, passPlay;
-    private readonly ILogger<NewActivityService> log;
-    private readonly HashSet<(GameSession Session, long Attachment)> queued = new();
-    private long Now => clock.GetUtcNow().ToUnixTimeSeconds();
+    private readonly GameData _data;
+    private readonly CharacterService _character;
+    private readonly FunctionService _functions;
+    private readonly RoleStore _roles;
+    private readonly AccountStore _accounts;
+    private readonly ItemStore _items;
+    private readonly MailService _mail;
+    private readonly SeasonService _seasons;
+    private readonly TimeProvider _clock;
+    private readonly ActivityClock _activityClock;
+    private readonly AwardService _awards;
+    private readonly TaskService _tasks;
+    private readonly SessionRegistry _sessions;
+    private readonly GameLoop _loop;
+    private readonly Deadlines _deadlines;
+    private readonly SceneService _scene;
+    private readonly InstanceService _instances;
+    private readonly DungeonService _dungeons;
+    private readonly PronteraDefenseService _defense;
+    private readonly TeamService _teams;
+    private readonly bool _freePremiumPass, _passPlay;
+    private readonly ILogger<NewActivityService> _log;
+    private readonly HashSet<(GameSession Session, long Attachment)> _queued = new();
+    private long Now => _clock.GetUtcNow().ToUnixTimeSeconds();
 
     public NewActivityService(GameData data, CharacterService character, FunctionService functions, RoleStore roles,
         AccountStore accounts, ItemStore items, MailService mail, SeasonService seasons, TimeProvider clock, ActivityClock activityClock,
@@ -56,16 +56,16 @@ public sealed partial class NewActivityService
         Deadlines deadlines, TeamService teams, MvpService mvps, ChatService chat, Microsoft.Extensions.Options.IOptions<ServerOptions> options,
         ILogger<NewActivityService> log)
     {
-        this.data = data; this.character = character; this.functions = functions; this.roles = roles;
-        this.accounts = accounts; this.items = items; this.mail = mail; this.seasons = seasons; this.clock = clock;
-        this.activityClock = activityClock; this.awards = awards; this.tasks = tasks; this.sessions = sessions;
-        this.loop = loop; this.scene = scene; this.instances = instances; this.defense = defense; this.log = log;
-        this.deadlines = deadlines;
-        this.dungeons = dungeons;
-        this.teams = teams;
-        freePremiumPass = options.Value.Pass.FreePremium;
-        passPlay = options.Value.Pass.Play;
-        if (passPlay) InitializePassPlay(combat, dungeons, mvps, tasks, chat);
+        this._data = data; this._character = character; this._functions = functions; this._roles = roles;
+        this._accounts = accounts; this._items = items; this._mail = mail; this._seasons = seasons; this._clock = clock;
+        this._activityClock = activityClock; this._awards = awards; this._tasks = tasks; this._sessions = sessions;
+        this._loop = loop; this._scene = scene; this._instances = instances; this._defense = defense; this._log = log;
+        this._deadlines = deadlines;
+        this._dungeons = dungeons;
+        this._teams = teams;
+        _freePremiumPass = options.Value.Pass.FreePremium;
+        _passPlay = options.Value.Pass.Play;
+        if (_passPlay) InitializePassPlay(combat, dungeons, mvps, tasks, chat);
         dungeons.JourneyWon = JourneyDungeonWonAsync;
         dungeons.CanStageJourneyVictory = session => ActivityError(session, 112, 15) == 0;
         InitializeAdventureServices(accounts, items);
@@ -101,14 +101,14 @@ public sealed partial class NewActivityService
         return groups;
     }
 
-    private IEnumerable<JsonElement> Definitions => data.Table("NewActivityConfig").Values;
-    private int Playbook(GameSession session) => (int)(session.SeasonState?.PlayBookId ?? seasons.PlayBook);
+    private IEnumerable<JsonElement> Definitions => _data.Table("NewActivityConfig").Values;
+    private int Playbook(GameSession session) => (int)(session.SeasonState?.PlayBookId ?? _seasons.PlayBook);
     private static bool InBook(JsonElement row, int book) => row.TryGetProperty("_kMultiverseArray", out var ids)
         && ids.ValueKind == JsonValueKind.Array && ids.EnumerateArray().Any(i => GameData.Number(i) is 0 || GameData.Number(i) == book);
 
     private bool Applies(GameSession session, JsonElement row)
     {
-        if (seasons.OpenContent.Closes(GameData.Int(row, "_iID"))) return false;
+        if (_seasons.OpenContent.Closes(GameData.Int(row, "_iID"))) return false;
         int book = Playbook(session);
         if (InBook(row, book)) return true;
         if (row.TryGetProperty("_kMultiverseArray", out var ids)
@@ -116,7 +116,7 @@ public sealed partial class NewActivityService
         // Activity 2000 (type 22) has no playbook mapping. Its existing playbook-101 fallback is inferred; the configured
         // activity window bounds that fallback so an expired territory season does not alter the master catalogue.
         return TerritoryWarState != null && book == 101 && GameData.Int(row, "_iID") == 2000 && GameData.Int(row, "_iActivityType") == 22
-            && session.Role is { } role && activityClock.ResolveActivity(row, Now, role.CreateTime, book).Contains(Now);
+            && session.Role is { } role && _activityClock.ResolveActivity(row, Now, role.CreateTime, book).Contains(Now);
     }
 
     /// <summary>
@@ -126,63 +126,63 @@ public sealed partial class NewActivityService
     /// </summary>
     private bool Gate(GameSession session, JsonElement row, DBNewActivityInfo? state = null) =>
         PassTurnReached(session, GameData.Int(row, "_iID"), state)
-        && (seasons.OpenContent.ForcesActivity(GameData.Int(row, "_iID"))
-            || seasons.OpenContent.OpensStageActivities && StageActivities(Playbook(session)).Contains(GameData.Int(row, "_iID"))
-            || functions.ConditionMet(session, GameData.Int(row, "_kOpenCondition")));
+        && (_seasons.OpenContent.ForcesActivity(GameData.Int(row, "_iID"))
+            || _seasons.OpenContent.OpensStageActivities && StageActivities(Playbook(session)).Contains(GameData.Int(row, "_iID"))
+            || _functions.ConditionMet(session, GameData.Int(row, "_kOpenCondition")));
 
-    private readonly Dictionary<int, HashSet<long>> stageActivities = new();
+    private readonly Dictionary<int, HashSet<long>> _stageActivities = new();
 
     /// <summary>The activities the playbook's season page lists by stage (MultiverseStage._kStageActivity).</summary>
     internal IReadOnlySet<long> StageActivities(int book)
     {
-        lock (stageActivities)
+        lock (_stageActivities)
         {
-            if (stageActivities.TryGetValue(book, out var ids)) return ids;
+            if (_stageActivities.TryGetValue(book, out var ids)) return ids;
             ids = new HashSet<long>();
-            foreach (var row in data.Table("MultiverseStage").Values.Where(r => GameData.Int(r, "_iMultiverseID") == book))
+            foreach (var row in _data.Table("MultiverseStage").Values.Where(r => GameData.Int(r, "_iMultiverseID") == book))
                 if (row.TryGetProperty("_kStageActivity", out var list) && list.ValueKind == JsonValueKind.Array)
                     foreach (var id in list.EnumerateArray())
                         if ((long)(GameData.Number(id) ?? 0) is var activity and > 0) ids.Add(activity);
-            return stageActivities[book] = ids;
+            return _stageActivities[book] = ids;
         }
     }
 
     /// <summary>After season, quests and guild login, before exposing function-open panels.</summary>
     public async Task LoginAsync(GameSession session)
     {
-        var lease = deadlines.Capture(session);
-        var saved = roles.LoadNewActivities(session.Role!.Id);
+        var lease = _deadlines.Capture(session);
+        var saved = _roles.LoadNewActivities(session.Role!.Id);
         var loaded = saved == null ? new DBNewActivityInfo() : DBNewActivityInfo.Parser.ParseFrom(saved);
         long eveCycle = loaded.ActivityInfo.TryGetValue(117, out var eve) ? eve.CycleStartTime : 0;
-        var ownerScope = loop.Owners != null
+        var ownerScope = _loop.Owners != null
             ? await EnterLocalWithGateAsync(session, "activity/login", loadedEveCycle: eveCycle,
                 // Nested in the role select: the Eve key the select reserved (LoginKeys) decides, so the login
                 // never asks for more than its parent holds when the lead window opens in between.
                 loadedEveEnded: eve != null && eveCycle > 0
-                    && loop.Owners.CurrentCovers(EveKey(eveCycle, writes: true))) : null;
+                    && _loop.Owners.CurrentCovers(EveKey(eveCycle, writes: true))) : null;
         if (ownerScope == null) await session.ActivityGate.WaitAsync();
         try
         {
-            if (!deadlines.IsCurrent(session, lease)) return;
+            if (!_deadlines.IsCurrent(session, lease)) return;
             session.NewActivities = loaded;
-            var runtime = roles.LoadActivityRuntime(session.Role.Id);
+            var runtime = _roles.LoadActivityRuntime(session.Role.Id);
             session.ActivityRuntime = runtime == null ? new() : JsonSerializer.Deserialize<ActivityRuntimeState>(runtime) ?? new();
             await SyncServerDayAsync(session);
-            if (!deadlines.IsCurrent(session, lease)) return;
+            if (!_deadlines.IsCurrent(session, lease)) return;
             await SettleEveExpiredAsync(session, lease);
-            if (!deadlines.IsCurrent(session, lease)) return;
+            if (!_deadlines.IsCurrent(session, lease)) return;
             var nextCalendar = session.NewActivities.Clone();
             RefreshCalendar(session, nextCalendar);
             await SaveCalendarAsync(session, nextCalendar, saved == null ? null : session.NewActivities.ToByteArray(),
                 initializeRuntime: runtime == null);
             await ReconcilePassAsync(session);
-            if (!deadlines.IsCurrent(session, lease)) return;
+            if (!_deadlines.IsCurrent(session, lease)) return;
             await ReconcileMonthCardAsync(session);
-            if (!deadlines.IsCurrent(session, lease)) return;
+            if (!_deadlines.IsCurrent(session, lease)) return;
             await SyncAsync(session);
-            if (!deadlines.IsCurrent(session, lease)) return;
+            if (!_deadlines.IsCurrent(session, lease)) return;
             session.ActivitiesReady = true;
-            tasks.OnStateChanged(session); // the open activities' quests (TaskService.ActivityTasks.cs)
+            _tasks.OnStateChanged(session); // the open activities' quests (TaskService.ActivityTasks.cs)
             ScheduleDeadline(session);
             PassEvent(session, []); // the day played, and any daily activity earned while the pass was not watching
         }
@@ -217,7 +217,7 @@ public sealed partial class NewActivityService
             InitializeAdventure(session, row, info);
             InitializePass(session, row, info);
             InitializeMonthCard(session, row, info);
-            var window = activityClock.ResolveActivity(row, now, session.Role!.CreateTime, book);
+            var window = _activityClock.ResolveActivity(row, now, session.Role!.CreateTime, book);
             bool gate = Gate(session, row, state);
             bool active = window.Contains(now) && gate;
             info.State = active ? window.State : "_close";
@@ -230,14 +230,14 @@ public sealed partial class NewActivityService
             info.StateTimeStamps[window.State] = window.Start;
             if (active && personal.EnterTime == 0) personal.EnterTime = now;
             if (type == 8 && active && info.ActivityParam.SevenDay is { } seven
-                && (seven.LastLoginTime == 0 || activityClock.Day(seven.LastLoginTime) < activityClock.Day(now)))
+                && (seven.LastLoginTime == 0 || _activityClock.Day(seven.LastLoginTime) < _activityClock.Day(now)))
             {
                 seven.LoginDays = Math.Min(7, seven.LoginDays + 1);
                 seven.LastLoginTime = now;
                 personal.SelfData ??= new();
                 personal.SelfData.SevenDay = seven.Clone();
             }
-            if (type == 20) info.ActivityParam.PronteraDefense = defense.BuildPlayerState(session);
+            if (type == 20) info.ActivityParam.PronteraDefense = _defense.BuildPlayerState(session);
         }
     }
 
@@ -245,10 +245,10 @@ public sealed partial class NewActivityService
     {
         if (!allowInitializing && !session.ActivitiesReady || session.Role == null || session.Progress == null || session.NewActivities == null)
             return ErrorCodes.FeatureUnavailable;
-        if (data.Row("NewActivityConfig", activityId) is not { } row || expectedType != 0 && GameData.Int(row, "_iActivityType") != expectedType) return ErrorCodes.Parameter;
+        if (_data.Row("NewActivityConfig", activityId) is not { } row || expectedType != 0 && GameData.Int(row, "_iActivityType") != expectedType) return ErrorCodes.Parameter;
         if (!Applies(session, row)) return ErrorCodes.ActivityClosed;
         if (!Gate(session, row)) return ErrorCodes.FunctionLocked;
-        if (!activityClock.ResolveActivity(row, Now, session.Role.CreateTime, Playbook(session)).Contains(Now)) return ErrorCodes.ActivityPeriod;
+        if (!_activityClock.ResolveActivity(row, Now, session.Role.CreateTime, Playbook(session)).Contains(Now)) return ErrorCodes.ActivityPeriod;
         return session.NewActivities.ActivityInfo.ContainsKey(activityId) ? 0 : ErrorCodes.ActivityClosed;
     }
 
@@ -274,7 +274,7 @@ public sealed partial class NewActivityService
             { ActivityId = req.ActivityId, RequestId = req.RequestId, Result = ErrorCodes.FeatureUnavailable });
             return;
         }
-        var lease = deadlines.Capture(session);
+        var lease = _deadlines.Capture(session);
         bool social = session.ActivitiesReady && session.Owner != null && session.Attachment != null
             && (req.FragmentGatherSend != null || req.FragmentGatherAskFinished != null
                 || req.BattlePassGift != null);
@@ -286,17 +286,17 @@ public sealed partial class NewActivityService
                     : req.FragmentGatherAskFinished != null ? "activity/fragment-status" : "activity/pass-gift",
                 req.FragmentGatherSend?.AskID ?? req.FragmentGatherAskFinished?.AskID ?? 0)
             : null;
-        LegacyOwnerScope? localScope = socialScope == null && loop.Owners != null
+        LegacyOwnerScope? localScope = socialScope == null && _loop.Owners != null
             ? await EnterLocalWithGateAsync(session, "activity/common", req) : null;
         if (socialScope == null && localScope == null) await session.ActivityGate.WaitAsync();
         OwnerNotices? notices = socialScope == null ? null : new OwnerNotices(socialScope.Context);
         try
         {
-            if (!deadlines.IsCurrent(session, lease)) return;
+            if (!_deadlines.IsCurrent(session, lease)) return;
             if (session.ActivitiesReady && session.NewActivities != null)
             {
                 await SettleEveExpiredAsync(session, lease);
-                if (!deadlines.IsCurrent(session, lease)) return;
+                if (!_deadlines.IsCurrent(session, lease)) return;
                 await RefreshCalendarAndSaveAsync(session);
             }
             var response = new CommonActivityRes { ActivityId = req.ActivityId, RequestId = req.RequestId, Result = ActivityError(session, req.ActivityId) };
@@ -317,14 +317,14 @@ public sealed partial class NewActivityService
                     response.Result = await ClaimSimpleAsync(session, req.ActivityId, req.FunctionPreviewGetReward.FunctionPreviewCfgId, true);
                     response.FunctionPreviewGetReward = new();
                 }
-                else if (req.ActivityId == 118) response = await defense.HandleAsync(session, req);
+                else if (req.ActivityId == 118) response = await _defense.HandleAsync(session, req);
                 else if (!await HandlePassCommonAsync(session, req, response)
                     && !await HandleMonthCardCommonAsync(session, req, response)
                     && !await HandleAdventureCommonAsync(session, req, response)) response.Result = ErrorCodes.Parameter;
             }
-            if (!deadlines.IsCurrent(session, lease)) return;
+            if (!_deadlines.IsCurrent(session, lease)) return;
             if (session.ActivitiesReady) await SyncAsync(session);
-            if (!deadlines.IsCurrent(session, lease)) return;
+            if (!_deadlines.IsCurrent(session, lease)) return;
             await session.SendGameAsync(Common, response);
         }
         finally
@@ -335,7 +335,7 @@ public sealed partial class NewActivityService
             socialScope?.Dispose();
             if (notices != null)
                 try { await notices.FlushAsync(); }
-                catch (Exception e) { log.LogWarning(e, "Committed activity notice failed for {Role}", session.Role?.Id); }
+                catch (Exception e) { _log.LogWarning(e, "Committed activity notice failed for {Role}", session.Role?.Id); }
         }
     }
 
@@ -346,24 +346,24 @@ public sealed partial class NewActivityService
             await session.SendGameAsync(GetReward, new NewActivityGetRewardCommonResp { Result = ErrorCodes.FeatureUnavailable });
             return;
         }
-        var lease = deadlines.Capture(session);
-        LegacyOwnerScope? ownerScope = loop.Owners != null
+        var lease = _deadlines.Capture(session);
+        LegacyOwnerScope? ownerScope = _loop.Owners != null
             ? await EnterLocalWithGateAsync(session, "activity/claim") : null;
         if (ownerScope == null) await session.ActivityGate.WaitAsync();
         try
         {
-            if (!deadlines.IsCurrent(session, lease)) return;
+            if (!_deadlines.IsCurrent(session, lease)) return;
             if (session.ActivitiesReady && session.NewActivities != null)
             {
                 await SettleEveExpiredAsync(session, lease);
-                if (!deadlines.IsCurrent(session, lease)) return;
+                if (!_deadlines.IsCurrent(session, lease)) return;
                 await RefreshCalendarAndSaveAsync(session);
             }
             int result = ActivityError(session, req.ActivityID);
             if (result == 0) result = await ClaimCoreAsync(session, req);
-            if (!deadlines.IsCurrent(session, lease)) return;
+            if (!_deadlines.IsCurrent(session, lease)) return;
             if (session.ActivitiesReady) await SyncAsync(session);
-            if (!deadlines.IsCurrent(session, lease)) return;
+            if (!_deadlines.IsCurrent(session, lease)) return;
             await session.SendGameAsync(GetReward, new NewActivityGetRewardCommonResp { Result = result });
         }
         finally { session.ActivityGate.Release(); ownerScope?.Dispose(); }
@@ -373,7 +373,7 @@ public sealed partial class NewActivityService
     {
         if (session.NewActivities!.ActivityInfo[req.ActivityID].ActivityParam.SevenDay is not { } seven)
             return await ClaimAdventureAsync(session, req);
-        if (data.Row("SevenDaySignUpConfig", req.Index) is not { } row) return ErrorCodes.ActivityReward;
+        if (_data.Row("SevenDaySignUpConfig", req.Index) is not { } row) return ErrorCodes.ActivityReward;
         if (seven.RewardStatus.GetValueOrDefault(req.Index)) return ErrorCodes.RewardClaimed;
         if (seven.LoginDays < GameData.Int(row, "_iRewardDate")) return ErrorCodes.TaskRequirements;
         var next = session.NewActivities.Clone();
@@ -387,12 +387,12 @@ public sealed partial class NewActivityService
     {
         int error = ActivityError(session, activityId, preview ? 4 : 3);
         if (error != 0) return error;
-        if (data.Row(preview ? "FunctionPreviewConfig" : "LevelAwardConfig", rewardId) is not { } row) return ErrorCodes.ActivityReward;
+        if (_data.Row(preview ? "FunctionPreviewConfig" : "LevelAwardConfig", rewardId) is not { } row) return ErrorCodes.ActivityReward;
         var param = session.NewActivities!.ActivityInfo[activityId].ActivityParam;
         var claims = preview ? param.FunctionPreview : param.LevelAward;
         if (claims.AwardData.ContainsKey(rewardId)) return ErrorCodes.RewardClaimed;
         bool eligible = preview ? GameData.Int(row, "_iFunction") is var f and > 0
-            ? functions.IsOpen(session, f) : session.Progress!.Level >= GameData.Int(row, "_iLv")
+            ? _functions.IsOpen(session, f) : session.Progress!.Level >= GameData.Int(row, "_iLv")
             : session.Progress!.Level >= GameData.Int(row, "_iLevel");
         if (!eligible) return ErrorCodes.TaskRequirements;
         var next = session.NewActivities.Clone();
@@ -414,15 +414,15 @@ public sealed partial class NewActivityService
     {
         if (economy != null && (journeySource != null || source != null))
             throw new InvalidOperationException("Activity settlement has more than one economic family.");
-        var lease = deadlines.Capture(session);
+        var lease = _deadlines.Capture(session);
         long roleId = session.Role?.Id ?? 0;
         try
         {
             var resolvedIds = (awardIds ?? []).ToArray();
-            var grants = resolvedIds.SelectMany(id => awards.Resolve(session, id, Playbook(session)).Grants).Concat(extra ?? []).ToArray();
+            var grants = resolvedIds.SelectMany(id => _awards.Resolve(session, id, Playbook(session)).Grants).Concat(extra ?? []).ToArray();
             if (economy != null)
             {
-                EconomyAsset Asset(int entry) => data.Row("ItemConfig", entry) is { } row
+                EconomyAsset Asset(int entry) => _data.Row("ItemConfig", entry) is { } row
                     ? new(GameData.Int(row, "_iType") == 1 ? EconomyAssetKind.Currency : EconomyAssetKind.Item, entry)
                     : throw new AwardResolutionException($"Activity economy entry {entry} is not configured");
                 foreach (var group in (costs ?? []).Where(c => c.Count > 0).GroupBy(c => c.Entry))
@@ -440,9 +440,9 @@ public sealed partial class NewActivityService
             var journeyEconomy = journeySource == null ? null : new CharacterService.OwnedAwardSource(
                 "cd13e/journey-victory", journeySource,
                 new { Source = journeySource, State = Convert.ToBase64String(infoBytes), Grants = grants });
-            bool accepted = await character.ApplyAwardAsync(session, new AwardPlan(0, 0, grants), costs: costs, persist: tx =>
+            bool accepted = await _character.ApplyAwardAsync(session, new AwardPlan(0, 0, grants), costs: costs, persist: tx =>
             {
-                if (!deadlines.IsCurrent(session, lease) || session.Role?.Id != roleId)
+                if (!_deadlines.IsCurrent(session, lease) || session.Role?.Id != roleId)
                     throw new OperationCanceledException("Activity attachment changed before award commit.");
                 tx.RoleBlob(roleId, "new_activities", infoBytes);
                 tx.RoleBlob(roleId, "activity_runtime", runtimeBytes);
@@ -450,7 +450,7 @@ public sealed partial class NewActivityService
                 if (economy != null) tx.WithEscrowEconomy(economy);
                 else if (source != null && ((costs?.Any(cost => cost.Entry is not (100 or 101) && cost.Count > 0) ?? false)
                     || grants.Any(grant => grant.Entry is not (100 or 101) && grant.Count > 0)))
-                    tx.WithEventEconomy(EventEconomy.ForRole(data, session, "newactivity",
+                    tx.WithEventEconomy(EventEconomy.ForRole(_data, session, "newactivity",
                         $"newactivity/{roleId}/{source}",
                         (costs ?? []).Select(cost => (cost.Entry, (long)cost.Count)), grants,
                         new { Source = source, Activity = Convert.ToBase64String(infoBytes), Runtime = Convert.ToBase64String(runtimeBytes) }));
@@ -460,20 +460,20 @@ public sealed partial class NewActivityService
                 if (runtime != null) session.ActivityRuntime = runtime;
                 committed?.Invoke();
             }, ownedAward: journeyEconomy);
-            if (!deadlines.IsCurrent(session, lease) || session.Role?.Id != roleId)
+            if (!_deadlines.IsCurrent(session, lease) || session.Role?.Id != roleId)
                 throw new OperationCanceledException("Activity attachment changed during award delivery.");
-            if (!accepted) return character.ShortageOf(session, (costs ?? []).Select(c => (c.Entry, (long)c.Count)).ToArray());
+            if (!accepted) return _character.ShortageOf(session, (costs ?? []).Select(c => (c.Entry, (long)c.Count)).ToArray());
             if (beforeSync != null) await beforeSync();
-            if (!deadlines.IsCurrent(session, lease))
+            if (!_deadlines.IsCurrent(session, lease))
                 throw new OperationCanceledException("Activity attachment changed before projection delivery.");
             await SyncAsync(session);
-            if (!deadlines.IsCurrent(session, lease))
+            if (!_deadlines.IsCurrent(session, lease))
                 throw new OperationCanceledException("Activity attachment changed during projection delivery.");
             return 0;
         }
         catch (AwardResolutionException e)
         {
-            log.LogWarning("Activity award rejected for {Role}: {Reason}", session.Role?.Id, e.Message);
+            _log.LogWarning("Activity award rejected for {Role}: {Reason}", session.Role?.Id, e.Message);
             return ErrorCodes.RewardMissing;
         }
     }
@@ -484,11 +484,11 @@ public sealed partial class NewActivityService
         byte[] info = next.ToByteArray();
         bool changed = before == null || !info.AsSpan().SequenceEqual(before);
         if (!changed && !initializeRuntime) return;
-        var tx = roles.NewTransaction();
+        var tx = _roles.NewTransaction();
         if (changed) tx.RoleBlob(session.Role!.Id, "new_activities", info);
         if (initializeRuntime) tx.RoleBlob(session.Role!.Id, "activity_runtime",
             JsonSerializer.SerializeToUtf8Bytes(session.ActivityRuntime));
-        await roles.CommitAsync(tx, "activity/calendar", _ => session.NewActivities = next);
+        await _roles.CommitAsync(tx, "activity/calendar", _ => session.NewActivities = next);
     }
 
     private async Task RefreshCalendarAndSaveAsync(GameSession session)
@@ -502,30 +502,30 @@ public sealed partial class NewActivityService
     private async Task SyncAsync(GameSession session)
     {
         if (session.NewActivities == null) return;
-        var lease = deadlines.Capture(session);
-        if (!deadlines.IsCurrent(session, lease)) return;
+        var lease = _deadlines.Capture(session);
+        if (!_deadlines.IsCurrent(session, lease)) return;
         var state = session.NewActivities.Clone();
-        if (state.ActivityInfo.TryGetValue(118, out var info)) info.ActivityParam.PronteraDefense = defense.BuildPlayerState(session);
+        if (state.ActivityInfo.TryGetValue(118, out var info)) info.ActivityParam.PronteraDefense = _defense.BuildPlayerState(session);
         foreach (var id in state.ActivityInfo.Keys.ToArray())
-            if (data.Row("NewActivityConfig", id) is not { } row || !Applies(session, row)) state.ActivityInfo.Remove(id);
+            if (_data.Row("NewActivityConfig", id) is not { } row || !Applies(session, row)) state.ActivityInfo.Remove(id);
         if (TerritoryWarState is { } territory)
             foreach (var (id, activity) in state.ActivityInfo)
-                if (data.Row("NewActivityConfig", id) is { } row && GameData.Int(row, "_iActivityType") == 22)
+                if (_data.Row("NewActivityConfig", id) is { } row && GameData.Int(row, "_iActivityType") == 22)
                 {
                     activity.ActivityParam ??= new();
                     activity.ActivityParam.TerritoryWar = territory(session);
                 }
         // The initial nested maps are handled in the projection partial; persistent state never contains wire markers.
         await SyncProjectionAsync(session, state, lease);
-        if (!deadlines.IsCurrent(session, lease)) return;
+        if (!_deadlines.IsCurrent(session, lease)) return;
         var exploration = state.ActivityInfo.Values.Select(i => i.ActivityParam?.WorldExploration).FirstOrDefault(i => i != null);
         if (exploration != null) await CharacterService.SyncAsync(session, WorldExplorationSync, exploration.Clone());
-        if (!deadlines.IsCurrent(session, lease)) return;
+        if (!_deadlines.IsCurrent(session, lease)) return;
         var month = state.ActivityInfo.Values.Select(i => i.ActivityParam?.MonthCard).FirstOrDefault(i => i != null);
         if (month != null) await CharacterService.SyncAsync(session, MonthCardSync, month.Clone());
-        if (!deadlines.IsCurrent(session, lease)) return;
+        if (!_deadlines.IsCurrent(session, lease)) return;
         await SyncTreasureAsync(session, lease);
-        if (!deadlines.IsCurrent(session, lease)) return;
+        if (!_deadlines.IsCurrent(session, lease)) return;
         if (session.ActivitiesReady) ScheduleDeadline(session);
         foreach (var changed in ProjectionChanged) changed(session);
     }
@@ -534,20 +534,20 @@ public sealed partial class NewActivityService
 
     private async Task ReconcileAsync(GameSession session, DeadlineLease? scheduled)
     {
-        if (!loop.IsOnLoop) { await loop.InvokeAsync(() => ReconcileAsync(session, scheduled)); return; }
+        if (!_loop.IsOnLoop) { await _loop.InvokeAsync(() => ReconcileAsync(session, scheduled)); return; }
         if (!session.ActivitiesReady || session.Role == null || session.NewActivities == null) return;
-        var lease = scheduled ?? deadlines.Capture(session);
-        var ownerScope = loop.Owners != null
+        var lease = scheduled ?? _deadlines.Capture(session);
+        var ownerScope = _loop.Owners != null
             ? await EnterLocalWithGateAsync(session, "activity reconciliation") : null;
         if (ownerScope == null) await session.ActivityGate.WaitAsync();
         try
         {
             if (!session.ActivitiesReady || session.Role == null || session.NewActivities == null
-                || !deadlines.IsCurrent(session, lease)) return;
+                || !_deadlines.IsCurrent(session, lease)) return;
             await SyncServerDayAsync(session);
-            if (!deadlines.IsCurrent(session, lease)) return;
+            if (!_deadlines.IsCurrent(session, lease)) return;
             await SettleEveExpiredAsync(session, lease);
-            if (!deadlines.IsCurrent(session, lease)) return;
+            if (!_deadlines.IsCurrent(session, lease)) return;
             await RefreshCalendarAndSaveAsync(session);
             // A held async calendar commit can cross the realm-open day boundary. Refresh the
             // day marker after that commit and before publishing the resulting projection.
@@ -556,9 +556,9 @@ public sealed partial class NewActivityService
             // the same attachment, not to the superseded schedule generation.
             var attachment = lease with { ScheduleGeneration = 0, Key = null };
             await ReconcilePassAsync(session);
-            if (!deadlines.IsCurrent(session, attachment)) return;
+            if (!_deadlines.IsCurrent(session, attachment)) return;
             await ReconcileMonthCardAsync(session);
-            if (!deadlines.IsCurrent(session, attachment)) return;
+            if (!_deadlines.IsCurrent(session, attachment)) return;
             await SyncAsync(session);
         }
         finally { session.ActivityGate.Release(); ownerScope?.Dispose(); }
@@ -567,36 +567,36 @@ public sealed partial class NewActivityService
     private async Task SyncServerDayAsync(GameSession session)
     {
         // LC_DAL_ServerInfo.PackServerBasicInfo uses floor((logic-open)/86400)+1.
-        long day = (long)Math.Floor((Now - activityClock.ServerOpen) / 86400d) + 1;
+        long day = (long)Math.Floor((Now - _activityClock.ServerOpen) / 86400d) + 1;
         if (session.ActivityServerDay == day) return;
         session.ActivityServerDay = day;
         await session.SendGameAsync(30130, new ServerBasicInfo
-        { ServerOpenTime = (ulong)activityClock.ServerOpen, ServerLogicTime = (ulong)Now });
-        await functions.SyncAsync(session);
+        { ServerOpenTime = (ulong)_activityClock.ServerOpen, ServerLogicTime = (ulong)Now });
+        await _functions.SyncAsync(session);
     }
 
     private void QueueRefresh(GameSession session)
     {
         if (!session.ActivitiesReady) return;
-        if (!loop.IsOnLoop)
+        if (!_loop.IsOnLoop)
         {
             var role = session.Role;
             int serial = session.AccountEntitySerial;
-            loop.PostRuntime(() =>
+            _loop.PostRuntime(() =>
             {
                 if (ReferenceEquals(session.Role, role) && session.AccountEntitySerial == serial) QueueRefresh(session);
                 return Task.CompletedTask;
             });
             return;
         }
-        var lease = deadlines.Capture(session);
+        var lease = _deadlines.Capture(session);
         if (lease.AttachmentGeneration == 0) return;
         var queuedKey = (session, lease.AttachmentGeneration);
-        lock (queued) if (!queued.Add(queuedKey)) return;
-        loop.PostRuntime(async () =>
+        lock (_queued) if (!_queued.Add(queuedKey)) return;
+        _loop.PostRuntime(async () =>
         {
-            try { if (deadlines.IsCurrent(session, lease)) await ReconcileAsync(session); }
-            finally { lock (queued) queued.Remove(queuedKey); }
+            try { if (_deadlines.IsCurrent(session, lease)) await ReconcileAsync(session); }
+            finally { lock (_queued) _queued.Remove(queuedKey); }
         });
     }
 

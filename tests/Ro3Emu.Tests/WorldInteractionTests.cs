@@ -12,14 +12,14 @@ namespace Ro3Emu.Tests;
 /// <summary>Real authored status/vehicle templates with a test-only scene-editor placement, over the game wire.</summary>
 public sealed class WorldInteractionTests : IAsyncLifetime
 {
-    private readonly string stateDir = Path.Combine(Path.GetTempPath(), "ro3emu-interact-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly string _stateDir = Path.Combine(Path.GetTempPath(), "ro3emu-interact-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "";
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);
 
     public async Task InitializeAsync()
     {
-        var fixture = Path.Combine(stateDir, "fixture");
+        var fixture = Path.Combine(_stateDir, "fixture");
         var config = Path.Combine(fixture, "config");
         Directory.CreateDirectory(config);
         foreach (var file in Directory.GetFiles(Path.Combine(RepoRoot(), "data", "config"), "*.json"))
@@ -42,32 +42,32 @@ public sealed class WorldInteractionTests : IAsyncLifetime
         await File.WriteAllTextAsync(Path.Combine(sceneDir, "sc_prt_fild08_001_sceneeditor.json"), scene.ToJsonString());
 
         var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = stateDir; o.GameDataDir = fixture;
+            o.DataDir = _stateDir; o.GameDataDir = fixture;
             o.HttpPort = httpPort; o.MicroGatePort = microPort; o.GameGatePort = gamePort;
         });
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{httpPort}";
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{httpPort}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(stateDir, true); } catch (IOException) { }
+        try { Directory.Delete(_stateDir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(stateDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_stateDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         long id = (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id;
         await bot.EnterWorldAsync(id); return bot;
     }
     private static async Task<T> Next<T>(BotClient bot, uint msgId, Google.Protobuf.MessageParser<T> parser)
         where T : Google.Protobuf.IMessage<T> => parser.ParseFrom((await bot.Inbox.WaitAsync(e => e.IsGame(msgId), Wait)).Body);
-    private long Npc(int template) => app.Services.GetRequiredService<WorldData>().Map(10111)!.Npcs.Single(n => n.NpcId == template).Uid;
+    private long Npc(int template) => _app.Services.GetRequiredService<WorldData>().Map(10111)!.Npcs.Single(n => n.NpcId == template).Uid;
     private static NpcInteractionReq Request(long uid, int id) => new() { NpcUid = uid, InteractionId = id, SceneConfigId = 10111 };
 
     [ClientDataFact]

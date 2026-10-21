@@ -8,7 +8,7 @@ public sealed partial class GuildService
 {
     public const uint CancelCreate = 32215, HelperOpe = 32220, HelperLeave = 32221, HelperChange = 32222,
         Recruit = 32257;
-    private readonly Dictionary<long, long> guildlessRecruitMs = new();
+    private readonly Dictionary<long, long> _guildlessRecruitMs = new();
 
     /// <summary>32257 publishes to the client channel-8 IM surface; recipient-independent cooldown is inferred.</summary>
     private async Task RecruitCoreAsync(GameSession s, GuildRecruitReq req)
@@ -17,7 +17,7 @@ public sealed partial class GuildService
         long now = NowMs();
         long delay = guild?.Status == (int)GuildStatus.PreCreate
             ? Setting("GuildResponseReleaseRecruitment", 300)[0] : Setting("GuildRecruitButtonCD", 300)[0];
-        long previous = guild?.LastRecruitMs ?? (s.Role == null ? 0 : guildlessRecruitMs.GetValueOrDefault(s.Role.Id));
+        long previous = guild?.LastRecruitMs ?? (s.Role == null ? 0 : _guildlessRecruitMs.GetValueOrDefault(s.Role.Id));
         int code = s.Role == null ? ErrorCodes.Parameter
             : guild != null && !HasRight(guild, s.Role.Id, 7) ? ErrorCodes.GuildPermission
             : string.IsNullOrWhiteSpace(req.Content) || req.Content.Length > Setting("GuildRecruitNoticeMaxNum", 80)[0]
@@ -25,7 +25,7 @@ public sealed partial class GuildService
             : previous + delay * 1000 > now ? ErrorCodes.Cooldown : 0;
         if (code == 0)
         {
-            if (guild == null) guildlessRecruitMs[s.Role!.Id] = now;
+            if (guild == null) _guildlessRecruitMs[s.Role!.Id] = now;
             else { guild.LastRecruitMs = now; await SaveGuildAsync(guild); }
             await chat.PublishRecruitmentAsync(s, req.Content, guild?.Id ?? 0,
                 guild?.Status == (int)GuildStatus.PreCreate, guild?.Members.Count ?? 0);

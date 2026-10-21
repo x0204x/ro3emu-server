@@ -16,40 +16,40 @@ namespace Ro3Emu.Tests;
 /// </summary>
 public sealed class BossSkillSchedulerTests : IAsyncLifetime
 {
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-bossskills-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-bossskills-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
-    private WebApplication app = null!;
-    private string http = "";
-    private GameLoop Loop => app.Services.GetRequiredService<GameLoop>();
-    private MonsterService Monsters => app.Services.GetRequiredService<MonsterService>();
-    private BossSkillOptions Options => app.Services.GetRequiredService<IOptions<ServerOptions>>().Value.BossSkills;
-    private GameSession Session(string name) => app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == name.ToLowerInvariant());
+    private WebApplication _app = null!;
+    private string _http = "";
+    private GameLoop Loop => _app.Services.GetRequiredService<GameLoop>();
+    private MonsterService Monsters => _app.Services.GetRequiredService<MonsterService>();
+    private BossSkillOptions Options => _app.Services.GetRequiredService<IOptions<ServerOptions>>().Value.BossSkills;
+    private GameSession Session(string name) => _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == name.ToLowerInvariant());
 
     public async Task InitializeAsync()
     {
         var ports = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir; o.GameDataDir = Path.Combine(ClientData.RepoRoot, "data");
+            o.DataDir = _dataDir; o.GameDataDir = Path.Combine(ClientData.RepoRoot, "data");
             o.HttpPort = ports.Item1; o.MicroGatePort = ports.Item2; o.GameGatePort = ports.Item3;
             // Specials start at once and land no damage: a level 1 bot outlives a raid boss's rotation.
             o.BossSkills.FirstCastDelayMs = 0;
             o.BossSkills.DamagePercent = 0;
         });
-        SureHitRolls.Install(app);
-        await app.StartAsync(); http = $"http://127.0.0.1:{ports.Item1}";
+        SureHitRolls.Install(_app);
+        await _app.StartAsync(); _http = $"http://127.0.0.1:{ports.Item1}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         var role = await bot.CreateRoleAsync(name); await bot.EnterWorldAsync(role.RoleBaseInfo.Id);
         return bot;
@@ -65,7 +65,7 @@ public sealed class BossSkillSchedulerTests : IAsyncLifetime
     private async Task Gm(string account, string line)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={account}", new StringContent(line))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(line))).EnsureSuccessStatusCode();
     }
 
     /// <summary>The boss on the player's spot, not roaming or swinging (its normal attack stays out of the way), engaged on her.</summary>
@@ -199,7 +199,7 @@ public sealed class BossSkillSchedulerTests : IAsyncLifetime
         var orc = await Boss("alice", 5020004);
         var roar = Assert.Single(orc.Template.Skills!.Skills, k => k.Id == 5203001);
         Assert.Equal((BossSkillArea.AroundSelf, 8f), (roar.Area, roar.Radius));
-        await Loop.InvokeAsync(() => app.Services.GetRequiredService<SceneService>().TeleportInMapAsync(Session("bob"),
+        await Loop.InvokeAsync(() => _app.Services.GetRequiredService<SceneService>().TeleportInMapAsync(Session("bob"),
             new MapPoint(orc.X + 12, orc.Y, orc.Z, 0)));
         await Gm("alice", "!boss cast 5203001");
         var cast = await Next(alice, CombatService.UseInSkill, UseInSkillInfo.Parser, u => u.SrcID == orc.Uid && u.SkillID == 5203001);
@@ -235,7 +235,7 @@ public sealed class BossSkillSchedulerTests : IAsyncLifetime
         var angeling = await Boss("alice", 81000001);
         await Gm("alice", "!boss cast 5202101");
         var cast = await Next(alice, CombatService.UseInSkill, UseInSkillInfo.Parser, u => u.SrcID == angeling.Uid && u.SkillID == 5202101);
-        var world = app.Services.GetRequiredService<World>();
+        var world = _app.Services.GetRequiredService<World>();
         bool summoned = false;
         for (int attempt = 0; attempt < 100 && !summoned; attempt++)
         {
@@ -275,7 +275,7 @@ public sealed class BossSkillSchedulerTests : IAsyncLifetime
         // "!boss spawn" puts the boss beside the GM, engaged on her.
         await Gm("alice", "!boss spawn 5100000");
         await alice.Inbox.WaitAsync(e => e.IsGame(GmCommands.BroadcastNotify) && Encoding.UTF8.GetString(e.Body).Contains("Spawned"), Wait);
-        Assert.True(await Loop.InvokeAsync(() => Task.FromResult(app.Services.GetRequiredService<World>().AllUnits().OfType<MonsterUnit>()
+        Assert.True(await Loop.InvokeAsync(() => Task.FromResult(_app.Services.GetRequiredService<World>().AllUnits().OfType<MonsterUnit>()
             .Any(m => m.Template.NpcId == 5100000 && ReferenceEquals(m.Target, Session("alice"))))));
     }
 }

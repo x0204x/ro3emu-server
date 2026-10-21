@@ -18,36 +18,36 @@ namespace Ro3Emu.Tests;
 /// <summary>E01 production NPC purchase: existing wire, cost/goods/quota, ledger, failures and D1.</summary>
 public sealed class EconomyShopTests : IAsyncLifetime
 {
-    private readonly string directory = Path.Combine(RepoRoot(), ".loadtest-temp", "e01-shop-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly string _directory = Path.Combine(RepoRoot(), ".loadtest-temp", "e01-shop-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "";
     private static readonly Lazy<EconomyCatalog> Catalog = new(() => EconomyCatalog.Load(Path.Combine(RepoRoot(), "data")));
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
-    private string Database => Path.Combine(directory, "ro3emu.db");
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
+    private string Database => Path.Combine(_directory, "ro3emu.db");
 
     public async Task InitializeAsync()
     {
         var (web, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game;
             o.PlayBook = 101;
         });
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{web}";
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{web}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         SqliteConnection.ClearAllPools();
-        try { Directory.Delete(directory, true); } catch (IOException) { }
+        try { Directory.Delete(_directory, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> Enter(bool level = true)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(directory, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_directory, "gate_rsa_public.pem")));
         await bot.LoginAsync("economyshop", "pw"); await bot.EnterGateAsync();
         long role = (await bot.CreateRoleAsync("EconomyShop")).RoleBaseInfo.Id;
         await bot.EnterWorldAsync(role);
@@ -62,12 +62,12 @@ public sealed class EconomyShopTests : IAsyncLifetime
     private async Task Gm(string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync(http + "/ro3emu/gm?account=economyshop", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync(_http + "/ro3emu/gm?account=economyshop", new StringContent(command))).EnsureSuccessStatusCode();
     }
     private GameSession Session() => Service<SessionRegistry>().All().Single(s => s.Account == "economyshop" && s.Role != null);
-    private EconomySnapshot Cut() => S3EconomyReader.Read(directory, Catalog.Value);
+    private EconomySnapshot Cut() => S3EconomyReader.Read(_directory, Catalog.Value);
     private EconomyLedgerWindow Window(EconomySnapshot a, EconomySnapshot b) =>
-        S3EconomyReader.ReadLedger(directory, Catalog.Value, a, b)!;
+        S3EconomyReader.ReadLedger(_directory, Catalog.Value, a, b)!;
     private static async Task<T> Next<T>(BotClient bot, uint id, MessageParser<T> parser) where T : IMessage<T> =>
         parser.ParseFrom((await bot.Inbox.WaitAsync(e => e.IsGame(id), TimeSpan.FromSeconds(8))).Body);
     private static async Task<BuyCommodityResp> Buy(BotClient bot, int commodity = 118, int count = 1)

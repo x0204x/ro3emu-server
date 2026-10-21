@@ -21,32 +21,22 @@ namespace Ro3Emu.Server.Game;
 /// Each report is one JSON line in DataDir/reports/feedback.jsonl with who, where and when, plus the server's recent log
 /// lines about that player (RecentLogBuffer). The owner reads them through loopback GET /ro3emu/reports.
 /// </summary>
-public sealed class FeedbackService
+public sealed class FeedbackService(IOptions<ServerOptions> options, GameData data, RecentLogBuffer logs, TimeProvider clock,
+    ILogger<FeedbackService> log)
 {
     /// <summary>Client hook → server: the report text, UTF-8. Ours (the client's message table has no such id).</summary>
     public const uint SubmitMsg = 77013;
 
     private static readonly string[] ChatCommands = ["/bug", "/feedback"];
 
-    private readonly IOptions<ServerOptions> options;
-    private readonly GameData data;
-    private readonly RecentLogBuffer logs;
-    private readonly TimeProvider clock;
-    private readonly ILogger<FeedbackService> log;
+    private readonly IOptions<ServerOptions> _options = options;
+    private readonly GameData _data = data;
+    private readonly RecentLogBuffer _logs = logs;
+    private readonly TimeProvider _clock = clock;
+    private readonly ILogger<FeedbackService> _log = log;
     private readonly Dictionary<string, DateTimeOffset> _last = new(StringComparer.OrdinalIgnoreCase);
 
-    public FeedbackService(IOptions<ServerOptions> options, GameData data, RecentLogBuffer logs, TimeProvider clock,
-        ILogger<FeedbackService> log)
-    {
-        this.options = options;
-        this.data = data;
-        this.logs = logs;
-        this.clock = clock;
-        this.log = log;
-        Store = new FeedbackStore(Path.Combine(options.Value.DataDir, "reports", "feedback.jsonl"));
-    }
-
-    public FeedbackStore Store { get; }
+    public FeedbackStore Store { get; } = new FeedbackStore(Path.Combine(options.Value.DataDir, "reports", "feedback.jsonl"));
 
     /// <summary>"/bug text" or "/feedback text" (any case); <paramref name="text"/> is the rest, possibly empty.</summary>
     public static bool TryParseChatCommand(string? content, out string text)
@@ -66,14 +56,14 @@ public sealed class FeedbackService
     /// <summary>Stores one report and answers the player on the marquee; null when nothing was stored.</summary>
     public async Task<long?> SubmitAsync(GameSession session, string? text, string source)
     {
-        var settings = options.Value.Feedback;
+        var settings = _options.Value.Feedback;
         text = Clean(text);
         if (text.Length == 0)
         {
             await GmCommands.ReplyAsync(session, "Usage: /bug <what went wrong>, or the Feedback button in the menu.");
             return null;
         }
-        var now = clock.GetUtcNow();
+        var now = _clock.GetUtcNow();
         string key = session.Account ?? "";
         bool tooSoon;
         lock (_last)
@@ -99,13 +89,13 @@ public sealed class FeedbackService
             Level = session.Progress?.Level ?? role?.Level ?? 0,
             Career = session.Progress?.Career ?? role?.Career ?? 0,
             Scene = session.SceneEntry,
-            Map = session.SceneEntry == 0 ? null : NullIfEmpty(data.MapName(session.SceneEntry)),
+            Map = session.SceneEntry == 0 ? null : NullIfEmpty(_data.MapName(session.SceneEntry)),
             Instance = session.InstanceId,
             Line = session.LineNumber,
             X = Round(session.Position.X), Y = Round(session.Position.Y), Z = Round(session.Position.Z),
             Text = text,
             Truncated = truncated,
-            Context = logs.Matching(session.Account, role?.Name, settings.ContextLines,
+            Context = _logs.Matching(session.Account, role?.Name, settings.ContextLines,
                 now - TimeSpan.FromMinutes(settings.ContextMinutes)),
         };
         long id;
@@ -116,11 +106,11 @@ public sealed class FeedbackService
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            log.LogError(e, "Feedback from {Account} could not be stored", session.Account);
+            _log.LogError(e, "Feedback from {Account} could not be stored", session.Account);
             await GmCommands.ReplyAsync(session, "Sorry, the report could not be saved. Please tell the team in chat.");
             return null;
         }
-        log.LogInformation("Feedback #{Id} from {Account} ({Name}) via {Source} at scene {Scene} {X:F0},{Z:F0}: {Text}",
+        _log.LogInformation("Feedback #{Id} from {Account} ({Name}) via {Source} at scene {Scene} {X:F0},{Z:F0}: {Text}",
             id, session.Account, role?.Name, source, session.SceneEntry, session.Position.X, session.Position.Z, text);
         await GmCommands.ReplyAsync(session, $"Thank you! Report #{id} was saved.");
         return id;
@@ -171,7 +161,7 @@ public sealed class FeedbackReport
 /// Append-only JSON lines. One server per data dir (RealmLock), so the lock here is the only writer; a line that does
 /// not parse (a crash mid-write) is skipped on read.
 /// </summary>
-public sealed class FeedbackStore
+public sealed class FeedbackStore(string path)
 {
     public static readonly JsonSerializerOptions Json = new()
     {
@@ -183,9 +173,7 @@ public sealed class FeedbackStore
     private readonly object _sync = new();
     private long _lastId = -1;
 
-    public FeedbackStore(string path) => Path = path;
-
-    public string Path { get; }
+    public string Path { get; } = path;
 
     /// <summary>Assigns the next id, appends the line; returns the id.</summary>
     public long Append(FeedbackReport report)

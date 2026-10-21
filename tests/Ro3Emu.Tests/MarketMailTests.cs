@@ -20,37 +20,37 @@ namespace Ro3Emu.Tests;
 [Collection("Market server")]
 public sealed class MarketMailTests : IAsyncLifetime
 {
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-market-mail-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-market-mail-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);
-    private WebApplication app = null!;
-    private string http = "";
+    private WebApplication _app = null!;
+    private string _http = "";
 
     public async Task InitializeAsync()
     {
         var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir;
+            o.DataDir = _dataDir;
             o.GameDataDir = SyntheticData.Dir;
             o.HttpPort = httpPort;
             o.MicroGatePort = microPort;
             o.GameGatePort = gamePort;
         });
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{httpPort}";
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{httpPort}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private async Task<(BotClient Bot, long Id)> InWorld(string name, bool create = true)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw");
         await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
@@ -61,9 +61,9 @@ public sealed class MarketMailTests : IAsyncLifetime
     private async Task<string> Deliver(long role, int template, IEnumerable<InvItem>? items = null,
         IReadOnlyDictionary<int, long>? currency = null, params string[] contentParams)
     {
-        var loop = app.Services.GetRequiredService<GameLoop>();
-        var sessions = app.Services.GetRequiredService<SessionRegistry>();
-        var market = app.Services.GetRequiredService<MarketStore>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
+        var sessions = _app.Services.GetRequiredService<SessionRegistry>();
+        var market = _app.Services.GetRequiredService<MarketStore>();
         var capturedItems = items?.ToArray();
         return await loop.InvokeAsync(async () =>
         {
@@ -97,8 +97,8 @@ public sealed class MarketMailTests : IAsyncLifetime
 
     private async Task RestartAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         await InitializeAsync();
     }
@@ -125,7 +125,7 @@ public sealed class MarketMailTests : IAsyncLifetime
         var typed = new LanguageData();
         typed.Param.Add(new LanguageParam { Tp = LanguageParamType.Int, IntParam = 12345 });
         typed.Param.Add(new LanguageParam { Tp = LanguageParamType.Str, StrParam = "Auction" });
-        var roles = app.Services.GetRequiredService<RoleStore>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
         roles.SaveMailbox(role, JsonSerializer.SerializeToUtf8Bytes(new
         {
             NextId = 1790000000000000012L,
@@ -169,7 +169,7 @@ public sealed class MarketMailTests : IAsyncLifetime
         var result = await Next(alice, MailService.ClaimMail, ClaimMailRsp.Parser);
         Assert.Equal(0, result.Result);
         Assert.Equal(new[] { auctionId, marketId }, result.MailUid);
-        var items = app.Services.GetRequiredService<ItemStore>().Load(role);
+        var items = _app.Services.GetRequiredService<ItemStore>().Load(role);
         Assert.Contains(items, i => i.Entry == 1000000 && i.BindType == 2 && i.Stack == 3);
         var exact = Assert.Single(items, i => i.Attrs?.GetValueOrDefault(30) == 777);
         Assert.Equal(1, exact.BindType);
@@ -187,7 +187,7 @@ public sealed class MarketMailTests : IAsyncLifetime
         Assert.Equal(role, sameRole);
         await again.SendGameAsync(MailService.ClaimMail, new ClaimMailReq { MailUid = { auctionId, marketId } });
         Assert.Equal(ErrorCodes.MailAlreadyClaimed, (await Next(again, MailService.ClaimMail, ClaimMailRsp.Parser)).Result);
-        Assert.Equal(4_000_001_000L, app.Services.GetRequiredService<RoleStore>().LoadProgress(role).Currency[1]);
+        Assert.Equal(4_000_001_000L, _app.Services.GetRequiredService<RoleStore>().LoadProgress(role).Currency[1]);
     }
 
     [Fact]
@@ -195,13 +195,13 @@ public sealed class MarketMailTests : IAsyncLifetime
     {
         var (alice, role) = await InWorld("BoundBag");
         await using var _ = alice;
-        var mail = app.Services.GetRequiredService<MailService>();
+        var mail = _app.Services.GetRequiredService<MailService>();
         string id = await mail.SendRawAsync(role, "Bound", "Body", [new(1000000, 1, 2)]);
-        var data = app.Services.GetRequiredService<GameData>();
+        var data = _app.Services.GetRequiredService<GameData>();
         int capacity = (int)GameData.Int(data.Row("BackpackConfig", 1)!.Value, "_iTabCapacity");
-        var loop = app.Services.GetRequiredService<GameLoop>();
-        var sessions = app.Services.GetRequiredService<SessionRegistry>();
-        var market = app.Services.GetRequiredService<MarketStore>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
+        var sessions = _app.Services.GetRequiredService<SessionRegistry>();
+        var market = _app.Services.GetRequiredService<MarketStore>();
         Assert.Equal(0, await loop.InvokeAsync(async () =>
         {
             var owner = sessions.All().Single(s => s.Role?.Id == role);
@@ -232,7 +232,7 @@ public sealed class MarketMailTests : IAsyncLifetime
         }));
         await alice.SendGameAsync(MailService.ClaimMail, new ClaimMailReq { MailUid = { id } });
         Assert.Equal(0, (await Next(alice, MailService.ClaimMail, ClaimMailRsp.Parser)).Result);
-        Assert.Contains(app.Services.GetRequiredService<ItemStore>().Load(role),
+        Assert.Contains(_app.Services.GetRequiredService<ItemStore>().Load(role),
             i => i.Entry == 1000000 && i.BindType == 2 && i.Stack == 2);
     }
 
@@ -241,7 +241,7 @@ public sealed class MarketMailTests : IAsyncLifetime
     {
         var (alice, role) = await InWorld("CurrencyOverflow");
         await using var _ = alice;
-        var roles = app.Services.GetRequiredService<RoleStore>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
         var box = new MailService.Mailbox
         {
             Letters = [new MailService.Letter
@@ -268,8 +268,8 @@ public sealed class MarketMailTests : IAsyncLifetime
         var (alice, role) = await InWorld("MixedAtomic");
         await using var _ = alice;
         const string id = "1790000000000000031";
-        var roles = app.Services.GetRequiredService<RoleStore>();
-        var items = app.Services.GetRequiredService<ItemStore>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
+        var items = _app.Services.GetRequiredService<ItemStore>();
         var box = new MailService.Mailbox
         {
             Letters = [new MailService.Letter
@@ -285,7 +285,7 @@ public sealed class MarketMailTests : IAsyncLifetime
             }],
         };
         roles.SaveMailbox(role, JsonSerializer.SerializeToUtf8Bytes(box));
-        FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(),
+        FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(),
             $"CREATE TRIGGER fail_mixed_mail BEFORE UPDATE OF mailbox ON role WHEN NEW.id={role} BEGIN SELECT RAISE(ABORT, 'mixed rollback'); END");
         try
         {
@@ -300,7 +300,7 @@ public sealed class MarketMailTests : IAsyncLifetime
         }
         finally
         {
-            FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(), "DROP TRIGGER fail_mixed_mail");
+            FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(), "DROP TRIGGER fail_mixed_mail");
         }
         await alice.SendGameAsync(MailService.ClaimMail, new ClaimMailReq { MailUid = { id } });
         Assert.Equal(0, (await Next(alice, MailService.ClaimMail, ClaimMailRsp.Parser)).Result);
@@ -374,20 +374,20 @@ public sealed class MarketMailTests : IAsyncLifetime
         var claim = await Next(alice, MailService.ClaimMail, ClaimMailRsp.Parser);
         Assert.Equal(0, claim.Result);
         Assert.Equal(mailId, Assert.Single(claim.MailUid));
-        var savedItems = app.Services.GetRequiredService<ItemStore>().Load(aliceId);
+        var savedItems = _app.Services.GetRequiredService<ItemStore>().Load(aliceId);
         var savedGift = Assert.Single(savedItems, i => i.Attrs?.GetValueOrDefault(30) == 14);
         Assert.True(savedGift.IsLocked);
         Assert.Equal(2, savedGift.BindType);
         Assert.Equal(123456789, savedGift.BindExpire);
         Assert.Equal("original", savedGift.StringAttrs![510]);
         Assert.Equal(5, savedGift.Enchantments[7].Attr[103]);
-        Assert.Equal(1037, app.Services.GetRequiredService<RoleStore>().LoadProgress(aliceId).Currency[1]);
+        Assert.Equal(1037, _app.Services.GetRequiredService<RoleStore>().LoadProgress(aliceId).Currency[1]);
         var claimedRow = Row(await List(alice, aliceId));
         Assert.Equal(true, Assert.IsType<Dictionary<object, object?>>(claimedRow["Params"])["giftReceived"]);
         await alice.SendGameAsync(MailService.ClaimMail, new ClaimMailReq { MailUid = { mailId } });
         Assert.Equal(ErrorCodes.MailAlreadyClaimed, (await Next(alice, MailService.ClaimMail, ClaimMailRsp.Parser)).Result);
-        Assert.Single(app.Services.GetRequiredService<ItemStore>().Load(aliceId), i => i.Attrs?.GetValueOrDefault(30) == 14);
-        Assert.Equal(1037, app.Services.GetRequiredService<RoleStore>().LoadProgress(aliceId).Currency[1]);
+        Assert.Single(_app.Services.GetRequiredService<ItemStore>().Load(aliceId), i => i.Attrs?.GetValueOrDefault(30) == 14);
+        Assert.Equal(1037, _app.Services.GetRequiredService<RoleStore>().LoadProgress(aliceId).Currency[1]);
 
         Assert.True(Ok(await alice.MicroAsync("MailService", "deleteMail", new()
         {
@@ -412,11 +412,11 @@ public sealed class MarketMailTests : IAsyncLifetime
         { ["Uid"] = aliceId.ToString(), ["MailIds"] = new[] { mailId } })));
         mailId = await Deliver(aliceId, 1064, [new InvItem { Entry = 2010121, Stack = 1, Pack = 2 }]);
 
-        var data = app.Services.GetRequiredService<GameData>();
+        var data = _app.Services.GetRequiredService<GameData>();
         int capacity = (int)GameData.Int(data.Row("BackpackConfig", 2)!.Value, "_iTabCapacity");
-        var loop = app.Services.GetRequiredService<GameLoop>();
-        var sessions = app.Services.GetRequiredService<SessionRegistry>();
-        var market = app.Services.GetRequiredService<MarketStore>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
+        var sessions = _app.Services.GetRequiredService<SessionRegistry>();
+        var market = _app.Services.GetRequiredService<MarketStore>();
         Assert.Equal(0, await loop.InvokeAsync(async () =>
         {
             var owner = sessions.All().Single(s => s.Role?.Id == aliceId);
@@ -439,7 +439,7 @@ public sealed class MarketMailTests : IAsyncLifetime
         string payout = await Deliver(aliceId, 1063, currency: new Dictionary<int, long> { [1] = 7 });
         await alice.SendGameAsync(MailService.ClaimMail, new ClaimMailReq { MailUid = { payout } });
         Assert.Equal(0, (await Next(alice, MailService.ClaimMail, ClaimMailRsp.Parser)).Result);
-        Assert.Equal(1007, app.Services.GetRequiredService<RoleStore>().LoadProgress(aliceId).Currency[1]);
+        Assert.Equal(1007, _app.Services.GetRequiredService<RoleStore>().LoadProgress(aliceId).Currency[1]);
     }
 
     [Fact]
@@ -450,9 +450,9 @@ public sealed class MarketMailTests : IAsyncLifetime
         string mailId = await Deliver(aliceId, 1064,
             [new InvItem { Entry = 2010121, Stack = 1, Pack = 2, Attrs = new() { [30] = 999 } }],
             new Dictionary<int, long> { [1] = 9 });
-        var accounts = app.Services.GetRequiredService<AccountStore>();
-        var items = app.Services.GetRequiredService<ItemStore>();
-        var roles = app.Services.GetRequiredService<RoleStore>();
+        var accounts = _app.Services.GetRequiredService<AccountStore>();
+        var items = _app.Services.GetRequiredService<ItemStore>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
         const string triggerName = "fail_mail_claim_currency";
         FixtureSql.Execute(accounts, $"""
                 CREATE TRIGGER {triggerName} BEFORE UPDATE OF currency ON role
@@ -491,8 +491,8 @@ public sealed class MarketMailTests : IAsyncLifetime
         string mailId = await Deliver(aliceId, 1064,
             [new InvItem { Entry = 2010121, Stack = 1, Pack = 2, Attrs = new() { [30] = 888 } }],
             new Dictionary<int, long> { [1] = 11 });
-        var loop = app.Services.GetRequiredService<GameLoop>();
-        var character = app.Services.GetRequiredService<CharacterService>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
+        var character = _app.Services.GetRequiredService<CharacterService>();
         Action<GameSession, int, int> failure = (_, _, _) => throw new InvalidOperationException("forced post-commit hook failure");
         await loop.InvokeAsync(() =>
         {
@@ -514,8 +514,8 @@ public sealed class MarketMailTests : IAsyncLifetime
                 return Task.CompletedTask;
             });
         }
-        var items = app.Services.GetRequiredService<ItemStore>();
-        var roles = app.Services.GetRequiredService<RoleStore>();
+        var items = _app.Services.GetRequiredService<ItemStore>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
         Assert.Single(items.Load(aliceId), i => i.Attrs?.GetValueOrDefault(30) == 888);
         Assert.Equal(1011, roles.LoadProgress(aliceId).Currency[1]);
         Assert.Equal(true, Assert.IsType<Dictionary<object, object?>>(Row(await List(alice, aliceId))["Params"])["giftReceived"]);
@@ -530,7 +530,7 @@ public sealed class MarketMailTests : IAsyncLifetime
     {
         var (alice, role) = await InWorld("Mixed");
         await using var _ = alice;
-        string raw = await app.Services.GetRequiredService<MailService>().SendRawAsync(role, "Raw", "Body", [new(1000000, 2)]);
+        string raw = await _app.Services.GetRequiredService<MailService>().SendRawAsync(role, "Raw", "Body", [new(1000000, 2)]);
         string market = await Deliver(role, 1064, [new InvItem
         {
             Entry = 2010121, Stack = 1, Attrs = new() { [30] = 77 },
@@ -548,11 +548,11 @@ public sealed class MarketMailTests : IAsyncLifetime
         var claim = await Next(alice, MailService.ClaimMail, ClaimMailRsp.Parser);
         Assert.Equal(0, claim.Result);
         Assert.Equal(new[] { raw, market }, claim.MailUid);
-        var items = app.Services.GetRequiredService<ItemStore>().Load(role);
+        var items = _app.Services.GetRequiredService<ItemStore>().Load(role);
         var exact = Assert.Single(items, i => i.Attrs?.GetValueOrDefault(30) == 77);
         Assert.Equal("mixed", exact.StringAttrs![510]);
         Assert.True(exact.IsLocked);
-        Assert.Equal(5_000_001_000L, app.Services.GetRequiredService<RoleStore>().LoadProgress(role).Currency[1]);
+        Assert.Equal(5_000_001_000L, _app.Services.GetRequiredService<RoleStore>().LoadProgress(role).Currency[1]);
         var after = await List(alice, role);
         Assert.True((bool)Assert.IsType<Dictionary<object, object?>>(RowById(after, raw)["Params"])["giftReceived"]!);
         Assert.True((bool)Assert.IsType<Dictionary<object, object?>>(RowById(after, market)["Params"])["giftReceived"]!);
@@ -581,7 +581,7 @@ public sealed class MarketMailTests : IAsyncLifetime
                 StringAttrs = new() { [510] = "original" }, IsLocked = true } },
             Currency = new Dictionary<int, long> { [1] = 4_000_000_000L },
         };
-        var roles = app.Services.GetRequiredService<RoleStore>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
         roles.SaveMailbox(role, JsonSerializer.SerializeToUtf8Bytes(new
         {
             NextId = 1_790_000_000_000_000_102L, Letters = new object[] { oldAuction, oldMarket },
@@ -601,7 +601,7 @@ public sealed class MarketMailTests : IAsyncLifetime
         var claimed = await Next(alice, MailService.ClaimMail, ClaimMailRsp.Parser);
         Assert.Equal(0, claimed.Result);
         Assert.Equal(new[] { auctionId, marketId }, claimed.MailUid);
-        var bag = app.Services.GetRequiredService<ItemStore>().Load(role);
+        var bag = _app.Services.GetRequiredService<ItemStore>().Load(role);
         Assert.Single(bag, i => i.Entry == 2010121 && i.BindType == 1);
         var exact = Assert.Single(bag, i => i.Attrs?.GetValueOrDefault(30) == 777);
         Assert.Equal("original", exact.StringAttrs![510]);
@@ -622,11 +622,11 @@ public sealed class MarketMailTests : IAsyncLifetime
     {
         var (alice, role) = await InWorld("BoundCapacity");
         await using var _ = alice;
-        var data = app.Services.GetRequiredService<GameData>();
+        var data = _app.Services.GetRequiredService<GameData>();
         int capacity = (int)GameData.Int(data.Row("BackpackConfig", 1)!.Value, "_iTabCapacity");
-        var loop = app.Services.GetRequiredService<GameLoop>();
-        var sessions = app.Services.GetRequiredService<SessionRegistry>();
-        var market = app.Services.GetRequiredService<MarketStore>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
+        var sessions = _app.Services.GetRequiredService<SessionRegistry>();
+        var market = _app.Services.GetRequiredService<MarketStore>();
         Assert.Equal(0, await loop.InvokeAsync(async () =>
         {
             var owner = sessions.All().Single(s => s.Role?.Id == role);
@@ -642,12 +642,12 @@ public sealed class MarketMailTests : IAsyncLifetime
                 return 0;
             });
         }));
-        string mailId = await app.Services.GetRequiredService<MailService>().SendRawAsync(role,
+        string mailId = await _app.Services.GetRequiredService<MailService>().SendRawAsync(role,
             "Bound item", "Body", [new(1000000, 1, 1)]);
         await alice.SendGameAsync(MailService.ClaimMail, new ClaimMailReq { MailUid = { mailId } });
         Assert.Equal(ErrorCodes.BagFull, (await Next(alice, MailService.ClaimMail, ClaimMailRsp.Parser)).Result);
         Assert.Equal(false, Assert.IsType<Dictionary<object, object?>>(Row(await List(alice, role))["Params"])["giftReceived"]);
-        Assert.DoesNotContain(app.Services.GetRequiredService<ItemStore>().Load(role),
+        Assert.DoesNotContain(_app.Services.GetRequiredService<ItemStore>().Load(role),
             i => i.Entry == 1000000 && i.BindType == 1);
     }
 
@@ -656,7 +656,7 @@ public sealed class MarketMailTests : IAsyncLifetime
     {
         var (alice, role) = await InWorld("MixedOverflow");
         await using var _ = alice;
-        var session = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == role);
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == role);
         session.Progress!.Currency[1] = long.MaxValue - 1;
         const string id = "1790000000000000201";
         var box = new MailService.Mailbox
@@ -671,7 +671,7 @@ public sealed class MarketMailTests : IAsyncLifetime
             },
         ]
         };
-        var roles = app.Services.GetRequiredService<RoleStore>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
         roles.SaveMailbox(role, JsonSerializer.SerializeToUtf8Bytes(box));
         await alice.SendGameAsync(MailService.ClaimMail, new ClaimMailReq { MailUid = { id } });
         var refused = await Next(alice, MailService.ClaimMail, ClaimMailRsp.Parser);
@@ -679,7 +679,7 @@ public sealed class MarketMailTests : IAsyncLifetime
         Assert.Empty(refused.MailUid);
         Assert.Equal(false, Assert.IsType<Dictionary<object, object?>>(Row(await List(alice, role))["Params"])["giftReceived"]);
         Assert.Equal(long.MaxValue - 1, session.Progress.Currency[1]);
-        Assert.DoesNotContain(app.Services.GetRequiredService<ItemStore>().Load(role),
+        Assert.DoesNotContain(_app.Services.GetRequiredService<ItemStore>().Load(role),
             i => i.Entry == 1000000 && i.BindType == 1);
     }
 
@@ -688,7 +688,7 @@ public sealed class MarketMailTests : IAsyncLifetime
     {
         var (alice, role) = await InWorld("Concurrent");
         await using var _ = alice;
-        var mail = app.Services.GetRequiredService<MailService>();
+        var mail = _app.Services.GetRequiredService<MailService>();
         var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var raw = Task.Run(async () => { await start.Task; return await mail.SendRawAsync(role, "Raw", "Body", [new(1000000, 1)]); });
         var template = Task.Run(async () => { await start.Task; return await mail.SendTemplateAsync(role, 1024, [new(2, 3)]); });
@@ -721,9 +721,9 @@ public sealed class MarketMailTests : IAsyncLifetime
     public async Task LegacyRowsMigrateAtomicallyAndRemainIdempotentAcrossRestart()
     {
         var (alice, role) = await InWorld("Legacy");
-        string raw = await app.Services.GetRequiredService<MailService>().SendRawAsync(role, "Raw", "Body");
+        string raw = await _app.Services.GetRequiredService<MailService>().SendRawAsync(role, "Raw", "Body");
         const string pending = "1790000000000000001", claimed = "1790000000000000002";
-        var fixtureAccounts = app.Services.GetRequiredService<AccountStore>();
+        var fixtureAccounts = _app.Services.GetRequiredService<AccountStore>();
         foreach (var (id, received) in new[] { (pending, false), (claimed, true) })
         {
             FixtureSql.Execute(fixtureAccounts, "INSERT INTO market_record(kind,id,data) VALUES('mail',$id,$data)",
@@ -740,8 +740,8 @@ public sealed class MarketMailTests : IAsyncLifetime
         FixtureSql.Execute(fixtureAccounts,
             $"CREATE TRIGGER fail_legacy_mailbox BEFORE UPDATE OF mailbox ON role WHEN NEW.id={role} BEGIN SELECT RAISE(ABORT, 'migration rollback'); END");
         Assert.Throws<Microsoft.Data.Sqlite.SqliteException>(() =>
-            app.Services.GetRequiredService<MarketStore>().MigrateLegacyMail());
-        using (var db = app.Services.GetRequiredService<AccountStore>().Open())
+            _app.Services.GetRequiredService<MarketStore>().MigrateLegacyMail());
+        using (var db = _app.Services.GetRequiredService<AccountStore>().Open())
         {
             using var count = db.CreateCommand();
             count.CommandText = "SELECT COUNT(*) FROM market_record WHERE kind='mail'";
@@ -758,7 +758,7 @@ public sealed class MarketMailTests : IAsyncLifetime
         Assert.Equal(false, Assert.IsType<Dictionary<object, object?>>(RowById(list, pending)["Params"])["giftReceived"]);
         Assert.Equal(true, Assert.IsType<Dictionary<object, object?>>(RowById(list, claimed)["Params"])["giftReceived"]);
         Assert.Equal(raw, RowById(list, raw)["MailId"]);
-        using (var db = app.Services.GetRequiredService<AccountStore>().Open())
+        using (var db = _app.Services.GetRequiredService<AccountStore>().Open())
         using (var count = db.CreateCommand())
         {
             count.CommandText = "SELECT COUNT(*) FROM market_record WHERE kind='mail'";
@@ -768,15 +768,15 @@ public sealed class MarketMailTests : IAsyncLifetime
         Assert.Equal(ErrorCodes.MailAlreadyClaimed, (await Next(again, MailService.ClaimMail, ClaimMailRsp.Parser)).Result);
         await again.SendGameAsync(MailService.ClaimMail, new ClaimMailReq { MailUid = { pending } });
         Assert.Equal(0, (await Next(again, MailService.ClaimMail, ClaimMailRsp.Parser)).Result);
-        Assert.Equal(4_000_001_000L, app.Services.GetRequiredService<RoleStore>().LoadProgress(role).Currency[1]);
-        Assert.Single(app.Services.GetRequiredService<ItemStore>().Load(role), i => i.Attrs?.GetValueOrDefault(30) == 13);
+        Assert.Equal(4_000_001_000L, _app.Services.GetRequiredService<RoleStore>().LoadProgress(role).Currency[1]);
+        Assert.Single(_app.Services.GetRequiredService<ItemStore>().Load(role), i => i.Attrs?.GetValueOrDefault(30) == 13);
         await again.DisposeAsync();
         await RestartAsync();
         var (final, _) = await InWorld("Legacy", false);
         await using (final)
         {
             Assert.Equal(3, Assert.IsType<object?[]>((await List(final, role))["MailList"]).Length);
-            Assert.Equal(4_000_001_000L, app.Services.GetRequiredService<RoleStore>().LoadProgress(role).Currency[1]);
+            Assert.Equal(4_000_001_000L, _app.Services.GetRequiredService<RoleStore>().LoadProgress(role).Currency[1]);
         }
     }
 }

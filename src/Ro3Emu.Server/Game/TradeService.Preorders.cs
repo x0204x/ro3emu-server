@@ -150,13 +150,13 @@ public sealed partial class TradeService
     // Stage G: every trade message and the 1 s stall maintenance call this. As a full market transaction each time it
     // put two transactions on every trade request (p50 0.5-0.9 s at 500 players). It now runs only when a listing can
     // have matured or expired: a market commit since the last pass, or the earliest due time reached.
-    private long maintainedVersion = -1, nextDueMs;
+    private long _maintainedVersion = -1, _nextDueMs;
     internal long MaintenancePasses { get; private set; }
 
     internal async Task TickMaintenanceAsync()
     {
         long version = market.Version;
-        if (version == maintainedVersion && NowMs < nextDueMs) return;
+        if (version == _maintainedVersion && NowMs < _nextDueMs) return;
         MaintenancePasses++;
         long due = long.MaxValue;
         bool wrote = false;
@@ -240,8 +240,8 @@ public sealed partial class TradeService
         }, _ => NotifyTradeAsync(expiredCount, successfulPreorders, failedPreorders));
         if (code != 0) return;
         // A commit by anyone else meanwhile leaves the version ahead of this, so the next call passes again.
-        maintainedVersion = version + (wrote ? 1 : 0);
-        nextDueMs = due;
+        _maintainedVersion = version + (wrote ? 1 : 0);
+        _nextDueMs = due;
     }
 
     private async Task NotifyTradeAsync(IReadOnlyDictionary<long, int> expired,

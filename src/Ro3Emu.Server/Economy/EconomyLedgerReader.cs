@@ -24,18 +24,18 @@ public static class EconomyLedgerReader
         using var tx = db.BeginTransaction(deferred: true);
         string storedRealm;
         long watermark, floor;
-        try
-        {
-            // First SELECT pins the database view at the committed watermark.
-            using var meta = Command(db, tx, "SELECT realm_id,next_sequence,retained_floor FROM economy_meta WHERE singleton=1");
-            using var row = meta.ExecuteReader();
-            if (!row.Read()) throw new InvalidDataException("Missing E01 economy metadata singleton.");
-            storedRealm = row.GetString(0); watermark = row.GetInt64(1); floor = row.GetInt64(2);
-        }
-        catch (SqliteException error) when (error.SqliteErrorCode == 1 && error.Message.Contains("no such table", StringComparison.Ordinal))
+        // The first read (this schema check) pins the database view; the watermark below is read from that same view.
+        if (!EconomySchema.Has(db, tx, "economy_meta"))
         {
             issues.Add(new(EconomyIssueKind.Coverage, "ledger/schema", "E01 economy tables are absent."));
             return Empty(realmId, catalog, fromExclusive, throughInclusive, issues);
+        }
+        using (var meta = Command(db, tx,
+            "SELECT realm_id,next_sequence,retained_floor FROM economy_meta WHERE singleton=1"))
+        {
+            using var row = meta.ExecuteReader();
+            if (!row.Read()) throw new InvalidDataException("Missing E01 economy metadata singleton.");
+            storedRealm = row.GetString(0); watermark = row.GetInt64(1); floor = row.GetInt64(2);
         }
         if (realmId != "auto" && realmId != storedRealm)
             issues.Add(new(EconomyIssueKind.Corruption, "ledger/realm", "Expected realm ID differs from durable database identity."));
@@ -70,6 +70,7 @@ public static class EconomyLedgerReader
             EconomyCompartment ToPart, EconomyReason ToReason), BigInteger>();
         try
         {
+            RequireLedgerSchema(db, tx);
             using (var bounds = Command(db, tx, """
                 SELECT (SELECT COUNT(*) FROM operation_receipt WHERE commit_seq<=0 OR commit_seq>$watermark),
                        (SELECT COUNT(*) FROM economy_entry WHERE commit_seq<=0 OR commit_seq>$watermark)
@@ -610,9 +611,7 @@ public static class EconomyLedgerReader
                     issues.Add(new(EconomyIssueKind.Corruption, "intent/transfer/" + key.Operation + "/" + key.Asset,
                         "E05d transfer counterpart differs from semantic authorization."));
         }
-        catch (SqliteException error) when (error.SqliteErrorCode == 1 &&
-            (error.Message.Contains("no such table", StringComparison.Ordinal) ||
-             error.Message.Contains("no such column", StringComparison.Ordinal)))
+        catch (EconomySchemaMissingException)
         {
             issues.Add(new(EconomyIssueKind.UnknownSchema, "ledger/schema", "Required economy receipt/source/entry or obligation schema is absent."));
         }
@@ -705,19 +704,19 @@ public static class EconomyLedgerReader
             internal int Target = target, Reverse = reverse;
             internal long Capacity = capacity;
         }
-        private readonly List<Edge>[] graph = Enumerable.Range(0, nodes).Select(_ => new List<Edge>()).ToArray();
+        private readonly List<Edge>[] _graph = Enumerable.Range(0, nodes).Select(_ => new List<Edge>()).ToArray();
 
         internal void Add(int from, int to, long capacity)
         {
             if (capacity <= 0) return;
-            graph[from].Add(new Edge(to, graph[to].Count, capacity));
-            graph[to].Add(new Edge(from, graph[from].Count - 1, 0));
+            _graph[from].Add(new Edge(to, _graph[to].Count, capacity));
+            _graph[to].Add(new Edge(from, _graph[from].Count - 1, 0));
         }
 
         internal long MaxFlow(int source, int sink)
         {
             long total = 0;
-            var previous = new (int Node, int Edge)[graph.Length];
+            var previous = new (int Node, int Edge)[_graph.Length];
             while (true)
             {
                 Array.Fill(previous, (-1, -1));
@@ -727,9 +726,9 @@ public static class EconomyLedgerReader
                 while (queue.Count != 0 && previous[sink].Node < 0)
                 {
                     int from = queue.Dequeue();
-                    for (int i = 0; i < graph[from].Count; i++)
+                    for (int i = 0; i < _graph[from].Count; i++)
                     {
-                        var edge = graph[from][i];
+                        var edge = _graph[from][i];
                         if (edge.Capacity <= 0 || previous[edge.Target].Node >= 0) continue;
                         previous[edge.Target] = (from, i);
                         queue.Enqueue(edge.Target);
@@ -740,14 +739,14 @@ public static class EconomyLedgerReader
                 for (int node = sink; node != source; node = previous[node].Node)
                 {
                     var (from, index) = previous[node];
-                    amount = Math.Min(amount, graph[from][index].Capacity);
+                    amount = Math.Min(amount, _graph[from][index].Capacity);
                 }
                 for (int node = sink; node != source; node = previous[node].Node)
                 {
                     var (from, index) = previous[node];
-                    var edge = graph[from][index];
+                    var edge = _graph[from][index];
                     edge.Capacity -= amount;
-                    graph[node][edge.Reverse].Capacity = checked(graph[node][edge.Reverse].Capacity + amount);
+                    _graph[node][edge.Reverse].Capacity = checked(_graph[node][edge.Reverse].Capacity + amount);
                 }
                 total = checked(total + amount);
             }
@@ -1201,9 +1200,29 @@ public static class EconomyLedgerReader
     private static bool ValidFingerprint(string? value) => value is null ||
         value.Length == 64 && value.All(c => c is >= '0' and <= '9' or >= 'A' and <= 'F');
 
+    /// <summary>The receipt, source and entry columns the ledger read selects.</summary>
+    private static void RequireLedgerSchema(SqliteConnection db, SqliteTransaction tx)
+    {
+        EconomySchema.Require(db, tx, "operation_receipt", "commit_seq", "operation_id", "leg_count", "source_key",
+            "realm_id", "actor_account", "actor_role", "command_kind", "request_fingerprint", "intent_hash", "outcome",
+            "child_receipts", "before_revisions", "after_revisions", "effective_utc_ms", "intent_payload");
+        EconomySchema.Require(db, tx, "economy_entry", "entry_id", "commit_seq", "operation_id", "leg_no", "owner_kind",
+            "owner_id", "compartment_kind", "compartment_key", "instance_key", "asset_kind", "asset_id", "asset_epoch",
+            "delta", "reason_code", "leg_kind", "edge_no", "before_fingerprint", "after_fingerprint", "source_key",
+            "counterparty_owner_kind", "counterparty_owner_id", "counterparty_compartment_kind",
+            "counterparty_compartment_key", "counterparty_instance_key");
+        EconomySchema.Require(db, tx, "operation_source", "realm_id", "source_key", "operation_id");
+    }
+
+    /// <summary>Checked only when a dungeon receipt needs it: databases older than dungeon rewards lack it.</summary>
+    private static void RequireObligationSchema(SqliteConnection db, SqliteTransaction tx) =>
+        EconomySchema.Require(db, tx, "dungeon_reward_obligation", "source_key", "role_id", "activated", "completed",
+            "state");
+
     private static void ValidateDungeonObligation(SqliteConnection db, SqliteTransaction tx,
         string sourceKey, long role, ParsedIntent intent)
     {
+        RequireObligationSchema(db, tx);
         using var command = Command(db, tx,
             "SELECT role_id,activated,completed,state FROM dungeon_reward_obligation WHERE source_key=$key");
         command.Parameters.AddWithValue("$key", sourceKey);
@@ -1242,6 +1261,7 @@ public static class EconomyLedgerReader
         if (!sourceKey.EndsWith("/earned", StringComparison.Ordinal))
             throw new InvalidDataException("Earned obligation source suffix is invalid.");
         string deliverySource = sourceKey[..^"/earned".Length];
+        RequireObligationSchema(db, tx);
         using var command = Command(db, tx,
             "SELECT role_id,activated,state FROM dungeon_reward_obligation WHERE source_key=$key");
         command.Parameters.AddWithValue("$key", deliverySource);

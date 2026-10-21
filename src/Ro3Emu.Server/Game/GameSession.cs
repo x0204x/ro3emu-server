@@ -39,6 +39,10 @@ public sealed class GameSession(PhonestChannel channel, TrafficLog traffic)
 
     /// <summary>The signed-in account; set only by <see cref="SessionRegistry.SignInAsync"/> (tests may set it).</summary>
     public string? Account { get; internal set; }
+
+    /// <summary>A message was refused before its stage (GameMessageHandler); only the first one is logged.</summary>
+    internal bool EarlyMessageRefused { get; set; }
+
     internal long AccountGeneration { get; set; }
     internal Task PredecessorFence { get; set; } = Task.CompletedTask;
 

@@ -34,17 +34,17 @@ public sealed partial class AdventureGroupService
     }
 
     /// <summary>Running rituals by group (in memory: a restart ends them, the group stays in its earlier status).</summary>
-    private readonly Dictionary<long, Ritual> rituals = new();
+    private readonly Dictionary<long, Ritual> _rituals = new();
 
     private const int VarPlayerCount = 127, VarPlayerList = 145;
 
     private Ritual? RitualOf(long groupId) =>
-        rituals.TryGetValue(groupId, out var r) && !r.Room.Closed ? r : null;
+        _rituals.TryGetValue(groupId, out var r) && !r.Room.Closed ? r : null;
 
     private Ritual? RitualHere(GameSession s, AdventureGroupStore.State g) =>
         RitualOf(g.Id) is { } r && s.InstanceId == r.Room.Id && s.SceneEntry == DungeonScene ? r : null;
 
-    private void AbortRitual(long groupId) => rituals.Remove(groupId);
+    private void AbortRitual(long groupId) => _rituals.Remove(groupId);
 
     private GameSession[] RoomMembers(Ritual r) =>
         r.Room.ActiveMembers.Select(m => m.Session).Where(s => s.Role != null && r.Participants.Contains(s.Role.Id)).ToArray();
@@ -59,9 +59,9 @@ public sealed partial class AdventureGroupService
     private int PartyCheck(GameSession leader, AdventureGroupStore.State? g)
     {
         long self = leader.Role!.Id;
-        var (team, teamLeader) = teams.TeamOf(self);
+        var (team, teamLeader) = _teams.TeamOf(self);
         if (team == 0 || teamLeader != self) return ErrPermission;
-        var party = teams.MembersOf(self).Select(Online).OfType<GameSession>().ToArray();
+        var party = _teams.MembersOf(self).Select(Online).OfType<GameSession>().ToArray();
         if (party.Length < MinimumMembers) return ErrFewMembers;
         if (party.Length > MemberLimit) return ErrFull;
         foreach (var member in party)
@@ -69,7 +69,7 @@ public sealed partial class AdventureGroupService
             if (member.SceneLoading || member.InstanceId != 0 || member.SceneEntry != leader.SceneEntry) return ErrNotNearby;
             float dx = member.Position.X - leader.Position.X, dz = member.Position.Z - leader.Position.Z;
             if (dx * dx + dz * dz > 30f * 30f) return ErrNotNearby;
-            if (store.ForRole(member.Role!.Id) is { } other && other.Id != g?.Id) return ErrOtherGroup;
+            if (_store.ForRole(member.Role!.Id) is { } other && other.Id != g?.Id) return ErrOtherGroup;
             if (!Open(member)) return ErrTeamLocked;
         }
         return 0;
@@ -86,7 +86,7 @@ public sealed partial class AdventureGroupService
     private int OnlineCandidates(GameSession s, AdventureGroupStore.State g)
     {
         var ids = g.Members.Keys.ToHashSet();
-        if (teams.TeamOf(s.Role!.Id) is { TeamId: not 0 } team && team.Leader == s.Role.Id) ids.UnionWith(teams.MembersOf(s.Role.Id));
+        if (_teams.TeamOf(s.Role!.Id) is { TeamId: not 0 } team && team.Leader == s.Role.Id) ids.UnionWith(_teams.MembersOf(s.Role.Id));
         return ids.Count(id => Online(id) != null);
     }
 
@@ -108,15 +108,15 @@ public sealed partial class AdventureGroupService
         int code = OwnerOfPending(s, out var g);
         if (code == 0 && OnlineCandidates(s, g!) < MinimumMembers) code = ErrFewMembers;
         long self = s.Role!.Id;
-        if (code == 0 && teams.TeamOf(self) is { TeamId: not 0 } joined && joined.Leader != self) code = ErrPermission;
+        if (code == 0 && _teams.TeamOf(self) is { TeamId: not 0 } joined && joined.Leader != self) code = ErrPermission;
         await s.SendGameAsync(StartBrothers, new StartBecomeSwornBrothersRes { Result = code });
         if (code != 0) return;
-        if (teams.TeamOf(self).TeamId == 0)
-            await teams.CreateAsync(s, new TeamCreateReq { TeamType = TeamType.Five, TargetId = 0 });
-        var party = teams.MembersOf(self).ToHashSet();
+        if (_teams.TeamOf(self).TeamId == 0)
+            await _teams.CreateAsync(s, new TeamCreateReq { TeamType = TeamType.Five, TargetId = 0 });
+        var party = _teams.MembersOf(self).ToHashSet();
         foreach (long member in g!.Members.Keys.Where(id => id != self && !party.Contains(id)))
-            if (Online(member) != null && teams.TeamOf(member).TeamId == 0)
-                await teams.InviteAsync(s, new InviteIntoTeamReq { Guid = member });
+            if (Online(member) != null && _teams.TeamOf(member).TeamId == 0)
+                await _teams.InviteAsync(s, new InviteIntoTeamReq { Guid = member });
     }
 
     // ---------------------------------------------------------------- 34014
@@ -127,11 +127,11 @@ public sealed partial class AdventureGroupService
         if (code == 0 && RitualOf(g!.Id) != null) code = ErrCreating;
         if (code == 0) code = PartyCheck(s, g);
         if (code == 0 && (s.Dead || (s.StatusBits & (1L << 15)) != 0)) code = ErrorCodes.ActionInBattle;
-        if (code == 0 && scene.BornPoint(DungeonScene) == null) code = ErrorCodes.DungeonDataMissing;
+        if (code == 0 && _scene.BornPoint(DungeonScene) == null) code = ErrorCodes.DungeonDataMissing;
         GameSession[] party = [];
         if (code == 0)
         {
-            party = teams.MembersOf(s.Role!.Id).Select(Online).OfType<GameSession>().ToArray();
+            party = _teams.MembersOf(s.Role!.Id).Select(Online).OfType<GameSession>().ToArray();
             // The party becomes the group's roster for the ritual; nobody is dropped before the founding.
             foreach (var member in party)
                 if (!g!.Members.ContainsKey(member.Role!.Id)) g.Members[member.Role.Id] = NewMember(member.Role.Id);
@@ -144,25 +144,25 @@ public sealed partial class AdventureGroupService
         }
         await s.SendGameAsync(EnterRitual, new EnterSwornBrothersDungeonRes { Result = code });
         if (code != 0) return;
-        var room = instances.Create(DungeonScene, party);
-        var ritual = new Ritual { GroupId = g!.Id, Room = room, Leader = s.Role!.Id, StartMs = clock.GetUtcNow().ToUnixTimeMilliseconds() };
+        var room = _instances.Create(DungeonScene, party);
+        var ritual = new Ritual { GroupId = g!.Id, Room = room, Leader = s.Role!.Id, StartMs = _clock.GetUtcNow().ToUnixTimeMilliseconds() };
         foreach (var member in party) ritual.Participants.Add(member.Role!.Id);
-        rituals[g.Id] = ritual;
-        log.LogInformation("Adventure group {Id} {Name}: creation ritual in room {Room} with {Count} members", g.Id, g.Name, room.Id, party.Length);
+        _rituals[g.Id] = ritual;
+        _log.LogInformation("Adventure group {Id} {Name}: creation ritual in room {Room} with {Count} members", g.Id, g.Name, room.Id, party.Length);
         var chain = SwornTasks;
         foreach (var member in party)
         {
             await SendFullAsync(member, g, joined: true);
             await SyncRelationAsync(member, g);
             Pin(member);
-            await tasks.StartAdventureRitualAsync(member, chain);
+            await _tasks.StartAdventureRitualAsync(member, chain);
         }
-        foreach (var member in party) await instances.EnterAsync(room, member, 3);
+        foreach (var member in party) await _instances.EnterAsync(room, member, 3);
     }
 
     private void Pin(GameSession member)
     {
-        if (loop.Owners?.Current is { RuntimeOnly: false } context && member.Owner is { } owner && context.CanPin(owner))
+        if (_loop.Owners?.Current is { RuntimeOnly: false } context && member.Owner is { } owner && context.CanPin(owner))
             context.Pin(owner);
     }
 
@@ -171,8 +171,8 @@ public sealed partial class AdventureGroupService
     private async Task OnSceneLoadedAsync(GameSession s)
     {
         if (s.SceneEntry != DungeonScene || s.InstanceId == 0) return;
-        var ritual = rituals.Values.FirstOrDefault(r => r.Room.Id == s.InstanceId && !r.Room.Closed);
-        if (ritual == null || store.Get(ritual.GroupId) is not { } g) return;
+        var ritual = _rituals.Values.FirstOrDefault(r => r.Room.Id == s.InstanceId && !r.Room.Closed);
+        if (ritual == null || _store.Get(ritual.GroupId) is not { } g) return;
         await SendFullAsync(s, g);
         await BroadcastSnapshotAsync(ritual);
     }
@@ -180,7 +180,7 @@ public sealed partial class AdventureGroupService
     private Task BroadcastSnapshotAsync(Ritual r)
     {
         var present = RoomMembers(r);
-        long limit = data.Row("DungeonConfig", DungeonScene) is { } row ? Data.GameData.Int(row, "_iLimitTime") : 36000000;
+        long limit = _data.Row("DungeonConfig", DungeonScene) is { } row ? Data.GameData.Int(row, "_iLimitTime") : 36000000;
         var snapshot = new DungeonBaseInfoNotify
         {
             DungeonEntry = DungeonScene, DungeonId = r.Room.Id, Stage = 1, Level = 1,
@@ -223,7 +223,7 @@ public sealed partial class AdventureGroupService
         foreach (var member in RoomMembers(r))
         {
             Pin(member);
-            await tasks.SetAdventureRitualAsync(member, chain[0], 1, complete: true, next: chain.Length > 1 ? chain[1] : 0);
+            await _tasks.SetAdventureRitualAsync(member, chain[0], 1, complete: true, next: chain.Length > 1 ? chain[1] : 0);
         }
     }
 
@@ -271,7 +271,7 @@ public sealed partial class AdventureGroupService
         await BroadcastBaseAsync(g);
         if (r == null)
         {
-            await tasks.OnSaplingWateredAsync(s);
+            await _tasks.OnSaplingWateredAsync(s);
             return;
         }
         var present = RoomMembers(r);
@@ -281,7 +281,7 @@ public sealed partial class AdventureGroupService
         foreach (var member in present)
         {
             Pin(member);
-            await tasks.SetAdventureRitualAsync(member, chain[1], r.Watered.Count, complete: done, next: done && chain.Length > 2 ? chain[2] : 0);
+            await _tasks.SetAdventureRitualAsync(member, chain[1], r.Watered.Count, complete: done, next: done && chain.Length > 2 ? chain[2] : 0);
         }
     }
 
@@ -323,7 +323,7 @@ public sealed partial class AdventureGroupService
         foreach (var member in present)
         {
             Pin(member);
-            await tasks.SetAdventureRitualAsync(member, chain[^1], r.Declared.Count, complete: done);
+            await _tasks.SetAdventureRitualAsync(member, chain[^1], r.Declared.Count, complete: done);
         }
         if (done) await FoundAsync(r);
     }
@@ -331,7 +331,7 @@ public sealed partial class AdventureGroupService
     /// <summary>Every member present has declared: the group is founded (status 3, level 1).</summary>
     private async Task FoundAsync(Ritual r)
     {
-        if (store.Get(r.GroupId) is not { } g) return;
+        if (_store.Get(r.GroupId) is not { } g) return;
         var present = RoomMembers(r).Select(p => p.Role!.Id).ToHashSet();
         present.Add(g.Owner); // (inferred) the founder keeps the group even when it dropped out of the room
         var released = g.Members.Keys.Where(id => !present.Contains(id)).ToArray();
@@ -345,11 +345,11 @@ public sealed partial class AdventureGroupService
         AddEvent(g, AdventureGroupEventType.EventTypeCreate, g.Owner, 0, g.Name);
         if (!await SaveAsync(g))
         {
-            log.LogWarning("Adventure group {Id}: founding commit failed", g.Id);
+            _log.LogWarning("Adventure group {Id}: founding commit failed", g.Id);
             return;
         }
         r.Step = 3;
-        log.LogInformation("Adventure group {Id} {Name} founded with {Count} members", g.Id, g.Name, g.Members.Count);
+        _log.LogInformation("Adventure group {Id} {Name} founded with {Count} members", g.Id, g.Name, g.Members.Count);
         foreach (var member in OnlineMembers(g))
         {
             await member.SendGameAsync(CreatedNotify, new AdventureGroupCreateNotify());
@@ -365,11 +365,11 @@ public sealed partial class AdventureGroupService
             }
         var room = r.Room;
         long life = Number("AdventureGroupDungeonLiveTime", 300);
-        loop.ScheduleLegacy(TimeSpan.FromSeconds(life), async () =>
+        _loop.ScheduleLegacy(TimeSpan.FromSeconds(life), async () =>
         {
-            rituals.Remove(r.GroupId);
+            _rituals.Remove(r.GroupId);
             foreach (var member in room.ActiveMembers.Select(m => m.Session).ToArray())
-                if (member.InstanceId == room.Id && !member.SceneLoading) await instances.LeaveAsync(member);
+                if (member.InstanceId == room.Id && !member.SceneLoading) await _instances.LeaveAsync(member);
         });
     }
 
@@ -378,6 +378,6 @@ public sealed partial class AdventureGroupService
     {
         if (!s.DailyReady || s.Tasks == null) return;
         Pin(s);
-        await tasks.EnsureDailyTrackingAsync(s, daily.TrackingTasks(s));
+        await _tasks.EnsureDailyTrackingAsync(s, _daily.TrackingTasks(s));
     }
 }

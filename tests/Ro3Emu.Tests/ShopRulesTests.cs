@@ -11,11 +11,11 @@ namespace Ro3Emu.Tests;
 /// <summary>82332 prices with the Merchant's Discount skill, and purchase limits on the 05:00 game day of the realm zone.</summary>
 public sealed class ShopRulesTests : IAsyncLifetime
 {
-    private readonly string directory = Path.Combine(Path.GetTempPath(), "ro3emu-shop-rules-" + Guid.NewGuid().ToString("N"));
-    private readonly RealmClock clock = new();
-    private WebApplication app = null!;
-    private string http = "";
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), "ro3emu-shop-rules-" + Guid.NewGuid().ToString("N"));
+    private readonly RealmClock _clock = new();
+    private WebApplication _app = null!;
+    private string _http = "";
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private const int Daily = 300, Discounted = 14101; // [1100000,5] x10 per day; [2,10000] with _iMerchantDiscount 1
 
     /// <summary>A realm at UTC-03 (the test host runs at +08): the game day must follow the realm's zone.</summary>
@@ -30,25 +30,25 @@ public sealed class ShopRulesTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         var (web, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game;
-        }, clock);
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{web}";
+        }, _clock);
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{web}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(directory, true); } catch (IOException) { }
+        try { Directory.Delete(_directory, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> Enter(string name)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(directory, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_directory, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         await bot.EnterWorldAsync((await bot.CreateRoleAsync(name)).RoleBaseInfo.Id);
         return bot;
@@ -59,7 +59,7 @@ public sealed class ShopRulesTests : IAsyncLifetime
     private async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     private static async Task<BuyCommodityResp> Buy(BotClient bot, int commodity, int count = 1)
@@ -119,12 +119,12 @@ public sealed class ShopRulesTests : IAsyncLifetime
         Assert.Equal(0, (await Buy(bot, Daily, 10)).Result);
         Assert.Equal(ErrorCodes.PurchaseLimit, (await Buy(bot, Daily)).Result);
 
-        clock.Now = clock.Now.AddHours(1); // Wednesday 00:30: still Tuesday's game day
+        _clock.Now = _clock.Now.AddHours(1); // Wednesday 00:30: still Tuesday's game day
         Assert.Equal(ErrorCodes.PurchaseLimit, (await Buy(bot, Daily)).Result);
-        clock.Now = clock.Now.AddHours(4).AddMinutes(29); // 04:59
+        _clock.Now = _clock.Now.AddHours(4).AddMinutes(29); // 04:59
         Assert.Equal(ErrorCodes.PurchaseLimit, (await Buy(bot, Daily)).Result);
 
-        clock.Now = clock.Now.AddMinutes(2); // 05:01: a new game day
+        _clock.Now = _clock.Now.AddMinutes(2); // 05:01: a new game day
         var resync = await bot.Inbox.WaitAsync(e => e.IsGame(ShopService.ShopSync)
             && DBShopInfoIncrement.Parser.ParseFrom(e.Body).CommodityBuyTimes.TryGetValue(Daily, out var c) && c.Del,
             TimeSpan.FromSeconds(8));

@@ -14,38 +14,38 @@ namespace Ro3Emu.Tests;
 public sealed class CardAtomicityTests : IAsyncLifetime
 {
     private const int Lunatic = 1420100, Dagger = 2010121;
-    private readonly string dataDir = Path.Combine(RepoRoot(), ".loadtest-temp", "cd13a-card-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string httpUrl = "";
+    private readonly string _dataDir = Path.Combine(RepoRoot(), ".loadtest-temp", "cd13a-card-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _httpUrl = "";
     private static readonly Lazy<EconomyCatalog> Catalog = new(() =>
         EconomyCatalog.Load(Path.Combine(RepoRoot(), "data")));
-    private EconomySnapshot Cut() => S3EconomyReader.Read(dataDir, Catalog.Value);
+    private EconomySnapshot Cut() => S3EconomyReader.Read(_dataDir, Catalog.Value);
 
     public async Task InitializeAsync()
     {
         var (http, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir;
+            o.DataDir = _dataDir;
             o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = http; o.MicroGatePort = micro; o.GameGatePort = game;
         });
-        await app.StartAsync();
-        httpUrl = $"http://127.0.0.1:{http}";
+        await _app.StartAsync();
+        _httpUrl = $"http://127.0.0.1:{http}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     [ClientDataFact]
     public async Task HeldInsertKeepsBagAndPlanOldUntilOneCommitAndRemoveResolvesLostAck()
     {
-        await using var bot = new BotClient(httpUrl, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        await using var bot = new BotClient(_httpUrl, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync("alice", "pw");
         await bot.EnterGateAsync();
         long role = (await bot.CreateRoleAsync("Alice")).RoleBaseInfo.Id;
@@ -62,11 +62,11 @@ public sealed class CardAtomicityTests : IAsyncLifetime
         Assert.Equal(0, (await Next(bot, CharacterService.EquipItemOpr, EquipItemOprResp.Parser)).Result);
         var opening = Cut();
 
-        var accounts = app.Services.GetRequiredService<AccountStore>();
-        var items = app.Services.GetRequiredService<ItemStore>();
-        var roles = app.Services.GetRequiredService<RoleStore>();
-        var loop = app.Services.GetRequiredService<GameLoop>();
-        var session = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == role);
+        var accounts = _app.Services.GetRequiredService<AccountStore>();
+        var items = _app.Services.GetRequiredService<ItemStore>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == role);
         using var entered = new ManualResetEventSlim();
         using var release = new ManualResetEventSlim();
         accounts.BeforeCommitForTest = label =>
@@ -127,7 +127,7 @@ public sealed class CardAtomicityTests : IAsyncLifetime
         try
         {
             await Assert.ThrowsAsync<InvalidOperationException>(() => loop.InvokeAsync(() =>
-                app.Services.GetRequiredService<CardService>().InsertAsync(session,
+                _app.Services.GetRequiredService<CardService>().InsertAsync(session,
                     new EquipmentCardInsertReq { EquipPos = (EquipGridType)1, SlotIndex = 1, CardGuid = guid })));
             Assert.Equal(2, items.Load(role).Where(i => i.Entry == Lunatic && i.Grid == 0).Sum(i => i.Stack));
             Assert.DoesNotContain(items.Load(role), i => i.Entry == Lunatic && i.Grid < 0);
@@ -138,7 +138,7 @@ public sealed class CardAtomicityTests : IAsyncLifetime
         finally { accounts.BeforeCommitForTest = null; }
 
         var closing = Cut();
-        var ledger = S3EconomyReader.ReadLedger(dataDir, Catalog.Value, opening, closing)!;
+        var ledger = S3EconomyReader.ReadLedger(_dataDir, Catalog.Value, opening, closing)!;
         Assert.True(ledger.CompleteHistory, string.Join(';', ledger.Issues.Select(issue => issue.Detail)));
         var exact = EconomyExactnessChecker.Check(opening, closing, ledger);
         Assert.DoesNotContain(exact.Issues, issue => issue.Kind == EconomyIssueKind.Corruption);
@@ -156,7 +156,7 @@ public sealed class CardAtomicityTests : IAsyncLifetime
     private async Task Gm(string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{httpUrl}/ro3emu/gm?account=alice", new StringContent(command)))
+        (await client.PostAsync($"{_httpUrl}/ro3emu/gm?account=alice", new StringContent(command)))
             .EnsureSuccessStatusCode();
     }
 

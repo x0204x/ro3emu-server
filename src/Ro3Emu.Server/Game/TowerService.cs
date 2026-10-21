@@ -21,42 +21,43 @@ public sealed partial class TowerService
     public const uint PetDeadState = 32809;
     public const uint FirstPassRange = 32807, ClaimFirstPass = 32808, DungeonInfo = 30401, LeaveDungeon = 30402;
 
-    private readonly GameData data;
-    private readonly RoleStore roles;
-    private readonly AccountStore accounts;
-    private readonly CharacterService character;
-    private readonly FunctionService functions;
-    private readonly SeasonService seasons;
-    private readonly SceneService scene;
-    private readonly WorldData worldData;
-    private readonly World world;
-    private readonly InstanceService instances;
-    private readonly MonsterService monsters;
-    private readonly CombatService combat;
-    private readonly BuffService buffs;
-    private readonly GameLoop loop;
-    private readonly TimeProvider clock;
-    private readonly ILogger<TowerService> log;
+    private readonly GameData _data;
+    private long _nextPetUid = TowerPetUnit.UidBase;
+    private readonly RoleStore _roles;
+    private readonly AccountStore _accounts;
+    private readonly CharacterService _character;
+    private readonly FunctionService _functions;
+    private readonly SeasonService _seasons;
+    private readonly SceneService _scene;
+    private readonly WorldData _worldData;
+    private readonly World _world;
+    private readonly InstanceService _instances;
+    private readonly MonsterService _monsters;
+    private readonly CombatService _combat;
+    private readonly BuffService _buffs;
+    private readonly GameLoop _loop;
+    private readonly TimeProvider _clock;
+    private readonly ILogger<TowerService> _log;
     public TowerService(GameData data, RoleStore roles, AccountStore accounts, CharacterService character, FunctionService functions,
         SeasonService seasons, SceneService scene, WorldData worldData, World world, InstanceService instances, MonsterService monsters,
         CombatService combat, BuffService buffs, GameLoop loop, PetFollowerService followers, TimeProvider clock, ILogger<TowerService> log)
     {
-        this.buffs = buffs;
-        this.data = data;
-        this.roles = roles;
-        this.accounts = accounts;
-        this.character = character;
-        this.functions = functions;
-        this.seasons = seasons;
-        this.scene = scene;
-        this.worldData = worldData;
-        this.world = world;
-        this.instances = instances;
-        this.monsters = monsters;
-        this.combat = combat;
-        this.loop = loop;
-        this.clock = clock;
-        this.log = log;
+        this._buffs = buffs;
+        this._data = data;
+        this._roles = roles;
+        this._accounts = accounts;
+        this._character = character;
+        this._functions = functions;
+        this._seasons = seasons;
+        this._scene = scene;
+        this._worldData = worldData;
+        this._world = world;
+        this._instances = instances;
+        this._monsters = monsters;
+        this._combat = combat;
+        this._loop = loop;
+        this._clock = clock;
+        this._log = log;
         // Owner-bound pets must leave before InstanceService removes their owner (LC_Unit_Pet.Destroy).
         scene.Leaving.Insert(scene.Leaving.IndexOf(instances.AbandonAsync), AbandonAsync);
         scene.Loaded.Add(followers.RefreshAsync); // suppress the passive projection in tower; restore it on return
@@ -102,14 +103,14 @@ public sealed partial class TowerService
     }
 
     private bool Open(GameSession s) => s.Role != null && s.Tower != null && s.Progress != null
-        && s.SeasonState is { } state && state.SeasonId == seasons.SeasonId && state.PlayBookId == seasons.PlayBook
-        && functions.IsOpen(s, 89) && functions.IsOpen(s, 5001);
+        && s.SeasonState is { } state && state.SeasonId == _seasons.SeasonId && state.PlayBookId == _seasons.PlayBook
+        && _functions.IsOpen(s, 89) && _functions.IsOpen(s, 5001);
 
     /// <summary>PetFloorConfig is an array. Lookup and sorting use its explicit _iID / _iFloor domains.</summary>
     private List<JsonElement> Floors()
     {
-        int playBook = seasons.PlayBook;
-        return data.Table("PetFloorConfig").Values.Where(r => FitsPlayBook(r, playBook))
+        int playBook = _seasons.PlayBook;
+        return _data.Table("PetFloorConfig").Values.Where(r => FitsPlayBook(r, playBook))
             .OrderBy(r => GameData.Int(r, "_iFloor")).ToList();
     }
 
@@ -136,10 +137,10 @@ public sealed partial class TowerService
     private async Task SaveAsync(GameSession s, DBClimTower next)
     {
         var bytes = next.ToByteArray();
-        if (roles.BlobUnchanged(s.Role!.Id, "tower", bytes)) { s.Tower = next; return; } // a login's normalization
-        var transaction = roles.NewTransaction();
+        if (_roles.BlobUnchanged(s.Role!.Id, "tower", bytes)) { s.Tower = next; return; } // a login's normalization
+        var transaction = _roles.NewTransaction();
         transaction.RoleBlob(s.Role.Id, "tower", bytes);
-        await roles.CommitAsync(transaction, "tower/state", _ => s.Tower = next);
+        await _roles.CommitAsync(transaction, "tower/state", _ => s.Tower = next);
     }
 
     /// <summary>
@@ -171,9 +172,9 @@ public sealed partial class TowerService
     public async Task LoginAsync(GameSession s)
     {
         using var held = await CharacterService.Lock(s);
-        var next = roles.LoadTower(s.Role!.Id) is { } saved ? DBClimTower.Parser.ParseFrom(saved) : new DBClimTower
+        var next = _roles.LoadTower(s.Role!.Id) is { } saved ? DBClimTower.Parser.ParseFrom(saved) : new DBClimTower
         {
-            IsNewbeeInit = true, ChallengeTime = clock.GetUtcNow().ToUnixTimeMilliseconds(), // initialization instant (inferred)
+            IsNewbeeInit = true, ChallengeTime = _clock.GetUtcNow().ToUnixTimeMilliseconds(), // initialization instant (inferred)
         };
         while (next.PetIds.Count < 4) next.PetIds.Add(0);
         while (next.PetIds.Count > 4) next.PetIds.RemoveAt(4);
@@ -233,10 +234,10 @@ public sealed partial class TowerService
         {
             int id = ids[slot];
             if (id == 0) continue;
-            if (data.Row("PetBaseConfig", id) is not { } pet || data.Row("NPCConfig", GameData.Int(pet, "_iMonster")) is not { } npc
+            if (_data.Row("PetBaseConfig", id) is not { } pet || _data.Row("NPCConfig", GameData.Int(pet, "_iMonster")) is not { } npc
                 || GameData.Int(npc, "_iNPCType") != 7) return ErrorCodes.PetNoConfig;
             if (!s.Pets.ListPet.ContainsKey(id)) return ErrorCodes.PetNotOwned;
-            if (!TowerPetUnit.CanSpawn(data, s.Pets, id)) return ErrorCodes.PetNoConfig;
+            if (!TowerPetUnit.CanSpawn(_data, s.Pets, id)) return ErrorCodes.PetNoConfig;
             if (!TowerSlotOpen(s, slot + 1)) return ErrorCodes.PetSetupSlot;
         }
         return 0;
@@ -246,8 +247,8 @@ public sealed partial class TowerService
     {
         int[] levels = [33, 33, 45, 50]; // PublicParamConfig.PetFightFieldUnlockLv.
         return slot >= 1 && slot <= levels.Length && s.Progress!.Level >= levels[slot - 1]
-            && data.Row("PetSetLimitConfig", slot) is { } row
-            && functions.ConditionMet(s, GameData.Int(row, "_iCondition"));
+            && _data.Row("PetSetLimitConfig", slot) is { } row
+            && _functions.ConditionMet(s, GameData.Int(row, "_iCondition"));
     }
 
     /// <summary>First two living chosen IDs fight; later positions replace a dead combatant in order (inferred).
@@ -260,18 +261,19 @@ public sealed partial class TowerService
             && s.Pets.ListPet.ContainsKey(id)).Take(capacity).ToArray();
         foreach (var pet in a.Pets.Where(p => !desired.Contains(p.PetId)).ToArray())
         {
-            await world.RemoveUnitAsync(pet);
+            await _world.RemoveUnitAsync(pet);
             a.Pets.Remove(pet);
         }
         foreach (int id in desired)
         {
             if (a.Pets.Any(p => p.PetId == id)) continue;
             int position = Array.IndexOf(desired, id);
-            var actor = TowerPetUnit.Create(data, s.Pets, s, world, monsters, combat, id, a.InstanceId,
+            var actor = TowerPetUnit.Create(_data, s.Pets, s, _world, _monsters, _combat,
+                Interlocked.Increment(ref _nextPetUid), id, a.InstanceId,
                 s.Position.X + (position == 0 ? -2f : 2f), s.Position.Y, s.Position.Z + 1f);
             if (actor == null) continue; // Saved roster may predate the current pet table; validation is at 32803.
             a.Pets.Add(actor);
-            await world.AddUnitAsync(actor);
+            await _world.AddUnitAsync(actor);
         }
     }
 
@@ -284,7 +286,7 @@ public sealed partial class TowerService
         {
             PetDeadState = { [pet.PetId] = 1 },
         });
-        await world.RemoveUnitAsync(pet);
+        await _world.RemoveUnitAsync(pet);
         a.Pets.Remove(pet);
         await ReconcilePetsAsync(s, a);
     }
@@ -307,7 +309,7 @@ public sealed partial class TowerService
         // A saved formation can outlive ownership/level changes; entry must apply the same slot rules as 32803.
         if (error == 0) error = FormationCode(s, s.Tower!.PetIds.ToArray());
         long mapId = floor is { } f ? GameData.Int(f, "_iMapID") : 0;
-        var map = error == 0 ? worldData.Map(mapId) : null;
+        var map = error == 0 ? _worldData.Map(mapId) : null;
         var spawns = error == 0 && map != null ? Expand(floor!.Value, map) : null;
         if (error == 0 && (map?.Born == null || spawns == null || spawns.Count == 0)) error = ErrorCodes.SceneMissing;
         // Validate the real payout before permitting a clear; previews are never a fallback grant.
@@ -315,21 +317,21 @@ public sealed partial class TowerService
         await s.SendGameAsync(Start, new ClimTowerStartRes { Result = error });
         if (error != 0) return;
 
-        var room = instances.Create(mapId, [s]);
+        var room = _instances.Create(mapId, [s]);
         bool nextFloor = GameData.Int(floor!.Value, "_iFloor") == Cleared(s) + 1;
         long challengeMs = nextFloor ? s.Tower!.ChallengeTime : 0;
-        var now = clock.GetUtcNow();
+        var now = _clock.GetUtcNow();
         int hpRatio = DifficultyRatio(floor.Value, 1011, challengeMs, now);
         var attempt = new Attempt
         {
-            Room = room, Floor = floor.Value, Spawns = spawns!, PlayBook = seasons.PlayBook, SeasonId = seasons.SeasonId,
+            Room = room, Floor = floor.Value, Spawns = spawns!, PlayBook = _seasons.PlayBook, SeasonId = _seasons.SeasonId,
             HpRatio = hpRatio,
             DamageRatio = DifficultyRatio(floor.Value, 215, challengeMs, now),
             Suppressed = Suppress(s, floor.Value, hpRatio),
         };
-        if (!await instances.EnterAsync(room, s, reason: 4)) return;
+        if (!await _instances.EnterAsync(room, s, reason: 4)) return;
         s.TowerAttempt = attempt;
-        log.LogInformation("{Name} starts tower config {Floor} instance {Instance}", s.Role!.Name, req.Layer, attempt.InstanceId);
+        _log.LogInformation("{Name} starts tower config {Floor} instance {Instance}", s.Role!.Name, req.Layer, attempt.InstanceId);
     }
 
     /// <summary>Tuple delay is milliseconds from scene readiness; each occurrence expands all group points (inferred).</summary>
@@ -342,7 +344,7 @@ public sealed partial class TowerService
             if (tuple.ValueKind != JsonValueKind.Array || tuple.GetArrayLength() < 3) return null;
             int group = (int)(GameData.Number(tuple[0]) ?? 0), npc = (int)(GameData.Number(tuple[1]) ?? 0);
             int delay = (int)(GameData.Number(tuple[2]) ?? -1);
-            if (delay < 0 || monsters.Template(npc) == null || !map.DungeonGroups.TryGetValue(group, out var points) || points.Count == 0) return null;
+            if (delay < 0 || _monsters.Template(npc) == null || !map.DungeonGroups.TryGetValue(group, out var points) || points.Count == 0) return null;
             result.AddRange(points.Select(p => new Spawn(npc, new MapPoint(p.X, p.Y, p.Z, p.Face), delay)));
         }
         return result;
@@ -355,8 +357,8 @@ public sealed partial class TowerService
     {
         if (s.TowerAttempt is not { Loaded: false, Settled: false } a || s.InstanceId != a.InstanceId) return;
         a.Loaded = true;
-        a.StartedAt = loop.Now;
-        a.StartTimeMs = clock.GetUtcNow().ToUnixTimeMilliseconds();
+        a.StartedAt = _loop.Now;
+        a.StartTimeMs = _clock.GetUtcNow().ToUnixTimeMilliseconds();
         int seconds = (int)GameData.Int(a.Floor, "_iTimeLimit");
         // Start stage 1 / Running at the accepted 30005 (inferred: region22 has no recovered server start action).
         await s.SendGameAsync(DungeonInfo, new DungeonBaseInfoNotify
@@ -380,32 +382,32 @@ public sealed partial class TowerService
         foreach (var spawn in a.Spawns)
         {
             if (spawn.DelayMs == 0) await SpawnAsync(s, a, spawn);
-            else loop.ScheduleLegacy(TimeSpan.FromMilliseconds(spawn.DelayMs), () => SpawnAsync(s, a, spawn));
+            else _loop.ScheduleLegacy(TimeSpan.FromMilliseconds(spawn.DelayMs), () => SpawnAsync(s, a, spawn));
         }
-        loop.ScheduleLegacy(TimeSpan.FromSeconds(seconds), () => Active(s, a) ? SettleAsync(s, a, false) : Task.CompletedTask);
+        _loop.ScheduleLegacy(TimeSpan.FromSeconds(seconds), () => Active(s, a) ? SettleAsync(s, a, false) : Task.CompletedTask);
     }
 
     private async Task SpawnAsync(GameSession s, Attempt a, Spawn spawn)
     {
         if (!Active(s, a)) return;
-        var monster = await instances.SpawnAsync(a.Room, spawn.NpcId, spawn.Point, a.HpRatio, a.DamageRatio);
+        var monster = await _instances.SpawnAsync(a.Room, spawn.NpcId, spawn.Point, a.HpRatio, a.DamageRatio);
         if (monster == null) { await SettleAsync(s, a, false); return; }
         if (!Active(s, a)) return; // A close may finish while the actor's AOI publication awaits a viewer.
         if (a.Suppressed.Buff > 0)
         {
-            suppressed.AddOrUpdate(monster, new StrongBox<Suppression>(a.Suppressed));
-            await buffs.AddPermanentAsync(monster, a.Suppressed.Buff, monster.Uid);
+            _suppressed.AddOrUpdate(monster, new StrongBox<Suppression>(a.Suppressed));
+            await _buffs.AddPermanentAsync(monster, a.Suppressed.Buff, monster.Uid);
             if (!Active(s, a)) return;
         }
         // Tower opponents engage the challenger at their scheduled spawn (inferred); shared AI/skills execute combat.
-        monsters.Engage(monster, s);
+        _monsters.Engage(monster, s);
     }
 
     private Task KilledAsync(GameSession s, MonsterUnit monster)
     {
         if (s.TowerAttempt is not { } a || !Active(s, a) || monster.InstanceId != a.InstanceId
             || !a.Monsters.Contains(monster) || !a.Killed.Add(monster.Uid)) return Task.CompletedTask;
-        if (loop.Now - a.StartedAt >= TimeSpan.FromSeconds(GameData.Int(a.Floor, "_iTimeLimit"))) return SettleAsync(s, a, false);
+        if (_loop.Now - a.StartedAt >= TimeSpan.FromSeconds(GameData.Int(a.Floor, "_iTimeLimit"))) return SettleAsync(s, a, false);
         return a.Killed.Count == a.Spawns.Count ? SettleAsync(s, a, true) : Task.CompletedTask;
     }
 
@@ -420,12 +422,12 @@ public sealed partial class TowerService
             || a.Killed.Contains(monster.Uid)
             || a.Killed.Count + a.Monsters.Count(m => !a.Killed.Contains(m.Uid)
                 && (ReferenceEquals(m, monster) || m.DeathDurable)) != a.Spawns.Count
-            || loop.Now - a.StartedAt >= TimeSpan.FromSeconds(GameData.Int(a.Floor, "_iTimeLimit"))) return Task.CompletedTask;
-        if (a.PlayBook != seasons.PlayBook || a.SeasonId != seasons.SeasonId) return Task.CompletedTask;
+            || _loop.Now - a.StartedAt >= TimeSpan.FromSeconds(GameData.Int(a.Floor, "_iTimeLimit"))) return Task.CompletedTask;
+        if (a.PlayBook != _seasons.PlayBook || a.SeasonId != _seasons.SeasonId) return Task.CompletedTask;
         if (monster.RewardCommit != null) return Task.CompletedTask;
         int floor = (int)GameData.Int(a.Floor, "_iFloor"), limit = (int)GameData.Int(a.Floor, "_iTimeLimit");
-        long config = GameData.Int(a.Floor, "_iID"), now = clock.GetUtcNow().ToUnixTimeMilliseconds();
-        int duration = Math.Clamp((int)(loop.Now - a.StartedAt).TotalSeconds, 0, limit);
+        long config = GameData.Int(a.Floor, "_iID"), now = _clock.GetUtcNow().ToUnixTimeMilliseconds();
+        int duration = Math.Clamp((int)(_loop.Now - a.StartedAt).TotalSeconds, 0, limit);
         var previous = s.Tower!;
         bool record = floor > Cleared(s);
         var goods = !previous.RewardRecord.TryGetValue(config, out bool paid) || !paid
@@ -446,9 +448,9 @@ public sealed partial class TowerService
             PlayerId = s.Role!.Id, PlayerName = s.Role.Name, PassTime = now,
             Job = s.Progress!.Career, Gender = s.Role.Sex
         };
-        monster.RewardSource ??= new RewardSourceId(character.RewardRealmId,
+        monster.RewardSource ??= new RewardSourceId(_character.RewardRealmId,
             RewardSourceId.ProcessRun, monster.SpawnGeneration);
-        var capturedTower = accounts.ReadSync<RoleBlobSnapshot>(new RoleBlobSnapshotRead(s.Role.Id, "tower"));
+        var capturedTower = _accounts.ReadSync<RoleBlobSnapshot>(new RoleBlobSnapshotRead(s.Role.Id, "tower"));
         if (capturedTower.Value == null || !capturedTower.Value.AsSpan().SequenceEqual(previous.ToByteArray()))
             throw new OwnerRevisionConflictException();
         var settlement = monster.RewardSettlement = new RewardSettlement(
@@ -471,7 +473,7 @@ public sealed partial class TowerService
             s.Tower = next;
             foreach (var handler in FloorCleared)
                 try { handler(s); }
-                catch (Exception e) { log.LogError(e, "Tower clear hook failed for {Role}", s.Role.Id); }
+                catch (Exception e) { _log.LogError(e, "Tower clear hook failed for {Role}", s.Role.Id); }
             var reward = new GetRewardNotify { TargetUid = s.Role.Id };
             var byGuid = before.Where(item => item.Guid > 0).ToDictionary(item => item.Guid, item => item.Stack);
             var byReference = new Dictionary<InvItem, int>(ReferenceEqualityComparer.Instance);
@@ -486,14 +488,14 @@ public sealed partial class TowerService
                 {
                     if (remaining == 0) break;
                     int count = Math.Min(remaining, item.Stack - PreviousStack(item));
-                    var shown = character.ItemInfoOf(item);
+                    var shown = _character.ItemInfoOf(item);
                     shown.Stack = count;
                     reward.Rewards.Add(shown);
                     remaining -= count;
                 }
-                if (remaining > 0 && data.Row("ItemConfig", group.Key) is { } row
+                if (remaining > 0 && _data.Row("ItemConfig", group.Key) is { } row
                     && GameData.Int(row, "_iType") == 1)
-                    reward.Rewards.Add(character.ItemInfoOf(new InvItem { Entry = group.Key, Stack = remaining }));
+                    reward.Rewards.Add(_character.ItemInfoOf(new InvItem { Entry = group.Key, Stack = remaining }));
             }
             a.ClearCommitted = true;
             a.ClearRecord = record;
@@ -516,7 +518,7 @@ public sealed partial class TowerService
         {
             // The deadline can fire while the final lethal source is being committed. Let that
             // resolution finish before deciding whether the floor timed out.
-            loop.ScheduleLegacy(TimeSpan.FromMilliseconds(50), () => Active(s, a)
+            _loop.ScheduleLegacy(TimeSpan.FromMilliseconds(50), () => Active(s, a)
                 ? SettleAsync(s, a, false) : Task.CompletedTask);
             return;
         }
@@ -528,13 +530,13 @@ public sealed partial class TowerService
             await AbandonAsync(s);
             return;
         }
-        won &= a.PlayBook == seasons.PlayBook && a.SeasonId == seasons.SeasonId;
+        won &= a.PlayBook == _seasons.PlayBook && a.SeasonId == _seasons.SeasonId;
         a.Settled = true; // Reserve settlement before any await: duplicate kills/timeouts cannot grant twice.
         s.Attack = null;
         int floor = (int)GameData.Int(a.Floor, "_iFloor"), limit = (int)GameData.Int(a.Floor, "_iTimeLimit");
         // curTime/completeTime use Unix milliseconds (inferred); challengeTime's millisecond units are client-proven.
-        long now = a.ClearCommitted ? a.ClearNow : clock.GetUtcNow().ToUnixTimeMilliseconds();
-        int duration = a.ClearCommitted ? a.ClearDuration : Math.Clamp((int)(loop.Now - a.StartedAt).TotalSeconds, 0, limit);
+        long now = a.ClearCommitted ? a.ClearNow : _clock.GetUtcNow().ToUnixTimeMilliseconds();
+        int duration = a.ClearCommitted ? a.ClearDuration : Math.Clamp((int)(_loop.Now - a.StartedAt).TotalSeconds, 0, limit);
         var t = s.Tower!;
         bool record = won && (a.ClearCommitted ? a.ClearRecord : floor > Cleared(s));
         var reward = a.ClearCommitted ? a.ClearReward! : new GetRewardNotify { TargetUid = s.Role!.Id };
@@ -544,17 +546,17 @@ public sealed partial class TowerService
             // The shared kill source owns reward presentation; this handler emits the tower-specific
             // 32802 and 5065 packets after the committed source.
             if (a.ClearGoodsCount > 0)
-                try { await character.ItemsChangedAsync(s, stats: false); }
-                catch (Exception e) { log.LogWarning(e, "Tower item sync failed after commit for {Role}", s.Role!.Id); }
+                try { await _character.ItemsChangedAsync(s, stats: false); }
+                catch (Exception e) { _log.LogWarning(e, "Tower item sync failed after commit for {Role}", s.Role!.Id); }
         }
         else if (won)
         {
             // A direct or stale killed callback cannot bypass the pre-death source receipt.
-            log.LogError("Tower final kill lacked a committed floor outcome for role {Role}", s.Role!.Id);
+            _log.LogError("Tower final kill lacked a committed floor outcome for role {Role}", s.Role!.Id);
             won = record = false;
             result = ErrorCodes.Unknown;
         }
-        await instances.ClearMonstersAsync(a.Room);
+        await _instances.ClearMonstersAsync(a.Room);
         await RemovePetsAsync(a);
         // Result before 5065 preserves the DAL comparison with the previous floor (inferred order).
         await s.SendGameAsync(End, new ClimTowerEndNotify
@@ -566,13 +568,13 @@ public sealed partial class TowerService
         {
             await SyncAsync(s);
             // A new cleared floor: quest targets read it (growth-manual 101014 CheckClimbTowerLayer).
-            foreach (var handler in character.StateChanged) handler(s);
+            foreach (var handler in _character.StateChanged) handler(s);
         }
-        log.LogInformation("{Name} tower floor {Floor}: {Won}, {Duration}s", s.Role!.Name, floor, won, duration);
+        _log.LogInformation("{Name} tower floor {Floor}: {Won}, {Duration}s", s.Role!.Name, floor, won, duration);
         if (result == 0)
             foreach (var handler in Settled)
                 try { handler(s, won); }
-                catch (Exception e) { log.LogError(e, "Tower settlement hook failed for {Role}", s.Role.Id); }
+                catch (Exception e) { _log.LogError(e, "Tower settlement hook failed for {Role}", s.Role.Id); }
     }
 
     /// <summary>Inclusive bounded range of actual catalog floor numbers, including genuine uncleared records.</summary>
@@ -584,7 +586,7 @@ public sealed partial class TowerService
         var response = new QueryClimbTowerFirstPassRangeResp { Result = error };
         if (error == 0)
         {
-            var records = roles.LoadTowerFirstPasses(req.MinLayer, req.MaxLayer);
+            var records = _roles.LoadTowerFirstPasses(req.MinLayer, req.MaxLayer);
             foreach (var f in floors)
             {
                 long n = GameData.Int(f, "_iFloor");
@@ -610,7 +612,7 @@ public sealed partial class TowerService
         var goods = new List<(int Entry, int Count)>();
         if (error == 0)
         {
-            var records = roles.LoadTowerFirstPasses(watermark + 1, long.MaxValue);
+            var records = _roles.LoadTowerFirstPasses(watermark + 1, long.MaxValue);
             foreach (var f in Floors().Where(f => GameData.Int(f, "_iFloor") > watermark && GameData.Int(f, "_iServerFirstReward") > 0))
             {
                 long floor = GameData.Int(f, "_iFloor");
@@ -627,22 +629,22 @@ public sealed partial class TowerService
             next.ServerFirstPassClaimedLayer = watermark;
             try
             {
-                var economy = character.EconomyForOwnedExchange(s, "cd13e/tower-milestone",
+                var economy = _character.EconomyForOwnedExchange(s, "cd13e/tower-milestone",
                     $"tower-milestone/{s.Role!.Id}/{previousWatermark}/{watermark}", [], goods,
                     new { Previous = previousWatermark, Claimed = watermark, Goods = goods.Select(g => new { g.Entry, g.Count }).ToArray() });
-                var granted = await character.ExchangeLockedAsync(s, [], goods, popup: false, sync: false,
+                var granted = await _character.ExchangeLockedAsync(s, [], goods, popup: false, sync: false,
                     persist: tx => tx.RoleBlob(s.Role.Id, "tower", next.ToByteArray()),
                     committed: () => s.Tower = next, economy: economy);
                 if (granted == null) error = ErrorCodes.ItemsShort;
                 else
                 {
-                    await character.ItemsChangedAsync(s, stats: false);
+                    await _character.ItemsChangedAsync(s, stats: false);
                     await SyncAsync(s);
                 }
             }
             catch (SqliteException e)
             {
-                log.LogError(e, "Tower milestone claim could not be saved for role {Role}", s.Role!.Id);
+                _log.LogError(e, "Tower milestone claim could not be saved for role {Role}", s.Role!.Id);
                 error = ErrorCodes.Unknown;
             }
         }
@@ -656,10 +658,10 @@ public sealed partial class TowerService
     private List<(int Entry, int Count)>? Award(long group)
     {
         if (group == 0) return [];
-        if (data.Row("MultiverseGroupConfig", group) is not { } mg) return null;
-        long id = GameData.Int(mg, $"_iValue_{seasons.PlayBook}");
+        if (_data.Row("MultiverseGroupConfig", group) is not { } mg) return null;
+        long id = GameData.Int(mg, $"_iValue_{_seasons.PlayBook}");
         if (id == 0) id = GameData.Int(mg, "_iValue_default");
-        if (data.Row("AwardConfig", id) is not { } award) return null;
+        if (_data.Row("AwardConfig", id) is not { } award) return null;
         var rows = award.ValueKind == JsonValueKind.Array ? award.EnumerateArray().ToArray() : [award];
         var result = new List<(int, int)>();
         foreach (var row in rows)
@@ -669,7 +671,7 @@ public sealed partial class TowerService
             {
                 if (tuple.ValueKind != JsonValueKind.Array || tuple.GetArrayLength() < 2) return null;
                 int entry = (int)(GameData.Number(tuple[0]) ?? 0), count = (int)(GameData.Number(tuple[1]) ?? 0);
-                if (count <= 0 || data.Row("ItemConfig", entry) == null) return null;
+                if (count <= 0 || _data.Row("ItemConfig", entry) == null) return null;
                 result.Add((entry, count));
             }
         }
@@ -683,13 +685,13 @@ public sealed partial class TowerService
         var role = s.Role;
         bool valid = a != null && member != null && s.Role != null && !s.SceneLoading
             && s.InstanceId == a.InstanceId && s.SceneEntry == a.Room.SceneEntry
-            && ReferenceEquals(instances.Find(a.InstanceId), a.Room);
+            && ReferenceEquals(_instances.Find(a.InstanceId), a.Room);
         await s.SendGameAsync(LeaveDungeon, new LeaveDungeonRsp { Result = valid ? 0 : ErrorCodes.SceneMissing });
         if (!valid || !ReferenceEquals(s.TowerAttempt, a) || !ReferenceEquals(s.Role, role)
             || s.InstanceId != a!.InstanceId || s.SceneEntry != a.Room.SceneEntry || s.SceneLoading
-            || !ReferenceEquals(instances.Find(a.InstanceId), a.Room) || a.Room.MemberFor(s) != member) return;
+            || !ReferenceEquals(_instances.Find(a.InstanceId), a.Room) || a.Room.MemberFor(s) != member) return;
         // (inferred) Return recovery is armed before 70010 by the shared instance owner.
-        await instances.LeaveAsync(s, recoverDeadOnReturn: true);
+        await _instances.LeaveAsync(s, recoverDeadOnReturn: true);
     }
 
     /// <summary>Exit/disconnect/role switch cancels scheduled waves and clears the private map (inferred abandonment).</summary>
@@ -700,12 +702,12 @@ public sealed partial class TowerService
         s.TowerAttempt = null;
         s.Attack = null;
         await RemovePetsAsync(a);
-        await instances.AbandonAsync(a.Room, s);
+        await _instances.AbandonAsync(a.Room, s);
     }
 
     private async Task RemovePetsAsync(Attempt a)
     {
-        foreach (var pet in a.Pets.ToArray()) await world.RemoveUnitAsync(pet);
+        foreach (var pet in a.Pets.ToArray()) await _world.RemoveUnitAsync(pet);
         a.Pets.Clear();
     }
 }

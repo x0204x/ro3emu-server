@@ -28,14 +28,14 @@ public static class SyntheticData
 /// </summary>
 public sealed class SyntheticHost : IAsyncDisposable
 {
-    private readonly Action<ServerOptions>? configure;
-    private readonly TimeProvider? clock;
+    private readonly Action<ServerOptions>? _configure;
+    private readonly TimeProvider? _clock;
 
     private SyntheticHost(string dataDir, Action<ServerOptions>? configure, TimeProvider? clock)
     {
         DataDir = dataDir;
-        this.configure = configure;
-        this.clock = clock;
+        this._configure = configure;
+        this._clock = clock;
     }
 
     public string DataDir { get; }
@@ -57,8 +57,8 @@ public sealed class SyntheticHost : IAsyncDisposable
             o.DataDir = DataDir;
             o.GameDataDir = SyntheticData.Dir;
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = gate;
-            configure?.Invoke(o);
-        }, clock);
+            _configure?.Invoke(o);
+        }, _clock);
         await App.StartAsync();
         Http = $"http://127.0.0.1:{web}";
     }

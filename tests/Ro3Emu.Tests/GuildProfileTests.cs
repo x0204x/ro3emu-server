@@ -14,32 +14,32 @@ namespace Ro3Emu.Tests;
 /// <summary>The guild member widget obtains Base/GuildSnap from UserDataService, not just 32214.</summary>
 public sealed class GuildProfileTests : IAsyncLifetime
 {
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-guild-profile-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-guild-profile-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);
-    private WebApplication app = null!;
-    private string httpUrl = "";
+    private WebApplication _app = null!;
+    private string _httpUrl = "";
 
     public async Task InitializeAsync()
     {
         var (http, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir;
+            o.DataDir = _dataDir;
             o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = http;
             o.MicroGatePort = micro;
             o.GameGatePort = game;
         });
-        await app.StartAsync();
-        httpUrl = $"http://127.0.0.1:{http}";
+        await _app.StartAsync();
+        _httpUrl = $"http://127.0.0.1:{http}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     [ClientDataFact]
@@ -89,14 +89,14 @@ public sealed class GuildProfileTests : IAsyncLifetime
         await Next(alice, GuildService.MemberChange, GuildMemberInfoChangeNtf.Parser,
             n => n.Info.Any(m => m.PlayerID == bobId && m.OfflineTime > 0));
         // Fence the disconnect, which unregisters the session after enqueuing the roster notification.
-        await app.Services.GetRequiredService<GameLoop>().InvokeAsync(() => Task.CompletedTask);
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() => Task.CompletedTask);
         var offline = await Profile(alice, bobId);
         Assert.False(offline.Online);
         Assert.Equal(guildId, offline.Base.GuildID);
         Assert.InRange(offline.Base.Offlinetime, DateTimeOffset.UtcNow.AddMinutes(-1).ToUnixTimeMilliseconds(),
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
         Assert.Equal(offline.Base.Offlinetime, offline.OfflineTime);
-        var reopenedStore = new GuildStore(app.Services.GetRequiredService<AccountStore>());
+        var reopenedStore = new GuildStore(_app.Services.GetRequiredService<AccountStore>());
         var saved = Assert.IsType<GuildStore.State>(reopenedStore.ForRole(bobId));
         Assert.Equal(offline.OfflineTime, saved.Members[bobId].OfflineTime * 1000);
 
@@ -117,7 +117,7 @@ public sealed class GuildProfileTests : IAsyncLifetime
         Assert.Equal(0, departed.Snap.Guid);
         Assert.True(departed.Base.CantBeInvited);
         Assert.Null(reopenedStore.ForRole(bobId));
-        var personal = DBRoleGuildInfo.Parser.ParseFrom(app.Services.GetRequiredService<RoleStore>().LoadGuildInfo(bobId)!);
+        var personal = DBRoleGuildInfo.Parser.ParseFrom(_app.Services.GetRequiredService<RoleStore>().LoadGuildInfo(bobId)!);
         Assert.Equal(0, personal.GuildId);
         Assert.Equal(guildId, personal.LastGuildId);
         Assert.True(personal.CantBeInvited);
@@ -137,7 +137,7 @@ public sealed class GuildProfileTests : IAsyncLifetime
 
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var bot = new BotClient(httpUrl, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_httpUrl, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw");
         await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
@@ -148,7 +148,7 @@ public sealed class GuildProfileTests : IAsyncLifetime
     private async Task Gm(string account, string command)
     {
         using var client = new HttpClient();
-        using var response = await client.PostAsync($"{httpUrl}/ro3emu/gm?account={account}", new StringContent(command));
+        using var response = await client.PostAsync($"{_httpUrl}/ro3emu/gm?account={account}", new StringContent(command));
         response.EnsureSuccessStatusCode();
     }
 

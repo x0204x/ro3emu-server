@@ -19,37 +19,37 @@ namespace Ro3Emu.Tests;
 /// <summary>5004/5059/43504/31178 over the game gate.</summary>
 public sealed class DailyTests : IAsyncLifetime
 {
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-daily-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-daily-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(8);
-    private WebApplication app = null!;
-    private string httpUrl = "";
+    private WebApplication _app = null!;
+    private string _httpUrl = "";
 
     public async Task InitializeAsync()
     {
         var (http, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir;
+            o.DataDir = _dataDir;
             o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = http;
             o.MicroGatePort = micro;
             o.GameGatePort = game;
         });
-        await app.StartAsync();
-        httpUrl = $"http://127.0.0.1:{http}";
+        await _app.StartAsync();
+        _httpUrl = $"http://127.0.0.1:{http}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var bot = new BotClient(httpUrl, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_httpUrl, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw");
         await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
@@ -67,17 +67,17 @@ public sealed class DailyTests : IAsyncLifetime
     private async Task Gm(string account, string line)
     {
         using var http = new HttpClient();
-        (await http.PostAsync($"{httpUrl}/ro3emu/gm?account={account}", new StringContent(line))).EnsureSuccessStatusCode();
+        (await http.PostAsync($"{_httpUrl}/ro3emu/gm?account={account}", new StringContent(line))).EnsureSuccessStatusCode();
     }
 
     private void Sql(string command)
     {
-        FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(), command);
+        FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(), command);
     }
 
     private long OwnedSourceCount(string source, string kind)
     {
-        using var db = app.Services.GetRequiredService<AccountStore>().Open();
+        using var db = _app.Services.GetRequiredService<AccountStore>().Open();
         using var command = db.CreateCommand();
         command.CommandText = """
             SELECT COUNT(*) FROM operation_source s JOIN operation_receipt r ON r.operation_id=s.operation_id
@@ -98,21 +98,21 @@ public sealed class DailyTests : IAsyncLifetime
     }
 
     private async Task<T> State<T>(Func<GameSession, T> read) =>
-        await app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
-            Task.FromResult(read(app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role != null))));
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+            Task.FromResult(read(_app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role != null))));
 
     private Task OwnedFixtureAsync(long role, string origin, Func<GameSession, Task> work)
     {
-        var session = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == role);
-        return app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
-            app.Services.GetRequiredService<OwnerRegistry>().RunSessionAsync(origin,
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == role);
+        return _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+            _app.Services.GetRequiredService<OwnerRegistry>().RunSessionAsync(origin,
                 [ReservationKey.Role(role)], session, () => work(session)));
     }
 
     private async Task DisposeAndWaitDetachedAsync(BotClient bot, long role)
     {
-        var sessions = app.Services.GetRequiredService<SessionRegistry>();
-        var handover = app.Services.GetRequiredService<RoleHandover>();
+        var sessions = _app.Services.GetRequiredService<SessionRegistry>();
+        var handover = _app.Services.GetRequiredService<RoleHandover>();
         var session = sessions.All().Single(s => s.Role?.Id == role);
         var detached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var unregistered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -135,7 +135,7 @@ public sealed class DailyTests : IAsyncLifetime
     [Fact]
     public void LegacyDailyBindingMigratesOnceAndKeepsAllNewItemFields()
     {
-        var options = Microsoft.Extensions.Options.Options.Create(new ServerOptions { DataDir = Path.Combine(dataDir, "legacy-daily") });
+        var options = Microsoft.Extensions.Options.Options.Create(new ServerOptions { DataDir = Path.Combine(_dataDir, "legacy-daily") });
         long roleId;
         using (var old = new AccountStore(options))
         {
@@ -171,10 +171,10 @@ public sealed class DailyTests : IAsyncLifetime
             await Gm("alice", "!lvl 34");
             await Gm("alice", "!quest done 10105090");
             await Gm("alice", "!quest done 500080");
-            var store = app.Services.GetRequiredService<ItemStore>();
-            var seeded = await app.Services.GetRequiredService<GameLoop>().InvokeAsync(async () =>
+            var store = _app.Services.GetRequiredService<ItemStore>();
+            var seeded = await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(async () =>
             {
-                var s = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role != null);
+                var s = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role != null);
                 // A queued quest award may still publish its inventory copy. Seed under
                 // the same character/owner admission so that publication cannot erase it.
                 using var held = await CharacterService.Lock(s);
@@ -219,8 +219,8 @@ public sealed class DailyTests : IAsyncLifetime
         await using var bot = await InWorld("Alice");
         var rows = await Next(bot, DailyActivityService.ActivitySync, DBDailyActivityInfoIncrement.Parser);
         Assert.True(rows.SyncAllMark);
-        int book = app.Services.GetRequiredService<SeasonService>().PlayBook;
-        var expected = app.Services.GetRequiredService<GameData>().Table("DailyActivityConfig").Values
+        int book = _app.Services.GetRequiredService<SeasonService>().PlayBook;
+        var expected = _app.Services.GetRequiredService<GameData>().Table("DailyActivityConfig").Values
             .Where(r => !r.TryGetProperty("_kMultiverseArray", out var books) || books.ValueKind != JsonValueKind.Array
                 || books.EnumerateArray().Any(v => GameData.Number(v) is double n && (n == 0 || n == book)))
             .Select(r => (int)GameData.Int(r, "_iID")).Where(id => id > 0).Order().ToArray();
@@ -254,23 +254,17 @@ public sealed class DailyTests : IAsyncLifetime
     [Fact]
     public async Task RequestsAtRoleScreenCannotUsePreviousCharacterState()
     {
-        await using var bot = new BotClient(httpUrl, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        await using var bot = new BotClient(_httpUrl, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync("alice", "pw");
         await bot.EnterGateAsync();
-        await bot.SendGameAsync(DailyActivityService.RingAccept, new CommonDailyActivityReq
+        await StageGate.AssertUnansweredAsync(bot, DailyActivityService.RingAccept, new CommonDailyActivityReq
         { ActivityId = 3302, RunRingTaskAccept = new RunRingTaskAcceptReq() });
-        Assert.Equal(ErrorCodes.FeatureUnavailable,
-            (await Next(bot, DailyActivityService.RingAccept, CommonDailyActivityRes.Parser)).Result);
-        await bot.SendGameAsync(DailyActivityService.StageGain, new StageRewardGainReq { StageId = 7001 });
-        Assert.Equal(ErrorCodes.FeatureUnavailable,
-            (await Next(bot, DailyActivityService.StageGain, StageRewardGainResp.Parser)).Result);
+        await StageGate.AssertUnansweredAsync(bot, DailyActivityService.StageGain, new StageRewardGainReq { StageId = 7001 });
 
         long role = (await bot.CreateRoleAsync("Alice")).RoleBaseInfo.Id;
         await bot.EnterWorldAsync(role);
         await bot.SwitchRoleAsync();
-        await bot.SendGameAsync(DailyActivityService.StageGain, new StageRewardGainReq { StageId = 7001 });
-        Assert.Equal(ErrorCodes.FeatureUnavailable,
-            (await Next(bot, DailyActivityService.StageGain, StageRewardGainResp.Parser)).Result);
+        await StageGate.AssertUnansweredAsync(bot, DailyActivityService.StageGain, new StageRewardGainReq { StageId = 7001 });
     }
 
     [ClientDataFact]
@@ -303,7 +297,7 @@ public sealed class DailyTests : IAsyncLifetime
             {
                 // 3004/3014 also grant the guaranteed, level-specific EXP terminal of pool 84004/group 3514.
                 int level = await State(s => s.Progress!.Level);
-                var expRow = app.Services.GetRequiredService<GameData>().Row("DropGroupConfig", 3514)!.Value
+                var expRow = _app.Services.GetRequiredService<GameData>().Row("DropGroupConfig", 3514)!.Value
                     .EnumerateArray().Single(r => GameData.Int(r, "_iMinLevelLimit") == level);
                 Assert.Equal(GameData.Int(expRow, "_iMinNumber"), GameData.Int(expRow, "_iMaxNumber"));
                 expectedExp += GameData.Int(expRow, "_iMinNumber");
@@ -412,17 +406,17 @@ public sealed class DailyTests : IAsyncLifetime
         int root = await State(s => s.Daily!.ActiveRingStart);
         for (int id = root; id < root + 9; id++) await Gm("alice", $"!quest done {id}");
         long roleId = await State(s => s.Role!.Id);
-        var roles = app.Services.GetRequiredService<RoleStore>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
         byte[] dailyBefore = roles.LoadDaily(roleId)!, tasksBefore = roles.LoadTasks(roleId)!;
         var progressBefore = roles.LoadProgress(roleId);
-        var itemsBefore = app.Services.GetRequiredService<ItemStore>().Load(roleId).Select(i => (i.Entry, i.Stack, i.BindType)).ToArray();
+        var itemsBefore = _app.Services.GetRequiredService<ItemStore>().Load(roleId).Select(i => (i.Entry, i.Stack, i.BindType)).ToArray();
         Sql("CREATE TRIGGER fail_daily_ring BEFORE INSERT ON item WHEN NEW.entry=1250001 BEGIN SELECT RAISE(ABORT, 'ring item fault'); END");
         await Gm("alice", $"!quest done {root + 9}");
         Assert.Equal(dailyBefore, roles.LoadDaily(roleId));
         Assert.Equal(tasksBefore, roles.LoadTasks(roleId));
         Assert.Equal(progressBefore.Currency.OrderBy(kv => kv.Key), roles.LoadProgress(roleId).Currency.OrderBy(kv => kv.Key));
         Assert.Equal(progressBefore.Exp, roles.LoadProgress(roleId).Exp);
-        Assert.Equal(itemsBefore, app.Services.GetRequiredService<ItemStore>().Load(roleId).Select(i => (i.Entry, i.Stack, i.BindType)));
+        Assert.Equal(itemsBefore, _app.Services.GetRequiredService<ItemStore>().Load(roleId).Select(i => (i.Entry, i.Stack, i.BindType)));
         Assert.Equal(0, await State(s => s.DailyRows!.ActivityData[3302].TaskCompleteTimes));
         Assert.Equal(root, await State(s => s.Daily!.ActiveRingStart));
         Sql("DROP TRIGGER fail_daily_ring");
@@ -463,8 +457,8 @@ public sealed class DailyTests : IAsyncLifetime
         {
             s.Daily!.Claims.Add(1); // A shared non-daily claim, retained across the daily reset.
             s.Daily.DailyEpoch -= 86400;
-            app.Services.GetRequiredService<RoleStore>().SaveDaily(s.Role!.Id, JsonSerializer.SerializeToUtf8Bytes(s.Daily));
-            await app.Services.GetRequiredService<DailyActivityService>().ReconcileAsync(s);
+            _app.Services.GetRequiredService<RoleStore>().SaveDaily(s.Role!.Id, JsonSerializer.SerializeToUtf8Bytes(s.Daily));
+            await _app.Services.GetRequiredService<DailyActivityService>().ReconcileAsync(s);
         });
         var resetRows = await Next(bot, DailyActivityService.ActivitySync, DBDailyActivityInfoIncrement.Parser,
             m => !m.SyncAllMark && m.ActivityData.ContainsKey(101) && m.ActivityData[101].Inc?.TaskCompleteTimes == 0);
@@ -489,10 +483,10 @@ public sealed class DailyTests : IAsyncLifetime
         await Gm("alice", "!lvl 34");
         await Gm("alice", "!quest done 10105090");
         await Gm("alice", "!quest done 500080");
-        var loop = app.Services.GetRequiredService<GameLoop>();
-        var roles = app.Services.GetRequiredService<RoleStore>();
-        var accounts = app.Services.GetRequiredService<AccountStore>();
-        var daily = app.Services.GetRequiredService<DailyActivityService>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
+        var accounts = _app.Services.GetRequiredService<AccountStore>();
+        var daily = _app.Services.GetRequiredService<DailyActivityService>();
         long role = await State(s => s.Role!.Id);
         // Arm the failure before making the reset due: the daily ticker can run
         // as soon as the setup callback releases the loop.
@@ -521,7 +515,7 @@ public sealed class DailyTests : IAsyncLifetime
             return (long)command.ExecuteScalar()!;
         }
         await Assert.ThrowsAsync<SqliteException>(() => loop.InvokeAsync(() => daily.ReconcileAsync(
-            app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role?.Id == role))));
+            _app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role?.Id == role))));
         Assert.Equal(oldDaily, roles.LoadDaily(role));
         Assert.Equal(oldTasks, roles.LoadTasks(role));
         Assert.Equal(oldAfk, roles.LoadWildAfk(role));
@@ -531,7 +525,7 @@ public sealed class DailyTests : IAsyncLifetime
         await using var bob = await InWorld("Bob");
         long bobRole = (long)bob.Self!.Uuid;
         Assert.False(await loop.InvokeAsync(() => Task.FromResult(
-            app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role?.Id == bobRole)
+            _app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role?.Id == bobRole)
                 .Dungeons!.FirstSetted)));
         var catalog = EconomyCatalog.Load(Path.Combine(RepoRoot(), "data"));
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -541,10 +535,10 @@ public sealed class DailyTests : IAsyncLifetime
             if (label != "economy/cd13e/daily-reset") return Task.CompletedTask;
             entered.TrySetResult(); return release.Task;
         };
-        var opening = S3EconomyReader.Read(dataDir, catalog);
+        var opening = S3EconomyReader.Read(_dataDir, catalog);
         Sql("DROP TRIGGER fail_e02_reset_ledger");
         var pending = loop.InvokeAsync(() => daily.ReconcileAsync(
-            app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role?.Id == role)));
+            _app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role?.Id == role)));
         Task? gm = null, timer = null;
         byte[]? stagedDaily = null, stagedTasks = null, stagedAfk = null;
         long stagedLiveness = -1;
@@ -561,9 +555,9 @@ public sealed class DailyTests : IAsyncLifetime
             Assert.Equal(0, ResetReceipts());
             gm = Gm("alice", "!item 1000000 1");
             timer = loop.InvokeAsync(() => daily.ReconcileAsync(
-                app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role?.Id == role)));
-            await loop.InvokeAsync(() => app.Services.GetRequiredService<DungeonService>().SetGuideAsync(
-                app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role?.Id == bobRole),
+                _app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role?.Id == role)));
+            await loop.InvokeAsync(() => _app.Services.GetRequiredService<DungeonService>().SetGuideAsync(
+                _app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role?.Id == bobRole),
                 new MultiDungeonSetJobPositionGuideFlagReq { GuideFlag = true })).WaitAsync(TimeSpan.FromSeconds(10));
             Assert.True(JsonSerializer.Deserialize<DungeonService.State>(roles.LoadDungeons(bobRole)!)!.FirstSetted);
             await Assert.ThrowsAsync<TimeoutException>(() => gm.WaitAsync(TimeSpan.FromMilliseconds(150)));
@@ -582,8 +576,8 @@ public sealed class DailyTests : IAsyncLifetime
         Assert.NotEqual(oldTasks, roles.LoadTasks(role));
         Assert.NotEqual(oldAfk, roles.LoadWildAfk(role));
         Assert.Equal(1, ResetReceipts());
-        var closing = S3EconomyReader.Read(dataDir, catalog);
-        var ledger = S3EconomyReader.ReadLedger(dataDir, catalog, opening, closing)!;
+        var closing = S3EconomyReader.Read(_dataDir, catalog);
+        var ledger = S3EconomyReader.ReadLedger(_dataDir, catalog, opening, closing)!;
         var check = EconomyExactnessChecker.Check(opening, closing, ledger);
         Assert.All(check.Assets, asset => { Assert.Equal("0", asset.Residual); Assert.Equal("0", asset.LegResidual); });
         var liveness = Assert.Single(check.Assets, x => x.Asset.Kind == EconomyAssetKind.Currency && x.Asset.Id == 5);
@@ -598,14 +592,14 @@ public sealed class DailyTests : IAsyncLifetime
     public async Task WeeklyOnlyResetWithZeroLivenessRetainsAnItemlessReceipt()
     {
         await using var bot = await InWorld("Alice");
-        var roles = app.Services.GetRequiredService<RoleStore>();
-        var daily = app.Services.GetRequiredService<DailyActivityService>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
+        var daily = _app.Services.GetRequiredService<DailyActivityService>();
         long role = await State(s => s.Role!.Id);
         var before = JsonSerializer.Deserialize<DailyActivityService.DailyState>(roles.LoadDaily(role)!)!;
         long oldWeek = before.WeeklyEpoch;
         before.WeeklyEpoch -= 7 * 86400;
         var catalog = EconomyCatalog.Load(Path.Combine(RepoRoot(), "data"));
-        var opening = S3EconomyReader.Read(dataDir, catalog);
+        var opening = S3EconomyReader.Read(_dataDir, catalog);
         await OwnedFixtureAsync(role, "weekly reset fixture", async session =>
         {
             session.Daily!.WeeklyEpoch = before.WeeklyEpoch;
@@ -618,17 +612,17 @@ public sealed class DailyTests : IAsyncLifetime
         Assert.Equal(before.DailyEpoch, after.DailyEpoch);
         Assert.Equal(oldWeek, after.WeeklyEpoch);
         Assert.Equal(0, roles.LoadProgress(role).Currency.GetValueOrDefault(5));
-        var closing = S3EconomyReader.Read(dataDir, catalog);
-        var ledger = S3EconomyReader.ReadLedger(dataDir, catalog, opening, closing)!;
+        var closing = S3EconomyReader.Read(_dataDir, catalog);
+        var ledger = S3EconomyReader.ReadLedger(_dataDir, catalog, opening, closing)!;
         var reset = Assert.Single(ledger.Receipts, r => r.CommandKind == "cd13e/daily-reset");
         Assert.Single(reset.SourceKeys!);
         Assert.DoesNotContain(ledger.Legs, l => l.OperationId == reset.OperationId);
         var exact = EconomyExactnessChecker.Check(opening, closing, ledger);
         Assert.All(exact.Assets, asset => { Assert.Equal("0", asset.Residual); Assert.Equal("0", asset.LegResidual); });
         Assert.DoesNotContain(exact.Issues, issue => issue.Kind == EconomyIssueKind.Corruption);
-        await app.Services.GetRequiredService<GameLoop>().InvokeAsync(() => daily.ReconcileAsync(
-            app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role?.Id == role)));
-        using var db = app.Services.GetRequiredService<AccountStore>().Open();
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() => daily.ReconcileAsync(
+            _app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role?.Id == role)));
+        using var db = _app.Services.GetRequiredService<AccountStore>().Open();
         using var command = db.CreateCommand();
         command.CommandText = "SELECT COUNT(*) FROM operation_receipt WHERE command_kind='cd13e/daily-reset'";
         Assert.Equal(1, (long)command.ExecuteScalar()!);
@@ -645,7 +639,7 @@ public sealed class DailyTests : IAsyncLifetime
         await Gm("alice", "!quest done 500080");
         long roleId = await State(s => s.Role!.Id);
         await DisposeAndWaitDetachedAsync(bot, roleId);
-        var roles = app.Services.GetRequiredService<RoleStore>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
         var saved = JsonSerializer.Deserialize<DailyActivityService.DailyState>(roles.LoadDaily(roleId)!)!;
         saved.DailyEpoch -= 86400;
         roles.SaveDaily(roleId, JsonSerializer.SerializeToUtf8Bytes(saved));
@@ -671,7 +665,7 @@ public sealed class DailyTests : IAsyncLifetime
         long roleId = await State(s => s.Role!.Id);
         Assert.Equal(20, await State(s => s.Progress!.Currency.GetValueOrDefault(5)));
         await DisposeAndWaitDetachedAsync(bot, roleId);
-        var roles = app.Services.GetRequiredService<RoleStore>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
         var saved = JsonSerializer.Deserialize<DailyActivityService.DailyState>(roles.LoadDaily(roleId)!)!;
         saved.DailyEpoch -= 86400;
         roles.SaveDaily(roleId, JsonSerializer.SerializeToUtf8Bytes(saved));
@@ -695,18 +689,18 @@ public sealed class DailyTests : IAsyncLifetime
         Assert.False(await State(s => s.Tasks!.Infos.ContainsKey(2001000))); // condition 88000082 requires level 999
         for (int n = 1; n <= 5; n++)
         {
-            await app.Services.GetRequiredService<GameLoop>().InvokeAsync(async () =>
+            await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(async () =>
             {
-                var s = app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role != null);
-                await app.Services.GetRequiredService<TaskService>().OnMvpParticipantAsync(s);
+                var s = _app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role != null);
+                await _app.Services.GetRequiredService<TaskService>().OnMvpParticipantAsync(s);
             });
             Assert.Equal(n, await State(s => s.DailyRows!.ActivityData[105].TaskCompleteTimes));
             Assert.Equal(n * 4, await State(s => s.Progress!.Currency.GetValueOrDefault(5)));
         }
-        await app.Services.GetRequiredService<GameLoop>().InvokeAsync(async () =>
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(async () =>
         {
-            var s = app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role != null);
-            await app.Services.GetRequiredService<TaskService>().OnMvpParticipantAsync(s);
+            var s = _app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role != null);
+            await _app.Services.GetRequiredService<TaskService>().OnMvpParticipantAsync(s);
         });
         Assert.Equal(20, await State(s => s.Progress!.Currency.GetValueOrDefault(5)));
         Assert.Equal(5, await State(s => s.DailyRows!.ActivityData[105].TaskCompleteTimes));
@@ -720,14 +714,14 @@ public sealed class DailyTests : IAsyncLifetime
         await Gm("alice", "!quest done 10105090");
         await Gm("alice", "!quest accept 10104260");
         await Gm("alice", "!quest finish 10104260"); // Its ConsumeItem 1009001 cost is absent, so its award stays held.
-        await app.Services.GetRequiredService<GameLoop>().InvokeAsync(async () =>
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(async () =>
         {
-            var s = app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role != null);
+            var s = _app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role != null);
             var daily = s.Tasks!.Infos[500010];
             s.Tasks.Infos.Remove(500010);
             s.Tasks.Infos[500010] = daily; // Exercise settlement after the held story task in the same snapshot.
-            await app.Services.GetRequiredService<TaskService>().OnMvpParticipantAsync(s);
-            await app.Services.GetRequiredService<TaskService>().RefreshAsync(s); // A passive refresh cannot replay the event.
+            await _app.Services.GetRequiredService<TaskService>().OnMvpParticipantAsync(s);
+            await _app.Services.GetRequiredService<TaskService>().RefreshAsync(s); // A passive refresh cannot replay the event.
         });
         Assert.Equal(TaskState.Finish, await State(s => s.Tasks!.Infos[10104260].Status));
         Assert.Equal(0, await State(s => s.Tasks!.CompleteTaskNum.GetValueOrDefault(10104260)));
@@ -743,23 +737,23 @@ public sealed class DailyTests : IAsyncLifetime
         await Gm("alice", "!lvl 37");
         await Gm("alice", "!quest done 10105090");
         await Gm("alice", "!item 1009013 10");
-        await app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
         {
-            var s = app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role != null);
+            var s = _app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role != null);
             s.Tasks!.Infos[10102050] = new TaskInfo
             {
                 TaskId = 10102050, Status = TaskState.Running,
                 CompleteNum = { 0 }
             }; // A real item-submit objective; settlement must read committed inventory.
-            var point = app.Services.GetRequiredService<WorldData>().Map(10213)!.Points[1010203001];
+            var point = _app.Services.GetRequiredService<WorldData>().Map(10213)!.Points[1010203001];
             s.SceneEntry = 10213;
             s.Position = new Vec3 { X = point.X, Y = point.Y, Z = point.Z };
             return Task.CompletedTask;
         });
-        await app.Services.GetRequiredService<GameLoop>().InvokeAsync(async () =>
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(async () =>
         {
-            var s = app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role != null);
-            await app.Services.GetRequiredService<TaskService>().OnMvpParticipantAsync(s);
+            var s = _app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role != null);
+            await _app.Services.GetRequiredService<TaskService>().OnMvpParticipantAsync(s);
         });
         Assert.Equal(1, await State(s => s.DailyRows!.ActivityData[105].TaskCompleteTimes));
         Assert.Equal(TaskState.Finish, await State(s => s.Tasks!.Infos[10102050].Status));
@@ -774,7 +768,7 @@ public sealed class DailyTests : IAsyncLifetime
         Assert.Equal(0, Assert.Single(delivery.Data).Result);
         Assert.Equal(ErrorCodes.TaskStatus, (await Next(bot, TaskService.ApiError, APIErrorMsg.Parser)).ErrorCode);
         Assert.Equal(1, await State(s => s.Tasks!.CompleteTaskNum.GetValueOrDefault(10102050)));
-        Assert.Equal(0, await State(s => app.Services.GetRequiredService<CharacterService>().CountOf(s, 1009013)));
+        Assert.Equal(0, await State(s => _app.Services.GetRequiredService<CharacterService>().CountOf(s, 1009013)));
     }
 
     [ClientDataFact]
@@ -785,7 +779,7 @@ public sealed class DailyTests : IAsyncLifetime
         await Gm("alice", "!quest done 10105090");
         await Gm("alice", "!quest done 500080");
         int rewardsBefore = bot.Inbox.Snapshot().Count(e => e.IsGame(CharacterService.GetRewardNotify));
-        var roles = app.Services.GetRequiredService<RoleStore>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
         long roleId = await State(s => s.Role!.Id);
         byte[] oldDaily = roles.LoadDaily(roleId)!;
         var before = await State(s => (Currency: s.Progress!.Currency.OrderBy(kv => kv.Key).ToArray(), Exp: s.Progress.Exp,
@@ -804,7 +798,7 @@ public sealed class DailyTests : IAsyncLifetime
         Assert.Equal(oldDaily, roles.LoadDaily(roleId));
         Assert.Equal(before.Currency, roles.LoadProgress(roleId).Currency.OrderBy(kv => kv.Key));
         Assert.Equal(before.Exp, roles.LoadProgress(roleId).Exp);
-        Assert.Equal(before.Items, app.Services.GetRequiredService<ItemStore>().Load(roleId)
+        Assert.Equal(before.Items, _app.Services.GetRequiredService<ItemStore>().Load(roleId)
             .Select(i => (i.Entry, i.Stack, i.BindType)));
         Sql("DROP TRIGGER fail_daily_claim");
         await bot.SendGameAsync(DailyActivityService.StageGain, new StageRewardGainReq { StageId = 7001 });
@@ -824,10 +818,10 @@ public sealed class DailyTests : IAsyncLifetime
             {
                 long epoch = await State(s => s.Daily!.DailyEpoch);
                 DateTime tomorrow = DateTimeOffset.FromUnixTimeSeconds(epoch).LocalDateTime.Date.AddDays(1).AddHours(6);
-                await app.Services.GetRequiredService<GameLoop>().InvokeAsync(async () =>
+                await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(async () =>
                 {
-                    var s = app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role != null);
-                    await app.Services.GetRequiredService<DailyActivityService>().ReconcileAsync(s, tomorrow);
+                    var s = _app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role != null);
+                    await _app.Services.GetRequiredService<DailyActivityService>().ReconcileAsync(s, tomorrow);
                 });
             }
             await bot.SendGameAsync(DailyActivityService.RingAccept, new CommonDailyActivityReq
@@ -860,7 +854,7 @@ public sealed class DailyTests : IAsyncLifetime
             _ => (100018L, 2060141, 10150L),
         };
         // Ring roots rotate by local day; only one dialogue point is near Prontera's default spawn.
-        var dialogPoint = app.Services.GetRequiredService<WorldData>().Map(10100)!.Points[point];
+        var dialogPoint = _app.Services.GetRequiredService<WorldData>().Map(10100)!.Points[point];
         await Gm("alice", FormattableString.Invariant($"!warp 10100 {dialogPoint.X} {dialogPoint.Z}"));
         await FollowWarp(bot);
         await bot.SendGameAsync(SceneService.ClientNpcInteract,
@@ -871,12 +865,12 @@ public sealed class DailyTests : IAsyncLifetime
         await Gm("alice", $"!warp {map}");
         await FollowWarp(bot);
 
-        await app.Services.GetRequiredService<GameLoop>().InvokeAsync(async () =>
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(async () =>
         {
-            var s = app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role != null);
-            var combat = app.Services.GetRequiredService<CombatService>();
+            var s = _app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role != null);
+            var combat = _app.Services.GetRequiredService<CombatService>();
             var killed = combat.Killed.Single(h => h.Target is TaskService);
-            var template = app.Services.GetRequiredService<MonsterService>().Template(5000036)!;
+            var template = _app.Services.GetRequiredService<MonsterService>().Template(5000036)!;
             var point = new SpawnPoint(-1, 0, 0, 0, 0, template.NpcId);
             var group = new SpawnGroup(-1, false, 1, 0, [], [point]);
             var monster = new MonsterUnit { SceneEntry = 10100, Template = template, Group = group, Home = point, Hp = template.MaxHp };

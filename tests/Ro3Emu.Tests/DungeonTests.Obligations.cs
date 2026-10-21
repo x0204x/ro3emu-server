@@ -86,8 +86,8 @@ public sealed partial class DungeonTests
             FixtureSql.Execute(Service<AccountStore>(), "DROP TRIGGER fail_dungeons");
         }
 
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         SqliteConnection.ClearAllPools();
         await InitializeAsync();
 
@@ -140,8 +140,8 @@ public sealed partial class DungeonTests
             Assert.Empty(Service<DungeonObligationStore>().Pending(role));
             Assert.Equal(100, Items(alice, 1250900));
         }
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         SqliteConnection.ClearAllPools();
         await InitializeAsync();
         await using var recovered = await InWorld("Alice", create: false);
@@ -199,8 +199,8 @@ public sealed partial class DungeonTests
             }
             finally { FixtureSql.Execute(Service<AccountStore>(), "DROP TRIGGER fail_bob_dungeons"); }
         }
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         SqliteConnection.ClearAllPools();
         await InitializeAsync();
         foreach (var (name, role) in new[] { ("Bob", bobRole), ("Alice", aliceRole), ("Carol", carolRole) })
@@ -218,7 +218,7 @@ public sealed partial class DungeonTests
     private long FrozenRowCount(long room, int activated, int? completed = null)
     {
         using var db = new SqliteConnection(new SqliteConnectionStringBuilder
-        { DataSource = Path.Combine(dataDir, "ro3emu.db"), Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
+        { DataSource = Path.Combine(_dataDir, "ro3emu.db"), Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
         db.Open();
         using var cmd = db.CreateCommand();
         cmd.CommandText = "SELECT count(*) FROM dungeon_reward_obligation WHERE room_id=$room AND activated=$active"
@@ -232,7 +232,7 @@ public sealed partial class DungeonTests
     private long EarnedSourceCount(long room)
     {
         using var db = new SqliteConnection(new SqliteConnectionStringBuilder
-        { DataSource = Path.Combine(dataDir, "ro3emu.db"), Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
+        { DataSource = Path.Combine(_dataDir, "ro3emu.db"), Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
         db.Open();
         using var cmd = db.CreateCommand();
         cmd.CommandText = "SELECT count(*) FROM operation_receipt WHERE command_kind='dungeon-obligation-earn'"
@@ -250,7 +250,7 @@ public sealed partial class DungeonTests
         string original = Service<GameData>().Row("DungeonConfig", story)!.Value
             .GetProperty("_kResSceneEditorName").GetString()!;
         string source = Path.Combine(RepoRoot(), "data", "sceneeditor", original + ".json");
-        string directory = Path.Combine(dataDir, "sceneeditor");
+        string directory = Path.Combine(_dataDir, "sceneeditor");
         Directory.CreateDirectory(directory);
         string stem = Path.Combine(directory, "synthetic_aoe_1054001");
         var editor = JsonNode.Parse(File.ReadAllText(source))!.AsObject();
@@ -435,8 +435,8 @@ public sealed partial class DungeonTests
             Assert.Single(Service<DungeonObligationStore>().FrozenRoom(room));
             Assert.Empty(Service<DungeonObligationStore>().Pending(role));
         }
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         SqliteConnection.ClearAllPools();
         await InitializeAsync();
         await using var recovered = await InWorld("Alice", create: false);

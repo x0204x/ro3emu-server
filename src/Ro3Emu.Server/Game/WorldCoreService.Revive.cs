@@ -10,7 +10,7 @@ public sealed partial class WorldCoreService
     private async Task<bool> ReviveItemSkillAsync(GameSession source, GameSession target, JsonElement skill)
     {
         if (!Ready(source) || !Ready(target) || source.Dead || source.WorldScene != target.WorldScene
-            || dungeons.ExternalReviveError(target) != 0 || !combat.TryClaimRevive(target)) return false;
+            || _dungeons.ExternalReviveError(target) != 0 || !_combat.TryClaimRevive(target)) return false;
         try
         {
             long hp = 1000, sp = 1000;
@@ -21,19 +21,19 @@ public sealed partial class WorldCoreService
                         if (GameData.Number(row[2]) == 101) hp = (long)(GameData.Number(row[1]) ?? 1000);
                         if (GameData.Number(row[2]) == 102) sp = (long)(GameData.Number(row[1]) ?? 1000);
                     }
-            if (!combat.CommitReviveClaim(target, hp, sp)) return false;
-            dungeons.RecordExternalRevive(target);
-            await combat.PublishReviveAsync(target, null);
-            await dungeons.PublishExternalReviveAsync(target);
+            if (!_combat.CommitReviveClaim(target, hp, sp)) return false;
+            _dungeons.RecordExternalRevive(target);
+            await _combat.PublishReviveAsync(target, null);
+            await _dungeons.PublishExternalReviveAsync(target);
             return true;
         }
-        finally { combat.ReleaseReviveClaim(target); }
+        finally { _combat.ReleaseReviveClaim(target); }
     }
 
     /// <summary>LC_SceneCom_Revive.SendReliveHelpReq sends the dead player's own id.</summary>
     public async Task HelpAsync(GameSession s, EntityReliveHelpReq req)
     {
-        long cooldown = data.Table("PublicParamConfig").TryGetValue("SOSCD", out var value) ? (long)(GameData.Number(value) ?? 8) * 1000 : 8000;
+        long cooldown = _data.Table("PublicParamConfig").TryGetValue("SOSCD", out var value) ? (long)(GameData.Number(value) ?? 8) * 1000 : 8000;
         int error = req.TargetEntityID != s.Role!.Id ? ErrorCodes.Parameter : !s.Dead ? ErrorCodes.TargetAlive
             : !Ready(s) ? ErrorCodes.SwitchingScenes : Now - s.WorldState.LastHelpMs < cooldown ? ErrorCodes.ReviveHelpCooldown : 0;
         await s.SendGameAsync(ReliveHelp, new EntityReliveHelpResp { Result = error });
@@ -45,7 +45,7 @@ public sealed partial class WorldCoreService
 
     private async Task OfferReviveAsync(GameSession source, GameSession target, JsonElement skill)
     {
-        if (!target.Dead || !Ready(source) || !Ready(target) || source.WorldScene != target.WorldScene || dungeons.ExternalReviveError(target) != 0) return;
+        if (!target.Dead || !Ready(source) || !Ready(target) || source.WorldScene != target.WorldScene || _dungeons.ExternalReviveError(target) != 0) return;
         var state = target.WorldState;
         state.ReviveSource = source.Role!.Id;
         state.ReviveExpiresMs = Now + 30000; // Inferred invitation timeout; wire uses absolute milliseconds.
@@ -69,14 +69,14 @@ public sealed partial class WorldCoreService
         var state = s.WorldState;
         var source = Player(req.SourceEntityID);
         int error = !s.Dead ? ErrorCodes.TargetAlive : state.ReviveSource != req.SourceEntityID || state.ReviveSource == 0 ? ErrorCodes.ReviveNotAwaited
-            : state.ReviveExpiresMs <= Now ? ErrorCodes.ReviveInvitationExpired : source == null || source.Dead || !Ready(source) || !Ready(s) || source.WorldScene != s.WorldScene ? ErrorCodes.SkillReviveNotAllowed : dungeons.ExternalReviveError(s);
+            : state.ReviveExpiresMs <= Now ? ErrorCodes.ReviveInvitationExpired : source == null || source.Dead || !Ready(source) || !Ready(s) || source.WorldScene != s.WorldScene ? ErrorCodes.SkillReviveNotAllowed : _dungeons.ExternalReviveError(s);
         long hp = state.ReviveHpRate, sp = state.ReviveSpRate;
         bool claimed = false;
         if (error == 0 && req.IsAccept)
         {
-            claimed = combat.TryClaimRevive(s);
-            if (!claimed || !combat.CommitReviveClaim(s, hp, sp)) error = s.Dead ? ErrorCodes.FeatureUnavailable : ErrorCodes.TargetAlive;
-            else dungeons.RecordExternalRevive(s);
+            claimed = _combat.TryClaimRevive(s);
+            if (!claimed || !_combat.CommitReviveClaim(s, hp, sp)) error = s.Dead ? ErrorCodes.FeatureUnavailable : ErrorCodes.TargetAlive;
+            else _dungeons.RecordExternalRevive(s);
         }
         if (error == 0 && !req.IsAccept) { state.ReviveSource = 0; state.ReviveExpiresMs = 0; }
         try
@@ -86,29 +86,29 @@ public sealed partial class WorldCoreService
             if (error != 0) return;
             var notify = new EntityReliveInviteInfoNotify { SourceEntityID = req.SourceEntityID, TargetEntityID = s.Role.Id, IsAccept = req.IsAccept };
             await ToSelfAndViewersAsync(s, ReliveAccepted, notify);
-            if (source != s && !world.Viewers(s).Contains(source!)) await source!.SendGameAsync(ReliveAccepted, notify);
+            if (source != s && !_world.Viewers(s).Contains(source!)) await source!.SendGameAsync(ReliveAccepted, notify);
             if (req.IsAccept)
             {
-                await combat.PublishReviveAsync(s, null);
-                await dungeons.PublishExternalReviveAsync(s);
+                await _combat.PublishReviveAsync(s, null);
+                await _dungeons.PublishExternalReviveAsync(s);
             }
         }
-        finally { if (claimed) combat.ReleaseReviveClaim(s); }
+        finally { if (claimed) _combat.ReleaseReviveClaim(s); }
     }
 
     /// <summary>Map-owned item revive is separate from the ordinary return-to-resurrection-point request.</summary>
     public async Task ItemReviveAsync(GameSession s)
     {
-        int error = !s.Dead ? ErrorCodes.TargetAlive : !Ready(s) ? ErrorCodes.SwitchingScenes : dungeons.ExternalReviveError(s);
+        int error = !s.Dead ? ErrorCodes.TargetAlive : !Ready(s) ? ErrorCodes.SwitchingScenes : _dungeons.ExternalReviveError(s);
         int item = 0; long count = 0;
-        if (data.Row("MapConfig", s.SceneEntry) is { } map && map.TryGetProperty("_kItemRevive", out var cost)
+        if (_data.Row("MapConfig", s.SceneEntry) is { } map && map.TryGetProperty("_kItemRevive", out var cost)
             && cost.ValueKind == JsonValueKind.Array && cost.GetArrayLength() == 2)
         { item = (int)(GameData.Number(cost[0]) ?? 0); count = (long)(GameData.Number(cost[1]) ?? 0); }
         if (error == 0 && (item <= 0 || count <= 0 || count > int.MaxValue)) error = ErrorCodes.ItemReviveNotAllowed;
         bool claimed = false, committed = false;
-        if (error == 0 && !(claimed = combat.TryClaimRevive(s))) error = s.Dead ? ErrorCodes.FeatureUnavailable : ErrorCodes.TargetAlive;
+        if (error == 0 && !(claimed = _combat.TryClaimRevive(s))) error = s.Dead ? ErrorCodes.FeatureUnavailable : ErrorCodes.TargetAlive;
         string source = error == 0
-            ? $"world-revive/{character.RewardRealmId}/{s.Role!.Id}/{s.ReviveDeathSource ??= RewardSourceId.ProcessRun + "/" + Guid.NewGuid().ToString("N")}" : "";
+            ? $"world-revive/{_character.RewardRealmId}/{s.Role!.Id}/{s.ReviveDeathSource ??= RewardSourceId.ProcessRun + "/" + Guid.NewGuid().ToString("N")}" : "";
         try
         {
             // Do not await a bag packet after payment but before committing revival: the claim then
@@ -117,19 +117,19 @@ public sealed partial class WorldCoreService
             {
                 try
                 {
-                    var paid = await character.ExchangeAsync(s, [(item, count)], [], popup: false, sync: false,
+                    var paid = await _character.ExchangeAsync(s, [(item, count)], [], popup: false, sync: false,
                         rewardSettlement: new RewardSettlement(source, "world-revive"), committed: () =>
                         {
-                            if (!combat.CommitReviveClaim(s))
+                            if (!_combat.CommitReviveClaim(s))
                                 throw new InvalidOperationException("Paid revive lost its exclusive claim after commit.");
                             committed = true;
-                            dungeons.RecordExternalRevive(s);
+                            _dungeons.RecordExternalRevive(s);
                         });
                     if (paid == null) error = ErrorCodes.ItemsShort;
                 }
                 catch
                 {
-                    if (!await character.RewardSourceCommittedAsync(source)) throw;
+                    if (!await _character.RewardSourceCommittedAsync(source)) throw;
                     if (s.Owner?.State == Ownership.RoleOwnerState.RecoveryRequired
                         || s.Attachment?.Cancelled == true)
                     {
@@ -141,21 +141,21 @@ public sealed partial class WorldCoreService
                     }
                     if (!committed)
                     {
-                        if (!combat.CommitReviveClaim(s))
+                        if (!_combat.CommitReviveClaim(s))
                             throw new InvalidOperationException("Committed paid revive lost its exclusive claim.");
                         committed = true;
-                        dungeons.RecordExternalRevive(s);
+                        _dungeons.RecordExternalRevive(s);
                     }
                 }
             }
-            if (committed) await character.ItemsChangedAsync(s, stats: false);
+            if (committed) await _character.ItemsChangedAsync(s, stats: false);
             await s.SendGameAsync(ReliveItem, new EntityReliveCostItemResp { Result = error });
             if (committed)
             {
-                await combat.PublishReviveAsync(s, null);
-                await dungeons.PublishExternalReviveAsync(s);
+                await _combat.PublishReviveAsync(s, null);
+                await _dungeons.PublishExternalReviveAsync(s);
             }
         }
-        finally { if (claimed) combat.ReleaseReviveClaim(s); }
+        finally { if (claimed) _combat.ReleaseReviveClaim(s); }
     }
 }

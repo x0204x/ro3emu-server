@@ -57,7 +57,7 @@ public sealed partial class TeamService
             && existing.Members.Count == ids.Length && existing.Members.Order().SequenceEqual(ids.Order())) return existing.Id;
         var sourceTeams = ids.Where(_byMember.ContainsKey).Select(id => _byMember[id]).Distinct().ToArray();
         if (sourceTeams.Any(t => t.Type != TeamType.Five || t.Members.Any(id => !ids.Contains(id)))) return 0;
-        await friends.RecordMatchedTeammatesAsync(ids);
+        await _friends.RecordMatchedTeammatesAsync(ids);
         foreach (var old in sourceTeams)
         {
             _teams.Remove(old.Id);
@@ -66,8 +66,8 @@ public sealed partial class TeamService
         var team = new Team
         {
             Id = ++_nextId, Type = TeamType.Five, Leader = ids[0], Target = NoTarget,
-            Created = DateTimeOffset.UtcNow.ToUnixTimeSeconds(), Area = options.Value.ClusterId.ToString(),
-            PlayBook = seasons.PlayBook,
+            Created = DateTimeOffset.UtcNow.ToUnixTimeSeconds(), Area = _options.Value.ClusterId.ToString(),
+            PlayBook = _seasons.PlayBook,
         };
         _teams[team.Id] = team;
         foreach (long id in ids) Join(team, id);
@@ -79,7 +79,7 @@ public sealed partial class TeamService
                 { TeamType = team.Type, DetailInfo = Detail(team, member.Role!.Id) });
                 await member.SendGameAsync(TeamAll, All(team));
             }
-            catch (Exception e) { log.LogWarning(e, "Matched party publication failed for {Role}", member.Role?.Id); }
+            catch (Exception e) { _log.LogWarning(e, "Matched party publication failed for {Role}", member.Role?.Id); }
         }
         return team.Id;
     }

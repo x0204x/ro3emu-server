@@ -64,23 +64,23 @@ public sealed class PowerService : IGameTicker
         public long HistorySeason { get; set; }
     }
 
-    private readonly GameData data;
-    private readonly CharacterService character;
-    private readonly SkillService skills;
-    private readonly TotemService totems;
-    private readonly EmblemService emblems;
-    private readonly SeasonRefineService seasonRefine;
-    private readonly RoleStore roles;
-    private readonly SessionRegistry sessions;
-    private readonly GameLoop loop;
-    private readonly ILogger<PowerService> log;
-    private readonly HashSet<GameSession> dirty = new();
-    private readonly HashSet<GameSession> queued = new();
-    private TimeSpan lastProbe;
-    private int sweepIndex;
-    private Dictionary<long, double>? weights;
-    private Dictionary<(long Card, long Star), JsonElement>? cardRows;
-    private Dictionary<(long Level, long Part, long Quality), JsonElement>? cardUpgrades;
+    private readonly GameData _data;
+    private readonly CharacterService _character;
+    private readonly SkillService _skills;
+    private readonly TotemService _totems;
+    private readonly EmblemService _emblems;
+    private readonly SeasonRefineService _seasonRefine;
+    private readonly RoleStore _roles;
+    private readonly SessionRegistry _sessions;
+    private readonly GameLoop _loop;
+    private readonly ILogger<PowerService> _log;
+    private readonly HashSet<GameSession> _dirty = new();
+    private readonly HashSet<GameSession> _queued = new();
+    private TimeSpan _lastProbe;
+    private int _sweepIndex;
+    private Dictionary<long, double>? _weights;
+    private Dictionary<(long Card, long Star), JsonElement>? _cardRows;
+    private Dictionary<(long Level, long Part, long Quality), JsonElement>? _cardUpgrades;
 
     /// <summary>The role's current TitleConfig id; no title rank owner exists on this server yet.</summary>
     public Func<GameSession, long>? TitleId { get; set; }
@@ -89,8 +89,8 @@ public sealed class PowerService : IGameTicker
         EmblemService emblems, SeasonRefineService seasonRefine, RoleStore roles, SessionRegistry sessions, GameLoop loop,
         GmCommands gm, ILogger<PowerService> log)
     {
-        this.data = data; this.character = character; this.skills = skills; this.totems = totems; this.emblems = emblems;
-        this.seasonRefine = seasonRefine; this.roles = roles; this.sessions = sessions; this.loop = loop; this.log = log;
+        this._data = data; this._character = character; this._skills = skills; this._totems = totems; this._emblems = emblems;
+        this._seasonRefine = seasonRefine; this._roles = roles; this._sessions = sessions; this._loop = loop; this._log = log;
         emblems.PublishPower = s => PublishAsync(s, always: true);
         // Hooks only mark the role: several fire inside the character lock or a commit's apply.
         character.StateChanged.Add(Queue);
@@ -133,7 +133,7 @@ public sealed class PowerService : IGameTicker
             CardSuitScore = new PowerUnit(),
             CardFillInEquipScore = Normal(s.Items.Where(i => i.Grid < 0).Sum(CardScore)),
             TotemScore = Normal(TotemScore(s)),
-            EmblemScore = emblems.GenrePower(s, s.Emblems),
+            EmblemScore = _emblems.GenrePower(s, s.Emblems),
         };
         var total = new PowerUnit { NormalPower = BasePower(s.Progress.Level) + PetPower(s) };
         foreach (var unit in Units(package)) { total.NormalPower += unit.NormalPower; total.SeasonPower += unit.SeasonPower; }
@@ -163,22 +163,22 @@ public sealed class PowerService : IGameTicker
 
     private double Weight(long attr)
     {
-        weights ??= data.Table("AttributeConfig").Values.Where(r => r.TryGetProperty("_iPower", out _))
+        _weights ??= _data.Table("AttributeConfig").Values.Where(r => r.TryGetProperty("_iPower", out _))
             .ToDictionary(r => GameData.Int(r, "_iID"), r => GameData.Number(r.GetProperty("_iPower")) ?? 0);
-        return weights.GetValueOrDefault(attr);
+        return _weights.GetValueOrDefault(attr);
     }
 
     /// <summary>LC_ScoreHelper.CalcAttrScore: value x AttributeConfig._iPower.</summary>
     private double AttrScore(IEnumerable<(long Id, double Value)> attrs) => attrs.Sum(a => a.Value * Weight(a.Id));
 
     /// <summary>LC_ScoreHelper.CalcSpecialScore: SpecialEffectConfig._iPower.</summary>
-    private long SpecialScore(long id) => data.Row("SpecialEffectConfig", id) is { } row ? GameData.Int(row, "_iPower") : 0;
+    private long SpecialScore(long id) => _data.Row("SpecialEffectConfig", id) is { } row ? GameData.Int(row, "_iPower") : 0;
 
     private static IEnumerable<long> Ids(JsonElement row, string field) => row.TryGetProperty(field, out var list)
         && list.ValueKind == JsonValueKind.Array ? list.EnumerateArray().Select(e => (long)(GameData.Number(e) ?? 0)).Where(id => id > 0) : [];
 
     /// <summary>BaseLvConfig[level]._iPower (Lua_CFG_BaseLvConfig.GetPower; 120 x level in this export).</summary>
-    internal long BasePower(int level) => data.Row("BaseLvConfig", level) is { } row ? GameData.Int(row, "_iPower") : 0;
+    internal long BasePower(int level) => _data.Row("BaseLvConfig", level) is { } row ? GameData.Int(row, "_iPower") : 0;
 
     /// <summary>Allocated points (value - 1) of STR..LUK, weighted, rounded up like GetTotemScore (inferred rounding).</summary>
     internal long StatPoints(IReadOnlyList<int> stats) =>
@@ -190,20 +190,20 @@ public sealed class PowerService : IGameTicker
     private IEnumerable<(int Group, int Level)> LearnedSkills(GameSession s)
     {
         var p = s.Progress!;
-        foreach (int group in skills.Tree(p.Career).Select(t => t.Group).Concat(p.Skills.Keys).Distinct())
-            if (skills.Level(p, group) is var level and > 0) yield return (group, level);
+        foreach (int group in _skills.Tree(p.Career).Select(t => t.Group).Concat(p.Skills.Keys).Distinct())
+            if (_skills.Level(p, group) is var level and > 0) yield return (group, level);
     }
 
     internal long SkillScore(IEnumerable<(int Group, int Level)> learned)
     {
         double score = 0;
         foreach (var (group, level) in learned)
-            if (skills.RealId(group, level) is var id and > 0 && data.Row("SkillConfig", id) is { } row)
+            if (_skills.RealId(group, level) is var id and > 0 && _data.Row("SkillConfig", id) is { } row)
                 score += AttrScore(GameData.Pairs(row, "_kAttri")) + Ids(row, "_iSpecialEffect").Sum(SpecialScore);
         return (long)Math.Ceiling(score - 1e-9);
     }
 
-    private long TitleScore(long title) => title > 0 && data.Row("TitleConfig", title) is { } row
+    private long TitleScore(long title) => title > 0 && _data.Row("TitleConfig", title) is { } row
         ? GameData.Int(row, "_iPowerAdd") + (long)Math.Ceiling(AttrScore(GameData.Pairs(row, "_kAttr")) - 1e-9) : 0;
 
     private static List<InvItem> Worn(GameSession s) => s.Items.Where(i => i.Grid is >= 1 and <= EquipGrids).ToList();
@@ -213,11 +213,11 @@ public sealed class PowerService : IGameTicker
         var unit = new PowerUnit();
         foreach (var item in worn)
         {
-            unit.NormalPower += EquipmentRating.Calculate(item, data);
-            if (data.Row("ItemConfig", item.Entry) is { } config && GameData.Int(config, "_iEquipId") is var equip and > 0
-                && data.Row("EquipConfig", equip) is { } equipRow) unit.NormalPower += GameData.Int(equipRow, "_iPower");
+            unit.NormalPower += EquipmentRating.Calculate(item, _data);
+            if (_data.Row("ItemConfig", item.Entry) is { } config && GameData.Int(config, "_iEquipId") is var equip and > 0
+                && _data.Row("EquipConfig", equip) is { } equipRow) unit.NormalPower += GameData.Int(equipRow, "_iPower");
             foreach (int enchant in item.Enchantments.Keys)
-                if (data.Row("Enchantment", enchant) is { } row)
+                if (_data.Row("Enchantment", enchant) is { } row)
                 {
                     unit.NormalPower += GameData.Int(row, "_iPower");
                     unit.SeasonPower += GameData.Int(row, "_iSeasonPower");
@@ -229,41 +229,41 @@ public sealed class PowerService : IGameTicker
     private PowerUnit EquipRefine(GameSession s, IEnumerable<InvItem> worn) => new()
     {
         NormalPower = worn.Select(i => i.Grid).Distinct()
-            .Sum(g => character.RefineRow(g, s.EquipLevels.Refine.GetValueOrDefault(g)) is { } row ? GameData.Int(row, "_iPower") : 0)
+            .Sum(g => _character.RefineRow(g, s.EquipLevels.Refine.GetValueOrDefault(g)) is { } row ? GameData.Int(row, "_iPower") : 0)
             + Resonance(s, "RefiningEffectTable"),
-        SeasonPower = seasonRefine.ActiveGroups(s).Sum(group => GameData.Int(group, "_iSeasonPower")),
+        SeasonPower = _seasonRefine.ActiveGroups(s).Sum(group => GameData.Int(group, "_iSeasonPower")),
     };
 
     private long EquipStrengthen(GameSession s, IEnumerable<InvItem> worn) => worn.Select(i => i.Grid).Distinct()
-        .Sum(g => character.StrengthenRow(g, s.EquipLevels.Strength.GetValueOrDefault(g)) is { } row ? GameData.Int(row, "_iPower") : 0)
+        .Sum(g => _character.StrengthenRow(g, s.EquipLevels.Strength.GetValueOrDefault(g)) is { } row ? GameData.Int(row, "_iPower") : 0)
         + Resonance(s, "StrengthenEffectTable");
 
     /// <summary>The reached Strengthen/RefiningEffectTable row's _iPower (CharacterService.Resonance picks the row).</summary>
     private long Resonance(GameSession s, string table)
     {
-        int level = character.Resonance(s, table);
-        return level <= 0 ? 0 : data.Table(table).Values.Where(r => GameData.Int(r, "_iEffectLev") == level)
+        int level = _character.Resonance(s, table);
+        return level <= 0 ? 0 : _data.Table(table).Values.Where(r => GameData.Int(r, "_iEffectLev") == level)
             .Select(r => GameData.Int(r, "_iPower")).FirstOrDefault();
     }
 
     /// <summary>LC_CardHelper.GetPower: CardConfig by (card, star), _iFlashPower for a treasured (Flash) card.</summary>
     private long CardRowPower(long card, long star, bool flash)
     {
-        cardRows ??= data.Table("CardConfig").Values.GroupBy(r => (GameData.Int(r, "_iCardID"), GameData.Int(r, "_iTier")))
+        _cardRows ??= _data.Table("CardConfig").Values.GroupBy(r => (GameData.Int(r, "_iCardID"), GameData.Int(r, "_iTier")))
             .ToDictionary(g => g.Key, g => g.First());
-        return cardRows.TryGetValue((card, star), out var row) ? GameData.Int(row, flash ? "_iFlashPower" : "_iPower") : 0;
+        return _cardRows.TryGetValue((card, star), out var row) ? GameData.Int(row, flash ? "_iFlashPower" : "_iPower") : 0;
     }
 
     private long CardScore(InvItem card)
     {
         long score = CardRowPower(card.Entry, card.Attrs?.GetValueOrDefault(AttrCardStar) ?? 0,
             card.Attrs?.GetValueOrDefault(AttrCardTreasured) == 1);
-        if (data.Row("ItemConfig", card.Entry) is { } item)
+        if (_data.Row("ItemConfig", card.Entry) is { } item)
         {
-            cardUpgrades ??= data.Table("CardUpgradeConfig").Values
+            _cardUpgrades ??= _data.Table("CardUpgradeConfig").Values
                 .GroupBy(r => (GameData.Int(r, "_iLevel"), GameData.Int(r, "_iParts"), GameData.Int(r, "_iQuality")))
                 .ToDictionary(g => g.Key, g => g.First());
-            if (cardUpgrades.TryGetValue((card.Attrs?.GetValueOrDefault(AttrCardLevel) ?? 0, GameData.Int(item, "_iCardPart"),
+            if (_cardUpgrades.TryGetValue((card.Attrs?.GetValueOrDefault(AttrCardLevel) ?? 0, GameData.Int(item, "_iCardPart"),
                 GameData.Int(item, "_iQuality")), out var upgrade)) score += GameData.Int(upgrade, "_iPower");
         }
         return score;
@@ -272,9 +272,9 @@ public sealed class PowerService : IGameTicker
     private long TotemScore(GameSession s)
     {
         if (s.Totems == null) return 0;
-        long score = totems.CurrentPlanPower(s, s.Totems).NormalPower;
-        int level = totems.Level(s.Totems.TotemTotalExp);
-        if (level > 0) score += data.Table("TotemLvConfig").Values.Where(r => GameData.Int(r, "_iLv") == level)
+        long score = _totems.CurrentPlanPower(s, s.Totems).NormalPower;
+        int level = _totems.Level(s.Totems.TotemTotalExp);
+        if (level > 0) score += _data.Table("TotemLvConfig").Values.Where(r => GameData.Int(r, "_iLv") == level)
             .Select(r => GameData.Int(r, "_iPower")).FirstOrDefault();
         return score;
     }
@@ -355,7 +355,7 @@ public sealed class PowerService : IGameTicker
             MaxHistoryPower = history.Clone(), PowerPackage = package.Clone(),
         });
         await s.SendGameAsync(PackageNtf, new PlayerPowerPackageNtf { PowerPackage = package.Clone() });
-        await character.SyncBaseInfoAsync(s);
+        await _character.SyncBaseInfoAsync(s);
         await SaveAsync(s, snapshot);
     }
 
@@ -387,15 +387,15 @@ public sealed class PowerService : IGameTicker
             && saved.HistoryNormal == record.HistoryNormal && saved.HistorySeason == record.HistorySeason) return;
         var next = JsonSerializer.Deserialize<EmblemService.EmblemState>(JsonSerializer.SerializeToUtf8Bytes(s.Emblems))!;
         next.Power = record;
-        var transaction = roles.NewTransaction();
+        var transaction = _roles.NewTransaction();
         transaction.RoleBlob(s.Role!.Id, "emblems", JsonSerializer.SerializeToUtf8Bytes(next));
         var echoes = s.Emblems;
-        await roles.CommitAsync(transaction, "power/record", _ => echoes.Power = record);
+        await _roles.CommitAsync(transaction, "power/record", _ => echoes.Power = record);
     }
 
     private void Queue(GameSession s)
     {
-        if (Live(s)) dirty.Add(s);
+        if (Live(s)) _dirty.Add(s);
     }
 
     /// <summary>
@@ -405,22 +405,22 @@ public sealed class PowerService : IGameTicker
     /// </summary>
     public void Tick(GameTime time)
     {
-        if (time.Now - lastProbe < ProbeEvery) return;
-        lastProbe = time.Now;
-        var all = sessions.All();
-        var probe = new HashSet<GameSession>(dirty);
-        dirty.Clear();
+        if (time.Now - _lastProbe < ProbeEvery) return;
+        _lastProbe = time.Now;
+        var all = _sessions.All();
+        var probe = new HashSet<GameSession>(_dirty);
+        _dirty.Clear();
         if (all.Count > 0)
         {
             int slice = (all.Count + SweepSlices - 1) / SweepSlices;
-            for (int i = 0; i < slice; i++) probe.Add(all[(sweepIndex + i) % all.Count]);
-            sweepIndex = (sweepIndex + slice) % all.Count;
+            for (int i = 0; i < slice; i++) probe.Add(all[(_sweepIndex + i) % all.Count]);
+            _sweepIndex = (_sweepIndex + slice) % all.Count;
         }
         long now = MonsterService.NowMs;
         foreach (var s in probe)
         {
-            if (!Live(s) || queued.Contains(s)) continue;
-            if (s.Handoff != null || now - s.PowerPublishedMs < Throttle) { dirty.Add(s); continue; }
+            if (!Live(s) || _queued.Contains(s)) continue;
+            if (s.Handoff != null || now - s.PowerPublishedMs < Throttle) { _dirty.Add(s); continue; }
             try
             {
                 var (total, package) = Compute(s);
@@ -429,17 +429,17 @@ public sealed class PowerService : IGameTicker
             catch (Exception e) when (e is InvalidOperationException or KeyNotFoundException)
             {
                 // A role between loads (owners not yet attached) is probed again by the next sweep.
-                log.LogDebug(e, "Power probe of {Role} skipped", s.Role!.Id);
+                _log.LogDebug(e, "Power probe of {Role} skipped", s.Role!.Id);
                 continue;
             }
-            queued.Add(s);
-            loop.PostOwned(s, async () =>
+            _queued.Add(s);
+            _loop.PostOwned(s, async () =>
             {
-                queued.Remove(s);
+                _queued.Remove(s);
                 if (!Live(s)) return;
                 using var gate = await CharacterService.Lock(s);
                 if (Live(s)) await PublishAsync(s);
-            }, "power refresh", discarded: () => queued.Remove(s));
+            }, "power refresh", discarded: () => _queued.Remove(s));
         }
     }
 
@@ -451,6 +451,6 @@ public sealed class PowerService : IGameTicker
             + $"points {Unit(package.LevelUpAddPointScore)}, skills {Unit(package.SkillAddPointScore)}, title {Unit(package.TitleScore)}, "
             + $"rank {Unit(package.EquipRankScore)}, refine {Unit(package.EquipRefineScore)}, strengthen {Unit(package.EquipStrengthenScore)}, "
             + $"cards {Unit(package.CardFillInEquipScore)}, totem {Unit(package.TotemScore)}, echo {Unit(package.EmblemScore)}, pet {PetPower(s)}");
-        log.LogInformation("{Name} power {Total}", s.Role!.Name, Total(total));
+        _log.LogInformation("{Name} power {Total}", s.Role!.Name, Total(total));
     }
 }

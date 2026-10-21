@@ -24,7 +24,7 @@ public sealed partial class AdventureGroupService
         if (use.Count != 1) return ErrorCodes.Parameter;
         if (Own(s) is not { } g || !Normal(g)) return ErrNotInGroup;
         var cards = use.Effects.Select(e => e.Length > 1 ? (int)e[1] : 0).Distinct().ToList();
-        if (cards.Any(card => data.Row("AdventureGroupCardConfig", card) == null)) return ErrorCodes.ItemNoConfig;
+        if (cards.Any(card => _data.Row("AdventureGroupCardConfig", card) == null)) return ErrorCodes.ItemNoConfig;
         if (cards.All(card => CardUnlocked(g, card))) return ErrCardUnlocked;
         var backgrounds = g.AvailableBackgrounds.ToList();
         var events = g.Events.ToList();
@@ -35,8 +35,8 @@ public sealed partial class AdventureGroupService
         bool done = false;
         try
         {
-            done = await character.CommitSharedItemActionAsync(use, "item-action/advguild-background",
-                tx => store.EnlistSave(g, tx), null);
+            done = await _character.CommitSharedItemActionAsync(use, "item-action/advguild-background",
+                tx => _store.EnlistSave(g, tx), null);
         }
         finally
         {

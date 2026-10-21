@@ -28,6 +28,8 @@ public sealed class MicroGateServer(IOptions<ServerOptions> options, GateCrypto 
 
     protected override bool IsSignedIn(PhonestChannel channel) => (channel.Session as MicroSession)?.Account != null;
 
+    private long _nextSessionId;
+
     protected override ValueTask OnDisconnectedAsync(PhonestChannel channel)
     {
         if (channel.Session is MicroSession session) sessions.Remove(session);
@@ -37,7 +39,8 @@ public sealed class MicroGateServer(IOptions<ServerOptions> options, GateCrypto 
     protected override async ValueTask OnFrameAsync(PhonestChannel channel, ushort index, ReadOnlyMemory<byte> body)
     {
         if (loop != null && loop.Phase != Game.GameLoopPhase.Accepting) throw new OperationCanceledException("Micro gate is quiescing.");
-        var session = channel.Session as MicroSession ?? (MicroSession)(channel.Session = new MicroSession(channel));
+        var session = channel.Session as MicroSession
+            ?? (MicroSession)(channel.Session = new MicroSession(channel, Interlocked.Increment(ref _nextSessionId)));
         switch (index)
         {
             case RequestEncryptToken:
@@ -73,18 +76,18 @@ public sealed class MicroGateServer(IOptions<ServerOptions> options, GateCrypto 
 }
 
 /// <summary>Per-connection state on the micro gate.</summary>
-public sealed class MicroSession(PhonestChannel channel)
+public sealed class MicroSession(PhonestChannel channel, long id)
 {
     public PhonestChannel Channel { get; } = channel;
 
-    private static long s_nextId;
-
-    /// <summary>Process-unique id: an unverified session's own reservation key.</summary>
-    public long Id { get; } = Interlocked.Increment(ref s_nextId);
+    /// <summary>Unique on its gate: an unverified session's own reservation key.</summary>
+    public long Id { get; } = id;
 
     public long HandshakeToken { get; set; }
 
-    /// <summary>Account bound by LoginService.verifySdk.</summary>
     /// <summary>The verified account; set only by <see cref="MicroSessions.SignIn"/> (tests may set it).</summary>
     public string? Account { get; internal set; }
+
+    /// <summary>A call was refused before sign-in (MicroServiceRouter); only the first refusal is logged.</summary>
+    internal bool RefusalLogged { get; set; }
 }

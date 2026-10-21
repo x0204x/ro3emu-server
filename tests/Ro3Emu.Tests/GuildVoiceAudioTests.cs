@@ -14,32 +14,32 @@ namespace Ro3Emu.Tests;
 /// </summary>
 public sealed class GuildVoiceAudioTests : IAsyncLifetime
 {
-    private readonly string dir = Path.Combine(Path.GetTempPath(), "ro3emu-guildaudio-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ro3emu-guildaudio-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(8);
-    private WebApplication app = null!;
-    private string http = "";
-    private int voicePort;
+    private WebApplication _app = null!;
+    private string _http = "";
+    private int _voicePort;
 
     public async Task InitializeAsync()
     {
         var (web, micro, game) = TestPorts.FreePorts();
-        voicePort = TestPorts.FreePort();
-        app = ServerHost.Create([], o =>
+        _voicePort = TestPorts.FreePort();
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _dir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game;
-            o.Voice.Port = voicePort;
+            o.Voice.Port = _voicePort;
         });
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{web}";
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{web}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
-        using var db = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(dir, "ro3emu.db")}");
+        await _app.StopAsync(); await _app.DisposeAsync();
+        using var db = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(_dir, "ro3emu.db")}");
         Microsoft.Data.Sqlite.SqliteConnection.ClearPool(db);
-        try { Directory.Delete(dir, true); } catch (IOException) { }
+        try { Directory.Delete(_dir, true); } catch (IOException) { }
     }
 
     private static string RepoRoot()
@@ -51,7 +51,7 @@ public sealed class GuildVoiceAudioTests : IAsyncLifetime
 
     private async Task<(BotClient Bot, long Id)> InWorld(string name)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         long id = (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id;
         await bot.EnterWorldAsync(id);
@@ -69,7 +69,7 @@ public sealed class GuildVoiceAudioTests : IAsyncLifetime
     private async Task Gm(string name, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={name.ToLowerInvariant()}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={name.ToLowerInvariant()}", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     private async Task<(BotClient Alice, long AliceId, BotClient Bob, long BobId, long Guild)> GuildOfTwo()
@@ -86,7 +86,7 @@ public sealed class GuildVoiceAudioTests : IAsyncLifetime
             long guild = GuildFullInfoNtf.Parser.ParseFrom((await full.WaitAsync(Wait)).Body).Guid;
             Assert.Equal(0, (await Ask(alice, GuildService.Edit, new GuildEditReq { Tp = (GuildEditReq.Types.EditType)6, AutoAcceptApply = true }, GuildEditResp.Parser)).Result);
             using var log = new CancellationTokenSource(Wait);
-            await BotGuildVoice.JoinGuildAsync(bob, http, "bob", guild, _ => { }, log.Token);
+            await BotGuildVoice.JoinGuildAsync(bob, _http, "bob", guild, _ => { }, log.Token);
             return (alice, aliceId, bob, bobId, guild);
         }
     }
@@ -98,8 +98,8 @@ public sealed class GuildVoiceAudioTests : IAsyncLifetime
     private async Task<VoiceTestClient> Relay(BotClient bot)
     {
         var ticket = await BotVoiceTicket.RequestAsync(bot, Wait);
-        Assert.Equal(voicePort, ticket.Port);
-        var client = new VoiceTestClient(voicePort) { Tag = ticket.RoleId.ToString(System.Globalization.CultureInfo.InvariantCulture) };
+        Assert.Equal(_voicePort, ticket.Port);
+        var client = new VoiceTestClient(_voicePort) { Tag = ticket.RoleId.ToString(System.Globalization.CultureInfo.InvariantCulture) };
         await client.ConnectAsync();
         await client.AuthAsync(ticket.RoleId, ticket.Token, ticket.Secret);
         await client.WaitTypeAsync(VoiceDown.AuthOk, Wait);

@@ -12,21 +12,21 @@ namespace Ro3Emu.Tests;
 /// <summary>5010/5018 and 335xx over real free-port gates, with persisted inventory/profession/To-Do verification.</summary>
 public sealed class LifeJobTests : IAsyncLifetime
 {
-    private readonly string dir = Path.Combine(Path.GetTempPath(), "ro3emu-life-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ro3emu-life-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "";
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(12);
 
     public async Task InitializeAsync()
     {
         var (h, m, g) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o => { o.DataDir = dir; o.GameDataDir = Path.Combine(RepoRoot(), "data"); o.HttpPort = h; o.MicroGatePort = m; o.GameGatePort = g; });
-        await app.StartAsync(); http = $"http://127.0.0.1:{h}";
+        _app = ServerHost.Create([], o => { o.DataDir = _dir; o.GameDataDir = Path.Combine(RepoRoot(), "data"); o.HttpPort = h; o.MicroGatePort = m; o.GameGatePort = g; });
+        await _app.StartAsync(); _http = $"http://127.0.0.1:{h}";
     }
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync(); Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dir, true); } catch (IOException) { }
+        await _app.StopAsync(); await _app.DisposeAsync(); Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        try { Directory.Delete(_dir, true); } catch (IOException) { }
     }
     private static string RepoRoot()
     {
@@ -36,7 +36,7 @@ public sealed class LifeJobTests : IAsyncLifetime
     }
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var b = new BotClient(http, File.ReadAllText(Path.Combine(dir, "gate_rsa_public.pem")));
+        var b = new BotClient(_http, File.ReadAllText(Path.Combine(_dir, "gate_rsa_public.pem")));
         await b.LoginAsync(name.ToLowerInvariant(), "pw"); await b.EnterGateAsync();
         long id = create ? (await b.CreateRoleAsync(name)).RoleBaseInfo.Id : b.Roles.Single().Id;
         await b.EnterWorldAsync(id); return b;
@@ -48,10 +48,10 @@ public sealed class LifeJobTests : IAsyncLifetime
     }
     private async Task Gm(string account, string line)
     {
-        using var c = new HttpClient(); var r = await c.PostAsync($"{http}/ro3emu/gm?account={account}", new StringContent(line)); r.EnsureSuccessStatusCode();
+        using var c = new HttpClient(); var r = await c.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(line)); r.EnsureSuccessStatusCode();
     }
-    private Task<T> OnLoop<T>(string account, Func<GameSession, T> fn) => app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
-        Task.FromResult(fn(app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == account))));
+    private Task<T> OnLoop<T>(string account, Func<GameSession, T> fn) => _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+        Task.FromResult(fn(_app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == account))));
     private static async Task<int> Switch(BotClient b, int job, int slot)
     {
         await b.SendGameAsync(LifeJobService.SwitchLife, new SwitchLifeJobReq { NewLifejobId = (LifeJobType)job, OpJobType = slot });
@@ -84,11 +84,10 @@ public sealed class LifeJobTests : IAsyncLifetime
     [ClientDataFact]
     public async Task LifeRequestsAtRoleScreenCannotMutatePreviousCharacter()
     {
-        await using var b = new BotClient(http, File.ReadAllText(Path.Combine(dir, "gate_rsa_public.pem")));
+        await using var b = new BotClient(_http, File.ReadAllText(Path.Combine(_dir, "gate_rsa_public.pem")));
         await b.LoginAsync("alice", "pw"); await b.EnterGateAsync();
-        Assert.Equal(ErrorCodes.FeatureUnavailable, await Switch(b, 1, 1));
-        await b.SendGameAsync(LifeJobService.HealthAll, new GetHealthCostAllReq());
-        Assert.Equal(ErrorCodes.FeatureUnavailable, (await Next(b, LifeJobService.HealthNotify, GetHealthCostNtf.Parser)).Result);
+        await StageGate.AssertUnansweredAsync(b, LifeJobService.SwitchLife, new SwitchLifeJobReq { NewLifejobId = (LifeJobType)1, OpJobType = 1 });
+        await StageGate.AssertUnansweredAsync(b, LifeJobService.HealthAll, new GetHealthCostAllReq(), LifeJobService.HealthNotify);
         long id = (await b.CreateRoleAsync("Alice")).RoleBaseInfo.Id;
         await b.EnterWorldAsync(id);
         Assert.NotEqual(0, await Switch(b, 1, 1)); // no certificate
@@ -97,18 +96,14 @@ public sealed class LifeJobTests : IAsyncLifetime
         await Gm("alice", "!item 1291002 1");
         await Gm("alice", "!item 1001801 1");
         var consumables = await OnLoop("alice", s => s.Items.Where(i => i.Entry is 1291002 or 1001801).Select(i => i.Guid).ToArray());
-        var roles = app.Services.GetRequiredService<RoleStore>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
         byte[] before = roles.LoadLifeJob(id)!;
         await b.SwitchRoleAsync();
-        Assert.Equal(ErrorCodes.FeatureUnavailable, await Switch(b, 5, 2));
-        await b.SendGameAsync(LifeJobService.StudyRecipe, new StudyRecipeReq { FormulaID = 20001 });
-        Assert.Equal(ErrorCodes.FeatureUnavailable, (await Next(b, LifeJobService.StudyRecipe, StudyRecipeResp.Parser)).Result);
+        await StageGate.AssertUnansweredAsync(b, LifeJobService.SwitchLife, new SwitchLifeJobReq { NewLifejobId = (LifeJobType)5, OpJobType = 2 });
+        await StageGate.AssertUnansweredAsync(b, LifeJobService.StudyRecipe, new StudyRecipeReq { FormulaID = 20001 });
         foreach (long guid in consumables)
-        {
-            await b.SendGameAsync(CharacterService.ItemUse, new ItemUseReq { ItemGuid = guid, ItemCount = 1 });
-            Assert.Equal(ErrorCodes.FeatureUnavailable, (await Next(b, CharacterService.ItemUse, ItemUseResp.Parser)).Result);
-        }
-        var savedItems = app.Services.GetRequiredService<ItemStore>().Load(id).Where(i => consumables.Contains(i.Guid)).ToArray();
+            await StageGate.AssertUnansweredAsync(b, CharacterService.ItemUse, new ItemUseReq { ItemGuid = guid, ItemCount = 1 });
+        var savedItems = _app.Services.GetRequiredService<ItemStore>().Load(id).Where(i => consumables.Contains(i.Guid)).ToArray();
         Assert.Equal(2, savedItems.Length); Assert.All(savedItems, i => Assert.Equal(1, i.Stack));
         Assert.Equal(before, roles.LoadLifeJob(id));
         await b.EnterWorldAsync(id);
@@ -124,7 +119,7 @@ public sealed class LifeJobTests : IAsyncLifetime
         Assert.True(life.SyncAllMark); Assert.Equal(1, life.Version);
         Assert.All(life.ActiveLifejob.Values, v => Assert.True(v.Del));
         // Every profession has a level-0 row with its title info: the Learn tip reads LifeJobTitleInfo[jobId] unguarded.
-        Assert.Equal(app.Services.GetRequiredService<Ro3Emu.Server.Data.GameData>().Table("LifeJobConfig").Count, life.LifeJobInfoMap.Count);
+        Assert.Equal(_app.Services.GetRequiredService<Ro3Emu.Server.Data.GameData>().Table("LifeJobConfig").Count, life.LifeJobInfoMap.Count);
         Assert.All(life.LifeJobInfoMap.Values, v => { Assert.Equal(0, v.All.JobLevel); Assert.NotNull(v.All.TitleInfo); });
         var energy = await Next(b, LifeJobService.RestrictSync, DBRestrictInfoIncrement.Parser);
         Assert.Equal(500, energy.RestrictCount[1004].All.Count); Assert.Equal(1000, energy.RestrictCount[1004].All.LimitCount);
@@ -164,7 +159,7 @@ public sealed class LifeJobTests : IAsyncLifetime
         var job = life.LifeJobInfoMap[2].All;
         Assert.True(job.BuildInfo.RecipeList[20001]); Assert.NotNull(job.TitleInfo); Assert.NotNull(job.GatherInfo);
         Assert.Equal(149, job.JobExp);
-        var persisted = DBRestrictInfo.Parser.ParseFrom(app.Services.GetRequiredService<RoleStore>().LoadLifeRestrict(role)!);
+        var persisted = DBRestrictInfo.Parser.ParseFrom(_app.Services.GetRequiredService<RoleStore>().LoadLifeRestrict(role)!);
         Assert.Equal(480, persisted.RestrictCount[1004].Count);
     }
 
@@ -280,10 +275,10 @@ public sealed class LifeJobTests : IAsyncLifetime
         Assert.Equal(1, await OnLoop("alice", s => s.LifeJob!.LifeJobInfoMap[1].JobLevel));
         Assert.True(await OnLoop("alice", s => s.LifeJob!.LifeJobInfoMap[1].GatherInfo.ItemDetails.ContainsKey(100100)));
         Assert.Empty(await OnLoop("alice", s => s.LifeJob!.LifeJobInfoMap[1].BuildInfo.RecipeList));
-        Assert.True(await OnLoop("alice", s => app.Services.GetRequiredService<FunctionService>().ConditionMet(s, 7000079)));
+        Assert.True(await OnLoop("alice", s => _app.Services.GetRequiredService<FunctionService>().ConditionMet(s, 7000079)));
         Assert.NotEqual(0, await Switch(b, 5, 1));
         await Gm("alice", "!item 1291000 1"); Assert.Equal(0, await Switch(b, 5, 1));
-        Assert.False(await OnLoop("alice", s => app.Services.GetRequiredService<FunctionService>().ConditionMet(s, 7000079)));
+        Assert.False(await OnLoop("alice", s => _app.Services.GetRequiredService<FunctionService>().ConditionMet(s, 7000079)));
         Assert.Equal(1, await OnLoop("alice", s => s.LifeJob!.LifeJobInfoMap[1].JobLevel));
     }
 
@@ -308,13 +303,13 @@ public sealed class LifeJobTests : IAsyncLifetime
             Assert.Equal(0, (await Next(b, CharacterService.ShortcutBarUse, ShortcutBarUseRes.Parser)).Result);
             Assert.DoesNotContain(b.Inbox.Snapshot().Skip(start), e => e.IsGame(CharacterService.ItemUse));
             Assert.DoesNotContain(await OnLoop("alice", s => s.Items.Select(i => i.Guid).ToArray()), id => id == guid);
-            Assert.DoesNotContain(app.Services.GetRequiredService<ItemStore>().Load(role), i => i.Guid == guid);
+            Assert.DoesNotContain(_app.Services.GetRequiredService<ItemStore>().Load(role), i => i.Guid == guid);
             if (entry == 1001801)
             {
                 var cd = Assert.Single((await Next(b, CharacterService.ItemsCdNotify, ItemsCDNotify.Parser)).Items);
                 Assert.Equal(entry, cd.ItemId); Assert.True(cd.ItemCd > 0); itemCd = cd.ItemCd;
                 Assert.Equal(1, await OnLoop("alice", s => s.LifeJob!.MagicFoodTimes[entry]));
-                var saved = DBItemsInfo.Parser.ParseFrom(app.Services.GetRequiredService<RoleStore>().LoadBagState(role)!);
+                var saved = DBItemsInfo.Parser.ParseFrom(_app.Services.GetRequiredService<RoleStore>().LoadBagState(role)!);
                 Assert.Equal(itemCd, saved.ItemCds.Data[entry]);
             }
             else
@@ -331,7 +326,7 @@ public sealed class LifeJobTests : IAsyncLifetime
         if (entry == 1001801)
         {
             Assert.Equal(1, await OnLoop("alice", s => s.LifeJob!.MagicFoodTimes[entry]));
-            Assert.Equal(itemCd, DBItemsInfo.Parser.ParseFrom(app.Services.GetRequiredService<RoleStore>().LoadBagState(role)!).ItemCds.Data[entry]);
+            Assert.Equal(itemCd, DBItemsInfo.Parser.ParseFrom(_app.Services.GetRequiredService<RoleStore>().LoadBagState(role)!).ItemCds.Data[entry]);
         }
         else Assert.Equal(1500, await OnLoop("alice", s => s.Restrictions!.RestrictCount[1004].Count));
     }
@@ -344,28 +339,28 @@ public sealed class LifeJobTests : IAsyncLifetime
         await using var b = await InWorld("Alice");
         await Gm("alice", "!lvl 34"); await Gm("alice", $"!item {entry} 1");
         long role = (long)b.Self!.Uuid;
-        var roles = app.Services.GetRequiredService<RoleStore>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
         long guid = await OnLoop("alice", s => s.Items.Single(i => i.Entry == entry).Guid);
         var before = await OnLoop("alice", s => (Life: s.LifeJob!.ToByteArray(), Restrict: s.Restrictions!.ToByteArray(), Bag: s.BagState.Info.ToByteArray()));
         var savedBag = roles.LoadBagState(role);
-        FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(),
+        FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(),
             "CREATE TRIGGER reject_item_cooldown BEFORE UPDATE OF bag_state ON role BEGIN SELECT RAISE(ABORT,'cooldown rollback test'); END");
-        await Assert.ThrowsAsync<Microsoft.Data.Sqlite.SqliteException>(() => app.Services.GetRequiredService<GameLoop>().InvokeAsync(async () =>
+        await Assert.ThrowsAsync<Microsoft.Data.Sqlite.SqliteException>(() => _app.Services.GetRequiredService<GameLoop>().InvokeAsync(async () =>
         {
-            var s = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
-            await app.Services.GetRequiredService<CharacterService>().UseItemAsync(s, new ItemUseReq { ItemGuid = guid, ItemCount = 1 });
+            var s = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
+            await _app.Services.GetRequiredService<CharacterService>().UseItemAsync(s, new ItemUseReq { ItemGuid = guid, ItemCount = 1 });
         }));
         var after = await OnLoop("alice", s => (Life: s.LifeJob!.ToByteArray(), Restrict: s.Restrictions!.ToByteArray(), Bag: s.BagState.Info.ToByteArray()));
         Assert.Equal(before.Life, after.Life); Assert.Equal(before.Restrict, after.Restrict); Assert.Equal(before.Bag, after.Bag);
         Assert.Equal(1, await OnLoop("alice", s => s.Items.Single(i => i.Guid == guid).Stack));
         Assert.Equal(0, await OnLoop("alice", s => s.ItemCds.GetValueOrDefault(entry)));
-        Assert.Equal(1, app.Services.GetRequiredService<ItemStore>().Load(role).Single(i => i.Guid == guid).Stack);
+        Assert.Equal(1, _app.Services.GetRequiredService<ItemStore>().Load(role).Single(i => i.Guid == guid).Stack);
         Assert.Equal(before.Life, roles.LoadLifeJob(role)); Assert.Equal(before.Restrict, roles.LoadLifeRestrict(role));
         Assert.Equal(savedBag, roles.LoadBagState(role));
-        FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(), "DROP TRIGGER reject_item_cooldown");
+        FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(), "DROP TRIGGER reject_item_cooldown");
         await b.SendGameAsync(CharacterService.ItemUse, new ItemUseReq { ItemGuid = guid, ItemCount = 1 });
         Assert.Equal(0, (await Next(b, CharacterService.ItemUse, ItemUseResp.Parser)).Result);
-        Assert.DoesNotContain(app.Services.GetRequiredService<ItemStore>().Load(role), i => i.Guid == guid);
+        Assert.DoesNotContain(_app.Services.GetRequiredService<ItemStore>().Load(role), i => i.Guid == guid);
     }
 
     [ClientDataTheory]
@@ -377,11 +372,11 @@ public sealed class LifeJobTests : IAsyncLifetime
         await Gm("alice", "!lvl 34"); await Gm("alice", "!item 1001801 2");
         long role = (long)b.Self!.Uuid;
         long guid = await OnLoop("alice", s => s.Items.Single(i => i.Entry == 1001801).Guid);
-        var character = app.Services.GetRequiredService<CharacterService>();
-        var loop = app.Services.GetRequiredService<GameLoop>();
+        var character = _app.Services.GetRequiredService<CharacterService>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
         var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => loop.InvokeAsync(async () =>
         {
-            var s = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
+            var s = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
             var itemUseWork = loop.CurrentWork ?? throw new InvalidOperationException("Item-use test operation was not admitted.");
             int calls = 0;
             void FailAfterCommit(GameSession changed)
@@ -399,25 +394,25 @@ public sealed class LifeJobTests : IAsyncLifetime
             Stack: s.Items.Single(i => i.Guid == guid).Stack, Food: s.LifeJob!.MagicFoodTimes[1001801]));
         Assert.True(state.Cd > 0); Assert.Equal(state.Cd, state.BagCd);
         Assert.Equal(1, state.Stack); Assert.Equal(1, state.Food);
-        var roles = app.Services.GetRequiredService<RoleStore>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
         Assert.Equal(state.Cd, DBItemsInfo.Parser.ParseFrom(roles.LoadBagState(role)!).ItemCds.Data[1001801]);
         Assert.Equal(state.Food, DBLifeJobInfo.Parser.ParseFrom(roles.LoadLifeJob(role)!).MagicFoodTimes[1001801]);
-        Assert.Equal(state.Stack, app.Services.GetRequiredService<ItemStore>().Load(role).Single(i => i.Guid == guid).Stack);
+        Assert.Equal(state.Stack, _app.Services.GetRequiredService<ItemStore>().Load(role).Single(i => i.Guid == guid).Stack);
     }
 
     [ClientDataFact]
     public async Task FailedLifeCommitRollsBackItemsVigorExperienceAndPointCounter()
     {
         await using var b = await InWorld("Alice"); Assert.Equal(0, await Learn(b, "alice", 1, 1));
-        var roles = app.Services.GetRequiredService<RoleStore>();
-        FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(),
+        var roles = _app.Services.GetRequiredService<RoleStore>();
+        FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(),
             "CREATE TRIGGER reject_life BEFORE UPDATE OF lifejob ON role BEGIN SELECT RAISE(ABORT,'life rollback test'); END");
         var before = await OnLoop("alice", s => (s.LifeJob!.ToByteArray(), s.Items.Select(i => (i.Guid, i.Entry, i.Stack)).ToArray()));
-        await Assert.ThrowsAsync<Microsoft.Data.Sqlite.SqliteException>(() => app.Services.GetRequiredService<GameLoop>().InvokeAsync(async () =>
+        await Assert.ThrowsAsync<Microsoft.Data.Sqlite.SqliteException>(() => _app.Services.GetRequiredService<GameLoop>().InvokeAsync(async () =>
         {
-            var s = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
+            var s = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
             using var gate = await CharacterService.Lock(s);
-            await app.Services.GetRequiredService<LifeJobService>().CompleteGatherAsync(s, 100100, sceneEntry: 10522, pointId: 312);
+            await _app.Services.GetRequiredService<LifeJobService>().CompleteGatherAsync(s, 100100, sceneEntry: 10522, pointId: 312);
         }));
         var after = await OnLoop("alice", s => (s.LifeJob!.ToByteArray(), s.Items.Select(i => (i.Guid, i.Entry, i.Stack)).ToArray(), s.Restrictions!.RestrictCount[1004].Count));
         Assert.Equal(before.Item1, after.Item1); Assert.Equal(before.Item2, after.Item2); Assert.Equal(500, after.Item3);

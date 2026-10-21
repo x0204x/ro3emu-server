@@ -17,17 +17,17 @@ namespace Ro3Emu.Server.Game;
 /// </summary>
 public sealed partial class WardrobeService
 {
-    private FrozenDictionary<long, int>? mountAppearances;
+    private FrozenDictionary<long, int>? _mountAppearances;
 
     /// <summary>MountsConfig ID to its listed (not disabled) type-6 appearance, by WardRobeConfig._iSystemID.</summary>
     internal int MountAppearance(long mountId)
     {
-        mountAppearances ??= data.Table("WardRobeConfig").Values
+        _mountAppearances ??= _data.Table("WardRobeConfig").Values
             .Where(r => GameData.Int(r, "_iType") == MountSlot && GameData.Int(r, "_iDisable") <= 0
                 && GameData.Int(r, "_iSystemID") > 0 && GameData.Int(r, "_iID") > 0)
             .GroupBy(r => GameData.Int(r, "_iSystemID"))
             .ToFrozenDictionary(g => g.Key, g => (int)g.Min(r => GameData.Int(r, "_iID")));
-        return mountAppearances.GetValueOrDefault(mountId);
+        return _mountAppearances.GetValueOrDefault(mountId);
     }
 
     /// <summary>The MountsConfig ID behind a listed (not disabled) type-6 look, by its _iSystemID; zero otherwise.</summary>
@@ -56,7 +56,7 @@ public sealed partial class WardrobeService
     /// <summary>Light (or extend) every owned mount's appearance in <paramref name="info"/>; true if it changed.</summary>
     private bool LightMounts(DBWardRobeInfo info, IEnumerable<DBMount> mounts)
     {
-        long now = clock.GetUtcNow().ToUnixTimeMilliseconds();
+        long now = _clock.GetUtcNow().ToUnixTimeMilliseconds();
         bool changed = false;
         foreach (var mount in mounts)
         {

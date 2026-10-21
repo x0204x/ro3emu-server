@@ -13,38 +13,38 @@ namespace Ro3Emu.Tests;
 public sealed class WardrobeTests : IAsyncLifetime
 {
     private const int MaleHair = 70000000, OtherMaleHair = 70000001, FemaleHair = 72000000, Head = 10030417;
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-wardrobe-" + Guid.NewGuid().ToString("N"));
-    private readonly ManualClock clock = new(DateTimeOffset.UtcNow);
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-wardrobe-" + Guid.NewGuid().ToString("N"));
+    private readonly ManualClock _clock = new(DateTimeOffset.UtcNow);
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);
-    private WebApplication app = null!;
-    private string http = "";
+    private WebApplication _app = null!;
+    private string _http = "";
 
     public async Task InitializeAsync()
     {
         var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir;
+            o.DataDir = _dataDir;
             o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = httpPort;
             o.MicroGatePort = microPort;
             o.GameGatePort = gamePort;
-        }, clock);
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{httpPort}";
+        }, _clock);
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{httpPort}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw");
         await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
@@ -62,7 +62,7 @@ public sealed class WardrobeTests : IAsyncLifetime
     private async Task Gm(string account, string line)
     {
         using var client = new HttpClient();
-        var response = await client.PostAsync($"{http}/ro3emu/gm?account={account}", new StringContent(line));
+        var response = await client.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(line));
         response.EnsureSuccessStatusCode();
     }
 
@@ -131,8 +131,8 @@ public sealed class WardrobeTests : IAsyncLifetime
         await Gm("alice", "!item 1242001 1");
         await Gm("alice", "!item 1242005 999");
         await Gm("alice", "!item 1242005 1");
-        var session = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
-        var character = app.Services.GetRequiredService<CharacterService>();
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
+        var character = _app.Services.GetRequiredService<CharacterService>();
         Assert.Equal(25, character.CountOf(session, 1243001));
         Assert.Equal(25, character.CountOf(session, 1243003));
         Assert.Equal(1000, character.CountOf(session, 1242001));
@@ -220,12 +220,12 @@ public sealed class WardrobeTests : IAsyncLifetime
     {
         await using var alice = await InWorld("Alice");
         await using var bob = await InWorld("Bob");
-        var session = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
-        var roles = app.Services.GetRequiredService<RoleStore>();
-        var wardrobe = app.Services.GetRequiredService<WardrobeService>();
-        var deadlines = app.Services.GetRequiredService<Deadlines>();
-        var loop = app.Services.GetRequiredService<GameLoop>();
-        var due = DateTimeOffset.FromUnixTimeMilliseconds(clock.GetUtcNow().ToUnixTimeMilliseconds() + 1250);
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
+        var roles = _app.Services.GetRequiredService<RoleStore>();
+        var wardrobe = _app.Services.GetRequiredService<WardrobeService>();
+        var deadlines = _app.Services.GetRequiredService<Deadlines>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
+        var due = DateTimeOffset.FromUnixTimeMilliseconds(_clock.GetUtcNow().ToUnixTimeMilliseconds() + 1250);
         await loop.InvokeAsync(async () =>
         {
             var info = session.Wardrobe!.Clone();
@@ -246,12 +246,12 @@ public sealed class WardrobeTests : IAsyncLifetime
             p => p.Uuid == alice.Self!.Uuid && p.NotifyType == EntityBase.Types.NotifyType.WardRobe &&
                  p.CurUseAppearances.TryGetValue(1, out var appearance) && appearance == Head);
 
-        await loop.InvokeAsync(() => { clock.Set(due.AddTicks(-1)); deadlines.Tick(default); return Task.CompletedTask; });
+        await loop.InvokeAsync(() => { _clock.Set(due.AddTicks(-1)); deadlines.Tick(default); return Task.CompletedTask; });
         await loop.InvokeAsync(() => wardrobe.ReconcileAsync(session)); // former polling oracle, before due
         Assert.True(session.Wardrobe!.AllLightUpAppearances.ContainsKey(Head));
         Assert.Equal(Head, session.Wardrobe.CurUseAppearances[1]);
 
-        await loop.InvokeAsync(() => { clock.Set(due.AddSeconds(7)); deadlines.Tick(default); return Task.CompletedTask; });
+        await loop.InvokeAsync(() => { _clock.Set(due.AddSeconds(7)); deadlines.Tick(default); return Task.CompletedTask; });
         await Next(alice, WardrobeService.WardrobeSync, DBWardRobeInfoIncrement.Parser,
             p => p.AllLightUpAppearances.TryGetValue(Head, out var appearance) && appearance.Del);
         await Next(bob, CharacterService.EntityBaseChange, EntityBase.Parser,
@@ -276,8 +276,8 @@ public sealed class WardrobeTests : IAsyncLifetime
 
     private sealed class ManualClock(DateTimeOffset initial) : TimeProvider
     {
-        private long ticks = initial.UtcTicks;
-        public void Set(DateTimeOffset value) => Interlocked.Exchange(ref ticks, value.UtcTicks);
-        public override DateTimeOffset GetUtcNow() => new(Interlocked.Read(ref ticks), TimeSpan.Zero);
+        private long _ticks = initial.UtcTicks;
+        public void Set(DateTimeOffset value) => Interlocked.Exchange(ref _ticks, value.UtcTicks);
+        public override DateTimeOffset GetUtcNow() => new(Interlocked.Read(ref _ticks), TimeSpan.Zero);
     }
 }

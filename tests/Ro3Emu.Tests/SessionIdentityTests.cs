@@ -74,7 +74,7 @@ public sealed class SessionIdentityTests
     public void AMicroConnectionThatChangesAccountStopsReceivingTheFirstOnesPushes()
     {
         var micro = new MicroSessions(NullLogger<MicroSessions>.Instance);
-        var session = new MicroSession(null!);
+        var session = new MicroSession(null!, 1);
         micro.SignIn(session, "alice");
         Assert.Same(session, micro.For("alice"));
         micro.SignIn(session, "bob");
@@ -87,8 +87,8 @@ public sealed class SessionIdentityTests
     public void ANewerMicroConnectionOfTheAccountTakesItsPushesAndTheOlderOneCannotDropIt()
     {
         var micro = new MicroSessions(NullLogger<MicroSessions>.Instance);
-        var older = new MicroSession(null!);
-        var newer = new MicroSession(null!);
+        var older = new MicroSession(null!, 1);
+        var newer = new MicroSession(null!, 2);
         micro.SignIn(older, "alice");
         micro.SignIn(newer, "alice");
         Assert.Same(newer, micro.For("alice"));

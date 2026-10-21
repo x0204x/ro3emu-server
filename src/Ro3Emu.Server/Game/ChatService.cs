@@ -18,26 +18,26 @@ namespace Ro3Emu.Server.Game;
 /// </summary>
 public sealed partial class ChatService
 {
-    private readonly GmCommands gm;
-    private readonly FeedbackService feedback;
-    private readonly GuildStore guilds;
-    private readonly FriendStore friends;
-    private readonly CharacterService character;
-    private readonly GameData data;
-    private readonly SessionRegistry sessions;
-    private readonly IOptions<ServerOptions> options;
-    private readonly ILogger<ChatService> log;
+    private readonly GmCommands _gm;
+    private readonly FeedbackService _feedback;
+    private readonly GuildStore _guilds;
+    private readonly FriendStore _friends;
+    private readonly CharacterService _character;
+    private readonly GameData _data;
+    private readonly SessionRegistry _sessions;
+    private readonly IOptions<ServerOptions> _options;
+    private readonly ILogger<ChatService> _log;
 
     public ChatService(GmCommands gm, FeedbackService feedback, GuildStore guilds, FriendStore friends, CharacterService character,
         GameData data, SessionRegistry sessions, IOptions<ServerOptions> options, ILogger<ChatService> log)
     {
-        this.gm = gm; this.feedback = feedback; this.guilds = guilds; this.friends = friends; this.character = character; this.data = data;
-        this.sessions = sessions; this.options = options; this.log = log;
+        this._gm = gm; this._feedback = feedback; this._guilds = guilds; this._friends = friends; this._character = character; this._data = data;
+        this._sessions = sessions; this._options = options; this._log = log;
         character.RegisterItemAction(SoundTransmissionAction, UseHornAsync, takesParam: true);
     }
 
     /// <summary>Bug reports: "/bug" lines here and the client hook's message (GameMessageHandler routes it through this).</summary>
-    public FeedbackService Feedback => feedback;
+    public FeedbackService Feedback => _feedback;
 
     /// <summary>Player chat commands ("/pass week"): the first word, any case, and the rest of the line. Never shown to others.</summary>
     public Dictionary<string, Func<GameSession, string, Task>> PlayerCommands { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -174,12 +174,12 @@ public sealed partial class ChatService
     {
         if (group.StartsWith("5_", StringComparison.Ordinal))
             return long.TryParse(group.AsSpan(2), out long groupId) && groupId > 0 && group == $"5_{groupId}"
-                && session.Role != null && friends.Group(groupId.ToString()) is { } chatGroup
+                && session.Role != null && _friends.Group(groupId.ToString()) is { } chatGroup
                 && chatGroup.Members.Any(m => m.Role == session.Role.Id);
         if (!GuildChannel(group)) return true;
         // Canonical spelling is required so leaving 2_<id> always removes the exact joined group.
         return long.TryParse(group.AsSpan(2), out long guildId) && guildId > 0
-            && group == $"2_{guildId}" && session.Role != null && guilds.ForRole(session.Role.Id)?.Id == guildId;
+            && group == $"2_{guildId}" && session.Role != null && _guilds.ForRole(session.Role.Id)?.Id == guildId;
     }
 
     public void GuildMembershipChanged(GameSession session, long formerGuildId) => Leave(session, $"2_{formerGuildId}");
@@ -261,7 +261,7 @@ public sealed partial class ChatService
 
             default:
                 // Join via IM (unused), voice messages, translation...: chat_result false (field absent = false).
-                log.LogDebug("chat cmd {Cmd} from {Name} refused", (uint)cmd, session.Role.Name);
+                _log.LogDebug("chat cmd {Cmd} from {Name} refused", (uint)cmd, session.Role.Name);
                 await DownRawAsync(session, (uint)cmd, 0, []);
                 break;
         }
@@ -288,7 +288,7 @@ public sealed partial class ChatService
         {
             // Bug report: acknowledged like a GM line and shown to nobody; the answer comes on the marquee.
             await DownAsync(sender, Cmd.SendText, new SendTextChatMessageResponse { ChatResult = true, Msg = message });
-            await feedback.SubmitAsync(sender, report, "chat");
+            await _feedback.SubmitAsync(sender, report, "chat");
             return;
         }
 
@@ -299,11 +299,11 @@ public sealed partial class ChatService
             return;
         }
 
-        if (gm.IsCommand(req.Content))
+        if (_gm.IsCommand(req.Content))
         {
             // GM command: acknowledge the send (the client waits for it) but show the line to nobody.
             await DownAsync(sender, Cmd.SendText, new SendTextChatMessageResponse { ChatResult = true, Msg = message });
-            await gm.RunAsync(sender, req.Content.Trim());
+            await _gm.RunAsync(sender, req.Content.Trim());
             return;
         }
 
@@ -340,7 +340,7 @@ public sealed partial class ChatService
             recipients = recipients.Where(p => GuildAllowed(p, req.ReceiveId)).ToList();
         }
         if (req.ChatType != ChatTypePrivate) Remember(message, sender);
-        log.LogInformation("Chat {Name} -> {Target} ({Count} recipient(s)): {Text}", sender.Role.Name, req.ReceiveId, recipients.Count, req.Content);
+        _log.LogInformation("Chat {Name} -> {Target} ({Count} recipient(s)): {Text}", sender.Role.Name, req.ReceiveId, recipients.Count, req.Content);
 
         await DownAsync(sender, Cmd.SendText, new SendTextChatMessageResponse { ChatResult = true, Msg = message });
         // Every recipient gets the push, the sender included: the send response alone does not add the line.

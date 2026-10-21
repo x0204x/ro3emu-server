@@ -32,42 +32,42 @@ public sealed class FirstHeartService : IGameTicker
     private sealed record Day(long Id, int Number, long[] Tasks);
     private sealed record TaskRow(long Id, long Type, long Point, long Award, long[] Target);
 
-    private readonly GameData data;
-    private readonly FunctionService functions;
-    private readonly SeasonService seasons;
-    private readonly ActivityClock activityClock;
-    private readonly AwardService awards;
-    private readonly TaskService tasks;
-    private readonly AchievementService achievements;
-    private readonly CharacterService character;
-    private readonly RoleStore roles;
-    private readonly SessionRegistry sessions;
-    private readonly GameLoop loop;
-    private readonly TimeProvider clock;
-    private readonly ILogger<FirstHeartService> log;
-    private readonly Day[] days;
-    private readonly Dictionary<long, TaskRow> taskRows = new();
-    private readonly HashSet<GameSession> dirty = new(), queued = new();
-    private TimeSpan lastTick;
-    private int sweepIndex;
+    private readonly GameData _data;
+    private readonly FunctionService _functions;
+    private readonly SeasonService _seasons;
+    private readonly ActivityClock _activityClock;
+    private readonly AwardService _awards;
+    private readonly TaskService _tasks;
+    private readonly AchievementService _achievements;
+    private readonly CharacterService _character;
+    private readonly RoleStore _roles;
+    private readonly SessionRegistry _sessions;
+    private readonly GameLoop _loop;
+    private readonly TimeProvider _clock;
+    private readonly ILogger<FirstHeartService> _log;
+    private readonly Day[] _days;
+    private readonly Dictionary<long, TaskRow> _taskRows = new();
+    private readonly HashSet<GameSession> _dirty = new(), _queued = new();
+    private TimeSpan _lastTick;
+    private int _sweepIndex;
 
-    private long Now => clock.GetUtcNow().ToUnixTimeSeconds();
+    private long Now => _clock.GetUtcNow().ToUnixTimeSeconds();
 
     public FirstHeartService(GameData data, CharacterService character, FunctionService functions, SeasonService seasons,
         ActivityClock activityClock, AwardService awards, TaskService tasks, AchievementService achievements, CardService cards,
         RoleStore roles, SessionRegistry sessions, GameLoop loop, GmCommands gm, TimeProvider clock, ILogger<FirstHeartService> log)
     {
-        this.data = data; this.character = character; this.functions = functions; this.seasons = seasons;
-        this.activityClock = activityClock; this.awards = awards; this.tasks = tasks; this.achievements = achievements;
-        this.roles = roles; this.sessions = sessions; this.loop = loop; this.clock = clock; this.log = log;
-        days = data.Table("FirstHeartGroupConfig").Values
+        this._data = data; this._character = character; this._functions = functions; this._seasons = seasons;
+        this._activityClock = activityClock; this._awards = awards; this._tasks = tasks; this._achievements = achievements;
+        this._roles = roles; this._sessions = sessions; this._loop = loop; this._clock = clock; this._log = log;
+        _days = data.Table("FirstHeartGroupConfig").Values
             .Where(r => GameData.Int(r, "_iActivityType") == Type && GameData.Int(r, "_iActivityID") == Activity)
             .Select(r => new Day(GameData.Int(r, "_iID"), (int)(Numbers(r, "_kStage").ElementAtOrDefault(1)), Numbers(r, "_kTasklist")))
             .Where(d => d.Number > 0).OrderBy(d => d.Number).ToArray();
         foreach (var r in data.Table("FirstHeartConfig").Values)
             if (r.TryGetProperty("_kProgressTarget", out var targets) && targets.ValueKind == JsonValueKind.Array
                 && targets.GetArrayLength() > 0 && targets[0].ValueKind == JsonValueKind.Array)
-                taskRows[GameData.Int(r, "_iID")] = new TaskRow(GameData.Int(r, "_iID"), GameData.Int(r, "_iType"),
+                _taskRows[GameData.Int(r, "_iID")] = new TaskRow(GameData.Int(r, "_iID"), GameData.Int(r, "_iType"),
                     GameData.Int(r, "_iPoint"), GameData.Int(r, "_iAward"),
                     targets[0].EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).ToArray());
         character.StateChanged.Add(MarkDirty);
@@ -80,35 +80,35 @@ public sealed class FirstHeartService : IGameTicker
         row.TryGetProperty(field, out var list) && list.ValueKind == JsonValueKind.Array
             ? list.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).ToArray() : [];
 
-    private int PlayBook(GameSession s) => (int)(s.SeasonState?.PlayBookId ?? seasons.PlayBook);
+    private int PlayBook(GameSession s) => (int)(s.SeasonState?.PlayBookId ?? _seasons.PlayBook);
 
     /// <summary>NewActivityConfig 114: its book, window and open condition (21000012: base level 30, 10 before the
     /// 20 Oct 2026 client), as for 5013.</summary>
     private bool Open(GameSession s)
     {
-        if (s.Role == null || s.Progress == null || data.Row("NewActivityConfig", Activity) is not { } row
-            || seasons.OpenContent.Closes(Activity)) return false;
+        if (s.Role == null || s.Progress == null || _data.Row("NewActivityConfig", Activity) is not { } row
+            || _seasons.OpenContent.Closes(Activity)) return false;
         int book = PlayBook(s);
         if (!row.TryGetProperty("_kMultiverseArray", out var books) || books.ValueKind != JsonValueKind.Array
             || !books.EnumerateArray().Any(b => GameData.Number(b) is 0 || GameData.Number(b) == book)) return false;
         long now = Now;
-        if (!activityClock.ResolveActivity(row, now, s.Role.CreateTime, book).Contains(now)) return false;
-        return seasons.OpenContent.ForcesActivity(Activity) || functions.ConditionMet(s, GameData.Int(row, "_kOpenCondition"));
+        if (!_activityClock.ResolveActivity(row, now, s.Role.CreateTime, book).Contains(now)) return false;
+        return _seasons.OpenContent.ForcesActivity(Activity) || _functions.ConditionMet(s, GameData.Int(row, "_kOpenCondition"));
     }
 
     /// <summary>Day number since the start: local days that begin at 05:00, the realm's daily reset (inferred).</summary>
     private int DayNumber(long start)
     {
         DateTime LocalDay(long seconds) =>
-            TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeSeconds(seconds), clock.LocalTimeZone).DateTime.AddHours(-5).Date;
+            TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeSeconds(seconds), _clock.LocalTimeZone).DateTime.AddHours(-5).Date;
         return (LocalDay(Now) - LocalDay(start)).Days + 1;
     }
 
     /// <summary>A target's (current, required): login days from the achievement count, the rest from task snapshots.</summary>
     private (long Value, long Required)? Progress(GameSession s, long[] target) => target switch
     {
-        [LoginDays, var n] => (achievements.LoginDays(s), n),
-        _ => tasks.SnapshotTarget(s, target),
+        [LoginDays, var n] => (_achievements.LoginDays(s), n),
+        _ => _tasks.SnapshotTarget(s, target),
     };
 
     /// <summary>The state with the start, day locks and running tasks' progress brought up to now (a pure read of the role).</summary>
@@ -123,14 +123,14 @@ public sealed class FirstHeartService : IGameTicker
         if (!open) return state; // a closed activity keeps its state as it was
         if (!state.ActivityData.TryGetValue(Type, out var cfg)) state.ActivityData[Type] = cfg = new FirstHeartTaskCfgData();
         int today = DayNumber(state.GetLvTime[Type]);
-        foreach (var day in days)
+        foreach (var day in _days)
         {
             bool unlocked = today >= day.Number;
             cfg.CfgData[day.Id] = unlocked ? Unlocked : Locked;
             if (!unlocked) continue;
             foreach (long id in day.Tasks)
             {
-                if (!taskRows.TryGetValue(id, out var row)) continue;
+                if (!_taskRows.TryGetValue(id, out var row)) continue;
                 if (!cfg.Tasks.TryGetValue(id, out var info)) cfg.Tasks[id] = info = new FirstHeartTaskInfo { TaskId = id };
                 if (info.Status != FirstHeartTaskState.None) continue;
                 var progress = Progress(s, row.Target);
@@ -139,7 +139,7 @@ public sealed class FirstHeartService : IGameTicker
                 if (progress is { Required: > 0 } done && done.Value >= done.Required) info.Status = FirstHeartTaskState.Accept;
             }
         }
-        cfg.IsAllTaskComplete = days.SelectMany(d => d.Tasks).Where(taskRows.ContainsKey)
+        cfg.IsAllTaskComplete = _days.SelectMany(d => d.Tasks).Where(_taskRows.ContainsKey)
             .All(id => cfg.Tasks.GetValueOrDefault(id)?.Status == FirstHeartTaskState.GetReward);
         return state;
     }
@@ -154,10 +154,10 @@ public sealed class FirstHeartService : IGameTicker
     /// <summary>After achievements (their login day is counted): bring the saved state up to now, save, 5049.</summary>
     public async Task LoginAsync(GameSession s)
     {
-        var bytes = roles.LoadFirstHeart(s.Role!.Id);
+        var bytes = _roles.LoadFirstHeart(s.Role!.Id);
         var saved = bytes is { Length: > 0 } ? DBFirstHeartTaskActivityData.Parser.ParseFrom(bytes) : new DBFirstHeartTaskActivityData();
         var next = Evaluate(s, saved.Clone());
-        if (!next.Equals(saved)) roles.SaveFirstHeart(s.Role.Id, next.ToByteArray());
+        if (!next.Equals(saved)) _roles.SaveFirstHeart(s.Role.Id, next.ToByteArray());
         s.FirstHeart = next;
         await SyncAsync(s);
     }
@@ -191,28 +191,28 @@ public sealed class FirstHeartService : IGameTicker
 
     private void MarkDirty(GameSession s)
     {
-        if (!loop.IsOnLoop) { loop.PostRuntime(() => { MarkDirty(s); return Task.CompletedTask; }); return; }
-        if (Ready(s)) dirty.Add(s);
+        if (!_loop.IsOnLoop) { _loop.PostRuntime(() => { MarkDirty(s); return Task.CompletedTask; }); return; }
+        if (Ready(s)) _dirty.Add(s);
     }
 
     /// <summary>Hook-marked roles every second, every role once per five seconds (a day opening, a login day counted).</summary>
     public void Tick(GameTime time)
     {
-        if (time.Now - lastTick < ProbeEvery) return;
-        lastTick = time.Now;
-        var all = sessions.All();
-        var probe = new HashSet<GameSession>(dirty);
-        dirty.Clear();
+        if (time.Now - _lastTick < ProbeEvery) return;
+        _lastTick = time.Now;
+        var all = _sessions.All();
+        var probe = new HashSet<GameSession>(_dirty);
+        _dirty.Clear();
         if (all.Count > 0)
         {
             int slice = (all.Count + SweepSlices - 1) / SweepSlices;
-            for (int i = 0; i < slice; i++) probe.Add(all[(sweepIndex + i) % all.Count]);
-            sweepIndex = (sweepIndex + slice) % all.Count;
+            for (int i = 0; i < slice; i++) probe.Add(all[(_sweepIndex + i) % all.Count]);
+            _sweepIndex = (_sweepIndex + slice) % all.Count;
         }
         foreach (var s in probe)
         {
-            if (!Ready(s) || queued.Contains(s)) continue;
-            if (s.Handoff != null) { dirty.Add(s); continue; }
+            if (!Ready(s) || _queued.Contains(s)) continue;
+            if (s.Handoff != null) { _dirty.Add(s); continue; }
             var current = s.FirstHeart!;
             if (current.ActivityData.GetValueOrDefault(Type)?.IsAllTaskComplete == true) continue;
             if (!Evaluate(s, current.Clone()).Equals(current)) PostRefresh(s);
@@ -221,15 +221,15 @@ public sealed class FirstHeartService : IGameTicker
 
     private void PostRefresh(GameSession s)
     {
-        if (!queued.Add(s)) return;
-        loop.PostOwned(s, async () =>
+        if (!_queued.Add(s)) return;
+        _loop.PostOwned(s, async () =>
         {
-            queued.Remove(s);
+            _queued.Remove(s);
             if (!Ready(s)) return;
             bool changed;
             using (await CharacterService.Lock(s)) changed = Ready(s) && Refresh(s);
             if (changed) await SyncAsync(s);
-        }, "firstheart refresh", discarded: () => queued.Remove(s));
+        }, "firstheart refresh", discarded: () => _queued.Remove(s));
     }
 
     /// <summary>Under the character lock: save the brought-up-to-date state when it changed.</summary>
@@ -237,7 +237,7 @@ public sealed class FirstHeartService : IGameTicker
     {
         var next = Evaluate(s, s.FirstHeart!.Clone());
         if (next.Equals(s.FirstHeart)) return false;
-        roles.SaveFirstHeart(s.Role!.Id, next.ToByteArray());
+        _roles.SaveFirstHeart(s.Role!.Id, next.ToByteArray());
         s.FirstHeart = next;
         return true;
     }
@@ -254,7 +254,7 @@ public sealed class FirstHeartService : IGameTicker
             if (result == 0)
             {
                 var info = cfg!.Tasks.GetValueOrDefault(req.TaskId);
-                result = !taskRows.TryGetValue(req.TaskId, out var row) || row.Type != req.Type ? ErrorCodes.Parameter
+                result = !_taskRows.TryGetValue(req.TaskId, out var row) || row.Type != req.Type ? ErrorCodes.Parameter
                     : info == null || !OpenDay(cfg, req.TaskId) ? ErrorCodes.TaskRequirements
                     : info.Status == FirstHeartTaskState.GetReward ? ErrorCodes.RewardClaimed
                     : info.Status != FirstHeartTaskState.Accept ? ErrorCodes.TaskRequirements
@@ -265,7 +265,7 @@ public sealed class FirstHeartService : IGameTicker
                     var claimed = next.ActivityData[Type];
                     claimed.Tasks[req.TaskId].Status = FirstHeartTaskState.GetReward;
                     claimed.Scores += row!.Point;
-                    claimed.IsAllTaskComplete = days.SelectMany(d => d.Tasks).Where(taskRows.ContainsKey)
+                    claimed.IsAllTaskComplete = _days.SelectMany(d => d.Tasks).Where(_taskRows.ContainsKey)
                         .All(id => claimed.Tasks.GetValueOrDefault(id)?.Status == FirstHeartTaskState.GetReward);
                     result = await CommitClaimAsync(s, next, row.Award, $"task/{req.TaskId}");
                 }
@@ -284,7 +284,7 @@ public sealed class FirstHeartService : IGameTicker
             result = Validate(s, req.Type, out var cfg);
             if (result == 0)
             {
-                var row = data.Row("FirstHeartScoreConfig", req.RewardId);
+                var row = _data.Row("FirstHeartScoreConfig", req.RewardId);
                 result = row is not { } r || GameData.Int(r, "_iActivityType") != req.Type ? ErrorCodes.Parameter
                     : cfg!.GetRewards.ContainsKey(req.RewardId) ? ErrorCodes.RewardClaimed
                     : cfg.Scores < GameData.Int(r, "_iScore") ? ErrorCodes.TaskRequirements
@@ -313,17 +313,17 @@ public sealed class FirstHeartService : IGameTicker
     }
 
     private bool OpenDay(FirstHeartTaskCfgData cfg, long taskId) =>
-        days.Any(d => d.Tasks.Contains(taskId) && cfg.CfgData.GetValueOrDefault(d.Id) == Unlocked);
+        _days.Any(d => d.Tasks.Contains(taskId) && cfg.CfgData.GetValueOrDefault(d.Id) == Unlocked);
 
     /// <summary>The claim's award and the new state in one owned-award receipt; on any failure nothing changed.</summary>
     private async Task<int> CommitClaimAsync(GameSession s, DBFirstHeartTaskActivityData next, long group, string claim)
     {
         long role = s.Role!.Id;
         AwardPlan plan;
-        try { plan = awards.Resolve(s, group, PlayBook(s)); }
+        try { plan = _awards.Resolve(s, group, PlayBook(s)); }
         catch (AwardResolutionException e)
         {
-            log.LogWarning("Seven-Day Goal {Claim} reward unresolved for {Role}: {Reason}", claim, role, e.Message);
+            _log.LogWarning("Seven-Day Goal {Claim} reward unresolved for {Role}: {Reason}", claim, role, e.Message);
             return ErrorCodes.RewardMissing;
         }
         byte[] bytes = next.ToByteArray();
@@ -331,17 +331,17 @@ public sealed class FirstHeartService : IGameTicker
         string source = $"firstheart/{role}/{next.GetLvTime[Type]}/{claim}";
         try
         {
-            bool ok = await character.ApplyAwardAsync(s, new AwardPlan(0, 0, plan.Grants),
-                persist: tx => roles.SaveFirstHeart(role, bytes, tx), stateLockHeld: true,
+            bool ok = await _character.ApplyAwardAsync(s, new AwardPlan(0, 0, plan.Grants),
+                persist: tx => _roles.SaveFirstHeart(role, bytes, tx), stateLockHeld: true,
                 committed: () => s.FirstHeart = next,
                 ownedAward: new CharacterService.OwnedAwardSource("cd13e/firstheart-award", source,
                     new { Version = 1, Claim = claim, Award = plan.AwardId }));
-            if (!ok) log.LogWarning("Seven-Day Goal {Claim} not paid for {Role}", claim, role);
+            if (!ok) _log.LogWarning("Seven-Day Goal {Claim} not paid for {Role}", claim, role);
             return ok ? 0 : ErrorCodes.Unknown;
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            log.LogError(e, "Seven-Day Goal {Claim} transaction failed for {Role}", claim, role);
+            _log.LogError(e, "Seven-Day Goal {Claim} transaction failed for {Role}", claim, role);
             return ErrorCodes.Unknown;
         }
     }
@@ -361,7 +361,7 @@ public sealed class FirstHeartService : IGameTicker
             {
                 var next = s.FirstHeart!.Clone();
                 next.GetLvTime[Type] = Now - (day - 1) * 86400L;
-                roles.SaveFirstHeart(s.Role!.Id, next.ToByteArray());
+                _roles.SaveFirstHeart(s.Role!.Id, next.ToByteArray());
                 s.FirstHeart = next;
                 Refresh(s);
                 changed = true;
@@ -370,7 +370,7 @@ public sealed class FirstHeartService : IGameTicker
             else if (args is ["reset"])
             {
                 var next = Evaluate(s, new DBFirstHeartTaskActivityData());
-                roles.SaveFirstHeart(s.Role!.Id, next.ToByteArray());
+                _roles.SaveFirstHeart(s.Role!.Id, next.ToByteArray());
                 s.FirstHeart = next;
                 s.Synced.Remove(Sync);
                 changed = true;

@@ -26,11 +26,11 @@ public sealed partial class LifeJobService
                 {
                     int id = chosen.SelectedSkill;
                     int offeredId = chosen.OriginalSkill > 0 ? chosen.OriginalSkill : id;
-                    if (id <= 0 || data.Row("LifeSkillConfig", id) is not { } skill || !Current(skill)) continue;
-                    if (data.Row("LifeSkillConfig", offeredId) is not { } offered
+                    if (id <= 0 || _data.Row("LifeSkillConfig", id) is not { } skill || !Current(skill)) continue;
+                    if (_data.Row("LifeSkillConfig", offeredId) is not { } offered
                         || GameData.Int(offered, "_iGroup") != GameData.Int(skill, "_iGroup")
                         || GameData.Int(skill, "_iLevel") < GameData.Int(offered, "_iLevel")) continue;
-                    var slot = data.Table("LifeSkillSlots").Values.FirstOrDefault(r =>
+                    var slot = _data.Table("LifeSkillSlots").Values.FirstOrDefault(r =>
                         GameData.Int(r, "_iJobId") == job && GameData.Int(r, "_iSort") == sort);
                     if (slot.ValueKind != JsonValueKind.Object || !GameData.Pairs(slot, "_kSkillpool").Any(p => p.Id == offeredId))
                         continue;
@@ -45,7 +45,7 @@ public sealed partial class LifeJobService
         < Math.Clamp(perHundredThousand, 0, 100_000);
     private bool BothActiveOfType(GameSession s, long type) => s.LifeJob is { } life
         && life.ActiveLifejob.Count == 2 && life.ActiveLifejob.Values.All(job =>
-            data.Row("LifeJobConfig", job) is { } row && GameData.Int(row, "_iType") == type);
+            _data.Row("LifeJobConfig", job) is { } row && GameData.Int(row, "_iType") == type);
     private static bool HasCategory(JsonElement row, bool forge, long category) => category > 0
         && Numbers(row, forge ? "_iTypeConfig" : "_iTypeConfigIDs").Contains(category);
 
@@ -182,7 +182,7 @@ public sealed partial class LifeJobService
     {
         var entries = new HashSet<int>();
         foreach (long id in Numbers(collection, "_iDropId"))
-            if (data.Row("LifeDropConfig", id) is { } drop && GameData.Int(drop, "_iIsMain") == 1)
+            if (_data.Row("LifeDropConfig", id) is { } drop && GameData.Int(drop, "_iIsMain") == 1)
                 foreach (long entry in Numbers(drop, "_iItemId")) entries.Add(checked((int)entry));
         return entries;
     }
@@ -282,15 +282,15 @@ public sealed partial class LifeJobService
             copies += checked((int)(skills.Where(x => x.Type == 37).Sum(x => x.Value) * outputEvents));
             AddMainUnits(grants, main, copies);
             foreach (var skill in skills.Where(x => x.Type == 21 && RollSkillChance(skills, x)))
-                grants.AddRange(awards.Resolve(s, Extra(skill, 0), seasons.PlayBook).Grants);
+                grants.AddRange(_awards.Resolve(s, Extra(skill, 0), _seasons.PlayBook).Grants);
             if (skills.Any(x => x.Type == 17 && Chance(x.Value))) AddCopies(grants, grants.ToArray(), 1);
         }
         foreach (var skill in skills.Where(x => x.Type == (forge ? 32 : 20)))
-            foreach (var grant in awards.Resolve(s, Extra(skill, 0), seasons.PlayBook).Grants)
+            foreach (var grant in _awards.Resolve(s, Extra(skill, 0), _seasons.PlayBook).Grants)
                 grants.Add(grant with { Count = checked(grant.Count * checked((int)(skill.Value * 100))) });
     }
 
     /// <summary>The special recipe grant still needs a traced recipe mapping.</summary>
-    private bool CanActivateLifeSkill(int id) => data.Row("LifeSkillConfig", id) is { } row
+    private bool CanActivateLifeSkill(int id) => _data.Row("LifeSkillConfig", id) is { } row
         && GameData.Int(row, "_iFuctionType") != 35;
 }

@@ -61,7 +61,7 @@ public sealed partial class BuffService
             else
             {
                 target.Buffs[target.Buffs.IndexOf(buff)] = buff with { ShieldRemaining = buff.ShieldRemaining - absorbed };
-                await character.RefreshStatsAsync(target);
+                await _character.RefreshStatsAsync(target);
             }
             if (damage == 0) break;
         }
@@ -85,7 +85,7 @@ public sealed partial class BuffService
             else
             {
                 buffs[buffs.IndexOf(buff)] = buff with { ShieldRemaining = buff.ShieldRemaining - absorbed };
-                await world.ToUnitViewersAsync(target, AoiAttrChange, new AOIAttrChange
+                await _world.ToUnitViewersAsync(target, AoiAttrChange, new AOIAttrChange
                 {
                     EntityUuid = (ulong)target.Uid,
                     Property = { new AoIProperty { Idx = 2003, Data = ShieldAmount(target) } },
@@ -107,7 +107,7 @@ public sealed partial class BuffService
     {
         if (!_unitBuffs.TryGetValue(unit.Uid, out var buffs) || !buffs.Remove(buff)) return;
         if (buffs.Count == 0) _unitBuffs.Remove(unit.Uid);
-        await world.ToUnitViewersAsync(unit, BuffRemove,
+        await _world.ToUnitViewersAsync(unit, BuffRemove,
             new BuffRemoveNotify { UnitId = unit.Uid, BuffGuids = { buff.Guid } });
         var changed = new AOIAttrChange
         {
@@ -115,7 +115,7 @@ public sealed partial class BuffService
         };
         if (buff.ShieldRemaining > 0)
             changed.Property.Add(new AoIProperty { Idx = 2003, Data = ShieldAmount(unit) });
-        await world.ToUnitViewersAsync(unit, AoiAttrChange, changed);
+        await _world.ToUnitViewersAsync(unit, AoiAttrChange, changed);
         if (buff.Changes.Count > 0)
             foreach (var handler in UnitChanged) await handler(unit);
     }

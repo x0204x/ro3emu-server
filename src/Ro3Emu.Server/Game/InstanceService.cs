@@ -13,24 +13,24 @@ namespace Ro3Emu.Server.Game;
 /// </summary>
 public sealed class InstanceService
 {
-    private readonly RoleStore roles;
-    private readonly SceneService scene;
-    private readonly World world;
-    private readonly MonsterService monsters;
-    private readonly CombatService combat;
-    private readonly GameLoop loop;
-    private readonly Dictionary<long, Room> rooms = new();
-    private readonly object gate = new();
-    private readonly ConditionalWeakTable<GameSession, ReturnRecovery> pendingReturns = new();
+    private readonly RoleStore _roles;
+    private readonly SceneService _scene;
+    private readonly World _world;
+    private readonly MonsterService _monsters;
+    private readonly CombatService _combat;
+    private readonly GameLoop _loop;
+    private readonly Dictionary<long, Room> _rooms = new();
+    private readonly object _gate = new();
+    private readonly ConditionalWeakTable<GameSession, ReturnRecovery> _pendingReturns = new();
 
     public InstanceService(RoleStore roles, SceneService scene, World world, MonsterService monsters, CombatService combat, GameLoop loop)
     {
-        this.roles = roles;
-        this.scene = scene;
-        this.world = world;
-        this.monsters = monsters;
-        this.combat = combat;
-        this.loop = loop;
+        this._roles = roles;
+        this._scene = scene;
+        this._world = world;
+        this._monsters = monsters;
+        this._combat = combat;
+        this._loop = loop;
         scene.Leaving.Add(AbandonAsync);
         scene.BeforeSelf.Add(RecoverOnReturnAsync);
         scene.AfterLoaded.Add(NotifyRecoveredAsync);
@@ -49,26 +49,26 @@ public sealed class InstanceService
 
     private ReturnRecovery? PendingReturn(GameSession session)
     {
-        lock (pendingReturns) return pendingReturns.TryGetValue(session, out var state) ? state : null;
+        lock (_pendingReturns) return _pendingReturns.TryGetValue(session, out var state) ? state : null;
     }
 
     private void SetPendingReturn(GameSession session, ReturnRecovery state)
     {
-        lock (pendingReturns)
+        lock (_pendingReturns)
         {
-            if (pendingReturns.TryGetValue(session, out var previous)) previous.Invalidated.TrySetResult();
-            pendingReturns.Remove(session);
-            pendingReturns.Add(session, state);
+            if (_pendingReturns.TryGetValue(session, out var previous)) previous.Invalidated.TrySetResult();
+            _pendingReturns.Remove(session);
+            _pendingReturns.Add(session, state);
         }
     }
 
     private void ClearPendingReturn(GameSession session, ReturnRecovery? expected = null)
     {
-        lock (pendingReturns)
-            if (pendingReturns.TryGetValue(session, out var current)
+        lock (_pendingReturns)
+            if (_pendingReturns.TryGetValue(session, out var current)
                 && (expected == null || ReferenceEquals(current, expected)))
             {
-                pendingReturns.Remove(session);
+                _pendingReturns.Remove(session);
                 current.Invalidated.TrySetResult();
             }
     }
@@ -90,18 +90,18 @@ public sealed class InstanceService
         {
             if (!Returned(session, state)) { ClearPendingReturn(session, state); return; }
             if (!session.Dead) return;
-            var available = combat.WaitForReviveAvailabilityAsync(session);
+            var available = _combat.WaitForReviveAvailabilityAsync(session);
             if (!available.IsCompleted) await Task.WhenAny(available, state.Invalidated.Task);
             if (state.Invalidated.Task.IsCompleted) return;
             if (!Returned(session, state)) { ClearPendingReturn(session, state); return; }
             if (!session.Dead) return;
-            if (!combat.TryClaimRevive(session)) continue;
+            if (!_combat.TryClaimRevive(session)) continue;
             try
             {
-                state.Revived = combat.CommitReviveClaim(session);
-                if (state.Revived) await combat.RefreshRevivedAsync(session);
+                state.Revived = _combat.CommitReviveClaim(session);
+                if (state.Revived) await _combat.RefreshRevivedAsync(session);
             }
-            finally { combat.ReleaseReviveClaim(session); }
+            finally { _combat.ReleaseReviveClaim(session); }
             return;
         }
     }
@@ -146,12 +146,12 @@ public sealed class InstanceService
         public long SceneEntry { get; }
         /// <summary>Participants and their latest entry's world return point; one member per session.</summary>
         public IReadOnlyList<Member> Members { get { lock (Gate) return Participants.ToArray(); } }
-        public bool Closed { get { lock (Gate) return closed; } }
+        public bool Closed { get { lock (Gate) return _closed; } }
         public IReadOnlyList<MonsterUnit> Monsters { get { lock (Gate) return Actors.ToArray(); } }
         public IReadOnlyList<Member> ActiveMembers { get { lock (Gate) return Members.Where(m => Remaining.Contains(m.Session)).ToArray(); } }
 
-        private bool closed;
-        internal bool IsClosed { get => closed; set => closed = value; }
+        private bool _closed;
+        internal bool IsClosed { get => _closed; set => _closed = value; }
         internal Member? MemberFor(GameSession session)
         {
             lock (Gate) return Remaining.Contains(session)
@@ -177,7 +177,7 @@ public sealed class InstanceService
 
     public Room? Find(long instanceId)
     {
-        lock (gate) return rooms.GetValueOrDefault(instanceId) is { Closed: false } room ? room : null;
+        lock (_gate) return _rooms.GetValueOrDefault(instanceId) is { Closed: false } room ? room : null;
     }
 
     /// <summary>
@@ -197,7 +197,7 @@ public sealed class InstanceService
                     && ReferenceEquals(session.Attachment, existing.Lease)
                     && session.SceneGeneration == existing.SourceGeneration;
             var point = new MapPoint(session.Position.X, session.Position.Y, session.Position.Z, session.Face);
-            if (previous == null) roles.SaveReturnPositions([new RoleReturnPosition(session.Role.Id,
+            if (previous == null) _roles.SaveReturnPositions([new RoleReturnPosition(session.Role.Id,
                 session.SceneEntry, point.X, point.Y, point.Z, point.Face)]);
             // Shared event rooms survive another member's departure. Re-entry replaces that session's
             // reservation, otherwise ActiveMembers would enumerate the same participant twice.
@@ -217,7 +217,7 @@ public sealed class InstanceService
     /// </summary>
     public Room Create(long sceneEntry, IReadOnlyList<GameSession> participants)
     {
-        if (scene.BornPoint(sceneEntry) == null || participants.Count == 0
+        if (_scene.BornPoint(sceneEntry) == null || participants.Count == 0
             || participants.Distinct().Count() != participants.Count)
             throw new ArgumentException("A private room needs a configured map and distinct participants.");
 
@@ -235,15 +235,15 @@ public sealed class InstanceService
         }
 
         // One durable barrier covers every member before allocating or publishing a private room.
-        roles.SaveReturnPositions(members.Where(member => member.Session.InstanceId == 0).Select(member =>
+        _roles.SaveReturnPositions(members.Where(member => member.Session.InstanceId == 0).Select(member =>
             new RoleReturnPosition(member.Role.Id, member.ReturnScene, member.ReturnPoint.X,
                 member.ReturnPoint.Y, member.ReturnPoint.Z, member.ReturnPoint.Face)).ToArray());
 
         Room room;
-        lock (gate)
+        lock (_gate)
         {
-            room = new Room(roles.AllocateInstanceId(), sceneEntry, members.ToArray());
-            rooms.Add(room.Id, room);
+            room = new Room(_roles.AllocateInstanceId(), sceneEntry, members.ToArray());
+            _rooms.Add(room.Id, room);
         }
         return room;
     }
@@ -269,11 +269,11 @@ public sealed class InstanceService
             && current.InstanceId == member.SourceInstance && current.SceneGeneration == member.SourceGeneration;
         bool Valid(GameSession current) => CurrentMember(current)
             && current.SceneGeneration == member!.SourceGeneration + 1;
-        var born = scene.BornPoint(room.SceneEntry);
+        var born = _scene.BornPoint(room.SceneEntry);
         if (born == null) { await AbandonAsync(room, session); return false; }
         try
         {
-            if (await scene.EnterSceneAsync(session, room.SceneEntry, born, reason, room.Id,
+            if (await _scene.EnterSceneAsync(session, room.SceneEntry, born, reason, room.Id,
                 transfer: new SceneService.TransferStart(Begin, _ => { }, Valid))) return true;
         }
         catch
@@ -315,7 +315,7 @@ public sealed class InstanceService
         }
         try
         {
-            bool left = await scene.EnterSceneAsync(session, member.ReturnScene, member.ReturnPoint,
+            bool left = await _scene.EnterSceneAsync(session, member.ReturnScene, member.ReturnPoint,
                 reason: 0, transfer: transfer);
             // A fast 30005 can already have completed, so SceneLoading is deliberately not required here.
             if (recovery != null && (!left || !ReferenceEquals(session.Role, recovery.Role)
@@ -344,7 +344,7 @@ public sealed class InstanceService
 
     /// <summary>Also detaches a reserved participant if a multi-member entry fails before its scene switch.</summary>
     public Task AbandonAsync(Room room, GameSession session)
-        => loop.TrackAsync("room handover", () => AbandonCoreAsync(room, session));
+        => _loop.TrackAsync("room handover", () => AbandonCoreAsync(room, session));
 
     private async Task AbandonCoreAsync(Room room, GameSession session)
     {
@@ -362,7 +362,7 @@ public sealed class InstanceService
         try
         {
             if (session.InstanceId == room.Id)
-                await world.LeaveAsync(session, () => session.InstanceId == room.Id
+                await _world.LeaveAsync(session, () => session.InstanceId == room.Id
                     && session.SceneGeneration == sceneGeneration && ReferenceEquals(session.Role, role)
                     && ReferenceEquals(session.Attachment, lease));
         }
@@ -375,7 +375,7 @@ public sealed class InstanceService
                     if (!room.FinalCleanupScheduled)
                     {
                         room.FinalCleanupScheduled = true;
-                        loop.TrackRuntimeDetached("room final cleanup", () => FinalCleanupAsync(room));
+                        _loop.TrackRuntimeDetached("room final cleanup", () => FinalCleanupAsync(room));
                     }
             }
         }
@@ -396,15 +396,15 @@ public sealed class InstanceService
                 lock (room.Gate)
                     if (room.PendingCount != 0 || room.Actors.Count != 0 || room.Props.Count != 0 || room.Remaining.Count != 0)
                         throw new InvalidOperationException($"Room {room.Id} still has cleanup obligations.");
-                if (!world.TryRemoveInstance(room.Id))
+                if (!_world.TryRemoveInstance(room.Id))
                     throw new InvalidOperationException($"Room {room.Id} still owns a world scene after cleanup.");
-                lock (gate) rooms.Remove(room.Id);
+                lock (_gate) _rooms.Remove(room.Id);
             }
             finally { room.Cleanup.Release(); }
         }
         catch
         {
-            loop.ReportCleanupFailure($"room {room.Id} final destruction");
+            _loop.ReportCleanupFailure($"room {room.Id} final destruction");
             throw;
         }
     }
@@ -412,7 +412,7 @@ public sealed class InstanceService
     /// <summary>One no-respawn monster tracked for settlement and final room cleanup.</summary>
     public Task<MonsterUnit?> SpawnAsync(Room room, int npcId, MapPoint point,
         int hpRatio = 10000, int damageRatio = 10000, MonsterTemplate? customTemplate = null)
-        => loop.TrackAsync("room spawn", () => SpawnCoreAsync(room, npcId, point, hpRatio, damageRatio, customTemplate));
+        => _loop.TrackAsync("room spawn", () => SpawnCoreAsync(room, npcId, point, hpRatio, damageRatio, customTemplate));
 
     private async Task<MonsterUnit?> SpawnCoreAsync(Room room, int npcId, MapPoint point,
         int hpRatio, int damageRatio, MonsterTemplate? customTemplate)
@@ -426,7 +426,7 @@ public sealed class InstanceService
         }
         try
         {
-            var actor = await monsters.SpawnSingleAsync(room.SceneEntry, npcId, point, room.Id, hpRatio, damageRatio, customTemplate);
+            var actor = await _monsters.SpawnSingleAsync(room.SceneEntry, npcId, point, room.Id, hpRatio, damageRatio, customTemplate);
             if (actor == null) return null;
             bool keep;
             lock (room.Gate)
@@ -437,7 +437,7 @@ public sealed class InstanceService
             if (keep) return actor;
             actor.Dead = true;
             actor.Target = null;
-            await world.RemoveUnitAsync(actor);
+            await _world.RemoveUnitAsync(actor);
             return null;
         }
         finally { lock (room.Gate) room.SpawnFinished(); }
@@ -448,7 +448,7 @@ public sealed class InstanceService
     /// settlement and final room cleanup remove it like the monsters. False when the room closed or was cleared meanwhile.
     /// </summary>
     public Task<bool> AddPropAsync(Room room, WorldUnit prop)
-        => loop.TrackAsync("room prop", () => AddPropCoreAsync(room, prop));
+        => _loop.TrackAsync("room prop", () => AddPropCoreAsync(room, prop));
 
     private async Task<bool> AddPropCoreAsync(Room room, WorldUnit prop)
     {
@@ -461,39 +461,39 @@ public sealed class InstanceService
         }
         try
         {
-            await world.AddUnitAsync(prop);
+            await _world.AddUnitAsync(prop);
             bool keep;
             lock (room.Gate)
             {
                 keep = !room.IsClosed && room.Generation == generation;
                 if (keep) room.Props.Add(prop);
             }
-            if (!keep) await world.RemoveUnitAsync(prop);
+            if (!keep) await _world.RemoveUnitAsync(prop);
             return keep;
         }
         finally { lock (room.Gate) room.SpawnFinished(); }
     }
 
-    public Task RemovePropAsync(Room room, WorldUnit prop) => loop.TrackAsync("room prop removal", async () =>
+    public Task RemovePropAsync(Room room, WorldUnit prop) => _loop.TrackAsync("room prop removal", async () =>
     {
         lock (room.Gate) room.Props.Remove(prop);
-        await world.RemoveUnitAsync(prop);
+        await _world.RemoveUnitAsync(prop);
     });
 
     /// <summary>Remove one tracked monster of the room (an event boss whose phase ended); the room's other actors stay.</summary>
-    public Task RemoveMonsterAsync(Room room, MonsterUnit actor) => loop.TrackAsync("room actor removal", async () =>
+    public Task RemoveMonsterAsync(Room room, MonsterUnit actor) => _loop.TrackAsync("room actor removal", async () =>
     {
         bool tracked;
         lock (room.Gate) tracked = room.Actors.Remove(actor);
         if (!tracked) return; // already cleared with the room
         actor.Dead = true;
         actor.Target = null;
-        await world.RemoveUnitAsync(actor);
+        await _world.RemoveUnitAsync(actor);
     });
 
     /// <summary>Idempotent actor removal, including a generation barrier for spawns already in flight.</summary>
     public Task ClearMonstersAsync(Room room)
-        => loop.TrackAsync("room removal", () => ClearMonstersCoreAsync(room));
+        => _loop.TrackAsync("room removal", () => ClearMonstersCoreAsync(room));
 
     private async Task ClearMonstersCoreAsync(Room room)
     {
@@ -510,12 +510,12 @@ public sealed class InstanceService
                 props = room.Props.ToArray();
                 room.Props.Clear();
             }
-            foreach (var prop in props) await world.RemoveUnitAsync(prop);
+            foreach (var prop in props) await _world.RemoveUnitAsync(prop);
             foreach (var actor in actors)
             {
                 actor.Dead = true;
                 actor.Target = null;
-                await world.RemoveUnitAsync(actor);
+                await _world.RemoveUnitAsync(actor);
             }
         }
         finally { room.Cleanup.Release(); }

@@ -18,7 +18,7 @@ public sealed partial class DungeonService
     public async Task<int> BeginMatchedAsync(DungeonCatalog.Plan plan, GameSession[] members, long teamId)
     {
         if (members.Length == 0 || members.Distinct().Count() != members.Length
-            || members.Any(s => s.Role == null || !sessions.All().Contains(s))) return ErrorCodes.PlayerOffline;
+            || members.Any(s => s.Role == null || !_sessions.All().Contains(s))) return ErrorCodes.PlayerOffline;
         if (members.Length < plan.MinPlayers && !(members.Length == 1 && members[0].DungeonSoloMatch))
             return ErrorCodes.DungeonTeamSize;
         if (members.Length > plan.MaxPlayers) return ErrorCodes.PartyFull;
@@ -27,8 +27,8 @@ public sealed partial class DungeonService
             int error = MatchAdmission(member, plan);
             if (error != 0) return error;
         }
-        if (members.Length > 1 && (teamId == 0 || teams.TeamOf(members[0].Role!.Id).TeamId != teamId
-            || !teams.MembersOf(members[0].Role!.Id).Order().SequenceEqual(members.Select(s => s.Role!.Id).Order())))
+        if (members.Length > 1 && (teamId == 0 || _teams.TeamOf(members[0].Role!.Id).TeamId != teamId
+            || !_teams.MembersOf(members[0].Role!.Id).Order().SequenceEqual(members.Select(s => s.Role!.Id).Order())))
             return ErrorCodes.MemberLeft;
         await BeginAsync(plan, members, members[0].Role!.Id, teamId, matched: true);
         return 0;

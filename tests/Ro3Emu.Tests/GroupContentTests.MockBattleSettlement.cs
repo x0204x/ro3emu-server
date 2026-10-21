@@ -18,7 +18,7 @@ public sealed partial class GroupContentTests
 
     private async Task<BotClient> LogIn(string name)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw");
         await bot.EnterGateAsync();
         await bot.EnterWorldAsync(bot.Roles.Single().Id);
@@ -36,7 +36,7 @@ public sealed partial class GroupContentTests
         await Gm(alice, "!casual start");
         long match = 0;
         foreach (var bot in new[] { alice, bob }) (match, _) = await Load(bot, CasualBattleService.Scene);
-        clock.Advance(TimeSpan.FromSeconds(61));
+        _clock.Advance(TimeSpan.FromSeconds(61));
         await Tick();
         await Next(alice, DungeonService.BaseInfo, DungeonBaseInfoNotify.Parser, m => m.Stage == 1);
         await OnLoop(async () =>
@@ -63,7 +63,7 @@ public sealed partial class GroupContentTests
     private long CasualSql(string sql, params (string Name, object Value)[] args)
     {
         using var db = new SqliteConnection(new SqliteConnectionStringBuilder
-        { DataSource = Path.Combine(dataDir, "ro3emu.db"), Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
+        { DataSource = Path.Combine(_dataDir, "ro3emu.db"), Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
         db.Open();
         using var cmd = db.CreateCommand();
         cmd.CommandText = sql;
@@ -118,7 +118,7 @@ public sealed partial class GroupContentTests
         };
         try
         {
-            clock.Advance(TimeSpan.FromSeconds(600));
+            _clock.Advance(TimeSpan.FromSeconds(600));
             await Tick();
             // The result notices are best-effort and still reach both players.
             Assert.Equal(1, (await Next(alice, CasualBattleService.ResultNotify, DungeonResultNotify.Parser)).ResultInfo.Result);
@@ -140,7 +140,7 @@ public sealed partial class GroupContentTests
         Assert.Equal(1, CasualObligations(match, delivered: 1));
 
         // The fault is gone: the tick's retry (after its backoff) pays Alice exactly once.
-        clock.Advance(TimeSpan.FromSeconds(10));
+        _clock.Advance(TimeSpan.FromSeconds(10));
         await Tick();
         await WaitCasualPaid(alice, match);
         AssertPaidOnce(await CasualState(alice), match, 1005, 1, 40);
@@ -153,7 +153,7 @@ public sealed partial class GroupContentTests
         // Further ticks change nothing for anyone.
         for (int i = 0; i < 3; i++)
         {
-            clock.Advance(TimeSpan.FromSeconds(400));
+            _clock.Advance(TimeSpan.FromSeconds(400));
             await Tick();
         }
         await Task.Delay(200);
@@ -180,7 +180,7 @@ public sealed partial class GroupContentTests
         };
         try
         {
-            clock.Advance(TimeSpan.FromSeconds(600));
+            _clock.Advance(TimeSpan.FromSeconds(600));
             await Tick();
             for (int i = 0; i < 100 && Volatile.Read(ref refused) == 0; i++) await Task.Delay(20);
             await Task.Delay(200);
@@ -199,7 +199,7 @@ public sealed partial class GroupContentTests
             });
 
             // The timeline retries the save after its backoff; then both are paid once.
-            clock.Advance(TimeSpan.FromSeconds(10));
+            _clock.Advance(TimeSpan.FromSeconds(10));
             await Tick();
             Assert.Equal(1, (await Next(alice, CasualBattleService.ResultNotify, DungeonResultNotify.Parser)).ResultInfo.Result);
             Assert.Equal(2, (await Next(bob, CasualBattleService.ResultNotify, DungeonResultNotify.Parser)).ResultInfo.Result);
@@ -230,12 +230,12 @@ public sealed partial class GroupContentTests
             };
             try
             {
-                clock.Advance(TimeSpan.FromSeconds(600));
+                _clock.Advance(TimeSpan.FromSeconds(600));
                 await Tick();
                 await Next(alice, CasualBattleService.ResultNotify, DungeonResultNotify.Parser);
                 await Next(bob, CasualBattleService.ResultNotify, DungeonResultNotify.Parser);
                 // A retry while the fault holds refuses again and leaves the obligation pending.
-                clock.Advance(TimeSpan.FromSeconds(10));
+                _clock.Advance(TimeSpan.FromSeconds(10));
                 await Tick();
                 await Task.Delay(200);
             }
@@ -249,8 +249,8 @@ public sealed partial class GroupContentTests
         long? paid = null;
         for (int restart = 0; restart < 2; restart++)
         {
-            await app.StopAsync();
-            await app.DisposeAsync();
+            await _app.StopAsync();
+            await _app.DisposeAsync();
             SqliteConnection.ClearAllPools();
             await InitializeAsync();
             await using (var alice = await LogIn("Alice"))
@@ -263,7 +263,7 @@ public sealed partial class GroupContentTests
                 Assert.True(now > before, "The payout at login carried no items.");
                 paid ??= now; // the second restart must not add anything
                 Assert.Equal(paid, now);
-                clock.Advance(TimeSpan.FromSeconds(400));
+                _clock.Advance(TimeSpan.FromSeconds(400));
                 await Tick();
                 await Task.Delay(200);
                 Assert.Equal(paid, await Holdings(alice));

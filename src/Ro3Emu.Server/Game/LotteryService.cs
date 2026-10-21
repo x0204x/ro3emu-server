@@ -15,25 +15,25 @@ namespace Ro3Emu.Server.Game;
 public sealed class LotteryService
 {
     public const uint DrawRequest = 83410, LotterySync = 5011;
-    private readonly GameData data;
-    private readonly CharacterService character;
-    private readonly PetService pets;
-    private readonly RoleStore roles;
-    private readonly FunctionService functions;
-    private readonly SeasonService seasons;
-    private readonly ActivityClock activityClock;
-    private readonly TimeProvider clock;
-    private readonly Deadlines deadlines;
-    private readonly GameLoop loop;
-    private readonly HashSet<(GameSession Session, long Generation)> queued = [];
+    private readonly GameData _data;
+    private readonly CharacterService _character;
+    private readonly PetService _pets;
+    private readonly RoleStore _roles;
+    private readonly FunctionService _functions;
+    private readonly SeasonService _seasons;
+    private readonly ActivityClock _activityClock;
+    private readonly TimeProvider _clock;
+    private readonly Deadlines _deadlines;
+    private readonly GameLoop _loop;
+    private readonly HashSet<(GameSession Session, long Generation)> _queued = [];
 
     public LotteryService(GameData data, CharacterService character, PetService pets, RoleStore roles,
         FunctionService functions, SeasonService seasons, ActivityClock activityClock, TimeProvider clock,
         SessionRegistry sessions, GameLoop loop, Deadlines deadlines, NewActivityService activities)
     {
-        this.data = data; this.character = character; this.pets = pets; this.roles = roles;
-        this.functions = functions; this.seasons = seasons; this.activityClock = activityClock; this.clock = clock;
-        this.deadlines = deadlines; this.loop = loop;
+        this._data = data; this._character = character; this._pets = pets; this._roles = roles;
+        this._functions = functions; this._seasons = seasons; this._activityClock = activityClock; this._clock = clock;
+        this._deadlines = deadlines; this._loop = loop;
         character.StateChanged.Add(QueueRefresh);
         activities.ProjectionChanged.Add(QueueRefresh);
     }
@@ -51,18 +51,18 @@ public sealed class LotteryService
     private bool Open(GameSession session, JsonElement draw)
     {
         long function = GameData.Int(draw, "_iFunctionID");
-        if (function > 0 && !functions.IsOpen(session, function)) return false;
+        if (function > 0 && !_functions.IsOpen(session, function)) return false;
         long activityId = GameData.Int(draw, "_iNewAct");
         if (activityId == 0) return true;
         if (session.NewActivities?.ActivityInfo.ContainsKey(activityId) != true
-            || data.Row("NewActivityConfig", activityId) is not { } activity) return false;
+            || _data.Row("NewActivityConfig", activityId) is not { } activity) return false;
         if (activity.TryGetProperty("_kMultiverseArray", out var books)
             && books.ValueKind == JsonValueKind.Array
             && !books.EnumerateArray().Any(book => GameData.Number(book) is 0
-                || GameData.Number(book) == (session.SeasonState?.PlayBookId ?? seasons.PlayBook))) return false;
-        long now = clock.GetUtcNow().ToUnixTimeSeconds();
-        return functions.ConditionMet(session, GameData.Int(activity, "_kOpenCondition"))
-            && activityClock.ResolveActivity(activity, now, session.Role!.CreateTime, seasons.PlayBook).Contains(now);
+                || GameData.Number(book) == (session.SeasonState?.PlayBookId ?? _seasons.PlayBook))) return false;
+        long now = _clock.GetUtcNow().ToUnixTimeSeconds();
+        return _functions.ConditionMet(session, GameData.Int(activity, "_kOpenCondition"))
+            && _activityClock.ResolveActivity(activity, now, session.Role!.CreateTime, _seasons.PlayBook).Contains(now);
     }
 
     private DBLotteryData Project(GameSession session, DBLotteryData source, bool resetDay)
@@ -72,12 +72,12 @@ public sealed class LotteryService
         {
             foreach (var (poolId, state) in next.LotteryPool)
             {
-                if (data.Row("DrawConfig", poolId) is { } draw && Flat(draw, "_kMaxCnt") is [1, ..])
+                if (_data.Row("DrawConfig", poolId) is { } draw && Flat(draw, "_kMaxCnt") is [1, ..])
                     state.DailyCount = 0;
             }
             next.DailyRecord.Clear();
         }
-        foreach (var row in data.Table("DrawConfig").Values)
+        foreach (var row in _data.Table("DrawConfig").Values)
         {
             int id = checked((int)GameData.Int(row, "_iID"));
             if (id <= 0) continue;
@@ -94,17 +94,17 @@ public sealed class LotteryService
 
     public async Task LoginAsync(GameSession session)
     {
-        byte[]? saved = roles.LoadLottery(session.Role!.Id);
+        byte[]? saved = _roles.LoadLottery(session.Role!.Id);
         var envelope = saved == null ? null : JsonSerializer.Deserialize<LotterySave>(saved);
         var loaded = envelope?.Data.Length > 0 ? DBLotteryData.Parser.ParseFrom(envelope.Data) : new DBLotteryData();
-        long day = activityClock.Day(clock.GetUtcNow().ToUnixTimeSeconds());
+        long day = _activityClock.Day(_clock.GetUtcNow().ToUnixTimeSeconds());
         var projected = Project(session, loaded, envelope?.Day != day);
         var packed = Pack(projected, day);
-        if (!roles.BlobUnchanged(session.Role.Id, "lottery", packed))
+        if (!_roles.BlobUnchanged(session.Role.Id, "lottery", packed))
         {
-            var initial = roles.NewTransaction();
+            var initial = _roles.NewTransaction();
             initial.RoleBlob(session.Role.Id, "lottery", packed);
-            await roles.CommitAsync(initial, "lottery/login-reconcile");
+            await _roles.CommitAsync(initial, "lottery/login-reconcile");
         }
         session.Lottery = projected;
         session.LotteryDay = day;
@@ -113,9 +113,9 @@ public sealed class LotteryService
     }
 
     /// <summary>Recompute banner availability on task/function, season and clock changes before the next draw.</summary>
-    public Task ReconcileAsync(GameSession session) => loop.IsOnLoop
-        ? ReconcileAsync(session, deadlines.Capture(session))
-        : loop.InvokeAsync(() => ReconcileAsync(session, deadlines.Capture(session)));
+    public Task ReconcileAsync(GameSession session) => _loop.IsOnLoop
+        ? ReconcileAsync(session, _deadlines.Capture(session))
+        : _loop.InvokeAsync(() => ReconcileAsync(session, _deadlines.Capture(session)));
 
     private async Task ReconcileAsync(GameSession session, DeadlineLease attachment)
     {
@@ -124,19 +124,19 @@ public sealed class LotteryService
         var role = session.Role;
         if (role == null) return;
         var roleAttachment = session.Attachment;
-        var owners = loop.Owners ?? throw new InvalidOperationException("Lottery needs an owner registry.");
+        var owners = _loop.Owners ?? throw new InvalidOperationException("Lottery needs an owner registry.");
         using var scope = await owners.EnterWithGateAsync("lottery/reconcile", session.ActivityGate,
             [ReservationKey.Role(role.Id)]);
         try
         {
             if (!session.ActivitiesReady || session.Lottery == null || session.Role == null
-                || !ReferenceEquals(session.Attachment, roleAttachment) || !deadlines.IsCurrent(session, attachment)) return;
-            long day = activityClock.Day(clock.GetUtcNow().ToUnixTimeSeconds());
+                || !ReferenceEquals(session.Attachment, roleAttachment) || !_deadlines.IsCurrent(session, attachment)) return;
+            long day = _activityClock.Day(_clock.GetUtcNow().ToUnixTimeSeconds());
             var projected = Project(session, session.Lottery, session.LotteryDay != day);
             if (session.LotteryDay == day && session.Lottery.Equals(projected)) { succeeded = true; return; }
-            var builder = roles.NewTransaction();
+            var builder = _roles.NewTransaction();
             builder.RoleBlob(role.Id, "lottery", Pack(projected, day));
-            await roles.CommitAsync(builder, "lottery/reconcile");
+            await _roles.CommitAsync(builder, "lottery/reconcile");
             session.Lottery = projected;
             session.LotteryDay = day;
             await CharacterService.SyncAsync(session, LotterySync, projected.Clone());
@@ -145,10 +145,10 @@ public sealed class LotteryService
         finally
         {
             session.ActivityGate.Release();
-            if (deadlines.IsCurrent(session, attachment))
+            if (_deadlines.IsCurrent(session, attachment))
             {
                 if (succeeded) Schedule(session);
-                else deadlines.Set(session, nameof(LotteryService), clock.GetUtcNow().AddSeconds(1), OnDeadlineAsync);
+                else _deadlines.Set(session, nameof(LotteryService), _clock.GetUtcNow().AddSeconds(1), OnDeadlineAsync);
             }
         }
     }
@@ -156,43 +156,43 @@ public sealed class LotteryService
     private void QueueRefresh(GameSession session)
     {
         if (!session.ActivitiesReady || session.Lottery == null) return;
-        if (!loop.IsOnLoop)
+        if (!_loop.IsOnLoop)
         {
             long? role = session.Role?.Id;
             int serial = session.AccountEntitySerial;
-            loop.PostOwned(session, () =>
+            _loop.PostOwned(session, () =>
             {
                 if (session.Role?.Id == role && session.AccountEntitySerial == serial) QueueRefresh(session);
                 return Task.CompletedTask;
             });
             return;
         }
-        var attachment = deadlines.Capture(session);
+        var attachment = _deadlines.Capture(session);
         if (attachment.AttachmentGeneration == 0) return;
         var key = (session, attachment.AttachmentGeneration);
-        if (!queued.Add(key)) return;
-        loop.PostOwned(session, async () =>
+        if (!_queued.Add(key)) return;
+        _loop.PostOwned(session, async () =>
         {
-            try { if (deadlines.IsCurrent(session, attachment)) await ReconcileAsync(session); }
-            finally { queued.Remove(key); }
-        }, "lottery projection", discarded: () => queued.Remove(key));
+            try { if (_deadlines.IsCurrent(session, attachment)) await ReconcileAsync(session); }
+            finally { _queued.Remove(key); }
+        }, "lottery projection", discarded: () => _queued.Remove(key));
     }
 
     /// <summary>Daily counters change at civil midnight; banners at their configured window boundaries.</summary>
     private void Schedule(GameSession session)
     {
         if (session.Role == null || session.Lottery == null) return;
-        long now = clock.GetUtcNow().ToUnixTimeSeconds();
-        var tomorrow = clock.GetLocalNow().Date.AddDays(1);
-        long next = new DateTimeOffset(tomorrow, clock.LocalTimeZone.GetUtcOffset(tomorrow)).ToUnixTimeSeconds();
-        foreach (var draw in data.Table("DrawConfig").Values)
+        long now = _clock.GetUtcNow().ToUnixTimeSeconds();
+        var tomorrow = _clock.GetLocalNow().Date.AddDays(1);
+        long next = new DateTimeOffset(tomorrow, _clock.LocalTimeZone.GetUtcOffset(tomorrow)).ToUnixTimeSeconds();
+        foreach (var draw in _data.Table("DrawConfig").Values)
         {
-            if (data.Row("NewActivityConfig", GameData.Int(draw, "_iNewAct")) is not { } activity) continue;
-            var window = activityClock.ResolveActivity(activity, now, session.Role.CreateTime, seasons.PlayBook);
+            if (_data.Row("NewActivityConfig", GameData.Int(draw, "_iNewAct")) is not { } activity) continue;
+            var window = _activityClock.ResolveActivity(activity, now, session.Role.CreateTime, _seasons.PlayBook);
             if (window.Start > now) next = Math.Min(next, window.Start);
             if (window.End > now) next = Math.Min(next, window.End);
         }
-        deadlines.Set(session, nameof(LotteryService), DateTimeOffset.FromUnixTimeSeconds(next), OnDeadlineAsync);
+        _deadlines.Set(session, nameof(LotteryService), DateTimeOffset.FromUnixTimeSeconds(next), OnDeadlineAsync);
     }
 
     private Task OnDeadlineAsync(GameSession session, DateTimeOffset due, DeadlineLease lease, CancellationToken cancellation)
@@ -202,7 +202,7 @@ public sealed class LotteryService
 
     private Outcome? Roll(IReadOnlySet<long> groups)
     {
-        var rows = data.Table("DrawPoolConfig").Values.Where(row => groups.Contains(GameData.Int(row, "_iGroupID"))
+        var rows = _data.Table("DrawPoolConfig").Values.Where(row => groups.Contains(GameData.Int(row, "_iGroupID"))
             && GameData.Int(row, "_iWeight") > 0 && Candidates(row).Count > 0).ToArray();
         long total = rows.Sum(row => GameData.Int(row, "_iWeight"));
         if (total <= 0) return null;
@@ -228,8 +228,8 @@ public sealed class LotteryService
             int kind = checked((int)(GameData.Number(tuple[0]) ?? 0));
             int id = checked((int)(GameData.Number(tuple[1]) ?? 0));
             int count = checked((int)(GameData.Number(tuple[2]) ?? 0));
-            if (count > 0 && (kind == 1 && count == 1 && data.Row("PetBaseConfig", id) != null
-                    || kind == 2 && data.Row("ItemConfig", id) != null)) results.Add(new(kind, id, count, 0));
+            if (count > 0 && (kind == 1 && count == 1 && _data.Row("PetBaseConfig", id) != null
+                    || kind == 2 && _data.Row("ItemConfig", id) != null)) results.Add(new(kind, id, count, 0));
         }
         return results;
     }
@@ -248,7 +248,7 @@ public sealed class LotteryService
             return;
         }
         var attachment = session.Attachment;
-        var owners = loop.Owners ?? throw new InvalidOperationException("Lottery needs an owner registry.");
+        var owners = _loop.Owners ?? throw new InvalidOperationException("Lottery needs an owner registry.");
         using var scope = await owners.EnterWithGateAsync("lottery/draw", session.ActivityGate,
             [ReservationKey.Role(role.Id), ReservationKey.Entity("lottery", role.Id.ToString())]);
         try
@@ -263,9 +263,9 @@ public sealed class LotteryService
                 });
                 return;
             }
-            var row = data.Row("DrawConfig", request.PoolId);
+            var row = _data.Row("DrawConfig", request.PoolId);
             var source = session.Lottery ?? new DBLotteryData();
-            long day = activityClock.Day(clock.GetUtcNow().ToUnixTimeSeconds());
+            long day = _activityClock.Day(_clock.GetUtcNow().ToUnixTimeSeconds());
             var next = Project(session, source, session.LotteryDay != day);
             var response = new LotteryResp
             {
@@ -289,7 +289,7 @@ public sealed class LotteryService
             long[] limit = row is { } configured ? Flat(configured, "_kMaxCnt") : [];
             if (code == 0 && (limit.Length != 2 || limit[0] is not (1 or 2) || limit[1] <= 0
                 || (long)response.PoolData.DailyCount + count > limit[1])) code = ErrorCodes.AttemptsExhausted;
-            if (code == 0 && character.CountOf(session, ticket) < count) code = ErrorCodes.ItemsShort;
+            if (code == 0 && _character.CountOf(session, ticket) < count) code = ErrorCodes.ItemsShort;
             if (code == 0 && session.Pets == null) code = ErrorCodes.FeatureUnavailable;
             if (code == 0)
             {
@@ -317,7 +317,7 @@ public sealed class LotteryService
                     };
                     if (outcome.Kind == 1)
                     {
-                        if (!pets.TryStageLotteryPet(petState, outcome.Id, out var broken)) { code = ErrorCodes.PetNoConfig; break; }
+                        if (!_pets.TryStageLotteryPet(petState, outcome.Id, out var broken)) { code = ErrorCodes.PetNoConfig; break; }
                         if (broken is { } material)
                         {
                             result.IsBroken = true;
@@ -330,17 +330,17 @@ public sealed class LotteryService
                 if (code == 0)
                 {
                     long[] bonus = Flat(row.Value, "_kRollNum");
-                    if (bonus is [> 0, > 0] && data.Row("ItemConfig", bonus[0]) != null)
+                    if (bonus is [> 0, > 0] && _data.Row("ItemConfig", bonus[0]) != null)
                         goods.Add(new AwardGrant(checked((int)bonus[0]), checked((int)(bonus[1] * count))));
                     next.LotteryPool[request.PoolId].DailyCount += count;
                     next.DailyRecord[request.PoolId] = new LotteryModuleDailyCount { Count = next.LotteryPool[request.PoolId].DailyCount };
-                    pets.FinalizeLotteryPets(petState);
+                    _pets.FinalizeLotteryPets(petState);
                     byte[] saved = Pack(next, day), petBytes = petState.ToByteArray();
                     // A draw with a pet result is the E05b pet family envelope (pet legs and refunds); any other draw is the
                     // 13f event envelope. One builder carries one envelope.
                     bool petDraw = response.ItemList.Any(result => result.IsPet);
                     var familyEconomy = petDraw
-                        ? pets.LotteryEconomy(session, request.PoolId, ticket, count, petState, saved,
+                        ? _pets.LotteryEconomy(session, request.PoolId, ticket, count, petState, saved,
                             goods.Select(grant => (grant.Entry, grant.Count)).ToArray(), response.ItemList)
                         : null;
                     // The client sends no request ID. The source is the server-admitted draw sequence;
@@ -350,14 +350,14 @@ public sealed class LotteryService
                     {
                         item.ItemId, item.ItemCount, item.IsPet, item.IsBroken, item.PoolId
                     }).ToArray();
-                    var economy = petDraw ? null : EventEconomy.ForRole(data, session, "lottery-draw", sourceKey,
+                    var economy = petDraw ? null : EventEconomy.ForRole(_data, session, "lottery-draw", sourceKey,
                         [(ticket, (long)count)], goods,
                         new
                         {
                             request.PoolId, Type = (int)request.Type, Day = day, Results = resolved,
                             Lottery = Convert.ToBase64String(saved), Pets = Convert.ToBase64String(petBytes)
                         });
-                    if (!await character.ApplyAwardAsync(session, new AwardPlan(0, 0, goods),
+                    if (!await _character.ApplyAwardAsync(session, new AwardPlan(0, 0, goods),
                             costs: [(ticket, count)], persist: transaction =>
                             {
                                 transaction.RoleBlob(session.Role!.Id, "lottery", saved);
@@ -372,7 +372,7 @@ public sealed class LotteryService
                     else
                     {
                         await CharacterService.SyncAsync(session, LotterySync, next.Clone());
-                        await pets.SyncLotteryPetsAsync(session);
+                        await _pets.SyncLotteryPetsAsync(session);
                         response.PoolData = next.LotteryPool[request.PoolId].Clone();
                         foreach (var (key, value) in next.PityRecords) response.PityRecords[key] = value.Clone();
                     }

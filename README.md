@@ -264,6 +264,7 @@ flowchart LR
 
 Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the build checks, the evidence rules and
 what to include in a report or a change. Thanks to everyone who has sent fixes so far.
+Report a security issue privately, as [SECURITY.md](SECURITY.md) describes.
 
 ## Documentation
 

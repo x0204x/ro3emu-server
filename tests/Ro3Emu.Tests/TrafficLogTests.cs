@@ -9,11 +9,11 @@ namespace Ro3Emu.Tests;
 
 public sealed class TrafficLogTests : IDisposable
 {
-    private readonly string dir = Path.Combine(Path.GetTempPath(), "ro3-traffic-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ro3-traffic-" + Guid.NewGuid().ToString("N"));
 
     private TrafficLog Create(string mode)
     {
-        var options = Options.Create(new ServerOptions { DataDir = dir, TrafficLog = mode });
+        var options = Options.Create(new ServerOptions { DataDir = _dir, TrafficLog = mode });
         // The message names/request types come from the shared msgtable.tsv.
         var catalog = new MsgCatalog(Options.Create(new ServerOptions { DataDir = RepoData() }), NullLogger<MsgCatalog>.Instance);
         return new TrafficLog(options, catalog);
@@ -26,8 +26,8 @@ public sealed class TrafficLogTests : IDisposable
         throw new DirectoryNotFoundException("repository root");
     }
 
-    private string[] Lines() => Directory.Exists(Path.Combine(dir, "logs"))
-        ? Directory.GetFiles(Path.Combine(dir, "logs"), "traffic-*.jsonl").SelectMany(File.ReadAllLines).ToArray() : [];
+    private string[] Lines() => Directory.Exists(Path.Combine(_dir, "logs"))
+        ? Directory.GetFiles(Path.Combine(_dir, "logs"), "traffic-*.jsonl").SelectMany(File.ReadAllLines).ToArray() : [];
 
     [ClientDataFact]
     public void OnModeFormatsBothDirectionsOffTheCallerThread()
@@ -60,7 +60,7 @@ public sealed class TrafficLogTests : IDisposable
         log.Dispose();
         Assert.Single(Lines());
 
-        Directory.Delete(dir, true);
+        Directory.Delete(_dir, true);
         var off = Create("off");
         Assert.False(off.Enabled("alice"));
         off.ClientToServer("alice", MsgId.SceneLoaded, new byte[] { 8, 1 });
@@ -70,7 +70,7 @@ public sealed class TrafficLogTests : IDisposable
 
     public void Dispose()
     {
-        try { Directory.Delete(dir, true); } catch (IOException) { }
+        try { Directory.Delete(_dir, true); } catch (IOException) { }
     }
 
     [ClientDataFact]
@@ -80,7 +80,7 @@ public sealed class TrafficLogTests : IDisposable
         var loaded = new MsgCatalog(Options.Create(new ServerOptions { DataDir = RepoData() }), NullLogger<MsgCatalog>.Instance);
         Assert.False(loaded.UnknownToClient(MsgId.SceneLoaded));
         Assert.True(loaded.UnknownToClient(4_000_000_001));
-        var missing = new MsgCatalog(Options.Create(new ServerOptions { DataDir = dir }), NullLogger<MsgCatalog>.Instance);
+        var missing = new MsgCatalog(Options.Create(new ServerOptions { DataDir = _dir }), NullLogger<MsgCatalog>.Instance);
         Assert.False(missing.UnknownToClient(4_000_000_001)); // no table: nothing is called unknown
     }
 }

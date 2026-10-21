@@ -20,17 +20,17 @@ public sealed class FunctionService
     private const int CondJourneyAttr = 15100, CondJourneyDialogue = 15101;
     private const int CondGuildPosition = 9007;
 
-    private readonly GameData data;
-    private readonly CharacterService character;
-    private readonly SeasonService seasons;
-    private readonly TimeProvider clock;
+    private readonly GameData _data;
+    private readonly CharacterService _character;
+    private readonly SeasonService _seasons;
+    private readonly TimeProvider _clock;
 
     public FunctionService(GameData data, CharacterService character, SeasonService seasons, TimeProvider clock)
     {
-        this.data = data;
-        this.character = character;
-        this.seasons = seasons;
-        this.clock = clock;
+        this._data = data;
+        this._character = character;
+        this._seasons = seasons;
+        this._clock = clock;
         character.ProgressHandlers.Add(SyncAsync);
         // LC_DAL_ServerInfo.PackServerBasicInfo: iOpenDayCount (the server level and EXP catch-up read it).
         character.ServerDay = ServerDay;
@@ -38,7 +38,7 @@ public sealed class FunctionService
 
     /// <summary>The server's open day as the client's iOpenDayCount: day 1 is the season start.</summary>
     public int ServerDay() =>
-        (int)Math.Clamp(Math.Floor((clock.GetUtcNow().ToUnixTimeSeconds() - seasons.StartTime) / 86400d) + 1, int.MinValue, int.MaxValue);
+        (int)Math.Clamp(Math.Floor((_clock.GetUtcNow().ToUnixTimeSeconds() - _seasons.StartTime) / 86400d) + 1, int.MinValue, int.MaxValue);
 
     public Task SyncAsync(GameSession session) => session.DeferFunctionSync ? Task.CompletedTask
         : CharacterService.SyncAsync(session, FunctionOpenSync, Build(session));
@@ -46,7 +46,7 @@ public sealed class FunctionService
     public FunctionOpenInfo Build(GameSession session)
     {
         var info = new FunctionOpenInfo();
-        foreach (var row in data.Table("FunctionConfig").Values)
+        foreach (var row in _data.Table("FunctionConfig").Values)
         {
             long id = GameData.Int(row, "_iID");
             // To-Do/Dodo read 5004 and 5059 immediately on unlock; hold only these two until daily login sync.
@@ -62,13 +62,13 @@ public sealed class FunctionService
         // Function 1003 has parent 10 and delivered-task gate 10103160.
         // TaskService's no-quest fallback is permissive, so this feature specifically fails closed.
         if (functionId == 1003 && (session.Tasks == null
-            || !data.Table("SeasonTalentTreeConfig").Values.Any(r => GameData.Int(r, "_iId") > 0)
-            || !data.Table("SeasonTalentConfig").Values.Any(r => GameData.Int(r, "_iId") > 0)
+            || !_data.Table("SeasonTalentTreeConfig").Values.Any(r => GameData.Int(r, "_iId") > 0)
+            || !_data.Table("SeasonTalentConfig").Values.Any(r => GameData.Int(r, "_iId") > 0)
             || !IsOpen(session, 10)
             || !TaskService.IsDelivered(session, 10101170) || !TaskService.IsDelivered(session, 10103160))) return false;
         // OpenContent: functions the original never opened (level 999/9999) whose client panel works.
-        if (seasons.OpenContent.Forces(functionId)) return true;
-        return data.Row("FunctionConfig", functionId) is not { } row || ConditionMet(session, GameData.Int(row, "_kOpenCondition"));
+        if (_seasons.OpenContent.Forces(functionId)) return true;
+        return _data.Row("FunctionConfig", functionId) is not { } row || ConditionMet(session, GameData.Int(row, "_kOpenCondition"));
     }
 
     /// <summary>
@@ -82,7 +82,7 @@ public sealed class FunctionService
     {
         if (conditionId == 0) return true;
         if (ConditionOverride?.Invoke(session, conditionId) is { } decided) return decided;
-        if (data.Row("LC_ConditionList", conditionId) is not { } cond) return false;
+        if (_data.Row("LC_ConditionList", conditionId) is not { } cond) return false;
         if (!cond.TryGetProperty("m_kSubConditionList", out var subs) || subs.ValueKind != JsonValueKind.Array) return true;
         var p = session.Progress!;
         foreach (var sub in subs.EnumerateArray())
@@ -94,19 +94,19 @@ public sealed class FunctionService
             {
                 CondBaseLevel => p.Level >= param,
                 CondTowerFloor => ClearedTowerFloor(session) >= param,
-                CondJobRank => (data.Row("JobConfig", p.Career) is { } job ? GameData.Int(job, "_iJobRank") : 1) >= param,
+                CondJobRank => (_data.Row("JobConfig", p.Career) is { } job ? GameData.Int(job, "_iJobRank") : 1) >= param,
                 // LC_InteractCondition.CheckRoleHaveTask:732-752 requires the named task to be Running.
                 CondRoleHasTask => session.Tasks is { } tasks && tasks.Infos.TryGetValue(param, out var task)
                     && task.Status == TaskState.Running,
                 // LC_InteractCondition.lua:1957-1979 checks iOpenDayCount. Start is the server's first day.
                 // OpenContent counts every server-day gate as met from the first day.
-                CondServerStage or CondServerStage2 when seasons.OpenContent.ServerDayFree => true,
-                CondServerStage => Math.Floor((clock.GetUtcNow().ToUnixTimeSeconds() - seasons.StartTime) / 86400d) + 1 >= param,
+                CondServerStage or CondServerStage2 when _seasons.OpenContent.ServerDayFree => true,
+                CondServerStage => Math.Floor((_clock.GetUtcNow().ToUnixTimeSeconds() - _seasons.StartTime) / 86400d) + 1 >= param,
                 // LC_InteractCondition.CheckPlayBook: GetPlayBookOpenTime() + offset <= server system time.
-                CondServerStage2 => clock.GetUtcNow().ToUnixTimeSeconds() >= seasons.StartTime + param,
+                CondServerStage2 => _clock.GetUtcNow().ToUnixTimeSeconds() >= _seasons.StartTime + param,
                 CondQuestDone => TaskService.IsDelivered(session, param),
                 // LC_InteractCondition.CheckItemCount: [1020, item, count], LC_ItemHelper.GetItemCount(item) >= count.
-                CondItemCount => d.GetArrayLength() >= 3 && character.CountOf(session, (int)param) >= (long)(GameData.Number(d[2]) ?? 0),
+                CondItemCount => d.GetArrayLength() >= 3 && _character.CountOf(session, (int)param) >= (long)(GameData.Number(d[2]) ?? 0),
                 // LC_InteractCondition.CheckJourneyAttr / CheckJourneyDialogue: per-role Journey progress.
                 CondJourneyAttr => JourneyAttributeMet(session, d),
                 CondJourneyDialogue => JourneyDialogueMet(session, d),
@@ -160,6 +160,6 @@ public sealed class FunctionService
     /// DBClimTower.layerConfID is a PetFloorConfig key, never itself a floor number; a missing row means no clear.
     /// </summary>
     private long ClearedTowerFloor(GameSession session) =>
-        session.Tower is { LayerConfID: var configId } && data.Row("PetFloorConfig", configId) is { } row
+        session.Tower is { LayerConfID: var configId } && _data.Row("PetFloorConfig", configId) is { } row
             ? GameData.Int(row, "_iFloor") : 0;
 }

@@ -6,7 +6,8 @@ namespace Ro3Emu.ClientTools;
 /// <summary>
 /// Repoints the RO3 client (the PC build) at an emulator by rewriting string literals in managed DLLs:
 ///   SDK login URL and server list URL (Happyengine.Network Obf_dI + callers, Assembly-CSharp MetaSDKUtil);
-///   gate RSA public key (Phonest.Common Utils.GenEncryptKeyFromToken).
+///   gate RSA public key (Phonest.Common Utils.GenEncryptKeyFromToken);
+///   and makes internal the private members the client's own code uses where they are not visible (AccessFixPatch).
 /// Originals are copied once to &lt;client&gt;\ro3emu-backup and every patch starts from them, so it is repeatable.
 /// New DLLs are staged, checked and journalled before any replaces its Managed copy (<see cref="ReplaceManaged"/>), so
 /// an interrupted patch can never make one of our DLLs the "original" that restore brings back.
@@ -554,6 +555,7 @@ public static class ClientPatcher
         }
 
         if (extra != null) changed.Add(extra(assembly.MainModule));
+        changed.AddRange(AccessFixPatch.Patch(assembly.MainModule).Select(member => "made internal: " + member));
 
         if (changed.Count == 0)
         {

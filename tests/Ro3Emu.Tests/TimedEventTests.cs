@@ -18,25 +18,25 @@ namespace Ro3Emu.Tests;
 public sealed class TimedEventTests : IAsyncLifetime
 {
     private const int Novice = 10000001;
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-timed-" + Guid.NewGuid().ToString("N"));
-    private readonly ManualClock clock = new(new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero));
-    private WebApplication app = null!;
-    private string http = "";
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-timed-" + Guid.NewGuid().ToString("N"));
+    private readonly ManualClock _clock = new(new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero));
+    private WebApplication _app = null!;
+    private string _http = "";
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private Task OnLoop(Func<Task> work) => Service<GameLoop>().InvokeAsync(work);
 
     public async Task InitializeAsync()
     {
         var (port, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = port; o.MicroGatePort = micro; o.GameGatePort = game;
             o.SeasonStart = "2026-10-05";
-        }, clock);
-        SureHitRolls.Install(app); // lethal hits are prepared; a FLEE miss would only be noise
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{port}";
+        }, _clock);
+        SureHitRolls.Install(_app); // lethal hits are prepared; a FLEE miss would only be noise
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{port}";
     }
 
     public async Task DisposeAsync()
@@ -47,14 +47,14 @@ public sealed class TimedEventTests : IAsyncLifetime
         Service<TimedBattleService>().AfterSettlementAdmissionForTest = null;
         Service<TimedBattleService>().SettlementCompletedForTest = null;
         Service<AccountStore>().BeforeOwnedCommitForTest = null;
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
         await bot.EnterWorldAsync(id);
@@ -109,7 +109,7 @@ public sealed class TimedEventTests : IAsyncLifetime
 
     /// <summary>The exported weekly window of a timed match's activity row, past the realm's opening weeks.</summary>
     private ScheduleRows.Window MatchWindow(int todo) =>
-        ScheduleRows.Weekly(todo, new DateTime(2026, 11, 10), clock.LocalTimeZone, Service<GameData>());
+        ScheduleRows.Weekly(todo, new DateTime(2026, 11, 10), _clock.LocalTimeZone, Service<GameData>());
     private Task OverrideMatchShapeAsync(int entry, int players, int teamSize) => OnLoop(() =>
     {
         var name = entry == 2 ? "EatChickenMatchConfig" : "DragonIslandMatchConfig";
@@ -125,7 +125,7 @@ public sealed class TimedEventTests : IAsyncLifetime
     private async Task<DungeonBaseInfoNotify> NextChickenStageAsync(BotClient[] players, DungeonBaseInfoNotify current)
     {
         int stage = current.StageModuleData.Stage + 1;
-        clock.Set(current.StageModuleData.StageEndTime / 1000 + 1);
+        _clock.Set(current.StageModuleData.StageEndTime / 1000 + 1);
         await OnLoop(() => { Service<TimedBattleService>().Tick(default); return Task.CompletedTask; });
         DungeonBaseInfoNotify next = null!;
         foreach (var player in players)
@@ -148,7 +148,7 @@ public sealed class TimedEventTests : IAsyncLifetime
         Assert.Equal(3, info.StageModuleData.Stage);
         if (pastFreeRevive)
         {
-            clock.Set(info.StageModuleData.StageStartTime / 1000 + 181);
+            _clock.Set(info.StageModuleData.StageStartTime / 1000 + 181);
             await OnLoop(() => { Service<TimedBattleService>().Tick(default); return Task.CompletedTask; });
             foreach (var player in players)
                 await Next(player, DungeonService.Event, DungeonEventNotify.Parser, e => e.Vars.Any(v => v.VarId == 100010003));
@@ -159,7 +159,7 @@ public sealed class TimedEventTests : IAsyncLifetime
     private async Task<DungeonBaseInfoNotify> StartChickenAsync(params BotClient[] players)
     {
         foreach (var player in players) await Gm(player, "!lvl 99");
-        clock.Set(MatchWindow(114).Start + 300);
+        _clock.Set(MatchWindow(114).Start + 300);
         await OverrideMatchShapeAsync(2, players.Length, 1);
         foreach (var player in players)
         {
@@ -207,7 +207,7 @@ public sealed class TimedEventTests : IAsyncLifetime
     private async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     /// <summary>
@@ -234,7 +234,7 @@ public sealed class TimedEventTests : IAsyncLifetime
         await bot.SendGameAsync(TimedEventService.Common, NoviceReq(100001));
         Assert.Equal(ErrorCodes.FeatureUnavailable, (await Next(bot, TimedEventService.Common, ActivityResp.Parser)).Result);
 
-        clock.Set(new DateTimeOffset(2025, 7, 1, 12, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds());
+        _clock.Set(new DateTimeOffset(2025, 7, 1, 12, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds());
         // Consume the window-opening snapshot before delivery; it is not the later successful-request snapshot.
         var started = await Next(bot, TimedEventService.StatusNotify, ActivityDataNtf.Parser,
             n => n.ActivityId == Novice && n.ActivityStatus == ActivityStatus.Start);
@@ -256,7 +256,7 @@ public sealed class TimedEventTests : IAsyncLifetime
     [ClientDataFact]
     public async Task LegacyUploadCannotForgeAnotherPlayerOrQuestProgress()
     {
-        clock.Set(new DateTimeOffset(2025, 7, 1, 12, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds());
+        _clock.Set(new DateTimeOffset(2025, 7, 1, 12, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds());
         await using var bot = await InWorld("Alice");
         long role = (long)bot.Self!.Uuid;
         var fake = new ActivityDataUploadReq
@@ -288,7 +288,7 @@ public sealed class TimedEventTests : IAsyncLifetime
         Assert.Equal(ErrorCodes.FunctionLocked,
             (await Next(bot, NewActivityService.Common, CommonActivityRes.Parser)).Result);
         Assert.True(Service<ActivityClock>().TryWindow(PronteraDefenseService.TimeLimitId, out var start, out _));
-        clock.Set(start.ToUnixTimeSeconds() + 122401);
+        _clock.Set(start.ToUnixTimeSeconds() + 122401);
         await bot.SendGameAsync(NewActivityService.Common, request);
         Assert.Equal(ErrorCodes.FunctionLocked,
             (await Next(bot, NewActivityService.Common, CommonActivityRes.Parser)).Result);
@@ -370,11 +370,11 @@ public sealed class TimedEventTests : IAsyncLifetime
             (await Next(alice, TimedBattleService.StartMatch, StartMatchResp.Parser)).Result);
         await Gm(alice, "!lvl 99"); await Gm(bob, "!lvl 99");
         var window = MatchWindow(todo);
-        clock.Set(window.Start + 300);
+        _clock.Set(window.Start + 300);
         Assert.True(Service<TimedTodoSchedule>().IsOpen(todo));
         // 705070 [210012,1] counts either battle, 1602100 [210009,1] only Dragon Coffin Island (TimedBattleTarget).
-        await QuestProbe.AcceptAsync(app, http, "alice", 705070);
-        await QuestProbe.AcceptAsync(app, http, "alice", 1602100);
+        await QuestProbe.AcceptAsync(_app, _http, "alice", 705070);
+        await QuestProbe.AcceptAsync(_app, _http, "alice", 1602100);
         var exportedMatch = Service<GameData>().Row(entry == 2 ? "EatChickenMatchConfig" : "DragonIslandMatchConfig", entry)!.Value;
         Assert.Equal(entry == 2 ? 100 : 30, GameData.Int(exportedMatch, "_kStartQuantity"));
         Assert.Equal(5, GameData.Int(exportedMatch, "_kTeamQuantity"));
@@ -453,7 +453,7 @@ public sealed class TimedEventTests : IAsyncLifetime
                 Assert.False(Service<TimedBattleService>().CanFight(Session(alice), Session(bob)));
                 return Task.CompletedTask;
             });
-            clock.Set(loaded.StageModuleData.StageEndTime / 1000 + 1);
+            _clock.Set(loaded.StageModuleData.StageEndTime / 1000 + 1);
             await OnLoop(() => { Service<TimedBattleService>().Tick(default); return Task.CompletedTask; });
             await Next(alice, DungeonService.BaseInfo, DungeonBaseInfoNotify.Parser, s => s.Stage == 1);
         }
@@ -492,7 +492,7 @@ public sealed class TimedEventTests : IAsyncLifetime
                 s => s.Vars.Any(v => v.VarId == 304 && v.Vi64.Count == 4 && v.Vi64[1] == 20));
             Assert.Equal([1L, 20, 2, 0], scored.Vars.Single(v => v.VarId == 304).Vi64);
             Assert.DoesNotContain(alice.Inbox.Snapshot(), e => e.IsGame(TimedBattleService.DragonSettle));
-            clock.Set(scored.StageModuleData.StageEndTime / 1000 + 1);
+            _clock.Set(scored.StageModuleData.StageEndTime / 1000 + 1);
             await OnLoop(() => { Service<TimedBattleService>().Tick(default); return Task.CompletedTask; });
             var result = await Next(alice, TimedBattleService.DragonSettle, DragonIslandSettleNtf.Parser);
             Assert.Equal(20, result.Snapshot.SceneStatistics.Values.Single().CampStatistics[1].ExtraData[1041003].LongValue);
@@ -524,9 +524,9 @@ public sealed class TimedEventTests : IAsyncLifetime
                 (await Next(alice, TimedBattleService.DragonClaim, DragonIslandClaimRankRewardRes.Parser)).ErrorCode);
         }
         Assert.NotNull(Service<RoleStore>().LoadTimedBattle((long)alice.Self.Uuid));
-        await QuestProbe.DoneAsync(app, "alice", 705070);
-        if (entry == 6) await QuestProbe.DoneAsync(app, "alice", 1602100); // delivery waits on its action 115
-        else Assert.Equal(0, (await QuestProbe.ReadAsync(app, "alice", 1602100))!.CompleteNum[0]);
+        await QuestProbe.DoneAsync(_app, "alice", 705070);
+        if (entry == 6) await QuestProbe.DoneAsync(_app, "alice", 1602100); // delivery waits on its action 115
+        else Assert.Equal(0, (await QuestProbe.ReadAsync(_app, "alice", 1602100))!.CompleteNum[0]);
     }
 
     [ClientDataFact]
@@ -538,7 +538,7 @@ public sealed class TimedEventTests : IAsyncLifetime
         await using var dan = await InWorld("Dan");
         var players = new[] { alice, bob, cara, dan };
         foreach (var player in players) await Gm(player, "!lvl 99");
-        clock.Set(MatchWindow(114).Start + 300);
+        _clock.Set(MatchWindow(114).Start + 300);
         await OverrideMatchShapeAsync(2, 4, 2);
         foreach (var player in players)
         {
@@ -707,7 +707,7 @@ public sealed class TimedEventTests : IAsyncLifetime
         {
             var detachB = BeginHandover(b);
             await bWaiting.Task.WaitAsync(TimeSpan.FromSeconds(8));
-            clock.Set(battle.StageModuleData.StageEndTime / 1000 + 1); // the 20-minute battle stage is over
+            _clock.Set(battle.StageModuleData.StageEndTime / 1000 + 1); // the 20-minute battle stage is over
             await OnLoop(() => { Service<TimedBattleService>().Tick(default); return Task.CompletedTask; });
             await settled.Task.WaitAsync(TimeSpan.FromSeconds(8));
             var result = await Next(cara, TimedBattleService.ChickenResult, ChickenResultNotify.Parser);
@@ -793,7 +793,7 @@ public sealed class TimedEventTests : IAsyncLifetime
             Assert.Equal(0, Service<CharacterService>().CountOf(a, 7));
             Assert.Equal(0, CountRows(receiptCount));
             Assert.Equal(0, CountRows(obligationCount));
-            clock.Set(battle.StageModuleData.StageEndTime / 1000 + 1);
+            _clock.Set(battle.StageModuleData.StageEndTime / 1000 + 1);
             await OnLoop(() => { Service<TimedBattleService>().Tick(default); return Task.CompletedTask; });
             await cara.SendGameAsync(TimedBattleService.DragonClaim, new DragonIslandClaimRankRewardReq());
             Assert.Equal(ErrorCodes.FeatureUnavailable,
@@ -972,7 +972,7 @@ public sealed class TimedEventTests : IAsyncLifetime
         await RiftInviteAsync(ada, team, cid);
 
         // Cid has no Reward Count left today; Ben has this week's Commendation Gift Box limit.
-        long day = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(clock.GetUtcNow(), clock.LocalTimeZone).DateTime.AddHours(-5)).DayNumber;
+        long day = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(_clock.GetUtcNow(), _clock.LocalTimeZone).DateTime.AddHours(-5)).DayNumber;
         long week = day - ((int)DateOnly.FromDayNumber((int)day).DayOfWeek + 6) % 7;
         await OnLoop(() =>
         {
@@ -1020,14 +1020,14 @@ public sealed class TimedEventTests : IAsyncLifetime
         vault = await Next(ada, TimedBattleService.OnePieceInfo, HiddenTreasureRoundInfoResp.Parser, r => r.IsOpen);
         Assert.Equal(new[] { 0L, 1L, 1L }, vault.ItemInfo.Select(i => i.CurGainCount).ToArray());
         // RestrictConfig 1020 is daily (_iRecoverType 1): the next day has 10 again, the week's items stay.
-        var now = clock.GetUtcNow();
-        clock.Set(now.AddDays(1).ToUnixTimeSeconds());
+        var now = _clock.GetUtcNow();
+        _clock.Set(now.AddDays(1).ToUnixTimeSeconds());
         await ada.SendGameAsync(TimedBattleService.OnePieceInfo, new HiddenTreasureRoundInfoReq());
         vault = await Next(ada, TimedBattleService.OnePieceInfo, HiddenTreasureRoundInfoResp.Parser);
         Assert.Equal(10, await RiftCountAsync(ada));
         Assert.Equal(new[] { 0L, 1L, 1L }, vault.ItemInfo.Select(i => i.CurGainCount).ToArray());
         // The item caps are weekly (_iRecoverType 2): the next Monday starts from zero.
-        clock.Set(now.AddDays(4).ToUnixTimeSeconds());
+        _clock.Set(now.AddDays(4).ToUnixTimeSeconds());
         await ada.SendGameAsync(TimedBattleService.OnePieceInfo, new HiddenTreasureRoundInfoReq());
         vault = await Next(ada, TimedBattleService.OnePieceInfo, HiddenTreasureRoundInfoResp.Parser);
         Assert.All(vault.ItemInfo, i => Assert.Equal(0, i.CurGainCount));
@@ -1171,10 +1171,10 @@ public sealed class TimedEventTests : IAsyncLifetime
 
         // A new round whose window closes with stones left says nothing.
         await Gm(bot, "!rift new");
-        clock.Set(clock.GetUtcNow().AddSeconds(1).ToUnixTimeSeconds()); // the ticker runs once per clock second
+        _clock.Set(_clock.GetUtcNow().AddSeconds(1).ToUnixTimeSeconds()); // the ticker runs once per clock second
         for (int i = 0; i < 200 && (await RiftStonesAsync()).Length == 0; i++) await Task.Delay(20);
         Assert.NotEmpty(await RiftStonesAsync());
-        clock.Set(new DateTimeOffset(2026, 10, 8, 20, 30, 0, TimeSpan.Zero).ToUnixTimeSeconds()); // 22:30 CEST
+        _clock.Set(new DateTimeOffset(2026, 10, 8, 20, 30, 0, TimeSpan.Zero).ToUnixTimeSeconds()); // 22:30 CEST
         for (int i = 0; i < 200 && (await RiftStonesAsync()).Length > 0; i++) await Task.Delay(20);
         Assert.Empty(await RiftStonesAsync());
         await Task.Delay(500);
@@ -1183,10 +1183,10 @@ public sealed class TimedEventTests : IAsyncLifetime
 
     private sealed class ManualClock(DateTimeOffset now) : TimeProvider
     {
-        private long seconds = now.ToUnixTimeSeconds();
-        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref seconds));
+        private long _seconds = now.ToUnixTimeSeconds();
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref _seconds));
         public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.FindSystemTimeZoneById("Central European Standard Time");
-        public void Set(long value) => Interlocked.Exchange(ref seconds, value);
+        public void Set(long value) => Interlocked.Exchange(ref _seconds, value);
     }
 
     private static string RepoRoot()

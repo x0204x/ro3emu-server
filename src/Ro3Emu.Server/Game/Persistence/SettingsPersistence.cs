@@ -11,11 +11,11 @@ namespace Ro3Emu.Server.Game.Persistence;
 /// </summary>
 public sealed class SettingsPersistence : LazyRolePart
 {
-    private readonly RoleStore roles;
+    private readonly RoleStore _roles;
 
     public SettingsPersistence(RoleStore roles, GameLoop loop, ILogger<SettingsPersistence> log) : base(loop, roles, log)
     {
-        this.roles = roles;
+        this._roles = roles;
         Interval = TimeSpan.FromSeconds(1);
     }
 
@@ -27,14 +27,14 @@ public sealed class SettingsPersistence : LazyRolePart
     protected override Func<long, long, long, Task<bool>> Capture(GameSession s)
     {
         byte[] bytes = s.Settings!.ToByteArray();
-        return (role, epoch, revision) => roles.SaveBlobLazyAsync(role, epoch, revision, "settings", bytes);
+        return (role, epoch, revision) => _roles.SaveBlobLazyAsync(role, epoch, revision, "settings", bytes);
     }
 
     /// <summary>Barrier: write the session's settings now if a change is still unsaved.</summary>
     public void Flush(GameSession s)
     {
         if (s.Role is not { } role || s.Settings is not { } settings || !IsDirty(s)) return;
-        roles.SaveSettings(role.Id, settings.ToByteArray());
+        _roles.SaveSettings(role.Id, settings.ToByteArray());
         Persisted(s);
     }
 }

@@ -111,7 +111,7 @@ public sealed partial class NewActivityTests
         await bot.SendGameAsync(84066, new NullArg());
         var measured = await Next(bot, 84066, TrainingChallengeReconnectRes.Parser);
         Assert.True(measured.TotalDamage > 0);
-        clock.AdvanceSeconds(61);
+        _clock.AdvanceSeconds(61);
         var result = await Next(bot, DungeonService.Result, DungeonResNotify.Parser, r => r.Data?.TrainingGroundData != null);
         Assert.True(result.Data.TrainingGroundData.SumDamage > 0);
         Assert.Equal(result.Data.TrainingGroundData.SumDamage / 60, result.Data.TrainingGroundData.MaxDps);
@@ -121,7 +121,7 @@ public sealed partial class NewActivityTests
         long moneyBefore = Session(bot).Progress!.Currency.GetValueOrDefault(1);
         long Receipts()
         {
-            using var db = new SqliteConnection($"Data Source={Path.Combine(dataDir, "ro3emu.db")}");
+            using var db = new SqliteConnection($"Data Source={Path.Combine(_dataDir, "ro3emu.db")}");
             db.Open();
             using var command = db.CreateCommand();
             command.CommandText = "SELECT count(*) FROM operation_receipt WHERE command_kind='event/training-claim'";
@@ -148,7 +148,7 @@ public sealed partial class NewActivityTests
         Assert.Equal(0, (await Next(bot, 84062, TrainingAimAwardResp.Parser)).Result);
         Assert.Equal(moneyBefore + 1000, Session(bot).Progress!.Currency.GetValueOrDefault(1));
         Assert.Equal(receiptsBefore + 1, Receipts());
-        using (var db = new SqliteConnection($"Data Source={Path.Combine(dataDir, "ro3emu.db")}"))
+        using (var db = new SqliteConnection($"Data Source={Path.Combine(_dataDir, "ro3emu.db")}"))
         {
             db.Open();
             using var source = db.CreateCommand();
@@ -224,14 +224,14 @@ public sealed partial class NewActivityTests
             await Gm(bot, "!lvl 99");
             await bot.SendGameAsync(DungeonService.Enter, new EnterDungeonReq { SceneEntry = FestivalService.Dungeon });
             Assert.Equal(ErrorCodes.ActivityPeriod, (await Next(bot, DungeonService.Enter, EnterDungeonRsp.Parser)).Result);
-            clock.SetLocal(2026, 10, 9, 18, 30, 10);
+            _clock.SetLocal(2026, 10, 9, 18, 30, 10);
             // The jump crosses the daily boundary: a heartbeat's daily reset clears DailyReady while it commits, and the
             // one candidate pass below would skip the role (a live server re-selects on the next second's tick). Settle
             // the reset first; it serialises with any heartbeat reset already running.
             await OnLoop(() => Service<Ro3Emu.Server.Game.Ownership.OwnerRegistry>()
                 .RunRuntimeAsync("test/daily reconcile", () => Service<DailyActivityService>().ReconcileAsync(Session(bot))));
             await ReconcileFestival();
-            clock.SetLocal(2026, 10, 9, 18, 32);
+            _clock.SetLocal(2026, 10, 9, 18, 32);
             var bet = new CommonDailyActivityReq
             {
                 ActivityId = FestivalService.ActivityId, RequestId = 701,
@@ -273,7 +273,7 @@ public sealed partial class NewActivityTests
             var plan = Service<AwardService>().Resolve(Session(bot), 85001, 101);
             var item = plan.Grants.First();
             long before = Service<CharacterService>().CountOf(Session(bot), item.Entry);
-            clock.SetLocal(2026, 10, 9, 18, 35, 1);
+            _clock.SetLocal(2026, 10, 9, 18, 35, 1);
             await ReconcileFestival();
             var store = Service<AccountStore>();
             long roleId = (long)bot.Self.Uuid;
@@ -310,7 +310,7 @@ public sealed partial class NewActivityTests
             Task retry;
             try
             {
-                clock.AdvanceSeconds(30);
+                _clock.AdvanceSeconds(30);
                 completion = ReconcileFestival();
                 await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
                 Assert.Equal(before, Service<CharacterService>().CountOf(Session(bot), item.Entry));

@@ -80,13 +80,13 @@ public sealed partial class TimedBattleService
         return run;
     }
 
-    private long NowMs() => time.GetUtcNow().ToUnixTimeMilliseconds();
+    private long NowMs() => _time.GetUtcNow().ToUnixTimeMilliseconds();
 
     private static void SetStage(ChickenRun run, int stage, long start, long end)
     { run.Stage = stage; run.StageStartMs = start; run.StageEndMs = end; }
 
     private (Match Match, ChickenRun Run, ChickenPlayer Me)? Chicken(GameSession session) =>
-        active.TryGetValue(session, out var match) && match.Chicken is { } run && !match.Settled
+        _active.TryGetValue(session, out var match) && match.Chicken is { } run && !match.Settled
             && match.Room is { Closed: false } room && session.InstanceId == room.Id
             && run.Players.TryGetValue(session, out var me) ? (match, run, me) : null;
 
@@ -94,17 +94,17 @@ public sealed partial class TimedBattleService
         match.Players.Where(p => match.Faction[p] == faction);
 
     private IEnumerable<GameSession> InRoom(Match match) => match.Players
-        .Where(p => active.GetValueOrDefault(p) == match && match.Loaded.Contains(p) && match.Room is { } room && p.InstanceId == room.Id);
+        .Where(p => _active.GetValueOrDefault(p) == match && match.Loaded.Contains(p) && match.Room is { } room && p.InstanceId == room.Id);
 
     // ---- careers and the match build ----
 
     private JsonElementRow? CareerRow(int career) =>
-        data.Row("EatChickenGameCareer", career) is { } row && GameData.Int(row, "_iIsShow") == 1 ? new(row) : null;
+        _data.Row("EatChickenGameCareer", career) is { } row && GameData.Int(row, "_iIsShow") == 1 ? new(row) : null;
 
     /// <summary>Wrapper so a missing row is a null reference, not a default JsonElement.</summary>
     private sealed record JsonElementRow(System.Text.Json.JsonElement Row);
 
-    private System.Text.Json.JsonElement? ItemRow(int entry) => data.Row("EatChickenItemConfig", entry);
+    private System.Text.Json.JsonElement? ItemRow(int entry) => _data.Row("EatChickenItemConfig", entry);
 
     /// <summary>
     /// CharacterService.MatchAttributes: from ShowCareer on, a participant fights with its match career
@@ -113,7 +113,7 @@ public sealed partial class TimedBattleService
     /// </summary>
     private IReadOnlyList<(long Id, double Value)>? MatchAttributes(GameSession session)
     {
-        if (!active.TryGetValue(session, out var match) || match.Chicken is not { } run || run.Stage < StageShowCareer
+        if (!_active.TryGetValue(session, out var match) || match.Chicken is not { } run || run.Stage < StageShowCareer
             || !run.Players.TryGetValue(session, out var me) || me.Career == 0 || CareerRow(me.Career) is not { } career) return null;
         var list = GameData.Pairs(career.Row, "_iJobAttr").ToList();
         foreach (long guid in me.EquipBar.Values)
@@ -130,9 +130,9 @@ public sealed partial class TimedBattleService
     /// </summary>
     private bool? MatchSkillRule(GameSession session, int skillId)
     {
-        if (!active.TryGetValue(session, out var match) || match.Chicken is not { } run || run.Stage < StageShowCareer
+        if (!_active.TryGetValue(session, out var match) || match.Chicken is not { } run || run.Stage < StageShowCareer
             || !run.Players.TryGetValue(session, out var me) || me.Career == 0 || CareerRow(me.Career) is not { } career) return null;
-        if (skillId == skills.NormalAttack(session)) return true;
+        if (skillId == _skills.NormalAttack(session)) return true;
         foreach (var field in new[] { "_iNormalSkillId", "_iTalentSkillId", "_iDefaultSkillId" })
             if (GameData.Int(career.Row, field) == skillId) return true;
         if (CareerSkill.GetValueOrDefault(me.Career) == skillId) return true;
@@ -146,7 +146,7 @@ public sealed partial class TimedBattleService
     private int DefaultCareer(Match match, ChickenRun run, GameSession player)
     {
         var taken = Team(match, match.Faction[player]).Select(p => run.Players[p].Career).ToHashSet();
-        var shown = data.Table("EatChickenGameCareer").Values.Where(row => GameData.Int(row, "_iIsShow") == 1)
+        var shown = _data.Table("EatChickenGameCareer").Values.Where(row => GameData.Int(row, "_iIsShow") == 1)
             .Select(row => (int)GameData.Int(row, "_iID")).Order().ToArray();
         return shown.FirstOrDefault(id => !taken.Contains(id), shown.FirstOrDefault());
     }
@@ -239,7 +239,7 @@ public sealed partial class TimedBattleService
             };
             if (mate.Progress != null && mate.Role != null)
             {
-                var stats = character.Stats(mate);
+                var stats = _character.Stats(mate);
                 member.BattleAttr[101] = stats[101];
                 member.BattleAttr[2000] = mate.Dead ? 0 : stats[2000];
             }
@@ -346,8 +346,8 @@ public sealed partial class TimedBattleService
         if (run.Stage >= StageShowCareer)
         {
             // The career build (a reload keeps the current HP).
-            character.Refresh(session);
-            await character.RefreshStatsAsync(session);
+            _character.Refresh(session);
+            await _character.RefreshStatsAsync(session);
         }
         await SyncRoundAsync(match, run, session);
         await session.SendGameAsync(DungeonService.BaseInfo, ChickenBaseInfo(match, run));
@@ -382,8 +382,8 @@ public sealed partial class TimedBattleService
         foreach (var (player, amount) in damage)
         {
             if (Chicken(player) is not (_, _, var me) || player.Dead || me.State != RoundRoleStatus.InWar) continue;
-            await buffs.AddAsync(player, PoisonBuff(), 1500, 0);
-            await combat.EnvironmentDamageAsync(player, amount, () => Chicken(player) != null);
+            await _buffs.AddAsync(player, PoisonBuff(), 1500, 0);
+            await _combat.EnvironmentDamageAsync(player, amount, () => Chicken(player) != null);
         }
         if (settle) await SettleMatchAsync(match);
     }
@@ -406,7 +406,7 @@ public sealed partial class TimedBattleService
             {
                 // The career build starts full (inferred).
                 player.CurrentHp = null; player.CurrentSp = null;
-                await character.RefreshStatsAsync(player);
+                await _character.RefreshStatsAsync(player);
             }
             foreach (int faction in match.Players.Select(p => match.Faction[p]).Distinct()) await SyncTeamAsync(match, faction);
         }
@@ -431,9 +431,9 @@ public sealed partial class TimedBattleService
     {
         match.Absent.Add(player);
         match.Fallen.Add(player);
-        active.Remove(player);
+        _active.Remove(player);
         player.EventFaction = 0;
-        if (match.Room != null) await instances.AbandonAsync(match.Room, player);
+        if (match.Room != null) await _instances.AbandonAsync(match.Room, player);
     }
 
     /// <summary>StartGame: the client sends nothing, so the server moves everyone to the landing it picked (inferred
@@ -447,13 +447,13 @@ public sealed partial class TimedBattleService
         if (me.LandChosen) { x = me.LandX; z = me.LandZ; }
         else if (mate != null) { x = mate.LandX + me.TeamIndex * 2; z = mate.LandZ; }
         else (x, z) = RandomPoint(run, IslandX, IslandZ, IslandRadius * 0.8f);
-        if (WalkablePoint(x, z) is { } at) await scene.TeleportInMapAsync(player, at);
+        if (WalkablePoint(x, z) is { } at) await _scene.TeleportInMapAsync(player, at);
     }
 
     /// <summary>A walkable point at or near (x, z) on 2240101's nav grid (a ring search up to 40 m).</summary>
     private MapPoint? WalkablePoint(float x, float z)
     {
-        if (worldData.Map(ChickenScene) is not { } map) return null;
+        if (_worldData.Map(ChickenScene) is not { } map) return null;
         if (map.Nav is not { } nav) return new MapPoint(x, 10, z, 0);
         for (int ring = 0; ring <= 20; ring++)
             for (int step = 0; step < Math.Max(1, ring * 8); step++)
@@ -494,7 +494,7 @@ public sealed partial class TimedBattleService
     internal async Task<string> SetChickenRankAsync(GameSession session, int rank)
     {
         if (session.TimedBattle is not { } state) return "No Survivor Battle state.";
-        if (data.Row("EatChickenLevelConfig", rank) == null) return $"No Survivor Battle rank {rank}.";
+        if (_data.Row("EatChickenLevelConfig", rank) == null) return $"No Survivor Battle rank {rank}.";
         var next = JsonSerializer.Deserialize<State>(JsonSerializer.SerializeToUtf8Bytes(state))!;
         next.ChickenRank = rank;
         next.ChickenScore = ChickenRankFloor(rank);

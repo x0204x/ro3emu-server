@@ -15,17 +15,17 @@ namespace Ro3Emu.Tests;
 /// <summary>Step 07 attachment, handover and delete races using the ordinary game gate.</summary>
 public sealed class RoleLifecycleTests : IAsyncLifetime
 {
-    private readonly string directory = Path.Combine(Path.GetTempPath(), "ro3-lifecycle-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
-    private GameLoop loop = null!;
-    private RoleStore roles = null!;
-    private ItemStore items = null!;
-    private MailService mail = null!;
-    private OwnerRegistry owners = null!;
-    private SessionRegistry sessions = null!;
-    private RoleSessionService handler = null!;
-    private RoleHandover handover = null!;
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), "ro3-lifecycle-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "";
+    private GameLoop _loop = null!;
+    private RoleStore _roles = null!;
+    private ItemStore _items = null!;
+    private MailService _mail = null!;
+    private OwnerRegistry _owners = null!;
+    private SessionRegistry _sessions = null!;
+    private RoleSessionService _handler = null!;
+    private RoleHandover _handover = null!;
     private static TaskCompletionSource Signal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private sealed class LoopErrors : ILoggerProvider, ILogger
@@ -47,45 +47,45 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         // The synthetic game data: a small invented set that also holds the denomination tables guild initialization's
         // E05d receipt needs.
         var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
-        app = ServerHost.Create([], options =>
+        _app = ServerHost.Create([], options =>
         {
-            options.DataDir = directory;
+            options.DataDir = _directory;
             options.GameDataDir = SyntheticData.Dir;
             options.HttpPort = httpPort;
             options.MicroGatePort = microPort;
             options.GameGatePort = gamePort;
             options.PublicHost = "127.0.0.1";
         });
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{httpPort}";
-        loop = app.Services.GetRequiredService<GameLoop>();
-        roles = app.Services.GetRequiredService<RoleStore>();
-        items = app.Services.GetRequiredService<ItemStore>();
-        mail = app.Services.GetRequiredService<MailService>();
-        owners = app.Services.GetRequiredService<OwnerRegistry>();
-        sessions = app.Services.GetRequiredService<SessionRegistry>();
-        handler = app.Services.GetRequiredService<RoleSessionService>();
-        handover = app.Services.GetRequiredService<RoleHandover>();
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{httpPort}";
+        _loop = _app.Services.GetRequiredService<GameLoop>();
+        _roles = _app.Services.GetRequiredService<RoleStore>();
+        _items = _app.Services.GetRequiredService<ItemStore>();
+        _mail = _app.Services.GetRequiredService<MailService>();
+        _owners = _app.Services.GetRequiredService<OwnerRegistry>();
+        _sessions = _app.Services.GetRequiredService<SessionRegistry>();
+        _handler = _app.Services.GetRequiredService<RoleSessionService>();
+        _handover = _app.Services.GetRequiredService<RoleHandover>();
     }
 
     public async Task DisposeAsync()
     {
-        handler.SelectionPhaseForTest = null;
-        handler.CleanupFailureForTest = null;
-        handover.PhaseForTest = null;
-        sessions.UnregisteredForTest = null;
-        await app.StopAsync();
-        await app.DisposeAsync();
+        _handler.SelectionPhaseForTest = null;
+        _handler.CleanupFailureForTest = null;
+        _handover.PhaseForTest = null;
+        _sessions.UnregisteredForTest = null;
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(directory, true); } catch (IOException) { }
+        try { Directory.Delete(_directory, true); } catch (IOException) { }
     }
 
-    private BotClient Bot() => new(http, File.ReadAllText(Path.Combine(directory, "gate_rsa_public.pem")));
+    private BotClient Bot() => new(_http, File.ReadAllText(Path.Combine(_directory, "gate_rsa_public.pem")));
 
     private async Task<int> Delete(string account, string password, string role)
     {
         using var client = new HttpClient();
-        using var response = await client.PostAsync($"{http}/ro3emu/account/delete-role", new FormUrlEncodedContent(
+        using var response = await client.PostAsync($"{_http}/ro3emu/account/delete-role", new FormUrlEncodedContent(
             new Dictionary<string, string> { ["identity"] = account, ["credential"] = password, ["role"] = role }));
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         return json.RootElement.GetProperty("code").GetInt32();
@@ -94,14 +94,14 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
     [Fact]
     public async Task QuiescingFirstTimerRoleIsSkippedAndAttachedSecondStillReconciles()
     {
-        var season = app.Services.GetRequiredService<SeasonService>();
-        var afk = app.Services.GetRequiredService<WildAfkService>();
+        var season = _app.Services.GetRequiredService<SeasonService>();
+        var afk = _app.Services.GetRequiredService<WildAfkService>();
         var errors = new LoopErrors();
-        app.Services.GetRequiredService<ILoggerFactory>().AddProvider(errors);
-        await loop.InvokeAsync(() =>
+        _app.Services.GetRequiredService<ILoggerFactory>().AddProvider(errors);
+        await _loop.InvokeAsync(() =>
         {
-            loop.Remove(season);
-            loop.Remove(afk);
+            _loop.Remove(season);
+            _loop.Remove(afk);
             return Task.CompletedTask;
         });
         await using var firstBot = Bot();
@@ -119,45 +119,45 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         int afkAttempts = 0;
         GameSession first = null!, second = null!;
         long firstAccounted = 0, secondAccounted = 0;
-        var firstRevision = roles.ReadRevisionVector(firstId).Revision("wild_afk");
-        var firstStored = roles.LoadWildAfk(firstId);
+        var firstRevision = _roles.ReadRevisionVector(firstId).Revision("wild_afk");
+        var firstStored = _roles.LoadWildAfk(firstId);
         try
         {
-            await loop.InvokeAsync(() =>
+            await _loop.InvokeAsync(() =>
             {
-                first = sessions.All().Single(s => s.Role?.Id == firstId);
-                second = sessions.All().Single(s => s.Role?.Id == secondId);
+                first = _sessions.All().Single(s => s.Role?.Id == firstId);
+                second = _sessions.All().Single(s => s.Role?.Id == secondId);
                 first.SeasonState!.StageId = long.MaxValue;
                 second.SeasonState!.StageId = long.MaxValue;
                 long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
                 firstAccounted = first.WildAfk!.AccountedAtMs = now - 1000;
                 first.WildAfk.Info.HighMultiplierTimeSeconds++;
                 secondAccounted = second.WildAfk!.AccountedAtMs = now - 1000;
-                owners.BeginQuiescing(first.Owner!, first.Attachment!);
+                _owners.BeginQuiescing(first.Owner!, first.Attachment!);
                 first.Attachment!.Cancelled = true;
                 season.TickBatchCompletedForTest = () => seasonDone.TrySetResult();
                 afk.TickAttemptCompletedForTest = _ => { if (++afkAttempts == 2) afkDone.TrySetResult(); };
-                var tick = new GameTime(loop.Now + TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(1));
+                var tick = new GameTime(_loop.Now + TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(1));
                 season.Tick(tick);
                 afk.Tick(tick);
                 return Task.CompletedTask;
             });
             await Task.WhenAll(seasonDone.Task, afkDone.Task).WaitAsync(TimeSpan.FromSeconds(10));
-            await loop.InvokeAsync(() =>
+            await _loop.InvokeAsync(() =>
             {
                 Assert.Equal(long.MaxValue, first.SeasonState!.StageId);
                 Assert.Equal(firstAccounted, first.WildAfk!.AccountedAtMs);
                 Assert.Equal(season.StageId, second.SeasonState!.StageId);
                 Assert.True(second.WildAfk!.AccountedAtMs > secondAccounted);
-                Assert.Equal(firstRevision, roles.ReadRevisionVector(firstId).Revision("wild_afk"));
-                Assert.Equal(firstStored, roles.LoadWildAfk(firstId));
+                Assert.Equal(firstRevision, _roles.ReadRevisionVector(firstId).Revision("wild_afk"));
+                Assert.Equal(firstStored, _roles.LoadWildAfk(firstId));
                 return Task.CompletedTask;
             });
             Assert.Empty(errors.Exceptions);
         }
         finally
         {
-            await loop.InvokeAsync(() =>
+            await _loop.InvokeAsync(() =>
             {
                 season.TickBatchCompletedForTest = null;
                 afk.TickAttemptCompletedForTest = null;
@@ -174,14 +174,14 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
     [Fact]
     public async Task AfkTimerWaitingOnOldGateSkipsQuiescedLeaseButDirectReconcileStillWorks()
     {
-        var afk = app.Services.GetRequiredService<WildAfkService>();
-        var festival = app.Services.GetRequiredService<FestivalService>();
+        var afk = _app.Services.GetRequiredService<WildAfkService>();
+        var festival = _app.Services.GetRequiredService<FestivalService>();
         var errors = new LoopErrors();
-        app.Services.GetRequiredService<ILoggerFactory>().AddProvider(errors);
+        _app.Services.GetRequiredService<ILoggerFactory>().AddProvider(errors);
         // This fixture manually quiesces its role to exercise AFK alone. Stop the
         // unrelated festival projection before login so it cannot pin that role.
-        await loop.InvokeAsync(() => { loop.Remove(afk); loop.Remove(festival); return Task.CompletedTask; });
-        await loop.InvokeAsync(() => Task.CompletedTask); // drain an already posted empty projection
+        await _loop.InvokeAsync(() => { _loop.Remove(afk); _loop.Remove(festival); return Task.CompletedTask; });
+        await _loop.InvokeAsync(() => Task.CompletedTask); // drain an already posted empty projection
         await using var bot = Bot();
         await bot.LoginAsync("afkgate", "pw");
         await bot.EnterGateAsync();
@@ -189,9 +189,9 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         await bot.EnterWorldAsync(roleId);
         // ENTITYSELF/end-frame precede asynchronous Loaded hooks. Finish that real
         // scene admission before this fixture manually cancels the attachment.
-        await loop.InvokeAsync(() => owners.RunAsync("test AFK loaded fence", [ReservationKey.Realm], () =>
+        await _loop.InvokeAsync(() => _owners.RunAsync("test AFK loaded fence", [ReservationKey.Realm], () =>
         {
-            var selected = sessions.All().Single(s => s.Role?.Id == roleId);
+            var selected = _sessions.All().Single(s => s.Role?.Id == roleId);
             Assert.Equal(RoleOwnerState.Attached, selected.Owner!.State);
             Assert.Null(selected.Handoff);
             return Task.CompletedTask;
@@ -201,40 +201,40 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         WildAfkService.State state = null!;
         bool gateHeld = false;
         long accounted = 0;
-        var stored = roles.LoadWildAfk(roleId);
+        var stored = _roles.LoadWildAfk(roleId);
         try
         {
-            await loop.InvokeAsync(() =>
+            await _loop.InvokeAsync(() =>
             {
-                session = sessions.All().Single(s => s.Role?.Id == roleId);
+                session = _sessions.All().Single(s => s.Role?.Id == roleId);
                 state = session.WildAfk!;
                 Assert.True(state.Gate.Wait(0));
                 gateHeld = true;
                 accounted = state.AccountedAtMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - 1000;
                 state.Info.HighMultiplierTimeSeconds++;
                 afk.TickAttemptCompletedForTest = s => { if (ReferenceEquals(s, session)) completed.TrySetResult(); };
-                afk.Tick(new GameTime(loop.Now + TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(1)));
+                afk.Tick(new GameTime(_loop.Now + TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(1)));
                 return Task.CompletedTask;
             });
             // The posted runtime callback reaches the held AFK gate before this queued barrier.
-            await loop.InvokeAsync(() => Task.CompletedTask);
-            await loop.InvokeAsync(() =>
+            await _loop.InvokeAsync(() => Task.CompletedTask);
+            await _loop.InvokeAsync(() =>
             {
-                owners.BeginQuiescing(session.Owner!, session.Attachment!);
+                _owners.BeginQuiescing(session.Owner!, session.Attachment!);
                 session.Attachment!.Cancelled = true;
                 state.Gate.Release(); gateHeld = false;
                 return Task.CompletedTask;
             });
             await completed.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            await loop.InvokeAsync(() =>
+            await _loop.InvokeAsync(() =>
             {
                 Assert.Same(state, session.WildAfk);
                 Assert.Equal(accounted, state.AccountedAtMs);
-                Assert.Equal(stored, roles.LoadWildAfk(roleId));
+                Assert.Equal(stored, _roles.LoadWildAfk(roleId));
                 return Task.CompletedTask;
             });
             Assert.Empty(errors.Exceptions);
-            await loop.InvokeAsync(async () =>
+            await _loop.InvokeAsync(async () =>
             {
                 session.Owner!.State = RoleOwnerState.Attached;
                 session.Attachment!.Cancelled = false;
@@ -244,7 +244,7 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         }
         finally
         {
-            await loop.InvokeAsync(() =>
+            await _loop.InvokeAsync(() =>
             {
                 afk.TickAttemptCompletedForTest = null;
                 if (gateHeld) state.Gate.Release();
@@ -267,27 +267,27 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         await first.LoginAsync("owner", "pw");
         await first.EnterGateAsync();
         long id = (await first.CreateRoleAsync("OwnerOne")).RoleBaseInfo.Id;
-        var seeded = roles.LoadProgress(id);
+        var seeded = _roles.LoadProgress(id);
         seeded.Currency[1] = 500;
-        roles.SaveProgress(id, seeded);
+        _roles.SaveProgress(id, seeded);
         await first.EnterWorldAsync(id);
         byte[] setting = [0x10, 0x01, 0x08, 0x01];
         await first.SaveClientSettingAsync(10, setting);
-        long startingZeny = roles.LoadProgress(id).Currency[1];
+        long startingZeny = _roles.LoadProgress(id).Currency[1];
         Assert.True(startingZeny >= 100);
-        var before = roles.ReadRevisionVector(id);
+        var before = _roles.ReadRevisionVector(id);
 
         var entered = Signal(); var release = Signal();
-        var oldMutation = loop.InvokeAsync(() => owners.RunAsync("held old progress", [ReservationKey.Role(id)], async () =>
+        var oldMutation = _loop.InvokeAsync(() => _owners.RunAsync("held old progress", [ReservationKey.Role(id)], async () =>
         {
-            owners.Current!.Pin(owners.Get(id));
-            var current = Assert.Single(sessions.All());
+            _owners.Current!.Pin(_owners.Get(id));
+            var current = Assert.Single(_sessions.All());
             current.Position = new Vec3 { X = 170, Y = 1.5f, Z = 200 };
             entered.TrySetResult();
             await release.Task;
-            var progress = roles.LoadProgress(id);
+            var progress = _roles.LoadProgress(id);
             progress.Currency[1] = progress.Currency.GetValueOrDefault(1) - 100;
-            roles.SaveProgress(id, progress);
+            _roles.SaveProgress(id, progress);
             current.Progress = progress;
         }));
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -307,9 +307,9 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
             newest.OnGameMessageOffered = msg => { if (msg == MsgId.LoginRoleSelect) offered.TrySetResult(); };
             var newestSelect = newest.EnterWorldAsync(id);
             await offered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            await loop.InvokeAsync(() =>
+            await _loop.InvokeAsync(() =>
             {
-                Assert.Equal(RoleOwnerState.Quiescing, owners.Get(id).State);
+                Assert.Equal(RoleOwnerState.Quiescing, _owners.Get(id).State);
                 Assert.False(newestSelect.IsCompleted);
                 return Task.CompletedTask;
             });
@@ -320,24 +320,24 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
             Assert.Equal(170f, self.MovementInfo.Pos.X);
             Assert.Equal(1.5f, self.MovementInfo.Pos.Y);
             Assert.Equal(200f, self.MovementInfo.Pos.Z);
-            Assert.Equal(startingZeny - 100, roles.LoadProgress(id).Currency[1]);
+            Assert.Equal(startingZeny - 100, _roles.LoadProgress(id).Currency[1]);
             var settings = DBSettingInfoIncrement.Parser.ParseFrom((await newest.Inbox.WaitAsync(
                 e => e.IsGame(MsgId.AutoSyncSettings), TimeSpan.FromSeconds(5))).Body);
             Assert.Equal(setting, settings.ClientSetting[10].All.ToByteArray());
-            await loop.InvokeAsync(() =>
+            await _loop.InvokeAsync(() =>
             {
-                var winner = Assert.Single(sessions.All());
+                var winner = Assert.Single(_sessions.All());
                 Assert.Equal(thirdLogin ? 3 : 2, winner.AccountGeneration);
                 Assert.Equal(id, winner.Role?.Id);
-                Assert.Equal(RoleOwnerState.Attached, owners.Get(id).State);
-                Assert.Same(winner.Attachment, owners.Get(id).Attachment);
-                Assert.True(owners.HandoverConflicts >= 1);
+                Assert.Equal(RoleOwnerState.Attached, _owners.Get(id).State);
+                Assert.Same(winner.Attachment, _owners.Get(id).Attachment);
+                Assert.True(_owners.HandoverConflicts >= 1);
                 Assert.Equal(startingZeny - 100, winner.Progress?.Currency[1]);
-                var durable = roles.ReadRevisionVector(id);
+                var durable = _roles.ReadRevisionVector(id);
                 foreach (string part in new[] { "progress", "settings", "public_position" })
                 {
                     Assert.True(durable.Revision(part) >= before.Revision(part));
-                    Assert.Equal(durable.Revision(part), owners.Get(id).Revisions[part]);
+                    Assert.Equal(durable.Revision(part), _owners.Get(id).Revisions[part]);
                 }
                 Assert.True(durable.Revision("progress") > before.Revision("progress"));
                 Assert.True(durable.Revision("public_position") > before.Revision("public_position"));
@@ -370,11 +370,11 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
             { Token = alice.EngineSign, Account = alice.Account!, AreaId = 1, Id = target });
             var result = AccountLoginSelectRoleResp.Parser.ParseFrom((await expected.WaitAsync(TimeSpan.FromSeconds(5))).Body);
             Assert.NotEqual(0, result.Result);
-            await loop.InvokeAsync(() =>
+            await _loop.InvokeAsync(() =>
             {
-                var online = sessions.All().Single(s => s.Account == "alice");
+                var online = _sessions.All().Single(s => s.Account == "alice");
                 Assert.Equal(kept, online.Role?.Id);
-                Assert.Equal(RoleOwnerState.Attached, owners.Get(kept).State);
+                Assert.Equal(RoleOwnerState.Attached, _owners.Get(kept).State);
                 return Task.CompletedTask;
             });
         }
@@ -392,25 +392,25 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         long firstId = (await bot.CreateRoleAsync("FirstRole")).RoleBaseInfo.Id;
         long secondId = (await bot.CreateRoleAsync("SecondRole")).RoleBaseInfo.Id;
         await bot.EnterWorldAsync(firstId);
-        var before = roles.ReadRevisionVector(firstId);
-        await loop.InvokeAsync(() =>
+        var before = _roles.ReadRevisionVector(firstId);
+        await _loop.InvokeAsync(() =>
         {
-            Assert.Single(sessions.All()).Position = new Vec3 { X = 174, Y = 1.5f, Z = 202 };
+            Assert.Single(_sessions.All()).Position = new Vec3 { X = 174, Y = 1.5f, Z = 202 };
             return Task.CompletedTask;
         });
         var self = await bot.EnterWorldAsync(secondId);
         Assert.Equal((ulong)secondId, self.Uuid);
         Assert.Equal("SecondRole", self.Name);
-        var old = roles.Get(firstId)!;
+        var old = _roles.Get(firstId)!;
         Assert.Equal(174f, old.X);
         Assert.Equal(202f, old.Z);
-        Assert.True(roles.ReadRevisionVector(firstId).Revision("public_position") > before.Revision("public_position"));
-        await loop.InvokeAsync(() =>
+        Assert.True(_roles.ReadRevisionVector(firstId).Revision("public_position") > before.Revision("public_position"));
+        await _loop.InvokeAsync(() =>
         {
-            Assert.Equal(RoleOwnerState.Detached, owners.Get(firstId).State);
-            Assert.Null(owners.Get(firstId).Attachment);
-            Assert.Equal(RoleOwnerState.Attached, owners.Get(secondId).State);
-            Assert.Equal(secondId, Assert.Single(sessions.All()).Role?.Id);
+            Assert.Equal(RoleOwnerState.Detached, _owners.Get(firstId).State);
+            Assert.Null(_owners.Get(firstId).Attachment);
+            Assert.Equal(RoleOwnerState.Attached, _owners.Get(secondId).State);
+            Assert.Equal(secondId, Assert.Single(_sessions.All()).Role?.Id);
             return Task.CompletedTask;
         });
     }
@@ -425,22 +425,22 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         await bot.EnterGateAsync();
         long id = (await bot.CreateRoleAsync("DisconnectMe")).RoleBaseInfo.Id;
         var reached = Signal(); var release = Signal(); var unregistered = Signal();
-        handler.SelectionPhaseForTest = async (at, _) =>
+        _handler.SelectionPhaseForTest = async (at, _) =>
         {
             if (at != phase) return;
             reached.TrySetResult();
             await release.Task;
         };
-        sessions.UnregisteredForTest = _ => unregistered.TrySetResult();
+        _sessions.UnregisteredForTest = _ => unregistered.TrySetResult();
         var selecting = bot.EnterWorldAsync(id);
         await reached.Task.WaitAsync(TimeSpan.FromSeconds(10));
         try { await bot.DisposeAsync(); }
         finally { release.TrySetResult(); }
         await Assert.ThrowsAnyAsync<Exception>(() => selecting);
         await unregistered.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        await loop.InvokeAsync(() =>
+        await _loop.InvokeAsync(() =>
         {
-            var owner = owners.Cached(id);
+            var owner = _owners.Cached(id);
             Assert.True(owner == null || owner.State == RoleOwnerState.Detached);
             Assert.Null(owner?.Attachment);
             return Task.CompletedTask;
@@ -455,14 +455,14 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         await bot.EnterGateAsync();
         long id = (await bot.CreateRoleAsync("FailedInit")).RoleBaseInfo.Id;
         var detached = Signal();
-        handler.SelectionPhaseForTest = (phase, _) => phase == "BeforePublish"
+        _handler.SelectionPhaseForTest = (phase, _) => phase == "BeforePublish"
             ? Task.FromException(new IOException("injected initialization failure")) : Task.CompletedTask;
-        handover.PhaseForTest = (phase, _) => { if (phase == "Detached") detached.TrySetResult(); };
+        _handover.PhaseForTest = (phase, _) => { if (phase == "Detached") detached.TrySetResult(); };
         await Assert.ThrowsAnyAsync<Exception>(() => bot.EnterWorldAsync(id));
         await detached.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        await loop.InvokeAsync(() =>
+        await _loop.InvokeAsync(() =>
         {
-            var owner = owners.Get(id);
+            var owner = _owners.Get(id);
             Assert.Equal(RoleOwnerState.Detached, owner.State);
             Assert.Null(owner.Attachment);
             return Task.CompletedTask;
@@ -477,19 +477,19 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         await bot.EnterGateAsync();
         long first = (await bot.CreateRoleAsync("EarlyFirst")).RoleBaseInfo.Id;
         long second = (await bot.CreateRoleAsync("EarlySecond")).RoleBaseInfo.Id;
-        var guildStore = app.Services.GetRequiredService<GuildStore>();
+        var guildStore = _app.Services.GetRequiredService<GuildStore>();
         var guild = new GuildStore.State { Name = "EarlyGuild" };
         guild.Members[first] = new GuildStore.Member { RoleId = first, Name = "EarlyFirst", Official = 1, Level = 10, Career = 1000 };
         guild.Members[second] = new GuildStore.Member { RoleId = second, Name = "EarlySecond", Level = 42, Career = 1000 };
         Assert.True(guildStore.Save(guild));
-        roles.SavePosition(second, RoleStore.SpawnSceneEntry, 130, 1.5f, 145, 0);
-        var secondPosition = roles.Get(second)!;
-        Assert.Null(roles.LoadDaily(second));
+        _roles.SavePosition(second, RoleStore.SpawnSceneEntry, 130, 1.5f, 145, 0);
+        var secondPosition = _roles.Get(second)!;
+        Assert.Null(_roles.LoadDaily(second));
 
         await bot.EnterWorldAsync(first);
-        await loop.InvokeAsync(() =>
+        await _loop.InvokeAsync(() =>
         {
-            var active = Assert.Single(sessions.All());
+            var active = Assert.Single(_sessions.All());
             Assert.NotNull(active.Daily);
             active.Daily!.DailyEpoch = 0; // a stale A boundary would write a B daily row
             active.Daily.WeeklyEpoch = 0;
@@ -499,36 +499,36 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         });
         var detached = Signal();
         GameSession? failedSession = null;
-        handler.SelectionPhaseForTest = (phase, session) => phase == "AfterBindBeforeLoad" && session.Role?.Id == second
+        _handler.SelectionPhaseForTest = (phase, session) => phase == "AfterBindBeforeLoad" && session.Role?.Id == second
             ? FailEarly() : Task.CompletedTask;
         Task FailEarly()
         {
-            failedSession = sessions.All().Single();
+            failedSession = _sessions.All().Single();
             return Task.FromException(new IOException("injected early B loader failure"));
         }
-        handover.PhaseForTest = (phase, session) =>
+        _handover.PhaseForTest = (phase, session) =>
         {
             if (phase == "Detached" && session.Account == "earlyinit" && session.Role == null) detached.TrySetResult();
         };
         await Assert.ThrowsAnyAsync<Exception>(() => bot.EnterWorldAsync(second));
         await detached.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.Equal(173f, roles.Get(first)!.X); // A's committed cleanup is retained
-        var after = roles.Get(second)!;
+        Assert.Equal(173f, _roles.Get(first)!.X); // A's committed cleanup is retained
+        var after = _roles.Get(second)!;
         Assert.Equal(secondPosition.X, after.X);
         Assert.Equal(secondPosition.Z, after.Z);
-        Assert.Null(roles.LoadDaily(second));
+        Assert.Null(_roles.LoadDaily(second));
         Assert.Equal(42, guildStore.Get(guild.Id)!.Members[second].Level);
-        await loop.InvokeAsync(() =>
+        await _loop.InvokeAsync(() =>
         {
             Assert.NotNull(failedSession);
             Assert.Null(failedSession.Role);
             Assert.Null(failedSession.Progress);
             Assert.Null(failedSession.Daily);
             Assert.Null(failedSession.WildAfk);
-            Assert.Equal(RoleOwnerState.Detached, owners.Get(second).State);
+            Assert.Equal(RoleOwnerState.Detached, _owners.Get(second).State);
             return Task.CompletedTask;
         });
-        handler.SelectionPhaseForTest = null;
+        _handler.SelectionPhaseForTest = null;
         await using var retry = Bot();
         await retry.LoginAsync("earlyinit", "pw");
         await retry.EnterGateAsync();
@@ -544,8 +544,8 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         await using var newest = Bot();
         await newest.LoginAsync("createfence", "pw");
         var entered = Signal(); var release = Signal(); var deferred = Signal();
-        owners.DeferredForTest = origin => { if (origin == "dispatcher") deferred.TrySetResult(); };
-        var holding = loop.InvokeAsync(() => owners.RunAsync("held account Realm", [ReservationKey.Realm], async () =>
+        _owners.DeferredForTest = origin => { if (origin == "dispatcher") deferred.TrySetResult(); };
+        var holding = _loop.InvokeAsync(() => _owners.RunAsync("held account Realm", [ReservationKey.Realm], async () =>
         {
             entered.TrySetResult();
             await release.Task;
@@ -559,10 +559,10 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
             await newest.EnterGateAsync();
             release.TrySetResult();
             await holding.WaitAsync(TimeSpan.FromSeconds(10));
-            await loop.InvokeAsync(() =>
+            await _loop.InvokeAsync(() =>
             {
-                Assert.True(sessions.IsWinner(Assert.Single(sessions.All())));
-                Assert.Empty(roles.ForAccount("createfence"));
+                Assert.True(_sessions.IsWinner(Assert.Single(_sessions.All())));
+                Assert.Empty(_roles.ForAccount("createfence"));
                 return Task.CompletedTask;
             });
         }
@@ -580,13 +580,13 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         // Do not block the final SceneLoaded owner scope before the socket can observe disconnect.
         await bot.Inbox.WaitAsync(e => e.IsGame(GuildService.SceneGuildId), TimeSpan.FromSeconds(5));
         var entered = Signal(); var release = Signal(); var quiescing = Signal();
-        handover.PhaseForTest = (phase, session) =>
+        _handover.PhaseForTest = (phase, session) =>
         {
             if (phase == "Quiescing" && session.Role?.Id == id) quiescing.TrySetResult();
         };
-        var admitted = loop.InvokeAsync(() => owners.RunAsync("held mail predecessor", [ReservationKey.Role(id)], async () =>
+        var admitted = _loop.InvokeAsync(() => _owners.RunAsync("held mail predecessor", [ReservationKey.Role(id)], async () =>
         {
-            owners.Current!.Pin(owners.Get(id));
+            _owners.Current!.Pin(_owners.Get(id));
             entered.TrySetResult();
             await release.Task;
         }));
@@ -595,12 +595,12 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         {
             await bot.DisposeAsync();
             await quiescing.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            var delivery = mail.SendRawAsync(id, "Offline", "After handover");
+            var delivery = _mail.SendRawAsync(id, "Offline", "After handover");
             Assert.False(delivery.IsCompleted);
             release.TrySetResult();
             await admitted.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.False(string.IsNullOrEmpty(await delivery.WaitAsync(TimeSpan.FromSeconds(10))));
-            Assert.NotNull(roles.LoadMailbox(id));
+            Assert.NotNull(_roles.LoadMailbox(id));
         }
         finally { release.TrySetResult(); }
     }
@@ -614,23 +614,23 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         long id = (await bot.CreateRoleAsync("CleanupRole")).RoleBaseInfo.Id;
         await bot.EnterWorldAsync(id);
         GameSession session = null!;
-        await loop.InvokeAsync(() =>
+        await _loop.InvokeAsync(() =>
         {
-            session = Assert.Single(sessions.All());
+            session = Assert.Single(_sessions.All());
             session.DungeonSoloMatch = true;
             session.EventFaction = 7;
-            handler.CleanupFailureForTest = (step, _) => step == "festival" ? new IOException("injected festival unlink failure") : null;
+            _handler.CleanupFailureForTest = (step, _) => step == "festival" ? new IOException("injected festival unlink failure") : null;
             return Task.CompletedTask;
         });
         // A client message that reaches the cancelled attachment ends the connection (by design), so the server may
         // close it before the bot does: observe the unregistration from here on.
         var unregistered = Signal();
-        sessions.UnregisteredForTest = old => { if (ReferenceEquals(old, session)) unregistered.TrySetResult(); };
-        await Assert.ThrowsAnyAsync<Exception>(() => loop.InvokeAsync(() => handover.Begin(session)));
-        await loop.InvokeAsync(() =>
+        _sessions.UnregisteredForTest = old => { if (ReferenceEquals(old, session)) unregistered.TrySetResult(); };
+        await Assert.ThrowsAnyAsync<Exception>(() => _loop.InvokeAsync(() => _handover.Begin(session)));
+        await _loop.InvokeAsync(() =>
         {
-            Assert.Equal(RoleOwnerState.RecoveryRequired, owners.Get(id).State);
-            Assert.NotNull(owners.Get(id).Attachment);
+            Assert.Equal(RoleOwnerState.RecoveryRequired, _owners.Get(id).State);
+            Assert.NotNull(_owners.Get(id).Attachment);
             Assert.False(session.DungeonSoloMatch);
             Assert.Equal(0, session.EventFaction);
             return Task.CompletedTask;
@@ -638,11 +638,11 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         Assert.Equal(409, await Delete("cleanup", "pw", "CleanupRole"));
         await bot.DisposeAsync();
         await unregistered.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        await loop.InvokeAsync(() =>
+        await _loop.InvokeAsync(() =>
         {
-            Assert.Empty(sessions.All());
-            Assert.Equal(RoleOwnerState.RecoveryRequired, owners.Get(id).State);
-            Assert.NotNull(owners.Get(id).Attachment);
+            Assert.Empty(_sessions.All());
+            Assert.Equal(RoleOwnerState.RecoveryRequired, _owners.Get(id).State);
+            Assert.NotNull(_owners.Get(id).Attachment);
             return Task.CompletedTask;
         });
         Assert.Equal(409, await Delete("cleanup", "pw", "CleanupRole"));
@@ -656,21 +656,21 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         await bot.EnterGateAsync();
         long id = (await bot.CreateRoleAsync("OfflineOne")).RoleBaseInfo.Id;
         var disconnected = Signal();
-        sessions.UnregisteredForTest = _ => disconnected.TrySetResult();
+        _sessions.UnregisteredForTest = _ => disconnected.TrySetResult();
         await bot.DisposeAsync();
         await disconnected.Task.WaitAsync(TimeSpan.FromSeconds(10));
         var entered = Signal(); var release = Signal(); var deleteDeferred = Signal();
-        await loop.InvokeAsync(() =>
+        await _loop.InvokeAsync(() =>
         {
-            owners.DeferredForTest = origin => { if (origin == "HTTP delete") deleteDeferred.TrySetResult(); };
+            _owners.DeferredForTest = origin => { if (origin == "HTTP delete") deleteDeferred.TrySetResult(); };
             return Task.CompletedTask;
         });
-        var grant = loop.InvokeAsync(() => owners.RunAsync("offline grant", [ReservationKey.Realm], async () =>
+        var grant = _loop.InvokeAsync(() => _owners.RunAsync("offline grant", [ReservationKey.Realm], async () =>
         {
             entered.TrySetResult();
             await release.Task;
-            items.Insert(id, new InvItem { Entry = 1004000, Stack = 1, Pack = 1 });
-            await mail.SendRawAsync(id, "Old", "Admitted before deletion");
+            _items.Insert(id, new InvItem { Entry = 1004000, Stack = 1, Pack = 1 });
+            await _mail.SendRawAsync(id, "Old", "Admitted before deletion");
         }));
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Task<int>? deleting = null;
@@ -683,17 +683,17 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         finally { release.TrySetResult(); }
         await grant.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal(0, await deleting!.WaitAsync(TimeSpan.FromSeconds(10)));
-        Assert.Single(items.Load(id));
-        Assert.NotNull(roles.LoadMailbox(id));
-        var deleted = roles.ReadRevisionVector(id);
+        Assert.Single(_items.Load(id));
+        Assert.NotNull(_roles.LoadMailbox(id));
+        var deleted = _roles.ReadRevisionVector(id);
         Assert.True(deleted.Deleted);
         Assert.Equal(2, deleted.Epoch);
-        Assert.ThrowsAny<Exception>(() => items.Insert(id, new InvItem { Entry = 1004000, Stack = 1, Pack = 1 }));
-        await Assert.ThrowsAnyAsync<Exception>(() => mail.SendRawAsync(id, "Late", "Must refuse"));
-        var replacement = roles.Create("offline", 1, "OfflineOne", 1, 1000, 1);
+        Assert.ThrowsAny<Exception>(() => _items.Insert(id, new InvItem { Entry = 1004000, Stack = 1, Pack = 1 }));
+        await Assert.ThrowsAnyAsync<Exception>(() => _mail.SendRawAsync(id, "Late", "Must refuse"));
+        var replacement = _roles.Create("offline", 1, "OfflineOne", 1, 1000, 1);
         Assert.NotNull(replacement);
         Assert.NotEqual(id, replacement!.Id);
-        Assert.Equal(1, roles.ReadRevisionVector(replacement.Id).Epoch);
+        Assert.Equal(1, _roles.ReadRevisionVector(replacement.Id).Epoch);
     }
 
     [Fact]
@@ -704,13 +704,13 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         await bot.EnterGateAsync();
         long id = (await bot.CreateRoleAsync("SelectDelete")).RoleBaseInfo.Id;
         var selectingEntered = Signal(); var release = Signal(); var deleteDeferred = Signal();
-        handler.SelectionPhaseForTest = async (phase, _) =>
+        _handler.SelectionPhaseForTest = async (phase, _) =>
         {
             if (phase != "BeforeAttach") return;
             selectingEntered.TrySetResult();
             await release.Task;
         };
-        owners.DeferredForTest = origin => { if (origin == "HTTP delete") deleteDeferred.TrySetResult(); };
+        _owners.DeferredForTest = origin => { if (origin == "HTTP delete") deleteDeferred.TrySetResult(); };
         var selection = bot.EnterWorldAsync(id);
         await selectingEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Task<int>? deletion = null;
@@ -723,10 +723,10 @@ public sealed class RoleLifecycleTests : IAsyncLifetime
         finally { release.TrySetResult(); }
         Assert.Equal((ulong)id, (await selection.WaitAsync(TimeSpan.FromSeconds(15))).Uuid);
         Assert.Equal(409, await deletion!.WaitAsync(TimeSpan.FromSeconds(10)));
-        await loop.InvokeAsync(() =>
+        await _loop.InvokeAsync(() =>
         {
-            Assert.Equal(RoleOwnerState.Attached, owners.Get(id).State);
-            Assert.False(roles.ReadRevisionVector(id).Deleted);
+            Assert.Equal(RoleOwnerState.Attached, _owners.Get(id).State);
+            Assert.False(_roles.ReadRevisionVector(id).Deleted);
             return Task.CompletedTask;
         });
     }

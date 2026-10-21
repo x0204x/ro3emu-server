@@ -18,39 +18,39 @@ namespace Ro3Emu.Tests;
 public sealed class Cd13eOwnerTests : IAsyncLifetime
 {
     private const int Token = 1250709;
-    private readonly string directory = Path.Combine(Path.GetTempPath(), "ro3-cd13e-" + Guid.NewGuid().ToString("N"));
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), "ro3-cd13e-" + Guid.NewGuid().ToString("N"));
     private static readonly Lazy<EconomyCatalog> Catalog = new(() => EconomyCatalog.Load(Path.Combine(RepoRoot(), "data")));
-    private WebApplication app = null!;
-    private string http = "";
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private WebApplication _app = null!;
+    private string _http = "";
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private Task OnLoop(Func<Task> work) => Service<GameLoop>().InvokeAsync(work);
     private static TaskCompletionSource Signal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public async Task InitializeAsync()
     {
         var (web, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game;
         });
         Service<SeasonService>().SetPlayBook(101);
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{web}";
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{web}";
     }
 
     public async Task DisposeAsync()
     {
         Service<AccountStore>().BeforeOwnedCommitForTest = null;
         Service<OwnerRegistry>().DeferredForTest = null;
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         SqliteConnection.ClearAllPools();
-        try { Directory.Delete(directory, true); } catch (IOException) { }
+        try { Directory.Delete(_directory, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> Enter(string name)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(directory, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_directory, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         long id = (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id;
         await bot.EnterWorldAsync(id);
@@ -70,7 +70,7 @@ public sealed class Cd13eOwnerTests : IAsyncLifetime
     private long Scalar(string sql)
     {
         using var db = new SqliteConnection(new SqliteConnectionStringBuilder
-        { DataSource = Path.Combine(directory, "ro3emu.db"), Mode = SqliteOpenMode.ReadOnly }.ToString());
+        { DataSource = Path.Combine(_directory, "ro3emu.db"), Mode = SqliteOpenMode.ReadOnly }.ToString());
         db.Open(); using var command = db.CreateCommand(); command.CommandText = sql;
         return Convert.ToInt64(command.ExecuteScalar());
     }
@@ -88,14 +88,12 @@ public sealed class Cd13eOwnerTests : IAsyncLifetime
     });
 
     [Fact]
-    public async Task DungeonPreferencesBeforeRoleSelectionKeepTheirProtocolRefusals()
+    public async Task DungeonPreferencesBeforeRoleSelectionAreRefusedUnanswered()
     {
-        await using var bot = new BotClient(http, File.ReadAllText(Path.Combine(directory, "gate_rsa_public.pem")));
+        await using var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_directory, "gate_rsa_public.pem")));
         await bot.LoginAsync("alice", "pw"); await bot.EnterGateAsync();
-        await bot.SendGameAsync(DungeonService.SetJobPosition, new MultiDungeonSetJobPositionReq { JobPosition = 101 });
-        Assert.Equal(ErrorCodes.Parameter, (await Next(bot, DungeonService.SetJobPosition, MultiDungeonSetJobPositionResp.Parser)).Result);
-        await bot.SendGameAsync(DungeonService.SetGuide, new MultiDungeonSetJobPositionGuideFlagReq { GuideFlag = true });
-        Assert.Equal(ErrorCodes.Parameter, (await Next(bot, DungeonService.SetGuide, MultiDungeonSetJobPositionGuideFlagResp.Parser)).Result);
+        await StageGate.AssertUnansweredAsync(bot, DungeonService.SetJobPosition, new MultiDungeonSetJobPositionReq { JobPosition = 101 });
+        await StageGate.AssertUnansweredAsync(bot, DungeonService.SetGuide, new MultiDungeonSetJobPositionGuideFlagReq { GuideFlag = true });
     }
 
     [ClientDataFact]
@@ -105,7 +103,7 @@ public sealed class Cd13eOwnerTests : IAsyncLifetime
         await using var bob = await Enter("Bob");
         var s = Session(alice); var other = Session(bob); long role = s.Role!.Id;
         await PrepareMilestone(s);
-        var opening = S3EconomyReader.Read(directory, Catalog.Value);
+        var opening = S3EconomyReader.Read(_directory, Catalog.Value);
         var staged = Signal(); var release = Signal(); var gmDeferred = Signal();
         await Barrier("economy/cd13e/tower-milestone", staged, release);
         await OnLoop(() =>
@@ -136,8 +134,8 @@ public sealed class Cd13eOwnerTests : IAsyncLifetime
         await Task.WhenAll(gm!, timer!).WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal(10, Count(role)); Assert.Equal(10, s.Tower!.ServerFirstPassClaimedLayer); Assert.Equal(1, Claims());
         Assert.Equal(1, Scalar($"SELECT COUNT(*) FROM operation_source WHERE source_key='tower-milestone/{role}/0/10'"));
-        var closing = S3EconomyReader.Read(directory, Catalog.Value);
-        var ledger = S3EconomyReader.ReadLedger(directory, Catalog.Value, opening, closing)!;
+        var closing = S3EconomyReader.Read(_directory, Catalog.Value);
+        var ledger = S3EconomyReader.ReadLedger(_directory, Catalog.Value, opening, closing)!;
         var check = EconomyExactnessChecker.Check(opening, closing, ledger);
         Assert.DoesNotContain(check.Issues, x => x.Kind == EconomyIssueKind.Corruption);
         Assert.All(check.Assets, x => { Assert.Equal("0", x.Residual); Assert.Equal("0", x.LegResidual); });

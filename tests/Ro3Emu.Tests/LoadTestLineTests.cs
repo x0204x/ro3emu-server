@@ -130,7 +130,7 @@ public sealed class LoadTestLineTests
             await registry.RegisterAsync(s);
         }
         using var metrics = new ServerMetrics(false);
-        var snapshot = JsonSerializer.SerializeToElement(metrics.Snapshot(registry));
+        var snapshot = JsonSerializer.SerializeToElement(metrics.Snapshot(SessionCensus.Take(registry)));
         var maps = snapshot.GetProperty("sessions").GetProperty("byMap").EnumerateArray().ToArray();
         Assert.Equal(4, maps.Length);
         Assert.Contains(maps, x => x.GetProperty("kind").GetString() == "PublicLine" && x.GetProperty("line").GetInt32() == 2 &&

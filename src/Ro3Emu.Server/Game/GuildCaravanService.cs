@@ -16,28 +16,31 @@ namespace Ro3Emu.Server.Game;
 /// A role owns its order and five daily rounds; membership only authorizes help and receives configured guild funds.
 /// (inferred) Stable weighted order draw, 05:00 dayVersion, reward mail at rollover, and cross-guild help cleanup.
 /// </summary>
-public sealed class GuildCaravanService : IGameTicker
+public sealed class GuildCaravanService(GameData data, GuildStore guilds, AccountStore accounts, RoleStore roles,
+    CharacterService character, AwardService awards, MailService mail, GuildService guildService,
+    TaskService tasks, SeasonService seasons, FunctionService functions, SessionRegistry sessions, TimeProvider clock, GameLoop loop,
+    ILogger<GuildCaravanService> log) : IGameTicker
 {
     public const uint Show = 32247, Submit = 32249, WantHelp = 32250, HelpOther = 32251,
         HelpList = 32252, Depart = 32255, Refresh = 32288, HelpNotify = 32289;
 
-    private readonly GameData data;
-    private readonly GuildStore guilds;
-    private readonly AccountStore accounts;
-    private readonly RoleStore roles;
-    private readonly CharacterService character;
-    private readonly AwardService awards;
-    private readonly MailService mail;
-    private readonly GuildService guildService;
-    private readonly TaskService tasks;
-    private readonly SeasonService seasons;
-    private readonly FunctionService functions;
-    private readonly SessionRegistry sessions;
-    private readonly TimeProvider clock;
-    private readonly GameLoop loop;
-    private readonly ILogger<GuildCaravanService> log;
-    private readonly ConcurrentDictionary<long, SemaphoreSlim> gates = new();
-    private TimeSpan lastTick;
+    private readonly GameData _data = data;
+    private readonly GuildStore _guilds = guilds;
+    private readonly AccountStore _accounts = accounts;
+    private readonly RoleStore _roles = roles;
+    private readonly CharacterService _character = character;
+    private readonly AwardService _awards = awards;
+    private readonly MailService _mail = mail;
+    private readonly GuildService _guildService = guildService;
+    private readonly TaskService _tasks = tasks;
+    private readonly SeasonService _seasons = seasons;
+    private readonly FunctionService _functions = functions;
+    private readonly SessionRegistry _sessions = sessions;
+    private readonly TimeProvider _clock = clock;
+    private readonly GameLoop _loop = loop;
+    private readonly ILogger<GuildCaravanService> _log = log;
+    private readonly ConcurrentDictionary<long, SemaphoreSlim> _gates = new();
+    private TimeSpan _lastTick;
     // Deterministic pre-admission suspension; never installed by production callers.
     internal Func<string, Task>? BeforeCharacterAdmissionForTest { get; set; }
 
@@ -83,17 +86,7 @@ public sealed class GuildCaravanService : IGameTicker
         public long ReqHelpTime { get; set; }
     }
 
-    public GuildCaravanService(GameData data, GuildStore guilds, AccountStore accounts, RoleStore roles,
-        CharacterService character, AwardService awards, MailService mail, GuildService guildService,
-        TaskService tasks, SeasonService seasons, FunctionService functions, SessionRegistry sessions, TimeProvider clock, GameLoop loop,
-        ILogger<GuildCaravanService> log)
-    {
-        this.data = data; this.guilds = guilds; this.accounts = accounts; this.roles = roles;
-        this.character = character; this.awards = awards; this.mail = mail; this.guildService = guildService;
-        this.tasks = tasks; this.seasons = seasons; this.functions = functions; this.sessions = sessions; this.clock = clock; this.loop = loop; this.log = log;
-    }
-
-    private SemaphoreSlim Gate(long guildId) => gates.GetOrAdd(guildId, _ => new SemaphoreSlim(1, 1));
+    private SemaphoreSlim Gate(long guildId) => _gates.GetOrAdd(guildId, _ => new SemaphoreSlim(1, 1));
 
     private ReservationKey[] Keys(long guildId, params long[] additionalRoles)
     {
@@ -105,7 +98,7 @@ public sealed class GuildCaravanService : IGameTicker
             .Concat(orders.SelectMany(order => order.PendingAwards
                 .Where(p => !p.GuildBooked && p.GuildId > 0).Select(p => p.GuildId)))
             .Append(guildId).Distinct().ToArray();
-        var ids = guildIds.SelectMany(id => guilds.Get(id)?.Members.Keys ?? Enumerable.Empty<long>())
+        var ids = guildIds.SelectMany(id => _guilds.Get(id)?.Members.Keys ?? Enumerable.Empty<long>())
             .Concat(additionalRoles).Where(id => id > 0).Distinct().ToArray();
         return [.. guildIds.SelectMany(id =>
             {
@@ -121,7 +114,7 @@ public sealed class GuildCaravanService : IGameTicker
     /// the caravan rows), reserved up front by the role select.</summary>
     internal ReservationKey[] LoginKeys(long roleId)
     {
-        long gateId = guilds.ForRole(roleId)?.Id ?? Read(roleId)?.GuildId ?? 0;
+        long gateId = _guilds.ForRole(roleId)?.Id ?? Read(roleId)?.GuildId ?? 0;
         return gateId == 0 ? [] : Keys(gateId, roleId);
     }
 
@@ -150,7 +143,7 @@ public sealed class GuildCaravanService : IGameTicker
     private async Task<GuildGateScope> EnterWithGuildGateAsync(string origin, long guildId,
         long[] additionalRoles, GameSession? characterSession = null)
     {
-        var owners = loop.Owners ?? throw new InvalidOperationException("Caravan owner registry is unavailable.");
+        var owners = _loop.Owners ?? throw new InvalidOperationException("Caravan owner registry is unavailable.");
         var gate = Gate(guildId);
         bool inherited = owners.Current is { RuntimeOnly: false };
         var initialRole = characterSession?.Role;
@@ -224,21 +217,21 @@ public sealed class GuildCaravanService : IGameTicker
             if (changed != null) await changed;
         }
     }
-    private long Day => DateOnly.FromDateTime(clock.GetLocalNow().DateTime.AddHours(-5)).DayNumber;
-    private long NowMs => clock.GetUtcNow().ToUnixTimeMilliseconds();
+    private long Day => DateOnly.FromDateTime(_clock.GetLocalNow().DateTime.AddHours(-5)).DayNumber;
+    private long NowMs => _clock.GetUtcNow().ToUnixTimeMilliseconds();
     private GuildStore.State? Guild(GameSession s) => s.Role is { } role && s.Guild?.GuildId is > 0
-        && guilds.ForRole(role.Id) is { } guild && guild.Id == s.Guild.GuildId
+        && _guilds.ForRole(role.Id) is { } guild && guild.Id == s.Guild.GuildId
         && guild.Status == (int)GuildStatus.Normal && guild.Members.ContainsKey(role.Id) ? guild : null;
     private bool Eligible(GameSession s) => s.Progress is { } progress
-        && data.Row("DailyActivityConfig", 101) is { } row
+        && _data.Row("DailyActivityConfig", 101) is { } row
         && progress.Level >= GameData.Int(row, "_iiLv")
-        && functions.IsOpen(s, 1320);
+        && _functions.IsOpen(s, 1320);
 
-    private State? Read(long roleId) => accounts.ReadSync<State?>(new CaravanMemberReadPlan<State>(roleId));
+    private State? Read(long roleId) => _accounts.ReadSync<State?>(new CaravanMemberReadPlan<State>(roleId));
 
     private EconomyEnvelope MetadataEnvelope(long roleId, string kind)
     {
-        var role = roles.Get(roleId) ?? throw new InvalidOperationException("Caravan owner role is missing.");
+        var role = _roles.Get(roleId) ?? throw new InvalidOperationException("Caravan owner role is missing.");
         string operation = Guid.NewGuid().ToString("N");
         string source = $"guild-caravan:{kind}:{roleId}:{operation}";
         return new EconomyEnvelope(operation, role.Account, roleId, kind, source, source, NowMs, [], []);
@@ -246,39 +239,39 @@ public sealed class GuildCaravanService : IGameTicker
 
     private async Task SaveAsync(long roleId, State state)
     {
-        var transaction = accounts.NewTransaction();
+        var transaction = _accounts.NewTransaction();
         EnlistMemberSave(transaction, roleId, state.GuildId, state, false);
         transaction.WithEconomy(MetadataEnvelope(roleId, "member-save"));
-        await transaction.CommitAsync(accounts, "guild-caravan/member-save");
+        await transaction.CommitAsync(_accounts, "guild-caravan/member-save");
     }
 
     private long Version(long guildId, long day)
     {
         // (inferred) The protocol has one dayVersion for a guild help list, while skuIndex must stay 1..8.
         // A guild-wide monotonic revision rejects actions against refreshed or replaced slots.
-        long revision = accounts.ReadSync<long>(new CaravanVersionReadPlan(guildId, day));
+        long revision = _accounts.ReadSync<long>(new CaravanVersionReadPlan(guildId, day));
         return checked(day * 1_000_000 + revision);
     }
 
     private async Task SaveBumpAsync(long roleId, State state)
     {
-        var transaction = accounts.NewTransaction();
+        var transaction = _accounts.NewTransaction();
         EnlistMemberSave(transaction, roleId, state.GuildId, state, false);
         transaction.Add(new CaravanVersionPlan(state.GuildId, state.Day));
         transaction.WithEconomy(MetadataEnvelope(roleId, "member-version"));
-        await transaction.CommitAsync(accounts, "guild-caravan/member-version");
+        await transaction.CommitAsync(_accounts, "guild-caravan/member-version");
     }
 
     private long Setting(string key, long fallback)
     {
-        if (!data.Table("GuildSettingConfig").TryGetValue(key, out var row)
+        if (!_data.Table("GuildSettingConfig").TryGetValue(key, out var row)
             || !row.TryGetProperty("_kValue", out var value)) return fallback;
         return value.ValueKind == JsonValueKind.Number ? (long)(GameData.Number(value) ?? fallback) : fallback;
     }
 
     private long[] Mix(int round)
     {
-        if (data.Table("GuildSettingConfig").TryGetValue("GuildTransportRoundSAB", out var row)
+        if (_data.Table("GuildSettingConfig").TryGetValue("GuildTransportRoundSAB", out var row)
             && row.TryGetProperty("_kValue", out var array) && array.ValueKind == JsonValueKind.Array
             && round >= 0 && round < array.GetArrayLength() && array[round].ValueKind == JsonValueKind.Array)
             return array[round].EnumerateArray().Select(x => (long)(GameData.Number(x) ?? 0)).ToArray();
@@ -292,18 +285,18 @@ public sealed class GuildCaravanService : IGameTicker
         // (inferred) A stable weighted draw with replacement fills late rounds even when realm level 1 has
         // only one type-1 row; the authored S/A/B mix still fixes the number of slots in each category.
         var random = new Random(unchecked((int)(s.Role!.Id * 7919L + day * 104729L + round * 15485863L + salt * 32452843L)));
-        int openDay = (int)Math.Max(0, (clock.GetUtcNow() - DateTimeOffset.FromUnixTimeSeconds(seasons.StartTime)).TotalDays);
+        int openDay = (int)Math.Max(0, (_clock.GetUtcNow() - DateTimeOffset.FromUnixTimeSeconds(_seasons.StartTime)).TotalDays);
         for (int type = 1; type <= mix.Length; type++)
         {
-            var pool = data.Table("GuildTransportConfig").Values.Where(row =>
+            var pool = _data.Table("GuildTransportConfig").Values.Where(row =>
                 GameData.Int(row, "_iType") == type && GameData.Int(row, "_iDayMin") <= openDay
                 && row.TryGetProperty("_kServerLv", out var levels) && levels.ValueKind == JsonValueKind.Array
                 // (inferred) Realm level starts at one; personal level is not the server-level config axis.
                 && levels.GetArrayLength() >= 2 && 1 >= (GameData.Number(levels[0]) ?? 1)
                 && 1 <= (GameData.Number(levels[1]) ?? 99)
                 && row.TryGetProperty("_kMultiverseArray", out var books) && books.ValueKind == JsonValueKind.Array
-                && books.EnumerateArray().Any(x => GameData.Number(x) is 0 || GameData.Number(x) == seasons.PlayBook)
-                && GameData.Int(row, "_iBasicWeight") > 0 && data.Row("ItemConfig", GameData.Int(row, "_iItem")) != null)
+                && books.EnumerateArray().Any(x => GameData.Number(x) is 0 || GameData.Number(x) == _seasons.PlayBook)
+                && GameData.Int(row, "_iBasicWeight") > 0 && _data.Row("ItemConfig", GameData.Int(row, "_iItem")) != null)
                 .ToList();
             for (int i = 0; i < mix[type - 1] && pool.Count > 0; i++)
             {
@@ -320,7 +313,7 @@ public sealed class GuildCaravanService : IGameTicker
 
     private long SlotAward(Sku sku, long round)
     {
-        var row = data.Row("GuildTransportConfig", sku.CfgId);
+        var row = _data.Row("GuildTransportConfig", sku.CfgId);
         return row is { } r && r.TryGetProperty("_kAward", out var award) && award.ValueKind == JsonValueKind.Array
             && round >= 0 && round < award.GetArrayLength() ? (long)(GameData.Number(award[(int)round]) ?? 0) : 0;
     }
@@ -328,7 +321,7 @@ public sealed class GuildCaravanService : IGameTicker
     private long DepartureAward(State state)
     {
         int count = state.Skus.Count(s => s.Status == 1);
-        var threshold = data.Table("GuildTransportTaskConfig").Values
+        var threshold = _data.Table("GuildTransportTaskConfig").Values
             .Where(r => GameData.Int(r, "_iNum") <= count).OrderByDescending(r => GameData.Int(r, "_iNum")).FirstOrDefault();
         return threshold.ValueKind == JsonValueKind.Object && threshold.TryGetProperty("_kAward", out var groups)
             && groups.ValueKind == JsonValueKind.Array && state.CurRound < groups.GetArrayLength()
@@ -376,7 +369,7 @@ public sealed class GuildCaravanService : IGameTicker
         if (owed > 0)
         {
             // (inferred) MailConfig 1023 compensates a loaded caravan left unclaimed at daily 05:00.
-            var plan = awards.ResolveForProgress(progress, owed);
+            var plan = _awards.ResolveForProgress(progress, owed);
             var attachments = plan.Grants.Where(g => g.Entry != 104)
                 .Select(g => new MailService.Attachment(g.Entry, g.Count, g.BindType)).ToArray();
             long funds = plan.Grants.Where(g => g.Entry == 104).Sum(g => (long)g.Count);
@@ -390,19 +383,19 @@ public sealed class GuildCaravanService : IGameTicker
                 GuildOwner(state.GuildId), GuildMoneyCompartment(state.GuildId), funds,
                 EconomyLegKind.Source, EconomyReason.GuildResourceGrant));
             // Entry 102 is personal currency. Member contribution is progression metadata.
-            var actor = roles.Get(roleId) ?? throw new InvalidOperationException("Caravan rollover recipient is missing.");
+            var actor = _roles.Get(roleId) ?? throw new InvalidOperationException("Caravan rollover recipient is missing.");
             string operation = Guid.NewGuid().ToString("N");
-            await mail.SendTemplateOnceAsync(roleId, 1023, attachments,
+            await _mail.SendTemplateOnceAsync(roleId, 1023, attachments,
                 source, tx =>
                 {
                     EnlistMemberSave(tx, roleId, state.GuildId, next, false);
                     if (funds > 0 || contribution > 0)
-                        guilds.EnlistCaravanReward(state.GuildId, roleId, funds, contribution, tx);
-                }, loop.Owners?.Current, parentEconomy: expired => new EconomyEnvelope(operation,
+                        _guilds.EnlistCaravanReward(state.GuildId, roleId, funds, contribution, tx);
+                }, _loop.Owners?.Current, parentEconomy: expired => new EconomyEnvelope(operation,
                     actor.Account, roleId, "guild-caravan-rollover", source, source, NowMs,
                     effects.Concat(expired).ToArray(), []));
             if (funds > 0 || contribution > 0)
-                await guildService.RefreshCaravanResourcesAsync(state.GuildId);
+                await _guildService.RefreshCaravanResourcesAsync(state.GuildId);
         }
         else await SaveAsync(roleId, next);
         return next;
@@ -410,28 +403,28 @@ public sealed class GuildCaravanService : IGameTicker
 
     public void Tick(GameTime time)
     {
-        if (time.Now - lastTick < TimeSpan.FromMinutes(1)) return;
-        lastTick = time.Now;
+        if (time.Now - _lastTick < TimeSpan.FromMinutes(1)) return;
+        _lastTick = time.Now;
         // C/D 16: each role's rollover admits its own guild gate; the sweep needs no Realm (as Realm it waited behind
         // owned work for up to 16 s in S3). One sweep at a time: at 05:00 a sweep can outlast the minute.
-        if (sweeping) return;
-        sweeping = true;
+        if (_sweeping) return;
+        _sweeping = true;
         try
         {
-            loop.PostRuntime(async () =>
+            _loop.PostRuntime(async () =>
             {
                 try { await ReconcileAllAsync(); }
-                finally { sweeping = false; }
+                finally { _sweeping = false; }
             }, "guild caravan sweep");
         }
-        catch { sweeping = false; throw; }
+        catch { _sweeping = false; throw; }
     }
-    private bool sweeping;
+    private bool _sweeping;
 
     /// <summary>Settle yesterday's connected and offline orders at 05:00, once per persisted role.</summary>
     public async Task ReconcileAllAsync()
     {
-        var roleIds = accounts.ReadSync<List<long>>(new CaravanRoleIdsReadPlan());
+        var roleIds = _accounts.ReadSync<List<long>>(new CaravanRoleIdsReadPlan());
         foreach (long roleId in roleIds)
         {
             var snapshot = Read(roleId);
@@ -442,14 +435,14 @@ public sealed class GuildCaravanService : IGameTicker
                 using var operation = await EnterWithGuildGateAsync("guild-caravan/rollover", snapshot.GuildId, roleId);
                 var current = Read(roleId);
                 if (current == null || current.Day == Day || current.GuildId != snapshot.GuildId) continue;
-                await RolloverAsync(roleId, current, roles.LoadProgress(roleId));
-                if (sessions.All().FirstOrDefault(x => x.Role?.Id == roleId) is { } online && Guild(online) is { } guild)
+                await RolloverAsync(roleId, current, _roles.LoadProgress(roleId));
+                if (_sessions.All().FirstOrDefault(x => x.Role?.Id == roleId) is { } online && Guild(online) is { } guild)
                 {
                     var today = await EnsureAsync(online, guild);
                     await ShowCoreAsync(online, today);
                 }
             }
-            catch (Exception ex) { log.LogError(ex, "Guild caravan reset failed for role {Role}", roleId); }
+            catch (Exception ex) { _log.LogError(ex, "Guild caravan reset failed for role {Role}", roleId); }
         }
     }
 
@@ -481,10 +474,10 @@ public sealed class GuildCaravanService : IGameTicker
             && state.Skus.All(x => x.Status == 1);
         if (!next.Equals(s.Guild))
         {
-            var transaction = roles.NewTransaction();
+            var transaction = _roles.NewTransaction();
             transaction.RoleBlob(s.Role.Id, "guild_info", next.ToByteArray());
             transaction.WithEconomy(MetadataEnvelope(s.Role.Id, "projection"));
-            await roles.CommitAsync(transaction, "guild-caravan/projection");
+            await _roles.CommitAsync(transaction, "guild-caravan/projection");
         }
         s.Guild = next;
         await CharacterService.SyncAsync(s, GuildService.GuildSync, next);
@@ -506,7 +499,7 @@ public sealed class GuildCaravanService : IGameTicker
     private async Task PushOtherShowsAsync(GuildStore.State guild, long exceptRole)
     {
         // A refresh or next round changes the shared version; open panels must receive it before their next action.
-        foreach (var peer in sessions.All().Where(x => x.Role is { } role && role.Id != exceptRole
+        foreach (var peer in _sessions.All().Where(x => x.Role is { } role && role.Id != exceptRole
             && guild.Members.ContainsKey(role.Id)).ToArray())
         {
             if (Guild(peer)?.Id != guild.Id) continue;
@@ -517,9 +510,9 @@ public sealed class GuildCaravanService : IGameTicker
 
     private async Task RefreshDepartureTasksAsync(GameSession s)
     {
-        using var scope = loop.Owners is { } owners
+        using var scope = _loop.Owners is { } owners
             ? await owners.EnterAsync("guild-caravan/depart-task-refresh", ReservationKey.Role(s.Role!.Id)) : null;
-        await tasks.RefreshAsync(s);
+        await _tasks.RefreshAsync(s);
     }
 
     public async Task LoginAsync(GameSession s)
@@ -592,7 +585,7 @@ public sealed class GuildCaravanService : IGameTicker
 
     private EconomyAsset Asset(int entry)
     {
-        var row = data.Row("ItemConfig", entry)
+        var row = _data.Row("ItemConfig", entry)
             ?? throw new InvalidOperationException($"Missing caravan award denomination {entry}.");
         return new EconomyAsset(GameData.Int(row, "_iType") == 1 ? EconomyAssetKind.Currency : EconomyAssetKind.Item, entry);
     }
@@ -603,8 +596,8 @@ public sealed class GuildCaravanService : IGameTicker
         guild.ToString(System.Globalization.CultureInfo.InvariantCulture));
     private EconomyCompartment GuildMoneyCompartment(long guild)
     {
-        if (guilds.Get(guild) != null) return EconomyCompartment.GuildTreasury;
-        if (guilds.HasRecovery(guild)) return EconomyCompartment.Recovery;
+        if (_guilds.Get(guild) != null) return EconomyCompartment.GuildTreasury;
+        if (_guilds.HasRecovery(guild)) return EconomyCompartment.Recovery;
         throw new InvalidOperationException($"Unresolved guild {guild} caravan funds require durable recovery.");
     }
     private static EconomyCompartment PersonalCompartment(EconomyAsset asset) =>
@@ -667,7 +660,7 @@ public sealed class GuildCaravanService : IGameTicker
         string? sourceKey = null, IReadOnlyList<EconomyEffect>? extraEffects = null, PendingAward? pendingDelivery = null)
     {
         var role = s.Role;
-        var plan = fixedPlan ?? awards.Resolve(s, group);
+        var plan = fixedPlan ?? _awards.Resolve(s, group);
         var next = JsonSerializer.Deserialize<State>(JsonSerializer.SerializeToUtf8Bytes(state))!;
         mutate(next);
         long funds = plan.Grants.Where(g => g.Entry == 104).Sum(g => (long)g.Count);
@@ -692,20 +685,20 @@ public sealed class GuildCaravanService : IGameTicker
         using var guard = stateLockHeld ? null : ownerKeys == null
             ? await CharacterService.Lock(s) : await CharacterService.Lock(s, ownerKeys);
         if (!ReferenceEquals(s.Role, role) || s.Progress == null || state.Day != Day
-            || !sessions.All().Any(x => ReferenceEquals(x, s))
+            || !_sessions.All().Any(x => ReferenceEquals(x, s))
             || fixedPlan == null && (!Eligible(s) || Guild(s)?.Id != guildId || Read(role!.Id)?.GuildId != state.GuildId)
             || valid?.Invoke() == false) return null;
         List<InvItem>? committed;
         try
         {
-            committed = await character.ExchangeLockedAsync(s, cost, goods, boundGoods: bound,
+            committed = await _character.ExchangeLockedAsync(s, cost, goods, boundGoods: bound,
             baseExp: plan.Grants.Where(g => g.Entry == 100).Sum(g => (long)g.Count),
             jobExp: plan.Grants.Where(g => g.Entry == 101).Sum(g => (long)g.Count),
             popup: false, persist: tx =>
             {
                 EnlistMemberSave(tx, s.Role!.Id, guildId, next, fixedPlan == null);
                 if (!guildBooked && (funds > 0 || contribute > 0))
-                    guilds.EnlistCaravanReward(guildId, s.Role.Id, funds, contribute, tx);
+                    _guilds.EnlistCaravanReward(guildId, s.Role.Id, funds, contribute, tx);
                 additional?.Invoke(tx);
                 tx.WithEconomy(economy);
             }, asyncCommit: true);
@@ -720,7 +713,7 @@ public sealed class GuildCaravanService : IGameTicker
             notify.RewardType.Add(1);
         }
         if (!deferResourceRefresh && !guildBooked && (funds > 0 || contribute > 0))
-            await guildService.RefreshCaravanResourcesAsync(guildId);
+            await _guildService.RefreshCaravanResourcesAsync(guildId);
         return notify;
     }
 
@@ -772,7 +765,7 @@ public sealed class GuildCaravanService : IGameTicker
                 var sku = Slot(state, req.SkuIndex);
                 resp.Result = Check(state, req.DayVersion, sku);
                 if (resp.Result == 0 && sku!.Status != 0) resp.Result = ErrorCodes.CaravanLoaded;
-                if (resp.Result == 0 && data.Row("GuildTransportConfig", sku!.CfgId) is { } row)
+                if (resp.Result == 0 && _data.Row("GuildTransportConfig", sku!.CfgId) is { } row)
                 {
                     int entry = (int)GameData.Int(row, "_iItem"), count = (int)GameData.Int(row, "_iNum");
                     long award = SlotAward(sku, state.CurRound);
@@ -853,7 +846,7 @@ public sealed class GuildCaravanService : IGameTicker
             {
                 var own = await EnsureAsync(s, guild);
                 resp.DayVersion = Version(guild.Id, own.Day); resp.HelpOtherCount = own.HelpOtherCount;
-                foreach (var member in guilds.Get(guild.Id)?.Members.Values.AsEnumerable()
+                foreach (var member in _guilds.Get(guild.Id)?.Members.Values.AsEnumerable()
                     ?? Enumerable.Empty<GuildStore.Member>())
                     if (Read(member.RoleId) is { } other && other.GuildId == guild.Id && other.Day == own.Day)
                         foreach (var sku in other.Skus.Where(x => x.Status == 2))
@@ -908,7 +901,7 @@ public sealed class GuildCaravanService : IGameTicker
                         if (resp.Result == 0 && sku!.Status != 2) resp.Result = ErrorCodes.CaravanRequestMissing;
                         if (resp.Result == 0 && own.HelpOtherCount >= Setting("GuildTransportHelpDayNum", 3))
                             resp.Result = ErrorCodes.CaravanHelpLimit;
-                        if (resp.Result == 0 && data.Row("GuildTransportConfig", sku!.CfgId) is { } row)
+                        if (resp.Result == 0 && _data.Row("GuildTransportConfig", sku!.CfgId) is { } row)
                         {
                             int entry = (int)GameData.Int(row, "_iItem"), count = (int)GameData.Int(row, "_iNum");
                             long targetAward = SlotAward(sku, target!.CurRound);
@@ -919,8 +912,8 @@ public sealed class GuildCaravanService : IGameTicker
                                 var targetNext = JsonSerializer.Deserialize<State>(JsonSerializer.SerializeToUtf8Bytes(target))!;
                                 var slot = targetNext.Skus.Single(x => x.Index == req.SkuIndex);
                                 slot.Status = 1; slot.HelperName = helperName; slot.HelperId = helperId; slot.ReqHelpTime = 0;
-                                var targetOnline = sessions.All().FirstOrDefault(x => x.Role?.Id == req.PlayerID);
-                                var targetPlan = awards.ResolveForProgress(targetOnline?.Progress ?? roles.LoadProgress(req.PlayerID), targetAward);
+                                var targetOnline = _sessions.All().FirstOrDefault(x => x.Role?.Id == req.PlayerID);
+                                var targetPlan = _awards.ResolveForProgress(targetOnline?.Progress ?? _roles.LoadProgress(req.PlayerID), targetAward);
                                 // The helper books the recipient's configured award now; personal grants remain pending.
                                 targetNext.PendingAwards.Add(new PendingAward
                                 {
@@ -936,8 +929,8 @@ public sealed class GuildCaravanService : IGameTicker
                                     {
                                         EnlistMemberSave(tx, req.PlayerID, guild.Id, targetNext, true);
                                         if (targetFunds > 0 || targetContribution > 0)
-                                            guilds.EnlistCaravanReward(guild.Id, req.PlayerID, targetFunds, targetContribution, tx);
-                                    }, valid: () => guilds.ForRole(req.PlayerID)?.Id == guild.Id,
+                                            _guilds.EnlistCaravanReward(guild.Id, req.PlayerID, targetFunds, targetContribution, tx);
+                                    }, valid: () => _guilds.ForRole(req.PlayerID)?.Id == guild.Id,
                                     deferResourceRefresh: true,
                                     stateLockHeld: scope.CharacterLocked,
                                     sourceKey: $"guild-caravan:help:{guild.Id}:{req.PlayerID}:{target.Day}:{target.CurRound}:{req.SkuIndex}",
@@ -960,20 +953,20 @@ public sealed class GuildCaravanService : IGameTicker
             if (committedOwn != null && committedTarget != null)
             {
                 // Notifications may persist role guild-info, so use a new short realm scope.
-                using (var noticeScope = loop.Owners is { } noticeOwners
+                using (var noticeScope = _loop.Owners is { } noticeOwners
                     ? await noticeOwners.EnterAsync("guild-caravan/help-notice", [Ownership.ReservationKey.Realm]) : null)
                 {
-                    if (refreshResources) await guildService.RefreshCaravanResourcesAsync(guild.Id);
+                    if (refreshResources) await _guildService.RefreshCaravanResourcesAsync(guild.Id);
                     if (ReferenceEquals(s.Role, helperRole) && ReferenceEquals(s.Attachment, helperAttachment)
                         && ReferenceEquals(s.Owner, helperOwner) && s.Owner?.LifecycleEpoch == helperEpoch
-                        && sessions.All().Any(x => ReferenceEquals(x, s))
+                        && _sessions.All().Any(x => ReferenceEquals(x, s))
                         && Guild(s)?.Id == guild.Id
                         && Read(helperId) is { } currentOwn && currentOwn.GuildId == guild.Id)
                         await PublishAsync(s, currentOwn);
                 }
                 // Delivery is intentionally outside the helper's two-role reservation and old guild gate.
                 // A guild migration may replace the recipient's order while its StateLock is unavailable.
-                if (sessions.All().FirstOrDefault(x => x.Role?.Id == req.PlayerID) is { } online
+                if (_sessions.All().FirstOrDefault(x => x.Role?.Id == req.PlayerID) is { } online
                     && online.Attachment?.Cancelled != true && online.Owner?.State != RoleOwnerState.Quiescing
                     && Guild(online)?.Id == guild.Id)
                 {
@@ -994,17 +987,17 @@ public sealed class GuildCaravanService : IGameTicker
                             && ReferenceEquals(online.Attachment, recipientAttachment)
                             && ReferenceEquals(online.Owner, recipientOwner)
                             && online.Owner?.LifecycleEpoch == recipientEpoch
-                            && sessions.All().Any(x => ReferenceEquals(x, online))
+                            && _sessions.All().Any(x => ReferenceEquals(x, online))
                             && Guild(online)?.Id == guild.Id)
                         {
-                            using var noticeScope = loop.Owners is { } recipientOwners
+                            using var noticeScope = _loop.Owners is { } recipientOwners
                                 ? await recipientOwners.EnterAsync("guild-caravan/recipient-notice",
                                     [Ownership.ReservationKey.Role(req.PlayerID)]) : null;
                             if (ReferenceEquals(online.Role, recipientRole)
                                 && ReferenceEquals(online.Attachment, recipientAttachment)
                                 && ReferenceEquals(online.Owner, recipientOwner)
                                 && online.Owner?.LifecycleEpoch == recipientEpoch
-                                && sessions.All().Any(x => ReferenceEquals(x, online))
+                                && _sessions.All().Any(x => ReferenceEquals(x, online))
                                 && Guild(online)?.Id == guild.Id
                                 && Read(req.PlayerID) is { } currentOrder && currentOrder.GuildId == guild.Id)
                             {
@@ -1016,11 +1009,11 @@ public sealed class GuildCaravanService : IGameTicker
                     catch (OperationCanceledException) when (recipientAttachment?.Cancelled == true
                         || !ReferenceEquals(online.Attachment, recipientAttachment)
                         || !ReferenceEquals(online.Owner, recipientOwner)
-                        || !sessions.All().Any(x => ReferenceEquals(x, online)))
+                        || !_sessions.All().Any(x => ReferenceEquals(x, online)))
                     {
                         // The helper payment and pending grant already committed. A detached
                         // recipient can claim it at login; preserve the helper's success reply.
-                        log.LogDebug("Guild caravan recipient {Role} detached after committed help", req.PlayerID);
+                        _log.LogDebug("Guild caravan recipient {Role} detached after committed help", req.PlayerID);
                     }
                 }
             }
@@ -1056,7 +1049,7 @@ public sealed class GuildCaravanService : IGameTicker
                             GetRewardNotify? reward;
                             using (var taskGate = await TaskService.LockTasksAsync(s))
                             {
-                                var staged = tasks.StageCaravanDeparture(s);
+                                var staged = _tasks.StageCaravanDeparture(s);
                                 reward = await ExchangeAwardAsync(s, state, group, guild.Id, [], next =>
                                 {
                                     next.CurRound++;
@@ -1112,11 +1105,11 @@ public sealed class GuildCaravanService : IGameTicker
                     var replacement = Generate(s, state.Day, state.CurRound, state.RefreshTimes + 1);
                     foreach (var sku in state.Skus.Where(x => x.Status == 0))
                     {
-                        long type = data.Row("GuildTransportConfig", sku.CfgId) is { } current
+                        long type = _data.Row("GuildTransportConfig", sku.CfgId) is { } current
                             ? GameData.Int(current, "_iType") : 0;
-                        var fresh = replacement.FirstOrDefault(x => data.Row("GuildTransportConfig", x.CfgId) is { } row
+                        var fresh = replacement.FirstOrDefault(x => _data.Row("GuildTransportConfig", x.CfgId) is { } row
                             && GameData.Int(row, "_iType") == type && x.CfgId != sku.CfgId)
-                            ?? replacement.FirstOrDefault(x => data.Row("GuildTransportConfig", x.CfgId) is { } row
+                            ?? replacement.FirstOrDefault(x => _data.Row("GuildTransportConfig", x.CfgId) is { } row
                                 && GameData.Int(row, "_iType") == type);
                         if (fresh == null) continue;
                         sku.CfgId = fresh.CfgId; replacement.Remove(fresh);

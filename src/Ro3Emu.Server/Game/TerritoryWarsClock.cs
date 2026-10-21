@@ -15,9 +15,9 @@ public sealed class TerritoryWarsClock(GameData data, SeasonService seasons, Tim
     public long Now => time.GetUtcNow().ToUnixTimeSeconds();
     public long SeasonStart => seasons.StartTime;
     public int PlayBook => seasons.PlayBook;
-    private IReadOnlyList<Stage>? exported;
-    private IReadOnlyList<Stage>? stages;
-    private long builtCycle = -1;
+    private IReadOnlyList<Stage>? _exported;
+    private IReadOnlyList<Stage>? _stages;
+    private long _builtCycle = -1;
 
     /// <summary>
     /// The block of battles in force: the exported dates, or under OpenContent the repeat that is running or comes next
@@ -28,13 +28,13 @@ public sealed class TerritoryWarsClock(GameData data, SeasonService seasons, Tim
         get
         {
             long cycle = Cycle;
-            if (stages == null || builtCycle != cycle)
+            if (_stages == null || _builtCycle != cycle)
             {
                 long shift = cycle * seasons.OpenContent.TerritoryWarPeriod;
-                stages = (exported ??= Build()).Select(s => s with { StartTime = s.StartTime + shift, EndTime = s.EndTime + shift }).ToArray();
-                builtCycle = cycle;
+                _stages = (_exported ??= Build()).Select(s => s with { StartTime = s.StartTime + shift, EndTime = s.EndTime + shift }).ToArray();
+                _builtCycle = cycle;
             }
-            return stages;
+            return _stages;
         }
     }
 
@@ -44,7 +44,7 @@ public sealed class TerritoryWarsClock(GameData data, SeasonService seasons, Tim
         get
         {
             long period = seasons.OpenContent.TerritoryWarPeriod;
-            var block = exported ??= Build();
+            var block = _exported ??= Build();
             if (period <= 0 || block.Count == 0) return 0;
             long first = block[0].StartTime, span = block.Max(s => s.EndTime) - first, now = Now;
             if (now < first + span) return 0;

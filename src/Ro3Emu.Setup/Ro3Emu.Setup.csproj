@@ -7,7 +7,6 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
     <AssemblyName>RO3Emu</AssemblyName>
     <RootNamespace>Ro3Emu.Setup</RootNamespace>
     <Version>1.0.0</Version>
@@ -28,6 +27,7 @@
     <Compile Include="..\Ro3Emu.ClientTools\AsiaProfilePatch.cs" Link="Client\AsiaProfilePatch.cs" />
     <Compile Include="..\Ro3Emu.ClientTools\TextSink.cs" Link="Client\TextSink.cs" />
     <Compile Include="..\Ro3Emu.ClientTools\ImageSwapPatch.cs" Link="Client\ImageSwapPatch.cs" />
+    <Compile Include="..\Ro3Emu.ClientTools\AccessFixPatch.cs" Link="Client\AccessFixPatch.cs" />
     <Compile Include="..\Ro3Emu.ClientTools\VoiceStubPatch.cs" Link="Client\VoiceStubPatch.cs" />
     <Compile Include="..\Ro3Emu.ClientTools\Launcher.cs" Link="Client\Launcher.cs" />
   </ItemGroup>

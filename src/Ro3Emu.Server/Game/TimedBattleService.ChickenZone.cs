@@ -35,7 +35,7 @@ public sealed partial class TimedBattleService
             for (int attempt = 0; attempt < 20; attempt++)
             {
                 (nx, nz) = RandomPoint(run, cx, cz, room);
-                if (worldData.Map(ChickenScene)?.Nav?.WalkHeight(nx, nz, 10) != null) break;
+                if (_worldData.Map(ChickenScene)?.Nav?.WalkHeight(nx, nz, 10) != null) break;
             }
             long shrinkStart = at + step.WaitSeconds * 1000L, shrinkEnd = shrinkStart + step.ShrinkSeconds * 1000L;
             run.Zone.Add(new ZoneEvent(at, VarPoisonCountDown,
@@ -100,7 +100,7 @@ public sealed partial class TimedBattleService
         {
             if (player.Dead || run.Players[player].State != RoundRoleStatus.InWar || player.Progress == null) continue;
             if (MonsterService.Distance(player.Position.X, player.Position.Z, x, z) <= radius) continue;
-            long maxHp = character.Stats(player)[101];
+            long maxHp = _character.Stats(player)[101];
             yield return (player, Math.Max(1, maxHp * strength / 10000));
         }
     }

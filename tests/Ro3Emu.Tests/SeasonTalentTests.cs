@@ -21,20 +21,20 @@ public sealed class SeasonTalentTests
 
     private sealed class ServerFixture : IAsyncDisposable
     {
-        private readonly string dir = Path.Combine(Path.GetTempPath(), "ro3emu-talent-" + Guid.NewGuid().ToString("N"));
-        private WebApplication app = null!;
-        private string http = "";
+        private readonly string _dir = Path.Combine(Path.GetTempPath(), "ro3emu-talent-" + Guid.NewGuid().ToString("N"));
+        private WebApplication _app = null!;
+        private string _http = "";
 
-        public GameSession Session => app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role != null);
-        public CharacterService Character => app.Services.GetRequiredService<CharacterService>();
-        public AccountStore Accounts => app.Services.GetRequiredService<AccountStore>();
-        public RoleStore Roles => app.Services.GetRequiredService<RoleStore>();
-        public MapPoint TaskPoint(long scene, long point) => app.Services.GetRequiredService<WorldData>().Map(scene)!.Points[point];
-        public string DatabaseFile => Path.Combine(dir, "state", "ro3emu.db");
-        public string StateDir => Path.Combine(dir, "state");
-        public string GameDataDir => Path.Combine(dir, "game");
-        public GameLoop Loop => app.Services.GetRequiredService<GameLoop>();
-        public SeasonTalentService Talents => app.Services.GetRequiredService<SeasonTalentService>();
+        public GameSession Session => _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role != null);
+        public CharacterService Character => _app.Services.GetRequiredService<CharacterService>();
+        public AccountStore Accounts => _app.Services.GetRequiredService<AccountStore>();
+        public RoleStore Roles => _app.Services.GetRequiredService<RoleStore>();
+        public MapPoint TaskPoint(long scene, long point) => _app.Services.GetRequiredService<WorldData>().Map(scene)!.Points[point];
+        public string DatabaseFile => Path.Combine(_dir, "state", "ro3emu.db");
+        public string StateDir => Path.Combine(_dir, "state");
+        public string GameDataDir => Path.Combine(_dir, "game");
+        public GameLoop Loop => _app.Services.GetRequiredService<GameLoop>();
+        public SeasonTalentService Talents => _app.Services.GetRequiredService<SeasonTalentService>();
 
         public async Task PrepareFirstProfessionChoice(BotClient bot)
         {
@@ -45,7 +45,7 @@ public sealed class SeasonTalentTests
             await Gm("alice", "!item 1250900 100000");
             await Gm("alice", "!item 2 1000000");
             Assert.False(Session.SeasonTalent!.UnlockedNode[10102003]);
-            var data = app.Services.GetRequiredService<Ro3Emu.Server.Data.GameData>();
+            var data = _app.Services.GetRequiredService<Ro3Emu.Server.Data.GameData>();
             foreach (var row in data.Table("SeasonTalentConfig").Values
                 .OrderBy(r => Ro3Emu.Server.Data.GameData.Int(r, "_iId")))
             {
@@ -60,12 +60,12 @@ public sealed class SeasonTalentTests
         public async Task StartAsync(int playbook = 101, bool removeLevelTwo = false, bool extraMemberAttr = false,
             bool oathOpen = false, bool missingGraph = false, bool jobSpecificRow = false)
         {
-            string config = Path.Combine(dir, "game", "config");
+            string config = Path.Combine(_dir, "game", "config");
             Directory.CreateDirectory(config);
             foreach (var file in Directory.EnumerateFiles(Path.Combine(RepoRoot(), "data", "config"), "*.json"))
                 File.Copy(file, Path.Combine(config, Path.GetFileName(file)));
             // The quest unlock test reports a real nearby task NPC; include that map's authoritative points.
-            string sceneEditor = Path.Combine(dir, "game", "sceneeditor");
+            string sceneEditor = Path.Combine(_dir, "game", "sceneeditor");
             Directory.CreateDirectory(sceneEditor);
             File.Copy(Path.Combine(RepoRoot(), "data", "sceneeditor", "sc_izlude_001_sceneeditor.json"),
                 Path.Combine(sceneEditor, "sc_izlude_001_sceneeditor.json"));
@@ -111,22 +111,22 @@ public sealed class SeasonTalentTests
             }
 
             var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
-            app = ServerHost.Create([], o =>
+            _app = ServerHost.Create([], o =>
             {
-                o.DataDir = Path.Combine(dir, "state");
-                o.GameDataDir = Path.Combine(dir, "game");
+                o.DataDir = Path.Combine(_dir, "state");
+                o.GameDataDir = Path.Combine(_dir, "game");
                 o.HttpPort = httpPort;
                 o.MicroGatePort = microPort;
                 o.GameGatePort = gamePort;
                 o.PlayBook = playbook;
             });
-            await app.StartAsync();
-            http = $"http://127.0.0.1:{httpPort}";
+            await _app.StartAsync();
+            _http = $"http://127.0.0.1:{httpPort}";
         }
 
         public async Task<BotClient> InWorld(string name, bool create = true)
         {
-            var bot = new BotClient(http, File.ReadAllText(Path.Combine(dir, "state", "gate_rsa_public.pem")));
+            var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dir, "state", "gate_rsa_public.pem")));
             await bot.LoginAsync(name.ToLowerInvariant(), "pw");
             await bot.EnterGateAsync();
             long id = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
@@ -137,7 +137,7 @@ public sealed class SeasonTalentTests
         public async Task Gm(string account, string line)
         {
             using var httpClient = new HttpClient();
-            var resp = await httpClient.PostAsync($"{http}/ro3emu/gm?account={account}", new StringContent(line));
+            var resp = await httpClient.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(line));
             resp.EnsureSuccessStatusCode();
         }
 
@@ -151,9 +151,9 @@ public sealed class SeasonTalentTests
 
         public async ValueTask DisposeAsync()
         {
-            if (app != null) { await app.StopAsync(); await app.DisposeAsync(); }
+            if (_app != null) { await _app.StopAsync(); await _app.DisposeAsync(); }
             Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-            try { Directory.Delete(dir, true); } catch (IOException) { }
+            try { Directory.Delete(_dir, true); } catch (IOException) { }
         }
     }
 

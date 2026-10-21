@@ -28,7 +28,7 @@ public sealed partial class TimedBattleService
     /// <summary>C/D 15: the role's undelivered settlement grants, read before the role select admits so it can reserve
     /// them for <see cref="DeliverPendingAsync"/>.</summary>
     internal Task<ReservationKey[]> LoginKeysAsync(long roleId) =>
-        RoleObligations<TimedBattleObligationRow>.LoginKeysAsync(accounts, roleId);
+        RoleObligations<TimedBattleObligationRow>.LoginKeysAsync(_accounts, roleId);
 
     private sealed record SettlementCost(int Entry, int Count);
     private sealed record FrozenRecipient(GameSession Player, State Next, RoleProgress? PaidProgress,
@@ -47,7 +47,7 @@ public sealed partial class TimedBattleService
         FrozenRecipient[] frozen;
         var matchId = match.Room.Id;
         var keys = SettlementKeys(match, matchId);
-        using (var scope = loop.Owners is { } owners
+        using (var scope = _loop.Owners is { } owners
             ? await owners.EnterAsync("timed battle settlement", keys) : null)
         {
             if (match.Settled || match.Room == null) return;
@@ -70,7 +70,7 @@ public sealed partial class TimedBattleService
                     match.Absent.Add(player);
                     match.Fallen.Add(player);
                     player.EventFaction = 0;
-                    active.Remove(player);
+                    _active.Remove(player);
                     continue;
                 }
                 if (owner != null) scope?.Context.Pin(owner);
@@ -83,16 +83,16 @@ public sealed partial class TimedBattleService
             {
                 // Survivor Battle: the last team standing, or at the end of the battle stage the best ranked standing
                 // team (ChickenRanks, (inferred) tie-break).
-                if (winnerFaction == 0 && survivors.Count > 1 && time.GetUtcNow().ToUnixTimeSeconds() >= match.Deadline)
+                if (winnerFaction == 0 && survivors.Count > 1 && _time.GetUtcNow().ToUnixTimeSeconds() >= match.Deadline)
                     winnerFaction = ChickenRanks(match).Where(r => survivors.Contains(r.Key)).MinBy(r => r.Value).Key;
             }
             else if (match.Dragon != null)
             {
                 // Dragon Coffin Island: the camp with the higher score when the countdown ends (UITips 290002); a camp
                 // that left entirely forfeits before it (inferred).
-                if (winnerFaction == 0 && time.GetUtcNow().ToUnixTimeSeconds() >= match.Deadline) winnerFaction = DragonLeader(match);
+                if (winnerFaction == 0 && _time.GetUtcNow().ToUnixTimeSeconds() >= match.Deadline) winnerFaction = DragonLeader(match);
             }
-            else if (winnerFaction == 0 && time.GetUtcNow().ToUnixTimeSeconds() >= match.Deadline)
+            else if (winnerFaction == 0 && _time.GetUtcNow().ToUnixTimeSeconds() >= match.Deadline)
             {
                 // (inferred) Unique confirmed-kill lead wins a timed-out round.
                 var ranked = match.Players.GroupBy(p => match.Faction[p]).Where(team => survivors.Contains(team.Key))
@@ -124,15 +124,15 @@ public sealed partial class TimedBattleService
                 {
                     next.ChickenSettled.Add(match.Open);
                     next.ChickenMatches++;
-                    var level = data.Row("EatChickenLevelConfig", state.ChickenRank);
+                    var level = _data.Row("EatChickenLevelConfig", state.ChickenRank);
                     long limit = level is { } rank ? GameData.Int(rank, "_iPointLimit") : 100;
                     long compensate = level is { } loss ? GameData.Int(loss, "_iCompensate") : 10;
                     long floor = ChickenRankFloor(state.ChickenRank);
                     long oldTotal = state.ChickenScore < floor ? floor + state.ChickenScore : state.ChickenScore;
                     next.ChickenScore = Math.Max(floor, oldTotal + (won ? limit : actualVictory ? -compensate : 0));
                     if (limit > 0 && next.ChickenScore - floor >= limit
-                        && data.Row("EatChickenLevelConfig", next.ChickenRank + 1) != null) next.ChickenRank++;
-                    long walletDelta = next.ChickenScore - character.CountOf(player, 7);
+                        && _data.Row("EatChickenLevelConfig", next.ChickenRank + 1) != null) next.ChickenRank++;
+                    long walletDelta = next.ChickenScore - _character.CountOf(player, 7);
                     if (walletDelta > 0) grants.Add(new AwardGrant(7, checked((int)walletDelta)));
                     if (walletDelta < 0) costs.Add(new SettlementCost(7, checked((int)-walletDelta)));
                     result = ChickenSnapshot(match, player, actualVictory, new ChickenScoreChange(next.ChickenScore - oldTotal,
@@ -142,7 +142,7 @@ public sealed partial class TimedBattleService
                 {
                     int oldRank = state.DragonRank;
                     long oldScore = state.DragonScore;
-                    var level = data.Row("DragonIslandLevelConfig", oldRank);
+                    var level = _data.Row("DragonIslandLevelConfig", oldRank);
                     long limit = level is { } rank ? GameData.Int(rank, "_iPointLimit") : 0;
                     long compensate = level is { } loss ? GameData.Int(loss, "_iCompensate") : 0;
                     long delta = won ? limit : actualVictory ? -compensate : 0;
@@ -150,7 +150,7 @@ public sealed partial class TimedBattleService
                     next.DragonScore = Math.Max(0, next.DragonScore + delta);
                     next.DragonRankScore = Math.Max(0, next.DragonRankScore + delta);
                     if (limit > 0 && next.DragonRankScore >= limit
-                        && data.Row("DragonIslandLevelConfig", next.DragonRank + 1) != null)
+                        && _data.Row("DragonIslandLevelConfig", next.DragonRank + 1) != null)
                     { next.DragonRankScore -= limit; next.DragonRank++; }
                     delta = next.DragonScore - oldScore;
                     long today = TreasureDay();
@@ -165,9 +165,9 @@ public sealed partial class TimedBattleService
                     if (delta > 0) grants.Add(new AwardGrant(17, checked((int)delta)));
                     if (delta < 0) costs.Add(new SettlementCost(17, checked((int)-delta)));
                     // Preserve the established wallet-mismatch refusal without publishing an unpaid rank result.
-                    if (costs.Any(cost => character.CountOf(player, cost.Entry) < cost.Count))
+                    if (costs.Any(cost => _character.CountOf(player, cost.Entry) < cost.Count))
                     {
-                        log.LogWarning("Dragon settlement wallet mismatch for role {Role}", original.Id);
+                        _log.LogWarning("Dragon settlement wallet mismatch for role {Role}", original.Id);
                         next = JsonSerializer.Deserialize<State>(JsonSerializer.SerializeToUtf8Bytes(state))!;
                         next.DragonSettled.Add(match.Open);
                         grants.Clear(); costs.Clear(); currency = 0; delta = 0;
@@ -177,7 +177,7 @@ public sealed partial class TimedBattleService
                         ResultType = won ? 1 : 2, OldRankId = oldRank, NewRankId = next.DragonRank,
                         OldNetScore = oldScore, NewNetScore = next.DragonScore, NetScoreDelta = delta,
                         CurrencyEarned = currency, Snapshot = DragonSnapshot(match, winner, actualVictory,
-                            time.GetUtcNow().ToUnixTimeMilliseconds()),
+                            _time.GetUtcNow().ToUnixTimeMilliseconds()),
                     }.ToByteArray();
                 }
                 if (costs.Count > 0)
@@ -195,10 +195,10 @@ public sealed partial class TimedBattleService
                     new TimedBattleObligationRow(source, match.Room.Id, match.Entry, original.Id,
                         JsonSerializer.SerializeToUtf8Bytes(grants), JsonSerializer.SerializeToUtf8Bytes(costs),
                         JsonSerializer.SerializeToUtf8Bytes(next), result),
-                    tasks.StageTimedBattleSettlement(player, match.Entry, source)));
+                    _tasks.StageTimedBattleSettlement(player, match.Entry, source)));
             }
             frozen = staged.ToArray();
-            var tx = roles.NewTransaction();
+            var tx = _roles.NewTransaction();
             foreach (var item in frozen)
             {
                 tx.RoleBlob(item.Obligation.RoleId, "timed_battle", item.Obligation.NextState);
@@ -206,7 +206,7 @@ public sealed partial class TimedBattleService
                 item.TaskPlan?.Persist(tx);
             }
             tx.Add(Obligations.CreatePlan(frozen.Select(item => item.Obligation)));
-            var catalog = EventEconomy.Catalog(data);
+            var catalog = EventEconomy.Catalog(_data);
             EconomyAsset Asset(int entry) => catalog.TryAsset(entry, out var asset) ? asset
                 : throw new InvalidDataException($"Timed battle item {entry} is not catalogued.");
             var goods = frozen.SelectMany(item => JsonSerializer.Deserialize<AwardGrant[]>(item.Obligation.Grants)!
@@ -231,14 +231,14 @@ public sealed partial class TimedBattleService
                     DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), debits, goods, deltas,
                     JsonSerializer.SerializeToUtf8Bytes(new { Match = match.Room.Id, Recipients = frozen.Select(x => x.Obligation.RoleId).ToArray() })));
             }
-            await roles.CommitAsync(tx, "timed-battle/settlement", _ =>
+            await _roles.CommitAsync(tx, "timed-battle/settlement", _ =>
             {
                 foreach (var item in frozen)
                 {
                     item.Player.TimedBattle = item.Next;
                     if (item.PaidProgress != null) item.Player.Progress = item.PaidProgress;
                     item.TaskPlan?.Apply();
-                    pendingDeliveryRoles.Add(item.Obligation.RoleId);
+                    _pendingDeliveryRoles.Add(item.Obligation.RoleId);
                 }
                 match.Settled = true;
             });
@@ -263,35 +263,35 @@ public sealed partial class TimedBattleService
             try
             {
                 var keys = new[] { ReservationKey.Role(item.Obligation.RoleId), Obligations.Key(item.Obligation.SourceKey) };
-                if (loop.Owners is { } owners)
+                if (_loop.Owners is { } owners)
                     await owners.RunSessionAsync("timed battle recipient", keys, item.Player,
                         () => DeliverOneAsync(item.Player, item.Obligation));
                 else await DeliverOneAsync(item.Player, item.Obligation);
             }
             catch (OperationCanceledException) { throw; /* Login delivers the frozen obligation. */ }
-            catch (Exception error) { log.LogError(error, "Timed battle delivery deferred for role {Role}", item.Obligation.RoleId); }
+            catch (Exception error) { _log.LogError(error, "Timed battle delivery deferred for role {Role}", item.Obligation.RoleId); }
         });
         await RoleFanout.EachAsync(match.Players, async player =>
         {
             try
             {
                 if (match.Room != null && player.InstanceId == match.Room.Id)
-                    await instances.LeaveAsync(player, recoverDeadOnReturn: match.Chicken != null);
+                    await _instances.LeaveAsync(player, recoverDeadOnReturn: match.Chicken != null);
             }
             catch (Exception error) when (error is not OperationCanceledException)
-            { log.LogWarning(error, "Timed battle room leave failed for role {Role}", match.Participants[player].Id); }
+            { _log.LogWarning(error, "Timed battle room leave failed for role {Role}", match.Participants[player].Id); }
             finally
             {
                 player.EventFaction = 0;
-                active.Remove(player);
+                _active.Remove(player);
                 // A player in a handover may refuse the stat refresh; that must not keep the match open.
                 if (match.Chicken != null)
                     try { await ChickenDetachAsync(match, player); }
                     catch (Exception error) when (error is not OperationCanceledException)
-                    { log.LogWarning(error, "Survivor Battle detach failed for role {Role}", match.Participants[player].Id); }
+                    { _log.LogWarning(error, "Survivor Battle detach failed for role {Role}", match.Participants[player].Id); }
             }
         });
-        if (match.Room != null) matches.Remove(match.Room.Id);
+        if (match.Room != null) _matches.Remove(match.Room.Id);
         SettlementCompletedForTest?.Invoke();
     }
 
@@ -299,18 +299,18 @@ public sealed partial class TimedBattleService
     {
         if (session.Role == null) return;
         long roleId = session.Role.Id;
-        var pending = await Obligations.PendingAsync(accounts, roleId);
-        if (pending.Count > 0) pendingDeliveryRoles.Add(roleId);
+        var pending = await Obligations.PendingAsync(_accounts, roleId);
+        if (pending.Count > 0) _pendingDeliveryRoles.Add(roleId);
         foreach (var obligation in pending)
         {
             if (session.Role?.Id != roleId) throw new OperationCanceledException("Timed battle recipient changed role.");
             var keys = new[] { ReservationKey.Role(obligation.RoleId), Obligations.Key(obligation.SourceKey) };
-            if (loop.Owners is { } owners)
+            if (_loop.Owners is { } owners)
                 await owners.RunSessionAsync("timed battle delivery", keys, session,
                     () => DeliverOneAsync(session, obligation));
             else await DeliverOneAsync(session, obligation);
         }
-        pendingDeliveryRoles.Remove(roleId);
+        _pendingDeliveryRoles.Remove(roleId);
     }
 
     private async Task DeliverOneAsync(GameSession session, TimedBattleObligationRow obligation)
@@ -319,30 +319,30 @@ public sealed partial class TimedBattleService
             ?? throw new InvalidDataException("Invalid frozen timed battle grants.");
         bool paid;
         if (grants.Length > 0)
-            paid = await character.ApplyAwardAsync(session, new AwardPlan(0, 0, grants), persist: tx =>
+            paid = await _character.ApplyAwardAsync(session, new AwardPlan(0, 0, grants), persist: tx =>
             {
                 tx.Add(Obligations.DeliverPlan(obligation));
                 if (grants.Any(grant => grant.Entry is not (100 or 101)))
-                    tx.WithEventEconomy(EventEconomy.ForRole(data, session, "timed-battle-deliver",
+                    tx.WithEventEconomy(EventEconomy.ForRole(_data, session, "timed-battle-deliver",
                         obligation.SourceKey + "/deliver", [], [], new { obligation.SourceKey }));
             });
         else
         {
-            var tx = roles.NewTransaction();
+            var tx = _roles.NewTransaction();
             tx.Add(Obligations.DeliverPlan(obligation));
-            await roles.CommitAsync(tx, "timed-battle/deliver-empty");
+            await _roles.CommitAsync(tx, "timed-battle/deliver-empty");
             paid = true;
         }
         if (!paid) throw new InvalidOperationException("Frozen timed battle award was not delivered.");
-        if ((await Obligations.PendingAsync(accounts, obligation.RoleId)).Count == 0)
-            pendingDeliveryRoles.Remove(obligation.RoleId);
+        if ((await Obligations.PendingAsync(_accounts, obligation.RoleId)).Count == 0)
+            _pendingDeliveryRoles.Remove(obligation.RoleId);
         await SyncBattleStateAsync(session);
         if (obligation.Entry == ChickenEntry)
             await session.SendGameAsync(ChickenResult, ChickenResultNotify.Parser.ParseFrom(obligation.Result));
         else if (obligation.Entry == DragonEntry)
             await session.SendGameAsync(DragonSettle, DragonIslandSettleNtf.Parser.ParseFrom(obligation.Result));
         else await session.SendGameAsync(DungeonService.Result, DungeonResNotify.Parser.ParseFrom(obligation.Result));
-        await tasks.RefreshAsync(session);
+        await _tasks.RefreshAsync(session);
     }
 
     private static RoleProgress CopyProgress(RoleProgress source)

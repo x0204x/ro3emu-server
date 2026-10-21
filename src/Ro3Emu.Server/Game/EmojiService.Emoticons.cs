@@ -30,10 +30,10 @@ public sealed partial class EmojiService
         foreach (var effect in use.Effects)
         {
             long type = effect.Length > 1 ? effect[1] : 0, tab = effect.Length > 2 ? effect[2] : 0;
-            if (data.Row("EmoticonTabConfig", tab) is not { } row || !row.TryGetProperty("_iIndex", out var index)
+            if (_data.Row("EmoticonTabConfig", tab) is not { } row || !row.TryGetProperty("_iIndex", out var index)
                 || index.ValueKind != JsonValueKind.Array) return ErrorCodes.ItemNoConfig;
             foreach (var value in index.EnumerateArray())
-                if (GameData.Number(value) is { } id && data.Row("EmoticonsConfig", (long)id) is { } emoticon
+                if (GameData.Number(value) is { } id && _data.Row("EmoticonsConfig", (long)id) is { } emoticon
                     && GameData.Int(emoticon, "_iType") == type) ids.Add((long)id);
         }
         if (ids.Count == 0) return ErrorCodes.ItemNoConfig;
@@ -42,7 +42,7 @@ public sealed partial class EmojiService
         var next = s.EmojiInfo.Clone();
         next.EmojiInfo.AddRange(fresh);
         byte[] saved = next.ToByteArray();
-        if (!await character.CommitItemActionAsync(use, tx => tx.RoleBlob(s.Role!.Id, "emoji_info", saved), () => s.EmojiInfo = next,
+        if (!await _character.CommitItemActionAsync(use, tx => tx.RoleBlob(s.Role!.Id, "emoji_info", saved), () => s.EmojiInfo = next,
             new { Emoticons = fresh })) return ErrorCodes.ItemsShort;
         await SyncEmoticonsAsync(s);
         return 0;
@@ -50,7 +50,7 @@ public sealed partial class EmojiService
 
     private async Task LoginEmoticonsAsync(GameSession session)
     {
-        var saved = roles.LoadEmojiInfo(session.Role!.Id);
+        var saved = _roles.LoadEmojiInfo(session.Role!.Id);
         session.EmojiInfo = saved is { Length: > 0 } ? DBEmojiInfo.Parser.ParseFrom(saved) : new DBEmojiInfo();
         if (session.EmojiInfo.EmojiInfo.Count > 0) await SyncEmoticonsAsync(session);
     }

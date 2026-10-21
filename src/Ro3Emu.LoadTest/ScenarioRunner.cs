@@ -30,7 +30,7 @@ public sealed partial class ScenarioRunner(RunnerOptions options)
     private string _pem = "";
     private volatile bool _measureOffers;
     private HttpClient _http = null!;
-    private string? persistenceEvidence;
+    private string? _persistenceEvidence;
     private string _prefix = "";
     private WorldData _world = null!;
     private LineMeasurements? _lines;
@@ -92,7 +92,7 @@ public sealed partial class ScenarioRunner(RunnerOptions options)
             // Persistence evidence is read now: the client and the local server are disposed before the files are
             // written.
             if (options.ServerLocal)
-                try { persistenceEvidence = await _http.GetStringAsync("/ro3emu/metrics/persistence", ct); }
+                try { _persistenceEvidence = await _http.GetStringAsync("/ro3emu/metrics/persistence", ct); }
                 catch (HttpRequestException) { }
             report.SystemCpuPercent = SystemTimes.Percent(systemCpuBefore, SystemTimes.Read());
             report.HeavyProcesses = HeavyProcesses(competitorsBefore, ProcessCpuSnapshot(), server?.ProcessId);
@@ -207,8 +207,8 @@ public sealed partial class ScenarioRunner(RunnerOptions options)
             // lazy parts, snapshots and backups. Cumulative since server start (not reset with the epoch).
             if (options.ServerLocal)
             {
-                if (persistenceEvidence != null)
-                    await File.WriteAllTextAsync(options.OutputPrefix + ".persistence.json", persistenceEvidence, CancellationToken.None);
+                if (_persistenceEvidence != null)
+                    await File.WriteAllTextAsync(options.OutputPrefix + ".persistence.json", _persistenceEvidence, CancellationToken.None);
                 // Ownership evidence (C/D 15): Realm admissions by origin with queued and held time - every other
                 // reservation waits while one is held. Cumulative since server start.
                 if (report.ServerAfter?["ownership"] is { } ownership)

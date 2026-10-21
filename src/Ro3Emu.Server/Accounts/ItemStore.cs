@@ -54,14 +54,9 @@ public sealed class ItemEnchantment
 }
 
 /// <summary>Items of all roles, in the shared SQLite file.</summary>
-public sealed class ItemStore
+public sealed class ItemStore(AccountStore accounts)
 {
-    private readonly AccountStore _accounts;
-
-    public ItemStore(AccountStore accounts)
-    {
-        _accounts = accounts;
-    }
+    private readonly AccountStore _accounts = accounts;
 
     public List<InvItem> Load(long roleId)
     {

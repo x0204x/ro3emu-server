@@ -17,27 +17,27 @@ namespace Ro3Emu.Server.Game;
 /// </summary>
 public sealed partial class WardrobeService
 {
-    private readonly GameData data;
-    private readonly CharacterService character;
-    private readonly RoleStore roles;
-    private readonly World world;
-    private readonly ILogger<WardrobeService> log;
-    private readonly GameLoop loop;
-    private readonly Deadlines deadlines;
-    private readonly TimeProvider clock;
+    private readonly GameData _data;
+    private readonly CharacterService _character;
+    private readonly RoleStore _roles;
+    private readonly World _world;
+    private readonly ILogger<WardrobeService> _log;
+    private readonly GameLoop _loop;
+    private readonly Deadlines _deadlines;
+    private readonly TimeProvider _clock;
     private const string ExpiryKey = "wardrobe-expiry";
 
     public WardrobeService(GameData data, CharacterService character, RoleStore roles, World world,
         Deadlines deadlines, TimeProvider clock, GameLoop loop, SceneService scene, ILogger<WardrobeService> log)
     {
-        this.data = data;
-        this.character = character;
-        this.roles = roles;
-        this.world = world;
-        this.log = log;
-        this.loop = loop;
-        this.deadlines = deadlines;
-        this.clock = clock;
+        this._data = data;
+        this._character = character;
+        this._roles = roles;
+        this._world = world;
+        this._log = log;
+        this._loop = loop;
+        this._deadlines = deadlines;
+        this._clock = clock;
         character.SpecialItemUse.Add(TryUseAppearanceItemAsync);
         scene.BeforeSelf.Add(ReconcileAsync);
     }
@@ -58,13 +58,13 @@ public sealed partial class WardrobeService
     /// <summary>Load durable ownership before ENTITYSELF/AOI; a new role receives every sex-matching default hair.</summary>
     public async Task LoginAsync(GameSession session)
     {
-        var saved = roles.LoadWardrobe(session.Role!.Id);
+        var saved = _roles.LoadWardrobe(session.Role!.Id);
         var info = saved is { Length: > 0 } ? DBWardRobeInfo.Parser.ParseFrom(saved) : new DBWardRobeInfo();
         bool changed = RemoveExpired(info);
         if (session.Mounts != null) changed |= LightMounts(info, session.Mounts.Mounts.Values); // repair pre-link roles
         changed |= EnsureDefaults(session, info);
         session.Wardrobe = info;
-        if (changed || saved == null) roles.SaveWardrobe(session.Role.Id, info.ToByteArray());
+        if (changed || saved == null) _roles.SaveWardrobe(session.Role.Id, info.ToByteArray());
         ArmExpiry(session);
         await CharacterService.SyncAsync(session, WardrobeSync, info.Clone());
     }
@@ -97,7 +97,7 @@ public sealed partial class WardrobeService
             foreach (var (slot, id) in selected) next.CurUseAppearances[slot] = id;
             await CommitAsync(session, next, visible: true);
         }
-        log.LogInformation("{Name} wears {Count} appearances: {Result}", session.Role!.Name, req.AppearanceIds.Count, result);
+        _log.LogInformation("{Name} wears {Count} appearances: {Result}", session.Role!.Name, req.AppearanceIds.Count, result);
         await session.SendGameAsync(Use, new WardRobeUseAppearanceRes { Result = result, Req = req.Clone() });
     }
 
@@ -113,7 +113,7 @@ public sealed partial class WardrobeService
             int slot = (int)GameData.Int(Row(req.AppearanceId)!.Value, "_iType");
             next.CurUseAppearanceAttrs[slot] = req.AppearanceId;
             await CommitAsync(session, next);
-            await character.RefreshStatsAsync(session); // Future configured attributes may use this source.
+            await _character.RefreshStatsAsync(session); // Future configured attributes may use this source.
         }
         await session.SendGameAsync(UseAttr, new WardRobeUseAppearanceAttrRes { Result = result, Req = req.Clone() });
     }
@@ -196,31 +196,31 @@ public sealed partial class WardrobeService
         if (result == 0 && Owns(current, req.AppearanceId)) result = ErrorCodes.Parameter; // (inferred) already unlocked.
         var costs = row is { } r ? Materials(r) : [];
         if (result == 0 && costs.Count == 0) result = ErrorCodes.FeatureUnavailable; // No free unlock path inferred.
-        if (result == 0 && costs.Any(c => c.Entry <= 0 || c.Count <= 0 || data.Row("ItemConfig", c.Entry) == null))
+        if (result == 0 && costs.Any(c => c.Entry <= 0 || c.Count <= 0 || _data.Row("ItemConfig", c.Entry) == null))
             result = ErrorCodes.FeatureUnavailable;
         if (result == 0)
         {
             var next = current.Clone();
             next.AllLightUpAppearances[req.AppearanceId] = new DBAppearanceInfo { AppearanceId = req.AppearanceId };
-            var paid = await character.ExchangeLockedAsync(session, costs, [], popup: false,
+            var paid = await _character.ExchangeLockedAsync(session, costs, [], popup: false,
                 persist: tx =>
                 {
                     tx.RoleBlob(session.Role!.Id, "wardrobe", next.ToByteArray());
-                    tx.WithEconomy(character.FamilyEconomy(session, "cd13b/wardrobe-redeem", costs, [],
+                    tx.WithEconomy(_character.FamilyEconomy(session, "cd13b/wardrobe-redeem", costs, [],
                         new
                         {
                             Appearance = req.AppearanceId,
                             StateHash = Convert.ToHexString(SHA256.HashData(next.ToByteArray()))
                         }));
                 }, committed: () => { session.Wardrobe = next; ArmExpiry(session); }, asyncCommit: true);
-            if (paid == null) result = character.ShortageOf(session, costs);
+            if (paid == null) result = _character.ShortageOf(session, costs);
             else
             {
                 await CharacterService.SyncAsync(session, WardrobeSync, next.Clone());
                 await session.SendGameAsync(UnlockNotice, new WardRobeUnLockNtf { AppearanceId = req.AppearanceId });
             }
         }
-        log.LogInformation("{Name} redeems wardrobe {Id}: {Result}", session.Role!.Name, req.AppearanceId, result);
+        _log.LogInformation("{Name} redeems wardrobe {Id}: {Result}", session.Role!.Name, req.AppearanceId, result);
         await session.SendGameAsync(Redeem, new WardRobeRedeemUnlockAppearanceResp { Result = result });
     }
 
@@ -250,11 +250,11 @@ public sealed partial class WardrobeService
         {
             var next = session.Wardrobe!.Clone();
             next.AllLightUpAppearances[appearanceId] = new DBAppearanceInfo { AppearanceId = appearanceId };
-            var spent = await character.ExchangeLockedAsync(session, [], [], new Dictionary<long, int> { [item.Guid] = 1 },
+            var spent = await _character.ExchangeLockedAsync(session, [], [], new Dictionary<long, int> { [item.Guid] = 1 },
                 popup: false, persist: tx =>
                 {
                     tx.RoleBlob(session.Role!.Id, "wardrobe", next.ToByteArray());
-                    tx.WithEconomy(character.FamilyEconomy(session, "cd13b/wardrobe-item", [(item.Entry, 1L)], [],
+                    tx.WithEconomy(_character.FamilyEconomy(session, "cd13b/wardrobe-item", [(item.Entry, 1L)], [],
                         new
                         {
                             Appearance = appearanceId, Item = item.Entry,
@@ -322,7 +322,7 @@ public sealed partial class WardrobeService
         foreach (int id in looks)
             if (!Owns(next, id)) next.AllLightUpAppearances[id] = new DBAppearanceInfo { AppearanceId = id };
         var goods = bonus.Grants.Select(g => (g.Entry, g.Count, Bind: g.BindType)).ToList();
-        var economy = character.FamilyEconomy(session, Economy.CharacterFamilyEconomy.ShopAppearanceKind, cost,
+        var economy = _character.FamilyEconomy(session, Economy.CharacterFamilyEconomy.ShopAppearanceKind, cost,
             goods.Select(g => (g.Entry, g.Count)).ToList(), new
             {
                 Version = 1, Shop = shopOutcome, Appearances = looks, Award = bonus.GroupId, AwardConfig = bonus.AwardId,
@@ -330,7 +330,7 @@ public sealed partial class WardrobeService
                 StateHash = Convert.ToHexString(SHA256.HashData(next.ToByteArray())),
                 Mounts = ride?.Mounts ?? [], MountStateHash = ride?.StateHash,
             });
-        var paid = await character.ExchangeLockedAsync(session, cost, [], boundGoods: goods,
+        var paid = await _character.ExchangeLockedAsync(session, cost, [], boundGoods: goods,
             persist: tx =>
             {
                 persistShop(tx);
@@ -339,18 +339,18 @@ public sealed partial class WardrobeService
                 tx.WithEconomy(economy);
             },
             committed: () => { committedShop(); session.Wardrobe = next; ArmExpiry(session); ride?.Committed(); }, asyncCommit: true);
-        if (paid == null) return character.ShortageOf(session, cost);
+        if (paid == null) return _character.ShortageOf(session, cost);
         await CharacterService.SyncAsync(session, WardrobeSync, next.Clone());
         // 5012 only: 31189 below is the purchase's one unlock tip; 32747 would pop a second (LC_DAL_Mount.lua:186-218).
         if (ride != null) await ride.PublishAsync();
         await session.SendGameAsync(UnlockNotice, new WardRobeUnLockNtf { AppearanceId = appearanceId });
-        log.LogInformation("{Name} buys appearance {Id} (+{Parts} pieces, award {Award})", session.Role!.Name,
+        _log.LogInformation("{Name} buys appearance {Id} (+{Parts} pieces, award {Award})", session.Role!.Name,
             appearanceId, looks.Count - 1, bonus.GroupId);
         return 0;
     }
 
     /// <summary>Lua_CFG_WardRobeConfig.GetSuitPieces: the rows whose _iMain names the suit.</summary>
-    private IEnumerable<int> SuitPieces(int suit) => suit == 0 ? [] : data.Table("WardRobeConfig").Values
+    private IEnumerable<int> SuitPieces(int suit) => suit == 0 ? [] : _data.Table("WardRobeConfig").Values
         .Where(r => GameData.Int(r, "_iMain") == suit).Select(r => (int)GameData.Int(r, "_iID")).Where(id => id > 0).Order();
 
     private async Task RefreshExpiredAsync(GameSession session)
@@ -362,15 +362,15 @@ public sealed partial class WardrobeService
     }
 
     /// <summary>Clear time-limited ownership before ENTITYSELF and in the running world, including its AOI look.</summary>
-    public Task ReconcileAsync(GameSession session) => loop.IsOnLoop
-        ? ReconcileCoreAsync(session, deadlines.Capture(session))
-        : loop.InvokeAsync(() => ReconcileCoreAsync(session, deadlines.Capture(session)));
+    public Task ReconcileAsync(GameSession session) => _loop.IsOnLoop
+        ? ReconcileCoreAsync(session, _deadlines.Capture(session))
+        : _loop.InvokeAsync(() => ReconcileCoreAsync(session, _deadlines.Capture(session)));
 
     private async Task ReconcileCoreAsync(GameSession session, DeadlineLease lease)
     {
         if (session.Role == null || session.Wardrobe == null) return;
         using var _ = await CharacterService.Lock(session);
-        if (!deadlines.IsCurrent(session, lease) || session.Wardrobe == null) return;
+        if (!_deadlines.IsCurrent(session, lease) || session.Wardrobe == null) return;
         await RefreshExpiredAsync(session);
     }
 
@@ -378,8 +378,8 @@ public sealed partial class WardrobeService
     {
         long next = session.Wardrobe?.AllLightUpAppearances.Values
             .Where(a => a.OverdueTimeMs > 0).Select(a => a.OverdueTimeMs).DefaultIfEmpty().Min() ?? 0;
-        if (next == 0) deadlines.Cancel(session, ExpiryKey);
-        else deadlines.Set(session, ExpiryKey, DateTimeOffset.FromUnixTimeMilliseconds(next),
+        if (next == 0) _deadlines.Cancel(session, ExpiryKey);
+        else _deadlines.Set(session, ExpiryKey, DateTimeOffset.FromUnixTimeMilliseconds(next),
             (current, due, lease, ct) => ExpireAsync(current, lease));
     }
 
@@ -388,8 +388,8 @@ public sealed partial class WardrobeService
         try { await ReconcileCoreAsync(session, lease); }
         catch
         {
-            if (deadlines.IsCurrent(session, lease))
-                deadlines.Set(session, ExpiryKey, clock.GetUtcNow().AddSeconds(1),
+            if (_deadlines.IsCurrent(session, lease))
+                _deadlines.Set(session, ExpiryKey, _clock.GetUtcNow().AddSeconds(1),
                     (current, due, next, ct) => ExpireAsync(current, next));
             throw;
         }
@@ -400,12 +400,12 @@ public sealed partial class WardrobeService
         // LC_DAL_Fashion.OnLikeUpdate indexes the existing Lua table. A zero-entry protobuf map is omitted on login,
         // so introduce the first favorite with a whole dataset instead of an incremental child callback (inferred).
         bool firstLike = session.Wardrobe!.LikeAppearance.Count == 0 && next.LikeAppearance.Count > 0;
-        var tx = roles.NewTransaction();
+        var tx = _roles.NewTransaction();
         tx.ItemDelta(session.Role!.Id, session.Items, session.Items);
         tx.RoleBlob(session.Role.Id, "wardrobe", next.ToByteArray());
-        tx.WithEconomy(character.FamilyEconomy(session, "cd13b/wardrobe-state", [], [],
+        tx.WithEconomy(_character.FamilyEconomy(session, "cd13b/wardrobe-state", [], [],
             new { StateHash = Convert.ToHexString(SHA256.HashData(next.ToByteArray())) }));
-        await roles.CommitAsync(tx, "wardrobe/state", _ =>
+        await _roles.CommitAsync(tx, "wardrobe/state", _ =>
         {
             session.Wardrobe = next;
             ArmExpiry(session);
@@ -420,12 +420,12 @@ public sealed partial class WardrobeService
         var change = new EntityBase { Uuid = (ulong)session.Role!.Id, NotifyType = EntityBase.Types.NotifyType.WardRobe };
         change.CurUseAppearances.Add(session.Wardrobe!.CurUseAppearances);
         await session.SendGameAsync(CharacterService.EntityBaseChange, change);
-        foreach (var viewer in world.Viewers(session))
+        foreach (var viewer in _world.Viewers(session))
             try { await viewer.SendGameAsync(CharacterService.EntityBaseChange, change); }
             catch (Exception e) when (e is IOException or ObjectDisposedException or InvalidOperationException) { }
     }
 
-    private JsonElement? Row(int id) => data.Row("WardRobeConfig", id);
+    private JsonElement? Row(int id) => _data.Row("WardRobeConfig", id);
     private int ValidateMap(GameSession session, DBWardRobeInfo info, IDictionary<int, int> map)
     {
         if (map.Count > MaxSlot) return ErrorCodes.Parameter;
@@ -447,7 +447,7 @@ public sealed partial class WardrobeService
         int sex = (int)GameData.Int(row, "_iSexNeed");
         if (sex != 0 && sex != session.Role!.Sex) return ErrorCodes.Parameter;
         // WardRobeConfig has no job column; mount appearances have a MountsConfig._kJob allowlist.
-        if (GameData.Int(row, "_iType") == MountSlot && data.Row("MountsConfig", id) is { } mount
+        if (GameData.Int(row, "_iType") == MountSlot && _data.Row("MountsConfig", id) is { } mount
             && mount.TryGetProperty("_kJob", out var jobs) && jobs.ValueKind == JsonValueKind.Array
             && jobs.GetArrayLength() > 0 && !jobs.EnumerateArray().Any(v => (long)(GameData.Number(v) ?? 0) is 0 || (long)(GameData.Number(v) ?? 0) == session.Progress!.Career))
             return ErrorCodes.FeatureUnavailable;
@@ -456,7 +456,7 @@ public sealed partial class WardrobeService
     }
 
     private bool Owns(DBWardRobeInfo info, int id) => info.AllLightUpAppearances.TryGetValue(id, out var owned)
-        && (owned.OverdueTimeMs == 0 || owned.OverdueTimeMs > clock.GetUtcNow().ToUnixTimeMilliseconds());
+        && (owned.OverdueTimeMs == 0 || owned.OverdueTimeMs > _clock.GetUtcNow().ToUnixTimeMilliseconds());
 
     private static int PlanError(int index) => index is >= 0 and < PlanCount ? 0 : ErrorCodes.Parameter;
 
@@ -476,7 +476,7 @@ public sealed partial class WardrobeService
     {
         bool changed = !info.IsInit;
         info.IsInit = true;
-        foreach (var row in data.Table("WardRobeConfig").Values)
+        foreach (var row in _data.Table("WardRobeConfig").Values)
         {
             if (GameData.Int(row, "_iDefaultLightUp") <= 0 || GameData.Int(row, "_iDisable") > 0) continue;
             int sex = (int)GameData.Int(row, "_iSexNeed"), id = (int)GameData.Int(row, "_iID");
@@ -513,7 +513,7 @@ public sealed partial class WardrobeService
 
     private bool RemoveExpired(DBWardRobeInfo info)
     {
-        long now = clock.GetUtcNow().ToUnixTimeMilliseconds();
+        long now = _clock.GetUtcNow().ToUnixTimeMilliseconds();
         var expired = info.AllLightUpAppearances.Where(e => e.Value.OverdueTimeMs > 0 && e.Value.OverdueTimeMs <= now)
             .Select(e => e.Key).ToHashSet();
         if (expired.Count == 0) return false;

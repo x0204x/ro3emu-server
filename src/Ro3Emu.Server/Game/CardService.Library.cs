@@ -19,7 +19,7 @@ public sealed partial class CardService
     /// </summary>
     private bool Observe(DBLibraryInfo library, InvItem card)
     {
-        if (!character.IsCard(card.Entry)) return false;
+        if (!_character.IsCard(card.Entry)) return false;
         bool changed = false;
         if (!library.Cards.TryGetValue(card.Entry, out var entry))
         {
@@ -48,8 +48,8 @@ public sealed partial class CardService
     /// </summary>
     private int TierPoints(int card, int tier)
     {
-        if (data.Row("ItemConfig", card) is not { } row
-            || !data.Table("PublicParamConfig").TryGetValue("LibraryCardUnlockReward", out var table)
+        if (_data.Row("ItemConfig", card) is not { } row
+            || !_data.Table("PublicParamConfig").TryGetValue("LibraryCardUnlockReward", out var table)
             || table.ValueKind != JsonValueKind.Object) return 0;
         long quality = GameData.Int(row, "_iQuality");
         return table.TryGetProperty(quality.ToString(), out var reward)

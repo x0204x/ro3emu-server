@@ -16,18 +16,18 @@ namespace Ro3Emu.Tests;
 /// <summary>Spirit Tower's wire contract and authoritative lifecycle; no original client is run.</summary>
 public sealed class TowerTests : IAsyncLifetime
 {
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-tower-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-tower-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
-    private WebApplication app = null!;
-    private string http = "";
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private WebApplication _app = null!;
+    private string _http = "";
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
 
     public async Task InitializeAsync()
     {
         var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir;
+            o.DataDir = _dataDir;
             o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = httpPort;
             o.MicroGatePort = microPort;
@@ -35,22 +35,22 @@ public sealed class TowerTests : IAsyncLifetime
         });
         // Floors belong to playbook 101; keep this fixture independent of any persisted server playbook.
         SetPlayBook(101);
-        SureHitRolls.Install(app); // lethal hits are prepared; a FLEE miss would only be noise
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{httpPort}";
+        SureHitRolls.Install(_app); // lethal hits are prepared; a FLEE miss would only be noise
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{httpPort}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name, bool create = true, int cleared = 0)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw");
         await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
@@ -69,7 +69,7 @@ public sealed class TowerTests : IAsyncLifetime
     private async Task Gm(string account, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     private async Task Eligible(BotClient bot, int level = 99)
@@ -586,8 +586,8 @@ public sealed class TowerTests : IAsyncLifetime
             Assert.Equal(9, Count(alice, 1250701));
             Assert.DoesNotContain(alice.Inbox.Snapshot(), packet => packet.IsGame(TowerService.End));
         }
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         await InitializeAsync();
         await using var recovered = await InWorld("Alice", create: false);
@@ -746,23 +746,23 @@ public sealed class TowerTests : IAsyncLifetime
         {
             role = (long)alice.Self!.Uuid;
             await Eligible(alice);
-            await QuestProbe.AcceptAsync(app, http, "alice", 306040); // [101007,1] "Complete Pet Tower once"
-            await QuestProbe.AcceptAsync(app, http, "alice", 110005); // [101010,10] "Win Pet Tower a total of 10 times"
-            await QuestProbe.AcceptAsync(app, http, "alice", 100025); // [104008,3] "Clear Floor 3 of the Pet Tower"
-            await QuestProbe.AtAsync(app, "alice", 100025, 0);
+            await QuestProbe.AcceptAsync(_app, _http, "alice", 306040); // [101007,1] "Complete Pet Tower once"
+            await QuestProbe.AcceptAsync(_app, _http, "alice", 110005); // [101010,10] "Win Pet Tower a total of 10 times"
+            await QuestProbe.AcceptAsync(_app, _http, "alice", 100025); // [104008,3] "Clear Floor 3 of the Pet Tower"
+            await QuestProbe.AtAsync(_app, "alice", 100025, 0);
             var entered = await EnterFloor(alice, 1);
             foreach (var monster in entered.Monsters) await Kill(alice, monster.Uuid);
             Assert.True((await Next(alice, TowerService.End, ClimTowerEndNotify.Parser)).ClimTowerResult);
-            await QuestProbe.DoneAsync(app, "alice", 306040);
-            await QuestProbe.AtAsync(app, "alice", 110005, 1);
-            await QuestProbe.AtAsync(app, "alice", 100025, 1);
+            await QuestProbe.DoneAsync(_app, "alice", 306040);
+            await QuestProbe.AtAsync(_app, "alice", 110005, 1);
+            await QuestProbe.AtAsync(_app, "alice", 100025, 1);
             await alice.SendGameAsync(TowerService.LeaveDungeon, new LeaveDungeonReq());
             Assert.Equal(0, (await Next(alice, TowerService.LeaveDungeon, LeaveDungeonRsp.Parser)).Result);
         }
         await WaitOffline(role);
         await using var relog = await InWorld("Alice", create: false);
-        await QuestProbe.DoneAsync(app, "alice", 306040);
-        await QuestProbe.AtAsync(app, "alice", 110005, 1);
-        await QuestProbe.AtAsync(app, "alice", 100025, 1);
+        await QuestProbe.DoneAsync(_app, "alice", 306040);
+        await QuestProbe.AtAsync(_app, "alice", 110005, 1);
+        await QuestProbe.AtAsync(_app, "alice", 100025, 1);
     }
 }

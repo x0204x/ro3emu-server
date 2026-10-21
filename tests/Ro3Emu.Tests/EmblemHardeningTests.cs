@@ -16,7 +16,7 @@ public sealed partial class EmblemTests
         await using var bob = await InWorld("Bob");
         // Both roles' post-scene-load publication reserves Realm, and a session's later messages queue behind it.
         // Let it finish before holding a commit, or the other role's request waits for the held one (C/D 15).
-        for (var until = DateTime.UtcNow.AddSeconds(10); app.Services.GetRequiredService<SessionRegistry>().All().Any(x => x.Role != null && !x.GuildOnlinePublished);)
+        for (var until = DateTime.UtcNow.AddSeconds(10); _app.Services.GetRequiredService<SessionRegistry>().All().Any(x => x.Role != null && !x.GuildOnlinePublished);)
         {
             if (DateTime.UtcNow > until) throw new TimeoutException("scene online publication did not finish");
             await Task.Delay(10);
@@ -26,7 +26,7 @@ public sealed partial class EmblemTests
         await Gm("alice", "!item 1830101");
         long guid = Granted(await Next(alice, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser,
             m => m.PackInfo.ContainsKey(5)), 1830101).ItemGuid;
-        var sessions = app.Services.GetRequiredService<SessionRegistry>().All();
+        var sessions = _app.Services.GetRequiredService<SessionRegistry>().All();
         var owner = sessions.Single(s => s.Account == "alice");
         var other = sessions.Single(s => s.Account == "bob");
         // The game socket handles requests in order. This no-op reply proves Bob's earlier SceneLoaded
@@ -34,9 +34,9 @@ public sealed partial class EmblemTests
         await bob.SendGameAsync(EmblemService.SwitchPlan, new EmbleSwitchPlanReq { TargetIndex = 0 });
         Assert.Equal(0, (await Next(bob, EmblemService.SwitchPlan, EmbleSwitchPlanResp.Parser)).Result);
         Assert.Null(other.Handoff);
-        var roles = app.Services.GetRequiredService<RoleStore>();
-        var store = app.Services.GetRequiredService<ItemStore>();
-        var accounts = app.Services.GetRequiredService<AccountStore>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
+        var store = _app.Services.GetRequiredService<ItemStore>();
+        var accounts = _app.Services.GetRequiredService<AccountStore>();
         byte[] before = roles.LoadEmblems(owner.Role!.Id)!;
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -75,18 +75,18 @@ public sealed partial class EmblemTests
         await Gm("alice", "!item 1830101");
         long guid = Granted(await Next(alice, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser,
             m => m.PackInfo.ContainsKey(5)), 1830101).ItemGuid;
-        var session = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
-        var accounts = app.Services.GetRequiredService<AccountStore>();
-        var roles = app.Services.GetRequiredService<RoleStore>();
-        var store = app.Services.GetRequiredService<ItemStore>();
-        var loop = app.Services.GetRequiredService<GameLoop>();
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
+        var accounts = _app.Services.GetRequiredService<AccountStore>();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
+        var store = _app.Services.GetRequiredService<ItemStore>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
         byte[] empty = roles.LoadEmblems(session.Role!.Id)!;
         FixtureSql.Execute(accounts,
             "CREATE TRIGGER reject_emblem_slot BEFORE UPDATE OF emblems ON role BEGIN SELECT RAISE(ABORT,'slot blob'); END");
         try
         {
             await Assert.ThrowsAsync<SqliteException>(() => loop.InvokeAsync(() =>
-                app.Services.GetRequiredService<EmblemService>().SetUpAsync(session,
+                _app.Services.GetRequiredService<EmblemService>().SetUpAsync(session,
                     new SetUpEmblemReq { EmblemPos = 1, EmblemGuid = guid })));
             Assert.Empty(session.Emblems.Plans[0].Slots);
             Assert.Equal(empty, roles.LoadEmblems(session.Role.Id));
@@ -101,7 +101,7 @@ public sealed partial class EmblemTests
         try
         {
             await Assert.ThrowsAsync<SqliteException>(() => loop.InvokeAsync(() =>
-                app.Services.GetRequiredService<EmblemService>().SetDownAsync(session,
+                _app.Services.GetRequiredService<EmblemService>().SetDownAsync(session,
                     new SetDownEmblemReq { EmblemPos = 1 })));
             Assert.Equal(guid, session.Emblems.Plans[0].Slots[1]);
             Assert.Equal(deployed, roles.LoadEmblems(session.Role.Id));
@@ -121,10 +121,10 @@ public sealed partial class EmblemTests
         await Gm("alice", "!quest done 10103040");
         await Gm("alice", "!item 1830101 2");
         await Gm("alice", "!item 1257001");
-        var session = app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
         var guids = session.Items.Where(i => i.Entry == 1830101).Select(i => i.Guid).Order().ToArray();
         long target = guids[0], feed = guids[1];
-        var accounts = app.Services.GetRequiredService<AccountStore>();
+        var accounts = _app.Services.GetRequiredService<AccountStore>();
         var catalog = EconomyCatalog.Load(Path.Combine(RepoRoot(), "data"));
         var beforeSetup = EconomySnapshotReader.Read(accounts.DatabasePath, catalog, "auto");
         await alice.SendGameAsync(EmblemService.SetUp, new SetUpEmblemReq { EmblemPos = 1, EmblemGuid = target });

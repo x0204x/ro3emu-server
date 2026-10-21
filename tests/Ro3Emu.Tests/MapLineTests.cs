@@ -13,17 +13,17 @@ namespace Ro3Emu.Tests;
 /// <summary>Real 70009/70010/30005 flow, isolation and failed-load recovery over loopback game gates.</summary>
 public sealed class MapLineTests : IAsyncLifetime
 {
-    private readonly string directory = Path.Combine(Path.GetTempPath(), "ro3-lines-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), "ro3-lines-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "";
     private sealed class Clock : TimeProvider
     {
         public TimeSpan Offset;
         public override DateTimeOffset GetUtcNow() => DateTimeOffset.UtcNow + Offset;
     }
-    private readonly Clock clock = new();
+    private readonly Clock _clock = new();
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private GameSession Player(string name) => Service<SessionRegistry>().All().Single(s => s.Account == name.ToLowerInvariant());
     private Task OnLoop(Func<Task> action) => Service<GameLoop>().InvokeAsync(action);
     private static string RepoRoot()
@@ -35,18 +35,18 @@ public sealed class MapLineTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         var (h, m, g) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o => { o.DataDir = directory; o.GameDataDir = Path.Combine(RepoRoot(), "data"); o.HttpPort = h; o.MicroGatePort = m; o.GameGatePort = g; }, clock);
-        SureHitRolls.Install(app);
-        await app.StartAsync(); http = $"http://127.0.0.1:{h}";
+        _app = ServerHost.Create([], o => { o.DataDir = _directory; o.GameDataDir = Path.Combine(RepoRoot(), "data"); o.HttpPort = h; o.MicroGatePort = m; o.GameGatePort = g; }, _clock);
+        SureHitRolls.Install(_app);
+        await _app.StartAsync(); _http = $"http://127.0.0.1:{h}";
     }
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync(); Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(directory, true); } catch (IOException) { }
+        await _app.StopAsync(); await _app.DisposeAsync(); Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        try { Directory.Delete(_directory, true); } catch (IOException) { }
     }
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(directory, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_directory, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
         await bot.EnterWorldAsync(id); await Ready(Player(name)); return bot;
@@ -186,7 +186,7 @@ public sealed class MapLineTests : IAsyncLifetime
         var old = a.Handoff!;
         await OnLoop(() =>
         {
-            clock.Offset = TimeSpan.FromSeconds(31);
+            _clock.Offset = TimeSpan.FromSeconds(31);
             Service<SceneService>().ExpireLineLoad(a);
             Assert.True(a.SceneRecoveryRequired);
             Assert.Null(Service<PublicLineManager>().Reserved(a));

@@ -20,18 +20,11 @@ public sealed record UpdateSummary(string Version, int ChangedFiles, int Deleted
 /// staging → verify → commit through a journal. Originals are untouched until every new file is complete and
 /// verified, so cancelling or crashing before the commit leaves the old version playable.
 /// </summary>
-public sealed class Updater
+public sealed class Updater(InstallLayout layout, RepositoryClient repository)
 {
-    readonly InstallLayout _layout;
-    readonly string _metaDir;
-    readonly RepositoryClient _repo;
-
-    public Updater(InstallLayout layout, RepositoryClient repository)
-    {
-        _layout = layout;
-        _metaDir = layout.MetaDirectory;
-        _repo = repository;
-    }
+    readonly InstallLayout _layout = layout;
+    readonly string _metaDir = layout.MetaDirectory;
+    readonly RepositoryClient _repo = repository;
 
     public InstallLayout Layout => _layout;
 

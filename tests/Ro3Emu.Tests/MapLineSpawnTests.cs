@@ -10,40 +10,40 @@ namespace Ro3Emu.Tests;
 /// <summary>Public-line actor ownership and retirement using the authored world data.</summary>
 public sealed class MapLineSpawnTests : IAsyncLifetime
 {
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-lines-spawn-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-lines-spawn-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
 
     public async Task InitializeAsync()
     {
         var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir;
+            o.DataDir = _dataDir;
             o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = httpPort;
             o.MicroGatePort = microPort;
             o.GameGatePort = gamePort;
         });
         // Seed before the game ticker can load MVP states, so cooldown behavior is deterministic.
-        FixtureSql.Execute(app.Services.GetRequiredService<AccountStore>(),
+        FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(),
             "INSERT INTO mvp_line_cooldown(cfg_id, death_ms) VALUES (1, $death)",
             ("$death", MonsterService.NowMs));
-        await app.StartAsync();
+        await _app.StartAsync();
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     [ClientDataFact]
     public Task FieldMonstersHaveIndependentActorsAndRetirementCancelsCorpseWork() => OnLoop(async () =>
     {
-        var monsters = app.Services.GetRequiredService<MonsterService>();
-        var world = app.Services.GetRequiredService<World>();
+        var monsters = _app.Services.GetRequiredService<MonsterService>();
+        var world = _app.Services.GetRequiredService<World>();
         var first = RuntimeMapKey.Public(10111);
         var second = RuntimeMapKey.Public(10111, 2);
         await monsters.EnsureSpawnedAsync(first);
@@ -67,8 +67,8 @@ public sealed class MapLineSpawnTests : IAsyncLifetime
     [ClientDataFact]
     public Task GatheringNodesHaveIndependentOccupancyAndRetireWithTheirLine() => OnLoop(async () =>
     {
-        var gathering = app.Services.GetRequiredService<GatheringService>();
-        var world = app.Services.GetRequiredService<World>();
+        var gathering = _app.Services.GetRequiredService<GatheringService>();
+        var world = _app.Services.GetRequiredService<World>();
         var first = RuntimeMapKey.Public(10522);
         var second = RuntimeMapKey.Public(10522, 2);
         await gathering.EnsureSpawnedAsync(first);
@@ -86,8 +86,8 @@ public sealed class MapLineSpawnTests : IAsyncLifetime
     [ClientDataFact]
     public Task PrivateSingleSpawnsStayOwnedByTheirRoom() => OnLoop(async () =>
     {
-        var monsters = app.Services.GetRequiredService<MonsterService>();
-        var world = app.Services.GetRequiredService<World>();
+        var monsters = _app.Services.GetRequiredService<MonsterService>();
+        var world = _app.Services.GetRequiredService<World>();
         for (int i = 1; i <= 12; i++)
         {
             var runtime = RuntimeMapKey.Private(10111, 5_000_000 + i);
@@ -104,9 +104,9 @@ public sealed class MapLineSpawnTests : IAsyncLifetime
     [ClientDataFact]
     public async Task MvpLineOwnsDistinctBossesAndNewLineInheritsLatestDeathCooldown()
     {
-        var mvp = app.Services.GetRequiredService<MvpService>();
-        var world = app.Services.GetRequiredService<World>();
-        var loop = app.Services.GetRequiredService<GameLoop>();
+        var mvp = _app.Services.GetRequiredService<MvpService>();
+        var world = _app.Services.GetRequiredService<World>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
         var first = RuntimeMapKey.Public(10214);
         var second = RuntimeMapKey.Public(10214, 2);
 
@@ -145,7 +145,7 @@ public sealed class MapLineSpawnTests : IAsyncLifetime
         Assert.True(await condition(), "Bounded MVP spawn condition did not complete.");
     }
 
-    private Task OnLoop(Func<Task> work) => app.Services.GetRequiredService<GameLoop>().InvokeAsync(work);
+    private Task OnLoop(Func<Task> work) => _app.Services.GetRequiredService<GameLoop>().InvokeAsync(work);
 
     private static string RepoRoot()
     {

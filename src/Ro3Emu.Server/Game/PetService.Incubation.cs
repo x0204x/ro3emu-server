@@ -6,15 +6,15 @@ namespace Ro3Emu.Server.Game;
 
 public sealed partial class PetService
 {
-    private long Now => clock.GetUtcNow().ToUnixTimeSeconds();
-    private JsonElement? Room(DBPetInfo state) => data.Row("PetIncubationRoomConfig", state.IncubationLv);
+    private long Now => _clock.GetUtcNow().ToUnixTimeSeconds();
+    private JsonElement? Room(DBPetInfo state) => _data.Row("PetIncubationRoomConfig", state.IncubationLv);
 
     /// <summary>
     /// Physical slot unlocks accumulate by room level. Each round keeps its own egg per slot: DBSlotInfo maps
     /// round -> egg and the client reads LC_PetHelper slot data by round, showing a slot free in one pool while
     /// the other pool's egg sits there.
     /// </summary>
-    private bool EggSlotOpen(DBPetInfo state, long slot) => slot > 0 && data.Table("PetIncubationRoomConfig").Values
+    private bool EggSlotOpen(DBPetInfo state, long slot) => slot > 0 && _data.Table("PetIncubationRoomConfig").Values
         .Any(r => GameData.Int(r, "_iLv") <= state.IncubationLv && Flat(r, "_iUnlockSlot").Contains(slot));
 
     /// <summary>LC_PetHelper.GetSlotRemainingTime: room duration minus elapsed + acceleration, all in seconds.</summary>
@@ -33,7 +33,7 @@ public sealed partial class PetService
         if (s.IncubateInfo.Count == 0) state.IncubationSlot.Remove(slot);
     }
 
-    private long PetParam(string name, long fallback) => data.Table("PublicParamConfig").TryGetValue(name, out var v)
+    private long PetParam(string name, long fallback) => _data.Table("PublicParamConfig").TryGetValue(name, out var v)
         ? (long)(GameData.Number(v) ?? fallback) : fallback;
 
     /// <summary>
@@ -49,7 +49,7 @@ public sealed partial class PetService
     {
         int code = Gate(s, incubation: true);
         if (code != 0) return code;
-        if (data.Row("PetIncubationSlotConfig", round) is not { } row) return ErrorCodes.Parameter;
+        if (_data.Row("PetIncubationSlotConfig", round) is not { } row) return ErrorCodes.Parameter;
         return !place || RoundOpen(s, row) ? 0 : ErrorCodes.ActivityClosed;
     }
 
@@ -73,11 +73,11 @@ public sealed partial class PetService
         if (code == 0)
         {
             var (next, cost) = step!.Value;
-            if (!await ExchangeAsync(s, "room-level", next, cost)) code = character.ShortageOf(s, cost);
+            if (!await ExchangeAsync(s, "room-level", next, cost)) code = _character.ShortageOf(s, cost);
             else
             {
                 await ChangedAsync(s, items: cost.Count > 0);
-                if (cost.Count == 0) foreach (var handler in character.StateChanged) handler(s); // 306004
+                if (cost.Count == 0) foreach (var handler in _character.StateChanged) handler(s); // 306004
             }
         }
         await s.SendGameAsync(RoomLevelUp, new PetIncubationLvUpRes { Result = code });
@@ -86,7 +86,7 @@ public sealed partial class PetService
     /// <summary>One room level: the current row's _iExp and _kCost buy the next row. Null while the bar is not full.</summary>
     private (DBPetInfo Next, List<(int, long)> Cost)? RoomStep(DBPetInfo state)
     {
-        if (Room(state) is not { } room || data.Row("PetIncubationRoomConfig", state.IncubationLv + 1) == null
+        if (Room(state) is not { } room || _data.Row("PetIncubationRoomConfig", state.IncubationLv + 1) == null
             || state.IncubationExp < GameData.Int(room, "_iExp")) return null;
         var next = state.Clone();
         next.IncubationExp -= GameData.Int(room, "_iExp");
@@ -104,7 +104,7 @@ public sealed partial class PetService
         bool levelled = false;
         while (RoomStep(s.Pets!) is { } step && await ExchangeAsync(s, "room-level", step.Next, step.Cost)) levelled = true;
         // A new room level: quest targets read it (growth-manual 306004).
-        if (levelled) foreach (var handler in character.StateChanged) handler(s);
+        if (levelled) foreach (var handler in _character.StateChanged) handler(s);
         return levelled;
     }
 
@@ -119,7 +119,7 @@ public sealed partial class PetService
         if (code == 0 && (!EggSlotOpen(s.Pets!, req.SlotId) || Egg(s.Pets!, req.RoundId, req.SlotId) != null)) code = ErrorCodes.PetOperation;
         if (code == 0)
         {
-            var config = data.Row("PetIncubationSlotConfig", req.RoundId)!.Value;
+            var config = _data.Row("PetIncubationSlotConfig", req.RoundId)!.Value;
             var lottery = s.Lottery?.Clone();
             var result = Draw(s.Pets!, config, lottery);
             var cost = Cost(config, "_kMaterial");
@@ -130,7 +130,7 @@ public sealed partial class PetService
                 if (!next.IncubationSlot.TryGetValue(req.SlotId, out var slot))
                     next.IncubationSlot[req.SlotId] = slot = new DBSlotInfo { SlotId = req.SlotId };
                 slot.IncubateInfo[req.RoundId] = result;
-                if (!await ExchangeAsync(s, "generate-egg", next, cost, lottery: lottery)) code = character.ShortageOf(s, cost);
+                if (!await ExchangeAsync(s, "generate-egg", next, cost, lottery: lottery)) code = _character.ShortageOf(s, cost);
                 else await ChangedAsync(s, items: true);
             }
         }
@@ -151,7 +151,7 @@ public sealed partial class PetService
         var draws = Flat(slot, "_kDrawIds");
         if (draws.Length == 0) return null;
         long id = draws[(int)Math.Clamp(state.IncubationLv, 0, draws.Length - 1)];
-        if (data.Row("DrawConfig", id) is not { } draw) return null;
+        if (_data.Row("DrawConfig", id) is not { } draw) return null;
         var groups = Flat(draw, "_kSubBanner").ToHashSet();
         var guaranteed = Flat(draw, "_kGuaranteedBanner").ToHashSet();
         long guarantee = GameData.Int(draw, "_iGuaranteedCnt");
@@ -178,7 +178,7 @@ public sealed partial class PetService
 
     private (long Group, int Type, int Item, int Count)? Roll(IReadOnlySet<long> groups)
     {
-        var rows = data.Table("DrawPoolConfig").Values.Where(r => groups.Contains(GameData.Int(r, "_iGroupID"))
+        var rows = _data.Table("DrawPoolConfig").Values.Where(r => groups.Contains(GameData.Int(r, "_iGroupID"))
             && GameData.Int(r, "_iWeight") > 0 && Outcomes(r).Count > 0).ToList();
         long total = rows.Sum(r => GameData.Int(r, "_iWeight"));
         if (total <= 0) return null;
@@ -202,9 +202,9 @@ public sealed partial class PetService
         {
             if (tuple.ValueKind != JsonValueKind.Array || tuple.GetArrayLength() != 3) continue;
             int type = (int)(GameData.Number(tuple[0]) ?? 0), item = (int)(GameData.Number(tuple[1]) ?? 0), count = (int)(GameData.Number(tuple[2]) ?? 0);
-            if (count <= 0 || data.Row("PetIncubationResultConfig", item) == null) continue;
-            if (type == 1 && count == 1 && data.Row("PetBaseConfig", item) != null && stars.ContainsKey((item, 1, 0))
-                || type == 2 && data.Row("ItemConfig", item) != null) result.Add((type, item, count));
+            if (count <= 0 || _data.Row("PetIncubationResultConfig", item) == null) continue;
+            if (type == 1 && count == 1 && _data.Row("PetBaseConfig", item) != null && _stars.ContainsKey((item, 1, 0))
+                || type == 2 && _data.Row("ItemConfig", item) != null) result.Add((type, item, count));
         }
         return result;
     }
@@ -221,13 +221,13 @@ public sealed partial class PetService
         if (code == 0 && egg == null) code = ErrorCodes.PetOperation;
         if (code == 0 && Remaining(s.Pets!, egg!) is var remaining and > 0)
         {
-            long need = (remaining + 299) / 300, have = Math.Min(need, character.CountOf(s, 1250724));
+            long need = (remaining + 299) / 300, have = Math.Min(need, _character.CountOf(s, 1250724));
             var cost = new List<(int, long)>();
             if (have > 0) cost.Add((1250724, have));
             if (need > have) cost.Add((3, checked((need - have) * 100)));
             var next = s.Pets!.Clone();
             Egg(next, req.RoundId, req.SlotId)!.AccTime += need * 300;
-            if (!await ExchangeAsync(s, "accelerate-egg", next, cost)) code = character.ShortageOf(s, cost);
+            if (!await ExchangeAsync(s, "accelerate-egg", next, cost)) code = _character.ShortageOf(s, cost);
             else await ChangedAsync(s, items: true);
         }
         await s.SendGameAsync(AccelerateEgg, new PetEggAccRes { Result = code });
@@ -254,21 +254,21 @@ public sealed partial class PetService
             {
                 var egg = Egg(next, req.RoundId, slot)!;
                 int item = checked((int)egg.AwardId), count = checked((int)egg.AwardCount);
-                if (count <= 0 || data.Row("PetIncubationResultConfig", item) is not { } result) { code = ErrorCodes.PetNoConfig; break; }
+                if (count <= 0 || _data.Row("PetIncubationResultConfig", item) is not { } result) { code = ErrorCodes.PetNoConfig; break; }
                 var reward = new PetEggRewardItem { ItemId = item, Count = count };
-                if (egg.AwardType == 1 && count == 1 && data.Row("PetBaseConfig", item) is { } pet && stars.ContainsKey((item, 1, 0)))
+                if (egg.AwardType == 1 && count == 1 && _data.Row("PetBaseConfig", item) is { } pet && _stars.ContainsKey((item, 1, 0)))
                 {
                     if (next.ListPet.ContainsKey(item))
                     {
                         var broken = Flat(pet, "_kDecompose");
-                        if (broken.Length != 2 || broken[1] <= 0 || broken[1] > int.MaxValue || data.Row("ItemConfig", broken[0]) == null) { code = ErrorCodes.PetNoConfig; break; }
+                        if (broken.Length != 2 || broken[1] <= 0 || broken[1] > int.MaxValue || _data.Row("ItemConfig", broken[0]) == null) { code = ErrorCodes.PetNoConfig; break; }
                         goods.Add(((int)broken[0], (int)broken[1]));
                         // UI_Sys_Pet_CongratulationPanelCtrl reads brokenItems.itemId as the PET id and shows its _kDecompose item.
                         reply.BrokenItems.Add(new PetEggRewardItem { ItemId = item, Count = broken[1] });
                     }
                     else { next.ListPet[item] = NewPet(item); reply.PetItems.Add(reward); }
                 }
-                else if (egg.AwardType == 2 && data.Row("ItemConfig", item) != null) { goods.Add((item, count)); reply.NormalItems.Add(reward); }
+                else if (egg.AwardType == 2 && _data.Row("ItemConfig", item) != null) { goods.Add((item, count)); reply.NormalItems.Add(reward); }
                 else { code = ErrorCodes.PetNoConfig; break; }
                 RemoveEgg(next, req.RoundId, slot);
                 next.IncubationCount++;
@@ -299,7 +299,7 @@ public sealed partial class PetService
         int code = RoundGate(s, req.RoundId, place: true);
         if (code == 0 && s.Pets!.IncubationLv < PetParam("UnlockFastIncubationLv", 2))
             code = ErrorCodes.PetOperation;
-        var config = code == 0 ? data.Row("PetIncubationSlotConfig", req.RoundId) : null;
+        var config = code == 0 ? _data.Row("PetIncubationSlotConfig", req.RoundId) : null;
         var next = s.Pets?.Clone();
         var lottery = s.Lottery?.Clone();
         var costs = new Dictionary<int, long>();
@@ -332,23 +332,23 @@ public sealed partial class PetService
                 }
                 selected++;
                 int itemId = checked((int)egg.AwardId), countAward = checked((int)egg.AwardCount);
-                if (countAward <= 0 || data.Row("PetIncubationResultConfig", itemId) is not { } result)
+                if (countAward <= 0 || _data.Row("PetIncubationResultConfig", itemId) is not { } result)
                 { code = ErrorCodes.PetNoConfig; break; }
                 var reward = new PetEggRewardItem { ItemId = itemId, Count = countAward };
-                if (egg.AwardType == 1 && countAward == 1 && data.Row("PetBaseConfig", itemId) is { } pet
-                    && stars.ContainsKey((itemId, 1, 0)))
+                if (egg.AwardType == 1 && countAward == 1 && _data.Row("PetBaseConfig", itemId) is { } pet
+                    && _stars.ContainsKey((itemId, 1, 0)))
                 {
                     if (next.ListPet.ContainsKey(itemId))
                     {
                         var broken = Flat(pet, "_kDecompose");
                         if (broken.Length != 2 || broken[1] <= 0 || broken[1] > int.MaxValue
-                            || data.Row("ItemConfig", broken[0]) == null) { code = ErrorCodes.PetNoConfig; break; }
+                            || _data.Row("ItemConfig", broken[0]) == null) { code = ErrorCodes.PetNoConfig; break; }
                         goods.Add(((int)broken[0], (int)broken[1]));
                         reply.BrokenItems.Add(new PetEggRewardItem { ItemId = itemId, Count = broken[1] });
                     }
                     else { next.ListPet[itemId] = NewPet(itemId); reply.PetItems.Add(reward); }
                 }
-                else if (egg.AwardType == 2 && data.Row("ItemConfig", itemId) != null)
+                else if (egg.AwardType == 2 && _data.Row("ItemConfig", itemId) != null)
                 { goods.Add((itemId, countAward)); reply.NormalItems.Add(reward); }
                 else { code = ErrorCodes.PetNoConfig; break; }
                 RemoveEgg(next, req.RoundId, slot);
@@ -362,7 +362,7 @@ public sealed partial class PetService
         if (code == 0)
         {
             var cost = costs.Select(x => (x.Key, x.Value)).ToList();
-            if (!await ExchangeAsync(s, "fast-egg", next!, cost, goods, lottery)) code = character.ShortageOf(s, cost);
+            if (!await ExchangeAsync(s, "fast-egg", next!, cost, goods, lottery)) code = _character.ShortageOf(s, cost);
             else
             {
                 await AutoRoomLevelAsync(s);

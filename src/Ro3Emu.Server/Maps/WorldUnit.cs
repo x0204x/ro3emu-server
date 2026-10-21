@@ -14,13 +14,13 @@ public abstract class WorldUnit
     public long InstanceId { get; init; }
     public int LineNumber { get; init; } = 1;
     public RuntimeMapKind RuntimeKind { get; init; }
-    private RuntimeMapKey? runtimeMap;
+    private RuntimeMapKey? _runtimeMap;
     public RuntimeMapKey RuntimeMap
     {
-        get => runtimeMap ?? (InstanceId == 0 ? RuntimeMapKey.Public(SceneEntry, LineNumber)
+        get => _runtimeMap ?? (InstanceId == 0 ? RuntimeMapKey.Public(SceneEntry, LineNumber)
             : RuntimeKind == RuntimeMapKind.Event ? RuntimeMapKey.Event(SceneEntry, InstanceId)
             : RuntimeMapKey.Private(SceneEntry, InstanceId));
-        init => runtimeMap = value;
+        init => _runtimeMap = value;
     }
     public long WorldScene => RuntimeMap.WorldScene;
     public float X { get; set; }

@@ -14,24 +14,24 @@ namespace Ro3Emu.Tests;
 /// <summary>Real Divine Totem requests, inventory GUIDs, plan markers and 5032 snapshots.</summary>
 public sealed class TotemTests : IAsyncLifetime
 {
-    private readonly string dir = Path.Combine(Path.GetTempPath(), "ro3emu-totem-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ro3emu-totem-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "";
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(20);
     public async Task InitializeAsync()
     {
         var (h, m, g) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o => { o.DataDir = dir; o.GameDataDir = Path.Combine(RepoRoot(), "data"); o.HttpPort = h; o.MicroGatePort = m; o.GameGatePort = g; });
-        await app.StartAsync(); http = $"http://127.0.0.1:{h}";
+        _app = ServerHost.Create([], o => { o.DataDir = _dir; o.GameDataDir = Path.Combine(RepoRoot(), "data"); o.HttpPort = h; o.MicroGatePort = m; o.GameGatePort = g; });
+        await _app.StartAsync(); _http = $"http://127.0.0.1:{h}";
     }
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync(); Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dir, true); } catch (IOException) { }
+        await _app.StopAsync(); await _app.DisposeAsync(); Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        try { Directory.Delete(_dir, true); } catch (IOException) { }
     }
     private async Task<BotClient> InWorld(bool create = true)
     {
-        var b = new BotClient(http, File.ReadAllText(Path.Combine(dir, "gate_rsa_public.pem")));
+        var b = new BotClient(_http, File.ReadAllText(Path.Combine(_dir, "gate_rsa_public.pem")));
         await b.LoginAsync("alice", "pw"); await b.EnterGateAsync();
         long id = create ? (await b.CreateRoleAsync("Alice")).RoleBaseInfo.Id : b.Roles.Single().Id;
         await b.EnterWorldAsync(id); return b;
@@ -39,8 +39,8 @@ public sealed class TotemTests : IAsyncLifetime
     private static async Task<T> Next<T>(BotClient b, uint id, MessageParser<T> parser) where T : IMessage<T>
     { var e = await b.Inbox.WaitAsync(e => e.IsGame(id), Wait); return parser.ParseFrom(e.Body); }
     private async Task Gm(string command)
-    { using var h = new HttpClient(); (await h.PostAsync($"{http}/ro3emu/gm?account=alice", new StringContent(command))).EnsureSuccessStatusCode(); }
-    private GameSession Session => app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice" && s.Role != null);
+    { using var h = new HttpClient(); (await h.PostAsync($"{_http}/ro3emu/gm?account=alice", new StringContent(command))).EnsureSuccessStatusCode(); }
+    private GameSession Session => _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice" && s.Role != null);
     private InvItem Item(long id) => Session.Items.Single(i => i.Guid == id);
     private async Task<long> Give(int entry)
     { await Gm($"!item {entry} 1"); return Session.Items.Last(i => i.Entry == entry).Guid; }
@@ -98,8 +98,8 @@ public sealed class TotemTests : IAsyncLifetime
             role = Session.Role!.Id;
         }
         // The logout's own saves are awaited first: only what the next login writes is compared.
-        var accounts = app.Services.GetRequiredService<AccountStore>();
-        var registry = app.Services.GetRequiredService<SessionRegistry>();
+        var accounts = _app.Services.GetRequiredService<AccountStore>();
+        var registry = _app.Services.GetRequiredService<SessionRegistry>();
         var deadline = DateTime.UtcNow + Wait;
         while (registry.All().Any(s => s.Account == "alice" && s.Role != null) && DateTime.UtcNow < deadline) await Task.Delay(20);
         var before = accounts.RoleVector(role, sqlOnly: true);
@@ -149,7 +149,7 @@ public sealed class TotemTests : IAsyncLifetime
         var appraised = await Next(bot, 82370, TotemAppraiseResp.Parser);
         Assert.Equal(0, appraised.Result); Assert.Single(appraised.AppraiseResult); Assert.Equal(1, Item(opaque).Attrs![3]);
         long simple = await Give(17400001);
-        var data = app.Services.GetRequiredService<GameData>();
+        var data = _app.Services.GetRequiredService<GameData>();
         int bookEntry = (int)data.Table("ItemConfig").Values.First(row => row.TryGetProperty("_iUseEffect", out var e)
             && e.ValueKind == System.Text.Json.JsonValueKind.Array && e.EnumerateArray().Any(op => op.ValueKind == System.Text.Json.JsonValueKind.Array && op.GetArrayLength() >= 2 && GameData.Number(op[0]) == 206)).GetProperty("_iID").GetInt32();
         long book = await Give(bookEntry);
@@ -173,10 +173,10 @@ public sealed class TotemTests : IAsyncLifetime
         Assert.Equal(0, (await Next(bot, 82365, UpgradeTotemSystemResp.Parser)).Result);
         Assert.Equal(50, Session.Totems!.TotemTotalExp); Assert.DoesNotContain(Session.Items, i => i.Entry == 1256003);
         long cap = data.Table("TotemLvConfig").Values.Sum(row => GameData.Int(row, "_iExp"));
-        await app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
         {
             Session.Totems.TotemTotalExp = cap - 5;
-            app.Services.GetRequiredService<RoleStore>().SaveTotems(Session.Role!.Id, Session.Totems.ToByteArray());
+            _app.Services.GetRequiredService<RoleStore>().SaveTotems(Session.Role!.Id, Session.Totems.ToByteArray());
             return Task.CompletedTask;
         });
         await Gm("!item 1256003 1");
@@ -234,7 +234,7 @@ public sealed class TotemTests : IAsyncLifetime
         Assert.Equal(ErrorCodes.TradeRequest, (await Next(bot, StallsService.Start, PlayerStartStallsRsp.Parser)).Result);
         Assert.Equal(currency, Session.Progress.Currency[2]);
         Assert.Equal(guid, Session.Totems!.TotemPlans[0].SetUpTotem[1]);
-        Assert.Contains(app.Services.GetRequiredService<ItemStore>().Load(Session.Role!.Id), item => item.Guid == guid);
+        Assert.Contains(_app.Services.GetRequiredService<ItemStore>().Load(Session.Role!.Id), item => item.Guid == guid);
 
         // The same market gate still accepts a developed, unreserved copy.
         long free = await Give(17500001);
@@ -251,13 +251,13 @@ public sealed class TotemTests : IAsyncLifetime
     public async Task CartPreservesTotemStorageAndRejectsSavedPlanTransfers()
     {
         long guid;
-        async Task EnableCart() => await app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
-            app.Services.GetRequiredService<OwnerRegistry>().RunAsync("test/enable-totem-cart",
+        async Task EnableCart() => await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+            _app.Services.GetRequiredService<OwnerRegistry>().RunAsync("test/enable-totem-cart",
                 [ReservationKey.Role(Session.Role!.Id)], () =>
                 {
                     // GM changes queue owned refreshes; fixture writes must wait for their commit and apply.
                     Session.Progress!.Skills[16003] = 1; // Cart Use (row 1600301); same learned-cart fixture as WorldRoleOperationsTests.
-                    app.Services.GetRequiredService<RoleStore>().SaveProgress(Session.Role!.Id, Session.Progress);
+                    _app.Services.GetRequiredService<RoleStore>().SaveProgress(Session.Role!.Id, Session.Progress);
                     return Task.CompletedTask;
                 }));
         async Task<int> Transfer(BotClient bot, CareerSpecialTransferItemsType direction)
@@ -291,7 +291,7 @@ public sealed class TotemTests : IAsyncLifetime
             await EnableCart();
             Assert.Equal(0, await Transfer(bot, CareerSpecialTransferItemsType.ToNormal));
             Assert.Equal(4, Item(guid).Pack);
-            Assert.Equal(4, app.Services.GetRequiredService<ItemStore>().Load(Session.Role!.Id).Single(item => item.Guid == guid).Pack);
+            Assert.Equal(4, _app.Services.GetRequiredService<ItemStore>().Load(Session.Role!.Id).Single(item => item.Guid == guid).Pack);
             Assert.Equal(0, (await Equip(bot, 1, guid)).Result);
         }
     }

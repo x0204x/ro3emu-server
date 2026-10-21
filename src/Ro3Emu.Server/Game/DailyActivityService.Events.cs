@@ -9,7 +9,7 @@ public sealed partial class DailyActivityService
 
     private Task SyncRowsAsync(GameSession session, DateTime? localNow = null)
     {
-        var now = localNow ?? clock.GetLocalNow().DateTime;
+        var now = localNow ?? _clock.GetLocalNow().DateTime;
         long seconds = ToUnix(now);
         var rows = Rows(session).Clone();
         foreach (var project in EventProjections) project(session, rows);
@@ -33,7 +33,7 @@ public sealed partial class DailyActivityService
     {
         foreach (var (id, row) in rows.ActivityData)
         {
-            var window = timedSchedule.CurrentOrNext(id, seconds);
+            var window = _timedSchedule.CurrentOrNext(id, seconds);
             row.StartTime = window?.Start ?? 1;
             row.EndTime = window?.End ?? 2;
         }
@@ -45,7 +45,7 @@ public sealed partial class DailyActivityService
         using var gate = await TaskService.LockTasksAsync(session);
         // Another owner's projection (festival, activities) may run first after 05:00: it must not send the new
         // day's windows over the old day's progress, so a crossed boundary takes the full reset path.
-        var now = clock.GetLocalNow().DateTime;
+        var now = _clock.GetLocalNow().DateTime;
         if (session.Daily is { } state && (state.DailyEpoch < Boundary(now) || state.WeeklyEpoch < WeekBoundary(now)))
             await ReconcileCoreAsync(session, now);
         else await SyncRowsAsync(session, now);

@@ -10,14 +10,12 @@ namespace Ro3Emu.Server.Accounts;
 /// entity revision "adventure_group". Committed aggregates are served from a generation cache that every writer job
 /// touching the tables invalidates; callers always receive their own copy.
 /// </summary>
-public sealed class AdventureGroupStore
+public sealed class AdventureGroupStore(AccountStore accounts)
 {
-    private readonly AccountStore accounts;
+    /// <summary>The aggregate's table, as <see cref="RowMissingException"/> names it.</summary>
+    internal const string Table = "adventure_group";
 
-    public AdventureGroupStore(AccountStore accounts)
-    {
-        this.accounts = accounts;
-    }
+    private readonly AccountStore _accounts = accounts;
 
     public sealed class State
     {
@@ -98,22 +96,22 @@ public sealed class AdventureGroupStore
         public string Third { get; set; } = "";
     }
 
-    // ---- generation cache (as GuildStore, C/D 16) ----
+    // ---- generation cache (as GuildStore, C/D 16; static generation for the same reason) ----
 
-    private static long cacheGeneration;
-    private readonly object cacheLock = new();
-    private long cachedGeneration = -1;
-    private Dictionary<long, (byte[] Json, OwnerRevisionValue? Revision)> byId = new();
-    private Dictionary<long, long> groupOfRole = new();
+    private static long _cacheGeneration;
+    private readonly object _cacheLock = new();
+    private long _cachedGeneration = -1;
+    private Dictionary<long, (byte[] Json, OwnerRevisionValue? Revision)> _byId = new();
+    private Dictionary<long, long> _groupOfRole = new();
 
     /// <summary>Called by the writer after a job that wrote adventure_group or adventure_group_member rows.</summary>
-    internal static void Invalidate() => Interlocked.Increment(ref cacheGeneration);
+    internal static void Invalidate() => Interlocked.Increment(ref _cacheGeneration);
 
     private void Refresh()
     {
-        long generation = Volatile.Read(ref cacheGeneration);
-        lock (cacheLock) if (cachedGeneration == generation) return;
-        var rows = accounts.ReadSync<List<State>>(new AdventureGroupReadPlan(AdventureGroupReadKind.List));
+        long generation = Volatile.Read(ref _cacheGeneration);
+        lock (_cacheLock) if (_cachedGeneration == generation) return;
+        var rows = _accounts.ReadSync<List<State>>(new AdventureGroupReadPlan(AdventureGroupReadKind.List));
         var ids = new Dictionary<long, (byte[], OwnerRevisionValue?)>();
         var roles = new Dictionary<long, long>();
         foreach (var row in rows)
@@ -121,11 +119,11 @@ public sealed class AdventureGroupStore
             ids[row.Id] = (JsonSerializer.SerializeToUtf8Bytes(row), row.CapturedRevision);
             foreach (long role in row.Members.Keys) roles[role] = row.Id;
         }
-        lock (cacheLock)
+        lock (_cacheLock)
         {
             // A read during which a commit landed is returned below but not kept.
-            if (Volatile.Read(ref cacheGeneration) != generation) { byId = ids; groupOfRole = roles; cachedGeneration = -1; return; }
-            byId = ids; groupOfRole = roles; cachedGeneration = generation;
+            if (Volatile.Read(ref _cacheGeneration) != generation) { _byId = ids; _groupOfRole = roles; _cachedGeneration = -1; return; }
+            _byId = ids; _groupOfRole = roles; _cachedGeneration = generation;
         }
     }
 
@@ -139,23 +137,23 @@ public sealed class AdventureGroupStore
     public State? Get(long id)
     {
         Refresh();
-        lock (cacheLock) return byId.TryGetValue(id, out var hit) ? Copy(hit) : null;
+        lock (_cacheLock) return _byId.TryGetValue(id, out var hit) ? Copy(hit) : null;
     }
 
     public State? ForRole(long roleId)
     {
         Refresh();
-        lock (cacheLock) return groupOfRole.TryGetValue(roleId, out long id) && byId.TryGetValue(id, out var hit) ? Copy(hit) : null;
+        lock (_cacheLock) return _groupOfRole.TryGetValue(roleId, out long id) && _byId.TryGetValue(id, out var hit) ? Copy(hit) : null;
     }
 
     public IReadOnlyList<State> List()
     {
         Refresh();
-        lock (cacheLock) return byId.OrderBy(p => p.Key).Select(p => Copy(p.Value)).ToList();
+        lock (_cacheLock) return _byId.OrderBy(p => p.Key).Select(p => Copy(p.Value)).ToList();
     }
 
     public bool NameExists(string name, long exceptId = 0) =>
-        accounts.ReadSync<bool>(new AdventureGroupReadPlan(AdventureGroupReadKind.NameExists, exceptId, name));
+        _accounts.ReadSync<bool>(new AdventureGroupReadPlan(AdventureGroupReadKind.NameExists, exceptId, name));
 
     /// <summary>Capture the aggregate's revision and stage its save; a generated id is published after the commit.</summary>
     internal void EnlistSave(State state, RoleItemPlanBuilder transaction)
@@ -181,6 +179,6 @@ public sealed class AdventureGroupStore
 
     /// <summary>True when a SQLite failure is the name or membership uniqueness (constraint 19).</summary>
     internal static bool IsConflict(Exception e) => e is SqliteException { SqliteErrorCode: 19 }
-        || e is InvalidOperationException { Message: "Adventure group disappeared during save." }
+        || e is RowMissingException { Table: Table }
         || e is OwnerRevisionConflictException;
 }

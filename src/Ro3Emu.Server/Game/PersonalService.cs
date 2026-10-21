@@ -46,18 +46,18 @@ public sealed class PersonalService
     /// </summary>
     public const int Presets = 3;
 
-    private readonly GameData data;
-    private readonly RoleStore roles;
-    private readonly FunctionService functions;
-    private readonly CharacterService character;
-    private readonly IOptions<ServerOptions> options;
-    private readonly TimeProvider clock;
+    private readonly GameData _data;
+    private readonly RoleStore _roles;
+    private readonly FunctionService _functions;
+    private readonly CharacterService _character;
+    private readonly IOptions<ServerOptions> _options;
+    private readonly TimeProvider _clock;
 
     public PersonalService(GameData data, RoleStore roles, FunctionService functions, CharacterService character,
         IOptions<ServerOptions> options, TimeProvider clock)
     {
-        this.data = data; this.roles = roles; this.functions = functions; this.character = character; this.options = options;
-        this.clock = clock;
+        this._data = data; this._roles = roles; this._functions = functions; this._character = character; this._options = options;
+        this._clock = clock;
         // Action 1002 unlocks at base level 50 (PersonalPerformanceConfig, condition 18000001).
         character.ProgressHandlers.Add(RefreshAsync);
         character.RegisterItemAction(UnlockDecorationAction, UseDecorationItemAsync);
@@ -67,7 +67,7 @@ public sealed class PersonalService
 
     public async Task LoginAsync(GameSession s)
     {
-        var bytes = roles.LoadPersonal(s.Role!.Id);
+        var bytes = _roles.LoadPersonal(s.Role!.Id);
         var info = bytes is { Length: > 0 } ? DBPersonalInfo.Parser.ParseFrom(bytes) : new DBPersonalInfo();
         Shape(info);
         s.Personal = info;
@@ -123,19 +123,19 @@ public sealed class PersonalService
     /// </summary>
     private IEnumerable<(int Type, List<int> Ids)> Unlocks(GameSession s)
     {
-        var images = data.Table("PersonalHomepageImageConfig").Values;
+        var images = _data.Table("PersonalHomepageImageConfig").Values;
         yield return (UnlockTheme, images.Where(r => GameData.Int(r, "_iImageType") == ImageTheme
             && (Unlocked(s, r) || ItemUnlocked(s, UnlockTheme, Id(r)))).Select(Id).ToList());
         yield return (UnlockBackground, images.Where(r => GameData.Int(r, "_iImageType") == ImageBackground
             && (Unlocked(s, r) || ItemUnlocked(s, UnlockBackground, Id(r)))).Select(Id).ToList());
-        yield return (UnlockAction, data.Table("PersonalPerformanceConfig").Values
+        yield return (UnlockAction, _data.Table("PersonalPerformanceConfig").Values
             .Where(r => Unlocked(s, r) || ItemUnlocked(s, UnlockAction, Id(r))).Select(Id).ToList());
     }
 
     private static int Id(JsonElement row) => (int)GameData.Int(row, "_iID");
 
     private bool Unlocked(GameSession s, JsonElement row) =>
-        GameData.Int(row, "_iUnlockCondition") is var condition and > 0 && s.Progress != null && functions.ConditionMet(s, condition);
+        GameData.Int(row, "_iUnlockCondition") is var condition and > 0 && s.Progress != null && _functions.ConditionMet(s, condition);
 
     private bool IsUnlocked(GameSession s, int type, int id) => Unlocks(s).Any(u => u.Type == type && u.Ids.Contains(id));
 
@@ -174,10 +174,10 @@ public sealed class PersonalService
     };
 
     private double Param(string key, double fallback) =>
-        data.Table("PublicParamConfig").TryGetValue(key, out var value) && GameData.Number(value) is { } number ? number : fallback;
+        _data.Table("PublicParamConfig").TryGetValue(key, out var value) && GameData.Number(value) is { } number ? number : fallback;
 
     private IEnumerable<long> ParamList(string key) =>
-        data.Table("PublicParamConfig").TryGetValue(key, out var value) && value.ValueKind == JsonValueKind.Array
+        _data.Table("PublicParamConfig").TryGetValue(key, out var value) && value.ValueKind == JsonValueKind.Array
             ? value.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).Where(v => v > 0) : [];
 
     // ------------------------------------------------------------------ public card
@@ -288,9 +288,9 @@ public sealed class PersonalService
         {
             var row = type switch
             {
-                UnlockTheme or UnlockBackground => data.Row("PersonalHomepageImageConfig", id) is { } image
+                UnlockTheme or UnlockBackground => _data.Row("PersonalHomepageImageConfig", id) is { } image
                     && GameData.Int(image, "_iImageType") == (type == UnlockTheme ? ImageTheme : ImageBackground) ? image : (JsonElement?)null,
-                UnlockAction => data.Row("PersonalPerformanceConfig", id),
+                UnlockAction => _data.Row("PersonalPerformanceConfig", id),
                 _ => null,
             };
             if (row == null) return ErrConfig;
@@ -303,7 +303,7 @@ public sealed class PersonalService
             unlocks.UnlockMap[id] = true;
         }
         byte[] saved = next.ToByteArray();
-        if (!await character.CommitItemActionAsync(use, tx => tx.RoleBlob(s.Role!.Id, "personal", saved), () => s.Personal = next,
+        if (!await _character.CommitItemActionAsync(use, tx => tx.RoleBlob(s.Role!.Id, "personal", saved), () => s.Personal = next,
             new { Personal = picks.Select(p => new[] { p.Type, p.Id }).ToArray() })) return ErrorCodes.ItemsShort;
         await SyncAsync(s);
         return 0;
@@ -328,11 +328,11 @@ public sealed class PersonalService
     public async Task UpvoteAsync(GameSession s, UpvotePersonalReq req)
     {
         using var held = await CharacterService.Lock(s);
-        long target = req.RoleId, now = clock.GetUtcNow().ToUnixTimeMilliseconds();
+        long target = req.RoleId, now = _clock.GetUtcNow().ToUnixTimeMilliseconds();
         int result = Gate(s);
         if (result == 0 && target == s.Role!.Id) result = ErrUpvoteSelf;
-        if (result == 0 && (target <= 0 || await roles.GetAsync(target) == null
-            || (await roles.ReadRevisionVectorAsync(target)).Deleted)) result = ErrParameter;
+        if (result == 0 && (target <= 0 || await _roles.GetAsync(target) == null
+            || (await _roles.ReadRevisionVectorAsync(target)).Deleted)) result = ErrParameter;
         if (result == 0 && s.Personal!.UpvoteTimes.ContainsKey(target)) result = ErrUpvoted;
         if (result == 0 && s.Personal!.UpvoteTimes.Count > 0
             && now - s.Personal.UpvoteTimes.Values.Max() < Param("PersonalLikeCD", 1000)) result = ErrUpvoteCooldown;
@@ -340,13 +340,13 @@ public sealed class PersonalService
         {
             var next = s.Personal!.Clone();
             next.UpvoteTimes[target] = now;
-            var transaction = roles.NewTransaction();
-            var liked = roles.LoadPersonalUpvotes(target, transaction) is { Length: > 0 } stored
+            var transaction = _roles.NewTransaction();
+            var liked = _roles.LoadPersonalUpvotes(target, transaction) is { Length: > 0 } stored
                 ? PersonalUpvoteList.Parser.ParseFrom(stored) : new PersonalUpvoteList();
             liked.Infos[s.Role!.Id] = now;
             transaction.RoleBlob(s.Role.Id, "personal", next.ToByteArray());
-            roles.SavePersonalUpvotes(target, liked.ToByteArray(), transaction);
-            await roles.CommitAsync(transaction, "personal/upvote", _ => s.Personal = next);
+            _roles.SavePersonalUpvotes(target, liked.ToByteArray(), transaction);
+            await _roles.CommitAsync(transaction, "personal/upvote", _ => s.Personal = next);
         }
         await s.SendGameAsync(Upvote, new UpvotePersonalResp { Result = result, Req = req });
         if (result == 0) await SyncAsync(s);
@@ -368,7 +368,7 @@ public sealed class PersonalService
     /// </summary>
     public (int Popularity, int Affection) GiftValues(long item, int count)
     {
-        if (data.Row("ItemConfig", item) is not { } row) return (0, 0);
+        if (_data.Row("ItemConfig", item) is not { } row) return (0, 0);
         var effects = GameData.Pairs(row, "_iUseEffect").ToList();
         int Total(int effect) => (int)Math.Min(int.MaxValue, effects.Where(e => e.Id == effect).Sum(e => (long)e.Value * count));
         return (Total(EffectPopularity), Total(EffectCharity));
@@ -378,24 +378,24 @@ public sealed class PersonalService
     public async Task CreditGiftAsync(long sender, long receiver, int popularity, int affection)
     {
         if (popularity <= 0 && affection <= 0) return;
-        long now = clock.GetUtcNow().ToUnixTimeMilliseconds(), week = WeekStartMs(clock);
-        var transaction = roles.NewTransaction();
+        long now = _clock.GetUtcNow().ToUnixTimeMilliseconds(), week = WeekStartMs(_clock);
+        var transaction = _roles.NewTransaction();
         if (popularity > 0)
         {
-            var star = Popularity(roles.LoadPopularity(receiver, transaction), week);
+            var star = Popularity(_roles.LoadPopularity(receiver, transaction), week);
             star.Popularity = Add(star.Popularity, popularity);
             star.PopularityWeekly = Add(star.PopularityWeekly, popularity);
             star.UpdateTime = now;
-            roles.SavePopularity(receiver, star.ToByteArray(), transaction);
+            _roles.SavePopularity(receiver, star.ToByteArray(), transaction);
         }
         if (affection > 0)
         {
-            var star = Popularity(roles.LoadPopularity(sender, transaction), week);
+            var star = Popularity(_roles.LoadPopularity(sender, transaction), week);
             star.Affection = Add(star.Affection, affection);
             star.UpdateTime = now;
-            roles.SavePopularity(sender, star.ToByteArray(), transaction);
+            _roles.SavePopularity(sender, star.ToByteArray(), transaction);
         }
-        await roles.CommitAsync(transaction, "personal/popularity");
+        await _roles.CommitAsync(transaction, "personal/popularity");
     }
 
     private static int Add(int value, int delta) => (int)Math.Min(int.MaxValue, (long)value + delta);
@@ -418,7 +418,7 @@ public sealed class PersonalService
     }
 
     private int Gate(GameSession s) => s.Personal == null || s.Progress == null ? ErrorCodes.FeatureUnavailable
-        : !functions.IsOpen(s, Function) ? ErrFunction : 0;
+        : !_functions.IsOpen(s, Function) ? ErrFunction : 0;
 
     private static bool Preset(int plan) => plan is >= 1 and <= Presets;
 
@@ -426,13 +426,13 @@ public sealed class PersonalService
     {
         if (!IsUnlocked(s, UnlockTheme, info.ThemeId) || !IsUnlocked(s, UnlockBackground, info.BackgroundId)) return ErrLocked;
         // Mood: a PersonalHomepageImageConfig mood image whose condition holds (all are [1002,1]); 0 is no mood.
-        if (info.Mood != 0 && (data.Row("PersonalHomepageImageConfig", info.Mood) is not { } mood
+        if (info.Mood != 0 && (_data.Row("PersonalHomepageImageConfig", info.Mood) is not { } mood
             || GameData.Int(mood, "_iImageType") != ImageMood)) return ErrConfig;
-        if (info.Mood != 0 && !Unlocked(s, data.Row("PersonalHomepageImageConfig", info.Mood)!.Value)) return ErrLocked;
-        if (info.AvatarId != 0 && data.Row("PersonalAvatarConfig", info.AvatarId) == null) return ErrConfig;
-        if (info.AvatarFrameId != 0 && data.Row("PersonalAvatarFrameConfig", info.AvatarFrameId) == null) return ErrConfig;
+        if (info.Mood != 0 && !Unlocked(s, _data.Row("PersonalHomepageImageConfig", info.Mood)!.Value)) return ErrLocked;
+        if (info.AvatarId != 0 && _data.Row("PersonalAvatarConfig", info.AvatarId) == null) return ErrConfig;
+        if (info.AvatarFrameId != 0 && _data.Row("PersonalAvatarFrameConfig", info.AvatarFrameId) == null) return ErrConfig;
         // PersonalTitleConfig exports no rows, so no title can be chosen.
-        if (info.PersonalTitleId != 0 && data.Row("PersonalTitleConfig", info.PersonalTitleId) == null) return ErrConfig;
+        if (info.PersonalTitleId != 0 && _data.Row("PersonalTitleConfig", info.PersonalTitleId) == null) return ErrConfig;
         if (new StringInfo(info.Sign ?? "").LengthInTextElements > Param("PersonalSignatureLimit", 30)) return ErrSignLength;
         if (Sensitive(info.Sign ?? "")) return ErrSignSensitive;
         if (info.ShowcaseVisibleList.Count > Param("PersonalMaxCabinet", 3)
@@ -447,19 +447,19 @@ public sealed class PersonalService
         // Stickers are currencies of item subtype 123 (ItemSubTypePersonalDecal); each placement uses one.
         foreach (var group in info.DecalInfos.GroupBy(d => d.DecalId))
         {
-            if (data.Row("ItemConfig", group.Key) is not { } item || GameData.Int(item, "_iSubType") != 123) return ErrConfig;
-            if (character.CountOf(s, group.Key) < group.Count()) return ErrStickers;
+            if (_data.Row("ItemConfig", group.Key) is not { } item || GameData.Int(item, "_iSubType") != 123) return ErrConfig;
+            if (_character.CountOf(s, group.Key) < group.Count()) return ErrStickers;
         }
         return 0;
     }
 
-    private bool Sensitive(string text) => options.Value.GuildBlockedWords.Any(word =>
+    private bool Sensitive(string text) => _options.Value.GuildBlockedWords.Any(word =>
         !string.IsNullOrWhiteSpace(word) && text.Contains(word, StringComparison.OrdinalIgnoreCase));
 
     private async Task CommitAsync(GameSession s, DBPersonalInfo next, string action)
     {
-        var transaction = roles.NewTransaction();
+        var transaction = _roles.NewTransaction();
         transaction.RoleBlob(s.Role!.Id, "personal", next.ToByteArray());
-        await roles.CommitAsync(transaction, "personal/" + action, _ => s.Personal = next);
+        await _roles.CommitAsync(transaction, "personal/" + action, _ => s.Personal = next);
     }
 }

@@ -170,10 +170,8 @@ public sealed class EconomyMutation
 }
 
 public sealed class EconomyOperationConflictException(string message) : InvalidOperationException(message);
-public sealed class EconomyOutcomeUnknownException : IOException
+public sealed class EconomyOutcomeUnknownException(string operationId, Exception writeFailure, Exception resolutionFailure) : IOException("Economic operation " + operationId + " has an unresolved commit outcome; owner reload is required.",
+        new AggregateException(writeFailure, resolutionFailure))
 {
-    public string OperationId { get; }
-    public EconomyOutcomeUnknownException(string operationId, Exception writeFailure, Exception resolutionFailure)
-        : base("Economic operation " + operationId + " has an unresolved commit outcome; owner reload is required.",
-            new AggregateException(writeFailure, resolutionFailure)) => OperationId = operationId;
+    public string OperationId { get; } = operationId;
 }

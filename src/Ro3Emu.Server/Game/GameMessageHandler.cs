@@ -4,7 +4,7 @@ namespace Ro3Emu.Server.Game;
 /// The game-gate dispatcher: admits each romsg message under its reservation and runs its route. The routes come from
 /// the message modules (Game/Messages), mapped once in registration order (ServerHost).
 /// </summary>
-public sealed class GameMessageHandler(MsgCatalog catalog, IEnumerable<Messaging.IMessageModule> modules, ILogger<GameMessageHandler> log)
+public sealed partial class GameMessageHandler(MsgCatalog catalog, IEnumerable<Messaging.IMessageModule> modules, ILogger<GameMessageHandler> log)
 {
     private Messaging.MessageRoutes? _routes;
     /// <summary>Every game message's single owner; built once, duplicates fail.</summary>
@@ -18,6 +18,11 @@ public sealed class GameMessageHandler(MsgCatalog catalog, IEnumerable<Messaging
 
     public Task HandleAsync(GameSession session, uint msgId, ReadOnlyMemory<byte> body)
     {
+        if (!Routes.Accepts(session, msgId))
+        {
+            Refuse(session, msgId);
+            return Task.CompletedTask;
+        }
         // Cancellation must run before an ordinary reservation that the speculative gate waiter holds.
         if (msgId == MsgId.PreSwitchRole) session.CancelPendingCharacterIntents();
         if (session.Owners is not { } owners) return HandleCoreAsync(session, msgId, body);
@@ -30,6 +35,24 @@ public sealed class GameMessageHandler(MsgCatalog catalog, IEnumerable<Messaging
             _ => owners.RunSessionAsync(admission.Origin, admission.Keys, session, Work, admission.RealmLabel),
         };
     }
+
+    /// <summary>
+    /// A message sent before the stage it is declared for: the client's own code never sends it then (see the
+    /// AllowFrom declarations), so it is dropped unanswered and reserves nothing. The original server had no avatar to
+    /// take it before the role was selected (inferred). The first one per connection is logged.
+    /// </summary>
+    private void Refuse(GameSession session, uint msgId)
+    {
+        if (session.EarlyMessageRefused) return;
+        session.EarlyMessageRefused = true;
+        LogEarlyMessage(log, msgId, catalog.Name(msgId), session.Channel.Remote, session.Account ?? "not signed in",
+            Messaging.SessionStages.Of(session));
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Game msg {MsgId} {Name} from {Remote} ({Account}) refused at stage {Stage}; later ones not logged")]
+    private static partial void LogEarlyMessage(ILogger logger, uint msgId, string name, string remote,
+        string account, Messaging.SessionStage stage);
 
     /// <summary>How a message is admitted before its handler runs.</summary>
     internal Messaging.Admission Admit(GameSession session, uint msgId, ReadOnlyMemory<byte> body) =>

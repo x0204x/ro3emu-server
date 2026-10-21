@@ -12,11 +12,11 @@ public sealed partial class CardService
         DBStorageHoleInfo? plans, string kind, object outcome)
     {
         session.Owners!.Current!.BindPresentation(session);
-        var builder = roles.NewTransaction();
+        var builder = _roles.NewTransaction();
         int itemReceipt = builder.ItemDelta(session.Role!.Id, session.Items, staged);
         if (plans != null) builder.RoleBlob(session.Role.Id, "card_plans", plans.ToByteArray());
-        builder.WithEconomy(character.FamilyEconomy(session, kind, [], [], outcome));
-        await roles.CommitAsync(builder, kind, receipts =>
+        builder.WithEconomy(_character.FamilyEconomy(session, kind, [], [], outcome));
+        await _roles.CommitAsync(builder, kind, receipts =>
         {
             CharacterService.ApplyStagedItems(session, staged, (long[])receipts[itemReceipt]!);
             if (plans != null) session.CardPlans = plans;
@@ -34,7 +34,7 @@ public sealed partial class CardService
 
     private InvItem StageToBag(List<InvItem> staged, InvItem card)
     {
-        int limit = data.Row("ItemConfig", card.Entry) is { } row ?
+        int limit = _data.Row("ItemConfig", card.Entry) is { } row ?
             (int)Math.Max(1, GameData.Int(row, "_iStackLimit")) : 1;
         if (staged.FirstOrDefault(i => i.Grid == 0 && i.Entry == card.Entry && i.Stack < limit
             && SameState(i, card) && i.IsLocked == card.IsLocked) is { } stack)

@@ -16,7 +16,7 @@ public sealed partial class TaskService
             : !Defs().ContainsKey(req.Id) ? ErrorCodes.TaskNoConfig
             : !session.Tasks.Infos.TryGetValue(req.Id, out var info) ? ErrorCodes.TaskMissing
             : info.Status is not (Running or Finished) ? ErrorCodes.TaskStatus
-            : data.Row("TaskConfig", req.Id) is not { } row || GameData.Int(row, "_iIfReset") != 1
+            : _data.Row("TaskConfig", req.Id) is not { } row || GameData.Int(row, "_iIfReset") != 1
                 ? ErrorCodes.TaskNoGiveUp : 0;
         if (result != 0)
         {
@@ -108,7 +108,7 @@ public sealed partial class TaskService
             await TaskErrorAsync(session, TaskLuckyTurn, req.Type, ErrorCodes.Parameter);
             return;
         }
-        int ticket = data.Table("PublicParamConfig").TryGetValue("RunRingTaskTurntableItem", out var configuredTicket)
+        int ticket = _data.Table("PublicParamConfig").TryGetValue("RunRingTaskTurntableItem", out var configuredTicket)
             && GameData.Number(configuredTicket) is { } ticketNumber and > 0 and <= int.MaxValue
             ? (int)ticketNumber : 0;
         if (ticket <= 0)
@@ -116,7 +116,7 @@ public sealed partial class TaskService
             await TaskErrorAsync(session, TaskLuckyTurn, req.Type, ErrorCodes.FeatureUnavailable);
             return;
         }
-        var rows = data.Table("LuckyTrunConfig").Values.OrderBy(r => GameData.Int(r, "_iID")).ToArray();
+        var rows = _data.Table("LuckyTrunConfig").Values.OrderBy(r => GameData.Int(r, "_iID")).ToArray();
         if (rows.Length != 8 || rows.Any(r => GameData.Int(r, "_iweight") <= 0 || GameData.Int(r, "_iAward") <= 0))
         {
             await TaskErrorAsync(session, TaskLuckyTurn, req.Type, ErrorCodes.FeatureUnavailable);
@@ -133,7 +133,7 @@ public sealed partial class TaskService
                 {
                     choice -= GameData.Int(row, "_iweight");
                     if (choice >= 0) continue;
-                    grants.AddRange(awards.Resolve(session, GameData.Int(row, "_iAward")).Grants);
+                    grants.AddRange(_awards.Resolve(session, GameData.Int(row, "_iAward")).Grants);
                     break;
                 }
             }
@@ -143,7 +143,7 @@ public sealed partial class TaskService
             await TaskErrorAsync(session, TaskLuckyTurn, req.Type, ErrorCodes.FeatureUnavailable);
             return;
         }
-        if (!await character.ApplyAwardAsync(session, new AwardPlan(0, 0, grants), costs: [(ticket, turns)]))
+        if (!await _character.ApplyAwardAsync(session, new AwardPlan(0, 0, grants), costs: [(ticket, turns)]))
         {
             await TaskErrorAsync(session, TaskLuckyTurn, req.Type, ErrorCodes.ItemsShort);
             return;
@@ -168,8 +168,8 @@ public sealed partial class TaskService
             || action[0] is not ("142" or "143")
             || !long.TryParse(action[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out long sceneId)
             || !long.TryParse(action[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out long pointId)
-            || pointId <= 0 || worldData.Map(sceneId)?.Points.ContainsKey(pointId) != true
-            || !await scene.TaskTrackTeleportAsync(session, sceneId, pointId))
+            || pointId <= 0 || _worldData.Map(sceneId)?.Points.ContainsKey(pointId) != true
+            || !await _scene.TaskTrackTeleportAsync(session, sceneId, pointId))
             await TaskErrorAsync(session, TaskTrackTeleport, req.TaskId, ErrorCodes.TaskRequirements);
     }
 

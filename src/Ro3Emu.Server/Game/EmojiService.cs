@@ -48,21 +48,21 @@ public sealed partial class EmojiService : IGameTicker
 
     private sealed record PendingInvite(long Owner, long Invitee, int EmojiId, long ExpireMs);
 
-    private readonly GameData data;
-    private readonly RoleStore roles;
-    private readonly Maps.World world;
-    private readonly SessionRegistry sessions;
-    private readonly TaskService tasks;
-    private readonly CharacterService character;
-    private readonly GameLoop loop;
-    private readonly TimeProvider clock;
-    private readonly ILogger<EmojiService> log;
-    private readonly string sceneEditorDir;
-    private readonly HashSet<GameSession> active = [];
-    private readonly List<PendingInvite> invites = [];
-    private readonly Dictionary<long, Dictionary<long, Region>> regions = [];
-    private TimeSpan lastUnlockCheck;
-    private bool queued;
+    private readonly GameData _data;
+    private readonly RoleStore _roles;
+    private readonly Maps.World _world;
+    private readonly SessionRegistry _sessions;
+    private readonly TaskService _tasks;
+    private readonly CharacterService _character;
+    private readonly GameLoop _loop;
+    private readonly TimeProvider _clock;
+    private readonly ILogger<EmojiService> _log;
+    private readonly string _sceneEditorDir;
+    private readonly HashSet<GameSession> _active = [];
+    private readonly List<PendingInvite> _invites = [];
+    private readonly Dictionary<long, Dictionary<long, Region>> _regions = [];
+    private TimeSpan _lastUnlockCheck;
+    private bool _queued;
 
     private sealed record Region(float X, float Z, float Width, float Length, float Direction)
     {
@@ -78,28 +78,28 @@ public sealed partial class EmojiService : IGameTicker
         CharacterService character, CombatService combat, SceneService scene, GameLoop loop, TimeProvider clock,
         IOptions<ServerOptions> options, ILogger<EmojiService> log)
     {
-        this.data = data; this.roles = roles; this.world = world; this.sessions = sessions; this.tasks = tasks;
-        this.character = character;
-        this.loop = loop; this.clock = clock; this.log = log;
-        sceneEditorDir = Path.Combine(options.Value.GameDataDir ?? options.Value.DataDir, "sceneeditor");
+        this._data = data; this._roles = roles; this._world = world; this._sessions = sessions; this._tasks = tasks;
+        this._character = character;
+        this._loop = loop; this._clock = clock; this._log = log;
+        _sceneEditorDir = Path.Combine(options.Value.GameDataDir ?? options.Value.DataDir, "sceneeditor");
         character.ProgressHandlers.Add(RefreshUnlocksAsync);
         character.RegisterItemAction(EmoticonCollectionAction, UseEmoticonItemAsync);
         combat.PlayerDied.Add(s => EndAsync(s));
         scene.Leaving.Add(LeavingAsync);
     }
 
-    private long NowMs => clock.GetUtcNow().ToUnixTimeMilliseconds();
+    private long NowMs => _clock.GetUtcNow().ToUnixTimeMilliseconds();
 
     private long Param(string key, long fallback) =>
-        data.Table("PublicParamConfig").TryGetValue(key, out var v) && GameData.Number(v) is { } n ? (long)n : fallback;
+        _data.Table("PublicParamConfig").TryGetValue(key, out var v) && GameData.Number(v) is { } n ? (long)n : fallback;
 
-    private JsonElement? Row(int emojiId) => data.Row("PerformanceConfig", emojiId);
+    private JsonElement? Row(int emojiId) => _data.Row("PerformanceConfig", emojiId);
 
     // ---------------------------------------------------------------- 5006 DBEmojiPlayInfo
 
     public async Task LoginAsync(GameSession session)
     {
-        var saved = roles.LoadEmojiPlay(session.Role!.Id);
+        var saved = _roles.LoadEmojiPlay(session.Role!.Id);
         session.EmojiPlay = saved != null ? DBEmojiPlayInfo.Parser.ParseFrom(saved) : new DBEmojiPlayInfo();
         session.Emote = null;
         if (Recompute(session)) Save(session);
@@ -115,7 +115,7 @@ public sealed partial class EmojiService : IGameTicker
     private bool Recompute(GameSession session)
     {
         var info = session.EmojiPlay!;
-        var unlocked = data.Table("PerformanceConfig").Values.Where(r => Unlocked(session, r))
+        var unlocked = _data.Table("PerformanceConfig").Values.Where(r => Unlocked(session, r))
             .Select(r => (int)GameData.Int(r, "_iID")).Where(id => id > 0).Order().ToList();
         bool changed = !info.EmojiUnlocks.SequenceEqual(unlocked);
         if (changed) { info.EmojiUnlocks.Clear(); info.EmojiUnlocks.AddRange(unlocked); }
@@ -126,7 +126,7 @@ public sealed partial class EmojiService : IGameTicker
 
     private bool Unlocked(GameSession session, JsonElement row)
     {
-        if (data.Row("LC_ConditionList", GameData.Int(row, "_iUnlockCondition")) is not { } cond) return GameData.Int(row, "_iUnlockCondition") == 0;
+        if (_data.Row("LC_ConditionList", GameData.Int(row, "_iUnlockCondition")) is not { } cond) return GameData.Int(row, "_iUnlockCondition") == 0;
         if (!cond.TryGetProperty("m_kSubConditionList", out var subs) || subs.ValueKind != JsonValueKind.Array) return true;
         foreach (var sub in subs.EnumerateArray())
         {
@@ -150,7 +150,7 @@ public sealed partial class EmojiService : IGameTicker
         await SyncAsync(session);
     }
 
-    private void Save(GameSession session) => roles.SaveEmojiPlay(session.Role!.Id, session.EmojiPlay!.ToByteArray());
+    private void Save(GameSession session) => _roles.SaveEmojiPlay(session.Role!.Id, session.EmojiPlay!.ToByteArray());
 
     private Task SyncAsync(GameSession session) => CharacterService.SyncAsync(session, Sync, session.EmojiPlay!.Clone());
 
@@ -217,7 +217,7 @@ public sealed partial class EmojiService : IGameTicker
                 State = ObjectState.EObjectStateSmemojiPlayPrepare, EmojiId = req.EmojiId, StateMs = now,
                 CombatMark = session.LastCombatMs,
             };
-            active.Add(session);
+            _active.Add(session);
         }
         await session.SendGameAsync(StartPlay, new EmojiStartPlayRsp { Result = result });
         if (result == 0) await BroadcastStateAsync(session);
@@ -240,8 +240,8 @@ public sealed partial class EmojiService : IGameTicker
     }
 
     private bool Forbidden(long scene) =>
-        data.Row("MapConfig", scene) is { } map && GameData.Int(map, "_iPerformanceForbidden") == 1
-        || data.Row("DungeonConfig", scene) is { } dungeon && GameData.Int(dungeon, "_iPerformanceForbidden") == 1;
+        _data.Row("MapConfig", scene) is { } map && GameData.Int(map, "_iPerformanceForbidden") == 1
+        || _data.Row("DungeonConfig", scene) is { } dungeon && GameData.Int(dungeon, "_iPerformanceForbidden") == 1;
 
     /// <summary>Everyone in the group confirmed Prepare: all go to 14 with the same start time.</summary>
     private async Task PlayWhenReadyAsync(GameSession session)
@@ -267,7 +267,7 @@ public sealed partial class EmojiService : IGameTicker
     {
         var group = new List<GameSession> { session };
         foreach (long id in session.Emote?.Targets ?? [])
-            if (sessions.All().FirstOrDefault(s => s.Role?.Id == id) is { Emote: { } other } partner
+            if (_sessions.All().FirstOrDefault(s => s.Role?.Id == id) is { Emote: { } other } partner
                 && other.EmojiId == session.Emote!.EmojiId && other.Targets.Contains(session.Role!.Id))
                 group.Add(partner);
         return group;
@@ -288,7 +288,7 @@ public sealed partial class EmojiService : IGameTicker
         {
             var old = member.Emote;
             member.Emote = null;
-            active.Remove(member);
+            _active.Remove(member);
             if (old == null || silent && member == session) continue;
             await ToPlayerAndViewersAsync(member, new AOIAttrChange
             {
@@ -340,20 +340,20 @@ public sealed partial class EmojiService : IGameTicker
     private async Task ToPlayerAndViewersAsync(GameSession p, IMessage body)
     {
         await p.SendGameAsync(AoiAttrChange, body);
-        foreach (var viewer in world.Viewers(p).Where(v => v != p)) await viewer.SendGameAsync(AoiAttrChange, body);
+        foreach (var viewer in _world.Viewers(p).Where(v => v != p)) await viewer.SendGameAsync(AoiAttrChange, body);
     }
 
     /// <summary>Target 106903 CheckAreaAction [map, region, emojiId]: counted when the emote really plays.</summary>
     private Task QuestAsync(GameSession session) =>
-        tasks.OnEmotePlayedAsync(session, session.Emote!.EmojiId,
+        _tasks.OnEmotePlayedAsync(session, session.Emote!.EmojiId,
             (map, region) => session.SceneEntry == map && RegionsOf(map).TryGetValue(region, out var r) && r.Contains(session.Position));
 
     private Dictionary<long, Region> RegionsOf(long map)
     {
-        if (regions.TryGetValue(map, out var cached)) return cached;
+        if (_regions.TryGetValue(map, out var cached)) return cached;
         var found = new Dictionary<long, Region>();
-        if (data.Row("MapConfig", map) is { } row && row.TryGetProperty("_kResSceneEditorName", out var editor)
-            && DataFiles.Find(sceneEditorDir, editor.GetString() + ".json") is { } path)
+        if (_data.Row("MapConfig", map) is { } row && row.TryGetProperty("_kResSceneEditorName", out var editor)
+            && DataFiles.Find(_sceneEditorDir, editor.GetString() + ".json") is { } path)
         {
             using var doc = JsonDocument.Parse(File.ReadAllBytes(path));
             if (doc.RootElement.TryGetProperty("m_kRegins", out var all) && all.ValueKind == JsonValueKind.Object)
@@ -363,12 +363,12 @@ public sealed partial class EmojiService : IGameTicker
                             region.Value.GetProperty("width").GetSingle(), region.Value.GetProperty("length").GetSingle(),
                             region.Value.TryGetProperty("direction", out var dir) ? dir.GetSingle() : 0);
         }
-        return regions[map] = found;
+        return _regions[map] = found;
     }
 
     // ---------------------------------------------------------------- duo emotes
 
-    private GameSession? Online(long roleId) => sessions.All().FirstOrDefault(s => s.Role?.Id == roleId && s.Handoff == null);
+    private GameSession? Online(long roleId) => _sessions.All().FirstOrDefault(s => s.Role?.Id == roleId && s.Handoff == null);
 
     private bool Near(GameSession a, GameSession b)
     {
@@ -389,13 +389,13 @@ public sealed partial class EmojiService : IGameTicker
             result = target == null || target == session ? CannotInvite
                 : !Near(session, target) ? TooFar
                 : !Free(target) ? Busy
-                : invites.Any(i => i.Owner == session.Role!.Id && i.Invitee == target.Role!.Id && i.EmojiId == req.EmojiId && i.ExpireMs > now) ? RepeatInvite
+                : _invites.Any(i => i.Owner == session.Role!.Id && i.Invitee == target.Role!.Id && i.EmojiId == req.EmojiId && i.ExpireMs > now) ? RepeatInvite
                 : 0;
         var rsp = new EmojiInviteRsp { Result = result, EmojiId = req.EmojiId };
         if (result != 0) { await session.SendGameAsync(Invite, rsp); return; }
         session.LastEmoteRequestMs = now;
         long expire = now + Param("InviteWaitingTime", 30_000);
-        invites.Add(new PendingInvite(session.Role!.Id, target!.Role!.Id, req.EmojiId, expire));
+        _invites.Add(new PendingInvite(session.Role!.Id, target!.Role!.Id, req.EmojiId, expire));
         rsp.ExpireTime = expire;
         rsp.InviteeId.Add((ulong)target.Role.Id);
         await session.SendGameAsync(Invite, rsp);
@@ -408,18 +408,18 @@ public sealed partial class EmojiService : IGameTicker
     public async Task AcceptAsync(GameSession session, EmojiInviteAcceptReq req)
     {
         long now = NowMs, me = session.Role?.Id ?? 0;
-        var invite = invites.FirstOrDefault(i => i.Owner == req.OwnerId && i.Invitee == me && i.EmojiId == req.EmojiId);
+        var invite = _invites.FirstOrDefault(i => i.Owner == req.OwnerId && i.Invitee == me && i.EmojiId == req.EmojiId);
         var owner = Online(req.OwnerId);
         int result = invite == null ? NoInvite
             : invite.ExpireMs <= now ? InviteExpired
             : owner == null ? NoInviter
             : !Near(owner, session) ? TooFar
             : !Free(owner) || !Free(session) || owner.Dead || session.Dead ? Busy : 0;
-        if (invite != null && (result == 0 || result == InviteExpired)) invites.Remove(invite);
+        if (invite != null && (result == 0 || result == InviteExpired)) _invites.Remove(invite);
         await session.SendGameAsync(Accept, new EmojiInviteAcceptRsp { Result = result });
         if (result != 0) return;
         // The client clears all of both players' invites on acceptance (LC_DAL_EmojiAction._deleteAllEmojiInviteAndWaiting).
-        invites.RemoveAll(i => i.Owner == me || i.Invitee == me || i.Owner == owner!.Role!.Id || i.Invitee == owner.Role!.Id);
+        _invites.RemoveAll(i => i.Owner == me || i.Invitee == me || i.Owner == owner!.Role!.Id || i.Invitee == owner.Role!.Id);
         await owner!.SendGameAsync(InviteResponseNtf, new EmojiInviteResponseNtf { IsAccept = true, EmojiId = req.EmojiId, InviteeId = me });
         // Both prepare: the inviter plays index 1 in place, the partner index 2 walks to its spot next to it.
         foreach (var (member, other, index) in new[] { (owner, session, 1), (session, owner, 2) })
@@ -429,7 +429,7 @@ public sealed partial class EmojiService : IGameTicker
                 State = ObjectState.EObjectStateSmemojiPlayPrepare, EmojiId = req.EmojiId, PlayIndex = index,
                 Targets = [other.Role!.Id], StateMs = now, CombatMark = member.LastCombatMs,
             };
-            active.Add(member);
+            _active.Add(member);
         }
         await BroadcastStateAsync(owner);
         await BroadcastStateAsync(session);
@@ -438,8 +438,8 @@ public sealed partial class EmojiService : IGameTicker
     public async Task RefuseAsync(GameSession session, EmojiInviteRefuseReq req)
     {
         long me = session.Role?.Id ?? 0;
-        var invite = invites.FirstOrDefault(i => i.Owner == req.OwnerId && i.Invitee == me && i.EmojiId == req.EmojiId);
-        if (invite != null) invites.Remove(invite);
+        var invite = _invites.FirstOrDefault(i => i.Owner == req.OwnerId && i.Invitee == me && i.EmojiId == req.EmojiId);
+        if (invite != null) _invites.Remove(invite);
         await session.SendGameAsync(Refuse, new EmojiInviteRefuseRsp { Result = invite == null ? NoInvite : 0 });
         if (invite != null && Online(req.OwnerId) is { } owner)
             await owner.SendGameAsync(InviteResponseNtf, new EmojiInviteResponseNtf { IsAccept = false, EmojiId = req.EmojiId, InviteeId = me });
@@ -449,11 +449,11 @@ public sealed partial class EmojiService : IGameTicker
     private void CancelInvites(long roleId)
     {
         if (roleId == 0) return;
-        foreach (var invite in invites.Where(i => i.Owner == roleId || i.Invitee == roleId).ToArray())
+        foreach (var invite in _invites.Where(i => i.Owner == roleId || i.Invitee == roleId).ToArray())
         {
-            invites.Remove(invite);
+            _invites.Remove(invite);
             if (invite.Invitee == roleId && Online(invite.Owner) is { } owner)
-                loop.PostRuntime(() => owner.SendGameAsync(InviteResponseNtf, new EmojiInviteResponseNtf
+                _loop.PostRuntime(() => owner.SendGameAsync(InviteResponseNtf, new EmojiInviteResponseNtf
                 { IsAccept = false, EmojiId = invite.EmojiId, InviteeId = roleId, ErrorCode = CannotInvite }));
         }
     }
@@ -462,12 +462,12 @@ public sealed partial class EmojiService : IGameTicker
 
     public void Tick(GameTime time)
     {
-        if (queued) return;
+        if (_queued) return;
         long now = NowMs;
-        invites.RemoveAll(i => i.ExpireMs <= now);
-        var online = sessions.All();
+        _invites.RemoveAll(i => i.ExpireMs <= now);
+        var online = _sessions.All();
         var ending = new List<GameSession>();
-        foreach (var s in active)
+        foreach (var s in _active)
         {
             var emote = s.Emote;
             if (emote == null || s.Role == null || !online.Contains(s)) { ending.Add(s); continue; }
@@ -477,25 +477,25 @@ public sealed partial class EmojiService : IGameTicker
                 || emote.State == ObjectState.EObjectStateSmemojiPlayPrepare && now - emote.StateMs >= PrepareTimeoutMs)
                 ending.Add(s);
         }
-        bool recheck = time.Now - lastUnlockCheck >= TimeSpan.FromMilliseconds(UnlockRecheckMs);
+        bool recheck = time.Now - _lastUnlockCheck >= TimeSpan.FromMilliseconds(UnlockRecheckMs);
         if (ending.Count == 0 && !recheck) return;
-        if (recheck) lastUnlockCheck = time.Now;
-        queued = true;
-        loop.PostRuntime(async () =>
+        if (recheck) _lastUnlockCheck = time.Now;
+        _queued = true;
+        _loop.PostRuntime(async () =>
         {
             try
             {
                 foreach (var s in ending)
                 {
-                    if (!online.Contains(s) || s.Role == null) { active.Remove(s); CancelInvites(s.Role?.Id ?? 0); if (s.Emote != null) await EndAsync(s, silent: true); continue; }
+                    if (!online.Contains(s) || s.Role == null) { _active.Remove(s); CancelInvites(s.Role?.Id ?? 0); if (s.Emote != null) await EndAsync(s, silent: true); continue; }
                     await EndAsync(s);
                 }
                 if (recheck)
-                    foreach (var s in sessions.All().Where(s => s.Role != null && s.EmojiPlay != null && s.Handoff == null))
+                    foreach (var s in _sessions.All().Where(s => s.Role != null && s.EmojiPlay != null && s.Handoff == null))
                         await RefreshUnlocksAsync(s);
             }
-            catch (Exception e) { log.LogWarning(e, "emote tick"); }
-            finally { queued = false; }
+            catch (Exception e) { _log.LogWarning(e, "emote tick"); }
+            finally { _queued = false; }
         });
     }
 }

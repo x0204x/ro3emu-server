@@ -11,8 +11,9 @@ namespace Ro3Emu.Tests;
 
 /// <summary>
 /// How the dispatcher admits every message of the client's table, for a player in the world and for an account on the
-/// role screen. The expected list is Snapshots/dispatcher-admission.txt: moving admission rules around (to the routes,
-/// into services) must leave it unchanged. Regenerate it with RO3EMU_UPDATE_SNAPSHOTS=1 only for an intended change.
+/// role screen ("refused": the stage gate drops it before admission, see LoginGateTests). The expected list is
+/// Snapshots/dispatcher-admission.txt: moving admission rules around (to the routes, into services) must leave it
+/// unchanged. Regenerate it with RO3EMU_UPDATE_SNAPSHOTS=1 only for an intended change.
 /// </summary>
 public sealed class DispatcherAdmissionTests : IAsyncLifetime
 {
@@ -72,7 +73,8 @@ public sealed class DispatcherAdmissionTests : IAsyncLifetime
             var text = new StringBuilder();
             foreach (uint id in ids)
                 text.Append(id).Append('\t').Append(Describe(handler.Admit(inWorld, id, ReadOnlyMemory<byte>.Empty)))
-                    .Append('\t').Append(Describe(handler.Admit(onRoleScreen, id, ReadOnlyMemory<byte>.Empty))).Append('\n');
+                    .Append('\t').Append(handler.Routes.Accepts(onRoleScreen, id)
+                        ? Describe(handler.Admit(onRoleScreen, id, ReadOnlyMemory<byte>.Empty)) : "refused").Append('\n');
             return Task.FromResult(text.ToString());
         });
 

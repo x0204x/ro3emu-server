@@ -146,7 +146,7 @@ public sealed partial class TaskService
     private void QueueRefresh(GameSession session)
     {
         if (session.Tasks == null || !_refreshQueued.Add(session)) return;
-        loop.PostOwned(session, async () => { _refreshQueued.Remove(session); await RefreshAsync(session); },
+        _loop.PostOwned(session, async () => { _refreshQueued.Remove(session); await RefreshAsync(session); },
             discarded: () => _refreshQueued.Remove(session));
     }
 
@@ -173,7 +173,7 @@ public sealed partial class TaskService
         [TPetQualityStar, _, _, var n] => n,
         [TPetQuality or TPetLevel or TTotemQuality or TTotemSkills or TTotemMaxed or TTotemCombine or TEchoQuality
             or TEchoLevel or TEchoResonance or TEnchants, _, var n] => n,
-        [TOnePieceCount, _, _, var limit] => data.Row("RestrictConfig", limit) is { } restrict
+        [TOnePieceCount, _, _, var limit] => _data.Row("RestrictConfig", limit) is { } restrict
             ? GameData.Int(restrict, "_iMaxRestrictNum") : -1,
         [TKillOnMap, var n, _] => n,
         [TMonsterHunt, _, var n] => n,
@@ -197,29 +197,29 @@ public sealed partial class TaskService
             // Mode 1 is the connected chapter's inventory turn-in (inferred). Mode 0's resource rules are
             // unresolved; keep it pending, including the formerly false-completing two-slot task 201120.
             TSubmit => t[3] == 1 && ItemExists(t[1]),
-            TOnePieceCount => data.Row("DailyActivityConfig", t[1]) != null && ItemExists(t[2])
-                && data.Row("RestrictConfig", t[3]) != null,
+            TOnePieceCount => _data.Row("DailyActivityConfig", t[1]) != null && ItemExists(t[2])
+                && _data.Row("RestrictConfig", t[3]) != null,
             TUse or TCollect => ItemExists(t[1]),
             TRestrictUse => t[1] == LifeJobService.VigorId,
-            TDialog => t[1] > 0 && data.Row("MapConfig", t[2]) != null && data.Row("DialogueConfig", t[3]) != null,
-            TArea => data.Row("MapConfig", t[1]) != null && t[2] > 0,
-            TMapKill => data.Row("MapConfig", t[1]) != null,
-            TKillOnMap => data.Row("MapConfig", t[2]) != null,
-            TDungeonPass => data.Row("DungeonConfig", t[1]) != null,
-            TAreaAction => data.Row("MapConfig", t[1]) != null && t[2] > 0 && data.Row("PerformanceConfig", t[3]) != null,
-            TKill or TKillInvolved => t[1..^1].All(npc => data.Row("NPCConfig", npc) != null),
+            TDialog => t[1] > 0 && _data.Row("MapConfig", t[2]) != null && _data.Row("DialogueConfig", t[3]) != null,
+            TArea => _data.Row("MapConfig", t[1]) != null && t[2] > 0,
+            TMapKill => _data.Row("MapConfig", t[1]) != null,
+            TKillOnMap => _data.Row("MapConfig", t[2]) != null,
+            TDungeonPass => _data.Row("DungeonConfig", t[1]) != null,
+            TAreaAction => _data.Row("MapConfig", t[1]) != null && t[2] > 0 && _data.Row("PerformanceConfig", t[3]) != null,
+            TKill or TKillInvolved => t[1..^1].All(npc => _data.Row("NPCConfig", npc) != null),
             TJobRank => t[1] > 0,
-            TJobChange => data.Row("JobConfig", t[1]) != null,
+            TJobChange => _data.Row("JobConfig", t[1]) != null,
             TTaskDone => Defs().ContainsKey(t[1]),
             TGuide => GuideExists(t[1]),
             TStrength => t[1] is >= 1 and <= 7,
             TSlotRefine => t[1] is >= 0 and <= 7,
             TEquipment => t[1] >= 0 && t[2] >= 0,
             TCraft => t[1] >= 0 && t[2] > 0 && t[4] is >= 0 and <= 10,
-            TValhallaLayer => data.Row("HeroicSpiritLayerConfig", t[1]) != null,
-            TMonsterHunt => data.Row("AreaConcurConfig", t[1]) != null,
+            TValhallaLayer => _data.Row("HeroicSpiritLayerConfig", t[1]) != null,
+            TMonsterHunt => _data.Row("AreaConcurConfig", t[1]) != null,
             TStunts => t[1] >= 1 && t[2] == 0 && t[3] == 0,
-            TTenBossWin => t[2..].All(boss => data.Row("TenGameplayBossConfig", boss) != null),
+            TTenBossWin => t[2..].All(boss => _data.Row("TenGameplayBossConfig", boss) != null),
             TLeagueJoin => t[1] is >= 0 and <= 3,
             TLeagueScore => t[1] is >= 0 and <= 2 && t[2] >= 0,
             TSiegeScore => t[1] >= 0,
@@ -231,9 +231,9 @@ public sealed partial class TaskService
     internal bool TargetsSupported(long taskId) => Defs().TryGetValue(taskId, out var def) && def.Targets.Length > 0
         && def.Targets.All(t => Supported(t) && Required(null, t) > 0);
 
-    private bool ItemExists(long id) => id > 0 && id <= int.MaxValue && data.Row("ItemConfig", id) != null;
+    private bool ItemExists(long id) => id > 0 && id <= int.MaxValue && _data.Row("ItemConfig", id) != null;
 
-    private bool GuideExists(long group) => group > 0 && data.Row("GuideConfig", group) != null;
+    private bool GuideExists(long group) => group > 0 && _data.Row("GuideConfig", group) != null;
 
     /// <summary>A state target read for another progress owner (FirstHeartService): its current value and R, or null
     /// when this server has no snapshot owner for it.</summary>
@@ -257,25 +257,25 @@ public sealed partial class TaskService
             // 500130 [106901,3600] displays whole consumed minutes. Reading the committed
             // daily counter also repairs a disconnect between 5035 persistence and the quest sync (inferred).
             TAfkSeconds => s.WildAfk is { } afk && s.Daily?.DailyEpoch == afk.DailyEpoch ? afk.ConsumedTodaySeconds : 0,
-            TJobRank => data.Row("JobConfig", p.Career) is { } job && GameData.Int(job, "_iJobRank") >= t[1] ? 1 : 0,
-            TSkillPoints => skills.SpentPoints(p),
-            TSkillRank => skills.SpentPoints(p, (int)t[1]),
-            TStatPoints => character.SpentStatPoints(p),
+            TJobRank => _data.Row("JobConfig", p.Career) is { } job && GameData.Int(job, "_iJobRank") >= t[1] ? 1 : 0,
+            TSkillPoints => _skills.SpentPoints(p),
+            TSkillRank => _skills.SpentPoints(p, (int)t[1]),
+            TStatPoints => _character.SpentStatPoints(p),
             TTaskDone => IsDelivered(s, t[1]) ? 1 : 0,
             TJobChange => IsDescendant(p.Career, t[1]) ? 1 : 0,
             TGuide => s.TaskRuntime.CompletedGuides.Contains(t[1]) ? 1 : 0,
-            TCollect or TSubmit => character.CountOf(s, (int)t[1]),
+            TCollect or TSubmit => _character.CountOf(s, (int)t[1]),
             // TaskConfig[500070] [106906,1004,100]: committed consumption, not current balance or item 5.
             TRestrictUse => LifeJobService.DailyEnergyUsed(s, t[1]),
             TEquipment => s.Items.LongCount(i => i.Grid > 0 && ItemQuality(i.Entry) >= t[1]
-                && data.Row("ItemConfig", i.Entry) is { } row && GameData.Int(row, "_iType") == 5 && GameData.Int(row, "_iLevelNeed") >= t[2]),
+                && _data.Row("ItemConfig", i.Entry) is { } row && GameData.Int(row, "_iType") == 5 && GameData.Int(row, "_iLevelNeed") >= t[2]),
             TEquipmentQuality => s.Items.LongCount(i => i.Grid > 0 && ItemQuality(i.Entry) >= t[1]
-                && data.Row("ItemConfig", i.Entry) is { } row && GameData.Int(row, "_iType") == 5),
-            TCardQuality => s.Items.LongCount(i => i.Grid < 0 && character.IsCard(i.Entry) && ItemQuality(i.Entry) >= t[1]),
-            TCardStars => s.Items.LongCount(i => i.Grid < 0 && character.IsCard(i.Entry) && (i.Attrs?.GetValueOrDefault(502) ?? 0) >= t[1]),
+                && _data.Row("ItemConfig", i.Entry) is { } row && GameData.Int(row, "_iType") == 5),
+            TCardQuality => s.Items.LongCount(i => i.Grid < 0 && _character.IsCard(i.Entry) && ItemQuality(i.Entry) >= t[1]),
+            TCardStars => s.Items.LongCount(i => i.Grid < 0 && _character.IsCard(i.Entry) && (i.Attrs?.GetValueOrDefault(502) ?? 0) >= t[1]),
             TTreasure => ReferenceEquals(s.CardLibraryReadyAttachment, s.Attachment)
                 ? s.Library?.Cards.Values.LongCount(c => c.TreasureUnlock && ItemQuality((int)c.CardId) >= t[1]) ?? 0 : 0,
-            TResonance => character.Resonance(s, "RefiningEffectTable"),
+            TResonance => _character.Resonance(s, "RefiningEffectTable"),
             TTotalRefine => Enumerable.Range(1, 7).Sum(g => (long)s.EquipLevels.Refine.GetValueOrDefault(g)),
             TRefineSlots => Enumerable.Range(1, 7).LongCount(g => s.EquipLevels.Refine.GetValueOrDefault(g) > 0),
             // Slot 0 is "all equipment slots" (growth titles 4/5, 704060 [103021,0,2]): the lowest of grids 1..7 (inferred).
@@ -285,11 +285,11 @@ public sealed partial class TaskService
             TTalentLevels => s.SeasonTalent is { } talent && talent.Plan.TryGetValue(talent.CurPlanId, out var plan)
                 ? plan.TalentNodes.Values.Sum(n => n.CurrentLevel) : 0,
             TPetsDeployed => s.Pets?.SetupPlans.GetValueOrDefault(s.Pets.CurrentPlan)?.SetUpPets.Values.LongCount(id => id != 0) ?? 0,
-            TTowerFloor or TTowerFloorReached => s.Tower is { LayerConfID: > 0 } tower && data.Table("PetFloorConfig").Values
+            TTowerFloor or TTowerFloorReached => s.Tower is { LayerConfID: > 0 } tower && _data.Table("PetFloorConfig").Values
                 .FirstOrDefault(r => GameData.Int(r, "_iID") == tower.LayerConfID) is { ValueKind: JsonValueKind.Object } floor
                 ? GameData.Int(floor, "_iFloor") : 0,
             TStrength => s.EquipLevels.Strength.GetValueOrDefault((int)t[1]),
-            TRentCareerSpecial => CareerSpecialService.HoldsSubType(s, data, t[1]) ? 1 : 0,
+            TRentCareerSpecial => CareerSpecialService.HoldsSubType(s, _data, t[1]) ? 1 : 0,
             TValhallaLayer => DungeonService.ValhallaCleared(s.Dungeons).Contains(t[1]) ? 1 : 0,
             TMonsterHunt => MonsterHuntService.AreaProgress(s, t[1]),
             // Pets load after the quests at login (RoleSystems): keep the stored value until the post-login refresh.
@@ -297,40 +297,40 @@ public sealed partial class TaskService
             TPetLevel => s.Pets?.ListPet.Values.LongCount(pet => pet.Level >= t[1]) ?? -1,
             TPetQualityStar => s.Pets == null ? -1
                 : FightPets(s).LongCount(pet => PetQuality(pet.PetId) >= t[1] && pet.Star >= t[2]),
-            TPetCamp => s.Pets == null ? -1 : FightPets(s).Select(pet => data.Row("PetBaseConfig", pet.PetId) is { } row
+            TPetCamp => s.Pets == null ? -1 : FightPets(s).Select(pet => _data.Row("PetBaseConfig", pet.PetId) is { } row
                 ? GameData.Int(row, "_iCamp") : 0).Where(camp => camp > 0).GroupBy(camp => camp).Any(g => g.Count() >= 3) ? 1 : 0,
             TPetSupport => s.Pets == null ? -1
                 : s.Pets.SetupPlans.GetValueOrDefault(s.Pets.CurrentPlan)?.SupportPets.Values.LongCount(id => id != 0) ?? 0,
-            TTotemQuality => TotemService.Deployed(s, data).LongCount(i => ItemQuality(i.Entry) >= t[1]),
-            TTotemSkills => TotemService.Deployed(s, data).SelectMany(TotemService.Skills).LongCount(skill =>
-                data.Row("TotemSkillConfig", skill) is { } row && GameData.Int(row, "_iQuality") >= t[1]),
-            TTotemMaxed => TotemService.Deployed(s, data).Where(i => ItemQuality(i.Entry) >= t[1])
-                .Sum(i => (long)TotemService.MaxedAttributes(data, i)),
+            TTotemQuality => TotemService.Deployed(s, _data).LongCount(i => ItemQuality(i.Entry) >= t[1]),
+            TTotemSkills => TotemService.Deployed(s, _data).SelectMany(TotemService.Skills).LongCount(skill =>
+                _data.Row("TotemSkillConfig", skill) is { } row && GameData.Int(row, "_iQuality") >= t[1]),
+            TTotemMaxed => TotemService.Deployed(s, _data).Where(i => ItemQuality(i.Entry) >= t[1])
+                .Sum(i => (long)TotemService.MaxedAttributes(_data, i)),
             TEchoQuality => EmblemService.Worn(s).LongCount(i => ItemQuality(i.Entry) >= t[1]),
             TEchoLevel => EmblemService.Worn(s).LongCount(i => (i.Attrs?.GetValueOrDefault(1001) ?? 0) >= t[1]),
-            TEchoResonance => EmblemService.Resonances(s, data).Values.LongCount(stage => stage >= t[1]),
+            TEchoResonance => EmblemService.Resonances(s, _data).Values.LongCount(stage => stage >= t[1]),
             TEnchants => s.Items.Where(i => i.Grid > 0 && ItemQuality(i.Entry) >= t[1]
-                && data.Row("ItemConfig", i.Entry) is { } row && GameData.Int(row, "_iType") == 5).Sum(i => (long)i.Enchantments.Count),
-            TStunts => s.Items.LongCount(i => i.Grid > 0 && data.Row("ItemConfig", i.Entry) is { } row
+                && _data.Row("ItemConfig", i.Entry) is { } row && GameData.Int(row, "_iType") == 5).Sum(i => (long)i.Enchantments.Count),
+            TStunts => s.Items.LongCount(i => i.Grid > 0 && _data.Row("ItemConfig", i.Entry) is { } row
                 && GameData.Int(row, "_iType") == 5 && EquipmentAffixes.Specials(i).LongCount() >= t[1]),
             TPetRoom => s.Pets?.IncubationLv ?? -1,
             // Guild membership and the friend list load after the quests at login: keep the stored value until then.
             TJoinGuild => s.Guild == null ? -1 : s.Guild.GuildId != 0 ? 1 : 0,
             TFriends => FriendCount(s),
             TEchoLevelSum => EmblemService.Worn(s).Sum(i => i.Attrs?.GetValueOrDefault(1001) ?? 0),
-            TLiveness => character.CountOf(s, 5),
+            TLiveness => _character.CountOf(s, 5),
             _ => -1,
         };
     }
 
-    private long PetQuality(int pet) => data.Row("PetBaseConfig", pet) is { } row ? GameData.Int(row, "_iQuality") : -1;
+    private long PetQuality(int pet) => _data.Row("PetBaseConfig", pet) is { } row ? GameData.Int(row, "_iQuality") : -1;
 
     /// <summary>The current plan's fight (出战) pets that are owned.</summary>
     private static IEnumerable<PetData> FightPets(GameSession s) =>
         s.Pets?.SetupPlans.GetValueOrDefault(s.Pets.CurrentPlan)?.SetUpPets.Values
             .Select(id => s.Pets.ListPet.GetValueOrDefault(id)).OfType<PetData>() ?? [];
 
-    private long ItemQuality(int entry) => data.Row("ItemConfig", entry) is { } row ? GameData.Int(row, "_iQuality") : -1;
+    private long ItemQuality(int entry) => _data.Row("ItemConfig", entry) is { } row ? GameData.Int(row, "_iQuality") : -1;
 
     /// <summary>
     /// 103024's last parameter is the crafted item's ItemConfig _iEquipPart (TaskConfig: 2 weapons, 4 tops, 7 accessories;
@@ -339,7 +339,7 @@ public sealed partial class TaskService
     /// </summary>
     private bool CraftPartMatches(int entry, long part)
     {
-        long made = data.Row("ItemConfig", entry) is { } row ? GameData.Int(row, "_iEquipPart") : -1;
+        long made = _data.Row("ItemConfig", entry) is { } row ? GameData.Int(row, "_iEquipPart") : -1;
         return part == 0 || made == part || (part == 2 && made == 1);
     }
 
@@ -347,7 +347,7 @@ public sealed partial class TaskService
     {
         var seen = new HashSet<long>();
         long current = career;
-        while (seen.Add(current) && data.Row("JobConfig", current) is { } job)
+        while (seen.Add(current) && _data.Row("JobConfig", current) is { } job)
         {
             current = GameData.Int(job, "_iParentId");
             if (current == ancestor) return true;
@@ -376,7 +376,7 @@ public sealed partial class TaskService
         if (settlement.TaskParticipantIds == null)
         {
             var credited = _participants.TryGetValue(monster, out var ids) ? ids : [];
-            settlement.TaskParticipantIds = sessions.All()
+            settlement.TaskParticipantIds = _sessions.All()
                 .Where(s => s.Role != null && s.Tasks != null && s.WorldScene == monster.WorldScene &&
                     (ReferenceEquals(s, killer) || credited.Contains(s.Role.Id)))
                 .Select(s => s.Role!.Id).Distinct().Order().ToArray();
@@ -397,7 +397,7 @@ public sealed partial class TaskService
         foreach (long role in candidates)
         {
             context.AssertRole(role);
-            var session = sessions.All().SingleOrDefault(s => s.Role?.Id == role && s.Tasks != null &&
+            var session = _sessions.All().SingleOrDefault(s => s.Role?.Id == role && s.Tasks != null &&
                 s.WorldScene == monster.WorldScene && s.Attachment?.Cancelled != true);
             if (session?.Owner is not { } owner || !context.CanPin(owner)) continue;
             context.Pin(owner);
@@ -425,7 +425,7 @@ public sealed partial class TaskService
                 }
             }
             if (!changed) continue;
-            byte[]? beforeTasks = roles.LoadTasks(role);
+            byte[]? beforeTasks = _roles.LoadTasks(role);
             frozen.Add((role, beforeTasks, next.ToByteArray()));
             applied.Add((session, session.Attachment, next));
         }
@@ -445,7 +445,7 @@ public sealed partial class TaskService
                 priorAfterCards?.Invoke(builder);
                 var values = frozen.Select(x =>
                 {
-                    byte[]? beforeFollowup = roles.ReadTaskFollowup(builder, x.Role);
+                    byte[]? beforeFollowup = _roles.ReadTaskFollowup(builder, x.Role);
                     var pending = beforeFollowup is { Length: > 0 }
                         ? JsonSerializer.Deserialize<HashSet<string>>(beforeFollowup) ?? [] : new HashSet<string>();
                     pending.Add("kill/" + settlement.SourceKey);
@@ -472,12 +472,12 @@ public sealed partial class TaskService
         _participants.Remove(monster);
         if (monster.RewardSettlement?.TaskObligationsStaged == true)
         {
-            await RoleFanout.EachAsync(sessions.All().Where(s => s.Role != null &&
+            await RoleFanout.EachAsync(_sessions.All().Where(s => s.Role != null &&
                 monster.RewardSettlement.TaskParticipantIds?.Contains(s.Role.Id) == true),
                 async s => { using var gate = await LockTasksAsync(s); await SettleAsync(s); });
             return;
         }
-        await RoleFanout.EachAsync(sessions.All().Where(s => s.Role != null && s.WorldScene == monster.WorldScene && participants.Contains(s.Role.Id)),
+        await RoleFanout.EachAsync(_sessions.All().Where(s => s.Role != null && s.WorldScene == monster.WorldScene && participants.Contains(s.Role.Id)),
             s => ProgressAsync(s, null, t => t[0] switch
             {
                 TKill when s == killer && t.Length >= 3 && t[1..^1].Contains(monster.Template.NpcId) => 1,
@@ -500,7 +500,7 @@ public sealed partial class TaskService
     });
 
     /// <summary>TotemService.Combined fires inside the character lock: the progress runs on the owner loop after it.</summary>
-    public void OnTotemCombined(GameSession session, int entry) => loop.PostOwned(session, () =>
+    public void OnTotemCombined(GameSession session, int entry) => _loop.PostOwned(session, () =>
         ProgressAsync(session, TTotemCombine, t => t.Length == 3 && ItemQuality(entry) >= t[1] ? 1 : 0));
 
     /// <summary>31210 is completion. 84000 arbitrary guide records do not satisfy this objective (§4 C5).</summary>

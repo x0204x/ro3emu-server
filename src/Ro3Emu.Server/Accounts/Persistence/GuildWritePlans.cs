@@ -60,7 +60,7 @@ internal sealed class GuildSavePlan : DbPlan
             update.Parameters.AddWithValue("$name", _name);
             update.Parameters.AddWithValue("$state", state);
             update.Parameters.AddWithValue("$id", id);
-            if (update.ExecuteNonQuery() != 1) throw new InvalidOperationException(_missingMessage);
+            if (update.ExecuteNonQuery() != 1) throw new RowMissingException(GuildStore.Table, id, _missingMessage);
         }
         using (var clear = DbSql.Command(db, tx, "DELETE FROM guild_member WHERE guild_id=$id"))
         {

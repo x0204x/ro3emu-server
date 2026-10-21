@@ -10,11 +10,11 @@ namespace Ro3Emu.Server.Game.Persistence;
 /// </summary>
 public sealed class PositionPersistence : LazyRolePart
 {
-    private readonly RoleStore roles;
+    private readonly RoleStore _roles;
 
     public PositionPersistence(RoleStore roles, GameLoop loop, ILogger<PositionPersistence> log) : base(loop, roles, log)
     {
-        this.roles = roles;
+        this._roles = roles;
         Interval = TimeSpan.FromSeconds(5);
     }
 
@@ -28,6 +28,6 @@ public sealed class PositionPersistence : LazyRolePart
         var p = s.Position;
         long scene = s.SceneEntry;
         float face = s.Face;
-        return (role, epoch, revision) => roles.SavePositionLazyAsync(role, epoch, revision, scene, p.X, p.Y, p.Z, face);
+        return (role, epoch, revision) => _roles.SavePositionLazyAsync(role, epoch, revision, scene, p.X, p.Y, p.Z, face);
     }
 }

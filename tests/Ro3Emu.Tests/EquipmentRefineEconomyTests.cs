@@ -23,37 +23,37 @@ public sealed class EquipmentRefineEconomyTests : IAsyncLifetime
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
     private static readonly Lazy<EconomyCatalog> Catalog = new(() =>
         EconomyCatalog.Load(Path.Combine(RepoRoot(), "data")));
-    private readonly string directory = Environment.GetEnvironmentVariable(CrashDirEnv)
+    private readonly string _directory = Environment.GetEnvironmentVariable(CrashDirEnv)
         ?? Path.Combine(RepoRoot(), ".loadtest-temp", "ro3-refine-economy-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private WebApplication _app = null!;
+    private string _http = "";
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private GameSession Session => Service<SessionRegistry>().All().Single(s => s.Account == "alice" && s.Role != null);
 
     public async Task InitializeAsync()
     {
-        Directory.CreateDirectory(directory);
+        Directory.CreateDirectory(_directory);
         var (web, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game;
         });
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{web}";
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{web}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         SqliteConnection.ClearAllPools();
-        try { Directory.Delete(directory, true); } catch (IOException) { }
+        try { Directory.Delete(_directory, true); } catch (IOException) { }
     }
 
     private async Task Gm(string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync(http + "/ro3emu/gm?account=alice", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync(_http + "/ro3emu/gm?account=alice", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     private static async Task<T> Next<T>(BotClient bot, uint id, Google.Protobuf.MessageParser<T> parser)
@@ -62,7 +62,7 @@ public sealed class EquipmentRefineEconomyTests : IAsyncLifetime
 
     private async Task<BotClient> Prepared()
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(directory, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_directory, "gate_rsa_public.pem")));
         await bot.LoginAsync("alice", "pw"); await bot.EnterGateAsync();
         await bot.EnterWorldAsync((await bot.CreateRoleAsync("Alice")).RoleBaseInfo.Id);
         await Gm("!lvl 50");
@@ -98,7 +98,7 @@ public sealed class EquipmentRefineEconomyTests : IAsyncLifetime
     }
 
     private EquipLevels Saved() => JsonSerializer.Deserialize<EquipLevels>(Service<RoleStore>().LoadEquipLevels(Session.Role!.Id)!)!;
-    private EconomySnapshot Cut() => S3EconomyReader.Read(directory, Catalog.Value);
+    private EconomySnapshot Cut() => S3EconomyReader.Read(_directory, Catalog.Value);
     private long MaterialCount() => Session.Items.Where(i => i.Entry == Material).Sum(i => (long)i.Stack);
     private long Currency() => Session.Progress!.Currency.GetValueOrDefault(2);
     private (long Material, long Currency) SixthCost()
@@ -185,7 +185,7 @@ public sealed class EquipmentRefineEconomyTests : IAsyncLifetime
         Assert.Equal(beforeMaterial - cost.Material, MaterialCount());
         Assert.Equal(beforeCurrency - cost.Currency, Currency());
         var closing = Cut();
-        var ledger = S3EconomyReader.ReadLedger(directory, Catalog.Value, opening, closing)!;
+        var ledger = S3EconomyReader.ReadLedger(_directory, Catalog.Value, opening, closing)!;
         Assert.True(ledger.CompleteHistory, string.Join(';', ledger.Issues.Select(issue => issue.Detail)));
         var receipt = Assert.Single(ledger.Receipts, r => r.CommandKind == "cd13a/equipment-refine");
         Assert.Single(receipt.SourceKeys!);

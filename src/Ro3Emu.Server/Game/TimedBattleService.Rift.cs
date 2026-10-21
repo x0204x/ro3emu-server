@@ -41,18 +41,18 @@ public sealed partial class TimedBattleService
         public GameSession? Challenger { get; set; }
     }
 
-    private readonly Dictionary<long, RiftStone> riftStones = new();
-    private readonly Dictionary<long, int> riftMapTotals = new();
-    private long riftRound = -1, riftSeq;
+    private readonly Dictionary<long, RiftStone> _riftStones = new();
+    private readonly Dictionary<long, int> _riftMapTotals = new();
+    private long _riftRound = -1, _riftSeq;
     /// <summary>The round's 9002 went out: its last stone was cleared.</summary>
-    private bool riftResolved;
+    private bool _riftResolved;
 
-    internal IReadOnlyCollection<RiftStone> RiftStones => riftStones.Values;
+    internal IReadOnlyCollection<RiftStone> RiftStones => _riftStones.Values;
 
     /// <summary>Tests: the running round keeps only the stones <paramref name="keep"/> accepts.</summary>
     internal void KeepRiftStonesForTest(Func<RiftStone, bool> keep)
     {
-        foreach (var stone in riftStones.Values.Where(s => !keep(s)).ToArray()) riftStones.Remove(stone.Uid);
+        foreach (var stone in _riftStones.Values.Where(s => !keep(s)).ToArray()) _riftStones.Remove(stone.Uid);
     }
 
     internal static bool IsRiftUid(long uid) => uid >= RiftUidBase && uid < 1L << 47;
@@ -60,33 +60,33 @@ public sealed partial class TimedBattleService
     /// <summary>Unix seconds of the running round's start, or -1 outside the window.</summary>
     private long CurrentRiftRound()
     {
-        if (!schedule.IsOpen(200)) return -1;
+        if (!_schedule.IsOpen(200)) return -1;
         var (start, end) = TreasureWindow();
-        long now = time.GetUtcNow().ToUnixTimeSeconds();
+        long now = _time.GetUtcNow().ToUnixTimeSeconds();
         return now < start || now >= end ? -1 : start + (now - start) / RiftRoundSeconds * RiftRoundSeconds;
     }
 
     private long RiftRoundEnd()
     {
         var (start, end) = TreasureWindow();
-        long round = riftRound >= 0 ? riftRound : start;
+        long round = _riftRound >= 0 ? _riftRound : start;
         return Math.Min(end, round + RiftRoundSeconds);
     }
 
     private void TickRift()
     {
         long round = CurrentRiftRound();
-        if (round == riftRound) return;
-        riftRound = round;
-        riftResolved = false;
-        var removed = riftStones.Values.ToArray();
-        riftStones.Clear();
-        riftMapTotals.Clear();
+        if (round == _riftRound) return;
+        _riftRound = round;
+        _riftResolved = false;
+        var removed = _riftStones.Values.ToArray();
+        _riftStones.Clear();
+        _riftMapTotals.Clear();
         if (round >= 0) PlaceRiftRound(Random.Shared);
-        var added = riftStones.Values.ToArray();
+        var added = _riftStones.Values.ToArray();
         // A round change also refreshes RestrictInfo1020 once the restriction day has turned.
-        foreach (var session in sessions.All().Where(s => s.Role != null))
-            loop.PostOwned(session, async () =>
+        foreach (var session in _sessions.All().Where(s => s.Role != null))
+            _loop.PostOwned(session, async () =>
             {
                 await RiftViewAsync(session, removed, added);
                 await SendOnePieceMapAsync(session);
@@ -94,20 +94,20 @@ public sealed partial class TimedBattleService
             });
         if (added.Length > 0)
             foreach (long map in added.Select(s => s.Map).Distinct())
-                loop.PostRuntime(() => RiftChatAsync(RiftOpenChat, data.ClientMapName(map), "1"));
+                _loop.PostRuntime(() => RiftChatAsync(RiftOpenChat, _data.ClientMapName(map), "1"));
     }
 
     private void PlaceRiftRound(Random rng)
     {
-        var maps = data.Table("OnePieceMapConfig").Values
+        var maps = _data.Table("OnePieceMapConfig").Values
             .Select(row => (Row: row, Map: GameData.Int(row, "_iId"), Points: RiftPoints(row)))
             .Where(m => m.Points.Count > 0).ToList();
         int low = 3, high = 4;
-        if (data.Table("PublicParamConfig").TryGetValue("OnePieceMapRefresh", out var refresh)
+        if (_data.Table("PublicParamConfig").TryGetValue("OnePieceMapRefresh", out var refresh)
             && refresh.ValueKind == JsonValueKind.Array && refresh.GetArrayLength() == 2)
         { low = (int)(GameData.Number(refresh[0]) ?? 3); high = Math.Max(low, (int)(GameData.Number(refresh[1]) ?? 4)); }
         int count = Math.Min(maps.Count, rng.Next(low, high + 1));
-        var budget = data.Table("OnePieceMonsterConfig").Values
+        var budget = _data.Table("OnePieceMonsterConfig").Values
             .ToDictionary(r => (int)GameData.Int(r, "_iStarId"), r => (int)GameData.Int(r, "_iRefreshCount"));
         for (int i = 0; i < count; i++)
         {
@@ -126,7 +126,7 @@ public sealed partial class TimedBattleService
     private List<MapPoint> RiftPoints(JsonElement row)
     {
         var list = new List<MapPoint>();
-        if (worldData.Map(GameData.Int(row, "_iId")) is not { } map || !row.TryGetProperty("_kMonsterPoint", out var points)
+        if (_worldData.Map(GameData.Int(row, "_iId")) is not { } map || !row.TryGetProperty("_kMonsterPoint", out var points)
             || points.ValueKind != JsonValueKind.Array) return list;
         foreach (var p in points.EnumerateArray())
             if (GameData.Number(p) is { } id && map.Points.TryGetValue((long)id, out var point)) list.Add(point);
@@ -155,7 +155,7 @@ public sealed partial class TimedBattleService
         return items[^1];
     }
 
-    private JsonElement? StarRow(int star) => data.Table("OnePieceMonsterConfig").Values
+    private JsonElement? StarRow(int star) => _data.Table("OnePieceMonsterConfig").Values
         .Where(r => GameData.Int(r, "_iStarId") == star).Cast<JsonElement?>().FirstOrDefault();
 
     private RiftStone? AddRiftStone(long map, MapPoint point, int star, long? scene, Random rng)
@@ -163,16 +163,16 @@ public sealed partial class TimedBattleService
         if (StarRow(star) is not { } row) return null;
         var scenes = Pairs(row, "_kDungeonList");
         long chosen = scene ?? (scenes.Count > 0 ? Weighted(scenes, p => p.Value, rng).Key : 0);
-        if (data.Row("OnePieceRewardConfig", chosen) is not { } reward) return null;
+        if (_data.Row("OnePieceRewardConfig", chosen) is not { } reward) return null;
         int stoneNpc = (int)GameData.Int(row, "_iId");
-        long uid = RiftUidBase + map * 4096 + riftSeq++ % 4096;
+        long uid = RiftUidBase + map * 4096 + _riftSeq++ % 4096;
         var stone = new RiftStone
         {
             Uid = uid, Map = map, Point = point, StoneNpc = stoneNpc, Star = star, Scene = chosen,
             Boss = RiftBoss((int)GameData.Int(reward, "_iMonsterId"), star)
         };
-        riftStones[uid] = stone;
-        riftMapTotals[map] = riftMapTotals.GetValueOrDefault(map) + 1;
+        _riftStones[uid] = stone;
+        _riftMapTotals[map] = _riftMapTotals.GetValueOrDefault(map) + 1;
         return stone;
     }
 
@@ -180,15 +180,15 @@ public sealed partial class TimedBattleService
     private int RiftBoss(int baseBoss, int star)
     {
         int variant = baseBoss + star - 1;
-        return star > 1 && data.Row("NPCConfig", baseBoss) is { } first && data.Row("NPCConfig", variant) is { } next
-            && data.TextOf(first, "_kName") == data.TextOf(next, "_kName") ? variant : baseBoss;
+        return star > 1 && _data.Row("NPCConfig", baseBoss) is { } first && _data.Row("NPCConfig", variant) is { } next
+            && _data.TextOf(first, "_kName") == _data.TextOf(next, "_kName") ? variant : baseBoss;
     }
 
     private EntityBase RiftEntity(RiftStone stone)
     {
-        var npc = data.Row("NPCConfig", stone.StoneNpc);
+        var npc = _data.Row("NPCConfig", stone.StoneNpc);
         var entity = SceneService.NpcEntity(new WorldNpc(stone.Uid, stone.Map, WorldNpcKind.Npc, stone.StoneNpc,
-            npc is { } n ? data.ClientTextOf(n, "_kName") : "", npc is { } c ? (int)GameData.Int(c, "_iCamp") : 0,
+            npc is { } n ? _data.ClientTextOf(n, "_kName") : "", npc is { } c ? (int)GameData.Int(c, "_iCamp") : 0,
             stone.Point.X, stone.Point.Y, stone.Point.Z, stone.Point.Face, default));
         entity.CustomDatas.Add(RiftInfo(stone));
         return entity;
@@ -210,7 +210,7 @@ public sealed partial class TimedBattleService
     private static bool OnRiftMap(GameSession session, long map) =>
         session.Role != null && !session.SceneLoading && session.InstanceId == 0 && session.SceneEntry == map;
 
-    private int RiftRemaining(long map) => riftStones.Values.Count(s => s.Map == map);
+    private int RiftRemaining(long map) => _riftStones.Values.Count(s => s.Map == map);
 
     private async Task RiftViewAsync(GameSession session, IEnumerable<RiftStone> removed, IEnumerable<RiftStone> added)
     {
@@ -223,8 +223,8 @@ public sealed partial class TimedBattleService
 
     private void PostRiftMap(long map, Func<GameSession, Task> send)
     {
-        foreach (var session in sessions.All().Where(s => OnRiftMap(s, map)))
-            loop.PostOwned(session, () => send(session));
+        foreach (var session in _sessions.All().Where(s => OnRiftMap(s, map)))
+            _loop.PostOwned(session, () => send(session));
     }
 
     private void PostRiftState(RiftStone stone) => PostRiftMap(stone.Map, s => s.SendGameAsync(WorldCoreService.CustomChange,
@@ -237,36 +237,36 @@ public sealed partial class TimedBattleService
     /// </summary>
     private void ReleaseRiftStone(Treasure a, bool cleared)
     {
-        if (a.Stone is not { } stone || riftStones.GetValueOrDefault(stone.Uid) != stone || stone.Challenger != a.Leader) return;
+        if (a.Stone is not { } stone || _riftStones.GetValueOrDefault(stone.Uid) != stone || stone.Challenger != a.Leader) return;
         if (!cleared) { stone.Challenger = null; PostRiftState(stone); return; }
-        riftStones.Remove(stone.Uid);
+        _riftStones.Remove(stone.Uid);
         PostRiftMap(stone.Map, async s => { await RiftViewAsync(s, [stone], []); await SendOnePieceMapAsync(s); });
-        if (riftStones.Count == 0 && riftRound >= 0 && !riftResolved)
+        if (_riftStones.Count == 0 && _riftRound >= 0 && !_riftResolved)
         {
-            riftResolved = true;
-            loop.PostRuntime(() => RiftChatAsync(RiftClosedChat));
+            _riftResolved = true;
+            _loop.PostRuntime(() => RiftChatAsync(RiftClosedChat));
         }
     }
 
     /// <summary>1022 marquee to everyone online, parameters encoded as MvpService does (inferred).</summary>
     private async Task RiftChatAsync(int chatId, params string[] args)
     {
-        if (data.Row("ChatConfig", chatId) == null) return;
+        if (_data.Row("ChatConfig", chatId) == null) return;
         var ntf = new SystemBoardCastMsgNtf { Source = MsgSource.System, ChatId = chatId };
         for (int i = 0; i < args.Length; i++)
             ntf.ParamList[i + 1] = new ChatParameter { Params = { args[i] }, Type = ChatParamType.ChatParamString };
-        await RoleFanout.EachAsync(sessions.All().Where(p => p.Role != null), p => p.SendGameAsync(SystemBroadcast, ntf));
+        await RoleFanout.EachAsync(_sessions.All().Where(p => p.Role != null), p => p.SendGameAsync(SystemBroadcast, ntf));
     }
 
-    private string NpcName(int npc) => data.Row("NPCConfig", npc) is { } row ? data.TextOf(row, "_kName") : npc.ToString(CultureInfo.InvariantCulture);
+    private string NpcName(int npc) => _data.Row("NPCConfig", npc) is { } row ? _data.TextOf(row, "_kName") : npc.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>!rift: test aid, not original behaviour.</summary>
     private async Task RiftGmAsync(GameSession s, string[] args)
     {
         if (args.Length == 0)
         {
-            string maps = string.Join("; ", riftMapTotals.Keys.Select(m => $"{data.MapName(m)} {m} {RiftRemaining(m)}/{riftMapTotals[m]}"));
-            await GmCommands.ReplyAsync(s, riftRound < 0 ? "Rift Crisis is closed (open 10:00-22:00)."
+            string maps = string.Join("; ", _riftMapTotals.Keys.Select(m => $"{_data.MapName(m)} {m} {RiftRemaining(m)}/{_riftMapTotals[m]}"));
+            await GmCommands.ReplyAsync(s, _riftRound < 0 ? "Rift Crisis is closed (open 10:00-22:00)."
                 : $"Rift round until {DateTimeOffset.FromUnixTimeSeconds(RiftRoundEnd()).ToLocalTime():HH:mm}: {maps}");
             return;
         }
@@ -278,10 +278,10 @@ public sealed partial class TimedBattleService
                 + $"{(RiftTestMinParty == null ? "in force" : "overridden; !rift party resets it")}).");
             return;
         }
-        if (riftRound < 0) { await GmCommands.ReplyAsync(s, "Rift Crisis is closed (open 10:00-22:00): stones cannot be fought now."); return; }
+        if (_riftRound < 0) { await GmCommands.ReplyAsync(s, "Rift Crisis is closed (open 10:00-22:00): stones cannot be fought now."); return; }
         if (args[0].Equals("new", StringComparison.OrdinalIgnoreCase))
         {
-            riftRound = long.MinValue; // the next tick places a fresh round
+            _riftRound = long.MinValue; // the next tick places a fresh round
             await GmCommands.ReplyAsync(s, "A new Rift round starts within a second.");
             return;
         }
@@ -291,11 +291,11 @@ public sealed partial class TimedBattleService
         if (args.Length > 1)
         {
             string wanted = string.Join(' ', args[1..]);
-            var match = data.Table("OnePieceRewardConfig").Values.FirstOrDefault(r =>
+            var match = _data.Table("OnePieceRewardConfig").Values.FirstOrDefault(r =>
                 NpcName((int)GameData.Int(r, "_iMonsterId")).Contains(wanted, StringComparison.OrdinalIgnoreCase));
             if (match.ValueKind == JsonValueKind.Undefined)
             {
-                string bosses = string.Join(", ", data.Table("OnePieceRewardConfig").Values.Select(r => NpcName((int)GameData.Int(r, "_iMonsterId"))));
+                string bosses = string.Join(", ", _data.Table("OnePieceRewardConfig").Values.Select(r => NpcName((int)GameData.Int(r, "_iMonsterId"))));
                 await GmCommands.ReplyAsync(s, $"No Rift boss matches '{wanted}'. Bosses: {bosses}");
                 return;
             }

@@ -10,27 +10,27 @@ namespace Ro3Emu.Tests;
 /// <summary>Stage G: a returning login with nothing to change writes nothing (each write was a commit per login).</summary>
 public sealed class ReturningLoginWriteTests : IAsyncLifetime
 {
-    private readonly string dir = Path.Combine(Path.GetTempPath(), "ro3emu-relog-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ro3emu-relog-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "";
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(20);
 
     public async Task InitializeAsync()
     {
         var (h, m, g) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o => { o.DataDir = dir; o.GameDataDir = Path.Combine(RepoRoot(), "data"); o.HttpPort = h; o.MicroGatePort = m; o.GameGatePort = g; });
-        await app.StartAsync(); http = $"http://127.0.0.1:{h}";
+        _app = ServerHost.Create([], o => { o.DataDir = _dir; o.GameDataDir = Path.Combine(RepoRoot(), "data"); o.HttpPort = h; o.MicroGatePort = m; o.GameGatePort = g; });
+        await _app.StartAsync(); _http = $"http://127.0.0.1:{h}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync(); Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dir, true); } catch (IOException) { }
+        await _app.StopAsync(); await _app.DisposeAsync(); Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        try { Directory.Delete(_dir, true); } catch (IOException) { }
     }
 
     private async Task<(BotClient Bot, long Role)> InWorld(bool create)
     {
-        var b = new BotClient(http, File.ReadAllText(Path.Combine(dir, "gate_rsa_public.pem")));
+        var b = new BotClient(_http, File.ReadAllText(Path.Combine(_dir, "gate_rsa_public.pem")));
         await b.LoginAsync("relog", "pw"); await b.EnterGateAsync();
         long id = create ? (await b.CreateRoleAsync("Relogger")).RoleBaseInfo.Id : b.Roles.Single().Id;
         await b.EnterWorldAsync(id); return (b, id);
@@ -38,7 +38,7 @@ public sealed class ReturningLoginWriteTests : IAsyncLifetime
 
     private async Task LoggedOut()
     {
-        var registry = app.Services.GetRequiredService<SessionRegistry>();
+        var registry = _app.Services.GetRequiredService<SessionRegistry>();
         var deadline = DateTime.UtcNow + Wait;
         while (registry.All().Any(s => s.Account == "relog" && s.Role != null) && DateTime.UtcNow < deadline) await Task.Delay(20);
         await Task.Delay(200); // the logout's asynchronous saves
@@ -47,7 +47,7 @@ public sealed class ReturningLoginWriteTests : IAsyncLifetime
     [Fact]
     public async Task ASecondReturningLoginCommitsNoRolePart()
     {
-        var accounts = app.Services.GetRequiredService<AccountStore>();
+        var accounts = _app.Services.GetRequiredService<AccountStore>();
         long role;
         { var (bot, id) = await InWorld(create: true); role = id; await bot.DisposeAsync(); }
         await LoggedOut();

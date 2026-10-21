@@ -15,28 +15,19 @@ namespace Ro3Emu.Server.Game;
 /// _KTypeParam, and UI_Sys_AuctionWidgetCtrl.CheckSubTab (lines 699-743) lists a tab only while
 /// LC_ActManager holds that activity (LC_ActivityHelper.CheckActivityIsOpen, lines 154-173).
 /// </summary>
-public sealed class TimedEventService : IGameTicker
+public sealed class TimedEventService(GameData data, TimeProvider time, SessionRegistry sessions, GameLoop loop, SeasonService seasons) : IGameTicker
 {
     public const uint StatusNotify = 43501, Common = 43502, Upload = 43503;
     internal bool IsOwnerRequest(uint message) => message is Common or Upload;
-    private readonly GameData data;
-    private readonly TimeProvider time;
-    private readonly SessionRegistry sessions;
-    private readonly GameLoop loop;
-    private readonly SeasonService seasons;
-    private long lastSecond = -1;
-    private readonly Dictionary<int, bool> previous = new();
+    private readonly GameData _data = data;
+    private readonly TimeProvider _time = time;
+    private readonly SessionRegistry _sessions = sessions;
+    private readonly GameLoop _loop = loop;
+    private readonly SeasonService _seasons = seasons;
+    private long _lastSecond = -1;
+    private readonly Dictionary<int, bool> _previous = new();
     // GM test aid (!actauction): an in-memory window per activity, never persisted; the Tick publishes its expiry.
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, (DateTimeOffset Start, DateTimeOffset End)> testWindows = new();
-
-    public TimedEventService(GameData data, TimeProvider time, SessionRegistry sessions, GameLoop loop, SeasonService seasons)
-    {
-        this.data = data;
-        this.time = time;
-        this.sessions = sessions;
-        this.loop = loop;
-        this.seasons = seasons;
-    }
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, (DateTimeOffset Start, DateTimeOffset End)> _testWindows = new();
 
     /// <summary>The activity's join window holds now (real dates, the OpenContent repeat, or a GM test window).</summary>
     public bool IsActive(int id) => Active(id);
@@ -48,13 +39,13 @@ public sealed class TimedEventService : IGameTicker
     /// override (close), and publishes the new status at once (the Tick only looks once per clock second).</summary>
     public void SetTestWindow(int id, bool open, int minutes = 90)
     {
-        if (open) testWindows[id] = (time.GetUtcNow(), time.GetUtcNow().AddMinutes(minutes));
-        else testWindows.TryRemove(id, out _);
+        if (open) _testWindows[id] = (_time.GetUtcNow(), _time.GetUtcNow().AddMinutes(minutes));
+        else _testWindows.TryRemove(id, out _);
         bool active = Active(id);
-        if (previous.TryGetValue(id, out bool was) && was == active) return;
-        previous[id] = active;
-        foreach (var s in sessions.All().Where(s => s.Role != null && s.ActivitiesReady))
-            loop.PostOwned(s, () => NotifyAsync(s, id), "timed event test window");
+        if (_previous.TryGetValue(id, out bool was) && was == active) return;
+        _previous[id] = active;
+        foreach (var s in _sessions.All().Where(s => s.Role != null && s.ActivitiesReady))
+            _loop.PostOwned(s, () => NotifyAsync(s, id), "timed event test window");
     }
 
     public async Task LoginAsync(GameSession session)
@@ -64,7 +55,7 @@ public sealed class TimedEventService : IGameTicker
 
     public async Task CommonAsync(GameSession session, ActivityReq req)
     {
-        using var scope = session.Role != null && loop.Owners is { } owners
+        using var scope = session.Role != null && _loop.Owners is { } owners
             ? await owners.EnterAsync("timed event common", [ReservationKey.Role(session.Role.Id)]) : null;
         if (session.Owner != null) scope?.Context.Pin(session.Owner);
         var response = new ActivityResp { ActivityId = req.ActivityId };
@@ -81,7 +72,7 @@ public sealed class TimedEventService : IGameTicker
     /// <summary>43503: only the authenticated role's quest state is returned; playerId and taskIds in the request are untrusted.</summary>
     public async Task UploadAsync(GameSession session, ActivityDataUploadReq req)
     {
-        using var scope = session.Role != null && loop.Owners is { } owners
+        using var scope = session.Role != null && _loop.Owners is { } owners
             ? await owners.EnterAsync("timed event upload", [ReservationKey.Role(session.Role.Id)]) : null;
         if (session.Owner != null) scope?.Context.Pin(session.Owner);
         int result = session.Role == null || !session.ActivitiesReady || !Active(req.ActivityId) ? ErrorCodes.FeatureUnavailable
@@ -97,16 +88,16 @@ public sealed class TimedEventService : IGameTicker
 
     public void Tick(GameTime _)
     {
-        long now = time.GetUtcNow().ToUnixTimeSeconds();
-        if (now == lastSecond) return;
-        lastSecond = now;
+        long now = _time.GetUtcNow().ToUnixTimeSeconds();
+        if (now == _lastSecond) return;
+        _lastSecond = now;
         foreach (var id in Ids())
         {
             bool active = Active(id);
-            if (previous.TryGetValue(id, out bool was) && was == active) continue;
-            previous[id] = active;
-            foreach (var s in sessions.All().Where(s => s.Role != null && s.ActivitiesReady))
-                loop.PostOwned(s, () => NotifyAsync(s, id), "timed event window");
+            if (_previous.TryGetValue(id, out bool was) && was == active) continue;
+            _previous[id] = active;
+            foreach (var s in _sessions.All().Where(s => s.Role != null && s.ActivitiesReady))
+                _loop.PostOwned(s, () => NotifyAsync(s, id), "timed event window");
         }
     }
 
@@ -124,7 +115,7 @@ public sealed class TimedEventService : IGameTicker
     private NoviceActivity Progress(GameSession session, int id)
     {
         var value = new NoviceActivity();
-        foreach (var row in data.Table("ActivityStageConfig").Values.Where(r => GameData.Int(r, "_iActivityID") == id))
+        foreach (var row in _data.Table("ActivityStageConfig").Values.Where(r => GameData.Int(r, "_iActivityID") == id))
         {
             int stage = (int)GameData.Int(row, "_iID");
             if (row.TryGetProperty("_kValue", out var tasks) && tasks.ValueKind == JsonValueKind.Array)
@@ -132,7 +123,7 @@ public sealed class TimedEventService : IGameTicker
                 {
                     if (pair.ValueKind != JsonValueKind.Array || pair.GetArrayLength() < 2) continue;
                     int task = (int)(GameData.Number(pair[1]) ?? 0);
-                    if (task > 0 && session.Tasks != null && data.Row("TaskConfig", task) != null && TaskService.IsDelivered(session, task))
+                    if (task > 0 && session.Tasks != null && _data.Row("TaskConfig", task) != null && TaskService.IsDelivered(session, task))
                         value.TaskIds[task] = stage;
                 }
         }
@@ -142,26 +133,26 @@ public sealed class TimedEventService : IGameTicker
     private int StageFor(int id, int taskId)
     {
         if (taskId <= 0) return 0;
-        foreach (var row in data.Table("ActivityStageConfig").Values.Where(r => GameData.Int(r, "_iActivityID") == id))
+        foreach (var row in _data.Table("ActivityStageConfig").Values.Where(r => GameData.Int(r, "_iActivityID") == id))
             if (row.TryGetProperty("_kValue", out var tasks) && tasks.ValueKind == JsonValueKind.Array
                 && tasks.EnumerateArray().Any(p => p.ValueKind == JsonValueKind.Array && p.GetArrayLength() >= 2 && GameData.Number(p[1]) == taskId))
                 return (int)GameData.Int(row, "_iID");
         return 0;
     }
 
-    private bool Active(int id) => Window(id) is { } w && time.GetUtcNow() >= w.Start && time.GetUtcNow() < w.End;
+    private bool Active(int id) => Window(id) is { } w && _time.GetUtcNow() >= w.Start && _time.GetUtcNow() < w.End;
 
     private (DateTimeOffset Start, DateTimeOffset End)? Window(int id)
     {
-        if (testWindows.TryGetValue(id, out var test) && time.GetUtcNow() < test.End) return test;
-        if (data.Row("ActivityConfig", id) is not { } row) return null;
+        if (_testWindows.TryGetValue(id, out var test) && _time.GetUtcNow() < test.End) return test;
+        if (_data.Row("ActivityConfig", id) is not { } row) return null;
         var start = ReadDate(row, "_kJoinStartTime");
         var end = ReadDate(row, "_kJoinEndTime");
         if (start == null || !(end > start)) return null;
         // OpenContent (OpenContentOptions.PerpetualWindows): an absolute window that already passed repeats with its
         // own length, as ActivityClock.ResolveActivity does for NewActivityConfig tuples.
-        var now = time.GetUtcNow();
-        if (seasons.OpenContent.Enabled && seasons.OpenContent.PerpetualWindows && end <= now)
+        var now = _time.GetUtcNow();
+        if (_seasons.OpenContent.Enabled && _seasons.OpenContent.PerpetualWindows && end <= now)
         {
             var length = end.Value - start.Value;
             long cycle = (now - start.Value).Ticks / length.Ticks;
@@ -176,8 +167,8 @@ public sealed class TimedEventService : IGameTicker
         string text = $"{(long)(GameData.Number(pair[0]) ?? 0):D8}{(long)(GameData.Number(pair[1]) ?? 0):D6}";
         // ActivityConfig dates are interpreted in the injected server civil timezone (inferred policy).
         return DateTime.TryParseExact(text, "yyyyMMddHHmmss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
-            ? new DateTimeOffset(date, time.LocalTimeZone.GetUtcOffset(date)) : null;
+            ? new DateTimeOffset(date, _time.LocalTimeZone.GetUtcOffset(date)) : null;
     }
 
-    private IEnumerable<int> Ids() => data.Table("ActivityConfig").Values.Select(r => (int)GameData.Int(r, "_iID")).Where(id => id > 0);
+    private IEnumerable<int> Ids() => _data.Table("ActivityConfig").Values.Select(r => (int)GameData.Int(r, "_iID")).Where(id => id > 0);
 }

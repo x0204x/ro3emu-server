@@ -141,59 +141,59 @@ public sealed partial class TerritoryEscortService : IGameTicker
         public bool Picked { get; set; }
     }
 
-    private readonly AccountStore accounts;
-    private readonly GuildStore guilds;
-    private readonly GuildService guildService;
-    private readonly RoleStore roles;
-    private readonly GameData data;
-    private readonly CharacterService character;
-    private readonly SessionRegistry sessions;
-    private readonly TeamService teams;
-    private readonly TerritoryWarsClock clock;
-    private readonly AwardService awards;
-    private readonly SceneService scene;
-    private readonly GameLoop loop;
-    private readonly World world;
-    private readonly WorldData maps;
-    private readonly SemaphoreSlim gate = new(1, 1);
-    private Ledger committedLedger = new();
+    private readonly AccountStore _accounts;
+    private readonly GuildStore _guilds;
+    private readonly GuildService _guildService;
+    private readonly RoleStore _roles;
+    private readonly GameData _data;
+    private readonly CharacterService _character;
+    private readonly SessionRegistry _sessions;
+    private readonly TeamService _teams;
+    private readonly TerritoryWarsClock _clock;
+    private readonly AwardService _awards;
+    private readonly SceneService _scene;
+    private readonly GameLoop _loop;
+    private readonly World _world;
+    private readonly WorldData _maps;
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private Ledger _committedLedger = new();
     private sealed class LedgerStage(Ledger value, GameLoop.WorkPermit? permit)
     {
         public Ledger Value = value;
         public readonly GameLoop.WorkPermit? Permit = permit;
         public bool Active = true;
     }
-    private readonly AsyncLocal<LedgerStage?> stagedLedger = new();
+    private readonly AsyncLocal<LedgerStage?> _stagedLedger = new();
     private Ledger ledger
     {
-        get => stagedLedger.Value is { Active: true } stage
-            ? ReferenceEquals(stage.Permit, loop.CurrentWork) ? stage.Value : CopyLedger(committedLedger)
-            : committedLedger;
+        get => _stagedLedger.Value is { Active: true } stage
+            ? ReferenceEquals(stage.Permit, _loop.CurrentWork) ? stage.Value : CopyLedger(_committedLedger)
+            : _committedLedger;
         set
         {
-            if (stagedLedger.Value is { Active: true } stage)
+            if (_stagedLedger.Value is { Active: true } stage)
             {
-                if (!ReferenceEquals(stage.Permit, loop.CurrentWork))
+                if (!ReferenceEquals(stage.Permit, _loop.CurrentWork))
                     throw new InvalidOperationException("Escort stage escaped its game-loop work permit.");
                 stage.Value = value;
             }
-            else committedLedger = value;
+            else _committedLedger = value;
         }
     }
     private static Ledger CopyLedger(Ledger value) => JsonSerializer.Deserialize<Ledger>(JsonSerializer.SerializeToUtf8Bytes(value))!;
     private IDisposable StageLedger()
     {
-        var prior = stagedLedger.Value;
-        var stage = new LedgerStage(CopyLedger(ledger), loop.CurrentWork);
-        stagedLedger.Value = stage;
-        return new StageLease(() => { stage.Active = false; stagedLedger.Value = prior; });
+        var prior = _stagedLedger.Value;
+        var stage = new LedgerStage(CopyLedger(ledger), _loop.CurrentWork);
+        _stagedLedger.Value = stage;
+        return new StageLease(() => { stage.Active = false; _stagedLedger.Value = prior; });
     }
     private sealed class StageLease(Action release) : IDisposable
     {
-        private int disposed;
+        private int _disposed;
         public void Dispose()
         {
-            if (Interlocked.Exchange(ref disposed, 1) == 0) release();
+            if (Interlocked.Exchange(ref _disposed, 1) == 0) release();
         }
     }
     private Ownership.ReservationKey[] MutationKeys(GameSession? actor, bool includeOnlineRoles,
@@ -211,12 +211,12 @@ public sealed partial class TerritoryEscortService : IGameTicker
         {
             foreach (var cart in ledger.Carts.Values)
                 if (cart.Owner > 0) keys.Add(Ownership.ReservationKey.Role(cart.Owner));
-            foreach (var peer in sessions.All().Where(s => s.Role != null && s.TerritoryEscort != null))
+            foreach (var peer in _sessions.All().Where(s => s.Role != null && s.TerritoryEscort != null))
                 keys.Add(Ownership.ReservationKey.Role(peer.Role!.Id));
         }
         foreach (long guild in (includeAllGuilds ? ledger.Goods.Keys.Concat(ledger.Listings.Values.SelectMany(x =>
                      new[] { x.Seller, x.Buyer }.Concat(x.Applications.Keys)))
-                 .Concat(ledger.Carts.Values.Select(x => x.Guild)).Concat(guilds.List().Select(g => g.Id)) : [])
+                 .Concat(ledger.Carts.Values.Select(x => x.Guild)).Concat(_guilds.List().Select(g => g.Id)) : [])
                  .Concat(actor == null ? [] : [Own(actor)?.Id ?? 0])
                  .Concat(additionalGuilds ?? []))
             if (guild > 0) keys.Add(Ownership.ReservationKey.Entity("guild", guild.ToString(System.Globalization.CultureInfo.InvariantCulture)));
@@ -226,23 +226,23 @@ public sealed partial class TerritoryEscortService : IGameTicker
         bool includeOnlineRoles = false, IReadOnlyCollection<long>? additionalRoles = null,
         IReadOnlyCollection<long>? additionalGuilds = null, bool includeAllGuilds = false)
     {
-        if (loop.Owners is not { } owners) { await gate.WaitAsync(); return null; }
+        if (_loop.Owners is not { } owners) { await _gate.WaitAsync(); return null; }
         while (true)
         {
-            var scope = await owners.EnterWithGateAsync(origin, gate,
+            var scope = await owners.EnterWithGateAsync(origin, _gate,
                 MutationKeys(actor, includeOnlineRoles, additionalRoles, additionalGuilds, includeAllGuilds));
             var needed = MutationKeys(actor, includeOnlineRoles, additionalRoles, additionalGuilds, includeAllGuilds);
             if (owners.Reservations.Covers(scope.Context.Operation, needed) ||
                 owners.AuditUncovered($"{origin} under {scope.Context.Origin} needs {string.Join(",", needed)}")) return scope;
-            gate.Release();
+            _gate.Release();
             scope.Dispose();
         }
     }
-    private Dictionary<long, long> goodsSnapshot = new();
-    private Dictionary<(long Guild, int Round), long> scoreSnapshot = new();
-    private string committedEpoch = "";
-    private TimeSpan lastTick;
-    private bool ticking, reconciledOnce; // the first reconciliation runs on the loop's first tick (startup), not 1 s later
+    private Dictionary<long, long> _goodsSnapshot = new();
+    private Dictionary<(long Guild, int Round), long> _scoreSnapshot = new();
+    private string _committedEpoch = "";
+    private TimeSpan _lastTick;
+    private bool _ticking, _reconciledOnce; // the first reconciliation runs on the loop's first tick (startup), not 1 s later
     public Func<int, long>? OwnerOf { get; set; }
     public Func<long, int>? GuildPoint { get; set; }
 
@@ -250,20 +250,20 @@ public sealed partial class TerritoryEscortService : IGameTicker
         CharacterService character, SessionRegistry sessions, TeamService teams, TerritoryWarsClock clock,
         AwardService awards, SceneService scene, GameLoop loop, World world, WorldData maps, CombatService combat)
     {
-        this.accounts = accounts;
-        this.guilds = guilds;
-        this.guildService = guildService;
-        this.roles = roles;
-        this.data = data;
-        this.character = character;
-        this.sessions = sessions;
-        this.teams = teams;
-        this.clock = clock;
-        this.awards = awards;
-        this.scene = scene;
-        this.loop = loop;
-        this.world = world;
-        this.maps = maps;
+        this._accounts = accounts;
+        this._guilds = guilds;
+        this._guildService = guildService;
+        this._roles = roles;
+        this._data = data;
+        this._character = character;
+        this._sessions = sessions;
+        this._teams = teams;
+        this._clock = clock;
+        this._awards = awards;
+        this._scene = scene;
+        this._loop = loop;
+        this._world = world;
+        this._maps = maps;
         ledger = accounts.ReadSync<byte[]?>(new TerritoryRealmReadPlan(RealmStateKind.TerritoryEscort)) is { } bytes
             ? JsonSerializer.Deserialize<Ledger>(bytes) ?? new Ledger() : new Ledger();
         foreach (var (guild, play) in ledger.Play)
@@ -283,14 +283,14 @@ public sealed partial class TerritoryEscortService : IGameTicker
     }
 
     private static long RoleId(GameSession s) => s.Role?.Id ?? 0;
-    private GuildStore.State? Own(GameSession s) => s.Role == null ? null : guilds.ForRole(s.Role.Id);
+    private GuildStore.State? Own(GameSession s) => s.Role == null ? null : _guilds.ForRole(s.Role.Id);
     private static bool Right(GuildStore.State? g, long role, int right) => g != null && g.Members.TryGetValue(role, out var m)
         && (m.Official == 1 || g.Rights.GetValueOrDefault(right)?.Contains(m.Official) == true);
     private static int MarketPermission(GuildStore.State? g, long role) => g == null ? ErrorCodes.NotInGuild
         : Right(g, role, 16) ? 0 : ErrorCodes.GuildPermission;
-    private int Round => clock.Current.Round;
-    private bool Trading => clock.Current.Type == 1;
-    private bool Playing => clock.Current.Type == 2;
+    private int Round => _clock.Current.Round;
+    private bool Trading => _clock.Current.Type == 1;
+    private bool Playing => _clock.Current.Type == 2;
 
     private void Save(RoleItemPlanBuilder transaction) => transaction.Add(
         new RealmStatePlan(RealmStateKind.TerritoryEscort, JsonSerializer.SerializeToUtf8Bytes(ledger)));
@@ -300,7 +300,7 @@ public sealed partial class TerritoryEscortService : IGameTicker
         IReadOnlyList<EconomyQuantity>? extraCosts = null, IReadOnlyList<EconomyQuantity>? extraGoods = null)
     {
         Save(transaction);
-        var economic = EscortEconomy(committedLedger, ledger, kind, sourceKey ?? "state-only", actor,
+        var economic = EscortEconomy(_committedLedger, ledger, kind, sourceKey ?? "state-only", actor,
             extraDeltas, extraCosts, extraGoods);
         if (economic != null)
         {
@@ -308,16 +308,16 @@ public sealed partial class TerritoryEscortService : IGameTicker
             if (actor?.Role is { } role) transaction.PinRole(role.Id);
             transaction.WithEventEconomy(economic);
         }
-        await roles.CommitAsync(transaction, "territory/escort");
-        var oldGoods = Volatile.Read(ref goodsSnapshot);
-        var oldEpoch = Volatile.Read(ref committedEpoch);
-        committedLedger = CopyLedger(ledger);
+        await _roles.CommitAsync(transaction, "territory/escort");
+        var oldGoods = Volatile.Read(ref _goodsSnapshot);
+        var oldEpoch = Volatile.Read(ref _committedEpoch);
+        _committedLedger = CopyLedger(ledger);
         PublishSnapshots();
         // 32231 Change_Item is how the recovered client updates SelfGuildItemData.
         foreach (var guildId in oldGoods.Keys.Union(ledger.Goods.Keys)
             .Where(id => oldEpoch != Epoch || oldGoods.GetValueOrDefault(id) != ledger.Goods.GetValueOrDefault(id)))
-            foreach (var peer in sessions.All().Where(s => s.Role != null && guilds.ForRole(s.Role.Id)?.Id == guildId))
-                loop.PostOwned(peer, () => peer.SendGameAsync(GuildService.BaseChange,
+            foreach (var peer in _sessions.All().Where(s => s.Role != null && _guilds.ForRole(s.Role.Id)?.Id == guildId))
+                _loop.PostOwned(peer, () => peer.SendGameAsync(GuildService.BaseChange,
                     new GuildBaseInfoChangeNtf
                     {
                         Tp = GuildBaseInfoChangeNtf.Types.ChangeType.ChangeItem,
@@ -327,23 +327,23 @@ public sealed partial class TerritoryEscortService : IGameTicker
 
     private void RestoreCommittedLedger()
     {
-        ledger = CopyLedger(committedLedger);
+        ledger = CopyLedger(_committedLedger);
         PublishSnapshots();
     }
 
     private void PublishSnapshots()
     {
-        Volatile.Write(ref goodsSnapshot, new Dictionary<long, long>(ledger.Goods));
-        Volatile.Write(ref scoreSnapshot, ledger.ScoresByRound.SelectMany(p => p.Value.Select(r =>
+        Volatile.Write(ref _goodsSnapshot, new Dictionary<long, long>(ledger.Goods));
+        Volatile.Write(ref _scoreSnapshot, ledger.ScoresByRound.SelectMany(p => p.Value.Select(r =>
             new KeyValuePair<(long Guild, int Round), long>((p.Key, r.Key), r.Value))).ToDictionary(x => x.Key, x => x.Value));
-        Volatile.Write(ref committedEpoch, TerritoryWarsClock.EpochOf(ledger.SeasonStart, ledger.PlayBook, ledger.Cycle));
+        Volatile.Write(ref _committedEpoch, TerritoryWarsClock.EpochOf(ledger.SeasonStart, ledger.PlayBook, ledger.Cycle));
     }
 
-    private string Epoch => clock.Epoch;
+    private string Epoch => _clock.Epoch;
 
     private bool AlignRole(RoleState state)
     {
-        if (state.SeasonStart == clock.SeasonStart && state.PlayBook == clock.PlayBook && state.Cycle == clock.Cycle) return false;
+        if (state.SeasonStart == _clock.SeasonStart && state.PlayBook == _clock.PlayBook && state.Cycle == _clock.Cycle) return false;
         string previous = TerritoryWarsClock.EpochOf(state.SeasonStart, state.PlayBook, state.Cycle);
         if (state.SeasonStart != 0 || state.PlayBook != 0)
             state.Archives[previous] = new RoleProgress
@@ -361,9 +361,9 @@ public sealed partial class TerritoryEscortService : IGameTicker
         {
             state.ScoreByRound = new(); state.ClaimedByRound = new(); state.LastGuildByRound = new();
         }
-        state.SeasonStart = clock.SeasonStart;
-        state.PlayBook = clock.PlayBook;
-        state.Cycle = clock.Cycle;
+        state.SeasonStart = _clock.SeasonStart;
+        state.PlayBook = _clock.PlayBook;
+        state.Cycle = _clock.Cycle;
         return true;
     }
 
@@ -378,9 +378,9 @@ public sealed partial class TerritoryEscortService : IGameTicker
 
     private async Task SaveRoleAsync(GameSession s)
     {
-        var transaction = roles.NewTransaction();
+        var transaction = _roles.NewTransaction();
         SaveRole(s, transaction);
-        await roles.CommitAsync(transaction, "territory/escort-role");
+        await _roles.CommitAsync(transaction, "territory/escort-role");
     }
     private static void SaveRole(GameSession s, RoleItemPlanBuilder transaction) =>
         SaveRole(s.Role!.Id, s.TerritoryEscort!, transaction);
@@ -393,13 +393,13 @@ public sealed partial class TerritoryEscortService : IGameTicker
     {
         // C/D 15: no escort reconciliation inside the login (it reserved the realm escort ledger, every guild and the
         // online roles). The one-second Tick runs it from startup and re-aligns online roles on a season change.
-        var bytes = roles.LoadTerritoryEscort(s.Role!.Id);
+        var bytes = _roles.LoadTerritoryEscort(s.Role!.Id);
         var current = bytes == null ? new RoleState() : JsonSerializer.Deserialize<RoleState>(bytes) ?? new RoleState();
         if (AlignRole(current))
         {
-            var transaction = roles.NewTransaction();
+            var transaction = _roles.NewTransaction();
             SaveRole(s.Role.Id, current, transaction);
-            await roles.CommitAsync(transaction, "territory/escort-role");
+            await _roles.CommitAsync(transaction, "territory/escort-role");
         }
         s.TerritoryEscort = current;
         await SendStageAsync(s);
@@ -410,29 +410,29 @@ public sealed partial class TerritoryEscortService : IGameTicker
     /// <summary>Trusted producer for guild escort goods (item 1258000); never accepts a client-supplied amount.</summary>
     public async Task CreditGuildGoodsAsync(long guildId, int amount, string sourceKey)
     {
-        if (loop.IsWorkerActive && !loop.IsOnLoop)
+        if (_loop.IsWorkerActive && !_loop.IsOnLoop)
         {
-            await loop.InvokeAsync(() => CreditGuildGoodsAsync(guildId, amount, sourceKey));
+            await _loop.InvokeAsync(() => CreditGuildGoodsAsync(guildId, amount, sourceKey));
             return;
         }
-        if (guildId <= 0 || amount <= 0 || string.IsNullOrWhiteSpace(sourceKey) || guilds.Get(guildId) == null)
+        if (guildId <= 0 || amount <= 0 || string.IsNullOrWhiteSpace(sourceKey) || _guilds.Get(guildId) == null)
             throw new ArgumentOutOfRangeException(nameof(amount));
         using var reservation = await EnterGateAsync("escort/goods source", additionalGuilds: [guildId]);
         using var stagedEscortLedger = StageLedger();
         try
         {
-            var transaction = accounts.NewTransaction();
+            var transaction = _accounts.NewTransaction();
             ledger.Goods[guildId] = checked(ledger.Goods.GetValueOrDefault(guildId) + amount);
             await CommitAsync(transaction, "producer-stock", sourceKey);
         }
-        finally { stagedEscortLedger.Dispose(); gate.Release(); reservation?.Dispose(); }
+        finally { stagedEscortLedger.Dispose(); _gate.Release(); reservation?.Dispose(); }
     }
 
     public long GetGuildEscortScore(long guildId, int round)
-        => Volatile.Read(ref committedEpoch) == Epoch ? Volatile.Read(ref scoreSnapshot).GetValueOrDefault((guildId, round)) : 0;
+        => Volatile.Read(ref _committedEpoch) == Epoch ? Volatile.Read(ref _scoreSnapshot).GetValueOrDefault((guildId, round)) : 0;
 
     public long GetGuildGoods(long guildId)
-        => Volatile.Read(ref committedEpoch) == Epoch ? Volatile.Read(ref goodsSnapshot).GetValueOrDefault(guildId) : 0;
+        => Volatile.Read(ref _committedEpoch) == Epoch ? Volatile.Read(ref _goodsSnapshot).GetValueOrDefault(guildId) : 0;
 
     /// <summary>Item 1258000 is a guild item, not a character bag item; the UI reads this map's stack.</summary>
     public GuildItemData GuildItems(long guildId)
@@ -443,7 +443,7 @@ public sealed partial class TerritoryEscortService : IGameTicker
         {
             ItemGuid = guildId, ItemEntry = 1258000, OwnerGuildId = guildId,
             Stack = (int)Math.Clamp(count, 0, int.MaxValue),
-            Season = clock.SeasonStart, PlayBook = clock.PlayBook,
+            Season = _clock.SeasonStart, PlayBook = _clock.PlayBook,
             ItemBindInfo = new ItemBindInfo(),
         };
         return info;
@@ -456,7 +456,7 @@ public sealed partial class TerritoryEscortService : IGameTicker
         {
             Tp = GuildBaseInfoChangeNtf.Types.ChangeType.ChangeItem, Items = info,
         };
-        await RoleFanout.EachAsync(sessions.All().Where(s => s.Role != null && guilds.ForRole(s.Role.Id)?.Id == guildId),
+        await RoleFanout.EachAsync(_sessions.All().Where(s => s.Role != null && _guilds.ForRole(s.Role.Id)?.Id == guildId),
             peer => peer.SendGameAsync(GuildService.BaseChange, ntf));
     }
 
@@ -477,7 +477,7 @@ public sealed partial class TerritoryEscortService : IGameTicker
     public async Task<bool> HandleAsync(GameSession s, uint id, ReadOnlyMemory<byte> body)
     {
         if (!IsOwnerRequest(id)) return false;
-        if (Volatile.Read(ref committedEpoch) != Epoch || lastStageType != clock.Current.Type)
+        if (Volatile.Read(ref _committedEpoch) != Epoch || _lastStageType != _clock.Current.Type)
             await ReconcileAsync();
         switch (id)
         {
@@ -565,9 +565,9 @@ public sealed partial class TerritoryEscortService : IGameTicker
             };
             var page = sorted.Skip(resp.StartIdx).Take(resp.Num).ToList();
             resp.SellingGoods.AddRange(page.Select(Wire));
-            AddSimple(resp.GuildSimpleInfos, page, guilds);
+            AddSimple(resp.GuildSimpleInfos, page, _guilds);
         }
-        finally { stagedEscortLedger.Dispose(); gate.Release(); reservation?.Dispose(); }
+        finally { stagedEscortLedger.Dispose(); _gate.Release(); reservation?.Dispose(); }
         await s.SendGameAsync(Selling, resp);
     }
 
@@ -583,9 +583,9 @@ public sealed partial class TerritoryEscortService : IGameTicker
             resp = new TerritoryWarsEscortGuildTradeHistoryRes();
             resp.BuyList.AddRange(list.Where(x => x.Buyer == own).Select(Wire));
             resp.SellList.AddRange(list.Where(x => x.Seller == own).Select(Wire));
-            AddSimple(resp.GuildSimpleInfos, list, guilds);
+            AddSimple(resp.GuildSimpleInfos, list, _guilds);
         }
-        finally { stagedEscortLedger.Dispose(); gate.Release(); reservation?.Dispose(); }
+        finally { stagedEscortLedger.Dispose(); _gate.Release(); reservation?.Dispose(); }
         await s.SendGameAsync(History, resp);
     }
 
@@ -602,17 +602,17 @@ public sealed partial class TerritoryEscortService : IGameTicker
             if (seller)
             {
                 var result = new TerritoryWarsEscortGuildSellOrderListRes();
-                result.Orders.AddRange(list.Select(Wire)); AddSimple(result.GuildSimpleInfos, list, guilds);
+                result.Orders.AddRange(list.Select(Wire)); AddSimple(result.GuildSimpleInfos, list, _guilds);
                 resp = result;
             }
             else
             {
                 var result = new TerritoryWarsEscortGuildOrderListRes();
-                result.Orders.AddRange(list.Select(Wire)); AddSimple(result.GuildSimpleInfos, list, guilds);
+                result.Orders.AddRange(list.Select(Wire)); AddSimple(result.GuildSimpleInfos, list, _guilds);
                 resp = result;
             }
         }
-        finally { stagedEscortLedger.Dispose(); gate.Release(); reservation?.Dispose(); }
+        finally { stagedEscortLedger.Dispose(); _gate.Release(); reservation?.Dispose(); }
         await s.SendGameAsync(seller ? SellOrders : BuyOrders, resp);
     }
 
@@ -635,20 +635,20 @@ public sealed partial class TerritoryEscortService : IGameTicker
             if (result == 0 && available < req.SellingNum) result = ErrorCodes.ItemsShort;
             if (result == 0)
             {
-                var transaction = accounts.NewTransaction();
+                var transaction = _accounts.NewTransaction();
                 if (isNew) id = ledger.NextGoodsId++;
                 ledger.Goods[guild!.Id] = available - req.SellingNum;
                 ledger.Listings[id] = new Listing
                 {
                     Id = id, Seller = guild.Id, Count = req.SellingNum,
-                    Price = req.UnitPrice, Message = req.SellingMessage, Time = clock.Now, State = 0
+                    Price = req.UnitPrice, Message = req.SellingMessage, Time = _clock.Now, State = 0
                 };
                 await CommitAsync(transaction, "listing", isNew
                     ? $"escort-list:{Epoch}:{id}:open"
-                    : $"escort-list:{Epoch}:{id}:amend:{old!.Count}:{req.SellingNum}:{clock.Now}", s);
+                    : $"escort-list:{Epoch}:{id}:amend:{old!.Count}:{req.SellingNum}:{_clock.Now}", s);
             }
         }
-        finally { stagedEscortLedger.Dispose(); gate.Release(); reservation?.Dispose(); }
+        finally { stagedEscortLedger.Dispose(); _gate.Release(); reservation?.Dispose(); }
         await s.SendGameAsync(Sell, new TerritoryWarsEscortGuildSellRes { GoodsUid = id, Result = result, IsNew = isNew && result == 0 });
     }
 
@@ -666,14 +666,14 @@ public sealed partial class TerritoryEscortService : IGameTicker
             if (result == 0)
             {
                 var x = ledger.Listings[req.GoodsUid];
-                var transaction = accounts.NewTransaction();
+                var transaction = _accounts.NewTransaction();
                 ledger.Goods[guild!.Id] = checked(ledger.Goods.GetValueOrDefault(guild.Id) + x.Count);
-                x.State = 2; x.Applications.Clear(); x.Time = clock.Now;
+                x.State = 2; x.Applications.Clear(); x.Time = _clock.Now;
                 await CommitAsync(transaction, "listing-takedown",
                     $"escort-list:{Epoch}:{req.GoodsUid}:take-down", s);
             }
         }
-        finally { stagedEscortLedger.Dispose(); gate.Release(); reservation?.Dispose(); }
+        finally { stagedEscortLedger.Dispose(); _gate.Release(); reservation?.Dispose(); }
         await s.SendGameAsync(TakeDown, new TerritoryWarsEscortGuildTakeDownRes { GoodsUid = req.GoodsUid, Result = result });
     }
 
@@ -693,19 +693,19 @@ public sealed partial class TerritoryEscortService : IGameTicker
             if (result == 0)
             {
                 var x = ledger.Listings[req.GoodsUid]; seller = x.Seller;
-                var transaction = accounts.NewTransaction();
-                x.Applications[guild!.Id] = new Application { Guild = guild.Id, Time = clock.Now, Message = req.Message };
+                var transaction = _accounts.NewTransaction();
+                x.Applications[guild!.Id] = new Application { Guild = guild.Id, Time = _clock.Now, Message = req.Message };
                 await CommitAsync(transaction, "application", actor: s);
             }
         }
-        finally { stagedEscortLedger.Dispose(); gate.Release(); reservation?.Dispose(); }
+        finally { stagedEscortLedger.Dispose(); _gate.Release(); reservation?.Dispose(); }
         await s.SendGameAsync(Buy, new TerritoryWarsEscortGuildBuyRes { GoodsUid = req.GoodsUid, Result = result });
         if (result == 0) await NotifySellerAsync(seller);
     }
 
     private async Task NotifySellerAsync(long guildId)
     {
-        await RoleFanout.EachAsync(sessions.All().Where(x => x.Role != null && guilds.ForRole(x.Role.Id)?.Id == guildId),
+        await RoleFanout.EachAsync(_sessions.All().Where(x => x.Role != null && _guilds.ForRole(x.Role.Id)?.Id == guildId),
             target => target.SendGameAsync(ToOperateNtf,
                 new TerritoryWarsEscortToOperateApplyNtf { HasUnProcessedApply = true }));
     }
@@ -727,7 +727,7 @@ public sealed partial class TerritoryEscortService : IGameTicker
             if (result == 0 && !Trading) result = ErrorCodes.FeatureUnavailable;
             if (result == 0 && (!ledger.Listings.TryGetValue(req.GoodsUid, out var probe) || probe.State != 0 ||
                 probe.Seller != seller!.Id || !probe.Applications.ContainsKey(req.TargetGuildId))) result = ErrorCodes.Parameter;
-            GuildStore.State? buyer = result == 0 && req.IsAccept ? guilds.Get(req.TargetGuildId) : null;
+            GuildStore.State? buyer = result == 0 && req.IsAccept ? _guilds.Get(req.TargetGuildId) : null;
             if (result == 0 && req.IsAccept && buyer == null) result = ErrorCodes.GuildMissing;
             long amount = 0;
             if (result == 0 && req.IsAccept)
@@ -739,7 +739,7 @@ public sealed partial class TerritoryEscortService : IGameTicker
             if (result == 0)
             {
                 var x = ledger.Listings[req.GoodsUid];
-                var transaction = accounts.NewTransaction();
+                var transaction = _accounts.NewTransaction();
                 x.Applications.Remove(req.TargetGuildId);
                 if (req.IsAccept)
                 {
@@ -749,9 +749,9 @@ public sealed partial class TerritoryEscortService : IGameTicker
                         buyer.Money -= amount; seller.Money = checked(seller.Money + amount);
                         ledger.Goods[buyer.Id] = checked(ledger.Goods.GetValueOrDefault(buyer.Id) + x.Count);
                         x.Buyer = buyer.Id; x.State = 1; x.Applications.Clear();
-                        guilds.EnlistSave(buyer, transaction, "Escort trade guild vanished");
-                        guilds.EnlistSave(seller, transaction, "Escort trade guild vanished");
-                        x.Time = clock.Now;
+                        _guilds.EnlistSave(buyer, transaction, "Escort trade guild vanished");
+                        _guilds.EnlistSave(seller, transaction, "Escort trade guild vanished");
+                        x.Time = _clock.Now;
                         var money = new EconomyAsset(EconomyAssetKind.GuildResource, 1);
                         await CommitAsync(transaction, "trade", $"escort-list:{Epoch}:{x.Id}:trade:{buyer.Id}", s, extraDeltas:
                         [new(new(EconomyOwnerKind.Guild, buyer.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)), money, -amount),
@@ -764,10 +764,10 @@ public sealed partial class TerritoryEscortService : IGameTicker
                         throw;
                     }
                 }
-                else { x.Rejected.Add(req.TargetGuildId); x.Time = clock.Now; await CommitAsync(transaction, "application-reject", actor: s); }
+                else { x.Rejected.Add(req.TargetGuildId); x.Time = _clock.Now; await CommitAsync(transaction, "application-reject", actor: s); }
             }
         }
-        finally { stagedEscortLedger.Dispose(); gate.Release(); reservation?.Dispose(); }
+        finally { stagedEscortLedger.Dispose(); _gate.Release(); reservation?.Dispose(); }
         await s.SendGameAsync(Operate, new TerritoryWarsEscortOperateApplyRes
         {
             GoodsUid = req.GoodsUid,
@@ -775,8 +775,8 @@ public sealed partial class TerritoryEscortService : IGameTicker
         });
         if (result == 0 && req.IsAccept)
         {
-            await guildService.RefreshResourceAsync(seller!.Id);
-            await guildService.RefreshResourceAsync(req.TargetGuildId);
+            await _guildService.RefreshResourceAsync(seller!.Id);
+            await _guildService.RefreshResourceAsync(req.TargetGuildId);
         }
     }
 }

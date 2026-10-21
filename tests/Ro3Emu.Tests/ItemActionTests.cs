@@ -20,44 +20,44 @@ namespace Ro3Emu.Tests;
 /// </summary>
 public sealed class ItemActionTests : IAsyncLifetime
 {
-    private readonly string dir = Path.Combine(Path.GetTempPath(), "ro3emu-itemaction-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ro3emu-itemaction-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
-    private WebApplication app = null!;
-    private string http = "";
-    private readonly TestClock clock = new();
+    private WebApplication _app = null!;
+    private string _http = "";
+    private readonly TestClock _clock = new();
 
     private sealed class TestClock : TimeProvider
     {
-        private long ms = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeMilliseconds(Interlocked.Read(ref ms));
-        public void Advance(TimeSpan by) => Interlocked.Add(ref ms, (long)by.TotalMilliseconds);
+        private long _ms = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeMilliseconds(Interlocked.Read(ref _ms));
+        public void Advance(TimeSpan by) => Interlocked.Add(ref _ms, (long)by.TotalMilliseconds);
     }
 
     public async Task InitializeAsync()
     {
         var (h, m, g) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dir; o.GameDataDir = Path.Combine(ClientData.RepoRoot, "data");
+            o.DataDir = _dir; o.GameDataDir = Path.Combine(ClientData.RepoRoot, "data");
             o.HttpPort = h; o.MicroGatePort = m; o.GameGatePort = g;
             o.GuildBlockedWords = ["ban"];
-        }, clock);
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{h}";
+        }, _clock);
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{h}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync(); Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dir, true); } catch (IOException) { }
+        await _app.StopAsync(); await _app.DisposeAsync(); Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        try { Directory.Delete(_dir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var b = new BotClient(http, File.ReadAllText(Path.Combine(dir, "gate_rsa_public.pem")));
+        var b = new BotClient(_http, File.ReadAllText(Path.Combine(_dir, "gate_rsa_public.pem")));
         await b.LoginAsync(name.ToLowerInvariant(), "pw"); await b.EnterGateAsync();
         long id = create ? (await b.CreateRoleAsync(name)).RoleBaseInfo.Id : b.Roles.Single().Id;
-        await b.EnterWorldAsync(id); await WorldSettle.StallsAsync(app.Services);
+        await b.EnterWorldAsync(id); await WorldSettle.StallsAsync(_app.Services);
         return b;
     }
 
@@ -72,23 +72,23 @@ public sealed class ItemActionTests : IAsyncLifetime
     { var e = await b.Inbox.WaitAsync(e => e.IsGame(id) && (match == null || match(p.ParseFrom(e.Body))), Wait); return p.ParseFrom(e.Body); }
 
     private async Task Gm(string account, string command)
-    { using var h = new HttpClient(); (await h.PostAsync($"{http}/ro3emu/gm?account={account}", new StringContent(command))).EnsureSuccessStatusCode(); }
+    { using var h = new HttpClient(); (await h.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(command))).EnsureSuccessStatusCode(); }
 
-    private SessionRegistry Sessions => app.Services.GetRequiredService<SessionRegistry>();
-    private RoleStore Roles => app.Services.GetRequiredService<RoleStore>();
+    private SessionRegistry Sessions => _app.Services.GetRequiredService<SessionRegistry>();
+    private RoleStore Roles => _app.Services.GetRequiredService<RoleStore>();
     private GameSession Session(string account) => Sessions.All().Single(s => s.Account == account && s.Role != null);
     private static long RoleId(BotClient bot) => (long)bot.Self!.Uuid;
 
     private async Task<T> Read<T>(string account, Func<GameSession, T> read)
     {
         T value = default!;
-        await app.Services.GetRequiredService<GameLoop>().InvokeAsync(() => { value = read(Session(account)); return Task.CompletedTask; });
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() => { value = read(Session(account)); return Task.CompletedTask; });
         return value;
     }
 
     private async Task WaitUntil(Func<bool> done, string what)
     {
-        var loop = app.Services.GetRequiredService<GameLoop>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
         for (var until = DateTime.UtcNow + Wait; ; await Task.Delay(20))
         {
             bool ok = false;
@@ -99,12 +99,12 @@ public sealed class ItemActionTests : IAsyncLifetime
     }
 
     private long Count(BotClient bot, int entry) =>
-        app.Services.GetRequiredService<ItemStore>().Load(RoleId(bot)).Where(i => i.Entry == entry && i.Grid == 0).Sum(i => (long)i.Stack);
+        _app.Services.GetRequiredService<ItemStore>().Load(RoleId(bot)).Where(i => i.Entry == entry && i.Grid == 0).Sum(i => (long)i.Stack);
 
     /// <summary>31323 of one unit of <paramref name="entry"/> from the bag; the reply's result.</summary>
     private async Task<int> Use(BotClient bot, int entry, params ItemUseParamInfo[] param)
     {
-        long guid = app.Services.GetRequiredService<ItemStore>().Load(RoleId(bot)).First(i => i.Entry == entry && i.Grid == 0).Guid;
+        long guid = _app.Services.GetRequiredService<ItemStore>().Load(RoleId(bot)).First(i => i.Entry == entry && i.Grid == 0).Guid;
         var req = new ItemUseReq { ItemGuid = guid, ItemCount = 1 };
         req.ItemParam.AddRange(param);
         using var reply = bot.Inbox.Expect(e => e.IsGame(CharacterService.ItemUse));
@@ -229,7 +229,7 @@ public sealed class ItemActionTests : IAsyncLifetime
         Assert.False(owned.ContainsKey(sex == 2 ? 100003 : 100004));
 
         // 1950015 [349,50015]: honor 500015 for 86400 s; a second use extends it.
-        long now = clock.GetUtcNow().ToUnixTimeSeconds();
+        long now = _clock.GetUtcNow().ToUnixTimeSeconds();
         Assert.Equal(0, await Use(alice, 1950015));
         var timed = (await Read("alice", s => s.SocialOutfit!)).SocialOutfitContainer[5].SocialOutfitInfos[500015];
         Assert.Equal(2, timed.Status);
@@ -250,7 +250,7 @@ public sealed class ItemActionTests : IAsyncLifetime
         Assert.Equal(400000, basic.SocialOutfitData.SocialOutfit[4]);
 
         // A day later the honor runs out: the server drops it and the slot falls back to the default.
-        clock.Advance(TimeSpan.FromSeconds(86401));
+        _clock.Advance(TimeSpan.FromSeconds(86401));
         await Next(alice, SocialOutfitService.Sync, DBSocialOutfitIncrement.Parser,
             m => m.SocialOutfitEquip.TryGetValue(5, out var worn) && (worn.All?.CfgId == 500000 || worn.Inc?.CfgId == 500000));
         Assert.False((await Read("alice", s => s.SocialOutfit!)).SocialOutfitContainer.ContainsKey(5));
@@ -293,7 +293,7 @@ public sealed class ItemActionTests : IAsyncLifetime
         await Gm("alice", "!item 1002005 1"); // [112,10111,2895]: this map
         await Gm("alice", "!item 1002006 1"); // [112,10220,1030301]: Payon Forest
         Assert.Equal(10111, await Read("alice", s => s.SceneEntry));
-        var target = app.Services.GetRequiredService<WorldData>().Map(10111)!.Points[2895];
+        var target = _app.Services.GetRequiredService<WorldData>().Map(10111)!.Points[2895];
         Assert.Equal(0, await Use(alice, 1002005));
         await WaitUntil(() => Math.Abs(Session("alice").Position.X - target.X) < 0.5f
             && Math.Abs(Session("alice").Position.Z - target.Z) < 0.5f, "teleported to point 2895");
@@ -353,7 +353,7 @@ public sealed class ItemActionTests : IAsyncLifetime
         Assert.Equal(0, Assert.Single(apply.ApplyResult).Result);
         var agree = new GuildEnterApplyOpeReq { Agree = true, PlayerIds = { RoleId(bob) } };
         Assert.Equal(0, (await Request(alice, GuildService.ApplyOpe, agree, GuildEnterApplyOpeResp.Parser)).Result);
-        var guilds = app.Services.GetRequiredService<GuildStore>();
+        var guilds = _app.Services.GetRequiredService<GuildStore>();
         if (funds > 0) await Gm("alice", $"!item 104 {funds}");
         for (int i = 0; i < 250 && guilds.Get(guild)!.Money < funds; i++) await Task.Delay(20);
         Assert.Equal(funds, guilds.Get(guild)!.Money);
@@ -383,7 +383,7 @@ public sealed class ItemActionTests : IAsyncLifetime
         Assert.Equal(1, Count(alice, 1210901));
 
         Assert.Equal(0, (await Request(alice, GuildService.Edit, locked, GuildEditResp.Parser)).Result);
-        Assert.Equal(200201, app.Services.GetRequiredService<GuildStore>().Get(guild)!.Icon);
+        Assert.Equal(200201, _app.Services.GetRequiredService<GuildStore>().Get(guild)!.Icon);
 
         await using var again = await Relogin(alice, "Alice");
         var full = await Next(again, GuildService.Full, GuildFullInfoNtf.Parser, m => m.Guid == guild);
@@ -396,7 +396,7 @@ public sealed class ItemActionTests : IAsyncLifetime
         await using var alice = await InWorld("Alice");
         await using var bob = await InWorld("Bob");
         long guild = await GuildOfTwo(alice, bob, 20000);
-        var guilds = app.Services.GetRequiredService<GuildStore>();
+        var guilds = _app.Services.GetRequiredService<GuildStore>();
         Task<BuyGuildCommodityRes> Buy(BotClient who, int commodity, int count) => Request(who, GuildService.BuyCommodity,
             new BuyGuildCommodityReq { CommodityId = commodity, Count = count }, BuyGuildCommodityRes.Parser);
 
@@ -449,7 +449,7 @@ public sealed class ItemActionTests : IAsyncLifetime
         Assert.Equal(AdventureGroupService.ErrNotInGroup, await Use(alice, 1200900));
         Assert.Equal(2, Count(alice, 1200900));
         await Gm("alice", "!advguild create Wanderers");
-        var groups = app.Services.GetRequiredService<AdventureGroupStore>();
+        var groups = _app.Services.GetRequiredService<AdventureGroupStore>();
         await WaitUntil(() => groups.ForRole(RoleId(alice)) != null, "group created");
 
         Assert.Equal(0, await Use(alice, 1200900));

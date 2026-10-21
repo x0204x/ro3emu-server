@@ -13,43 +13,43 @@ namespace Ro3Emu.Tests;
 /// <summary>Wire and persistence checks for 82976 BattlePass and MonthCard.</summary>
 public sealed class BattlePassActivityTests : IAsyncLifetime
 {
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-pass-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-pass-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(8);
-    private WebApplication app = null!;
-    private string http = "";
-    private readonly TestClock clock = new();
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private WebApplication _app = null!;
+    private string _http = "";
+    private readonly TestClock _clock = new();
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
 
     private sealed class TestClock : TimeProvider
     {
-        private long seconds = new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
-        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref seconds));
-        public void AdvanceDays(int count) => Interlocked.Add(ref seconds, count * 86400L);
+        private long _seconds = new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref _seconds));
+        public void AdvanceDays(int count) => Interlocked.Add(ref _seconds, count * 86400L);
     }
 
     public async Task InitializeAsync()
     {
         var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _dataDir; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = httpPort; o.MicroGatePort = microPort; o.GameGatePort = gamePort;
             o.PlayBook = 101; o.SeasonStart = "2026-10-05";
-        }, clock);
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{httpPort}";
+        }, _clock);
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{httpPort}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
         await bot.EnterWorldAsync(id);
@@ -65,7 +65,7 @@ public sealed class BattlePassActivityTests : IAsyncLifetime
     private async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     private GameSession Session(BotClient bot) => Service<SessionRegistry>().All().Single(s => s.Account == bot.Account && s.Role != null);
@@ -78,10 +78,10 @@ public sealed class BattlePassActivityTests : IAsyncLifetime
         throw new DirectoryNotFoundException("repository root");
     }
 
-    private static long serial;
+    private static long _serial;
     private static async Task<CommonActivityRes> Common(BotClient bot, CommonActivityReq req)
     {
-        req.RequestId = Interlocked.Increment(ref serial);
+        req.RequestId = Interlocked.Increment(ref _serial);
         await bot.SendGameAsync(NewActivityService.Common, req);
         return await Next(bot, NewActivityService.Common, CommonActivityRes.Parser, r => r.RequestId == req.RequestId);
     }
@@ -204,11 +204,11 @@ public sealed class BattlePassActivityTests : IAsyncLifetime
         await alice.DisposeAsync();
         await using var again = await InWorld("Alice", create: false);
         Assert.Equal(ErrorCodes.MonthCardClaimed, (await Common(again, claim)).Result);
-        clock.AdvanceDays(1);
+        _clock.AdvanceDays(1);
         await Reconcile(again);
         Assert.False(Session(again).NewActivities!.ActivityInfo[199].ActivityParam.MonthCard.Infos[1001].DayAward);
         Assert.Equal(0, (await Common(again, claim)).Result);
-        clock.AdvanceDays(30);
+        _clock.AdvanceDays(30);
         await Reconcile(again);
         Assert.Equal(ErrorCodes.MonthCardExpired, (await Common(again, claim)).Result);
     }

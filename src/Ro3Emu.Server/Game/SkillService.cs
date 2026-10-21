@@ -22,23 +22,23 @@ public sealed class SkillService
     private const int BarSlots = 6;
     private const long FightBit = 1L << 15;
 
-    private readonly GameData data;
-    private readonly CharacterService character;
-    private readonly RoleStore roles;
-    private readonly ILogger<SkillService> log;
+    private readonly GameData _data;
+    private readonly CharacterService _character;
+    private readonly RoleStore _roles;
+    private readonly ILogger<SkillService> _log;
     private Dictionary<(int Group, int Level), int>? _rowIds;
     private Dictionary<(int Job, int Weapon, int Mount), int>? _normalAttacks;
-    private Dictionary<int, int>? upgradedGroupByBase;
+    private Dictionary<int, int>? _upgradedGroupByBase;
 
     /// <summary>Combat-owned dynamic queue eligibility (LC_DynamicParamMgr).</summary>
     public Func<GameSession, int, bool>? QueueEligibility { get; set; }
 
     public SkillService(GameData data, CharacterService character, RoleStore roles, ILogger<SkillService> log)
     {
-        this.data = data;
-        this.character = character;
-        this.roles = roles;
-        this.log = log;
+        this._data = data;
+        this._character = character;
+        this._roles = roles;
+        this._log = log;
         character.ProgressHandlers.Add(SyncAsync);
         character.CombatLoadoutHandlers.Add(SyncLoadoutAsync);
     }
@@ -46,7 +46,7 @@ public sealed class SkillService
     /// <summary>SkillConfig row id of a group at a level (mode 0), or 0.</summary>
     public int RealId(int group, int level)
     {
-        _rowIds ??= data.Table("SkillConfig").Values
+        _rowIds ??= _data.Table("SkillConfig").Values
             .Where(r => GameData.Int(r, "_iMode") == 0)
             .GroupBy(r => ((int)GameData.Int(r, "_iSkillID"), (int)GameData.Int(r, "_iLevel")))
             .ToDictionary(g => g.Key, g => (int)GameData.Int(g.First(), "_iID"));
@@ -54,11 +54,11 @@ public sealed class SkillService
     }
 
     /// <summary>SkillConfig._iMaxLevel is the learnable cap.</summary>
-    public int MaxLevel(int group) => data.Row("SkillConfig", RealId(group, 1)) is { } row
+    public int MaxLevel(int group) => _data.Row("SkillConfig", RealId(group, 1)) is { } row
         ? (int)GameData.Int(row, "_iMaxLevel") : 0;
 
     private Dictionary<(int Job, int Weapon, int Mount), int> NormalAttackRows() => _normalAttacks ??=
-        data.Table("JobAttackConfig").Values
+        _data.Table("JobAttackConfig").Values
             .Select(row => (Job: (int)GameData.Int(row, "_iJobID"), Weapon: AttackWeaponKey(row),
                 Mount: (int)GameData.Int(row, "_iMountID"), Skill: (int)GameData.Int(row, "_iSkillID")))
             .Where(row => row.Job > 0 && row.Weapon >= -1 && row.Skill > 0)
@@ -81,12 +81,12 @@ public sealed class SkillService
 
     // JobAttackConfig is authoritative. Some client normal attacks (for example Archer 1300001)
     // deliberately have SkillConfig._iIsNormalAtk=0 even though the weapon table selects them.
-    private bool ValidNormalAttack(int skill) => data.Row("SkillConfig", skill) is { } row
+    private bool ValidNormalAttack(int skill) => _data.Row("SkillConfig", skill) is { } row
         && GameData.Int(row, "_iBasicType") == 1;
 
     public bool IsCareerNormalAttack(int career, int skill) => ValidNormalAttack(skill)
         && (NormalAttackRows().Any(row => row.Key.Job == career && row.Value == skill)
-            || data.Row("JobConfig", career) is { } job
+            || _data.Row("JobConfig", career) is { } job
             && job.TryGetProperty("_kSkillNormalID", out var configured)
             && configured.ValueKind == JsonValueKind.Array && configured.EnumerateArray().Any(id => id.TryGetInt32(out int value) && value == skill));
 
@@ -109,7 +109,7 @@ public sealed class SkillService
             foreach (var key in new[] { (career, 0, mount), (career, 0, 0) }.Distinct())
                 if (rows.TryGetValue(key, out int attack) && ValidNormalAttack(attack)) return attack;
 
-        if (data.Row("JobConfig", career) is { } job && job.TryGetProperty("_kSkillNormalID", out var jobConfigured)
+        if (_data.Row("JobConfig", career) is { } job && job.TryGetProperty("_kSkillNormalID", out var jobConfigured)
             && jobConfigured.ValueKind == JsonValueKind.Array && jobConfigured.GetArrayLength() > 0
             && jobConfigured[0].TryGetInt32(out int legacy) && ValidNormalAttack(legacy)) return legacy;
         return 1000001;
@@ -123,9 +123,9 @@ public sealed class SkillService
     {
         var main = session.Items.FirstOrDefault(item => item.Pack == 2 && item.Grid == 1);
         var vice = session.Items.FirstOrDefault(item => item.Pack == 2 && item.Grid == 2);
-        int mainSubtype = main != null && data.Row("ItemConfig", main.Entry) is { } mainRow
+        int mainSubtype = main != null && _data.Row("ItemConfig", main.Entry) is { } mainRow
             ? (int)GameData.Int(mainRow, "_iSubType") : 0;
-        int viceSubtype = vice != null && data.Row("ItemConfig", vice.Entry) is { } viceRow
+        int viceSubtype = vice != null && _data.Row("ItemConfig", vice.Entry) is { } viceRow
             ? (int)GameData.Int(viceRow, "_iSubType") : 0;
         int subtype = mainSubtype > 0 ? mainSubtype : Math.Max(0, viceSubtype);
         bool dual = mainSubtype > 0 && mainSubtype == viceSubtype;
@@ -134,13 +134,13 @@ public sealed class SkillService
         return ResolveNormalAttack(session.Progress!.Career, subtype * 10 + (dual ? 1 : 0), mount);
     }
 
-    internal int Rank(int career) => (int)(data.Row("JobConfig", career) is { } job ? Math.Max(1, GameData.Int(job, "_iJobRank")) : 1);
+    internal int Rank(int career) => (int)(_data.Row("JobConfig", career) is { } job ? Math.Max(1, GameData.Int(job, "_iJobRank")) : 1);
 
     /// <summary>The career and its parents (JobConfig._iParentId), novice first.</summary>
     private List<int> CareerChain(int career)
     {
         var chain = new List<int>();
-        for (int c = career; c > 0 && chain.Count < 8 && data.Row("JobConfig", c) is { } job; c = (int)GameData.Int(job, "_iParentId")) chain.Insert(0, c);
+        for (int c = career; c > 0 && chain.Count < 8 && _data.Row("JobConfig", c) is { } job; c = (int)GameData.Int(job, "_iParentId")) chain.Insert(0, c);
         return chain;
     }
 
@@ -153,11 +153,11 @@ public sealed class SkillService
 
     private HashSet<int> NormalAttackGroups(int career) => _normalAttackGroups.GetOrAdd(career, c =>
         NormalAttackRows().Where(row => row.Key.Job == c && ValidNormalAttack(row.Value))
-            .Select(row => (int)GameData.Int(data.Row("SkillConfig", row.Value)!.Value, "_iSkillID"))
-            .Append((int)GameData.Int(data.Row("SkillConfig", NormalAttack(c))!.Value, "_iSkillID"))
+            .Select(row => (int)GameData.Int(_data.Row("SkillConfig", row.Value)!.Value, "_iSkillID"))
+            .Append((int)GameData.Int(_data.Row("SkillConfig", NormalAttack(c))!.Value, "_iSkillID"))
             .Where(group => group > 0).ToHashSet());
 
-    private IReadOnlyDictionary<int, int> Replacements(int career) => _replacements.GetOrAdd(career, c => data.Row("JobConfig", c) is { } row
+    private IReadOnlyDictionary<int, int> Replacements(int career) => _replacements.GetOrAdd(career, c => _data.Row("JobConfig", c) is { } row
         ? GameData.Pairs(row, "_kSkillReplace").ToDictionary(p => (int)p.Id, p => (int)p.Value)
         : new Dictionary<int, int>());
 
@@ -171,7 +171,7 @@ public sealed class SkillService
         var list = new List<(int Group, int Career)>();
         var replacements = Replacements(career);
         foreach (int c in CareerChain(career))
-            foreach (var row in data.Table("SkillTreeConfig").Values.Where(r => GameData.Int(r, "_iJob") == c).OrderBy(r => GameData.Int(r, "_iY")))
+            foreach (var row in _data.Table("SkillTreeConfig").Values.Where(r => GameData.Int(r, "_iJob") == c).OrderBy(r => GameData.Int(r, "_iY")))
                 for (int x = 1; x <= 7; x++)
                     if (GameData.Int(row, $"_iX{x}") is var g and > 0)
                         list.Add((replacements.GetValueOrDefault((int)g, (int)g), c));
@@ -180,12 +180,12 @@ public sealed class SkillService
 
     private int Initial(RoleProgress p, int group)
     {
-        if (data.Row("SkillConfig", RealId(group, 1)) is not { } row) return 0;
+        if (_data.Row("SkillConfig", RealId(group, 1)) is not { } row) return 0;
         int activation = (int)GameData.Int(row, "_iActivateCondition");
         return activation <= 0 || p.Level >= activation ? (int)GameData.Int(row, "_iInitialLevel") : 0;
     }
 
-    private int Parameter(string key, int fallback) => data.Table("PublicParamConfig").TryGetValue(key, out var value)
+    private int Parameter(string key, int fallback) => _data.Table("PublicParamConfig").TryGetValue(key, out var value)
         && GameData.Number(value) is { } number && number > 0 ? (int)number : fallback;
 
     /// <summary>Skill points per job rank: earned from JobLvConfig._iSkillPoint (whole earlier ranks, current rank up to the job level) minus spent.</summary>
@@ -199,7 +199,7 @@ public sealed class SkillService
             for (int lv = 1; lv <= 100; lv++)
             {
                 if (rank == currentRank && lv > p.JobLevel) break;
-                if (data.Row("JobLvConfig", rank * 100L + lv) is not { } row) break;
+                if (_data.Row("JobLvConfig", rank * 100L + lv) is not { } row) break;
                 earned += (int)GameData.Int(row, "_iSkillPoint");
             }
             points[rank] = earned;
@@ -229,7 +229,7 @@ public sealed class SkillService
     {
         var p = session.Progress!;
         int atk = NormalAttack(session);
-        int atkGroup = data.Row("SkillConfig", atk) is { } a ? (int)GameData.Int(a, "_iSkillID") : 0;
+        int atkGroup = _data.Row("SkillConfig", atk) is { } a ? (int)GameData.Int(a, "_iSkillID") : 0;
         var tree = Tree(p.Career);
         var skillData = new DBSkillData { MaxPlanCount = PlanCount, CurrentPlanIndex = 0, CurrentAtkSkillId = atk };
         if (atkGroup > 0) skillData.SkillList.Add(atkGroup);
@@ -279,7 +279,7 @@ public sealed class SkillService
             try { state = ImportLegacyJson(session, saved); }
             catch (JsonException ex)
             {
-                log.LogWarning(ex, "Invalid legacy skill plans for role {Role}; reconstructing from progress", session.Role!.Id);
+                _log.LogWarning(ex, "Invalid legacy skill plans for role {Role}; reconstructing from progress", session.Role!.Id);
                 state = BuildFresh(session);
             }
         }
@@ -304,7 +304,7 @@ public sealed class SkillService
             if (result == 0) CopySkills(staged, session.Progress!);
             else
             {
-                log.LogWarning("{Name} rebuilds invalid saved plan {Plan} from authoritative progress: {Result}",
+                _log.LogWarning("{Name} rebuilds invalid saved plan {Plan} from authoritative progress: {Result}",
                     session.Role!.Name, state.CurrentPlanIndex, result);
                 session.SkillPlans = state;
                 state = Build(session);
@@ -375,7 +375,7 @@ public sealed class SkillService
             index++;
         }
         imported.CurrentPlanIndex = JsonInt(json, "Current");
-        log.LogInformation("Imported legacy JSON skill plans for role {Role}", session.Role!.Id);
+        _log.LogInformation("Imported legacy JSON skill plans for role {Role}", session.Role!.Id);
         return imported;
     }
 
@@ -404,17 +404,17 @@ public sealed class SkillService
     private async Task CommitAsync(GameSession session, DBSkillData next, RoleProgress? progress = null,
         string kind = "cd13c/skill-plan", Action? applied = null)
     {
-        var tx = roles.NewTransaction();
+        var tx = _roles.NewTransaction();
         tx.ItemDelta(session.Role!.Id, session.Items, session.Items);
         if (progress != null) tx.Progress(session.Role.Id, progress);
         tx.RoleBlob(session.Role.Id, "skill_plans", next.ToByteArray());
-        tx.WithEconomy(character.ProgressionEconomy(session, kind, [], [],
+        tx.WithEconomy(_character.ProgressionEconomy(session, kind, [], [],
             new
             {
                 Plans = Convert.ToBase64String(next.ToByteArray()), Skills = progress?.Skills,
                 Bar = progress?.SkillBar
             }));
-        await roles.CommitAsync(tx, kind, _ =>
+        await _roles.CommitAsync(tx, kind, _ =>
         {
             session.SkillPlans = next;
             if (progress != null) CopySkills(progress, session.Progress!);
@@ -425,7 +425,7 @@ public sealed class SkillService
     public async Task LoadAsync(GameSession session)
     {
         using var held = await CharacterService.Lock(session);
-        var saved = roles.LoadSkillPlans(session.Role!.Id);
+        var saved = _roles.LoadSkillPlans(session.Role!.Id);
         var original = session.Progress!;
         var priorPlans = session.SkillPlans;
         var staged = CharacterService.GenreCloneProgress(original);
@@ -511,7 +511,7 @@ public sealed class SkillService
         int next = 1;
         // The PC bar renders whellSkills, not atkSkillId. At level 1 a Novice has no other
         // active skill, so expose the already learned normal attack in a clickable slot.
-        if (p.Career == 1000 && data.Row("SkillConfig", NormalAttack(session)) is { } attack)
+        if (p.Career == 1000 && _data.Row("SkillConfig", NormalAttack(session)) is { } attack)
         {
             int group = (int)GameData.Int(attack, "_iSkillID");
             if (group > 0 && Level(p, group) > 0 && IsActive(group)) yield return (next++, group);
@@ -525,7 +525,7 @@ public sealed class SkillService
 
     /// <summary>Active skills can go on the bar: SkillConfig._iBasicType 1 (passives such as Sword Mastery have 0).</summary>
     private bool IsActive(int group) =>
-        RealId(group, 1) is var id and > 0 && data.Row("SkillConfig", id) is { } row && GameData.Int(row, "_iBasicType") == 1;
+        RealId(group, 1) is var id and > 0 && _data.Row("SkillConfig", id) is { } row && GameData.Int(row, "_iBasicType") == 1;
 
     private bool IsNormalGroup(RoleProgress p, int group) => NormalAttackGroups(p.Career).Contains(group);
 
@@ -633,7 +633,7 @@ public sealed class SkillService
         foreach (var kv in from.SkillBar) to.SkillBar[kv.Key] = kv.Value;
     }
 
-    private Dictionary<int, int> UpgradeGroups() => upgradedGroupByBase ??= data.Table("SkillConfig").Values
+    private Dictionary<int, int> UpgradeGroups() => _upgradedGroupByBase ??= _data.Table("SkillConfig").Values
         .Where(r => GameData.Int(r, "_iMode") == 0 && GameData.Int(r, "_iLevel") == 1
                     && GameData.Int(r, "_iSkillAdvanced") > 0)
         .GroupBy(r => (int)GameData.Int(r, "_iSkillAdvanced"))
@@ -685,7 +685,7 @@ public sealed class SkillService
                     }
                 }
             }
-            log.LogInformation("{Name} learns {Skills}: {Result}", session.Role!.Name,
+            _log.LogInformation("{Name} learns {Skills}: {Result}", session.Role!.Name,
                 string.Join(",", req.LevelUpList.Select(kv => $"{kv.Key}:{kv.Value.SkillLevel}")),
                 code == 0 ? "ok" : "refused");
             await session.SendGameAsync(PlanUpdate, new SkillGrowthSkillPlanUpdateResp { Result = code });
@@ -713,7 +713,7 @@ public sealed class SkillService
         {
             int level = Level(p, group);
             if (level <= 0) continue;
-            if (data.Row("SkillConfig", RealId(group, level)) is not { } row) return false;
+            if (_data.Row("SkillConfig", RealId(group, level)) is not { } row) return false;
             if (!row.TryGetProperty("_kPreSkillRequired", out var pre) || pre.ValueKind != JsonValueKind.Array) continue;
             foreach (var req in pre.EnumerateArray())
                 if (req.ValueKind == JsonValueKind.Array && req.GetArrayLength() >= 2 && GameData.Number(req[0]) is { } g
@@ -874,7 +874,7 @@ public sealed class SkillService
             var old = selected.SkillQueue.GetValueOrDefault(req.QueueIndex);
             if (op != 2)
             {
-                var row = data.Row("SkillConfig", RealId(group, 1));
+                var row = _data.Row("SkillConfig", RealId(group, 1));
                 int learned = Level(session.Progress!, group);
                 if (group <= 0 || learned <= 0 || row is not { }
                     || !(QueueEligibility?.Invoke(session, group) ?? GameData.Int(row.Value, "_iQueue") == 1)

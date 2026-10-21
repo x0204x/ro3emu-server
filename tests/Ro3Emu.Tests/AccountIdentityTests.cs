@@ -14,9 +14,9 @@ namespace Ro3Emu.Tests;
 /// </summary>
 public sealed class AccountIdentityTests : IDisposable
 {
-    private readonly string dir = Path.Combine(Path.GetTempPath(), "ro3-ident-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "ro3-ident-" + Guid.NewGuid().ToString("N"));
 
-    private AccountStore Store() => new(Options.Create(new ServerOptions { DataDir = dir }));
+    private AccountStore Store() => new(Options.Create(new ServerOptions { DataDir = _dir }));
 
     [Fact]
     public async Task CaseVariantIsTheSameAccount()
@@ -36,7 +36,7 @@ public sealed class AccountIdentityTests : IDisposable
         using (var store = Store()) await store.SignInAsync("admin", "secret");
         SqliteConnection.ClearAllPools();
         // A database from before the fix can already hold a second spelling.
-        using (var raw = new SqliteConnection($"Data Source={Path.Combine(dir, "ro3emu.db")}"))
+        using (var raw = new SqliteConnection($"Data Source={Path.Combine(_dir, "ro3emu.db")}"))
         {
             raw.Open();
             using var insert = raw.CreateCommand();
@@ -106,6 +106,6 @@ public sealed class AccountIdentityTests : IDisposable
     public void Dispose()
     {
         SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dir, true); } catch (IOException) { }
+        try { Directory.Delete(_dir, true); } catch (IOException) { }
     }
 }

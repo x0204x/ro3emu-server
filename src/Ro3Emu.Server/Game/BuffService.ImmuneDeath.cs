@@ -35,16 +35,16 @@ public sealed partial class BuffService
         {
             int percent = automatic.ConfigId == 16340401 ? 100 : 30;
             await RemoveAsync(p, automatic); // one fatal hit uses one charge (inferred from descriptions).
-            var stats = character.Stats(p);
-            await character.SetHpSpAsync(p, Math.Max(1, stats[101] * percent / 100), null);
+            var stats = _character.Stats(p);
+            await _character.SetHpSpAsync(p, Math.Max(1, stats[101] * percent / 100), null);
             return true;
         }
 
-        var choice = live.FirstOrDefault(b => data.Row("BuffConfig", b.ConfigId) is { } row
+        var choice = live.FirstOrDefault(b => _data.Row("BuffConfig", b.ConfigId) is { } row
             && GameData.Int(row, "_iBuffID") is 20520 or 20521
             && p.BuffEffectCds.GetValueOrDefault(b.Guid) <= now);
         if (choice == null) return false;
-        long window = data.Table("PublicParamConfig").TryGetValue("ImmuneDeadConfirmTimeMs", out var value)
+        long window = _data.Table("PublicParamConfig").TryGetValue("ImmuneDeadConfirmTimeMs", out var value)
             ? (long)(GameData.Number(value) ?? 5000) : 5000;
         window = Math.Clamp(window, 1000, 30000);
         p.ImmuneDeathOffer = new ImmuneDeathOffer(choice.Guid, choice.ConfigId, now + window);
@@ -57,7 +57,7 @@ public sealed partial class BuffService
                 BuffGuid = choice.Guid, StartTimestampMs = now, EndTimestampMs = now + cd,
             });
         }
-        await character.SetHpSpAsync(p, 1, null);
+        await _character.SetHpSpAsync(p, 1, null);
         await RefreshControlAsync(p);
         await p.SendGameAsync(ImmuneDeathNotify, new PlayerOnEnterImmuneDeadNotify
         {
@@ -82,8 +82,8 @@ public sealed partial class BuffService
             await DeclineImmuneDeathAsync(p);
             return;
         }
-        var stats = character.Stats(p);
-        if (data.Row("BuffConfig", offer!.BuffConfigId) is not { } row)
+        var stats = _character.Stats(p);
+        if (_data.Row("BuffConfig", offer!.BuffConfigId) is not { } row)
         {
             await DeclineImmuneDeathAsync(p);
             return;
@@ -95,11 +95,11 @@ public sealed partial class BuffService
         {
             p.ImmuneRecoveryUntilMs = MonsterService.NowMs + 3000;
             p.ImmuneRecoveryPercent = (int)Math.Clamp(DescriptionNumber(desc, 4, 20), 1, 100);
-            await character.SetHpSpAsync(p, 1, null);
+            await _character.SetHpSpAsync(p, 1, null);
         }
         else
         {
-            await character.SetHpSpAsync(p, Math.Max(1, stats[101] * percent / 100),
+            await _character.SetHpSpAsync(p, Math.Max(1, stats[101] * percent / 100),
                 Math.Max(1, stats[102] * percent / 100));
         }
         await RefreshControlAsync(p);
@@ -112,7 +112,7 @@ public sealed partial class BuffService
 
     private long InternalCooldownMs(int configId)
     {
-        if (data.Row("BuffConfig", configId) is not { } row) return 0;
+        if (_data.Row("BuffConfig", configId) is not { } row) return 0;
         var desc = row.GetProperty("_iDescription");
         int group = (int)GameData.Int(row, "_iBuffID");
         double minutes = DescriptionNumber(desc, group == 20520 ? 5 : 2, 0);
@@ -122,9 +122,9 @@ public sealed partial class BuffService
     private async Task DeclineImmuneDeathAsync(GameSession p)
     {
         await RefreshControlAsync(p);
-        await character.SetHpSpAsync(p, 0, null);
+        await _character.SetHpSpAsync(p, 0, null);
         if (ImmuneDeathDeclined != null) await ImmuneDeathDeclined(p);
-        else log.LogError("Immune-death decline has no CombatService death callback for {Name}", p.Role?.Name);
+        else _log.LogError("Immune-death decline has no CombatService death callback for {Name}", p.Role?.Name);
     }
 
     private void TickImmuneDeath(GameSession p, long now)
@@ -132,22 +132,22 @@ public sealed partial class BuffService
         if (p.ImmuneDeathOffer is { } offer && offer.ExpiresMs < now)
         {
             p.ImmuneDeathOffer = null;
-            loop.TrackLegacyDetached("immune death decline", () => DeclineImmuneDeathAsync(p));
+            _loop.TrackLegacyDetached("immune death decline", () => DeclineImmuneDeathAsync(p));
         }
         if (p.ImmuneRecoveryUntilMs > 0 && p.ImmuneRecoveryUntilMs <= now)
         {
             p.ImmuneRecoveryUntilMs = 0;
             int percent = p.ImmuneRecoveryPercent;
             p.ImmuneRecoveryPercent = 0;
-            loop.TrackLegacyDetached("immune recovery end", () => EndImmuneRecoveryAsync(p, percent));
+            _loop.TrackLegacyDetached("immune recovery end", () => EndImmuneRecoveryAsync(p, percent));
         }
     }
 
     private async Task EndImmuneRecoveryAsync(GameSession p, int percent)
     {
         if (p.Role == null || p.Dead) return;
-        var stats = character.Stats(p);
-        await character.SetHpSpAsync(p, Math.Max(1, stats[101] * percent / 100),
+        var stats = _character.Stats(p);
+        await _character.SetHpSpAsync(p, Math.Max(1, stats[101] * percent / 100),
             Math.Max(1, stats[102] * percent / 100));
         await RefreshControlAsync(p);
     }

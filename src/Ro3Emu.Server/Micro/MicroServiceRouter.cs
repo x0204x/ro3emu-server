@@ -14,9 +14,11 @@ public interface IMicroService
     ValueTask<object?> InvokeAsync(MicroSession session, string method, object? args);
 }
 
-public sealed class MicroServiceRouter(IEnumerable<IMicroService> services, ILogger<MicroServiceRouter> log, Game.GameLoop? loop = null, Game.Ownership.OwnerRegistry? owners = null, Game.SessionRegistry? sessions = null)
+public sealed partial class MicroServiceRouter(IEnumerable<IMicroService> services, ILogger<MicroServiceRouter> log, Game.GameLoop? loop = null, Game.Ownership.OwnerRegistry? owners = null, Game.SessionRegistry? sessions = null)
 {
     private readonly Dictionary<string, IMicroService> _services = services.ToDictionary(s => s.Name);
+
+    internal IReadOnlyCollection<string> ServiceNames => _services.Keys;
 
     /// <summary>
     /// Every msgpack payload a client sends (micro args, game-gate rpc args, login tokens): collision-resistant map
@@ -25,8 +27,30 @@ public sealed class MicroServiceRouter(IEnumerable<IMicroService> services, ILog
     public static readonly MessagePackSerializerOptions Untrusted = MessagePackSerializerOptions.Standard
         .WithSecurity(MessagePackSecurity.UntrustedData.WithMaximumObjectGraphDepth(32));
 
+    /// <summary>
+    /// What a micro connection may call before an account is bound to it: the SDK ticket check (LC_LoginManager's
+    /// ConnectToMicroServer -> Phonest LoginAgent.VerifyWithSdk, before the area list, role list or any other
+    /// service) and the gate auth of a reconnected connection (ClientAvatarEntity PhonestGate.bind).
+    /// </summary>
+    private static bool AllowedBeforeSignIn(string service, string method) =>
+        (service, method) is ("LoginService", "verifySdk") or ("PhonestGate", "bind");
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Micro {Service}.{Method} from session {Id} refused: no account is bound; later ones not logged")]
+    private static partial void LogUnverifiedCall(ILogger logger, string service, string method, long id);
+
     public async ValueTask<byte[]> InvokeAsync(MicroSession session, string service, string method, ReadOnlyMemory<byte> packedArgs)
     {
+        if (session.Account == null && !AllowedBeforeSignIn(service, method))
+        {
+            // Refused before the arguments are read and before any reservation: the client never calls it then.
+            if (!session.RefusalLogged)
+            {
+                session.RefusalLogged = true;
+                LogUnverifiedCall(log, service, method, session.Id);
+            }
+            return MessagePackSerializer.Serialize(Fail("not verified"));
+        }
         object? args = packedArgs.IsEmpty ? null : MessagePackSerializer.Deserialize<object>(packedArgs, Untrusted);
         log.LogInformation("Micro {Service}.{Method} {Args}", service, method, Describe(args));
 

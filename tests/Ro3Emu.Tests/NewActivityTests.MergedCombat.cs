@@ -30,7 +30,7 @@ public sealed partial class NewActivityTests
         Assert.False(Assert.Single(hit.Dsts, d => d.DstID == actor.Uid).IsDead);
         Assert.False(actor.Dead);
         Assert.Equal(actor.Template.MaxHp, actor.Hp);
-        using var db = new SqliteConnection($"Data Source={Path.Combine(dataDir, "ro3emu.db")}");
+        using var db = new SqliteConnection($"Data Source={Path.Combine(_dataDir, "ro3emu.db")}");
         db.Open();
         using var command = db.CreateCommand();
         command.CommandText = "SELECT count(*) FROM operation_receipt WHERE command_kind='monster-kill'";

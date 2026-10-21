@@ -13,7 +13,7 @@ public sealed partial class BuffService
     private readonly Dictionary<(long Target, int Rule), BuffRuleTables.DecayTrack> _decay = new();
     private long _nextDecaySweepMs;
     private BuffRuleTables? _rules;
-    private BuffRuleTables Rules => _rules ??= BuffRuleTables.For(data);
+    private BuffRuleTables Rules => _rules ??= BuffRuleTables.For(_data);
 
     /// <summary>
     /// A hostile control landing on <paramref name="targetUid"/> in <paramref name="sceneEntry"/>: false when the target

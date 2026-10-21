@@ -14,37 +14,37 @@ namespace Ro3Emu.Tests;
 public sealed class SocialD13dTests : IAsyncLifetime
 {
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
-    private readonly string directory = Path.Combine(Path.GetTempPath(), "ro3emu-social-d13d-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), "ro3emu-social-d13d-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "";
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
 
     public async Task InitializeAsync()
     {
         var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
-        app = ServerHost.Create([], options =>
+        _app = ServerHost.Create([], options =>
         {
-            options.DataDir = directory;
+            options.DataDir = _directory;
             options.GameDataDir = Path.Combine(RepoRoot(), "data");
             options.HttpPort = httpPort;
             options.MicroGatePort = microPort;
             options.GameGatePort = gamePort;
         });
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{httpPort}";
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{httpPort}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         SqliteConnection.ClearAllPools();
-        try { Directory.Delete(directory, true); } catch (IOException) { }
+        try { Directory.Delete(_directory, true); } catch (IOException) { }
     }
 
     private async Task<(BotClient Bot, long Role)> InWorld(string name)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(directory, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_directory, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw");
         await bot.EnterGateAsync();
         long role = (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id;
@@ -61,7 +61,7 @@ public sealed class SocialD13dTests : IAsyncLifetime
     private async Task GmItemAsync(string account, int item, int count)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={account}",
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={account}",
             new StringContent($"!item {item} {count}"))).EnsureSuccessStatusCode();
     }
 

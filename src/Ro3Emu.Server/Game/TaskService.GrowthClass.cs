@@ -26,15 +26,15 @@ public sealed partial class TaskService
     public Func<GameSession, Task>? SyncGrowthClass { get; set; }
 
     /// <summary>Growth Classroom quest id → (module, stage).</summary>
-    internal IReadOnlyDictionary<long, (long Module, int Stage)> GrowthClassTasks() => _growthClass ??= data.Table("TaskConfig").Values
+    internal IReadOnlyDictionary<long, (long Module, int Stage)> GrowthClassTasks() => _growthClass ??= _data.Table("TaskConfig").Values
         .Where(r => r.ValueKind == JsonValueKind.Object && GameData.Int(r, "_iTaskType") == GrowthClassType
-            && GameData.Int(r, "_iStrongerRank") > 0 && data.Row("BecomeStrongerConfig", GameData.Int(r, "_iTaskSonType")) != null
+            && GameData.Int(r, "_iStrongerRank") > 0 && _data.Row("BecomeStrongerConfig", GameData.Int(r, "_iTaskSonType")) != null
             && Defs().ContainsKey(GameData.Int(r, "_iTaskID")))
         .ToDictionary(r => GameData.Int(r, "_iTaskID"), r => (GameData.Int(r, "_iTaskSonType"), (int)GameData.Int(r, "_iStrongerRank")));
 
     internal bool GrowthModuleOpen(GameSession session, long module) =>
-        functions.IsOpen(session, BecomeStrongerFunction) && data.Row("BecomeStrongerConfig", module) is { } row
-        && functions.IsOpen(session, GameData.Int(row, "_iFunction"));
+        _functions.IsOpen(session, BecomeStrongerFunction) && _data.Row("BecomeStrongerConfig", module) is { } row
+        && _functions.IsOpen(session, GameData.Int(row, "_iFunction"));
 
     /// <summary>The module's open stage: 1, plus each stage in order whose quests are all delivered (at most the last).</summary>
     internal int GrowthStage(GameSession session, long module)

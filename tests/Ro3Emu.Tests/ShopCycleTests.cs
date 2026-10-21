@@ -13,11 +13,11 @@ namespace Ro3Emu.Tests;
 /// <summary>Season-limited purchases follow the explicit cycle and commit with payment.</summary>
 public sealed class ShopCycleTests : IAsyncLifetime
 {
-    private readonly string directory = Path.Combine(Path.GetTempPath(), "ro3emu-shop-cycle-" + Guid.NewGuid().ToString("N"));
-    private readonly TestClock clock = new();
-    private WebApplication app = null!;
-    private string http = "";
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private readonly string _directory = Path.Combine(Path.GetTempPath(), "ro3emu-shop-cycle-" + Guid.NewGuid().ToString("N"));
+    private readonly TestClock _clock = new();
+    private WebApplication _app = null!;
+    private string _http = "";
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private const int Offer = 24101;
 
     private sealed class TestClock : TimeProvider
@@ -29,26 +29,26 @@ public sealed class ShopCycleTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         var (web, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game;
             o.PlayBook = 101; o.SeasonStart = "2026-10-05";
-        }, clock);
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{web}";
+        }, _clock);
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{web}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(directory, true); } catch (IOException) { }
+        try { Directory.Delete(_directory, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> Enter(bool create = true, bool legacyCounter = false)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(directory, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_directory, "gate_rsa_public.pem")));
         await bot.LoginAsync("cyclealice", "pw"); await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync("CycleAlice")).RoleBaseInfo.Id : bot.Roles.Single().Id;
         if (create) Service<RoleStore>().SaveTower(id, new DBClimTower { LayerConfID = 10 }.ToByteArray());
@@ -72,7 +72,7 @@ public sealed class ShopCycleTests : IAsyncLifetime
     private async Task Gm(string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account=cyclealice", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account=cyclealice", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     private static async Task<int> Buy(BotClient bot)
@@ -91,7 +91,7 @@ public sealed class ShopCycleTests : IAsyncLifetime
         var season = Service<SeasonService>();
         var breakLocal = DateTimeOffset.FromUnixTimeSeconds(season.Times().SeasonBreakStartTime).LocalDateTime;
         var newStart = breakLocal.Date.AddDays(breakLocal.TimeOfDay == TimeSpan.Zero ? 0 : 1);
-        clock.Now = new DateTimeOffset(newStart);
+        _clock.Now = new DateTimeOffset(newStart);
         Assert.Contains("Season 2", season.AdvanceCycle(101, newStart));
         Assert.Equal(ErrorCodes.ShopClosed, await Buy(bot));
         await bot.DisposeAsync();

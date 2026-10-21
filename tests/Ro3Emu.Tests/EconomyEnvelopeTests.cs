@@ -11,63 +11,63 @@ namespace Ro3Emu.Tests;
 
 public sealed class EconomyEnvelopeTests : IDisposable
 {
-    private readonly string directory;
-    private readonly string gameData;
-    private readonly AccountStore accounts;
-    private readonly RoleStore roles;
-    private readonly long role;
-    private readonly EconomyCatalog catalog;
+    private readonly string _directory;
+    private readonly string _gameData;
+    private readonly AccountStore _accounts;
+    private readonly RoleStore _roles;
+    private readonly long _role;
+    private readonly EconomyCatalog _catalog;
 
     public EconomyEnvelopeTests()
     {
         string root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-        directory = Path.Combine(root, ".loadtest-temp", "e05d-envelope-" + Guid.NewGuid().ToString("N"));
-        gameData = SyntheticData.Dir;
-        catalog = EconomyCatalog.Load(gameData);
-        accounts = new AccountStore(Options.Create(new ServerOptions { DataDir = directory, GameDataDir = gameData }));
-        roles = new RoleStore(accounts);
-        role = roles.Create("e05d-account", 1, "E05" + Guid.NewGuid().ToString("N")[..8], 1, 1000, 1)!.Id;
-        var progress = roles.LoadProgress(role);
+        _directory = Path.Combine(root, ".loadtest-temp", "e05d-envelope-" + Guid.NewGuid().ToString("N"));
+        _gameData = SyntheticData.Dir;
+        _catalog = EconomyCatalog.Load(_gameData);
+        _accounts = new AccountStore(Options.Create(new ServerOptions { DataDir = _directory, GameDataDir = _gameData }));
+        _roles = new RoleStore(_accounts);
+        _role = _roles.Create("e05d-account", 1, "E05" + Guid.NewGuid().ToString("N")[..8], 1, 1000, 1)!.Id;
+        var progress = _roles.LoadProgress(_role);
         progress.Currency[1] = 100;
-        roles.SaveProgress(role, progress);
+        _roles.SaveProgress(_role, progress);
     }
 
     private RoleItemPlanBuilder Spend(string operation, string source, long declared = 10, bool debit = true,
         int shopCount = 0, Action? onApply = null)
     {
-        var tx = roles.NewTransaction();
-        var progress = roles.LoadProgress(role);
+        var tx = _roles.NewTransaction();
+        var progress = _roles.LoadProgress(_role);
         if (debit) progress.Currency[1] -= 10;
-        tx.Progress(role, progress);
+        tx.Progress(_role, progress);
         if (shopCount > 0)
         {
             byte[] shop = JsonSerializer.SerializeToUtf8Bytes(new ShopService.ShopState
             {
                 Bought = new() { [118] = new ShopService.Counter { Count = shopCount, Period = "" } }
             });
-            tx.Add(new RoleBlobWritePlan(role, "shop", shop), _ => onApply?.Invoke());
+            tx.Add(new RoleBlobWritePlan(_role, "shop", shop), _ => onApply?.Invoke());
         }
-        tx.WithEconomy(new EconomyEnvelope(operation, "e05d-account", role, "e05d-test-spend",
+        tx.WithEconomy(new EconomyEnvelope(operation, "e05d-account", _role, "e05d-test-spend",
             "spend:10", source, 1_000_000,
             declared == 0 ? [] : [new(new(EconomyAssetKind.Currency, 1),
-                new(EconomyOwnerKind.Role, role.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                new(EconomyOwnerKind.Role, _role.ToString(System.Globalization.CultureInfo.InvariantCulture)),
                 EconomyCompartment.Currency, -declared, EconomyLegKind.Sink, EconomyReason.FriendGiftCost)],
             [1]));
         return tx;
     }
 
-    private EconomySnapshot Cut() => EconomySnapshotReader.Read(accounts.DatabasePath, catalog, "auto");
+    private EconomySnapshot Cut() => EconomySnapshotReader.Read(_accounts.DatabasePath, _catalog, "auto");
     private EconomyLedgerWindow Window(EconomySnapshot a, EconomySnapshot b) => EconomyLedgerReader.Read(
-        accounts.DatabasePath, catalog, "auto", a.Cut.CommitSequence!.Value, b.Cut.CommitSequence!.Value);
+        _accounts.DatabasePath, _catalog, "auto", a.Cut.CommitSequence!.Value, b.Cut.CommitSequence!.Value);
 
     [Fact]
     public async Task TransactionSnapshotIncludesDungeonPendingAlongsideSemanticEnvelopeHoldings()
     {
-        var obligations = new DungeonObligationStore(accounts);
+        var obligations = new DungeonObligationStore(_accounts);
         byte[] dungeonState = JsonSerializer.SerializeToUtf8Bytes(new DungeonService.State());
         await obligations.FreezeAsync([new DungeonRewardObligation
         {
-            Key = "dungeon:snapshot:" + Guid.NewGuid().ToString("N"), RoleId = role,
+            Key = "dungeon:snapshot:" + Guid.NewGuid().ToString("N"), RoleId = _role,
             RoomId = 77, SceneEntry = 10111, Success = true, DurationMs = 1000, NewRecord = false,
             BaseState = dungeonState, NextState = dungeonState,
             Goods = [new(1004000, 2, 0, EconomyAssetKind.Item), new(1, 5, 0, EconomyAssetKind.Currency)],
@@ -77,15 +77,15 @@ public sealed class EconomyEnvelopeTests : IDisposable
         var opening = Cut();
         Assert.Equal(2, opening.Holdings.Count(x => x.Location.Compartment == EconomyCompartment.Pending));
         using (var db = new SqliteConnection(new SqliteConnectionStringBuilder
-        { DataSource = accounts.DatabasePath, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString()))
+        { DataSource = _accounts.DatabasePath, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString()))
         {
             db.Open();
             using var tx = db.BeginTransaction(deferred: true);
-            var inside = EconomySnapshotReader.ReadTransaction(db, tx, catalog);
+            var inside = EconomySnapshotReader.ReadTransaction(db, tx, _catalog);
             Assert.Empty(inside.Issues);
             Assert.Equal(opening.Holdings.ToHashSet(), inside.Holdings.ToHashSet());
         }
-        await roles.CommitAsync(Spend(Guid.NewGuid().ToString("N"), "spend-with-pending"), "test/e05d-with-e04-pending");
+        await _roles.CommitAsync(Spend(Guid.NewGuid().ToString("N"), "spend-with-pending"), "test/e05d-with-e04-pending");
         var closing = Cut();
         Assert.Equal(opening.Holdings.Where(x => x.Location.Compartment == EconomyCompartment.Pending),
             closing.Holdings.Where(x => x.Location.Compartment == EconomyCompartment.Pending));
@@ -99,7 +99,7 @@ public sealed class EconomyEnvelopeTests : IDisposable
     public void EnvelopeClonesOutcomeAndCanonicalIntentBytes()
     {
         byte[] input = [3, 4];
-        var envelope = new EconomyEnvelope("immutable-test", "e05d-account", role,
+        var envelope = new EconomyEnvelope("immutable-test", "e05d-account", _role,
             "e05d-immutable", "immutable-v1", "immutable-source", 1_000_000, [], input);
         string hash = envelope.IntentHash;
         byte[] canonical = envelope.IntentPayload;
@@ -118,11 +118,11 @@ public sealed class EconomyEnvelopeTests : IDisposable
         var first = Spend(op, source);
         var retry = Spend(op, source);
         var opening = Cut();
-        await roles.CommitAsync(first, "test/e05d-spend");
-        await roles.CommitAsync(retry, "test/e05d-spend-retry");
+        await _roles.CommitAsync(first, "test/e05d-spend");
+        await _roles.CommitAsync(retry, "test/e05d-spend-retry");
         var closing = Cut();
         var ledger = Window(opening, closing);
-        Assert.Equal(90, roles.LoadProgress(role).Currency[1]);
+        Assert.Equal(90, _roles.LoadProgress(_role).Currency[1]);
         Assert.Equal(opening.Cut.CommitSequence + 1, closing.Cut.CommitSequence);
         Assert.Single(ledger.Receipts);
         Assert.Equal(-10, Assert.Single(ledger.Legs).Delta);
@@ -141,13 +141,13 @@ public sealed class EconomyEnvelopeTests : IDisposable
         var sameStale = Spend(op, source, shopCount: 1, onApply: () => replayApply++);
         var changedStale = Spend(op, source, shopCount: 2, onApply: () => changedApply++);
         var opening = Cut();
-        await roles.CommitAsync(first, "test/e05d-child-first");
-        await roles.CommitAsync(sameStale, "test/e05d-child-same-replay");
+        await _roles.CommitAsync(first, "test/e05d-child-first");
+        await _roles.CommitAsync(sameStale, "test/e05d-child-same-replay");
         await Assert.ThrowsAsync<EconomyOperationConflictException>(() =>
-            roles.CommitAsync(changedStale, "test/e05d-child-changed"));
+            _roles.CommitAsync(changedStale, "test/e05d-child-changed"));
         Assert.Equal((1, 1, 0), (firstApply, replayApply, changedApply));
-        Assert.Equal(1, JsonSerializer.Deserialize<ShopService.ShopState>(roles.LoadShop(role)!)!.Bought[118].Count);
-        Assert.Equal(90, roles.LoadProgress(role).Currency[1]);
+        Assert.Equal(1, JsonSerializer.Deserialize<ShopService.ShopState>(_roles.LoadShop(_role)!)!.Bought[118].Count);
+        Assert.Equal(90, _roles.LoadProgress(_role).Currency[1]);
         Assert.Single(Window(opening, Cut()).Receipts);
     }
 
@@ -155,41 +155,41 @@ public sealed class EconomyEnvelopeTests : IDisposable
     public async Task GenericOwnerReceiptCannotReplayAnAbsentEconomicReceipt()
     {
         string operation = Guid.NewGuid().ToString("N");
-        FixtureSql.Execute(accounts, "INSERT INTO owner_operation_receipt(operation_id,family,result) " +
+        FixtureSql.Execute(_accounts, "INSERT INTO owner_operation_receipt(operation_id,family,result) " +
             "VALUES('" + operation + "','decoy',X'00')");
         var opening = Cut();
-        await roles.CommitAsync(Spend(operation, "decoy:" + operation), "test/e05d-generic-decoy");
-        Assert.Equal(90, roles.LoadProgress(role).Currency[1]);
+        await _roles.CommitAsync(Spend(operation, "decoy:" + operation), "test/e05d-generic-decoy");
+        Assert.Equal(90, _roles.LoadProgress(_role).Currency[1]);
         Assert.Single(Window(opening, Cut()).Receipts);
-        Assert.NotNull(EconomyReceiptReader.Read(accounts.DatabasePath, operation));
+        Assert.NotNull(EconomyReceiptReader.Read(_accounts.DatabasePath, operation));
     }
 
     [Fact]
     public async Task LaterWindowValidatesEarlierTransferWithoutReturningItsLegs()
     {
-        long other = roles.Create("e05d-other", 1, "E05" + Guid.NewGuid().ToString("N")[..8], 1, 1000, 1)!.Id;
-        var transfer = roles.NewTransaction();
-        var sender = roles.LoadProgress(role);
+        long other = _roles.Create("e05d-other", 1, "E05" + Guid.NewGuid().ToString("N")[..8], 1, 1000, 1)!.Id;
+        var transfer = _roles.NewTransaction();
+        var sender = _roles.LoadProgress(_role);
         sender.Currency[1] -= 10;
-        transfer.Progress(role, sender);
-        var recipient = roles.LoadProgress(other);
+        transfer.Progress(_role, sender);
+        var recipient = _roles.LoadProgress(other);
         recipient.Currency[1] = 10;
         transfer.Progress(other, recipient);
         string operation = Guid.NewGuid().ToString("N");
-        transfer.WithEconomy(new EconomyEnvelope(operation, "e05d-account", role, "e05d-transfer",
+        transfer.WithEconomy(new EconomyEnvelope(operation, "e05d-account", _role, "e05d-transfer",
             "transfer-10", "transfer:" + operation, 1_000_000,
-            [new(new(EconomyAssetKind.Currency, 1), new(EconomyOwnerKind.Role, role.ToString()),
+            [new(new(EconomyAssetKind.Currency, 1), new(EconomyOwnerKind.Role, _role.ToString()),
                 EconomyCompartment.Currency, -10, EconomyLegKind.Transfer, EconomyReason.GuildResourceTransfer, 1),
              new(new(EconomyAssetKind.Currency, 1), new(EconomyOwnerKind.Role, other.ToString()),
                 EconomyCompartment.Currency, 10, EconomyLegKind.Transfer, EconomyReason.GuildResourceTransfer, 1)], [1]));
-        await roles.CommitAsync(transfer, "test/e05d-earlier-transfer");
+        await _roles.CommitAsync(transfer, "test/e05d-earlier-transfer");
         var afterTransfer = Cut();
-        var metadata = roles.NewTransaction();
-        metadata.RoleBlob(role, "shop", JsonSerializer.SerializeToUtf8Bytes(new ShopService.ShopState()));
+        var metadata = _roles.NewTransaction();
+        metadata.RoleBlob(_role, "shop", JsonSerializer.SerializeToUtf8Bytes(new ShopService.ShopState()));
         operation = Guid.NewGuid().ToString("N");
-        metadata.WithEconomy(new EconomyEnvelope(operation, "e05d-account", role, "e05d-later-metadata",
+        metadata.WithEconomy(new EconomyEnvelope(operation, "e05d-account", _role, "e05d-later-metadata",
             "later-metadata", "metadata:" + operation, 1_000_001, [], [2]));
-        await roles.CommitAsync(metadata, "test/e05d-later-metadata");
+        await _roles.CommitAsync(metadata, "test/e05d-later-metadata");
         var window = Window(afterTransfer, Cut());
         Assert.True(window.CompleteHistory, string.Join("; ", window.Issues.Select(x => x.Detail)));
         Assert.Single(window.Receipts);
@@ -199,24 +199,24 @@ public sealed class EconomyEnvelopeTests : IDisposable
     [Fact]
     public async Task GeneratedAuctionAliasBindsToClaimedTypedLotAndConcreteLedgerOwner()
     {
-        var auction = new AuctionStore(accounts);
+        var auction = new AuctionStore(_accounts);
         string batchSource = "challenge-lot:" + Guid.NewGuid().ToString("N");
         string lotSource = batchSource + ":0";
         string operation = Guid.NewGuid().ToString("N");
         var lot = new AuctionStore.Item { SourceKey = lotSource, Entry = 1004000, Currency = 1 };
-        var plan = roles.NewTransaction();
+        var plan = _roles.NewTransaction();
         auction.EnlistSource(batchSource, plan);
         auction.EnlistSave(lot, plan);
-        plan.WithEconomy(new EconomyEnvelope(operation, "e05d-account", role,
+        plan.WithEconomy(new EconomyEnvelope(operation, "e05d-account", _role,
             "guild-challenge-auction-source", "auction-lot-v1", batchSource, 1_000_000,
             [new(new(EconomyAssetKind.Item, 1004000),
                 new(EconomyOwnerKind.Escrow, "auction-source:" + lotSource),
                 EconomyCompartment.AuctionLot, 1, EconomyLegKind.Source, EconomyReason.ActivityReward)], []));
         var opening = Cut();
-        await roles.CommitAsync(plan, "test/e05d-auction-lot");
+        await _roles.CommitAsync(plan, "test/e05d-auction-lot");
         var closing = Cut();
         Assert.True(lot.Id > 0);
-        var receipt = EconomyReceiptReader.Read(accounts.DatabasePath, operation);
+        var receipt = EconomyReceiptReader.Read(_accounts.DatabasePath, operation);
         Assert.NotNull(receipt);
         Assert.Equal(lot.Id, Assert.Single(receipt.ChildReceipts, x => x.Type == "auction-lot").Number);
         var ledger = Window(opening, closing);
@@ -231,13 +231,13 @@ public sealed class EconomyEnvelopeTests : IDisposable
     public async Task UndeclaredAndWrongAmountMovementRollsBack()
     {
         var opening = Cut();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => roles.CommitAsync(
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _roles.CommitAsync(
             Spend(Guid.NewGuid().ToString("N"), "undeclared:" + Guid.NewGuid().ToString("N"), declared: 0),
             "test/e05d-undeclared"));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => roles.CommitAsync(
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _roles.CommitAsync(
             Spend(Guid.NewGuid().ToString("N"), "wrong:" + Guid.NewGuid().ToString("N"), declared: 9),
             "test/e05d-wrong"));
-        Assert.Equal(100, roles.LoadProgress(role).Currency[1]);
+        Assert.Equal(100, _roles.LoadProgress(_role).Currency[1]);
         Assert.Equal(opening.Cut.CommitSequence, Cut().Cut.CommitSequence);
         Assert.Empty(Window(opening, Cut()).Receipts);
     }
@@ -247,39 +247,39 @@ public sealed class EconomyEnvelopeTests : IDisposable
     {
         string op = Guid.NewGuid().ToString("N"), source = "fault:" + Guid.NewGuid().ToString("N");
         var opening = Cut();
-        FixtureSql.Execute(accounts, "CREATE TRIGGER reject_e05d_leg BEFORE INSERT ON economy_entry BEGIN SELECT RAISE(ABORT,'e05d-last-leg'); END");
-        await Assert.ThrowsAsync<SqliteException>(() => roles.CommitAsync(Spend(op, source), "test/e05d-fault"));
-        Assert.Equal(100, roles.LoadProgress(role).Currency[1]);
+        FixtureSql.Execute(_accounts, "CREATE TRIGGER reject_e05d_leg BEFORE INSERT ON economy_entry BEGIN SELECT RAISE(ABORT,'e05d-last-leg'); END");
+        await Assert.ThrowsAsync<SqliteException>(() => _roles.CommitAsync(Spend(op, source), "test/e05d-fault"));
+        Assert.Equal(100, _roles.LoadProgress(_role).Currency[1]);
         Assert.Equal(opening.Cut.CommitSequence, Cut().Cut.CommitSequence);
-        Assert.Null(EconomyReceiptReader.Read(accounts.DatabasePath, op));
-        FixtureSql.Execute(accounts, "DROP TRIGGER reject_e05d_leg");
-        await roles.CommitAsync(Spend(op, source), "test/e05d-retry");
-        Assert.Equal(90, roles.LoadProgress(role).Currency[1]);
+        Assert.Null(EconomyReceiptReader.Read(_accounts.DatabasePath, op));
+        FixtureSql.Execute(_accounts, "DROP TRIGGER reject_e05d_leg");
+        await _roles.CommitAsync(Spend(op, source), "test/e05d-retry");
+        Assert.Equal(90, _roles.LoadProgress(_role).Currency[1]);
         Assert.Single(Window(opening, Cut()).Receipts);
     }
 
     [Fact]
     public async Task MetadataReceiptHasNoLegsAndTracksExistingAndCreatedGuildRevisions()
     {
-        var guilds = new GuildStore(accounts);
+        var guilds = new GuildStore(_accounts);
         var existing = new GuildStore.State { Name = "E05-existing-" + Guid.NewGuid().ToString("N")[..8] };
         Assert.True(guilds.Save(existing));
         existing.Notice = "new notice";
         var created = new GuildStore.State { Name = "E05-created-" + Guid.NewGuid().ToString("N")[..8] };
-        var plan = roles.NewTransaction();
+        var plan = _roles.NewTransaction();
         guilds.EnlistSave(existing, plan);
         guilds.EnlistSave(created, plan);
         string operation = Guid.NewGuid().ToString("N");
-        plan.WithEconomy(new EconomyEnvelope(operation, "e05d-account", role, "e05d-guild-metadata",
+        plan.WithEconomy(new EconomyEnvelope(operation, "e05d-account", _role, "e05d-guild-metadata",
             "guild-metadata-v1", "guild-metadata:" + operation, 1_000_000, [], [1]));
         var opening = Cut();
-        await roles.CommitAsync(plan, "test/e05d-guild-metadata");
+        await _roles.CommitAsync(plan, "test/e05d-guild-metadata");
         var closing = Cut();
         var ledger = Window(opening, closing);
         Assert.Single(ledger.Receipts);
         Assert.Empty(ledger.Legs);
         Assert.True(ledger.CompleteHistory, string.Join("; ", ledger.Issues.Select(x => x.Detail)));
-        using var db = new SqliteConnection("Data Source=" + accounts.DatabasePath);
+        using var db = new SqliteConnection("Data Source=" + _accounts.DatabasePath);
         db.Open();
         using var read = db.CreateCommand();
         read.CommandText = "SELECT before_revisions,after_revisions FROM operation_receipt WHERE operation_id=$op";
@@ -311,10 +311,10 @@ public sealed class EconomyEnvelopeTests : IDisposable
     [Fact]
     public async Task ExistingE01ReceiptSchemaUpgradesWithoutLosingReceiptSourceOrLegs()
     {
-        string upgradeDir = Path.Combine(directory, "upgrade-" + Guid.NewGuid().ToString("N"));
+        string upgradeDir = Path.Combine(_directory, "upgrade-" + Guid.NewGuid().ToString("N"));
         string database;
         long oldRole;
-        using (var old = new AccountStore(Options.Create(new ServerOptions { DataDir = upgradeDir, GameDataDir = gameData })))
+        using (var old = new AccountStore(Options.Create(new ServerOptions { DataDir = upgradeDir, GameDataDir = _gameData })))
         {
             database = old.DatabasePath;
             var oldRoles = new RoleStore(old);
@@ -355,10 +355,10 @@ public sealed class EconomyEnvelopeTests : IDisposable
                 "DROP TABLE operation_receipt; ALTER TABLE operation_receipt_legacy RENAME TO operation_receipt;";
             rebuild.ExecuteNonQuery();
         }
-        using (var migrated = new AccountStore(Options.Create(new ServerOptions { DataDir = upgradeDir, GameDataDir = gameData })))
+        using (var migrated = new AccountStore(Options.Create(new ServerOptions { DataDir = upgradeDir, GameDataDir = _gameData })))
         {
             var migratedRoles = new RoleStore(migrated);
-            var oldLedger = EconomyLedgerReader.Read(database, catalog, "auto", 0, 1);
+            var oldLedger = EconomyLedgerReader.Read(database, _catalog, "auto", 0, 1);
             Assert.True(oldLedger.CompleteHistory, string.Join("; ", oldLedger.Issues.Select(x => x.Detail)));
             Assert.Single(oldLedger.Receipts);
             Assert.Equal(2, oldLedger.Legs.Count);
@@ -370,7 +370,7 @@ public sealed class EconomyEnvelopeTests : IDisposable
             metadata.WithEconomy(new EconomyEnvelope("upgrade-metadata", "upgrade-account", oldRole,
                 "e05d-upgrade-metadata", "upgrade-metadata-v1", "upgrade-metadata-source", 1_000_001, [], [2]));
             await migratedRoles.CommitAsync(metadata, "test/e05d-after-upgrade");
-            var full = EconomyLedgerReader.Read(database, catalog, "auto", 0, 2);
+            var full = EconomyLedgerReader.Read(database, _catalog, "auto", 0, 2);
             Assert.True(full.CompleteHistory, string.Join("; ", full.Issues.Select(x => x.Detail)));
             Assert.Equal(2, full.Receipts.Count);
             Assert.Equal(2, full.Legs.Count);
@@ -389,8 +389,8 @@ public sealed class EconomyEnvelopeTests : IDisposable
 
     public void Dispose()
     {
-        accounts.Dispose();
+        _accounts.Dispose();
         SqliteConnection.ClearAllPools();
-        try { Directory.Delete(directory, recursive: true); } catch (IOException) { }
+        try { Directory.Delete(_directory, recursive: true); } catch (IOException) { }
     }
 }

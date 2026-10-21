@@ -14,40 +14,40 @@ public sealed class DungeonMatchTests : IAsyncLifetime
     private const int Entry = 100, Multi = 50104;
     private const long Scene = 3120401;
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(15);
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-dungeonmatch-" + Guid.NewGuid().ToString("N"));
-    private readonly ManualClock clock = new(new DateTimeOffset(2026, 10, 16, 12, 0, 0, TimeSpan.FromHours(2)));
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-dungeonmatch-" + Guid.NewGuid().ToString("N"));
+    private readonly ManualClock _clock = new(new DateTimeOffset(2026, 10, 16, 12, 0, 0, TimeSpan.FromHours(2)));
+    private WebApplication _app = null!;
+    private string _http = "";
 
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
 
     public async Task InitializeAsync()
     {
         var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir;
+            o.DataDir = _dataDir;
             o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.SeasonStart = "2026-10-08";
             o.HttpPort = httpPort;
             o.MicroGatePort = microPort;
             o.GameGatePort = gamePort;
-        }, clock);
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{httpPort}";
+        }, _clock);
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{httpPort}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw");
         await bot.EnterGateAsync();
         long id = (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id;
@@ -65,7 +65,7 @@ public sealed class DungeonMatchTests : IAsyncLifetime
     private async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     private GameSession Session(BotClient bot) => Service<SessionRegistry>().All()
@@ -167,16 +167,16 @@ public sealed class DungeonMatchTests : IAsyncLifetime
         Assert.Equal((long)alice.Self.Uuid, refused.FailPlayer);
         Assert.Equal(0, refused.PenaltyMemberUnlockTs);
         Assert.Equal(Request().MatchData, refused.MatchData);
-        Assert.Equal(clock.GetUtcNow().ToUnixTimeSeconds(), refused.MatchStartTime);
+        Assert.Equal(_clock.GetUtcNow().ToUnixTimeSeconds(), refused.MatchStartTime);
         Assert.Equal(0, Session(alice).InstanceId);
         Assert.False(Service<DungeonMatchService>().Owns(Session(alice)));
 
-        clock.Advance(TimeSpan.FromMilliseconds(250));
+        _clock.Advance(TimeSpan.FromMilliseconds(250));
         await Start(alice);
         var expiring = await Next(alice, DungeonMatchService.ReadyNotify, MatchReadyNotify.Parser,
             n => n.ReadyInfos.Count == 1);
-        Assert.Equal(clock.GetUtcNow().ToUnixTimeSeconds() + 31, expiring.EndTime);
-        clock.Set(DateTimeOffset.FromUnixTimeSeconds(expiring.EndTime));
+        Assert.Equal(_clock.GetUtcNow().ToUnixTimeSeconds() + 31, expiring.EndTime);
+        _clock.Set(DateTimeOffset.FromUnixTimeSeconds(expiring.EndTime));
         await alice.SendGameAsync(DungeonMatchService.Ready, new MatchReadyReq
         { MatchEntryId = Entry, PlayerId = (long)alice.Self.Uuid, IsReady = true });
         Assert.Equal(ErrorCodes.Parameter, (await Next(alice, DungeonMatchService.Ready, MatchReadyResp.Parser)).Result);
@@ -184,12 +184,12 @@ public sealed class DungeonMatchTests : IAsyncLifetime
         Assert.Equal((long)alice.Self.Uuid, (await Next(alice, DungeonMatchService.FailNotify, FailMatchNtf.Parser)).PenaltyMemberGuid);
         Assert.False(Service<DungeonMatchService>().Owns(Session(alice)));
 
-        clock.Advance(TimeSpan.FromMilliseconds(250));
+        _clock.Advance(TimeSpan.FromMilliseconds(250));
         await Start(alice);
         var accepted = await Next(alice, DungeonMatchService.ReadyNotify, MatchReadyNotify.Parser,
             n => n.ReadyInfos.Count == 1);
-        Assert.Equal(clock.GetUtcNow().ToUnixTimeSeconds() + 31, accepted.EndTime);
-        clock.Set(DateTimeOffset.FromUnixTimeMilliseconds(accepted.EndTime * 1000 - 1));
+        Assert.Equal(_clock.GetUtcNow().ToUnixTimeSeconds() + 31, accepted.EndTime);
+        _clock.Set(DateTimeOffset.FromUnixTimeMilliseconds(accepted.EndTime * 1000 - 1));
         await alice.SendGameAsync(DungeonMatchService.Ready, new MatchReadyReq
         { MatchEntryId = Entry, PlayerId = (long)alice.Self.Uuid, IsReady = true });
         Assert.Equal(0, (await Next(alice, DungeonMatchService.Ready, MatchReadyResp.Parser)).Result);
@@ -211,10 +211,10 @@ public sealed class DungeonMatchTests : IAsyncLifetime
         await Party(alice, bob);
         await Party(carol, dan, erin);
         var started = await Start(alice);
-        Assert.Equal(clock.GetUtcNow().ToUnixTimeSeconds(), started.MatchStartTime);
+        Assert.Equal(_clock.GetUtcNow().ToUnixTimeSeconds(), started.MatchStartTime);
         Assert.True(Service<DungeonMatchService>().Owns(Session(bob)));
         await Start(carol);
-        long deadline = clock.GetUtcNow().ToUnixTimeSeconds() + 30;
+        long deadline = _clock.GetUtcNow().ToUnixTimeSeconds() + 30;
         foreach (var bot in members)
         {
             var ready = await Next(bot, DungeonMatchService.ReadyNotify, MatchReadyNotify.Parser,
@@ -248,8 +248,8 @@ public sealed class DungeonMatchTests : IAsyncLifetime
     public async Task ChickenRoutingCrossOwnerExclusionSwitchAndRoleCleanup()
     {
         // Inside the exported Kafra window (activity 114); select it before role login.
-        clock.Set(DateTimeOffset.FromUnixTimeSeconds(
-            ScheduleRows.Weekly(114, new DateTime(2026, 11, 10), clock.LocalTimeZone).Start + 300));
+        _clock.Set(DateTimeOffset.FromUnixTimeSeconds(
+            ScheduleRows.Weekly(114, new DateTime(2026, 11, 10), _clock.LocalTimeZone).Start + 300));
         await using var alice = await InWorld("Alice");
         await Gm(alice, "!lvl 99");
         Assert.True(Service<TimedTodoSchedule>().IsOpen(114));
@@ -257,7 +257,7 @@ public sealed class DungeonMatchTests : IAsyncLifetime
         var firstTimed = await Next(alice, TimedBattleService.StartMatch, StartMatchResp.Parser,
             r => r.MatchEntryId == 2);
         Assert.Equal(0, firstTimed.Result);
-        Assert.Equal(clock.GetUtcNow().ToUnixTimeSeconds(), firstTimed.MatchStartTime);
+        Assert.Equal(_clock.GetUtcNow().ToUnixTimeSeconds(), firstTimed.MatchStartTime);
         Assert.True(Service<TimedBattleService>().IsMatching(Session(alice)));
         await Start(alice, expected: ErrorCodes.DungeonBusy);
         await alice.SendGameAsync(TimedBattleService.CancelMatch, new CancelMatchReq
@@ -276,7 +276,7 @@ public sealed class DungeonMatchTests : IAsyncLifetime
         var switchedTimed = await Next(alice, TimedBattleService.StartMatch, StartMatchResp.Parser,
             r => r.MatchEntryId == 2);
         Assert.Equal(0, switchedTimed.Result);
-        Assert.Equal(clock.GetUtcNow().ToUnixTimeSeconds(), switchedTimed.MatchStartTime);
+        Assert.Equal(_clock.GetUtcNow().ToUnixTimeSeconds(), switchedTimed.MatchStartTime);
         Assert.False(Service<DungeonMatchService>().Owns(Session(alice)));
         Assert.True(Service<TimedBattleService>().IsMatching(Session(alice)));
         await alice.SendGameAsync(TimedBattleService.CancelMatch, new CancelMatchReq { MatchEntryId = 2 });

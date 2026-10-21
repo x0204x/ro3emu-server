@@ -4,14 +4,9 @@ using Ro3Emu.Server.Accounts.Persistence;
 namespace Ro3Emu.Server.Accounts;
 
 /// <summary>Friend links (both directions stored), pending applications and blacklists, by role id.</summary>
-public sealed partial class FriendStore
+public sealed partial class FriendStore(AccountStore accounts)
 {
-    private readonly AccountStore _accounts;
-
-    public FriendStore(AccountStore accounts)
-    {
-        _accounts = accounts;
-    }
+    private readonly AccountStore _accounts = accounts;
 
     private T Read<T>(FriendReadKind kind, long a, long b = 0, int max = 100, long cutoff = 0)
         => _accounts.ReadSync<T>(new FriendReadPlan(kind, a, b, max, cutoff));

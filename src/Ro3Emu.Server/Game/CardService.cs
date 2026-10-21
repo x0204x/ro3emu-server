@@ -42,26 +42,26 @@ public sealed partial class CardService
         _ => [], // 8 / 9 "Sketch Card" (MVP): target not established
     };
 
-    private readonly GameData data;
-    private readonly CharacterService character;
-    private readonly FunctionService functions;
-    private readonly RoleStore roles;
-    private readonly SeasonService season;
-    private readonly TimeProvider clock;
-    private readonly ILogger<CardService> log;
-    private readonly GameLoop loop;
+    private readonly GameData _data;
+    private readonly CharacterService _character;
+    private readonly FunctionService _functions;
+    private readonly RoleStore _roles;
+    private readonly SeasonService _season;
+    private readonly TimeProvider _clock;
+    private readonly ILogger<CardService> _log;
+    private readonly GameLoop _loop;
 
     public CardService(GameData data, CharacterService character, FunctionService functions, ItemStore items, RoleStore roles,
         SeasonService season, TimeProvider clock, ILogger<CardService> log, GameLoop loop)
     {
-        this.data = data;
-        this.character = character;
-        this.functions = functions;
-        this.roles = roles;
-        this.season = season;
-        this.clock = clock;
-        this.log = log;
-        this.loop = loop;
+        this._data = data;
+        this._character = character;
+        this._functions = functions;
+        this._roles = roles;
+        this._season = season;
+        this._clock = clock;
+        this._log = log;
+        this._loop = loop;
         character.ItemGained.Add(OnItemGained);
         character.StageFirstCardSight = StageFirstCardSight;
         character.RegisterItemAction(GainLibraryPageAction, UseLibraryPageItemAsync);
@@ -72,7 +72,7 @@ public sealed partial class CardService
     /// <summary>After 5009: persisted socket plans and their names, then the collection when it has entries.</summary>
     public async Task LoginAsync(GameSession session)
     {
-        var saved = roles.LoadLibrary(session.Role!.Id);
+        var saved = _roles.LoadLibrary(session.Role!.Id);
         session.Library = saved != null ? DBLibraryInfo.Parser.ParseFrom(saved) : new DBLibraryInfo();
         // An older/direct item grant may have committed before its legacy ItemGained callback.
         // First sight, the reached star and Flash ownership are derived from the durable bag and sockets on reconnect,
@@ -81,7 +81,7 @@ public sealed partial class CardService
         foreach (var item in session.Items) repaired |= Observe(session.Library, item);
         if (repaired) SaveLibrary(session);
         session.CardLibraryReadyAttachment = session.Attachment;
-        var plans = roles.LoadCardPlans(session.Role.Id);
+        var plans = _roles.LoadCardPlans(session.Role.Id);
         session.CardPlans = plans != null ? DBStorageHoleInfo.Parser.ParseFrom(plans) : NewPlans(session);
         if (!session.CardPlans.StoragePlans.ContainsKey(session.CardPlans.CurrentPlan)) session.CardPlans.CurrentPlan = 1;
         await SyncPlans(session);
@@ -134,7 +134,7 @@ public sealed partial class CardService
     private async Task SyncPlans(GameSession session)
     {
         var plans = session.CardPlans!;
-        roles.SaveCardPlans(session.Role!.Id, plans.ToByteArray());
+        _roles.SaveCardPlans(session.Role!.Id, plans.ToByteArray());
         await CharacterService.SyncAsync(session, StorageHoleSync, plans.Clone());
     }
 
@@ -147,12 +147,12 @@ public sealed partial class CardService
         int grid = (int)req.EquipPos, socket = req.SlotIndex;
         var card = session.Items.FirstOrDefault(i => i.Guid == req.CardGuid && i.Grid == 0);
         int error = card == null ? ErrorCodes.ItemMissing
-            : !character.IsCard(card.Entry) ? ErrorCodes.Parameter // (inferred) no card-specific type error.
+            : !_character.IsCard(card.Entry) ? ErrorCodes.Parameter // (inferred) no card-specific type error.
             : AddressError(grid, socket) is var address and not 0 ? address
             : !GridsFor(Part(card.Entry)).Contains(grid) ? ErrorCodes.EquipSlot // (inferred) grid incompatibility.
             : SocketError(session, grid, socket) is var sealedSocket and not 0 ? sealedSocket
             : InsertRuleError(card.Entry, SocketedExcept(session.Items, (grid, socket)));
-        log.LogInformation("{Name} inserts card {Card} into {Grid}/{Socket}: {Result}", session.Role!.Name, card?.Entry, grid, socket, error);
+        _log.LogInformation("{Name} inserts card {Card} into {Grid}/{Socket}: {Result}", session.Role!.Name, card?.Entry, grid, socket, error);
         if (error != 0)
         {
             await session.SendGameAsync(SlotInsert, new EquipmentCardInsertResp { Result = error, EquipPos = req.EquipPos, CardGuid = req.CardGuid, SlotIndex = socket });
@@ -170,12 +170,12 @@ public sealed partial class CardService
         finally { session.Items = original; }
         await CommitCardStateAsync(session, staged, plans, "cd13a/card-insert",
             new { Card = card!.Entry, grid, socket });
-        await character.ItemsChangedAsync(session, stats: true);
+        await _character.ItemsChangedAsync(session, stats: true);
         await CharacterService.SyncAsync(session, StorageHoleSync, plans.Clone());
         var committed = session.Items.Single(i => i.Guid == inserted.Guid);
         await session.SendGameAsync(SlotInsert, new EquipmentCardInsertResp
         {
-            Result = 0, EquipPos = req.EquipPos, CardGuid = committed.Guid, SlotIndex = socket, CardInfo = character.ItemInfoOf(committed),
+            Result = 0, EquipPos = req.EquipPos, CardGuid = committed.Guid, SlotIndex = socket, CardInfo = _character.ItemInfoOf(committed),
         });
         await NotifySocketsChangedAsync(session);
     }
@@ -202,10 +202,10 @@ public sealed partial class CardService
         finally { session.Items = original; }
         await CommitCardStateAsync(session, staged, plans, "cd13a/card-remove",
             new { Card = card.Entry, grid, socket });
-        await character.ItemsChangedAsync(session, stats: true);
+        await _character.ItemsChangedAsync(session, stats: true);
         await CharacterService.SyncAsync(session, StorageHoleSync, plans.Clone());
         await session.SendGameAsync(SlotRemove, new EquipmentCardRemoveResp { Result = 0, EquipPos = req.EquipPos, SlotIndex = socket, CardGuid = back.Guid });
-        log.LogInformation("{Name} removes card {Card} from {Grid}/{Socket}", session.Role!.Name, guid, grid, socket);
+        _log.LogInformation("{Name} removes card {Card} from {Grid}/{Socket}", session.Role!.Name, guid, grid, socket);
         await NotifySocketsChangedAsync(session);
     }
 
@@ -249,9 +249,9 @@ public sealed partial class CardService
             finally { session.Items = original; }
             await CommitCardStateAsync(session, staged, plans, "cd13a/card-transfer",
                 new { Source = src!.Entry, Destination = dst?.Entry, srcGrid, req.SrcEquipSlot, dstGrid, req.DestEquipSlot });
-            if (stagedDst != null) resp.SrcCardInfo = character.ItemInfoOf(session.Items.Single(i => i.Guid == stagedDst.Guid));
-            resp.DestCardInfo = character.ItemInfoOf(session.Items.Single(i => i.Guid == stagedSrc.Guid));
-            await character.ItemsChangedAsync(session, stats: true);
+            if (stagedDst != null) resp.SrcCardInfo = _character.ItemInfoOf(session.Items.Single(i => i.Guid == stagedDst.Guid));
+            resp.DestCardInfo = _character.ItemInfoOf(session.Items.Single(i => i.Guid == stagedSrc.Guid));
+            await _character.ItemsChangedAsync(session, stats: true);
             await CharacterService.SyncAsync(session, StorageHoleSync, plans.Clone());
         }
         await session.SendGameAsync(SlotTransfer, resp);
@@ -262,7 +262,7 @@ public sealed partial class CardService
     private InvItem? Socketed(GameSession session, int grid, int socket) =>
         session.Items.FirstOrDefault(i => i.Grid == CharacterService.CardGrid(grid, socket));
 
-    private bool ValidSocket(int grid, int socket) => socket is >= 1 and <= 4 && data.Table("EquipGridConfig").Values
+    private bool ValidSocket(int grid, int socket) => socket is >= 1 and <= 4 && _data.Table("EquipGridConfig").Values
         .Any(r => GameData.Int(r, "_iEquipGridType") == grid && GameData.Int(r, "_iGridCategory") is 1 or 3);
 
     private int AddressError(int grid, int socket) => socket is < 1 or > 4 ? ErrorCodes.SlotIndex
@@ -272,14 +272,14 @@ public sealed partial class CardService
     private int SocketError(GameSession session, int grid, int socket)
     {
         if (AddressError(grid, socket) is var address and not 0) return address;
-        var row = data.Table("EquipGridConfig").Values.FirstOrDefault(r => GameData.Int(r, "_iEquipGridType") == grid && GameData.Int(r, "_iGridCategory") is 1 or 3);
+        var row = _data.Table("EquipGridConfig").Values.FirstOrDefault(r => GameData.Int(r, "_iEquipGridType") == grid && GameData.Int(r, "_iGridCategory") is 1 or 3);
         if (row.ValueKind != JsonValueKind.Object) return ErrorCodes.EquipSlot; // (inferred) bad grid.
         if (!row.TryGetProperty($"_kSocketOpen{socket}", out var cond) || GameData.Number(cond) is not { } id || id <= 0) return ErrorCodes.SlotSealed;
         if (grid is 1 or 2 && session.Items.All(i => i.Grid != grid)) return ErrorCodes.EquipSlot; // (inferred) no worn weapon.
-        return functions.ConditionMet(session, (long)id) ? 0 : ErrorCodes.SlotSealed;
+        return _functions.ConditionMet(session, (long)id) ? 0 : ErrorCodes.SlotSealed;
     }
 
-    private long Part(int entry) => data.Row("ItemConfig", entry) is { } row ? GameData.Int(row, "_iCardPart") : 0;
+    private long Part(int entry) => _data.Row("ItemConfig", entry) is { } row ? GameData.Int(row, "_iCardPart") : 0;
 
     private static InvItem CloneOne(InvItem stack)
     {
@@ -388,7 +388,7 @@ public sealed partial class CardService
                 finally { session.Items = original; }
                 await CommitCardStateAsync(session, staged, plans, "cd13a/card-switch-plan",
                     new { CurrentPlan = req.TargetIndex });
-                await character.ItemsChangedAsync(session, stats: true);
+                await _character.ItemsChangedAsync(session, stats: true);
                 await CharacterService.SyncAsync(session, StorageHoleSync, plans.Clone());
             }
         }
@@ -421,24 +421,24 @@ public sealed partial class CardService
 
     // ---- card progression ----
 
-    private JsonElement? CardRow(int entry, long tier) => data.Table("CardConfig").Values
+    private JsonElement? CardRow(int entry, long tier) => _data.Table("CardConfig").Values
         .FirstOrDefault(r => GameData.Int(r, "_iCardID") == entry && GameData.Int(r, "_iTier") == tier) is var row
         && row.ValueKind == JsonValueKind.Object ? row : null;
 
     private JsonElement? UpgradeRow(InvItem card, long level)
     {
-        if (data.Row("ItemConfig", card.Entry) is not { } item) return null;
-        var row = data.Table("CardUpgradeConfig").Values.FirstOrDefault(r => GameData.Int(r, "_iLevel") == level
+        if (_data.Row("ItemConfig", card.Entry) is not { } item) return null;
+        var row = _data.Table("CardUpgradeConfig").Values.FirstOrDefault(r => GameData.Int(r, "_iLevel") == level
             && GameData.Int(r, "_iParts") == GameData.Int(item, "_iCardPart") && GameData.Int(r, "_iQuality") == GameData.Int(item, "_iQuality"));
         return row.ValueKind == JsonValueKind.Object ? row : null;
     }
 
     private InvItem? ProgressTarget(GameSession session, int sourceType, long guid, int grid, int socket)
     {
-        if (sourceType == 1) return session.Items.FirstOrDefault(i => i.Guid == guid && i.Grid == 0 && character.IsCard(i.Entry));
+        if (sourceType == 1) return session.Items.FirstOrDefault(i => i.Guid == guid && i.Grid == 0 && _character.IsCard(i.Entry));
         if (sourceType != 4) return null; // Legacy bonds / spare-equipment carriers have no live model here.
         var card = ValidSocket(grid, socket) ? Socketed(session, grid, socket) : null;
-        return card != null && character.IsCard(card.Entry) && (card.Guid == guid || session.Items.Any(i => i.Guid == guid && i.Grid == grid)) ? card : null;
+        return card != null && _character.IsCard(card.Entry) && (card.Guid == guid || session.Items.Any(i => i.Guid == guid && i.Grid == grid)) ? card : null;
     }
 
     private static int MissingTarget(int sourceType) => sourceType is 2 or 3 ? ErrorCodes.FeatureUnavailable
@@ -459,7 +459,7 @@ public sealed partial class CardService
         var ledger = new List<PaidCost>();
         foreach (var (entry, count) in cost)
         {
-            if (data.Row("ItemConfig", entry) is not { } row) return (ErrorCodes.ItemNoConfig, currency, instances, ledger);
+            if (_data.Row("ItemConfig", entry) is not { } row) return (ErrorCodes.ItemNoConfig, currency, instances, ledger);
             if (GameData.Int(row, "_iType") == 1)
             {
                 currency.Add((entry, count));
@@ -480,8 +480,8 @@ public sealed partial class CardService
             }
             if (remaining > 0) return (ErrorCodes.ItemsShort, currency, instances, ledger);
         }
-        int shortCurrency = character.ShortageOf(session, currency);
-        if (currency.Any(c => character.CountOf(session, c.Entry) < c.Count)) return (shortCurrency, currency, instances, ledger);
+        int shortCurrency = _character.ShortageOf(session, currency);
+        if (currency.Any(c => _character.CountOf(session, c.Entry) < c.Count)) return (shortCurrency, currency, instances, ledger);
         return (0, currency, instances, ledger);
     }
 
@@ -532,9 +532,9 @@ public sealed partial class CardService
         if (error == 0 && payment.Error != 0) error = payment.Error;
         if (error == 0 && !LedgerFits(card!, payment.Ledger, 510, 513)) error = ErrorCodes.Parameter;
         List<(int Entry, long Count)> economyCosts = error == 0 ? CardPaymentCosts(session, payment.Currency, payment.Instances) : [];
-        if (error == 0 && await character.ExchangeLockedAsync(session, payment.Currency, [], payment.Instances,
+        if (error == 0 && await _character.ExchangeLockedAsync(session, payment.Currency, [], payment.Instances,
             popup: false, sync: false, reservedGuid: card!.Guid,
-            persist: builder => builder.WithEconomy(character.FamilyEconomy(session, "cd13a/card-level",
+            persist: builder => builder.WithEconomy(_character.FamilyEconomy(session, "cd13a/card-level",
                 economyCosts, [],
                 new { Card = card!.Entry, Guid = card!.Guid, NewLevel = level + 1 })),
             stageItems: staged =>
@@ -549,7 +549,7 @@ public sealed partial class CardService
         if (error == 0 && card != null)
         {
             level++;
-            await character.ItemsChangedAsync(session, stats: card.Grid < 0);
+            await _character.ItemsChangedAsync(session, stats: card.Grid < 0);
         }
         await session.SendGameAsync(LevelUp, new CardLevelUpResp { Result = error, SourceType = req.SourceType, Guid = req.Guid, SlotIndex = req.SlotIndex, GridType = req.GridType, NewLevel = level });
     }
@@ -590,13 +590,13 @@ public sealed partial class CardService
             int points = unlocked ? TierPoints(card.Entry, reached, library.Cards[card.Entry].CardStar) : 0;
             if (points > 0 && Param("LibraryOverviewPointID") is var pointItem and > 0) tierGains.Add((pointItem, points));
         }
-        if (error == 0 && await character.ExchangeLockedAsync(session, payment.Currency, tierGains, payment.Instances,
+        if (error == 0 && await _character.ExchangeLockedAsync(session, payment.Currency, tierGains, payment.Instances,
             popup: false, sync: false, reservedGuid: card!.Guid,
             persist: builder =>
             {
                 if (nextPlans != null) builder.RoleBlob(session.Role!.Id, "card_plans", nextPlans.ToByteArray());
                 if (nextLibrary != null) builder.RoleBlob(session.Role!.Id, "library", nextLibrary.ToByteArray());
-                builder.WithEconomy(character.FamilyEconomy(session, "cd13a/card-star",
+                builder.WithEconomy(_character.FamilyEconomy(session, "cd13a/card-star",
                     economyCosts, tierGains.ToArray(),
                     new { Card = card!.Entry, Guid = card!.Guid, NewStar = tier + 1 }));
             },
@@ -623,7 +623,7 @@ public sealed partial class CardService
         if (error == 0 && card != null)
         {
             tier++;
-            await character.ItemsChangedAsync(session, stats: card.Grid < 0);
+            await _character.ItemsChangedAsync(session, stats: card.Grid < 0);
             if (nextPlans != null) await CharacterService.SyncAsync(session, StorageHoleSync, nextPlans.Clone());
             if (nextLibrary != null) await CharacterService.SyncAsync(session, LibrarySync, session.Library!.Clone());
             if (card.Grid < 0) await NotifySocketsChangedAsync(session);
@@ -651,7 +651,7 @@ public sealed partial class CardService
     public async Task RevertAsync(GameSession session, CardRevertReq req)
     {
         using var _ = await CharacterService.Lock(session);
-        var card = session.Items.FirstOrDefault(i => i.Guid == req.CardGuid && i.Grid == 0 && character.IsCard(i.Entry));
+        var card = session.Items.FirstOrDefault(i => i.Guid == req.CardGuid && i.Grid == 0 && _character.IsCard(i.Entry));
         int level = (int)(card?.Attrs?.GetValueOrDefault(501) ?? 0), tier = (int)(card?.Attrs?.GetValueOrDefault(502) ?? 0);
         int error = card == null ? ErrorCodes.ItemMissing : level == 0 && tier == 0 ? ErrorCodes.CardLevelReturn : 0;
         List<PaidCost> refund = [];
@@ -660,8 +660,8 @@ public sealed partial class CardService
             try { refund = ReadLedger(card!); }
             catch (InvalidDataException) { error = ErrorCodes.Parameter; }
         }
-        var itemRow = card == null ? null : data.Row("ItemConfig", card.Entry);
-        var feeRow = itemRow is { } ir ? data.Table("CardReturnCostConfig").Values.FirstOrDefault(r => GameData.Int(r, "_iQuality") == GameData.Int(ir, "_iQuality")) : default;
+        var itemRow = card == null ? null : _data.Row("ItemConfig", card.Entry);
+        var feeRow = itemRow is { } ir ? _data.Table("CardReturnCostConfig").Values.FirstOrDefault(r => GameData.Int(r, "_iQuality") == GameData.Int(ir, "_iQuality")) : default;
         var fee = feeRow.ValueKind == JsonValueKind.Object ? Cost(feeRow, "_iCost") : [];
         if (error == 0 && fee.Count == 0) error = ErrorCodes.Parameter;
         List<((int Entry, int BindType, long BindExpire, int CardType) Key, long Count)> grouped = [];
@@ -677,12 +677,12 @@ public sealed partial class CardService
         if (error == 0 && grouped.Any(g => g.Count > int.MaxValue)) error = ErrorCodes.Parameter;
         var goods = error == 0 ? grouped.Select(g => new CharacterService.AttributedGood(g.Key.Entry, (int)g.Count,
             g.Key.BindType, g.Key.BindExpire, g.Key.CardType)).ToList() : [];
-        if (error == 0 && goods.Any(g => data.Row("ItemConfig", g.Entry) == null || g.CardType != 0 && !character.IsCard(g.Entry)))
+        if (error == 0 && goods.Any(g => _data.Row("ItemConfig", g.Entry) == null || g.CardType != 0 && !_character.IsCard(g.Entry)))
             error = ErrorCodes.Parameter;
         List<InvItem>? granted = null;
-        if (error == 0 && (granted = await character.ExchangeLockedAsync(session, fee, [], popup: false, sync: false,
+        if (error == 0 && (granted = await _character.ExchangeLockedAsync(session, fee, [], popup: false, sync: false,
             reservedGuid: card!.Guid, attributedGoods: goods,
-            persist: builder => builder.WithEconomy(character.FamilyEconomy(session, "cd13a/card-revert",
+            persist: builder => builder.WithEconomy(_character.FamilyEconomy(session, "cd13a/card-revert",
                 fee, goods.Select(g => (g.Entry, g.Count)).ToArray(),
                 new { Card = card!.Entry, Guid = card!.Guid, Refunded = goods.Select(g => new { g.Entry, g.Count, g.BindType, g.BindExpire, g.CardType }).ToArray() })),
             stageAfterGoods: staged =>
@@ -696,10 +696,10 @@ public sealed partial class CardService
                     foreach (var key in target.StringAttrs.Keys.Where(k => k is >= 510 and <= 513 or >= 520 and <= 529).ToList())
                         target.StringAttrs.Remove(key);
             }, asyncCommit: true)) == null)
-            error = character.ShortageOf(session, fee);
+            error = _character.ShortageOf(session, fee);
         if (error == 0 && card != null)
         {
-            await character.ItemsChangedAsync(session, stats: false);
+            await _character.ItemsChangedAsync(session, stats: false);
         }
         var resp = new CardRevertResp { Result = error, CardGuid = req.CardGuid, EntryId = card?.Entry ?? 0, Type = (int)(card?.Attrs?.GetValueOrDefault(530) ?? 0) };
         if (card != null)
@@ -711,16 +711,16 @@ public sealed partial class CardService
         {
             foreach (var good in goods)
             {
-                if (data.Row("ItemConfig", good.Entry) is { } row && GameData.Int(row, "_iType") == 1) continue;
+                if (_data.Row("ItemConfig", good.Entry) is { } row && GameData.Int(row, "_iType") == 1) continue;
                 var item = granted!.First(i => i.Entry == good.Entry && i.BindType == good.BindType && i.BindExpire == good.BindExpire
                     && (i.Attrs?.GetValueOrDefault(530) ?? 0) == good.CardType);
-                var delta = character.ItemInfoOf(item);
+                var delta = _character.ItemInfoOf(item);
                 delta.Stack = good.Count; // The popup count is the refund, even when the bag item was an existing stack.
                 resp.RevertCards.Add(delta);
             }
             // The return preview always lists the reset original once, even for level-only returns
             // (UI_Sys_CardReturnContentWidgetCtrl.lua:212-255). This is display data, not another inventory grant.
-            resp.RevertCards.Add(character.ItemInfoOf(card!));
+            resp.RevertCards.Add(_character.ItemInfoOf(card!));
         }
         await session.SendGameAsync(Revert, resp);
     }
@@ -731,7 +731,7 @@ public sealed partial class CardService
     /// committed copies (Observe).</summary>
     private void OnItemGained(GameSession session, int entry, int count)
     {
-        if (session.Library == null || !character.IsCard(entry)) return;
+        if (session.Library == null || !_character.IsCard(entry)) return;
         bool changed = false;
         if (!session.Library.Cards.ContainsKey(entry))
         {
@@ -742,7 +742,7 @@ public sealed partial class CardService
         if (!changed) return;
         SaveLibrary(session);
         var attachment = session.Attachment;
-        loop.TrackLegacyDetached("card library sync", () =>
+        _loop.TrackLegacyDetached("card library sync", () =>
             attachment?.Cancelled == true || !ReferenceEquals(session.Attachment, attachment)
                 ? Task.CompletedTask : CharacterService.SyncAsync(session, LibrarySync, session.Library.Clone()));
     }
@@ -753,7 +753,7 @@ public sealed partial class CardService
         var next = session.Library.Clone();
         bool changed = CountMonsterKill(next, monster);
         foreach (int entry in entries.Distinct())
-            if (character.IsCard(entry) && !next.Cards.ContainsKey(entry))
+            if (_character.IsCard(entry) && !next.Cards.ContainsKey(entry))
             {
                 next.Cards[entry] = new LibraryCardInfo { CardId = entry };
                 changed = true;
@@ -770,7 +770,7 @@ public sealed partial class CardService
         return new(builder =>
             {
                 if (newCards.Length == 0) { builder.RoleBlob(role, "library", next.ToByteArray()); return; } // a Codex kill only
-                byte[]? old = roles.ReadTaskFollowup(builder, role);
+                byte[]? old = _roles.ReadTaskFollowup(builder, role);
                 var pending = old is { Length: > 0 }
                     ? JsonSerializer.Deserialize<HashSet<string>>(old) ?? [] : new HashSet<string>();
                 foreach (long card in newCards) pending.Add($"card-sight/{role}/{epoch}/{card}");
@@ -781,7 +781,7 @@ public sealed partial class CardService
             {
                 session.Library = next;
                 if (attachment?.Cancelled != true && ReferenceEquals(session.Attachment, attachment))
-                    loop.TrackLegacyDetached("card library sync", () =>
+                    _loop.TrackLegacyDetached("card library sync", () =>
                         attachment?.Cancelled == true || !ReferenceEquals(session.Attachment, attachment)
                             ? Task.CompletedTask : CharacterService.SyncAsync(session, LibrarySync, session.Library!.Clone()));
             });
@@ -817,8 +817,8 @@ public sealed partial class CardService
                 {
                     try
                     {
-                        ok = await character.ApplyAwardAsync(session, new AwardPlan(0, 0, [new AwardGrant(item, points)]),
-                            persist: tx => roles.StageCardUnlock(tx, role, epoch, req.CardId, false, bytes),
+                        ok = await _character.ApplyAwardAsync(session, new AwardPlan(0, 0, [new AwardGrant(item, points)]),
+                            persist: tx => _roles.StageCardUnlock(tx, role, epoch, req.CardId, false, bytes),
                             stateLockHeld: true, committed: () => session.Library = next,
                             ownedAward: new CharacterService.OwnedAwardSource("cd13e/library-award",
                                 $"library-card/{role}/{req.CardId}",
@@ -826,16 +826,16 @@ public sealed partial class CardService
                     }
                     catch (Exception fault) when (fault is not OperationCanceledException)
                     {
-                        log.LogError(fault, "Card {Card} unlock failed for {Role}", req.CardId, role);
+                        _log.LogError(fault, "Card {Card} unlock failed for {Role}", req.CardId, role);
                         ok = false;
                     }
                     failed = !ok;
-                    if (ok) log.LogInformation("{Name} unlocks card {Card} (treasure {Treasure}): {Points} x {Item}",
+                    if (ok) _log.LogInformation("{Name} unlocks card {Card} (treasure {Treasure}): {Points} x {Item}",
                         session.Role.Name, req.CardId, req.IsTreasure, points, item);
                 }
                 else
-                    await roles.CommitCardUnlockAsync(role, epoch, req.CardId, req.IsTreasure, bytes, session.Items,
-                        character.FamilyEconomy(session, "cd13a/card-unlock", [], [],
+                    await _roles.CommitCardUnlockAsync(role, epoch, req.CardId, req.IsTreasure, bytes, session.Items,
+                        _character.FamilyEconomy(session, "cd13a/card-unlock", [], [],
                             new { req.CardId, req.IsTreasure }),
                         () => session.Library = next);
             }
@@ -845,13 +845,13 @@ public sealed partial class CardService
             await CharacterService.SyncAsync(session, LibrarySync, session.Library!.Clone());
         if (ok && RequiredCollectionRefresh is { } refresh)
             try { await refresh(session, context); }
-            catch (Exception e) { log.LogError(e, "Mandatory card quest refresh remains pending for role {Role} card {Card}", session.Role!.Id, req.CardId); }
+            catch (Exception e) { _log.LogError(e, "Mandatory card quest refresh remains pending for role {Role} card {Card}", session.Role!.Id, req.CardId); }
         // Quest collection subscribers may deliver rewards; run them after the character lock and before the reply.
         // The library was already committed, so a failed subscriber cannot turn a successful unlock into a lost reply.
         if (ok && attachment?.Cancelled != true && ReferenceEquals(session.Attachment, attachment))
             foreach (var handler in CollectionChanged)
                 try { await handler(session); }
-                catch (Exception e) { log.LogError(e, "Card collection callback failed for role {Role} card {Card}", session.Role!.Id, req.CardId); }
+                catch (Exception e) { _log.LogError(e, "Card collection callback failed for role {Role} card {Card}", session.Role!.Id, req.CardId); }
         if (attachment?.Cancelled != true && ReferenceEquals(session.Attachment, attachment))
             await session.SendGameAsync(LibraryCardUnlock, new LibraryCardUnlockResp { Result = ok ? 0 : error, CardId = req.CardId });
     }
@@ -866,7 +866,7 @@ public sealed partial class CardService
     /// </summary>
     private int CardUnlockPoints(int card, int reachedStar) => TierPoints(card, -1, reachedStar);
 
-    private void SaveLibrary(GameSession session) => roles.SaveLibrary(session.Role!.Id, session.Library!.ToByteArray());
+    private void SaveLibrary(GameSession session) => _roles.SaveLibrary(session.Role!.Id, session.Library!.ToByteArray());
 
     /// <summary>
     /// 82405: the Codex overview theme. LC_DAL_Library._processLibraryChangeUI (lua:372-402) sets the dataset's
@@ -880,14 +880,14 @@ public sealed partial class CardService
         using (await CharacterService.Lock(session))
         {
             code = session.Library == null || session.Role == null ? ErrorCodes.FeatureUnavailable
-                : data.Row("LibraryThemeConfig", req.ThemeId) is not { } theme ? ErrorCodes.Parameter
-                : !functions.ConditionMet(session, GameData.Int(theme, "_iUnlockCondition")) ? ErrorCodes.UnlockRequirement
+                : _data.Row("LibraryThemeConfig", req.ThemeId) is not { } theme ? ErrorCodes.Parameter
+                : !_functions.ConditionMet(session, GameData.Int(theme, "_iUnlockCondition")) ? ErrorCodes.UnlockRequirement
                 : 0;
             if (code == 0 && session.Library!.OverviewTheme != req.ThemeId)
             {
                 var next = session.Library.Clone();
                 next.OverviewTheme = req.ThemeId;
-                roles.SaveLibrary(session.Role!.Id, next.ToByteArray());
+                _roles.SaveLibrary(session.Role!.Id, next.ToByteArray());
                 session.Library = next;
                 await CharacterService.SyncAsync(session, LibrarySync, session.Library.Clone());
             }

@@ -60,24 +60,24 @@ public static class LuaChunkDecoder
             return m;
         }
 
-        private int p;
+        private int _p;
 
         public void Decode()
         {
             if (d[0] != 0x1E && d[0] != 0x1B) throw new InvalidDataException($"unexpected signature 0x{d[0]:X2}");
             d[0] = 0x1B;
             if (d[4] != 0x54) throw new InvalidDataException("not Lua 5.4");
-            p = 31;     // header: sig4 ver fmt data6 sizes3 int8 num8
-            p++;        // main closure sizeupvalues
+            _p = 31;     // header: sig4 ver fmt data6 sizes3 int8 num8
+            _p++;        // main closure sizeupvalues
             Function();
-            if (p != d.Length) throw new InvalidDataException($"trailing bytes: parsed {p} of {d.Length}");
+            if (_p != d.Length) throw new InvalidDataException($"trailing bytes: parsed {_p} of {d.Length}");
         }
 
         private ulong Varint()
         {
             ulong x = 0;
             byte b;
-            do { b = d[p++]; x = (x << 7) | (uint)(b & 0x7F); } while ((b & 0x80) == 0);
+            do { b = d[_p++]; x = (x << 7) | (uint)(b & 0x7F); } while ((b & 0x80) == 0);
             return x;
         }
 
@@ -86,9 +86,9 @@ public static class LuaChunkDecoder
             var size = (int)Varint();
             if (size == 0) return;
             int n = size - 1;
-            for (int k = n - 1; k >= 1; k--) d[p + k] ^= d[p + k - 1];
-            if (n > 0) d[p] ^= (byte)n;
-            p += n;
+            for (int k = n - 1; k >= 1; k--) d[_p + k] ^= d[_p + k - 1];
+            if (n > 0) d[_p] ^= (byte)n;
+            _p += n;
         }
 
         private void Function()
@@ -96,34 +96,34 @@ public static class LuaChunkDecoder
             Str();          // source
             Varint();       // linedefined
             Varint();       // lastlinedefined
-            p += 3;         // numparams, is_vararg, maxstacksize
+            _p += 3;         // numparams, is_vararg, maxstacksize
             var sizecode = (uint)Varint();
             uint key = (sizecode << 16) | sizecode;
-            for (uint i = 0; i < sizecode; i++, p += 4)
+            for (uint i = 0; i < sizecode; i++, _p += 4)
             {
-                uint w = BitConverter.ToUInt32(d, p) ^ key;
-                if ((w & 0x7F) > 83) throw new InvalidDataException($"unknown opcode {w & 0x7F} at {p}");
+                uint w = BitConverter.ToUInt32(d, _p) ^ key;
+                if ((w & 0x7F) > 83) throw new InvalidDataException($"unknown opcode {w & 0x7F} at {_p}");
                 w = (w & ~0x7Fu) | OpMap[w & 0x7F];
-                BitConverter.TryWriteBytes(d.AsSpan(p, 4), w);
+                BitConverter.TryWriteBytes(d.AsSpan(_p, 4), w);
             }
             var sizek = (int)Varint();
             for (int i = 0; i < sizek; i++)
             {
-                byte tag = d[p++];
+                byte tag = d[_p++];
                 switch (tag)
                 {
                     case 0x00: case 0x01: case 0x11: break;
-                    case 0x03: case 0x13: p += 8; break;
+                    case 0x03: case 0x13: _p += 8; break;
                     case 0x04: case 0x14: Str(); break;
-                    default: throw new InvalidDataException($"constant tag 0x{tag:X2} at {p - 1}");
+                    default: throw new InvalidDataException($"constant tag 0x{tag:X2} at {_p - 1}");
                 }
             }
             var sizeup = (int)Varint();
-            p += 3 * sizeup;
+            _p += 3 * sizeup;
             var sizep = (int)Varint();
             for (int i = 0; i < sizep; i++) Function();
             var lineinfo = (int)Varint();
-            p += lineinfo;
+            _p += lineinfo;
             var abslines = (int)Varint();
             for (int i = 0; i < abslines; i++) { Varint(); Varint(); }
             var locvars = (int)Varint();

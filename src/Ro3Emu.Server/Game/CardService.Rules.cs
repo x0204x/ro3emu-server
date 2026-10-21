@@ -13,7 +13,7 @@ public sealed partial class CardService
     {
         foreach (var handler in SocketsChanged)
             try { await handler(session); }
-            catch (Exception e) { log.LogError(e, "Card socket observer failed for role {Role}", session.Role?.Id); }
+            catch (Exception e) { _log.LogError(e, "Card socket observer failed for role {Role}", session.Role?.Id); }
     }
 
     internal Task SocketsChangedAsync(GameSession session) => NotifySocketsChangedAsync(session);
@@ -29,7 +29,7 @@ public sealed partial class CardService
     /// </summary>
     private int InsertRuleError(int entry, IEnumerable<int> others)
     {
-        if (data.Row("ItemConfig", entry) is not { } row) return 0;
+        if (_data.Row("ItemConfig", entry) is not { } row) return 0;
         var socketed = others.ToList();
         if (GameData.Int(row, "_iIfSameCard") != 0 && socketed.Contains(entry)) return ErrorCodes.CardSameName;
         if (GameData.Int(row, "_iIsEleCard") != 0 && socketed.Any(IsElementCard)) return ErrorCodes.CardSameElement;
@@ -38,8 +38,8 @@ public sealed partial class CardService
         return 0;
     }
 
-    private bool IsElementCard(int entry) => data.Row("ItemConfig", entry) is { } row && GameData.Int(row, "_iIsEleCard") != 0;
-    private long CardGroup(int entry) => data.Row("ItemConfig", entry) is { } row ? GameData.Int(row, "_iCardGroup") : 0;
+    private bool IsElementCard(int entry) => _data.Row("ItemConfig", entry) is { } row && GameData.Int(row, "_iIsEleCard") != 0;
+    private long CardGroup(int entry) => _data.Row("ItemConfig", entry) is { } row ? GameData.Int(row, "_iCardGroup") : 0;
 
     /// <summary>Card ids socketed anywhere except the listed (grid, socket) addresses.</summary>
     private static IEnumerable<int> SocketedExcept(IEnumerable<InvItem> items, params (int Grid, int Socket)[] excluded) => items

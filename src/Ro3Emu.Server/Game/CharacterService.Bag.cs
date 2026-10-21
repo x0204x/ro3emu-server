@@ -110,8 +110,8 @@ public sealed partial class CharacterService
         if (SpecialItemUse.Count > 0 || LifeItemUse != null)
         {
             var lifeUse = new LifeItemExchangeScope(session, PersistCooldown, PublishCooldown);
-            var previous = lifeItemExchange.Value;
-            lifeItemExchange.Value = lifeUse;
+            var previous = LifeItemExchange.Value;
+            LifeItemExchange.Value = lifeUse;
             try
             {
                 foreach (var handler in SpecialItemUse)
@@ -122,7 +122,7 @@ public sealed partial class CharacterService
                 if (specialized == null && LifeItemUse != null)
                     specialized = await LifeItemUse(session, item, row.Value, count);
             }
-            finally { lifeUse.Active = false; lifeItemExchange.Value = previous; }
+            finally { lifeUse.Active = false; LifeItemExchange.Value = previous; }
         }
         if (specialized == null && IsTreasureMapUse(row.Value))
             specialized = StartTreasureMap == null ? ErrorCodes.FeatureUnavailable

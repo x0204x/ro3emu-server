@@ -35,21 +35,21 @@ public sealed class PraiseService(SessionRegistry sessions, TimeProvider clock)
         public Dictionary<long, HashSet<long>> LikedBy { get; } = new();
     }
 
-    private readonly Dictionary<long, Board> boards = new();
-    private readonly Dictionary<long, long> latest = new();
+    private readonly Dictionary<long, Board> _boards = new();
+    private readonly Dictionary<long, long> _latest = new();
 
     /// <summary>A group run started: its members can like each other from now on (until their next run).</summary>
     public void Remember(long id, long scene, IEnumerable<long> members)
     {
         var now = clock.GetUtcNow();
-        foreach (var stale in boards.Values.Where(b => now - b.Created > Lifetime).Select(b => b.Id).ToArray()) boards.Remove(stale);
+        foreach (var stale in _boards.Values.Where(b => now - b.Created > Lifetime).Select(b => b.Id).ToArray()) _boards.Remove(stale);
         var board = new Board { Id = id, Scene = (int)scene, Members = members.ToHashSet(), Created = now };
-        boards[id] = board;
-        foreach (long role in board.Members) latest[role] = id;
-        foreach (long role in latest.Where(p => !boards.ContainsKey(p.Value)).Select(p => p.Key).ToArray()) latest.Remove(role);
+        _boards[id] = board;
+        foreach (long role in board.Members) _latest[role] = id;
+        foreach (long role in _latest.Where(p => !_boards.ContainsKey(p.Value)).Select(p => p.Key).ToArray()) _latest.Remove(role);
     }
 
-    private Board? BoardOf(long role) => latest.TryGetValue(role, out long id) && boards.TryGetValue(id, out var board)
+    private Board? BoardOf(long role) => _latest.TryGetValue(role, out long id) && _boards.TryGetValue(id, out var board)
         && clock.GetUtcNow() - board.Created <= Lifetime ? board : null;
 
     public async Task PraiseAsync(GameSession s, MultiDungeonPraiseReq req)

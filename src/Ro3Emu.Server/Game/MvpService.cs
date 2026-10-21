@@ -74,20 +74,20 @@ public sealed partial class MvpService : IGameTicker
         public readonly List<MvpFieldUnit> Fields = new();
     }
 
-    private readonly GameData data;
-    private readonly AccountStore accounts;
-    private readonly MonsterService monsters;
-    private readonly WorldData worldData;
-    private readonly CharacterService character;
-    private readonly RewardService rewards;
-    private readonly TaskService tasks;
-    private readonly TeamService teams;
-    private readonly SessionRegistry sessions;
-    private readonly ILogger<MvpService> log;
-    private readonly World world;
-    private readonly GameLoop loop;
-    private readonly CombatService combat;
-    private readonly BuffService buffs;
+    private readonly GameData _data;
+    private readonly AccountStore _accounts;
+    private readonly MonsterService _monsters;
+    private readonly WorldData _worldData;
+    private readonly CharacterService _character;
+    private readonly RewardService _rewards;
+    private readonly TaskService _tasks;
+    private readonly TeamService _teams;
+    private readonly SessionRegistry _sessions;
+    private readonly ILogger<MvpService> _log;
+    private readonly World _world;
+    private readonly GameLoop _loop;
+    private readonly CombatService _combat;
+    private readonly BuffService _buffs;
     private readonly Random _random = new();
     private Dictionary<int, State>? _states;
     private readonly Dictionary<RuntimeMapKey, Dictionary<int, State>> _lineStates = new();
@@ -129,20 +129,20 @@ public sealed partial class MvpService : IGameTicker
         RewardService rewards, TaskService tasks, TeamService teams, CombatService combat, BuffService buffs, SessionRegistry sessions,
         World world, GameLoop loop, SceneService scene, PublicLineManager lines, ILogger<MvpService> log)
     {
-        this.buffs = buffs;
-        this.data = data;
-        this.accounts = accounts;
-        this.monsters = monsters;
-        this.worldData = worldData;
-        this.character = character;
-        this.rewards = rewards;
-        this.tasks = tasks;
-        this.teams = teams;
-        this.sessions = sessions;
-        this.log = log;
-        this.world = world;
-        this.loop = loop;
-        this.combat = combat;
+        this._buffs = buffs;
+        this._data = data;
+        this._accounts = accounts;
+        this._monsters = monsters;
+        this._worldData = worldData;
+        this._character = character;
+        this._rewards = rewards;
+        this._tasks = tasks;
+        this._teams = teams;
+        this._sessions = sessions;
+        this._log = log;
+        this._world = world;
+        this._loop = loop;
+        this._combat = combat;
         // No tick retry (as before the shared component): an undelivered award waits for the next kill's delivery
         // pass or the next login, and a refused delivery stops that pass.
         _awardObligations = new RoleObligations<MvpObligationRow>("MVP award", accounts, loop, TimeProvider.System,
@@ -181,14 +181,14 @@ public sealed partial class MvpService : IGameTicker
     public async Task AwardNumAsync(GameSession s)
     {
         long role = s.Role!.Id;
-        using var scope = loop.Owners is { } owners
+        using var scope = _loop.Owners is { } owners
             ? await owners.EnterAsync("mvp/daily-counter", ReservationKey.Role(role)) : null;
         var (info, reset) = await LoadCountersAsync(role);
         if (reset)
         {
-            var builder = new RoleItemPlanBuilder(accounts);
+            var builder = new RoleItemPlanBuilder(_accounts);
             builder.Add(new MvpWritePlan(role, CounterRow(info)));
-            await builder.CommitAsync(accounts, "mvp/daily-counter-reset");
+            await builder.CommitAsync(_accounts, "mvp/daily-counter-reset");
         }
         await s.SendGameAsync(AwardNum, new MVPAwardNumRsp { Result = 0, Info = info });
     }
@@ -229,14 +229,14 @@ public sealed partial class MvpService : IGameTicker
                     ? [ReservationKey.Entity("mvp_cooldown", cfgKey), ReservationKey.Entity("mvp_state", cfgKey)]
                     : [ReservationKey.Entity("mvp_cooldown", cfgKey)]
                 : [];
-            using var mutation = mutationKeys.Length > 0 && loop.Owners is { } owners
+            using var mutation = mutationKeys.Length > 0 && _loop.Owners is { } owners
                 ? await owners.EnterAsync("mvp/gm", mutationKeys) : null;
             switch (args[0])
             {
                 case "spawn":
                     if (st.Unit is { Dead: false }) return $"MVP {cfg} is alive on {st.Def.MapId}.";
                     await SaveStateAsync(st, MVP_STATE.Born, MonsterService.NowMs);
-                    return $"MVP {cfg} {NpcName(st.Def.NpcId)} respawns on {st.Def.MapId} {data.MapName(st.Def.MapId)}.";
+                    return $"MVP {cfg} {NpcName(st.Def.NpcId)} respawns on {st.Def.MapId} {_data.MapName(st.Def.MapId)}.";
                 case "weaken":
                     if (st.Unit is not { Dead: false } w) return $"MVP {cfg} is not alive.";
                     if (w.Hp <= 0 || st.Phase != MVP_STATE.Born || _preparedKills.ContainsKey(w) || _unknownKills.ContainsKey(w))
@@ -304,13 +304,13 @@ public sealed partial class MvpService : IGameTicker
 
     private void Schedule(State st, TimeSpan delay, Func<Task> work, MonsterUnit? actor = null)
     {
-        if (!st.Retired) st.Deadlines.Add((loop.Now + delay, work, actor));
+        if (!st.Retired) st.Deadlines.Add((_loop.Now + delay, work, actor));
     }
 
     private async Task RunDeadlineAsync(State st, Func<Task> work)
     {
         try { if (!st.Retired) await work(); }
-        catch (Exception e) { log.LogError(e, "MVP deadline failed for {Cfg} on {Runtime}", st.Def.CfgId, st.Runtime); }
+        catch (Exception e) { _log.LogError(e, "MVP deadline failed for {Cfg} on {Runtime}", st.Def.CfgId, st.Runtime); }
         finally { EndPending(st); }
     }
 
@@ -324,7 +324,7 @@ public sealed partial class MvpService : IGameTicker
             foreach (var deadline in due)
             {
                 st.Pending++;
-                loop.TrackRuntimeDetached("MVP deadline", () => RunDeadlineAsync(st, deadline.Work));
+                _loop.TrackRuntimeDetached("MVP deadline", () => RunDeadlineAsync(st, deadline.Work));
             }
         }
         _sinceCheck += time.Delta;
@@ -333,17 +333,17 @@ public sealed partial class MvpService : IGameTicker
         long now = MonsterService.NowMs;
         foreach (var (monster, prepared) in _preparedKills.ToArray())
             if (monster.Dead && !prepared.State.Retired && !prepared.Finalizing)
-                loop.TrackRuntimeDetached("MVP finalize committed death", () => FinalizePreparedAsync(monster));
+                _loop.TrackRuntimeDetached("MVP finalize committed death", () => FinalizePreparedAsync(monster));
         foreach (var (monster, unknown) in _unknownKills.ToArray())
             if (!unknown.Resolving && !unknown.State.Retired)
             {
                 unknown.Resolving = true;
-                loop.TrackRuntimeDetached("MVP resolve uncertain death", () => ResolveUnknownDeathAsync(monster, unknown));
+                _loop.TrackRuntimeDetached("MVP resolve uncertain death", () => ResolveUnknownDeathAsync(monster, unknown));
             }
         foreach (var st in States().Values.Concat(_lineStates.Values.SelectMany(v => v.Values)))
         {
             if (st.Retired) continue;
-            if (st.Phase == MVP_STATE.Born && st.Unit == null && !st.Spawning) loop.TrackRuntimeDetached("MVP spawn", () => SpawnAsync(st));
+            if (st.Phase == MVP_STATE.Born && st.Unit == null && !st.Spawning) _loop.TrackRuntimeDetached("MVP spawn", () => SpawnAsync(st));
             else if (st.Phase == MVP_STATE.Born && st.Unit is { Dead: false, Hp: > 0 } boss
                 && !_preparedKills.ContainsKey(boss) && !_unknownKills.ContainsKey(boss)) TickBossSkills(st, boss, now);
             else if (st.Phase == MVP_STATE.Reborn)
@@ -352,15 +352,15 @@ public sealed partial class MvpService : IGameTicker
                 if (!st.Noticed && now >= respawn - NoticeBeforeMs)
                 {
                     st.Noticed = true;
-                    foreach (var p in sessions.All().Where(p => p.Role != null && p.WorldScene == st.Runtime.WorldScene))
-                        loop.PostOwned(p, () => p.SendGameAsync(PreNotice, new MVPP2SNotice { CfgId = st.Def.CfgId, SceneId = st.Def.MapId }), "MVP notice");
+                    foreach (var p in _sessions.All().Where(p => p.Role != null && p.WorldScene == st.Runtime.WorldScene))
+                        _loop.PostOwned(p, () => p.SendGameAsync(PreNotice, new MVPP2SNotice { CfgId = st.Def.CfgId, SceneId = st.Def.MapId }), "MVP notice");
                 }
                 // The event source may be durable while E04 has restored an unpublished
                 // boss to 1 HP. Do not replace that actor until both barriers publish it.
                 if (now >= respawn && !st.Transitioning && st.Unit is not { Dead: false })
                 {
                     st.Transitioning = true;
-                    loop.TrackRuntimeDetached("MVP respawn", async () =>
+                    _loop.TrackRuntimeDetached("MVP respawn", async () =>
                     {
                         try { await SaveStateAsync(st, MVP_STATE.Born, MonsterService.NowMs, onlyIfReborn: true); }
                         finally { st.Transitioning = false; }
@@ -372,7 +372,7 @@ public sealed partial class MvpService : IGameTicker
 
     private async Task SpawnAsync(State st)
     {
-        if (st.Retired || worldData.Map(st.Def.MapId) is not { } map) return;
+        if (st.Retired || _worldData.Map(st.Def.MapId) is not { } map) return;
         st.Spawning = true;
         st.Pending++;
         try
@@ -391,7 +391,7 @@ public sealed partial class MvpService : IGameTicker
         var points = map.SpawnGroups.SelectMany(g => g.Points).ToList();
         var at = points.Count > 0 ? points[_random.Next(points.Count)] is var p ? new MapPoint(p.X, p.Y, p.Z, p.Face) : default
             : map.Born ?? default;
-        st.Unit = await monsters.SpawnSingleAsync(st.Runtime, st.Def.NpcId, at);
+        st.Unit = await _monsters.SpawnSingleAsync(st.Runtime, st.Def.NpcId, at);
         if (st.Unit != null) st.Unit.SpecialsOwnedByMvp = true; // TickBossSkills paces all of its specials
         if (st.Retired) { st.Unit = null; return; }
         if (st.Unit == null) return;
@@ -402,8 +402,8 @@ public sealed partial class MvpService : IGameTicker
         st.NextCastMs = st.LastFightMs = 0;
         st.UnFightApplied = false;
         await ApplyBornBuffsAsync(st.Unit);
-        log.LogInformation("MVP {Cfg} ({Npc} {Name}) spawned on {Map} at {X:F0},{Z:F0}", st.Def.CfgId, st.Def.NpcId, NpcName(st.Def.NpcId), st.Def.MapId, st.Unit.X, st.Unit.Z);
-        await BroadcastAsync(st.Runtime, RefreshMessage, ClientNpcName(st.Def.NpcId), data.ClientMapName(st.Def.MapId));
+        _log.LogInformation("MVP {Cfg} ({Npc} {Name}) spawned on {Map} at {X:F0},{Z:F0}", st.Def.CfgId, st.Def.NpcId, NpcName(st.Def.NpcId), st.Def.MapId, st.Unit.X, st.Unit.Z);
+        await BroadcastAsync(st.Runtime, RefreshMessage, ClientNpcName(st.Def.NpcId), _data.ClientMapName(st.Def.MapId));
     }
 
     internal void StopSummonsAfterObservationForTest(MonsterUnit boss)
@@ -422,7 +422,7 @@ public sealed partial class MvpService : IGameTicker
         var stat = StatOf(st, role.Id);
         stat.Attack += damage;
         // First strike: the first attacker; lost when the owner logs out or leaves the map (rules text 10960000072).
-        if (st.FirstPlayer == 0 || sessions.All().FirstOrDefault(p => p.Role?.Id == st.FirstPlayer) is not { } owner
+        if (st.FirstPlayer == 0 || _sessions.All().FirstOrDefault(p => p.Role?.Id == st.FirstPlayer) is not { } owner
             || owner.WorldScene != st.Runtime.WorldScene)
             st.FirstPlayer = role.Id;
         if (m.Hp == 0) _unpublishedLethalHits[m] = (role.Id, damage, previousFirst, newStat);
@@ -485,14 +485,14 @@ public sealed partial class MvpService : IGameTicker
                     KillerWorldScene = killerWorldScene,
                     KillerName = killerName, BeforeHp = beforeHp,
                 };
-                log.LogError(probeFailure, "MVP {Cfg} source probe failed; retaining frozen source {Source}", st.Def.CfgId, parentSource);
+                _log.LogError(probeFailure, "MVP {Cfg} source probe failed; retaining frozen source {Source}", st.Def.CfgId, parentSource);
                 throw new EventSettlementOutcomeUnknownException("MVP settlement outcome is unresolved.",
                     new AggregateException(failure, probeFailure));
             }
             if (committed != null)
             {
                 AdoptCommittedSettlement(m, st, committed, killerName);
-                log.LogWarning(failure, "MVP {Cfg} settlement source committed; publishing frozen result after apply fault", st.Def.CfgId);
+                _log.LogWarning(failure, "MVP {Cfg} settlement source committed; publishing frozen result after apply fault", st.Def.CfgId);
                 return;
             }
             throw new EventSettlementRolledBackException("MVP settlement did not commit.", failure);
@@ -518,7 +518,7 @@ public sealed partial class MvpService : IGameTicker
     private async Task<MvpSettlementSnapshot?> ProbeSettlementAsync(string source)
     {
         if (BeforeSettlementProbeForTest is { } before) await before(source);
-        return await accounts.ReadAsync<MvpSettlementSnapshot?>(new MvpSettlementProbeReadPlan(source));
+        return await _accounts.ReadAsync<MvpSettlementSnapshot?>(new MvpSettlementProbeReadPlan(source));
     }
 
     private async Task ResolveUnknownDeathAsync(MonsterUnit m, UnknownKill unknown)
@@ -534,30 +534,30 @@ public sealed partial class MvpService : IGameTicker
                 ReservationKey.Entity("mvp_settlement", unknown.Source),
             };
             if (st.Runtime.LineNumber == 1) keys.Add(ReservationKey.Entity("mvp_state", cfg));
-            using (var scope = loop.Owners is { } owners
+            using (var scope = _loop.Owners is { } owners
                 ? await owners.EnterAsync("mvp/resolve-uncertain", keys.ToArray()) : null)
             {
                 var committed = await ProbeSettlementAsync(unknown.Source);
                 if (!_unknownKills.TryGetValue(m, out var current) || !ReferenceEquals(current, unknown) || st.Retired) return;
                 if (committed == null)
                 {
-                    combat.RestoreUnpublishedLethalHit(m, unknown.BeforeHp);
+                    _combat.RestoreUnpublishedLethalHit(m, unknown.BeforeHp);
                     _unknownKills.Remove(m);
                     return;
                 }
                 AdoptCommittedSettlement(m, st, committed, unknown.KillerName);
             }
-            await combat.CommitRetainedLethalRewardAsync(unknown.Killer, unknown.KillerRole,
+            await _combat.CommitRetainedLethalRewardAsync(unknown.Killer, unknown.KillerRole,
                 unknown.KillerAttachment, unknown.KillerSceneGeneration, unknown.KillerWorldScene, m, unknown.BeforeHp);
             if (BeforeRetainedPublicationForTest is { } beforePublication) await beforePublication(unknown.Source);
-            await combat.PublishRetainedLethalHitAsync(unknown.Killer, unknown.KillerRole,
+            await _combat.PublishRetainedLethalHitAsync(unknown.Killer, unknown.KillerRole,
                 unknown.KillerAttachment, unknown.KillerSceneGeneration, unknown.KillerWorldScene, m);
             _unknownKills.Remove(m);
         }
         catch (Exception error)
         {
             if (m.Dead) _unknownKills.Remove(m);
-            log.LogError(error, "MVP frozen source {Source} recovery remains pending", unknown.Source);
+            _log.LogError(error, "MVP frozen source {Source} recovery remains pending", unknown.Source);
         }
         finally { unknown.Resolving = false; EndPending(st); }
     }
@@ -587,17 +587,17 @@ public sealed partial class MvpService : IGameTicker
             }
             if (!prepared.DeliveryAttempted)
             {
-                await RoleFanout.EachAsync(prepared.Obligations.Select(row => sessions.All().FirstOrDefault(s => s.Role?.Id == row.PlayerId))
+                await RoleFanout.EachAsync(prepared.Obligations.Select(row => _sessions.All().FirstOrDefault(s => s.Role?.Id == row.PlayerId))
                     .Where(s => s != null).Cast<GameSession>(), TryDeliverPendingAsync);
                 prepared.DeliveryAttempted = true; // offline/refused roles recover their durable obligation on login
             }
             if (!prepared.DeadNoticeSent)
             {
-                await RoleFanout.EachAsync(sessions.All().Where(p => p.Role != null && p.WorldScene == st.Runtime.WorldScene),
+                await RoleFanout.EachAsync(_sessions.All().Where(p => p.Role != null && p.WorldScene == st.Runtime.WorldScene),
                     p => p.SendGameAsync(DeadNotify, new MVPDeadNotify { CfgId = st.Def.CfgId }));
                 prepared.DeadNoticeSent = true;
             }
-            log.LogInformation("MVP {Cfg} killed by {Name}; {Count} participant(s)", st.Def.CfgId, prepared.KillerName, st.Stats.Count);
+            _log.LogInformation("MVP {Cfg} killed by {Name}; {Count} participant(s)", st.Def.CfgId, prepared.KillerName, st.Stats.Count);
             _preparedKills.Remove(m);
         }
         finally { prepared.Finalizing = false; EndPending(st); }
@@ -609,28 +609,28 @@ public sealed partial class MvpService : IGameTicker
     {
         var scores = Scores(st);
         var awards = st.Stats.Keys.ToDictionary(id => id, _ => new List<MVPPlayerAwardItem>());
-        var online = sessions.All().Where(s => s.Role != null && s.Progress != null && awards.ContainsKey(s.Role.Id))
+        var online = _sessions.All().Where(s => s.Role != null && s.Progress != null && awards.ContainsKey(s.Role.Id))
             .ToDictionary(s => s.Role!.Id);
-        await RoleFanout.EachAsync(online.Values, tasks.PrepareProgressAsync);
+        await RoleFanout.EachAsync(online.Values, _tasks.PrepareProgressAsync);
         var keys = online.Keys.Select(id => ReservationKey.Role(id))
             .Concat(online.Keys.Select(id => RoleObligations<MvpObligationRow>.Key(parentSource + "/" + id)))
             .Append(ReservationKey.Entity("mvp_settlement", parentSource))
             .Append(ReservationKey.Entity("mvp_cooldown", st.Def.CfgId.ToString(CultureInfo.InvariantCulture)));
         if (st.Runtime.LineNumber == 1)
             keys = keys.Append(ReservationKey.Entity("mvp_state", st.Def.CfgId.ToString(CultureInfo.InvariantCulture)));
-        using var scope = loop.Owners is { } owners
+        using var scope = _loop.Owners is { } owners
             ? await owners.EnterAsync("mvp/kill-settlement", keys.ToArray()) : null;
         if (st.Retired) throw new OperationCanceledException("MVP line retired before lethal settlement.");
         online = online.Where(pair => pair.Value.Role?.Id == pair.Key && pair.Value.Progress != null
             && pair.Value.Attachment?.Cancelled != true).ToDictionary();
         var taskPlans = online.ToDictionary(pair => pair.Key,
-            pair => tasks.StageMvpParticipant(pair.Value, parentSource));
+            pair => _tasks.StageMvpParticipant(pair.Value, parentSource));
         var counters = new Dictionary<long, MVPPlayerInfo>();
         foreach (long player in online.Keys)
             counters[player] = (await LoadCountersAsync(player)).Info;
         // Counts before this kill decide the decay; offline participants have no loaded counters (inferred: not capped).
         var teamsRanked = RankTeams(st.Stats.Select(kv => (kv.Key, kv.Value.TeamId, kv.Value.Leader, scores.GetValueOrDefault(kv.Key))),
-            id => counters.TryGetValue(id, out var c) && (c.TeamNum >= TeamCap || c.JoinNum >= JoinCap), capped => DecayPercent(data, capped));
+            id => counters.TryGetValue(id, out var c) && (c.TeamNum >= TeamCap || c.JoinNum >= JoinCap), capped => DecayPercent(_data, capped));
 
         void Give(long player, MVP_AWARD_TYPE tp, long awardId)
         {
@@ -653,7 +653,7 @@ public sealed partial class MvpService : IGameTicker
                 case MVP_AWARD_TYPE.Team: counter.TeamNum++; break;
                 case MVP_AWARD_TYPE.Join: counter.JoinNum++; break;
             }
-            foreach (var (entry, count) in rewards.RollAward(awardId, s))
+            foreach (var (entry, count) in _rewards.RollAward(awardId, s))
                 awards.GetValueOrDefault(player)?.Add(new MVPPlayerAwardItem { ItemId = entry, Count = count, Tp = tp });
         }
 
@@ -679,7 +679,7 @@ public sealed partial class MvpService : IGameTicker
             if (rarePlayer != 0) Give(rarePlayer, MVP_AWARD_TYPE.Probability, st.Def.Rare);
         }
         var nextDeaths = st.DeadMs.Append(deadMs).TakeLast(20).ToArray();
-        var builder = new RoleItemPlanBuilder(accounts);
+        var builder = new RoleItemPlanBuilder(_accounts);
         builder.Add(new MvpSettlementPlan(parentSource, st.Def.CfgId, deadMs));
         if (st.Runtime.LineNumber == 1)
             builder.Add(new MvpWritePlan(st.Def.CfgId, (int)MVP_STATE.Reborn, deadMs, string.Join(',', nextDeaths)));
@@ -697,7 +697,7 @@ public sealed partial class MvpService : IGameTicker
                 JsonSerializer.SerializeToUtf8Bytes(grants), ntf.ToByteArray()));
         }
         if (obligations.Count > 0) builder.Add(RoleObligations<MvpObligationRow>.CreatePlan(obligations));
-        var catalog = EventEconomy.Catalog(data);
+        var catalog = EventEconomy.Catalog(_data);
         var minted = obligations.SelectMany(row => JsonSerializer.Deserialize<AwardGrant[]>(row.Awards)!
             .Where(grant => grant.Entry is not (100 or 101))
             .Select(grant => (row.PlayerId, Grant: grant))).ToArray();
@@ -721,7 +721,7 @@ public sealed partial class MvpService : IGameTicker
                     }).ToArray()
                 })));
         }
-        await builder.CommitAsync(accounts, "mvp/kill-settlement", _ =>
+        await builder.CommitAsync(_accounts, "mvp/kill-settlement", _ =>
         {
             foreach (var plan in taskPlans.Values) plan?.Apply();
             st.Phase = MVP_STATE.Reborn;
@@ -733,7 +733,7 @@ public sealed partial class MvpService : IGameTicker
         foreach (var participant in online.Values)
             foreach (var handler in ParticipantSettled)
                 try { handler(participant); }
-                catch (Exception e) { log.LogError(e, "MVP participant hook failed for {Role}", participant.Role?.Id); }
+                catch (Exception e) { _log.LogError(e, "MVP participant hook failed for {Role}", participant.Role?.Id); }
         return obligations.ToArray();
     }
 
@@ -776,7 +776,7 @@ public sealed partial class MvpService : IGameTicker
             foreach (var kv in ranked)
             {
                 rank++;
-                if (data.Row("MVPScoreConfig", Math.Min(rank, 500)) is { } row) score[kv.Key] += sign * GameData.Int(row, field);
+                if (_data.Row("MVPScoreConfig", Math.Min(rank, 500)) is { } row) score[kv.Key] += sign * GameData.Int(row, field);
             }
         }
         Rank(s => s.Attack, "_iDemage", false, 1);
@@ -841,21 +841,21 @@ public sealed partial class MvpService : IGameTicker
     {
         if (!st.Stats.TryGetValue(role, out var stat))
         {
-            var (team, leader) = teams.TeamOf(role);
+            var (team, leader) = _teams.TeamOf(role);
             st.Stats[role] = stat = new Stat { TeamId = team, Leader = leader };
         }
         return stat;
     }
 
-    private string NpcName(int npcId) => data.Row("NPCConfig", npcId) is { } row ? data.TextOf(row, "_kName") : npcId.ToString();
-    private string ClientNpcName(int npcId) => data.Row("NPCConfig", npcId) is { } row ? data.ClientTextOf(row, "_kName") : npcId.ToString();
+    private string NpcName(int npcId) => _data.Row("NPCConfig", npcId) is { } row ? _data.TextOf(row, "_kName") : npcId.ToString();
+    private string ClientNpcName(int npcId) => _data.Row("NPCConfig", npcId) is { } row ? _data.ClientTextOf(row, "_kName") : npcId.ToString();
 
     /// <summary>1022 marquee: ChatConfig 603 "${1} has spawned on the ${2} map." / 604 "${1} was defeated by ${2}." (param encoding inferred).</summary>
     private async Task BroadcastAsync(RuntimeMapKey runtime, int chatId, params string[] args)
     {
         var ntf = new SystemBoardCastMsgNtf { Source = MsgSource.System, ChatId = chatId };
         for (int i = 0; i < args.Length; i++) ntf.ParamList[i + 1] = new ChatParameter { Params = { args[i] }, Type = ChatParamType.ChatParamString };
-        await RoleFanout.EachAsync(sessions.All().Where(p => p.Role != null && p.WorldScene == runtime.WorldScene),
+        await RoleFanout.EachAsync(_sessions.All().Where(p => p.Role != null && p.WorldScene == runtime.WorldScene),
             p => p.SendGameAsync(SystemBroadcast, ntf));
     }
 
@@ -863,28 +863,28 @@ public sealed partial class MvpService : IGameTicker
     {
         if (_states != null) return _states;
         var states = new Dictionary<int, State>();
-        foreach (var row in data.Table("MVPConfig").Values)
+        foreach (var row in _data.Table("MVPConfig").Values)
         {
             int cfg = (int)GameData.Int(row, "_iID"), npc = (int)GameData.Int(row, "_iNPCID");
-            if (cfg == 0 || data.Row("NPCConfig", npc) is not { } npcRow) continue;
+            if (cfg == 0 || _data.Row("NPCConfig", npc) is not { } npcRow) continue;
             var def = new Def(cfg, npc, GameData.Int(row, "_iMapID"), (int)(GameData.Int(npcRow, "_iLevel") + GameData.Int(row, "_iLevelDiff")),
                 Math.Max(60, GameData.Int(row, "_iRefreshTime")) * 1000, GameData.Int(row, "_iFirstDamageAward"), GameData.Int(row, "_iLastDamageAward"),
                 GameData.Int(row, "_iTeamAward"), GameData.Int(row, "_iPartAward"), GameData.Int(row, "_iRareAward"), (int)GameData.Int(row, "_iRareRewardProbability"));
             states[cfg] = new State { Def = def, Runtime = RuntimeMapKey.Public(def.MapId), StateTimeMs = MonsterService.NowMs };
         }
-        foreach (var row in accounts.ReadSync<List<MvpStateRow>>(new MvpReadPlan(MvpReadKind.States)))
+        foreach (var row in _accounts.ReadSync<List<MvpStateRow>>(new MvpReadPlan(MvpReadKind.States)))
         {
             if (!states.TryGetValue(row.Config, out var st)) continue;
             st.Phase = (MVP_STATE)row.Phase == MVP_STATE.Reborn ? MVP_STATE.Reborn : MVP_STATE.Born;
             st.StateTimeMs = row.Time;
             st.DeadMs.AddRange(row.Dead.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(long.Parse));
         }
-        foreach (var row in accounts.ReadSync<List<(int Config, long Death)>>(new MvpReadPlan(MvpReadKind.Cooldowns)))
+        foreach (var row in _accounts.ReadSync<List<(int Config, long Death)>>(new MvpReadPlan(MvpReadKind.Cooldowns)))
             _lastDeath[row.Config] = row.Death;
         foreach (var st in states.Values.Where(s => s.Phase == MVP_STATE.Reborn))
             _lastDeath[st.Def.CfgId] = Math.Max(_lastDeath.GetValueOrDefault(st.Def.CfgId), st.StateTimeMs);
         _states = states;
-        log.LogInformation("MVP: {Count} field MVPs", states.Count);
+        _log.LogInformation("MVP: {Count} field MVPs", states.Count);
         return states;
     }
 
@@ -892,12 +892,12 @@ public sealed partial class MvpService : IGameTicker
     {
         if (st.Runtime.LineNumber == 1)
         {
-            using var scope = loop.Owners is { } owners ? await owners.EnterAsync("mvp/state",
+            using var scope = _loop.Owners is { } owners ? await owners.EnterAsync("mvp/state",
                 ReservationKey.Entity("mvp_state", st.Def.CfgId.ToString(CultureInfo.InvariantCulture))) : null;
             if (onlyIfReborn && st.Phase != MVP_STATE.Reborn) return;
-            var builder = new RoleItemPlanBuilder(accounts);
+            var builder = new RoleItemPlanBuilder(_accounts);
             builder.Add(new MvpWritePlan(st.Def.CfgId, (int)phase, time, string.Join(',', st.DeadMs)));
-            await builder.CommitAsync(accounts, "mvp/state");
+            await builder.CommitAsync(_accounts, "mvp/state");
         }
         else if (onlyIfReborn && st.Phase != MVP_STATE.Reborn) return;
         st.Phase = phase;
@@ -908,7 +908,7 @@ public sealed partial class MvpService : IGameTicker
     private async Task<(MVPPlayerInfo Info, bool Reset)> LoadCountersAsync(long player)
     {
         var info = new MVPPlayerInfo { PlayerId = player };
-        if (await accounts.ReadAsync<MvpCounterRow?>(new MvpReadPlan(MvpReadKind.Counters, player)) is { } row)
+        if (await _accounts.ReadAsync<MvpCounterRow?>(new MvpReadPlan(MvpReadKind.Counters, player)) is { } row)
         {
             info.FirstNum = row.First;
             info.EndNum = row.End;
@@ -942,7 +942,7 @@ public sealed partial class MvpService : IGameTicker
         catch (OperationCanceledException) { throw; }
         catch (Exception error)
         {
-            log.LogError(error, "MVP reward remains durable and pending for role {Role}", session.Role?.Id);
+            _log.LogError(error, "MVP reward remains durable and pending for role {Role}", session.Role?.Id);
         }
     }
 
@@ -970,14 +970,14 @@ public sealed partial class MvpService : IGameTicker
             var grants = JsonSerializer.Deserialize<AwardGrant[]>(row.Awards)
                 ?? throw new InvalidDataException("Invalid frozen MVP award obligation.");
             var economy = grants.Any(grant => grant.Entry is not (100 or 101))
-                ? EventEconomy.ForRole(data, session, "mvp-delivery", "mvp/delivery/" + row.SourceKey,
+                ? EventEconomy.ForRole(_data, session, "mvp-delivery", "mvp/delivery/" + row.SourceKey,
                     Array.Empty<(int Entry, long Count)>(), Array.Empty<AwardGrant>(),
                     new
                     {
                         row.SourceKey, row.PlayerId,
                         AwardHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(row.Awards))
                     }) : null;
-            if (!await character.ApplyAwardAsync(session, new AwardPlan(0, 0, grants), persist: builder =>
+            if (!await _character.ApplyAwardAsync(session, new AwardPlan(0, 0, grants), persist: builder =>
                 {
                     builder.Add(RoleObligations<MvpObligationRow>.DeliverPlan(row));
                     if (economy != null) builder.WithEventEconomy(economy);
@@ -986,7 +986,7 @@ public sealed partial class MvpService : IGameTicker
         if (session.Role?.Id != row.PlayerId || !ReferenceEquals(session.Attachment, attachment)
             || attachment?.Cancelled == true) return false;
         await session.SendGameAsync(ResultNtf, MVPResultNtf.Parser.ParseFrom(row.Result));
-        await tasks.RefreshAsync(session); // settles the source-linked 103022 task follow-up.
+        await _tasks.RefreshAsync(session); // settles the source-linked 103022 task follow-up.
         return true;
     }
 }

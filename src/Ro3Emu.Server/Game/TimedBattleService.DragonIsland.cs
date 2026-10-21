@@ -103,7 +103,7 @@ public sealed partial class TimedBattleService
     private Task BroadcastDragonAsync(Match match)
     {
         var info = DragonInfo(match);
-        return RoleFanout.EachAsync(match.Players.Where(p => match.Loaded.Contains(p) && active.GetValueOrDefault(p) == match
+        return RoleFanout.EachAsync(match.Players.Where(p => match.Loaded.Contains(p) && _active.GetValueOrDefault(p) == match
             && p.InstanceId == match.Room?.Id), p => p.SendGameAsync(DungeonService.BaseInfo, info));
     }
 
@@ -111,15 +111,15 @@ public sealed partial class TimedBattleService
     {
         await session.SendGameAsync(DungeonService.BaseInfo, DragonInfo(match));
         // Each camp starts at its own point (GroupSpawnPointA/B).
-        if (worldData.Map(DragonScene)?.Points.TryGetValue(DragonCampPoints[match.Faction[session] - 1], out var start) == true)
-            await scene.TeleportInMapAsync(session, start);
+        if (_worldData.Map(DragonScene)?.Points.TryGetValue(DragonCampPoints[match.Faction[session] - 1], out var start) == true)
+            await _scene.TeleportInMapAsync(session, start);
     }
 
     /// <summary>Adds a BattleEventPointConfig row's points: scope 4 to the player's camp, scope 2 to the player.</summary>
     private void DragonScore(Match match, GameSession player, int row, long times = 1)
     {
         var run = match.Dragon!;
-        if (times <= 0 || data.Row("BattleEventPointConfig", row) is not { } config || !config.TryGetProperty("_kScore", out var pairs)
+        if (times <= 0 || _data.Row("BattleEventPointConfig", row) is not { } config || !config.TryGetProperty("_kScore", out var pairs)
             || pairs.ValueKind != JsonValueKind.Array || !match.Faction.TryGetValue(player, out int camp)) return;
         var values = pairs.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).ToArray();
         for (int i = 0; i + 1 < values.Length; i += 2)
@@ -143,14 +143,14 @@ public sealed partial class TimedBattleService
         run.SoulCarrier = carrier;
         DragonScore(match, carrier, ScoreSoul);
         // Skill 16340501 _kLogicData [16340501, -1]: the buff lasts until death (BuffConfig _iDeadClear 1).
-        int left = (int)Math.Max(1000, (match.Deadline - time.GetUtcNow().ToUnixTimeSeconds()) * 1000);
-        await buffs.AddAsync(carrier, DragonSoulSkill, left, match.Room!.Id);
+        int left = (int)Math.Max(1000, (match.Deadline - _time.GetUtcNow().ToUnixTimeSeconds()) * 1000);
+        await _buffs.AddAsync(carrier, DragonSoulSkill, left, match.Room!.Id);
     }
 
     /// <summary>Damage on Fafnir: the first strike (42017) and every 1/DragonIslandBossPoints of its HP (42019, inferred step).</summary>
     private void DragonDealt(GameSession s, MonsterUnit monster, long damage)
     {
-        if (!active.TryGetValue(s, out var match) || match.Dragon is not { } run || run.Boss != monster || match.Settled || damage <= 0) return;
+        if (!_active.TryGetValue(s, out var match) || match.Dragon is not { } run || run.Boss != monster || match.Settled || damage <= 0) return;
         bool scored = !run.BossStruck;
         if (!run.BossStruck) { run.BossStruck = true; DragonScore(match, s, ScoreBossFirst); }
         long step = Math.Max(1, monster.Template.MaxHp / Math.Max(1, PublicValue("DragonIslandBossPoints")));
@@ -158,12 +158,12 @@ public sealed partial class TimedBattleService
         run.BossDamage[s] = before + damage;
         long steps = (before + damage) / step - before / step;
         DragonScore(match, s, ScoreBossDamage, steps);
-        if (scored || steps > 0) loop.PostRuntime(() => BroadcastDragonAsync(match)); // only when a score changed
+        if (scored || steps > 0) _loop.PostRuntime(() => BroadcastDragonAsync(match)); // only when a score changed
     }
 
     private async Task DragonBossKilledAsync(GameSession s, MonsterUnit monster)
     {
-        if (!active.TryGetValue(s, out var match) || match.Dragon is not { } run || run.Boss != monster || match.Settled) return;
+        if (!_active.TryGetValue(s, out var match) || match.Dragon is not { } run || run.Boss != monster || match.Settled) return;
         run.Boss = null;
         DragonScore(match, s, ScoreBossLast);
         await BroadcastDragonAsync(match);
@@ -176,21 +176,21 @@ public sealed partial class TimedBattleService
     /// </summary>
     public async Task<bool> TryDragonPickupAsync(GameSession s, CastSkillReq req)
     {
-        if (!active.TryGetValue(s, out var match) || match.Dragon is not { } run || !run.Pickups.TryGetValue(req.TargetId, out var pickup)
+        if (!_active.TryGetValue(s, out var match) || match.Dragon is not { } run || !run.Pickups.TryGetValue(req.TargetId, out var pickup)
             || pickup.Skill != req.SkillId) return false;
         int result = match.Settled || run.Stage != 1 || s.Dead || s.InstanceId != match.Room?.Id ? ErrorCodes.FeatureUnavailable
             : MonsterService.Distance(pickup.Unit, s) > 6f ? ErrorCodes.NpcTooFar : 0;
         await s.SendGameAsync(CombatService.UseSkill, new CastSkillRsp { Result = result });
         if (result != 0) return true;
         run.Pickups.Remove(req.TargetId);
-        await instances.RemoveMonsterAsync(match.Room!, pickup.Unit);
+        await _instances.RemoveMonsterAsync(match.Room!, pickup.Unit);
         if (req.SkillId == DragonSoulSkill) await GiveSoulAsync(match, s);
         else
         {
-            if (data.Row("SkillConfig", req.SkillId) is { } skill && skill.TryGetProperty("_kLogicData", out var logic)
+            if (_data.Row("SkillConfig", req.SkillId) is { } skill && skill.TryGetProperty("_kLogicData", out var logic)
                 && logic.ValueKind == JsonValueKind.Array && logic.GetArrayLength() >= 2)
-                await buffs.AddAsync(s, (int)(GameData.Number(logic[0]) ?? 0), (int)(GameData.Number(logic[1]) ?? 0), match.Room!.Id);
-            var row = data.Table("BattleEventPointConfig").Values.FirstOrDefault(r => GameData.Int(r, "_iType") == 149
+                await _buffs.AddAsync(s, (int)(GameData.Number(logic[0]) ?? 0), (int)(GameData.Number(logic[1]) ?? 0), match.Room!.Id);
+            var row = _data.Table("BattleEventPointConfig").Values.FirstOrDefault(r => GameData.Int(r, "_iType") == 149
                 && r.TryGetProperty("_kData", out var d) && d.ValueKind == JsonValueKind.Array && d.GetArrayLength() > 0
                 && GameData.Number(d[0]) == req.SkillId && JsonSerializer.Serialize(r.GetProperty("_kGameType")).Contains("34"));
             if (row.ValueKind == JsonValueKind.Object) DragonScore(match, s, (int)GameData.Int(row, "_iID"));
@@ -203,16 +203,16 @@ public sealed partial class TimedBattleService
     private async Task DragonTickAsync(Match match)
     {
         if (match.Settled || match.Dragon is not { } run || match.Room is not { Closed: false } room) return;
-        long now = time.GetUtcNow().ToUnixTimeSeconds(), elapsed = now - match.Open;
+        long now = _time.GetUtcNow().ToUnixTimeSeconds(), elapsed = now - match.Open;
         bool changed = false;
         int stage = DragonStage(match, now);
         if (stage != run.Stage && stage < 2) { run.Stage = stage; changed = true; }
-        var map = worldData.Map(DragonScene);
+        var map = _worldData.Map(DragonScene);
         if (run.Stage == 1 && !run.BossSpawned && elapsed >= DragonBossSeconds)
         {
             run.BossSpawned = true;
             if (map?.Points.TryGetValue(DragonBossPoint, out var at) == true)
-                run.Boss = await instances.SpawnAsync(room, DragonBoss, map.Grounded(at));
+                run.Boss = await _instances.SpawnAsync(room, DragonBoss, map.Grounded(at));
         }
         while (run.GlassWaves < DragonGlassSeconds.Length && elapsed >= DragonGlassSeconds[run.GlassWaves])
         {
@@ -224,7 +224,7 @@ public sealed partial class TimedBattleService
                 foreach (var point in points.OrderBy(_ => Random.Shared.Next()).Take(DragonGlassCounts[wave][g]))
                 {
                     int npc = DragonGlasses[Random.Shared.Next(DragonGlasses.Length)];
-                    if (await instances.SpawnAsync(room, npc, map.Grounded(new MapPoint(point.X, point.Y, point.Z, point.Face))) is { } unit
+                    if (await _instances.SpawnAsync(room, npc, map.Grounded(new MapPoint(point.X, point.Y, point.Z, point.Face))) is { } unit
                         && InteractionOf(npc) is int skill) run.Pickups[unit.Uid] = (unit, skill);
                 }
             }
@@ -233,14 +233,14 @@ public sealed partial class TimedBattleService
         {
             run.SoulSpawned = true;
             long pointId = DragonSoulPoints[Random.Shared.Next(DragonSoulPoints.Length)];
-            if (map.Points.TryGetValue(pointId, out var at) && await instances.SpawnAsync(room, DragonSoul, map.Grounded(at)) is { } soul)
+            if (map.Points.TryGetValue(pointId, out var at) && await _instances.SpawnAsync(room, DragonSoul, map.Grounded(at)) is { } soul)
                 run.Pickups[soul.Uid] = (soul, DragonSoulSkill);
         }
         if (changed) await BroadcastDragonAsync(match);
     }
 
     /// <summary>NPCConfig _iInteractID[0]: the crystal's interaction, whose id is also its interaction skill's.</summary>
-    private int? InteractionOf(int npc) => data.Row("NPCConfig", npc) is { } row && row.TryGetProperty("_iInteractID", out var ids)
+    private int? InteractionOf(int npc) => _data.Row("NPCConfig", npc) is { } row && row.TryGetProperty("_iInteractID", out var ids)
         && ids.ValueKind == JsonValueKind.Array && ids.GetArrayLength() > 0 ? (int)(GameData.Number(ids[0]) ?? 0) : null;
 
     /// <summary>The camp with the higher score; 0 on a tie (no winner, inferred).</summary>

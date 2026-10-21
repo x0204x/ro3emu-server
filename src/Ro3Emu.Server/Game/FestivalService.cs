@@ -21,30 +21,30 @@ public sealed class FestivalService : IGameTicker
 {
     public const int ActivityId = 3301;
     public const long Dungeon = 1010002;
-    private readonly GameData data;
-    private readonly AccountStore accounts;
-    private readonly RoleStore roles;
-    private readonly CharacterService character;
-    private readonly FunctionService functions;
-    private readonly AwardService awards;
-    private readonly ActivityClock clock;
-    private readonly TimedTodoSchedule schedule;
-    private readonly DailyActivityService daily;
-    private readonly InstanceService instances;
-    private readonly SessionRegistry sessions;
-    private readonly GameLoop loop;
-    private readonly SemaphoreSlim gate = new(1, 1);
-    private readonly Dictionary<int, Zone> zones = new();
-    private Round? current;
-    private InstanceService.Room? room;
-    private TimeSpan lastTick;
-    private bool queued;
-    private bool reconciledOnce;
+    private readonly GameData _data;
+    private readonly AccountStore _accounts;
+    private readonly RoleStore _roles;
+    private readonly CharacterService _character;
+    private readonly FunctionService _functions;
+    private readonly AwardService _awards;
+    private readonly ActivityClock _clock;
+    private readonly TimedTodoSchedule _schedule;
+    private readonly DailyActivityService _daily;
+    private readonly InstanceService _instances;
+    private readonly SessionRegistry _sessions;
+    private readonly GameLoop _loop;
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly Dictionary<int, Zone> _zones = new();
+    private Round? _current;
+    private InstanceService.Room? _room;
+    private TimeSpan _lastTick;
+    private bool _queued;
+    private bool _reconciledOnce;
     /// <summary>Rewards were written for some roles since the last online delivery (login delivers the rest).</summary>
-    private bool deliverOnline;
+    private bool _deliverOnline;
     /// <summary>The shared part of <see cref="Project"/> last sent to every session; unchanged = nothing to sync.</summary>
-    private string? lastProjection;
-    private long Now => clock.UtcNow.ToUnixTimeSeconds();
+    private string? _lastProjection;
+    private long Now => _clock.UtcNow.ToUnixTimeSeconds();
 
     public sealed class Candidate
     {
@@ -83,11 +83,11 @@ public sealed class FestivalService : IGameTicker
         AwardService awards, ActivityClock clock, TimedTodoSchedule schedule, DailyActivityService daily,
         InstanceService instances, SceneService scene, SessionRegistry sessions, GameLoop loop, IOptions<ServerOptions> options)
     {
-        this.data = data; this.accounts = accounts; this.roles = roles; this.character = character; this.functions = functions;
-        this.awards = awards; this.clock = clock; this.schedule = schedule; this.daily = daily;
-        this.instances = instances; this.sessions = sessions; this.loop = loop;
+        this._data = data; this._accounts = accounts; this._roles = roles; this._character = character; this._functions = functions;
+        this._awards = awards; this._clock = clock; this._schedule = schedule; this._daily = daily;
+        this._instances = instances; this._sessions = sessions; this._loop = loop;
         if (accounts.ReadSync<byte[]?>(new FestivalReadPlan(FestivalReadKind.LatestRound)) is { } bytes)
-            current = JsonSerializer.Deserialize<Round>(bytes);
+            _current = JsonSerializer.Deserialize<Round>(bytes);
         if (data.Row("DungeonConfig", Dungeon) is { } config
             && config.TryGetProperty("_kResSceneEditorName", out var editor))
         {
@@ -99,7 +99,7 @@ public sealed class FestivalService : IGameTicker
                         if (regions.TryGetProperty(id.ToString(), out var region))
                         {
                             var center = region.GetProperty("center");
-                            zones[id] = new(center.GetProperty("x").GetSingle(), center.GetProperty("z").GetSingle(),
+                            _zones[id] = new(center.GetProperty("x").GetSingle(), center.GetProperty("z").GetSingle(),
                                 region.GetProperty("width").GetSingle(), region.GetProperty("length").GetSingle(),
                                 region.GetProperty("direction").GetSingle());
                         }
@@ -110,7 +110,7 @@ public sealed class FestivalService : IGameTicker
         scene.Leaving.Add(LeavingAsync);
     }
 
-    private ActivityClock.Window? Segment => clock.Segments(1083, Now).FirstOrDefault(w => w.Contains(Now));
+    private ActivityClock.Window? Segment => _clock.Segments(1083, Now).FirstOrDefault(w => w.Contains(Now));
 
     internal bool IsOwnerRequest(uint message, ReadOnlyMemory<byte> body)
     {
@@ -128,20 +128,20 @@ public sealed class FestivalService : IGameTicker
     {
         var keys = new List<ReservationKey> { ReservationKey.Entity("festival_runtime", ActivityId.ToString(CultureInfo.InvariantCulture)) };
         var cycles = new HashSet<long>();
-        if (current is { } existing) cycles.Add(existing.Cycle);
-        var windows = clock.Segments(1083, Now);
+        if (_current is { } existing) cycles.Add(existing.Cycle);
+        var windows = _clock.Segments(1083, Now);
         var active = windows.FirstOrDefault(window => window.Contains(Now));
         if (active != null && windows.FirstOrDefault(window => window.Cycle == active.Cycle
                 && window.State == "Candidate") is { } candidate)
             cycles.Add(candidate.Start);
         foreach (long cycle in cycles.Order())
             keys.Add(ReservationKey.Entity("festival_round", cycle.ToString(CultureInfo.InvariantCulture)));
-        var participants = (current?.Candidates.Keys ?? Enumerable.Empty<long>())
-            .Concat(current?.Bets.Keys ?? Enumerable.Empty<long>()).Concat(additionalRoles).Where(id => id > 0).Distinct();
+        var participants = (_current?.Candidates.Keys ?? Enumerable.Empty<long>())
+            .Concat(_current?.Bets.Keys ?? Enumerable.Empty<long>()).Concat(additionalRoles).Where(id => id > 0).Distinct();
         foreach (long id in participants)
         {
             keys.Add(ReservationKey.Role(id));
-            if (current is { } round)
+            if (_current is { } round)
                 foreach (int source in new[] { 0, 1 })
                     keys.Add(ReservationKey.Entity("festival_reward", $"{round.Cycle}/{id}/{source}"));
         }
@@ -150,17 +150,17 @@ public sealed class FestivalService : IGameTicker
 
     private async Task<LegacyOwnerScope?> EnterRoundWithGateAsync(string origin, params long[] additionalRoles)
     {
-        if (loop.Owners is not { } owners)
+        if (_loop.Owners is not { } owners)
         {
-            await gate.WaitAsync();
+            await _gate.WaitAsync();
             return null;
         }
         while (true)
         {
             var keys = RoundKeys(additionalRoles);
-            var scope = await owners.EnterWithGateAsync(origin, gate, keys);
+            var scope = await owners.EnterWithGateAsync(origin, _gate, keys);
             if (keys.SequenceEqual(RoundKeys(additionalRoles))) return scope;
-            gate.Release();
+            _gate.Release();
             scope.Dispose();
         }
     }
@@ -168,39 +168,39 @@ public sealed class FestivalService : IGameTicker
     private async Task EnsureRoundAsync()
     {
         // Settle the preceding occurrence before selecting a later one after a clock jump or restart (inferred).
-        if (current is { Complete: false } old && Now >= old.End) await CompleteAsync(Clone(old));
-        var windows = clock.Segments(1083, Now);
+        if (_current is { Complete: false } old && Now >= old.End) await CompleteAsync(Clone(old));
+        var windows = _clock.Segments(1083, Now);
         var active = windows.FirstOrDefault(w => w.Contains(Now));
         if (active == null) return;
         var cycle = windows.FirstOrDefault(w => w.Cycle == active.Cycle && w.State == "Candidate");
         var answer = windows.FirstOrDefault(w => w.Cycle == active.Cycle && w.State == "Answer");
         if (cycle == null || answer == null) return;
-        bool changed = false, newCycle = current?.Cycle != cycle.Start;
-        Round? next = newCycle ? null : current == null ? null : Clone(current);
+        bool changed = false, newCycle = _current?.Cycle != cycle.Start;
+        Round? next = newCycle ? null : _current == null ? null : Clone(_current);
         if (newCycle)
         {
             changed = true;
-            next = await accounts.ReadAsync<byte[]?>(new FestivalReadPlan(FestivalReadKind.Round, cycle.Start))
+            next = await _accounts.ReadAsync<byte[]?>(new FestivalReadPlan(FestivalReadKind.Round, cycle.Start))
                 is { } saved ? JsonSerializer.Deserialize<Round>(saved) : null;
             next ??= new Round
             {
                 Cycle = cycle.Start, AnswerStart = answer.Start, End = answer.End,
-                Deadline = answer.Start, Questions = data.Table("RainbowKoiQuestionConfig").Values
+                Deadline = answer.Start, Questions = _data.Table("RainbowKoiQuestionConfig").Values
                     .Select(r => (long)GameData.Int(r, "_iID")).Where(id => id > 0).Order().Take(15).ToArray()
             };
         }
         // (inferred) Select eligible online roles during the candidate minute, stable by role id, capped by the map.
         if (active.State == "Candidate" && !next!.Complete)
         {
-            int maximum = data.Row("DungeonConfig", Dungeon) is { } config ? checked((int)Math.Max(1, GameData.Int(config, "_iRoleCntLimit"))) : 20;
-            foreach (var s in sessions.All().Where(s => s.Role != null && s.ActivitiesReady && s.DailyReady && functions.IsOpen(s, 5901)).OrderBy(s => s.Role!.Id))
+            int maximum = _data.Row("DungeonConfig", Dungeon) is { } config ? checked((int)Math.Max(1, GameData.Int(config, "_iRoleCntLimit"))) : 20;
+            foreach (var s in _sessions.All().Where(s => s.Role != null && s.ActivitiesReady && s.DailyReady && _functions.IsOpen(s, 5901)).OrderBy(s => s.Role!.Id))
             {
                 if (next.Candidates.Count >= maximum) break;
                 changed |= next.Candidates.TryAdd(s.Role!.Id, new());
             }
         }
         if (changed) await SaveAsync(next!);
-        if (newCycle) room = null;
+        if (newCycle) _room = null;
     }
 
     public async Task LoginAsync(GameSession session)
@@ -208,7 +208,7 @@ public sealed class FestivalService : IGameTicker
         // C/D 15: the round is realm state; the one-second Tick ensures and settles it from startup, so the login no
         // longer reserves the festival runtime. It only delivers this role's own committed entitlements.
         if (session.Role != null) await RoleFanout.EachAsync([session], DeliverAsync);
-        await daily.SyncEventsAsync(session);
+        await _daily.SyncEventsAsync(session);
     }
 
     private void Project(GameSession session, DBDailyActivityInfo info)
@@ -218,23 +218,23 @@ public sealed class FestivalService : IGameTicker
         var state = new PlayerActivityInfo
         {
             ActivityKey = ActivityId.ToString(), Playbook = 101,
-            State = segment?.State ?? "_close", ActivityInstance = current?.Cycle ?? 0,
+            State = segment?.State ?? "_close", ActivityInstance = _current?.Cycle ?? 0,
             CurStartTime = segment?.Start ?? 0, CurEndTime = segment?.End ?? 0,
-            CycleStartTime = current?.Cycle ?? 0, CycleEndTime = current?.End ?? 0,
-            IsEnterComplete = segment != null, IsExitComplete = current?.Complete ?? false,
+            CycleStartTime = _current?.Cycle ?? 0, CycleEndTime = _current?.End ?? 0,
+            IsEnterComplete = segment != null, IsExitComplete = _current?.Complete ?? false,
             ActivityParam = new()
             {
                 RainbowKoi = new()
                 {
-                    BetTargetId = current?.Bets.GetValueOrDefault(session.Role!.Id) ?? 0,
-                    Progress = new() { IsGameOver = current?.Complete ?? false }
+                    BetTargetId = _current?.Bets.GetValueOrDefault(session.Role!.Id) ?? 0,
+                    Progress = new() { IsGameOver = _current?.Complete ?? false }
                 }
             }
         };
-        if (current != null)
-            foreach (var (id, c) in current.Candidates)
+        if (_current != null)
+            foreach (var (id, c) in _current.Candidates)
                 state.ActivityParam.RainbowKoi.Progress.CandidateMap[id] = new RainbowKoiCandidateInfo
-                { IsEliminated = c.Eliminated, IsGiveUp = c.GiveUp, Rank = c.Rank, IsSettle = current.Complete || c.Eliminated };
+                { IsEliminated = c.Eliminated, IsGiveUp = c.GiveUp, Rank = c.Rank, IsSettle = _current.Complete || c.Eliminated };
         row.ActivityInfo = state;
     }
 
@@ -248,23 +248,23 @@ public sealed class FestivalService : IGameTicker
             await EnsureRoundAsync();
             result = req.ActivityId != ActivityId || req.RainbowKoiBet == null || session.Role == null ? ErrorCodes.Parameter
                 : !session.ActivitiesReady ? ErrorCodes.FeatureUnavailable
-                : !functions.IsOpen(session, 5901) ? ErrorCodes.FunctionLocked
-                : !schedule.IsOpen(ActivityId) || Segment?.State != "Ready" || current == null || current.Complete ? ErrorCodes.ActivityPeriod
-                : !current.Candidates.TryGetValue(req.RainbowKoiBet.TargetPlayerId, out var target) || target.GiveUp ? ErrorCodes.Parameter
-                : current.Bets.ContainsKey(session.Role.Id) ? ErrorCodes.RewardClaimed : 0;
+                : !_functions.IsOpen(session, 5901) ? ErrorCodes.FunctionLocked
+                : !_schedule.IsOpen(ActivityId) || Segment?.State != "Ready" || _current == null || _current.Complete ? ErrorCodes.ActivityPeriod
+                : !_current.Candidates.TryGetValue(req.RainbowKoiBet.TargetPlayerId, out var target) || target.GiveUp ? ErrorCodes.Parameter
+                : _current.Bets.ContainsKey(session.Role.Id) ? ErrorCodes.RewardClaimed : 0;
             if (result == 0)
             {
-                var next = Clone(current!);
+                var next = Clone(_current!);
                 next.Bets[session.Role!.Id] = req.RainbowKoiBet!.TargetPlayerId;
                 await SaveAsync(next);
             }
         }
-        finally { gate.Release(); scope?.Dispose(); }
-        if (session.Role is { } role && loop.Owners is { } dailyOwners)
+        finally { _gate.Release(); scope?.Dispose(); }
+        if (session.Role is { } role && _loop.Owners is { } dailyOwners)
             await dailyOwners.RunSessionAsync("festival/bet daily projection",
                 [ReservationKey.Role(role.Id), ReservationKey.Lifecycle(role.Id)], session,
-                () => daily.SyncEventsAsync(session));
-        else await daily.SyncEventsAsync(session);
+                () => _daily.SyncEventsAsync(session));
+        else await _daily.SyncEventsAsync(session);
         await session.SendGameAsync(DailyActivityService.RingAccept, new CommonDailyActivityRes
         {
             ActivityId = req.ActivityId, RequestId = req.RequestId, Result = result,
@@ -280,46 +280,46 @@ public sealed class FestivalService : IGameTicker
         {
             await EnsureRoundAsync();
             int error = !session.ActivitiesReady ? ErrorCodes.FeatureUnavailable
-                : session.Role == null || !functions.IsOpen(session, 5901) ? ErrorCodes.FunctionLocked
+                : session.Role == null || !_functions.IsOpen(session, 5901) ? ErrorCodes.FunctionLocked
                 : session.SceneLoading ? ErrorCodes.SwitchingScenes
                 : session.InstanceId != 0 ? ErrorCodes.DungeonBusy
-                : session.Dead || !schedule.IsOpen(ActivityId) || Segment?.State is not ("Candidate" or "Ready")
-                    || current == null || current.Complete ? ErrorCodes.ActivityPeriod
-                : !current.Candidates.TryGetValue(session.Role.Id, out var c) || c.GiveUp ? ErrorCodes.NoPermission
-                : zones.Count != 2 || req.InitData?.RainbowKoiInitData != null ? ErrorCodes.Parameter : 0;
+                : session.Dead || !_schedule.IsOpen(ActivityId) || Segment?.State is not ("Candidate" or "Ready")
+                    || _current == null || _current.Complete ? ErrorCodes.ActivityPeriod
+                : !_current.Candidates.TryGetValue(session.Role.Id, out var c) || c.GiveUp ? ErrorCodes.NoPermission
+                : _zones.Count != 2 || req.InitData?.RainbowKoiInitData != null ? ErrorCodes.Parameter : 0;
             if (error == 0)
             {
-                if (room == null || room.Closed) room = instances.Create(Dungeon, [session]);
-                else if (!instances.AddParticipant(room, session)) error = ErrorCodes.DungeonBusy;
+                if (_room == null || _room.Closed) _room = _instances.Create(Dungeon, [session]);
+                else if (!_instances.AddParticipant(_room, session)) error = ErrorCodes.DungeonBusy;
             }
             await session.SendGameAsync(DungeonService.Enter, new EnterDungeonRsp { Result = error });
-            if (error == 0 && await instances.EnterAsync(room!, session, 3))
+            if (error == 0 && await _instances.EnterAsync(_room!, session, 3))
             {
-                var next = Clone(current!);
+                var next = Clone(_current!);
                 next.Candidates[session.Role!.Id].Entered = true;
                 await SaveAsync(next);
             }
         }
-        finally { gate.Release(); scope?.Dispose(); }
+        finally { _gate.Release(); scope?.Dispose(); }
         return true;
     }
 
-    private Task LoadedAsync(GameSession session) => room != null && session.InstanceId == room.Id
+    private Task LoadedAsync(GameSession session) => _room != null && session.InstanceId == _room.Id
         ? session.SendGameAsync(DungeonService.BaseInfo, Snapshot()) : Task.CompletedTask;
 
     private async Task LeavingAsync(GameSession session)
     {
         long? leavingRole = session.Role?.Id;
-        if (leavingRole is null || room == null || session.InstanceId != room.Id || current is not { Complete: false }
-            || !current.Candidates.TryGetValue(leavingRole.Value, out var candidate) || candidate.Eliminated)
+        if (leavingRole is null || _room == null || session.InstanceId != _room.Id || _current is not { Complete: false }
+            || !_current.Candidates.TryGetValue(leavingRole.Value, out var candidate) || candidate.Eliminated)
             return;
-        using var scope = loop.Owners is { } owners
+        using var scope = _loop.Owners is { } owners
             ? await owners.EnterAsync("festival/leave", RoundKeys(leavingRole.Value)) : null;
-        if (session.Role?.Id != leavingRole || room == null || session.InstanceId != room.Id
-            || current is not { Complete: false } || !current.Candidates.TryGetValue(leavingRole.Value, out candidate)
+        if (session.Role?.Id != leavingRole || _room == null || session.InstanceId != _room.Id
+            || _current is not { Complete: false } || !_current.Candidates.TryGetValue(leavingRole.Value, out candidate)
             || candidate.Eliminated)
             return;
-        var next = Clone(current);
+        var next = Clone(_current);
         next.Candidates[leavingRole.Value].GiveUp = true;
         await SaveAsync(next);
     }
@@ -328,10 +328,10 @@ public sealed class FestivalService : IGameTicker
 
     private DungeonBaseInfoNotify Snapshot()
     {
-        var r = current!;
+        var r = _current!;
         var result = new DungeonBaseInfoNotify
         {
-            DungeonEntry = Dungeon, DungeonId = room!.Id, Level = 1,
+            DungeonEntry = Dungeon, DungeonId = _room!.Id, Level = 1,
             Stage = r.Question + 1, ChangeType = (DungeonBaseInfoNotify.Types.eChangeType)2,
             InitData = new() { RainbowKoiInitData = new() { ActivityKey = ActivityId.ToString(), ActivityInstance = r.Cycle } }
         };
@@ -359,7 +359,7 @@ public sealed class FestivalService : IGameTicker
         try
         {
             await EnsureRoundAsync();
-            if (current is { Complete: false } currentRound && Now >= currentRound.AnswerStart)
+            if (_current is { Complete: false } currentRound && Now >= currentRound.AnswerStart)
             {
                 var r = Clone(currentRound);
                 bool changed = false;
@@ -378,38 +378,38 @@ public sealed class FestivalService : IGameTicker
                 }
                 else if (changed) await SaveAsync(r);
             }
-            if (deliverOnline)
+            if (_deliverOnline)
             {
-                deliverOnline = false;
+                _deliverOnline = false;
                 deliver = true;
             }
-            if (room is { Closed: false } && current != null)
+            if (_room is { Closed: false } && _current != null)
             {
                 var snapshot = Snapshot();
-                await RoleFanout.EachAsync(room.ActiveMembers
-                    .Where(member => member.Session.InstanceId == room.Id && !member.Session.SceneLoading)
+                await RoleFanout.EachAsync(_room.ActiveMembers
+                    .Where(member => member.Session.InstanceId == _room.Id && !member.Session.SceneLoading)
                     .Select(member => member.Session),
                     session => session.SendGameAsync(DungeonService.BaseInfo, snapshot));
-                if (Now >= current.End)
-                    await RoleFanout.EachAsync(room.ActiveMembers.Select(member => member.Session), async session =>
+                if (Now >= _current.End)
+                    await RoleFanout.EachAsync(_room.ActiveMembers.Select(member => member.Session), async session =>
                     {
-                        if (session.InstanceId == room.Id) await instances.LeaveAsync(session);
-                        else await instances.AbandonAsync(room, session);
+                        if (session.InstanceId == _room.Id) await _instances.LeaveAsync(session);
+                        else await _instances.AbandonAsync(_room, session);
                     });
             }
         }
-        finally { gate.Release(); scope?.Dispose(); }
+        finally { _gate.Release(); scope?.Dispose(); }
         if (deliver)
-            await RoleFanout.EachAsync(sessions.All().Where(s => s.Role != null && s.ActivitiesReady && s.DailyReady), DeliverAsync);
+            await RoleFanout.EachAsync(_sessions.All().Where(s => s.Role != null && s.ActivitiesReady && s.DailyReady), DeliverAsync);
         // The 5004 diff is empty unless the projected festival state moved (phase/segment boundary, candidates,
         // settlement); the per-session bet is synced by BetAsync and a login sends its own full projection.
         string projection = ProjectionKey();
-        if (projection == lastProjection) return;
-        lastProjection = projection;
+        if (projection == _lastProjection) return;
+        _lastProjection = projection;
         // Each session's projection is its own role-owned work: a role that is logging out (not admitting new
         // mutations) is skipped instead of aborting this realm pass for every later session.
-        foreach (var session in sessions.All().Where(s => s.Role != null && s.ActivitiesReady && s.DailyReady))
-            loop.PostOwned(session, () => daily.SyncEventsAsync(session), "festival projection");
+        foreach (var session in _sessions.All().Where(s => s.Role != null && s.ActivitiesReady && s.DailyReady))
+            _loop.PostOwned(session, () => _daily.SyncEventsAsync(session), "festival projection");
     }
 
     /// <summary>Everything <see cref="Project"/> reads that is shared by all sessions.</summary>
@@ -418,9 +418,9 @@ public sealed class FestivalService : IGameTicker
         var segment = Segment;
         var key = new System.Text.StringBuilder()
             .Append(segment?.State).Append('|').Append(segment?.Start).Append('|').Append(segment?.End).Append('|')
-            .Append(current?.Cycle).Append('|').Append(current?.End).Append('|').Append(current?.Complete);
-        if (current != null)
-            foreach (var (id, c) in current.Candidates)
+            .Append(_current?.Cycle).Append('|').Append(_current?.End).Append('|').Append(_current?.Complete);
+        if (_current != null)
+            foreach (var (id, c) in _current.Candidates)
                 key.Append('|').Append(id).Append(c.Eliminated ? 'e' : '-').Append(c.GiveUp ? 'g' : '-').Append(c.Rank);
         return key.ToString();
     }
@@ -428,15 +428,15 @@ public sealed class FestivalService : IGameTicker
     private async Task EvaluateAsync(Round r)
     {
         if (r.Question >= r.Questions.Length) { await CompleteAsync(r); return; }
-        int answer = data.Row("RainbowKoiQuestionConfig", r.Questions[r.Question]) is { } question
+        int answer = _data.Row("RainbowKoiQuestionConfig", r.Questions[r.Question]) is { } question
             ? checked((int)GameData.Int(question, "_iQuestionAnswer")) : -1;
-        var online = sessions.All().Where(s => s.Role != null && s.ActivitiesReady).ToDictionary(s => s.Role!.Id);
+        var online = _sessions.All().Where(s => s.Role != null && s.ActivitiesReady).ToDictionary(s => s.Role!.Id);
         var wrong = new List<Candidate>();
         foreach (var (id, c) in r.Candidates.Where(c => c.Value.Entered && !c.Value.Eliminated && !c.Value.GiveUp))
         {
-            if (!online.TryGetValue(id, out var s) || room == null || s.InstanceId != room.Id || s.SceneLoading)
+            if (!online.TryGetValue(id, out var s) || _room == null || s.InstanceId != _room.Id || s.SceneLoading)
             { c.GiveUp = true; continue; }
-            if (s.Dead || !zones.TryGetValue(answer == 1 ? 27 : 28, out var zone) || !zone.Contains(s.Position)) wrong.Add(c);
+            if (s.Dead || !_zones.TryGetValue(answer == 1 ? 27 : 28, out var zone) || !zone.Contains(s.Position)) wrong.Add(c);
         }
         foreach (var c in wrong) c.Eliminated = true;
         int survivors = r.Candidates.Count(c => c.Value.Entered && !c.Value.Eliminated && !c.Value.GiveUp);
@@ -448,33 +448,33 @@ public sealed class FestivalService : IGameTicker
     private async Task CompleteAsync(Round r)
     {
         if (r.Complete) return;
-        var present = room?.ActiveMembers.Where(m => m.Session.Role != null && m.Session.InstanceId == room.Id
+        var present = _room?.ActiveMembers.Where(m => m.Session.Role != null && m.Session.InstanceId == _room.Id
             && !m.Session.SceneLoading).Select(m => m.Session.Role!.Id).ToHashSet() ?? [];
         foreach (var (id, c) in r.Candidates.Where(c => !c.Value.Eliminated && !c.Value.GiveUp))
             if (!c.Entered || !present.Contains(id)) c.GiveUp = true;
         foreach (var c in r.Candidates.Values.Where(c => c.Entered && !c.Eliminated && !c.GiveUp)) c.Rank = 1;
         r.Complete = true; r.Phase = 2; r.Deadline = Math.Min(r.End, Now + 20);
-        var transaction = accounts.NewTransaction();
+        var transaction = _accounts.NewTransaction();
         var frozen = new List<(long Role, int Source, long Award, AwardGrant[] Grants)>();
         foreach (var (id, c) in r.Candidates.Where(c => c.Value.Rank > 0 && !c.Value.GiveUp))
         {
-            var reward = data.Table("RainbowKoiRewardConfig").Values.Where(x => GameData.Int(x, "_iRank") <= c.Rank)
+            var reward = _data.Table("RainbowKoiRewardConfig").Values.Where(x => GameData.Int(x, "_iRank") <= c.Rank)
                 .OrderByDescending(x => GameData.Int(x, "_iRank")).FirstOrDefault();
             if (reward.ValueKind == JsonValueKind.Object)
                 frozen.Add((id, 0, GameData.Int(reward, "_iAward"),
-                    awards.ResolveForProgress(roles.LoadProgress(id), GameData.Int(reward, "_iAward"), 101).Grants.ToArray()));
+                    _awards.ResolveForProgress(_roles.LoadProgress(id), GameData.Int(reward, "_iAward"), 101).Grants.ToArray()));
         }
         // (inferred) The bet panel previews LuckyAwardPreview; a successful prediction receives that award once.
-        long betAward = data.Table("PublicParamConfig").TryGetValue("LuckyAwardPreview", out var preview) ? (long)(GameData.Number(preview) ?? 0) : 0;
+        long betAward = _data.Table("PublicParamConfig").TryGetValue("LuckyAwardPreview", out var preview) ? (long)(GameData.Number(preview) ?? 0) : 0;
         foreach (var (id, target) in r.Bets)
             if (betAward > 0 && r.Candidates.TryGetValue(target, out var c) && c.Rank == 1 && !c.GiveUp)
                 frozen.Add((id, 1, betAward,
-                    awards.ResolveForProgress(roles.LoadProgress(id), betAward, 101).Grants.ToArray()));
+                    _awards.ResolveForProgress(_roles.LoadProgress(id), betAward, 101).Grants.ToArray()));
         foreach (var row in frozen)
             transaction.Add(new FestivalRewardInsertPlan(r.Cycle, row.Role, row.Source, row.Award,
                 JsonSerializer.SerializeToUtf8Bytes(row.Grants)));
         transaction.Add(new FestivalRoundWritePlan(r.Cycle, JsonSerializer.SerializeToUtf8Bytes(r)));
-        var catalog = EventEconomy.Catalog(data);
+        var catalog = EventEconomy.Catalog(_data);
         EconomyAsset Asset(int entry) => catalog.TryAsset(entry, out var asset) ? asset
             : throw new InvalidDataException($"Festival reward item {entry} is not catalogued.");
         var goods = frozen.SelectMany(row => row.Grants.Where(grant => grant.Entry is not (100 or 101))
@@ -491,20 +491,20 @@ public sealed class FestivalService : IGameTicker
                 DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), [], goods, deltas,
                 JsonSerializer.SerializeToUtf8Bytes(new { r.Cycle, Rows = frozen.Count })));
         }
-        await transaction.CommitAsync(accounts, "festival/complete", _ => current = r);
-        deliverOnline = true;
+        await transaction.CommitAsync(_accounts, "festival/complete", _ => _current = r);
+        _deliverOnline = true;
     }
 
     private async Task DeliverAsync(GameSession session)
     {
         if (session.Role == null) return;
-        var pending = await accounts.ReadAsync<List<FestivalPendingReward>>(
+        var pending = await _accounts.ReadAsync<List<FestivalPendingReward>>(
             new FestivalReadPlan(FestivalReadKind.PendingRewards, session.Role.Id));
         if (pending.Count == 0) return;
         long roleId = session.Role.Id;
         var keys = new[] { ReservationKey.Role(roleId), ReservationKey.Lifecycle(roleId) }
             .Concat(pending.Select(p => ReservationKey.Entity("festival_reward", $"{p.Cycle}/{roleId}/{p.Source}"))).ToArray();
-        if (loop.Owners is { } owners)
+        if (_loop.Owners is { } owners)
             await owners.RunSessionAsync("festival/deliver", keys, session, () => DeliverPendingRowsAsync(session, pending));
         else await DeliverPendingRowsAsync(session, pending);
     }
@@ -516,11 +516,11 @@ public sealed class FestivalService : IGameTicker
             var grants = JsonSerializer.Deserialize<AwardGrant[]>(p.Grants)
                 ?? throw new InvalidDataException("Festival reward has an invalid frozen result.");
             var plan = new AwardPlan(p.Award, 0, grants);
-            await character.ApplyAwardAsync(session, plan, persist: tx =>
+            await _character.ApplyAwardAsync(session, plan, persist: tx =>
             {
                 tx.Add(new Ro3Emu.Server.Accounts.Persistence.FestivalClaimPlan(p.Cycle, session.Role!.Id, p.Source));
                 if (grants.Any(grant => grant.Entry is not (100 or 101)))
-                    tx.WithEventEconomy(EventEconomy.ForRole(data, session, "festival-deliver",
+                    tx.WithEventEconomy(EventEconomy.ForRole(_data, session, "festival-deliver",
                         $"festival/{p.Cycle}/{session.Role.Id}/{p.Source}/deliver", [], [],
                         new { p.Cycle, p.Source, p.Award, Grants = grants }));
             });
@@ -529,18 +529,18 @@ public sealed class FestivalService : IGameTicker
 
     private async Task SaveAsync(Round next)
     {
-        var tx = accounts.NewTransaction();
+        var tx = _accounts.NewTransaction();
         tx.Add(new FestivalRoundWritePlan(next.Cycle, JsonSerializer.SerializeToUtf8Bytes(next)));
-        await tx.CommitAsync(accounts, "festival/round", _ => current = next);
+        await tx.CommitAsync(_accounts, "festival/round", _ => _current = next);
     }
 
     private static Round Clone(Round source) => JsonSerializer.Deserialize<Round>(JsonSerializer.SerializeToUtf8Bytes(source))!;
 
     public void Tick(GameTime time)
     {
-        if (queued || reconciledOnce && time.Now - lastTick < TimeSpan.FromSeconds(1)) return;
-        reconciledOnce = true; // the first reconciliation runs on the loop's first tick (startup), not 1 s later
-        lastTick = time.Now; queued = true;
-        loop.PostRuntime(async () => { try { await ReconcileAsync(); } finally { queued = false; } });
+        if (_queued || _reconciledOnce && time.Now - _lastTick < TimeSpan.FromSeconds(1)) return;
+        _reconciledOnce = true; // the first reconciliation runs on the loop's first tick (startup), not 1 s later
+        _lastTick = time.Now; _queued = true;
+        _loop.PostRuntime(async () => { try { await ReconcileAsync(); } finally { _queued = false; } });
     }
 }

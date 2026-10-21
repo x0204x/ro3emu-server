@@ -7,7 +7,7 @@ public sealed partial class AdventureGroupService
 {
     /// <summary>Chat invitation tokens (34009 Ope_Invite; the inviter's client sends the link, HLP:2134-2241).
     /// In memory: an invitation does not survive a restart (inferred).</summary>
-    private readonly Dictionary<long, (long Group, long Inviter, long Invitee, long Expires)> invites = new();
+    private readonly Dictionary<long, (long Group, long Inviter, long Invitee, long Expires)> _invites = new();
     private static readonly TimeSpan InviteLife = TimeSpan.FromHours(24); // (inferred) no config names it
 
     private static long NewToken() => Random.Shared.NextInt64(1, long.MaxValue);
@@ -21,13 +21,13 @@ public sealed partial class AdventureGroupService
 
     private AdventureGroupStore.Member NewMember(long roleId) => new()
     {
-        RoleId = roleId, Name = Online(roleId)?.Role?.Name ?? roles.Get(roleId)?.Name ?? "", EnterTime = Now,
+        RoleId = roleId, Name = Online(roleId)?.Role?.Name ?? _roles.Get(roleId)?.Name ?? "", EnterTime = Now,
     };
 
     /// <summary>A role joins exactly one group; its outstanding applications elsewhere are withdrawn (inferred).</summary>
     private async Task WithdrawApplicationsAsync(long roleId, long exceptGroup)
     {
-        foreach (var other in store.List().Where(x => x.Id != exceptGroup && x.Applications.ContainsKey(roleId)))
+        foreach (var other in _store.List().Where(x => x.Id != exceptGroup && x.Applications.ContainsKey(roleId)))
         {
             var applicant = other.Applications[roleId];
             other.Applications.Remove(roleId);
@@ -82,7 +82,7 @@ public sealed partial class AdventureGroupService
             await SendClearAsync(s);
             await SyncRelationAsync(s, null);
         }
-        log.LogInformation("Adventure group {Id} {Name} disbanded", g.Id, g.Name);
+        _log.LogInformation("Adventure group {Id} {Name} disbanded", g.Id, g.Name);
         return true;
     }
 
@@ -105,7 +105,7 @@ public sealed partial class AdventureGroupService
         if (code == 0) code = CheckLabels(labels);
         int background = req.Background == 0 ? 1 : req.Background;
         if (code == 0 && !DefaultCard(background)) code = ErrorCodes.Parameter;
-        if (code == 0 && store.List().Count >= Number("AdventureGroupMaxCreateLimit", 100000)) code = ErrMaxGroups;
+        if (code == 0 && _store.List().Count >= Number("AdventureGroupMaxCreateLimit", 100000)) code = ErrMaxGroups;
         // The mentor route needs the party at hand (LaunchBrotherhoodCreation, HLP:2333-2482); checked again at 34014.
         if (code == 0 && npc) code = PartyCheck(s, null);
         if (code == 0)
@@ -117,14 +117,14 @@ public sealed partial class AdventureGroupService
                 AutoAgreeHelperApply = req.AutoAgreeHelperApply, DayResetTime = DayStart, WeekResetTime = WeekStart,
             };
             g.Members[self] = NewMember(self);
-            if (!await SaveAsync(g)) code = store.NameExists(req.Name) ? ErrNameTaken : ErrJoined;
+            if (!await SaveAsync(g)) code = _store.NameExists(req.Name) ? ErrNameTaken : ErrJoined;
             else
             {
                 await s.SendGameAsync(Create, resp);
                 await SendFullAsync(s, g, joined: true);
                 await SyncRelationAsync(s, g);
                 await WithdrawApplicationsAsync(self, g.Id);
-                log.LogInformation("{Name} creates adventure group {Id} {Group} ({Type})", s.Role.Name, g.Id, g.Name, npc ? "mentor" : "recruit");
+                _log.LogInformation("{Name} creates adventure group {Id} {Group} ({Type})", s.Role.Name, g.Id, g.Name, npc ? "mentor" : "recruit");
                 return;
             }
         }
@@ -152,11 +152,11 @@ public sealed partial class AdventureGroupService
         switch (req.Op)
         {
             case OpeType.OpeHelperApply:
-                code = await HelperApplyAsync(s, store.Get(req.AdventureGroupId), resp);
+                code = await HelperApplyAsync(s, _store.Get(req.AdventureGroupId), resp);
                 break;
             case OpeType.OpeHelperCancel:
                 {
-                    var g = store.Get(req.AdventureGroupId) ?? Own(s);
+                    var g = _store.Get(req.AdventureGroupId) ?? Own(s);
                     if (g == null || g.Status == StatusNormal) { code = ErrNotHelperGroup; break; }
                     resp.AdventureGroupId = g.Id;
                     if (g.Applications.Remove(self, out var applicant))
@@ -188,7 +188,7 @@ public sealed partial class AdventureGroupService
                         if (code == 0) await BroadcastApplicantAsync(g, applicant, added: false);
                         break;
                     }
-                    code = store.ForRole(target) != null ? ErrInGroup : g.Members.Count >= MemberLimit ? ErrHelperLimit : 0;
+                    code = _store.ForRole(target) != null ? ErrInGroup : g.Members.Count >= MemberLimit ? ErrHelperLimit : 0;
                     if (code == ErrInGroup)
                     {
                         g.Applications.Remove(target);
@@ -217,7 +217,7 @@ public sealed partial class AdventureGroupService
         if (!HelperLive(g)) return ErrRecruitExpired;
         if (Own(s) != null) return ErrJoined;
         if (g.Applications.ContainsKey(self)) return ErrApplied;
-        var all = store.List();
+        var all = _store.List();
         if (all.Count(x => x.Status == StatusHelper && x.Applications.ContainsKey(self)) >= HelperApplyLimit) return ErrApplyLimit;
         if (g.Members.Count >= MemberLimit) return ErrHelperLimit;
         if (g.Applications.Count >= GroupApplicationLimit) return ErrAcceptLimit;
@@ -260,12 +260,12 @@ public sealed partial class AdventureGroupService
         int code = !Open(s) ? ErrorCodes.FeatureUnavailable : Cooldown(s, out remaining);
         resp.PunishTime = code == ErrCooldown ? remaining : 0;
         if (code != 0) return code;
-        var g = store.Get(data.AdventureId);
+        var g = _store.Get(data.AdventureId);
         if (g == null || g.Status != StatusNormal) return ErrNoGroup;
         if (Own(s) != null) return ErrJoined;
         if (g.Applications.ContainsKey(self)) return ErrApplied;
         if (g.Members.Count >= MemberLimit) return ErrFull;
-        if (store.List().Count(x => x.Status == StatusNormal && x.Applications.ContainsKey(self)) >= NormalApplyLimit) return ErrApplyLimit;
+        if (_store.List().Count(x => x.Status == StatusNormal && x.Applications.ContainsKey(self)) >= NormalApplyLimit) return ErrApplyLimit;
         if (g.Applications.Count >= GroupApplicationLimit) return ErrAcceptLimit;
         if (g.AutoAgreeApply) return await AdmitAsync(g, self) ? 0 : ErrJoined;
         var applicant = new AdventureGroupStore.Applicant { RoleId = self, Name = s.Role.Name, Time = Now };
@@ -277,7 +277,7 @@ public sealed partial class AdventureGroupService
 
     private async Task<int> CancelApplyAsync(GameSession s, NormalOpeData data)
     {
-        var g = store.Get(data.AdventureId);
+        var g = _store.Get(data.AdventureId);
         if (g == null || !g.Applications.Remove(s.Role!.Id, out var applicant)) return ErrNoApplication;
         if (!await SaveAsync(g)) return ErrorCodes.Unknown;
         await BroadcastApplicantAsync(g, applicant, added: false);
@@ -291,7 +291,7 @@ public sealed partial class AdventureGroupService
         if (g.Owner != s.Role!.Id) return ErrPermission;
         long target = data.InvitedPlayerId;
         if (!g.Applications.TryGetValue(target, out var applicant)) return ErrNoApplication;
-        if (data.IsAgree && store.ForRole(target) == null && g.Members.Count < MemberLimit)
+        if (data.IsAgree && _store.ForRole(target) == null && g.Members.Count < MemberLimit)
             return await AdmitAsync(g, target) ? 0 : ErrInGroup;
         g.Applications.Remove(target);
         if (!await SaveAsync(g)) return ErrorCodes.Unknown;
@@ -353,12 +353,12 @@ public sealed partial class AdventureGroupService
         var g = Own(s);
         long target = data.InvitedPlayerId, self = s.Role!.Id;
         if (g == null || g.Status != StatusNormal) return ErrNotInGroup;
-        if (target == self || roles.Get(target) == null) return ErrorCodes.Parameter;
-        if (!await friends.AreFriendsAsync(self, target)) return ErrFriendsOnly;
-        if (store.ForRole(target) != null) return ErrInGroup;
+        if (target == self || _roles.Get(target) == null) return ErrorCodes.Parameter;
+        if (!await _friends.AreFriendsAsync(self, target)) return ErrFriendsOnly;
+        if (_store.ForRole(target) != null) return ErrInGroup;
         if (g.Members.Count >= MemberLimit) return ErrFull;
         long token = NewToken();
-        invites[token] = (g.Id, self, target, Now + (long)InviteLife.TotalSeconds);
+        _invites[token] = (g.Id, self, target, Now + (long)InviteLife.TotalSeconds);
         resp.Opedata.InvitedPlayerId = target;
         resp.Opedata.InviteToken = token;
         resp.Opedata.Inviter = self;
@@ -369,18 +369,18 @@ public sealed partial class AdventureGroupService
     private async Task<int> AcceptInviteAsync(GameSession s, NormalOpeData data, NormalAdventureGroupOpeRes resp)
     {
         long self = s.Role!.Id;
-        if (!invites.TryGetValue(data.InviteToken, out var invite) || invite.Invitee != self || invite.Inviter != data.Inviter)
+        if (!_invites.TryGetValue(data.InviteToken, out var invite) || invite.Invitee != self || invite.Inviter != data.Inviter)
             return ErrNoInvite;
-        if (invite.Expires < Now) { invites.Remove(data.InviteToken); return ErrInviteExpired; }
+        if (invite.Expires < Now) { _invites.Remove(data.InviteToken); return ErrInviteExpired; }
         int remaining = 0;
         int code = !Open(s) ? ErrorCodes.FeatureUnavailable : Cooldown(s, out remaining);
         resp.PunishTime = code == ErrCooldown ? remaining : 0;
         if (code != 0) return code;
-        var g = store.Get(invite.Group);
+        var g = _store.Get(invite.Group);
         if (g == null || g.Status != StatusNormal) return ErrNoGroup;
         if (Own(s) != null) return ErrJoined;
         if (g.Members.Count >= MemberLimit) return ErrFull;
-        invites.Remove(data.InviteToken);
+        _invites.Remove(data.InviteToken);
         resp.Opedata.AdventureId = g.Id;
         return await AdmitAsync(g, self) ? 0 : ErrJoined;
     }

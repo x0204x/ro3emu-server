@@ -41,35 +41,35 @@ public sealed partial class MailService
 
     public sealed class ActivityDeliveryLease : IDisposable
     {
-        private readonly MailService owner;
-        private readonly long recipient;
-        private readonly IDisposable mailboxLease;
-        private readonly Mailbox? mailbox;
-        private readonly RoleBlobSnapshot original;
-        private readonly bool pending;
+        private readonly MailService _owner;
+        private readonly long _recipient;
+        private readonly IDisposable _mailboxLease;
+        private readonly Mailbox? _mailbox;
+        private readonly RoleBlobSnapshot _original;
+        private readonly bool _pending;
         internal ActivityDeliveryLease(MailService owner, long recipient, IDisposable mailboxLease, Mailbox? mailbox,
             RoleBlobSnapshot original, bool pending)
         {
-            this.owner = owner; this.recipient = recipient; this.mailboxLease = mailboxLease; this.mailbox = mailbox;
-            this.original = original; this.pending = pending;
+            this._owner = owner; this._recipient = recipient; this._mailboxLease = mailboxLease; this._mailbox = mailbox;
+            this._original = original; this._pending = pending;
         }
-        public bool Pending => pending;
+        public bool Pending => _pending;
         public void Persist(Ro3Emu.Server.Accounts.Persistence.RoleItemPlanBuilder builder)
         {
-            if (mailbox == null) throw new InvalidOperationException("No prepared gift.");
-            builder.Guard(new RoleBlobGuardPlan(recipient, "mailbox", original));
-            owner.Purge(mailbox, owner.Now, builder, recipient);
-            builder.RoleBlob(recipient, "mailbox", System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(mailbox));
+            if (_mailbox == null) throw new InvalidOperationException("No prepared gift.");
+            builder.Guard(new RoleBlobGuardPlan(_recipient, "mailbox", _original));
+            _owner.Purge(_mailbox, _owner.Now, builder, _recipient);
+            builder.RoleBlob(_recipient, "mailbox", System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(_mailbox));
         }
 
         /// <summary>Call only after Persist's transaction committed.</summary>
         public async Task NotifyAsync()
         {
-            if (mailbox == null) return;
-            await owner.NotifyAsync(recipient, 1);
+            if (_mailbox == null) return;
+            await _owner.NotifyAsync(_recipient, 1);
         }
 
-        public void Dispose() => mailboxLease.Dispose();
+        public void Dispose() => _mailboxLease.Dispose();
     }
 
     public sealed record ActivityTemplateDelivery(int TemplateId, IReadOnlyList<Attachment> Attachments);

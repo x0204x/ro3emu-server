@@ -16,7 +16,7 @@ public sealed partial class TerritoryWarsService
     /// (_iNPCSubType 250), unselectable, no name or HP bar, _iNeedNotifyGlobalData 1.</summary>
     private const int ScenePointNpc = 4905010;
     private const long ScenePointUidBase = 1L << 53;
-    private static long scenePointSerial;
+    private long _scenePointSerial;
 
     /// <summary>
     /// Config/Dungeon/DungeonLua_3030101.lua UIModule_NpcData {spawnPointId: [4905010, eObjectType]}, read by
@@ -143,18 +143,18 @@ public sealed partial class TerritoryWarsService
     /// </summary>
     private async Task SpawnScenePointsAsync(Battle b)
     {
-        if (b.Room.Closed || b.State.Settled || maps.Map(b.State.Scene) is not { } map) return;
+        if (b.Room.Closed || b.State.Settled || _maps.Map(b.State.Scene) is not { } map) return;
         var added = new List<int>();
         foreach (var pointId in ScenePointsOf(b.State).Keys.Order())
         {
             if (b.ScenePointActors.ContainsKey(pointId) || !map.Points.TryGetValue(pointId, out var at)) continue;
             var unit = new ScenePointUnit
             {
-                Uid = ScenePointUidBase | Interlocked.Increment(ref scenePointSerial), SceneEntry = b.Room.SceneEntry,
+                Uid = ScenePointUidBase | Interlocked.Increment(ref _scenePointSerial), SceneEntry = b.Room.SceneEntry,
                 InstanceId = b.Room.Id, X = at.X, Y = at.Y, Z = at.Z, Face = at.Face, PointId = pointId,
-                Template = monsters.Template(ScenePointNpc), BornMs = MonsterService.NowMs,
+                Template = _monsters.Template(ScenePointNpc), BornMs = MonsterService.NowMs,
             };
-            if (!await instances.AddPropAsync(b.Room, unit)) return;
+            if (!await _instances.AddPropAsync(b.Room, unit)) return;
             b.ScenePointActors[pointId] = unit;
             added.Add(pointId);
         }
@@ -204,10 +204,10 @@ public sealed partial class TerritoryWarsService
                 return $"No gameplay point {pointId} here: {string.Join(" ", ScenePointsOf(b.State).Keys.Order())}";
             long owner = args.Length < 4 ? current.Owner : args[3].Equals("self", StringComparison.OrdinalIgnoreCase)
                 ? Own(s)?.Id ?? 0 : long.Parse(args[3], System.Globalization.CultureInfo.InvariantCulture);
-            long readyTime = seconds > 0 ? (clock.Now + seconds) * 1000 : 0;
+            long readyTime = seconds > 0 ? (_clock.Now + seconds) * 1000 : 0;
             await SetScenePointAsync(b, pointId, status, readyTime, owner);
             return $"Point {pointId}: {status}, readyTime {readyTime}, owner {owner}.";
         }
-        finally { stagedTerritoryState.Dispose(); gate.Release(); reservation?.Dispose(); }
+        finally { stagedTerritoryState.Dispose(); _gate.Release(); reservation?.Dispose(); }
     }
 }

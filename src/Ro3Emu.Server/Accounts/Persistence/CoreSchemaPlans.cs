@@ -355,17 +355,8 @@ internal sealed class AuctionSchemaPlan : DbPlan
             CREATE INDEX IF NOT EXISTS auction_prebuy_role ON auction_prebuy(role_id);
             """;
         cmd.ExecuteNonQuery();
-        foreach (string column in new[] { "requested_id INTEGER NOT NULL DEFAULT 0", "paused INTEGER NOT NULL DEFAULT 0" })
-        {
-            try
-            {
-                using var migration = db.CreateCommand();
-                migration.Transaction = tx;
-                migration.CommandText = $"ALTER TABLE auction_prebuy ADD COLUMN {column}";
-                migration.ExecuteNonQuery();
-            }
-            catch (SqliteException e) when (e.SqliteErrorCode == 1 && e.Message.Contains("duplicate column name")) { }
-        }
+        SchemaSql.AddColumn(db, tx, "auction_prebuy", "requested_id", "INTEGER NOT NULL DEFAULT 0");
+        SchemaSql.AddColumn(db, tx, "auction_prebuy", "paused", "INTEGER NOT NULL DEFAULT 0");
         SchemaSql.Execute(db, tx, """
             INSERT OR IGNORE INTO owner_revision(kind,id,part,revision)
                 SELECT 'auction_item',source_key,'state',0 FROM auction_item;

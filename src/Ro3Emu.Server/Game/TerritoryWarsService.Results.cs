@@ -25,7 +25,7 @@ public sealed partial class TerritoryWarsService
                 TotalDamage = p.Damage, TotalBeDamage = p.Taken, TotalCure = p.Healed, Totalscore = p.Score
             };
         foreach (long guild in r.Guilds)
-            if (guildStore.Get(guild) is { } g)
+            if (_guildStore.Get(guild) is { } g)
                 scene.GuildStatistics[guild] = new GuildStatisticsInfo
                 {
                     GuildId = guild, GuildName = g.Name,
@@ -35,7 +35,7 @@ public sealed partial class TerritoryWarsService
     }
     private DungeonStatisticsInfoWithDungeon StatisticsReport(BattleState r) => new()
     {
-        StatisticsId = r.StatisticsId, DungeonId = (int)r.Scene, StatisticsTime = (r.Settled ? r.End : clock.Now) * 1000,
+        StatisticsId = r.StatisticsId, DungeonId = (int)r.Scene, StatisticsTime = (r.Settled ? r.End : _clock.Now) * 1000,
         SceneStatistics = { [r.StatisticsId] = Statistics(r) }
     };
 
@@ -72,11 +72,11 @@ public sealed partial class TerritoryWarsService
         {
             rank++;
             var role = LoadRole(p.Id);
-            string awardKey = $"{clock.Epoch}:{r.Round}:{r.Zone}";
+            string awardKey = $"{_clock.Epoch}:{r.Round}:{r.Zone}";
             if (role.Paid.Contains(awardKey) || role.Pending.ContainsKey(awardKey)) continue;
             role.Honor += p.Score; role.Valor += p.Kills;
-            var recipient = sessions.All().FirstOrDefault(s => s.Role?.Id == p.Id)
-                ?? new GameSession(null!, null!) { Role = roles.Get(p.Id), Progress = roles.LoadProgress(p.Id) };
+            var recipient = _sessions.All().FirstOrDefault(s => s.Role?.Id == p.Id)
+                ?? new GameSession(null!, null!) { Role = _roles.Get(p.Id), Progress = _roles.LoadProgress(p.Id) };
             var goods = new List<Grant>();
             if (recipient.Role != null)
             {
@@ -89,21 +89,21 @@ public sealed partial class TerritoryWarsService
             role.Pending[awardKey] = goods.GroupBy(x => (x.Entry, x.Bind)).Select(g => new Grant(g.Key.Entry, checked(g.Sum(x => x.Count)), g.Key.Bind)).ToList();
             roleChanges[p.Id] = role;
         }
-        var transaction = accounts.NewTransaction();
+        var transaction = _accounts.NewTransaction();
         Save(next, transaction);
         foreach (var (id, role) in roleChanges) SaveRole(id, role, transaction);
-        string settlementKey = $"{clock.Epoch}:{r.Round}:{r.Zone}";
+        string settlementKey = $"{_clock.Epoch}:{r.Round}:{r.Zone}";
         var awards = roleChanges.ToDictionary(pair => pair.Key, pair => pair.Value.Pending[settlementKey]);
         if (PendingSource(awards, "battle-settle", $"territory-battle-settle:{next.Epoch}:{r.Round}:{r.Zone}") is { } reward)
             transaction.WithEventEconomy(reward);
-        await roles.CommitAsync(transaction, "territory/settle");
+        await _roles.CommitAsync(transaction, "territory/settle");
         PublishCommitted(next);
-        await RoleFanout.EachAsync(sessions.All().Where(s => s.Role != null && roleChanges.ContainsKey(s.Role.Id)), s =>
+        await RoleFanout.EachAsync(_sessions.All().Where(s => s.Role != null && roleChanges.ContainsKey(s.Role.Id)), s =>
         {
             if (s.Role is { } current && roleChanges.TryGetValue(current.Id, out var role)) s.TerritoryWars = role;
             return Task.CompletedTask;
         });
-        await RoleFanout.EachAsync(sessions.All().Where(s => s.Role != null && r.Players.ContainsKey(s.Role.Id)), async s =>
+        await RoleFanout.EachAsync(_sessions.All().Where(s => s.Role != null && r.Players.ContainsKey(s.Role.Id)), async s =>
         {
             try
             {
@@ -112,33 +112,33 @@ public sealed partial class TerritoryWarsService
                 if (s.TerritoryBattle is { } b && b.Key == key) await Send(s, 30401, BaseInfo(b));
             }
             catch (Exception e) when (e is IOException or ObjectDisposedException or System.Net.Sockets.SocketException)
-            { log.LogDebug(e, "Territory settlement delivery deferred for disconnected role {Role}", s.Role?.Id); }
+            { _log.LogDebug(e, "Territory settlement delivery deferred for disconnected role {Role}", s.Role?.Id); }
         });
         await PublishAsync();
     }
     private void AddRankAward(List<Grant> grants, string table, int rank, GameSession s)
     {
-        foreach (var row in data.Table(table).Values)
+        foreach (var row in _data.Table(table).Values)
         {
             if (row.TryGetProperty("_kRank", out var range) && range.ValueKind == JsonValueKind.Array && range.GetArrayLength() >= 2
                 && (rank < GameData.Number(range[0]) || rank > GameData.Number(range[1]))) continue;
             if (row.TryGetProperty("_kMultiverseArray", out var mv) && mv.ValueKind == JsonValueKind.Array
-                && mv.GetArrayLength() > 0 && !mv.EnumerateArray().Any(v => GameData.Number(v) == clock.PlayBook)) continue;
+                && mv.GetArrayLength() > 0 && !mv.EnumerateArray().Any(v => GameData.Number(v) == _clock.PlayBook)) continue;
             AddAward(grants, GameData.Int(row, "_iAwardGroupID"), s); break;
         }
     }
     private void AddAward(List<Grant> grants, long group, GameSession s)
     {
         long id = group;
-        if (data.Row("MultiverseGroupConfig", group) is { } mg)
-        { id = GameData.Int(mg, $"_iValue_{clock.PlayBook}"); if (id == 0) id = GameData.Int(mg, "_iValue_default"); }
-        if (data.Row("AwardConfig", id) is not { } raw) return;
+        if (_data.Row("MultiverseGroupConfig", group) is { } mg)
+        { id = GameData.Int(mg, $"_iValue_{_clock.PlayBook}"); if (id == 0) id = GameData.Int(mg, "_iValue_default"); }
+        if (_data.Row("AwardConfig", id) is not { } raw) return;
         var row = raw.ValueKind == JsonValueKind.Array ? raw[0] : raw;
         if (row.TryGetProperty("_kAward", out var fixedItems) && fixedItems.ValueKind == JsonValueKind.Array)
             foreach (var t in fixedItems.EnumerateArray())
                 if (t.ValueKind == JsonValueKind.Array && t.GetArrayLength() >= 2 && GameData.Number(t[1]) is > 0)
                     grants.Add(new Grant((int)(GameData.Number(t[0]) ?? 0), (int)(GameData.Number(t[1]) ?? 0), t.GetArrayLength() > 2 ? (int)(GameData.Number(t[2]) ?? 0) : 0));
-        grants.AddRange(rewards.RollAwardBound(id, s).Select(g => new Grant(g.Entry, g.Count, g.Bind)));
+        grants.AddRange(_rewards.RollAwardBound(id, s).Select(g => new Grant(g.Entry, g.Count, g.Bind)));
     }
 
     /// <summary>Shared dungeon report IDs return the same real counters as 83015; a role may query its own reports.</summary>
@@ -182,7 +182,7 @@ public sealed partial class TerritoryWarsService
     private async Task SubmitDropAsync(GameSession s)
     {
         var guild = Own(s);
-        var npc = maps.Map(s.SceneEntry)?.Npcs.FirstOrDefault(n => n.NpcId == Param("TerritoryWorldMaterialNPC", 200052)
+        var npc = _maps.Map(s.SceneEntry)?.Npcs.FirstOrDefault(n => n.NpcId == Param("TerritoryWorldMaterialNPC", 200052)
             && MonsterService.Distance(n.X, n.Z, s.Position.X, s.Position.Z) <= 5);
         if (guild == null) { await Error(s, SubmitDrop, ErrorCodes.TerritoryGuild); return; }
         if (s.Dead || s.SceneLoading || npc == null) { await Error(s, SubmitDrop, ErrorCodes.TerritoryInvalidPoint); return; }
@@ -192,13 +192,13 @@ public sealed partial class TerritoryWarsService
         long count = s.Progress!.Currency.GetValueOrDefault(133);
         if (count <= 0) { await Error(s, SubmitDrop, ErrorCodes.Parameter); return; }
         var role = LoadRole(s.Role!.Id); var next = Copy(state);
-        role.Donated = checked(role.Donated + count); role.Donations[clock.Now] = checked(role.Donations.GetValueOrDefault(clock.Now) + count);
+        role.Donated = checked(role.Donated + count); role.Donations[_clock.Now] = checked(role.Donations.GetValueOrDefault(_clock.Now) + count);
         next.Donations[s.Role.Id] = role.Donated;
         guild.Materials = checked(guild.Materials + count); // carried supply -> guild material 126, one-to-one (inferred).
-        if (await character.ExchangeLockedAsync(s, [(133, count)], [], sync: false, popup: false, persist: tx =>
+        if (await _character.ExchangeLockedAsync(s, [(133, count)], [], sync: false, popup: false, persist: tx =>
         {
-            guildStore.EnlistSave(guild, tx); SaveRole(s.Role.Id, role, tx); Save(next, tx);
-            tx.WithEventEconomy(new EventEconomyMutation(EventEconomy.Catalog(data), Guid.NewGuid().ToString("N"),
+            _guildStore.EnlistSave(guild, tx); SaveRole(s.Role.Id, role, tx); Save(next, tx);
+            tx.WithEventEconomy(new EventEconomyMutation(EventEconomy.Catalog(_data), Guid.NewGuid().ToString("N"),
                 s.Account!, s.Role.Id, "event/territory-submit-drop",
                 $"territory-submit-drop:{next.Epoch}:{s.Role.Id}:{role.Donated}",
                 DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
@@ -209,15 +209,15 @@ public sealed partial class TerritoryWarsService
                 JsonSerializer.SerializeToUtf8Bytes(new { Kind = "submit-drop", Role = s.Role.Id, Guild = guild.Id, Count = count })));
         }, asyncCommit: true) == null) { await Error(s, SubmitDrop, ErrorCodes.Parameter); return; }
         PublishCommitted(next); s.TerritoryWars = role;
-        await character.ItemsChangedAsync(s, false);
-        await guilds.RefreshResourceAsync(guild.Id);
+        await _character.ItemsChangedAsync(s, false);
+        await _guilds.RefreshResourceAsync(guild.Id);
         await Send(s, SubmitDrop, new NullArg());
     }
     private Task WarHallAsync(GameSession s)
     {
         var guild = Own(s);
         if (guild == null) return Send(s, WarHall, new TerritoryWarsWarHallGetInfoResp { Result = ErrorCodes.TerritoryGuild });
-        var utc = DateTimeOffset.FromUnixTimeSeconds(clock.Now).UtcDateTime;
+        var utc = DateTimeOffset.FromUnixTimeSeconds(_clock.Now).UtcDateTime;
         long week = new DateTimeOffset(utc.Date.AddDays(-((int)utc.DayOfWeek + 6) % 7), TimeSpan.Zero).ToUnixTimeSeconds();
         long month = new DateTimeOffset(new DateTime(utc.Year, utc.Month, 1), TimeSpan.Zero).ToUnixTimeSeconds();
         TerritoryWarsWarHallDonateRankGroup Group(long start)
@@ -231,6 +231,6 @@ public sealed partial class TerritoryWarsService
             }
             var ordered = g.Entries.OrderByDescending(x => x.DonateCount).ThenBy(x => x.PlayerId).ToArray(); g.Entries.Clear(); g.Entries.AddRange(ordered); return g;
         }
-        return Send(s, WarHall, new TerritoryWarsWarHallGetInfoResp { WeekRank = Group(week), MonthRank = Group(month), SeasonRank = Group(clock.SeasonStart) });
+        return Send(s, WarHall, new TerritoryWarsWarHallGetInfoResp { WeekRank = Group(week), MonthRank = Group(month), SeasonRank = Group(_clock.SeasonStart) });
     }
 }

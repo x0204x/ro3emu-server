@@ -21,28 +21,28 @@ public sealed partial class PetService
         RoomLevelUp = 33316, OpenRoom = 33317, GenerateEgg = 33318, EggReward = 33319, SetSkipAnim = 33320,
         AccelerateEgg = 33322, Break = 33323, CollectActive = 33324, FastEgg = 33325;
 
-    private readonly GameData data;
-    private readonly CharacterService character;
-    private readonly FunctionService functions;
-    private readonly RoleStore roles;
-    private readonly PetFollowerService follower;
-    private readonly TimeProvider clock;
-    private readonly SeasonService seasons;
-    private readonly Dictionary<(int Pet, int Star, int Stage), JsonElement> stars;
-    private readonly Dictionary<(int Quality, int Level), JsonElement> levels;
+    private readonly GameData _data;
+    private readonly CharacterService _character;
+    private readonly FunctionService _functions;
+    private readonly RoleStore _roles;
+    private readonly PetFollowerService _follower;
+    private readonly TimeProvider _clock;
+    private readonly SeasonService _seasons;
+    private readonly Dictionary<(int Pet, int Star, int Stage), JsonElement> _stars;
+    private readonly Dictionary<(int Quality, int Level), JsonElement> _levels;
 
     public PetService(GameData data, CharacterService character, FunctionService functions, RoleStore roles,
         PetFollowerService follower, TimeProvider clock, SeasonService seasons)
     {
-        this.data = data;
-        this.character = character;
-        this.functions = functions;
-        this.roles = roles;
-        this.follower = follower;
-        this.clock = clock;
-        this.seasons = seasons;
-        stars = data.Table("PetStarConfig").Values.ToDictionary(r => ((int)GameData.Int(r, "_iPetID"), (int)GameData.Int(r, "_iStar"), (int)GameData.Int(r, "_iStage")));
-        levels = data.Table("PetExpConfig").Values.ToDictionary(r => ((int)GameData.Int(r, "_iQuality"), (int)GameData.Int(r, "_iLv")));
+        this._data = data;
+        this._character = character;
+        this._functions = functions;
+        this._roles = roles;
+        this._follower = follower;
+        this._clock = clock;
+        this._seasons = seasons;
+        _stars = data.Table("PetStarConfig").Values.ToDictionary(r => ((int)GameData.Int(r, "_iPetID"), (int)GameData.Int(r, "_iStar"), (int)GameData.Int(r, "_iStage")));
+        _levels = data.Table("PetExpConfig").Values.ToDictionary(r => ((int)GameData.Int(r, "_iQuality"), (int)GameData.Int(r, "_iLv")));
         character.ExtraAttributes.Add(Attributes);
         character.SpecialItemUse.Add(TryUseSelfChooseAsync);
         character.RegisterItemAction(AddIncubateRoomExpAction, UseRoomExpItemAsync);
@@ -51,11 +51,11 @@ public sealed partial class PetService
     /// <summary>5017 before 5056: empty roster, room 1, and five empty plans 0–4 (inferred initial plans/inited).</summary>
     public async Task LoginAsync(GameSession s)
     {
-        s.Pets = roles.LoadPets(s.Role!.Id) is { } saved ? Normalize(DBPetInfo.Parser.ParseFrom(saved)) : NewState();
-        roles.SavePets(s.Role.Id, s.Pets.ToByteArray());
+        s.Pets = _roles.LoadPets(s.Role!.Id) is { } saved ? Normalize(DBPetInfo.Parser.ParseFrom(saved)) : NewState();
+        _roles.SavePets(s.Role.Id, s.Pets.ToByteArray());
         await SyncAsync(s);
-        character.Refresh(s);
-        await follower.RefreshAsync(s);
+        _character.Refresh(s);
+        await _follower.RefreshAsync(s);
     }
 
     private static DBPetInfo NewState() =>
@@ -103,14 +103,14 @@ public sealed partial class PetService
     internal async Task SyncGenrePlanAsync(GameSession session)
     {
         await SyncAsync(session);
-        await follower.RefreshAsync(session);
+        await _follower.RefreshAsync(session);
     }
 
-    private int Gate(GameSession s, bool incubation = false) => s.Pets == null || !functions.IsOpen(s, 33)
-        || incubation && (!functions.IsOpen(s, 3301) || !functions.IsOpen(s, 3302)) ? ErrorCodes.FeatureUnavailable : 0;
+    private int Gate(GameSession s, bool incubation = false) => s.Pets == null || !_functions.IsOpen(s, 33)
+        || incubation && (!_functions.IsOpen(s, 3301) || !_functions.IsOpen(s, 3302)) ? ErrorCodes.FeatureUnavailable : 0;
 
     private int Owned(GameSession s, int id) => Gate(s) is var gate and not 0 ? gate
-        : data.Row("PetBaseConfig", id) == null ? ErrorCodes.PetNoConfig
+        : _data.Row("PetBaseConfig", id) == null ? ErrorCodes.PetNoConfig
         : !s.Pets!.ListPet.ContainsKey(id) ? ErrorCodes.PetNotOwned : 0;
 
     private Task SyncAsync(GameSession s) => CharacterService.SyncAsync(s, PetSync, s.Pets!.Clone());
@@ -118,25 +118,25 @@ public sealed partial class PetService
     private async Task ChangedAsync(GameSession s, bool items = false, bool stats = false)
     {
         await SyncAsync(s);
-        if (items) await character.ItemsChangedAsync(s, stats: false);
+        if (items) await _character.ItemsChangedAsync(s, stats: false);
         if (stats)
         {
-            await character.RefreshStatsAsync(s);
-            await follower.RefreshAsync(s);
+            await _character.RefreshStatsAsync(s);
+            await _follower.RefreshAsync(s);
             // A committed lineup change: quest targets read it (growth-manual 103034 CheckSetUpPetCount).
-            if (!items) foreach (var handler in character.StateChanged) handler(s);
+            if (!items) foreach (var handler in _character.StateChanged) handler(s);
         }
     }
 
     private async Task SaveAsync(GameSession s, DBPetInfo next)
     {
         UpdatePower(next);
-        var tx = roles.NewTransaction();
+        var tx = _roles.NewTransaction();
         tx.ItemDelta(s.Role!.Id, s.Items, s.Items);
         tx.RoleBlob(s.Role.Id, "pets", next.ToByteArray());
-        tx.WithEconomy(character.FamilyEconomy(s, "cd13b/pet-state", [], [],
+        tx.WithEconomy(_character.FamilyEconomy(s, "cd13b/pet-state", [], [],
             new { StateHash = Convert.ToHexString(SHA256.HashData(next.ToByteArray())) }));
-        await roles.CommitAsync(tx, "pet/state", _ => s.Pets = next);
+        await _roles.CommitAsync(tx, "pet/state", _ => s.Pets = next);
     }
 
     /// <param name="lottery">Hatch pity records (DBAppearanceLotteryData.pityRecords), committed with the pets blob.</param>
@@ -145,12 +145,12 @@ public sealed partial class PetService
     {
         UpdatePower(next);
         var grants = goods ?? [];
-        bool done = await character.ExchangeLockedAsync(s, cost, grants, popup: false, sync: false,
+        bool done = await _character.ExchangeLockedAsync(s, cost, grants, popup: false, sync: false,
             persist: tx =>
             {
                 tx.RoleBlob(s.Role!.Id, "pets", next.ToByteArray());
                 if (lottery != null) tx.RoleBlob(s.Role.Id, "lottery", LotteryService.Pack(lottery, s.LotteryDay));
-                tx.WithEconomy(character.FamilyEconomy(s, "cd13b/pet-" + kind, cost, grants,
+                tx.WithEconomy(_character.FamilyEconomy(s, "cd13b/pet-" + kind, cost, grants,
                     new { StateHash = Convert.ToHexString(SHA256.HashData(next.ToByteArray())) }));
             }, committed: () =>
             {
@@ -161,7 +161,7 @@ public sealed partial class PetService
         return done;
     }
 
-    private Dictionary<int, Dictionary<int, long>> BookLedger(GameSession s) => roles.LoadPetBooks(s.Role!.Id) is { Length: > 0 } bytes
+    private Dictionary<int, Dictionary<int, long>> BookLedger(GameSession s) => _roles.LoadPetBooks(s.Role!.Id) is { Length: > 0 } bytes
         ? JsonSerializer.Deserialize<Dictionary<int, Dictionary<int, long>>>(bytes) ?? new() : new();
 
     /// <summary>Pre-ledger migration: configured progression plus carried surplus, in whole smallest books.</summary>
@@ -183,11 +183,11 @@ public sealed partial class PetService
         IReadOnlyList<(int, int)> goods, Dictionary<int, Dictionary<int, long>> books)
     {
         UpdatePower(next);
-        var paid = await character.ExchangeLockedAsync(s, cost, goods, popup: false, sync: false, persist: tx =>
+        var paid = await _character.ExchangeLockedAsync(s, cost, goods, popup: false, sync: false, persist: tx =>
         {
             tx.RoleBlob(s.Role!.Id, "pets", next.ToByteArray());
             tx.RoleBlob(s.Role.Id, "pet_books", JsonSerializer.SerializeToUtf8Bytes(books));
-            tx.WithEconomy(character.FamilyEconomy(s, "cd13b/pet-" + kind, cost, goods,
+            tx.WithEconomy(_character.FamilyEconomy(s, "cd13b/pet-" + kind, cost, goods,
                 new
                 {
                     StateHash = Convert.ToHexString(SHA256.HashData(next.ToByteArray())),
@@ -199,9 +199,9 @@ public sealed partial class PetService
     }
 
     private static PetData NewPet(int id) => new() { PetId = id, Level = 1, Star = 1 };
-    private JsonElement? StarRow(PetData p) => stars.TryGetValue((p.PetId, p.Star, p.StarProgress), out var row) ? row : null;
-    private JsonElement? LevelRow(PetData p) => data.Row("PetBaseConfig", p.PetId) is { } b
-        && levels.TryGetValue(((int)GameData.Int(b, "_iQuality"), p.Level), out var r) ? r : null;
+    private JsonElement? StarRow(PetData p) => _stars.TryGetValue((p.PetId, p.Star, p.StarProgress), out var row) ? row : null;
+    private JsonElement? LevelRow(PetData p) => _data.Row("PetBaseConfig", p.PetId) is { } b
+        && _levels.TryGetValue(((int)GameData.Int(b, "_iQuality"), p.Level), out var r) ? r : null;
     private static long[] Flat(JsonElement row, string key) => row.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.Array
         ? v.EnumerateArray().Select(x => (long)(GameData.Number(x) ?? 0)).ToArray() : [];
     private static List<(int, long)> Cost(JsonElement row, string key) => GameData.Pairs(row, key).Select(p => ((int)p.Id, (long)p.Value)).ToList();
@@ -216,13 +216,13 @@ public sealed partial class PetService
     {
         using var held = await CharacterService.Lock(s);
         int code = Gate(s);
-        if (code == 0 && (!stars.TryGetValue((req.PetId, 1, 0), out _) || data.Row("PetBaseConfig", req.PetId) == null)) code = ErrorCodes.PetNoConfig;
+        if (code == 0 && (!_stars.TryGetValue((req.PetId, 1, 0), out _) || _data.Row("PetBaseConfig", req.PetId) == null)) code = ErrorCodes.PetNoConfig;
         if (code == 0 && s.Pets!.ListPet.ContainsKey(req.PetId)) code = ErrorCodes.PetAlreadyOwned;
         if (code == 0)
         {
             var next = s.Pets!.Clone();
             next.ListPet[req.PetId] = NewPet(req.PetId);
-            var cost = Piece(stars[(req.PetId, 1, 0)]);
+            var cost = Piece(_stars[(req.PetId, 1, 0)]);
             if (cost.Count == 0) code = ErrorCodes.PetNoConfig;
             else if (!await ExchangeAsync(s, "combine", next, cost)) code = ErrorCodes.PetCombineMaterials;
         }
@@ -256,7 +256,7 @@ public sealed partial class PetService
             foreach (var (entry, exp) in new[] { (1250701, 500L), (1250702, 10000L), (1250703, 100000L) })
             {
                 if (need <= 0) break;
-                long take = Math.Min(character.CountOf(s, entry), (need + exp - 1) / exp);
+                long take = Math.Min(_character.CountOf(s, entry), (need + exp - 1) / exp);
                 if (take > 0) { cost.Add((entry, take)); need -= take * exp; }
             }
             if (code == 0 && need > 0) code = ErrorCodes.PetLevelMaterials;
@@ -371,9 +371,9 @@ public sealed partial class PetService
     {
         int[] levels = source == 1 ? [33, 33, 45, 50] : [40, 55, 60, 65, 70]; // PublicParamConfig Pet*FieldUnlockLv.
         return slot >= 1 && slot <= levels.Length && s.Progress!.Level >= levels[slot - 1]
-            && data.Row("PetSetLimitConfig", slot) is { } row
+            && _data.Row("PetSetLimitConfig", slot) is { } row
             && GameData.Int(row, source == 1 ? "_iCondition1" : "_iCondition2") is var condition and > 0
-            && functions.ConditionMet(s, condition);
+            && _functions.ConditionMet(s, condition);
     }
 
     public async Task SwitchAsync(GameSession s, PetSwitchPlanReq req)
@@ -430,17 +430,17 @@ public sealed partial class PetService
 
     private List<(int, int)>? ActivationAward(int id)
     {
-        long group = GameData.Int(data.Row("PetBaseConfig", id)!.Value, "_iActiveAward");
+        long group = GameData.Int(_data.Row("PetBaseConfig", id)!.Value, "_iActiveAward");
         if (group == 0) return [];
-        if (data.Row("MultiverseGroupConfig", group) is not { } mapping) return null;
-        long award = GameData.Int(mapping, $"_iValue_{seasons.PlayBook}");
+        if (_data.Row("MultiverseGroupConfig", group) is not { } mapping) return null;
+        long award = GameData.Int(mapping, $"_iValue_{_seasons.PlayBook}");
         if (award == 0) award = GameData.Int(mapping, "_iValue_default");
         // AwardConfig is keyed by award ID, with an array of rows at each key. All supplied pet activation
         // awards (4101..4103) have one unconditional row; refuse an unknown shape instead of inventing selection.
-        if (data.Row("AwardConfig", award) is not { ValueKind: JsonValueKind.Array } rows
+        if (_data.Row("AwardConfig", award) is not { ValueKind: JsonValueKind.Array } rows
             || rows.GetArrayLength() != 1 || rows[0].ValueKind != JsonValueKind.Object) return null;
         var values = Cost(rows[0], "_kAward");
-        return values.Any(p => p.Item2 is <= 0 or > int.MaxValue || data.Row("ItemConfig", p.Item1) == null)
+        return values.Any(p => p.Item2 is <= 0 or > int.MaxValue || _data.Row("ItemConfig", p.Item1) == null)
             ? null : values.Select(p => (p.Item1, (int)p.Item2)).ToList();
     }
 
@@ -452,11 +452,11 @@ public sealed partial class PetService
         if (code == 0 && (req.Fragments.Count is 0 or > 100 || req.Fragments.Select(f => f.FragmentId).Distinct().Count() != req.Fragments.Count)) code = ErrorCodes.Parameter;
         var cost = new List<(int, long)>();
         var goods = new Dictionary<int, long>();
-        var fragments = stars.Values.SelectMany(Piece).Select(p => p.Item1).ToHashSet();
+        var fragments = _stars.Values.SelectMany(Piece).Select(p => p.Item1).ToHashSet();
         if (code == 0)
             foreach (var f in req.Fragments)
             {
-                if (f.Count <= 0 || !fragments.Contains(f.FragmentId) || data.Row("ItemConfig", f.FragmentId) is not { } row)
+                if (f.Count <= 0 || !fragments.Contains(f.FragmentId) || _data.Row("ItemConfig", f.FragmentId) is not { } row)
                 { code = ErrorCodes.Parameter; break; }
                 var products = Cost(row, "_kDecompose");
                 if (products.Count == 0) { code = ErrorCodes.NothingToDismantle; break; }
@@ -469,7 +469,7 @@ public sealed partial class PetService
                 }
                 if (code != 0) break;
             }
-        if (code == 0 && !await ExchangeAsync(s, "decompose", s.Pets!.Clone(), cost, goods.Select(g => (g.Key, (int)g.Value)).ToList())) code = character.ShortageOf(s, cost);
+        if (code == 0 && !await ExchangeAsync(s, "decompose", s.Pets!.Clone(), cost, goods.Select(g => (g.Key, (int)g.Value)).ToList())) code = _character.ShortageOf(s, cost);
         if (code == 0) await ChangedAsync(s, items: true);
         await s.SendGameAsync(FragmentsBroken, new PetFragmentsBrokenResp { Result = code, Req = req });
     }
@@ -485,14 +485,14 @@ public sealed partial class PetService
     /// </summary>
     private IEnumerable<(long Id, double Value)> Attributes(GameSession s)
     {
-        if (s.Pets == null || !functions.IsOpen(s, 33)) yield break;
+        if (s.Pets == null || !_functions.IsOpen(s, 33)) yield break;
         foreach (var pet in s.Pets.ListPet.Values.Where(p => p.IsActiveCollect))
             if (StarRow(pet) is { } row)
                 foreach (var attr in GameData.Pairs(row, "_kCollectAttr")) yield return attr;
         if (s.Pets.SetupPlans.GetValueOrDefault(s.Pets.CurrentPlan) is not { } plan) yield break;
         foreach (var source in new[] { 1, 2 })
             foreach (var (slot, id) in Slots(plan, source))
-                if (s.Pets.ListPet.TryGetValue(id, out var pet) && StarRow(pet) is { } row && data.Row("PetSetLimitConfig", slot) is { } limit)
+                if (s.Pets.ListPet.TryGetValue(id, out var pet) && StarRow(pet) is { } row && _data.Row("PetSetLimitConfig", slot) is { } limit)
                     foreach (var (attr, value) in GameData.Pairs(row, source == 1 ? "_kFightSkill" : "_kAssistSkill"))
                         yield return (attr, value * GameData.Int(limit, source == 1 ? "_iFightAttrAddition" : "_iAssistAttrAddition") / 10000.0);
     }

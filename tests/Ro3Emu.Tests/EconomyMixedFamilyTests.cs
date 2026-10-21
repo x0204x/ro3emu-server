@@ -16,42 +16,42 @@ namespace Ro3Emu.Tests;
 
 public sealed class EconomyMixedFamilyTests : IDisposable
 {
-    private readonly string directory;
-    private readonly AccountStore accounts;
-    private readonly RoleStore roles;
-    private readonly ItemStore items;
-    private readonly long shopRole;
-    private readonly long familyRole;
-    private readonly long rewardRole;
-    private readonly long semanticRole;
+    private readonly string _directory;
+    private readonly AccountStore _accounts;
+    private readonly RoleStore _roles;
+    private readonly ItemStore _items;
+    private readonly long _shopRole;
+    private readonly long _familyRole;
+    private readonly long _rewardRole;
+    private readonly long _semanticRole;
     private static readonly EconomyCatalog Catalog = new(new Dictionary<long, EconomyAssetKind>
     { [1] = EconomyAssetKind.Currency, [3] = EconomyAssetKind.Item });
 
     public EconomyMixedFamilyTests()
     {
         string root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-        directory = Path.Combine(root, ".loadtest-temp", "mixed-economy-" + Guid.NewGuid().ToString("N"));
-        string config = Path.Combine(directory, "config");
+        _directory = Path.Combine(root, ".loadtest-temp", "mixed-economy-" + Guid.NewGuid().ToString("N"));
+        string config = Path.Combine(_directory, "config");
         Directory.CreateDirectory(config);
         File.WriteAllText(Path.Combine(config, "ItemConfig.json"), """{"1":{"_iType":1},"3":{"_iType":0}}""");
         foreach (string name in new[] { "AuctionConfig.json", "GuildSettingConfig.json",
                      "GuildTransportConfig.json", "GVGConfig.json" })
             File.WriteAllText(Path.Combine(config, name), "{}");
         File.WriteAllText(Path.Combine(config, "PublicParamConfig.json"), """{"AUCTION_CURRENCY":1}""");
-        accounts = new AccountStore(Options.Create(new ServerOptions { DataDir = directory, GameDataDir = directory }));
-        roles = new RoleStore(accounts);
-        items = new ItemStore(accounts);
-        accounts.WriteSync<int>(new MarketSchemaPlan());
-        accounts.WriteSync<int>(new AuctionSchemaPlan());
-        accounts.WriteSync<int>(new GuildSchemaPlan());
-        accounts.WriteSync<int>(new TerritorySchemaPlan(RealmStateKind.TerritoryWars));
-        accounts.WriteSync<int>(new TerritorySchemaPlan(RealmStateKind.TerritoryEscort));
-        accounts.WriteSync<int>(new FestivalSchemaPlan());
-        accounts.WriteSync<int>(new GuildChallengeSchemaPlan());
-        accounts.WriteSync<int>(new DungeonObligationSchemaPlan());
+        _accounts = new AccountStore(Options.Create(new ServerOptions { DataDir = _directory, GameDataDir = _directory }));
+        _roles = new RoleStore(_accounts);
+        _items = new ItemStore(_accounts);
+        _accounts.WriteSync<int>(new MarketSchemaPlan());
+        _accounts.WriteSync<int>(new AuctionSchemaPlan());
+        _accounts.WriteSync<int>(new GuildSchemaPlan());
+        _accounts.WriteSync<int>(new TerritorySchemaPlan(RealmStateKind.TerritoryWars));
+        _accounts.WriteSync<int>(new TerritorySchemaPlan(RealmStateKind.TerritoryEscort));
+        _accounts.WriteSync<int>(new FestivalSchemaPlan());
+        _accounts.WriteSync<int>(new GuildChallengeSchemaPlan());
+        _accounts.WriteSync<int>(new DungeonObligationSchemaPlan());
         // These two production schema plans are private to their services; the empty tables have
         // the same definitions and make the fresh fixture a complete snapshot schema.
-        FixtureSql.Execute(accounts, """
+        FixtureSql.Execute(_accounts, """
             CREATE TABLE IF NOT EXISTS guild_caravan_member
                 (role_id INTEGER PRIMARY KEY, state BLOB NOT NULL, revision INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS guild_caravan_version
@@ -59,19 +59,19 @@ public sealed class EconomyMixedFamilyTests : IDisposable
             CREATE TABLE IF NOT EXISTS guild_campfire
                 (guild_id INTEGER PRIMARY KEY, state BLOB NOT NULL);
             """);
-        shopRole = CreateRole("mixed-shop");
-        familyRole = CreateRole("mixed-family");
-        rewardRole = CreateRole("mixed-reward");
-        semanticRole = CreateRole("mixed-semantic");
-        foreach (long role in new[] { shopRole, familyRole })
+        _shopRole = CreateRole("mixed-shop");
+        _familyRole = CreateRole("mixed-family");
+        _rewardRole = CreateRole("mixed-reward");
+        _semanticRole = CreateRole("mixed-semantic");
+        foreach (long role in new[] { _shopRole, _familyRole })
         {
-            var progress = roles.LoadProgress(role);
+            var progress = _roles.LoadProgress(role);
             progress.Currency[1] = 100;
-            roles.SaveProgress(role, progress);
+            _roles.SaveProgress(role, progress);
         }
     }
 
-    private long CreateRole(string account) => roles.Create(account, 1,
+    private long CreateRole(string account) => _roles.Create(account, 1,
         "M" + Guid.NewGuid().ToString("N")[..10], 1, 1000, 1)!.Id;
 
     [Theory]
@@ -83,77 +83,77 @@ public sealed class EconomyMixedFamilyTests : IDisposable
     [InlineData("e05e")]
     public async Task OneRetainedLedgerRoutesSixKindsAndRejectsEachKindsCorruption(string damagedKind)
     {
-        var opening = EconomySnapshotReader.Read(accounts.DatabasePath, Catalog, "auto");
+        var opening = EconomySnapshotReader.Read(_accounts.DatabasePath, Catalog, "auto");
         const string shopOp = "mixed-shop-op", familyOp = "mixed-family-op";
         const string rewardOp = "mixed-reward-op", semanticOp = "mixed-semantic-op";
 
-        var shop = roles.NewTransaction();
-        shop.ItemDelta(shopRole, [], [new InvItem { Entry = 3, Stack = 1, Pack = 1 }]);
-        var shopProgress = roles.LoadProgress(shopRole);
+        var shop = _roles.NewTransaction();
+        shop.ItemDelta(_shopRole, [], [new InvItem { Entry = 3, Stack = 1, Pack = 1 }]);
+        var shopProgress = _roles.LoadProgress(_shopRole);
         shopProgress.Currency[1] -= 10;
-        shop.Progress(shopRole, shopProgress);
-        shop.RoleBlob(shopRole, "shop", JsonSerializer.SerializeToUtf8Bytes(new ShopService.ShopState()));
-        shop.WithEconomy(new EconomyMutation(shopOp, "mixed-shop", shopRole, "npc-shop-buy", "mixed/shop/1",
+        shop.Progress(_shopRole, shopProgress);
+        shop.RoleBlob(_shopRole, "shop", JsonSerializer.SerializeToUtf8Bytes(new ShopService.ShopState()));
+        shop.WithEconomy(new EconomyMutation(shopOp, "mixed-shop", _shopRole, "npc-shop-buy", "mixed/shop/1",
             "mixed/shop/source", 1_000_000, [new(new(EconomyAssetKind.Currency, 1), 10)],
             [new(new(EconomyAssetKind.Item, 3), 1)], [1]));
-        roles.Commit(shop, "test/mixed-shop");
+        _roles.Commit(shop, "test/mixed-shop");
 
-        var family = roles.NewTransaction();
-        family.ItemDelta(familyRole, [], []);
-        var familyProgress = roles.LoadProgress(familyRole);
+        var family = _roles.NewTransaction();
+        family.ItemDelta(_familyRole, [], []);
+        var familyProgress = _roles.LoadProgress(_familyRole);
         familyProgress.Currency[1] -= 5;
-        family.Progress(familyRole, familyProgress);
-        family.RoleBlob(familyRole, "pets", new DBPetInfo { CurrentPlan = 1 }.ToByteArray());
-        family.WithEconomy(new EconomyMutation(familyOp, "mixed-family", familyRole, "cd13b/pet-feed",
+        family.Progress(_familyRole, familyProgress);
+        family.RoleBlob(_familyRole, "pets", new DBPetInfo { CurrentPlan = 1 }.ToByteArray());
+        family.WithEconomy(new EconomyMutation(familyOp, "mixed-family", _familyRole, "cd13b/pet-feed",
             "mixed/family/1", "mixed/family/source", 1_000_001,
             [new(new(EconomyAssetKind.Currency, 1), 5)], [], [2]));
-        roles.Commit(family, "test/mixed-family");
+        _roles.Commit(family, "test/mixed-family");
 
-        var reward = roles.NewTransaction();
-        reward.ItemDelta(rewardRole, [], []);
-        var rewardProgress = roles.LoadProgress(rewardRole);
+        var reward = _roles.NewTransaction();
+        reward.ItemDelta(_rewardRole, [], []);
+        var rewardProgress = _roles.LoadProgress(_rewardRole);
         rewardProgress.Exp += 10;
-        reward.Progress(rewardRole, rewardProgress);
-        reward.WithEconomy(new EconomyMutation(rewardOp, "mixed-reward", rewardRole, "monster-kill",
+        reward.Progress(_rewardRole, rewardProgress);
+        reward.WithEconomy(new EconomyMutation(rewardOp, "mixed-reward", _rewardRole, "monster-kill",
             "mixed/reward/1", "mixed/reward/source", 1_000_002, [], [], [3],
             new EconomyRewardEvidence(1, 0, 1, 10, 1, 0, 1, 0, 10, 0)));
-        roles.Commit(reward, "test/mixed-reward");
+        _roles.Commit(reward, "test/mixed-reward");
 
-        var semantic = roles.NewTransaction();
-        semantic.RoleBlob(semanticRole, "shop", JsonSerializer.SerializeToUtf8Bytes(new ShopService.ShopState()));
-        semantic.WithEconomy(new EconomyEnvelope(semanticOp, "mixed-semantic", semanticRole,
+        var semantic = _roles.NewTransaction();
+        semantic.RoleBlob(_semanticRole, "shop", JsonSerializer.SerializeToUtf8Bytes(new ShopService.ShopState()));
+        semantic.WithEconomy(new EconomyEnvelope(semanticOp, "mixed-semantic", _semanticRole,
             "e05d-shop-metadata", "mixed/semantic/1", "mixed/semantic/source", 1_000_003, [], []));
-        roles.Commit(semantic, "test/mixed-semantic");
+        _roles.Commit(semantic, "test/mixed-semantic");
 
         // E03's JSON children must coexist with every master's binary receipt, even when
         // the same role participates in both. A lost ACK resolves through the E03 reader.
-        var escrow = roles.NewTransaction();
-        var escrowDebit = roles.LoadProgress(familyRole);
-        var escrowCredit = roles.LoadProgress(semanticRole);
+        var escrow = _roles.NewTransaction();
+        var escrowDebit = _roles.LoadProgress(_familyRole);
+        var escrowCredit = _roles.LoadProgress(_semanticRole);
         escrowDebit.Currency[1] -= 7;
         escrowCredit.Currency[1] = 7;
-        escrow.Progress(familyRole, escrowDebit);
-        escrow.Progress(semanticRole, escrowCredit);
-        var escrowIntent = new EscrowEconomyIntent("market/mixed-transfer", "mixed-family", familyRole);
+        escrow.Progress(_familyRole, escrowDebit);
+        escrow.Progress(_semanticRole, escrowCredit);
+        var escrowIntent = new EscrowEconomyIntent("market/mixed-transfer", "mixed-family", _familyRole);
         escrow.WithEscrowEconomy(escrowIntent);
-        accounts.FailNextEconomyAcknowledgementForTest();
-        await roles.CommitAsync(escrow, "test/mixed-escrow");
+        _accounts.FailNextEconomyAcknowledgementForTest();
+        await _roles.CommitAsync(escrow, "test/mixed-escrow");
         string escrowOp = escrowIntent.OperationId;
 
         const string eventOp = "mixed-event-op";
-        var eventPlan = roles.NewTransaction();
-        var eventProgress = roles.LoadProgress(semanticRole);
+        var eventPlan = _roles.NewTransaction();
+        var eventProgress = _roles.LoadProgress(_semanticRole);
         eventProgress.Currency[1] += 3;
-        eventPlan.Progress(semanticRole, eventProgress);
-        eventPlan.WithEventEconomy(new EventEconomyMutation(Catalog, eventOp, "mixed-semantic", semanticRole,
+        eventPlan.Progress(_semanticRole, eventProgress);
+        eventPlan.WithEventEconomy(new EventEconomyMutation(Catalog, eventOp, "mixed-semantic", _semanticRole,
             "event/mixed-grant", "mixed/event/source", 1_000_005, [],
             [new(new(EconomyAssetKind.Currency, 1), 3)],
-            [new(new(EconomyOwnerKind.Role, semanticRole.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+            [new(new(EconomyOwnerKind.Role, _semanticRole.ToString(System.Globalization.CultureInfo.InvariantCulture)),
                 new(EconomyAssetKind.Currency, 1), 3)], [7, 8]));
-        await roles.CommitAsync(eventPlan, "test/mixed-event");
+        await _roles.CommitAsync(eventPlan, "test/mixed-event");
 
-        var closing = EconomySnapshotReader.Read(accounts.DatabasePath, Catalog, "auto");
-        EconomyLedgerWindow Read() => EconomyLedgerReader.Read(accounts.DatabasePath, Catalog, "auto",
+        var closing = EconomySnapshotReader.Read(_accounts.DatabasePath, Catalog, "auto");
+        EconomyLedgerWindow Read() => EconomyLedgerReader.Read(_accounts.DatabasePath, Catalog, "auto",
             opening.Cut.CommitSequence!.Value, closing.Cut.CommitSequence!.Value);
         var ledger = Read();
         Assert.True(ledger.CompleteHistory, string.Join("; ", ledger.Issues.Select(x => x.Detail)));
@@ -162,7 +162,7 @@ public sealed class EconomyMixedFamilyTests : IDisposable
             ledger.Receipts.Select(x => x.CommandKind));
         foreach (var committed in ledger.Receipts)
             Assert.Equal(committed.CommandKind,
-                EconomyReceiptReader.Read(accounts.DatabasePath, committed.OperationId)!.CommandKind);
+                EconomyReceiptReader.Read(_accounts.DatabasePath, committed.OperationId)!.CommandKind);
         Assert.Equal(2, ledger.Legs.Count(x => x.OperationId == escrowOp));
         Assert.Single(ledger.Legs, x => x.OperationId == eventOp);
         Assert.Equal(2, ledger.Legs.Count(x => x.OperationId == shopOp));
@@ -181,7 +181,7 @@ public sealed class EconomyMixedFamilyTests : IDisposable
             ledger with { UncoveredMutationFamilies = [] });
         Assert.Equal(EconomyVerdict.Pass, scoped.Verdict);
 
-        using var db = new SqliteConnection("Data Source=" + accounts.DatabasePath);
+        using var db = new SqliteConnection("Data Source=" + _accounts.DatabasePath);
         db.Open();
         using var change = db.CreateCommand();
         switch (damagedKind)
@@ -198,7 +198,7 @@ public sealed class EconomyMixedFamilyTests : IDisposable
                 change.Parameters.AddWithValue("$reason", (int)EconomyReason.GuildServiceCost);
                 break;
             case "e04":
-                var receipt = EconomyReceiptReader.Read(accounts.DatabasePath, rewardOp)!;
+                var receipt = EconomyReceiptReader.Read(_accounts.DatabasePath, rewardOp)!;
                 var intent = JsonNode.Parse(receipt.IntentPayload)!.AsObject();
                 intent["RewardEvidence"] = null;
                 byte[] payload = Encoding.UTF8.GetBytes(intent.ToJsonString());
@@ -219,7 +219,7 @@ public sealed class EconomyMixedFamilyTests : IDisposable
             case "e05e":
                 change.CommandText = "UPDATE economy_entry SET owner_id=$owner WHERE operation_id=$op";
                 change.Parameters.AddWithValue("$op", eventOp);
-                change.Parameters.AddWithValue("$owner", shopRole.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                change.Parameters.AddWithValue("$owner", _shopRole.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 break;
         }
         Assert.Equal(1, change.ExecuteNonQuery());
@@ -241,23 +241,23 @@ public sealed class EconomyMixedFamilyTests : IDisposable
     [Fact]
     public void BrokenTransferPairReturnsAnExactCounterpartyIssue()
     {
-        items.Insert(familyRole, new InvItem { Entry = 3, Stack = 1, Pack = 1, Sort = 1 });
-        var before = items.Load(familyRole);
+        _items.Insert(_familyRole, new InvItem { Entry = 3, Stack = 1, Pack = 1, Sort = 1 });
+        var before = _items.Load(_familyRole);
         var moved = before.Select(x => x.Clone()).ToList();
         moved[0].Pack = 2;
-        var tx = roles.NewTransaction();
-        tx.ItemDelta(familyRole, before, moved);
-        tx.RoleBlob(familyRole, "pets", new DBPetInfo { CurrentPlan = 1 }.ToByteArray());
+        var tx = _roles.NewTransaction();
+        tx.ItemDelta(_familyRole, before, moved);
+        tx.RoleBlob(_familyRole, "pets", new DBPetInfo { CurrentPlan = 1 }.ToByteArray());
         const string operation = "mixed-relocation-op";
-        tx.WithEconomy(new EconomyMutation(operation, "mixed-family", familyRole,
+        tx.WithEconomy(new EconomyMutation(operation, "mixed-family", _familyRole,
             "cd13b/pet-neutral", "mixed/relocation/1", "mixed/relocation/source", 1_000_004,
             [], [], [4]));
-        roles.Commit(tx, "test/mixed-relocation");
-        EconomyLedgerWindow Read() => EconomyLedgerReader.Read(accounts.DatabasePath, Catalog, "auto", 0, 1);
+        _roles.Commit(tx, "test/mixed-relocation");
+        EconomyLedgerWindow Read() => EconomyLedgerReader.Read(_accounts.DatabasePath, Catalog, "auto", 0, 1);
         var original = Read();
         Assert.True(original.CompleteHistory, string.Join("; ", original.Issues.Select(x => x.Detail)));
         Assert.Equal(2, original.Legs.Count(x => x.Kind == EconomyLegKind.Transfer));
-        using var db = new SqliteConnection("Data Source=" + accounts.DatabasePath);
+        using var db = new SqliteConnection("Data Source=" + _accounts.DatabasePath);
         db.Open();
         using var damage = db.CreateCommand();
         damage.CommandText = "UPDATE economy_entry SET delta=-delta WHERE operation_id=$op AND delta>0";
@@ -272,8 +272,8 @@ public sealed class EconomyMixedFamilyTests : IDisposable
 
     public void Dispose()
     {
-        accounts.Dispose();
+        _accounts.Dispose();
         SqliteConnection.ClearAllPools();
-        try { Directory.Delete(directory, true); } catch (IOException) { }
+        try { Directory.Delete(_directory, true); } catch (IOException) { }
     }
 }

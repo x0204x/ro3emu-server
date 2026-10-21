@@ -70,8 +70,8 @@ public sealed partial class TeamService
         var resp = new TeamInviteListResp { Result = code };
         if (code == 0)
         {
-            var recent = friends.RecentTeammates(s.Role.Id).ToHashSet();
-            foreach (var target in sessions.All().Where(target => target.Role != null && target.Role.Id != s.Role.Id
+            var recent = _friends.RecentTeammates(s.Role.Id).ToHashSet();
+            foreach (var target in _sessions.All().Where(target => target.Role != null && target.Role.Id != s.Role.Id
                 && !_byMember.ContainsKey(target.Role.Id)).Take(100))
                 resp.List.Add(new TeamInvitePlayerInfo
                 {
@@ -119,7 +119,7 @@ public sealed partial class TeamService
             : req.OperType == ApplyListOperateType.Clear ? 0
             : req.OperType is not (ApplyListOperateType.Agree or ApplyListOperateType.Refuse) || !team!.Applicants.ContainsKey(req.TargetGuid) || expired ? ErrorCodes.Parameter
             : req.OperType == ApplyListOperateType.Agree && (_byMember.ContainsKey(req.TargetGuid) || team.Members.Count >= Capacity(team)) ? ErrorCodes.PartyFull
-            : req.OperType == ApplyListOperateType.Agree && (roles.Get(req.TargetGuid) == null || Session(req.TargetGuid) == null) ? ErrorCodes.PlayerOffline : 0;
+            : req.OperType == ApplyListOperateType.Agree && (_roles.Get(req.TargetGuid) == null || Session(req.TargetGuid) == null) ? ErrorCodes.PlayerOffline : 0;
         // Consume the decision and reserve a roster slot before the ACK yields to another application.
         if (expired) team!.Applicants.Remove(req.TargetGuid);
         if (code == 0)
@@ -251,7 +251,7 @@ public sealed partial class TeamService
             publication = await RecruitCoreAsync(s, req);
         });
         if (publication is { } value)
-            await chat.PublishTeamRecruitmentAsync(s, req.Content, value.Id, value.Count, value.Capacity, value.Jobs);
+            await _chat.PublishTeamRecruitmentAsync(s, req.Content, value.Id, value.Count, value.Capacity, value.Jobs);
     }
 
     private async Task<(long Id, int Count, int Capacity, int[] Jobs)?> RecruitCoreAsync(GameSession s, TeamRecruitReq req)
@@ -275,7 +275,7 @@ public sealed partial class TeamService
         long kind = target >> 32, id = target & 0xffffffffL; // LC_TeamHelper.CombineTargetTypeAndID.
         if (kind is < 0 or > 3 || id == 0) return false;
         if (kind is 2 or 3) return true; // MVP/on-hook IDs resolve outside TeamTargetConfig.
-        if (data.Row("TeamTargetConfig", id) is not { } row) return false;
+        if (_data.Row("TeamTargetConfig", id) is not { } row) return false;
         // _iIsRaidTarget is a picker hint; enforcing it at the server is inferred.
         return (GameData.Int(row, "_iIsRaidTarget") == 1) == (type == TeamType.Forty);
     }

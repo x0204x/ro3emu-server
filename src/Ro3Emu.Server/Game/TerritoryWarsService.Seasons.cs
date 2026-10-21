@@ -7,13 +7,13 @@ namespace Ro3Emu.Server.Game;
 
 public sealed partial class TerritoryWarsService
 {
-    private WorldState? seasonCleanupState;
-    private readonly HashSet<long> seasonRoleProjectionPending = new();
+    private WorldState? _seasonCleanupState;
+    private readonly HashSet<long> _seasonRoleProjectionPending = new();
 
     private async Task ProjectSeasonRolesAsync()
     {
-        var candidates = sessions.All().Where(s => s.Role != null && !RoleRequiresRecovery(s.Role.Id)
-            && seasonRoleProjectionPending.Contains(s.Role.Id)).ToArray();
+        var candidates = _sessions.All().Where(s => s.Role != null && !RoleRequiresRecovery(s.Role.Id)
+            && _seasonRoleProjectionPending.Contains(s.Role.Id)).ToArray();
         await RoleFanout.EachAsync(candidates, async s =>
         {
             long roleId = s.Role!.Id;
@@ -25,18 +25,18 @@ public sealed partial class TerritoryWarsService
                 if (s.Role?.Id != roleId || !ReferenceEquals(s.Attachment, attachment)) return;
                 s.TerritoryWars = stagedRole;
                 await SyncSiegeAsync(s);
-                seasonRoleProjectionPending.Remove(roleId);
+                _seasonRoleProjectionPending.Remove(roleId);
             }
             catch (OperationCanceledException) { throw; }
-            catch (Exception error) { log.LogWarning(error, "Territory season role projection pending for {Role}", roleId); }
+            catch (Exception error) { _log.LogWarning(error, "Territory season role projection pending for {Role}", roleId); }
         });
     }
 
     private async Task CleanupSeasonRuntimeAsync()
     {
-        await RoleFanout.EachAsync(queue.Keys.ToArray(),
+        await RoleFanout.EachAsync(_queue.Keys.ToArray(),
             s => CancelQueueAsync(s, TerritoryWarQueueExitReason.SceneDestroyed));
-        foreach (var b in battles.Values.ToArray())
+        foreach (var b in _battles.Values.ToArray())
         {
             await RoleFanout.EachAsync(b.Room.ActiveMembers.Select(m => m.Session), async s =>
             {
@@ -44,10 +44,10 @@ public sealed partial class TerritoryWarsService
                 var attachment = s.Attachment;
                 try
                 {
-                    if (ReferenceEquals(s.TerritoryBattle, b) && !await instances.LeaveAsync(s))
-                        await instances.AbandonAsync(b.Room, s);
+                    if (ReferenceEquals(s.TerritoryBattle, b) && !await _instances.LeaveAsync(s))
+                        await _instances.AbandonAsync(b.Room, s);
                     else if (!ReferenceEquals(s.TerritoryBattle, b))
-                        await instances.AbandonAsync(b.Room, s);
+                        await _instances.AbandonAsync(b.Room, s);
                 }
                 finally
                 {
@@ -56,9 +56,9 @@ public sealed partial class TerritoryWarsService
                         && ReferenceEquals(s.TerritoryBattle, b)) s.TerritoryBattle = null;
                 }
             });
-            if (!b.Room.ActiveMembers.Any()) battles.Remove(b.Key);
+            if (!b.Room.ActiveMembers.Any()) _battles.Remove(b.Key);
         }
-        foreach (var b in siegeBattles.Values.ToArray())
+        foreach (var b in _siegeBattles.Values.ToArray())
         {
             await RoleFanout.EachAsync(b.Room.ActiveMembers.Select(m => m.Session), async s =>
             {
@@ -66,10 +66,10 @@ public sealed partial class TerritoryWarsService
                 var attachment = s.Attachment;
                 try
                 {
-                    if (ReferenceEquals(s.SiegeBattle, b) && !await instances.LeaveAsync(s))
-                        await instances.AbandonAsync(b.Room, s);
+                    if (ReferenceEquals(s.SiegeBattle, b) && !await _instances.LeaveAsync(s))
+                        await _instances.AbandonAsync(b.Room, s);
                     else if (!ReferenceEquals(s.SiegeBattle, b))
-                        await instances.AbandonAsync(b.Room, s);
+                        await _instances.AbandonAsync(b.Room, s);
                 }
                 finally
                 {
@@ -78,12 +78,12 @@ public sealed partial class TerritoryWarsService
                         && ReferenceEquals(s.SiegeBattle, b)) s.SiegeBattle = null;
                 }
             });
-            if (!b.Room.ActiveMembers.Any()) siegeBattles.Remove(b.Key);
+            if (!b.Room.ActiveMembers.Any()) _siegeBattles.Remove(b.Key);
         }
-        if (queue.Count != 0 || battles.Count != 0 || siegeBattles.Count != 0) return;
-        siegeTestOpen = null;
+        if (_queue.Count != 0 || _battles.Count != 0 || _siegeBattles.Count != 0) return;
+        _siegeTestOpen = null;
         await ResetWorldAsync();
-        seasonCleanupState = null;
+        _seasonCleanupState = null;
     }
 
     /// <summary>
@@ -93,13 +93,13 @@ public sealed partial class TerritoryWarsService
     /// </summary>
     private async Task ReconcileSeasonAsync()
     {
-        if (seasonCleanupState is { } oldRuntime)
+        if (_seasonCleanupState is { } oldRuntime)
         {
             var current = state;
             state = oldRuntime;
             try { await CleanupSeasonRuntimeAsync(); }
             finally { state = current; }
-            if (seasonCleanupState != null) return;
+            if (_seasonCleanupState != null) return;
         }
         if (state.Epoch == Epoch) { await ProjectSeasonRolesAsync(); return; }
         if (state.Epoch.Length == 0) { state.Epoch = Epoch; await SaveAsync(state); return; }
@@ -113,11 +113,11 @@ public sealed partial class TerritoryWarsService
             {
                 if (!treasury.TryGetValue(entry.GuildId, out var guild))
                 {
-                    guild = guildStore.Get(entry.GuildId);
+                    guild = _guildStore.Get(entry.GuildId);
                     if (guild != null)
                     {
                         treasury[guild.Id] = guild;
-                        priorTreasury[guild.Id] = guildStore.Get(guild.Id)!;
+                        priorTreasury[guild.Id] = _guildStore.Get(guild.Id)!;
                     }
                 }
                 if (guild != null)
@@ -129,17 +129,17 @@ public sealed partial class TerritoryWarsService
         }
         foreach (var battle in old.Battles.Values.Where(b => !b.Settled)) battle.Settled = true;
         foreach (var battle in old.SiegeRuns.Values.Where(b => !b.Settled)) battle.Settled = true;
-        var targetBytes = await accounts.ReadAsync<byte[]?>(new TerritoryWarsSeasonArchiveReadPlan(Epoch));
+        var targetBytes = await _accounts.ReadAsync<byte[]?>(new TerritoryWarsSeasonArchiveReadPlan(Epoch));
         var restored = targetBytes is { Length: > 0 }
             ? JsonSerializer.Deserialize<WorldState>(targetBytes) ?? throw new JsonException("Null territory archive.")
             : new WorldState { Epoch = Epoch };
         if (restored.Epoch != Epoch) throw new JsonException("Territory archive epoch mismatch.");
-        var transaction = accounts.NewTransaction();
+        var transaction = _accounts.NewTransaction();
         int receipt = transaction.Add(new TerritoryWarsSeasonTransitionPlan(old.Epoch,
             JsonSerializer.SerializeToUtf8Bytes(old), Epoch,
             JsonSerializer.SerializeToUtf8Bytes(new WorldState { Epoch = Epoch })));
         foreach (var guild in treasury.Values)
-            guildStore.EnlistSave(guild, transaction, "Guild changed during territory season rollover");
+            _guildStore.EnlistSave(guild, transaction, "Guild changed during territory season rollover");
         var beforeArchives = targetBytes is { Length: > 0 }
             ? new[] { (State: restored, Prefix: "archive/" + Epoch + "/") } : [];
         if (WarsEconomy(original, restored, priorTreasury.Values.ToArray(), treasury.Values.ToArray(),
@@ -147,11 +147,11 @@ public sealed partial class TerritoryWarsService
             beforeArchives: beforeArchives,
             afterArchives: [(old, "archive/" + old.Epoch + "/")]) is { } economy)
             transaction.WithEventEconomy(economy);
-        var committed = await roles.CommitAsync(transaction, "territory/season-rollover");
+        var committed = await _roles.CommitAsync(transaction, "territory/season-rollover");
         var next = JsonSerializer.Deserialize<WorldState>((byte[])committed[receipt]!)!;
-        foreach (var peer in sessions.All().Where(s => s.Role != null && s.TerritoryWars != null))
-            seasonRoleProjectionPending.Add(peer.Role!.Id);
-        seasonCleanupState = state;
+        foreach (var peer in _sessions.All().Where(s => s.Role != null && s.TerritoryWars != null))
+            _seasonRoleProjectionPending.Add(peer.Role!.Id);
+        _seasonCleanupState = state;
         try
         {
             // Battle.State reads the current epoch during scene leave. Retire the old runtime only
@@ -160,7 +160,7 @@ public sealed partial class TerritoryWarsService
         }
         finally { PublishCommitted(next); }
         await ProjectSeasonRolesAsync();
-        foreach (long guild in treasury.Keys) await guilds.RefreshResourceAsync(guild);
+        foreach (long guild in treasury.Keys) await _guilds.RefreshResourceAsync(guild);
         await PublishAsync();
     }
 }

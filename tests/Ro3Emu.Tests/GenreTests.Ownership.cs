@@ -11,7 +11,7 @@ namespace Ro3Emu.Tests;
 
 public sealed partial class GenreTests
 {
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private GameSession Session(BotClient bot) => Service<SessionRegistry>().All()
         .Single(s => s.Role?.Id == (long)bot.Self!.Uuid);
     private static TaskCompletionSource Signal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -215,7 +215,7 @@ public sealed partial class GenreTests
             { PlanId = 1, ResponseId = response, ResponseUserId = donorSession.Role!.Id, SystemType = { [3] = 1 } });
             await reached.Task.WaitAsync(OwnerWait);
             Assert.Equal(0, target.Items.Single(i => i.Guid == ownGuid).Grid);
-            gm = client.PostAsync($"{http}/ro3emu/gm?account=snapdonor", new StringContent("!delitem 2010121 1"));
+            gm = client.PostAsync($"{_http}/ro3emu/gm?account=snapdonor", new StringContent("!delitem 2010121 1"));
             await deferred.Task.WaitAsync(OwnerWait);
             Assert.False(gm.IsCompleted);
             Assert.Contains(donorSession.Items, i => i.Guid == donorGuid);

@@ -15,39 +15,39 @@ namespace Ro3Emu.Tests;
 /// <summary>Season refinement over 5023 and 83220-83222.</summary>
 public sealed class SeasonRefineTests : IAsyncLifetime
 {
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-season-refine-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-season-refine-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);
-    private WebApplication app = null!;
-    private string http = "";
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
+    private WebApplication _app = null!;
+    private string _http = "";
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
     private GameSession Session(BotClient bot) => Service<SessionRegistry>().All().Single(s => s.Account == bot.Account && s.Role != null);
 
     public async Task InitializeAsync()
     {
         var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir;
+            o.DataDir = _dataDir;
             o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = httpPort;
             o.MicroGatePort = microPort;
             o.GameGatePort = gamePort;
         });
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{httpPort}";
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{httpPort}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     private async Task<BotClient> InWorld(string name, bool create = true)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw");
         await bot.EnterGateAsync();
         long id = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
@@ -65,7 +65,7 @@ public sealed class SeasonRefineTests : IAsyncLifetime
     private async Task Gm(string account, string line)
     {
         using var client = new HttpClient();
-        var reply = await client.PostAsync($"{http}/ro3emu/gm?account={account}", new StringContent(line));
+        var reply = await client.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(line));
         reply.EnsureSuccessStatusCode();
     }
 
@@ -94,17 +94,14 @@ public sealed class SeasonRefineTests : IAsyncLifetime
             .Concat(change.Where(kv => !kv.Value.Del).Select(kv => kv.Key)).Distinct().ToArray();
 
     [Fact]
-    public async Task RequestsBeforeRoleSelectionReturnErrorsWithoutDroppingTheConnection()
+    public async Task RequestsBeforeRoleSelectionAreRefusedWithoutDroppingTheConnection()
     {
-        await using var alice = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+        await using var alice = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await alice.LoginAsync("alice", "pw");
         await alice.EnterGateAsync();
-        await alice.SendGameAsync(SeasonRefineService.Recast, new SeasonRefineRecastReq { EquipType = 1, RefineId = 1 });
-        Assert.Equal(ErrorCodes.FeatureUnavailable, (await Next(alice, SeasonRefineService.Recast, SeasonRefineRecastResp.Parser)).Result);
-        await alice.SendGameAsync(SeasonRefineService.SelectAttr, new SeasonRefineSelectAttrReq { EquipType = 1, RefineId = 1, GroupId = 1 });
-        Assert.Equal(ErrorCodes.FeatureUnavailable, (await Next(alice, SeasonRefineService.SelectAttr, SeasonRefineSelectAttrResp.Parser)).Result);
-        await alice.SendGameAsync(SeasonRefineService.GiveUp, new SeasonRefineGiveUpReq { EquipType = 1, RefineId = 1 });
-        Assert.Equal(ErrorCodes.FeatureUnavailable, (await Next(alice, SeasonRefineService.GiveUp, SeasonRefineGiveUpResp.Parser)).Result);
+        await StageGate.AssertUnansweredAsync(alice, SeasonRefineService.Recast, new SeasonRefineRecastReq { EquipType = 1, RefineId = 1 });
+        await StageGate.AssertUnansweredAsync(alice, SeasonRefineService.SelectAttr, new SeasonRefineSelectAttrReq { EquipType = 1, RefineId = 1, GroupId = 1 });
+        await StageGate.AssertUnansweredAsync(alice, SeasonRefineService.GiveUp, new SeasonRefineGiveUpReq { EquipType = 1, RefineId = 1 });
         Assert.Equal(0, (await alice.CreateRoleAsync("Alice")).Result);
     }
 
@@ -147,7 +144,7 @@ public sealed class SeasonRefineTests : IAsyncLifetime
             await Gm("alice", "!item 1200000 4");
             await Gm("alice", "!item 2 32000");
             var catalog = EconomyCatalog.Load(Path.Combine(RepoRoot(), "data"));
-            var beforeRecast = S3EconomyReader.Read(dataDir, catalog);
+            var beforeRecast = S3EconomyReader.Read(_dataDir, catalog);
             var (recastResult, candidates, offer) = await RecastOffer(alice, freeOffer); // replaces the free offer
             Assert.Equal(3, candidates.Length);
             Assert.Equal(3, candidates.Distinct().Count());
@@ -155,11 +152,11 @@ public sealed class SeasonRefineTests : IAsyncLifetime
             if (offer != null) // DAL displays map keys, not values.
                 Assert.All(offer.EquipParts[1].Inc.RefineSlots[1].Inc.CanSelectedAttr.Values.Where(v => !v.Del), v => Assert.Equal(0, v.All));
             Assert.Equal(0, recastResult);
-            var recastWindow = S3EconomyReader.ReadLedger(dataDir, catalog, beforeRecast,
-                S3EconomyReader.Read(dataDir, catalog))!;
+            var recastWindow = S3EconomyReader.ReadLedger(_dataDir, catalog, beforeRecast,
+                S3EconomyReader.Read(_dataDir, catalog))!;
             var recastReceipt = Assert.Single(recastWindow.Receipts);
             Assert.Equal("cd13c/season-refine-recast",
-                EconomyReceiptReader.Read(Path.Combine(dataDir, "ro3emu.db"), recastReceipt.OperationId)!.CommandKind);
+                EconomyReceiptReader.Read(Path.Combine(_dataDir, "ro3emu.db"), recastReceipt.OperationId)!.CommandKind);
             Assert.Contains(recastWindow.Legs, leg => leg.Kind == EconomyLegKind.Sink &&
                 leg.Asset.Id == 1200000 && leg.Delta == -2);
             Assert.Contains(recastWindow.Legs, leg => leg.Kind == EconomyLegKind.Sink &&

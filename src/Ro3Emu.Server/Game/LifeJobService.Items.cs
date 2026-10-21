@@ -23,12 +23,12 @@ public sealed partial class LifeJobService
         if (s.Role == null || s.Progress == null || s.LifeJob == null || s.Restrictions == null)
             return ErrorCodes.FeatureUnavailable;
         if (!Current(itemRow) || s.Progress!.Level < GameData.Int(itemRow, "_iLevelNeed")) return ErrorCodes.LifeRequirements;
-        if (!functions.ConditionMet(s, GameData.Int(itemRow, "_iUseLimit"))) return ErrorCodes.LifeRequirements;
+        if (!_functions.ConditionMet(s, GameData.Int(itemRow, "_iUseLimit"))) return ErrorCodes.LifeRequirements;
         var next = s.LifeJob.Clone(); var restrict = s.Restrictions.Clone(); var runtime = Copy(s.LifeRuntime);
         Reconcile(next, restrict, runtime);
         if (food)
         {
-            if (Arg(1) != item.Entry || data.Row("LifeMagicFoodAttrConfig", item.Entry) is not { } config || !Current(config)) return ErrorCodes.LifeConfig;
+            if (Arg(1) != item.Entry || _data.Row("LifeMagicFoodAttrConfig", item.Entry) is not { } config || !Current(config)) return ErrorCodes.LifeConfig;
             long used = next.MagicFoodTimes.GetValueOrDefault(item.Entry), limit = GameData.Int(config, "_kLimit");
             if (count > limit - used) return ErrorCodes.AttemptsExhausted;
             next.MagicFoodTimes[item.Entry] = used + count;
@@ -47,16 +47,16 @@ public sealed partial class LifeJobService
             [], [], new Dictionary<long, int> { [item.Guid] = count },
             result: new { Item = item.Entry, Count = count }) == null)
             return ErrorCodes.ItemsShort;
-        if (food) await character.RefreshStatsAsync(s);
+        if (food) await _character.RefreshStatsAsync(s);
         return 0;
     }
 
     /// <summary>Magic food adds _kAttrs once per accepted use (inferred aggregation into the ordinary stat pipeline).</summary>
     private IEnumerable<(long Id, double Value)> FoodAttributes(GameSession s)
     {
-        if (s.LifeJob == null || s.LifeRuntime.FoodBook != seasons.PlayBook) yield break;
+        if (s.LifeJob == null || s.LifeRuntime.FoodBook != _seasons.PlayBook) yield break;
         foreach (var (entry, count) in s.LifeJob.MagicFoodTimes)
-            if (data.Row("LifeMagicFoodAttrConfig", entry) is { } row && Current(row))
+            if (_data.Row("LifeMagicFoodAttrConfig", entry) is { } row && Current(row))
                 foreach (var (id, value) in GameData.Pairs(row, "_kAttrs"))
                     yield return (id, value * Math.Clamp(count, 0, GameData.Int(row, "_kLimit")));
     }

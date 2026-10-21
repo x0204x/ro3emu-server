@@ -11,25 +11,26 @@ namespace Ro3Emu.Server.Game;
 /// </summary>
 public sealed class TowerPetUnit : WorldUnit
 {
-    // Separate from monsters (2^41) and passive followers (2^52); remain exact in the Lua number range.
-    private static long nextUid = 1L << 51;
-    private readonly GameSession owner;
-    private readonly World world;
-    private readonly MonsterService monsters;
-    private readonly CombatService combat;
-    private long nextAttackMs;
-    private long nextMoveMs;
-    private long nextSearchMs;
-    private MonsterUnit? target;
-    private bool moving;
-    private readonly Dictionary<int, long> skillReadyMs = new();
+    /// <summary>Uids above this one: separate from monsters (2^41) and passive followers (2^52), exact in the Lua
+    /// number range.</summary>
+    internal const long UidBase = 1L << 51;
+    private readonly GameSession _owner;
+    private readonly World _world;
+    private readonly MonsterService _monsters;
+    private readonly CombatService _combat;
+    private long _nextAttackMs;
+    private long _nextMoveMs;
+    private long _nextSearchMs;
+    private MonsterUnit? _target;
+    private bool _moving;
+    private readonly Dictionary<int, long> _skillReadyMs = new();
 
     private TowerPetUnit(GameSession owner, World world, MonsterService monsters, CombatService combat) =>
-        (this.owner, this.world, this.monsters, this.combat) = (owner, world, monsters, combat);
+        (this._owner, this._world, this._monsters, this._combat) = (owner, world, monsters, combat);
 
     public int PetId { get; private init; }
-    public GameSession Owner => owner;
-    public long OwnerId => owner.Role!.Id;
+    public GameSession Owner => _owner;
+    public long OwnerId => _owner.Role!.Id;
     public int NpcTemplateId { get; private init; }
     public int Level { get; private init; }
     public int Element { get; private init; }
@@ -38,7 +39,7 @@ public sealed class TowerPetUnit : WorldUnit
     public IReadOnlyList<AttackSkill> SupportSkills { get; private init; } = [];
     internal IReadOnlyDictionary<int, double> BaseAttributes { get; private init; } = new Dictionary<int, double>();
     internal HashSet<int> PublishedAttributeIds { get; } = new();
-    public StatSheet CombatStats => combat.TowerPetStats(this);
+    public StatSheet CombatStats => _combat.TowerPetStats(this);
     public int SpeedCm => (int)CombatStats[113];
     public int SearchIntervalMs { get; private init; }
     public float AttackRange { get; private init; }
@@ -59,13 +60,13 @@ public sealed class TowerPetUnit : WorldUnit
     public static bool CanSpawn(GameData data, DBPetInfo owned, int id) => Build(data, owned, id) != null;
 
     public static TowerPetUnit? Create(GameData data, DBPetInfo owned, GameSession owner, World world,
-        MonsterService monsters, CombatService combat, int id, long instance, float x, float y, float z)
+        MonsterService monsters, CombatService combat, long uid, int id, long instance, float x, float y, float z)
     {
         var t = Build(data, owned, id);
         if (t == null) return null;
         return new TowerPetUnit(owner, world, monsters, combat)
         {
-            Uid = Interlocked.Increment(ref nextUid), SceneEntry = owner.SceneEntry, InstanceId = instance,
+            Uid = uid, SceneEntry = owner.SceneEntry, InstanceId = instance,
             RuntimeMap = owner.RuntimeMap,
             X = x, Y = y, Z = z, Face = owner.Face,
             PetId = id, NpcTemplateId = t.Value.Npc, Level = t.Value.Level,
@@ -119,9 +120,9 @@ public sealed class TowerPetUnit : WorldUnit
     /// <summary>(inferred) Reserve one action and its configured cooldown before publishing a cast.</summary>
     internal bool TryBeginCast(AttackSkill skill, long now)
     {
-        if (now < nextAttackMs || now < skillReadyMs.GetValueOrDefault(skill.Id)) return false;
-        skillReadyMs[skill.Id] = now + skill.CooldownMs;
-        nextAttackMs = now + ActionMsFor(skill);
+        if (now < _nextAttackMs || now < _skillReadyMs.GetValueOrDefault(skill.Id)) return false;
+        _skillReadyMs[skill.Id] = now + skill.CooldownMs;
+        _nextAttackMs = now + ActionMsFor(skill);
         StopMoving();
         return true;
     }
@@ -132,38 +133,38 @@ public sealed class TowerPetUnit : WorldUnit
 
     public override void Tick(MapInstance map, GameTime time)
     {
-        if (Dead || Hp <= 0 || owner.Dead || owner.SceneLoading || owner.TowerAttempt is not { Loaded: true, Settled: false } a
-            || a.InstanceId != InstanceId || owner.WorldScene != WorldScene) return;
+        if (Dead || Hp <= 0 || _owner.Dead || _owner.SceneLoading || _owner.TowerAttempt is not { Loaded: true, Settled: false } a
+            || a.InstanceId != InstanceId || _owner.WorldScene != WorldScene) return;
         long now = MonsterService.NowMs;
-        if (now < nextAttackMs) return;
+        if (now < _nextAttackMs) return;
         // (inferred) Support takes priority when ready and does not require an enemy in melee range.
-        var support = SupportSkills.LastOrDefault(s => now >= skillReadyMs.GetValueOrDefault(s.Id));
-        if (support != null) { world.TrackDetached("tower pet support", () => combat.TowerPetSupportAsync(owner, this, support.Id)); return; }
+        var support = SupportSkills.LastOrDefault(s => now >= _skillReadyMs.GetValueOrDefault(s.Id));
+        if (support != null) { _world.TrackDetached("tower pet support", () => _combat.TowerPetSupportAsync(_owner, this, support.Id)); return; }
         if (AttackSkills.Count == 0) return;
         // Use NPCConfig._iAI -> AIConfig._iSearchTime for target-search cadence. Nearest-enemy
         // selection is inferred; the named NPC _iAISpecial server scripts are not in the client export.
-        if (target == null || target.Dead || target.Hp <= 0 || now >= nextSearchMs)
+        if (_target == null || _target.Dead || _target.Hp <= 0 || now >= _nextSearchMs)
         {
-            nextSearchMs = now + SearchIntervalMs;
-            target = map.Units.OfType<MonsterUnit>().Where(m => !m.Dead && m.Hp > 0 && m.InstanceId == InstanceId)
+            _nextSearchMs = now + SearchIntervalMs;
+            _target = map.Units.OfType<MonsterUnit>().Where(m => !m.Dead && m.Hp > 0 && m.InstanceId == InstanceId)
                 .MinBy(m => MonsterService.Distance(X, Z, m.X, m.Z));
         }
-        if (target == null) { StopMoving(); return; }
-        float distance = MonsterService.Distance(X, Z, target.X, target.Z);
-        Face = MonsterService.Angle(X, Z, target.X, target.Z);
+        if (_target == null) { StopMoving(); return; }
+        float distance = MonsterService.Distance(X, Z, _target.X, _target.Z);
+        Face = MonsterService.Angle(X, Z, _target.X, _target.Z);
         if (distance > AttackRange + 0.25f)
         {
             float step = Math.Min(distance - AttackRange * 0.8f, SpeedCm / 100f * (float)time.Delta.TotalSeconds);
             if (step > 0 && distance > 0)
             {
-                moving = true;
-                X += (target.X - X) / distance * step;
-                Z += (target.Z - Z) / distance * step;
+                _moving = true;
+                X += (_target.X - X) / distance * step;
+                Z += (_target.Z - Z) / distance * step;
                 map.Moved(this);
-                if (now >= nextMoveMs)
+                if (now >= _nextMoveMs)
                 {
-                    nextMoveMs = now + 200;
-                    world.TrackDetached("tower pet move", () => world.MoveUnitAsync(this, new MovementChangeNtf
+                    _nextMoveMs = now + 200;
+                    _world.TrackDetached("tower pet move", () => _world.MoveUnitAsync(this, new MovementChangeNtf
                     {
                         Uid = Uid, TransType = MovementTransitionType.MoveTransNormal,
                         MovementInfo = new MovementInfo
@@ -178,20 +179,20 @@ public sealed class TowerPetUnit : WorldUnit
             return;
         }
         StopMoving();
-        if (now < nextAttackMs) return;
+        if (now < _nextAttackMs) return;
         // Prefer the later active entry when its own cooldown is ready; otherwise use the earlier attack.
-        var chosen = AttackSkills.Reverse().FirstOrDefault(s => now >= skillReadyMs.GetValueOrDefault(s.Id)
+        var chosen = AttackSkills.Reverse().FirstOrDefault(s => now >= _skillReadyMs.GetValueOrDefault(s.Id)
             && distance <= s.Range + 0.25f);
         if (chosen == null) return;
-        world.TrackDetached("tower pet attack", () => combat.TowerPetAttackAsync(owner, this, target, chosen.Id));
+        _world.TrackDetached("tower pet attack", () => _combat.TowerPetAttackAsync(_owner, this, _target, chosen.Id));
     }
 
     /// <summary>31081 closes the walk before a cast or idle period, as for ordinary monster movement.</summary>
     private void StopMoving()
     {
-        if (!moving) return;
-        moving = false;
-        world.TrackDetached("tower pet stop", () => world.MoveUnitAsync(this, new MovementChangeNtf
+        if (!_moving) return;
+        _moving = false;
+        _world.TrackDetached("tower pet stop", () => _world.MoveUnitAsync(this, new MovementChangeNtf
         {
             Uid = Uid, TransType = MovementTransitionType.MoveTransNormal,
             MovementInfo = new MovementInfo
@@ -219,7 +220,7 @@ public sealed class TowerPetUnit : WorldUnit
             entity.Property.Add(new AoIProperty { Idx = idx, Data = value, BaseData = stats.Base.GetValueOrDefault(idx, value) });
             PublishedAttributeIds.Add(idx);
         }
-        combat.PopulateTowerPetBuffs(this, entity);
+        _combat.PopulateTowerPetBuffs(this, entity);
         return entity;
     }
 

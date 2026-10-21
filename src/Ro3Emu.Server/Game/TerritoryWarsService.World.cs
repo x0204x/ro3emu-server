@@ -11,13 +11,13 @@ public sealed partial class TerritoryWarsService
     private const long WorldPickupUidBase = 1L << 45;
     private const long WorldPickupUidEnd = 1L << 46;
     private const int SupplyCurrency = 133;
-    private readonly SemaphoreSlim worldGate = new(1, 1);
-    private readonly HashSet<long> worldMapsLoaded = new();
-    private readonly Dictionary<long, WorldPickupUnit> worldPickups = new();
-    private readonly Dictionary<int, MonsterUnit> worldActivities = new();
-    private readonly Dictionary<int, long> worldActivityOrdinals = new();
-    private long nextWorldPickupUid;
-    private long worldGeneration;
+    private readonly SemaphoreSlim _worldGate = new(1, 1);
+    private readonly HashSet<long> _worldMapsLoaded = new();
+    private readonly Dictionary<long, WorldPickupUnit> _worldPickups = new();
+    private readonly Dictionary<int, MonsterUnit> _worldActivities = new();
+    private readonly Dictionary<int, long> _worldActivityOrdinals = new();
+    private long _nextWorldPickupUid;
+    private long _worldGeneration;
     internal Action? BeforeWorldPickupApplyForTest;
     internal Action? BeforeWorldDeathApplyForTest;
 
@@ -62,7 +62,7 @@ public sealed partial class TerritoryWarsService
         };
     }
 
-    private bool IsWorldTerritory(long sceneId) => data.Row("MapConfig", sceneId) is { } map
+    private bool IsWorldTerritory(long sceneId) => _data.Row("MapConfig", sceneId) is { } map
         && GameData.Int(map, "_iSceneType") == 8 && Zones.Any(z => GameData.Int(z, "_iMapID") == sceneId);
 
     /// <summary>
@@ -74,7 +74,7 @@ public sealed partial class TerritoryWarsService
         if (a.Role == null || b.Role == null || a.Role.Id == b.Role.Id || a.SceneLoading || b.SceneLoading
             || a.InstanceId != 0 || b.InstanceId != 0 || a.LineNumber != 1 || b.LineNumber != 1
             || a.WorldScene != b.WorldScene || !IsWorldTerritory(a.SceneEntry)
-            || data.Row("MapConfig", a.SceneEntry) is not { } map || !map.TryGetProperty("_kPVPMod", out var modes)
+            || _data.Row("MapConfig", a.SceneEntry) is not { } map || !map.TryGetProperty("_kPVPMod", out var modes)
             || modes.ValueKind != JsonValueKind.Array || modes.GetArrayLength() == 0) return false;
         long ag = Own(a)?.Id ?? 0, bg = Own(b)?.Id ?? 0;
         if (ag != 0 && ag == bg) return false;
@@ -100,12 +100,12 @@ public sealed partial class TerritoryWarsService
         using var stagedTerritoryState = StageState();
         try
         {
-            await worldGate.WaitAsync();
+            await _worldGate.WaitAsync();
             try
             {
-                if (worldMapsLoaded.Add(s.SceneEntry))
+                if (_worldMapsLoaded.Add(s.SceneEntry))
                 {
-                    if (maps.Map(s.SceneEntry) is { } map)
+                    if (_maps.Map(s.SceneEntry) is { } map)
                         foreach (var group in map.SpawnGroups.Where(g => g.Pool && g.Limits.Any(l => SupplyAmount(l.NpcId) > 0)))
                         {
                             // The group minima are its configured finite initial population (inferred selection).
@@ -123,16 +123,16 @@ public sealed partial class TerritoryWarsService
                                     var occurrence = state.WorldPickupOccurrences.GetValueOrDefault(slot);
                                     var unit = new WorldPickupUnit
                                     {
-                                        Uid = WorldPickupUidBase | ++nextWorldPickupUid, SceneEntry = s.SceneEntry,
+                                        Uid = WorldPickupUidBase | ++_nextWorldPickupUid, SceneEntry = s.SceneEntry,
                                         X = at.X, Y = at.Y, Z = at.Z, Face = at.Face,
                                         NpcId = npcId, Amount = SupplyAmount(npcId), InteractionId = 7000004,
                                         Slot = slot, Ordinal = occurrence?.Ordinal ?? 0,
                                         RespawnSeconds = Math.Max(1, group.RespawnSeconds),
                                     };
-                                    if (occurrence?.NextEligible > clock.Now)
+                                    if (occurrence?.NextEligible > _clock.Now)
                                     {
-                                        long generation = worldGeneration;
-                                        loop.ScheduleRuntime(TimeSpan.FromSeconds(occurrence.NextEligible - clock.Now),
+                                        long generation = _worldGeneration;
+                                        _loop.ScheduleRuntime(TimeSpan.FromSeconds(occurrence.NextEligible - _clock.Now),
                                             () => RespawnWorldPickupAsync(unit, generation));
                                     }
                                     else await AddWorldPickupAsync(unit);
@@ -144,47 +144,47 @@ public sealed partial class TerritoryWarsService
                 }
                 foreach (var row in WorldLandRows(s.SceneEntry)) await SpawnWorldActivityAsync(row);
             }
-            finally { worldGate.Release(); }
+            finally { _worldGate.Release(); }
         }
-        finally { stagedTerritoryState.Dispose(); gate.Release(); reservation?.Dispose(); }
+        finally { stagedTerritoryState.Dispose(); _gate.Release(); reservation?.Dispose(); }
     }
 
     /// <summary>Called by season reconciliation while the territory gate is held, before replacing the epoch state.</summary>
     private async Task ResetWorldAsync()
     {
-        await worldGate.WaitAsync();
+        await _worldGate.WaitAsync();
         try
         {
-            worldGeneration++;
-            foreach (var unit in worldPickups.Values.ToArray()) await world.RemoveUnitAsync(unit);
-            foreach (var actor in worldActivities.Values.ToArray()) await world.RemoveUnitAsync(actor);
-            worldPickups.Clear(); worldActivities.Clear(); worldActivityOrdinals.Clear(); worldMapsLoaded.Clear();
+            _worldGeneration++;
+            foreach (var unit in _worldPickups.Values.ToArray()) await _world.RemoveUnitAsync(unit);
+            foreach (var actor in _worldActivities.Values.ToArray()) await _world.RemoveUnitAsync(actor);
+            _worldPickups.Clear(); _worldActivities.Clear(); _worldActivityOrdinals.Clear(); _worldMapsLoaded.Clear();
         }
-        finally { worldGate.Release(); }
+        finally { _worldGate.Release(); }
         // Recreate the active maps against the new epoch after ReconcileSeasonAsync releases its gate.
-        var present = sessions.All().Where(s => !s.SceneLoading && s.InstanceId == 0 && s.LineNumber == 1
+        var present = _sessions.All().Where(s => !s.SceneLoading && s.InstanceId == 0 && s.LineNumber == 1
             && IsWorldTerritory(s.SceneEntry)).ToArray();
         foreach (var peer in present)
-            loop.PostOwned(peer, MutationKeys(peer),
+            _loop.PostOwned(peer, MutationKeys(peer),
                 () => WorldLoadedAsync(peer), "territory/world reset");
     }
 
-    private IEnumerable<JsonElement> WorldLandRows(long sceneId) => data.Table("GVGLandActivityConfig").Values
+    private IEnumerable<JsonElement> WorldLandRows(long sceneId) => _data.Table("GVGLandActivityConfig").Values
         .Where(r => GameData.Int(r, "_iGamePlayType") == 1 && GameData.Int(r, "_iMapResourceID") == sceneId);
 
     private async Task SpawnWorldActivityAsync(JsonElement row)
     {
         int id = (int)Id(row);
-        if (worldActivities.ContainsKey(id)) return;
+        if (_worldActivities.ContainsKey(id)) return;
         long due = state.WorldActivityRespawns.GetValueOrDefault(id);
-        if (due > clock.Now)
+        if (due > _clock.Now)
         {
-            long generation = worldGeneration;
-            loop.ScheduleRuntime(TimeSpan.FromSeconds(due - clock.Now), () => RespawnWorldActivityAsync(id, generation));
+            long generation = _worldGeneration;
+            _loop.ScheduleRuntime(TimeSpan.FromSeconds(due - _clock.Now), () => RespawnWorldActivityAsync(id, generation));
             return;
         }
         long sceneId = GameData.Int(row, "_iMapResourceID"), pointId = GameData.Int(row, "_iPointID");
-        if (maps.Map(sceneId) is not { } map) return;
+        if (_maps.Map(sceneId) is not { } map) return;
         if (!map.Points.TryGetValue(pointId, out var point))
         {
             // (inferred) GVGLandActivityConfig requests 100001 on both maps; the exported editors
@@ -193,10 +193,10 @@ public sealed partial class TerritoryWarsService
             long alias = (sceneId, pointId) switch { (30311, 100001) => 1000001, (30336, 100001) => 10001, _ => 0 };
             if (alias == 0 || !map.Points.TryGetValue(alias, out point)) return;
         }
-        if (await monsters.SpawnSingleAsync(sceneId, (int)GameData.Int(row, "_iNPCid"), point) is { } actor)
+        if (await _monsters.SpawnSingleAsync(sceneId, (int)GameData.Int(row, "_iNPCid"), point) is { } actor)
         {
-            worldActivities[id] = actor;
-            worldActivityOrdinals[id] = state.WorldActivityOccurrences.GetValueOrDefault(id);
+            _worldActivities[id] = actor;
+            _worldActivityOrdinals[id] = state.WorldActivityOccurrences.GetValueOrDefault(id);
         }
     }
 
@@ -206,16 +206,16 @@ public sealed partial class TerritoryWarsService
         using var stagedTerritoryState = StageState();
         try
         {
-            await worldGate.WaitAsync();
+            await _worldGate.WaitAsync();
             try
             {
-                if (generation == worldGeneration && data.Row("GVGLandActivityConfig", id) is { } row
-                    && worldMapsLoaded.Contains(GameData.Int(row, "_iMapResourceID")))
+                if (generation == _worldGeneration && _data.Row("GVGLandActivityConfig", id) is { } row
+                    && _worldMapsLoaded.Contains(GameData.Int(row, "_iMapResourceID")))
                     await SpawnWorldActivityAsync(row);
             }
-            finally { worldGate.Release(); }
+            finally { _worldGate.Release(); }
         }
-        finally { stagedTerritoryState.Dispose(); gate.Release(); reservation?.Dispose(); }
+        finally { stagedTerritoryState.Dispose(); _gate.Release(); reservation?.Dispose(); }
     }
 
     /// <summary>
@@ -225,44 +225,44 @@ public sealed partial class TerritoryWarsService
     /// </summary>
     private async Task ReconcileWorldActorsLockedAsync()
     {
-        await worldGate.WaitAsync();
+        await _worldGate.WaitAsync();
         try
         {
-            foreach (var (id, actor) in worldActivities.ToArray())
+            foreach (var (id, actor) in _worldActivities.ToArray())
             {
-                if (!actor.Dead || world.Map(actor.WorldScene).Contains(actor)
-                    || data.Row("GVGLandActivityConfig", id) is not { } row) continue;
+                if (!actor.Dead || _world.Map(actor.WorldScene).Contains(actor)
+                    || _data.Row("GVGLandActivityConfig", id) is not { } row) continue;
                 long respawn = Math.Max(1, GameData.Int(row, "_iRespawnCD") / 1000);
-                long ordinal = worldActivityOrdinals.GetValueOrDefault(id);
+                long ordinal = _worldActivityOrdinals.GetValueOrDefault(id);
                 if (state.WorldActivityOccurrences.GetValueOrDefault(id) != ordinal)
                 {
-                    worldActivities.Remove(id); worldActivityOrdinals.Remove(id);
-                    long wait = Math.Max(0, state.WorldActivityRespawns.GetValueOrDefault(id) - clock.Now);
-                    long knownGeneration = worldGeneration;
-                    loop.ScheduleRuntime(TimeSpan.FromSeconds(wait), () => RespawnWorldActivityAsync(id, knownGeneration));
+                    _worldActivities.Remove(id); _worldActivityOrdinals.Remove(id);
+                    long wait = Math.Max(0, state.WorldActivityRespawns.GetValueOrDefault(id) - _clock.Now);
+                    long knownGeneration = _worldGeneration;
+                    _loop.ScheduleRuntime(TimeSpan.FromSeconds(wait), () => RespawnWorldActivityAsync(id, knownGeneration));
                     continue;
                 }
                 var next = Copy(state);
-                next.WorldActivityRespawns[id] = clock.Now + respawn;
+                next.WorldActivityRespawns[id] = _clock.Now + respawn;
                 next.WorldActivityOccurrences[id] = checked(ordinal + 1);
                 await SaveAsync(next);
                 PublishCommitted(next);
-                worldActivities.Remove(id); worldActivityOrdinals.Remove(id);
-                long generation = worldGeneration;
-                loop.ScheduleRuntime(TimeSpan.FromSeconds(respawn), () => RespawnWorldActivityAsync(id, generation));
+                _worldActivities.Remove(id); _worldActivityOrdinals.Remove(id);
+                long generation = _worldGeneration;
+                _loop.ScheduleRuntime(TimeSpan.FromSeconds(respawn), () => RespawnWorldActivityAsync(id, generation));
             }
         }
-        finally { worldGate.Release(); }
+        finally { _worldGate.Release(); }
     }
 
     private int SupplyAmount(int npcId)
     {
-        if (npcId is not (4910101 or 4910102 or 4910103) || data.Row("NPCConfig", npcId) is not { } npc) return 0;
+        if (npcId is not (4910101 or 4910102 or 4910103) || _data.Row("NPCConfig", npcId) is not { } npc) return 0;
         long group = GameData.Int(npc, "_iCAward");
-        if (data.Row("MultiverseGroupConfig", group) is not { } mv) return 0;
-        long awardId = GameData.Int(mv, $"_iValue_{clock.PlayBook}");
+        if (_data.Row("MultiverseGroupConfig", group) is not { } mv) return 0;
+        long awardId = GameData.Int(mv, $"_iValue_{_clock.PlayBook}");
         if (awardId == 0) awardId = GameData.Int(mv, "_iValue_default");
-        if (data.Row("AwardConfig", awardId) is not { } raw) return 0;
+        if (_data.Row("AwardConfig", awardId) is not { } raw) return 0;
         var award = raw.ValueKind == JsonValueKind.Array ? raw[0] : raw;
         if (!award.TryGetProperty("_kAward", out var goods) || goods.ValueKind != JsonValueKind.Array) return 0;
         return goods.EnumerateArray().Where(g => g.ValueKind == JsonValueKind.Array && g.GetArrayLength() >= 2
@@ -271,13 +271,13 @@ public sealed partial class TerritoryWarsService
 
     private async Task AddWorldPickupAsync(WorldPickupUnit unit)
     {
-        worldPickups[unit.Uid] = unit;
-        await world.AddUnitAsync(unit);
+        _worldPickups[unit.Uid] = unit;
+        await _world.AddUnitAsync(unit);
     }
 
     private Task AddWorldDropActorAsync(WorldDrop drop) => AddWorldPickupAsync(new WorldPickupUnit
     {
-        Uid = WorldPickupUidBase | ++nextWorldPickupUid, SceneEntry = drop.Scene,
+        Uid = WorldPickupUidBase | ++_nextWorldPickupUid, SceneEntry = drop.Scene,
         X = drop.X, Y = drop.Y, Z = drop.Z,
         NpcId = (int)Param("TerritoryWorldDeathDropItem", 4910104), Amount = drop.Amount,
         InteractionId = 491000301, DropId = drop.Id,
@@ -301,10 +301,10 @@ public sealed partial class TerritoryWarsService
         try
         {
             using var held = await CharacterService.Lock(s);
-            await worldGate.WaitAsync();
+            await _worldGate.WaitAsync();
             try
             {
-                if (!worldPickups.TryGetValue(req.NpcUid, out var unit) || unit.Taken) return ErrorCodes.NpcMissing;
+                if (!_worldPickups.TryGetValue(req.NpcUid, out var unit) || unit.Taken) return ErrorCodes.NpcMissing;
                 if (s.Role == null || s.Progress == null || s.Dead || s.SceneLoading || s.InstanceId != 0
                     || s.LineNumber != 1 || s.WorldScene != unit.WorldScene
                     || !IsWorldTerritory(s.SceneEntry)) return ErrorCodes.FeatureUnavailable;
@@ -322,13 +322,13 @@ public sealed partial class TerritoryWarsService
                 else
                 {
                     var occurrence = state.WorldPickupOccurrences.GetValueOrDefault(unit.Slot);
-                    if ((occurrence?.Ordinal ?? 0) != unit.Ordinal || occurrence?.NextEligible > clock.Now)
+                    if ((occurrence?.Ordinal ?? 0) != unit.Ordinal || occurrence?.NextEligible > _clock.Now)
                         return ErrorCodes.NpcMissing;
                     next = Copy(state);
                     next.WorldPickupOccurrences[unit.Slot] = new WorldPickupOccurrence
                     {
                         Ordinal = checked(unit.Ordinal + 1),
-                        NextEligible = checked(clock.Now + unit.RespawnSeconds),
+                        NextEligible = checked(_clock.Now + unit.RespawnSeconds),
                     };
                 }
                 unit.Taken = true;
@@ -341,14 +341,14 @@ public sealed partial class TerritoryWarsService
                     string source = unit.DropId != 0
                         ? $"territory-drop:{state.Epoch}:{unit.DropId}:claim"
                         : $"territory-world-pickup:{state.Epoch}:{unit.Slot}:{unit.Ordinal}";
-                    var movement = new EventEconomyMutation(EventEconomy.Catalog(data), Guid.NewGuid().ToString("N"),
+                    var movement = new EventEconomyMutation(EventEconomy.Catalog(_data), Guid.NewGuid().ToString("N"),
                         s.Account!, s.Role.Id, "event/territory-world-pickup", source,
                         DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), [],
                         unit.DropId == 0 ? [new EconomyQuantity(asset, unit.Amount)] : [],
                         unit.DropId == 0 ? [new EventEconomyOwnerDelta(beneficiary, asset, unit.Amount)] :
                             [new(escrow, asset, -unit.Amount), new(beneficiary, asset, unit.Amount)],
                         JsonSerializer.SerializeToUtf8Bytes(new { unit.Uid, unit.DropId, unit.Amount, Role = s.Role.Id }));
-                    if (await character.ExchangeLockedAsync(s, [], [(SupplyCurrency, unit.Amount)],
+                    if (await _character.ExchangeLockedAsync(s, [], [(SupplyCurrency, unit.Amount)],
                         sync: false, popup: false, persist: tx =>
                         {
                             tx.Add(new Ro3Emu.Server.Accounts.Persistence.RealmStatePlan(
@@ -366,7 +366,7 @@ public sealed partial class TerritoryWarsService
                 {
                     // A post-commit publication fault must not reopen a consumed live actor. Read the
                     // durable occurrence while still holding the realm gate, then retire/schedule it.
-                    var bytes = await accounts.ReadAsync<byte[]?>(new Ro3Emu.Server.Accounts.Persistence.TerritoryRealmReadPlan(
+                    var bytes = await _accounts.ReadAsync<byte[]?>(new Ro3Emu.Server.Accounts.Persistence.TerritoryRealmReadPlan(
                         Ro3Emu.Server.Accounts.Persistence.RealmStateKind.TerritoryWars));
                     var durable = bytes == null ? null : JsonSerializer.Deserialize<WorldState>(bytes);
                     var committed = unit.Slot.Length > 0
@@ -377,31 +377,31 @@ public sealed partial class TerritoryWarsService
                     if (durable != null && (staticClaimCommitted || droppedClaimCommitted))
                     {
                         PublishCommitted(durable);
-                        worldPickups.Remove(unit.Uid);
-                        await world.RemoveUnitAsync(unit);
+                        _worldPickups.Remove(unit.Uid);
+                        await _world.RemoveUnitAsync(unit);
                         if (staticClaimCommitted)
                         {
-                            long generation = worldGeneration;
-                            loop.ScheduleRuntime(TimeSpan.FromSeconds(Math.Max(0, committed!.NextEligible - clock.Now)),
+                            long generation = _worldGeneration;
+                            _loop.ScheduleRuntime(TimeSpan.FromSeconds(Math.Max(0, committed!.NextEligible - _clock.Now)),
                                 () => RespawnWorldPickupAsync(unit, generation));
                         }
                     }
                     else unit.Taken = false;
                     throw;
                 }
-                worldPickups.Remove(unit.Uid);
-                await world.RemoveUnitAsync(unit);
+                _worldPickups.Remove(unit.Uid);
+                await _world.RemoveUnitAsync(unit);
                 if (unit.Slot.Length > 0 && unit.RespawnSeconds > 0)
                 {
-                    long generation = worldGeneration;
-                    loop.ScheduleRuntime(TimeSpan.FromSeconds(unit.RespawnSeconds), () => RespawnWorldPickupAsync(unit, generation));
+                    long generation = _worldGeneration;
+                    _loop.ScheduleRuntime(TimeSpan.FromSeconds(unit.RespawnSeconds), () => RespawnWorldPickupAsync(unit, generation));
                 }
-                await character.ItemsChangedAsync(s, false);
+                await _character.ItemsChangedAsync(s, false);
                 return 0;
             }
-            finally { worldGate.Release(); }
+            finally { _worldGate.Release(); }
         }
-        finally { stagedTerritoryState.Dispose(); gate.Release(); reservation?.Dispose(); }
+        finally { stagedTerritoryState.Dispose(); _gate.Release(); reservation?.Dispose(); }
     }
 
     private async Task RespawnWorldPickupAsync(WorldPickupUnit old, long generation)
@@ -410,37 +410,37 @@ public sealed partial class TerritoryWarsService
         using var stagedTerritoryState = StageState();
         try
         {
-            await worldGate.WaitAsync();
+            await _worldGate.WaitAsync();
             try
             {
-                if (generation != worldGeneration || !worldMapsLoaded.Contains(old.SceneEntry)) return;
+                if (generation != _worldGeneration || !_worldMapsLoaded.Contains(old.SceneEntry)) return;
                 if (old.Slot.Length == 0) return;
                 var occurrence = state.WorldPickupOccurrences.GetValueOrDefault(old.Slot);
-                if (occurrence?.NextEligible > clock.Now)
+                if (occurrence?.NextEligible > _clock.Now)
                 {
-                    loop.ScheduleRuntime(TimeSpan.FromSeconds(occurrence.NextEligible - clock.Now),
+                    _loop.ScheduleRuntime(TimeSpan.FromSeconds(occurrence.NextEligible - _clock.Now),
                         () => RespawnWorldPickupAsync(old, generation));
                     return;
                 }
                 long ordinal = occurrence?.Ordinal ?? 0;
-                if (worldPickups.Values.Any(unit => unit.Slot == old.Slot && unit.Ordinal == ordinal)) return;
+                if (_worldPickups.Values.Any(unit => unit.Slot == old.Slot && unit.Ordinal == ordinal)) return;
                 await AddWorldPickupAsync(new WorldPickupUnit
                 {
-                    Uid = WorldPickupUidBase | ++nextWorldPickupUid, SceneEntry = old.SceneEntry,
+                    Uid = WorldPickupUidBase | ++_nextWorldPickupUid, SceneEntry = old.SceneEntry,
                     X = old.X, Y = old.Y, Z = old.Z, Face = old.Face,
                     NpcId = old.NpcId, Amount = old.Amount, InteractionId = old.InteractionId,
                     Slot = old.Slot, Ordinal = ordinal,
                     RespawnSeconds = old.RespawnSeconds,
                 });
             }
-            finally { worldGate.Release(); }
+            finally { _worldGate.Release(); }
         }
-        finally { stagedTerritoryState.Dispose(); gate.Release(); reservation?.Dispose(); }
+        finally { stagedTerritoryState.Dispose(); _gate.Release(); reservation?.Dispose(); }
     }
 
     private long WorldCarryLimit()
     {
-        if (data.Table("PublicParamConfig").TryGetValue("TerritoryWorldDropItemCarryLimit", out var limits)
+        if (_data.Table("PublicParamConfig").TryGetValue("TerritoryWorldDropItemCarryLimit", out var limits)
             && limits.ValueKind == JsonValueKind.Object && limits.TryGetProperty("133", out var amount))
             return (long)(GameData.Number(amount) ?? 5000);
         return 5000;
@@ -461,13 +461,13 @@ public sealed partial class TerritoryWarsService
             WorldDrop? committedDrop = null;
             using (var held = await CharacterService.Lock(victim))
             {
-                await worldGate.WaitAsync();
+                await _worldGate.WaitAsync();
                 try
                 {
                     if (!victim.Dead || victim.SceneLoading || victim.InstanceId != 0 || victim.LineNumber != 1
                         || !IsWorldTerritory(victim.SceneEntry)) return;
                     int camp = victim.TerritoryWars?.Camp ?? LoadRole(victim.Role.Id).Camp;
-                    var rates = data.Table("PublicParamConfig").GetValueOrDefault("TerritoryWorldDeathDropRate");
+                    var rates = _data.Table("PublicParamConfig").GetValueOrDefault("TerritoryWorldDeathDropRate");
                     if (rates.ValueKind != JsonValueKind.Array || camp < 1 || camp > rates.GetArrayLength()) return;
                     double rate = GameData.Number(rates[camp - 1]) ?? 0;
                     long carried = victim.Progress.Currency.GetValueOrDefault(SupplyCurrency);
@@ -481,7 +481,7 @@ public sealed partial class TerritoryWarsService
                     };
                     next.WorldDrops.Add(drop.Id, drop);
                     var asset = new EconomyAsset(EconomyAssetKind.Currency, SupplyCurrency);
-                    var movement = new EventEconomyMutation(EventEconomy.Catalog(data), Guid.NewGuid().ToString("N"),
+                    var movement = new EventEconomyMutation(EventEconomy.Catalog(_data), Guid.NewGuid().ToString("N"),
                         victim.Account!, victim.Role.Id, "event/territory-world-death",
                         $"territory-drop:{state.Epoch}:{drop.Id}:create",
                         DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), [], [],
@@ -490,7 +490,7 @@ public sealed partial class TerritoryWarsService
                         JsonSerializer.SerializeToUtf8Bytes(new { drop.Id, drop.Amount, Role = victim.Role.Id }));
                     try
                     {
-                        if (await character.ExchangeLockedAsync(victim, [(SupplyCurrency, (long)lost)], [],
+                        if (await _character.ExchangeLockedAsync(victim, [(SupplyCurrency, (long)lost)], [],
                             sync: false, popup: false, persist: tx =>
                             {
                                 tx.Add(new Ro3Emu.Server.Accounts.Persistence.RealmStatePlan(
@@ -502,27 +502,27 @@ public sealed partial class TerritoryWarsService
                     }
                     catch
                     {
-                        var bytes = await accounts.ReadAsync<byte[]?>(new Ro3Emu.Server.Accounts.Persistence.TerritoryRealmReadPlan(
+                        var bytes = await _accounts.ReadAsync<byte[]?>(new Ro3Emu.Server.Accounts.Persistence.TerritoryRealmReadPlan(
                             Ro3Emu.Server.Accounts.Persistence.RealmStateKind.TerritoryWars));
                         var durable = bytes == null ? null : JsonSerializer.Deserialize<WorldState>(bytes);
                         if (durable?.WorldDrops.TryGetValue(drop.Id, out var recovered) == true
                             && recovered.Amount == drop.Amount && recovered.Scene == drop.Scene)
                         {
                             PublishCommitted(durable);
-                            if (worldMapsLoaded.Contains(recovered.Scene)
-                                && !worldPickups.Values.Any(actor => actor.DropId == recovered.Id))
+                            if (_worldMapsLoaded.Contains(recovered.Scene)
+                                && !_worldPickups.Values.Any(actor => actor.DropId == recovered.Id))
                                 await AddWorldDropActorAsync(recovered);
                         }
                         throw;
                     }
                     committedDrop = drop;
                 }
-                finally { worldGate.Release(); }
+                finally { _worldGate.Release(); }
             }
-            if (committedDrop != null && worldMapsLoaded.Contains(committedDrop.Scene)) await AddWorldDropActorAsync(committedDrop);
-            if (committedDrop != null) await character.ItemsChangedAsync(victim, false);
+            if (committedDrop != null && _worldMapsLoaded.Contains(committedDrop.Scene)) await AddWorldDropActorAsync(committedDrop);
+            if (committedDrop != null) await _character.ItemsChangedAsync(victim, false);
         }
-        finally { stagedTerritoryState.Dispose(); gate.Release(); reservation?.Dispose(); }
+        finally { stagedTerritoryState.Dispose(); _gate.Release(); reservation?.Dispose(); }
     }
 
     /// <summary>Only our spawned land actor can trigger the configured normal/owner extra awards.</summary>
@@ -537,24 +537,24 @@ public sealed partial class TerritoryWarsService
         using var stagedTerritoryState = StageState();
         try
         {
-            await worldGate.WaitAsync();
+            await _worldGate.WaitAsync();
             try
             {
-                var pair = worldActivities.FirstOrDefault(x => ReferenceEquals(x.Value, monster));
-                if (pair.Value == null || data.Row("GVGLandActivityConfig", pair.Key) is not { } row) return;
-                long occurrence = worldActivityOrdinals.GetValueOrDefault(pair.Key);
+                var pair = _worldActivities.FirstOrDefault(x => ReferenceEquals(x.Value, monster));
+                if (pair.Value == null || _data.Row("GVGLandActivityConfig", pair.Key) is not { } row) return;
+                long occurrence = _worldActivityOrdinals.GetValueOrDefault(pair.Key);
                 if (state.WorldActivityOccurrences.GetValueOrDefault(pair.Key) != occurrence) return;
                 var next = Copy(state);
                 long respawn = Math.Max(1, GameData.Int(row, "_iRespawnCD") / 1000);
-                next.WorldActivityRespawns[pair.Key] = clock.Now + respawn;
+                next.WorldActivityRespawns[pair.Key] = _clock.Now + respawn;
                 next.WorldActivityOccurrences[pair.Key] = checked(occurrence + 1);
                 var role = ReferenceEquals(killer.Role, killerRole) && ReferenceEquals(killer.Attachment, killerAttachment)
                     && killerRole != null ? LoadRole(killerRole.Id) : null;
                 // RestrictConfig._iRecoverType=2 and the client's WeekLastChallengeCount: UTC week (inferred boundary).
-                var utc = DateTimeOffset.FromUnixTimeSeconds(clock.Now).UtcDateTime;
+                var utc = DateTimeOffset.FromUnixTimeSeconds(_clock.Now).UtcDateTime;
                 long week = new DateTimeOffset(utc.Date.AddDays(-((int)utc.DayOfWeek + 6) % 7), TimeSpan.Zero).ToUnixTimeSeconds();
                 string claimKey = $"{Epoch}:{week}:{pair.Key}";
-                int max = (int)(data.Row("RestrictConfig", GameData.Int(row, "_iRestrictId")) is { } restrict
+                int max = (int)(_data.Row("RestrictConfig", GameData.Int(row, "_iRestrictId")) is { } restrict
                     ? GameData.Int(restrict, "_iMaxRestrictNum") : 0);
                 if (role != null && killer.Role != null && killer.InstanceId == 0 && killer.LineNumber == 1 && !killer.SceneLoading
                     && killer.WorldScene == monster.WorldScene && max > 0
@@ -571,13 +571,13 @@ public sealed partial class TerritoryWarsService
                         AddAward(grants, GameData.Int(row, "_iExtraAward"), killer);
                     role.WorldLandClaims[claimKey] = role.WorldLandClaims.GetValueOrDefault(claimKey) + 1;
                     role.Pending[$"world-land:{claimKey}:{role.WorldLandClaims[claimKey]}"] = grants;
-                    var transaction = roles.NewTransaction();
+                    var transaction = _roles.NewTransaction();
                     Save(next, transaction);
                     SaveRole(killer.Role.Id, role, transaction);
                     if (PendingSource(new Dictionary<long, List<Grant>> { [killer.Role.Id] = grants },
                         "world-land", $"territory-world-land:{Epoch}:{pair.Key}:{occurrence}") is { } reward)
                         transaction.WithEventEconomy(reward);
-                    try { await roles.CommitAsync(transaction, "territory/world-kill"); }
+                    try { await _roles.CommitAsync(transaction, "territory/world-kill"); }
                     catch
                     {
                         await RecoverWorldActivityAfterFaultAsync(pair.Key, occurrence);
@@ -588,26 +588,26 @@ public sealed partial class TerritoryWarsService
                 }
                 else await SaveAsync(next);
                 PublishCommitted(next);
-                worldActivities.Remove(pair.Key); worldActivityOrdinals.Remove(pair.Key);
-                long generation = worldGeneration;
-                loop.ScheduleRuntime(TimeSpan.FromSeconds(respawn), () => RespawnWorldActivityAsync(pair.Key, generation));
+                _worldActivities.Remove(pair.Key); _worldActivityOrdinals.Remove(pair.Key);
+                long generation = _worldGeneration;
+                _loop.ScheduleRuntime(TimeSpan.FromSeconds(respawn), () => RespawnWorldActivityAsync(pair.Key, generation));
             }
-            finally { worldGate.Release(); }
+            finally { _worldGate.Release(); }
         }
-        finally { stagedTerritoryState.Dispose(); gate.Release(); reservation?.Dispose(); }
+        finally { stagedTerritoryState.Dispose(); _gate.Release(); reservation?.Dispose(); }
         if (deliverRole != 0 && killer.Role?.Id == deliverRole) await DeliverAsync(killer);
     }
 
     private async Task RecoverWorldActivityAfterFaultAsync(int id, long occurrence)
     {
-        var bytes = await accounts.ReadAsync<byte[]?>(new Ro3Emu.Server.Accounts.Persistence.TerritoryRealmReadPlan(
+        var bytes = await _accounts.ReadAsync<byte[]?>(new Ro3Emu.Server.Accounts.Persistence.TerritoryRealmReadPlan(
             Ro3Emu.Server.Accounts.Persistence.RealmStateKind.TerritoryWars));
         var durable = bytes == null ? null : JsonSerializer.Deserialize<WorldState>(bytes);
         if (durable == null || durable.WorldActivityOccurrences.GetValueOrDefault(id) <= occurrence) return;
         PublishCommitted(durable);
-        worldActivities.Remove(id); worldActivityOrdinals.Remove(id);
-        long generation = worldGeneration;
-        long wait = Math.Max(0, durable.WorldActivityRespawns.GetValueOrDefault(id) - clock.Now);
-        loop.ScheduleRuntime(TimeSpan.FromSeconds(wait), () => RespawnWorldActivityAsync(id, generation));
+        _worldActivities.Remove(id); _worldActivityOrdinals.Remove(id);
+        long generation = _worldGeneration;
+        long wait = Math.Max(0, durable.WorldActivityRespawns.GetValueOrDefault(id) - _clock.Now);
+        _loop.ScheduleRuntime(TimeSpan.FromSeconds(wait), () => RespawnWorldActivityAsync(id, generation));
     }
 }

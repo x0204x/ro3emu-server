@@ -17,29 +17,29 @@ public sealed class MailAdventureEconomyTests : IAsyncLifetime
 {
     private sealed class TestClock : TimeProvider
     {
-        private long seconds = new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
-        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref seconds));
-        public void Set(long value) => Interlocked.Exchange(ref seconds, value);
-        public void Advance(long value) => Interlocked.Add(ref seconds, value);
+        private long _seconds = new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref _seconds));
+        public void Set(long value) => Interlocked.Exchange(ref _seconds, value);
+        public void Advance(long value) => Interlocked.Add(ref _seconds, value);
     }
 
-    private readonly string directory = Path.Combine(RepoRoot(), ".loadtest-temp", "e03-mail-adventure-" + Guid.NewGuid().ToString("N"));
-    private readonly TestClock clock = new();
+    private readonly string _directory = Path.Combine(RepoRoot(), ".loadtest-temp", "e03-mail-adventure-" + Guid.NewGuid().ToString("N"));
+    private readonly TestClock _clock = new();
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(8);
     private static readonly Lazy<EconomyCatalog> Catalog = new(() => EconomyCatalog.Load(Path.Combine(RepoRoot(), "data")));
-    private WebApplication app = null!;
-    private string http = "";
-    private T Service<T>() where T : notnull => app.Services.GetRequiredService<T>();
-    private EconomySnapshot Cut() => EconomySnapshotReader.Read(Path.Combine(directory, "ro3emu.db"), Catalog.Value, "auto");
+    private WebApplication _app = null!;
+    private string _http = "";
+    private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
+    private EconomySnapshot Cut() => EconomySnapshotReader.Read(Path.Combine(_directory, "ro3emu.db"), Catalog.Value, "auto");
     private EconomyLedgerWindow Window(EconomySnapshot a, EconomySnapshot b) =>
-        EconomyLedgerReader.Read(Path.Combine(directory, "ro3emu.db"), Catalog.Value, a.Cut.RealmId,
+        EconomyLedgerReader.Read(Path.Combine(_directory, "ro3emu.db"), Catalog.Value, a.Cut.RealmId,
             a.Cut.CommitSequence!.Value, b.Cut.CommitSequence!.Value);
 
     private string ReceiptCommands(EconomyLedgerWindow window)
     {
         if (window.Receipts.Count == 1) return "";
         var connectionString = new SqliteConnectionStringBuilder
-        { DataSource = Path.Combine(directory, "ro3emu.db"), Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString();
+        { DataSource = Path.Combine(_directory, "ro3emu.db"), Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString();
         using var db = new SqliteConnection(connectionString);
         db.Open();
         var labels = new List<string>();
@@ -61,21 +61,21 @@ public sealed class MailAdventureEconomyTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         var (web, micro, game) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.DataDir = _directory; o.GameDataDir = Path.Combine(RepoRoot(), "data");
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game;
             o.PlayBook = 101; o.SeasonStart = "2026-10-05";
-        }, clock);
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{web}";
+        }, _clock);
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{web}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync(); await app.DisposeAsync();
+        await _app.StopAsync(); await _app.DisposeAsync();
         SqliteConnection.ClearAllPools();
-        try { Directory.Delete(directory, true); } catch (IOException) { }
+        try { Directory.Delete(_directory, true); } catch (IOException) { }
     }
 
     private static string RepoRoot()
@@ -87,7 +87,7 @@ public sealed class MailAdventureEconomyTests : IAsyncLifetime
 
     private async Task<BotClient> InWorld(string name)
     {
-        var bot = new BotClient(http, File.ReadAllText(Path.Combine(directory, "gate_rsa_public.pem")));
+        var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_directory, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         var role = (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id;
         await bot.EnterWorldAsync(role);
@@ -138,9 +138,9 @@ public sealed class MailAdventureEconomyTests : IAsyncLifetime
         Assert.Equal(claimed.Cut.CommitSequence, Cut().Cut.CommitSequence);
 
         string expiryId = await mail.SendRawAsync(role, "Short", "Body", [new(1000000, 3)],
-            expiresAt: clock.GetUtcNow().AddSeconds(1));
+            expiresAt: _clock.GetUtcNow().AddSeconds(1));
         var held = Cut();
-        clock.Advance(1);
+        _clock.Advance(1);
         var list = await alice.MicroAsync("MailService", "getUserMailList", new Dictionary<string, object?>
         { ["Uid"] = role.ToString(), ["Start"] = 0, ["Limit"] = 150, ["MailType"] = 1 });
         Assert.DoesNotContain((object?[])list["MailList"]!, value =>
@@ -156,15 +156,15 @@ public sealed class MailAdventureEconomyTests : IAsyncLifetime
     [ClientDataFact]
     public async Task FragmentGiftConservesTwoOwnersAndConsumedAskRefusesReplay()
     {
-        var segment = Service<ActivityClock>().Segments(1014, clock.GetUtcNow().ToUnixTimeSeconds()).Single();
-        clock.Set(segment.Start + 60);
+        var segment = Service<ActivityClock>().Segments(1014, _clock.GetUtcNow().ToUnixTimeSeconds()).Single();
+        _clock.Set(segment.Start + 60);
         await using var alice = await InWorld("Alice");
         await using var bob = await InWorld("Bob");
         using (var client = new HttpClient())
         {
-            (await client.PostAsync(http + "/ro3emu/gm?account=alice", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
-            (await client.PostAsync(http + "/ro3emu/gm?account=bob", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
-            (await client.PostAsync(http + "/ro3emu/gm?account=bob", new StringContent("!item 1111001 2"))).EnsureSuccessStatusCode();
+            (await client.PostAsync(_http + "/ro3emu/gm?account=alice", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
+            (await client.PostAsync(_http + "/ro3emu/gm?account=bob", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
+            (await client.PostAsync(_http + "/ro3emu/gm?account=bob", new StringContent("!item 1111001 2"))).EnsureSuccessStatusCode();
         }
         // This fragment cycle starts after Eve has expired. Finish the login calendar's
         // pending settlement before opening the one-command economic observation window.
@@ -173,7 +173,7 @@ public sealed class MailAdventureEconomyTests : IAsyncLifetime
             var session = Service<SessionRegistry>().All().Single(s => s.Role?.Id == (long)bot.Self!.Uuid);
             await Service<NewActivityService>().ReconcileAsync(session);
             var eve = session.NewActivities!.ActivityInfo[117];
-            Assert.True(eve.CycleStartTime > 0 && eve.CycleEndTime <= clock.GetUtcNow().ToUnixTimeSeconds());
+            Assert.True(eve.CycleStartTime > 0 && eve.CycleEndTime <= _clock.GetUtcNow().ToUnixTimeSeconds());
             Assert.Equal(eve.CycleStartTime, session.ActivityRuntime.EveSettledCycleStart);
             var saved = System.Text.Json.JsonSerializer.Deserialize<ActivityRuntimeState>(
                 Service<RoleStore>().LoadActivityRuntime(session.Role!.Id)!);
@@ -256,7 +256,7 @@ public sealed class MailAdventureEconomyTests : IAsyncLifetime
         int persisted = 0;
         string first = await mail.SendTemplateOnceAsync(role, 1020, [new(1000000, 1)],
             "expired-once", _ => persisted++);
-        clock.Advance(366L * 86400);
+        _clock.Advance(366L * 86400);
         await mail.SendRawAsync(role, "Purge", "Expired source letter");
         var afterPurge = Cut();
 
@@ -275,9 +275,9 @@ public sealed class MailAdventureEconomyTests : IAsyncLifetime
         long recipient = Service<RoleStore>().Create("pass-offline", 1, "PassOffline", 1, 1000, 1)!.Id;
         using (var client = new HttpClient())
         {
-            (await client.PostAsync(http + "/ro3emu/gm?account=alice", new StringContent("!lvl 99")))
+            (await client.PostAsync(_http + "/ro3emu/gm?account=alice", new StringContent("!lvl 99")))
                 .EnsureSuccessStatusCode();
-            (await client.PostAsync(http + "/ro3emu/gm?account=alice", new StringContent("!item 1020001 2")))
+            (await client.PostAsync(_http + "/ro3emu/gm?account=alice", new StringContent("!item 1020001 2")))
                 .EnsureSuccessStatusCode();
         }
         var sender = Service<SessionRegistry>().All().Single(s => s.Role?.Id == (long)alice.Self!.Uuid);

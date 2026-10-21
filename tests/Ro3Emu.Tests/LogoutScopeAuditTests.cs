@@ -19,28 +19,28 @@ namespace Ro3Emu.Tests;
 public sealed class LogoutScopeAuditTests(ITestOutputHelper output) : IAsyncLifetime
 {
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(8);
-    private readonly string dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-logoutaudit-" + Guid.NewGuid().ToString("N"));
-    private WebApplication app = null!;
-    private string http = "";
+    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-logoutaudit-" + Guid.NewGuid().ToString("N"));
+    private WebApplication _app = null!;
+    private string _http = "";
 
     public async Task InitializeAsync()
     {
         var (hp, mp, gp) = TestPorts.FreePorts();
-        app = ServerHost.Create([], o =>
+        _app = ServerHost.Create([], o =>
         {
-            o.DataDir = dataDir; o.GameDataDir = SyntheticData.Dir;
+            o.DataDir = _dataDir; o.GameDataDir = SyntheticData.Dir;
             o.HttpPort = hp; o.MicroGatePort = mp; o.GameGatePort = gp;
         });
-        await app.StartAsync();
-        http = $"http://127.0.0.1:{hp}";
+        await _app.StartAsync();
+        _http = $"http://127.0.0.1:{hp}";
     }
 
     public async Task DisposeAsync()
     {
-        await app.StopAsync();
-        await app.DisposeAsync();
+        await _app.StopAsync();
+        await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
     [Fact]
@@ -81,13 +81,13 @@ public sealed class LogoutScopeAuditTests(ITestOutputHelper output) : IAsyncLife
     private ConcurrentQueue<string> Audit()
     {
         var audit = new ConcurrentQueue<string>();
-        app.Services.GetRequiredService<OwnerRegistry>().UncoveredForTest = audit.Enqueue;
+        _app.Services.GetRequiredService<OwnerRegistry>().UncoveredForTest = audit.Enqueue;
         return audit;
     }
 
     private void AssertEmpty(ConcurrentQueue<string> audit)
     {
-        app.Services.GetRequiredService<OwnerRegistry>().UncoveredForTest = null;
+        _app.Services.GetRequiredService<OwnerRegistry>().UncoveredForTest = null;
         var distinct = audit.Select(Normalize).Distinct().OrderBy(x => x, StringComparer.Ordinal).ToList();
         output.WriteLine($"logout realm dependencies ({distinct.Count} distinct, {audit.Count} total):");
         foreach (var line in distinct) output.WriteLine("  " + line);
@@ -96,8 +96,8 @@ public sealed class LogoutScopeAuditTests(ITestOutputHelper output) : IAsyncLife
 
     private async Task WaitDetached(long role)
     {
-        var owners = app.Services.GetRequiredService<OwnerRegistry>();
-        var loop = app.Services.GetRequiredService<GameLoop>();
+        var owners = _app.Services.GetRequiredService<OwnerRegistry>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
         for (int i = 0; i < 250; i++)
         {
             bool detached = await loop.InvokeAsync(() => Task.FromResult(owners.Cached(role) is not { } owner
@@ -108,7 +108,7 @@ public sealed class LogoutScopeAuditTests(ITestOutputHelper output) : IAsyncLife
         throw new TimeoutException($"Role {role} did not detach.");
     }
 
-    private BotClient Bot() => new(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+    private BotClient Bot() => new(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
 
     private async Task<(BotClient Bot, long Id)> InWorld(string name)
     {
@@ -123,7 +123,7 @@ public sealed class LogoutScopeAuditTests(ITestOutputHelper output) : IAsyncLife
     private async Task Gm(string name, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={name.ToLowerInvariant()}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={name.ToLowerInvariant()}", new StringContent(command))).EnsureSuccessStatusCode();
     }
 
     private static async Task<T> Next<T>(BotClient bot, uint id, Google.Protobuf.MessageParser<T> parser, Func<T, bool>? match = null)

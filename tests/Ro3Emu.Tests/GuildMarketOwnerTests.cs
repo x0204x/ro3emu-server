@@ -10,18 +10,18 @@ namespace Ro3Emu.Tests;
 
 public sealed partial class GuildTests
 {
-    private readonly SwitchableClock clock = new();
+    private readonly SwitchableClock _clock = new();
 
     private sealed class SwitchableClock : TimeProvider
     {
-        private long frozenTicks = long.MinValue;
+        private long _frozenTicks = long.MinValue;
         public override DateTimeOffset GetUtcNow()
         {
-            long ticks = Volatile.Read(ref frozenTicks);
+            long ticks = Volatile.Read(ref _frozenTicks);
             return ticks == long.MinValue ? TimeProvider.System.GetUtcNow() : new DateTimeOffset(ticks, TimeSpan.Zero);
         }
-        public void Freeze() => Interlocked.Exchange(ref frozenTicks, TimeProvider.System.GetUtcNow().Ticks);
-        public void Advance(TimeSpan by) => Interlocked.Add(ref frozenTicks, by.Ticks);
+        public void Freeze() => Interlocked.Exchange(ref _frozenTicks, TimeProvider.System.GetUtcNow().Ticks);
+        public void Advance(TimeSpan by) => Interlocked.Add(ref _frozenTicks, by.Ticks);
     }
 
     [ClientDataFact]
@@ -30,10 +30,10 @@ public sealed partial class GuildTests
         await using var seller = await InWorld("Refundseller");
         await Level("refundseller");
         using (var client = new HttpClient())
-            (await client.PostAsync($"{http}/ro3emu/gm?account=refundseller", new StringContent("!lvl 99")))
+            (await client.PostAsync($"{_http}/ro3emu/gm?account=refundseller", new StringContent("!lvl 99")))
                 .EnsureSuccessStatusCode();
         long guildId = await CreateGuild(seller, "Refund");
-        var store = app.Services.GetRequiredService<GuildStore>();
+        var store = _app.Services.GetRequiredService<GuildStore>();
         var funded = store.Get(guildId)!;
         funded.Materials = 10;
         Assert.True(store.Save(funded));
@@ -63,13 +63,13 @@ public sealed partial class GuildTests
         {
             await Level(name);
             using var client = new HttpClient();
-            (await client.PostAsync($"{http}/ro3emu/gm?account={name}", new StringContent("!lvl 99")))
+            (await client.PostAsync($"{_http}/ro3emu/gm?account={name}", new StringContent("!lvl 99")))
                 .EnsureSuccessStatusCode();
         }
         long firstId = await CreateGuild(first, "First");
         long secondId = await CreateGuild(second, "Second");
         long buyerId = await CreateGuild(buyer, "Buyers");
-        var store = app.Services.GetRequiredService<GuildStore>();
+        var store = _app.Services.GetRequiredService<GuildStore>();
         foreach (long guildId in new[] { firstId, secondId })
         {
             var guild = store.Get(guildId)!;
@@ -89,8 +89,8 @@ public sealed partial class GuildTests
         foreach (var stall in market.Stalls) stall.AvailableMs = 0;
         Assert.True(store.SaveMarket(market, []));
 
-        var accounts = app.Services.GetRequiredService<AccountStore>();
-        var session = app.Services.GetRequiredService<SessionRegistry>().All()
+        var accounts = _app.Services.GetRequiredService<AccountStore>();
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All()
             .Single(x => x.Role?.Id == (long)buyer.Self!.Uuid);
         var request = new BuyBlackMarketItemReq { UnitPrice = 500, BuyCount = 20 };
         FixtureSql.Execute(accounts,
@@ -98,8 +98,8 @@ public sealed partial class GuildTests
             + "BEGIN SELECT RAISE(ABORT, 'market seller failure'); END");
         try
         {
-            await Assert.ThrowsAsync<SqliteException>(() => app.Services.GetRequiredService<GameLoop>()
-                .InvokeAsync(() => app.Services.GetRequiredService<GuildService>()
+            await Assert.ThrowsAsync<SqliteException>(() => _app.Services.GetRequiredService<GameLoop>()
+                .InvokeAsync(() => _app.Services.GetRequiredService<GuildService>()
                     .MarketAsync(session, GuildService.MarketBuy, request.ToByteArray())));
             Assert.Equal(10000, store.Get(buyerId)!.Money);
             Assert.Equal(0, store.Get(buyerId)!.Materials);
@@ -110,7 +110,7 @@ public sealed partial class GuildTests
         }
         finally { FixtureSql.Execute(accounts, "DROP TRIGGER fail_market_seller"); }
 
-        var openingEconomy = MarketEconomyEvidence.Cut(dataDir, RepoRoot());
+        var openingEconomy = MarketEconomyEvidence.Cut(_dataDir, RepoRoot());
         await buyer.SendGameAsync(GuildService.MarketBuy, request);
         Assert.Equal(0, (await Next(buyer, GuildService.MarketBuy, BuyBlackMarketItemRsp.Parser)).Result);
         Assert.Equal(0, store.Get(buyerId)!.Money);
@@ -121,8 +121,8 @@ public sealed partial class GuildTests
         Assert.Equal(secondId, store.ForRole((long)second.Self!.Uuid)!.Id);
         Assert.Empty(store.LoadMarket().Stalls);
         Assert.Equal(2, store.LoadMarket().Trades.Count);
-        var ledger = MarketEconomyEvidence.Exact(dataDir, RepoRoot(), openingEconomy,
-            MarketEconomyEvidence.Cut(dataDir, RepoRoot()));
+        var ledger = MarketEconomyEvidence.Exact(_dataDir, RepoRoot(), openingEconomy,
+            MarketEconomyEvidence.Cut(_dataDir, RepoRoot()));
         Assert.Equal(-250, ledger.Legs.Where(x => x.Reason == Ro3Emu.Server.Economy.EconomyReason.GuildMarketFee).Sum(x => x.Delta));
         Assert.DoesNotContain(ledger.Legs, x => x.Kind == Ro3Emu.Server.Economy.EconomyLegKind.Source);
     }
@@ -143,12 +143,12 @@ public sealed partial class GuildTests
         {
             await Level(name);
             using var client = new HttpClient();
-            (await client.PostAsync($"{http}/ro3emu/gm?account={name}", new StringContent("!lvl 99")))
+            (await client.PostAsync($"{_http}/ro3emu/gm?account={name}", new StringContent("!lvl 99")))
                 .EnsureSuccessStatusCode();
         }
         long sellerId = await CreateGuild(seller, "Timers");
         long buyerId = await CreateGuild(buyer, "Payees");
-        var store = app.Services.GetRequiredService<GuildStore>();
+        var store = _app.Services.GetRequiredService<GuildStore>();
         var fundedSeller = store.Get(sellerId)!;
         fundedSeller.Materials = 10;
         Assert.True(store.Save(fundedSeller));
@@ -158,19 +158,19 @@ public sealed partial class GuildTests
         await seller.SendGameAsync(GuildService.MarketList, new ListOnBlackMarketReq { UnitPrice = 500, Count = 10 });
         Assert.Equal(0, (await Next(seller, GuildService.MarketList, ListOnBlackMarketRsp.Parser)).Result);
         var market = store.LoadMarket();
-        clock.Freeze();
-        long expires = clock.GetUtcNow().ToUnixTimeMilliseconds() + 3000;
+        _clock.Freeze();
+        long expires = _clock.GetUtcNow().ToUnixTimeMilliseconds() + 3000;
         Assert.Single(market.Stalls).AvailableMs = 0;
         market.Stalls[0].ExpiresMs = expires;
         Assert.True(store.SaveMarket(market, []));
 
-        var accounts = app.Services.GetRequiredService<AccountStore>();
-        var loop = app.Services.GetRequiredService<GameLoop>();
-        var owners = app.Services.GetRequiredService<OwnerRegistry>();
+        var accounts = _app.Services.GetRequiredService<AccountStore>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
+        var owners = _app.Services.GetRequiredService<OwnerRegistry>();
         double queueAgeBefore = owners.MaxQueueAgeMs;
         double queueWaitBefore = owners.TotalQueueWaitMs;
-        var guilds = app.Services.GetRequiredService<GuildService>();
-        var sellerSession = app.Services.GetRequiredService<SessionRegistry>().All()
+        var guilds = _app.Services.GetRequiredService<GuildService>();
+        var sellerSession = _app.Services.GetRequiredService<SessionRegistry>().All()
             .Single(x => x.Role?.Id == (long)seller.Self!.Uuid);
         var reachedCommit = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseCommit = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -187,8 +187,8 @@ public sealed partial class GuildTests
             await buyer.SendGameAsync(GuildService.MarketBuy,
                 new BuyBlackMarketItemReq { UnitPrice = 500, BuyCount = 10 });
             await reachedCommit.Task.WaitAsync(Wait);
-            Assert.True(clock.GetUtcNow().ToUnixTimeMilliseconds() < expires);
-            clock.Advance(TimeSpan.FromSeconds(4));
+            Assert.True(_clock.GetUtcNow().ToUnixTimeMilliseconds() < expires);
+            _clock.Advance(TimeSpan.FromSeconds(4));
             long before = await loop.InvokeAsync(() => Task.FromResult(owners.Deferred));
             refund = loop.InvokeAsync(() => guilds.MarketAsync(sellerSession, GuildService.MarketBooth,
                 ReadOnlyMemory<byte>.Empty));
@@ -227,12 +227,12 @@ public sealed partial class GuildTests
         {
             await Level(name);
             using var client = new HttpClient();
-            (await client.PostAsync($"{http}/ro3emu/gm?account={name}", new StringContent("!lvl 99")))
+            (await client.PostAsync($"{_http}/ro3emu/gm?account={name}", new StringContent("!lvl 99")))
                 .EnsureSuccessStatusCode();
         }
         long sellerId = await CreateGuild(seller, "Slows");
         long buyerId = await CreateGuild(buyer, "PaySlow");
-        var store = app.Services.GetRequiredService<GuildStore>();
+        var store = _app.Services.GetRequiredService<GuildStore>();
         var fundedSeller = store.Get(sellerId)!;
         fundedSeller.Materials = 20;
         Assert.True(store.Save(fundedSeller));
@@ -249,9 +249,9 @@ public sealed partial class GuildTests
         var firstNoticeSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseFirstNotice = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         int held = 0;
-        var service = app.Services.GetRequiredService<GuildService>();
-        var loop = app.Services.GetRequiredService<GameLoop>();
-        var buyerSession = app.Services.GetRequiredService<SessionRegistry>().All()
+        var service = _app.Services.GetRequiredService<GuildService>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
+        var buyerSession = _app.Services.GetRequiredService<SessionRegistry>().All()
             .Single(x => x.Role?.Id == (long)buyer.Self!.Uuid);
         service.AfterMarketNoticeSendForTest = async () =>
         {
