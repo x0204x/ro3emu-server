@@ -95,7 +95,7 @@ dotnet_diagnostic.CA1720.severity = suggestion
 dotnet_diagnostic.CA1725.severity = suggestion
 # 1: do not initialize unnecessarily
 dotnet_diagnostic.CA1805.severity = suggestion
-# 166: mark members as static
+# 165: mark members as static
 dotnet_diagnostic.CA1822.severity = suggestion
 # 4: use a property instead of a LINQ method
 dotnet_diagnostic.CA1826.severity = suggestion

@@ -29,7 +29,11 @@ public sealed partial class GuildService
 
     internal static byte[] JournalRow(int cfgId, long[] players, params LanguageParam[] values)
     {
-        var row = new GuildEventData { EventCfgID = cfgId, Time = NowMs(), Param = new LanguageData() };
+        // A display timestamp only (the auction ledger builds rows outside the service), so the wall clock.
+        var row = new GuildEventData
+        {
+            EventCfgID = cfgId, Time = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), Param = new LanguageData()
+        };
         row.PlayerID.AddRange(players);
         row.Param.Param.AddRange(values);
         return row.ToByteArray();

@@ -44,8 +44,9 @@ public sealed partial class GuildService(GameData data, GuildStore store, RoleSt
     private readonly Dictionary<long, Invitation> _invites = new();
     private long _nextToken = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
     private sealed record Invitation(long GuildId, long Recipient, long Inviter, long ExpiresMs);
-    private static long NowMs() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-    private static long NowSec() => DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+    // The injected clock, as WeekStart: membership times compared with the guild week must share its calendar.
+    private long NowMs() => clock.GetUtcNow().ToUnixTimeMilliseconds();
+    private long NowSec() => clock.GetUtcNow().ToUnixTimeSeconds();
     private GameSession? Online(long id) => sessions.All().FirstOrDefault(s => s.Role?.Id == id);
     private GuildStore.State? Own(GameSession session) => session.Role == null ? null : store.ForRole(session.Role.Id);
 
@@ -408,7 +409,7 @@ public sealed partial class GuildService(GameData data, GuildStore store, RoleSt
         await s.SendGameAsync(Create, new GuildCreateResp { Result = code });
     }
 
-    private static GuildStore.Member NewMember(GameSession s, int official) => new()
+    private GuildStore.Member NewMember(GameSession s, int official) => new()
     {
         RoleId = s.Role!.Id, Name = s.Role.Name, Level = s.Progress!.Level,
         Career = s.Progress.Career, EnterTime = NowMs(), OfflineTime = -1, Official = official,

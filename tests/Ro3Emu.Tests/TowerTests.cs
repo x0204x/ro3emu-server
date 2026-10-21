@@ -561,6 +561,8 @@ public sealed class TowerTests : IAsyncLifetime
             };
             var hooks = Service<CombatService>().BeforeKilled;
             hooks.Insert(hooks.FindIndex(h => h.Target is RewardService), failApply);
+            // Held from here on: the fault closes the connection, after which the registry may already have dropped it.
+            var session = Session(alice);
             try
             {
                 await alice.SendGameAsync(MsgId.Walk, new WalkReq { Pos = position, BStop = true, SpeedRate = 1 });
@@ -570,8 +572,8 @@ public sealed class TowerTests : IAsyncLifetime
                 await staged.Task.WaitAsync(Wait);
                 await faulted.Task.WaitAsync(Wait);
                 // The child reward permit aborts first; the parent cast then finalizes the paid death.
-                for (int i = 0; i < 100 && (!Session(alice).Channel.PeerClosed || !final.Dead); i++) await Task.Delay(20);
-                Assert.True(Session(alice).Channel.PeerClosed);
+                for (int i = 0; i < 100 && (!session.Channel.PeerClosed || !final.Dead); i++) await Task.Delay(20);
+                Assert.True(session.Channel.PeerClosed);
             }
             finally { hooks.Remove(failApply); }
             Assert.Equal(1, applyFaults);
@@ -580,7 +582,7 @@ public sealed class TowerTests : IAsyncLifetime
             Assert.True(await Service<CharacterService>().RewardSourceCommittedAsync(final.RewardSettlement.SourceKey));
             Assert.True(attempt.ClearCommitted);
             Assert.DoesNotContain(final.Uid, attempt.Killed);
-            Assert.Equal(RoleOwnerState.RecoveryRequired, Session(alice).Owner!.State);
+            Assert.Equal(RoleOwnerState.RecoveryRequired, session.Owner!.State);
             Assert.Equal(1, DBClimTower.Parser.ParseFrom(Service<RoleStore>().LoadTower(role)!).LayerConfID);
             Assert.Equal(5, Count(alice, 1250709));
             Assert.Equal(9, Count(alice, 1250701));

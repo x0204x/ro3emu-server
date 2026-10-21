@@ -1,9 +1,12 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Ro3Emu.Bot;
 using Ro3Emu.Server;
+using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Diagnostics;
+using Ro3Emu.Server.Game;
 
 namespace Ro3Emu.Tests;
 
@@ -66,11 +69,35 @@ public sealed class HttpStateTests : IAsyncLifetime
         var sessions = (await Get(client, "/ro3emu/metrics")).GetProperty("sessions");
         Assert.Equal(1, sessions.GetProperty("login").GetInt32());
         Assert.Equal(1, sessions.GetProperty("inWorld").GetInt32() + sessions.GetProperty("loading").GetInt32());
-        Assert.Equal(JsonValueKind.String, sessions.GetProperty("capturedUtc").ValueKind);
+        // The metrics carry the census they were read from, not a fresh pass over the live sessions.
+        Assert.Equal(census.Current.CapturedUtc, sessions.GetProperty("capturedUtc").GetDateTimeOffset());
 
         var online = (await Get(client, "/ro3emu/online")).EnumerateArray().ToDictionary(
             s => s.GetProperty("account").GetString()!, s => s.GetProperty("role"));
         Assert.Equal("Walker", online["walker"].GetString());
         Assert.Equal(JsonValueKind.Null, online["lobby"].ValueKind);
+    }
+
+    [Fact]
+    public async Task TheCensusChangesOnlyWhenTheLoopTakesIt()
+    {
+        var registry = new SessionRegistry(NullLogger<SessionRegistry>.Instance);
+        var session = new GameSession(null!, null!) { Account = "census", SceneEntry = 10100 };
+        await registry.RegisterAsync(session);
+        var census = new SessionCensus(registry);
+        Assert.Null(census.Current.CapturedUtc);
+
+        census.Tick(new GameTime(TimeSpan.Zero, TimeSpan.Zero));
+        Assert.Equal(1, census.Current.Login);
+        session.Role = new Role(1, "census", 1, "Census", 1, 1000, 1, 1, 0, 0, 10100, 0, 0, 0, 0);
+
+        // Within the interval the published snapshot keeps what the loop last saw.
+        census.Tick(new GameTime(SessionCensus.Interval / 2, SessionCensus.Interval / 2));
+        Assert.Equal(1, census.Current.Login);
+        Assert.Empty(census.Current.Roles);
+
+        census.Tick(new GameTime(SessionCensus.Interval, SessionCensus.Interval / 2));
+        Assert.Equal(0, census.Current.Login);
+        Assert.Single(census.Current.Roles);
     }
 }

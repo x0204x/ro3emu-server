@@ -30,7 +30,8 @@ public static partial class EconomySnapshotReader
         ReadCommentHandling = JsonCommentHandling.Disallow
     };
     // StrictJson with unknown members skipped: a value strict reading refuses but this one reads has only unknown
-    // members wrong. Declared after StrictJson in the same file, so it is initialized after it.
+    // members wrong (an unknown schema). A value with an unknown member and another fault is corruption: the fault
+    // is real whatever the schema. Declared after StrictJson in the same file, so it is initialized after it.
     private static readonly JsonSerializerOptions UnmappedJson = new(StrictJson)
     {
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Skip

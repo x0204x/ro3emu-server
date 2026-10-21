@@ -58,6 +58,7 @@ public static class EconomyLedgerReader
         var eventIntents = new Dictionary<string, EventEconomyMutation>(StringComparer.Ordinal);
         var eventOwnerAmounts = new Dictionary<(string Operation, EconomyOwner Owner, EconomyAsset Asset), BigInteger>();
         var commands = new Dictionary<string, string>(StringComparer.Ordinal);
+        bool obligationSchemaChecked = false;
         var e05Intent = new Dictionary<(string Operation, EconomyAsset Asset, EconomyOwner Owner,
             EconomyCompartment Compartment, EconomyLegKind Kind, EconomyReason Reason), BigInteger>();
         var e05Ledger = new Dictionary<(string Operation, EconomyAsset Asset, EconomyOwner Owner,
@@ -207,6 +208,12 @@ public static class EconomyLedgerReader
                             var parsed = ValidateIntentPayload((byte[])row.GetValue(15), row.GetString(9),
                                 op, row.GetString(5), row.GetInt64(6), commandKind, row.GetString(8), source,
                                 row.GetInt64(14), (byte[])row.GetValue(10));
+                            bool dungeonReceipt = commandKind is "dungeon-reward" or "dungeon-obligation-earn";
+                            if (dungeonReceipt && !obligationSchemaChecked)
+                            {
+                                RequireObligationSchema(db, tx);
+                                obligationSchemaChecked = true;
+                            }
                             if (commandKind == "dungeon-reward")
                                 ValidateDungeonObligation(db, tx, source, row.GetInt64(6), parsed);
                             if (commandKind == "dungeon-obligation-earn")
@@ -1214,7 +1221,7 @@ public static class EconomyLedgerReader
         EconomySchema.Require(db, tx, "operation_source", "realm_id", "source_key", "operation_id");
     }
 
-    /// <summary>Checked only when a dungeon receipt needs it: databases older than dungeon rewards lack it.</summary>
+    /// <summary>Checked once, at the first dungeon receipt: older databases without dungeon rewards lack it.</summary>
     private static void RequireObligationSchema(SqliteConnection db, SqliteTransaction tx) =>
         EconomySchema.Require(db, tx, "dungeon_reward_obligation", "source_key", "role_id", "activated", "completed",
             "state");
@@ -1222,7 +1229,6 @@ public static class EconomyLedgerReader
     private static void ValidateDungeonObligation(SqliteConnection db, SqliteTransaction tx,
         string sourceKey, long role, ParsedIntent intent)
     {
-        RequireObligationSchema(db, tx);
         using var command = Command(db, tx,
             "SELECT role_id,activated,completed,state FROM dungeon_reward_obligation WHERE source_key=$key");
         command.Parameters.AddWithValue("$key", sourceKey);
@@ -1261,7 +1267,6 @@ public static class EconomyLedgerReader
         if (!sourceKey.EndsWith("/earned", StringComparison.Ordinal))
             throw new InvalidDataException("Earned obligation source suffix is invalid.");
         string deliverySource = sourceKey[..^"/earned".Length];
-        RequireObligationSchema(db, tx);
         using var command = Command(db, tx,
             "SELECT role_id,activated,state FROM dungeon_reward_obligation WHERE source_key=$key");
         command.Parameters.AddWithValue("$key", deliverySource);
