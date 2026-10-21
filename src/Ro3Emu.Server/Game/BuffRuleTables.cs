@@ -144,6 +144,14 @@ internal sealed partial class BuffRuleTables
     /// on; the n-th lasts _iDecayRatio^(n-1) (100 %, 50 %); the _iImmunodetection-th (3rd) does not land and makes the
     /// target immune for _iImmunityTime; after the immunity, or a quiet window, the count starts again.
     /// </summary>
+    /// <summary>Whether <see cref="Land"/> would refuse the next application, without recording it.</summary>
+    public static bool WouldRefuse(DecayRule rule, DecayTrack track, long now)
+    {
+        if (now < track.ImmuneUntilMs) return true;
+        int count = track.ImmuneUntilMs > 0 || now - track.LastMs > rule.WindowMs ? 1 : track.Count + 1;
+        return rule.Detections > 0 && count >= rule.Detections;
+    }
+
     public static bool Land(DecayRule rule, DecayTrack track, long now, out double factor)
     {
         factor = 1;

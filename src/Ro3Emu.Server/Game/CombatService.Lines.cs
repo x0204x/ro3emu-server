@@ -26,5 +26,5 @@ public sealed partial class CombatService
         && !session.SceneLoading && !session.SceneRecoveryRequired && !session.Dead
         && session.Role?.Id == cast.OwnerId && session.WorldScene == cast.WorldScene
         && ReferenceEquals(session.Attachment, cast.Attachment) && cast.Attachment?.Cancelled != true
-        && session.SceneGeneration == cast.SceneGeneration;
+        && session.SceneGeneration == cast.SceneGeneration && (cast.SourceEligible?.Invoke() ?? true);
 }

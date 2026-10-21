@@ -129,7 +129,7 @@ dotnet_diagnostic.CA1873.severity = suggestion
 dotnet_diagnostic.CA2208.severity = suggestion
 # 778: use a collection initializer or expression
 dotnet_diagnostic.IDE0028.severity = suggestion
-# 140: use a collection expression for an array
+# 139: use a collection expression for an array
 dotnet_diagnostic.IDE0300.severity = suggestion
 # 13: use a collection expression for an empty collection
 dotnet_diagnostic.IDE0301.severity = suggestion

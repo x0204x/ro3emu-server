@@ -13,7 +13,7 @@ public sealed class TowerPetUnit : WorldUnit
 {
     /// <summary>Uids above this one: separate from monsters (2^41) and passive followers (2^52), exact in the Lua
     /// number range.</summary>
-    internal const long UidBase = 1L << 51;
+    internal const long UidBase = 1L << 51, UidLimit = 1L << 52;
     private readonly GameSession _owner;
     private readonly World _world;
     private readonly MonsterService _monsters;

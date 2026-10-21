@@ -49,7 +49,7 @@ public sealed partial class CombatService
         if (Script(row) == "Resurrection")
         {
             var target = FindPlayer(s, action.Request.TargetId, dead: true);
-            if (target == null || target.SceneLoading || _buffs.HasForbidden(target, 16)
+            if (target == null || target.SceneLoading || _buffs.HasForbidden(target, ForbiddenState.Revive)
                 || s.WorldState.ResurrectionCastId != action.Id
                 || Distance(s.Position, target.Position) > Range(row) + 1.5f) return;
             s.WorldState.ResurrectionCastId = 0;
@@ -78,22 +78,13 @@ public sealed partial class CombatService
             var target = FindMonster(s.WorldScene, action.Request.TargetId);
             return target != null && target.Hp > 0 && CanHitMonster(s, target) && Relation(row, false, race: target.Template.Race) ? [target] : [];
         }
-        int release = (int)GameData.Int(row, "_iRelease");
-        if (release is not (1 or 7 or 8) && radiusOverride == null) center = action.Origin;
-        var range = Numbers(row, "_kRange");
-        float radius = radiusOverride ?? (float)(range.FirstOrDefault(300) / 100);
+        if (radiusOverride == null && GameData.Int(row, "_iRelease") is not (SkillRelease.Lock or SkillRelease.DragRect
+            or SkillRelease.DragCircle)) center = action.Origin;
         float height = GameData.Int(row, "_iAreaHeightRange") / 100f;
-        bool InShape(MonsterUnit m)
-        {
-            if (height > 0 && MathF.Abs(m.Y - center.Y) > height) return false;
-            float dx = m.X - center.X, dz = m.Z - center.Z;
-            double radians = action.Request.Face * Math.PI / 180;
-            double forward = dx * Math.Sin(radians) + dz * Math.Cos(radians), side = dx * Math.Cos(radians) - dz * Math.Sin(radians);
-            if (radiusOverride == null && release is 3 or 5 or 6 or 7)
-                return Math.Abs(side) <= radius / 2 && Math.Abs(forward) <= (range.Length > 1 ? range[1] / 200 : radius);
-            if (Distance(center, m.Pos) > radius + 0.1f) return false;
-            return radiusOverride != null || release != 4 || Math.Atan2(Math.Abs(side), forward) <= (range.Length > 1 ? range[1] : 90) * Math.PI / 360;
-        }
+        // A radius override is a plain circle around the given center; otherwise the row's own area.
+        bool InShape(MonsterUnit m) => radiusOverride is { } radius
+            ? (height <= 0 || MathF.Abs(m.Y - center.Y) <= height) && Distance(center, m.Pos) <= radius + 0.1f
+            : SkillAreaContains(row, action.Origin, center, action.Request.Face, m.Pos);
         return _world.Map(s.WorldScene).Units.OfType<MonsterUnit>().Where(m => m.Hp > 0 && CanHitMonster(s, m) && Relation(row, false, race: m.Template.Race) && InShape(m))
             .OrderBy(m => Distance(center, m.Pos)).ThenBy(m => m.Uid).Take(max).ToList();
     }
@@ -102,12 +93,13 @@ public sealed partial class CombatService
     {
         if (s.Dead || s.Role?.Id != action.OwnerId || s.WorldScene != action.WorldScene || s.SceneLoading
             || s.SceneGeneration != action.SceneGeneration || field?.Removing == true
-            || !ReferenceEquals(s.Attachment, action.Attachment) || action.Attachment?.Cancelled == true) return;
+            || !ReferenceEquals(s.Attachment, action.Attachment) || action.Attachment?.Cancelled == true
+            || action.SourceEligible?.Invoke() == false) return;
         var row = action.Row;
         var castingRole = s.Role;
         bool CurrentCaster() => ReferenceEquals(s.Role, castingRole) && !s.SceneLoading
             && s.SceneGeneration == action.SceneGeneration && (field != null ? !field.Removing : !action.Cancelled)
-            && s.WorldScene == action.WorldScene && _sessions.All().Contains(s);
+            && s.WorldScene == action.WorldScene && _sessions.All().Contains(s) && (action.SourceEligible?.Invoke() ?? true);
         bool CanApplyMoreEffects() => CurrentCaster() && ReferenceEquals(s.Attachment, action.Attachment)
             && action.Attachment?.Cancelled != true;
         // A published death still owes its callbacks after the cast/field is cancelled.
@@ -118,9 +110,8 @@ public sealed partial class CombatService
             && _sessions.All().Contains(s);
         string script = Script(row);
         var targets = SelectEnemies(s, action, center, field?.Trap == true ? field.Radius : null);
-        var playerTargets = GameData.Int(row, "_iRangeType") == 2 ? EventAreaTargets(s, row)
-            : EventTarget(s, action.Request.TargetId) is { } eventTarget
-                && PlayerDistance(s, eventTarget) <= Range(row) + 1.5f ? new[] { eventTarget } : [];
+        var playerTargets = EffectPlayerTargets(s, action, center);
+        var alreadySlowed = GuardianPreviouslySlowed(row, targets, playerTargets);
         if (playerTargets.Length > 0)
         {
             int maxTargets = checked((int)Math.Max(1, GameData.Int(row, "_iTargetMax")));
@@ -129,7 +120,11 @@ public sealed partial class CombatService
                 .OrderBy(p => p.Distance).ThenBy(p => p.Id).Take(maxTargets).Select(p => p.Id).ToHashSet();
             targets.RemoveAll(m => !selected.Contains(m.Uid));
             await HitEventPlayersAsync(s, playerTargets.Where(p => selected.Contains(p.Role!.Id)).ToArray(),
-                row, action.Request.SkillId, HitEffect(GameData.Int(row, "_iScriptShow")), action.Id, CanApplyMoreEffects);
+                row, action.Request.SkillId, HitEffect(GameData.Int(row, "_iScriptShow")), action.Id, CanApplyMoreEffects,
+                action.GuardianDamage == null ? null : (id, amount) => RecordGuardianDamage(action, id, amount));
+            if (IsGuardianEffect(row))
+                await GuardianPlayerDebuffsAsync(s, row, playerTargets.Where(p => selected.Contains(p.Role!.Id)),
+                    alreadySlowed, castingRole.Id, CanApplyMoreEffects);
         }
         if (!CanApplyMoreEffects()) return; // player publication can yield before any monster hit is committed
         bool friendly = Relation(row, true, true) || Relation(row, true);
@@ -170,18 +165,13 @@ public sealed partial class CombatService
                 processed.Add(target);
                 if (damage)
                 {
-                    var defender = new Fighter(0, 0, target.Template.Flee, 0, target.Template.Level, target.Template.Element)
-                    { Def = target.Template.Def, Mdef = target.Template.Mdef, Flee = target.Template.Flee };
-                    var (amount, result) = Damage(attacker, defender, row, script == "Heal" ? 1 : 0);
-                    if (amount > 0)
-                    {
-                        foreach (var modifier in DamageAdjusters) amount = Math.Max(0, modifier(s, target, row, result, amount));
-                        foreach (var extra in ExtraHitDamage) amount += Math.Max(0, extra(s, target, row, amount));
-                    }
+                    var (amount, result) = MonsterHitDamage(s, attacker, target, row, script);
                     long beforeHp = target.Hp;
                     target.Hp = Math.Max(0, beforeHp - amount);
                     long effective = beforeHp - target.Hp;
+                    RecordGuardianDamage(action, target.Uid, amount);
                     if (target.Hp == 0) killed.Add(target); // reserve before awaited damage callbacks
+                    if (effective > 0 && target.Hp > 0) await _buffs.BreakHitControlsAsync(target);
                     await SettleMonsterHitAsync(s, target, beforeHp, amount);
                     if (CanApplyMoreEffects())
                         foreach (var handler in DealtAsync)
@@ -202,8 +192,10 @@ public sealed partial class CombatService
                 }
                 if (CanApplyMoreEffects())
                     foreach (var tuple in Tuples(row, "_kBuff2"))
-                        if (CanApplyMoreEffects() && RollHostileBuff(tuple, s, null, null, target, out int id, out int duration))
-                            await _buffs.ShowOnUnitAsync(target, id, duration, castingRole.Id);
+                        if (CanApplyMoreEffects() && GuardianAllowsHostileBuff(row, tuple, alreadySlowed.Contains(target.Uid))
+                            && RollHostileBuff(tuple, s, null, null, target, out int id, out int duration))
+                            await _buffs.AddSupportAsync(target, id, duration, castingRole.Id,
+                                attributeMultiplier: GuardianPetRules.BuffMultiplier(row), guardianOwned: IsGuardianEffect(row));
                 if (CanApplyMoreEffects() && script is ("Provoke" or "Taunt")) _monsters.Engage(target, s);
                 if (CanApplyMoreEffects() && !target.Dead && target.Hp > 0) await DisplaceTargetAsync(s, action, target);
             }
@@ -221,6 +213,7 @@ public sealed partial class CombatService
                     long amount = (long)Math.Max(0, Math.Round(stats[104] * multiplier / 10000 + flat));
                     foreach (var modifier in ExtraHeal) amount = modifier(s, amount);
                     var before = _character.Stats(recipient);
+                    amount = ModifiedHealing(_buffs.GuardianAttributes(s), _buffs.GuardianAttributes(recipient), amount);
                     long actual = Math.Min(amount, Math.Max(0, before[101] - before[2000]));
                     await _character.SetHpSpAsync(recipient, before[2000] + amount, null);
                     hit.Dsts.Add(new DamageInfo { DstID = recipient.Role!.Id, Damage = actual, DamageType = DamageType.Heal, DstElement = 1 });
@@ -322,6 +315,8 @@ public sealed partial class CombatService
             ["ArrowRepel"] = (DisplaceKind.TargetPush, 3),
             ["PileBunker"] = (DisplaceKind.TargetPush, 5),
             ["PhantomThrust"] = (DisplaceKind.TargetPull, -1),
+            ["PetSkill_2_2_BuChongJin"] = (DisplaceKind.TargetPush, 3),
+            ["Pet_AncientTree_23452"] = (DisplaceKind.TargetPull, -1),
         };
 
     private readonly System.Collections.Concurrent.ConcurrentDictionary<long, (int Id, int Ms)> _movementEffects = new();
@@ -525,5 +520,56 @@ public sealed partial class CombatService
         if (field == null) return false;
         if (--field.Charges == 0) await RemoveSkillObjectAsync(field);
         return true;
+    }
+
+    /// <summary>The event players a cast can hit: its area's, a guardian's own area selection, or its locked target.</summary>
+    private GameSession[] EffectPlayerTargets(GameSession s, ActiveSkillCast action, Vec3 center) =>
+        GameData.Int(action.Row, "_iRangeType") == SkillRelease.Area
+            ? IsGuardianEffect(action.Row) ? GuardianPlayerTargets(s, action, center) : EventAreaTargets(s, action.Row)
+            : EventTarget(s, action.Request.TargetId) is { } eventTarget
+                && PlayerDistance(s, eventTarget) <= Range(action.Row) + 1.5f ? [eventTarget] : [];
+
+    /// <summary>One monster's damage from a player's cast: the hit, the guardian factors, the shared adjusters and a
+    /// guardian's resistance changes. A guardian's fixed hit takes only its direct-damage factor.</summary>
+    private (long Amount, DamageHitResult Result) MonsterHitDamage(GameSession s, Fighter attacker, MonsterUnit target,
+        JsonElement row, string script)
+    {
+        var (amount, result) = Damage(attacker, MonsterFighter(target), row, script == "Heal" ? 1 : 0,
+            GuardianPetRules.CriticalChance(row), GuardianPetRules.CriticalAtHp(row, target.Hp, target.Template.MaxHp));
+        if (row.TryGetProperty("_ro3GuardianFixedHit", out var fixedValue))
+            return (GuardianPetRules.DirectDamage(row, fixedValue.GetInt64()), DamageHitResult.Normal);
+        amount = GuardianPetRules.DirectDamage(row, amount);
+        if (amount > 0)
+        {
+            foreach (var modifier in DamageAdjusters) amount = Math.Max(0, modifier(s, target, row, result, amount));
+            foreach (var extra in ExtraHitDamage) amount += Math.Max(0, extra(s, target, row, amount));
+        }
+        return (ApplyPetSupportResistance(amount, _buffs.GuardianUnitAttributes(target), row, attacker.Element), result);
+    }
+
+    /// <summary>Targets already slowed before this cast. Only Kuang Feng Xi Juan's second slow depends on that, so no
+    /// other cast pays for the scan.</summary>
+    private HashSet<long> GuardianPreviouslySlowed(JsonElement row, List<MonsterUnit> monsters, GameSession[] players)
+    {
+        if (GuardianPetRules.Script(row) != KuangFengXiJuan) return [];
+        var slowed = monsters.Where(m => m.SlowMovementExpireMs > Now
+            || _buffs.GuardianUnitAttributes(m).Any(c => c.Id == AttributeId.PerSpeed && c.Value < 0))
+            .Select(m => m.Uid).ToHashSet();
+        foreach (var player in players.Where(p => p.Buffs.Any(b => b.ExpireMs > Now
+            && b.Changes.Any(c => c.Attr == AttributeId.PerSpeed && c.Value < 0)))) slowed.Add(player.Role!.Id);
+        return slowed;
+    }
+
+    /// <summary>A guardian effect's hostile buffs on the players it hit.</summary>
+    private async Task GuardianPlayerDebuffsAsync(GameSession s, JsonElement row, IEnumerable<GameSession> players,
+        HashSet<long> alreadySlowed, long sourceRoleId, Func<bool> canApply)
+    {
+        foreach (var player in players.ToArray())
+            foreach (var tuple in Tuples(row, "_kBuff2"))
+                if (canApply() && CanPlayerHit(s, player)
+                    && GuardianAllowsHostileBuff(row, tuple, alreadySlowed.Contains(player.Role!.Id))
+                    && RollHostileBuff(GuardianPetRules.PlayerBuffTuple(row, tuple), s, null, player, null, out int id, out int duration))
+                    await _buffs.AddGuardianAsync(player, id, duration, sourceRoleId,
+                        attributeMultiplier: GuardianPetRules.BuffMultiplier(row));
     }
 }

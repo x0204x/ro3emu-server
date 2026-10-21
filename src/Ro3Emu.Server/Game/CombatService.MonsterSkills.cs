@@ -19,13 +19,12 @@ public sealed partial class CombatService
     internal async Task<int> MonsterSkillHitAsync(MonsterUnit caster, JsonElement row, IEnumerable<GameSession> targets, long sourceId,
         long session = 0, int damagePercent = 100, bool bossDebuffsOnly = false)
     {
-        if (caster.Dead || caster.Hp <= 0) return 0;
+        if (caster.Dead || caster.Hp <= 0 || _buffs.UnitForbidden(caster, ForbiddenState.CastSkill)) return 0;
         int skillId = (int)GameData.Int(row, "_iID");
         if (session <= 0) session = ++_sessionIds;
         int show = HitEffect(GameData.Int(row, "_iScriptShow"));
         int element = (int)GameData.Int(row, "_iEleType") is var e and > 1 ? e : caster.Template.Element;
-        var attacker = new Fighter(caster.Template.Atk, caster.Template.Matk, caster.Template.Hit, caster.Template.Cri,
-            caster.Template.Level, caster.Template.Element);
+        var attacker = MonsterFighter(caster);
         int hits = 0;
         foreach (var p in targets.ToArray())
         {
@@ -39,6 +38,7 @@ public sealed partial class CombatService
             var defender = new Fighter(0, 0, 0, 0, p.Progress.Level, 1) { Def = stats[105], Mdef = stats[106], Flee = stats[110], ResCri = stats[112] };
             var (damage, result) = Damage(attacker, defender, row);
             damage = ScaleMonsterDamage(damage, caster.DamageRatio);
+            damage = MonsterBuffDamage(caster, row, damage);
             if (damagePercent != 100) damage = damagePercent <= 0 ? 0 : ScaleMonsterDamage(damage, damagePercent * 100);
             foreach (var adjust in MonsterDamageAdjusters) damage = adjust(caster, damage, true);
             if (damage > 0) foreach (var modifier in IncomingDamageAdjusters) damage = Math.Max(0, await modifier(caster, p, result, damage));

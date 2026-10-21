@@ -104,9 +104,10 @@ public sealed partial class PetService
     {
         await SyncAsync(session);
         await _follower.RefreshAsync(session);
+        await PublishGuardianChangeAsync(session);
     }
 
-    private int Gate(GameSession s, bool incubation = false) => s.Pets == null || !_functions.IsOpen(s, 33)
+    private int Gate(GameSession s, bool incubation = false) => s.Pets == null || !_functions.IsOpen(s, PetFunction)
         || incubation && (!_functions.IsOpen(s, 3301) || !_functions.IsOpen(s, 3302)) ? ErrorCodes.FeatureUnavailable : 0;
 
     private int Owned(GameSession s, int id) => Gate(s) is var gate and not 0 ? gate
@@ -118,6 +119,7 @@ public sealed partial class PetService
     private async Task ChangedAsync(GameSession s, bool items = false, bool stats = false)
     {
         await SyncAsync(s);
+        await PublishGuardianChangeAsync(s);
         if (items) await _character.ItemsChangedAsync(s, stats: false);
         if (stats)
         {
@@ -481,18 +483,19 @@ public sealed partial class PetService
 
     /// <summary>
     /// Static lineup/collection bonuses from PetStarConfig. Scaling each slot by PetSetLimitConfig's addition and
-    /// summing active collection attributes is inferred; skill triggers/buffs/damage and camp synergies are not invented.
+    /// summing active collection attributes is inferred. Reactive effects are separate from these attributes.
     /// </summary>
     private IEnumerable<(long Id, double Value)> Attributes(GameSession s)
     {
-        if (s.Pets == null || !_functions.IsOpen(s, 33)) yield break;
+        if (s.Pets == null || !_functions.IsOpen(s, PetFunction)) yield break;
         foreach (var pet in s.Pets.ListPet.Values.Where(p => p.IsActiveCollect))
             if (StarRow(pet) is { } row)
                 foreach (var attr in GameData.Pairs(row, "_kCollectAttr")) yield return attr;
         if (s.Pets.SetupPlans.GetValueOrDefault(s.Pets.CurrentPlan) is not { } plan) yield break;
         foreach (var source in new[] { 1, 2 })
             foreach (var (slot, id) in Slots(plan, source))
-                if (s.Pets.ListPet.TryGetValue(id, out var pet) && StarRow(pet) is { } row && _data.Row("PetSetLimitConfig", slot) is { } limit)
+                if (SlotOpen(s, source, slot) && s.Pets.ListPet.TryGetValue(id, out var pet)
+                    && StarRow(pet) is { } row && _data.Row("PetSetLimitConfig", slot) is { } limit)
                     foreach (var (attr, value) in GameData.Pairs(row, source == 1 ? "_kFightSkill" : "_kAssistSkill"))
                         yield return (attr, value * GameData.Int(limit, source == 1 ? "_iFightAttrAddition" : "_iAssistAttrAddition") / 10000.0);
     }

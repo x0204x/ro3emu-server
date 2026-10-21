@@ -106,6 +106,7 @@ public sealed partial class WorldCoreService
         { item = (int)(GameData.Number(cost[0]) ?? 0); count = (long)(GameData.Number(cost[1]) ?? 0); }
         if (error == 0 && (item <= 0 || count <= 0 || count > int.MaxValue)) error = ErrorCodes.ItemReviveNotAllowed;
         bool claimed = false, committed = false;
+        var (role, attachment) = (s.Role, s.Attachment);
         if (error == 0 && !(claimed = _combat.TryClaimRevive(s))) error = s.Dead ? ErrorCodes.FeatureUnavailable : ErrorCodes.TargetAlive;
         string source = error == 0
             ? $"world-revive/{_character.RewardRealmId}/{s.Role!.Id}/{s.ReviveDeathSource ??= RewardSourceId.ProcessRun + "/" + Guid.NewGuid().ToString("N")}" : "";
@@ -148,6 +149,9 @@ public sealed partial class WorldCoreService
                     }
                 }
             }
+            // The payment's commit can yield the loop: a role detached meanwhile has its durable revive restored on
+            // reconnect, and there is no attached role to project it to now.
+            if (!ReferenceEquals(s.Role, role) || !ReferenceEquals(s.Attachment, attachment)) return;
             if (committed) await _character.ItemsChangedAsync(s, stats: false);
             await s.SendGameAsync(ReliveItem, new EntityReliveCostItemResp { Result = error });
             if (committed)

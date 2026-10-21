@@ -331,7 +331,7 @@ public sealed class RoleSessionService(RoleStore roles, Data.GameData data, Buff
 
     internal async Task WalkAsync(GameSession session, WalkReq walk)
     {
-        if (session.Role == null || walk.Pos == null || session.SceneLoading || session.Dead || buffs.HasForbidden(session, 3)) return;
+        if (session.Role == null || walk.Pos == null || session.SceneLoading || session.Dead || buffs.HasForbidden(session, ForbiddenState.Walk)) return;
         if (!await scene.AcceptWalkAsync(session, walk)) return;
         session.PreviousPosition = session.Position;
         session.Position = walk.Pos;

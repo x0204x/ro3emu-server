@@ -8,6 +8,7 @@ namespace Ro3Emu.Server.Game;
 
 public sealed partial class SeasonTalentService
 {
+    // enum_SeasonTalentType: SkillPoint (the free gate of a profession choice), Profession_L, Profession_M.
     private const int ChoiceNodeType = 5, ProfessionBranchType = 6, ProfessionOptionType = 7;
 
     // The selection panel sends the chosen Profession_M, not separate upgrades of its

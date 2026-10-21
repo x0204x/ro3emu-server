@@ -15,6 +15,8 @@ public sealed record MonsterTemplate(
 {
     /// <summary>The boss's special skills (BossSkillSets); null: only the normal attack.</summary>
     public BossSkillBook? Skills { get; init; }
+    /// <summary>AttriMonsterConfig cast speed (116), retained for live chant modifiers.</summary>
+    public long CastSpeed { get; init; }
 }
 
 /// <summary>A live monster on a map (entityType 1): HP, home point, current walk segment and AI state.</summary>
@@ -42,8 +44,9 @@ public sealed class MonsterUnit : WorldUnit
     /// <summary>Temporary strongest movement slow (basis points), with an absolute server-millisecond expiry.</summary>
     public int SlowMovementBp { get; set; }
     public long SlowMovementExpireMs { get; set; }
-    public int SpeedCm(long nowMs) => SlowMovementExpireMs > nowMs
-        ? (int)Math.Max(1, Template.SpeedCm * (10000L - SlowMovementBp) / 10000L) : Template.SpeedCm;
+    public int? BuffSpeedCm { get; set; }
+    public int SpeedCm(long nowMs) => Math.Min(BuffSpeedCm ?? Template.SpeedCm, SlowMovementExpireMs > nowMs
+        ? (int)Math.Max(1, Template.SpeedCm * (10000L - SlowMovementBp) / 10000L) : int.MaxValue);
 
     // Walk segment in progress: from (FromX, FromZ) to (ToX, ToZ) over [StartMs, EndMs].
     public bool Moving { get; set; }

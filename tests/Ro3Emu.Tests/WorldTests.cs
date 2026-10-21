@@ -189,6 +189,27 @@ public class WorldTests
         Assert.Contains("B units +[7] -[]", _sink.Events);
     }
 
+    [Fact]
+    public async Task GuardianVisibilityPolicyRemovesAndRestoresDirectedEdgesWithoutLeakingOnMove()
+    {
+        var a = Player("A", 100, 100);
+        var b = Player("B", 101, 100);
+        await _world.JoinAsync(a);
+        await _world.JoinAsync(b);
+        bool hidden = true;
+        _world.CanObserve = (viewer, subject) => !hidden || viewer != b || subject != a;
+        await _world.RefreshVisibilityAsync(a);
+        Assert.DoesNotContain(a, b.Visible);
+        Assert.Contains(b, a.Visible);
+        await _world.MoveAsync(a, To(a, 102, 100));
+        Assert.DoesNotContain(a, b.Visible);
+        hidden = false;
+        await _world.RefreshVisibilityAsync(b);
+        Assert.Contains(a, b.Visible);
+        Assert.Contains("B-A", _sink.Events);
+        Assert.Contains("B+A", _sink.Events);
+    }
+
     private static GameSession Player(string name, float x, float z, long scene = 10111)
     {
         var channel = new PhonestChannel(new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp), NullLogger.Instance);

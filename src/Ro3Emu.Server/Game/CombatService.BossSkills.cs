@@ -23,10 +23,13 @@ public sealed partial class CombatService
     {
         _monsters.CastBossSkill = CastBossSkillAsync;
         _monsters.BossSkillsEnded = EndBossSkillsAsync;
+        // (inferred) The same configured chant inputs govern monster casts; keep action/show offsets unchanged.
+        _monsters.EffectiveChant = (monster, skill) => ChantMilliseconds(_data, skill.Row, MonsterStats(monster));
     }
 
-    private static bool BossCastCurrent(MonsterUnit boss, long serial) =>
-        !boss.Dead && boss.Hp > 0 && boss.BossSkills is { } rt && rt.CastSerial == serial;
+    private bool BossCastCurrent(MonsterUnit boss, long serial) =>
+        !boss.Dead && boss.Hp > 0 && !_buffs.UnitForbidden(boss, ForbiddenState.CastSkill)
+            && boss.BossSkills is { } rt && rt.CastSerial == serial;
 
     private async Task CastBossSkillAsync(MonsterUnit boss, GameSession? player, TowerPetUnit? pet, BossSkill skill, long serial)
     {
@@ -35,6 +38,7 @@ public sealed partial class CombatService
         var options = _monsters.BossOptions;
         long now = Now;
         long session = ++_sessionIds;
+        int chant = _monsters.BossChant(boss, skill);
         rt.ActiveSession = session;
         var role = player?.Role;
         bool hasTarget = player != null ? role != null && !player.Dead && player.WorldScene == boss.WorldScene
@@ -54,7 +58,7 @@ public sealed partial class CombatService
         await SendMonsterTimelineAsync(boss, new UseInSkillInfo
         {
             SrcID = boss.Uid, SkillID = skill.Id, TargetId = targetId, TargetPos = hasTarget ? targetPos : origin, Face = face,
-            SessionId = session, ChantMs = skill.ChantMs, SkillMs = skill.ActionMs, StartTime = now,
+            SessionId = session, ChantMs = chant, SkillMs = skill.ActionMs, StartTime = now,
         }, highLevel: skill.HighLevel);
         if (!skill.Once && skill.CdMs > 0) await BossCooldownStartedAsync(boss, skill.Id, now + skill.CdMs);
         await FightingAsync(boss);
@@ -62,7 +66,7 @@ public sealed partial class CombatService
         for (int i = 0; i < skill.HitMs.Length; i++)
         {
             bool first = i == 0;
-            ScheduleRuntime(boss.WorldScene, TimeSpan.FromMilliseconds(skill.HitMs[i]), () =>
+            ScheduleRuntime(boss.WorldScene, TimeSpan.FromMilliseconds(Math.Max(0, skill.HitMs[i] + chant - skill.ChantMs)), () =>
                 BossSkillHitAsync(boss, player, role, pet, skill, serial, session, origin, center, face, show, first, options));
         }
         _log.LogDebug("Boss {Npc} casts {Skill} (phase {Phase})", boss.Template.NpcId, skill.Id, rt.Phase);
@@ -135,20 +139,25 @@ public sealed partial class CombatService
                     float dx = x - origin.X, dz = z - origin.Z;
                     if (MathF.Sqrt(dx * dx + dz * dz) > skill.Radius + 0.1f) return false;
                     if (dx * dx + dz * dz < 0.25f) return true; // standing on the boss
-                    double radians = face * Math.PI / 180;
-                    double forward = dx * Math.Sin(radians) + dz * Math.Cos(radians), side = dx * Math.Cos(radians) - dz * Math.Sin(radians);
+                    var (forward, side) = FacingOffset(dx, dz, face);
                     return Math.Atan2(Math.Abs(side), forward) <= skill.AngleDeg * Math.PI / 360;
                 }
             case BossSkillArea.Rect:
                 {
                     float dx = x - origin.X, dz = z - origin.Z;
-                    double radians = face * Math.PI / 180;
-                    double forward = dx * Math.Sin(radians) + dz * Math.Cos(radians), side = dx * Math.Cos(radians) - dz * Math.Sin(radians);
+                    var (forward, side) = FacingOffset(dx, dz, face);
                     return forward >= -0.5 && forward <= skill.Radius + 0.1f && Math.Abs(side) <= skill.Width / 2 + 0.1f;
                 }
             default:
                 return false;
         }
+    }
+
+    /// <summary>The offset (dx, dz) as distances ahead of and beside a caster facing <paramref name="face"/> degrees.</summary>
+    internal static (double Forward, double Side) FacingOffset(double dx, double dz, float face)
+    {
+        double radians = face * Math.PI / 180;
+        return (dx * Math.Sin(radians) + dz * Math.Cos(radians), dx * Math.Cos(radians) - dz * Math.Sin(radians));
     }
 
     /// <summary>A charge or leap: the boss moves to just short of its target (within the skill's reach) on the show's

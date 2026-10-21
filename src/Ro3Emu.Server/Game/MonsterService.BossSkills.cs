@@ -30,6 +30,9 @@ public sealed partial class MonsterService
     /// <summary>Set by CombatService: carry out a chosen special (boss, its player or tower-pet target, skill, cast serial).</summary>
     public Func<MonsterUnit, GameSession?, TowerPetUnit?, BossSkill, long, Task>? CastBossSkill { get; set; }
 
+    internal Func<MonsterUnit, BossSkill, int>? EffectiveChant { get; set; }
+    internal int BossChant(MonsterUnit monster, BossSkill skill) => EffectiveChant?.Invoke(monster, skill) ?? skill.ChantMs;
+
     /// <summary>Set by CombatService: a boss's specials end (death, reset, removal); true = interrupt the cast in flight.</summary>
     public Func<MonsterUnit, BossSkillRuntime, bool, Task>? BossSkillsEnded { get; set; }
 
@@ -43,7 +46,7 @@ public sealed partial class MonsterService
 
     private bool TryBossSkill(MonsterUnit m, GameSession? player, TowerPetUnit? pet, float dist, long now)
     {
-        if (CastBossSkill == null || m.Template.Skills is not { } book) return false;
+        if (CastBossSkill == null || m.Template.Skills is not { } book || Forbidden?.Invoke(m, ForbiddenState.CastSkill) == true) return false;
         var rt = m.BossSkills;
         if (rt == null) m.BossSkills = rt = new BossSkillRuntime(book);
         if (!rt.Engaged)
@@ -111,7 +114,7 @@ public sealed partial class MonsterService
             rt.Opener[index] = false;
             rt.Openers--;
         }
-        long busy = skill.BusyMs + skill.ChargeMs;
+        long busy = BossChant(m, skill) + skill.ActionMs + skill.ChargeMs;
         m.BusyUntilMs = now + busy;
         m.NextSpecialMs = now + Math.Max(busy + _bossOptions.GlobalCooldownMs, skill.PublicCdMs);
         m.NextSwingMs = Math.Max(m.NextSwingMs, m.BusyUntilMs);

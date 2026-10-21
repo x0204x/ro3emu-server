@@ -32,6 +32,8 @@ public sealed class SkillService
 
     /// <summary>Combat-owned dynamic queue eligibility (LC_DynamicParamMgr).</summary>
     public Func<GameSession, int, bool>? QueueEligibility { get; set; }
+    /// <summary>Ordinary pet guardian projection; LC_System_Skill consumes whellSkills[SkillWheelPet].</summary>
+    internal Func<GameSession, SkillWheelSlot?>? PetWheel { get; set; }
 
     public SkillService(GameData data, CharacterService character, RoleStore roles, ILogger<SkillService> log)
     {
@@ -494,6 +496,8 @@ public sealed class SkillService
         foreach (var (_, skill) in selected.SkillQueue.OrderBy(kv => kv.Key))
             if (skill.SkillId > 0 && RealId(skill.SkillId, skill.SkillLevel) is var id and > 0)
             { state.SkillWheel.SkillQueue = new SkillWheelSlot { SkillConfigId = id, Enable = true }; break; }
+        if (PetWheel?.Invoke(session) is { } pet)
+            state.SkillWheel.WhellSkills[(int)SkillWheelSlotType.SkillWheelPet] = pet;
         state.OriginSkillWheel = state.SkillWheel.Clone();
         return state;
     }

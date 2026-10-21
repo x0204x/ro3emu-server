@@ -115,8 +115,7 @@ public sealed partial class SeasonTalentService
         s.TalentEffectsEnabled = Available(s);
         Seed(state);
         var active = state.Plan[state.CurPlanId];
-        // (inferred) tree/node thresholds count the selected plan's purchased ordinary levels.
-        long total = PurchasedLevels(active);
+        long total = TalentLevel(state, active);
         state.UnlockedTrees.Clear();
         long? oathMax = null;
         foreach (var tree in Trees())
@@ -212,11 +211,14 @@ public sealed partial class SeasonTalentService
         return false; // (inferred) one maxed incoming parent opens a branch, never an unearned child.
     }
 
-    // Choice markers have no purchase price. Switching a choice must not create paid levels
-    // that unlock later trees (inferred server policy).
-    private long PurchasedLevels(SeasonTalentPlan plan) => plan.TalentNodes.Where(kv =>
-        _data.Row("SeasonTalentConfig", kv.Key) is { } row && GameData.Int(row, "_iType") is >= 1 and <= 3)
-        .Sum(kv => Math.Max(0, kv.Value.CurrentLevel));
+    /// <summary>The "total Talent Lv" a tree's or node's _iNeedLevel names: the grade the talent panel shows
+    /// (UI_Sys_Skill_SeasonTalentPanelCtrl._buildGradeNodeIDs/_refreshGrade), the sum of every node's level except the
+    /// SkillPoint nodes. The chosen Profession_L/Profession_M count, and the battle oath at its shared level. A changed
+    /// choice zeroes the old path before it sets the new one, so switching never raises the total. (inferred) The server
+    /// checks the total the client shows.</summary>
+    private long TalentLevel(DBSeasonTalent state, SeasonTalentPlan plan) => plan.TalentNodes.Sum(kv =>
+        _data.Row("SeasonTalentConfig", kv.Key) is not { } row || GameData.Int(row, "_iType") == ChoiceNodeType ? 0
+            : Math.Max(0, GameData.Int(row, "_iType") == PvpNodeType ? state.BattleOathLevel : kv.Value.CurrentLevel));
 
     private JsonElement? Effect(long group, long level, int career)
     {
@@ -394,7 +396,7 @@ public sealed partial class SeasonTalentService
     {
         if (!Available(s) || s.SeasonTalent is not { } state || s.Progress == null
             || !state.Plan.TryGetValue(state.CurPlanId, out var plan)) yield break;
-        long total = PurchasedLevels(plan);
+        long total = TalentLevel(state, plan);
         foreach (var (id, saved) in plan.TalentNodes)
         {
             if (id == 10100000 || saved.CurrentLevel <= 0 || _data.Row("SeasonTalentConfig", id) is not { } node) continue;

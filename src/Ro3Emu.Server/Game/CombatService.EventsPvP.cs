@@ -29,7 +29,7 @@ public sealed partial class CombatService
         CanEventHit(source, target) || CanTerritoryHit(source, target);
 
     private GameSession? EventTarget(GameSession source, long id) => _sessions.All()
-        .FirstOrDefault(target => target.Role?.Id == id && CanPlayerHit(source, target));
+        .FirstOrDefault(target => target.Role?.Id == id && CanPlayerHit(source, target) && GuardianCanObserve(source, target));
 
     private static float PlayerDistance(GameSession a, GameSession b) =>
         MonsterService.Distance(a.Position.X, a.Position.Z, b.Position.X, b.Position.Z);
@@ -45,9 +45,9 @@ public sealed partial class CombatService
     {
         if (source.Role == null || source.Progress == null) return;
         using var held = await CharacterService.Lock(source);
-        if (!CanPlayerHit(source, target) || source.SkillCast is { Cancelled: false }
+        if (!CanPlayerHit(source, target) || !GuardianCanObserve(source, target) || source.SkillCast is { Cancelled: false }
             || EffectiveSkillRow(source, skillId) is not { } row || !Learned(source, row)
-            || !SkillModeAllowed(source, row) || _buffs.HasForbidden(source, 5)) return;
+            || !SkillModeAllowed(source, row) || _buffs.HasForbidden(source, ForbiddenState.NormalAttack)) return;
         var request = new CastSkillReq
         {
             SkillId = (int)Data.GameData.Int(row, "_iID"), TargetId = target.Role!.Id,
@@ -57,7 +57,7 @@ public sealed partial class CombatService
         await StartCastAsync(source, row, request, session);
     }
     private async Task HitEventPlayersAsync(GameSession source, GameSession[] targets, JsonElement row,
-        int skillId, int show, long session, Func<bool> currentSource)
+        int skillId, int show, long session, Func<bool> currentSource, Action<long, long>? onHit = null)
     {
         if (FirstNumber(row, "_kDamageParam1") is not > 0 && FirstNumber(row, "_kDamageParam2") is not > 0) return;
         foreach (var target in targets)
@@ -68,17 +68,14 @@ public sealed partial class CombatService
             var attackerRole = source.Role!;
             var targetRole = target.Role!;
             long sceneId = source.WorldScene;
-            var attack = _character.Stats(source); var defend = _character.Stats(target);
-            var a = new Fighter(attack[103], attack[104], attack[109], attack[111], source.Progress!.Level, 1);
-            var b = new Fighter(0, 0, 0, 0, target.Progress!.Level, 1)
-            { Def = defend[105], Mdef = defend[106], Flee = defend[110], ResCri = defend[112] };
-            var (damage, result) = Damage(a, b, row);
-            if (result != DamageHitResult.Miss) damage = ApplyPlayerRestraints(source, target, damage);
+            var (damage, result) = PlayerHitDamage(source, target, row);
             var committed = await CommitPlayerDamageAsync(target, damage, row,
                 () => currentSource() && CurrentPlayerHit(source, target, attackerRole, targetRole, sceneId)
                     && CanPlayerHit(source, target));
             if (committed == null) continue;
             (damage, long hp, long effective, long shieldDamage) = committed.Value;
+            onHit?.Invoke(targetRole.Id, damage);
+            if (effective > 0 && hp > 0) await _buffs.BreakHitControlsAsync(target);
             try
             {
                 if (effective > 0 && CurrentPlayerHit(source, target, attackerRole, targetRole, sceneId))
@@ -114,6 +111,8 @@ public sealed partial class CombatService
                         await handler(source, target);
                     }
                 }
+                await GuardianPvpFollowUpsAsync(source, target, targetRole, row, effective, hp == 0,
+                    () => currentSource() && CurrentPlayerHit(source, target, attackerRole, targetRole, sceneId));
             }
             finally { if (hp == 0) ReleaseDeathPublication(target); }
         }
@@ -123,7 +122,7 @@ public sealed partial class CombatService
     {
         foreach (var (source, attack) in _eventAttacks.ToArray())
         {
-            if (!CanPlayerHit(source, attack.Target) || PlayerDistance(source, attack.Target) > 30
+            if (!CanPlayerHit(source, attack.Target) || !GuardianCanObserve(source, attack.Target) || PlayerDistance(source, attack.Target) > 30
                 || MonsterService.Distance(attack.StartX, attack.StartZ, source.Position.X, source.Position.Z) > 1.5f)
             { _eventAttacks.Remove(source); continue; }
             if (now < attack.NextSwing || source.SkillCast is { Cancelled: false } || _data.Row("SkillConfig", attack.SkillId) is not { } row
@@ -131,5 +130,37 @@ public sealed partial class CombatService
             _eventAttacks[source] = attack with { NextSwing = now + SkillMs(source, row) };
             _loop.PostRuntime(() => SwingEventAsync(source, attack.Target, attack.SkillId, ++_sessionIds));
         }
+    }
+
+    /// <summary>Guardian reactions to a committed player hit, after the hit, its HP and any death are published, so an
+    /// extra guardian hit that kills the target never precedes the hit that caused it. The victim's own reactions
+    /// answer the committed hit whatever became of the attacker's cast; the attacker's need it still current.</summary>
+    private async Task GuardianPvpFollowUpsAsync(GameSession source, GameSession target, Accounts.Role targetRole, JsonElement row,
+        long effective, bool killed, Func<bool> current)
+    {
+        if (effective <= 0 || !ReferenceEquals(target.Role, targetRole)) return;
+        await GuardianTakenAsync(target, effective);
+        if (!current()) return;
+        await GuardianWindowHitAsync(source, targetRole.Id, target.Position, row, effective, killed);
+        if (current()) await GuardianPlayerDamageReactionAsync(source, target, row, effective, current);
+    }
+
+    /// <summary>One player's damage from another's skill: the hit with a guardian's crit rules, the guardian factors and
+    /// the restraints; a guardian's fixed hit replaces the amount.</summary>
+    private (long Damage, DamageHitResult Result) PlayerHitDamage(GameSession source, GameSession target, JsonElement row)
+    {
+        var attack = _character.Stats(source); var defend = _character.Stats(target);
+        var a = new Fighter(attack[AttributeId.Atk], attack[AttributeId.Matk], attack[AttributeId.Hit], attack[AttributeId.Cri],
+            source.Progress!.Level, 1);
+        var b = new Fighter(0, 0, 0, 0, target.Progress!.Level, 1)
+        { Def = defend[AttributeId.Def], Mdef = defend[AttributeId.Mdef], Flee = defend[AttributeId.Flee], ResCri = defend[AttributeId.ResCri] };
+        var (damage, result) = Damage(a, b, row, bonusCrit: GuardianPetRules.CriticalChance(row),
+            forceCrit: GuardianPetRules.CriticalAtHp(row, defend[AttributeId.Hp], defend[AttributeId.MaxHp]));
+        damage = GuardianPetRules.DirectDamage(row, damage);
+        damage = GuardianOutgoingDamage(source, row, damage);
+        damage = GuardianControlledDamage(source, GuardianControlTarget(target), damage);
+        if (result != DamageHitResult.Miss) damage = ApplyPlayerRestraints(source, target, damage);
+        return row.TryGetProperty("_ro3GuardianFixedHit", out var fixedValue)
+            ? (fixedValue.GetInt64(), DamageHitResult.Normal) : (damage, result);
     }
 }

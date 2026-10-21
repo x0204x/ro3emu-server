@@ -124,6 +124,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
             skill, skillMs, hitPoint, swing, range, (int)Math.Max(500, GameData.Int(npc, "_iBodyRemainTime")))
         {
             Skills = BossBook(npcId, npc, skill),
+            CastSpeed = A(AttributeId.CastSpeed),
         };
     }
 
@@ -333,17 +334,30 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         _loop.TrackRuntimeDetached("monster speed", () => _world.ToUnitViewersAsync(m, CombatService.AoiAttrChange, SpeedChange(m, now)));
     private void SendHealth(MonsterUnit m) => _loop.TrackRuntimeDetached("monster health", () => _world.ToUnitViewersAsync(m, CombatService.AoiAttrChange, Hp(m)));
 
-    private static GameSession? NearestTarget(MonsterUnit m)
+    private GameSession? NearestTarget(MonsterUnit m)
     {
         GameSession? near = null;
         float best = float.MaxValue;
         foreach (var p in m.Viewers)
         {
-            if (p.Role == null || p.Dead) continue;
+            if (p.Role == null || p.Dead || TargetVisible?.Invoke(m, p) == false) continue;
             float d = Distance(m, p);
             if (d <= m.Template.ViewRange && d < best) { best = d; near = p; }
         }
         return near;
+    }
+
+    internal Func<MonsterUnit, GameSession, bool>? TargetVisible { get; set; }
+
+    internal Func<WorldUnit, int, bool>? Forbidden { get; set; }
+
+    /// <summary>A guardian control that forbids walking stops a moving monster where it is.</summary>
+    private void StopWhenRooted(MonsterUnit m, long now)
+    {
+        if (Forbidden?.Invoke(m, ForbiddenState.Walk) != true || !m.Moving) return;
+        m.Advance(now);
+        m.Moving = false;
+        SendStop(m, now);
     }
 
     public void Tick(MonsterUnit m, MapInstance map)
@@ -352,6 +366,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
             && (!_spawns.TryGetValue(m.RuntimeMap, out var state) || state.Retired)) return;
         if (m.Dead || m.Hp <= 0) return; // lethal HP is authoritative before the awaited death broadcast finishes
         long now = NowMs;
+        StopWhenRooted(m, now);
         if (m.SlowMovementExpireMs > 0 && now >= m.SlowMovementExpireMs)
         {
             m.SlowMovementBp = 0;
@@ -436,10 +451,29 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         Property = { new AoIProperty { Idx = 113, Data = m.SpeedCm(now), BaseData = m.Template.SpeedCm } },
     };
 
+    /// <summary>A guardian's speed change, or null to return to the template. A unit that moves keeps at least 1 cm/s:
+    /// a walk divides by its speed.</summary>
+    internal async Task SetBuffSpeedAsync(MonsterUnit monster, int? speed)
+    {
+        int? effective = speed is { } value ? Math.Max(monster.Template.SpeedCm > 0 ? 1 : 0, value) : null;
+        bool changed = (effective ?? monster.Template.SpeedCm) != (monster.BuffSpeedCm ?? monster.Template.SpeedCm);
+        monster.BuffSpeedCm = effective;
+        if (!changed) return;
+        long now = NowMs;
+        if (monster.Moving)
+        {
+            monster.Advance(now);
+            monster.Moving = false;
+            await _world.MoveUnitAsync(monster, Stop(monster, now));
+        }
+        monster.NextChaseMs = 0;
+        await _world.ToUnitViewersAsync(monster, CombatService.AoiAttrChange, SpeedChange(monster, now));
+    }
+
     /// <summary>A player hit it (or came into view of an aggressive one): chase and attack.</summary>
     public void Engage(MonsterUnit m, GameSession target)
     {
-        if (m.Dead || m.WorldScene != target.WorldScene || m.Template.SpeedCm == 0 && m.Template.AttackRange <= 0) return;
+        if (m.Dead || m.WorldScene != target.WorldScene || TargetVisible?.Invoke(m, target) == false || m.Template.SpeedCm == 0 && m.Template.AttackRange <= 0) return;
         if (m.Target == null) m.NextSwingMs = NowMs + 300;
         SetTarget(m, target);
         m.Returning = false;
@@ -515,7 +549,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
     private void Fight(MonsterUnit m, MapInstance map, long now)
     {
         var target = m.Target!;
-        bool lost = target.Role == null || target.Dead || target.SceneLoading || target.WorldScene != m.WorldScene
+        bool lost = target.Role == null || target.Dead || target.SceneLoading || TargetVisible?.Invoke(m, target) == false || target.WorldScene != m.WorldScene
                     || Distance(m.Home.X, m.Home.Z, target.Position.X, target.Position.Z) > m.Template.LeashDistance;
         if (lost)
         {
@@ -581,6 +615,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
     /// <summary>One straight Walk segment when the nav grid allows it.</summary>
     private void WalkTo(MonsterUnit m, MapInstance map, float x, float z, float speedFactor)
     {
+        if (Forbidden?.Invoke(m, ForbiddenState.Walk) == true) return;
         var nav = _worldData.Map(m.SceneEntry)?.Nav;
         float? y = nav?.WalkHeight(x, z, m.Y) ?? m.Y;
         if (y == null || nav != null && !nav.CanWalk(m.X, m.Y, m.Z, x, z)) return;

@@ -10,6 +10,7 @@ Implemented:
 - The room levels itself after a 33319/33325 collect fills its proficiency bar: the client has no caller of `LC_DAL_Pet.SendIncubationLvUp` (the level-up panel and its "Go to Upgrade now?" prompt send nothing), so a full bar would otherwise stay full. Each affordable step pays the current row's `_kCost` *(inferred)*. An explicit 33316 is still accepted. 33325 fast hatch is gated on room level 2.
 - 33310 rebirth records and refunds the exact book denominations spent on new level-ups; pets levelled before this ledger existed receive an inferred equivalent in whole 500-EXP books.
 - Pet skills resolve from the current `PetStarConfig` row; the synchronized roster gives the client its configured protect/passive/active/stage skill choices. No synthetic learned-skill dataset is introduced.
+- [Ordinary guardian skills](pet-guardian-skills.md): slot-11 Primary casts, utility Reactive effects and the first utility King Core across the known exported families. Stateful combat and client-derived values retain explicit inference boundaries.
 - One type-7 follower with an independent actor UUID, NPC template, positive owner, NPC movement property and owner-bound AOI. Creation follows the owner; removal precedes the owner; accepted walks/stops/teleports send 31081. Concurrent owner entry and lineup changes serialize the ordering.
 - Functions 33/3301/3302 gate requests. A persisted setup cannot spawn when 33 is closed. Inventory/currency and pet state commit in one SQLite transaction, with in-memory rollback on failure. The existing ordinary item-exchange path retains its behavior.
 
@@ -30,7 +31,7 @@ Explicitly unavailable:
 - Timed room upgrades: the client reads `incubationLvUpTime`, absent from both supplied DBPetInfo protos. 33316 therefore completes immediately after its configured EXP/cost as an inferred client-compatible policy; no 33321 mapping or timer field is fabricated.
 - 33323 pet breakthrough: empty break-stage table and disabled client eligibility.
 - 33305 legacy GUID breakdown and 33307 legacy lottery return `FeatureUnavailable` rather than empty success. 33325 fast hatch is implemented for every open round, gated on room level 2, with the UI's projected material and accelerator costs.
-- Original RNG parity, camp synergies and combat skill execution. Tower lineup remains separate.
+- Original RNG parity, camp synergies and full combat-skill parity. The supported ordinary guardian families and their limits are documented separately; tower lineup remains separate.
 
 ## World follow
 

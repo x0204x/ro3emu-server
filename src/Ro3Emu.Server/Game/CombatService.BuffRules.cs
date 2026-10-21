@@ -151,8 +151,7 @@ public sealed partial class CombatService
         bool Current() => ReferenceEquals(s.Role, role) && ReferenceEquals(s.Attachment, attachment) && !s.SceneLoading
             && s.SceneGeneration == generation && s.WorldScene == scene && _sessions.All().Contains(s);
         var rule = effect.Rule;
-        var defender = new Fighter(0, 0, m.Template.Flee, 0, m.Template.Level, m.Template.Element)
-        { Def = m.Template.Def, Mdef = m.Template.Mdef, Flee = m.Template.Flee };
+        var defender = MonsterFighter(m);
         long amount = PeriodicAmount(attacker, defender, rule, buff.PileCount);
         long before = m.Hp;
         m.Hp = Math.Max(0, before - amount);
@@ -220,6 +219,8 @@ public sealed partial class CombatService
         var stats = _character.Stats(p);
         long amount = rule.HealFlat + (rule.HealRatioBp != 0 && rule.HealAttr > 0 ? stats[rule.HealAttr] * rule.HealRatioBp / 10000 : 0);
         amount *= Math.Max(1, buff.PileCount);
+        var guardian = _buffs.GuardianAttributes(p);
+        amount = ModifiedHealing(guardian, guardian, amount);
         long actual = Math.Min(amount, Math.Max(0, stats[101] - stats[2000]));
         if (actual <= 0) return;
         await _character.SetHpSpAsync(p, stats[2000] + actual, null);
