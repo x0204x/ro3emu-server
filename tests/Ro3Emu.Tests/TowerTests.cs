@@ -7,6 +7,7 @@ using Ro3Emu.Bot;
 using Ro3Emu.Server;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Game;
 using Ro3Emu.Server.Game.Ownership;
 using Ro3Emu.Server.Maps;
@@ -145,6 +146,20 @@ public sealed class TowerTests : IAsyncLifetime
 
     private long Count(BotClient bot, int entry) => Service<ItemStore>().Load((long)bot.Self!.Uuid).Where(i => i.Entry == entry).Sum(i => (long)i.Stack);
 
+    private Dictionary<int, long> ServerFirstRewards(int floor)
+    {
+        var data = Service<GameData>();
+        var floorRow = PetFloorConfig.Get(data, floor);
+        Assert.True(floorRow.HasValue);
+        var group = MultiverseGroupConfig.Get(data, floorRow.Value.ServerFirstReward);
+        Assert.True(group.HasValue);
+        long awardId = group.Value.Value101 != 0 ? group.Value.Value101 : group.Value.ValueDefault;
+        var rewards = AwardConfig.Get(data, awardId).SelectMany(row => row.Award)
+            .GroupBy(row => (int)row[0]).ToDictionary(group => group.Key, group => group.Sum(row => row[1]));
+        Assert.NotEmpty(rewards);
+        return rewards;
+    }
+
     private void FailTowerWrites(bool enabled)
     {
         FixtureSql.Execute(Service<AccountStore>(), enabled
@@ -195,7 +210,13 @@ public sealed class TowerTests : IAsyncLifetime
     {
         // PowerSuppressConfig: a power under 80% of floor 1's 6000 puts 5000001 (215/216 -10%) on its monsters.
         await using var alice = await InWorld("Alice");
-        await Eligible(alice);
+        await Eligible(alice, level: 33);
+        await OnLoop(async () =>
+        {
+            var session = Session(alice);
+            using var held = await CharacterService.Lock(session);
+            await Service<PowerService>().PublishAsync(session, always: true);
+        });
         var entered = await EnterFloor(alice, 1);
         Assert.Equal(2, entered.Monsters.Length);
         Assert.All(entered.Monsters, m => Assert.Equal(1200, m.Property.Single(p => p.Idx == 101).Data));
@@ -359,6 +380,8 @@ public sealed class TowerTests : IAsyncLifetime
     {
         await using var winner = await InWorld("Winner", cleared: 9);
         await using var other = await InWorld("Other");
+        var rewards = ServerFirstRewards(10);
+        var before = rewards.ToDictionary(reward => reward.Key, reward => Count(other, reward.Key));
         await Eligible(winner);
         await Eligible(other);
         var entered = await EnterFloor(winner, 10);
@@ -374,17 +397,17 @@ public sealed class TowerTests : IAsyncLifetime
         FailTowerWrites(true);
         await other.SendGameAsync(TowerService.ClaimFirstPass, new ClimbTowerClaimFirstPassRewardReq());
         Assert.Equal(ErrorCodes.Unknown, (await Next(other, TowerService.ClaimFirstPass, ClimbTowerClaimFirstPassRewardRes.Parser)).Result);
-        Assert.Equal(0, Count(other, 1250709));
+        Assert.All(rewards, reward => Assert.Equal(before[reward.Key], Count(other, reward.Key)));
         Assert.Equal(0, Session(other).Tower!.ServerFirstPassClaimedLayer);
         FailTowerWrites(false);
         await other.SendGameAsync(TowerService.ClaimFirstPass, new ClimbTowerClaimFirstPassRewardReq());
         var claim = await Next(other, TowerService.ClaimFirstPass, ClimbTowerClaimFirstPassRewardRes.Parser);
         Assert.Equal((0, 10L), (claim.Result, claim.ClaimedUpToLayer));
-        Assert.Equal(10, Count(other, 1250709));
+        Assert.All(rewards, reward => Assert.Equal(before[reward.Key] + reward.Value, Count(other, reward.Key)));
         Assert.Equal(0, Session(other).Tower!.LayerConfID); // honor is independent of personal clears
         await other.SendGameAsync(TowerService.ClaimFirstPass, new ClimbTowerClaimFirstPassRewardReq());
         Assert.Equal(ErrorCodes.Parameter, (await Next(other, TowerService.ClaimFirstPass, ClimbTowerClaimFirstPassRewardRes.Parser)).Result);
-        Assert.Equal(10, Count(other, 1250709));
+        Assert.All(rewards, reward => Assert.Equal(before[reward.Key] + reward.Value, Count(other, reward.Key)));
         // Replaying the floor cannot replace the recorded first pass.
         var replay = await EnterFloor(winner, 10, inside: true);
         await Kill(winner, Assert.Single(replay.Monsters).Uuid);

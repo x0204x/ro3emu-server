@@ -26,9 +26,10 @@ public sealed class VoiceTestClient(int port) : IAsyncDisposable
     private Task? _reader;
     private volatile VoiceCipher? _cipher;
     private readonly MemoryStream _rawSent = new(), _rawReceived = new();
+    private readonly TaskCompletionSource<bool> _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public string Tag { get; set; } = "?";
-    public bool Closed { get; private set; }
+    public bool Closed => _closed.Task.IsCompleted;
 
     public byte[] RawSent { get { lock (_rawSent) return _rawSent.ToArray(); } }
     public byte[] RawReceived { get { lock (_rawReceived) return _rawReceived.ToArray(); } }
@@ -60,7 +61,7 @@ public sealed class VoiceTestClient(int port) : IAsyncDisposable
             }
         }
         catch { /* the socket closed or the test is tearing down: nothing more to read */ }
-        finally { Closed = true; }
+        finally { _closed.TrySetResult(true); }
     }
 
     private Task SendAsync(byte type, byte[] payload)
@@ -142,6 +143,8 @@ public sealed class VoiceTestClient(int port) : IAsyncDisposable
     }
 
     public Task<(byte Type, byte[] Payload)> WaitTypeAsync(byte type, TimeSpan timeout) => WaitAsync((t, _) => t == type, timeout);
+
+    public Task WaitClosedAsync(TimeSpan timeout) => _closed.Task.WaitAsync(timeout);
 
     /// <summary>Confirms no frame matching <paramref name="predicate"/> turns up within <paramref name="timeout"/>.</summary>
     public async Task ExpectNoneAsync(Func<byte, byte[], bool> predicate, TimeSpan timeout)

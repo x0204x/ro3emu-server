@@ -74,27 +74,34 @@ public sealed class DailyWindowsTests : IAsyncLifetime
     [ClientDataFact]
     public void WeeklyLeagueUsesOpeningWeekdayAndSkipsEmptyCustomWeeks()
     {
-        // Monday-open week 1: Wednesday/Friday/Saturday, not the Friday-open row selected by the old code.
-        Window(109, "2026-10-21 20:00:00", "2026-10-21 20:30:00");
-        Window(110, "2026-10-09 20:30:00", "2026-10-09 21:00:00");
-        Window(111, "2026-10-10 20:30:00", "2026-10-10 21:00:00");
-        _clock.Set("2026-10-09 20:30:00");
+        var data = Service<GameData>();
+        var opening = new DateTime(2026, 10, 5);
+        var first110 = ScheduleRows.Custom(110, opening, 1, _clock.Zone, data);
+        var first111 = ScheduleRows.Custom(111, opening, 1, _clock.Zone, data);
+        var third109 = ScheduleRows.Custom(109, opening, 3, _clock.Zone, data);
+        var third110 = ScheduleRows.Custom(110, opening, 3, _clock.Zone, data);
+        Window(109, third109.Start, third109.End);
+        Window(110, first110.Start, first110.End);
+        Window(111, first111.Start, first111.End);
+        _clock.Set(first110.Start);
         Assert.True(Service<TimedTodoSchedule>().IsOpen(110));
-        _clock.Set("2026-10-09 21:00:00");
+        _clock.Set(first110.End);
         Assert.False(Service<TimedTodoSchedule>().IsOpen(110));
-        Window(110, "2026-10-24 20:00:00", "2026-10-24 20:30:00");
+        Window(110, third110.Start, third110.End);
         _clock.Set("2026-10-12 12:00:00");
         Assert.False(Service<TimedTodoSchedule>().IsOpen(109));
-        Window(109, "2026-10-21 20:00:00", "2026-10-21 20:30:00");
+        Window(109, third109.Start, third109.End);
     }
 
     [ClientDataFact]
     public void ConfiguredTimedRowsUseCurrentThenNextOccurrence()
     {
         // Despite the task's example label, 115 is one weekday only and 125 is custom/weekly, not daily.
-        var weekly = ScheduleRows.Weekly(115, new DateTime(2026, 10, 9), _clock.Zone, Service<GameData>());
+        var data = Service<GameData>();
+        var weekly = ScheduleRows.Weekly(115, new DateTime(2026, 10, 9), _clock.Zone, data);
+        var custom = ScheduleRows.Custom(125, new DateTime(2026, 10, 5), 3, _clock.Zone, data);
         Window(115, weekly.Start, weekly.End);
-        Window(125, "2026-10-25 20:00:00", "2026-10-25 21:00:00");
+        Window(125, custom.Start, custom.End);
         Window(200, "2026-10-09 10:00:00", "2026-10-09 22:00:00");
         _clock.Set("2026-10-09 22:00:00");
         Assert.False(Service<TimedTodoSchedule>().IsOpen(200));
@@ -202,9 +209,12 @@ public sealed class DailyWindowsTests : IAsyncLifetime
     [ClientDataFact]
     public async Task OccurrenceEndPushesOnlyTimeIncrementAndKeepsProgress()
     {
-        _clock.Set("2026-10-09 20:59:59");
+        var opening = new DateTime(2026, 10, 5);
+        var first = ScheduleRows.Custom(110, opening, 1, _clock.Zone, Service<GameData>());
+        var next = ScheduleRows.Custom(110, opening, 3, _clock.Zone, Service<GameData>());
+        _clock.Set(first.End - 1);
         await using var bot = await InWorld();
-        var first = await Next(bot, s => s.SyncAllMark);
+        var initial = await Next(bot, s => s.SyncAllMark);
         await OnLoop(async () =>
         {
             var session = Session(bot);
@@ -214,12 +224,12 @@ public sealed class DailyWindowsTests : IAsyncLifetime
             await Service<DailyActivityService>().SyncEventsAsync(session);
         });
         await Next(bot, s => s.ActivityData.TryGetValue(110, out var f) && f.Inc?.TaskCompleteTimes == 2);
-        _clock.Set("2026-10-09 21:00:00"); // automatic ticker, no manual Reconcile call
+        _clock.Set(first.End); // automatic ticker, no manual Reconcile call
         var update = await Next(bot, s => s.ActivityData.TryGetValue(110, out var f) && f.Inc?.HasStartTime == true);
         Assert.False(update.SyncAllMark);
-        Assert.True(update.Version > first.Version);
-        Assert.Equal(_clock.Unix("2026-10-24 20:00:00"), update.ActivityData[110].Inc.StartTime);
-        Assert.Equal(_clock.Unix("2026-10-24 20:30:00"), update.ActivityData[110].Inc.EndTime);
+        Assert.True(update.Version > initial.Version);
+        Assert.Equal(next.Start, update.ActivityData[110].Inc.StartTime);
+        Assert.Equal(next.End, update.ActivityData[110].Inc.EndTime);
         Assert.False(update.ActivityData[110].Inc.HasTaskCompleteTimes);
         Assert.Empty(update.ActivityData[110].Inc.Tasks);
         Assert.False(update.ActivityData.ContainsKey(101));

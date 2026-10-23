@@ -536,8 +536,7 @@ public sealed class VoiceRelayTests : IAsyncLifetime
         // However fast she wrote, the Kicked frame reaches her before the connection ends.
         var kicked = await aliceVoice.WaitTypeAsync(VoiceDown.Kicked, Wait);
         Assert.Equal(VoiceKickCode.Flood, kicked.Payload[0]);
-        await Wait200UntilAsync(() => aliceVoice.Closed, Wait);
-        Assert.True(aliceVoice.Closed);
+        await aliceVoice.WaitClosedAsync(Wait);
         await bobVoice.WaitAsync((t, p) => t == VoiceDown.MemberChange && BitConverter.ToInt64(p) == aliceRole && p[8] == 0, Wait);
 
         Assert.False(bobVoice.Closed);

@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Text.Json;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 
 namespace Ro3Emu.Server.Game;
 
@@ -25,6 +26,8 @@ public sealed class AwardResolutionException(string message) : InvalidOperationE
 /// </summary>
 public sealed class AwardService(GameData data)
 {
+    private const int BaseExpItem = 100;
+
     public AwardPlan Resolve(GameSession session, long multiverseGroupId, int? playBookId = null)
         => ResolveGroup(session?.Progress, multiverseGroupId, playBookId);
 
@@ -122,7 +125,7 @@ public sealed class AwardService(GameData data)
                         int max = checked((int)DropQuantity(candidate, "_iMaxNumber"));
                         if (min < 1 || max < min) throw Fail($"DropGroupConfig {groupId} has invalid quantity range");
                         int count = checked((int)Random.Shared.NextInt64(min, (long)max + 1));
-                        int entry = checked((int)GameData.Int(candidate, "_kDropItem"));
+                        int entry = DropEntry(candidate, groupId);
                         int bind = PoolBindType(candidate, groupId);
                         ValidateGrant(entry, count, bind, 0);
                         grants.Add(new AwardGrant(entry, count, bind));
@@ -158,7 +161,7 @@ public sealed class AwardService(GameData data)
                 || GameData.Int(row, "_iBind") != 0 || HasValues(row, "_kServerLevel"))
                 throw Fail($"DropGroupConfig {groupId} has unresolved eligibility or bind policy");
             int bind = PoolBindType(row, groupId);
-            int entry = checked((int)GameData.Int(row, "_kDropItem"));
+            int entry = DropEntry(row, groupId);
             int low = checked((int)DropQuantity(row, "_iMinNumber"));
             int high = checked((int)DropQuantity(row, "_iMaxNumber"));
             if (low <= 0 || high < low) throw Fail($"DropGroupConfig {groupId} has invalid quantity range");
@@ -175,6 +178,15 @@ public sealed class AwardService(GameData data)
 
     private static long DropQuantity(JsonElement row, string field) =>
         row.TryGetProperty(field, out _) ? GameData.Int(row, field) : 1;
+
+    private static int DropEntry(JsonElement row, long groupId)
+    {
+        var config = new DropGroupConfig(row);
+        if (config.HasDropItem) return checked((int)config.DropItem);
+        // D Asia omits the Lua default item from its level-banded EXP curves. Match RewardService while keeping
+        // every other malformed group fail-closed through ValidateGrant's item-zero rejection.
+        return groupId is >= 3000 and < 4000 && config.HasMinNumber && config.HasMaxNumber ? BaseExpItem : 0;
+    }
 
     private static int PoolBindType(JsonElement row, long groupId)
     {

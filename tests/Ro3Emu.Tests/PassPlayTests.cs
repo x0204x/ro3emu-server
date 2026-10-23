@@ -1,8 +1,11 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Romsg;
 using Ro3Emu.Bot;
 using Ro3Emu.Server;
+using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Game;
 
 namespace Ro3Emu.Tests;
@@ -93,6 +96,27 @@ public sealed class PassPlayTests : IAsyncLifetime
     private Task<PlayerActivityBattlePass> Pass(BotClient bot) =>
         OnLoop(() => Session(bot).NewActivities!.ActivityInfo[200].ActivityParam.BattlePass);
 
+    private long AppliedPassExp(long activityId, PlayerActivityBattlePass pass) =>
+        BattlePassRewardConfig.All(Service<GameData>())
+            .Where(reward => reward.ActivityId == activityId && reward.Level <= pass.Level)
+            .Sum(reward => reward.ExpRequired) + pass.Exp;
+
+    private int ActivityOpenLevel(long activityId)
+    {
+        var data = Service<GameData>();
+        var activity = NewActivityConfig.Get(data, activityId);
+        Assert.True(activity.HasValue);
+        var condition = LCConditionList.Get(data, activity.Value.OpenCondition);
+        Assert.True(condition.HasValue);
+        var subs = condition.Value.SubConditionList;
+        Assert.True(subs.HasValue);
+        Assert.Equal(JsonValueKind.Array, subs.Value.ValueKind);
+        var levels = subs.Value.EnumerateArray().Select(row => row.GetProperty("m_kData")).Where(values =>
+            values.ValueKind == JsonValueKind.Array && values.GetArrayLength() >= 2 && GameData.Number(values[0]) == 1002)
+            .Select(values => checked((int)GameData.Number(values[1])!.Value)).ToArray();
+        return Assert.Single(levels);
+    }
+
     private static async Task<T> Next<T>(BotClient bot, uint id, Google.Protobuf.MessageParser<T> parser)
         where T : Google.Protobuf.IMessage<T> => parser.ParseFrom((await bot.Inbox.WaitAsync(e => e.IsGame(id), Wait)).Body);
 
@@ -129,13 +153,18 @@ public sealed class PassPlayTests : IAsyncLifetime
         bool challenge = (await Play(alice)).Daily.Contains("d.activity");
         long expected = (60 * 6 + (challenge ? 300 : 0)) * 2;
         await Gm(alice, "!item 5 60"); // 60 daily activity points
-        await Until(async () => await Currency(alice, NewActivityService.PassExpCurrency) >= expected, "pass EXP from daily activity");
+        await Until(async () =>
+        {
+            var current = await Pass(alice);
+            return await Currency(alice, NewActivityService.PassExpCurrency) >= expected
+                && AppliedPassExp(200, current) >= expected;
+        }, "pass EXP from daily activity and battle pass reconciliation");
         var play = await Play(alice);
         Assert.Equal(60, play.WeeklyProgress["w.activity"]);
         Assert.Equal(expected, await Currency(alice, NewActivityService.PassExpCurrency));
         Assert.Equal(expected, play.Earned);
         pass = await Pass(alice);
-        Assert.Equal(expected, pass.Level * 2000L + pass.Exp);
+        Assert.Equal(expected, AppliedPassExp(200, pass));
     }
 
     [ClientDataFact]
@@ -193,7 +222,7 @@ public sealed class PassPlayTests : IAsyncLifetime
         long balance = await Currency(alice, NewActivityService.PassExpCurrency);
         Assert.Equal((await Play(alice)).Earned, balance);
         var pass = await Pass(alice);
-        Assert.Equal(balance, pass.Level * 2000L + pass.Exp);
+        Assert.Equal(balance, AppliedPassExp(200, pass));
 
         // Saved with the role.
         var saved = Session(alice).ActivityRuntime!.PassPlay!;
@@ -262,11 +291,11 @@ public sealed class PassPlayTests : IAsyncLifetime
         await Service<NewActivityService>().ReconcileAsync(Session(alice));
         Assert.NotEqual("_close", await State(201));
         var second = await Second();
-        Assert.Equal(0, second.Level * 2000L + second.Exp); // the 120000 already went into Pass I
+        Assert.Equal(0, AppliedPassExp(201, second)); // the 120000 already went into Pass I
 
         // New pass EXP goes into Pass II, not into Pass I's bonus chests.
         await Gm(alice, "!item 5 60");
-        await Until(async () => { var p = await Second(); return p.Level * 2000L + p.Exp > 0; }, "Pass II EXP");
+        await Until(async () => { var p = await Second(); return AppliedPassExp(201, p) > 0; }, "Pass II EXP");
         Assert.Equal(0, (await Play(alice)).Overflow);
         Assert.Equal(60, (await Pass(alice)).Level);
     }
@@ -301,14 +330,18 @@ public sealed class PassPlayTests : IAsyncLifetime
     }
 
     [ClientDataFact]
-    public async Task NovicePassLevelsFromMainStoryQuestsFromLevelTen()
+    public async Task NovicePassLevelsFromMainStoryQuestsAfterItsConfiguredLevelGate()
     {
         await using var alice = await InWorld("Alice");
+        int openLevel = ActivityOpenLevel(9201);
+        Assert.True(openLevel > 1);
         await Service<NewActivityService>().ReconcileAsync(Session(alice));
         await Event(alice, [(NewActivityService.PassGoal.Quests, 1)], quest: 10101010); // level 1: 9201 not open yet
         Assert.Equal(0, await Currency(alice, NewActivityService.NovicePassExpCurrency));
-        await Gm(alice, "!lvl 10");
+        await Gm(alice, $"!lvl {openLevel}");
         await Service<NewActivityService>().ReconcileAsync(Session(alice));
+        long condition = NewActivityConfig.Get(Service<GameData>(), 9201)!.Value.OpenCondition;
+        Assert.True(Service<FunctionService>().ConditionMet(Session(alice), condition));
         await Event(alice, [(NewActivityService.PassGoal.Quests, 1)], quest: 10101020);
         await Event(alice, [(NewActivityService.PassGoal.Quests, 1)], quest: 9201101); // not a main quest
         Assert.Equal(300, await Currency(alice, NewActivityService.NovicePassExpCurrency));

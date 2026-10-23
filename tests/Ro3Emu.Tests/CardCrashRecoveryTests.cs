@@ -103,15 +103,12 @@ public sealed class CardCrashRecoveryTests
             string[] source = File.ReadAllText(barrier).Split(':');
             long role = long.Parse(source[0]); int card = int.Parse(source[1]);
             await KillAtBarrierAsync(child, source);
+            string database = Path.Combine(dataDir, "ro3emu.db");
+            await WaitForDatabaseRecoveryAsync(database);
             using (var db = new SqliteConnection(new SqliteConnectionStringBuilder
-            { DataSource = Path.Combine(dataDir, "ro3emu.db"), Mode = SqliteOpenMode.ReadWrite, Pooling = false }.ToString()))
+            { DataSource = database, Mode = SqliteOpenMode.ReadWrite, Pooling = false }.ToString()))
             {
                 db.Open();
-                using (var integrity = db.CreateCommand())
-                {
-                    integrity.CommandText = "PRAGMA integrity_check";
-                    Assert.Equal("ok", integrity.ExecuteScalar());
-                }
                 using var command = db.CreateCommand();
                 command.CommandText = "SELECT library,tasks,task_followup FROM role WHERE id=$role";
                 command.Parameters.AddWithValue("$role", role);
@@ -232,6 +229,29 @@ public sealed class CardCrashRecoveryTests
         }
         if (!launcher.HasExited) launcher.Kill(entireProcessTree: true);
         await launcher.WaitForExitAsync();
+    }
+
+    private static async Task WaitForDatabaseRecoveryAsync(string database)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (true)
+        {
+            try
+            {
+                using var db = new SqliteConnection(new SqliteConnectionStringBuilder
+                { DataSource = database, Mode = SqliteOpenMode.ReadWrite, Pooling = false }.ToString());
+                db.Open();
+                using var integrity = db.CreateCommand();
+                integrity.CommandText = "PRAGMA integrity_check";
+                Assert.Equal("ok", integrity.ExecuteScalar());
+                return;
+            }
+            catch (SqliteException error) when (error.SqliteErrorCode == 10 && DateTime.UtcNow < deadline)
+            {
+                // Windows can finish releasing the killed process's WAL mapping after WaitForExitAsync returns.
+                await Task.Delay(50);
+            }
+        }
     }
 
     private static int HighQualityCard(GameData data) => (int)GameData.Int(data.Table("ItemConfig").Values.First(row =>

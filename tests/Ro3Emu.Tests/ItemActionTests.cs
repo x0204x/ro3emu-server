@@ -7,6 +7,8 @@ using Romsg;
 using Ro3Emu.Bot;
 using Ro3Emu.Server;
 using Ro3Emu.Server.Accounts;
+using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Game;
 using Ro3Emu.Server.Maps;
 
@@ -100,6 +102,17 @@ public sealed class ItemActionTests : IAsyncLifetime
 
     private long Count(BotClient bot, int entry) =>
         _app.Services.GetRequiredService<ItemStore>().Load(RoleId(bot)).Where(i => i.Entry == entry && i.Grid == 0).Sum(i => (long)i.Stack);
+
+    private (int Entry, long Amount) CommodityPrice(long commodityId)
+    {
+        var commodity = ShopCommodityConfig.Get(_app.Services.GetRequiredService<GameData>(), commodityId);
+        Assert.True(commodity.HasValue);
+        long[] price = commodity.Value.ItemPerPrice;
+        Assert.Equal(2, price.Length);
+        Assert.True(price[0] > 0);
+        Assert.True(price[1] > 0);
+        return (checked((int)price[0]), price[1]);
+    }
 
     /// <summary>31323 of one unit of <paramref name="entry"/> from the bag; the reply's result.</summary>
     private async Task<int> Use(BotClient bot, int entry, params ItemUseParamInfo[] param)
@@ -395,16 +408,22 @@ public sealed class ItemActionTests : IAsyncLifetime
     {
         await using var alice = await InWorld("Alice");
         await using var bob = await InWorld("Bob");
-        long guild = await GuildOfTwo(alice, bob, 20000);
+        var packPrice = CommodityPrice(27201);
+        var expensivePrice = CommodityPrice(27203);
+        Assert.Equal(104, packPrice.Entry);
+        Assert.Equal(packPrice.Entry, expensivePrice.Entry);
+        long startingFunds = checked(packPrice.Amount * 4);
+        Assert.True(expensivePrice.Amount > startingFunds);
+        long guild = await GuildOfTwo(alice, bob, startingFunds);
         var guilds = _app.Services.GetRequiredService<GuildStore>();
         Task<BuyGuildCommodityRes> Buy(BotClient who, int commodity, int count) => Request(who, GuildService.BuyCommodity,
             new BuyGuildCommodityReq { CommodityId = commodity, Count = count }, BuyGuildCommodityRes.Parser);
 
         Assert.Equal(GuildService.ErrStorePosition, (await Buy(bob, 27201, 1)).Result); // [9007,6,3]: GM to Vice GM
-        Assert.Equal(GuildService.ErrStoreFunds, (await Buy(alice, 27203, 1)).Result); // 100000 funds
+        Assert.Equal(GuildService.ErrStoreFunds, (await Buy(alice, 27203, 1)).Result);
         var bought = await Buy(alice, 27201, 2);
         Assert.Equal((0, 27201, 2), (bought.Result, bought.CommodityId, bought.Count));
-        Assert.Equal(20000 - 2 * 5000, guilds.Get(guild)!.Money);
+        Assert.Equal(startingFunds - 2 * packPrice.Amount, guilds.Get(guild)!.Money);
         Assert.Equal(2, Count(alice, 1211101));
         var counts = await Next(bob, GuildService.BaseChange, GuildBaseInfoChangeNtf.Parser,
             m => m.Tp == GuildBaseInfoChangeNtf.Types.ChangeType.ChangeShopCommodityInfo);
@@ -413,7 +432,7 @@ public sealed class ItemActionTests : IAsyncLifetime
         Assert.Equal(GuildService.ErrStoreLimit, (await Buy(alice, 27201, 2)).Result); // 3 a week, guild-wide
         Assert.Equal(0, (await Buy(alice, 27201, 1)).Result);
         Assert.Equal(GuildService.ErrStoreLimit, (await Buy(alice, 27201, 1)).Result);
-        Assert.Equal(5000, guilds.Get(guild)!.Money);
+        Assert.Equal(startingFunds - 3 * packPrice.Amount, guilds.Get(guild)!.Money);
 
         // [114,2004,1120,6,20]: MailConfig 1120 with MultiverseGroupConfig 2004 (one 1211104) to positions <= 20.
         Assert.Equal(0, await Use(alice, 1211101));

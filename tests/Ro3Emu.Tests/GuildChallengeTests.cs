@@ -323,7 +323,8 @@ public sealed class GuildChallengeTests : IAsyncLifetime
         Assert.True(Service<GuildChallengeStore>().Load(guild).Cycle < 0);
         await Gm(alice, "!guildchallenge close");
         Assert.False(Service<TimedTodoSchedule>().IsOpen(125));
-        _clock.Now = new DateTimeOffset(2026, 10, 11, 20, 31, 0, TimeSpan.FromHours(2));
+        var real = ScheduleRows.Weekly(125, new DateTime(2026, 10, 9), _clock.LocalTimeZone, Service<GameData>());
+        _clock.Now = DateTimeOffset.FromUnixTimeSeconds(real.Start + 60);
         Assert.True(Service<TimedTodoSchedule>().IsOpen(125));
         Assert.False((await Info(alice)).Data.DataInfo.DifficultyInfo[1].StageReward[1]);
         Assert.Equal(0, await Open(alice)); // the test clear did not consume the real Sunday occurrence
@@ -349,8 +350,8 @@ public sealed class GuildChallengeTests : IAsyncLifetime
     {
         var schedule = Service<TimedTodoSchedule>();
         var window = schedule.CurrentOrNext(125)!;
-        Assert.Equal(new DateTimeOffset(2026, 10, 11, 20, 30, 0, TimeSpan.FromHours(2)).ToUnixTimeSeconds(), window.Start);
-        Assert.Equal(5400, window.End - window.Start);
+        var expected = ScheduleRows.Weekly(125, new DateTime(2026, 10, 9), _clock.LocalTimeZone, Service<GameData>());
+        Assert.Equal((expected.Start, expected.End), (window.Start, window.End));
         Assert.False(window.Contains(window.Start - 1)); Assert.True(window.Contains(window.Start));
         Assert.False(window.Contains(window.End));
     }

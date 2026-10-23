@@ -6,6 +6,8 @@ using Romsg;
 using Ro3Emu.Bot;
 using Ro3Emu.Server;
 using Ro3Emu.Server.Accounts;
+using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Game;
 
 namespace Ro3Emu.Tests;
@@ -71,6 +73,30 @@ public sealed class BattlePassActivityTests : IAsyncLifetime
     private GameSession Session(BotClient bot) => Service<SessionRegistry>().All().Single(s => s.Account == bot.Account && s.Role != null);
     private Task Reconcile(BotClient bot) => Service<NewActivityService>().ReconcileAsync(Session(bot));
 
+    private int ActivityOpenLevel(int activityId)
+    {
+        var data = Service<GameData>();
+        var activity = NewActivityConfig.Get(data, activityId);
+        Assert.True(activity.HasValue);
+        var condition = LCConditionList.Get(data, activity.Value.OpenCondition);
+        Assert.True(condition.HasValue);
+        var subs = condition.Value.SubConditionList;
+        Assert.True(subs.HasValue);
+        Assert.Equal(JsonValueKind.Array, subs.Value.ValueKind);
+        var levels = subs.Value.EnumerateArray().Select(row => row.GetProperty("m_kData")).Where(values =>
+            values.ValueKind == JsonValueKind.Array && values.GetArrayLength() >= 2 && GameData.Number(values[0]) == 1002)
+            .Select(values => (int)GameData.Number(values[1])!.Value).ToArray();
+        return Assert.Single(levels);
+    }
+
+    private async Task OpenActivity(BotClient bot, int activityId)
+    {
+        await Gm(bot, $"!lvl {ActivityOpenLevel(activityId)}");
+        await Reconcile(bot);
+        long condition = NewActivityConfig.Get(Service<GameData>(), activityId)!.Value.OpenCondition;
+        Assert.True(Service<FunctionService>().ConditionMet(Session(bot), condition));
+    }
+
     private static string RepoRoot()
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
@@ -90,8 +116,7 @@ public sealed class BattlePassActivityTests : IAsyncLifetime
     public async Task PassRequiresEarnedLevelAndPremiumEntitlementAndPersistsClaims()
     {
         var alice = await InWorld("Alice");
-        await Gm(alice, "!lvl 10");
-        await Reconcile(alice);
+        await OpenActivity(alice, 9201);
         var premature = await Common(alice, new CommonActivityReq
         {
             ActivityId = 9201, BattlePassClaimReward = new BattlePassClaimRewardReq { RewardType = 0, Levels = { 1 } },
@@ -182,8 +207,7 @@ public sealed class BattlePassActivityTests : IAsyncLifetime
     public async Task MonthCardClaimsEachOwnedCardOncePerLocalDayAndExpires()
     {
         var alice = await InWorld("Alice");
-        await Gm(alice, "!lvl 20");
-        await Reconcile(alice);
+        await OpenActivity(alice, 199);
         Assert.Equal(ErrorCodes.MonthCardNotOwned, (await Common(alice, new CommonActivityReq
         {
             ActivityId = 199, GainMonthCardDailyAward = new GainMonthCardDailyAwardReq { MonthCardId = { 1001 } },

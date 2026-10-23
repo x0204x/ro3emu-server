@@ -172,12 +172,15 @@ public sealed partial class GuildLeagueTests : IAsyncLifetime
     {
         var calendar = Service<GuildLeagueCalendar>();
         var tournaments = calendar.From(At(1, 1, 0, 0)).Take(4).ToArray();
-        // Monday opening, DailyActivityCustomConfig row 1: 129 Wed 05:00, 109 Wed 20:30, 110 Fri 20:30, 111 Sat 20:30.
-        Assert.Equal((1, At(1, 3, 5, 0), At(1, 3, 20, 30), At(1, 3, 21, 0), At(1, 5, 20, 30), At(1, 6, 20, 30)),
+        var data = Service<GameData>();
+        ScheduleRows.Window Custom(int id, int week) =>
+            ScheduleRows.Custom(id, _opening, week, _clock.LocalTimeZone, data);
+        Assert.Equal((1, Custom(129, 1).Start, Custom(109, 1).Start, Custom(109, 1).End,
+            Custom(110, 1).Start, Custom(111, 1).Start),
             (tournaments[0].Index, tournaments[0].Init, tournaments[0].Preliminary.Start, tournaments[0].Preliminary.End,
              tournaments[0].Semifinal.Start, tournaments[0].Final.Start));
-        // Rows 3-4: Wed and Sat of week 3 at 20:00, the final on Saturday of week 4.
-        Assert.Equal((At(3, 3, 5, 0), At(3, 3, 20, 0), At(3, 6, 20, 0), At(4, 6, 20, 0), At(4, 6, 20, 30)),
+        Assert.Equal((Custom(129, 3).Start, Custom(109, 3).Start, Custom(110, 3).Start,
+            Custom(111, 4).Start, Custom(111, 4).End),
             (tournaments[1].Init, tournaments[1].Preliminary.Start, tournaments[1].Semifinal.Start, tournaments[1].Final.Start,
              tournaments[1].Final.End));
         // Then every two weeks from week 5 on the rows' own first _kDay and start (13 is Saturday of the next week).
@@ -201,7 +204,8 @@ public sealed partial class GuildLeagueTests : IAsyncLifetime
         Assert.Equal((GuildLeagueStatus.FightTwo, false, At(1, 5, 20, 30)), (info.EStatus, info.Open, info.StartTime));
         Assert.Equal(GuildLeagueStatus.FightThree, calendar.Info(At(1, 6, 12, 0)).EStatus);
         info = calendar.Info(At(2, 2, 12, 0));
-        Assert.Equal((GuildLeagueStatus.Reward, 1, At(3, 3, 20, 0)), (info.EStatus, info.Index, info.NextPreliminaryTime));
+        Assert.Equal((GuildLeagueStatus.Reward, 1, tournaments[1].Preliminary.Start),
+            (info.EStatus, info.Index, info.NextPreliminaryTime));
         Assert.Equal((GuildLeagueStatus.FightThree, 3), (calendar.Info(At(6, 2, 12, 0)).EStatus, calendar.Info(At(6, 2, 12, 0)).Index));
         await Task.CompletedTask;
     }

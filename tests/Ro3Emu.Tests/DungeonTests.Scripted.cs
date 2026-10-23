@@ -87,8 +87,9 @@ public sealed partial class DungeonTests
         // Bobo carries buff group 53014, the NPC condition of 'Rescue Bobo'; the Deniro carries nothing yet.
         Assert.Equal([5301401], bobo.Buffs.Select(b => b.ConfigId));
         Assert.Empty(deniro.Buffs);
-        var seen = alice.Inbox.Snapshot().Where(e => e.IsGame(GameAoiSink.SyncAoiView))
-            .SelectMany(e => AoIViewChangeData.Parser.ParseFrom(e.Body).Bases).Last(b => b.Uuid == (ulong)bobo.Uid);
+        var view = await Next(alice, GameAoiSink.SyncAoiView, AoIViewChangeData.Parser,
+            update => update.Bases.Any(actor => actor.Uuid == (ulong)bobo.Uid));
+        var seen = view.Bases.Single(actor => actor.Uuid == (ulong)bobo.Uid);
         Assert.Equal((5300041UL, 1, 5301401), (seen.EntityTemplateID, seen.EntityType, seen.BuffData.AddBuffs.Single().ConfigId));
 
         await Beside(alice, deniro.X, deniro.Y, deniro.Z);

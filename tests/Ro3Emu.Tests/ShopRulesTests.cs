@@ -56,6 +56,16 @@ public sealed class ShopRulesTests : IAsyncLifetime
 
     private GameSession Session(BotClient bot) => Service<SessionRegistry>().All().Single(s => s.Account == bot.Account && s.Role != null);
 
+    private Task TickShopAsync()
+    {
+        var loop = Service<GameLoop>();
+        return loop.InvokeAsync(() =>
+        {
+            Service<ShopService>().Tick(new GameTime(loop.Now + TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(1)));
+            return Task.CompletedTask;
+        });
+    }
+
     private async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
@@ -118,6 +128,7 @@ public sealed class ShopRulesTests : IAsyncLifetime
         await Gm(bot, "!item 1100000 200");
         Assert.Equal(0, (await Buy(bot, Daily, 10)).Result);
         Assert.Equal(ErrorCodes.PurchaseLimit, (await Buy(bot, Daily)).Result);
+        await TickShopAsync(); // Establish the old game day before the test clock crosses its reset boundary.
 
         _clock.Now = _clock.Now.AddHours(1); // Wednesday 00:30: still Tuesday's game day
         Assert.Equal(ErrorCodes.PurchaseLimit, (await Buy(bot, Daily)).Result);
@@ -125,6 +136,7 @@ public sealed class ShopRulesTests : IAsyncLifetime
         Assert.Equal(ErrorCodes.PurchaseLimit, (await Buy(bot, Daily)).Result);
 
         _clock.Now = _clock.Now.AddMinutes(2); // 05:01: a new game day
+        await TickShopAsync();
         var resync = await bot.Inbox.WaitAsync(e => e.IsGame(ShopService.ShopSync)
             && DBShopInfoIncrement.Parser.ParseFrom(e.Body).CommodityBuyTimes.TryGetValue(Daily, out var c) && c.Del,
             TimeSpan.FromSeconds(8));
