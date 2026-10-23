@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Maps;
 
 namespace Ro3Emu.Server.Game;
@@ -51,6 +52,22 @@ public sealed partial class BuffService
                 || displacement && held.Contains(DisplacementImmunityCategory)));
     }
 
+    /// <summary>A unit holding a control immunity (category 20: the MVPs' born buffs 900801/900901, 9032) resists a control
+    /// (tag 37) from any source: Element Control's "When a Boss target resists your [Frozen], [Petrify], or [Stun]" says
+    /// bosses resist them. (inferred) Units only; a player's immunity keeps the guardian-only scope of ImmuneTo.</summary>
+    private bool UnitResistsControl(IEnumerable<ActiveBuff> active, JsonElement incoming)
+    {
+        var control = new BuffConfig(incoming);
+        if (control.Type != NegativeBuffType || !control.BuffCategory.Contains(ControlBuffTag)) return false;
+        long now = MonsterService.NowMs;
+        return active.Any(b => b.ExpireMs > now && BuffConfig.Get(_data, b.ConfigId) is { } row
+            && row.BuffId != ControlChargeGroup && row.BuffCategory.Contains(ControlImmunityCategory));
+    }
+
+    /// <summary>A unit resisted a control a player applied: the unit, the player's role id and the control's BuffConfig
+    /// row (PassiveSkills: Element Control).</summary>
+    internal List<Func<WorldUnit, long, JsonElement, Task>> ControlResisted { get; } = [];
+
     internal async Task DispelControlsAsync(GameSession player, bool allDebuffs = false)
     {
         foreach (var buff in player.Buffs.Where(b => !b.IsPassive && _data.Row("BuffConfig", b.ConfigId) is { } row
@@ -63,6 +80,10 @@ public sealed partial class BuffService
         && buffs.Any(b => b.ExpireMs > MonsterService.NowMs && b.StateOrdinal > 0
             && _data.Row("SpecialStatusConfig", b.StateOrdinal) is { } state
             && GuardianPetRules.Numbers(state, "_kForbidden").Contains(ordinal));
+
+    /// <summary>Does the unit carry a live negative buff (BuffConfig._iType 2: Stun, Immobilize, Poison ...).</summary>
+    internal bool UnitHasDebuff(WorldUnit unit) => _unitBuffs.TryGetValue(unit.Uid, out var buffs)
+        && buffs.Any(b => b.ExpireMs > MonsterService.NowMs && BuffConfig.Get(_data, b.ConfigId)?.Type == NegativeBuffType);
 
     internal bool UnitHasGroup(WorldUnit unit, int group) => _unitBuffs.TryGetValue(unit.Uid, out var buffs)
         && buffs.Any(b => b.ExpireMs > MonsterService.NowMs && _data.Row("BuffConfig", b.ConfigId) is { } row

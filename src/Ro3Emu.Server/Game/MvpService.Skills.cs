@@ -209,7 +209,6 @@ public sealed partial class MvpService
             if (await _monsters.SpawnSingleAsync(st.Runtime, plan.Npc, at, customTemplate: template) is not { } m) continue;
             if (st.Retired) break;
             st.Minions.Add(m);
-            await ApplyBornBuffsAsync(m);
             if (blastRow is { } blast)
             {
                 await _world.ToUnitViewersAsync(m, CombatService.UseInSkill, new UseInSkillInfo

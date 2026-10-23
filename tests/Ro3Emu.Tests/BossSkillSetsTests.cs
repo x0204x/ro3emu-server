@@ -37,6 +37,23 @@ public sealed class BossSkillSetsTests(ITestOutputHelper output)
         Assert.Equal((BossSkillArea.Rect, 23f, 7f), (slash.Area, slash.Radius, slash.Width));
     }
 
+    // The field MVPs' summon and prop skills name no NPC (no _kLogicData); BossSkillSets.ReconstructedSummons binds them to
+    // the 50010xx NPCs made for those MVPs. A summoned unit's own skill (its _kRespawnSkill) leaves the boss's rotation.
+    [ClientDataFact]
+    public void FieldMvpSummonsAndGroundObjectsComeFromTheirReconstructedNpcs()
+    {
+        var pharaoh = Book(5020016)!;
+        Assert.Equal(5001035, pharaoh.Skills.Single(k => k.Id == 5209701).SummonNpc); // Summon Coffin: Pharaoh's Coffin
+        Assert.Equal(5210101, pharaoh.Skills.Single(k => k.Id == 5209701).SummonBlast); // it erupts (Coffin Eruption)
+        Assert.Equal(5001036, pharaoh.Skills.Single(k => k.Id == 5209901).SummonNpc); // Summon Pyramid
+        Assert.DoesNotContain(5210101, Ids(5020016)); // the coffin's skill, not Pharaoh's
+        Assert.DoesNotContain(5210001, Ids(5020016)); // the pyramid's Spinning Pyramid
+        Assert.Equal(5001037, Book(5020008)!.Skills.Single(k => k.Id == 5213101).SummonNpc); // Drake's Water Tornado
+        var tombstone = Book(5020015)!.Skills.Single(k => k.Id == 5210601); // Dracula's Gift of the Underworld
+        Assert.Equal((5001042, 5214901), (tombstone.GroundNpc, tombstone.GroundBlast));
+        Assert.Equal(5001031, Book(5020011)!.Skills.Single(k => k.Id == 5207101).GroundNpc); // Osiris's Horong
+    }
+
     [ClientDataFact]
     public void MvpServiceKeepsItsOwnPlansAndOtherAngelingsGetThemGenerically()
     {

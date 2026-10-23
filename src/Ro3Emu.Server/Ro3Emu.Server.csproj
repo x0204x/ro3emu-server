@@ -35,6 +35,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Typed views of the client's config tables, generated at compile time from Data/Config. -->
+    <ProjectReference Include="..\Ro3Emu.Server.Generators\Ro3Emu.Server.Generators.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Ro3Emu.Tests" />
     <!-- Embedded only: no loose copies next to the server binary. -->
     <Content Remove="Reconstructed\**" />

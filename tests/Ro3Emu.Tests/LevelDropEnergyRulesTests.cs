@@ -19,6 +19,7 @@ public sealed class LevelDropEnergyRulesTests : IAsyncLifetime
     private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-rules-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
     private static readonly TimeZoneInfo Zone = TimeZoneInfo.FindSystemTimeZoneById("Central European Standard Time");
+    private static readonly int[] MageJobLimit = [2100];
 
     private sealed class Clock(long start) : TimeProvider
     {
@@ -240,7 +241,7 @@ public sealed class LevelDropEnergyRulesTests : IAsyncLifetime
         {
             ["6"] = new
             {
-                _iID = 121121, _iJobLimit = new[] { 2100 }, _iMinLevelLimit = 1,
+                _iID = 121121, _iJobLimit = MageJobLimit, _iMinLevelLimit = 1,
                 _iSerial = 6, _kDropItem = 2090120,
             },
         });

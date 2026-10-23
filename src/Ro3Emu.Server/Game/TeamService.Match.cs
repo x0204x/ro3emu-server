@@ -71,6 +71,7 @@ public sealed partial class TeamService
         };
         _teams[team.Id] = team;
         foreach (long id in ids) Join(team, id);
+        await NotifyRosterAsync([.. team.Members]);
         foreach (var member in members)
         {
             try

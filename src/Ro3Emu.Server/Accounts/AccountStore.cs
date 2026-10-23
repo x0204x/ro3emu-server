@@ -20,6 +20,9 @@ public sealed partial class AccountStore : IDisposable
     internal EconomyCatalog EscrowCatalog => _escrowCatalog.Value;
     private readonly Lazy<EconomyCatalog> _economyCatalog;
     private readonly Lazy<DbWriter> _writer;
+
+    /// <summary>Generations of the stores' caches over this database, bumped by its writer.</summary>
+    internal CacheGenerations Caches { get; } = new();
     private readonly Lazy<DbReadPool> _readers;
     private readonly Game.GameLoop? _loop;
     private readonly ILogger<AccountStore>? _log;
@@ -94,7 +97,8 @@ public sealed partial class AccountStore : IDisposable
             );
             """;
         cmd.ExecuteNonQuery();
-        _writer = new(() => new DbWriter(_connectionString, AccessMetrics, _metrics, _log) { RoleWritesCommitted = Snapshots.Committed });
+        _writer = new(() => new DbWriter(_connectionString, AccessMetrics, _metrics, _log)
+        { RoleWritesCommitted = Snapshots.Committed, Caches = Caches });
         _readers = new(() => new DbReadPool(_databasePath, AccessMetrics, _metrics, _log));
         foreach (var plan in DatabaseSchema.Plans()) WriteSync<int>(plan);
     }

@@ -216,7 +216,11 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         };
         state.Units.Add(monster);
         await _world.AddUnitAsync(monster);
-        if (!state.Retired) return true;
+        if (!state.Retired)
+        {
+            foreach (var handler in Born) await handler(monster);
+            return true;
+        }
         if (state.Units.Remove(monster)) await _world.RemoveUnitAsync(monster);
         return false;
     }
@@ -277,6 +281,9 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         state.UsedPoints.Clear();
     }
 
+    /// <summary>After a monster joined its map, from a spawn group or alone (MvpService: NPCConfig _kBornEventBuff).</summary>
+    public List<Func<MonsterUnit, Task>> Born { get; } = [];
+
     /// <summary>
     /// A monster outside the map's spawn groups (field MVPs): no group respawn, the caller decides when it comes back.
     /// </summary>
@@ -318,7 +325,11 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
             };
             state?.Units.Add(monster);
             await _world.AddUnitAsync(monster);
-            if (state is not { Retired: true }) return monster;
+            if (state is not { Retired: true })
+            {
+                foreach (var handler in Born) await handler(monster);
+                return monster;
+            }
             if (state.Units.Remove(monster)) await _world.RemoveUnitAsync(monster);
             return null;
         }

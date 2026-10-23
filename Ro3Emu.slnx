@@ -10,6 +10,7 @@
     <Project Path="src/Ro3Emu.Launcher/Ro3Emu.Launcher.csproj" />
     <Project Path="src/Ro3Emu.Patcher/Ro3Emu.Patcher.csproj" />
     <Project Path="src/Ro3Emu.Server/Ro3Emu.Server.csproj" />
+    <Project Path="src/Ro3Emu.Server.Generators/Ro3Emu.Server.Generators.csproj" />
     <Project Path="src/Ro3Emu.Setup/Ro3Emu.Setup.csproj" />
   </Folder>
   <Folder Name="/tests/">

@@ -17,16 +17,19 @@ dotnet test tests/Ro3Emu.Patcher.Tests/Ro3Emu.Patcher.Tests.csproj -c Release
 ```
 
 The full solution includes `Ro3Emu.ClientHooks` and `Ro3Emu.Loc`, which compile against DLLs from your own RO3 PC
-client. The server tests run without the client: tests of rules use an invented data set, and tests of real content
-are skipped unless you have [exported game data](README.md#1-export-the-game-data) ([testing guide](docs/guide/testing.md)):
+client. The release ships their build from `prebuilt/client`, and CI fails when it no longer matches their sources: a
+change to either project also refreshes it with `pwsh tools/release/pack.ps1 -UpdatePrebuiltClientDlls` on a machine
+with the client. The server tests run without the client: tests of rules use an invented data set, and tests of real content
+are skipped unless you have [exported game data](README.md#running-from-source) ([testing guide](docs/guide/testing.md)):
 
 ```powershell
 dotnet test tests/Ro3Emu.Tests/Ro3Emu.Tests.csproj -c Release --filter "Category!=Slow"
 ```
 
-Compiler and analyzer warnings fail the build (`Directory.Build.props`), except in `Ro3Emu.ClientHooks`,
-`Ro3Emu.Loc` and `Ro3Emu.ClientTools`, which only build against a local client. CI checks the C# layout set in
-`.editorconfig`. Before you push, run:
+Compiler and analyzer warnings fail the build (`Directory.Build.props`) in every project. `Ro3Emu.ClientHooks` and
+`Ro3Emu.Loc` keep a few named rules as warnings (`WarningsNotAsErrors` in their project files, with the reason); they
+build only against a local client, so CI does not compile them. CI checks the C# layout set in `.editorconfig`.
+Before you push, run:
 
 ```powershell
 dotnet format whitespace --folder

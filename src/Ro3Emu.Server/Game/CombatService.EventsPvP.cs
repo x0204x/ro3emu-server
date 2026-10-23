@@ -85,8 +85,8 @@ public sealed partial class CombatService
                 }
                 var hit = new SkillHitInfo
                 {
-                    SrcID = attackerRole.Id, SkillId = skillId, ShowPoint = show,
-                    SessionId = session, SrcElement = 1, Split = PresentationSplit(row),
+                    SrcID = attackerRole.Id, SkillId = skillId, ShowPoint = show, Split = HitSplit(row),
+                    SessionId = session, SrcElement = 1,
                     Dsts = { new DamageInfo { DstID = targetRole.Id, Damage = damage, SheildDamage = shieldDamage, HitResult = result,
                     DstElement = 1, IsDead = hp == 0 } }
                 };

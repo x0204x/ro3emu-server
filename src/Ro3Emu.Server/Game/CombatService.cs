@@ -3,6 +3,7 @@ using Google.Protobuf;
 using Romsg;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Maps;
 
 namespace Ro3Emu.Server.Game;
@@ -236,6 +237,14 @@ public sealed partial class CombatService : IGameTicker
 
     // Totem passives need the row and final target before the existing post-hit event loses that context.
     public List<Func<GameSession, JsonElement, Task>> CastLanded { get; } = new();
+    /// <summary>After a player's own cast applied its effects, with the monsters it processed and its published hit (each
+    /// target's result, the allies it healed) (TalentProcs).</summary>
+    internal List<Func<GameSession, ActiveSkillCast, IReadOnlyList<MonsterUnit>, SkillHitInfo, Task>> CastResolved { get; } = [];
+    /// <summary>The row a cast deals its damage with once its monster targets are chosen ("For every enemy hit by [Hammer
+    /// Fall], ... increases"), by their count (TalentProcs).</summary>
+    internal Func<GameSession, JsonElement, int, JsonElement>? TargetCountRow { get; set; }
+    /// <summary>May the caster's skill put this _kBuff1 buff on the recipient (TalentProcs: talent-gated buffs).</summary>
+    internal Func<GameSession, GameSession, int, bool>? SkillBuffAllowed { get; set; }
     public List<Func<GameSession, MonsterUnit, JsonElement, DamageHitResult, long, long>> DamageAdjusters { get; } = new();
     public List<Func<GameSession, MonsterUnit, JsonElement, long, long>> ExtraHitDamage { get; } = new();
     public List<Func<GameSession, MonsterUnit, JsonElement, long, Task>> DealtAsync { get; } = new();
@@ -252,7 +261,8 @@ public sealed partial class CombatService : IGameTicker
     public Func<GameSession, GameSession, JsonElement, Task<bool>>? ReviveItemSkill { get; set; }
 
     public CombatService(World world, MonsterService monsters, CharacterService character, SkillService skills, SceneService scene, BuffService buffs,
-        WorldData worldData, SessionRegistry sessions, GameData data, GameLoop loop, ILogger<CombatService> log, PetService pets)
+        WorldData worldData, SessionRegistry sessions, GameData data, GameLoop loop, ILogger<CombatService> log, PetService pets,
+        SeasonTalentService talents)
     {
         this._world = world;
         this._monsters = monsters;
@@ -277,6 +287,7 @@ public sealed partial class CombatService : IGameTicker
         skills.Learned.Add(RefreshSkillParametersAsync);
         skills.Learned.Add(character.RefreshStatsAsync);
         buffs.Changed.Add(RefreshSkillParametersAsync);
+        talents.EffectsChanged.Add(RefreshSkillParametersAsync);
         scene.Loaded.Add(RefreshSkillParametersAsync);
         scene.Leaving.Add(ClearSceneSkillProtocolAsync);
         skills.QueueEligibility = CanQueueSkill;
@@ -306,9 +317,7 @@ public sealed partial class CombatService : IGameTicker
         var effects = _data.SkillTemplateTable("Lua_Config_EffectData");
         for (long id = scriptShow * 100; id < scriptShow * 100 + 100; id++)
             if (effects.TryGetValue(id.ToString(), out var e)
-                && e.TryGetProperty("m_kDamage", out var damage)
-                && GameData.Int(damage, "m_kDamageType") == 3
-                && damage.TryGetProperty("m_kActionDamge", out _)) return (int)id;
+                && new SkillEffectData(e).Damage is { DamageType: 3, HasActionDamage: true }) return (int)id;
         return 1000002;
     }
 
@@ -319,12 +328,8 @@ public sealed partial class CombatService : IGameTicker
         for (long id = scriptShow * 100; id < scriptShow * 100 + 100; id++)
         {
             if (!effects.TryGetValue(id.ToString(), out var e)
-                || !e.TryGetProperty("m_kDamage", out var damage)
-                || GameData.Int(damage, "m_kDamageType") != 2
-                || !damage.TryGetProperty("m_kBulletData", out var bullet)
-                || !bullet.TryGetProperty("m_kBulletName", out var name)
-                || name.ValueKind != JsonValueKind.String
-                || string.IsNullOrWhiteSpace(name.GetString())) continue;
+                || new SkillEffectData(e).Damage is not { DamageType: 2, Bullet: { } bullet }
+                || string.IsNullOrWhiteSpace(bullet.Name)) continue;
             return (int)id;
         }
         return 0;
@@ -335,24 +340,30 @@ public sealed partial class CombatService : IGameTicker
     /// authoritative total damage value across this many jump words, while LC_Bullet_Mgr emits this many bullets.
     /// An empty _kShowDmg means one hit/projectile (for example Fire Ball); Fire Bolt authors one through ten.
     /// </summary>
-    private static int PresentationSplit(JsonElement row) =>
-        (int)Math.Max(1, Numbers(row, "_kShowDmg").FirstOrDefault(1));
+    private static int PresentationSplit(JsonElement row) => HitSplit(row);
 
     private int BulletTravelMs(int effectId, Vec3 origin, Vec3 target)
     {
         if (!_data.SkillTemplateTable("Lua_Config_EffectData").TryGetValue(effectId.ToString(), out var effect)
-            || !effect.TryGetProperty("m_kDamage", out var damage)
-            || !damage.TryGetProperty("m_kBulletData", out var bullet)) return 0;
+            || new SkillEffectData(effect).Damage?.Bullet is not { } bullet) return 0;
         double duration;
-        if (GameData.Int(bullet, "m_iBulletControlType") == 0)
-            duration = GameData.Number(bullet.TryGetProperty("m_fBulletLifeTime", out var life) ? life : default) ?? 0;
+        if (bullet.ControlType == 0)
+            duration = bullet.LifeTime;
         else
         {
-            double unitsPerSecond = GameData.Number(bullet.TryGetProperty("m_fBulletSpeed", out var speed) ? speed : default) ?? 0;
+            double unitsPerSecond = bullet.Speed;
             duration = unitsPerSecond > 0 ? Math.Max(1, Distance(origin, target) / unitsPerSecond * 1000) : 0;
         }
         return duration > 0 ? (int)Math.Clamp(Math.Round(duration), 1, 5000) : 0;
     }
+    /// <summary>
+    /// SkillHitInfo.split: how many damage words the client shows for one hit. SkillConfig._kShowDmg holds one count
+    /// per show attack point and only the server reads it. LC_DamageHelper.ProcessDamageWord divides the damage into
+    /// that many words and, for the caster, adds a running total (Dmg_Accumulate) for skills with _iAccumDmgType, so
+    /// with split 1 the total repeats the hit. A cast resolves at its first attack point, so the first count applies
+    /// (inferred for skills with several points).
+    /// </summary>
+    private static int HitSplit(JsonElement row) => (int)Math.Max(1, new SkillConfig(row).ShowDmg.FirstOrDefault(1));
 
     // ---- monsters hitting players ----
 

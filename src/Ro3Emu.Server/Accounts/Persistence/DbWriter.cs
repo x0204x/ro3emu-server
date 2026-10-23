@@ -79,11 +79,14 @@ public sealed class DbWriter : IDisposable
 
     private static async Task<T> Cast<T>(Task<object?> task) => (T)(await task.ConfigureAwait(false))!;
 
-    // Invalidations a plan registers while it executes on this writer thread; run when its job ends, committed or not
-    // (an extra invalidation is harmless). They run before the job's completion is released to its caller.
-    [ThreadStatic] private static List<Action>? _afterJob;
-    /// <summary>For a plan's Execute: run <paramref name="action"/> on the writer thread when this job ends.</summary>
-    internal static void AfterJob(Action action) => (_afterJob ??= []).Add(action);
+    // Caches a plan reports stale while it executes on this writer thread; this writer's database bumps them when the
+    // job ends, committed or not (an extra invalidation is harmless), before the job's completion reaches its caller.
+    [ThreadStatic] private static List<WrittenCache>? _afterJob;
+    /// <summary>For a plan's Execute: the job writes rows behind <paramref name="cache"/>.</summary>
+    internal static void AfterJob(WrittenCache cache) => (_afterJob ??= []).Add(cache);
+
+    /// <summary>The cache generations of this writer's database (its <see cref="AccountStore"/>).</summary>
+    public CacheGenerations Caches { get; init; } = new();
 
     public T ExecuteLegacySync<T>(DbPlan plan, bool onLoop)
     {
@@ -150,7 +153,7 @@ public sealed class DbWriter : IDisposable
         public object? Result;
         public Exception? Error;
         public bool ReplayValidated, Executed;
-        public List<Action>? AfterJob;
+        public List<WrittenCache>? AfterJob;
     }
 
     private void RunGroup(SqliteConnection db, Job first)
@@ -286,9 +289,7 @@ public sealed class DbWriter : IDisposable
         finally
         {
             if (pending.AfterJob is { } afterJob)
-                foreach (var action in afterJob)
-                    try { action(); }
-                    catch (Exception e) { _metrics.PostCommitFailure(); _log?.LogCritical(e, "After-job step of {Label} failed", job.Plan.Label); }
+                foreach (var cache in afterJob) Caches.Bump(cache);
             lock (_gate)
             {
                 if (ReferenceEquals(_active, job)) _active = null;

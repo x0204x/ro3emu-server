@@ -124,12 +124,14 @@ public sealed class PassPlayTests : IAsyncLifetime
         Assert.True(pass.Premium); // no item 703 spent
         Assert.Equal(0, await Currency(alice, 703));
 
+        // 60 points x 6, doubled while behind the season pace; the daily challenge pays 300 more (also doubled) when drawn.
+        // The day's challenges are drawn already; the challenge's share may land after the points' share.
+        bool challenge = (await Play(alice)).Daily.Contains("d.activity");
+        long expected = (60 * 6 + (challenge ? 300 : 0)) * 2;
         await Gm(alice, "!item 5 60"); // 60 daily activity points
-        await Until(async () => await Currency(alice, NewActivityService.PassExpCurrency) > 0, "pass EXP from daily activity");
+        await Until(async () => await Currency(alice, NewActivityService.PassExpCurrency) >= expected, "pass EXP from daily activity");
         var play = await Play(alice);
         Assert.Equal(60, play.WeeklyProgress["w.activity"]);
-        // 60 points x 6, doubled while behind the season pace; the daily challenge pays 300 more (also doubled) when drawn.
-        long expected = (60 * 6 + (play.Daily.Contains("d.activity") ? 300 : 0)) * 2;
         Assert.Equal(expected, await Currency(alice, NewActivityService.PassExpCurrency));
         Assert.Equal(expected, play.Earned);
         pass = await Pass(alice);

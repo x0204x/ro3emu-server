@@ -2,6 +2,7 @@ using System.Text.Json;
 using Romsg;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Maps;
 
 namespace Ro3Emu.Server.Game;
@@ -324,26 +325,24 @@ public sealed class RewardService
     internal void PickFromGroup(long group, RoleProgress progress, List<(int, int)> drops, List<(int Entry, int Count, int Bind)>? bound = null,
         int monsterLevel = DropAttenuation.NoMonster)
     {
-        if (_data.Row("DropGroupConfig", group) is not { } raw || !GameData.TryGroupedRows(raw, out var rows)) return;
+        var rows = DropGroupConfig.Get(_data, group);
+        if (rows.Count == 0) return;
         var p = progress;
         // D Asia omits _iWeights for an unweighted row; that row still participates with weight one (for example
         // group 105, and the equal-choice item groups). An explicitly serialized zero remains disabled. Groups
         // 3000..3999 are level-banded EXP curves: they also omit _kDropItem, while min/max carry the EXP amount.
         bool expCurve = group is >= 3000 and < 4000;
-        long Weight(JsonElement row)
+        long Weight(DropGroupConfig row)
         {
-            bool hasItem = row.TryGetProperty("_kDropItem", out _);
-            if (!hasItem && (!expCurve || !row.TryGetProperty("_iMinNumber", out _)
-                    || !row.TryGetProperty("_iMaxNumber", out _))) return 0;
-            return row.TryGetProperty("_iWeights", out _) ? GameData.Int(row, "_iWeights") : 1;
+            if (!row.HasDropItem && (!expCurve || !row.HasMinNumber || !row.HasMaxNumber)) return 0;
+            return row.WeightOrDefault;
         }
         var candidates = rows.Where(r =>
         {
-            if (Weight(r) <= 0 || GameData.Int(r, "_iQuestLimit") != 0 || GameData.Int(r, "_iActivityid") != 0) return false;
-            long min = GameData.Int(r, "_iMinLevelLimit"), max = GameData.Int(r, "_iMaxLevelLimit");
+            if (Weight(r) <= 0 || r.QuestLimit != 0 || r.Activityid != 0) return false;
+            long min = r.MinLevelLimit, max = r.MaxLevelLimit;
             if (p.Level < min || max > 0 && p.Level > max) return false;
-            return !r.TryGetProperty("_iJobLimit", out var jobs) || jobs.ValueKind != JsonValueKind.Array || jobs.GetArrayLength() == 0
-                   || jobs.EnumerateArray().Any(j => GameData.Number(j) == p.Career);
+            return r.JobLimit.Length == 0 || r.JobLimit.Contains(p.Career);
         }).ToList();
         long total = candidates.Sum(Weight);
         if (total <= 0) return;
@@ -352,15 +351,15 @@ public sealed class RewardService
         {
             roll -= Weight(r);
             if (roll >= 0) continue;
-            int min = r.TryGetProperty("_iMinNumber", out _) ? (int)GameData.Int(r, "_iMinNumber") : 1;
-            int max = r.TryGetProperty("_iMaxNumber", out _) ? (int)GameData.Int(r, "_iMaxNumber") : 1;
+            int min = (int)r.MinNumberOrDefault;
+            int max = (int)r.MaxNumberOrDefault;
             if (min <= 0 || max < min) return;
             int count = _random.Next(min, max + 1);
-            int entry = r.TryGetProperty("_kDropItem", out _) ? (int)GameData.Int(r, "_kDropItem") : BaseExpItem;
-            int amount = _attenuation.Apply(r, count, p.Level, monsterLevel, _random);
+            int entry = r.HasDropItem ? (int)r.DropItem : BaseExpItem;
+            int amount = _attenuation.Apply(r.Row, count, p.Level, monsterLevel, _random);
             if (amount <= 0) return;
             drops.Add((entry, amount));
-            bound?.Add((entry, amount, (int)GameData.Int(r, "_iBind")));
+            bound?.Add((entry, amount, (int)r.Bind));
             return;
         }
     }

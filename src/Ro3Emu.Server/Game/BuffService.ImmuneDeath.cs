@@ -14,6 +14,9 @@ public sealed partial class BuffService
     /// <summary>CombatService supplies its ordinary death transition for decline/timeout.</summary>
     public Func<GameSession, Task>? ImmuneDeathDeclined { get; set; }
 
+    /// <summary>A learned passive's lethal-hit survival (PassiveSkills: Wood Spirit's Blessing), after the buffs'.</summary>
+    internal Func<GameSession, Task<bool>>? PassiveLethalSave { get; set; }
+
     /// <summary>
     /// Apply an active buff's lethal-hit protection before HP reaches zero. BuffConfig 1430501 and 16340401
     /// explicitly grant immediate survival; 20520/20521 explicitly offer a revive choice (Localization_en
@@ -43,7 +46,7 @@ public sealed partial class BuffService
         var choice = live.FirstOrDefault(b => _data.Row("BuffConfig", b.ConfigId) is { } row
             && GameData.Int(row, "_iBuffID") is 20520 or 20521
             && p.BuffEffectCds.GetValueOrDefault(b.Guid) <= now);
-        if (choice == null) return false;
+        if (choice == null) return PassiveLethalSave != null && await PassiveLethalSave(p);
         long window = _data.Table("PublicParamConfig").TryGetValue("ImmuneDeadConfirmTimeMs", out var value)
             ? (long)(GameData.Number(value) ?? 5000) : 5000;
         window = Math.Clamp(window, 1000, 30000);

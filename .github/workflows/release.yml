@@ -24,11 +24,18 @@ on:
         required: false
 
 permissions:
-  contents: write
+  contents: read
+
+# One run per version at a time: a second run for the same tag waits instead of racing the first to
+# `gh release create`. A running publication is never cancelled.
+concurrency:
+  group: release-${{ github.ref_type == 'tag' && github.ref_name || (inputs.version && format('v{0}', inputs.version) || github.ref) }}
+  cancel-in-progress: false
 
 jobs:
   # Publishing a draft pushes its tag, which starts this workflow again; a tag whose release is already published needs
-  # nothing more (the API finds published releases by tag, not drafts).
+  # nothing more (the API finds published releases by tag, not drafts). A manual run for a published version fails
+  # here, before building anything.
   published:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -38,9 +45,13 @@ jobs:
       - id: check
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || (inputs.version && format('v{0}', inputs.version) || '') }}
         run: |
-          if [ "$GITHUB_REF_TYPE" = tag ] && gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > /dev/null 2>&1; then
+          if [ -n "$TAG" ] && gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" > /dev/null 2>&1; then
+            if [ "$GITHUB_REF_TYPE" != tag ]; then
+              echo "::error::$TAG is already published; choose a new version."
+              exit 1
+            fi
             echo "exists=true" >> "$GITHUB_OUTPUT"
             echo "$TAG is already published; nothing to build."
           else
@@ -51,6 +62,8 @@ jobs:
     needs: published
     if: needs.published.outputs.exists != 'true'
     runs-on: windows-latest
+    permissions:
+      contents: write # gh release create
     env:
       TAG: ${{ github.ref_type == 'tag' && github.ref_name || (inputs.version && format('v{0}', inputs.version) || '') }}
     timeout-minutes: 45
@@ -59,6 +72,10 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
+          cache: true
+          cache-dependency-path: |
+            Directory.Packages.props
+            **/*.csproj
       - name: Server tests
         run: dotnet test tests/Ro3Emu.Tests -c Release --filter "Category!=Slow"
       - name: Setup tests

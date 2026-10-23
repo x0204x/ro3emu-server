@@ -83,6 +83,15 @@ public sealed partial class TeamService(SessionRegistry sessions, CharacterServi
         return ExpBuff[Math.Clamp(sameMap, 1, ExpBuff.Length) - 1];
     }
 
+    /// <summary>After a party's roster or a member's card (career, online state) changed, with the roles it concerns: the
+    /// members and one who left (PassiveSkills: Union).</summary>
+    internal List<Func<IReadOnlyList<long>, Task>> RosterChanged { get; } = [];
+
+    private async Task NotifyRosterAsync(IReadOnlyList<long> roles)
+    {
+        foreach (var handler in RosterChanged) await handler(roles);
+    }
+
     /// <summary>The party a role is in: (team id, leader), or (0, the role itself) when solo.</summary>
     public (long TeamId, long Leader) TeamOf(long role) =>
         _byMember.TryGetValue(role, out var team) ? (team.Id, team.Leader) : (0, role);
@@ -263,6 +272,7 @@ public sealed partial class TeamService(SessionRegistry sessions, CharacterServi
         team.LastBattle.Remove(role);
         _byMember.Remove(role);
         _log.LogInformation("{Name} leaves party {Team} ({Left} left)", name, team.Id, team.Members.Count);
+        await NotifyRosterAsync([.. team.Members, role]);
         if (team.Members.Count == 0)
         {
             _teams.Remove(team.Id);
@@ -301,6 +311,7 @@ public sealed partial class TeamService(SessionRegistry sessions, CharacterServi
     private async Task RefreshAsync(Team team)
     {
         if (!_teams.TryGetValue(team.Id, out var current) || !ReferenceEquals(team, current)) return;
+        bool cardChanged = false;
         foreach (var m in team.Members.ToList())
         {
             var detail = Detail(team, m);
@@ -310,6 +321,7 @@ public sealed partial class TeamService(SessionRegistry sessions, CharacterServi
             if (team.LastCard.GetValueOrDefault(m) != card)
             {
                 team.LastCard[m] = card;
+                cardChanged = true;
                 detail.BattleInfo = battle;
                 var update = new TeamMemberChangeResp { TeamId = team.Id };
                 update.MemberList[m] = detail;
@@ -322,6 +334,8 @@ public sealed partial class TeamService(SessionRegistry sessions, CharacterServi
             }
             team.LastBattle[m] = fight;
         }
+        // A card carries a member's career and online state, which party-counting passives (Union) read.
+        if (cardChanged) await NotifyRosterAsync([.. team.Members]);
     }
 
     // ---- shapes ----

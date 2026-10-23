@@ -54,7 +54,7 @@ internal sealed class GuildRecoverDeletePlan(long guild, long escrowMaterials) :
     internal override IReadOnlyList<RoleRevisionKey> RoleWrites => deletion.RoleWrites;
     internal override object Execute(SqliteConnection db, SqliteTransaction tx)
     {
-        DbWriter.AfterJob(GuildStore.Invalidate);
+        DbWriter.AfterJob(WrittenCache.Guild);
         using var query = DbSql.Command(db, tx, "SELECT state FROM guild WHERE id=$id");
         query.Parameters.AddWithValue("$id", guild);
         if (query.ExecuteScalar() is not byte[] bytes) throw new InvalidOperationException("Guild disappeared before recovery capture.");

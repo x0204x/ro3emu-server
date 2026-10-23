@@ -49,6 +49,18 @@ jobs:
       - name: Check the analyzer baseline
         run: dotnet run --project tools/AnalyzerBaseline -c Release
 
+  # The release packs the committed prebuilt/client DLLs; it refuses them when they were built from other hooks or
+  # loc sources. This fails the change that makes them stale instead of the next release.
+  prebuilt-client:
+    name: Prebuilt client DLLs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check prebuilt/client against the hooks and loc sources
+        run: ./tools/release/client-stamp.ps1 -Check
+        shell: pwsh
+
   # The server, the setup tool and the patcher are built and tested on Linux and Windows by tests.yml; this job
   # builds what no test project references.
   build:

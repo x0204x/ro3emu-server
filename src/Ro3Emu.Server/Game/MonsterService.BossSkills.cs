@@ -245,6 +245,7 @@ public sealed partial class MonsterService
             if (k.Once) text.Append(" once");
             if (k.SummonNpc > 0) text.Append(CultureInfo.InvariantCulture, $" summons {k.SummonCount}x{k.SummonNpc}");
             if (k.ChargeEffect > 0) text.Append(" charge");
+            if (k.GroundNpc > 0) text.Append(CultureInfo.InvariantCulture, $" places {k.GroundNpc}{(k.GroundBlast > 0 ? $" (blast {k.GroundBlast})" : "")}");
             if (live?.BossSkills is { } state)
                 text.Append(state.ReadyMs[i] == long.MaxValue ? " (spent)" : state.ReadyMs[i] > now
                     ? string.Create(CultureInfo.InvariantCulture, $" (ready in {(state.ReadyMs[i] - now) / 1000.0:0.#}s)") : " (ready)");

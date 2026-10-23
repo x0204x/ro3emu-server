@@ -108,7 +108,7 @@ internal sealed class AdventureGroupSavePlan : DbPlan
 
     internal override object Execute(SqliteConnection db, SqliteTransaction tx)
     {
-        DbWriter.AfterJob(AdventureGroupStore.Invalidate);
+        DbWriter.AfterJob(WrittenCache.AdventureGroup);
         long id = _id;
         byte[] state = _state;
         if (id == 0)
@@ -157,7 +157,7 @@ internal sealed class AdventureGroupDeletePlan(long group) : DbPlan
     internal override IReadOnlyList<OwnerRevisionKey> EntityWrites => [RevisionStore.Entity("adventure_group", group)];
     internal override object Execute(SqliteConnection db, SqliteTransaction tx)
     {
-        DbWriter.AfterJob(AdventureGroupStore.Invalidate);
+        DbWriter.AfterJob(WrittenCache.AdventureGroup);
         using var cmd = DbSql.Command(db, tx,
             "DELETE FROM adventure_group_member WHERE group_id=$id; DELETE FROM adventure_group WHERE id=$id");
         cmd.Parameters.AddWithValue("$id", group);

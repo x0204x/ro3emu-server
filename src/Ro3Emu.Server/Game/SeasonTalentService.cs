@@ -46,6 +46,9 @@ public sealed partial class SeasonTalentService
             ? DBSeasonTalent.Parser.ParseFrom(bytes) : new DBSeasonTalent();
         session.TalentEffectsEnabled = false; // TaskService has not loaded this role's quest state yet.
         session.TalentPlanSwitchUtc = default;
+        session.TalentSkillModifiers = [];
+        session.TalentProcBuffs = [];
+        session.TalentBuffAttributes = [];
         Seed(session.SeasonTalent);
     }
 
@@ -65,6 +68,7 @@ public sealed partial class SeasonTalentService
         if (before != session.TalentEffectsEnabled || (session.TalentEffectsEnabled
             && (!Same(oldTrees, session.SeasonTalent.UnlockedTrees)
                 || !Same(oldNodes, session.SeasonTalent.UnlockedNode)))) await _character.RefreshStatsAsync(session);
+        await RefreshEffectsAsync(session);
     }
 
     private static bool Same(IReadOnlyDictionary<long, bool> old, IDictionary<long, bool> now) =>
@@ -88,7 +92,11 @@ public sealed partial class SeasonTalentService
         return 0;
     }
 
-    internal Task SyncGenrePlanAsync(GameSession session) => CharacterService.SyncAsync(session, TalentSync, session.SeasonTalent!, session.SeasonTalent!.Clone);
+    internal async Task SyncGenrePlanAsync(GameSession session)
+    {
+        await CharacterService.SyncAsync(session, TalentSync, session.SeasonTalent!, session.SeasonTalent!.Clone);
+        await RefreshEffectsAsync(session);
+    }
 
     private bool HasTalentGraph() => Trees().Any(tree => tree.Id > 0) && Nodes().Count > 0;
 
@@ -296,6 +304,7 @@ public sealed partial class SeasonTalentService
                     await _character.ItemsChangedAsync(s, stats: false); // 5009 before 5050 and the reply
                     await CharacterService.SyncAsync(s, TalentSync, next.Clone());
                     await _character.RefreshStatsAsync(s);
+                    await RefreshEffectsAsync(s);
                 }
             }
         }
@@ -349,6 +358,7 @@ public sealed partial class SeasonTalentService
                     });
                     await CharacterService.SyncAsync(s, TalentSync, next.Clone());
                     await _character.RefreshStatsAsync(s);
+                    await RefreshEffectsAsync(s);
                 }
                 catch (Exception e) when (e is SqliteException or InvalidOperationException)
                 {
@@ -391,8 +401,19 @@ public sealed partial class SeasonTalentService
         await s.SendGameAsync(RenamePlan, new SeasonTalentSetPlanNameResp { Result = result, Req = req });
     }
 
-    /// <summary>Only bought target-level totals contribute once; profession/special rows need a separate engine.</summary>
+    /// <summary>Only bought target-level totals contribute once; profession rows add their special effects'
+    /// attributes (SeasonTalentService.Effects).</summary>
     public IEnumerable<(long Id, double Value)> Attributes(GameSession s)
+    {
+        foreach (var row in ActiveEffects(s))
+        {
+            if (Supported(row)) foreach (var pair in GameData.Pairs(row, "_kAttrs")) yield return pair;
+            foreach (var pair in SpecialAttributes(s, row)) yield return pair;
+        }
+    }
+
+    /// <summary>The active plan's SeasonTalentEffectConfig rows at their bought levels, and the oath's at its level.</summary>
+    private IEnumerable<JsonElement> ActiveEffects(GameSession s)
     {
         if (!Available(s) || s.SeasonTalent is not { } state || s.Progress == null
             || !state.Plan.TryGetValue(state.CurPlanId, out var plan)) yield break;
@@ -404,15 +425,12 @@ public sealed partial class SeasonTalentService
                 || total < GameData.Int(node, "_iNeedLevel")
                 || (GameData.Int(node, "_iIsStartPoint") != 1
                     && !ParentMaxed(plan, id, GameData.Int(node, "_iTalentTreeID")))) continue;
-            var effect = Effect(GameData.Int(node, "_iLevelGroupId"), saved.CurrentLevel, s.Progress.Career);
-            if (effect is { } row && Supported(row)) foreach (var pair in GameData.Pairs(row, "_kAttrs")) yield return pair;
+            if (Effect(GameData.Int(node, "_iLevelGroupId"), saved.CurrentLevel, s.Progress.Career) is { } row) yield return row;
         }
         if (state.BattleOathLevel > 0 && _data.Row("SeasonTalentConfig", 10100000) is { } oath
-            && TreeEligible(s, GameData.Int(oath, "_iTalentTreeID"), total))
-        {
-            var effect = Effect(GameData.Int(oath, "_iLevelGroupId"), state.BattleOathLevel, s.Progress.Career);
-            if (effect is { } row && Supported(row)) foreach (var pair in GameData.Pairs(row, "_kAttrs")) yield return pair;
-        }
+            && TreeEligible(s, GameData.Int(oath, "_iTalentTreeID"), total)
+            && Effect(GameData.Int(oath, "_iLevelGroupId"), state.BattleOathLevel, s.Progress.Career) is { } oathRow)
+            yield return oathRow;
     }
 
     private bool TreeEligible(GameSession s, long treeId, long total) =>

@@ -138,7 +138,7 @@ internal sealed class GuildDeletePlan(long guild) : DbPlan
         .Select(role => RevisionStore.Role(role, RevisionStore.GuildMembership)).ToArray();
     internal override object Execute(SqliteConnection db, SqliteTransaction tx)
     {
-        DbWriter.AfterJob(GuildStore.Invalidate);
+        DbWriter.AfterJob(WrittenCache.Guild);
         using var cmd = DbSql.Command(db, tx,
             "DELETE FROM guild_member WHERE guild_id=$id; DELETE FROM guild_event WHERE guild_id=$id; DELETE FROM guild WHERE id=$id");
         cmd.Parameters.AddWithValue("$id", guild);

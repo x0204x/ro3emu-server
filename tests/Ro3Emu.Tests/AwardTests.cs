@@ -18,6 +18,7 @@ public sealed class AwardTests : IAsyncLifetime
 {
     private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-awards-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);
+    private static readonly int[] PoolTerminalEntries = [1200002, 1200003, 1420100, 1430100, 1440100, 1450100, 1450702, 2];
     private WebApplication _app = null!;
     private string _http = "";
 
@@ -120,7 +121,7 @@ public sealed class AwardTests : IAsyncLifetime
         Assert.Empty(awards.Resolve(null!, 31104).Grants); // novice trial's separate TaskConfig EXP remains
         Assert.Equal(new[] { new AwardGrant(102, 100), new AwardGrant(2, 2500) },
             awards.Resolve(null!, 2131).Grants.ToArray()); // declared but empty drop pool keeps its fixed grants
-        Assert.Throws<AwardResolutionException>(() => awards.Resolve(null!, 920160)); // absent group
+        Assert.Throws<AwardResolutionException>(() => awards.Resolve(null!, long.MaxValue)); // absent group in every client export
         Assert.Throws<AwardResolutionException>(() => awards.Resolve(null!, 21)); // type 1, NPC drop route
         Assert.Throws<AwardResolutionException>(() => awards.Resolve(null!, 40007)); // multirow day selector
         Assert.Throws<AwardResolutionException>(() => awards.Resolve(null!, 1005)); // AwardConfig _kEXP
@@ -244,7 +245,7 @@ public sealed class AwardTests : IAsyncLifetime
         Assert.Contains(plan.Grants, g => g.Entry == 2 && g.Count == 2000);
         Assert.InRange(plan.Grants.Count, 3, 4); // inferred 50% pool gate, max one terminal
         if (plan.Grants.Count == 4)
-            Assert.Contains(plan.Grants[3].Entry, new[] { 1200002, 1200003, 1420100, 1430100, 1440100, 1450100, 1450702, 2 });
+            Assert.Contains(plan.Grants[3].Entry, PoolTerminalEntries);
         Assert.DoesNotContain(plan.Grants, g => g.Entry is 1200500 or 1200200 or 1200300); // preview-only
     }
 

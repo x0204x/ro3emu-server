@@ -4,6 +4,7 @@ using Google.Protobuf;
 using Romsg;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Maps;
 
 namespace Ro3Emu.Server.Game;
@@ -129,6 +130,18 @@ public sealed class MountService : IGameTicker
 
     /// <summary>Publishes a committed 5012 change: the dataset, stats and the rider to self and viewers.</summary>
     internal Task PublishAsync(GameSession s) => ChangedAsync(s);
+
+    /// <summary>After a committed 5012 change, the rider's stats sent (RidingEffects: the ridden mount's buffs).</summary>
+    internal List<Func<GameSession, Task>> RideChanged { get; } = [];
+
+    /// <summary>The ridden mount's _kBindBuff rows (CartRemouldTable or MountsConfig), and its CartRemouldTable
+    /// _iSubType (2 Peco Peco, 4 wolf, 5 Madogear, 6 dragon, 7 gryphon; 0 for any other mount or none).</summary>
+    internal (long[] BindBuffs, long SubType) Ridden(GameSession s)
+    {
+        long id = Rider(s);
+        if (CartRemouldTable.Get(_data, id) is { } battle) return (battle.BindBuff, battle.SubType);
+        return (MountsConfig.Get(_data, id) is { } mount ? mount.BindBuff : [], 0);
+    }
 
     public static long Rider(GameSession s) => s.MountState.QuestMount != 0 ? s.MountState.QuestMount
         : s.Mounts?.MountIds.OrderBy(p => p.Key).FirstOrDefault(p => p.Value.IsRiding).Value?.MountId ?? 0;
@@ -267,6 +280,7 @@ public sealed class MountService : IGameTicker
         await PublishOwnedAsync(s);
         await _character.RefreshStatsAsync(s);
         await _character.CombatLoadoutChangedAsync(s);
+        foreach (var handler in RideChanged) await handler(s);
         var entity = RoleSessionService.PlayerEntity(s);
         entity.NotifyType = EntityBase.Types.NotifyType.Rider;
         await s.SendGameAsync(CharacterService.EntityBaseChange, entity);

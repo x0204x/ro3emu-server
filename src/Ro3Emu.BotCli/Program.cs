@@ -11,6 +11,7 @@ using Ro3Emu.Bot;
 //   face <deg>
 //   wait <secs>
 //   party                 create a party;  invite <roleId>  invite into it;  friend <roleId>  send a friend request
+//   approve <roleId>      as the party's leader, admit a player who asked to join (the client's Finder "Join")
 //   guildapply <guildId>  apply to a guild;  guildhelp <guildId>  respond to a guild being founded;  guildleave
 //   quit
 // usage: Ro3Emu.BotCli voice-echo <server http base> <account> <password> [roleName] [--delay-ms 1000] [--data-dir <dir>] [--guild <guildId> [--channel 0] [--ask-mic]]
@@ -88,6 +89,10 @@ while ((line = Console.ReadLine()) != null)
                 break;
             case "invite":
                 await bot.SendGameAsync(42004, new Romsg.InviteIntoTeamReq { Guid = long.Parse(p[1], CultureInfo.InvariantCulture) });
+                break;
+            case "approve":
+                await bot.SendGameAsync(42018, new Romsg.ApplyListOperateReq
+                { OperType = Romsg.ApplyListOperateType.Agree, TargetGuid = long.Parse(p[1], CultureInfo.InvariantCulture) });
                 break;
             case "friend":
                 await bot.MicroAsync("FriendService", "apply", new() { ["Uid"] = roleId.ToString(), ["Target"] = p[1] });

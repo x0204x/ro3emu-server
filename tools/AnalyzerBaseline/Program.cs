@@ -97,12 +97,11 @@ static string AsWarnings(string config, IEnumerable<string> rules) =>
         text.Replace($"dotnet_diagnostic.{rule}.severity = suggestion", $"dotnet_diagnostic.{rule}.severity = warning",
             StringComparison.Ordinal));
 
-// Warnings are still errors, except the baseline's rules (and the vulnerable-package notices Directory.Build.props
-// already exempts), so the same build also enforces every other rule.
+// Warnings are still errors, except the baseline's rules, so the same build also enforces every other rule.
 static int Build(string root, string solution, IEnumerable<string> rules, StringBuilder output)
 {
     // %3B: a plain ';' would end the -p: value.
-    string notAsErrors = string.Join("%3B", new[] { "NU1901", "NU1902", "NU1903", "NU1904" }.Concat(rules));
+    string notAsErrors = string.Join("%3B", rules);
     var start = new ProcessStartInfo("dotnet")
     {
         WorkingDirectory = root,

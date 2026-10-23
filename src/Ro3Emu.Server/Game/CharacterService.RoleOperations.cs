@@ -2,6 +2,7 @@ using Google.Protobuf;
 using Romsg;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 
 namespace Ro3Emu.Server.Game;
 
@@ -192,8 +193,8 @@ public sealed partial class CharacterService
         // The client keeps empty medicine positions as zeroes. HP entries must match its own candidate rule:
         // ItemConfig._iCanAuto contains both 1 and 3. Ignore zero placeholders when validating removals.
         if (result == 0 && req.SetData!.ItemEntrys.Where(entry => entry != 0).Any(entry => entry < 0
-            || data.Row("ItemConfig", entry) is not { } row || GameData.Int(row, "_iIsUse") == 0
-            || req.Type == MedicineAutoUseType.Hp && (!HasAutoMode(row, 1) || !HasAutoMode(row, 3))))
+            || ItemConfig.Get(data, entry) is not { } item || item.IsUse == 0
+            || req.Type == MedicineAutoUseType.Hp && (!HasAutoMode(item, 1) || !HasAutoMode(item, 3))))
             result = ErrorCodes.ItemNoConfig;
         var nextInfo = session.BagState.Info.Clone();
         var saved = nextInfo.MedicinesAutoUse ?? new MedicinesAutoUseSet();
@@ -209,9 +210,7 @@ public sealed partial class CharacterService
         if (result == 0) await SyncItemsAsync(session);
     }
 
-    private static bool HasAutoMode(System.Text.Json.JsonElement row, int mode) =>
-        row.TryGetProperty("_iCanAuto", out var modes) && modes.ValueKind == System.Text.Json.JsonValueKind.Array
-        && modes.EnumerateArray().Any(value => GameData.Number(value) == mode);
+    private static bool HasAutoMode(ItemConfig item, int mode) => item.CanAuto.Contains(mode);
 
     /// <summary>31324 sets the equipped arrow entry; count comes from actually owned bag stacks.</summary>
     public async Task ArrowSwitchAsync(GameSession session, ItemArrowSwitchReq req)

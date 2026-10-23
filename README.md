@@ -40,8 +40,8 @@ server first; changes to the original rules come after.
 
 **Don't have the game?** RO3Emu.exe downloads it from the official Genesis update servers (about 24 GB) and checks every
 file against the publisher's signature: it offers this when it finds no game folder, or run `RO3Emu.exe install`.
-RO3Emu never hosts game files. Tested with the Genesis client releases of 7 and 16 October 2026; the 20 October
-release passes `RO3Emu.exe check` and the data export.
+RO3Emu never hosts game files. Tested with the Genesis client releases of 7, 16 and 21 October 2026 (2026.10.21.1,
+the current one); the 20 October release passes `RO3Emu.exe check` and the data export.
 
 | Command | What it does |
 |---|---|

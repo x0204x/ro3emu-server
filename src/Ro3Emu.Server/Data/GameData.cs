@@ -10,11 +10,12 @@ namespace Ro3Emu.Server.Data;
 /// The client's own config tables, exported to data/config/*.json by tools/ConfigExport. <see cref="Preload"/> parses
 /// every table and skill template before the gates open (a cold table cost seconds inside a player's request); after
 /// that, lookups are lock-free reads of a frozen snapshot. Without a preload (tests, tools) tables load on first use.
-/// A missing table is empty (the server still runs, it just knows less).
+/// A missing table is empty, except that a client export must carry every table and field the server declares
+/// (Data/Config, checked by <see cref="Config.ConfigValidator"/> during the preload).
 /// </summary>
 public sealed class GameData(IOptions<ServerOptions> options, ILogger<GameData> log)
 {
-    private readonly Dictionary<string, Dictionary<string, JsonElement>> _tables = new();
+    private readonly Dictionary<string, Dictionary<string, JsonElement>> _tables = [];
     private readonly object _sync = new();
     private volatile Dictionary<long, string>? _texts;
     private volatile Dictionary<long, string>? _clientTexts;
@@ -51,7 +52,8 @@ public sealed class GameData(IOptions<ServerOptions> options, ILogger<GameData> 
             foreach (var p in doc.RootElement.EnumerateObject()) table[p.Name] = p.Value;
         else if (doc.RootElement.ValueKind == JsonValueKind.Array)
             foreach (var (row, i) in doc.RootElement.EnumerateArray().Select((r, i) => (r, i)))
-                table[row.ValueKind == JsonValueKind.Object && row.TryGetProperty("_iID", out var rid) ? rid.ToString() : (i + 1).ToString()] = row;
+                table[row.ValueKind == JsonValueKind.Object && row.TryGetProperty("_iID", out var rid)
+                    ? rid.ToString() : (i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture)] = row;
         return table;
     }
 
@@ -84,11 +86,21 @@ public sealed class GameData(IOptions<ServerOptions> options, ILogger<GameData> 
         }
         Text(0); // builds the English text index used by server rules and logs
         ClientText(0); // builds the source-language index used for strings sent to the client
-        log.LogInformation("Game data preloaded: {Tables} tables in {Ms} ms, managed heap {Mb} MB",
-            files.Length, watch.ElapsedMilliseconds, GC.GetTotalMemory(false) >> 20);
+        // A client export (with export.json) must carry every declared table and field; any data set must give each
+        // declared field values of its kind. A mismatch stops the server here, before players are admitted.
+        bool export = File.Exists(Path.Combine(Root, ExportManifest));
+        Config.ConfigValidator.Check(this, Config.ConfigTables.All, strict: export);
+        log.LogInformation(
+            "Game data preloaded: {Tables} tables in {Ms} ms, managed heap {Mb} MB, {Views} config views checked{Strict}",
+            files.Length, watch.ElapsedMilliseconds, GC.GetTotalMemory(false) >> 20, Config.ConfigTables.All.Count,
+            export ? " against the client export" : "");
     }
 
-    public JsonElement? Row(string table, long id) => Table(table).TryGetValue(id.ToString(), out var row) ? row : null;
+    /// <summary>tools/ConfigExport writes this next to config/ for a complete client export.</summary>
+    public const string ExportManifest = "export.json";
+
+    public JsonElement? Row(string table, long id) => Table(table).TryGetValue(
+        id.ToString(System.Globalization.CultureInfo.InvariantCulture), out var row) ? row : null;
 
     /// <summary>
     /// Repeated config rows are arrays in the Genesis export. D Asia also emits serial-keyed objects such as
@@ -98,7 +110,7 @@ public sealed class GameData(IOptions<ServerOptions> options, ILogger<GameData> 
     {
         if (value.ValueKind == JsonValueKind.Array)
         {
-            rows = value.EnumerateArray().ToArray();
+            rows = [.. value.EnumerateArray()];
             return rows.All(row => row.ValueKind == JsonValueKind.Object);
         }
         if (value.ValueKind == JsonValueKind.Object)
@@ -115,7 +127,7 @@ public sealed class GameData(IOptions<ServerOptions> options, ILogger<GameData> 
                 }
                 keyed.Add((serial, property.Value));
             }
-            rows = keyed.OrderBy(row => row.Serial).Select(row => row.Row).ToArray();
+            rows = [.. keyed.OrderBy(row => row.Serial).Select(row => row.Row)];
             // Genesis may intentionally serialize an empty repeated group as [], while an empty object is the
             // exporter's placeholder for an absent/unresolved group. Keep those meanings distinct.
             return keyed.Count > 0;
@@ -134,7 +146,7 @@ public sealed class GameData(IOptions<ServerOptions> options, ILogger<GameData> 
                 texts = _texts;
                 if (texts == null)
                 {
-                    texts = new();
+                    texts = [];
                     foreach (var (_, row) in Table("Localization_en"))
                     {
                         if (row.TryGetProperty("_iID", out var tid) && row.TryGetProperty("_kDes", out var des) && des.ValueKind == JsonValueKind.String)
@@ -165,9 +177,8 @@ public sealed class GameData(IOptions<ServerOptions> options, ILogger<GameData> 
                     {
                         foreach (var (_, row) in Table(table))
                         {
-                            if (row.TryGetProperty("_iID", out var tid) && row.TryGetProperty("_kDes", out var des)
-                                && des.ValueKind == JsonValueKind.String)
-                                texts.TryAdd(tid.GetInt64(), des.GetString()!);
+                            var localized = new Config.LocalizationEn(row);
+                            texts.TryAdd(localized.Id, localized.Des);
                         }
                     }
                     _clientTexts = texts;
@@ -188,6 +199,10 @@ public sealed class GameData(IOptions<ServerOptions> options, ILogger<GameData> 
     public string ClientTextOf(JsonElement row, string field)
         => TextOf(row, field, ClientText);
 
+    /// <summary>Source-language text of a typed localized field [textId, numeric parameters...].</summary>
+    public string ClientTextOf(IReadOnlyList<long> values)
+        => TextOf(values, ClientText);
+
     private static string TextOf(JsonElement row, string field, Func<long, string> resolve)
     {
         if (!row.TryGetProperty(field, out var v) || v.ValueKind != JsonValueKind.Array || v.GetArrayLength() == 0 || !v[0].TryGetInt64(out var id))
@@ -199,6 +214,15 @@ public sealed class GameData(IOptions<ServerOptions> options, ILogger<GameData> 
             if (text.Contains(placeholder))
                 text = text.Replace(placeholder, v[i].ValueKind == JsonValueKind.String ? v[i].GetString() : v[i].GetRawText());
         }
+        return text;
+    }
+
+    private static string TextOf(IReadOnlyList<long> values, Func<long, string> resolve)
+    {
+        if (values.Count == 0) return "";
+        string text = resolve(values[0]);
+        for (int i = 1; i < values.Count; i++)
+            text = text.Replace("@{" + i + "}", values[i].ToString(System.Globalization.CultureInfo.InvariantCulture));
         return text;
     }
 
@@ -223,9 +247,8 @@ public sealed class GameData(IOptions<ServerOptions> options, ILogger<GameData> 
         return result;
     }
 
-    /// <summary>An integer field of a row (0 when absent or not a number).</summary>
-    public static long Int(JsonElement row, string field) =>
-        row.TryGetProperty(field, out var v) && v.ValueKind == JsonValueKind.Number ? (long)v.GetDouble() : 0;
+    /// <summary>An integer field of a row (0 when absent or not a number), exact beyond 2^53.</summary>
+    public static long Int(JsonElement row, string field) => Config.ConfigValue.Integral(row, field);
 
     /// <summary>A field holding [[id, value, ...], ...] (attribute lists): (id, first value) pairs.</summary>
     public static IEnumerable<(long Id, double Value)> Pairs(JsonElement row, string field)
@@ -239,12 +262,7 @@ public sealed class GameData(IOptions<ServerOptions> options, ILogger<GameData> 
     }
 
     /// <summary>A number, also when the Lua table stored it as a string ("2000").</summary>
-    public static double? Number(JsonElement e) => e.ValueKind switch
-    {
-        JsonValueKind.Number => e.GetDouble(),
-        JsonValueKind.String when double.TryParse(e.GetString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d) => d,
-        _ => null,
-    };
+    public static double? Number(JsonElement e) => Config.ConfigValue.Number(e);
 
     /// <summary>
     /// A skill template (Config/Skill/skill_<scriptShow>.lua exported to data/skills): m_fAtkRange (m), m_fTotalTime (s),
@@ -284,7 +302,7 @@ public sealed class GameData(IOptions<ServerOptions> options, ILogger<GameData> 
     public string MapName(long sceneEntry) => Row("MapConfig", sceneEntry) is { } row ? TextOf(row, "_iName") : "";
 
     /// <summary>Source-language map name for a client-visible wire string.</summary>
-    public string ClientMapName(long sceneEntry) => Row("MapConfig", sceneEntry) is { } row ? ClientTextOf(row, "_iName") : "";
+    public string ClientMapName(long sceneEntry) => Config.MapConfig.Get(this, sceneEntry) is { } row ? ClientTextOf(row.Name) : "";
 }
 
 /// <summary>Runs <see cref="GameData.Preload"/> at startup, before the game loop and the gates start.</summary>

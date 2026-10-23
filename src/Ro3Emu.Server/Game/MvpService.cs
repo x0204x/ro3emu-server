@@ -5,6 +5,7 @@ using Romsg;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Accounts.Persistence;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Economy;
 using Ro3Emu.Server.Game.Ownership;
 using Ro3Emu.Server.Maps;
@@ -133,6 +134,9 @@ public sealed partial class MvpService : IGameTicker
         this._data = data;
         this._accounts = accounts;
         this._monsters = monsters;
+        // Every monster carries its NPCConfig _kBornEventBuff from birth, not only the field MVPs (the MVPs' 900801 /
+        // 900901 control immunity also stands on dungeon and story bosses).
+        monsters.Born.Add(ApplyBornBuffsAsync);
         this._worldData = worldData;
         this._character = character;
         this._rewards = rewards;
@@ -401,7 +405,6 @@ public sealed partial class MvpService : IGameTicker
         st.SkillReadyMs.Clear();
         st.NextCastMs = st.LastFightMs = 0;
         st.UnFightApplied = false;
-        await ApplyBornBuffsAsync(st.Unit);
         _log.LogInformation("MVP {Cfg} ({Npc} {Name}) spawned on {Map} at {X:F0},{Z:F0}", st.Def.CfgId, st.Def.NpcId, NpcName(st.Def.NpcId), st.Def.MapId, st.Unit.X, st.Unit.Z);
         await BroadcastAsync(st.Runtime, RefreshMessage, ClientNpcName(st.Def.NpcId), _data.ClientMapName(st.Def.MapId));
     }
@@ -848,7 +851,8 @@ public sealed partial class MvpService : IGameTicker
     }
 
     private string NpcName(int npcId) => _data.Row("NPCConfig", npcId) is { } row ? _data.TextOf(row, "_kName") : npcId.ToString();
-    private string ClientNpcName(int npcId) => _data.Row("NPCConfig", npcId) is { } row ? _data.ClientTextOf(row, "_kName") : npcId.ToString();
+    private string ClientNpcName(int npcId) => NPCConfig.Get(_data, npcId) is { } row
+        ? _data.ClientTextOf(row.Name) : npcId.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>1022 marquee: ChatConfig 603 "${1} has spawned on the ${2} map." / 604 "${1} was defeated by ${2}." (param encoding inferred).</summary>
     private async Task BroadcastAsync(RuntimeMapKey runtime, int chatId, params string[] args)

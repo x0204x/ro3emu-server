@@ -83,5 +83,6 @@ public sealed partial class TeamService
         if (team.Members.Count != 0)
             await _friends.RecordTeammatesAsync(role, team.Members);
         Join(team, role);
+        await NotifyRosterAsync([.. team.Members]);
     }
 }

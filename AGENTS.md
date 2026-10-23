@@ -27,11 +27,15 @@ client cannot establish is marked `(inferred)` where it is implemented. Never pr
 
 - Game state changes only on the game loop (`GameLoop`). Persist first, then change the in-memory state from the
   commit callback.
+- Mutable state belongs to a host instance (a service, `AccountStore`), never to a `static` field: tests run several
+  hosts in one process. The only process-wide state is diagnostic: `MessageCoverage`, the SQLite trace hooks of
+  `SqliteMetrics` (native callbacks) and the GC event listener.
 - The field names of a `DbPlan` and of the values it holds are written into receipts. Don't rename or move them:
   `ReceiptFieldNamesTests` fails, and an operation recorded before the change would refuse its replay.
 - Validate every client request against the configuration and refuse it with an `ErrorCodes` value.
-- Read configuration through `GameData` (`Table`, `Row`, `GameData.Int(row, "_iField")`) and maps through
-  `WorldData`, with the client's own table and field names. Don't copy config values into code.
+- Read configuration through the typed views in `Data/Config/Tables` (`SkillConfig.Get(_data, id)?.Cd`), which hold
+  the client's own table and field names; add a property to the view rather than writing a field name in code
+  ([config tables](docs/guide/config-tables.md)). Read maps through `WorldData`. Don't copy config values into code.
 - Name message ids, error codes, attribute ids and feature ids; don't scatter numeric literals. Reuse the existing
   constant before adding one:
   - a message id shared across services goes in `MsgId`, one that only its service handles is a `public const uint`

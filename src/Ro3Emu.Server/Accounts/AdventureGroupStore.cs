@@ -96,20 +96,16 @@ public sealed class AdventureGroupStore(AccountStore accounts)
         public string Third { get; set; } = "";
     }
 
-    // ---- generation cache (as GuildStore, C/D 16; static generation for the same reason) ----
+    // ---- generation cache (as GuildStore, C/D 16; the generation belongs to this store's database) ----
 
-    private static long _cacheGeneration;
     private readonly object _cacheLock = new();
     private long _cachedGeneration = -1;
     private Dictionary<long, (byte[] Json, OwnerRevisionValue? Revision)> _byId = new();
     private Dictionary<long, long> _groupOfRole = new();
 
-    /// <summary>Called by the writer after a job that wrote adventure_group or adventure_group_member rows.</summary>
-    internal static void Invalidate() => Interlocked.Increment(ref _cacheGeneration);
-
     private void Refresh()
     {
-        long generation = Volatile.Read(ref _cacheGeneration);
+        long generation = _accounts.Caches.Current(WrittenCache.AdventureGroup);
         lock (_cacheLock) if (_cachedGeneration == generation) return;
         var rows = _accounts.ReadSync<List<State>>(new AdventureGroupReadPlan(AdventureGroupReadKind.List));
         var ids = new Dictionary<long, (byte[], OwnerRevisionValue?)>();
@@ -122,7 +118,7 @@ public sealed class AdventureGroupStore(AccountStore accounts)
         lock (_cacheLock)
         {
             // A read during which a commit landed is returned below but not kept.
-            if (Volatile.Read(ref _cacheGeneration) != generation) { _byId = ids; _groupOfRole = roles; _cachedGeneration = -1; return; }
+            if (_accounts.Caches.Current(WrittenCache.AdventureGroup) != generation) { _byId = ids; _groupOfRole = roles; _cachedGeneration = -1; return; }
             _byId = ids; _groupOfRole = roles; _cachedGeneration = generation;
         }
     }

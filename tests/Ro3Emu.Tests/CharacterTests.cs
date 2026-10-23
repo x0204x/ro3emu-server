@@ -14,6 +14,7 @@ public sealed class CharacterTests : IAsyncLifetime
 {
     private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-char-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);
+    private static readonly int[] NoviceInitialSkillGroups = [10000, 10002, 10003];
     private WebApplication _app = null!;
     private string _http = "";
 
@@ -504,6 +505,38 @@ public sealed class CharacterTests : IAsyncLifetime
         Assert.Equal((3, 42L), (rank.Rankid, (long)rank.Itemuid));
     }
 
+    // A Novice's saved bar holds the Novice normal attack. After a job and weapon change its slot shows the current
+    // JobAttackConfig attack (an Archer's bow attack 1300001), or the client keeps casting the Novice's 1000001.
+    [ClientDataFact]
+    public async Task ASavedNoviceAttackSlotBecomesTheCareersAttackAfterAJobChange()
+    {
+        await using var alice = await InWorld("Alice");
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+        {
+            var s = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
+            s.Progress!.SkillBar[1] = 10000;
+            // ... and a plan's manual bar (SkillAssignPlan.ManualLoadSkill), which the wheel prefers.
+            var plan = s.SkillPlans!.SkillAssignPlans[s.SkillPlans.CurrentPlanIndex];
+            plan.ManualLoadSkill.Clear();
+            plan.ManualLoadSkill.Add(new SkillData { SkillId = 10000, SkillLevel = 1 });
+            return Task.CompletedTask;
+        });
+        await Gm("alice", "!job 3100");
+        const int Bow = 2110120;
+        await Gm("alice", $"!item {Bow}");
+        var granted = await Next(alice, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser,
+            m => m.PackInfo.GetValueOrDefault(2)?.Inc?.Items.Values.Any(i => i.All?.ItemEntry == Bow) == true);
+        long bow = granted.PackInfo[2].Inc.Items.Values.Single(i => i.All?.ItemEntry == Bow).All.ItemGuid;
+        await alice.SendGameAsync(CharacterService.EquipItemOpr,
+            new EquipItemOprReq { Opr = 0, Pos = (EquipGridType)1, ItemGUID = bow });
+        Assert.Equal(0, (await Next(alice, CharacterService.EquipItemOpr, EquipItemOprResp.Parser)).Result);
+        await alice.SendGameAsync(1023, new PlayerAssetReq { AssetType = { 5 } });
+        var skills = await Next(alice, SkillService.SkillDataSync, DBSkillDataIncrement.Parser, m => m.SyncAllMark && m.CurrentAtkSkillId == 1300001);
+        Assert.Equal(1300001, skills.SkillWheel.All.AtkSkillId); // JobConfig 3100 _kSkillNormalID
+        Assert.DoesNotContain(skills.SkillWheel.All.WhellSkills.Values, slot => slot.SkillConfigId == 1000001);
+        Assert.Equal(1300001, skills.SkillWheel.All.WhellSkills[1].SkillConfigId);
+    }
+
     [ClientDataFact]
     public async Task SkillDataCarriesTheNormalAttackAndBashCanBeLearned()
     {
@@ -516,7 +549,7 @@ public sealed class CharacterTests : IAsyncLifetime
         Assert.Equal(5, skills.SkillAssignPlans.All.Value.Count);
         Assert.Equal(0, skills.CurrentPlanIndex);
         var plan = skills.SkillAssignPlans.All.Value[skills.CurrentPlanIndex];
-        Assert.Equal(new[] { 10000, 10002, 10003 }, plan.SkillAssigns.Keys.Order());
+        Assert.Equal(NoviceInitialSkillGroups, plan.SkillAssigns.Keys.Order());
         Assert.Equal(0, plan.SkillAssigns[10002].SkillLevel); // Smite activates at base level 5
 
         // Keep the master's learned-Smite wheel assertion after the configured activation level.

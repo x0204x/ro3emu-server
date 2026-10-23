@@ -8,9 +8,12 @@
   <PropertyGroup>
     <TargetFramework>netstandard2.1</TargetFramework>
     <LangVersion>latest</LangVersion>
+    <!-- Unity-era code written without nullable annotations; enabling them is a separate change. -->
     <Nullable>disable</Nullable>
-    <!-- Built only against a local client (never in CI), so warnings stay warnings here. -->
-    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- Built only against a local client (never in CI), but held to the same gate as the server: a new warning
+         fails the build. These two rules predate the gate (AsSpan, string.Contains(char) in code that runs inside
+         the client, not verified there yet). -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);CA1846;CA2249</WarningsNotAsErrors>
     <!-- The client's managed DLLs: -p:ClientManaged=..., or the RO3_CLIENT_DIR environment variable (the ROO_PC folder). -->
     <ClientManaged Condition="'$(ClientManaged)' == '' and '$(RO3_CLIENT_DIR)' != ''">$(RO3_CLIENT_DIR)\ro3_Data\Managed</ClientManaged>
     <ClientManaged Condition="'$(ClientManaged)' == ''">C:\RO3\ROO_PC\ro3_Data\Managed</ClientManaged>
@@ -23,7 +26,8 @@
 
   <ItemGroup>
     <Reference Include="mscorlib"><HintPath>$(ClientManaged)\mscorlib.dll</HintPath><Private>false</Private></Reference>
-    <Reference Include="netstandard"><HintPath>$(ClientManaged)\netstandard.dll</HintPath><Private>false</Private></Reference>
+    <!-- Older clients ship a netstandard facade; the 20 Oct 2026 client does not (its mscorlib carries the types). -->
+    <Reference Include="netstandard" Condition="Exists('$(ClientManaged)\netstandard.dll')"><HintPath>$(ClientManaged)\netstandard.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="System"><HintPath>$(ClientManaged)\System.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="System.Core"><HintPath>$(ClientManaged)\System.Core.dll</HintPath><Private>false</Private></Reference>
   </ItemGroup>

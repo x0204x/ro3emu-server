@@ -4,8 +4,10 @@
   <PropertyGroup>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <!-- A known vulnerable package (NU1901-NU1904) is reported without failing the build; Dependabot proposes the fix. -->
-    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
+    <!-- A known vulnerable package, direct or transitive (NuGet audit, NU1901-NU1904), fails the build like any other
+         warning: update it (Dependabot proposes the fix) or, for an accepted advisory, suppress that advisory alone
+         with <NuGetAuditSuppress> and a reason. -->
+    <NuGetAuditMode>all</NuGetAuditMode>
     <!-- Rules broken by code that predates this setting are listed, with their counts, in .editorconfig. -->
     <AnalysisLevel>10.0-recommended</AnalysisLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>

@@ -95,7 +95,7 @@ dotnet_diagnostic.CA1720.severity = suggestion
 dotnet_diagnostic.CA1725.severity = suggestion
 # 1: do not initialize unnecessarily
 dotnet_diagnostic.CA1805.severity = suggestion
-# 165: mark members as static
+# 164: mark members as static
 dotnet_diagnostic.CA1822.severity = suggestion
 # 4: use a property instead of a LINQ method
 dotnet_diagnostic.CA1826.severity = suggestion
@@ -109,7 +109,7 @@ dotnet_diagnostic.CA1832.severity = suggestion
 dotnet_diagnostic.CA1836.severity = suggestion
 # 4: prefer Dictionary.Contains methods
 dotnet_diagnostic.CA1841.severity = suggestion
-# 381: use LoggerMessage delegates
+# 380: use LoggerMessage delegates
 dotnet_diagnostic.CA1848.severity = suggestion
 # 5: prefer TryGetValue
 dotnet_diagnostic.CA1854.severity = suggestion
@@ -123,17 +123,17 @@ dotnet_diagnostic.CA1861.severity = suggestion
 dotnet_diagnostic.CA1862.severity = suggestion
 # 10: cache and reuse JsonSerializerOptions
 dotnet_diagnostic.CA1869.severity = suggestion
-# 148: avoid potentially expensive logging
+# 147: avoid potentially expensive logging
 dotnet_diagnostic.CA1873.severity = suggestion
 # 15: instantiate argument exceptions correctly
 dotnet_diagnostic.CA2208.severity = suggestion
 # 778: use a collection initializer or expression
 dotnet_diagnostic.IDE0028.severity = suggestion
-# 139: use a collection expression for an array
+# 138: use a collection expression for an array
 dotnet_diagnostic.IDE0300.severity = suggestion
 # 13: use a collection expression for an empty collection
 dotnet_diagnostic.IDE0301.severity = suggestion
-# 589: use a collection expression for a fluent call
+# 586: use a collection expression for a fluent call
 dotnet_diagnostic.IDE0305.severity = suggestion
 # 28: naming rule violations (fields persisted by name, see above)
 dotnet_diagnostic.IDE1006.severity = suggestion

@@ -33,6 +33,9 @@ public sealed partial class BuffService : IGameTicker
     /// <summary>Subscribers recompute effective skill parameters/slots after a buff changes.</summary>
     public List<Func<GameSession, Task>> Changed { get; } = new();
 
+    /// <summary>The applier's changes to a buff's _kChangeAttri pairs before piles (TalentProcs: talent buff attributes).</summary>
+    internal Func<long, JsonElement, IReadOnlyList<(long Id, double Value)>, IReadOnlyList<(long Id, double Value)>>? SourceAttributes { get; set; }
+
     /// <summary>Subscribers publish effective unit stats after a timed attribute buff changes.</summary>
     public List<Func<WorldUnit, Task>> UnitChanged { get; } = new();
 
@@ -122,7 +125,9 @@ public sealed partial class BuffService : IGameTicker
         // Inferred server policy from enum_BuffStackType: named layer types add a pile; others refresh.
         int pile = explicitPileCount ?? (existing != null && stackType is 1 or 2 or 3 or 7
             ? Math.Min(maxStack, existing.PileCount + 1) : 1);
-        var changes = GameData.Pairs(row, "_kChangeAttri").Select(c => (c.Id, c.Value * pile * attributeMultiplier)).ToList();
+        IEnumerable<(long Id, double Value)> pairs = GameData.Pairs(row, "_kChangeAttri");
+        if (SourceAttributes != null) pairs = SourceAttributes(sourceId, row, [.. pairs]);
+        var changes = pairs.Select(c => (c.Id, c.Value * pile * attributeMultiplier)).ToList();
         var buff = new ActiveBuff(existing?.Guid ?? Interlocked.Increment(ref _guids), configId,
             now + durationMs, durationMs, changes, sourceId, pile, StateOrdinal: StateFor(group, guardianOwned),
             ShieldRemaining: Math.Max(0, shieldAmount), IsGuardianOwned: guardianOwned,
@@ -226,6 +231,11 @@ public sealed partial class BuffService : IGameTicker
     {
         if (_data.Row("BuffConfig", configId) is not { } row || GameData.Int(row, "_iBuffID") <= 0) return;
         if (_unitBuffs.TryGetValue(unit.Uid, out var live) && ImmuneTo(live, row, guardianOwned)) return;
+        if (live != null && sourceId != unit.Uid && UnitResistsControl(live, row))
+        {
+            foreach (var handler in ControlResisted) await handler(unit, sourceId, row);
+            return;
+        }
         if (durationMs <= 0) durationMs = (int)GameData.Int(row, "_iTime");
         if (durationMs <= 0) durationMs = 60000;
         if (sourceId != unit.Uid && !ApplyDecay(unit.Uid, unit.SceneEntry, configId, ref durationMs)) return;

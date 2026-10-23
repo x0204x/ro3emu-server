@@ -3,6 +3,7 @@ using Romsg;
 using Google.Protobuf;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 
 namespace Ro3Emu.Server.Game;
 
@@ -60,9 +61,9 @@ public sealed class SkillService
         ? (int)GameData.Int(row, "_iMaxLevel") : 0;
 
     private Dictionary<(int Job, int Weapon, int Mount), int> NormalAttackRows() => _normalAttacks ??=
-        _data.Table("JobAttackConfig").Values
-            .Select(row => (Job: (int)GameData.Int(row, "_iJobID"), Weapon: AttackWeaponKey(row),
-                Mount: (int)GameData.Int(row, "_iMountID"), Skill: (int)GameData.Int(row, "_iSkillID")))
+        JobAttackConfig.All(_data)
+            .Select(row => (Job: (int)row.JobId, Weapon: AttackWeaponKey(row.WeaponType),
+                Mount: (int)row.MountId, Skill: (int)row.SkillId))
             .Where(row => row.Job > 0 && row.Weapon >= -1 && row.Skill > 0)
             .GroupBy(row => (row.Job, row.Weapon, row.Mount))
             .ToDictionary(group => group.Key, group => group.First().Skill);
@@ -71,26 +72,22 @@ public sealed class SkillService
     /// Lua_CFG_JobAttackConfig encodes an empty weapon list as -1, one subtype as subtype*10 and a
     /// dual-wield row as subtype*10+1. This is the same key the client builds from its displayed equipment.
     /// </summary>
-    private static int AttackWeaponKey(JsonElement row)
+    private static int AttackWeaponKey(long[] weapons)
     {
-        if (!row.TryGetProperty("_kWeaponType", out var weapons) || weapons.ValueKind != JsonValueKind.Array
-            || weapons.GetArrayLength() == 0) return -1;
-        int subtype = (int)(GameData.Number(weapons[0]) ?? -1);
+        if (weapons.Length == 0) return -1;
+        int subtype = (int)weapons[0];
         if (subtype < 0) return -2;
-        int dual = weapons.GetArrayLength() > 1 ? (int)(GameData.Number(weapons[1]) ?? 0) : 0;
+        int dual = weapons.Length > 1 ? (int)weapons[1] : 0;
         return subtype * 10 + dual;
     }
 
     // JobAttackConfig is authoritative. Some client normal attacks (for example Archer 1300001)
     // deliberately have SkillConfig._iIsNormalAtk=0 even though the weapon table selects them.
-    private bool ValidNormalAttack(int skill) => _data.Row("SkillConfig", skill) is { } row
-        && GameData.Int(row, "_iBasicType") == 1;
+    private bool ValidNormalAttack(int skill) => SkillConfig.Get(_data, skill) is { BasicType: 1 };
 
     public bool IsCareerNormalAttack(int career, int skill) => ValidNormalAttack(skill)
         && (NormalAttackRows().Any(row => row.Key.Job == career && row.Value == skill)
-            || _data.Row("JobConfig", career) is { } job
-            && job.TryGetProperty("_kSkillNormalID", out var configured)
-            && configured.ValueKind == JsonValueKind.Array && configured.EnumerateArray().Any(id => id.TryGetInt32(out int value) && value == skill));
+            || JobConfig.Get(_data, career) is { } job && job.SkillNormalId.Contains(skill));
 
     public bool IsCurrentNormalAttack(GameSession session, int skill) => skill == NormalAttack(session);
 
@@ -99,9 +96,9 @@ public sealed class SkillService
         var rows = NormalAttackRows();
         // Lua_CFG_JobAttackConfig falls back to weapon=-1 only when the exact weapon key has no table at all.
         bool exactWeapon = rows.Keys.Any(key => key.Job == career && key.Weapon == weapon);
-        var configured = exactWeapon
-            ? new[] { (career, weapon, mount), (career, weapon, 0) }
-            : new[] { (career, -1, mount), (career, -1, 0) };
+        (int Job, int Weapon, int Mount)[] configured = exactWeapon
+            ? [(career, weapon, mount), (career, weapon, 0)]
+            : [(career, -1, mount), (career, -1, 0)];
         foreach (var key in configured.Distinct())
             if (rows.TryGetValue(key, out int attack) && ValidNormalAttack(attack)) return attack;
 
@@ -111,9 +108,8 @@ public sealed class SkillService
             foreach (var key in new[] { (career, 0, mount), (career, 0, 0) }.Distinct())
                 if (rows.TryGetValue(key, out int attack) && ValidNormalAttack(attack)) return attack;
 
-        if (_data.Row("JobConfig", career) is { } job && job.TryGetProperty("_kSkillNormalID", out var jobConfigured)
-            && jobConfigured.ValueKind == JsonValueKind.Array && jobConfigured.GetArrayLength() > 0
-            && jobConfigured[0].TryGetInt32(out int legacy) && ValidNormalAttack(legacy)) return legacy;
+        if (JobConfig.Get(_data, career) is { SkillNormalId.Length: > 0 } job
+            && job.SkillNormalId[0] is var legacy && ValidNormalAttack((int)legacy)) return (int)legacy;
         return 1000001;
     }
 
@@ -125,10 +121,8 @@ public sealed class SkillService
     {
         var main = session.Items.FirstOrDefault(item => item.Pack == 2 && item.Grid == 1);
         var vice = session.Items.FirstOrDefault(item => item.Pack == 2 && item.Grid == 2);
-        int mainSubtype = main != null && _data.Row("ItemConfig", main.Entry) is { } mainRow
-            ? (int)GameData.Int(mainRow, "_iSubType") : 0;
-        int viceSubtype = vice != null && _data.Row("ItemConfig", vice.Entry) is { } viceRow
-            ? (int)GameData.Int(viceRow, "_iSubType") : 0;
+        int mainSubtype = main != null ? (int)(ItemConfig.Get(_data, main.Entry)?.SubType ?? 0) : 0;
+        int viceSubtype = vice != null ? (int)(ItemConfig.Get(_data, vice.Entry)?.SubType ?? 0) : 0;
         int subtype = mainSubtype > 0 ? mainSubtype : Math.Max(0, viceSubtype);
         bool dual = mainSubtype > 0 && mainSubtype == viceSubtype;
         int mount = session.Mounts?.MountIds.TryGetValue(2, out var battle) == true && battle.IsRiding
@@ -151,13 +145,13 @@ public sealed class SkillService
     private readonly System.Collections.Concurrent.ConcurrentDictionary<int, IReadOnlyDictionary<int, int>> _replacements = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<int, IReadOnlyList<(int Group, int Career)>> _trees = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<int, HashSet<int>> _treeGroups = new();
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, HashSet<int>> _normalAttackGroups = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, HashSet<int>> _normalAttackGroups = [];
 
     private HashSet<int> NormalAttackGroups(int career) => _normalAttackGroups.GetOrAdd(career, c =>
-        NormalAttackRows().Where(row => row.Key.Job == c && ValidNormalAttack(row.Value))
-            .Select(row => (int)GameData.Int(_data.Row("SkillConfig", row.Value)!.Value, "_iSkillID"))
-            .Append((int)GameData.Int(_data.Row("SkillConfig", NormalAttack(c))!.Value, "_iSkillID"))
-            .Where(group => group > 0).ToHashSet());
+        [.. NormalAttackRows().Where(row => row.Key.Job == c && ValidNormalAttack(row.Value))
+            .Select(row => (int)(SkillConfig.Get(_data, row.Value)?.SkillId ?? 0))
+            .Append((int)(SkillConfig.Get(_data, NormalAttack(c))?.SkillId ?? 0))
+            .Where(group => group > 0)]);
 
     private IReadOnlyDictionary<int, int> Replacements(int career) => _replacements.GetOrAdd(career, c => _data.Row("JobConfig", c) is { } row
         ? GameData.Pairs(row, "_kSkillReplace").ToDictionary(p => (int)p.Id, p => (int)p.Value)
@@ -166,7 +160,7 @@ public sealed class SkillService
     /// <summary>Learnable skill groups of a career chain (SkillTreeConfig rows _iX1.._iX7) with the career that teaches them.</summary>
     internal IReadOnlyList<(int Group, int Career)> Tree(int career) => _trees.GetOrAdd(career, BuildTree);
 
-    private bool InTree(int career, int group) => _treeGroups.GetOrAdd(career, c => Tree(c).Select(t => t.Group).ToHashSet()).Contains(group);
+    internal bool InTree(int career, int group) => _treeGroups.GetOrAdd(career, c => [.. Tree(c).Select(t => t.Group)]).Contains(group);
 
     private List<(int Group, int Career)> BuildTree(int career)
     {
@@ -177,7 +171,7 @@ public sealed class SkillService
                 for (int x = 1; x <= 7; x++)
                     if (GameData.Int(row, $"_iX{x}") is var g and > 0)
                         list.Add((replacements.GetValueOrDefault((int)g, (int)g), c));
-        return list.DistinctBy(t => t.Group).ToList();
+        return [.. list.DistinctBy(t => t.Group)];
     }
 
     private int Initial(RoleProgress p, int group)
@@ -489,8 +483,8 @@ public sealed class SkillService
         {
             state.SkillWheel.WhellSkills.Clear();
             for (int slot = 1; slot <= Math.Min(BarSlots, selected.ManualLoadSkill.Count); slot++)
-                if (selected.ManualLoadSkill[slot - 1] is { SkillId: > 0 } skill
-                    && RealId(skill.SkillId, skill.SkillLevel) is var id and > 0)
+                if (selected.ManualLoadSkill[slot - 1] is { SkillId: > 0 } skill && BarGroup(session, skill.SkillId) is var group and > 0
+                    && RealId(group, group == skill.SkillId ? skill.SkillLevel : Level(session.Progress!, group)) is var id and > 0)
                     state.SkillWheel.WhellSkills[slot] = new SkillWheelSlot { SkillConfigId = id, Enable = true };
         }
         foreach (var (_, skill) in selected.SkillQueue.OrderBy(kv => kv.Key))
@@ -508,28 +502,41 @@ public sealed class SkillService
         var p = session.Progress!;
         if (p.SkillBar.Count > 0)
         {
-            foreach (var (slot, group) in p.SkillBar.OrderBy(s => s.Key))
-                if (Level(p, group) > 0) yield return (slot, group);
+            foreach (var (slot, saved) in p.SkillBar.OrderBy(s => s.Key))
+                if (BarGroup(session, saved) is var group and > 0 && Level(p, group) > 0) yield return (slot, group);
             yield break;
         }
         int next = 1;
-        // The PC bar renders whellSkills, not atkSkillId. At level 1 a Novice has no other
-        // active skill, so expose the already learned normal attack in a clickable slot.
-        if (p.Career == 1000 && _data.Row("SkillConfig", NormalAttack(session)) is { } attack)
-        {
-            int group = (int)GameData.Int(attack, "_iSkillID");
-            if (group > 0 && Level(p, group) > 0 && IsActive(group)) yield return (next++, group);
-        }
+        // The PC bar renders whellSkills, not atkSkillId, and the client attacks a selected target by
+        // itself only with eSelectTargetNormalAttack set, so expose the career's learned normal attack
+        // in a clickable slot (inferred, as for a Novice, who has no other active skill at level 1).
+        if (CurrentNormalGroup(session) is var attack and > 0 && Level(p, attack) > 0 && IsActive(attack)) yield return (next++, attack);
         foreach (var (group, _) in Tree(p.Career))
         {
             if (next > BarSlots) break;
-            if (Level(p, group) > 0 && IsActive(group) && !IsNormalGroup(p, group)) yield return (next++, group);
+            if (Level(p, group) > 0 && IsActive(group) && !IsChainNormalGroup(p, group)) yield return (next++, group);
         }
     }
+
+    /// <summary>
+    /// The group a bar slot shows. A normal attack on the bar is the career's own: the tree and a saved bar still hold
+    /// the earlier careers' (the Novice's 10000), and shown, the client cast the Novice's 1000001 instead of the career's
+    /// (1300001 for an Archer). Without its own (a Mage's 1200001 has no SkillConfig row) the slot is empty (0).
+    /// </summary>
+    private int BarGroup(GameSession session, int group) =>
+        IsChainNormalGroup(session.Progress!, group) ? CurrentNormalGroup(session) : group;
 
     /// <summary>Active skills can go on the bar: SkillConfig._iBasicType 1 (passives such as Sword Mastery have 0).</summary>
     private bool IsActive(int group) =>
         RealId(group, 1) is var id and > 0 && _data.Row("SkillConfig", id) is { } row && GameData.Int(row, "_iBasicType") == 1;
+
+    /// <summary>The skill group of the attack selected by the current weapon, dual-wield and battle mount.</summary>
+    private int CurrentNormalGroup(GameSession session) =>
+        _data.Row("SkillConfig", NormalAttack(session)) is { } row ? (int)new SkillConfig(row).SkillId : 0;
+
+    /// <summary>The normal attack of the career or of one before it (the Novice's 10000 for every career).</summary>
+    private bool IsChainNormalGroup(RoleProgress p, int group) =>
+        group > 0 && CareerChain(p.Career).Any(career => NormalAttackGroups(career).Contains(group));
 
     private bool IsNormalGroup(RoleProgress p, int group) => NormalAttackGroups(p.Career).Contains(group);
 
@@ -779,7 +786,6 @@ public sealed class SkillService
         {
             int learned = Level(p, group);
             if (group <= 0 || learned <= 0 || !IsActive(group)
-                || (IsNormalGroup(p, group) && p.Career != 1000)
                 || req.Info!.SkillLevel < 1 || req.Info.SkillLevel > learned
                 || op == 1 && target < loadList.Count && loadList[target].SkillId > 0
                     && loadList[target].SkillId != group

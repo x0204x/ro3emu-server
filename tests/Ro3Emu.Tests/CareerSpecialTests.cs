@@ -196,6 +196,92 @@ public sealed class CareerSpecialTests : IAsyncLifetime
         Assert.NotEqual(0, (await Next(a, MountService.Ride, PlayerRiderMountResp.Parser)).Result);
     }
 
+    // RidingEffects: a ridden mount's _kBindBuff rows, the riding passives' type 17 Movement Speed and their own rows.
+    private const int Wolf = 1500400, Dragon = 1500205, PerSpeed = 1131;
+
+    private async Task<long> RideAsync(BotClient a, int mount)
+    {
+        Assert.Equal(0, await LeaseAsync(a, mount));
+        await a.SendGameAsync(MountService.Ride, new PlayerRiderMountReq { Tp = (eRiderType)3 }); // on-battle
+        Assert.Equal(0, (await Next(a, MountService.Ride, PlayerRiderMountResp.Parser)).Result);
+        return await SpeedAsync();
+    }
+
+    private async Task<long> SpeedAsync()
+    {
+        long speed = 0;
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+        { speed = _app.Services.GetRequiredService<CharacterService>().Stats(Session("alice"))[PerSpeed]; return Task.CompletedTask; });
+        return speed;
+    }
+
+    private async Task<int[]> BuffsAsync()
+    {
+        int[] ids = [];
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+        { ids = [.. Session("alice").Buffs.Select(b => b.ConfigId)]; return Task.CompletedTask; });
+        return ids;
+    }
+
+    // Wolf Taming: "While mounted on the Demonic Wolf, Movement Speed increases by 10% and Normal Attack becomes [Warg
+    // Strike]" is the wolf's bind buff 1331001; Wolf's Fang level 1 adds its 13312 row 1331201 (Physical ATK +1%).
+    [ClientDataFact]
+    public async Task RidingTheWolfGrantsItsMountBuffAndWolfsFangUntilDismounted()
+    {
+        await using var a = await InWorld("Alice");
+        await Become("alice", 3400, 99, 13310, 13311); // Ranger, Wolf Taming, Wolf's Fang
+        long walking = await SpeedAsync();
+        Assert.Equal(walking + 1000, await RideAsync(a, Wolf));
+        Assert.Contains(1331001, await BuffsAsync());
+        Assert.Contains(1331201, await BuffsAsync());
+
+        Assert.Equal(0, await CancelAsync(a, Wolf));
+        Assert.DoesNotContain(1331001, await BuffsAsync());
+        Assert.DoesNotContain(1331201, await BuffsAsync());
+        Assert.Equal(walking, await SpeedAsync());
+    }
+
+    // Wolf Taming: "When the Demonic Wolf is not mounted and follows the Ranger, it howls every 30 sec, increasing the
+    // Ranger's Physical ATK by 5% for 10 sec" (BuffConfig 1332501 Warg Howl); a ridden wolf does not howl.
+    [ClientDataFact]
+    public async Task TheLeasedWolfHowlsWhileItFollowsUnmounted()
+    {
+        await using var a = await InWorld("Alice");
+        await Become("alice", 3400, 99, 13310);
+        Assert.Equal(0, await LeaseAsync(a, Wolf));
+        var howl = await Next(a, BuffService.BuffUpdate, BuffUpdateNotify.Parser, p => p.Buffs.Any(b => b.ConfigId == 1332501));
+        Assert.Equal(10_000, howl.Buffs.Single(b => b.ConfigId == 1332501).Duration);
+    }
+
+    // Riding (Crusader): SpecialEffectConfig 16120051 [17, 2, 1131, 500], "increase Movement Speed by 5% while mounted".
+    [ClientDataFact]
+    public async Task RidingAddsItsMovementSpeedOnlyWhileAPecoIsRidden()
+    {
+        await using var a = await InWorld("Alice");
+        await Become("alice", 1210, 30, 11407);
+        long walking = await SpeedAsync();
+        Assert.Equal(walking + 500, await RideAsync(a, GrandPeco)); // the leased Peco has no _kAttr of its own
+        Assert.Contains(1131601, await BuffsAsync()); // Mounted State
+        Assert.Equal(0, await CancelAsync(a, GrandPeco));
+        Assert.Equal(walking, await SpeedAsync());
+    }
+
+    // Dragon Training level 1: [17, 6, 1131, 300] on the dragon and its BuffConfig 11318 row 1131801, whose tuples raise
+    // Dragon Breath (Fire) 11304 and (Water) 11305 by 6%.
+    [ClientDataFact]
+    public async Task DragonTrainingStandsOnlyOnTheDragon()
+    {
+        await using var a = await InWorld("Alice");
+        await Become("alice", 1400, 99, 11307);
+        long walking = await SpeedAsync();
+        Assert.Equal(walking + 300, await RideAsync(a, Dragon));
+        var buffs = await BuffsAsync();
+        Assert.Contains(1131801, buffs);
+        Assert.Contains(1131901, buffs); // Mounted State-Dragon
+        Assert.Equal(0, await CancelAsync(a, Dragon));
+        Assert.DoesNotContain(1131801, await BuffsAsync());
+    }
+
     [ClientDataFact]
     public async Task JobChangeRepairsALeaseTheNewCareerCannotHoldAndReleasesTheBattleSlot()
     {

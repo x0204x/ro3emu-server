@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 
 namespace Ro3Emu.Server.Game;
 
@@ -43,6 +44,11 @@ public sealed class BossSkill
     public int SummonLifeMs { get; init; }
     /// <summary>The summoned minion's _kRespawnSkill (Poring Explosion): it blasts the players around it when its life ends.</summary>
     public int SummonBlast { get; init; }
+    /// <summary>A ground object (NPCConfig _iNPCType 4) the skill places where it lands, for <see cref="GroundLifeMs"/>;
+    /// its _kRespawnSkill (<see cref="GroundBlast"/>) blasts the players around it when it goes.</summary>
+    public int GroundNpc { get; init; }
+    public int GroundLifeMs { get; init; }
+    public int GroundBlast { get; init; }
     /// <summary>A show with a displacement EffectData that moves the caster (a charge or a leap): its effect id and time.</summary>
     public int ChargeEffect { get; init; }
     public int ChargeMs { get; init; }
@@ -88,6 +94,8 @@ public sealed class BossSkillRuntime(BossSkillBook book)
     public int ActiveSkill { get; set; }
     public long ActiveEndMs { get; set; }
     public List<Maps.MonsterUnit> Summons { get; } = new();
+    /// <summary>The ground objects its skills placed (<see cref="BossSkill.GroundNpc"/>), removed with the boss.</summary>
+    internal List<MvpFieldUnit> Grounds { get; } = [];
 }
 
 /// <summary>
@@ -240,9 +248,10 @@ public sealed class BossSkillSets(GameData data, BossSkillOptions options)
         var listed = ListedSkills(npcId);
         var difficulty = AiHard.IsMatch(variant) ? Difficulty.Hard : AiEasy.IsMatch(variant) ? Difficulty.Easy : Difficulty.Normal;
         var rows = new List<(long Id, JsonElement Row, string Logic, Difficulty Tag)>();
+        var summonedOwn = SummonedOwnSkills(candidates);
         foreach (long id in candidates.Distinct())
         {
-            if (id == normalSkill || data.Row("SkillConfig", id) is not { } row || !Castable(row)) continue;
+            if (id == normalSkill || summonedOwn.Contains(id) || data.Row("SkillConfig", id) is not { } row || !Castable(row)) continue;
             if (listed.Contains(id) && GameData.Int(row, "_iIsNormalAtk") == 1) continue; // a listed swing (Poring's 5003301)
             if (MvpService.OwnsSkill(npcId, (int)id)) continue; // MvpService casts these for its field MVPs
             string logic = Logic(row);
@@ -300,10 +309,34 @@ public sealed class BossSkillSets(GameData data, BossSkillOptions options)
         if (GameData.Int(row, "_iScriptShow") <= 0) return false;
         bool damage = Numbers(row, "_kDamageParam1").Any(v => v > 0) || Numbers(row, "_kDamageParam2").Any(v => v > 0);
         bool buff = Tuples(row, "_kBuff1").Any() || Tuples(row, "_kBuff2").Any();
-        return damage || buff || SummonNpc(row) > 0;
+        return damage || buff || SummonNpc(row) > 0 || GroundNpc(row) > 0;
     }
 
-    private int SummonNpc(JsonElement row) => Numbers(row, "_kLogicData").FirstOrDefault() is var npc and > 0
+    /// <summary>
+    /// Field-MVP skills whose row names no NPC (no _kLogicData) and the summoned unit or ground object they make, by the
+    /// names of the 50010xx NPCs made for the field MVPs and the skills those NPCs cast on spawn (inferred: the AI scripts
+    /// that spawned them are server-only).
+    /// </summary>
+    internal static readonly IReadOnlyDictionary<int, int> ReconstructedSummons = new Dictionary<int, int>
+    {
+        [5209701] = 5001035, // Pharaoh's Summon Coffin: "Pharaoh's Coffin", whose _kRespawnSkill is Pharaoh's Coffin Eruption 5210101
+        [5209901] = 5001036, // Pharaoh's Summon Pyramid: "Pyramid", whose _kRespawnSkill is Pharaoh's Spinning Pyramid 5210001
+        [5213101] = 5001037, // Drake's Roaming Tempest (script MVPDrakeSummonLongJuan, "summon tornado"): "Water Tornado", casting 5213201 Roaming Tempest
+        [5207101] = 5001031, // Osiris's Summon Horong: "Osiris Horong"
+        [5208601] = 5001032, // Goblin Leader's Boss Spear Throw: "Goblin Leader Spear Throw"
+        [5212401] = 5001039, // Moonlight Flower's Falling Bell: "Bell"
+        [5210601] = 5001042, // Dracula's Gift of the Underworld (script zhixianmubei, "summon tombstone"): "MVP Dracula Tombstone", _kRespawnSkill Gravestone Blast 5214901
+        [5210801] = 5001042, // Dracula's Circle of the Dead (zhixianmubei5, its phase 2 version): the same tombstone
+        [5209401] = 5001033, // Baphomet's Hellfire (script MVPHellRing): "Baphomet Magic Circle"
+        [5213701] = 5001040, // Doppelganger's Storm Gust: "Wraith Storm Gust Magic Circle"
+    };
+
+    private static int Summoned(JsonElement row) => Numbers(row, "_kLogicData").FirstOrDefault() is var npc and > 0 ? (int)npc
+        : ReconstructedSummons.GetValueOrDefault((int)new SkillConfig(row).Id);
+
+    private int GroundNpc(JsonElement row) => Summoned(row) is var npc and > 0 && NPCConfig.Get(data, npc) is { NPCType: 4 } ? npc : 0;
+
+    private int SummonNpc(JsonElement row) => Summoned(row) is var npc and > 0
         && data.Row("NPCConfig", (long)npc) is { } npcRow && GameData.Int(npcRow, "_iNPCType") == 1 ? (int)npc : 0;
 
     private BossSkill Build(int id, JsonElement row, string logic, bool placeholder, int from, int to, bool once)
@@ -357,6 +390,9 @@ public sealed class BossSkillSets(GameData data, BossSkillOptions options)
             SelfBuffs = Tuples(row, "_kBuff1").Where(b => b.Length >= 3 && b[0] > 0).Concat(beneficial)
                 .Select(b => ((int)b[0], (int)b[1], (int)b[2])).ToArray(),
             SummonNpc = SummonNpc(row), SummonCount = SummonCountOf(row), SummonLifeMs = SummonLifeOf(row), SummonBlast = SummonBlastOf(row),
+            GroundNpc = GroundNpc(row), GroundLifeMs = GroundLifeOf(row),
+            GroundBlast = GroundNpc(row) is var ground and > 0 && NPCConfig.Get(data, ground) is { RespawnSkill: > 0 and var groundBlast }
+                && data.Row("SkillConfig", groundBlast) != null ? (int)groundBlast : 0,
             ChargeEffect = Charge(row, out int chargeMs), ChargeMs = chargeMs,
         };
     }
@@ -399,7 +435,28 @@ public sealed class BossSkillSets(GameData data, BossSkillOptions options)
                     && GameData.Number(b[1]) is double ms and > 0) return (int)ms;
         if (SummonBlastOf(row) is var blast and > 0 && DescParam(data.Row("SkillConfig", blast)!.Value, 1) is double seconds and > 0)
             return (int)(seconds * 1000);
+        // A blast without a described delay goes off when its own show ends (the coffin's Coffin Eruption, inferred).
+        if (SummonBlastOf(row) is var timed and > 0 && SkillConfig.Get(data, timed) is { ActionTime: > 0 } shown)
+            return (int)shown.ActionTime;
         return options.SummonLifeMs;
+    }
+
+    /// <summary>A ground object stays for its skill's action (it marks where the skill lands) and at least 3 s, then
+    /// its _kRespawnSkill, if any, blasts around it (Dracula's tombstone and Gravestone Blast; inferred).</summary>
+    private static int GroundLifeOf(JsonElement row) => Math.Max(3000, (int)new SkillConfig(row).ActionTime);
+
+    /// <summary>The skills a summoned unit or ground object casts itself (its _kRespawnSkill): the coffin's Coffin
+    /// Eruption, not Pharaoh's, though the field-MVP family lists it (inferred).</summary>
+    private HashSet<long> SummonedOwnSkills(IEnumerable<long> rows)
+    {
+        var own = new HashSet<long>();
+        foreach (long id in rows)
+            if (data.Row("SkillConfig", id) is { } row && Summoned(row) is var npc and > 0 && NPCConfig.Get(data, npc) is { } summoned)
+            {
+                if (summoned.RespawnSkill > 0) own.Add(summoned.RespawnSkill);
+                foreach (long skill in summoned.Skills) own.Add(skill);
+            }
+        return own;
     }
 
     private int SummonBlastOf(JsonElement row) => SummonNpc(row) is var npc and > 0 && data.Row("NPCConfig", npc) is { } npcRow

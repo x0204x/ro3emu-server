@@ -97,6 +97,7 @@ public sealed partial class SeasonTalentService
                     {
                         await CharacterService.SyncAsync(s, TalentSync, next.Clone());
                         await _character.RefreshStatsAsync(s);
+                        await RefreshEffectsAsync(s);
                     }
                 }
             }
