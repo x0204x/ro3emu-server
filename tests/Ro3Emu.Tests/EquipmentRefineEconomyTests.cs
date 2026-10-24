@@ -271,6 +271,7 @@ public sealed class EquipmentRefineEconomyTests : IAsyncLifetime
             }
             if (!child.HasExited) child.Kill(entireProcessTree: true);
             await child.WaitForExitAsync();
+            await RealmRecoveryTest.WaitAsync(crashDir);
             var (web, micro, game) = TestPorts.FreePorts();
             restarted = ServerHost.Create([], o =>
             {

@@ -219,7 +219,7 @@ public sealed class GuildVoiceAudioTests : IAsyncLifetime
 
         Assert.Equal(0, (await Ask(alice, GuildVoiceService.KickMsg,
             new GuildVoiceChannelKickPlayerReq { ChannelIndex = 0, TargetPlayerId = bobId }, GuildVoiceChannelKickPlayerRsp.Parser)).ErrorCode);
-        var (_, kicked) = await bobVoice.WaitTypeAsync(VoiceDown.Kicked, TimeSpan.FromSeconds(4)); // the relay's 1 s sweep
+        var (_, kicked) = await bobVoice.WaitTypeAsync(VoiceDown.Kicked, Wait); // the relay's 1 s sweep can be delayed under suite load
         Assert.Equal(VoiceKickCode.RemovedFromRoom, kicked[0]);
         await aliceVoice.WaitAsync((t, p) => t == VoiceDown.MemberChange && BitConverter.ToInt64(p) == bobId && p[8] == 0, Wait);
     }

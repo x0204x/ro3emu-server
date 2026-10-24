@@ -25,9 +25,7 @@ public sealed class GateLimitTests
         {
             using var client = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             await client.ConnectAsync(IPAddress.Loopback, port);
-            var buffer = new byte[16];
-            int read = await client.ReceiveAsync(buffer, SocketFlags.None).WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.Equal(0, read); // the server closed it
+            await AssertPeerClosedAsync(client);
             await WaitAsync(() => gate.OutstandingServeTasks == 0);
         }
         finally { await gate.StopAsync(CancellationToken.None); }
@@ -48,8 +46,7 @@ public sealed class GateLimitTests
                 clients.Add(client);
                 await client.ConnectAsync(IPAddress.Loopback, port);
             }
-            int read = await clients[2].ReceiveAsync(new byte[16], SocketFlags.None).WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.Equal(0, read); // the third was refused
+            await AssertPeerClosedAsync(clients[2]);
             Assert.Equal(2, gate.OutstandingServeTasks);
             clients[0].Dispose();
             await WaitAsync(() => gate.OutstandingServeTasks == 1);
@@ -69,5 +66,18 @@ public sealed class GateLimitTests
     {
         for (int i = 0; i < 200 && !done(); i++) await Task.Delay(25);
         Assert.True(done());
+    }
+
+    private static async Task AssertPeerClosedAsync(Socket socket)
+    {
+        try
+        {
+            int read = await socket.ReceiveAsync(new byte[16], SocketFlags.None).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(0, read);
+        }
+        catch (SocketException e) when (e.SocketErrorCode is SocketError.ConnectionReset or SocketError.ConnectionAborted)
+        {
+            // Windows may report a reset instead of EOF when the peer closes an unestablished or refused connection.
+        }
     }
 }

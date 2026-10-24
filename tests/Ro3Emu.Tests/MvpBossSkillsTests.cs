@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -115,13 +116,31 @@ public sealed class MvpBossSkillsTests
     [ClientLuaFact]
     public void AwardDropNoticeShowsNothingInTheClient()
     {
-        var lua = File.ReadAllText(Path.Combine(ClientData.RepoRoot, "re", "clientB", "lua-src", "Logic", "Asset", "LC_DAL_MVP.lua"));
+        var evidenceDir = Path.Combine(ClientData.RepoRoot, "re", "clientB");
+        var source = Path.Combine(ClientData.LuaPayloadDir, "Logic", "Asset", "LC_DAL_MVP.lua.bytes");
+        var output = Path.Combine(evidenceDir, "lua-src", "Logic", "Asset", "LC_DAL_MVP.lua");
+        var receipt = Path.Combine(evidenceDir, "decompile.json");
+        Assert.True(File.Exists(source), $"D client Lua source is missing: {source}");
+        Assert.True(File.Exists(output), $"D client Lua evidence is missing: {output}. Run tools/PrepareClientLuaEvidence.ps1.");
+        Assert.True(File.Exists(receipt), $"D client Lua decompilation receipt is missing: {receipt}. Run tools/PrepareClientLuaEvidence.ps1.");
+        using (var receiptJson = JsonDocument.Parse(File.ReadAllText(receipt)))
+        {
+            Assert.Equal(Sha256(source), receiptJson.RootElement.GetProperty("SourceSha256").GetString(), ignoreCase: true);
+            Assert.Equal(Sha256(output), receiptJson.RootElement.GetProperty("OutputSha256").GetString(), ignoreCase: true);
+        }
+        var lua = File.ReadAllText(output);
         var handler = Regex.Match(lua, @"function L5_1\(A0_2, A1_2\)\s*(?<body>(?:(?!\nend).)*)\nend\s*\nL0_1\._proessGetAwardDropNtf = L5_1",
             RegexOptions.Singleline);
         Assert.True(handler.Success);
         // The 43010 handler only reads drop_id into a local: no dataset, event or UI.
         Assert.Equal(["local L2_2", "L2_2 = A1_2.drop_id"],
             handler.Groups["body"].Value.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+    }
+
+    private static string Sha256(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return Convert.ToHexString(SHA256.HashData(stream));
     }
 
     private static int FirstBuff(int skill) =>

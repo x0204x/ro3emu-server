@@ -346,6 +346,7 @@ public sealed class PowerService : IGameTicker
         var history = History(s);
         if (Total(total) > Total(history)) history = total.Clone();
         var snapshot = new Snapshot(total, history, package);
+        await SaveAsync(s, snapshot);
         s.Power = snapshot;
         s.PowerPublishedMs = MonsterService.NowMs;
         await s.SendGameAsync(ChangeNtf, new PlayerChangePowerNtf
@@ -356,7 +357,6 @@ public sealed class PowerService : IGameTicker
         });
         await s.SendGameAsync(PackageNtf, new PlayerPowerPackageNtf { PowerPackage = package.Clone() });
         await _character.SyncBaseInfoAsync(s);
-        await SaveAsync(s, snapshot);
     }
 
     /// <summary>

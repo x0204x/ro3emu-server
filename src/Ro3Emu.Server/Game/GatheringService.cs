@@ -564,7 +564,8 @@ public sealed class GatheringService : IGameTicker
     private int ValidatePending(GameSession session, PendingGather pending)
     {
         var node = pending.Node;
-        if (session.Role == null || session.SceneLoading || session.Dead || session.SceneEntry != node.SceneEntry
+        if (session.Role == null || session.TransportLost || session.Channel.PeerClosed
+            || session.SceneLoading || session.Dead || session.SceneEntry != node.SceneEntry
             || session.WorldScene != node.WorldScene || session.LastCombatMs >= pending.StartedMs
             || !_runtimes.TryGetValue(node.RuntimeMap, out var owner) || owner.Retired
             || !_nodes.ContainsKey(node.Uid) || node.Depleted || !Near(session, node)

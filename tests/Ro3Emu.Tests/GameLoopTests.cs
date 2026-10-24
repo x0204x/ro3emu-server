@@ -6,7 +6,11 @@ using System.Net.Sockets;
 
 namespace Ro3Emu.Tests;
 
+[CollectionDefinition("Game loop timing", DisableParallelization = true)]
+public sealed class GameLoopTimingSerialGroup;
+
 /// <summary>The single game-logic thread: ordering, await continuations and ticks.</summary>
+[Collection("Game loop timing")]
 public sealed class GameLoopTests : IAsyncLifetime
 {
     private readonly GameLoop _loop = new(NullLogger<GameLoop>.Instance);
@@ -292,6 +296,7 @@ public sealed class GameLoopTests : IAsyncLifetime
             received += n;
         }
         Assert.Equal(new byte[] { 3, 0, 0, 0, 2, 0, 42 }, response);
+        client.Dispose();
         await stop.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.True(gate.DrainSucceeded);
     }
@@ -321,6 +326,7 @@ public sealed class GameLoopTests : IAsyncLifetime
             received += n;
         }
         Assert.Equal(new byte[] { 3, 0, 0, 0, 2, 0, 42 }, response);
+        client.Dispose();
         await stop.WaitAsync(TimeSpan.FromSeconds(5));
         await loop.StopAsync(default);
         Assert.Equal(2, gate.Seen);

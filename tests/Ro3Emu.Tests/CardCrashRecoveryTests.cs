@@ -104,7 +104,7 @@ public sealed class CardCrashRecoveryTests
             long role = long.Parse(source[0]); int card = int.Parse(source[1]);
             await KillAtBarrierAsync(child, source);
             string database = Path.Combine(dataDir, "ro3emu.db");
-            await WaitForDatabaseRecoveryAsync(database);
+            await RealmRecoveryTest.WaitAsync(dataDir);
             using (var db = new SqliteConnection(new SqliteConnectionStringBuilder
             { DataSource = database, Mode = SqliteOpenMode.ReadWrite, Pooling = false }.ToString()))
             {
@@ -156,6 +156,7 @@ public sealed class CardCrashRecoveryTests
                 }
                 finally { if (!second.HasExited) { second.Kill(entireProcessTree: true); await second.WaitForExitAsync(); } }
             }
+            await RealmRecoveryTest.WaitAsync(dataDir);
             Assert.Equal(beforeRecovery, Snapshot(dataDir, role));
             var (http, micro, game) = TestPorts.FreePorts();
             app = ServerHost.Create([], o =>
@@ -229,29 +230,6 @@ public sealed class CardCrashRecoveryTests
         }
         if (!launcher.HasExited) launcher.Kill(entireProcessTree: true);
         await launcher.WaitForExitAsync();
-    }
-
-    private static async Task WaitForDatabaseRecoveryAsync(string database)
-    {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
-        while (true)
-        {
-            try
-            {
-                using var db = new SqliteConnection(new SqliteConnectionStringBuilder
-                { DataSource = database, Mode = SqliteOpenMode.ReadWrite, Pooling = false }.ToString());
-                db.Open();
-                using var integrity = db.CreateCommand();
-                integrity.CommandText = "PRAGMA integrity_check";
-                Assert.Equal("ok", integrity.ExecuteScalar());
-                return;
-            }
-            catch (SqliteException error) when (error.SqliteErrorCode == 10 && DateTime.UtcNow < deadline)
-            {
-                // Windows can finish releasing the killed process's WAL mapping after WaitForExitAsync returns.
-                await Task.Delay(50);
-            }
-        }
     }
 
     private static int HighQualityCard(GameData data) => (int)GameData.Int(data.Table("ItemConfig").Values.First(row =>

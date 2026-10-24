@@ -7,7 +7,11 @@ using Ro3Emu.Server.Voice;
 
 namespace Ro3Emu.Tests;
 
+[CollectionDefinition("Voice relay timing", DisableParallelization = true)]
+public sealed class VoiceRelayTimingSerialGroup;
+
 /// <summary>Team voice relay PoC: the 77015/77016 ticket handoff and the voice gate's own frames.</summary>
+[Collection("Voice relay timing")]
 public sealed class VoiceRelayTests : IAsyncLifetime
 {
     private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-voice-" + Guid.NewGuid().ToString("N"));
@@ -357,7 +361,7 @@ public sealed class VoiceRelayTests : IAsyncLifetime
 
         // A 200-frame burst in well under a second: the token bucket forwards at most Burst + FramesPerSecond's
         // worth (defaults 10 + 50 = 60) and otherwise just drops the rest, no disconnect.
-        for (ushort seq = 0; seq < 200; seq++) await aliceVoice.SendAudioAsync(seq, [1]);
+        await aliceVoice.SendAudioBurstAsync(0, 200, [1]);
         int forwarded = 0;
         try
         {
@@ -381,12 +385,14 @@ public sealed class VoiceRelayTests : IAsyncLifetime
         {
             try
             {
-                for (int i = 0; i < 20 && !aliceVoice.Closed; i++) await aliceVoice.SendAudioAsync(floodSeq++, [1]);
+                await aliceVoice.SendAudioBurstAsync(floodSeq, 20, [1]);
+                floodSeq += 20;
             }
             catch (IOException) { writeFailed = true; } // the server closed the socket under a pending write
             await Task.Delay(20);
         }
-        Assert.True(aliceVoice.Closed || writeFailed);
+        var kicked = await aliceVoice.WaitTypeAsync(VoiceDown.Kicked, Wait);
+        Assert.Equal(VoiceKickCode.Flood, kicked.Payload[0]);
     }
 
     [Fact]

@@ -27,8 +27,10 @@ public sealed partial class NewActivityTests
             await Eventually(() =>
             {
                 var saved = DBNewActivityInfo.Parser.ParseFrom(Service<RoleStore>().LoadNewActivities(session.Role!.Id));
-                var state = saved.ActivityInfo[118].ActivityParam.PronteraDefense.GlobalInfo;
-                return state.CurRound == round && state.CurIntensity == intensity;
+                var persisted = saved.ActivityInfo[118].ActivityParam.PronteraDefense.GlobalInfo;
+                var projected = session.NewActivities!.ActivityInfo[118].ActivityParam.PronteraDefense.GlobalInfo;
+                return persisted.CurRound == round && persisted.CurIntensity == intensity
+                    && projected.CurRound == round && projected.CurIntensity == intensity;
             });
             await OnLoop(() =>
             {

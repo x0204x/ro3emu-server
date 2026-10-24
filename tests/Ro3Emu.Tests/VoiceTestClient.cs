@@ -118,6 +118,22 @@ public sealed class VoiceTestClient(int port) : IAsyncDisposable
         return SendAsync(VoiceUp.Audio, payload);
     }
 
+    /// <summary>Writes a sequence of independently sealed Audio frames in one socket write, preserving wire order.</summary>
+    public Task SendAudioBurstAsync(ushort firstSeq, int count, byte[] opus)
+    {
+        using var frames = new MemoryStream();
+        var cipher = _cipher;
+        for (int i = 0; i < count; i++)
+        {
+            var payload = new byte[2 + opus.Length];
+            BinaryPrimitives.WriteUInt16LittleEndian(payload.AsSpan(0, 2), unchecked((ushort)(firstSeq + i)));
+            opus.CopyTo(payload, 2);
+            byte[] sealedPayload = cipher == null ? payload : cipher.Seal(VoiceUp.Audio, payload);
+            frames.Write(VoiceFrame.Write(VoiceUp.Audio, sealedPayload));
+        }
+        return SendBytesAsync(frames.ToArray());
+    }
+
     /// <summary>The next already-buffered frame matching <paramref name="predicate"/>, waiting for new ones until
     /// <paramref name="timeout"/>; non-matching frames stay buffered for a later call.</summary>
     public async Task<(byte Type, byte[] Payload)> WaitAsync(Func<byte, byte[], bool> predicate, TimeSpan timeout)

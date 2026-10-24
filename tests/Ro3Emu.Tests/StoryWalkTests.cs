@@ -15,17 +15,19 @@ using Xunit.Abstractions;
 namespace Ro3Emu.Tests;
 
 /// <summary>
-/// Runs only with RO3EMU_STORYWALK=1 (several minutes; kept out of the default suite):
-/// <c>$env:RO3EMU_STORYWALK=1; dotnet test -c Release --no-build --filter Category=StoryWalk</c>.
+/// Runs whenever the exported client data is available. A D full test must include the complete story walk even though
+/// it takes several minutes; public checkouts without client data keep the normal proprietary-data skip boundary.
 /// </summary>
 public sealed class StoryWalkFactAttribute : FactAttribute
 {
     public StoryWalkFactAttribute()
     {
-        if (Environment.GetEnvironmentVariable("RO3EMU_STORYWALK") != "1")
-            Skip = "Story walk: set RO3EMU_STORYWALK=1 to run it (several minutes).";
+        if (!ClientData.Available) Skip = ClientData.SkipReason;
     }
 }
+
+[CollectionDefinition("D story walk", DisableParallelization = true)]
+public sealed class StoryWalkSerialGroup;
 
 /// <summary>
 /// Pre-alpha item 5: a bot follows the whole connected main story (the 101xxxxx chain linked by _kPreTask from
@@ -56,6 +58,7 @@ public sealed class StoryWalkFactAttribute : FactAttribute
 /// chain is still walked. The test fails on any blocker that is not a known, documented open one
 /// (<see cref="KnownOpen"/>), and on a known open one that no longer blocks (so the list stays true).
 /// </summary>
+[Collection("D story walk")]
 public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
 {
     private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-storywalk-" + Guid.NewGuid().ToString("N"));
@@ -569,6 +572,8 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
                     if (target.Dead) return;
                     var me = Session();
                     await Service<SceneService>().TeleportInMapAsync(me, new MapPoint(target.X + 1, target.Y, target.Z, target.Face));
+                    var character = Service<CharacterService>();
+                    await character.SetHpSpAsync(me, character.Stats(me)[101], null);
                     Service<MonsterService>().Engage(target, me);
                     target.Hp = 1;
                 });

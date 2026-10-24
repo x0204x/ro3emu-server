@@ -10,14 +10,14 @@ namespace Ro3Emu.Tests;
 /// SceneLoadManager's load callback: the loading screen stops at 85% and the gate drops the player (Dracula's Lair,
 /// sc_pm_gef_dun02_001, 16.10). The client loads only what its recovery manifest lists, by the last part of the name
 /// (LA_LuaLoader.Obf_HD), and refuses a name that is missing or shared by two modules (RecoveryLuaSourceResolver);
-/// re/clientB/lua-src holds exactly the manifest's modules, so a name resolves when exactly one file there has it.
+/// the exported client's LuaPayload holds exactly the manifest's modules, so a name resolves when exactly one file
+/// there has it.
 /// Map modules the build lacks are supplied by Ro3Emu.ClientHooks.MapModules (its table is read from the source here,
-/// the hooks project builds against the client's own DLLs).
+/// the hooks project builds against the client's own DLLs). The manifest inventory is read directly from the
+/// exported client's LuaPayload; decompilation is unnecessary when only module names are under test.
 /// </summary>
 public sealed class ClientMapModuleTests
 {
-    private static readonly string LuaDir = Path.Combine(ClientData.RepoRoot, "re", "clientB", "lua-src");
-
     /// <summary>Scene-editor modules no reachable scene needs: (inferred) unreachable rows, or no scene bundle at all.</summary>
     private static readonly Dictionary<string, string> KnownEditorGaps = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -89,11 +89,15 @@ public sealed class ClientMapModuleTests
     }
 
     /// <summary>Module names the client resolves: exactly one Lua file with that name (case-insensitive).</summary>
-    private static HashSet<string> Resolvable() =>
-        Directory.EnumerateFiles(LuaDir, "*.lua", SearchOption.AllDirectories)
-            .GroupBy(Path.GetFileNameWithoutExtension, StringComparer.OrdinalIgnoreCase)
+    private static HashSet<string> Resolvable()
+    {
+        Assert.True(Directory.Exists(ClientData.LuaPayloadDir),
+            $"The exported client's LuaPayload is missing: {ClientData.LuaPayloadDir}");
+        return Directory.EnumerateFiles(ClientData.LuaPayloadDir, "*.lua.bytes", SearchOption.AllDirectories)
+            .GroupBy(path => Path.GetFileName(path)[..^".lua.bytes".Length], StringComparer.OrdinalIgnoreCase)
             .Where(g => g.Count() == 1).Select(g => g.Key!)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
 
     private static HashSet<string> HookModules() =>
         Regex.Matches(File.ReadAllText(Path.Combine(ClientData.RepoRoot, "src", "Ro3Emu.ClientHooks", "MapModules.cs")),
@@ -107,13 +111,14 @@ public sealed class ClientMapModuleTests
         row.TryGetProperty(field, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : "";
 }
 
-/// <summary>A fact that needs the exported game data and the client's decompiled Lua (re/clientB/lua-src).</summary>
+/// <summary>
+/// A fact that needs the exported game data and client Lua evidence. With D data present it must run and fail closed
+/// when required Lua evidence is missing; a missing local evidence export must never turn into a skipped D test.
+/// </summary>
 public sealed class ClientLuaFactAttribute : FactAttribute
 {
     public ClientLuaFactAttribute()
     {
         if (!ClientData.Available) Skip = ClientData.SkipReason;
-        else if (!Directory.Exists(Path.Combine(ClientData.RepoRoot, "re", "clientB", "lua-src", "Config", "Map")))
-            Skip = "Needs the client's decompiled Lua in re/clientB/lua-src.";
     }
 }

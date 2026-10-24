@@ -53,12 +53,12 @@ public sealed class VoiceConnectionKickTests
         connection.SendPong();                                                      // refused after the kick
         connection.Kick(VoiceKickCode.IdleTimeout);                                 // only the first kick counts
         var writer = connection.RunWriterAsync();
-
-        var frames = await ReadUntilClosedAsync(client);
+        var read = ReadUntilClosedAsync(client);
+        await writer.WaitAsync(TimeSpan.FromSeconds(5));
+        var frames = await read;
 
         Assert.Equal([VoiceDown.Pong, VoiceDown.Kicked], frames.Select(f => f.Type));
         Assert.Equal([VoiceKickCode.Flood], frames[1].Payload);
-        await writer.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     [Fact]
@@ -69,12 +69,13 @@ public sealed class VoiceConnectionKickTests
         using var connection = new VoiceConnection(server);
         connection.Kick(VoiceKickCode.RemovedFromRoom);
         var writer = connection.RunWriterAsync();
-        await ReadUntilClosedAsync(client); // the FIN; the client keeps its own side open
+        var close = ReadUntilClosedAsync(client); // the FIN; the client keeps its own side open
+        await writer.WaitAsync(TimeSpan.FromSeconds(5));
+        await close;
 
         var deadline = DateTime.UtcNow + VoiceConnection.KickedCloseDelay + TimeSpan.FromSeconds(5);
         while (server.Connected && DateTime.UtcNow < deadline) await Task.Delay(50);
 
         Assert.False(server.Connected);
-        await writer.WaitAsync(TimeSpan.FromSeconds(5));
     }
 }
