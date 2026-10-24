@@ -19,7 +19,7 @@ namespace Ro3Emu.Server.Game;
 /// </summary>
 public sealed class DraculaWeddingService : IGameTicker
 {
-    public const uint SelectBride = 83640, WeddingState = 83641, WeddingComplete = 83642;
+    public const uint SelectBride = 83640, WeddingState = 83641, WeddingComplete = 83642, Watch = 30452;
     /// <summary>PublicParamConfig.DraculaDailyActConfigId.</summary>
     public const int Activity = 3400;
     public const long Lair = 3010401;
@@ -33,6 +33,8 @@ public sealed class DraculaWeddingService : IGameTicker
     private const int VarBride = 1301, VarRescuer = 1302, VarEndTime = 1305, VarOpen = 1306;
     /// <summary>The key a bush search gives (BuffConfig 4121301): the cage's Unlock asks for it (condition 7000039).</summary>
     private const int KeyBuff = 4121301;
+    /// <summary>Lua_CustomDataDefine Unit_CameraBindUnitCustomData: the role the entity's camera follows.</summary>
+    private const int CameraBind = 1002;
     /// <summary>ChatConfig 6200107 "${1} found the key! Hurry and save the bride!".</summary>
     private const int KeyFoundChat = 6200107;
     private const int ParticipantMail = 10208, MvpMail = 10209;
@@ -88,6 +90,8 @@ public sealed class DraculaWeddingService : IGameTicker
         /// <summary>The bush that hides the key this time (inferred: one of the four at random).</summary>
         public int KeyBush { get; set; }
         public long Rescuer { get; set; }
+        /// <summary>The member the bride is spectating (custom data 1002 on her entity), 0 for none.</summary>
+        public long Watched { get; set; }
         public EntityBase? RescuerEntity { get; set; }
         public HashSet<int> Searched { get; } = new();
         public bool StoryStarted { get; set; }
@@ -231,6 +235,8 @@ public sealed class DraculaWeddingService : IGameTicker
         {
             await SendQuietAsync(s, WeddingState, State(lair));
             await _tasks.SyncTasksAsync(s);
+            // A member arriving mid-wave joins the bride's Spectate list (inferred: var 145 is otherwise per wave).
+            await _dungeons.SendToRoomAsync(a, DungeonService.Event, VarsEvent(Lair, [Members(DungeonService.LoadedMembers(a))]));
             return;
         }
         if (!_home.InHome(s, out long guild) || Current(guild) is not { } run || !Eligible(s)) return;
@@ -336,10 +342,73 @@ public sealed class DraculaWeddingService : IGameTicker
     /// (inferred) The key holder who leaves the lair drops it: the search starts over (with a new hiding place), so the
     /// others can still finish.
     /// </summary>
+    // ---- spectating ----
+
+    /// <summary>
+    /// 30452 DungeonWatchChangeTargetReq from the bride's Spectate widget (UI_Sys_Main_ActivityEveningDracula_SpectatingWidget,
+    /// shown only to the bride of 83641): player_id is a lair member from var 145, or -1 to stop. The client expects no
+    /// answer (NullArg); the server answers by setting custom data 1002 Unit_CameraBindUnitCustomData on her entity to the
+    /// watched role (0 returns the camera), which LC_CustomDataComp_Base.ProcessCamera follows and the widget reads as
+    /// WatchModeTargetId. (inferred) Only the bride in her live lair may watch, and only another loaded member.
+    /// </summary>
+    public async Task WatchAsync(GameSession s, DungeonWatchChangeTargetReq req)
+    {
+        if (s.DungeonAttempt is not { Dracula: { } run } a || !ReferenceEquals(run.Live, a) || s.Role?.Id != run.Bride
+            || s.SceneLoading || s.InstanceId != a.Room.Id || !a.Loaded.Contains(s)) return;
+        long target = req.PlayerId > 0 && req.PlayerId != run.Bride
+            && DungeonService.LoadedMembers(a).Any(m => m.Role?.Id == req.PlayerId) ? req.PlayerId : 0;
+        if (req.PlayerId > 0 && target == 0) return;
+        await SetWatchedAsync(a, s, run, target);
+    }
+
+    /// <summary>31018 on her entity to the lair (the guild league's flags go the same way); outside the lair her entity
+    /// carries no camera binding.</summary>
+    private async Task SetWatchedAsync(DungeonService.Attempt a, GameSession bride, Run run, long target)
+    {
+        run.Watched = target;
+        if (target == 0) bride.WorldState.CustomData.Remove(CameraBind);
+        if (bride.Role == null || bride.SceneLoading) { bride.WorldState.CustomData.Remove(CameraBind); return; }
+        var value = new CustomData
+        { Id = CameraBind, CustomParam = new CustomParam { Tp = CustomParam.Types.ParamType.Long, LongParam = target } };
+        if (target != 0) bride.WorldState.CustomData[CameraBind] = value.Clone();
+        var change = new CustomDataChange { EntityId = bride.Role.Id, CustomDatas = { value } };
+        await SendQuietAsync(bride, WorldCoreService.CustomChange, change);
+        foreach (var member in DungeonService.LoadedMembers(a).Where(m => !ReferenceEquals(m, bride)))
+            await SendQuietAsync(member, WorldCoreService.CustomChange, change);
+    }
+
+    /// <summary>
+    /// A member left the lair: the bride stops watching, a watched member's bride moves to the next member or back to
+    /// herself (inferred), and the others' var 145 list drops the member (inferred: it is otherwise sent per wave).
+    /// </summary>
+    private async Task WatchLeftAsync(DungeonService.Attempt a, GameSession s)
+    {
+        var run = a.Dracula!;
+        var stay = DungeonService.LoadedMembers(a).Where(m => !ReferenceEquals(m, s) && m.Role != null).ToArray();
+        if (s.Role?.Id == run.Bride)
+            await SetWatchedAsync(a, s, run, 0);
+        else if (run.Watched != 0 && run.Watched == s.Role?.Id && stay.FirstOrDefault(m => m.Role!.Id == run.Bride) is { } bride)
+            await SetWatchedAsync(a, bride, run, stay.Select(m => m.Role!.Id).FirstOrDefault(id => id != run.Bride));
+        await _dungeons.SendToRoomAsync(a, DungeonService.Event, VarsEvent(Lair, [Members(stay)]));
+    }
+
+    private async Task StopWatchingAsync(DungeonService.Attempt a)
+    {
+        var run = a.Dracula!;
+        if (run.Watched != 0 && DungeonService.LoadedMembers(a).FirstOrDefault(m => m.Role?.Id == run.Bride) is { } bride)
+            await SetWatchedAsync(a, bride, run, 0);
+        run.Watched = 0;
+    }
+
+    /// <summary>LC_DunGeon_VarDefine 145 CDungeonPlayerUidList: the Spectate widget's targets.</summary>
+    private static DungeonVar Members(IEnumerable<GameSession> members) =>
+        new() { VarId = 145, Vi64 = { members.Select(m => m.Role!.Id) } };
+
     internal async Task LeftAsync(DungeonService.Attempt a, GameSession s)
     {
         if (s.Buffs.FirstOrDefault(b => b.ConfigId == KeyBuff) is { } key) await _buffs.RemoveAsync(s, key);
         var run = a.Dracula!;
+        await WatchLeftAsync(a, s);
         if (!a.Settled && run.Rescuer != 0 && run.Rescuer == s.Role?.Id)
         {
             run.Rescuer = 0; run.RescuerEntity = null; run.Searched.Clear();
@@ -378,6 +447,7 @@ public sealed class DraculaWeddingService : IGameTicker
             await SendQuietAsync(s, DungeonService.Result, new DungeonResNotify { DungeonEntry = Lair, Res = (DungeonRes)(success ? 1 : 2) });
             await _tasks.SyncTasksAsync(s);
         }
+        await StopWatchingAsync(a);
         var keyHolders = members.Where(s => s.Buffs.Any(b => b.ConfigId == KeyBuff)).ToArray();
         // Everyone who entered this lair took part (inferred), and the bride, whose rescue it was.
         var participants = a.Stats.Keys.Append(run.Bride).Distinct().ToArray();

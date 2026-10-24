@@ -777,6 +777,7 @@ public static class EconomyLedgerReader
             "emblem" => (EconomyReason.EmblemCost, EconomyReason.EmblemGoods),
             "genre" => (EconomyReason.GenreCost, EconomyReason.GenreGoods),
             "valhalla" => (EconomyReason.ValhallaCost, EconomyReason.ValhallaCost),
+            "paragon" => (EconomyReason.ParagonCost, EconomyReason.ParagonGoods),
             _ => throw new InvalidDataException("Unknown family reason namespace.")
         };
 

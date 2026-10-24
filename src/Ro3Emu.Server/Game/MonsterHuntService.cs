@@ -54,7 +54,7 @@ public sealed class MonsterHuntService
         foreach (var monster in Rows("AreaConcurMonsterConfig"))
             _monsterByMapNpc.TryAdd((GameData.Int(monster, "_iMap"), (int)GameData.Int(monster, "_iNpc")), monster);
         rewards.StageHuntKill = StageKill;
-        rewards.ExtraKillDrops = AreaDrops;
+        rewards.ExtraKillDrops.Add(AreaDrops);
         rewards.KillDropsGranted.Add(KilledAsync);
     }
 

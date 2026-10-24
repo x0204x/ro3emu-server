@@ -14,16 +14,21 @@ namespace Ro3Emu.Server.Game;
 /// - 19 [19, skill group, learned level, attr, value]: "When Mace Mastery reaches Lv. 10, STR +5";
 /// - 22 [22, weapon, attr, per learned level, skill group]: "PATK +2 for each Learn Lv. of Sword Quicken";
 /// - 21 [21, weapon or 0, BuffConfig._kSkillAttributeList tuple]: "Bowling Bash's Cooldown is changed to 8 seconds";
+/// - 20 [20, pendant CartRemouldTable._iSubType, attr, value]: Falcon's Might, whose _kOtherDesc buff reads "Damage
+///   Increase: ${1}% while fighting alongside [Falcon]" (attribute 215 Damage Increase%, +100); the leased falcon is the
+///   pendant row of subtype 3, as type 17 names a ridden mount's subtype;
 /// - Buff(2): the buff's _kSkillAttributeList ("Basic Attack's percentage damage multiplier increases by 3%").
 /// The ops of one effect that differ only in their condition ("a dagger or katar", "Sanctuary or Magnus Exorcismus")
 /// apply once. The skill tuples go through SkillParameterRules like a buff's.
-/// Buff(2) procs (_kLogicData: Rapid Pierce's extra hits, Double Counter's extra cast ...) are TalentProcs'. Not executed:
-/// _kBuffAttributeList, BuffDictRef(12) and 20.
+/// Buff(2) procs (_kLogicData: Rapid Pierce's extra hits, Double Counter's extra cast ...) are TalentProcs'. A Buff(2) row's
+/// _kBuffAttributeList and BuffDictRef(12) change other buffs (GameSession.TalentBuffAttributes): scope 0 names a buff
+/// group, scope 1 a buff category (Scouting's ["1", "109", "4", "1", "300", "0"]: "[Detect Stealth] range +${1}
+/// meters" on the detection category).
 /// </summary>
 public sealed partial class SeasonTalentService
 {
-    private const long AttrOp = 1, BuffOp = 2, BuffDictRefOp = 12, WeaponAttrOp = 16, SkillLevelAttrOp = 19, SkillParameterOp = 21,
-        WeaponSkillAttrOp = 22;
+    private const long AttrOp = 1, BuffOp = 2, BuffDictRefOp = 12, WeaponAttrOp = 16, SkillLevelAttrOp = 19, PendantAttrOp = 20,
+        SkillParameterOp = 21, WeaponSkillAttrOp = 22;
 
     /// <summary>
     /// One _kBuffAttributeList tuple ["0", buff group, EBuffAffectValueType, operation, value, index, ...], also written as
@@ -31,10 +36,14 @@ public sealed partial class SeasonTalentService
     /// group's _kChangeAttri pair at index: Guard Enhance's two rows give Parry's PDEF and MDEF pairs +50 each. The
     /// operation arithmetic is SkillParameterRules' (1 add, 2 set, 5 basis points) (inferred).
     /// </summary>
-    internal readonly record struct BuffAttribute(long Group, int Type, int Operation, double Value, int Index);
+    internal readonly record struct BuffAttribute(long Group, int Type, int Operation, double Value, int Index, bool ByCategory = false);
 
     private static BuffAttribute? ParseBuffAttribute(IReadOnlyList<double> t) =>
-        t.Count >= 6 && t[0] == 0 && t[1] > 0 ? new BuffAttribute((long)t[1], (int)t[2], (int)t[3], t[4], (int)t[5]) : null;
+        t.Count >= 6 && t[0] is 0 or 1 && t[1] > 0 ? new BuffAttribute((long)t[1], (int)t[2], (int)t[3], t[4], (int)t[5], t[0] == 1) : null;
+
+    /// <summary>The leased pendant's CartRemouldTable._iSubType (3: the falcon), 0 without one.</summary>
+    private long PendantSubType(GameSession s) => s.CareerSpecial?.PendantSlot is { CartRemouldCfg: > 0 } slot
+        && CartRemouldTable.Get(_data, slot.CartRemouldCfg) is { } row ? row.SubType : 0;
 
     private IEnumerable<BuffAttribute> BuffAttributes(long buff)
     {
@@ -73,6 +82,10 @@ public sealed partial class SeasonTalentService
                         break;
                     case [SkillLevelAttrOp, var group, var level, var attr, var value]
                         when LearnedLevel(s, group) >= level && once.Add((SkillLevelAttrOp, attr, value, 0)):
+                        yield return (attr, value);
+                        break;
+                    case [PendantAttrOp, var subType, var attr, var value]
+                        when subType > 0 && PendantSubType(s) == subType && once.Add((PendantAttrOp, attr, value, subType)):
                         yield return (attr, value);
                         break;
                     case [WeaponSkillAttrOp, var weapon, var attr, var perLevel, var group]

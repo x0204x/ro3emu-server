@@ -145,7 +145,7 @@ public static partial class EconomySnapshotReader
                         Guard(key, () =>
                         {
                             using var doc = Json(bytes); var state = doc.RootElement;
-                            Fields(state, "Id Name Announce Notice CreateTime Status HelperDeadlineMs Level Background Icon AutoAccept AutoCreateHelper JoinLevelLimit Money Contribute Materials Reputation AuctionMaterials LastChangeNameTime LastChangeNoticeTime LastRecruitMs HistoryNames Members Applications HelperApplies Rights Buildings BuildingEndTimes CurActivity LastWeekActivity ActivityWeek LeagueElites LeagueEliteVersion UnlockedHeadIcons ShopCommodityBuys ShopCommodityWeek");
+                            Fields(state, "Id Name Announce Notice CreateTime Status HelperDeadlineMs Level Background Icon AutoAccept AutoCreateHelper JoinLevelLimit Money Contribute Materials Reputation AuctionMaterials LastChangeNameTime LastChangeNoticeTime LastRecruitMs HistoryNames Members Applications HelperApplies Rights Buildings BuildingEndTimes CurActivity LastWeekActivity ActivityWeek LeagueElites LeagueEliteVersion UnlockedHeadIcons ShopCommodityBuys ShopCommodityWeek NextBroadEmailMs BroadEmailCount BroadEmailDay ImpeachOwner ImpeachEndMs ImpeachNeed ImpeachResponders NextImpeachMs MergeInvites PendingMergeGuildId MergeAbsorbs MergeAtSec MergeMemberIds MergeCooldownSec");
                             if (Long(state, "Id") != id) throw new FormatException("Guild identity mismatch.");
                             var owner = new EconomyOwner(EconomyOwnerKind.Guild, Id(id));
                             foreach (var field in new[] { ("Money", 1L), ("Contribute", 2L), ("Materials", 3L),
@@ -179,7 +179,7 @@ public static partial class EconomySnapshotReader
                                 throw new FormatException("Invalid or live guild recovery identity.");
                             using var doc = Json(bytes);
                             var state = doc.RootElement;
-                            Fields(state, "Id Name Announce Notice CreateTime Status HelperDeadlineMs Level Background Icon AutoAccept AutoCreateHelper JoinLevelLimit Money Contribute Materials Reputation AuctionMaterials LastChangeNameTime LastChangeNoticeTime LastRecruitMs HistoryNames Members Applications HelperApplies Rights Buildings BuildingEndTimes CurActivity LastWeekActivity ActivityWeek LeagueElites LeagueEliteVersion UnlockedHeadIcons ShopCommodityBuys ShopCommodityWeek");
+                            Fields(state, "Id Name Announce Notice CreateTime Status HelperDeadlineMs Level Background Icon AutoAccept AutoCreateHelper JoinLevelLimit Money Contribute Materials Reputation AuctionMaterials LastChangeNameTime LastChangeNoticeTime LastRecruitMs HistoryNames Members Applications HelperApplies Rights Buildings BuildingEndTimes CurActivity LastWeekActivity ActivityWeek LeagueElites LeagueEliteVersion UnlockedHeadIcons ShopCommodityBuys ShopCommodityWeek NextBroadEmailMs BroadEmailCount BroadEmailDay ImpeachOwner ImpeachEndMs ImpeachNeed ImpeachResponders NextImpeachMs MergeInvites PendingMergeGuildId MergeAbsorbs MergeAtSec MergeMemberIds MergeCooldownSec");
                             if (Long(state, "Id") != id) throw new FormatException("Guild recovery snapshot identity mismatch.");
                             var owner = new EconomyOwner(EconomyOwnerKind.Guild, Id(id));
                             foreach (var field in new[] { ("Money", 1L), ("Contribute", 2L), ("Materials", 3L),

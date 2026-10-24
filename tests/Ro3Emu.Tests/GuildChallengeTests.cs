@@ -656,4 +656,32 @@ public sealed class GuildChallengeTests : IAsyncLifetime
         await using var again = await InWorld("Alice", create: false);
         Assert.Equal(1, (await QuestProbe.DoneAsync(_app, "alice", 706070)).CompleteNum[0]);
     }
+
+    [ClientDataFact]
+    public async Task MusterCallsOnlineMembersToTheSelectedStageWithTheCallerAsUid()
+    {
+        await using var alice = await InWorld("Alice");
+        await using var bob = await InWorld("Bob");
+        await Guild(alice, bob);
+        static DungeonCallMemberReq Call(long scene = 3011130) => new() { DungeonID = scene };
+        async Task<int> Muster(BotClient bot, long scene = 3011130)
+        {
+            await bot.SendGameAsync(GuildChallengeService.CallMembers, Call(scene));
+            var answer = await Next(bot, GuildChallengeService.CallMembers, DungeonCallMemberRsp.Parser);
+            Assert.Equal(scene, answer.DungeonID);
+            return answer.Result;
+        }
+        Assert.Equal(ErrorCodes.ActivityPeriod, await Muster(alice));
+        await Gm(alice, "!guildchallenge open");
+        Assert.Equal(ErrorCodes.Parameter, await Muster(alice));
+        Assert.Equal(0, await Open(alice));
+        Assert.Equal(ErrorCodes.GuildPermission, await Muster(bob));
+        Assert.Equal(ErrorCodes.Parameter, await Muster(alice, 3011120));
+
+        Assert.Equal(0, await Muster(alice));
+        var call = await Next(bob, GuildChallengeService.CallMembersNotify, DungeonCallMemberNtf.Parser);
+        Assert.Equal((1, 3011130L, (long)alice.Self!.Uuid, 1001),
+            (call.Difficulty, call.SceneEntryID, call.UId, call.CallData.GuildChallengeData.ConfigId));
+        Assert.Equal(ErrorCodes.Cooldown, await Muster(alice));
+    }
 }

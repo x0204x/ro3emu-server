@@ -8,7 +8,7 @@ public sealed partial class CombatService
     private readonly PetService _pets;
 
     /// <summary>Hooks the guardian rules into the shared services: the pet wheel, hit and damage callbacks, unit
-    /// attributes and controls, and the stealth visibility checks.</summary>
+    /// attributes and controls, and the hidden-target check of monster aggro.</summary>
     private void WireGuardians()
     {
         _skills.PetWheel = _pets.GuardianWheel;
@@ -22,10 +22,7 @@ public sealed partial class CombatService
         DamageAdjusters.Add((s, target, _, _, damage) => GuardianControlledDamage(s, GuardianControlTarget(target), damage));
         _buffs.UnitChanged.Add(PublishMonsterAttributesAsync);
         _monsters.Forbidden = _buffs.UnitForbidden;
-        _monsters.TargetVisible = (m, p) => !GuardianStealthed(p) && _buffs.CanSeePosition(m, p.Position);
-        _world.CanObserve = GuardianCanObserve;
-        _world.PlayerEntered.Add(GuardianRevealStateAsync);
-        _buffs.Changed.Add(GuardianVisibilityChangedAsync);
+        _monsters.TargetVisible = (m, p) => !Stealthed(p) && _buffs.CanSeePosition(m, p.Position);
     }
 
     private Task SyncGuardianWheelAsync(GameSession session) => session.SkillPlans == null

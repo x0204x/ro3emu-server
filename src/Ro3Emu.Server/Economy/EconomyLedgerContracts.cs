@@ -38,6 +38,7 @@ public enum EconomyReason
     FriendGiftCost = 55, CaravanPendingDelivery = 56, GuildActivityCost = 57,
     GuildServiceCost = 58, ChallengePendingDelivery = 59,
     ValhallaCost = 60, // Valhalla Trials Blessing: Einherjar Coins spent on the Odin statue (cd13b/valhalla-pray)
+    ParagonCost = 61, ParagonGoods = 62, // Astral Level Star Cores installed / returned (cd13b/paragon-*)
     // Persisted values 200..219 are reserved exclusively for C/D 13c / E05c.
     LifeCost = 200, LifeGoods = 201, SeasonCost = 202, SeasonGoods = 203,
     SeasonRefund = 204, SkillPlanCost = 205, SkillPlanRefund = 206,
@@ -48,7 +49,7 @@ public enum EconomyReason
 
 public static class EconomyReasonCatalog
 {
-    public const string Version = "economy-reasons-v14"; // each merge of a branch's reasons gets a new version
+    public const string Version = "economy-reasons-v15"; // each merge of a branch's reasons gets a new version
 
     public static bool Allows(EconomyReason reason, EconomyLegKind kind) => reason switch
     {
@@ -63,7 +64,7 @@ public static class EconomyReasonCatalog
         EconomyReason.OwnedGrant or EconomyReason.AchievementReward or EconomyReason.AdventureGroupReward or EconomyReason.MonsterHuntReward or EconomyReason.GuildReward or
         EconomyReason.GrowthClassReward or EconomyReason.LibraryReward or EconomyReason.FirstHeartReward or
         EconomyReason.LifeGoods or EconomyReason.SeasonGoods or EconomyReason.SeasonRefund or
-        EconomyReason.SkillPlanRefund or EconomyReason.CastAdmissionRefund => kind == EconomyLegKind.Source,
+        EconomyReason.SkillPlanRefund or EconomyReason.CastAdmissionRefund or EconomyReason.ParagonGoods => kind == EconomyLegKind.Source,
         EconomyReason.GmRemove or EconomyReason.NpcShopPayment or EconomyReason.CraftInput or
         EconomyReason.DecomposeInput or EconomyReason.ItemUse or EconomyReason.RefineCost or
         EconomyReason.SkillCost or EconomyReason.PetCost or EconomyReason.MarketTax or
@@ -77,7 +78,8 @@ public static class EconomyReasonCatalog
         EconomyReason.FriendGiftCost or EconomyReason.GuildActivityCost or EconomyReason.GuildServiceCost or
         EconomyReason.LifeCost or EconomyReason.SeasonCost or EconomyReason.SkillPlanCost or
         EconomyReason.CastAdmissionCost or EconomyReason.MarketSlotUnlock or
-        EconomyReason.StallOpenFee or EconomyReason.GuildMarketFee or EconomyReason.ValhallaCost => kind == EconomyLegKind.Sink,
+        EconomyReason.StallOpenFee or EconomyReason.GuildMarketFee or EconomyReason.ValhallaCost or
+        EconomyReason.ParagonCost => kind == EconomyLegKind.Sink,
         EconomyReason.MailDelivery or EconomyReason.MailClaim or EconomyReason.MailReturn or
         EconomyReason.TradeEscrow or EconomyReason.AuctionReserve or EconomyReason.AuctionRefund or
         EconomyReason.AuctionSettlement or EconomyReason.GuildResourceTransfer or EconomyReason.InventoryRelocation or

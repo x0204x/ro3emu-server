@@ -154,7 +154,7 @@ public sealed partial class WorldCoreService
             if (!ReferenceEquals(s.Role, role) || !ReferenceEquals(s.Attachment, attachment)) return;
             if (committed) await _character.ItemsChangedAsync(s, stats: false);
             await s.SendGameAsync(ReliveItem, new EntityReliveCostItemResp { Result = error });
-            if (committed)
+            if (committed && s.Role != null)
             {
                 await _combat.PublishReviveAsync(s, null);
                 await _dungeons.PublishExternalReviveAsync(s);

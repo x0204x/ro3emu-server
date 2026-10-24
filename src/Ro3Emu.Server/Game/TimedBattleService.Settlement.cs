@@ -351,7 +351,8 @@ public sealed partial class TimedBattleService
         {
             SourceRevision = source.SourceRevision, Career = source.Career,
             Level = source.Level, JobLevel = source.JobLevel, Exp = source.Exp, JobExp = source.JobExp,
-            BonusPoints = source.BonusPoints, StarterKit = source.StarterKit
+            BonusPoints = source.BonusPoints, StarterKit = source.StarterKit,
+            ParagonLevel = source.ParagonLevel, ParagonExp = source.ParagonExp
         };
         source.Stats.CopyTo(copy.Stats, 0);
         foreach (var (entry, amount) in source.Currency) copy.Currency[entry] = amount;

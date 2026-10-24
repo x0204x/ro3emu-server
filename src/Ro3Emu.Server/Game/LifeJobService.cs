@@ -72,6 +72,7 @@ public sealed partial class LifeJobService
         Reconcile(life, restriction, runtime);
         EnsureJobRows(life);
         NormalizeTitles(life);
+        UnlockEarnedCollections(s, life);
         restriction.RestrictCount[VigorId].LimitCount = VigorLimit(s, life);
         byte[] lifeBytesNext = life.ToByteArray(), restrictionBytesNext = restriction.ToByteArray(),
             runtimeBytesNext = JsonSerializer.SerializeToUtf8Bytes(runtime);
@@ -238,6 +239,7 @@ public sealed partial class LifeJobService
             // (inferred) Free, condition-zero gathering entries are the initial profession curriculum.
             foreach (var c in _data.Table("LifeCollectionConfig").Values.Where(c => Current(c) && GameData.Int(c, "_iJobId") == job && GameData.Int(c, "_iCondition") == 0))
                 UnlockCollection(next, c);
+            UnlockEarnedCollections(s, next); // a profession learned again keeps the resources its level earned
             if (await CommitAsync(s, "cd13c/life-switch", next, s.Restrictions!.Clone(), Copy(s.LifeRuntime), cost, [],
                 result: new { Job = job, Slot = req.OpJobType }) == null)
                 error = _character.ShortageOf(s, cost);
@@ -581,6 +583,7 @@ public sealed partial class LifeJobService
             && GameData.Int(row, "_iNextNeedExp") is var need and > 0 && info.JobExp >= need
             && _functions.ConditionMet(s, GameData.Int(row, "_iCondition")))
         { info.JobExp -= need; info.JobLevel++; }
+        UnlockEarnedCollections(s, next);
     }
 
     private async Task OnLevelChangedAsync(GameSession s)

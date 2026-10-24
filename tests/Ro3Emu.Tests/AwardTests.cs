@@ -250,6 +250,41 @@ public sealed class AwardTests : IAsyncLifetime
     }
 
     [ClientDataFact]
+    public async Task FirstGearInAnUnsentPackResendsTheWholeBag()
+    {
+        // Once the starter weapon and shirt are worn, a later login's 5009 has no equipment pack (2). The client
+        // builds a pack's grid only from a full sync, so the first loose gear must bring 5009 whole again.
+        await using var bot = await InWorld("PackAlice");
+        await Next(bot, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser);
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Name == "PackAlice");
+        var loop = _app.Services.GetRequiredService<GameLoop>();
+        var character = _app.Services.GetRequiredService<CharacterService>();
+        // Stand-in for that later login: the kit gear worn, then a fresh full 5009 (no pack 2).
+        await loop.InvokeAsync(async () =>
+        {
+            int grid = 1;
+            foreach (var worn in session.Items.Where(i => i.Pack == 2)) worn.Grid = grid++;
+            session.Synced.Remove(CharacterService.ItemsSync);
+            Assert.True(await character.ApplyAwardAsync(session, new AwardPlan(0, 0, [new AwardGrant(1000000, 1)])));
+        });
+        var relogin = await Next(bot, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser, m => m.SyncAllMark);
+        Assert.False(relogin.PackInfo.ContainsKey(2));
+        Assert.True(await loop.InvokeAsync(() => character.ApplyAwardAsync(session,
+            new AwardPlan(0, 0, [new AwardGrant(2010120, 2)]))));
+        var bag = await Next(bot, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser, m => m.PackInfo.ContainsKey(2));
+        Assert.True(bag.SyncAllMark);
+        Assert.Equal(2, bag.PackInfo[2].All.Items.Values.Count(i => i.ItemEntry == 2010120));
+        Assert.True(bag.PackInfo.ContainsKey(1)); // the whole bag, not just the new pack
+
+        // Once the client has the pack, more gear travels as an increment again.
+        Assert.True(await loop.InvokeAsync(() => character.ApplyAwardAsync(session,
+            new AwardPlan(0, 0, [new AwardGrant(2010120, 1)]))));
+        var more = await Next(bot, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser,
+            m => m.PackInfo.TryGetValue(2, out var p) && p.Inc != null);
+        Assert.False(more.SyncAllMark);
+    }
+
+    [ClientDataFact]
     public async Task NoviceAndSwordsmanPoolGiftKeepsActualPermanentBind()
     {
         var loop = _app.Services.GetRequiredService<GameLoop>();

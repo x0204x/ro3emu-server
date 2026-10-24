@@ -46,7 +46,7 @@ public static partial class EconomySnapshotReader
         ["emblems"] = BlobFormat.Json, ["pets"] = BlobFormat.Protobuf,
         ["mounts"] = BlobFormat.Json, ["wardrobe"] = BlobFormat.Protobuf,
         ["totems"] = BlobFormat.Protobuf, ["totem_refine_epoch"] = BlobFormat.RawEpoch,
-        ["genre"] = BlobFormat.Protobuf, ["career_special"] = BlobFormat.Protobuf, ["heroic_spirit"] = BlobFormat.Protobuf, ["area_concur"] = BlobFormat.Protobuf,
+        ["genre"] = BlobFormat.Protobuf, ["career_special"] = BlobFormat.Protobuf, ["heroic_spirit"] = BlobFormat.Protobuf, ["paragon"] = BlobFormat.Protobuf, ["title"] = BlobFormat.Protobuf, ["area_concur"] = BlobFormat.Protobuf,
         ["growth_class"] = BlobFormat.Protobuf, ["first_heart"] = BlobFormat.Protobuf,
         ["personal"] = BlobFormat.Protobuf, ["personal_upvote"] = BlobFormat.Protobuf, ["popularity"] = BlobFormat.Protobuf,
         ["social_outfit"] = BlobFormat.Protobuf, ["emoji_info"] = BlobFormat.Protobuf

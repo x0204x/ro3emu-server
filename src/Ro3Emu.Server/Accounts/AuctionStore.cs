@@ -59,8 +59,28 @@ public sealed class AuctionStore(AccountStore accounts)
         public bool Ready { get; set; }
     }
 
-    public IReadOnlyList<Item> Items()
-        => _accounts.ReadSync<List<Item>>(new AuctionReadPlan(AuctionReadKind.Items));
+    /// <summary>Every lot ever minted. Not for the game loop's recurring work: it grows with the server's age.</summary>
+    internal IReadOnlyList<Item> Items()
+        => _accounts.ReadSync<List<Item>>(new AuctionReadPlan(AuctionReadKind.All));
+
+    /// <summary>Every lot not settled yet: what the sweep, the market and the prebuys work on.</summary>
+    public IReadOnlyList<Item> OpenItems()
+        => _accounts.ReadSync<List<Item>>(new AuctionReadPlan(AuctionReadKind.Open));
+
+    /// <summary>Every lot of one auction type, settled ones included.</summary>
+    public IReadOnlyList<Item> ItemsOfType(AuctionType type)
+        => _accounts.ReadSync<List<Item>>(new AuctionReadPlan(AuctionReadKind.OfType, (long)type));
+
+    /// <summary>Settled lots of one type, latest end first.</summary>
+    public IReadOnlyList<Item> SettledItems(AuctionType type)
+        => _accounts.ReadSync<List<Item>>(new AuctionReadPlan(AuctionReadKind.Settled, (long)type));
+
+    /// <summary>The lots one dungeon run minted, in any state.</summary>
+    public IReadOnlyList<Item> RunItems(long runId)
+        => _accounts.ReadSync<List<Item>>(new AuctionReadPlan(AuctionReadKind.Run, runId));
+
+    public IReadOnlyList<Item> ItemsById(IReadOnlyCollection<long> ids)
+        => _accounts.ReadSync<List<Item>>(new AuctionReadPlan(AuctionReadKind.Ids, ids: ids));
 
     public Item? Get(long id)
         => _accounts.ReadSync<Item?>(new AuctionReadPlan(AuctionReadKind.Item, id));

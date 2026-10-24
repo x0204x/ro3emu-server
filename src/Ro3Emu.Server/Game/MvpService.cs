@@ -90,6 +90,10 @@ public sealed partial class MvpService : IGameTicker
     private readonly CombatService _combat;
     private readonly BuffService _buffs;
     private readonly Random _random = new();
+    private const int LordsMane = 1009015;
+
+    /// <summary>(inferred) Chance in percent that an MVP kill drops a Lord's Mane (ServerOptions.LordsManePercent).</summary>
+    internal int LordsManePercent { get; set; } = 10;
     private Dictionary<int, State>? _states;
     private readonly Dictionary<RuntimeMapKey, Dictionary<int, State>> _lineStates = new();
     private readonly Dictionary<int, long> _lastDeath = new();
@@ -680,6 +684,20 @@ public sealed partial class MvpService : IGameTicker
                 break;
             }
             if (rarePlayer != 0) Give(rarePlayer, MVP_AWARD_TYPE.Probability, st.Def.Rare);
+        }
+        // Lord's Mane (1009015, "A mane dropped by the boss", the Starshatter Dragon's unseal material) has no source in
+        // the client data: one per kill at LordsManePercent, to a member picked as the rare winner is (inferred).
+        if (st.Stats.Count > 0 && _random.Next(100) < LordsManePercent)
+        {
+            var pool = teamsRanked.SelectMany((t, i) => t.Members.Select(id => (Id: id, Weight: Math.Max(1, teamsRanked.Count - i)))).ToList();
+            long roll = pool.Count == 0 ? 0 : _random.Next(pool.Sum(x => x.Weight));
+            foreach (var x in pool)
+            {
+                roll -= x.Weight;
+                if (roll >= 0) continue;
+                awards.GetValueOrDefault(x.Id)?.Add(new MVPPlayerAwardItem { ItemId = LordsMane, Count = 1, Tp = MVP_AWARD_TYPE.Probability });
+                break;
+            }
         }
         var nextDeaths = st.DeadMs.Append(deadMs).TakeLast(20).ToArray();
         var builder = new RoleItemPlanBuilder(_accounts);

@@ -46,7 +46,7 @@ ordinary skills, monsters and equipment behave as they did before. A buff placed
 (`BuffService.AddGuardianAsync`); only such a buff:
 
 - carries the further control states (knock-up, freeze, petrify, root, super armour, control and debuff immunity,
-  stealth). Stun, sleep, silence and the other states ordinary buffs already showed are unchanged;
+  stealth's special status). Hiding itself is every source's (skill-protocol.md, "Hiding and detection"). Stun, sleep, silence and the other states ordinary buffs already showed are unchanged;
 - limits a blinded player's or monster's sight to the blind radius;
 - changes a monster's attack, defence, hit, crit, cast speed, movement speed and damage taken or dealt;
 - breaks on a hit (freeze, petrify, sleep);

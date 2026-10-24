@@ -47,8 +47,14 @@ finally
 if (exitCode != 0)
 {
     // Anything outside the baseline is still an error; show what failed.
-    foreach (var line in output.ToString().Split('\n').Where(l => l.Contains(": error ", StringComparison.Ordinal)).Distinct())
+    var lines = output.ToString().Split('\n');
+    var errors = lines.Where(l => l.Contains(": error ", StringComparison.Ordinal)).Distinct().ToArray();
+    foreach (var line in errors)
         Console.Error.WriteLine(line.TrimEnd());
+    // MSBuild can fail before a compiler diagnostic exists (for example, a project-reference worker exits).
+    // Preserve a bounded tail in that case instead of reducing the actionable failure to one generic sentence.
+    if (errors.Length == 0)
+        foreach (var line in lines.TakeLast(80)) Console.Error.WriteLine(line.TrimEnd());
     Console.Error.WriteLine("The build failed; the baseline was not checked.");
     return exitCode;
 }
@@ -108,7 +114,7 @@ static int Build(string root, string solution, IEnumerable<string> rules, String
         RedirectStandardOutput = true,
         RedirectStandardError = true,
     };
-    foreach (var arg in new[] { "build", solution, "-c", "Release", "--no-incremental", "-nologo",
+    foreach (var arg in new[] { "build", solution, "-c", "Release", "--no-incremental", "-nologo", "-m:1",
         "-p:EnableWindowsTargeting=true", $"-p:WarningsNotAsErrors={notAsErrors}" })
         start.ArgumentList.Add(arg);
     using var process = Process.Start(start) ?? throw new InvalidOperationException("dotnet did not start");

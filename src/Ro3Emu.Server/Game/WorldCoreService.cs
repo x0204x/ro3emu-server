@@ -137,7 +137,15 @@ public sealed partial class WorldCoreService : IGameTicker
             ServerOpenTime = _serverOpenSeconds, ServerLogicTime = (ulong)(Now / 1000),
         });
         if (s.WorldState.Saved.VisitedMaps.Count > 0) await VisitsAsync(s);
+        // Datasets this server has no content for, sent in their empty form so each asset category is materialized
+        // (inferred): 5060 DBWizardInfo forbiddenItems is an operator item freeze (LC_DAL_Knapsack reads it nil-safe), 5052
+        // DBQuestionnaireData holds operator surveys (no client table), 5043 DBBarRoomInfo is the Tavern room (none yet).
+        await CharacterService.SyncAsync(s, WizardSync, new DBWizardInfo());
+        await CharacterService.SyncAsync(s, QuestionnaireSync, new DBQuestionnaireData());
+        await CharacterService.SyncAsync(s, BarRoomSync, new DBBarRoomInfo());
     }
+
+    private const uint BarRoomSync = 5043, QuestionnaireSync = 5052, WizardSync = 5060;
 
     private Task VisitsAsync(GameSession s) => s.SendGameAsync(VisitedMaps,
         new SyncRoleVisitMapInfoNtf { Mapid = { s.WorldState.Saved.VisitedMaps.Order() } });

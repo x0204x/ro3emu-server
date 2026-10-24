@@ -149,6 +149,30 @@ public sealed class ServerOptions
     public int RaidPreparationSeconds { get; set; } = 120;
 
     /// <summary>
+    /// Pace of the scripted scenes' own timers (the hide-and-seek rounds), in percent of their reconstructed length:
+    /// 100 plays them as designed, a test makes them shorter.
+    /// </summary>
+    public int ScriptedScenePacePercent { get; set; } = 100;
+
+    /// <summary>
+    /// (inferred) Star Cores drop for roles with the Astral Level open (ParagonService.StarCoreDrops). The client data gives
+    /// them no source; false turns the reconstructed drop off.
+    /// </summary>
+    public bool StarCoreDrops { get; set; } = true;
+
+    /// <summary>
+    /// (inferred) Chance in percent that an MVP kill drops a Lord's Mane, the Starshatter Dragon's unseal material, to one
+    /// participant (MvpService). The client data gives it no source; 0 turns it off.
+    /// </summary>
+    public int LordsManePercent { get; set; } = 10;
+
+    /// <summary>
+    /// (inferred) Chance in percent that a boss kill drops a title Crest of the boss level's tier (TitleService). The
+    /// client data gives the Crests no source; 0 turns it off.
+    /// </summary>
+    public int TitleCrestPercent { get; set; } = 25;
+
+    /// <summary>
     /// (inferred) Seconds from a raid boss fight's start to its enrage, against which the Final Trial "more than N minutes
     /// remaining until enrage" honors (TenGameplayFinalTrialConfig, condition 7004) are judged. The enrage timer lives in
     /// the boss's server script, which the client does not carry.
@@ -290,12 +314,13 @@ public sealed class OpenContentOptions
     /// Functions the original never opened (base level 999/9999) whose client UI and data work: 7201 Realm War map,
     /// 70122 Totem Shop, 41 Feedback, 1000000 Adv. Guild (AdventureGroupService), 96 Valhalla Trials (ValhallaService),
     /// 69 Season page (SeasonPageService; level 50 until the 20 Oct 2026 client closed it with condition 2000062, [1002,9999])
-    /// (Feedback's panel comes from Ro3Emu.ClientHooks.FeedbackButton, its backend is FeedbackService). Shells without a working panel (Title 14, Academy 34...) stay closed so the menu shows no dead
+    /// (Feedback's panel comes from Ro3Emu.ClientHooks.FeedbackButton, its backend is FeedbackService), 14 Title (TitleService; its
+    /// widget is hosted by Ro3Emu.ClientHooks.TitleButton). Shells without a working panel (Academy 34...) stay closed so the menu shows no dead
     /// buttons; a function joins this list together with its backend. Novice Challenge (90, activity 112) is left out
     /// (owner, 2026-10-11): its 15 random event texts are "Event Text..."/"Option A" filler and the first node's
     /// dialogues 9901-9904 do not exist, so the original never finished it.
     /// </summary>
-    public long[] Functions { get; set; } = [7201, 70122, 41, 1000000, 96, 69];
+    public long[] Functions { get; set; } = [7201, 70122, 41, 1000000, 96, 69, 14];
 
     /// <summary>
     /// NewActivityConfig rows whose own open condition is a level the cap never reaches (e.g. 112 Novice Challenge).

@@ -7,4 +7,5 @@ namespace Ro3Emu.Server.Data.Config;
 public readonly partial record struct ChatConfig(JsonElement Row)
 {
     [ConfigField("_iContent")] public partial JsonElement? Content { get; }
+    [ConfigField("_iTime")] public partial long Time { get; }
 }

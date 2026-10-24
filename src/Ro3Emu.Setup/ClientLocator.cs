@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Diagnostics.CodeAnalysis;
 using Microsoft.Win32;
 using Ro3Emu.ClientTools;
@@ -104,17 +105,36 @@ internal static class ClientLocator
         }
     }
 
-    /// <summary>The publisher's release recorded by its launcher (.ro3-update/installed-release.txt), or null.</summary>
+    /// <summary>
+    /// The game's release: the newer of the one recorded by the publisher's launcher (.ro3-update/installed-release.txt)
+    /// and the one RO3Emu's own install/update recorded last (settings), or null. RO3Emu does not write the launcher's
+    /// file, so after <c>RO3Emu.exe update</c> only its own record is current.
+    /// </summary>
     public static string? InstalledRelease(string clientDir)
     {
+        long? launcher = null;
         var path = Path.Combine(clientDir, ".ro3-update", "installed-release.txt");
-        if (!File.Exists(path)) return null;
         try
         {
-            var fields = File.ReadAllLines(path).Select(l => l.Split('\t')).Where(c => c.Length == 2).ToDictionary(c => c[0], c => c[1]);
-            return fields.TryGetValue("release_sequence", out var seq) ? $"release {seq}" : null;
+            if (File.Exists(path))
+            {
+                var fields = File.ReadAllLines(path).Select(l => l.Split('\t')).Where(c => c.Length == 2).ToDictionary(c => c[0], c => c[1]);
+                if (fields.TryGetValue("release_sequence", out var seq)
+                    && long.TryParse(seq, NumberStyles.None, CultureInfo.InvariantCulture, out long n)) launcher = n;
+            }
         }
-        catch (Exception) { return null; }
+        catch (Exception) { }
+        long? own = null;
+        try
+        {
+            string folder = Path.TrimEndingDirectorySeparator(Path.GetFullPath(clientDir));
+            foreach (var (key, value) in Settings.Load().InstalledSequence)
+                if (string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(key)), folder, StringComparison.OrdinalIgnoreCase))
+                    own = Math.Max(own ?? 0, value);
+        }
+        catch (Exception) { }
+        long? release = own == null || launcher > own ? launcher : own;
+        return release is { } r ? $"release {r.ToString(CultureInfo.InvariantCulture)}" : null;
     }
 
     /// <summary>What is wrong with the folder for playing (empty = fine). <paramref name="needExport"/>: also the game data.</summary>

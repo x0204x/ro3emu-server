@@ -25,8 +25,10 @@ public sealed partial class DungeonTests
     public async Task EveryInteractionAStepWaitsOnIsOfferedByTheClientsOwnRules(long scene)
     {
         await using var alice = await InWorld("Alice");
+        await Gm(alice, "!lvl 99"); // a scene with a fight
+        if (scene == 1022001) await Gm(alice, "!quest accept 10102200"); // Payon Forest's condition [1101, 10102200]
         Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
-        await Load(alice, scene);
+        long instance = await Load(alice, scene);
         var plan = Session(alice).DungeonAttempt!.Plan;
         var catalog = Service<DungeonCatalog>();
         var map = Service<WorldData>().Map(scene)!;
@@ -36,60 +38,70 @@ public sealed partial class DungeonTests
             await Stage(alice, wave + 1, quest: step.Quest);
             await ActorsWhen(alice, shown => shown.Count == step.Actors.Count && step.Actors.All(spec => shown.Any(u =>
                 u.NpcId == spec.NpcId && u.Point == spec.Point && u.Buffs.Select(b => b.ConfigId).Order().SequenceEqual(spec.Buffs.Order()))));
-            var t = step.Complete[0];
-            switch (t.Kind)
+            // A step's fight first: its monsters, killed.
+            if (plan.Waves[wave].Spawns.Count > 0)
+                foreach (var monster in await WaveIn(instance, plan.Waves[wave].Spawns.Count)) await Kill(alice, monster);
+            // A hide-and-seek step is won by hiding round after round (its own test); the aid settles it here.
+            if (step.Seek != null)
             {
-                case ReconstructedDungeons.TriggerKind.Interaction or ReconstructedDungeons.TriggerKind.Message:
-                    {
-                        var (actor, interaction) = await Service<GameLoop>().InvokeAsync(() => Task.FromResult(
-                            Session(alice).DungeonAttempt!.SceneActors.SelectMany(u => catalog.Interactions(u.NpcId)
-                                .Where(i => t.Kind == ReconstructedDungeons.TriggerKind.Interaction ? i == t.Id : catalog.DungeonMessage(i) == t.Id)
-                                .Select(i => (u, i))).First()));
-                        var npc = Service<GameData>().Row("NPCConfig", actor.NpcId)!.Value;
-                        var view = await ClientSees(alice, actor.Uid, step.Actors.First(a => a.NpcId == actor.NpcId && a.Point == actor.Point).Buffs);
-                        // The entity the client creates: its unit class, template and place.
-                        Assert.Equal((int)GameData.Int(npc, "_iNPCType"), view.Entity.EntityType);
-                        Assert.Equal((ulong)actor.NpcId, view.Entity.EntityTemplateID);
-                        // An NPC is shaped like the world NPCs the live client interacts with (portals, Kafras): no born time.
-                        if (view.Entity.EntityType == 2) Assert.Equal(0, view.Entity.BornTimeMs);
-                        var point = map.Points[actor.Point];
-                        Assert.Equal(point.X, view.Entity.MovementInfo.Pos.X, 0.01f);
-                        Assert.Equal(point.Z, view.Entity.MovementInfo.Pos.Z, 0.01f);
-                        // It registers for interaction and offers the step's interaction (directly, or from its dialogue).
-                        Assert.NotEqual(0, catalog.Interactions(actor.NpcId).FirstOrDefault());
-                        int offered = Reachable(actor.NpcId, interaction);
-                        Assert.True(ConditionHolds(offered, view.BuffGroups),
-                            $"interaction {offered} of {actor.NpcId}: NPC condition fails with buff groups [{string.Join(',', view.BuffGroups)}]");
-                        // The GM aid puts the player beside the actor; the client's next 0.2 s check finds it in range and
-                        // possesses it (no other interactive unit is preferred). Where the player is, is the client's own
-                        // view: the teleport counts only if the client applies it to its controlled unit.
-                        await Gm(alice, $"!actors {actor.NpcId}");
-                        long me = Session(alice).Role!.Id;
-                        bool onSurface = MovesOnSurface(scene);
-                        var at = ClientPlayerAt(alice, me, onSurface);
-                        for (int i = 0; i < 100 && (at == null || MonsterService.Distance(at.X, at.Z, actor.X, actor.Z) > 1.5f); i++)
-                        {
-                            await Task.Delay(20);
-                            at = ClientPlayerAt(alice, me, onSurface);
-                        }
-                        Assert.NotNull(at);
-                        Assert.Equal(actor.Uid, Possessed(alice, at.X, at.Y, at.Z));
-                        Assert.Equal(0, await Interact(alice, actor, (int)interaction));
-                        break;
-                    }
-                case ReconstructedDungeons.TriggerKind.Plot:
-                    await Story(alice, t.Id);
-                    // 84012 (the plot's action 150 PlotActingTrigger) completes it as well as 84011 does.
-                    await alice.SendGameAsync(TaskService.ExitCutSceneState, new ExitCutSceneStateReq());
-                    await alice.SendGameAsync(DungeonService.PlotSceneEvent, new PlotActingTriggerReq { PlotId = t.Id });
-                    break;
-                default:
-                    // The GM aid's arrival runs the walk report's check (the scene tests above walk for real).
-                    var p = t.Kind == ReconstructedDungeons.TriggerKind.Region
-                        ? new MapPoint(map.Regions[t.Id].X, 0, map.Regions[t.Id].Z, 0) : map.Points[t.Id];
-                    await Gm(alice, FormattableString.Invariant($"!actors walk {p.X} {p.Z}"));
-                    break;
+                await Gm(alice, "!actors use");
+                continue;
             }
+            // An "all" step takes each of its events; another one, its first.
+            foreach (var t in step.All ? step.Complete : step.Complete.Take(1))
+                switch (t.Kind)
+                {
+                    case ReconstructedDungeons.TriggerKind.Interaction or ReconstructedDungeons.TriggerKind.Message:
+                        {
+                            var (actor, interaction) = await Service<GameLoop>().InvokeAsync(() => Task.FromResult(
+                                Session(alice).DungeonAttempt!.SceneActors.SelectMany(u => catalog.Interactions(u.NpcId)
+                                    .Where(i => t.Kind == ReconstructedDungeons.TriggerKind.Interaction ? i == t.Id : catalog.DungeonMessage(i) == t.Id)
+                                    .Select(i => (u, i))).First()));
+                            var npc = Service<GameData>().Row("NPCConfig", actor.NpcId)!.Value;
+                            var view = await ClientSees(alice, actor.Uid, step.Actors.First(a => a.NpcId == actor.NpcId && a.Point == actor.Point).Buffs);
+                            // The entity the client creates: its unit class, template and place.
+                            Assert.Equal((int)GameData.Int(npc, "_iNPCType"), view.Entity.EntityType);
+                            Assert.Equal((ulong)actor.NpcId, view.Entity.EntityTemplateID);
+                            // An NPC is shaped like the world NPCs the live client interacts with (portals, Kafras): no born time.
+                            if (view.Entity.EntityType == 2) Assert.Equal(0, view.Entity.BornTimeMs);
+                            var point = map.Points[actor.Point];
+                            Assert.Equal(point.X, view.Entity.MovementInfo.Pos.X, 0.01f);
+                            Assert.Equal(point.Z, view.Entity.MovementInfo.Pos.Z, 0.01f);
+                            // It registers for interaction and offers the step's interaction (directly, or from its dialogue).
+                            Assert.NotEqual(0, catalog.Interactions(actor.NpcId).FirstOrDefault());
+                            int offered = Reachable(actor.NpcId, interaction);
+                            Assert.True(ConditionHolds(offered, view.BuffGroups),
+                                $"interaction {offered} of {actor.NpcId}: NPC condition fails with buff groups [{string.Join(',', view.BuffGroups)}]");
+                            // The GM aid puts the player beside the actor; the client's next 0.2 s check finds it in range and
+                            // possesses it (no other interactive unit is preferred). Where the player is, is the client's own
+                            // view: the teleport counts only if the client applies it to its controlled unit.
+                            await Gm(alice, $"!actors {actor.NpcId}");
+                            long me = Session(alice).Role!.Id;
+                            bool onSurface = MovesOnSurface(scene);
+                            var at = ClientPlayerAt(alice, me, onSurface);
+                            for (int i = 0; i < 100 && (at == null || MonsterService.Distance(at.X, at.Z, actor.X, actor.Z) > 1.5f); i++)
+                            {
+                                await Task.Delay(20);
+                                at = ClientPlayerAt(alice, me, onSurface);
+                            }
+                            Assert.NotNull(at);
+                            Assert.Equal(actor.Uid, Possessed(alice, at.X, at.Y, at.Z));
+                            Assert.Equal(0, await Interact(alice, actor, (int)interaction));
+                            break;
+                        }
+                    case ReconstructedDungeons.TriggerKind.Plot:
+                        await Story(alice, t.Id);
+                        // 84012 (the plot's action 150 PlotActingTrigger) completes it as well as 84011 does.
+                        await alice.SendGameAsync(TaskService.ExitCutSceneState, new ExitCutSceneStateReq());
+                        await alice.SendGameAsync(DungeonService.PlotSceneEvent, new PlotActingTriggerReq { PlotId = t.Id });
+                        break;
+                    default:
+                        // The GM aid's arrival runs the walk report's check (the scene tests above walk for real).
+                        var p = t.Kind == ReconstructedDungeons.TriggerKind.Region
+                            ? new MapPoint(map.Regions[t.Id].X, 0, map.Regions[t.Id].Z, 0) : map.Points[t.Id];
+                        await Gm(alice, FormattableString.Invariant($"!actors walk {p.X} {p.Z}"));
+                        break;
+                }
         }
         Assert.Equal((DungeonRes)1, (await Next(alice, DungeonService.Result, DungeonResNotify.Parser)).Res);
     }
@@ -113,16 +125,22 @@ public sealed partial class DungeonTests
     public async Task TheUseTestAidFinishesAScriptedSceneServerSide(long scene)
     {
         await using var alice = await InWorld("Alice");
+        await Gm(alice, "!lvl 99"); // a scene with a fight
         await Gm(alice, "!actors use"); // outside a scene: refused, nothing happens
+        // Payon Forest's DungeonConfig condition 1000000 is [1101, 10102200]: its story task is running.
+        if (scene == 1022001) await Gm(alice, "!quest accept 10102200");
         Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
-        await Load(alice, scene);
+        long instance = await Load(alice, scene);
         var plan = Session(alice).DungeonAttempt!.Plan;
         for (int wave = 0; wave < plan.Waves.Count; wave++)
         {
             var step = plan.Waves[wave].Step!;
             await Stage(alice, wave + 1, quest: step.Quest);
             await ActorsIn(alice, step.Actors.Count);
-            await Gm(alice, "!actors use");
+            // A step's fight: its monsters, then its event if it has one.
+            if (plan.Waves[wave].Spawns.Count > 0)
+                foreach (var monster in await WaveIn(instance, plan.Waves[wave].Spawns.Count)) await Kill(alice, monster);
+            if (step.Complete.Count > 0) await Gm(alice, "!actors use");
         }
         Assert.Equal((DungeonRes)1, (await Next(alice, DungeonService.Result, DungeonResNotify.Parser)).Res);
     }
@@ -185,10 +203,16 @@ public sealed partial class DungeonTests
         foreach (var other in Service<DungeonCatalog>().Interactions(npcId).Where(i => i != interaction))
         {
             var o = data.Row("NPCInteractConfig", other)!.Value;
-            foreach (var dialogue in Actions(o, "_iEXECAction").Where(a => a is ["53", _, ..]).Select(a => long.Parse(a[1])))
-                if (data.Row("DialogueConfig", dialogue) is { } lines && lines.EnumerateArray().Any(line => Actions(line, "_iEXECAction")
-                        .Any(a => a is ["211", var n, var i, ..] && n == npcId.ToString() && i == interaction.ToString())))
-                    return (int)other;
+            // The dialogue the interaction opens (action 53) and the ones its options lead to (action 7).
+            var open = new Queue<long>(Actions(o, "_iEXECAction").Where(a => a is ["53", _, ..]).Select(a => long.Parse(a[1])));
+            var seen = new HashSet<long>();
+            while (open.TryDequeue(out long dialogue))
+            {
+                if (!seen.Add(dialogue) || data.Row("DialogueConfig", dialogue) is not { } lines) continue;
+                var actions = lines.EnumerateArray().SelectMany(line => Actions(line, "_iEXECAction")).ToArray();
+                if (actions.Any(a => a is ["211", var n, var i, ..] && n == npcId.ToString() && i == interaction.ToString())) return (int)other;
+                foreach (var next in actions.Where(a => a is ["7", _, ..])) open.Enqueue(long.Parse(next[1], System.Globalization.CultureInfo.InvariantCulture));
+            }
         }
         throw new Xunit.Sdk.XunitException($"ActionTrigger {interaction} of {npcId}: no dialogue of the unit runs it");
     }

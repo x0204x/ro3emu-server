@@ -3,6 +3,7 @@ using System.Text.Json;
 using Romsg;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Maps;
 
 namespace Ro3Emu.Server.Game;
@@ -29,13 +30,14 @@ namespace Ro3Emu.Server.Game;
 /// Not executed (no machinery or no data link): autocast skills (Bash, Jupitel Thunder, Divine Light), race-family
 /// damage (Orcs, Kobolds, ...: no monster family field), armor element changes, magic nullify/reflect, status
 /// immunities, Endure, cooldown reset, monster SP drain, Splash, Double Attack, detection, indestructible gear.
-/// Skill(3) grants (Hiding, Sightless Mind, Magnum Break ...) are not added to the 5025 skill list.
+/// Skill(3) grants (Heal, Disguise, Magnum Break, Envenom, Sight, Sightless Mind) go into RoleProgress.GrantedSkills.
 /// </summary>
 public sealed class CardEffects
 {
     private readonly GameData _data;
     private readonly CharacterService _character;
     private readonly BuffService _buffs;
+    private readonly SkillService _skills;
     private readonly ConditionalWeakTable<GameSession, Runtime> _runtime = new();
 
     private sealed class Runtime
@@ -47,15 +49,17 @@ public sealed class CardEffects
 
     private sealed record Passive(InvItem Card, int Id, JsonElement Row);
 
+    private const long SkillOp = 3;
     private const int LifeStealGroup = 20170, SpAbsorb = 2050401, SizeAlways = 20501, SizeChance = 20500;
 
     // A test can fix each ten-thousandth roll without changing the production probability.
     internal Func<int, int> Roll { get; set; } = bound => Random.Shared.Next(bound);
 
     public CardEffects(GameData data, CharacterService character, BuffService buffs, CardService cards, CombatService combat,
-        SceneService scenes)
+        SceneService scenes, SkillService skills)
     {
         this._data = data;
+        this._skills = skills;
         this._character = character;
         this._buffs = buffs;
         cards.SocketsChanged.Add(RefreshAsync);
@@ -103,9 +107,29 @@ public sealed class CardEffects
                 s.BuffEffectCds[added.Guid] = readyAt;
             state.Registered[(source, id)] = added.Guid;
         }
+        await GrantSkillsAsync(s);
         if (!statsChanged) return;
         if (s.SceneLoading) _character.Refresh(s);
         else await _character.RefreshStatsAsync(s);
+    }
+
+    /// <summary>SpecialEffectConfig op Skill(3) [3, SkillConfig row] (enum_SpecialEffectType.Skill): the socketed card grants
+    /// that row's group at its level while it stays socketed (Heal, Disguise, Magnum Break, Envenom, Sight, Sightless Mind;
+    /// _iSystemType 3, enum_SkillSystemType.CardSkill). The skill panel lists them as card skills and they can be loaded
+    /// and cast; the highest level of a group counts.</summary>
+    private async Task GrantSkillsAsync(GameSession s)
+    {
+        if (s.Progress is not { } progress) return;
+        Dictionary<int, int> granted = [];
+        foreach (var (_, id) in EquipmentStunts.CardEffects(s, _data))
+            if (SpecialEffectConfig.Get(_data, id) is { } effect)
+                foreach (var op in effect.SpecialEffect)
+                    if (op is [SkillOp, var row] && SkillConfig.Get(_data, row) is { SkillId: > 0 } skill)
+                        granted[(int)skill.SkillId] = Math.Max(granted.GetValueOrDefault((int)skill.SkillId), (int)skill.Level);
+        if (granted.Count == progress.GrantedSkills.Count && granted.All(g => progress.GrantedSkills.GetValueOrDefault(g.Key) == g.Value)) return;
+        progress.GrantedSkills.Clear();
+        foreach (var (group, level) in granted) progress.GrantedSkills[group] = level;
+        if (s.SkillPlans != null) await _skills.SyncAsync(s);
     }
 
     private static long[] Numbers(JsonElement row, string field) => row.TryGetProperty(field, out var list) && list.ValueKind == JsonValueKind.Array

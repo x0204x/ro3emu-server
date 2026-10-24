@@ -9,7 +9,7 @@ using Ro3Emu.Bot;
 namespace Ro3Emu.Tests;
 
 /// <summary>
-/// Scripted story scenes without a fight (Reconstructed/scripted-scenes.json, DungeonService.Scripted): each scene is
+/// Scripted story scenes (Reconstructed/scripted-scenes.json, DungeonService.Scripted): each scene is
 /// entered, played through the events its client sends (32700 on the scene actors, walks into server regions, 84011
 /// at a story's end), settles as a clear, and the clear counts for its story step so the next one is offered.
 /// </summary>
@@ -26,7 +26,8 @@ public sealed partial class DungeonTests
         var plan = Service<DungeonCatalog>().Resolve(new EnterDungeonReq { SceneEntry = scene });
         Assert.NotNull(plan); // every actor, point, region, buff, plot, interaction and message resolved
         Assert.Equal(scripted.Steps.Count, plan.Waves.Count);
-        Assert.All(plan.Waves, w => Assert.Empty(w.Spawns));
+        // A step's fight spawns client-known monsters at its points; a step without one spawns nothing.
+        Assert.Equal(scripted.Steps.Select(s => s.Fight.Select(f => f.NpcId)), plan.Waves.Select(w => w.Spawns.Select(s => s.NpcId)));
         Assert.Equal(scripted.Steps, plan.Waves.Select(w => w.Step!));
         // The tracker walks the scene's configured DungeonQuestConfig quests in order, each of them but the unplayed.
         var quests = Service<GameData>().Table("DungeonQuestConfig").Values
@@ -34,6 +35,103 @@ public sealed partial class DungeonTests
             .Where(q => !scripted.Unplayed.Contains(q)).Order();
         Assert.Equal(quests, plan.Waves.Select(w => w.Quest).Distinct());
         Assert.Equal(plan.Waves.Select(w => w.Quest).Order(), plan.Waves.Select(w => w.Quest));
+    }
+
+    // The airship's cannons (inferred): 'Board the Cannon' (5300006) on a Cannon fires 5365001 at the nearest enemy
+    // airship, three boardings a ship; sinking both (5300015 at point 24, 5300053 at 61) ends stage 2 and the boarders come.
+    [ClientDataFact]
+    public async Task TheAirshipCannonsSinkTheEnemyShips()
+    {
+        const long scene = 1000501;
+        await using var alice = await InWorld("Alice");
+        await Gm(alice, "!lvl 99");
+        Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
+        long instance = await Load(alice, scene);
+        await Stage(alice, 1, quest: 1);
+        await Gm(alice, "!actors use"); // the chitchat (all four)
+        await Stage(alice, 2, quest: 2);
+        var cannons = await ActorsIn(alice, 3, a => a.NpcId == 5300022);
+        var ships = await WaveIn(instance, 2);
+        Assert.Equal([5300015, 5300053], ships.Select(m => m.Template.NpcId).Order());
+        var cannon = cannons[0];
+        await Gm(alice, "!actors 5300022");
+        int boardings = 0;
+        for (; boardings < 20 && ships.Any(m => !m.Dead); boardings++)
+        {
+            Assert.Equal(0, await Interact(alice, cannon, 5300006));
+            await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser, h => h.SkillId == 5365001);
+            foreach (var ship in ships.Where(m => !m.Dead)) ship.Hp = ship.Template.MaxHp; // a far ship's leash reset
+        }
+        Assert.All(ships, m => Assert.True(m.Dead));
+        Assert.InRange(boardings, 6, 8); // three a ship (a miss costs one more)
+        await Stage(alice, 3, quest: 3); // the boarding
+    }
+
+    // Moonlight Flower's hide-and-seek (inferred): standing in the open is found and the game starts over; a darkness
+    // point passes a round and is searched, so hiding there again is found; another side of the room wins the second round.
+    [ClientDataFact]
+    public async Task MoonlightFlowersHideAndSeekIsWonByHidingInTwoPlaces()
+    {
+        const long scene = 3120802;
+        Service<IOptions<ServerOptions>>().Value.ScriptedScenePacePercent = 10;
+        await using var alice = await InWorld("Alice");
+        Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
+        await Load(alice, scene);
+        await Stage(alice, 1, quest: 1);
+        var seeker = Assert.Single(await ActorsIn(alice, 1));
+        Assert.Equal(400097, seeker.NpcId);
+        var map = Service<WorldData>().Map(scene)!;
+        Task Hide(long point) => Gm(alice, FormattableString.Invariant($"!actors walk {map.Points[point].X} {map.Points[point].Z}"));
+        Task<SystemBoardCastMsgNtf> Says(int chat) => Next(alice, 1022, SystemBoardCastMsgNtf.Parser, m => m.ChatId == chat);
+
+        // Her opening bubbles over her own head, then the first round in the open: found.
+        Assert.Equal(seeker.Uid, (await Says(5310011)).PlayerId);
+        await Says(5310005); // "I'm about to catch you!"
+        await Says(5310010); // the countdown tip
+        await Says(5310014); // "You're no good at hide-and-seek!"
+        // In the south-west darkness: the round passes; staying there is found, the place having been searched.
+        await Hide(67);
+        await Says(5310006); // "Play with me a little longer!"
+        await Says(5310014);
+        // The game started over: the same place passes round one again, the south-east corner wins round two.
+        await Says(5310006);
+        await Hide(78);
+        await Says(5310007); // "I had a great time~"
+        Assert.Equal((DungeonRes)1, (await Next(alice, DungeonService.Result, DungeonResNotify.Parser)).Res);
+    }
+
+    // The story Pharaoh's Cleansing Light (inferred): the raid's tip, then his strongest skill on whoever stands outside the
+    // Pyramid's shadow.
+    [ClientDataFact]
+    public async Task ThePharaohsCleansingLightHitsWhoeverIsNotBehindThePyramid()
+    {
+        const long scene = 3120702;
+        Service<IOptions<ServerOptions>>().Value.ScriptedScenePacePercent = 10;
+        await using var alice = await InWorld("Alice");
+        await Gm(alice, "!lvl 99");
+        Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
+        long instance = await Load(alice, scene);
+        await Stage(alice, 1, quest: 1);
+        var pyramid = Assert.Single(await ActorsIn(alice, 1, a => a.NpcId == 5300011));
+        var point = Service<WorldData>().Map(scene)!.Points[20];
+        Assert.Equal((point.X + 6, point.Z + 7), (pyramid.X, pyramid.Z)); // beside Pharaoh's point, no point of its own
+        var pharaoh = await BossIn(instance, 5300010);
+        long me = Session(alice).Role!.Id;
+        await Next(alice, 1022, SystemBoardCastMsgNtf.Parser, m => m.ChatId == 4370002); // "hide behind the Pyramid!"
+        var hit = await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser, h => h.SkillId == 5340301 && h.Dsts.Any(d => d.DstID == me));
+        Assert.Equal(pharaoh.Uid, hit.SrcID);
+    }
+
+    [Theory]
+    [InlineData(0f, 7f, true)] // straight behind the cover
+    [InlineData(1.4f, 8f, true)] // within the shadow's width
+    [InlineData(2f, 8f, false)] // beside it
+    [InlineData(0f, 3f, false)] // in front of it
+    [InlineData(0f, 12f, false)] // past the shadow's depth
+    public void ThePyramidsShadowLiesBehindItAsSeenFromTheBoss(float x, float z, bool sheltered)
+    {
+        var shelter = new ReconstructedDungeons.Shelter(0, 0, 0, 0, 20000, 4000, 1.5f, 6);
+        Assert.Equal(sheltered, DungeonService.Sheltered(0, 0, 0, 5, x, z, shelter));
     }
 
     [ClientDataFact]
@@ -189,6 +287,7 @@ public sealed partial class DungeonTests
     {
         const long scene = 3120802;
         await using var alice = await InWorld("Alice");
+        Service<IOptions<ServerOptions>>().Value.ScriptedScenePacePercent = 10; // the hide-and-seek rounds, shortened
         await Gm(alice, "!quest accept 205110"); // Falling into a Trap: [101018, 3120802, 1]
         Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
         await Load(alice, scene);
@@ -197,7 +296,7 @@ public sealed partial class DungeonTests
         var flower = Assert.Single(await ActorsIn(alice, 1));
         Assert.Equal((400097, 1, 26L), (flower.NpcId, flower.EntityType, flower.Point)); // turned away, counting
 
-        // The open centre and Moonlight Flower's side are not hiding places: the game goes on.
+        // The open centre and Moonlight Flower's side are not hiding places: the game goes on (walking there never ends it).
         var map = Service<WorldData>().Map(scene)!;
         var born = map.Points[22];
         await WalkTo(alice, born.X, born.Y, born.Z);
@@ -207,7 +306,10 @@ public sealed partial class DungeonTests
         await Task.Delay(200);
         Assert.False(Session(alice).DungeonAttempt!.Settled);
 
+        // Hidden in the west darkness for a round, then on the far side of the room for the second.
         await WalkTo(alice, hide.X, hide.Y, hide.Z + 1);
+        await Next(alice, 1022, SystemBoardCastMsgNtf.Parser, m => m.ChatId == 5310006); // "Play with me a little longer!"
+        await Gm(alice, FormattableString.Invariant($"!actors walk {map.Points[78].X} {map.Points[78].Z}"));
         var result = await Next(alice, DungeonService.Result, DungeonResNotify.Parser);
         Assert.Equal((DungeonRes)1, result.Res);
         await StoryMovesOn(alice, 205110, 205120);

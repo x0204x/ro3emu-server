@@ -33,6 +33,9 @@ internal sealed class FamilyEconomyTransactionPlan(RoleItemPlan child, EconomyMu
             // The Odin statue of Valhalla Trials (cd13b/valhalla-pray): coins in, statue EXP and level out.
             "valhalla" => new HashSet<string>(["heroic_spirit", "library", "tasks", "task_runtime",
                 "task_followup"], StringComparer.Ordinal),
+            // Astral Level Star Cores (cd13b/paragon-*): a core installed leaves the bag, a removed one comes back.
+            "paragon" => new HashSet<string>(["paragon", "library", "tasks", "task_runtime",
+                "task_followup"], StringComparer.Ordinal),
             _ => throw new InvalidOperationException("Unknown converted C/D command kind.")
         };
     }
@@ -282,6 +285,7 @@ internal sealed class FamilyEconomyTransactionPlan(RoleItemPlan child, EconomyMu
                 "emblem" => (EconomyReason.EmblemCost, EconomyReason.EmblemGoods),
                 "genre" => (EconomyReason.GenreCost, EconomyReason.GenreGoods),
                 "valhalla" => (EconomyReason.ValhallaCost, EconomyReason.ValhallaCost), // no goods: a goods leg is refused
+                "paragon" => (EconomyReason.ParagonCost, EconomyReason.ParagonGoods),
                 _ => throw new InvalidOperationException("Unknown C/D 13b family.")
             };
         foreach (var asset in before.Keys.Select(x => x.Asset).Concat(after.Keys.Select(x => x.Asset))

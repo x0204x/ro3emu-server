@@ -6,7 +6,7 @@ using Kind = Ro3Emu.Server.Game.ReconstructedDungeons.TriggerKind;
 namespace Ro3Emu.Server.Game;
 
 /// <summary>
-/// Scripted story scenes without a fight (ReconstructedDungeons.Scripted, Reconstructed/scripted-scenes.json). A step
+/// Scripted story scenes (ReconstructedDungeons.Scripted, Reconstructed/scripted-scenes.json). A step
 /// shows its scene actors, may start a story, and completes on one of its client events: a 32700 interaction on one
 /// of its actors (or the dungeon message that interaction's server-hosted action 210 names), the participant's walked
 /// position in a server region or near a point, or 84011 at the end of a story. Then the room moves on to the next
@@ -76,8 +76,13 @@ public sealed partial class DungeonService
     /// <summary>Called by SpawnWaveAsync for a scripted step instead of spawning monsters.</summary>
     private async Task BeginStepAsync(Attempt a, ReconstructedDungeons.ScriptedStep step)
     {
-        a.StepDone = false;
+        a.StepSeen.Clear();
+        // A fight-only step has no client event to wait for: its kills complete it.
+        a.StepDone = step.Complete.Count == 0;
         await SyncSceneActorsAsync(a, step.Actors);
+        a.StepGeneration++;
+        if (step.Seek is { } seek) StartSeek(a, seek);
+        if (step.Shelter is { } shelter) StartShelter(a, shelter);
         if (step.Story != 0 && !a.Settled && !a.Room.Closed)
             // Once, in a var-change event: the client calls PlayCutSceneStory on every push of this var.
             await BroadcastAsync(a, Event, new DungeonEventNotify
@@ -118,7 +123,7 @@ public sealed partial class DungeonService
             var unit = new SceneActorUnit
             {
                 Uid = SceneActorUidBase | Interlocked.Increment(ref _sceneActorSerial), SceneEntry = a.Plan.SceneEntry,
-                InstanceId = a.Room.Id, X = at.X, Y = at.Y, Z = at.Z, Face = at.Face, NpcId = spec.NpcId, Point = spec.Point,
+                InstanceId = a.Room.Id, X = at.X + spec.Dx, Y = at.Y, Z = at.Z + spec.Dz, Face = at.Face, NpcId = spec.NpcId, Point = spec.Point,
                 EntityType = type, Camp = GameData.Int(row, "_iCamp"), Name = type == 2 ? _data.ClientTextOf(row, "_kName") : "",
                 Template = type == 1 ? _monsters.Template(spec.NpcId) : null, BornMs = MonsterService.NowMs,
             };
@@ -176,10 +181,36 @@ public sealed partial class DungeonService
         if (code != 0) return true;
         // Dracula's Lair: a bush search may find the key; its finder is the rescuer, the only one the cage opens for.
         if (a!.Dracula is { } dracula) await dracula.Owner.InteractedAsync(a, s, actor!.NpcId);
+        await StrikeAsync(a!, s, actor!, req.InteractionId);
         var events = new List<(Kind, long)> { (Kind.Interaction, req.InteractionId) };
         if (_catalog.DungeonMessage(req.InteractionId) is { } message) events.Add((Kind.Message, message));
         await StepEventAsync(a!, s, events);
         return true;
+    }
+
+    /// <summary>
+    /// A step's strike: the interaction (the airship's 'Board the Cannon') casts its skill from the player at the nearest
+    /// living monster of the step's fight, through the ordinary extra-cast path (damage, kills, the tracker) (inferred:
+    /// the original's cannon gameplay status is a server script the client does not ship). With shots, the k-th strike on
+    /// a target first brings it down to its (shots - k) / shots share of the maximum HP, so that many strikes sink it at
+    /// any player level, even when the far target resets between them (inferred: the rapid fire button stood for a volley).
+    /// </summary>
+    private async Task StrikeAsync(Attempt a, GameSession s, SceneActorUnit actor, long interaction)
+    {
+        if (Step(a) is not { Strikes: { } strikes } || a.Settled) return;
+        foreach (var (id, skill, shots) in strikes)
+        {
+            if (id != interaction || _data.Row("SkillConfig", skill) is not { } row) continue;
+            var target = a.Room.Monsters.Where(m => !m.Dead && m.Hp > 0)
+                .OrderBy(m => MonsterService.Distance(actor.X, actor.Z, m.X, m.Z)).FirstOrDefault();
+            if (target == null) continue;
+            if (shots > 0)
+            {
+                int struck = a.Struck[target.Uid] = a.Struck.GetValueOrDefault(target.Uid) + 1;
+                target.Hp = Math.Min(target.Hp, target.Template.MaxHp * Math.Max(0, shots - struck) / shots + 1);
+            }
+            await _combat.CastExtraAsync(s, row, [target]);
+        }
     }
 
     /// <summary>
@@ -205,11 +236,12 @@ public sealed partial class DungeonService
             // sent it (for an interaction, as a 32700 on its actor), so a scene can be finished while a client-side
             // problem is investigated. The usual step completion runs (teleport, next step, settlement).
             if (Active(s) is not { } used || Step(used) is not { } current || used.StepDone)
-                throw new ArgumentException("not in a scripted scene step that is waiting");
+                throw new ArgumentException("not in a scripted scene step that is waiting (a fight-only step ends on its kills)");
             var t = current.Complete[0];
             _log.LogWarning("GM test aid: {Role} completes scripted scene {Scene} step {Step} with {Kind} {Id}",
                 s.Role?.Id, used.Plan.SceneEntry, used.Wave + 1, t.Kind, t.Id);
-            await StepEventAsync(used, s, [(t.Kind, t.Id)]);
+            // An "all" step takes every one of its events.
+            await StepEventAsync(used, s, current.All ? [.. current.Complete.Select(c => (c.Kind, c.Id))] : [(t.Kind, t.Id)]);
             await GmCommands.ReplyAsync(s, $"TEST AID: step {used.Wave + 1} '{current.Stage}' completed with {t.Kind} {t.Id}.");
             return;
         }
@@ -253,6 +285,7 @@ public sealed partial class DungeonService
     public async Task PlayerMovedAsync(GameSession s)
     {
         if (s.DungeonAttempt == null || Active(s) is not { } a || Step(a) is not { } step || a.StepDone) return;
+        if (step.Seek != null) return; // a hiding place counts when the seeker looks (DungeonService.HideAndSeek)
         foreach (var t in step.Complete)
         {
             bool inside = t.Kind switch
@@ -276,6 +309,16 @@ public sealed partial class DungeonService
                 _log.LogInformation("Scripted scene {Scene} step {Step}: {Role} sent {Events}, which does not advance it",
                     a.Plan.SceneEntry, a.Wave + 1, s.Role?.Id, string.Join(", ", events));
             return;
+        }
+        if (step.All)
+        {
+            foreach (var t in step.Complete.Where(Matches)) a.StepSeen.Add((t.Kind, t.Id));
+            if (a.StepSeen.Count < step.Complete.Count)
+            {
+                // The tracker's counter follows each event of an "all" step.
+                if (GoalParams(a) != null) await BroadcastAsync(a, BaseInfo, Snapshot(a));
+                return;
+            }
         }
         a.StepDone = true;
         _log.LogInformation("Scripted scene {Scene} step {Step} '{Stage}' completed by {Role} ({Events})",

@@ -211,6 +211,35 @@ public sealed class CardRulesTests : IAsyncLifetime
         Assert.Contains((221L, 12d), flashFlat);
     }
 
+    // Card 1430601's SpecialEffect 11000001 is [[3, 2004001]] (enum_SpecialEffectType.Skill): Disguise, a card skill
+    // (_iSystemType 3). While socketed, its group 20040 is in the plan's skillAssigns at level 1, where the skill panel
+    // lists card skills, and it can be cast; unsocketed, it is gone.
+    [ClientDataFact]
+    public async Task ASocketedSkillCardGrantsItsCardSkill()
+    {
+        const int card = 1430601;
+        await using var alice = await InWorld("Alice");
+        var session = Session("Alice");
+        await Gm("alice", "!lvl 80");
+        await Gm("alice", $"!item {card} 1");
+        Assert.Equal(0, await Insert(alice, 6, 1, session.Items.Single(i => i.Entry == card).Guid));
+        await Eventually(() => session.Progress!.GrantedSkills.GetValueOrDefault(20040) == 1, "granted");
+        await Next(alice, SkillService.SkillDataSync, DBSkillDataIncrement.Parser,
+            m => m.SkillAssignPlans?.Inc?.Value.Any(p => p.SkillAssigns.ContainsKey(20040)) == true);
+
+        await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 2004001, Face = 0 });
+        Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
+        await Eventually(() => session.Buffs.Any(b => b.ConfigId == 1500601), "camouflage");
+
+        await alice.SendGameAsync(CardService.SlotRemove, new EquipmentCardRemoveReq { EquipPos = (EquipGridType)6, SlotIndex = 1 });
+        Assert.Equal(0, (await Next(alice, CardService.SlotRemove, EquipmentCardRemoveResp.Parser)).Result);
+        await Eventually(() => session.Progress!.GrantedSkills.Count == 0, "revoked");
+        await OnLoop(() => { session.SkillCds.Clear(); session.SkillModeCds.Clear(); return 0; });
+        await Task.Delay(800);
+        await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 2004001, Face = 0 });
+        Assert.NotEqual(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
+    }
+
     [ClientDataFact]
     public async Task CardPassivesFollowTheSocketAndArmTheLethalRevive()
     {

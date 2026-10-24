@@ -244,6 +244,8 @@ public sealed partial class TerritoryEscortService : IGameTicker
     private TimeSpan _lastTick;
     private bool _ticking, _reconciledOnce; // the first reconciliation runs on the loop's first tick (startup), not 1 s later
     public Func<int, long>? OwnerOf { get; set; }
+    /// <summary>After a committed cart start, its escort (the member who took it). Listeners post their work.</summary>
+    public List<Action<GameSession>> CartStarted { get; } = [];
     public Func<long, int>? GuildPoint { get; set; }
 
     public TerritoryEscortService(AccountStore accounts, GuildStore guilds, GuildService guildService, RoleStore roles, GameData data,

@@ -282,6 +282,29 @@ public sealed class LifeJobTests : IAsyncLifetime
         Assert.Equal(1, await OnLoop("alice", s => s.LifeJob!.LifeJobInfoMap[1].JobLevel));
     }
 
+    /// <summary>
+    /// #bug-reports "Level 3 mining does not grant access to level 2 resources": the client's Unlock button only walks to
+    /// the gathering area, so Lv. 2 ore (100200, condition 43000000: Mining 3) unlocks with the level, at the next gather.
+    /// </summary>
+    [ClientDataFact]
+    public async Task LevelTwoOreUnlocksWithMiningLevelThree()
+    {
+        await using var b = await InWorld("Alice"); Assert.Equal(0, await Learn(b, "alice", 1, 1));
+        var life = _app.Services.GetRequiredService<LifeJobService>();
+        Assert.Equal(ErrorCodes.LifeRequirements, await OnLoop("alice", s => life.CheckGather(s, 100200))); // Mining 1
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(async () =>
+        {
+            var s = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
+            using var gate = await CharacterService.Lock(s);
+            s.LifeJob!.LifeJobInfoMap[1].JobLevel = 3;
+            Assert.Equal(0, await life.CompleteGatherAsync(s, 100100, sceneEntry: 10522, pointId: 312));
+        });
+        Assert.Equal(0, await OnLoop("alice", s => life.CheckGather(s, 100200)));
+        Assert.Equal(ErrorCodes.LifeRequirements, await OnLoop("alice", s => life.CheckGather(s, 100300))); // Mining 5
+        var saved = DBLifeJobInfo.Parser.ParseFrom(_app.Services.GetRequiredService<RoleStore>().LoadLifeJob((long)b.Self!.Uuid)!);
+        Assert.True(saved.LifeJobInfoMap[1].GatherInfo.ItemDetails.ContainsKey(100200));
+    }
+
     [ClientDataTheory]
     [InlineData(1001801)]
     [InlineData(1291002)]

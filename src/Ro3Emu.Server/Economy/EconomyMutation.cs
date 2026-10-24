@@ -38,7 +38,7 @@ public sealed class EconomyMutation
         if (CharacterFamilyEconomy.IsKind(kind)) return true;
         if (!kind.StartsWith("cd13b/", StringComparison.Ordinal)) return false;
         string name = kind[6..];
-        return new[] { "pet", "mount", "wardrobe", "totem", "emblem", "genre", "valhalla" }
+        return new[] { "pet", "mount", "wardrobe", "totem", "emblem", "genre", "valhalla", "paragon" }
             .Any(family => name == family || name.StartsWith(family + "-", StringComparison.Ordinal));
     }
     public string OperationId { get; }

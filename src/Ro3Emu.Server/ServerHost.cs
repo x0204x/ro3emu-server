@@ -31,6 +31,10 @@ public static class ServerHost
         builder.Services.AddSingleton(Options.Create(options));
         builder.Services.AddSingleton(clock ?? TimeProvider.System);
         builder.WebHost.UseUrls($"http://{options.ListenAddress()}:{options.HttpPort}"); // loopback for local play and tests
+        // Kestrel stops first and waits for every HTTP connection (a half-sent request holds it for the 30 s header timeout),
+        // and the gates, loop and database stop only after it. The reaper aborts what is left a moment after stop begins.
+        var httpConnections = new HttpConnectionReaper();
+        builder.WebHost.ConfigureKestrel(k => k.ConfigureEndpointDefaults(l => Microsoft.AspNetCore.Connections.ConnectionBuilderExtensions.Use(l, httpConnections.Track)));
 
         // First hosted service: everything after it (loop, gates, HTTP) starts with the game data already parsed.
         if (options.PreloadGameData) builder.Services.AddHostedService<Ro3Emu.Server.Data.GameDataPreload>();
@@ -96,6 +100,7 @@ public static class ServerHost
         builder.Services.AddSingleton<TalentProcs>();
         builder.Services.AddSingleton<PassiveSkills>();
         builder.Services.AddSingleton<RidingEffects>();
+        builder.Services.AddSingleton<StealthEffects>();
         builder.Services.AddSingleton<SeasonService>();
         builder.Services.AddSingleton<SeasonPageService>();
         builder.Services.AddSingleton<SeasonRefineService>();
@@ -137,6 +142,9 @@ public static class ServerHost
         builder.Services.AddSingleton<ValhallaService>();
         builder.Services.AddSingleton<MonsterHuntService>();
         builder.Services.AddSingleton<GrowthClassService>();
+        builder.Services.AddSingleton<ParagonService>();
+        builder.Services.AddSingleton<FlyingDragonService>();
+        builder.Services.AddSingleton<TitleService>();
         builder.Services.AddSingleton<FirstHeartService>();
         builder.Services.AddSingleton<AppraisalService>();
         builder.Services.AddSingleton<EnchantService>();
@@ -207,6 +215,7 @@ public static class ServerHost
         builder.Services.AddSingleton<CredentialLimiter>();
 
         var app = builder.Build();
+        app.Lifetime.ApplicationStopping.Register(() => httpConnections.AbortAfter(HttpConnectionReaper.Grace));
         app.Services.GetRequiredService<RealmLock>();
         app.Services.GetRequiredService<Game.Ownership.RoleHandover>()
             .Configure(session => app.Services.GetRequiredService<RoleSessionService>().CleanupRoleAsync(session),
@@ -372,6 +381,9 @@ public static class ServerHost
         app.Services.GetRequiredService<GuildChallengeService>().Participated.Add(questTasks.OnGveJoined); // 103014
         league.MatchCommitted.Add(questTasks.OnGuildLeagueMatch); // 106603, 106019
         territory.SiegeSettled.Add(questTasks.OnSiegeSettled); // 106611, 106605, 106606
+        territory.SiegeSettled.Add((role, _, _) => questTasks.OnGuildEventJoined(role, TaskService.GuildEvent.RoyalCity)); // 106010
+        territory.BattleSettled.Add(questTasks.OnTerritoryBattleSettled); // 106010 Stronghold / Regional Capital War
+        escort.CartStarted.Add(s => questTasks.OnGuildEventJoined(s, TaskService.GuildEvent.Escort)); // 106010 Escort
         app.Services.GetRequiredService<EmblemService>().Upgraded.Add(questTasks.OnEchoUpgraded); // 317002
         app.Services.GetRequiredService<TowerService>().Settled.Add(questTasks.OnTowerSettled); // 101007, 101010
         app.Services.GetRequiredService<PersonalService>().Upvoted.Add(questTasks.OnProfileLiked); // 106902
@@ -388,6 +400,7 @@ public static class ServerHost
         app.Services.GetRequiredService<TalentProcs>(); // profession talent procs (cast resolutions)
         app.Services.GetRequiredService<PassiveSkills>(); // learned passives' procs, shields and reactions
         app.Services.GetRequiredService<RidingEffects>(); // a ridden mount's buffs and the riding passives
+        app.Services.GetRequiredService<StealthEffects>(); // hiding and detection attributes, reveals, Ruwach
         // Create the key before the first client connects, so ClientPatch can read the public half.
         app.Services.GetRequiredService<GateCrypto>();
         app.Logger.LogInformation("Data dir {DataDir}", options.DataDir);
@@ -469,6 +482,7 @@ internal sealed class GameLoopTickers(IServiceProvider services) : IHostedServic
         Add<SeasonService>();
         Add<MountService>();
         Add<RidingEffects>();
+        Add<StealthEffects>();
         Add<PassiveSkills>();
         Add<TeamService>();
         Add<DailyActivityService>();
@@ -515,4 +529,23 @@ internal sealed class GameLoopQuiesceService(GameLoop loop) : IHostedService
 {
     public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     public Task StopAsync(CancellationToken cancellationToken) { loop.Quiesce(); return Task.CompletedTask; }
+}
+
+/// <summary>Tracks the open HTTP connections so a stop that Kestrel is still draining can abort them after a short grace.</summary>
+internal sealed class HttpConnectionReaper
+{
+    public static readonly TimeSpan Grace = TimeSpan.FromSeconds(2);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Microsoft.AspNetCore.Connections.ConnectionContext, byte> _open = new();
+
+    public async Task Track(Microsoft.AspNetCore.Connections.ConnectionContext connection, Func<Task> next)
+    {
+        _open[connection] = 0;
+        try { await next(); }
+        finally { _open.TryRemove(connection, out _); }
+    }
+
+    public void AbortAfter(TimeSpan grace) => _ = Task.Delay(grace).ContinueWith(_ =>
+    {
+        foreach (var connection in _open.Keys) connection.Abort();
+    }, TaskScheduler.Default);
 }

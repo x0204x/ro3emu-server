@@ -34,8 +34,6 @@ public sealed class PhonestChannel : IAsyncDisposable
     private long _queuedBytes;
     private int _overflowed;
     private int _closing;
-    private int _readerActive;
-    private readonly TaskCompletionSource _peerClosed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private StreamConvertor? _convertor;
     private bool _inboundConverted;
     private bool _switchInboundAfterCurrentFrame;
@@ -94,33 +92,23 @@ public sealed class PhonestChannel : IAsyncDisposable
 
     public async Task RunAsync(FrameHandler handler, CancellationToken ct)
     {
-        if (Interlocked.Exchange(ref _readerActive, 1) != 0) throw new InvalidOperationException("reader already active");
-        try
+        var buf = new byte[64 * 1024];
+        while (!ct.IsCancellationRequested)
         {
-            var buf = new byte[64 * 1024];
-            while (!ct.IsCancellationRequested)
+            int n = await _socket.ReceiveAsync(buf, SocketFlags.None, ct);
+            Metrics?.ReceivedBytes(n);
+            if (n == 0) { Volatile.Write(ref _closing, 1); return; }
+            if (_inboundConverted)
             {
-                int n = await _socket.ReceiveAsync(buf, SocketFlags.None, ct);
-                Metrics?.ReceivedBytes(n);
-                if (n == 0)
-                {
-                    _peerClosed.TrySetResult();
-                    Volatile.Write(ref _closing, 1);
-                    return;
-                }
-                if (_inboundConverted)
-                {
-                    var plain = _convertor!.ConvertInput(buf.AsSpan(0, n), MaxFrame + 6);
-                    _pending.Write(plain);
-                }
-                else
-                {
-                    _pending.Write(buf, 0, n);
-                }
-                await DrainFramesAsync(handler);
+                var plain = _convertor!.ConvertInput(buf.AsSpan(0, n), MaxFrame + 6);
+                _pending.Write(plain);
             }
+            else
+            {
+                _pending.Write(buf, 0, n);
+            }
+            await DrainFramesAsync(handler);
         }
-        finally { Volatile.Write(ref _readerActive, 0); }
     }
 
     /// <summary>
@@ -247,7 +235,6 @@ public sealed class PhonestChannel : IAsyncDisposable
 
     private async Task WriteLoopAsync()
     {
-        bool completedNormally = false;
         try
         {
             var batch = new MemoryStream();
@@ -278,7 +265,6 @@ public sealed class PhonestChannel : IAsyncDisposable
                 }
                 Metrics?.SentBatch(frames, bytes.Length, calls, partial);
             }
-            completedNormally = true;
         }
         catch (Exception e) when (e is SocketException or ObjectDisposedException)
         {
@@ -293,9 +279,7 @@ public sealed class PhonestChannel : IAsyncDisposable
         finally
         {
             // A dead writer must not leave the session queuing into the void: end the connection for the reader too.
-            // A normally drained writer is different: DisposeAsync sends a FIN after every queued byte instead of
-            // shutting both directions down here (which can reset a Windows peer before it reads the final frame).
-            if (!completedNormally) Abort();
+            Abort();
         }
     }
 
@@ -304,53 +288,9 @@ public sealed class PhonestChannel : IAsyncDisposable
     {
         Volatile.Write(ref _closing, 1);
         _outbound.Writer.TryComplete();
-        var completed = await Task.WhenAny(_writer, Task.Delay(TimeSpan.FromSeconds(2)));
-        if (completed == _writer)
-        {
-            await _writer;
-            // FIN is queued behind the bytes the writer handed to TCP. Do not use Shutdown(Both): on Windows that
-            // can turn a successful drain into a reset before the peer consumes the last response.
-            try { _socket.Shutdown(SocketShutdown.Send); } catch (SocketException) { } catch (ObjectDisposedException) { }
-            await WaitForPeerCloseAsync();
-        }
-        else
-        {
-            _log.LogWarning("send queue for {Remote} did not drain before close", Remote);
-            Abort();
-        }
+        await Task.WhenAny(_writer, Task.Delay(TimeSpan.FromSeconds(2)));
+        try { _socket.Shutdown(SocketShutdown.Both); } catch (SocketException) { } catch (ObjectDisposedException) { }
         _socket.Dispose();
         Metrics?.Closed();
-    }
-
-    /// <summary>
-    /// Gives the peer a bounded chance to observe our FIN and close its send side before the socket is disposed.
-    /// An active RunAsync owns the receive; after it stops this method drains and discards shutdown-time input itself.
-    /// </summary>
-    private async Task WaitForPeerCloseAsync()
-    {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(2);
-        var buffer = new byte[1024];
-        while (DateTime.UtcNow < deadline)
-        {
-            if (_peerClosed.Task.IsCompleted) return;
-            if (Volatile.Read(ref _readerActive) != 0)
-            {
-                await Task.Delay(10);
-                continue;
-            }
-            var remaining = deadline - DateTime.UtcNow;
-            if (remaining <= TimeSpan.Zero) return;
-            using var timeout = new CancellationTokenSource(remaining);
-            try
-            {
-                int n = await _socket.ReceiveAsync(buffer, SocketFlags.None, timeout.Token);
-                if (n != 0) continue;
-                _peerClosed.TrySetResult();
-                return;
-            }
-            catch (OperationCanceledException) when (timeout.IsCancellationRequested) { return; }
-            catch (SocketException) { return; }
-            catch (ObjectDisposedException) { return; }
-        }
     }
 }

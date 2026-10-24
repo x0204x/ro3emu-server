@@ -54,6 +54,21 @@ public sealed class BossSkillSetsTests(ITestOutputHelper output)
         Assert.Equal(5001031, Book(5020011)!.Skills.Single(k => k.Id == 5207101).GroundNpc); // Osiris's Horong
     }
 
+    // A show whose displacement EffectData has a knockback curve (击退/震退) pushes the players hit 3 m away; a pull (勾/吸/拉,
+    // "Pulls enemies inward toward yourself") brings them to 1 m in front of the boss (both distances inferred).
+    [ClientDataFact]
+    public void BossKnockbacksAndPullsMoveThePlayersHit()
+    {
+        var moves = Data.Table("NPCConfig").Values
+            .Where(n => GameData.Int(n, "_iNPCType") == 1 && GameData.Int(n, "_iNPCSubType") is 3 or 4 or 6)
+            .Select(n => Book((int)GameData.Int(n, "_iID"))).Where(b => b != null)
+            .SelectMany(b => b!.Skills).Where(k => k.PushEffect > 0)
+            .GroupBy(k => k.Id).ToDictionary(g => g.Key, g => g.First().PushDistance);
+        foreach (var (id, distance) in moves) output.WriteLine($"{id} {Data.TextOf(Data.Row("SkillConfig", id)!.Value, "_iName")} {distance}");
+        Assert.Equal(-1f, moves[5205501]); // Powerful Drain: a pull
+        Assert.Contains(moves.Values, d => d == 3f);
+    }
+
     [ClientDataFact]
     public void MvpServiceKeepsItsOwnPlansAndOtherAngelingsGetThemGenerically()
     {

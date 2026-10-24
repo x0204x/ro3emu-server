@@ -43,6 +43,9 @@ internal sealed class RoleSchemaPlan : DbPlan
         SchemaSql.AddColumn(db, tx, "role", "starter_kit", "INTEGER NOT NULL DEFAULT 0");
         SchemaSql.AddColumn(db, tx, "role", "skills", "TEXT NOT NULL DEFAULT ''");
         SchemaSql.AddColumn(db, tx, "role", "skill_bar", "TEXT NOT NULL DEFAULT ''");
+        // Astral Level (Paragon): RoleProgress.ParagonLevel / ParagonExp, staged with the EXP that feeds them.
+        SchemaSql.AddColumn(db, tx, "role", "paragon_level", "INTEGER NOT NULL DEFAULT 0");
+        SchemaSql.AddColumn(db, tx, "role", "paragon_exp", "INTEGER NOT NULL DEFAULT 0");
         // The five Build-window skill selections; progress keeps the selected effective values.
         SchemaSql.AddColumn(db, tx, "role", "skill_plans", "BLOB");
         // Progression (stage 3): see RoleProgress.
@@ -55,6 +58,9 @@ internal sealed class RoleSchemaPlan : DbPlan
         SchemaSql.AddColumn(db, tx, "role", "starter_kit", "INTEGER NOT NULL DEFAULT 0");
         SchemaSql.AddColumn(db, tx, "role", "skills", "TEXT NOT NULL DEFAULT ''");
         SchemaSql.AddColumn(db, tx, "role", "skill_bar", "TEXT NOT NULL DEFAULT ''");
+        // Astral Level (Paragon): RoleProgress.ParagonLevel / ParagonExp, staged with the EXP that feeds them.
+        SchemaSql.AddColumn(db, tx, "role", "paragon_level", "INTEGER NOT NULL DEFAULT 0");
+        SchemaSql.AddColumn(db, tx, "role", "paragon_exp", "INTEGER NOT NULL DEFAULT 0");
         // Serialized romsg.DBTaskInfo (quests, AUTO_SYNC 5027); NULL = the role predates quests.
         SchemaSql.AddColumn(db, tx, "role", "tasks", "BLOB");
         // Server-owned quest action/guide completion boundary, separate from client DBTaskInfo.
@@ -138,6 +144,10 @@ internal sealed class RoleSchemaPlan : DbPlan
         SchemaSql.AddColumn(db, tx, "role", "career_special", "BLOB");
         // Serialized romsg.DBOdinStatue (Valhalla Trials Blessing statue; part of AUTO_SYNC 5046, ValhallaService).
         SchemaSql.AddColumn(db, tx, "role", "heroic_spirit", "BLOB");
+        // Serialized romsg.DBParagonLevel (Astral Level stars and installed Star Cores; AUTO_SYNC 5015, ParagonService).
+        SchemaSql.AddColumn(db, tx, "role", "paragon", "BLOB");
+        // Serialized romsg.DBTitleInfo (the title rank; AUTO_SYNC 5031, TitleService).
+        SchemaSql.AddColumn(db, tx, "role", "title", "BLOB");
         // Serialized romsg.DBAreaConcurInfo (Monster Hunt kill counters and claimed stages; AUTO_SYNC 5053).
         SchemaSql.AddColumn(db, tx, "role", "area_concur", "BLOB");
         // Serialized romsg.DBGrowthClassInfo (Growth Classroom claimed rank rewards; AUTO_SYNC 5045, GrowthClassService).
@@ -357,6 +367,7 @@ internal sealed class AuctionSchemaPlan : DbPlan
         cmd.ExecuteNonQuery();
         SchemaSql.AddColumn(db, tx, "auction_prebuy", "requested_id", "INTEGER NOT NULL DEFAULT 0");
         SchemaSql.AddColumn(db, tx, "auction_prebuy", "paused", "INTEGER NOT NULL DEFAULT 0");
+        AuctionItemColumns.Migrate(db, tx);
         SchemaSql.Execute(db, tx, """
             INSERT OR IGNORE INTO owner_revision(kind,id,part,revision)
                 SELECT 'auction_item',source_key,'state',0 FROM auction_item;

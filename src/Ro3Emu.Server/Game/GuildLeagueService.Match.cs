@@ -453,7 +453,7 @@ public sealed partial class GuildLeagueService
         int wanted = MoraleBuff(m, guild);
         foreach (var buff in s.Buffs.Where(b => MoraleBuffs.Contains(b.ConfigId) && b.ConfigId != wanted).ToArray())
             await _buffs.RemoveAsync(s, buff);
-        if (wanted != 0 && !s.Dead && s.Buffs.All(b => b.ConfigId != wanted))
+        if (wanted != 0 && !s.Dead && s.Role != null && s.Buffs.All(b => b.ConfigId != wanted))
             await _buffs.AddAsync(s, wanted, (int)Math.Clamp((m.End - Now) * 1000, 1000, int.MaxValue), s.Role!.Id);
     }
 
@@ -552,6 +552,7 @@ public sealed partial class GuildLeagueService
             if (!_combat.CommitReviveClaim(s)) return;
             await s.SendGameAsync(CombatService.Relive, new EntityReliveAck { Result = 0, EntityID = (ulong)s.Role!.Id });
             await _combat.PublishReviveAsync(s, CampPoint(at.Match, at.Field, GuildOf(s)));
+            if (s.Role == null) return; // detached by a role handover during the publication
             await _buffs.AddAsync(s, RespawnProtection, 5000, s.Role.Id);
             await MoraleBuffAsync(s, at.Match, GuildOf(s));
         }

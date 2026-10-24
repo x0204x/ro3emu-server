@@ -2,7 +2,6 @@ using Google.Protobuf;
 using Romsg;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Data;
-using Ro3Emu.Server.Data.Config;
 
 namespace Ro3Emu.Server.Game;
 
@@ -36,9 +35,7 @@ public sealed partial class CharacterService
         [(1600301, 50), (1600501, 55), (1600502, 60), (1600503, 70), (1600504, 80), (1600505, 90)];
     private const int StatPlanCount = 5; // PublicParamConfig.SchemeNum=5 (inferred for attribute plans).
     private const int StatPlanNameLimit = 8; // PublicParamConfig.SchemeNameNumMax=8.
-    // D Asia's PC main-bar controller constructs exactly six item slots. Its incremental handler only updates a
-    // slot that was present in the first 5009 snapshot, so BuildItems also projects all six positions on the wire.
-    private const int ShortcutSlotLimit = 6;
+    private const int ShortcutSlotLimit = 6; // UI_Sys_Main_PropsWidget has PropsItem01..06, bound to keys ShortCut_1..6.
 
     private void LoadStatPlans(GameSession session)
     {
@@ -190,18 +187,16 @@ public sealed partial class CharacterService
         int result = !validType || req.OpType is < MedicineAutoUseOpType.Switch or > MedicineAutoUseOpType.Medicine
             || req.SetData == null || req.SetData.Condition is < 0 or > 100 || req.SetData.ItemEntrys.Count > 8
             ? ErrorCodes.Parameter : 0;
-        // The client keeps empty medicine positions as zeroes. HP entries must match its own candidate rule:
-        // ItemConfig._iCanAuto contains both 1 and 3. Ignore zero placeholders when validating removals.
-        if (result == 0 && req.SetData!.ItemEntrys.Where(entry => entry != 0).Any(entry => entry < 0
-            || ItemConfig.Get(data, entry) is not { } item || item.IsUse == 0
-            || req.Type == MedicineAutoUseType.Hp && (!HasAutoMode(item, 1) || !HasAutoMode(item, 3))))
-            result = ErrorCodes.ItemNoConfig;
+        // 0 marks an empty slot: the window sends every slot, and Remove writes 0 into its slot.
+        if (result == 0 && req.SetData!.ItemEntrys.Any(entry => entry < 0 || entry > 0 && (data.Row("ItemConfig", entry) is not { } row
+            || GameData.Int(row, "_iIsUse") == 0))) result = ErrorCodes.ItemNoConfig;
         var nextInfo = session.BagState.Info.Clone();
-        var saved = nextInfo.MedicinesAutoUse ?? new MedicinesAutoUseSet();
+        var saved = WithMedicineDefaults(nextInfo.MedicinesAutoUse);
         if (result == 0)
         {
-            if (req.Type == MedicineAutoUseType.Hp) saved.HpConfig = req.SetData!.Clone();
-            else saved.SpConfig = req.SetData!.Clone();
+            var config = PadMedicineSlots(req.SetData!.Clone());
+            if (req.Type == MedicineAutoUseType.Hp) saved.HpConfig = config;
+            else saved.SpConfig = config;
             nextInfo.MedicinesAutoUse = saved;
             await CommitBagAsync(session, "medicine-setting", nextInfo);
         }
@@ -210,7 +205,33 @@ public sealed partial class CharacterService
         if (result == 0) await SyncItemsAsync(session);
     }
 
-    private static bool HasAutoMode(ItemConfig item, int mode) => item.CanAuto.Contains(mode);
+    /// <summary>Slots in the auto-medicine window (UI_Sys_AutoDrink_SetBoxWidget SlotItem1..3).</summary>
+    private const int MedicineSlots = 3;
+
+    /// <summary>
+    /// Condition shown before the player has touched the slider. The client has no default of its own (the prefab
+    /// text reads 60%), so this is inferred.
+    /// </summary>
+    private const int DefaultMedicineCondition = 60;
+
+    /// <summary>
+    /// The client only builds its HpAutoUseConfig from the 5009 medicinesAutoUse field. Without it, Add, Replace and
+    /// Add All index a nil config and do nothing, so every role gets both configs with all slots present.
+    /// </summary>
+    internal static MedicinesAutoUseSet WithMedicineDefaults(MedicinesAutoUseSet? saved)
+    {
+        var set = saved?.Clone() ?? new MedicinesAutoUseSet();
+        set.HpConfig = PadMedicineSlots(set.HpConfig ?? new MedicinesAutoUse { Condition = DefaultMedicineCondition });
+        set.SpConfig = PadMedicineSlots(set.SpConfig ?? new MedicinesAutoUse { Condition = DefaultMedicineCondition });
+        return set;
+    }
+
+    /// <summary>Add writes kItemList[slot]; a short list would leave a hole that ipairs stops at.</summary>
+    private static MedicinesAutoUse PadMedicineSlots(MedicinesAutoUse config)
+    {
+        while (config.ItemEntrys.Count < MedicineSlots) config.ItemEntrys.Add(0);
+        return config;
+    }
 
     /// <summary>31324 sets the equipped arrow entry; count comes from actually owned bag stacks.</summary>
     public async Task ArrowSwitchAsync(GameSession session, ItemArrowSwitchReq req)
@@ -290,6 +311,20 @@ public sealed partial class CharacterService
         if (result == 0) await SyncItemsAsync(session);
     }
 
+    /// <summary>
+    /// 5009 shortcutBarInfos as the client needs it: one entry per slot, in slot order, GUID 0 when empty.
+    /// LC_DAL_Item.OnShortcutBarInfosUpdate only updates a slot already in ShortcutBarData and drops a whole-list
+    /// replacement, so a slot missing from the login list never shows what is saved into it, and a list whose
+    /// length changes is never applied. A fixed list makes every save an element-wise increment.
+    /// </summary>
+    internal static IEnumerable<ShortcutBarInfo> FullShortcutBar(IEnumerable<ShortcutBarInfo> saved)
+    {
+        var bySlot = saved.Where(i => i.SlotIndex is >= 0 and < ShortcutSlotLimit)
+            .GroupBy(i => i.SlotIndex).ToDictionary(g => g.Key, g => g.Last().ItemGuid);
+        for (int slot = 0; slot < ShortcutSlotLimit; slot++)
+            yield return new ShortcutBarInfo { SlotIndex = slot, ItemGuid = bySlot.GetValueOrDefault(slot) };
+    }
+
     /// <summary>31336 stores an owned GUID at a zero-based slot. GUID 0 clears it.</summary>
     public async Task ShortcutBarSaveAsync(GameSession session, ShortcutBarSaveReq req)
     {
@@ -303,7 +338,10 @@ public sealed partial class CharacterService
         {
             var next = session.BagState.Info.Clone();
             var list = next.ShortcutBarInfos;
-            foreach (var old in list.Where(i => i.SlotIndex == req.SlotIndex).ToList()) list.Remove(old);
+            // UI_Sys_Main_PropsItemWidgetCtrl._onDragIn marks the source with MarkSwap; its drag-end
+            // consumes that marker without sending a clear. Move the binding in this commit (inferred).
+            foreach (var old in list.Where(i => i.SlotIndex == req.SlotIndex || req.ItemGuid != 0 && i.ItemGuid == req.ItemGuid).ToList())
+                list.Remove(old);
             if (req.ItemGuid != 0) list.Add(new ShortcutBarInfo { SlotIndex = req.SlotIndex, ItemGuid = req.ItemGuid });
             await CommitBagAsync(session, "bag-setting", next);
         }

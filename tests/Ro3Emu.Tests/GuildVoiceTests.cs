@@ -14,7 +14,9 @@ namespace Ro3Emu.Tests;
 public sealed class GuildVoiceTests : IAsyncLifetime
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "ro3emu-guildvoice-" + Guid.NewGuid().ToString("N"));
-    private static readonly TimeSpan Wait = TimeSpan.FromSeconds(8);
+    // The full client-data suite runs thousands of integration cases in one process; keep network waits bounded while
+    // allowing the disconnect owner callback to run under scheduler and GC pressure.
+    private static readonly TimeSpan Wait = TimeSpan.FromSeconds(15);
     private WebApplication _app = null!;
     private string _http = "";
 

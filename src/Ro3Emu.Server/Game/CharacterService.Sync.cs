@@ -52,7 +52,9 @@ public sealed partial class CharacterService
     private async Task SyncItemsAsync(GameSession session, Func<bool>? stillOwner = null)
     {
         var now = BuildItems(session);
-        if (now.StoragePack != null && session.Synced.GetValueOrDefault(ItemsSync) is DBItemsInfo { StoragePack: null }) session.Synced.Remove(ItemsSync);
+        // Rebuild after dropping the old snapshot: retained empty packs have no sortedIndex in a full
+        // protobuf decode, but LC_DAL_Knapsack.InitPackData iterates that map for every supplied pack.
+        if (ResendItemsWholeIfNeeded(session, now)) now = BuildItems(session);
         await SyncAsync(session, ItemsSync, now);
         if (stillOwner?.Invoke() == false) return;
         if (PruneEquipmentPlans(session))
@@ -60,6 +62,23 @@ public sealed partial class CharacterService
             roles.SaveEquipPlans(session.Role!.Id, session.EquipmentPlans.ToByteArray());
             await SyncEquipmentAsync(session);
         }
+    }
+
+    /// <summary>
+    /// 5009 goes out whole again when it carries a part the client only builds from a full sync: storagePack (see
+    /// <see cref="SyncItemsAsync"/>) or a bag pack the client was never sent. LC_DAL_Knapsack.InitPackData -> InitGridInfo
+    /// builds each pack's grid from the full sync only, so gear sent into a pack missing at login (a new character's
+    /// first unequipped gear: the starter weapon and shirt are worn, so pack 2 is absent) is stored but never shown.
+    /// </summary>
+    private static bool ResendItemsWholeIfNeeded(GameSession session, DBItemsInfo now)
+    {
+        if (session.Synced.GetValueOrDefault(ItemsSync) is DBItemsInfo sent
+            && (now.StoragePack != null && sent.StoragePack == null || now.PackInfo.Keys.Any(k => !sent.PackInfo.ContainsKey(k))))
+        {
+            session.Synced.Remove(ItemsSync);
+            return true;
+        }
+        return false;
     }
 
     /// <summary>5066: PlayerBasicInfo (id and career are mandatory); exp is the progress inside the level.</summary>
@@ -101,19 +120,8 @@ public sealed partial class CharacterService
         // Keep the stored form sparse, but always publish its one supported slot to the client.
         info.QuickUseInfos.Add(preferences.QuickUseInfos.FirstOrDefault(i => i.LieQuickUse == 0)?.Clone()
             ?? new QuickUseSaveInfo { LieQuickUse = 0, ItemEntry = 0 });
-        // Keep persisted preferences sparse, but make the client-facing list positional and stable. D Asia's Lua
-        // change handler ignores an update for an absent slot; a dense first snapshot lets later saves/removals
-        // travel as element-wise AUTO_SYNC increments and appear without a scene reload.
-        for (int slot = 0; slot < ShortcutSlotLimit; slot++)
-        {
-            long itemGuid = preferences.ShortcutBarInfos.FirstOrDefault(i => i.SlotIndex == slot)?.ItemGuid ?? 0;
-            info.ShortcutBarInfos.Add(new ShortcutBarInfo { SlotIndex = slot, ItemGuid = itemGuid });
-        }
-        // The D Asia HP panel dereferences HpAutoUseConfig and floors its threshold before it sends 31320. A missing
-        // object therefore prevents the first medicine from ever reaching the server. Lua's parser uses 100 as the
-        // default threshold, so expose that same default without persisting it until the player changes the setting.
-        info.MedicinesAutoUse = preferences.MedicinesAutoUse?.Clone() ?? new MedicinesAutoUseSet();
-        info.MedicinesAutoUse.HpConfig ??= new MedicinesAutoUse { Condition = 100 };
+        info.ShortcutBarInfos.Add(FullShortcutBar(preferences.ShortcutBarInfos));
+        info.MedicinesAutoUse = WithMedicineDefaults(preferences.MedicinesAutoUse);
         info.CurrentArrowID = preferences.CurrentArrowID;
         info.ItemCds = preferences.ItemCds?.Clone();
         info.ShareCds = preferences.ShareCds?.Clone();

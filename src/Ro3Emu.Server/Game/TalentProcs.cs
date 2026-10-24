@@ -20,8 +20,8 @@ namespace Ro3Emu.Server.Game;
 /// Merchant lines have no proc rows, so their hits come from the descriptions. The base passives the talents build on
 /// (Double Attack, Deadly Poison's Venom, Advanced Katar Mastery) are in TalentProcs.Passives, counters and next-cast
 /// charges in TalentProcs.Charges, and the reactions to damage taken, kills, Gravitation Field's end, heals and the count of enemies
-/// hit in TalentProcs.Reactions. Not executed: Shield Bash Echo (no value for its new cooldown), Falcon's Might (op 20)
-/// and Scouting (a scope-1 BuffLogicData tuple).
+/// hit in TalentProcs.Reactions. Falcon's Might (op 20) is SeasonTalentService's, and Scouting (a scope-1 BuffLogicData
+/// tuple on the detection category) is CombatService.Stealth's.
 /// </summary>
 public sealed partial class TalentProcs
 {
@@ -94,7 +94,7 @@ public sealed partial class TalentProcs
         int? Radius = null, int? Count = null, int? Others = null, bool OthersOnly = false, bool RowArea = false, bool Buff = false,
         long Active = 0, bool AroundCaster = false, int Logic = 0, bool Recast = false, bool TargetBuff = false, int? BuffSeconds = null,
         bool HitTargets = false, int? Ratio = null, int? Flat = null, int? Hits = null, long Element = Neutral, int? HpBelow = null,
-        bool RandomHit = false, long Status = 0, int? StatusChance = null, int? StatusSeconds = null);
+        bool RandomHit = false, long Status = 0, int? StatusChance = null, int? StatusSeconds = null, int ResetCooldown = 0);
 
     /// <summary>Talent BuffConfig id -> the buff group that must live for its _kLogicData buff to apply.</summary>
     internal static readonly IReadOnlyDictionary<long, long> WhileActive = new Dictionary<long, long>
@@ -136,6 +136,11 @@ public sealed partial class TalentProcs
         [1151401] = new([GrandCross, HolyCross], Cooldown: 4, Radius: 0, Count: 1),
         // Shield Boomerang Combo: "[Shield Boomerang] deals an Extra @{1} hits of ... to the locked-on target."
         [1151501] = new([ShieldBoomerang]),
+        // Shield Bash Echo: "When casting [Rapid Smiting], there is a ${1}% Chance to change the Cooldown of your next Shield
+        // Boomerang to @{1} seconds. This effect cannot stack and can trigger up to @{2} times every ${2} seconds." Its effect
+        // description passes @{1} 0 and @{2} 1, and its buff is named "Rapid Smiting Resets Shield Boomerang CD": the running
+        // cooldown ends (inferred).
+        [1155401] = new([RapidSmiting], Chance: 0, Cooldown: 1, ResetCooldown: ShieldBoomerang),
         // Triple Slash: "While [Parry] is active, casting [Basic Attack] triggers Triple Slash, which Deals DMG to the
         // target over @{1} hits ... Cooldown: ${3} seconds."
         [1123901] = new([], NormalAttack: true, Active: Parry, Cooldown: 2),
@@ -332,7 +337,7 @@ public sealed partial class TalentProcs
             }
         foreach (var attribute in source.TalentBuffAttributes)
         {
-            if (attribute.Group != group || attribute.Type != BuffAttrType || attribute.Index < 0 || attribute.Index >= pairs.Count) continue;
+            if (attribute.ByCategory || attribute.Group != group || attribute.Type != BuffAttrType || attribute.Index < 0 || attribute.Index >= pairs.Count) continue;
             changed ??= [.. pairs];
             var (id, value) = changed[attribute.Index];
             changed[attribute.Index] = (id, attribute.Operation switch
@@ -396,13 +401,18 @@ public sealed partial class TalentProcs
                     ? _combat.MonstersNear(s, s.Position, (float)Value(description, around)).FirstOrDefault() : null);
             if (rule.RandomHit && processed.Count > 0) target = processed[Roll(processed.Count)];
             // A buff on the caster needs no living target: Basilica hits no monster.
-            bool selfBuff = rule is { Buff: true, TargetBuff: false };
+            bool selfBuff = rule is { Buff: true, TargetBuff: false } || rule.ResetCooldown != 0;
             if (!selfBuff && target is not { Hp: > 0 }) continue;
             if (rule.HpBelow is int below && target is { } weak && weak.Hp * 100 >= weak.Template.MaxHp * Value(description, below)) continue;
             if (rule.Weapon != 0 && !SkillParameterRules.Wields(s, _data, rule.Weapon)) continue;
             if (rule.Active != 0 && !SkillParameterRules.HasBuffGroup(s, _data, rule.Active)) continue;
             if (rule.Chance is int chance && Roll(10000) >= Value(description, chance) * 100) continue;
             if (!Ready(s, buff, rule.Cooldown is int cooldown ? (long)(Value(description, cooldown) * 1000) : 0)) continue;
+            if (rule.ResetCooldown != 0)
+            {
+                await CombatService.ResetCooldownAsync(s, rule.ResetCooldown);
+                continue;
+            }
             if (target == null || rule.Buff)
             {
                 await AddProcBuffAsync(s, buff, rule, description, target);

@@ -4,35 +4,34 @@ using Romsg;
 
 namespace Ro3Emu.Server.Accounts.Persistence;
 
-internal enum AuctionReadKind { Items, Item, Prebuys, PendingRuns, RunSnapshot, Bonuses, SourceExists }
+internal enum AuctionReadKind { All, Open, OfType, Settled, Run, Ids, Item, Prebuys, PendingRuns, RunSnapshot, Bonuses, SourceExists }
 
 internal sealed record AuctionRunSnapshot(AuctionStore.Run? Run, byte[]? Raw);
 
 internal sealed class AuctionReadPlan(AuctionReadKind kind, long id = 0, bool pendingOnly = true,
-    string? sourceKey = null) : DbReadPlan
+    string? sourceKey = null, IReadOnlyCollection<long>? ids = null) : DbReadPlan
 {
-    internal override int Bytes => 128 + (sourceKey?.Length ?? 0) * 2;
+    internal override int Bytes => 128 + (sourceKey?.Length ?? 0) * 2 + (ids?.Count ?? 0) * 8;
     internal override string Label => "auction/read-" + kind;
     internal override object? Execute(SqliteConnection db, SqliteTransaction tx)
     {
         switch (kind)
         {
-            case AuctionReadKind.Items:
-                using (var cmd = DbSql.Command(db, tx, "SELECT state FROM auction_item ORDER BY id"))
-                using (var reader = cmd.ExecuteReader())
-                {
-                    var rows = new List<AuctionStore.Item>();
-                    while (reader.Read()) rows.Add(DecodeItem((byte[])reader[0]));
-                    reader.Close();
-                    foreach (var item in rows) WithRevision(db, tx, item);
-                    return rows;
-                }
+            case AuctionReadKind.All:
+                return Lots(db, tx, " ORDER BY a.id", null);
+            case AuctionReadKind.Open:
+                return Lots(db, tx, " WHERE a.settled=0 ORDER BY a.id", null);
+            case AuctionReadKind.OfType:
+                return Lots(db, tx, " WHERE a.auction_type=$id ORDER BY a.id", id);
+            case AuctionReadKind.Settled:
+                return Lots(db, tx, " WHERE a.settled=1 AND a.auction_type=$id ORDER BY a.end_time DESC, a.id", id);
+            case AuctionReadKind.Run:
+                return Lots(db, tx, " WHERE a.run_id=$id ORDER BY a.id", id);
+            case AuctionReadKind.Ids:
+                return ids is not { Count: > 0 } ? []
+                    : Lots(db, tx, $" WHERE a.id IN ({string.Join(',', ids.Distinct().Select(v => v.ToString(System.Globalization.CultureInfo.InvariantCulture)))}) ORDER BY a.id", null);
             case AuctionReadKind.Item:
-                using (var cmd = DbSql.Command(db, tx, "SELECT state FROM auction_item WHERE id=$id"))
-                {
-                    cmd.Parameters.AddWithValue("$id", id);
-                    return cmd.ExecuteScalar() is byte[] state ? WithRevision(db, tx, DecodeItem(state)) : null;
-                }
+                return Lots(db, tx, " WHERE a.id=$id", id).FirstOrDefault();
             case AuctionReadKind.Prebuys:
                 using (var cmd = DbSql.Command(db, tx,
                     "SELECT id,role_id,auction_type,src_type,item_id,quantity,unit_price,currency,revision,processed,requested_id,paused FROM auction_prebuy"
@@ -107,10 +106,22 @@ internal sealed class AuctionReadPlan(AuctionReadKind kind, long id = 0, bool pe
         item.OriginalBytes = (byte[])state.Clone();
         return item;
     }
-    private static AuctionStore.Item WithRevision(SqliteConnection db, SqliteTransaction tx, AuctionStore.Item item)
+    /// <summary>Lots with their entity revision from the same query (one read, not one revision query per row).</summary>
+    private static List<AuctionStore.Item> Lots(SqliteConnection db, SqliteTransaction tx, string where, long? id)
     {
-        item.SourceRevision = ReadRevision(db, tx, RevisionStore.Entity("auction_item", item.SourceKey));
-        return item;
+        using var cmd = DbSql.Command(db, tx, AuctionItemColumns.Select + where);
+        if (id is { } value) cmd.Parameters.AddWithValue("$id", value);
+        using var reader = cmd.ExecuteReader();
+        var rows = new List<AuctionStore.Item>();
+        while (reader.Read())
+        {
+            var item = DecodeItem((byte[])reader[0]);
+            var key = RevisionStore.Entity("auction_item", item.SourceKey);
+            item.SourceRevision = reader.IsDBNull(1) ? new OwnerRevisionValue(key, 0, false)
+                : new OwnerRevisionValue(key, reader.GetInt64(1), true);
+            rows.Add(item);
+        }
+        return rows;
     }
     private static OwnerRevisionValue ReadRevision(SqliteConnection db, SqliteTransaction tx, OwnerRevisionKey key) =>
         (OwnerRevisionValue)new OwnerRevisionReadPlan(key).Execute(db, tx);
@@ -234,6 +245,8 @@ internal sealed class AuctionItemWritePlan : DbPlan
         cmd.Parameters.AddWithValue("$id", id);
         if (_before is not null) cmd.Parameters.AddWithValue("$before", _before);
         if (cmd.ExecuteNonQuery() != 1) throw new RolePlanConflictException();
+        AuctionItemColumns.Write(db, tx, id, JsonSerializer.Deserialize<AuctionStore.Item>(state)
+            ?? throw new InvalidDataException("Auction lot state must contain an item."));
         return new AuctionItemWriteReceipt(id, state);
     }
 }

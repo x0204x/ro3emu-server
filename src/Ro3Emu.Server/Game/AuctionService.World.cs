@@ -66,8 +66,7 @@ public sealed partial class AuctionService
     private long WorldCeiling(int entry) => data.Row("AuctionConfig", entry) is { } cfg
         ? Math.Max(0, GameData.Int(cfg, "_iWorldAuctionCeiling")) : 0;
 
-    private int OpenWorldLots(int entry) => store.Items().Count(r => r.Type == AuctionType.World && r.Entry == entry
-        && r.State != AuctionState.Settled);
+    private int OpenWorldLots(int entry) => store.OpenItems().Count(r => r.Type == AuctionType.World && r.Entry == entry);
 
     /// <summary>Exhibit start and the next WorldAuctionEnd o'clock strictly after it, in the realm's civil time.</summary>
     private (long Start, long End) WorldWindow(bool startNow)
@@ -232,7 +231,7 @@ public sealed partial class AuctionService
     {
         if (!loop.IsOnLoop) return await loop.InvokeAsync(() => EndOpenLotsAsync(select, reason));
         int ended = 0;
-        foreach (long id in store.Items().Where(r => r.State != AuctionState.Settled && select(r)).Select(r => r.Id).ToArray())
+        foreach (long id in store.OpenItems().Where(select).Select(r => r.Id).ToArray())
         {
             using (var scope = await EnterAuctionAsync("auction/end-now", () => RowKeys(store.Get(id))))
             {

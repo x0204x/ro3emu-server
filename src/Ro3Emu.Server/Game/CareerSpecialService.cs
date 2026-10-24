@@ -214,6 +214,8 @@ public sealed class CareerSpecialService
     {
         await LoginAsync(s);
         if (mountSlot) await _mounts.PublishAsync(s);
+        // A talent can depend on the leased pendant (Falcon's Might: SpecialEffect type 20 on the falcon's subtype).
+        else await _character.RefreshStatsAsync(s);
         if (!shown.SequenceEqual(s.CareerPendants)) await PendantsAsync(s, shown);
         foreach (var handler in _character.StateChanged) handler(s);
     }

@@ -88,105 +88,6 @@
     "about": "Story bosses were fought with allied NPC companions in the original; those are not reproduced. Each is scaled (basis points of HP and of attack) so a Swordman at the boss level, every stat point spent STR:VIT 2:1, no equipment, normal attacks only, kills it in about 90 s and would fall to it in about 1.4 times that (DungeonTests.EveryStoryBossIsASoloFightAtItsLevel). Inferred, not original data."
   },
   "dungeons": {
-    "1000401": {
-      "name": "Maya's nest",
-      "confidence": "medium",
-      "skipped": "Stages 2-5 (find and free the Professor from the ant egg, help him walk, open the chest) are scripted interactions; only Maya is placed, so the instance completes after stage 1.",
-      "waves": [
-        {
-          "stage": "Encounter Maya: defeat Maya",
-          "quest": 1,
-          "spawns": [
-            {
-              "point": 21,
-              "npc": 5300006,
-              "why": "label 蚁后刷怪点 'ant queen spawn point' and stage 1 'Defeat Maya'; story Maya template 5300006 (L30)"
-            }
-          ]
-        }
-      ]
-    },
-    "1000501": {
-      "name": "Airship",
-      "confidence": "medium",
-      "skipped": "Stage 1 (chat), stage 2 (cannons against the enemy airships), stages 5-6 (talking) and the allied NPCs are not reproduced; only the boarding fight and the boss. The nine boarders come in three groups of three (a solo player cannot hold nine at once; inferred).",
-      "waves": [
-        {
-          "stage": "The enemy has boarded the ship: eliminate all enemies (1/3)",
-          "quest": 3,
-          "spawns": [
-            {
-              "point": 44,
-              "npc": 5300042,
-              "why": "label 冲锋怪-1 'charging monster'; the client has exactly four story 'Evil Warrior' templates 5300042-45 for the four charge points"
-            },
-            {
-              "point": 45,
-              "npc": 5300043,
-              "why": "冲锋怪-2"
-            },
-            {
-              "point": 48,
-              "npc": 5300046,
-              "why": "label 弓箭-1 'archer'; exactly five story 'Evil Archer' templates 5300046-50 for the five archer points"
-            }
-          ]
-        },
-        {
-          "stage": "The enemy has boarded the ship: eliminate all enemies (2/3)",
-          "quest": 3,
-          "spawns": [
-            {
-              "point": 46,
-              "npc": 5300044,
-              "why": "冲锋怪-3"
-            },
-            {
-              "point": 49,
-              "npc": 5300047,
-              "why": "弓箭-2"
-            },
-            {
-              "point": 50,
-              "npc": 5300048,
-              "why": "弓箭-3"
-            }
-          ]
-        },
-        {
-          "stage": "The enemy has boarded the ship: eliminate all enemies (3/3)",
-          "quest": 3,
-          "spawns": [
-            {
-              "point": 47,
-              "npc": 5300045,
-              "why": "冲锋怪-4"
-            },
-            {
-              "point": 51,
-              "npc": 5300049,
-              "why": "弓箭-4"
-            },
-            {
-              "point": 52,
-              "npc": 5300050,
-              "why": "弓箭-5"
-            }
-          ]
-        },
-        {
-          "stage": "Defeat the Evil Boss",
-          "quest": 4,
-          "spawns": [
-            {
-              "point": 22,
-              "npc": 5300018,
-              "why": "stage 4 'Defeat the Evil Boss'; story template 5300018 'Evil Boss' (L25) at the first generic spawn point"
-            }
-          ]
-        }
-      ]
-    },
     "1011301": {
       "name": "Prontera North Gate",
       "confidence": "high",
@@ -540,24 +441,6 @@
         }
       ]
     },
-    "1051001": {
-      "name": "Desert Crossroad (Peco Peco nest)",
-      "confidence": "medium",
-      "skipped": "Bragis (5300085) is the NPC to rescue, Ancient Nest (5300083) an object with an unknown mechanic; points 27-37 have no recoverable role.",
-      "waves": [
-        {
-          "stage": "Defeat the Peco Peco and rescue Bragis",
-          "quest": 1,
-          "spawns": [
-            {
-              "point": 26,
-              "npc": 5300082,
-              "why": "stage text 'Defeat the Peco Peco'; 5300082 'Elusive Pecopeco' is the client's story template for it (L25)"
-            }
-          ]
-        }
-      ]
-    },
     "1051051": {
       "name": "Desert Crossroad (elite)",
       "confidence": "high",
@@ -570,24 +453,6 @@
               "point": 17,
               "npc": 5000022,
               "why": "stage text 'elite Scorpion'; Scorpion (L23), a Morroc desert monster"
-            }
-          ]
-        }
-      ]
-    },
-    "3120702": {
-      "name": "Pharaoh (main story)",
-      "confidence": "high",
-      "skipped": "Point 24 is not given a Pyramid/Coffin actor: their mechanic is unknown.",
-      "waves": [
-        {
-          "stage": "Defeat Pharaoh",
-          "quest": 1,
-          "spawns": [
-            {
-              "point": 20,
-              "npc": 5300010,
-              "why": "stage 'Mysterious Space / Defeat Pharaoh'; 5300010 is the client's story Pharaoh (L45)"
             }
           ]
         }
@@ -616,11 +481,16 @@
     "1000101": "Job advance scene; no spawn points.",
     "1000201": "Ant nest exploration: walking, jumping into the vortex, avoiding ant eggs; no fight. Rebuilt as a scripted scene: scripted-scenes.json.",
     "1000301": "Riding and feeding the Deniro; no fight. Rebuilt as a scripted scene: scripted-scenes.json.",
+    "1000401": "Maya's nest: rebuilt as a scripted scene with a fight step (scripted-scenes.json).",
+    "1000501": "Airship: rebuilt as a scripted scene with fight steps (scripted-scenes.json).",
     "1010101": "Izlude scene; no spawn points.",
     "1015052": "Culvert variant without spawn points.",
+    "1022001": "Payon Forest: rebuilt as a scripted scene with a fight step (scripted-scenes.json).",
     "1023001": "Payon instance without spawn points.",
+    "1051001": "Peco Peco nest: rebuilt as a scripted scene with a fight step (scripted-scenes.json).",
     "1054001": "Ant Hell scene without spawn points.",
     "3120402": "Louie's game (find Kitty-Katie), retrieving an instrument; a minigame, not a fight. Rebuilt as a scripted scene: scripted-scenes.json.",
+    "3120702": "Pharaoh (main story): rebuilt as a scripted scene with a fight step (scripted-scenes.json).",
     "3120703": "Louie's game, as 3120402.",
     "3120802": "Moonlight Flower's hide-and-seek; being discovered is the failure, not a fight. Rebuilt as a scripted scene: scripted-scenes.json.",
     "4400001": "Ring Test; a test map without stages.",

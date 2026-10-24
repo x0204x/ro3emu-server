@@ -14,15 +14,15 @@ public sealed partial class AuctionService
         var requestLease = s.Attachment;
         QueryAuctionCountRes res;
         using (var scope = await EnterSessionAuctionAsync(s, "auction/count-read", role => ReadKeys(role,
-            store.Items().Where(r => req.AuctionTypes.Contains((long)r.Type) && r.State != AuctionState.Settled
+            store.OpenItems().Where(r => req.AuctionTypes.Contains((long)r.Type)
                 && r.End > Now && Visible(s, r)))))
         {
             res = new QueryAuctionCountRes();
-            var all = store.Items();
+            var all = store.OpenItems();
             foreach (var type in req.AuctionTypes.Distinct())
             {
                 if (!Enum.IsDefined(typeof(AuctionType), (int)type)) continue;
-                var rows = all.Where(r => (long)r.Type == type && r.State != AuctionState.Settled
+                var rows = all.Where(r => (long)r.Type == type
                     && r.End > Now && Visible(s, r)).ToArray();
                 var counts = new QueryAuctionSrcTypeCount();
                 foreach (var group in rows.GroupBy(r => (long)r.SrcType)) counts.SrcTypeCount[group.Key] = group.LongCount();
@@ -40,7 +40,7 @@ public sealed partial class AuctionService
         var requestLease = s.Attachment;
         PreAuctionItemStackQueryRes res;
         using (var scope = await EnterSessionAuctionAsync(s, "auction/prestack-read", role => ReadKeys(role,
-            store.Items().Where(r => r.Type == req.AuctionType && r.State != AuctionState.Settled
+            store.OpenItems().Where(r => r.Type == req.AuctionType
                 && (req.SrcType == 0 || r.SrcType == req.SrcType) && Visible(s, r)
                 && (req.QueryItemTypes.Count == 0 || req.QueryItemTypes.Contains((int)GameData.Int(
                     data.Row("AuctionConfig", r.Entry)!.Value, "_iType")))),
@@ -48,7 +48,7 @@ public sealed partial class AuctionService
         {
             res = new PreAuctionItemStackQueryRes();
             var pending = store.Prebuys().Where(p => p.Role == s.Role!.Id).ToDictionary(p => p.RequestedId);
-            foreach (var group in store.Items().Where(r => r.Type == req.AuctionType && r.State != AuctionState.Settled
+            foreach (var group in store.OpenItems().Where(r => r.Type == req.AuctionType
                 && (req.SrcType == 0 || r.SrcType == req.SrcType) && Visible(s, r)
                 && (req.QueryItemTypes.Count == 0 || req.QueryItemTypes.Contains((int)GameData.Int(data.Row("AuctionConfig", r.Entry)!.Value, "_iType"))))
                 .GroupBy(r => (long)r.Entry))
@@ -98,12 +98,12 @@ public sealed partial class AuctionService
             {
                 AuctionStore.Item[] rows;
                 using (var scope = await EnterSessionAuctionAsync(s, "auction/resume-auto", role =>
-                    store.Items().Where(r => r.Owner == role && r.Auto && r.AutoPaused
+                    store.OpenItems().Where(r => r.Owner == role && r.Auto && r.AutoPaused
                         && r.State == AuctionState.Bidding && r.End > Now)
                         .SelectMany(r => RowKeys(r)).Concat(RowKeys(null, [role],
                             store.Prebuys().Where(p => p.Role == role && p.Paused))).Distinct().ToArray()))
                 {
-                    rows = store.Items().Where(r => r.Owner == s.Role!.Id && r.Auto && r.AutoPaused
+                    rows = store.OpenItems().Where(r => r.Owner == s.Role!.Id && r.Auto && r.AutoPaused
                         && r.State == AuctionState.Bidding && r.End > Now).ToArray();
                     var orders = store.Prebuys().Where(p => p.Role == s.Role!.Id && p.Paused).ToArray();
                     if (rows.Length != 0 || orders.Length != 0)

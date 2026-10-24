@@ -187,6 +187,30 @@ public sealed class ParticipationTargetTests : IAsyncLifetime
         await bot.DisposeAsync();
     }
 
+    /// <summary>The guild To-Do tasks' stand-in target 106010 (TaskService.GuildEvents.cs): taking part completes them;
+    /// the Tavern quest that owns the target stays unsupported.</summary>
+    [ClientDataFact]
+    public async Task GuildEventToDoTasksCompleteOnTakingPart()
+    {
+        var bot = await InWorld();
+        var tasks = Service<TaskService>();
+        Assert.False(tasks.TargetsSupported(2000)); // Daily Tavern Quest, [106010,1200]
+        foreach (long task in new long[] { 1602050, 1602060, 1602070, 1603011, 1603012, 1603013, 1603014 })
+            Assert.True(tasks.TargetsSupported(task), $"task {task}");
+        await Accept(1602060); // Stronghold War
+        await Accept(1602070); // Regional Capital War
+        await Accept(1602050); // Escort
+        await Read(() => { tasks.OnTerritoryBattleSettled(Session.Role!.Id, 1); return 0; });
+        await Done(1602060);
+        await At(1602070, 0);
+        await Read(() => { tasks.OnTerritoryBattleSettled(Session.Role!.Id, 2); return 0; });
+        await Done(1602070);
+        await At(1602050, 0);
+        await Read(() => { tasks.OnGuildEventJoined(Session, TaskService.GuildEvent.Escort); return 0; });
+        await Done(1602050);
+        await bot.DisposeAsync();
+    }
+
     [ClientDataFact]
     public async Task ActivityTargetReadsTodaysActivityPoints()
     {

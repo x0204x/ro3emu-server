@@ -40,7 +40,7 @@ public sealed partial class CharacterService
             Rolebase = new RolePublicBaseInfo
             {
                 Roleid = role.Id, Name = role.Name, Career = p.Career, BaseLevel = p.Level,
-                JobLevel = p.JobLevel, Gender = role.Sex
+                JobLevel = p.JobLevel, Gender = role.Sex, Title = TitleOf?.Invoke(session) ?? 0
             },
             EquipInfo = BuildEquip(session),
             Selfproperty = new AllProperty { EntityID = role.Id },
@@ -207,6 +207,9 @@ public sealed partial class CharacterService
     /// <summary>After any change of stats: the window (31008, owner) and head-info/HP bars (31048, owner and viewers).</summary>
     /// <summary>Stats changed outside this service (buffs): the window, HP bars and the AOI.</summary>
     public Task RefreshStatsAsync(GameSession session) => SendStatsAsync(session);
+
+    /// <summary>The role's title rank (TitleService) for RolePublicBaseInfo.title.</summary>
+    public Func<GameSession, long>? TitleOf { get; set; }
 
     /// <summary>Configured contributions from other owned systems (pet lineup/collection).</summary>
     public List<Func<GameSession, IEnumerable<(long Id, double Value)>>> ExtraAttributes { get; } = new();

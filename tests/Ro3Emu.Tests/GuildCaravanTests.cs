@@ -997,7 +997,11 @@ public sealed class GuildCaravanTests : IAsyncLifetime
                             { PlayerID = bobId, SkuIndex = request.Index, DayVersion = show.DayVersion }));
                     return Task.CompletedTask;
                 });
-                for (int i = 0; i < 100 && PendingCount(bobId) == 0; i++) await Task.Delay(20);
+                // The full D suite leaves roughly two thousand integration hosts for the GC to retire.
+                // Keep this observation bounded by the class wait instead of assuming the loop commits in 2 s.
+                long pendingDeadline = Environment.TickCount64 + (long)Wait.TotalMilliseconds;
+                while (PendingCount(bobId) == 0 && Environment.TickCount64 < pendingDeadline)
+                    await Task.Delay(20);
                 Assert.Equal(1, PendingCount(bobId));
                 Assert.False(help!.IsCompleted);
                 var attachment = recipient.Attachment;

@@ -125,6 +125,12 @@ public sealed partial class CombatService
         }
         if (victims.Count > 0)
             await MonsterSkillHitAsync(boss, skill.Row, victims, boss.Uid, session, skill.Damages ? options.DamagePercent : 0, bossDebuffsOnly: true);
+        if (skill.PushEffect > 0)
+            foreach (var victim in victims)
+            {
+                if (!BossCastCurrent(boss, serial)) break;
+                await PushPlayerAsync(boss, skill, victim);
+            }
         foreach (var tp in pets)
         {
             if (!BossCastCurrent(boss, serial)) break;
@@ -165,6 +171,26 @@ public sealed partial class CombatService
     {
         double radians = face * Math.PI / 180;
         return (dx * Math.Sin(radians) + dz * Math.Cos(radians), dx * Math.Cos(radians) - dz * Math.Sin(radians));
+    }
+
+    /// <summary>A knockback or a pull of a player the skill hit, along the line from the boss, on the show's displacement
+    /// effect (31112, MoveType 2, as a player skill moves its target).</summary>
+    private async Task PushPlayerAsync(MonsterUnit boss, BossSkill skill, GameSession p)
+    {
+        if (p.Dead || p.SceneLoading || p.Role is not { } role || p.WorldScene != boss.WorldScene) return;
+        float dx = p.Position.X - boss.X, dz = p.Position.Z - boss.Z, length = MathF.Sqrt(dx * dx + dz * dz);
+        if (length < 0.001f || skill.PushDistance < 0 && length <= -skill.PushDistance) return;
+        float go = skill.PushDistance >= 0 ? skill.PushDistance : -(length + skill.PushDistance);
+        var start = p.Position.Clone();
+        var end = WalkableEnd(p.SceneEntry, start, dx / length * go, dz / length * go);
+        await ToPlayerAndViewersAsync(p, SkillMove, new SkillStartMoveNotify
+        {
+            EntityID = (ulong)role.Id, StartPos = start, EndPos = end, SkillConfigId = skill.Id, EffectId = skill.PushEffect,
+            MoveType = 2, StartTimestampMs = Now, Face = p.Face, MoveTimeMs = Math.Max(1, skill.PushMs),
+        });
+        p.PreviousPosition = start;
+        p.Position = end;
+        await _world.MoveAsync(p, new WalkReq { Pos = end, Dir = p.Face, Face = p.Face, BStop = true }, forceTeleport: true);
     }
 
     /// <summary>A charge or leap: the boss moves to just short of its target (within the skill's reach) on the show's

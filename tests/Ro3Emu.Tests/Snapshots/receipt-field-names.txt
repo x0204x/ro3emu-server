@@ -404,6 +404,8 @@ Ro3Emu.Server.Accounts.Persistence.RoleProgressValue#Exp
 Ro3Emu.Server.Accounts.Persistence.RoleProgressValue#JobExp
 Ro3Emu.Server.Accounts.Persistence.RoleProgressValue#JobLevel
 Ro3Emu.Server.Accounts.Persistence.RoleProgressValue#Level
+Ro3Emu.Server.Accounts.Persistence.RoleProgressValue#ParagonExp
+Ro3Emu.Server.Accounts.Persistence.RoleProgressValue#ParagonLevel
 Ro3Emu.Server.Accounts.Persistence.RoleProgressValue#SkillBar
 Ro3Emu.Server.Accounts.Persistence.RoleProgressValue#Skills
 Ro3Emu.Server.Accounts.Persistence.RoleProgressValue#StarterKit
@@ -415,6 +417,8 @@ Ro3Emu.Server.Accounts.Persistence.RoleProgressValue/<Exp>k__BackingField
 Ro3Emu.Server.Accounts.Persistence.RoleProgressValue/<JobExp>k__BackingField
 Ro3Emu.Server.Accounts.Persistence.RoleProgressValue/<JobLevel>k__BackingField
 Ro3Emu.Server.Accounts.Persistence.RoleProgressValue/<Level>k__BackingField
+Ro3Emu.Server.Accounts.Persistence.RoleProgressValue/<ParagonExp>k__BackingField
+Ro3Emu.Server.Accounts.Persistence.RoleProgressValue/<ParagonLevel>k__BackingField
 Ro3Emu.Server.Accounts.Persistence.RoleProgressValue/<SkillBar>k__BackingField
 Ro3Emu.Server.Accounts.Persistence.RoleProgressValue/<Skills>k__BackingField
 Ro3Emu.Server.Accounts.Persistence.RoleProgressValue/<StarterKit>k__BackingField

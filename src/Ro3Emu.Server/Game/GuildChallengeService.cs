@@ -14,9 +14,12 @@ namespace Ro3Emu.Server.Game;
 /// Guild state is durable; scene/combat lifetime belongs to DungeonService/InstanceService. Stage grants
 /// and auction publication recover from a committed clear journal, never from a client success claim.
 /// </summary>
-public sealed class GuildChallengeService : IGameTicker
+public sealed partial class GuildChallengeService : IGameTicker
 {
-    public const uint Notify = 83300, Info = 83301, Open = 83302;
+    public const uint Notify = 83300, Info = 83301, Open = 83302, CallMembers = 32266, CallMembersNotify = 32267;
+    /// <summary>PublicParamConfig GVESummonButtonCd: the Muster button's client cooldown, kept per guild here too (inferred).</summary>
+    private const long CallCooldownSeconds = 10;
+    private readonly Dictionary<long, long> _nextCall = [];
     public const int Activity = 125;
     private readonly GameData _data;
     private readonly GuildStore _guilds;
@@ -291,22 +294,27 @@ public sealed class GuildChallengeService : IGameTicker
         info.CurStage = state.Stage;
         info.RecommendDifficulty = Math.Max(1, state.Unlocked);
         info.LockState = state.Complete || Live(g.Id)?.Started == true;
-        if (state.Selected && _schedule.IsOpen(Activity) && Config(state.Difficulty) is { } cfg)
-        {
-            var scenes = Values(cfg, "_kDungeonId");
-            if (state.Stage > 0 && state.Stage <= scenes.Length)
-                info.DungeonNtf = new DungeonCallMemberNtf
-                {
-                    Difficulty = state.Difficulty, SceneEntryID = scenes[state.Stage - 1],
-                    Endtime = _schedule.CurrentOrNext(Activity)!.End, UId = Live(g.Id)?.Room.Id ?? 0,
-                    CallData = new SceneCallData
-                    {
-                        GuildChallengeData = new GuildChallengeCallData
-                        { ConfigId = (int)GameData.Int(cfg, "_iGuildChallengeId") }
-                    }
-                };
-        }
+        info.DungeonNtf = CallNotice(state, Live(g.Id)?.Room.Id ?? 0);
         return info;
+    }
+
+    /// <summary>The selected stage as a call to arms (DungeonCallMemberNtf), or null with no stage selected in the open
+    /// activity. uId is the caller on 32267 (LC_DAL_GVESystem.SetGVERally skips its own call) and the run's room in the sync.</summary>
+    private DungeonCallMemberNtf? CallNotice(GuildState state, long uid)
+    {
+        if (!state.Selected || !_schedule.IsOpen(Activity) || Config(state.Difficulty) is not { } cfg) return null;
+        var scenes = Values(cfg, "_kDungeonId");
+        if (state.Stage <= 0 || state.Stage > scenes.Length) return null;
+        return new DungeonCallMemberNtf
+        {
+            Difficulty = state.Difficulty, SceneEntryID = scenes[state.Stage - 1],
+            Endtime = _schedule.CurrentOrNext(Activity)!.End, UId = uid,
+            CallData = new SceneCallData
+            {
+                GuildChallengeData = new GuildChallengeCallData
+                { ConfigId = (int)GameData.Int(cfg, "_iGuildChallengeId") }
+            }
+        };
     }
 
     public async Task LoginAsync(GameSession s)
@@ -375,6 +383,46 @@ public sealed class GuildChallengeService : IGameTicker
         }
         finally { _gate.Release(); }
     }
+
+    /// <summary>
+    /// 32266: the Muster button of the challenge's command panel (UI_Sys_GVEGameManagePanelCtrl._onCallButtonClick, shown to
+    /// GuildChallengeSet ranks by LC_WhaleHelper.IsGuildManager) calls the guild to the selected stage. Every online member
+    /// gets 32267, which the client shows as ChatConfig 5311 "Answer the summons?" and answers with 30400 into that scene
+    /// (LC_DAL_GVESystem.SetGVERally); the caller is skipped by uId. The client never reads the answer.
+    /// (inferred) A call needs the open activity, a selected unfinished stage matching dungeonID, and waits
+    /// GVESummonButtonCd seconds per guild.
+    /// </summary>
+    public async Task CallMembersAsync(GameSession s, DungeonCallMemberReq req)
+    {
+        var guild = Guild(s)?.Id ?? 0;
+        var role = s.Role;
+        var attachment = s.Attachment;
+        DungeonCallMemberNtf? call = null;
+        int code;
+        using (var scope = await EnterWithGateAsync("guild-challenge/call", guild, s.Role?.Id ?? 0))
+            try
+            {
+                var g = ReferenceEquals(s.Role, role) && ReferenceEquals(s.Attachment, attachment) && Guild(s)?.Id == guild
+                    ? Guild(s) : null;
+                var state = g == null ? null : await EnsureStateAsync(g.Id, s.Role!.Id);
+                call = state == null || state.Complete ? null : CallNotice(state, s.Role!.Id);
+                code = g == null ? ErrorCodes.GuildMissing : !Available(s) ? ErrorCodes.FeatureUnavailable
+                    : !IsManager(s, g) ? ErrorCodes.GuildPermission : !_schedule.IsOpen(Activity) ? ErrorCodes.ActivityPeriod
+                    : call == null || req.DungeonID != 0 && req.DungeonID != call.SceneEntryID ? ErrorCodes.Parameter
+                    : Now < _nextCall.GetValueOrDefault(g.Id) ? ErrorCodes.Cooldown : 0;
+                if (code == 0) _nextCall[g!.Id] = Now + CallCooldownSeconds;
+            }
+            finally { _gate.Release(); }
+        await s.SendGameAsync(CallMembers, new DungeonCallMemberRsp { DungeonID = req.DungeonID, Result = code });
+        if (code != 0) return;
+        foreach (var peer in _sessions.All().Where(p => p.Role != null && Guild(p)?.Id == guild))
+            try { await peer.SendGameAsync(CallMembersNotify, call!); }
+            catch (Exception e) when (e is not OperationCanceledException)
+            { LogCallFailed(_log, e, peer.Role?.Id); }
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Guild Challenge call failed for {Role}")]
+    private static partial void LogCallFailed(ILogger logger, Exception error, long? role);
 
     internal async Task<bool> TryEnterAsync(GameSession s, EnterDungeonReq req)
     {

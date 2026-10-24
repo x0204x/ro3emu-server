@@ -348,6 +348,18 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
             attachments is { Count: > 0 } ? 30 : 7);
 
     /// <summary>
+    /// A member's guild group mail (GuildService.BroadEmail): raw Guild Mail (category 3) with the member as sender, kept
+    /// MailTextTimeMax days like other text mail. The guild operation holds every recipient, so it delivers in its context.
+    /// </summary>
+    internal Task<string> SendGuildAsync(long role, string title, string content, string sender, long senderId,
+        Ownership.OwnerContext? ownerContext) =>
+        DeliverAsync(role, new Letter
+        {
+            Title = title, Content = content, Sender = sender, Category = 3,
+            SenderId = senderId.ToString(CultureInfo.InvariantCulture)
+        }, null, 7, ownerContext: ownerContext);
+
+    /// <summary>
     /// A known MailConfig template with an explicit source-owned reward list. _iMailType is a template option,
     /// not the UI category. The separate overload resolves eligible fixed _iAward rows as an inferred policy.
     /// (inferred) _kTimes is retention in days for _iTimerMethod=0. Other timer modes need explicit expiry.

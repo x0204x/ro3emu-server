@@ -86,6 +86,10 @@ public sealed class SocialMessages(ChatService chat, TeamService teams, EmblemSe
         {
             await guildChallenge.OpenAsync(session, GuildDungeonChallengeOpenReq.Parser.ParseFrom(body.Span));
         });
+        routes.Map(GuildChallengeService.CallMembers, "guildChallenge", async (session, msgId, body) =>
+        {
+            await guildChallenge.CallMembersAsync(session, DungeonCallMemberReq.Parser.ParseFrom(body.Span));
+        });
         routes.Map(83243, "campfire", async (session, msgId, body) =>
         {
             await campfire.AccelerantAsync(session, GuildCampFireAddAccelerantReq.Parser.ParseFrom(body.Span));
@@ -273,6 +277,42 @@ public sealed class SocialMessages(ChatService chat, TeamService teams, EmblemSe
         routes.Map(GuildService.EliteSave, "guilds", async (session, msgId, body) =>
         {
             await guilds.EliteSaveAsync(session, QuickJoinEliteGroupReq.Parser.ParseFrom(body.Span));
+        });
+        routes.Map(GuildService.MergePull, "guilds", async (session, msgId, body) =>
+        {
+            await guilds.MergePullAsync(session);
+        });
+        routes.Map(GuildService.MergeRecommend, "guilds", async (session, msgId, body) =>
+        {
+            await guilds.MergeRecommendAsync(session);
+        });
+        routes.Map(GuildService.MergeDetail, "guilds", async (session, msgId, body) =>
+        {
+            await guilds.MergeDetailAsync(session, MergeGuildDetailDataReq.Parser.ParseFrom(body.Span));
+        });
+        routes.Map(GuildService.MergeMembers, "guilds", async (session, msgId, body) =>
+        {
+            await guilds.MergeMembersAsync(session, SaveMergeMemberReq.Parser.ParseFrom(body.Span));
+        });
+        routes.Map(GuildService.MergeOpe, "guilds", async (session, msgId, body) =>
+        {
+            await guilds.MergeOpeAsync(session, MergeGuildOpeReq.Parser.ParseFrom(body.Span));
+        });
+        routes.Map(GuildService.MergeAsk, "guilds", async (session, msgId, body) =>
+        {
+            await guilds.MergeAskAsync(session, InviteMergeGuildReq.Parser.ParseFrom(body.Span));
+        });
+        routes.Map(GuildService.Peach, "guilds", async (session, msgId, body) =>
+        {
+            await guilds.PeachAsync(session, GuildPeachReq.Parser.ParseFrom(body.Span));
+        });
+        routes.Map(GuildService.PeachApply, "guilds", async (session, msgId, body) =>
+        {
+            await guilds.PeachApplyAsync(session);
+        });
+        routes.Map(GuildService.BroadEmail, "guilds", async (session, msgId, body) =>
+        {
+            await guilds.BroadEmailAsync(session, GuildBroadEmailReq.Parser.ParseFrom(body.Span));
         });
         // Reads the committed roster, then the team family reserves the leader and the invited elites itself.
         routes.Map(GuildService.EliteTeam, "teams", async (session, msgId, body) =>

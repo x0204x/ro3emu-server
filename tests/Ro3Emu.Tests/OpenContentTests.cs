@@ -95,8 +95,9 @@ public sealed class OpenContentTests : IAsyncLifetime
         Assert.True(open.FunctionOpenInfos[1323].All);
         // Feedback 41 opens with its backend (FeedbackService; the panel comes from ClientHooks.FeedbackButton).
         Assert.True(open.FunctionOpenInfos[41].All);
-        // Shells without a working panel stay closed: Title 14, Academy 34.
-        Assert.False(open.FunctionOpenInfos.ContainsKey(14));
+        // Title 14 opens with its backend (TitleService; the widget is hosted by ClientHooks.TitleButton).
+        Assert.True(open.FunctionOpenInfos[14].All);
+        // Shells without a working panel stay closed: Academy 34.
         Assert.False(open.FunctionOpenInfos.ContainsKey(34));
         // Ordinary level gates are untouched: friends open at level 15.
         Assert.False(open.FunctionOpenInfos.ContainsKey(45));

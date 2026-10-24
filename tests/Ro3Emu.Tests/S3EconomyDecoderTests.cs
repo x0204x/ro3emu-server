@@ -72,7 +72,7 @@ public sealed class S3EconomyDecoderTests
                 "auction guild_info guild_challenge pet_books daily new_activities activity_runtime timed_activity timed_battle " +
                 "training lottery tower wild_afk dungeons territory_escort lifejob life_restrict life_runtime season_talent " +
                 "season_page season_page_meta season_refine equip_levels equip_plans auto_decompose bag_state stat_plans " +
-                "world_state emblems pets mounts wardrobe totems totem_refine_epoch genre career_special heroic_spirit area_concur growth_class first_heart personal personal_upvote popularity social_outfit emoji_info").Split(' '))
+                "world_state emblems pets mounts wardrobe totems totem_refine_epoch genre career_special heroic_spirit paragon title area_concur growth_class first_heart personal personal_upvote popularity social_outfit emoji_info").Split(' '))
                 Exec("ALTER TABLE role ADD COLUMN " + column + " BLOB");
         }
         internal void Exec(string sql)
@@ -184,6 +184,7 @@ public sealed class S3EconomyDecoderTests
         f.Exec("INSERT INTO server_state VALUES('season_id','2')");
         f.Exec("INSERT INTO server_state VALUES('playbook','101')");
         f.Exec("INSERT INTO server_state VALUES('instance_sequence','1125899906842625')");
+        f.Exec("INSERT INTO server_state VALUES('flying_dragon','GPbN7dYGKgoIrI0GEPbN7dYG')"); // DBFlyingDragonProduceInfo.
         f.Insert("INSERT INTO server_state VALUES('season_history',$0)",
             """{"1":{"Id":1,"PlayBook":101,"Start":"2026-10-01T00:00:00","End":"2026-10-09T00:00:00"}}""");
         f.Insert("INSERT INTO guild_challenge_clear VALUES('clear',1,$0)",
@@ -237,7 +238,7 @@ public sealed class S3EconomyDecoderTests
         Assert.Equal(1, Assert.Single(snapshot.Metrics, m => m.Repository == "guild_caravan_version").Rows);
         Assert.Equal(1, Assert.Single(snapshot.Metrics, m => m.Repository == "activity_eve_global").Blobs);
         Assert.Equal(1, Assert.Single(snapshot.Metrics, m => m.Repository == "festival_round").Blobs);
-        Assert.Equal(5, Assert.Single(snapshot.Metrics, m => m.Repository == "server_state").Rows);
+        Assert.Equal(6, Assert.Single(snapshot.Metrics, m => m.Repository == "server_state").Rows);
         Assert.Contains(snapshot.Issues, i => i.Kind == EconomyIssueKind.RecoveryDebt && i.Key.StartsWith("festival_reward/"));
         Assert.Contains(snapshot.Issues, i => i.Kind == EconomyIssueKind.RecoveryDebt && i.Detail.Contains("EXP grant"));
         Assert.DoesNotContain(snapshot.Issues, i => i.Kind == EconomyIssueKind.Corruption);

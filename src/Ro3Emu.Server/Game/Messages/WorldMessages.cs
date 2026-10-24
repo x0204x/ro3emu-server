@@ -134,6 +134,10 @@ public sealed class WorldMessages(Maps.World world, CombatService combat, SceneS
                 && !await dracula.TryEnterAsync(session, dungeonRequest))
                 await dungeons.EnterAsync(session, dungeonRequest);
         });
+        routes.Map(DraculaWeddingService.Watch, "territory", async (session, msgId, body) =>
+        {
+            await dracula.WatchAsync(session, DungeonWatchChangeTargetReq.Parser.ParseFrom(body.Span));
+        });
         routes.Map(TowerService.LeaveDungeon, "territory", async (session, msgId, body) =>
         {
             if (await territory.LeaveAsync(session) || await league.LeaveAsync(session)) return;

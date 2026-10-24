@@ -30,6 +30,11 @@ public static partial class EconomySnapshotReader
     // Pass play: role.activity_runtime PassPlay (NewActivityService.PassPlay) holds the day's and week's challenge
     // progress, daily EXP caps, paid chapters and EXP counters. No balance and no asset: pass EXP is currency 132, granted
     // by the pass/play receipt that also saves these markers.
+    // Titles: role.title is DBTitleInfo (the title rank). Not a balance: a rank's Crests are paid by its own
+    // cd13a/character-title receipt that also saves it.
+    // Astral Level: role.paragon is DBParagonLevel (points per star and the installed Star Cores as ItemBaseInfo); the
+    // level and its EXP are role.paragon_level / paragon_exp, a progression counter. Not a balance: an installed core
+    // left the bag through its cd13b/paragon-* receipt (a ParagonCost sink) and comes back through one (ParagonGoods).
     // Valhalla Trials: role.heroic_spirit is DBOdinStatue (Blessing statue EXP and level). Not a balance: its EXP is
     // bought with Einherjar Coins by the cd13b/valhalla-pray receipt that also saves it. Cleared layers are
     // dungeons Records "valhalla:<layer>", written with the layer's reward by the dungeon obligation.
@@ -67,7 +72,7 @@ public static partial class EconomySnapshotReader
     // casual_battle_obligation.payout is CasualBattleService.Payout: a frozen match result (rating delta, record,
     // numbers) and the DropPool ids its payment rolls. No goods: they are granted by the role's event/casual-battle
     // receipt that also writes the timed_battle state and marks the row delivered.
-    public const string ExpectedFormatManifestHash = "C30B966932EA711BC056382F73CF7189C57E143F7C7A15351BEC6D13ECDCB91F";
+    public const string ExpectedFormatManifestHash = "D5E7E8D429207929DD339BBB976CBDAEA16B4197AD5A969D76BFCE9CD3EC6E54";
     public static string FormatManifestHash => State.FormatManifestHash;
 
     private sealed partial class State

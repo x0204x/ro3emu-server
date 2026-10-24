@@ -437,11 +437,11 @@ public sealed partial class TaskService
     /// Adds progress from an event to every running task's matching targets: <paramref name="amount"/> returns how much a
     /// target gains (long.MaxValue = complete it); <paramref name="type"/> limits it to one target type.
     /// </summary>
-    private async Task ProgressAsync(GameSession session, int? type, Func<long[], long> amount)
+    private async Task ProgressAsync(GameSession session, int? type, Func<long[], long> amount, Func<TaskDef, bool>? eligible = null)
     {
         using var gate = await LockTasksAsync(session);
         if (BeforeProgress is { } before) await before(session);
-        await ProgressCoreAsync(session, type, amount);
+        await ProgressCoreAsync(session, type, amount, eligible);
     }
 
     private async Task ProgressCoreAsync(GameSession session, int? type, Func<long[], long> amount, Func<TaskDef, bool>? eligible = null)

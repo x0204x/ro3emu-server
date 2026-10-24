@@ -14,7 +14,7 @@ namespace Ro3Emu.Server.Game;
 /// only in the description, as for the talents' procs (inferred). Double Attack, Deadly Poison's Venom and Advanced Katar
 /// Mastery are in TalentProcs.Passives, next to the talents that change them; Supersonic Blow and Arcane Mastery change a
 /// skill's damage in CombatService.Passives; the mount passives (Riding, Dragon Training, Wolf Taming, Wolf's Fang) are
-/// RidingEffects. Not executed: Sight Sprout's detection.
+/// RidingEffects; Sight Sprout's detection is CombatService.Stealth.
 /// </summary>
 public sealed class PassiveSkills : IGameTicker
 {

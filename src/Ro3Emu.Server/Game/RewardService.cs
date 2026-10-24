@@ -35,7 +35,7 @@ public sealed class RewardService
     public List<Func<GameSession, MonsterUnit, IReadOnlyList<(int Entry, long Count)>, Task>> KillDropsGranted { get; } = new();
     internal Action<GameSession, MonsterUnit, RewardSettlement, IReadOnlyList<(int Entry, int Count)>, long, long>? StageAfkKill { get; set; }
     /// <summary>Monster Hunt: the area drop rolled with an ordinary field kill (MonsterHuntService).</summary>
-    internal Func<GameSession, MonsterUnit, IEnumerable<(int Entry, int Count)>>? ExtraKillDrops { get; set; }
+    internal List<Func<GameSession, MonsterUnit, IEnumerable<(int Entry, int Count)>>> ExtraKillDrops { get; } = [];
     /// <summary>Monster Hunt: its kill counters join the kill's own transaction, after the AFK child (MonsterHuntService).</summary>
     internal Action<GameSession, MonsterUnit, RewardSettlement>? StageHuntKill { get; set; }
 
@@ -162,7 +162,7 @@ public sealed class RewardService
             }
         }
 
-        if (ExtraKillDrops != null) drops.AddRange(ExtraKillDrops(player, monster));
+        foreach (var extra in ExtraKillDrops) drops.AddRange(extra(player, monster));
         long baseExp = drops.Where(d => d.Entry == BaseExpItem).Sum(d => (long)d.Count);
         var items = drops.Where(d => d.Entry is not (BaseExpItem or JobExpItem) && _data.Row("ItemConfig", d.Entry) != null).ToList();
         if (baseExp > 0)

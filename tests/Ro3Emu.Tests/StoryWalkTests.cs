@@ -240,6 +240,7 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
             }
         }
         long last = endIndex < chain.Count ? chain[endIndex] : chain[^1];
+        for (int i = 0; i < 40 && !Active(last) && !Delivered(last); i++) await Task.Delay(50);
         bool reachedEnd = endIndex < chain.Count ? Active(last) : Delivered(last);
         var (level, jobLevel, career) = await OnLoop(s => (s.Progress!.Level, s.Progress.JobLevel, s.Progress.Career));
         string report = Report(chain, endIndex, reachedEnd, $"end: base {level}, job {jobLevel}, career {career}, {(DateTime.UtcNow - started).TotalSeconds:0} s");
@@ -639,15 +640,39 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
         var until = DateTime.UtcNow + TimeSpan.FromSeconds(90);
         while (!result.IsCompleted && DateTime.UtcNow < until)
         {
-            // A scripted scene without a fight: play its current step the way the client does (see PlayStepAsync).
-            var (wave, step) = await OnLoop(s => s.DungeonAttempt is { Settled: false } a && a.Wave < a.Plan.Waves.Count
-                ? (a.Wave, a.Plan.Waves[a.Wave].Step) : (-1, null));
+            // A scripted scene: send its client event, then clear any fight attached to that step.
+            var (wave, step, stepDone) = await OnLoop(s => s.DungeonAttempt is { Settled: false } a && a.Wave < a.Plan.Waves.Count
+                ? (a.Wave, a.Plan.Waves[a.Wave].Step, a.StepDone) : (-1, null, false));
             if (step != null)
             {
-                await PlayStepAsync(scene, wave, step, detail);
+                if (step.Seek != null)
+                {
+                    if (await HideForSeekAsync(scene, wave, step, detail)) steps++;
+                    await Task.Delay(100);
+                    continue;
+                }
+                if (!stepDone)
+                {
+                    await PlayStepAsync(scene, wave, step, detail);
+                    for (int i = 0; i < 100 && !result.IsCompleted; i++)
+                    {
+                        var state = await OnLoop(s => s.DungeonAttempt is { } a
+                            ? (Wave: a.Wave, StepDone: a.StepDone)
+                            : (Wave: -1, StepDone: false));
+                        if (state.Wave != wave || state.StepDone) break;
+                        await Task.Delay(50);
+                    }
+                    steps++;
+                    continue;
+                }
+                if (step.Fight.Count > 0)
+                {
+                    if (await KillOneAsync(scene, _ => true, instance, waitTenths: 20)) kills++;
+                    else await Task.Delay(100);
+                    continue;
+                }
                 for (int i = 0; i < 100 && !result.IsCompleted && await OnLoop(s => s.DungeonAttempt?.Wave) == wave; i++)
                     await Task.Delay(50);
-                steps++;
                 continue;
             }
             if (await KillOneAsync(scene, _ => true, instance, waitTenths: 20)) kills++;
@@ -664,7 +689,8 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
 
     /// <summary>
     /// One step of a scripted scene (Reconstructed/scripted-scenes.json): the bot sends what the player's client sends
-    /// for the step's first completing event. For an interaction (or the dungeon message an interaction sends) it stands
+    /// for a completing event (every event when the step requires all of them). For an interaction (or the dungeon message
+    /// an interaction sends) it stands
     /// beside the step's scene actor offering it and sends 32700 as the client does when the player presses the
     /// interaction (or walks into its range, or picks the dialogue option that triggers it); for a region or a point it
     /// reports a walk into it (31082); for a story it sends what the client sends when the story ends (32709, 84011).
@@ -672,8 +698,15 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
     /// </summary>
     private async Task PlayStepAsync(long scene, int wave, ReconstructedDungeons.ScriptedStep step, List<string> detail)
     {
+        if (step.Complete.Count == 0)
+            throw new WalkBlocked($"dungeon {scene} step {wave + 1}: no client event to play");
+        foreach (var t in step.All ? step.Complete : step.Complete.Take(1))
+            await PlayStepTriggerAsync(scene, wave, t, detail);
+    }
+
+    private async Task PlayStepTriggerAsync(long scene, int wave, ReconstructedDungeons.StepTrigger t, List<string> detail)
+    {
         var catalog = Service<DungeonCatalog>();
-        var t = step.Complete[0];
         switch (t.Kind)
         {
             case ReconstructedDungeons.TriggerKind.Plot:
@@ -702,6 +735,31 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
                 detail.Add($"step {wave + 1}: walked into {t.Kind.ToString().ToLowerInvariant()} {t.Id}");
                 break;
         }
+    }
+
+    /// <summary>The hide-and-seek script reads the participant's position at each look; move to an unsearched client point.</summary>
+    private async Task<bool> HideForSeekAsync(long scene, int wave, ReconstructedDungeons.ScriptedStep step, List<string> detail)
+    {
+        var catalog = Service<DungeonCatalog>();
+        var hiding = await OnLoop(s =>
+        {
+            if (s.DungeonAttempt is not { } a) return (Trigger: (ReconstructedDungeons.StepTrigger?)null, Move: false);
+            var available = step.Complete.Where(t => !a.Searched.Contains(t.Id))
+                .Where(t => catalog.ScenePoint(scene, t.Id) != null).ToArray();
+            var current = available.FirstOrDefault(t => catalog.ScenePoint(scene, t.Id) is { } p
+                && MonsterService.Distance(s.Position.X, s.Position.Z, p.X, p.Z) <= t.Radius);
+            return current != null
+                ? (Trigger: current, Move: false)
+                : (Trigger: available.FirstOrDefault(), Move: true);
+        });
+        if (hiding.Trigger == null || !hiding.Move) return false;
+        var at = catalog.ScenePoint(scene, hiding.Trigger.Id)
+            ?? throw new WalkBlocked($"dungeon {scene}: no hide point {hiding.Trigger.Id}");
+        await Service<GameLoop>().InvokeAsync(() => Service<SceneService>().TeleportInMapAsync(Session(), at));
+        await _bot.SendGameAsync(MsgId.Walk,
+            new WalkReq { Pos = new Vec3 { X = at.X, Y = at.Y, Z = at.Z }, BStop = true, SpeedRate = 1 });
+        detail.Add($"step {wave + 1}: hid at point {hiding.Trigger.Id}");
+        return true;
     }
 
     /// <summary>Grind stand-in: the levels a real player would gain by fighting, supplied by !lvl and reported.</summary>

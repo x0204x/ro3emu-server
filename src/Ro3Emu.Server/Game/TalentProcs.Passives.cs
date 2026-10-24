@@ -89,7 +89,7 @@ public sealed partial class TalentProcs
     {
         double value = index < logic.Length ? logic[index] : 0;
         foreach (var tuple in s.TalentBuffAttributes)
-            if (tuple.Group == group && tuple.Type == BuffLogicType && (tuple.Index == index || index == 0 && tuple.Index >= logic.Length))
+            if (!tuple.ByCategory && tuple.Group == group && tuple.Type == BuffLogicType && (tuple.Index == index || index == 0 && tuple.Index >= logic.Length))
                 value = tuple.Operation switch
                 {
                     1 => value + tuple.Value,

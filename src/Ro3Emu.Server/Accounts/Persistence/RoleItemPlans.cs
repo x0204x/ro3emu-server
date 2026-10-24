@@ -578,7 +578,7 @@ internal static class RoleColumns
         "life_runtime", "season_talent", "season_page", "season_page_meta", "season_refine", "pets", "mounts",
         "wardrobe", "totems", "totem_refine_epoch", "genre", "skill_plans", "pet_books", "equip_levels",
         "equip_plans", "auto_decompose", "bag_state", "stat_plans", "world_state", "emblems", "guild_info",
-        "mailbox", "auction", "tasks", "task_runtime", "task_followup", "wild_afk", "career_special", "heroic_spirit", "area_concur", "growth_class", "first_heart", "personal", "personal_upvote", "popularity", "social_outfit", "emoji_info"
+        "mailbox", "auction", "tasks", "task_runtime", "task_followup", "wild_afk", "career_special", "heroic_spirit", "paragon", "title", "area_concur", "growth_class", "first_heart", "personal", "personal_upvote", "popularity", "social_outfit", "emoji_info"
     };
 
     internal static void Validate(string column)
@@ -627,12 +627,12 @@ internal sealed class RoleBlobWritePlan : DbPlan
 }
 
 internal sealed record RoleProgressValue(int Career, int Level, int JobLevel, long Exp, long JobExp,
-    string Stats, int BonusPoints, string Currency, int StarterKit, string Skills, string SkillBar)
+    string Stats, int BonusPoints, string Currency, int StarterKit, string Skills, string SkillBar, int ParagonLevel, long ParagonExp)
 {
     internal static RoleProgressValue Capture(RoleProgress p) => new(p.Career, p.Level, p.JobLevel, p.Exp, p.JobExp,
         string.Join(',', p.Stats), p.BonusPoints, string.Join(',', p.Currency.Select(c => $"{c.Key}:{c.Value}")),
         p.StarterKit ? 1 : 0, string.Join(',', p.Skills.Select(s => $"{s.Key}:{s.Value}")),
-        string.Join(',', p.SkillBar.Select(s => $"{s.Key}:{s.Value}")));
+        string.Join(',', p.SkillBar.Select(s => $"{s.Key}:{s.Value}")), p.ParagonLevel, p.ParagonExp);
 
     internal void Bind(SqliteCommand cmd)
     {
@@ -642,6 +642,7 @@ internal sealed record RoleProgressValue(int Career, int Level, int JobLevel, lo
         cmd.Parameters.AddWithValue("$bonus", BonusPoints); cmd.Parameters.AddWithValue("$cur", Currency);
         cmd.Parameters.AddWithValue("$kit", StarterKit); cmd.Parameters.AddWithValue("$skills", Skills);
         cmd.Parameters.AddWithValue("$bar", SkillBar);
+        cmd.Parameters.AddWithValue("$plv", ParagonLevel); cmd.Parameters.AddWithValue("$pexp", ParagonExp);
     }
 }
 
@@ -656,7 +657,8 @@ internal sealed class RoleProgressWritePlan(long role, RoleProgress value) : DbP
     {
         using var cmd = DbSql.Command(db, tx, """
             UPDATE role SET career=$career,level=$level,job_level=$jl,exp=$exp,job_exp=$jexp,stats=$stats,
-                bonus_points=$bonus,currency=$cur,starter_kit=$kit,skills=$skills,skill_bar=$bar WHERE id=$id
+                bonus_points=$bonus,currency=$cur,starter_kit=$kit,skills=$skills,skill_bar=$bar,
+                paragon_level=$plv,paragon_exp=$pexp WHERE id=$id
             """);
         cmd.Parameters.AddWithValue("$id", role);
         _value.Bind(cmd);
@@ -938,7 +940,7 @@ internal sealed class RoleProgressReadPlan(long role) : DbReadPlan
     internal override string Label => "role/read-progress";
     internal override object Execute(SqliteConnection db, SqliteTransaction tx)
     {
-        using var cmd = DbSql.Command(db, tx, "SELECT career,level,job_level,exp,job_exp,stats,bonus_points,currency,starter_kit,skills,skill_bar FROM role WHERE id=$id");
+        using var cmd = DbSql.Command(db, tx, "SELECT career,level,job_level,exp,job_exp,stats,bonus_points,currency,starter_kit,skills,skill_bar,paragon_level,paragon_exp FROM role WHERE id=$id");
         cmd.Parameters.AddWithValue("$id", role);
         using var row = cmd.ExecuteReader();
         if (!row.Read()) throw new InvalidOperationException($"no role {role}");

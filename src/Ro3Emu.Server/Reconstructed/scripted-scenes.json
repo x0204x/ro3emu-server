@@ -135,6 +135,167 @@
         }
       ]
     },
+    "1000401": {
+      "name": "Maya's nest: Maya, the Professor in the ant egg and the treasure",
+      "confidence": "medium",
+      "evidence": ["DungeonQuestConfig 5300016-5300020: 1 'Encounter Maya' [5,0,1] 'Defeat Maya'; 2 'Find the Professor' 'Venture deeper into the cave to find the Professor'; 3 'Free the Ant Egg' 'Rescue the Professor from the ant egg'; 4 'Help the Professor Up' 'Help the Weak Professor walk'; 5 \"Maya's Secret Treasure\" 'Open the treasured chest'. Tasks 105103 and 10104310 'Venture Deeper into the Ant Queen's Nest': 'Enter Maya's Nest and rescue the Professor.'", "Editor sc_plot_yhcx_003_dg01: points 21 蚁后刷怪点 (ant queen spawn), 26 教授刷新点 (professor spawn), 32 教授卵刷新点 (professor egg spawn), 34 宝箱刷怪点 (treasure chest spawn); guide 25 蚁卵引导点 (ant egg guide) leads from the born point toward the eggs; dialogue regions 28-30 (regionType 1, client) lie along the way, region 28 about 10 m before point 32.", "NPCInteractConfig 5300021 'Free the Ant Egg' (skill 5362201) on 5300051 and 5300056 sends dungeon message 5300022; 5300022 'Help the Professor Up' (skill 5362301: 'Help the fallen Professor to their feet') on 5300026 Professor sends 5300023; 5300023 'Open' (skill 5362401: 'Open the Treasure in Maya's Nest') on 5300052 Precious Treasure Chest sends 5300024. All three are gated by LC_ConditionList 7100022-7100024: [1004, 53014] CheckHaveBuff group 53014, the gate 1000301's 'Rescue Bobo' uses (BuffConfig 5301401).", "5300056 (unit 5300017, next to the Ant Egg 5300036 unit 5300014) is the egg with the Professor; 5300051 offers the same interaction on unit 70010, the invisible helper model."],
+      "guessed": ["Stage 2 completes within 10 m of the egg point 32 (where dialogue region 28 begins); the original likely used a dialogue region, which the client handles itself.", "The egg holding the Professor is 5300056 (its model is next to the Ant Egg model); 5300051 would show nothing.", "Each step gives its actor buff 5301401 (group 53014) to open its interaction, as in 1000301; the original set the buff from its script.", "The chest's _iNormalDrop 330052 is not dropped: the engine gives no loot; the dungeon's own settlement rewards stand."],
+      "steps": [
+        {
+          "quest": 1,
+          "stage": "Encounter Maya: defeat Maya",
+          "fight": [
+            { "point": 21, "npc": 5300006, "why": "label 蚁后刷怪点 'ant queen spawn point' and stage 1 'Defeat Maya'; story Maya template 5300006 (L30)" }
+          ]
+        },
+        {
+          "quest": 2,
+          "stage": "Find the Professor",
+          "actors": [
+            { "npc": 5300056, "point": 32, "why": "the egg with the Professor at 教授卵刷新点, not yet open" }
+          ],
+          "complete": [
+            { "point": 32, "radius": 10, "why": "walked within 10 m of the egg (inferred)" }
+          ]
+        },
+        {
+          "quest": 3,
+          "stage": "Free the Ant Egg",
+          "actors": [
+            { "npc": 5300056, "point": 32, "buffs": [5301401], "why": "buff group 53014 opens 'Free the Ant Egg' (5300021)" }
+          ],
+          "complete": [
+            { "message": 5300022, "why": "interaction 5300021 'Free the Ant Egg' sends dungeon message 5300022" }
+          ]
+        },
+        {
+          "quest": 4,
+          "stage": "Help the Professor Up",
+          "actors": [
+            { "npc": 5300026, "point": 26, "buffs": [5301401], "why": "the Professor at 教授刷新点; buff group 53014 opens 'Help the Professor Up' (5300022)" }
+          ],
+          "complete": [
+            { "message": 5300023, "why": "interaction 5300022 sends dungeon message 5300023" }
+          ]
+        },
+        {
+          "quest": 5,
+          "stage": "Maya's Secret Treasure: open the chest",
+          "actors": [
+            { "npc": 5300026, "point": 26, "why": "the Professor, helped up" },
+            { "npc": 5300052, "point": 34, "buffs": [5301401], "why": "the Precious Treasure Chest at 宝箱刷怪点; buff group 53014 opens 'Open' (5300023)" }
+          ],
+          "complete": [
+            { "message": 5300024, "why": "interaction 5300023 'Open' sends dungeon message 5300024" }
+          ]
+        }
+      ]
+    },
+    "1000501": {
+      "name": "Airship: the chitchat, the boarding, the Evil Boss and the captain",
+      "confidence": "medium",
+      "evidence": ["DungeonQuestConfig 5300021-5300026: 1 'Aboard the Airship' 'Have a Chitchat with them.'; 2 'Use the ship's cannons to attack the enemy vessels.'; 3 'The enemy has boarded the ship!' 'Eliminate all enemies.'; 4 'Defeat the Evil Boss'; 5 'The Battle temporarily subsides' 'Take a look around'; 6 \"Check the Captain's injuries\" 'Talk to the captain', its _kAction [142, 1000501, 55, 9, 530003802] (the captain's point and dialogue).", "Editor sc_plot_airship_001_pl01: group 53 holds 54 波波NPC (Bobo), 55 船长NPC (captain), 56 晤勒 (Wule), 57 保亚 (Boya), 58 团长 (chief); 40/42/43 火炮 (cannons); 24 and 61 敌方飞空艇 (enemy airships); 44-47 冲锋怪 (chargers), 48-52 弓箭 (archers).", "NPCConfig 5300031 Bobo, 5300032 Captain, 5300033 Wule, 5300034 Boya, 5300035 Eden Group Chief (born buff 5364501); interactions 5300031-5300034: mode 2 (AutoInteractWhenInRange), gated by 7100026-7100029 [1004, 53645] (group of 5364501), each a 4001 bubble (530003101/530003201/530003301/530003401).", "NPCConfig 5300061-5300065 (Bobo, Captain, Wule, Boya, Eden Group Chief): interactions 5300048-5300052, mode 2 without a gate, bubbles 530003901, 530004001, 530004201, 530004101, 530004301 (after the battle).", "NPCConfig 5300038 Captain: interaction 5300035 (dialogue 530003802 'Are you badly hurt?'), whose option 'Can I really do it?' runs [211, 5300038, 5300039] TriggerNpcInteract; interaction 5300039 (mode 4) sends dungeon message 5300039.", "NPCConfig 5300022 Cannon (type 2/101, camp 1) with interaction 5300006 'Board the Cannon' (skill 5365001 'Use the Turret', script beginnerGetOncannon, _kDamageParam1 100000), gated by 7100018: not CheckInteractState 0, i.e. shown while nobody occupies the cannon; GameplayStatusConfig 12 新手教程上炮 (tutorial cannon, UpperCannon) has no abilities. Fire 5353001 ('Fire - Rapid', script beginnercannon) is GameplayStatusButtonConfig 27.", "NPCConfig 5300015 Enemy Airship and 5300053 Small Enemy Airship: camp 2, level 20, AI 5300005, born state buffs; editor points 24 and 61 are 敌方飞空艇1/2 (enemy airship 1/2), 100 m off the deck."],
+      "guessed": ["Stage 2, the cannons: each 'Board the Cannon' fires the cannon at once: the player casts 5365001 at the nearest enemy airship and three boardings sink a ship whatever the damage (a volley, for the rapid fire button); sinking both airships ends the stage. The original put the player into the UpperCannon gameplay status with a fire button, which no client data describes for this cannon.", "Stage 1 'Have a Chitchat with them' needs all four gated bubbles (Bobo, Captain, Wule, Boya); the chief has no interaction.", "Stage 5 'Take a look around' needs all five post-battle bubbles.", "The nine boarders come in three groups of three (as before)."],
+      "steps": [
+        {
+          "quest": 1,
+          "stage": "Aboard the Airship: chitchat",
+          "all": true,
+          "actors": [
+            { "npc": 5300031, "point": 54, "buffs": [5364501], "why": "Bobo at 波波NPC; group 53645 opens his bubble" },
+            { "npc": 5300032, "point": 55, "buffs": [5364501], "why": "the captain at 船长NPC" },
+            { "npc": 5300033, "point": 56, "buffs": [5364501], "why": "Wule at 晤勒" },
+            { "npc": 5300034, "point": 57, "buffs": [5364501], "why": "Boya at 保亚" },
+            { "npc": 5300035, "point": 58, "why": "the Eden Group Chief at 团长" }
+          ],
+          "complete": [
+            { "interaction": 5300031, "why": "Bobo's bubble" },
+            { "interaction": 5300032, "why": "the captain's bubble" },
+            { "interaction": 5300033, "why": "Wule's bubble" },
+            { "interaction": 5300034, "why": "Boya's bubble" }
+          ]
+        },
+        {
+          "quest": 2,
+          "stage": "Encounter the Evil Boss: attack the enemy ships with the cannons",
+          "actors": [
+            { "npc": 5300022, "point": 40, "why": "the Cannon at 火炮1" },
+            { "npc": 5300022, "point": 42, "why": "the Cannon at 火炮2" },
+            { "npc": 5300022, "point": 43, "why": "the Cannon at 火炮3" }
+          ],
+          "fight": [
+            { "point": 24, "npc": 5300015, "why": "the Enemy Airship at 敌方飞空艇1" },
+            { "point": 61, "npc": 5300053, "why": "the Small Enemy Airship at 敌方飞空艇2" }
+          ],
+          "strike": [
+            { "interaction": 5300006, "skill": 5365001, "shots": 3, "why": "'Board the Cannon' fires a volley; three sink a ship (inferred)" }
+          ]
+        },
+        {
+          "quest": 3,
+          "stage": "The enemy has boarded the ship: eliminate all enemies (1/3)",
+          "fight": [
+            { "point": 44, "npc": 5300042, "why": "label 冲锋怪-1 'charging monster'; the client has exactly four story 'Evil Warrior' templates 5300042-45 for the four charge points" },
+            { "point": 45, "npc": 5300043, "why": "冲锋怪-2" },
+            { "point": 48, "npc": 5300046, "why": "label 弓箭-1 'archer'; exactly five story 'Evil Archer' templates 5300046-50 for the five archer points" }
+          ]
+        },
+        {
+          "quest": 3,
+          "stage": "The enemy has boarded the ship: eliminate all enemies (2/3)",
+          "fight": [
+            { "point": 46, "npc": 5300044, "why": "冲锋怪-3" },
+            { "point": 49, "npc": 5300047, "why": "弓箭-2" },
+            { "point": 50, "npc": 5300048, "why": "弓箭-3" }
+          ]
+        },
+        {
+          "quest": 3,
+          "stage": "The enemy has boarded the ship: eliminate all enemies (3/3)",
+          "fight": [
+            { "point": 47, "npc": 5300045, "why": "冲锋怪-4" },
+            { "point": 51, "npc": 5300049, "why": "弓箭-4" },
+            { "point": 52, "npc": 5300050, "why": "弓箭-5" }
+          ]
+        },
+        {
+          "quest": 4,
+          "stage": "Defeat the Evil Boss",
+          "fight": [
+            { "point": 22, "npc": 5300018, "why": "stage 4 'Defeat the Evil Boss'; story template 5300018 'Evil Boss' (L25) at the first generic spawn point" }
+          ]
+        },
+        {
+          "quest": 5,
+          "stage": "The Battle temporarily subsides: take a look around",
+          "all": true,
+          "actors": [
+            { "npc": 5300061, "point": 54, "why": "Bobo" },
+            { "npc": 5300062, "point": 55, "why": "the captain" },
+            { "npc": 5300063, "point": 56, "why": "Wule" },
+            { "npc": 5300064, "point": 57, "why": "Boya" },
+            { "npc": 5300065, "point": 58, "why": "the Eden Group Chief" }
+          ],
+          "complete": [
+            { "interaction": 5300048, "why": "a post-battle bubble" },
+            { "interaction": 5300049, "why": "a post-battle bubble" },
+            { "interaction": 5300050, "why": "a post-battle bubble" },
+            { "interaction": 5300051, "why": "a post-battle bubble" },
+            { "interaction": 5300052, "why": "a post-battle bubble" }
+          ]
+        },
+        {
+          "quest": 6,
+          "stage": "Check the Captain's injuries: talk to the captain",
+          "actors": [
+            { "npc": 5300038, "point": 55, "why": "the injured captain at 船长NPC (the quest's action names point 55 and dialogue 530003802)" }
+          ],
+          "complete": [
+            { "message": 5300039, "why": "the dialogue option 'Can I really do it?' triggers interaction 5300039, which sends dungeon message 5300039" }
+          ]
+        }
+      ]
+    },
     "1010601": {
       "name": "Royal Palace ball: the opening dance with Luna",
       "confidence": "low",
@@ -224,6 +385,56 @@
         }
       ]
     },
+    "1022001": {
+      "name": "Payon Forest: Eddga, Boya and Wule",
+      "confidence": "low",
+      "evidence": ["DungeonQuestConfig 5300000-5300001: 1 'Encounter Eddga' [5,0,1] 'Cover Boya and Wule'; 2 'Work Together' [5,0,1] 'Join the Adventurers and defeat Eddga'. Task 10102200 'A Dangerous Battle' ('Defeat Eddga') enters it by its accept action 3000.", "Editor sc_pay_fild10_001_pl01: 20 boss位置 (boss position, NpcLevelPointRespawnConfig: 5300001 Eddga), 21 唔勒 (Wule), 23 保亚 (Boya), 22 对峙点 (standoff point) between them and the boss; groups 24 and 40 each hold six adventurer points by class: 战 warrior, 猎 hunter, 奶 priest, 商 merchant, 刺 assassin, 法 mage.", "NPCConfig 5300086 Wule and 5300087 Boya: camp 1 (the player's side), AI 5300007, own skills (MainStory_WuLe ...): the story companions; 5300080/5300081, the same pair in camp 3, are the hostile versions."],
+      "guessed": ["'Cover Boya and Wule' completes on reaching the standoff point 22 (within 3 m), stepping between them and Eddga, who waits at his point meanwhile.", "Boya and Wule are shown but do not fight: the engine has no companion AI.", "The adventurers of groups 24 and 40 are not shown: no client NPC is bound to their class points ('Join the Adventurers' is the fight with Eddga)."],
+      "steps": [
+        {
+          "quest": 1,
+          "stage": "Encounter Eddga: cover Boya and Wule",
+          "actors": [
+            { "npc": 5300086, "point": 21, "why": "Wule at 唔勒" },
+            { "npc": 5300087, "point": 23, "why": "Boya at 保亚" },
+            { "npc": 5300001, "point": 20, "why": "Eddga at boss位置, not yet fighting" }
+          ],
+          "complete": [
+            { "point": 22, "radius": 3, "why": "the standoff point between the pair and Eddga (inferred)" }
+          ]
+        },
+        {
+          "quest": 2,
+          "stage": "Work Together: defeat Eddga",
+          "actors": [
+            { "npc": 5300086, "point": 21, "why": "Wule" },
+            { "npc": 5300087, "point": 23, "why": "Boya" }
+          ],
+          "fight": [
+            { "point": 20, "npc": 5300001, "why": "NpcLevelPointRespawnConfig binds the boss point to the story Eddga 5300001" }
+          ]
+        }
+      ]
+    },
+    "1051001": {
+      "name": "Desert Crossroad: the Peco Peco nest and Bragis",
+      "confidence": "medium",
+      "evidence": ["DungeonQuestConfig 5300034: 1 'Peco Peco Ancient Nest' [1] 'Defeat the Peco Peco and rescue Bragis.' Task 10103120 'Ferocious Mother Bird' ('Defeat the Peco Peco').", "Editor sc_moc_fild01_pl02: point 26 apart (235.2, 256.6) and points 27, 32-37 clustered 2-7 m west of it; no labels.", "NPCConfig 5300082 Elusive Pecopeco (camp 3, the story template); 5300083 Ancient Nest and 5300085 Bragis (camp 1, no AI, Bragis with state buff 5380501)."],
+      "guessed": ["The nest stands at point 27, the cluster nearest the Peco Peco; Bragis at point 32, its far edge.", "Rescuing Bragis is defeating the Peco Peco: he has no interaction in the client data."],
+      "steps": [
+        {
+          "quest": 1,
+          "stage": "Defeat the Peco Peco and rescue Bragis",
+          "actors": [
+            { "npc": 5300083, "point": 27, "why": "the Ancient Nest (inferred place)" },
+            { "npc": 5300085, "point": 32, "buffs": [5380501], "why": "Bragis, held in his state buff (inferred place)" }
+          ],
+          "fight": [
+            { "point": 26, "npc": 5300082, "why": "stage text 'Defeat the Peco Peco'; 5300082 'Elusive Pecopeco' is the client's story template for it (L25)" }
+          ]
+        }
+      ]
+    },
     "3120402": {
       "name": "Culvert: Louie's game",
       "confidence": "medium",
@@ -281,6 +492,26 @@
           "complete": [
             { "point": 37, "radius": 4, "why": "mark point 37, where guide point 38 leads from the game area" }
           ]
+        }
+      ]
+    },
+    "3120702": {
+      "name": "Pharaoh (main story): the Relic and Pharaoh",
+      "confidence": "high",
+      "evidence": ["DungeonQuestConfig 5300028: 1 'Mysterious Space' 'Pulled into a mysterious space by a giant hand that suddenly appeared' [5,0,1] 'Defeat Pharaoh'. Task 108110 'Monsters Appear': 'A Pharaoh suddenly leaps out of the Relic.'", "Editor sc_pm_mainstory_sphinx_dg01: two server points, 20 and 24, 6 m apart on one axis.", "NPCConfig 5300013 Pharaoh's Coffin (camp 0, a prop with state buff 901301) next to 5300010 Pharaoh and 5300011 Pyramid.", "NPCConfig 5300011 Pyramid: unit 33124 'mvp法老王金字塔' (the MVP Pharaoh's pyramid), camp 3, unselectable, speed 0, born buff 901301 like the coffin; the raid Pharaoh's pyramids 4370003/4370004 share the unit. The raid's CombatTip 4370002 (type 5): 'Pharaoh is unleashing Cleansing Light! Quickly, hide behind the Pyramid!'.", "The story Pharaoh's skills (MainStory_FaLaoWangSkill1-5, 5340101-5340501) have no names; 5340301 is the strongest (_kDamageParam1 100000, 10x ATK)."],
+      "guessed": ["The Relic Pharaoh leaps out of is his coffin 5300013, standing at point 24 behind him.", "The Pyramid stands 6 m east and 7 m north of Pharaoh's point 20, between him and the player's approach: the scene has no point for it.", "Cleansing Light: every 20 s of the fight (the first after 10 s) the raid tip 4370002 goes out and Pharaoh holds still for 4 s, then 5340301 hits everyone not in the Pyramid's shadow (behind it as seen from Pharaoh, within 1.5 m of that line and 6 m past it). The raid's own mechanic is not described by the client data."],
+      "steps": [
+        {
+          "quest": 1,
+          "stage": "Mysterious Space: defeat Pharaoh",
+          "actors": [
+            { "npc": 5300013, "point": 24, "buffs": [901301], "why": "the Relic: Pharaoh's Coffin, the scene's second point" },
+            { "npc": 5300011, "point": 20, "offset": [6, 7], "buffs": [901301], "why": "the Pyramid, cover from Cleansing Light (placement inferred)" }
+          ],
+          "fight": [
+            { "point": 20, "npc": 5300010, "why": "stage 'Mysterious Space / Defeat Pharaoh'; 5300010 is the client's story Pharaoh (L45)" }
+          ],
+          "shelter": { "boss": 5300010, "cover": 5300011, "tip": 4370002, "skill": 5340301, "everyMs": 20000, "warnMs": 4000, "width": 1.5, "depth": 6, "why": "hide behind the Pyramid (inferred from the raid's tip)" }
         }
       ]
     },
@@ -346,19 +577,8 @@
     "3120802": {
       "name": "Moonlight Flower: the hide-and-seek game",
       "confidence": "low",
-      "evidence": [
-        "DungeonQuestConfig 5300029, the scene's only quest: 1 'Complete Moonlight Flower's game', goal [5,0,1] 'Hide in the darkness. Don't let them Discover you.' Task 205110 'Falling into a Trap' ('Play hide-and-seek', target 'Complete the hide-and-seek game') enters it by its accept and track action 3000 after 205100 'Pet the Stray Cat'; 205120 'The Suspicious Stray Cat' follows on the field (map 10218).",
-        "Editor sc_pm_branchstory_paydun_001 (map 31208, the Moonlight Flower MVP room of 3120801): born point 22 in the open centre (74.7, 76.7); group 24 holds server spawn points 25 (direction 180, facing the born point) and 26 (direction 0), 0.8 m apart at (74.8, 92) north of it; group 27 holds 42 server spawn points (67-108) in clusters along the four sides and corners of the room, 15.6 to 32 m from the born point. No region, guide, mark or NPC list; no spawn point names its NPC (npcId 0, generic label).",
-        "NPCConfig 400097 Moonlight Flower: a story NPC (type 1, unit 33018, model ratio 1.8, no AI, no interaction), the only NPC named Moonlight Flower without AI (the MVP, raid and party ones, 5020014, 4380000-4380001, 24010198, 24010528 and 81000006, carry boss AI).",
-        "ChatConfig 5310005-5310014, which no client code or other config references (so the original scene script sent them): CombatCountdownTip 5310010 (type 16, 5000 ms) 'Hide in the darkness and don't let them Discover you!'; bubbles 5310011 'Meow, meow! Let the hide-and-seek begin!', 5310012 'Hehe, I'm the Moonlit Challenger of hide-and-seek!', 5310013 'Can your eyes see me?'; Moonlight Flower's lines 5310005 'I'm about to catch you! Watch out!', 5310006 'You're pretty good at hide-and-seek! Play with me a little longer!', 5310007 'I didn't know you were so good! I had a great time~'; bubble 5310014 'You're no good at hide-and-seek! Hahaha! Play with me again~'.",
-        "The letter after the game (LetterConfig 3, opened by task 205130): 'I can't believe you managed to slip away from Moonlight Flower ... you've barely passed the first round of our carefully designed qualification test', signed 'Z, awaiting your arrival in shadows beyond the moonlight's reach'."
-      ],
-      "guessed": [
-        "Nothing in the client data defines who discovers the player, where the darkness is or how long a round lasts: no region, buff, story or interaction belongs to this scene. The seek is not reproduced and the player cannot be discovered. In the original, being discovered restarted the game ('Play with me again~', 5310014), not the dungeon; here the step keeps waiting until the player hides, which is where such a restart returns.",
-        "The darkness is read as group 27: its 42 server spawn points ring the open centre where the player is born, away from Moonlight Flower; the step completes within 3 m of any of them. What the original spawned there (seekers, moonlight or hiding places) is not named by the client data.",
-        "Moonlight Flower (400097) stands at point 26, turned away from the room (direction 0) like a seeker counting; point 25, the same place facing the born point, is presumably where she talked to the player.",
-        "The rounds that 'Play with me a little longer!' implies are one round, and the ChatConfig lines are not shown: the engine sends no chat."
-      ],
+      "evidence": ["DungeonQuestConfig 5300029, the scene's only quest: 1 'Complete Moonlight Flower's game', goal [5,0,1] 'Hide in the darkness. Don't let them Discover you.' Task 205110 'Falling into a Trap' ('Play hide-and-seek', target 'Complete the hide-and-seek game') enters it by its accept and track action 3000 after 205100 'Pet the Stray Cat'; 205120 'The Suspicious Stray Cat' follows on the field (map 10218).", "Editor sc_pm_branchstory_paydun_001 (map 31208, the Moonlight Flower MVP room of 3120801): born point 22 in the open centre (74.7, 76.7); group 24 holds server spawn points 25 (direction 180, facing the born point) and 26 (direction 0), 0.8 m apart at (74.8, 92) north of it; group 27 holds 42 server spawn points (67-108) in clusters along the four sides and corners of the room, 15.6 to 32 m from the born point. No region, guide, mark or NPC list; no spawn point names its NPC (npcId 0, generic label).", "NPCConfig 400097 Moonlight Flower: a story NPC (type 1, unit 33018, model ratio 1.8, no AI, no interaction), the only NPC named Moonlight Flower without AI (the MVP, raid and party ones, 5020014, 4380000-4380001, 24010198, 24010528 and 81000006, carry boss AI).", "ChatConfig 5310005-5310014, which no client code or other config references (so the original scene script sent them): CombatCountdownTip 5310010 (type 16, 5000 ms) 'Hide in the darkness and don't let them Discover you!'; bubbles 5310011 'Meow, meow! Let the hide-and-seek begin!', 5310012 'Hehe, I'm the Moonlit Challenger of hide-and-seek!', 5310013 'Can your eyes see me?'; Moonlight Flower's lines 5310005 'I'm about to catch you! Watch out!', 5310006 'You're pretty good at hide-and-seek! Play with me a little longer!', 5310007 'I didn't know you were so good! I had a great time~'; bubble 5310014 'You're no good at hide-and-seek! Hahaha! Play with me again~'.", "The letter after the game (LetterConfig 3, opened by task 205130): 'I can't believe you managed to slip away from Moonlight Flower ... you've barely passed the first round of our carefully designed qualification test', signed 'Z, awaiting your arrival in shadows beyond the moonlight's reach'.", "ChatConfig types (enum_SystemMessageType): 5310005-5310007 are 7 Secretary (an NPC portrait message, 4000 ms), 5310010 is 16 CombatCountdownTip (DungeonCombatTipData, 5000 ms), 5310011-5310014 are 2 Bubbling. A 1022 SystemBoardCastMsgNtf reaches LC_SystemMessageHelper.MessagePush(chatId, paramList, source, nil, playerId) (LC_DAL_SystemMessage.CheckMessage), and PushBubbling raises the head bubble over the unit whose uuid is that playerId."],
+      "guessed": ["The game is inferred as a whole from its lines: Moonlight Flower opens with her three bubbles (5310011-5310013); each round warns 'I'm about to catch you! Watch out!' (5310005), shows the 5 s countdown tip 'Hide in the darkness and don't let them Discover you!' (5310010) three seconds later and looks when it runs out. A player standing within 3 m of a group 27 point passes the round; anyone else is found ('Play with me again~', 5310014) and the game starts over.", "Two rounds, from 'Play with me a little longer!' (5310006) after the first and 'I had a great time~' (5310007) after the last. A passed round searches every darkness point within 8 m of where the player hid, so the next round needs another side of the room.", "The darkness is read as group 27: its 42 server spawn points ring the open centre where the player is born, away from Moonlight Flower. What the original spawned there (seekers, moonlight or hiding places) is not named by the client data, and the player gets no hidden status there.", "Moonlight Flower (400097) stands at point 26, turned away from the room (direction 0) like a seeker counting; point 25, the same place facing the born point, is presumably where she talked to the player.", "The 1.5 s between the opening bubbles, the 3 s warning and the 3 s pause after a look are chosen, not data."],
       "steps": [
         {
           "quest": 1,
@@ -409,8 +629,8 @@
             { "point": 106, "radius": 3, "why": "group 27, east (99.4, 79.3)" },
             { "point": 107, "radius": 3, "why": "group 27, west (59.5, 72.7)" },
             { "point": 108, "radius": 3, "why": "group 27, west (48.8, 72.7)" }
-
-          ]
+          ],
+          "seek": { "rounds": 2, "searchedRadius": 8, "opening": [5310011, 5310012, 5310013], "round": 5310005, "countdown": 5310010, "longer": 5310006, "won": 5310007, "found": 5310014, "why": "the round structure built from the game's ChatConfig lines (inferred)" }
         }
       ]
     }

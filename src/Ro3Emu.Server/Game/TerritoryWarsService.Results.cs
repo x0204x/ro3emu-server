@@ -114,6 +114,8 @@ public sealed partial class TerritoryWarsService
             catch (Exception e) when (e is IOException or ObjectDisposedException or System.Net.Sockets.SocketException)
             { _log.LogDebug(e, "Territory settlement delivery deferred for disconnected role {Role}", s.Role?.Id); }
         });
+        foreach (var p in r.Players.Values.Where(p => p.Loaded))
+            foreach (var handler in BattleSettled) handler(p.Id, r.Round);
         await PublishAsync();
     }
     private void AddRankAward(List<Grant> grants, string table, int rank, GameSession s)

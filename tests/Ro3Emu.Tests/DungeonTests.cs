@@ -434,7 +434,8 @@ public sealed partial class DungeonTests : IAsyncLifetime
         Assert.Equal((100f, 100f), (bossLocation.Point.X, bossLocation.Point.Z)); // editor point 93, named BOSS
         var pointPlan = Service<DungeonCatalog>().Resolve(new EnterDungeonReq { SceneEntry = pointScene });
         Assert.NotNull(pointPlan);
-        var point = Assert.Single(Assert.Single(pointPlan.Waves).Spawns);
+        // Payon Forest plays as a scripted scene: its exported boss point holds Eddga in the fight step.
+        var point = Assert.Single(pointPlan.Waves.SelectMany(w => w.Spawns));
         Assert.Equal(5300001, point.NpcId);
         Assert.Equal((271.16f, 138.13f), (point.Point.X, point.Point.Z));
 
@@ -450,6 +451,7 @@ public sealed partial class DungeonTests : IAsyncLifetime
         await Gm(alice, "!quest accept 10102200"); // exported condition 1000000 requires this task Running
         Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = pointScene }));
         long instance = await Load(alice, pointScene);
+        await Gm(alice, "!actors walk 264.1 132.8"); // 'Cover Boya and Wule': the standoff point 22 starts the Eddga fight
         var boss = await BossIn(instance, 5300001);
         Assert.Equal((271.16f, 138.13f), (boss.Home.X, boss.Home.Z));
         long reviveAt = _clock.GetUtcNow().ToUnixTimeSeconds() + 5;

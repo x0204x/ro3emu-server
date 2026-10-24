@@ -15,7 +15,9 @@ public sealed class VoiceRelayTimingSerialGroup;
 public sealed class VoiceRelayTests : IAsyncLifetime
 {
     private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-voice-" + Guid.NewGuid().ToString("N"));
-    private static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);
+    // A full client-data run creates more than two thousand integration hosts in one process; keep socket assertions
+    // bounded, but allow a loaded scheduler and GC more than the five-second fast-path budget.
+    private static readonly TimeSpan Wait = TimeSpan.FromSeconds(15);
     private readonly FakeClock _clock = new();
     private WebApplication _app = null!;
     private string _http = "";
@@ -32,9 +34,9 @@ public sealed class VoiceRelayTests : IAsyncLifetime
             o.MicroGatePort = microPort;
             o.GameGatePort = gamePort;
             o.Voice.Port = _voicePort;
-            // Short enough that the "no Auth in time" / idle tests do not need to wait the production defaults.
+            // Short enough that the "no Auth in time" test does not need to wait the production default. The idle
+            // timeout keeps its default: these tests leave a listener silent for seconds, and 2 s closed it (#198).
             o.Voice.FirstFrameTimeoutSeconds = 2;
-            o.Voice.IdleTimeoutSeconds = 2;
         }, _clock);
         await _app.StartAsync();
         _http = $"http://127.0.0.1:{httpPort}";
@@ -543,6 +545,8 @@ public sealed class VoiceRelayTests : IAsyncLifetime
         var kicked = await aliceVoice.WaitTypeAsync(VoiceDown.Kicked, Wait);
         Assert.Equal(VoiceKickCode.Flood, kicked.Payload[0]);
         await aliceVoice.WaitClosedAsync(Wait);
+        Assert.True(aliceVoice.Closed);
+        Assert.False(bobVoice.Closed, "Bob's connection closed before Alice's leave");
         await bobVoice.WaitAsync((t, p) => t == VoiceDown.MemberChange && BitConverter.ToInt64(p) == aliceRole && p[8] == 0, Wait);
 
         Assert.False(bobVoice.Closed);

@@ -52,6 +52,16 @@ public sealed class WorldCoreTests : IAsyncLifetime
         await Next(bot, MsgId.EntitySelf, EntitySelf.Parser);
     }
 
+    // Datasets without content here still arrive whole at login: the item freeze list, surveys and the Tavern room.
+    [ClientDataFact]
+    public async Task LoginSendsTheEmptyWizardQuestionnaireAndBarRoomDatasets()
+    {
+        await using var bot = await InWorld("Alice");
+        Assert.Empty((await Next(bot, 5060, DBWizardInfoIncrement.Parser, m => m.SyncAllMark)).ForbiddenItems);
+        Assert.Empty((await Next(bot, 5052, DBQuestionnaireDataIncrement.Parser, m => m.SyncAllMark)).QuestionnaireInfos);
+        Assert.Equal(0, (await Next(bot, 5043, DBBarRoomInfoIncrement.Parser, m => m.SyncAllMark)).BarRoomId);
+    }
+
     [ClientDataFact]
     public async Task VisitedMapIsPublishedOnlyAfterItsOwnedCommit()
     {

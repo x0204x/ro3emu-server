@@ -52,6 +52,11 @@ public sealed class BossSkill
     /// <summary>A show with a displacement EffectData that moves the caster (a charge or a leap): its effect id and time.</summary>
     public int ChargeEffect { get; init; }
     public int ChargeMs { get; init; }
+    /// <summary>A show whose displacement EffectData moves the players hit: a knockback away from the boss
+    /// (<see cref="PushDistance"/> m) or, with a negative distance, a pull that stops that far in front of it.</summary>
+    public int PushEffect { get; init; }
+    public int PushMs { get; init; }
+    public float PushDistance { get; init; }
     public int BusyMs => ChantMs + ActionMs;
 }
 
@@ -394,6 +399,7 @@ public sealed class BossSkillSets(GameData data, BossSkillOptions options)
             GroundBlast = GroundNpc(row) is var ground and > 0 && NPCConfig.Get(data, ground) is { RespawnSkill: > 0 and var groundBlast }
                 && data.Row("SkillConfig", groundBlast) != null ? (int)groundBlast : 0,
             ChargeEffect = Charge(row, out int chargeMs), ChargeMs = chargeMs,
+            PushEffect = Push(row, out int pushMs, out float pushDistance), PushMs = pushMs, PushDistance = pushDistance,
         };
     }
 
@@ -470,12 +476,40 @@ public sealed class BossSkillSets(GameData data, BossSkillOptions options)
     private int Charge(JsonElement row, out int ms)
     {
         ms = 0;
-        var (effect, time, curve) = CombatService.FindMovementEffect(data, GameData.Int(row, "_iScriptShow"));
+        var (effect, time, curve, text) = Displacement(row);
         if (effect == 0) return 0;
-        string text = (data.TextOf(row, "_iName") + " " + data.TextOf(row, "_iDescription")).ToLowerInvariant();
         if (curve.Contains("击退") || curve.Contains("震退") || curve.Contains('勾') || curve.Contains('吸') || curve.Contains('拉')
             || text.Contains("pull") || text.Contains("knock") || text.Contains("repel")) return 0;
         ms = time > 0 ? time : 300;
+        return effect;
+    }
+
+    /// <summary>The show's displacement EffectData (id, time, curve) and the skill's lower-case name and description.</summary>
+    private (int Effect, int Ms, string Curve, string Text) Displacement(JsonElement row)
+    {
+        var (effect, time, curve) = CombatService.FindMovementEffect(data, GameData.Int(row, "_iScriptShow"));
+        return (effect, time, curve, effect == 0 ? ""
+            : (data.TextOf(row, "_iName") + " " + data.TextOf(row, "_iDescription")).ToLowerInvariant());
+    }
+
+    // (inferred) How far a boss's knockback moves a player, and where its pull stops: the player skills' Arrow Repel moves
+    // its target 3 m, and Phantom Thrust's pull "in front of you" stops 1 m ahead of the caster.
+    private const float KnockbackMeters = 3, PullStopMeters = 1;
+
+    /// <summary>A show whose displacement EffectData moves the players hit (the cases <see cref="Charge"/> leaves out): a
+    /// knockback when its curve is 击退/震退 or the skill says knock/repel, a pull when its curve is 勾/吸/拉 or it says
+    /// "pull" (Powerful Drain: "Pulls enemies inward toward yourself") (inferred).</summary>
+    private int Push(JsonElement row, out int ms, out float distance)
+    {
+        ms = 0;
+        distance = 0;
+        var (effect, time, curve, text) = Displacement(row);
+        if (effect == 0) return 0;
+        bool pull = curve.Contains('勾') || curve.Contains('吸') || curve.Contains('拉') || text.Contains("pull");
+        bool knock = curve.Contains("击退") || curve.Contains("震退") || text.Contains("knock") || text.Contains("repel");
+        if (!pull && !knock) return 0;
+        ms = time > 0 ? time : 300;
+        distance = pull ? -PullStopMeters : KnockbackMeters;
         return effect;
     }
 

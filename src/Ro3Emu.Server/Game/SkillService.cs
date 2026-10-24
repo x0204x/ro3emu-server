@@ -215,7 +215,7 @@ public sealed class SkillService
         int initial = InTree(p.Career, group) ? Initial(p, group) : 0;
         if (NormalAttackGroups(p.Career).Contains(group))
             initial = Math.Max(1, initial);
-        int saved = p.Skills.GetValueOrDefault(group);
+        int saved = Math.Max(p.Skills.GetValueOrDefault(group), p.GrantedSkills.GetValueOrDefault(group));
         foreach (var (old, replacement) in Replacements(p.Career))
             if (replacement == group) saved = Math.Max(saved, p.Skills.GetValueOrDefault(old));
         return Math.Max(saved, initial);
@@ -546,7 +546,20 @@ public sealed class SkillService
     public async Task SyncAsync(GameSession session)
     {
         if (session.SkillPlans == null) await LoadAsync(session);
-        await CharacterService.SyncAsync(session, SkillDataSync, Build(session));
+        var state = Build(session);
+        // A granted skill (a socketed card's Skill(3)) is listed with its level in the current plan, where the skill panel's
+        // card skills read it (UI_Sys_SkillPanelModel.GetCardSkillList: ServerAllSkills = skillList, then the plan's
+        // skillAssigns with level > 0). It is sent, never saved in a plan: a plan switch checks its groups against the tree.
+        if (session.Progress is { GrantedSkills.Count: > 0 } progress)
+        {
+            var current = state.SkillAssignPlans[state.CurrentPlanIndex];
+            foreach (var (group, level) in progress.GrantedSkills)
+            {
+                if (!state.SkillList.Contains(group)) state.SkillList.Add(group);
+                current.SkillAssigns[group] = new SkillData { SkillId = group, SkillLevel = level };
+            }
+        }
+        await CharacterService.SyncAsync(session, SkillDataSync, state);
     }
 
     /// <summary>Build a role-progress candidate from an owned skill plan before a Build-window switch.</summary>

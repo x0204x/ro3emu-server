@@ -60,7 +60,7 @@ public sealed partial class AuctionService
         if (!loop.IsOnLoop) { await loop.InvokeAsync(ProcessPrebuysAsync); return; }
         foreach (long id in store.Prebuys().Select(order => order.Id).ToArray())
             await ProcessPrebuyAsync(id);
-        foreach (long id in store.Items().Where(row => row.State == AuctionState.Public && row.Start <= Now)
+        foreach (long id in store.OpenItems().Where(row => row.State == AuctionState.Public && row.Start <= Now)
             .Select(row => row.Id).ToArray())
         {
             AuctionStore.Item? opened = null;
@@ -87,8 +87,8 @@ public sealed partial class AuctionService
         if (order == null) return (null, null, false);
         var requested = store.Get(order.RequestedId);
         if (requested != null && requested.Start > Now && requested.End > Now) return (order, null, true);
-        var scoped = store.Items().Where(r => r.Type == order.Type && r.SrcType == order.SrcType
-            && r.Entry == order.Entry && r.State != AuctionState.Settled && r.End > Now).ToArray();
+        var scoped = store.OpenItems().Where(r => r.Type == order.Type && r.SrcType == order.SrcType
+            && r.Entry == order.Entry && r.End > Now).ToArray();
         var matching = scoped.Where(r => r.Start <= Now).ToArray();
         if (matching.Length == 0 && scoped.Any(r => r.Start > Now)) return (order, null, true);
         var player = Online(order.Role);
@@ -115,8 +115,8 @@ public sealed partial class AuctionService
             var (order, row, wait) = PrebuyStage(id);
             if (order == null || wait) return;
             role = order.Role;
-            var matching = store.Items().Where(r => r.Type == order.Type && r.SrcType == order.SrcType
-                && r.Entry == order.Entry && r.State != AuctionState.Settled && r.End > Now && r.Start <= Now).ToArray();
+            var matching = store.OpenItems().Where(r => r.Type == order.Type && r.SrcType == order.SrcType
+                && r.Entry == order.Entry && r.End > Now && r.Start <= Now).ToArray();
             if (Online(role)?.Auction == null && matching.Length > 0 && !order.Paused)
             {
                 var pause = roles.NewTransaction();

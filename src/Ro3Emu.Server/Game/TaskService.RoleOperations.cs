@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Text.Json;
+using Ro3Emu.Server.Data.Config;
 using Google.Protobuf;
 using Romsg;
 using Ro3Emu.Server.Data;
@@ -94,10 +96,14 @@ public sealed partial class TaskService
     }
 
     /// <summary>
-    /// 31217: the turntable consumes PublicParamConfig.RunRingTaskTurntableItem once or ten times.
-    /// Version is the client's in-flight marker (always 1), not a once-only claim key. A repeated
-    /// request is another paid draw. Every selected MultiverseGroupConfig award and all tickets are
-    /// resolved before CharacterService atomically spends/grants them (inferred draw transaction).
+    /// 31217: Dodo's Request Wheel (UI_Sys_Main_EntrustLotteryPanelCtrl) spends PublicParamConfig.RunRingTaskTurntableItem
+    /// (the Dodo Pink Gem) once or ten times. Its eight slots are the _kPreview of the RunRingTaskTurnReward award
+    /// (MultiverseGroupConfig 84011), and each turn rolls that award's drop pool, whose one group lists the same eight
+    /// tuples in the same order. Version is the client's in-flight marker (always 1), not a once-only claim key.
+    /// The panel stays locked (no close, no Esc) until LC_DAL_Reward sees a GetRewardNotify whose rewardType holds
+    /// ManifestTypeRunRing; its rewardIndexes are the 0-based slots the wheel stops on (_onRingTaskRewardReceived). The
+    /// 31217 reply only refreshes the view. The old LuckyTrunConfig draw paid Zeny the wheel never shows, under a plain
+    /// reward notice, so the wheel never stopped (#bug-reports "Dodo Pink Gem hard lock").
     /// </summary>
     public async Task LuckyTurnAsync(GameSession session, LuckyTurnReq req)
     {
@@ -108,34 +114,31 @@ public sealed partial class TaskService
             await TaskErrorAsync(session, TaskLuckyTurn, req.Type, ErrorCodes.Parameter);
             return;
         }
-        int ticket = _data.Table("PublicParamConfig").TryGetValue("RunRingTaskTurntableItem", out var configuredTicket)
+        var param = _data.Table("PublicParamConfig");
+        int ticket = param.TryGetValue("RunRingTaskTurntableItem", out var configuredTicket)
             && GameData.Number(configuredTicket) is { } ticketNumber and > 0 and <= int.MaxValue
             ? (int)ticketNumber : 0;
-        if (ticket <= 0)
+        long reward = param.TryGetValue("RunRingTaskTurnReward", out var configuredReward)
+            && GameData.Number(configuredReward) is { } rewardNumber and > 0 ? (long)rewardNumber : 0;
+        var slots = reward > 0 ? WheelSlots(reward) : [];
+        if (ticket <= 0 || slots.Count == 0)
         {
             await TaskErrorAsync(session, TaskLuckyTurn, req.Type, ErrorCodes.FeatureUnavailable);
             return;
         }
-        var rows = _data.Table("LuckyTrunConfig").Values.OrderBy(r => GameData.Int(r, "_iID")).ToArray();
-        if (rows.Length != 8 || rows.Any(r => GameData.Int(r, "_iweight") <= 0 || GameData.Int(r, "_iAward") <= 0))
-        {
-            await TaskErrorAsync(session, TaskLuckyTurn, req.Type, ErrorCodes.FeatureUnavailable);
-            return;
-        }
-        long totalWeight = rows.Sum(r => GameData.Int(r, "_iweight"));
         var grants = new List<AwardGrant>();
+        var indexes = new List<int>();
         try
         {
             for (int draw = 0; draw < turns; draw++)
             {
-                long choice = Random.Shared.NextInt64(totalWeight);
-                foreach (var row in rows)
-                {
-                    choice -= GameData.Int(row, "_iweight");
-                    if (choice >= 0) continue;
-                    grants.AddRange(_awards.Resolve(session, GameData.Int(row, "_iAward")).Grants);
-                    break;
-                }
+                var resolved = _awards.Resolve(session, reward).Grants;
+                if (resolved.Count != 1) throw new AwardResolutionException("Wheel draw must name one displayed prize");
+                var grant = resolved[0];
+                int slot = slots.FindIndex(s => s.Entry == grant.Entry && s.Count == grant.Count);
+                if (slot < 0) throw new AwardResolutionException("Wheel prize is absent from its preview");
+                indexes.Add(slot);
+                grants.Add(grant);
             }
         }
         catch (AwardResolutionException)
@@ -143,12 +146,28 @@ public sealed partial class TaskService
             await TaskErrorAsync(session, TaskLuckyTurn, req.Type, ErrorCodes.FeatureUnavailable);
             return;
         }
-        if (!await _character.ApplyAwardAsync(session, new AwardPlan(0, 0, grants), costs: [(ticket, turns)]))
+        if (!await _character.ApplyAwardAsync(session, new AwardPlan(reward, 0, grants), costs: [(ticket, turns)],
+                manifestType: ManifestTypeRunRing, rewardIndexes: indexes))
         {
             await TaskErrorAsync(session, TaskLuckyTurn, req.Type, ErrorCodes.ItemsShort);
             return;
         }
         await session.SendGameAsync(TaskLuckyTurn, new LuckyTurnResp { Result = 0, Version = req.Version });
+    }
+
+    /// <summary>PBManifestType.ManifestTypeRunRing (MG_Common.proto), the rewardType LC_DAL_Reward routes to the wheel.</summary>
+    internal const int ManifestTypeRunRing = 18;
+
+    /// <summary>The wheel's slots in order: the award's AwardConfig _kPreview, as GetSeasonAwardPreview lists them (the
+    /// default value, the one <see cref="AwardService.Resolve"/> rolls here).</summary>
+    private List<(int Entry, int Count)> WheelSlots(long group)
+    {
+        if (MultiverseGroupConfig.Get(_data, group) is not { } mv) return [];
+        var rows = AwardConfig.Get(_data, mv.ValueDefault);
+        if (rows.Count != 1) return [];
+        var preview = rows[0].Preview;
+        if (preview.Length != 8 || preview.Any(t => t.Length < 2 || t[0] is <= 0 or > int.MaxValue || t[1] is <= 0 or > int.MaxValue)) return [];
+        return [.. preview.Select(t => ((int)t[0], (int)t[1]))];
     }
 
     /// <summary>30016 resolves the destination from a running quest's own 142/143 track action.</summary>

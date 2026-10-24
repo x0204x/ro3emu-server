@@ -108,7 +108,7 @@ Reconstructed story encounters (`ReconstructedDungeons`, switch `Ro3Emu:Reconstr
 - [dungeon-inventory.md](dungeon-inventory.md) (generated from the client data) lists every eligible scene with its
   spawn points, labels, quest stages and base map: 28 story scenes, 7 tutorial, 4 minigames, 29 Territory War zones
   and 4 developer test maps. The story scenes' combat templates (2000xxxx) exist only on the original server.
-- `src/Ro3Emu.Server/Reconstructed/dungeon-monsters.json` (embedded) rebuilds 15 of them as waves of client-known
+- `src/Ro3Emu.Server/Reconstructed/dungeon-monsters.json` (embedded) rebuilds 10 of them as waves of client-known
   NPCConfig monsters at authored points, one wave per quest stage, each spawn with its reason (point label, quest
   text, base map) and each dungeon with a confidence: 8 high, 5 medium, 2 low. Bosses use the client's story
   templates (530xxxx: Golden Thief Bug, Baphomet, Pharaoh, Maya, the airship's Evil Warriors/Archers/Boss,
@@ -145,7 +145,42 @@ Reconstructed story encounters (`ReconstructedDungeons`, switch `Ro3Emu:Reconstr
 - `DungeonTests.Reconstructed` resolves every reconstructed plan, clears each dungeon wave by wave to a win with the
   tracker vars checked, counts a clear toward its 101018 quest, and switches off.
 
-Reconstructed scripted scenes without a fight (`Reconstructed/scripted-scenes.json`, same switch):
+Reconstructed scripted scenes (`Reconstructed/scripted-scenes.json`, same switch):
+
+- A step may carry a fight: client-known monsters at scene-editor points (`fight`), spawned with the step; it then
+  waits for every kill and, when it also lists events, for its event too. A fight-only step ends on its kills. A step
+  with `all` needs every listed event, not any one, and its tracker counter follows them. A Journey scene (gameplay
+  type 24) with a scripted reconstruction plays it instead of its bare point respawns. A step's `strike` makes an
+  actor's interaction cast a skill from the player at the nearest monster of the fight; with `shots`, that many strikes
+  defeat it whatever the damage (inferred, for the airship's cannons).
+- Moonlight Flower's hide-and-seek (3120802) is played as a game, inferred as a whole from its ChatConfig lines (a step
+  `seek`, DungeonService.HideAndSeek): her three opening bubbles over her head, then rounds of a warning
+  (5310005), the 5 s countdown tip (5310010) and a look. A player within 3 m of a group 27 point (the darkness that
+  rings the room) passes the round; anyone else is found (5310014) and the game starts over. A passed round searches
+  the darkness within 8 m of the hiding place, so the second round needs another side of the room; it wins (5310007)
+  and completes the step. The lines go out as 1022 with her uid, which the client's Bubbling rows need for the head
+  bubble. `ScriptedScenePacePercent` shortens these timers for tests.
+- Five story dungeons that were monster waves (or bare point respawns) now play their scripted stages around the
+  fights, each with its evidence and guessed parts in the file:
+  - Maya's nest (1000401): Maya, then 'Find the Professor' (within 10 m of the egg point), 'Free the Ant Egg' (5300056,
+    interaction 5300021, message 5300022), 'Help the Professor Up' (5300026, message 5300023) and the chest (5300052,
+    message 5300024), each interaction opened by buff group 53014.
+  - The airship (1000501): the chitchat with Bobo, the captain, Wule and Boya (their gated auto-range bubbles
+    5300031-5300034, all four), the boarding and the Evil Boss as before, the look around after the battle (five
+    bubbles 5300048-5300052) and the talk with the injured captain (dialogue 530003802, whose option triggers
+    interaction 5300039 and message 5300039). Stage 2, the cannons, is **inferred**: each 'Board the Cannon' (5300006) on
+    one of the three Cannons 5300022 fires 5365001 from the player at the nearest enemy airship (5300015 at point 24,
+    5300053 at 61), and three boardings sink a ship at any level; sinking both ends the stage. The original's
+    UpperCannon gameplay status (GameplayStatusConfig 12) has no abilities in the client data.
+  - Payon Forest (1022001): 'Cover Boya and Wule' (reach the standoff point 22 between them and Eddga), then Eddga.
+    Boya and Wule (5300086/5300087) are shown, not fighting.
+  - The Peco Peco nest (1051001): the Elusive Pecopeco with the Ancient Nest and Bragis shown.
+  - Pharaoh (main story, 3120702): Pharaoh with the Relic he leaps out of, his coffin 5300013 at point 24, and the
+    Pyramid 5300011 beside him (6 m east, 7 m north of point 20: the scene has no point for it). Its use is **inferred**
+    from the raid Pharaoh's tip 4370002 'Pharaoh is unleashing Cleansing Light! Quickly, hide behind the Pyramid!': every
+    20 s of the fight the tip goes out, Pharaoh holds still for 4 s, then his strongest skill 5340301 (whose effect the
+    client draws as a cross of light) hits everyone outside the Pyramid's shadow (a step `shelter`, DungeonService.Shelter).
+
 
 - The last three main-story blockers of the story walk: the ant nest vortex and egg passage (1000201, task 10104290),
   Bobo and the Deniro (1000301, task 10104300) and Louie's game in the Culvert (3120402, task 10106270). The original

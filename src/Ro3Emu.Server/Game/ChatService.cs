@@ -154,8 +154,11 @@ public sealed partial class ChatService
             await session.SendGameAsync(JoinChannel, new JoinChatChannelRsp { Result = ErrorCodes.NotInGuild, Req = req });
             return;
         }
-        Join(session, req.GroupId);
+        bool newlyJoined = Join(session, req.GroupId);
         await session.SendGameAsync(JoinChannel, new JoinChatChannelRsp { Result = 0, Req = req });
+        // Repeated subscriptions still need their ACK, but replaying history would duplicate
+        // lines already delivered to this session. Leaving/rejoining starts a fresh subscription.
+        if (!newlyJoined) return;
         List<TextChatMessage> recent;
         lock (_sync) recent = _recent.TryGetValue(HistoryKey(req.GroupId, session), out var lines) ? lines.ToList() : new();
         long runtime = session.WorldScene, generation = session.SceneGeneration;
@@ -425,13 +428,14 @@ public sealed partial class ChatService
             catch (Exception e) when (e is IOException or System.Net.Sockets.SocketException or ObjectDisposedException) { }
     }
 
-    private void Join(GameSession session, string group)
+    private bool Join(GameSession session, string group)
     {
         lock (_sync)
         {
             if (!_groups.TryGetValue(group, out var members)) _groups[group] = members = new();
-            members.Add(session);
+            bool added = members.Add(session);
             session.ChatGroups.Add(group);
+            return added;
         }
     }
 

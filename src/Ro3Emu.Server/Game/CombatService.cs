@@ -14,8 +14,14 @@ public sealed class AttackLoop
     public required MonsterUnit Target { get; init; }
     public required int SkillId { get; init; }
     public long NextSwingMs { get; set; }
-    public float StartX { get; init; }
-    public float StartZ { get; init; }
+    public float StartX { get; set; }
+    public float StartZ { get; set; }
+    /// <summary>Started while the player still walked: the stop that follows at once is where the loop really starts.</summary>
+    public bool StartedWalking { get; set; }
+    public long StartMs { get; init; }
+    /// <summary>The walk speed (m/s) and the last walk message when the loop started (CombatService.PlayerMoved).</summary>
+    public float ArrivalSpeed { get; init; }
+    public DateTime WalkFromUtc { get; init; }
 }
 
 /// <summary>
@@ -546,7 +552,7 @@ public sealed partial class CombatService : IGameTicker
 
     private async Task MonsterAttackAsync(MonsterUnit m, GameSession p)
     {
-        if (m.Dead || m.Hp <= 0 || _buffs.UnitForbidden(m, ForbiddenState.NormalAttack) || GuardianStealthed(p) || !_buffs.CanSeePosition(m, p.Position)) return;
+        if (m.Dead || m.Hp <= 0 || _buffs.UnitForbidden(m, ForbiddenState.NormalAttack) || Stealthed(p) || !_buffs.CanSeePosition(m, p.Position)) return;
         var targetRole = p.Role;
         if (targetRole == null) return;
         long targetScene = p.WorldScene;
@@ -565,7 +571,7 @@ public sealed partial class CombatService : IGameTicker
             && GameData.Int(swingRow, "_iSkillEffectLevel") > 0);
         ScheduleRuntime(m.WorldScene, TimeSpan.FromSeconds(m.Template.HitPointSeconds), async () =>
         {
-            if (m.Dead || m.Hp <= 0 || _buffs.UnitForbidden(m, ForbiddenState.NormalAttack) || GuardianStealthed(p) || p.Dead || p.Role == null || p.SceneLoading || p.WorldScene != m.WorldScene) return;
+            if (m.Dead || m.Hp <= 0 || _buffs.UnitForbidden(m, ForbiddenState.NormalAttack) || Stealthed(p) || p.Dead || p.Role == null || p.SceneLoading || p.WorldScene != m.WorldScene) return;
             if (!ReferenceEquals(p.Role, targetRole) || p.WorldScene != targetScene
                 || p.SceneGeneration != targetGeneration || !ReferenceEquals(p.Attachment, targetLease)
                 || targetLease?.Cancelled == true) return;
@@ -911,13 +917,24 @@ public sealed partial class CombatService : IGameTicker
         finally { ReleaseReviveClaim(p); }
     }
 
-    /// <summary>Publish an already committed resurrection; never changes the dead/alive state.</summary>
+    /// <summary>Test seam: runs after the first revive packet so a role handover can detach the session mid-publication.</summary>
+    internal Func<GameSession, Task>? ReviveBroadcastedForTest;
+
+    /// <summary>Publish an already committed resurrection; never changes the dead/alive state. A role handover can
+    /// detach the session (Role = null, RoleHandover.cs:100) at any await; the reconnect reloads the committed state,
+    /// so each step first checks that the role is still attached.</summary>
     public async Task PublishReviveAsync(GameSession p, MapPoint? point)
     {
+        if (p.Role == null) return;
         await ToPlayerAndViewersAsync(p, EntityBaseChange, LifeState(p));
+        if (ReviveBroadcastedForTest is { } seam) await seam(p);
+        if (p.Role == null) return;
         if (point is { } at) await _scene.TeleportInMapAsync(p, at);
+        if (p.Role == null) return;
         await _character.SetHpSpAsync(p, null, null); // send committed/current health; never overwrite later damage
+        if (p.Role == null) return;
         await p.SendGameAsync(ReviveInfo, new SyncClientPlayerReviveInfoNtf { BDead = p.Dead, SceneEntry = p.SceneEntry });
+        if (p.Role == null) return;
         await RefreshRevivedAsync(p);
     }
 

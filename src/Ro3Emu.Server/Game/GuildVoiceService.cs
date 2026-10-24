@@ -14,8 +14,8 @@ namespace Ro3Emu.Server.Game;
 /// and 83714/83715 only log, so they are not sent. In memory only: channels start empty after a restart.
 ///
 /// Leaving the guild or rank changes come in through <see cref="GuildService.MembershipChanged"/>, and edited rank
-/// rights through <see cref="GuildService.RightsChanged"/>. A once-a-second sweep also drops offline or replaced
-/// sessions and members no longer in that guild (there is no logout event to hook). The audio
+/// rights through <see cref="GuildService.RightsChanged"/>. Role handover removes a logout immediately; a
+/// once-a-second sweep also drops replaced sessions and members no longer in that guild. The audio
 /// itself is the voice relay's: room "2_&lt;guildId&gt;_&lt;index&gt;" admits who <see cref="IsSeated"/> and holds the mic
 /// off for whoever may not speak (<see cref="MaySpeak"/>).
 /// Invites (83707/83708/83716/83720) are not handled yet; 83718/83719 are never sent by this client.
@@ -79,6 +79,21 @@ public sealed class GuildVoiceService(GameData data, GuildStore store, GuildServ
     public void OnMembershipChanged(GameSession session)
     {
         if (session.Role is { } role) loop.Post(() => RecheckAsync(role.Id));
+    }
+
+    /// <summary>Logout/role switch: remove this exact attachment's seat and publish the remaining channel.</summary>
+    public async Task LeaveRoleAsync(GameSession session)
+    {
+        if (session.Role is not { } role) return;
+        GuildStore.State? guild = null;
+        Channel? left = null;
+        lock (_sync)
+        {
+            if (!OwnsSeat(role.Id, session) || !_where.TryGetValue(role.Id, out var at)) return;
+            guild = store.Get(at.Guild);
+            left = Unseat(role.Id);
+        }
+        if (guild != null && left != null) await PushAsync(guild, left);
     }
 
     /// <summary>Rank rights were committed: refresh each occupied channel once, even when no rank changed.</summary>

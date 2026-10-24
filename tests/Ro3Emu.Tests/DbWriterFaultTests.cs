@@ -114,11 +114,24 @@ public sealed class DbWriterFaultTests : IDisposable
         accepted.AddRange(Enumerable.Range(0, 20).Select(i => writer.ExecuteAsync<int>(new Plan("q" + i, _executed))));
         accepted.Add(writer.ExecuteAsync<int>(new Plan("lazy", _executed), lazy: true));
         var stopping = Task.Run(writer.Dispose); // shutdown begins while 21 accepted jobs wait behind the blocker
-        await Task.Delay(50);
-        await Assert.ThrowsAsync<ObjectDisposedException>(() => writer.ExecuteAsync<int>(new Plan("late", _executed)));
-        hold.Set();
+        try
+        {
+            // Scheduling Dispose on the pool does not mean it has run yet. Wait until admission actually closes;
+            // a fixed delay could enqueue "late" as accepted work on a busy runner.
+            var deadline = DateTime.UtcNow.AddSeconds(5);
+            while (!writer.StopRequested)
+            {
+                Assert.True(DateTime.UtcNow < deadline, "The writer did not begin stopping.");
+                await Task.Delay(10);
+            }
+            await Assert.ThrowsAsync<ObjectDisposedException>(() => writer.ExecuteAsync<int>(new Plan("late", _executed)));
+        }
+        finally
+        {
+            hold.Set(); // release accepted work even if the refusal assertion fails
+            await stopping;
+        }
         Assert.All(await Task.WhenAll(accepted), result => Assert.Equal(1, result));
-        await stopping;
 
         SqliteConnection.ClearAllPools();
         using var db = new SqliteConnection($"Data Source={Database}");

@@ -96,13 +96,13 @@ public sealed partial class CharacterService
         byte[]? taskRuntimeState = null, int manifestType = 1, byte[]? expectedDaily = null,
         byte[]? nextDaily = null, byte[]? expectedTasks = null, Action<RoleItemPlanBuilder>? persist = null,
         bool stateLockHeld = false, Action? committed = null, EconomyMutation? familyEconomy = null,
-        OwnedAwardSource? ownedAward = null, bool suppressRewardNotice = false)
+        OwnedAwardSource? ownedAward = null, bool suppressRewardNotice = false, IReadOnlyList<int>? rewardIndexes = null)
     {
         using var _ = stateLockHeld ? null : await LockAsync(session);
         var context = RequireOwnedRole(session);
         return await ApplyAwardCoreAsync(session, context, plan, taskBaseExp, costs, deliveredTaskState,
             taskRuntimeState, manifestType, expectedDaily, nextDaily, expectedTasks, persist, committed,
-            familyEconomy, ownedAward, suppressRewardNotice);
+            familyEconomy, ownedAward, suppressRewardNotice, rewardIndexes);
     }
 
     /// <summary>Checked owned Core: stage copied award values, commit, apply before notices.</summary>
@@ -110,13 +110,16 @@ public sealed partial class CharacterService
         long taskBaseExp, IReadOnlyList<(int Entry, int Count)>? costs, byte[]? deliveredTaskState,
         byte[]? taskRuntimeState, int manifestType, byte[]? expectedDaily, byte[]? nextDaily,
         byte[]? expectedTasks, Action<RoleItemPlanBuilder>? persist, Action? committed,
-        EconomyMutation? familyEconomy, OwnedAwardSource? ownedAward, bool suppressRewardNotice)
+        EconomyMutation? familyEconomy, OwnedAwardSource? ownedAward, bool suppressRewardNotice,
+        IReadOnlyList<int>? rewardIndexes = null)
     {
         context.AssertRole(session.Role!.Id);
         context.BindPresentation(session);
         var attachment = session.Attachment;
         if (taskBaseExp < 0) throw new ArgumentOutOfRangeException(nameof(taskBaseExp));
-        if (manifestType is < 1 or > 19 or 15 or 18) throw new ArgumentOutOfRangeException(nameof(manifestType));
+        // PBManifestType.ManifestTypeRunRing (18) needs the slots LC_DAL_Reward uses to stop the wheel.
+        if (manifestType is < 1 or > 19 or 15 || manifestType == TaskService.ManifestTypeRunRing && rewardIndexes is not { Count: > 0 })
+            throw new ArgumentOutOfRangeException(nameof(manifestType));
         if ((expectedDaily == null) != (nextDaily == null)) throw new ArgumentException("Daily award requires before and after state");
         if (expectedTasks != null && deliveredTaskState == null) throw new ArgumentException("Task comparison requires next task state");
         if (expectedDaily != null && (session.Daily == null
@@ -342,9 +345,11 @@ public sealed partial class CharacterService
                 foreach (var handler in ProgressHandlers) await handler(session);
             }
         }
-        if (!suppressRewardNotice && notification.Rewards.Count > 0)
+        // A wheel (rewardIndexes) waits for its notice to stop and unlock, even when nothing showable was granted.
+        if (!suppressRewardNotice && (notification.Rewards.Count > 0 || rewardIndexes is { Count: > 0 }))
         {
             notification.RewardType.Add(manifestType);
+            if (rewardIndexes != null) notification.RewardIndexes.Add(rewardIndexes);
             await session.SendGameAsync(GetRewardNotify, notification);
         }
         if (decomposed.DecomposeItemInfo.Count > 0)
@@ -362,7 +367,13 @@ public sealed partial class CharacterService
             p.Exp -= need;
             p.Level++;
         }
-        if (p.Level >= MaxLevel) p.Exp = 0;
+        if (p.Level >= MaxLevel)
+        {
+            // Past the cap Base EXP feeds the Astral Level (CharacterService.Paragon) instead of being dropped.
+            long overflow = p.Exp;
+            p.Exp = 0;
+            if (overflow > 0) AddParagonExp(p, overflow);
+        }
         p.JobExp = checked(p.JobExp + jobExp);
         SkipFreeJobLevels(p);
         int maxJob = MaxJobLevel(p.Career);
@@ -391,7 +402,8 @@ public sealed partial class CharacterService
         var result = new RoleProgress
         {
             SourceRevision = source.SourceRevision, Career = source.Career, Level = source.Level, JobLevel = source.JobLevel,
-            Exp = source.Exp, JobExp = source.JobExp, BonusPoints = source.BonusPoints, StarterKit = source.StarterKit
+            Exp = source.Exp, JobExp = source.JobExp, BonusPoints = source.BonusPoints, StarterKit = source.StarterKit,
+            ParagonLevel = source.ParagonLevel, ParagonExp = source.ParagonExp
         };
         Array.Copy(source.Stats, result.Stats, source.Stats.Length);
         foreach (var (key, value) in source.Currency) result.Currency[key] = value;
@@ -406,6 +418,7 @@ public sealed partial class CharacterService
         target.Career = source.Career; target.Level = source.Level; target.JobLevel = source.JobLevel;
         target.Exp = source.Exp; target.JobExp = source.JobExp; target.BonusPoints = source.BonusPoints;
         target.StarterKit = source.StarterKit;
+        target.ParagonLevel = source.ParagonLevel; target.ParagonExp = source.ParagonExp;
         Array.Copy(source.Stats, target.Stats, source.Stats.Length);
         target.Currency.Clear(); foreach (var (key, value) in source.Currency) target.Currency[key] = value;
         target.Skills.Clear(); foreach (var (key, value) in source.Skills) target.Skills[key] = value;

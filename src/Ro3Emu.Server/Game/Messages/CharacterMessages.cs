@@ -5,7 +5,7 @@ using Romsg;
 namespace Ro3Emu.Server.Game;
 
 /// <summary>The role itself: stats, skills, equipment, cards, pets, mounts, wardrobe, life jobs, emotes and achievements.</summary>
-public sealed class CharacterMessages(CharacterService character, SkillService skills, CombatService combat, SceneService scene, TaskService tasks, GuideService guides, EmojiService emoji, AchievementService achievements, CardService cards, EquipmentService equipment, AppraisalService appraisal, EnchantService enchants, SeasonPageService seasonPage, SeasonRefineService seasonRefine, SeasonTalentService talents, PetService pets, DungeonService dungeons, LifeJobService life, GatheringService gathering, TimedBattleService timedBattles, GuildCampfireService campfire, MountService mounts, CareerSpecialService careerSpecial, WardrobeService wardrobe, TotemService totems, GrowthClassService growthClass) : Messaging.IMessageModule
+public sealed class CharacterMessages(CharacterService character, SkillService skills, CombatService combat, SceneService scene, TaskService tasks, GuideService guides, EmojiService emoji, AchievementService achievements, CardService cards, EquipmentService equipment, AppraisalService appraisal, EnchantService enchants, SeasonPageService seasonPage, SeasonRefineService seasonRefine, SeasonTalentService talents, PetService pets, DungeonService dungeons, LifeJobService life, GatheringService gathering, TimedBattleService timedBattles, GuildCampfireService campfire, MountService mounts, CareerSpecialService careerSpecial, WardrobeService wardrobe, TotemService totems, GrowthClassService growthClass, ParagonService paragon, TitleService titles) : Messaging.IMessageModule
 {
     public void Map(Messaging.MessageRoutes routes)
     {
@@ -27,6 +27,8 @@ public sealed class CharacterMessages(CharacterService character, SkillService s
         routes.AdmitRole(id => id is >= 82901 and <= 82903); // season page
         routes.AdmitRole(id => id is >= 83220 and <= 83222 or >= 83550 and <= 83553); // refinement and talent
         routes.AdmitRole(id => id is >= 31183 and <= 31189); // wardrobe
+        routes.AdmitRole(id => id is >= ParagonService.Allocate and <= ParagonService.ResetSingle); // Astral Level
+        routes.AdmitRole(id => id is TitleService.Level);
         routes.AdmitRole(id => id is >= 33302 and <= 33325); // pets and incubation
         routes.AdmitRole(id => id is >= 32743 and <= 32750); // mounts
         routes.AdmitRole(id => id is CareerSpecialService.Lease or CareerSpecialService.CancelLease); // own battle slot only
@@ -442,6 +444,16 @@ public sealed class CharacterMessages(CharacterService character, SkillService s
         {
             await cards.UnlockMonsterAsync(session, LibraryMonsterUnlockReq.Parser.ParseFrom(body.Span));
         });
+        routes.Map(TitleService.Level, "titles", async (session, msgId, body) => await titles.LevelAsync(session));
+        routes.Map(ParagonService.Allocate, "paragon", async (session, msgId, body) =>
+            await paragon.AllocateAsync(session, ParagonLevelAllocatePointReq.Parser.ParseFrom(body.Span)));
+        routes.Map(ParagonService.Install, "paragon", async (session, msgId, body) =>
+            await paragon.InstallAsync(session, ParagonLevelRuneInstallReq.Parser.ParseFrom(body.Span)));
+        routes.Map(ParagonService.Remove, "paragon", async (session, msgId, body) =>
+            await paragon.RemoveAsync(session, ParagonLevelRuneRemoveReq.Parser.ParseFrom(body.Span)));
+        routes.Map(ParagonService.ResetAll, "paragon", async (session, msgId, body) => await paragon.ResetAllAsync(session));
+        routes.Map(ParagonService.ResetSingle, "paragon", async (session, msgId, body) =>
+            await paragon.ResetSingleAsync(session, ParagonLevelResetSingleReq.Parser.ParseFrom(body.Span)));
         routes.Map(GrowthClassService.GetRankReward, "growthClass", async (session, msgId, body) =>
         {
             await growthClass.ClaimAsync(session, GrowthClassGetRankRewardReq.Parser.ParseFrom(body.Span));

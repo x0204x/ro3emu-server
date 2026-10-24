@@ -115,6 +115,7 @@ internal sealed class RoleAwardStatePlan : DbPlan
         using var cmd = DbSql.Command(db, tx, """
             UPDATE role SET career=$career,level=$level,job_level=$jl,exp=$exp,job_exp=$jexp,stats=$stats,
                 bonus_points=$bonus,currency=$cur,starter_kit=$kit,skills=$skills,skill_bar=$bar,
+                paragon_level=$plv,paragon_exp=$pexp,
                 tasks=COALESCE($tasks,tasks),task_runtime=COALESCE($runtime,task_runtime),daily=COALESCE($daily,daily)
             WHERE id=$id AND ($checkDaily=0 OR daily IS $expectedDaily)
                 AND ($checkTasks=0 OR tasks IS $expectedTasks)

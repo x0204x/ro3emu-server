@@ -39,6 +39,9 @@ public static class ErrorCodes
     public const int ActivityClosed = 3902;      // "Event Not Available"
     public const int ActivityPeriod = 5801;      // "Not in the event period"
     public const int ActivityReward = 1511;      // "Invalid Activity Reward ID"
+    // Starshatter ritual (FlyingDragonService): ErrorCodeConfig 1517-1526.
+    public const int DragonBusy = 1517, DragonPlace = 1518, DragonAssisted = 1519, DragonItems = 1520, DragonSelf = 1521;
+    public const int DragonNoLike = 1522, DragonLiked = 1523, DragonDone = 1524, DragonConfig = 1525, DragonCooldown = 1526;
     public const int BattlePassClosed = 8260, BattlePassLevel = 8261, BattlePassClaimed = 8262;
     public const int BattlePassLevelRequired = 8263, BattlePassRewardType = 8264, BattlePassPremium = 8265;
     public const int BattlePassNoRewards = 8266, BattlePassMaxLevel = 8267, BattlePassExpFull = 8268, BattlePassCurrency = 8269;
@@ -125,6 +128,7 @@ public static class ErrorCodes
     // Skills
     public const int SkillPointsShort = 307;    // "Not enough skill points"
     public const int SkillMaxLevel = 319;       // "Skill Level exceeds the maximum level"
+    public const int LevelTooLow = 31016;       // UIWords 31016: the title rank's level requirement (inferred code)
     public const int SkillPrerequisite = 333;   // "The level of prerequisite skill is too low"
     public const int SkillNotInTree = 341;      // "This skill is not in the skill tree ..."
 
@@ -225,6 +229,17 @@ public static class ErrorCodes
     public const int GuildNameInvalid = 10000, GuildNameNumbers = 10001, GuildLevelCreate = 10002;
     public const int GuildIconLocked = 10003, GuildFrameLocked = 10004, GuildJoinLevel = 10008;
     public const int GuildTextLength = 10027;
+    public const int GuildMailDaily = 10025, GuildMailContent = 10026; // group mail: today's letters used, empty text
+    // Impeaching the master: on cooldown, no grounds, requirements unmet, the master itself, cancel state, responded twice,
+    // in progress, not in progress.
+    public const int ImpeachCooldown = 472, ImpeachNoGrounds = 473, ImpeachRequirements = 474, ImpeachSelf = 475;
+    public const int ImpeachCancelState = 476, ImpeachRepeat = 477, ImpeachInProgress = 478, ImpeachNotInProgress = 479;
+    // Merging guilds (ErrorCodeConfig 10050-10078): expired, the other's received invitations full, ours sent full, too
+    // many members, invited already, bad announcement, no invitation, impeachment here / there, no merge possible,
+    // cooldown here / there.
+    public const int MergeExpired = 10050, MergeTheirInvitesFull = 10051, MergeOurInvitesFull = 10052, MergeTooMany = 10053;
+    public const int MergeRepeat = 10055, MergeAnnounce = 10056, MergeNoInvite = 10057, MergeOurImpeach = 10060;
+    public const int MergeImpossible = 10061, MergeOurCooldown = 10063, MergeTheirImpeach = 10075, MergeTheirCooldown = 10078;
     public const int GuildFundsShort = 484, GuildContributeShort = 10040, GuildBuildBusy = 485, GuildHallLow = 486, GuildBuildMax = 487;
     // Guild voice channels (ErrorCodeConfig 97001-97032, Localization_en): not in a guild, invalid channel, on the
     // channel's block list, already / not in the channel, not leader nor GuildVoice right, the leader cannot be kicked,
