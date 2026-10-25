@@ -361,20 +361,17 @@ public sealed class DraculaWeddingService : IGameTicker
         await SetWatchedAsync(a, s, run, target);
     }
 
-    /// <summary>31018 on her entity to the lair (the guild league's flags go the same way); outside the lair her entity
-    /// carries no camera binding.</summary>
+    /// <summary>31018 on her entity to her alone: ProcessCamera binds the camera of whichever client gets it, whoever's
+    /// unit carries it (DirtyDataConfig 1002 _iSyncScope 0 = self), so it neither goes to the lair nor rides on her AOI
+    /// entity.</summary>
     private async Task SetWatchedAsync(DungeonService.Attempt a, GameSession bride, Run run, long target)
     {
         run.Watched = target;
-        if (target == 0) bride.WorldState.CustomData.Remove(CameraBind);
-        if (bride.Role == null || bride.SceneLoading) { bride.WorldState.CustomData.Remove(CameraBind); return; }
+        bride.WorldState.CustomData.Remove(CameraBind);
+        if (bride.Role == null || bride.SceneLoading) return;
         var value = new CustomData
         { Id = CameraBind, CustomParam = new CustomParam { Tp = CustomParam.Types.ParamType.Long, LongParam = target } };
-        if (target != 0) bride.WorldState.CustomData[CameraBind] = value.Clone();
-        var change = new CustomDataChange { EntityId = bride.Role.Id, CustomDatas = { value } };
-        await SendQuietAsync(bride, WorldCoreService.CustomChange, change);
-        foreach (var member in DungeonService.LoadedMembers(a).Where(m => !ReferenceEquals(m, bride)))
-            await SendQuietAsync(member, WorldCoreService.CustomChange, change);
+        await SendQuietAsync(bride, WorldCoreService.CustomChange, new CustomDataChange { EntityId = bride.Role.Id, CustomDatas = { value } });
     }
 
     /// <summary>

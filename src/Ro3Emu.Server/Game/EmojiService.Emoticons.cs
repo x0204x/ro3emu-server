@@ -2,6 +2,7 @@ using System.Text.Json;
 using Google.Protobuf;
 using Romsg;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 
 namespace Ro3Emu.Server.Game;
 
@@ -34,7 +35,7 @@ public sealed partial class EmojiService
                 || index.ValueKind != JsonValueKind.Array) return ErrorCodes.ItemNoConfig;
             foreach (var value in index.EnumerateArray())
                 if (GameData.Number(value) is { } id && _data.Row("EmoticonsConfig", (long)id) is { } emoticon
-                    && GameData.Int(emoticon, "_iType") == type) ids.Add((long)id);
+                    && new EmoticonsConfig(emoticon).Type == type) ids.Add((long)id);
         }
         if (ids.Count == 0) return ErrorCodes.ItemNoConfig;
         var fresh = ids.Distinct().Where(id => !s.EmojiInfo.EmojiInfo.Contains(id)).ToList();
@@ -52,20 +53,74 @@ public sealed partial class EmojiService
     {
         var saved = _roles.LoadEmojiInfo(session.Role!.Id);
         session.EmojiInfo = saved is { Length: > 0 } ? DBEmojiInfo.Parser.ParseFrom(saved) : new DBEmojiInfo();
-        if (session.EmojiInfo.EmojiInfo.Count > 0) await SyncEmoticonsAsync(session);
+        await SyncEmoticonsAsync(session);
     }
 
     /// <summary>
     /// 5041. The full handler walks emojiInfo and dungeonEmojiInstalls with pairs() unguarded (LC_DAL_Chicken.lua:3822-3860)
-    /// and an empty field decodes as nil, so nothing is sent before the first unlock, and dungeonEmojiInstalls carries a
-    /// wire-only dungeon 0 entry {emojiIds [0]} while the role has no Survivor installs (inferred, as PersonalService
-    /// seeds its empty maps; no Survivor dungeon is 0).
+    /// and an empty field decodes as nil, so an empty emojiInfo carries a wire-only 0 (no emoticon has id 0; the set is
+    /// only asked for real ids). dungeonEmojiInstalls key 0 is the Survivor wheel itself (enum_ExpressionDungeonId.Chicken,
+    /// LC_ChickenHelper.GetChickenEmojiInstalls); the client has no default of its own, so a role that never edited it
+    /// gets the EmoticonsConfig Survivor emotes marked _iAssemble 1 (inferred: the default wheel).
     /// </summary>
     private Task SyncEmoticonsAsync(GameSession session)
     {
         var wire = session.EmojiInfo!.Clone();
-        if (wire.DungeonEmojiInstalls.Count == 0)
-            wire.DungeonEmojiInstalls[0] = new DBDungeonEmojiInstall { DungeonId = 0, EmojiIds = { 0 } };
+        if (wire.EmojiInfo.Count == 0) wire.EmojiInfo.Add(0);
+        if (!wire.DungeonEmojiInstalls.ContainsKey(WheelChicken))
+            wire.DungeonEmojiInstalls[WheelChicken] = new DBDungeonEmojiInstall { DungeonId = WheelChicken, EmojiIds = { DefaultWheel() } };
         return CharacterService.SyncAsync(session, EmoticonSync, wire);
     }
+
+    public const uint DungeonEmojiInstall = 43304;
+    private const int WheelChicken = 0, WheelOther = 1, WheelSlots = 6, SurvivorEmoticonType = 1;
+
+    private int[] DefaultWheel()
+    {
+        var ids = _data.Table("EmoticonsConfig").Values
+            .Select(row => new EmoticonsConfig(row)).Where(e => e.Type == SurvivorEmoticonType && e.Assemble == 1)
+            .Select(e => (int)e.Id).Order().Take(WheelSlots).ToList();
+        while (ids.Count < WheelSlots) ids.Add(0);
+        return [.. ids];
+    }
+
+    /// <summary>
+    /// 43304 from the Survivor emote wheel editor (UI_Sys_ExpressionWidgetBaseCtrl.lua:955-1048 -> LC_DAL_Chicken
+    /// SendChickenSelectEmoji): the whole six-slot wheel of dungeonId 0 (Chicken; 1 is the "Other" wheel), 0 = an empty
+    /// slot. Each emote is a Survivor EmoticonsConfig row (_iType 1) the role may use, once. The client binds no response
+    /// and reads the change from 5041; the reply still carries the result.
+    /// </summary>
+    public async Task InstallDungeonEmojiAsync(GameSession session, DungeonEmojiInstallReq req)
+    {
+        int result = ErrorCodes.Parameter;
+        if (session.Role != null && session.EmojiInfo != null && req.DungeonId is WheelChicken or WheelOther
+            && req.EmojiIds.Count <= WheelSlots && req.EmojiIds.All(id => id == 0 || WheelEmoji(session, id))
+            && req.EmojiIds.Where(id => id != 0).Distinct().Count() == req.EmojiIds.Count(id => id != 0))
+        {
+            var next = session.EmojiInfo.Clone();
+            var wheel = new DBDungeonEmojiInstall { DungeonId = req.DungeonId, EmojiIds = { req.EmojiIds } };
+            while (wheel.EmojiIds.Count < WheelSlots) wheel.EmojiIds.Add(0);
+            next.DungeonEmojiInstalls[req.DungeonId] = wheel;
+            var transaction = _roles.NewTransaction();
+            transaction.RoleBlob(session.Role.Id, "emoji_info", next.ToByteArray());
+            await _roles.CommitAsync(transaction, "emoji/wheel", _ => session.EmojiInfo = next);
+            await SyncEmoticonsAsync(session);
+            result = 0;
+        }
+        await session.SendGameAsync(DungeonEmojiInstall, new DungeonEmojiInstallResp { Result = result });
+    }
+
+    /// <summary>A Survivor emote the role may use: unlock type 0, or unlocked into emojiInfo and not expired.</summary>
+    internal bool WheelEmoji(GameSession session, long id)
+    {
+        if (_data.Row("EmoticonsConfig", id) is not { } row || new EmoticonsConfig(row).Type != SurvivorEmoticonType) return false;
+        if (new EmoticonsConfig(row).UnlockType == 0) return true;
+        var info = session.EmojiInfo;
+        return info != null && info.EmojiInfo.Contains(id)
+            && (!info.EmojiExpireTime.TryGetValue(id, out long expire) || expire == 0 || expire > _clock.GetUtcNow().ToUnixTimeSeconds());
+    }
+
+    /// <summary>The Survivor wheel as the client sees it: the saved one, else the default.</summary>
+    internal IReadOnlyList<int> Wheel(GameSession session) =>
+        session.EmojiInfo?.DungeonEmojiInstalls.TryGetValue(WheelChicken, out var saved) == true ? saved.EmojiIds : DefaultWheel();
 }

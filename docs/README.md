@@ -1,5 +1,12 @@
 # Documentation
 
+## Guides: playing
+
+- [Play on your own PC](guide/play.md): RO3Emu.exe, its commands, what it changes in the game folder
+- [Play with friends and host a server](guide/hosting.md): Windows and Linux hosting, ports, backups, hardware
+- [What works](features.md): every playable system
+- [For developers](development.md): running from source, layout, tests, releases, architecture
+
 ## Guides: running a server
 
 - [GM access](guide/gm-access.md): who may use GM commands (`Ro3Emu:GmAccounts`)
@@ -21,7 +28,7 @@
 | Economy | [trade and stalls](systems/trade-stalls.md) · [auctions](systems/auction.md) · [mail](systems/mail.md) · [durable activity settlement](systems/durable-settlement.md) |
 | Guilds | [guilds](systems/guild.md) · [territory wars](systems/territory-wars.md) · [escort and guild trading](systems/territory-escort.md) |
 | Instances | [dungeons](systems/dungeon.md) · [story dungeon inventory](systems/dungeon-inventory.md) |
-| Activities | [overview](systems/activities.md) · [timed activities](systems/activities-timed-events.md) · [adventures](systems/activities-adventures.md) · [battle pass and month card](systems/activities-battlepass-monthcard.md) · [guild campfire](systems/activities-guild-campfire.md) · [lottery](systems/activities-lottery.md) |
+| Activities | [overview](systems/activities.md) · [timed activities](systems/activities-timed-events.md) · [Survivor Battle in the match](systems/survivor-battle.md) · [adventures](systems/activities-adventures.md) · [battle pass and month card](systems/activities-battlepass-monthcard.md) · [guild campfire](systems/activities-guild-campfire.md) · [lottery](systems/activities-lottery.md) |
 
 ## Research: client evidence
 

@@ -5,6 +5,7 @@ using Ro3Emu.Server.Data;
 using Ro3Emu.Server.Maps;
 using Ro3Emu.Server.Game.Ownership;
 using static Ro3Emu.Server.Game.ChickenRules;
+using Ro3Emu.Server.Data.Config;
 
 namespace Ro3Emu.Server.Game;
 
@@ -17,7 +18,8 @@ namespace Ro3Emu.Server.Game;
 /// </summary>
 public sealed partial class TimedBattleService
 {
-    public const uint RoundSync = 5036, SelectCareer = 82622, SelectPosition = 82623, PositionNotify = 82630;
+    public const uint RoundSync = 5036, SelectCareer = 82622, SelectPosition = 82623, PositionNotify = 82630,
+        TeamPositionNotify = 82676;
     private const int AttrChickenPlayerId = 1200, AttrChickenPlayerName = 1201;
 
     /// <summary>One match's in-scene state.</summary>
@@ -35,8 +37,16 @@ public sealed partial class TimedBattleService
         public List<ReviveChannel> Channels { get; } = new();
         public int PickOrder;
         public long NextGuid = 1;
+        /// <summary>Landing follow (TimedBattleService.ChickenFollow): follower role -> followed role, and the invite
+        /// cooldowns (inviter, invitee) -> end in seconds.</summary>
+        public Dictionary<long, long> Follow { get; } = [];
+        public Dictionary<(long Inviter, long Invitee), long> InviteCdSec { get; } = [];
         public long LastTickMs;
         public HashSet<long> TagDropped { get; } = new();
+        public List<ChickenShop> Shops { get; } = [];
+        /// <summary>Magic Dice still standing, and the encounter offers' operate ids (TimedBattleService.ChickenAdventure).</summary>
+        public List<ChickenNpcUnit> Dice { get; } = [];
+        public long NextOperateId;
     }
 
     /// <summary>One participant's match state (the 5036 data and the settlement statistics).</summary>
@@ -64,6 +74,48 @@ public sealed partial class TimedBattleService
         public long EliminatedMs;
         public Dictionary<GameSession, long> LastHitBy { get; } = new(ReferenceEqualityComparer.Instance);
         public List<(long PerTick, long UntilMs)> Heals { get; } = new();
+        public long EmojiAtSec;
+        /// <summary>Spectating (TimedBattleService.ChickenWatch): the watched role, the auto-watch time, the last switch.</summary>
+        public long Watching, AutoWatchAtMs, WatchSwitchMs;
+        /// <summary>The weekly tasks' counts (TaskService.ChickenTasks): items used per _iSubType, supply crates opened,
+        /// equipment picked up per quality.</summary>
+        public Dictionary<int, long> UsedSubType { get; } = [];
+        public HashSet<long> OpenedCrates { get; } = [];
+        public Dictionary<int, long> EquipQuality { get; } = [];
+        /// <summary>Match shop purchases per commodity (TimedBattleService.ChickenShop).</summary>
+        public Dictionary<long, long> Bought { get; } = [];
+        /// <summary>Resolved casts per SkillConfig._iSkillID family (weekly target 106506, Camouflage).</summary>
+        public Dictionary<long, long> CastFamilies { get; } = [];
+        /// <summary>Encounters: open offers by operate id, chosen cards in order, Magic Dice used.</summary>
+        public Dictionary<long, AdventureOffer> Offers { get; } = [];
+        public List<long> Cards { get; } = [];
+        public long EventTriggers;
+    }
+
+    /// <summary>
+    /// What one participant's match adds to the Survivor weekly targets (TaskObjectives TChicken*; inferred event
+    /// mapping): 106501 one when its team placed inside the top n, 106502 items of that _iSubType used, 106504 supply
+    /// crates opened, and for the whole team 106505 equipment of at least that quality obtained, 106506 casts of the
+    /// skill families p3..p4 (SkillConfig._iSkillID: 151001 is the Disguise items' Camouflage, the quest list reads
+    /// "Have the team use Camouflage"), 106507 players defeated. 106503 has no source (no monster is spawned in the match).
+    /// </summary>
+    private Func<long[], long>? ChickenWeekly(Match match, GameSession player)
+    {
+        if (match.Chicken is not { } run || !run.Players.TryGetValue(player, out var me)) return null;
+        var ranks = ChickenRanks(match);
+        int faction = match.Faction[player];
+        var team = Team(match, faction).ToArray();
+        return target => target switch
+        {
+            [TaskService.TChickenRank, var top, _] => ranks.GetValueOrDefault(faction, int.MaxValue) <= top ? 1 : 0,
+            [TaskService.TChickenUse, var sub, _] => me.UsedSubType.GetValueOrDefault((int)sub),
+            [TaskService.TChickenBox, _] => me.OpenedCrates.Count,
+            [TaskService.TChickenEquip, var quality, _] => team.Sum(p => run.Players[p].EquipQuality.Where(kv => kv.Key >= quality).Sum(kv => kv.Value)),
+            [TaskService.TChickenKill, _] => team.Sum(p => (long)match.Kills.GetValueOrDefault(p)),
+            [TaskService.TChickenDisguise, _, var first, var last] =>
+                team.Sum(p => run.Players[p].CastFamilies.Where(kv => kv.Key >= first && kv.Key <= last).Sum(kv => kv.Value)),
+            _ => 0,
+        };
     }
 
     private ChickenRun NewRun(Match match)
@@ -99,7 +151,7 @@ public sealed partial class TimedBattleService
     // ---- careers and the match build ----
 
     private JsonElementRow? CareerRow(int career) =>
-        _data.Row("EatChickenGameCareer", career) is { } row && GameData.Int(row, "_iIsShow") == 1 ? new(row) : null;
+        _data.Row("EatChickenGameCareer", career) is { } row && new EatChickenGameCareer(row).IsShow == 1 ? new(row) : null;
 
     /// <summary>Wrapper so a missing row is a null reference, not a default JsonElement.</summary>
     private sealed record JsonElementRow(System.Text.Json.JsonElement Row);
@@ -137,7 +189,7 @@ public sealed partial class TimedBattleService
             if (GameData.Int(career.Row, field) == skillId) return true;
         if (CareerSkill.GetValueOrDefault(me.Career) == skillId) return true;
         foreach (long guid in me.SkillBar.Values)
-            if (me.Pack.TryGetValue(guid, out var item) && ItemRow(item.Entry) is { } row && GameData.Int(row, "_iSkill") == skillId)
+            if (me.Pack.TryGetValue(guid, out var item) && ItemRow(item.Entry) is { } row && new EatChickenItemConfig(row).Skill == skillId)
                 return true;
         return false;
     }
@@ -146,8 +198,8 @@ public sealed partial class TimedBattleService
     private int DefaultCareer(Match match, ChickenRun run, GameSession player)
     {
         var taken = Team(match, match.Faction[player]).Select(p => run.Players[p].Career).ToHashSet();
-        var shown = _data.Table("EatChickenGameCareer").Values.Where(row => GameData.Int(row, "_iIsShow") == 1)
-            .Select(row => (int)GameData.Int(row, "_iID")).Order().ToArray();
+        var shown = _data.Table("EatChickenGameCareer").Values.Where(row => new EatChickenGameCareer(row).IsShow == 1)
+            .Select(row => (int)new EatChickenGameCareer(row).Id).Order().ToArray();
         return shown.FirstOrDefault(id => !taken.Contains(id), shown.FirstOrDefault());
     }
 
@@ -168,8 +220,8 @@ public sealed partial class TimedBattleService
     }
 
     /// <summary>
-    /// 82623: UI_Sys_Chicken_MapPanelModel.lua:211-225 floors the picked world x/z (no x100). Then the team's picks go
-    /// out whole in 82630 (LC_DAL_Chicken.lua:1009-1057 clears the map before copying).
+    /// 82623: UI_Sys_Chicken_MapPanelModel.lua:211-225 floors the picked world x/z (no x100). The pick goes to the team
+    /// as an 82676 delta (LC_DAL_Chicken.lua:1059-1103 merges it) and to everyone else in a fresh 82630.
     /// </summary>
     public async Task SelectPositionAsync(GameSession session, SelectRolePositionReq req)
     {
@@ -184,30 +236,42 @@ public sealed partial class TimedBattleService
                 result = 0;
                 await session.SendGameAsync(SelectPosition, new SelectRolePositionResp
                 { Result = 0, PositionX = req.PositionX, PositionY = req.PositionY });
-                await SendTeamPicksAsync(match, run, match.Faction[session]);
+                await SendPickAsync(match, run, session);
             });
         if (result != 0) await session.SendGameAsync(SelectPosition, new SelectRolePositionResp { Result = result });
     }
 
-    /// <summary>82630 to each team member: the team's chosen landings (enemies' picks are not shown, inferred).</summary>
-    private async Task SendTeamPicksAsync(Match match, ChickenRun run, int faction)
+    /// <summary>
+    /// One landing entry. The map panel (UI_Sys_Chicken_MapPanelCtrl._refreshPosMap) draws teammates one by one and
+    /// enemies bucketed per map cell, summing playerNum: each entry stands for its one player.
+    /// </summary>
+    private static SelectRolePositionNotify.Types.SelectRolePositionInfo PickInfo(Match match, ChickenRun run, GameSession player)
     {
-        var team = Team(match, faction).ToArray();
+        var info = run.Players[player];
+        long id = match.Participants[player].Id;
+        return new() { RoleId = id, PositionX = info.LandX, PositionY = info.LandZ, OpId = info.PickOrder, PlayerNum = 1 };
+    }
+
+    /// <summary>82630 to these players: every pick of the lobby, the enemies' included (the map shows enemy crowds).
+    /// The handler clears the map first and pairs() infos unguarded: nothing is sent before a first pick.</summary>
+    private static async Task SendPicksAsync(Match match, ChickenRun run, IEnumerable<GameSession> to)
+    {
         var notify = new SelectRolePositionNotify();
-        foreach (var mate in team)
-        {
-            var info = run.Players[mate];
-            if (!info.LandChosen) continue;
-            notify.Infos[match.Participants[mate].Id] = new SelectRolePositionNotify.Types.SelectRolePositionInfo
-            {
-                RoleId = match.Participants[mate].Id, PositionX = info.LandX, PositionY = info.LandZ, OpId = info.PickOrder,
-                // (inferred) playerNum: how many of the team land on this point.
-                PlayerNum = team.Count(other => run.Players[other] is { LandChosen: true } o && o.LandX == info.LandX && o.LandZ == info.LandZ),
-            };
-        }
-        // An empty infos map decodes as nil and the handler pairs() it unguarded: nothing is sent before a first pick.
+        foreach (var player in match.Players.Where(p => run.Players[p].LandChosen && !match.Absent.Contains(p)))
+            notify.Infos[match.Participants[player].Id] = PickInfo(match, run, player);
         if (notify.Infos.Count == 0) return;
-        await RoleFanout.EachAsync(team.Where(p => InRoom(match).Contains(p)), p => p.SendGameAsync(PositionNotify, notify));
+        await RoleFanout.EachAsync(to, p => p.SendGameAsync(PositionNotify, notify));
+    }
+
+    /// <summary>A new pick: the team merges it from 82676, the others get the whole lobby again in 82630.</summary>
+    private async Task SendPickAsync(Match match, ChickenRun run, GameSession picker)
+    {
+        var room = InRoom(match).ToArray();
+        int faction = match.Faction[picker];
+        var delta = new SelectRolePositionNotify();
+        delta.Infos[match.Participants[picker].Id] = PickInfo(match, run, picker);
+        await RoleFanout.EachAsync(room.Where(p => match.Faction[p] == faction), p => p.SendGameAsync(TeamPositionNotify, delta));
+        await SendPicksAsync(match, run, room.Where(p => match.Faction[p] != faction));
     }
 
     // ---- 5036 ----
@@ -273,9 +337,12 @@ public sealed partial class TimedBattleService
         return info;
     }
 
-    private Task SyncRoundAsync(Match match, ChickenRun run, GameSession player) =>
-        player.Role == null || !InRoom(match).Contains(player) ? Task.CompletedTask
-            : CharacterService.SyncAsync(player, RoundSync, Round(match, run, player));
+    private async Task SyncRoundAsync(Match match, ChickenRun run, GameSession player)
+    {
+        if (player.Role == null || !InRoom(match).Contains(player)) return;
+        await CharacterService.SyncAsync(player, RoundSync, Round(match, run, player));
+        await RefreshLookAsync(match, run, player);
+    }
 
     private Task SyncTeamAsync(Match match, int faction) => match.Chicken is { } run
         ? RoleFanout.EachAsync(Team(match, faction), player => SyncRoundAsync(match, run, player)) : Task.CompletedTask;
@@ -351,8 +418,15 @@ public sealed partial class TimedBattleService
         }
         await SyncRoundAsync(match, run, session);
         await session.SendGameAsync(DungeonService.BaseInfo, ChickenBaseInfo(match, run));
-        if (run.Stage == StageChoosePos) await SendTeamPicksAsync(match, run, match.Faction[session]);
+        if (run.Stage == StageChoosePos)
+        {
+            await SendPicksAsync(match, run, [session]);
+            await SendFollowAsync(match, run, [session]);
+        }
         await SyncTeamAsync(match, match.Faction[session]);
+        if (run.Players[session].Watching is var watched and not 0) await SendCameraAsync(session, watched);
+        session.Synced.Remove(AdventureSync);
+        if (run.Players[session] is { } me && (me.Cards.Count > 0 || me.Offers.Count > 0)) await SyncAdventureAsync(match, session, me);
     }
 
     // ---- the stage machine ----
@@ -370,6 +444,7 @@ public sealed partial class TimedBattleService
             if (run.Stage != StageStartGame || match.Settled) return;
             await PublishZoneAsync(match, run, now);
             await TickLifeAsync(match, run, now);
+            await TickAdventureAsync(match, run, now);
             if (now - run.LastTickMs >= PoisonTickMs)
             {
                 run.LastTickMs = now;
@@ -410,7 +485,13 @@ public sealed partial class TimedBattleService
             }
             foreach (int faction in match.Players.Select(p => match.Faction[p]).Distinct()) await SyncTeamAsync(match, faction);
         }
-        else if (run.Stage == StageShowCareer) SetStage(run, StageChoosePos, now, now + StageMs[StageChoosePos]);
+        else if (run.Stage == StageShowCareer)
+        {
+            SetStage(run, StageChoosePos, now, now + StageMs[StageChoosePos]);
+            // The map panel's Follow / Invite buttons wait for a first team relation (UI_Sys_Chicken_Map_ListWidget
+            // m_bFollowLogicOver is set by the ChickenTeamFollowRelation property only).
+            await SendFollowAsync(match, run, InRoom(match));
+        }
         else if (run.Stage == StageChoosePos)
         {
             run.BattleStartMs = now;
@@ -421,6 +502,8 @@ public sealed partial class TimedBattleService
             PlanZone(run, now);
             foreach (var player in InRoom(match).ToArray()) await LandAsync(match, run, player);
             await SpawnCratesAsync(match, run);
+            await SpawnShopsAsync(match, run);
+            await SpawnDiceAsync(match, run);
         }
         await BroadcastBaseInfoAsync(match, run);
         if (run.Stage == StageStartGame)
@@ -433,18 +516,23 @@ public sealed partial class TimedBattleService
         match.Fallen.Add(player);
         _active.Remove(player);
         player.EventFaction = 0;
+        ClearChickenCustom(player);
         if (match.Room != null) await _instances.AbandonAsync(match.Room, player);
     }
 
     /// <summary>StartGame: the client sends nothing, so the server moves everyone to the landing it picked (inferred
-    /// teleport). No pick: a teammate's pick, else a point inside the island circle (inferred).</summary>
+    /// teleport). A follower lands at its leader's pick; no pick: a teammate's pick, else a point inside the island
+    /// circle (inferred).</summary>
     private async Task LandAsync(Match match, ChickenRun run, GameSession player)
     {
         var me = run.Players[player];
-        var mate = Team(match, match.Faction[player]).Select(p => run.Players[p]).Where(p => p.LandChosen)
-            .OrderBy(p => p.PickOrder).FirstOrDefault();
+        var leader = FollowLeader(run, match.Participants[player].Id);
+        var leading = Team(match, match.Faction[player]).FirstOrDefault(p => match.Participants[p].Id == leader && p != player);
+        var mate = leading != null && run.Players[leading].LandChosen ? run.Players[leading]
+            : Team(match, match.Faction[player]).Select(p => run.Players[p]).Where(p => p.LandChosen).OrderBy(p => p.PickOrder).FirstOrDefault();
         float x, z;
-        if (me.LandChosen) { x = me.LandX; z = me.LandZ; }
+        if (leading != null && mate == run.Players[leading]) { x = mate.LandX + me.TeamIndex * 2; z = mate.LandZ; }
+        else if (me.LandChosen) { x = me.LandX; z = me.LandZ; }
         else if (mate != null) { x = mate.LandX + me.TeamIndex * 2; z = mate.LandZ; }
         else (x, z) = RandomPoint(run, IslandX, IslandZ, IslandRadius * 0.8f);
         if (WalkablePoint(x, z) is { } at) await _scene.TeleportInMapAsync(player, at);

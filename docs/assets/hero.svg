@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400" width="1200" height="400" role="img" aria-label="RO3Emu: play Ragnarok Online 3 on your own server">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b2740"/>
+      <stop offset="1" stop-color="#0b1120"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#f6c869" stop-opacity=".30"/>
+      <stop offset="1" stop-color="#f6c869" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#ffffff" stroke-opacity=".03"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="400" rx="16" fill="url(#sky)"/>
+  <rect width="1200" height="400" rx="16" fill="url(#grid)"/>
+  <rect x="0" y="0" width="1200" height="6" fill="#d8b46a"/>
+  <g transform="translate(600 104)">
+    <circle r="96" fill="url(#glow)"/>
+    <polygon points="0,-62 -30,-8 0,62" fill="#f6c869"/>
+    <polygon points="0,-62 30,-8 0,62" fill="#b9802a"/>
+    <polygon points="0,-62 -10,-8 0,62 10,-8" fill="#ffe7a3" opacity=".55"/>
+  </g>
+  <text x="600" y="246" text-anchor="middle" font-family="Cinzel, 'Trajan Pro', Georgia, 'Times New Roman', serif" font-weight="700" font-size="84" letter-spacing="6" fill="#f3e3b8">RO3Emu</text>
+  <text x="600" y="300" text-anchor="middle" font-family="'Segoe UI', -apple-system, Helvetica, Arial, sans-serif" font-weight="600" font-size="30" fill="#e6edf3">Play Ragnarok Online 3 on your own server</text>
+  <text x="600" y="342" text-anchor="middle" font-family="'Segoe UI', -apple-system, Helvetica, Arial, sans-serif" font-size="19" fill="#a9b4c7">Free and open source · one click on Windows · host for your friends</text>
+</svg>

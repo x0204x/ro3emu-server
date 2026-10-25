@@ -5,7 +5,8 @@ using Romsg;
 namespace Ro3Emu.Server.Game;
 
 /// <summary>Shops, mail claims, auctions, player trade and stalls.</summary>
-public sealed class EconomyMessages(ShopService shops, MailService mail, AuctionService auctions, TradeService trade, StallsService stalls) : Messaging.IMessageModule
+public sealed class EconomyMessages(ShopService shops, MailService mail, AuctionService auctions, TradeService trade, StallsService stalls,
+    TimedBattleService timedBattles) : Messaging.IMessageModule
 {
     public void Map(Messaging.MessageRoutes routes)
     {
@@ -22,8 +23,12 @@ public sealed class EconomyMessages(ShopService shops, MailService mail, Auction
 
         routes.Map(ShopService.BuyCommodity, "shops", async (session, msgId, body) =>
         {
-            await shops.BuyAsync(session, BuyCommodityReq.Parser.ParseFrom(body.Span));
+            var buy = BuyCommodityReq.Parser.ParseFrom(body.Span);
+            // A Survivor Battle shop NPC is paid from the match pack (TimedBattleService.ChickenShop).
+            if (!await timedBattles.TryBuyAsync(session, buy)) await shops.BuyAsync(session, buy);
         });
+        routes.Map(TimedBattleService.DungeonShop, "shops", async (session, msgId, body) =>
+            await timedBattles.GetDungeonShopAsync(session, GetDungeonShopReq.Parser.ParseFrom(body.Span)));
         routes.Map(ShopService.BatchBuyCommodity, "shops", async (session, msgId, body) =>
         {
             await shops.BatchBuyAsync(session, BatchBuyCommodityReq.Parser.ParseFrom(body.Span));

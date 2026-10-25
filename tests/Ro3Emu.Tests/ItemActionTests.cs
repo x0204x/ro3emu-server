@@ -163,10 +163,13 @@ public sealed class ItemActionTests : IAsyncLifetime
     {
         await using var alice = await InWorld("Alice");
         await Gm("alice", "!item 1220003 2");
-        Assert.Equal(0, await Use(alice, 1220003));
+        // Login sent 5041 whole: a wire-only 0 in emojiInfo and the default Survivor wheel (both walked unguarded).
         var full = await Next(alice, EmojiService.EmoticonSync, DBEmojiInfoIncrement.Parser, m => m.SyncAllMark);
-        Assert.Equal(Enumerable.Range(50, 18).Select(i => (long)i), full.EmojiInfo.All.Value.Order()); // EmoticonTabConfig 2
-        Assert.True(full.DungeonEmojiInstalls.ContainsKey(0)); // the full handler walks it unguarded
+        Assert.Equal([0L], full.EmojiInfo.All.Value);
+        Assert.Equal([1001, 1002, 1003, 1004, 0, 0], full.DungeonEmojiInstalls[0].All.EmojiIds);
+        Assert.Equal(0, await Use(alice, 1220003));
+        var unlocked = await Next(alice, EmojiService.EmoticonSync, DBEmojiInfoIncrement.Parser, m => !m.SyncAllMark);
+        Assert.Equal(Enumerable.Range(50, 18).Select(i => (long)i), unlocked.EmojiInfo.All.Value.Order()); // EmoticonTabConfig 2
         Assert.Equal(1, Count(alice, 1220003));
         Assert.Equal(18, DBEmojiInfo.Parser.ParseFrom(Roles.LoadEmojiInfo(RoleId(alice))!).EmojiInfo.Count);
         Assert.Equal(EmojiService_ErrUnlocked, await Use(alice, 1220003));

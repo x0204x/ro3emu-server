@@ -4,7 +4,7 @@
 # with RO3Emu.exe join <address>. Without building anything: the release's RO3Emu-server-linux-x64.tar.gz has its own
 # server.sh (tools/release/server.sh).
 #
-# usage: ./server.sh [--client DIR] [--host ADDRESS] [--gm ACCOUNT] [--voice-port PORT] [--service] [--reexport]
+# usage: scripts/server.sh [--client DIR] [--host ADDRESS] [--gm ACCOUNT] [--voice-port PORT] [--service] [--reexport]
 #   --client DIR    the client folder copied from Windows (at least its ro3_Data/StreamingAssets); first run only
 #   --host ADDRESS  the address players connect to (default: this machine's first address)
 #   --gm ACCOUNT    an account that gets GM commands in game (repeatable)
@@ -12,7 +12,7 @@
 #   --service       install and start a systemd service (needs sudo) instead of running in this terminal
 #   --reexport      export the game data again (after a client update)
 set -euo pipefail
-cd "$(dirname "$(readlink -f "$0")")"
+cd "$(dirname "$(readlink -f "$0")")/.." # the repository (this script lives in scripts/)
 root=$(pwd)
 
 client=""; host=""; voice=""; service=0; reexport=0; gms=()
@@ -27,7 +27,7 @@ while [ $# -gt 0 ]; do
     --service) service=1; shift ;;
     --reexport) reexport=1; shift ;;
     -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
-    *) echo "unknown option $1 (see ./server.sh --help)"; exit 1 ;;
+    *) echo "unknown option $1 (see scripts/server.sh --help)"; exit 1 ;;
   esac
 done
 

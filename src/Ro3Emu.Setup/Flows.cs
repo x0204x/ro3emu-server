@@ -180,8 +180,9 @@ internal static class Flows
             var gms = options.GmAccounts.ToList();
             if (gms.Count == 0 && Ui.Interactive)
             {
-                var gm = Ui.Ask("Your account name, to get GM commands in game (Enter for nobody):");
-                if (gm.Length > 0) gms.Add(gm);
+                // Several accounts, comma separated: a host and the friends it plays with (issue #97).
+                var gm = Ui.Ask("Account names that get GM commands in game, separated by commas (Enter for nobody):");
+                gms.AddRange(gm.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
             }
             env["ASPNETCORE_ENVIRONMENT"] = "Production";
             args.AddRange([$"--Ro3Emu:PublicHost={publicHost}", "--Ro3Emu:OpenContent:Enabled=true", "--Ro3Emu:Pass:Play=true", "--Ro3Emu:Pass:FreePremium=true"]);

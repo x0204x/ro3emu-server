@@ -8,15 +8,20 @@ public sealed partial class TaskService
     internal CharacterService.FirstCardSightPlan? StageMvpParticipant(GameSession session, string source)
         => StageEventTarget(session, "mvp/" + source, target => target[0] is TMvp or TMvpOnce);
 
-    internal CharacterService.FirstCardSightPlan? StageTimedBattleSettlement(GameSession session, int entry, string source)
+    /// <summary>The match count targets, plus (Survivor Battle) what the match brought to the weekly targets.</summary>
+    internal CharacterService.FirstCardSightPlan? StageTimedBattleSettlement(GameSession session, int entry, string source,
+        Func<long[], long>? weekly = null)
         => entry is 2 or 6 ? StageEventTarget(session, "timed-battle/" + source,
-            target => TimedBattleTarget(target, entry)) : null;
+            target => TimedBattleTarget(target, entry) ? 1 : weekly?.Invoke(target) ?? 0) : null;
 
     internal CharacterService.FirstCardSightPlan? StageOnePieceReward(GameSession session, string source)
         => StageEventTarget(session, "one-piece/" + source,
             target => target[0] == TOnePieceCount && target.Length >= 4 && target[1] == 200);
 
     private CharacterService.FirstCardSightPlan? StageEventTarget(GameSession session, string source, Func<long[], bool> matches)
+        => StageEventTarget(session, source, target => matches(target) ? 1 : 0);
+
+    private CharacterService.FirstCardSightPlan? StageEventTarget(GameSession session, string source, Func<long[], long> amount)
     {
         if (session.Tasks == null || session.Progress == null) return null;
         session.Owners?.Current?.AssertRole(session.Role!.Id);
@@ -28,11 +33,12 @@ public sealed partial class TaskService
             for (int index = 0; index < def.Targets.Length && index < info.CompleteNum.Count; index++)
             {
                 var target = def.Targets[index];
-                if (!matches(target)) continue;
+                long add = amount(target);
+                if (add <= 0) continue;
                 long required = Required(session, target);
                 if (required <= 0) continue;
                 long old = Math.Clamp(info.CompleteNum[index], 0, required);
-                long value = old < required ? old + 1 : old;
+                long value = Math.Min(required, old + add);
                 changed |= value != info.CompleteNum[index];
                 info.CompleteNum[index] = value;
             }

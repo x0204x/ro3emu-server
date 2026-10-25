@@ -21,4 +21,7 @@ public readonly partial record struct ShopCommodityConfig(JsonElement Row)
     [ConfigField("_kAppearanceParts")] public partial long[] AppearanceParts { get; }
     [ConfigField("_kItemPerPrice")] public partial long[] ItemPerPrice { get; }
     [ConfigField("_kMultiverseArray")] public partial long[] MultiverseArray { get; }
+    [ConfigField("_iGroup")] public partial long Group { get; }
+    [ConfigField("_iWeight")] public partial long Weight { get; }
+    [ConfigField("_iGlobalPurchase")] public partial long GlobalPurchase { get; }
 }

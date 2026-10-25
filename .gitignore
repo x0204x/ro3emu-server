@@ -19,10 +19,10 @@ tools/unluac-batch/*.class
 /.loadtest/
 /.loadtest-temp/
 
-# Server built by server.sh
+# Server built by scripts/server.sh
 /server-bin/
 
-# RO3Emu.exe run from the repository (start.cmd: --home is the repository root)
+# RO3Emu.exe run from the repository (scripts/start.cmd: --home is the repository root)
 /logs/
 /downloads/
 /RO3Emu.settings.json

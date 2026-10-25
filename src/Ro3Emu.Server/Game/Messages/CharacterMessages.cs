@@ -542,6 +542,12 @@ public sealed class CharacterMessages(CharacterService character, SkillService s
             await emoji.AcceptAsync(session, EmojiInviteAcceptReq.Parser.ParseFrom(body.Span)));
         routes.Map(EmojiService.Refuse, "emoji", async (session, msgId, body) =>
             await emoji.RefuseAsync(session, EmojiInviteRefuseReq.Parser.ParseFrom(body.Span)));
+        // The Survivor emote wheel (43304 edits it, 83304 plays one of it in the match).
+        routes.Map(EmojiService.DungeonEmojiInstall, "emoji", async (session, msgId, body) =>
+            await emoji.InstallDungeonEmojiAsync(session, DungeonEmojiInstallReq.Parser.ParseFrom(body.Span)));
+        routes.Map(TimedBattleService.EmojiPlay, "timedBattles", async (session, msgId, body) =>
+            await timedBattles.PlayEmojiAsync(session, DungeonModuleEmojiPlayReq.Parser.ParseFrom(body.Span).EmojiId,
+                id => emoji.Wheel(session).Contains(id) && emoji.WheelEmoji(session, id)));
         // Achievements / Trophy (AchievementService). 76004 share has no client sender: unrouted.
         routes.Map(AchievementService.GetReward, "achievements", async (session, msgId, body) =>
             await achievements.ClaimAsync(session, GetAchievementRewardReq.Parser.ParseFrom(body.Span)));

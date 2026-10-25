@@ -7,4 +7,7 @@ namespace Ro3Emu.Server.Data.Config;
 public readonly partial record struct EmoticonsConfig(JsonElement Row)
 {
     [ConfigField("_iType")] public partial long Type { get; }
+    [ConfigField("_iID")] public partial long Id { get; }
+    [ConfigField("_iAssemble")] public partial long Assemble { get; }
+    [ConfigField("_iUnlockType")] public partial long UnlockType { get; }
 }

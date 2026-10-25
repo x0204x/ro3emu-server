@@ -72,7 +72,8 @@ public sealed partial class TimedBattleService
     /// <summary>32700 for a Rift stone and one of its NPCConfig _iInteractID entries.</summary>
     public async Task<bool> TryInteractAsync(GameSession session, NpcInteractionReq req)
     {
-        if (await TryChestInteractAsync(session, req)) return true;
+        if (await TryChestInteractAsync(session, req) || await TryShopInteractAsync(session, req)
+            || await TryDieInteractAsync(session, req)) return true;
         if (!IsRiftUid(req.NpcUid)) return false;
         using var scope = session.Role != null && _loop.Owners is { } owners
             ? await owners.EnterAsync("timed battle onepiece interaction", [ReservationKey.Role(session.Role.Id)]) : null;

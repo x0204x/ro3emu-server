@@ -503,6 +503,7 @@ public sealed partial class TaskService
         var context = RequireTaskOwner(session);
         bool debtIncomplete = false;
         bool requiredFollowup = _roles.HasTaskFollowup(session.Role!.Id);
+        var chickenFinished = new List<long>();
         for (int round = 0; round < 64; round++)
         {
             bool moved = false, storageFailed = false;
@@ -516,7 +517,12 @@ public sealed partial class TaskService
                     if (info.Status == Finished) { info.Status = Running; moved = true; }
                     continue;
                 }
-                if (info.Status != Finished) { info.Status = Finished; moved = true; }
+                if (info.Status != Finished)
+                {
+                    info.Status = Finished;
+                    moved = true;
+                    if (def.Type == ChickenTaskType) chickenFinished.Add(def.Id);
+                }
                 if (def.Deliver == ReceiveAuto)
                 {
                     int result = await DeliverCoreAsync(session, context, def.Id);
@@ -541,6 +547,7 @@ public sealed partial class TaskService
         // can still be present on a reused GameSession, so readiness is bound to this attachment.
         bool cardSourceReady = ReferenceEquals(session.CardLibraryReadyAttachment, session.Attachment);
         await FlushAsync(session, !debtIncomplete && (!requiredFollowup || cardSourceReady));
+        await NotifyChickenFinishedAsync(session, chickenFinished.Where(id => session.Tasks.Infos.GetValueOrDefault(id)?.Status == Finished));
     }
 
     private async Task FlushAsync(GameSession session, bool settled = false)
@@ -643,7 +650,8 @@ public sealed partial class TaskService
                 accepted++;
             }
         }
-        return accepted + AcceptGrowthTitle(session) + AcceptGrowthClass(session) + AcceptActivityTasks(session);
+        return accepted + AcceptGrowthTitle(session) + AcceptGrowthClass(session) + AcceptActivityTasks(session)
+            + AcceptChickenTasks(session);
     }
 
     private bool Ready(GameSession session, TaskDef def) =>

@@ -3,6 +3,7 @@ using Romsg;
 using Ro3Emu.Server.Data;
 using Ro3Emu.Server.Maps;
 using static Ro3Emu.Server.Game.ChickenRules;
+using Ro3Emu.Server.Data.Config;
 
 namespace Ro3Emu.Server.Game;
 
@@ -58,13 +59,17 @@ public sealed partial class TimedBattleService
     private long _chestSerial;
     /// <summary>(inferred) Bar slots: the client's InitChickenBar drops key 0, so slots start at 1.</summary>
     private const int MaxBarSlot = 10;
+    private const int EquipmentType = 3; // EatChickenItemConfig _iType 3: Weapon .. Ring (_iSubType 301-305)
     private const int ItemTypeItem = 1, ItemTypeSkill = 2, ItemTypeEquip = 3, ItemTypeCard = 5;
 
-    private int ItemType(int entry) => ItemRow(entry) is { } row ? (int)GameData.Int(row, "_iType") : 0;
+    /// <summary>NPCConfig _kName, the name a match NPC unit carries.</summary>
+    private string NpcName(JsonElement npc) => _data.ClientTextOf(npc, "_kName");
+
+    private int ItemType(int entry) => ItemRow(entry) is { } row ? (int)new EatChickenItemConfig(row).Type : 0;
 
     private static long Weight(ChickenPlayer me, Func<int, long> weightOf) => me.Pack.Values.Sum(i => weightOf(i.Entry) * i.Stack);
     private long Weight(ChickenPlayer me) => Weight(me, ItemWeight);
-    private long ItemWeight(int entry) => ItemRow(entry) is { } row ? GameData.Int(row, "_iWeight") : 0;
+    private long ItemWeight(int entry) => ItemRow(entry) is { } row ? new EatChickenItemConfig(row).Weight : 0;
 
     /// <summary>How many of <paramref name="entry"/> fit: ChickenBagLimit weight and EatChickenItemConfig._iMaxQuantity
     /// (0 = no cap).</summary>
@@ -72,9 +77,9 @@ public sealed partial class TimedBattleService
     {
         if (ItemRow(entry) is not { } row || wanted <= 0) return 0;
         long fit = wanted;
-        long weight = GameData.Int(row, "_iWeight");
+        long weight = new EatChickenItemConfig(row).Weight;
         if (weight > 0) fit = Math.Min(fit, Math.Max(0, (BagLimit() - Weight(me)) / weight));
-        long cap = GameData.Int(row, "_iMaxQuantity");
+        long cap = new EatChickenItemConfig(row).MaxQuantity;
         if (cap > 0) fit = Math.Min(fit, Math.Max(0, cap - me.Pack.Values.Where(i => i.Entry == entry).Sum(i => (long)i.Stack)));
         return (int)Math.Max(0, fit);
     }
@@ -83,7 +88,7 @@ public sealed partial class TimedBattleService
     private List<ChickenItem> AddToPack(ChickenRun run, ChickenPlayer me, int entry, int amount, long ownerId = 0, string ownerName = "")
     {
         var touched = new List<ChickenItem>();
-        int limit = ItemRow(entry) is { } row ? (int)Math.Max(1, GameData.Int(row, "_iStackLimit")) : 1;
+        int limit = ItemRow(entry) is { } row ? (int)Math.Max(1, new EatChickenItemConfig(row).StackLimit) : 1;
         foreach (var stack in me.Pack.Values.Where(i => i.Entry == entry && i.OwnerId == ownerId && i.Stack < limit).ToArray())
         {
             if (amount <= 0) break;
@@ -166,7 +171,7 @@ public sealed partial class TimedBattleService
 
     private void AddToChest(ChickenRun run, ChickenChestUnit chest, int entry, int amount, long ownerId = 0, string ownerName = "")
     {
-        int limit = ItemRow(entry) is { } row ? (int)Math.Max(1, GameData.Int(row, "_iStackLimit")) : 1;
+        int limit = ItemRow(entry) is { } row ? (int)Math.Max(1, new EatChickenItemConfig(row).StackLimit) : 1;
         foreach (var stack in chest.Items.Values.Where(i => i.Entry == entry && i.OwnerId == ownerId && i.Stack < limit).ToArray())
         {
             int add = Math.Min(amount, limit - stack.Stack);
@@ -188,7 +193,7 @@ public sealed partial class TimedBattleService
         var chest = new ChickenChestUnit
         {
             Uid = ChestUidBase | Interlocked.Increment(ref _chestSerial), SceneEntry = ChickenScene, InstanceId = match.Room!.Id,
-            X = at.X, Y = at.Y, Z = at.Z, Face = at.Face, NpcId = npcId, Name = _data.ClientTextOf(npc, "_kName"),
+            X = at.X, Y = at.Y, Z = at.Z, Face = at.Face, NpcId = npcId, Name = NpcName(npc),
             Quality = BoxDrop.ContainsKey(npcId) && npcId < 15000600 ? npcId - 15000500 : 0, Wire = item => Wire(item),
         };
         fill(chest);
@@ -308,6 +313,13 @@ public sealed partial class TimedBattleService
     private async Task AfterPickupAsync(Match match, ChickenRun run, GameSession session, List<ItemBaseInfo> picked,
         IEnumerable<ChickenChestUnit> chests)
     {
+        var me = run.Players[session];
+        foreach (var info in picked)
+            if (ItemRow(info.ItemEntry) is { } row && new EatChickenItemConfig(row).Type == EquipmentType)
+            {
+                int quality = (int)new EatChickenItemConfig(row).Quality;
+                me.EquipQuality[quality] = me.EquipQuality.GetValueOrDefault(quality) + 1;
+            }
         await SyncRoundAsync(match, run, session);
         await session.SendGameAsync(PickupNotify, new PickChickenItemNotify { PickItems = { picked } });
         foreach (var chest in chests.Distinct().ToArray()) await ChestChangedAsync(match, run, chest);
@@ -392,9 +404,9 @@ public sealed partial class TimedBattleService
                     }
                     else
                     {
-                        long subType = ItemRow(item.Entry) is { } row ? GameData.Int(row, "_iSubType") : 0;
+                        long subType = ItemRow(item.Entry) is { } row ? new EatChickenItemConfig(row).SubType : 0;
                         foreach (var slot in me.EquipBar.Where(s => s.Value == item.Guid || me.Pack.TryGetValue(s.Value, out var worn)
-                                     && ItemRow(worn.Entry) is { } w && GameData.Int(w, "_iSubType") == subType).Select(s => s.Key).ToArray())
+                                     && ItemRow(worn.Entry) is { } w && new EatChickenItemConfig(w).SubType == subType).Select(s => s.Key).ToArray())
                             me.EquipBar.Remove(slot);
                         me.EquipBar[req.Index] = item.Guid;
                     }
@@ -435,7 +447,9 @@ public sealed partial class TimedBattleService
                 foreach (var (type, value) in effects.Where(e => e.Type == 203))
                     await ApplyItemBuffAsync(session, me, value, now);
                 RemoveFromPack(me, item.Guid, 1);
-                if (GameData.Int(row, "_iCd") is var cd and > 0) me.ItemCd[item.Entry] = now + cd * 1000;
+                int subType = (int)new EatChickenItemConfig(row).SubType;
+                me.UsedSubType[subType] = me.UsedSubType.GetValueOrDefault(subType) + 1;
+                if (new EatChickenItemConfig(row).Cd is var cd and > 0) me.ItemCd[item.Entry] = now + cd * 1000;
                 result = 0;
                 await SyncRoundAsync(match, run, session);
             });
@@ -525,7 +539,7 @@ public sealed partial class TimedBattleService
                 {
                     progress = false;
                     foreach (int entry in me.Pack.Values.Select(i => i.Entry).Distinct()
-                                 .OrderBy(e => ItemRow(e) is { } r ? GameData.Int(r, "_iQuality") : 0).ToArray())
+                                 .OrderBy(e => ItemRow(e) is { } r ? new EatChickenItemConfig(r).Quality : 0).ToArray())
                     {
                         long guid = UpgradeOnce(run, me, entry, out int one);
                         if (one != 0) continue;
@@ -542,8 +556,8 @@ public sealed partial class TimedBattleService
     private long UpgradeOnce(ChickenRun run, ChickenPlayer me, int entry, out int result)
     {
         result = ErrorCodes.Parameter;
-        if (ItemRow(entry) is not { } row || GameData.Int(row, "_iType") != ItemTypeSkill) return 0;
-        int next = (int)GameData.Int(row, "_iUpgradeItem"), need = (int)GameData.Int(row, "_iUpdateCount");
+        if (ItemRow(entry) is not { } row || new EatChickenItemConfig(row).Type != ItemTypeSkill) return 0;
+        int next = (int)new EatChickenItemConfig(row).UpgradeItem, need = (int)new EatChickenItemConfig(row).UpdateCount;
         if (next <= 0 || need <= 0 || ItemRow(next) == null) return 0;
         var copies = me.Pack.Values.Where(i => i.Entry == entry)
             .OrderBy(i => me.SkillBar.ContainsValue(i.Guid) ? 1 : 0).ToList();

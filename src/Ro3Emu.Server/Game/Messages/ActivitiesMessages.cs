@@ -245,6 +245,16 @@ public sealed class ActivitiesMessages(PraiseService praise, CasualBattleService
             await timedBattles.UpgradeAsync(session, ChickenItemUpgradeReq.Parser.ParseFrom(body.Span)));
         routes.Map(TimedBattleService.ItemUpgradeAll, "timedBattles", async (session, msgId, body) =>
             await timedBattles.UpgradeAllAsync(session));
+        routes.Map(TimedBattleService.AdventureSelect, "timedBattles", async (session, msgId, body) =>
+            await timedBattles.SelectAdventureAsync(session, AdventureEventSelectReq.Parser.ParseFrom(body.Span)));
+        routes.Map(TimedBattleService.AdventureRefresh, "timedBattles", async (session, msgId, body) =>
+            await timedBattles.RefreshAdventureAsync(session, AdventureRefreshReq.Parser.ParseFrom(body.Span)));
+        routes.Map(TimedBattleService.SelectFollow, "timedBattles", async (session, msgId, body) =>
+            await timedBattles.SelectFollowAsync(session, SelectFollowReq.Parser.ParseFrom(body.Span)));
+        routes.Map(TimedBattleService.ChangeWatch, "timedBattles", async (session, msgId, body) =>
+            await timedBattles.ChangeWatchAsync(session, ChickenChangeWatchPlayerReq.Parser.ParseFrom(body.Span)));
+        routes.Map(TimedBattleService.OpenPanel, "timedBattles", async (session, msgId, body) =>
+            await timedBattles.OpenPanelAsync(session, ChickenOpenPanelReq.Parser.ParseFrom(body.Span)));
         routes.Map(83351, "timedBattles", async (session, msgId, body) =>
         {
             await timedBattles.OnePieceInfoAsync(session, HiddenTreasureRoundInfoReq.Parser.ParseFrom(body.Span));

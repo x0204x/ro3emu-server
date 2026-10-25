@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 50" width="200" height="50" role="img" aria-label="What works today">
+  <rect x="1" y="1" width="198" height="48" rx="9" fill="#0d1117" stroke="#d8b46a" stroke-width="2"/>
+
+  <text x="100.0" y="31" text-anchor="middle" font-family="'Segoe UI', -apple-system, Helvetica, Arial, sans-serif" font-weight="700" font-size="17" fill="#f3e3b8">What works today</text>
+</svg>

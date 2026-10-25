@@ -41,7 +41,13 @@ public sealed partial class TimedBattleService : IGameTicker
         if (message == DungeonService.Enter)
             return _data.Row("OnePieceRewardConfig", EnterDungeonReq.Parser.ParseFrom(body.Span).SceneEntry) != null;
         if (message == SceneService.NpcInteraction)
-            return IsRiftUid(NpcInteractionReq.Parser.ParseFrom(body.Span).NpcUid);
+        {
+            long uid = NpcInteractionReq.Parser.ParseFrom(body.Span).NpcUid;
+            return IsRiftUid(uid) || IsMatchNpc(uid, dice: true);
+        }
+        // The Survivor shops answer and sell under the match's own reservation (TimedBattleService.ChickenShop).
+        if (message == DungeonShop) return IsMatchNpc(GetDungeonShopReq.Parser.ParseFrom(body.Span).NpcGuid, dice: false);
+        if (message == ShopService.BuyCommodity) return IsMatchNpc(BuyCommodityReq.Parser.ParseFrom(body.Span).NpcId, dice: false);
         return false;
     }
     private readonly GameData _data;
@@ -214,6 +220,7 @@ public sealed partial class TimedBattleService : IGameTicker
         combat.ReviveInfoOwners.Add(OwnsRevive);
         combat.PvpDealt.Add(ChickenDealt);
         combat.Healed.Add(ChickenHealed);
+        combat.CastLanded.Add(ChickenCastAsync);
         combat.Dealt.Add(DragonDealt);
         combat.Killed.Add(DragonBossKilledAsync);
         combat.MatchSkillRule = MatchSkillRule;
@@ -374,10 +381,11 @@ public sealed partial class TimedBattleService : IGameTicker
         waiting.RemoveAll(p => Admission(p, entry, alreadyQueued: true) != 0);
         waiting.Add(session);
         var shape = MatchShape(entry);
-        if (waiting.Count < shape.Players) return;
+        if (waiting.Count < shape.Players) { await SendQueueCountAsync(entry); return; }
         var players = waiting.Take(shape.Players).ToArray();
         waiting.RemoveRange(0, shape.Players);
         if (waiting.Count == 0) _queue.Remove(entry);
+        else await SendQueueCountAsync(entry);
         long now = _time.GetUtcNow().ToUnixTimeSeconds();
         var match = new Match
         {
@@ -396,6 +404,17 @@ public sealed partial class TimedBattleService : IGameTicker
         await BroadcastReadyAsync(match);
     }
 
+    public const uint MatchPlayerNum = 82677;
+
+    /// <summary>82677 to everyone waiting for Survivor Battle: how many are queued of how many a match takes
+    /// (LC_DAL_Chicken._processMatchPlayerNumNtf -> asset ChickenMatchNum; this client build stores it without showing it).</summary>
+    private Task SendQueueCountAsync(int entry)
+    {
+        if (entry != ChickenEntry || !_queue.TryGetValue(entry, out var waiting) || waiting.Count == 0) return Task.CompletedTask;
+        var notify = new ChickenMatchPlayerNumNotify { PlayerNum = waiting.Count, MaxNum = MatchShape(entry).Players };
+        return RoleFanout.EachAsync([.. waiting], p => p.SendGameAsync(MatchPlayerNum, notify));
+    }
+
     public async Task<bool> CancelMatchAsync(GameSession session, CancelMatchReq req)
     {
         using var scope = await EnterCommandAsync(session, req.MatchEntryId, "timed battle cancel matchmaking");
@@ -405,8 +424,11 @@ public sealed partial class TimedBattleService : IGameTicker
             ? 0 : ErrorCodes.Parameter;
         await session.SendGameAsync(CancelMatch, new CancelMatchResp { Result = result, MatchEntryId = req.MatchEntryId });
         if (result != 0) return false;
-        if (_queue.TryGetValue(req.MatchEntryId, out var waiting) && waiting.Remove(session) && waiting.Count == 0)
-            _queue.Remove(req.MatchEntryId);
+        if (_queue.TryGetValue(req.MatchEntryId, out var waiting) && waiting.Remove(session))
+        {
+            if (waiting.Count == 0) _queue.Remove(req.MatchEntryId);
+            else await SendQueueCountAsync(req.MatchEntryId);
+        }
         if (_preparing.TryGetValue(session, out var match))
             await CancelReadyAsync(match, true);
         return true;
@@ -779,7 +801,11 @@ public sealed partial class TimedBattleService : IGameTicker
         using (var scope = await EnterLeaveAsync(session))
         {
             foreach (int entry in _queue.Keys.ToArray())
-                if (_queue[entry].Remove(session) && _queue[entry].Count == 0) _queue.Remove(entry);
+                if (_queue[entry].Remove(session))
+                {
+                    if (_queue[entry].Count == 0) _queue.Remove(entry);
+                    else await SendQueueCountAsync(entry);
+                }
             if (_preparing.TryGetValue(session, out var waiting)) await CancelReadyAsync(waiting, false, session);
             if (_active.TryGetValue(session, out var match) && !match.Settled)
             {
@@ -800,6 +826,7 @@ public sealed partial class TimedBattleService : IGameTicker
                     RecordEliminations(match, chicken);
                     _active.Remove(session);
                     await ChickenDetachAsync(match, session);
+                    await DropFollowAsync(match, chicken, session);
                     if (chicken.Stage < ChickenRules.StageStartGame)
                     {
                         if (match.Players.Where(p => !match.Absent.Contains(p)).Select(p => match.Faction[p]).Distinct().Count() < 2)
@@ -837,6 +864,7 @@ public sealed partial class TimedBattleService : IGameTicker
             if (match.Entry == ChickenEntry)
             {
                 await player.SendGameAsync(ChickenResult, ChickenSnapshot(match, player, false));
+                ClearChickenCustom(player);
                 await ChickenDetachAsync(match, player);
             }
             else await player.SendGameAsync(DragonSettle, new DragonIslandSettleNtf { ResultType = 0 });
@@ -876,7 +904,8 @@ public sealed partial class TimedBattleService : IGameTicker
                         .Select(p => ReservationKey.Role(p.Role!.Id)) ?? []).Distinct().ToArray();
                 using var scope = _loop.Owners is { } owners ? await owners.EnterAsync("timed match queue expiry", keys) : null;
                 if (!_queue.TryGetValue(entry, out var waiting)) return;
-                waiting.RemoveAll(p => Admission(p, entry, alreadyQueued: true) != 0);
+                if (waiting.RemoveAll(p => Admission(p, entry, alreadyQueued: true) != 0) > 0 && waiting.Count > 0)
+                    await SendQueueCountAsync(entry);
                 if (waiting.Count == 0) _queue.Remove(entry);
             });
         foreach (var match in _matches.Values.Distinct().ToArray())

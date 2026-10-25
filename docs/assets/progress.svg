@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 408" width="900" height="408" role="img" aria-label="Progress by area: World, combat and bosses Done, Story dungeons Done, Character progress Done, Guilds Done, Survivor Battle In progress, War of Emperium Next, Tavern and smaller features Next, Remaining client tables Next, Tested with many players Next">
+  <rect x="0.5" y="0.5" width="899" height="407" rx="12" fill="#0d1117" stroke="#30363d"/>
+  <text x="32" y="48" font-family="'Segoe UI', -apple-system, Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#e6edf3">World, combat and bosses</text>
+  <rect x="292" y="36" width="426" height="12" rx="6" fill="#21262d"/>
+  <rect x="292" y="36" width="426.0" height="12" rx="6" fill="#3fb950"/>
+  <text x="738" y="48" font-family="'Segoe UI', -apple-system, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#3fb950">Done</text>
+  <text x="32" y="88" font-family="'Segoe UI', -apple-system, Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#e6edf3">Story dungeons</text>
+  <rect x="292" y="76" width="426" height="12" rx="6" fill="#21262d"/>
+  <rect x="292" y="76" width="426.0" height="12" rx="6" fill="#3fb950"/>
+  <text x="738" y="88" font-family="'Segoe UI', -apple-system, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#3fb950">Done</text>
+  <text x="32" y="128" font-family="'Segoe UI', -apple-system, Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#e6edf3">Character progress</text>
+  <rect x="292" y="116" width="426" height="12" rx="6" fill="#21262d"/>
+  <rect x="292" y="116" width="426.0" height="12" rx="6" fill="#3fb950"/>
+  <text x="738" y="128" font-family="'Segoe UI', -apple-system, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#3fb950">Done</text>
+  <text x="32" y="168" font-family="'Segoe UI', -apple-system, Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#e6edf3">Guilds</text>
+  <rect x="292" y="156" width="426" height="12" rx="6" fill="#21262d"/>
+  <rect x="292" y="156" width="426.0" height="12" rx="6" fill="#3fb950"/>
+  <text x="738" y="168" font-family="'Segoe UI', -apple-system, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#3fb950">Done</text>
+  <text x="32" y="208" font-family="'Segoe UI', -apple-system, Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#e6edf3">Survivor Battle</text>
+  <rect x="292" y="196" width="426" height="12" rx="6" fill="#21262d"/>
+  <rect x="292" y="196" width="149.1" height="12" rx="6" fill="#d8b46a"/>
+  <text x="738" y="208" font-family="'Segoe UI', -apple-system, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#d8b46a">In progress</text>
+  <text x="32" y="248" font-family="'Segoe UI', -apple-system, Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#e6edf3">War of Emperium</text>
+  <rect x="292" y="236" width="426" height="12" rx="6" fill="#21262d"/>
+  <rect x="292" y="236" width="106.5" height="12" rx="6" fill="#8b949e"/>
+  <text x="738" y="248" font-family="'Segoe UI', -apple-system, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#8b949e">Next</text>
+  <text x="32" y="288" font-family="'Segoe UI', -apple-system, Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#e6edf3">Tavern and smaller features</text>
+  <rect x="292" y="276" width="426" height="12" rx="6" fill="#21262d"/>
+  <rect x="292" y="276" width="63.9" height="12" rx="6" fill="#8b949e"/>
+  <text x="738" y="288" font-family="'Segoe UI', -apple-system, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#8b949e">Next</text>
+  <text x="32" y="328" font-family="'Segoe UI', -apple-system, Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#e6edf3">Remaining client tables</text>
+  <rect x="292" y="316" width="426" height="12" rx="6" fill="#21262d"/>
+  <rect x="292" y="316" width="42.6" height="12" rx="6" fill="#8b949e"/>
+  <text x="738" y="328" font-family="'Segoe UI', -apple-system, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#8b949e">Next</text>
+  <text x="32" y="368" font-family="'Segoe UI', -apple-system, Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#e6edf3">Tested with many players</text>
+  <rect x="292" y="356" width="426" height="12" rx="6" fill="#21262d"/>
+  <rect x="292" y="356" width="21.3" height="12" rx="6" fill="#8b949e"/>
+  <text x="738" y="368" font-family="'Segoe UI', -apple-system, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#8b949e">Next</text>
+</svg>

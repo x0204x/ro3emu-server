@@ -17,7 +17,7 @@ namespace Ro3Emu.Tests;
 /// state, chests and the match bag, the poison zone, death and revival, and the end ranking (TimedBattleService.Chicken*).
 /// The lobby is shrunk with the server's test aid (ServerOptions.ChickenTestPlayers/TeamSize).
 /// </summary>
-public sealed class SurvivorBattleTests : IAsyncLifetime
+public sealed partial class SurvivorBattleTests : IAsyncLifetime
 {
     private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-survivor-" + Guid.NewGuid().ToString("N"));
     private readonly ManualClock _clock = new(DateTimeOffset.UnixEpoch);
@@ -244,9 +244,11 @@ public sealed class SurvivorBattleTests : IAsyncLifetime
         Assert.Equal(30_000, landing.StageModuleData.StageEndTime - landing.StageModuleData.StageStartTime);
         await alice.SendGameAsync(TimedBattleService.SelectPosition, new SelectRolePositionReq { PositionX = 300, PositionY = 400 });
         Assert.Equal(0, (await Next(alice, TimedBattleService.SelectPosition, SelectRolePositionResp.Parser)).Result);
-        var picks = await Next(alice, TimedBattleService.PositionNotify, SelectRolePositionNotify.Parser);
+        // The team merges the pick from 82676; the other team gets the whole lobby in 82630 (the map shows enemy crowds).
+        var picks = await Next(alice, TimedBattleService.TeamPositionNotify, SelectRolePositionNotify.Parser);
         Assert.Equal((300, 400), (picks.Infos[Id(alice)].PositionX, picks.Infos[Id(alice)].PositionY));
-        Assert.False(picks.Infos.ContainsKey(Id(bob))); // the other team's landing is not shown
+        var lobby = await Next(bob, TimedBattleService.PositionNotify, SelectRolePositionNotify.Parser);
+        Assert.Equal((300, 400, 1), (lobby.Infos[Id(alice)].PositionX, lobby.Infos[Id(alice)].PositionY, lobby.Infos[Id(alice)].PlayerNum));
 
         var battle = await NextStageAsync(players, landing);
         Assert.Equal(1_200_000, battle.StageModuleData.StageEndTime - battle.StageModuleData.StageStartTime);

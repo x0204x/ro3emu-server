@@ -1,7 +1,7 @@
 # Developers: build RO3Emu from source and run it with this repository as its home (data\, logs\), the same program
 # players get as RO3Emu.exe in the release zip (README "Quick start"). Needs only the .NET 10 SDK: the game data export
 # is plain C# now (no Java, Node.js or decompiler).
-# usage: start.cmd [RO3Emu options] | join.cmd [address]
+# usage: scripts\start.cmd [RO3Emu options] | scripts\join.cmd [address]
 #        powershell -ExecutionPolicy Bypass -File start.ps1 [-ClientDir <folder with ro3.exe>] [-Reexport] [-Join [-Server <address>]]
 #        [any RO3Emu.exe arguments, e.g. host --public 203.0.113.10]
 param(
@@ -12,7 +12,7 @@ param(
     [Parameter(ValueFromRemainingArguments = $true)][string[]]$Rest
 )
 $ErrorActionPreference = 'Stop'
-$root = $PSScriptRoot
+$root = Split-Path $PSScriptRoot -Parent # the repository (this script lives in scripts/)
 
 function Fail($text) { Write-Host ''; Write-Host $text -ForegroundColor Red; Read-Host 'Press Enter to close'; exit 1 }
 function Run($exe, [string[]]$arguments) {
