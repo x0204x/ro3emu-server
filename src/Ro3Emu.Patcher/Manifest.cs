@@ -92,6 +92,13 @@ public sealed class LauncherRelease
     [JsonPropertyName("sha256")] public string Sha256 { get; set; } = "";
 }
 
+/// <summary>A small repository asset whose path and SHA-256 are authenticated by the signed channel.</summary>
+public sealed class ChannelAsset
+{
+    [JsonPropertyName("url")] public string Url { get; set; } = "";
+    [JsonPropertyName("sha256")] public string Sha256 { get; set; } = "";
+}
+
 /// <summary>channels/&lt;name&gt;.json — the only mutable file the launcher polls.</summary>
 public sealed class ChannelInfo
 {
@@ -103,6 +110,7 @@ public sealed class ChannelInfo
     [JsonPropertyName("published")] public DateTimeOffset Published { get; set; }
     [JsonPropertyName("expires")] public DateTimeOffset? Expires { get; set; }
     [JsonPropertyName("launcher")] public LauncherRelease? Launcher { get; set; }
+    [JsonPropertyName("news")] public ChannelAsset? News { get; set; }
 }
 
 public static class Json

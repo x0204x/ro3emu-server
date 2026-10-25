@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace Ro3Emu.Patcher;
 
-/// <summary>Reads a release repository over HTTP(S). Only <c>channels/*.json</c> and <c>news.json</c> are fetched uncached.</summary>
+/// <summary>Reads a release repository over HTTP(S). Mutable channel metadata and signed small assets are fetched uncached.</summary>
 public sealed class RepositoryClient : IDisposable
 {
     readonly HttpClient _http;
@@ -76,9 +76,13 @@ public sealed class RepositoryClient : IDisposable
         {
             throw new PatcherException("The signed update channel identity does not match the requested channel.");
         }
-        if (result.Sequence < 0)
+        if (result.Sequence < 0 || _trust.RequireSignedChannel && result.Sequence == 0)
         {
             throw new PatcherException("The update channel sequence is invalid.");
+        }
+        if (_trust.RequireSignedChannel && result.Expires is null)
+        {
+            throw new PatcherException("The signed update channel has no expiry.");
         }
         if (result.Expires is { } expires && expires <= DateTimeOffset.UtcNow)
         {
@@ -90,7 +94,10 @@ public sealed class RepositoryClient : IDisposable
     public async Task<(Manifest Manifest, byte[] Raw)> GetManifestAsync(ChannelInfo channel, CancellationToken ct)
     {
         PathRules.ValidateRelative(channel.Manifest);
-        byte[] raw = await _http.GetByteArrayAsync(channel.Manifest, ct);
+        using var response = await _http.GetAsync(channel.Manifest, ct);
+        EnsureTransport(response);
+        response.EnsureSuccessStatusCode();
+        byte[] raw = await response.Content.ReadAsByteArrayAsync(ct);
         if (!string.Equals(Hashing.Sha256Hex(raw), channel.ManifestSha256, StringComparison.OrdinalIgnoreCase))
         {
             throw new PatcherException("The release manifest is corrupt (hash mismatch). Try again in a moment.");
@@ -102,6 +109,7 @@ public sealed class RepositoryClient : IDisposable
     public async Task<byte[]> GetChunkAsync(string hash, int storedSize, Action<int>? onBytes, CancellationToken ct)
     {
         using var response = await _http.GetAsync(PathRules.ChunkRelative(hash), HttpCompletionOption.ResponseHeadersRead, ct);
+        EnsureTransport(response);
         response.EnsureSuccessStatusCode();
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
         byte[] buffer = new byte[storedSize];
@@ -125,9 +133,11 @@ public sealed class RepositoryClient : IDisposable
 
     public async Task<byte[]?> TryGetBytesAsync(string relative, CancellationToken ct)
     {
+        PathRules.ValidateRelative(relative);
         using var request = new HttpRequestMessage(HttpMethod.Get, relative);
         request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true };
         using var response = await _http.SendAsync(request, ct);
+        EnsureTransport(response);
         if (!response.IsSuccessStatusCode)
         {
             return null;
@@ -135,11 +145,25 @@ public sealed class RepositoryClient : IDisposable
         return await response.Content.ReadAsByteArrayAsync(ct);
     }
 
+    /// <summary>Fetches a channel-authenticated asset and verifies its SHA-256 before returning bytes.</summary>
+    public async Task<byte[]?> GetVerifiedBytesAsync(ChannelAsset asset, CancellationToken ct)
+    {
+        PathRules.ValidateRelative(asset.Url);
+        if (!Manifest.IsSha256Hex(asset.Sha256))
+            throw new PatcherException($"The signed asset '{asset.Url}' has an invalid SHA-256.");
+        byte[]? data = await TryGetBytesAsync(asset.Url, ct);
+        if (data is null) return null;
+        if (!string.Equals(Hashing.Sha256Hex(data), asset.Sha256, StringComparison.OrdinalIgnoreCase))
+            throw new PatcherException($"The signed asset '{asset.Url}' does not match its SHA-256.");
+        return data;
+    }
+
     async Task<byte[]?> GetMetadataAsync(string relative, bool required, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, relative);
         request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true };
         using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        EnsureTransport(response);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
             if (required) throw new PatcherException($"The update repository is missing '{relative}'.");
@@ -164,6 +188,12 @@ public sealed class RepositoryClient : IDisposable
             output.Write(buffer, 0, read);
         }
         return output.ToArray();
+    }
+
+    void EnsureTransport(HttpResponseMessage response)
+    {
+        if (_trust.RequireHttps && response.RequestMessage?.RequestUri?.Scheme != Uri.UriSchemeHttps)
+            throw new PatcherException("The update request was redirected away from HTTPS.");
     }
 
     public void Dispose()

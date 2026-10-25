@@ -13,6 +13,12 @@ public sealed class LauncherConfig
     [JsonPropertyName("server")] public string? Server { get; set; }
     [JsonPropertyName("serverName")] public string ServerName { get; set; } = "RO3Emu";
     [JsonPropertyName("registerUrl")] public string? RegisterUrl { get; set; }
+    [JsonPropertyName("websiteUrl")] public string? WebsiteUrl { get; set; }
+    [JsonPropertyName("discordUrl")] public string? DiscordUrl { get; set; }
+    [JsonPropertyName("facebookUrl")] public string? FacebookUrl { get; set; }
+    [JsonPropertyName("youtubeUrl")] public string? YoutubeUrl { get; set; }
+    [JsonPropertyName("allowedExternalHosts")] public string[] AllowedExternalHosts { get; set; } = [];
+    [JsonPropertyName("uiFixture")] public string? UiFixture { get; set; }
     [JsonPropertyName("requireHttpsRepository")] public bool RequireHttpsRepository { get; set; }
     [JsonPropertyName("requireSignedChannel")] public bool RequireSignedChannel { get; set; }
     [JsonPropertyName("trustedPublisherKeys")] public Dictionary<string, string> TrustedPublisherKeys { get; set; } = new();

@@ -4,7 +4,7 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="RO3Emu" Width="1200" Height="800" MinWidth="1080" MinHeight="720" Icon="/Assets/app.ico"
         WindowStyle="None" ResizeMode="CanResize" AllowsTransparency="False"
-        Background="#E9DDC7" WindowStartupLocation="CenterScreen">
+        Background="#E9DDC7" WindowStartupLocation="CenterScreen" StateChanged="OnWindowStateChanged">
   <shell:WindowChrome.WindowChrome>
     <shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="7" CornerRadius="0" GlassFrameThickness="0" />
   </shell:WindowChrome.WindowChrome>
@@ -77,7 +77,8 @@
                 </StackPanel>
                 <Border Grid.Column="1" Width="1" Height="44" Background="#4985684B" VerticalAlignment="Center" />
                 <Button Grid.Column="2" Style="{StaticResource WindowButton}" Content="" Click="OnMinimize" />
-                <Button Grid.Column="3" Style="{StaticResource WindowButton}" Content="" Click="OnMaximize" />
+                <Button x:Name="MaximizeButton" Grid.Column="3" Style="{StaticResource WindowButton}" Content=""
+                        AutomationProperties.Name="最大化" Click="OnMaximize" />
                 <Button Grid.Column="4" Style="{StaticResource CloseWindowButton}" Content="" Click="OnClose" />
               </Grid>
             </Grid>
@@ -101,7 +102,7 @@
                         <TextBlock Style="{StaticResource DisplayTitle}" FontSize="18" VerticalAlignment="Center" Text="公告" />
                       </StackPanel>
                       <Border Grid.Column="1" Background="#6F8651" CornerRadius="5" Padding="13,7" VerticalAlignment="Center">
-                        <TextBlock Foreground="#FFF9E9" FontSize="11" FontWeight="Bold" Text="已簽章內容" />
+                        <TextBlock x:Name="SignedContentText" Foreground="#FFF9E9" FontSize="11" FontWeight="Bold" Text="本機內容" />
                       </Border>
                     </Grid>
                     <Grid Grid.Row="1">
@@ -120,10 +121,15 @@
                         </Grid>
                       </Border>
                     </Grid>
-                    <Border x:Name="NoticesViewport" Grid.Row="3" ClipToBounds="True" Background="Transparent" Margin="2,6,0,2">
-                      <ScrollViewer VerticalScrollBarVisibility="Hidden">
-                        <ItemsControl x:Name="HomeNotices" ItemTemplate="{StaticResource NoticeCardTemplate}" />
-                      </ScrollViewer>
+                    <Border x:Name="NoticesViewport" Grid.Row="3" ClipToBounds="True" Background="Transparent" Margin="2,6,0,2"
+                            MouseEnter="OnNoticesMouseEnter" MouseLeave="OnNoticesMouseLeave">
+                      <Canvas ClipToBounds="True">
+                        <StackPanel x:Name="NoticesScrollStack" Width="{Binding ActualWidth, ElementName=NoticesViewport}">
+                          <StackPanel.RenderTransform><TranslateTransform x:Name="NoticesScrollTranslate" /></StackPanel.RenderTransform>
+                          <ItemsControl x:Name="NoticesCopyA" ItemTemplate="{StaticResource NoticeCardTemplate}" />
+                          <ItemsControl x:Name="NoticesCopyB" ItemTemplate="{StaticResource NoticeCardTemplate}" Visibility="Collapsed" />
+                        </StackPanel>
+                      </Canvas>
                     </Border>
                     <TextBlock Grid.Row="4" Style="{StaticResource DisplayTitle}" FontSize="12" Foreground="#925D30"
                                HorizontalAlignment="Center" VerticalAlignment="Center" Text="RO3EMU 更新頻道" />
@@ -243,11 +249,18 @@
             <ContentControl x:Name="ActionsPanel" Grid.Column="2" Style="{StaticResource ParchmentPanel}" Padding="34,16">
               <Grid>
                 <Grid.RowDefinitions><RowDefinition Height="35" /><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
-                <TextBlock Grid.Row="0" Style="{StaticResource DisplayTitle}" FontSize="14" HorizontalAlignment="Center" Text="復原操作" />
+                <TextBlock x:Name="QueueStatusText" Grid.Row="0" Style="{StaticResource DisplayTitle}" FontSize="14"
+                           HorizontalAlignment="Center" Text="復原操作" />
                 <Button x:Name="PrimaryButton" Grid.Row="1" Style="{StaticResource LauncherButton}" IsEnabled="False" Click="OnPrimaryAction">
                   <StackPanel Orientation="Horizontal">
                     <Image x:Name="PrimaryButtonIcon" Source="/Assets/ui/icons/download.png" Width="42" Height="42" Margin="0,0,18,0" />
                     <TextBlock x:Name="PrimaryButtonText" VerticalAlignment="Center" Text="檢查中…" />
+                  </StackPanel>
+                </Button>
+                <Button x:Name="RetryButton" Grid.Row="1" Style="{StaticResource LauncherButton}" Visibility="Collapsed" Click="OnRetry">
+                  <StackPanel Orientation="Horizontal">
+                    <Image Source="/Assets/ui/icons/repair.png" Width="42" Height="42" Margin="0,0,18,0" />
+                    <TextBlock VerticalAlignment="Center" Text="再試一次" />
                   </StackPanel>
                 </Button>
                 <Button x:Name="RepairButton" Grid.Row="2" Style="{StaticResource PrimaryLauncherButton}" IsEnabled="False" Click="OnRepair">
@@ -261,12 +274,13 @@
           </Grid>
 
           <Grid Grid.Row="3" Background="#DDF2E7D5">
-            <TextBlock x:Name="WebsiteText" Text="RO3Emu" Style="{StaticResource DisplayTitle}" FontSize="11.5" Margin="42,0,0,0" VerticalAlignment="Center" />
+            <TextBlock x:Name="WebsiteText" Text="RO3Emu" Style="{StaticResource DisplayTitle}" FontSize="11.5" Margin="42,0,0,0"
+                       VerticalAlignment="Center" MouseLeftButtonDown="OnWebsiteLink" />
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,46,0">
               <TextBlock x:Name="VersionText" Style="{StaticResource BodyText}" FontSize="11.5" Foreground="{StaticResource MutedInkBrush}" Margin="0,0,20,0" />
-              <Image Source="/Assets/ui/icons/discord.png" Width="28" Height="28" Margin="11,0" />
-              <Image Source="/Assets/ui/icons/facebook.png" Width="28" Height="28" Margin="11,0" />
-              <Image Source="/Assets/ui/icons/youtube.png" Width="28" Height="28" Margin="11,0" />
+              <Image x:Name="DiscordLink" Source="/Assets/ui/icons/discord.png" Width="28" Height="28" Margin="11,0" MouseLeftButtonDown="OnDiscordLink" />
+              <Image x:Name="FacebookLink" Source="/Assets/ui/icons/facebook.png" Width="28" Height="28" Margin="11,0" MouseLeftButtonDown="OnFacebookLink" />
+              <Image x:Name="YoutubeLink" Source="/Assets/ui/icons/youtube.png" Width="28" Height="28" Margin="11,0" MouseLeftButtonDown="OnYoutubeLink" />
             </StackPanel>
           </Grid>
 
@@ -281,7 +295,7 @@
                       <Ellipse Fill="#A6421F" /><TextBlock Text="?" FontSize="16" FontWeight="Bold" Foreground="#FFF9E9" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Grid>
                     <TextBlock Grid.Column="1" Style="{StaticResource DisplayTitle}" FontSize="17" Text="需要協助嗎？" VerticalAlignment="Center" />
-                    <Button Grid.Column="2" Style="{StaticResource HelpCircleButton}" Content="×" Margin="6,-4,0,0" Click="OnErrorHelpClose" />
+                    <Button Grid.Column="2" Style="{StaticResource HelpCloseButton}" Margin="6,-4,0,0" Click="OnErrorHelpClose" />
                   </Grid>
                   <TextBlock x:Name="ErrorHelpCause" Style="{StaticResource BodyText}" FontSize="13" Margin="0,10,6,0" />
                   <TextBlock Style="{StaticResource DisplayTitle}" FontSize="13.5" Margin="0,13,0,5" Foreground="#7A4A22" Text="建議處理方式" />

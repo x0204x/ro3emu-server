@@ -10,6 +10,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 
 namespace Ro3Emu.Launcher;
 
@@ -30,7 +31,8 @@ public partial class MainWindow : Window
     string? _remoteVersion;
     bool _busy;
     int _bannerIndex;
-    Storyboard? _motion;
+    DispatcherTimer? _bannerTimer;
+    AnimationClock? _noticesClock;
 
     public MainWindow(LauncherConfig config, string exePath)
     {
@@ -38,18 +40,29 @@ public partial class MainWindow : Window
         InitializeComponent();
         Title = config.ServerName;
         WebsiteText.Text = config.ServerName;
-        HomeNotices.ItemsSource = _notices;
+        NoticesCopyA.ItemsSource = _notices;
+        NoticesCopyB.ItemsSource = _notices;
         NewsNotices.ItemsSource = _notices;
         AddDefaultNotices();
+        ConfigureExternalLink(WebsiteText, config.WebsiteUrl, config.ServerName);
+        ConfigureExternalLink(DiscordLink, config.DiscordUrl, "Discord");
+        ConfigureExternalLink(FacebookLink, config.FacebookUrl, "Facebook");
+        ConfigureExternalLink(YoutubeLink, config.YoutubeUrl, "YouTube");
         _controller = new LauncherController(config, exePath, Post, PickFolder, () => WindowState = WindowState.Minimized);
         SourceInitialized += (_, _) => RoundCorners();
         Loaded += async (_, _) =>
         {
             ((Storyboard)Resources["EntranceStoryboard"]).Begin(this);
             SetMotionEnabled(MotionCheckBox.IsChecked == true);
-            await _controller.HandleAsync("ready");
+            if (string.IsNullOrWhiteSpace(_config.UiFixture)) await _controller.HandleAsync("ready");
+            else ApplyUiFixture(_config.UiFixture);
         };
-        Closing += (_, _) => _controller.Dispose();
+        Closing += (_, _) =>
+        {
+            _bannerTimer?.Stop();
+            _noticesClock?.Controller?.Stop();
+            _controller.Dispose();
+        };
     }
 
     void AddDefaultNotices()
@@ -142,22 +155,28 @@ public partial class MainWindow : Window
 
     void ApplyNews(JsonElement root)
     {
-        if (!root.TryGetProperty("items", out JsonElement items) || items.ValueKind != JsonValueKind.Array) return;
         var next = new List<NoticeCard>();
-        foreach (JsonElement item in items.EnumerateArray())
+        if (root.TryGetProperty("items", out JsonElement items) && items.ValueKind == JsonValueKind.Array)
         {
-            string title = String(item, "title");
-            if (string.IsNullOrWhiteSpace(title)) continue;
-            next.Add(new(
-                String(item, "tag", "公告"),
-                title,
-                String(item, "text"),
-                Accent(String(item, "color")),
-                String(item, "date")));
+            foreach (JsonElement item in items.EnumerateArray())
+            {
+                string title = String(item, "title");
+                if (string.IsNullOrWhiteSpace(title)) continue;
+                next.Add(new(
+                    String(item, "tag", "公告"),
+                    title,
+                    String(item, "text"),
+                    Accent(String(item, "color")),
+                    String(item, "date")));
+            }
         }
-        if (next.Count == 0) return;
-        _notices.Clear();
-        foreach (NoticeCard item in next) _notices.Add(item);
+        if (next.Count > 0)
+        {
+            _notices.Clear();
+            foreach (NoticeCard item in next) _notices.Add(item);
+        }
+        bool trusted = root.TryGetProperty("trusted", out JsonElement trustedElement) && trustedElement.ValueKind == JsonValueKind.True;
+        SignedContentText.Text = trusted ? "已簽章內容" : "未簽章內容";
 
         _banners.Clear();
         if (root.TryGetProperty("banners", out JsonElement banners) && banners.ValueKind == JsonValueKind.Array)
@@ -165,12 +184,14 @@ public partial class MainWindow : Window
             foreach (JsonElement banner in banners.EnumerateArray())
             {
                 string image = String(banner, "image");
-                if (Uri.TryCreate(image, UriKind.Absolute, out Uri? imageUri) && imageUri.Scheme is "http" or "https")
+                bool fixtureAsset = !string.IsNullOrWhiteSpace(_config.UiFixture) && image.StartsWith("pack://", StringComparison.OrdinalIgnoreCase);
+                if (Uri.TryCreate(image, UriKind.Absolute, out Uri? imageUri) && (imageUri.Scheme is "http" or "https" || fixtureAsset))
                     _banners.Add(new BannerCard(imageUri, NullableString(banner, "url")));
             }
         }
         _bannerIndex = 0;
         RenderBanner();
+        Dispatcher.InvokeAsync(ApplyNoticesMotion, DispatcherPriority.Loaded);
     }
 
     void RenderPhase()
@@ -181,6 +202,8 @@ public partial class MainWindow : Window
             "install" => ("安裝遊戲", true),
             "update" => ("更新遊戲", true),
             "updating" => ("暫停下載", true),
+            "queued" => ("排隊中…", false),
+            "maintenance" => ("維護中", false),
             "repair" => ("修復遊戲", true),
             "ready" or "running" => ("開始遊戲", true),
             "offline" => ("重新連線", true),
@@ -189,6 +212,20 @@ public partial class MainWindow : Window
             _ => ("重新檢查", true),
         };
         PrimaryButtonText.Text = label;
+        bool failed = _phase == "error";
+        PrimaryButton.Visibility = failed ? Visibility.Collapsed : Visibility.Visible;
+        RetryButton.Visibility = failed ? Visibility.Visible : Visibility.Collapsed;
+        RetryButton.IsEnabled = failed;
+        QueueStatusText.Text = _phase switch
+        {
+            "queued" => "正在等待伺服器佇列",
+            "maintenance" => "伺服器維護中",
+            "error" => "操作失敗",
+            _ => "復原操作",
+        };
+        bool primaryHasIcon = _phase is "install" or "update" or "repair" or "ready" or "running";
+        PrimaryButtonIcon.Visibility = primaryHasIcon ? Visibility.Visible : Visibility.Collapsed;
+        PrimaryButtonIcon.Margin = primaryHasIcon ? new Thickness(0, 0, 18, 0) : new Thickness(0);
         PrimaryButtonIcon.Source = new BitmapImage(new Uri(
             _phase is "ready" or "running" or "launching" ? "/Assets/ui/steps/step03.png" : "/Assets/ui/icons/download.png",
             UriKind.Relative));
@@ -220,6 +257,8 @@ public partial class MainWindow : Window
         "install" => "尚未安裝遊戲，需要下載完整遊戲檔案。",
         "update" => "有新的遊戲版本可以更新。",
         "updating" => "正在更新遊戲檔案…",
+        "queued" => "連線人數較多，正在等待伺服器允許進入。",
+        "maintenance" => "伺服器目前正在維護，請稍後再試。",
         "repair" => "部分遊戲檔案需要重新驗證。",
         "ready" => "已更新至最新版本，祝您遊戲愉快！",
         "offline" => "無法連線至更新伺服器。",
@@ -272,19 +311,21 @@ public partial class MainWindow : Window
         => root.TryGetProperty(name, out JsonElement value) && value.TryGetDouble(out double result) ? result : 0;
 
     async void OnPrimaryAction(object sender, RoutedEventArgs e) => await _controller.HandleAsync(_busy ? "pause" : "primary");
+    async void OnRetry(object sender, RoutedEventArgs e) => await _controller.HandleAsync("ready");
     async void OnRepair(object sender, RoutedEventArgs e) => await _controller.HandleAsync("repair");
     async void OnChangeDirectory(object sender, RoutedEventArgs e) => await _controller.HandleAsync("changeDir");
     async void OnOpenDirectory(object sender, RoutedEventArgs e) => await _controller.HandleAsync("openDir");
 
     void OnRegister(object sender, RoutedEventArgs e)
     {
-        if (Uri.TryCreate(_config.RegisterUrl, UriKind.Absolute, out Uri? uri) && uri.Scheme is "http" or "https")
-        {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
-            return;
-        }
+        if (OpenExternal(_config.RegisterUrl)) return;
         MessageBox.Show(this, "本伺服器不需要網頁註冊；第一次登入時會自動建立一般玩家帳號。", "帳號註冊", MessageBoxButton.OK, MessageBoxImage.Information);
     }
+
+    void OnWebsiteLink(object sender, MouseButtonEventArgs e) => OpenExternal(_config.WebsiteUrl);
+    void OnDiscordLink(object sender, MouseButtonEventArgs e) => OpenExternal(_config.DiscordUrl);
+    void OnFacebookLink(object sender, MouseButtonEventArgs e) => OpenExternal(_config.FacebookUrl);
+    void OnYoutubeLink(object sender, MouseButtonEventArgs e) => OpenExternal(_config.YoutubeUrl);
 
     void OnErrorHelpClick(object sender, RoutedEventArgs e) => ErrorHelpOverlay.Visibility = Visibility.Visible;
     void OnErrorHelpClose(object sender, RoutedEventArgs e) => ErrorHelpOverlay.Visibility = Visibility.Collapsed;
@@ -295,6 +336,7 @@ public partial class MainWindow : Window
         if (_banners.Count == 0) return;
         _bannerIndex = (_bannerIndex + _banners.Count - 1) % _banners.Count;
         RenderBanner();
+        RestartBannerAutoplay();
     }
 
     void OnBannerNext(object sender, RoutedEventArgs e)
@@ -302,12 +344,12 @@ public partial class MainWindow : Window
         if (_banners.Count == 0) return;
         _bannerIndex = (_bannerIndex + 1) % _banners.Count;
         RenderBanner();
+        RestartBannerAutoplay();
     }
 
     void OnBannerLink(object sender, RoutedEventArgs e)
     {
-        if (_banners.Count == 0 || !Uri.TryCreate(_banners[_bannerIndex].Link, UriKind.Absolute, out Uri? uri) || uri.Scheme is not ("http" or "https")) return;
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+        if (_banners.Count > 0) OpenExternal(_banners[_bannerIndex].Link);
     }
 
     void RenderBanner()
@@ -320,11 +362,51 @@ public partial class MainWindow : Window
         BannerPrev.Visibility = BannerNext.Visibility = _banners.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
         BannerBullets.Children.Clear();
         for (int index = 0; index < _banners.Count; index++)
-            BannerBullets.Children.Add(new Ellipse
+        {
+            var bullet = new Ellipse
             {
-                Width = 7, Height = 7, Margin = new Thickness(3, 0, 3, 0),
+                Width = 8, Height = 8, Margin = new Thickness(4, 0, 4, 0), Cursor = Cursors.Hand,
                 Fill = new SolidColorBrush(index == _bannerIndex ? Colors.White : Color.FromArgb(125, 255, 255, 255)),
-            });
+            };
+            int target = index;
+            bullet.MouseLeftButtonDown += (_, _) => SelectBanner(target);
+            BannerBullets.Children.Add(bullet);
+        }
+        ApplyBannerAutoplay();
+    }
+
+    void SelectBanner(int index)
+    {
+        if (_banners.Count == 0) return;
+        _bannerIndex = Math.Clamp(index, 0, _banners.Count - 1);
+        RenderBanner();
+        RestartBannerAutoplay();
+    }
+
+    void ApplyBannerAutoplay()
+    {
+        _bannerTimer ??= CreateBannerTimer();
+        if (_banners.Count > 1 && MotionCheckBox.IsChecked == true) _bannerTimer.Start();
+        else _bannerTimer.Stop();
+    }
+
+    DispatcherTimer CreateBannerTimer()
+    {
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+        timer.Tick += (_, _) =>
+        {
+            if (_banners.Count < 2) return;
+            _bannerIndex = (_bannerIndex + 1) % _banners.Count;
+            RenderBanner();
+        };
+        return timer;
+    }
+
+    void RestartBannerAutoplay()
+    {
+        if (_bannerTimer?.IsEnabled != true) return;
+        _bannerTimer.Stop();
+        _bannerTimer.Start();
     }
 
     void OnMotionChanged(object sender, RoutedEventArgs e)
@@ -334,50 +416,170 @@ public partial class MainWindow : Window
 
     void SetMotionEnabled(bool enabled)
     {
-        _motion?.Remove(this);
-        _motion = null;
+        PoringTranslate.BeginAnimation(TranslateTransform.XProperty, null);
+        PoringTranslate.BeginAnimation(TranslateTransform.YProperty, null);
         foreach (UIElement particle in _particles) ParticleLayer.Children.Remove(particle);
         _particles.Clear();
         PoringTranslate.X = PoringTranslate.Y = 0;
-        if (!enabled) return;
-
-        _motion = new Storyboard { RepeatBehavior = RepeatBehavior.Forever, AutoReverse = true };
-        var driftX = new DoubleAnimation(-7, 11, TimeSpan.FromSeconds(4.8));
-        var driftY = new DoubleAnimation(3, -9, TimeSpan.FromSeconds(3.9));
-        Storyboard.SetTargetName(driftX, nameof(PoringTranslate));
-        Storyboard.SetTargetProperty(driftX, new PropertyPath(TranslateTransform.XProperty));
-        Storyboard.SetTargetName(driftY, nameof(PoringTranslate));
-        Storyboard.SetTargetProperty(driftY, new PropertyPath(TranslateTransform.YProperty));
-        _motion.Children.Add(driftX);
-        _motion.Children.Add(driftY);
-        _motion.Begin(this, true);
-        CreateAmbientParticles();
+        if (enabled)
+        {
+            var ease = new SineEase { EasingMode = EasingMode.EaseInOut };
+            PoringTranslate.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, -14, TimeSpan.FromSeconds(2.9))
+            {
+                RepeatBehavior = RepeatBehavior.Forever, AutoReverse = true, EasingFunction = ease,
+            });
+            PoringTranslate.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(-12, 12, TimeSpan.FromSeconds(6.4))
+            {
+                RepeatBehavior = RepeatBehavior.Forever, AutoReverse = true, EasingFunction = ease,
+            });
+            CreateAmbientParticles();
+        }
+        ApplyNoticesMotion();
+        ApplyBannerAutoplay();
     }
 
     void CreateAmbientParticles()
     {
-        string[] sources = ["leaf1.png", "leaf2.png", "petal1.png", "petal2.png", "petal3.png", "sparkle1.png", "sparkle2.png"];
-        for (int index = 0; index < 12; index++)
+        string[] sources = ["leaf1.png", "leaf2.png", "petal1.png", "petal2.png", "petal3.png", "sparkle1.png", "sparkle2.png", "sparkle3.png", "sparkle4.png"];
+        var random = new Random(7351);
+        for (int index = 0; index < 14; index++)
         {
+            string source = sources[random.Next(sources.Length)];
+            bool rotates = source.StartsWith("leaf", StringComparison.Ordinal) || source.StartsWith("petal", StringComparison.Ordinal);
             var image = new Image
             {
-                Source = new BitmapImage(new Uri($"/Assets/ui/particles/{sources[index % sources.Length]}", UriKind.Relative)),
-                Width = 13 + index % 4 * 3,
-                Opacity = 0.2 + index % 3 * 0.1,
+                Source = new BitmapImage(new Uri($"/Assets/ui/particles/{source}", UriKind.Relative)),
+                Width = 14 + random.NextDouble() * 18,
+                Opacity = 0,
+                RenderTransformOrigin = new Point(0.5, 0.5),
             };
-            Canvas.SetLeft(image, 70 + index * 66);
-            Canvas.SetTop(image, 25 + index % 5 * 96);
+            Canvas.SetLeft(image, 40 + random.NextDouble() * 860);
+            Canvas.SetTop(image, 260 + random.NextDouble() * 360);
             ParticleLayer.Children.Add(image);
             _particles.Add(image);
             var translate = new TranslateTransform();
-            image.RenderTransform = translate;
-            var fall = new DoubleAnimation(-18, 42, TimeSpan.FromSeconds(5.4 + index % 5))
+            var rotate = new RotateTransform();
+            image.RenderTransform = new TransformGroup { Children = { rotate, translate } };
+            double seconds = 8 + random.NextDouble() * 8;
+            TimeSpan begin = TimeSpan.FromSeconds(random.NextDouble() * seconds);
+            translate.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, -(170 + random.NextDouble() * 170), TimeSpan.FromSeconds(seconds))
             {
-                RepeatBehavior = RepeatBehavior.Forever,
-                AutoReverse = true,
-                BeginTime = TimeSpan.FromMilliseconds(index * 170),
+                RepeatBehavior = RepeatBehavior.Forever, BeginTime = begin,
+            });
+            translate.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(-10 + random.NextDouble() * 5, 5 + random.NextDouble() * 8,
+                TimeSpan.FromSeconds(2.8 + random.NextDouble() * 2.6))
+            {
+                RepeatBehavior = RepeatBehavior.Forever, AutoReverse = true,
+                EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
+            });
+            var opacity = new DoubleAnimationUsingKeyFrames
+            {
+                Duration = TimeSpan.FromSeconds(seconds), RepeatBehavior = RepeatBehavior.Forever, BeginTime = begin,
             };
-            translate.BeginAnimation(TranslateTransform.YProperty, fall);
+            opacity.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromPercent(0)));
+            opacity.KeyFrames.Add(new LinearDoubleKeyFrame(0.55 + random.NextDouble() * 0.3, KeyTime.FromPercent(0.25)));
+            opacity.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromPercent(1)));
+            image.BeginAnimation(OpacityProperty, opacity);
+            if (rotates)
+            {
+                rotate.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation(0, random.Next(2) == 0 ? 360 : -360,
+                    TimeSpan.FromSeconds(9 + random.NextDouble() * 9)) { RepeatBehavior = RepeatBehavior.Forever });
+            }
+        }
+    }
+
+    void ApplyNoticesMotion()
+    {
+        NoticesScrollTranslate.ApplyAnimationClock(TranslateTransform.YProperty, null);
+        _noticesClock = null;
+        NoticesScrollTranslate.Y = 0;
+        NoticesCopyB.Visibility = Visibility.Collapsed;
+        if (MotionCheckBox.IsChecked != true) return;
+        NoticesCopyA.UpdateLayout();
+        double contentHeight = NoticesCopyA.ActualHeight;
+        double viewportHeight = NoticesViewport.ActualHeight;
+        if (contentHeight <= 0 || viewportHeight <= 0 || contentHeight <= viewportHeight + 1) return;
+        NoticesCopyB.Visibility = Visibility.Visible;
+        var animation = new DoubleAnimation(0, -contentHeight, TimeSpan.FromSeconds(contentHeight / 22d))
+        {
+            RepeatBehavior = RepeatBehavior.Forever,
+        };
+        _noticesClock = animation.CreateClock();
+        NoticesScrollTranslate.ApplyAnimationClock(TranslateTransform.YProperty, _noticesClock);
+    }
+
+    void OnNoticesMouseEnter(object sender, MouseEventArgs e) => _noticesClock?.Controller?.Pause();
+    void OnNoticesMouseLeave(object sender, MouseEventArgs e) => _noticesClock?.Controller?.Resume();
+
+    void ConfigureExternalLink(FrameworkElement element, string? url, string label)
+    {
+        element.ToolTip = label;
+        element.Cursor = IsAllowedExternal(url) ? Cursors.Hand : Cursors.Arrow;
+    }
+
+    bool OpenExternal(string? url)
+    {
+        if (!IsAllowedExternal(url) || !Uri.TryCreate(url, UriKind.Absolute, out Uri? uri)) return false;
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+        return true;
+    }
+
+    bool IsAllowedExternal(string? url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) || uri.Scheme != Uri.UriSchemeHttps) return false;
+        string[] configured = [_config.RegisterUrl ?? "", _config.WebsiteUrl ?? "", _config.DiscordUrl ?? "", _config.FacebookUrl ?? "", _config.YoutubeUrl ?? ""];
+        if (configured.Any(value => Uri.TryCreate(value, UriKind.Absolute, out Uri? known) &&
+                                    Uri.Compare(uri, known, UriComponents.AbsoluteUri, UriFormat.SafeUnescaped, StringComparison.OrdinalIgnoreCase) == 0))
+            return true;
+        return _config.AllowedExternalHosts.Any(host => string.Equals(host.Trim().TrimEnd('.'), uri.IdnHost.TrimEnd('.'), StringComparison.OrdinalIgnoreCase));
+    }
+
+    void ApplyUiFixture(string fixture)
+    {
+        Post(new { type = "settings", launcher = "2.0.0", serverName = _config.ServerName });
+        Post(new
+        {
+            type = "news",
+            trusted = true,
+            items = Enumerable.Range(1, 9).Select(index => new
+            {
+                tag = index % 3 == 0 ? "維護" : index % 2 == 0 ? "活動" : "公告",
+                title = $"介面驗收公告 {index}",
+                text = "固定測試內容，用來驗證循環捲動、留白與卡片間距。",
+                color = index % 3 == 0 ? "orange" : index % 2 == 0 ? "green" : "blue",
+                date = $"10/{index + 10:00}",
+            }).ToArray(),
+            banners = new[]
+            {
+                new { image = "pack://application:,,,/Assets/ui/background/backgroundclean.png", url = (string?)null },
+                new { image = "pack://application:,,,/Assets/ui/background/paperbackdrop.png", url = (string?)null },
+            },
+        });
+        switch (fixture.Trim().ToLowerInvariant())
+        {
+            case "queue":
+                Post(new { type = "state", phase = "queued", installed = "140080", remote = "140080", message = "目前前方還有 18 位玩家。" });
+                break;
+            case "maintenance":
+                Post(new { type = "state", phase = "maintenance", installed = "140080", remote = "140080", message = "預計 20:30 完成維護。" });
+                break;
+            case "failure":
+            case "failure-help-open":
+                Post(new { type = "state", phase = "error", installed = "140079", remote = "140080", message = "測試用：無法驗證更新檔案。" });
+                if (fixture.Contains("help", StringComparison.OrdinalIgnoreCase)) ErrorHelpOverlay.Visibility = Visibility.Visible;
+                break;
+            case "progress":
+                Post(new { type = "state", phase = "updating", installed = "140079", remote = "140080", message = "正在下載更新內容…" });
+                Post(new { type = "progress", stage = "downloading", done = 734003200L, total = 1073741824L, rate = 16777216d, eta = 20d });
+                break;
+            case "settings":
+                Post(new { type = "state", phase = "ready", installed = "140080", remote = "140080", message = (string?)null });
+                Pages.SelectedIndex = 2;
+                SettingsTab.IsChecked = true;
+                break;
+            default:
+                Post(new { type = "state", phase = "ready", installed = "140080", remote = "140080", message = (string?)null });
+                break;
         }
     }
 
@@ -388,6 +590,13 @@ public partial class MainWindow : Window
     }
     void OnMinimize(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
     void OnMaximize(object sender, RoutedEventArgs e) => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+    void OnWindowStateChanged(object? sender, EventArgs e)
+    {
+        if (MaximizeButton is null) return;
+        bool maximized = WindowState == WindowState.Maximized;
+        MaximizeButton.Content = maximized ? "\uE923" : "\uE922";
+        System.Windows.Automation.AutomationProperties.SetName(MaximizeButton, maximized ? "還原" : "最大化");
+    }
     void OnClose(object sender, RoutedEventArgs e) => Close();
     void OnDragWindow(object sender, MouseButtonEventArgs e) { if (e.LeftButton == MouseButtonState.Pressed) DragMove(); }
 

@@ -261,13 +261,54 @@ public static class Publisher
         {
             throw new InvalidOperationException($"Channel '{channelName}' has no release yet; publish the game first.");
         }
-        var channel = JsonSerializer.Deserialize<ChannelInfo>(await File.ReadAllBytesAsync(channelPath, ct), Json.Compact)!;
+        var channel = await ReadChannelForPublishAsync(repo, channelName, signing, ct);
+        await ValidateChannelReferencesAsync(repo, channel, ct);
         byte[] exe = await File.ReadAllBytesAsync(exePath, ct);
         string relative = $"launcher/{version}/Ro3EmuLauncher.exe";
         string target = Path.Combine(repo, relative);
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-        await File.WriteAllBytesAsync(target, exe, ct);
+        if (File.Exists(target))
+        {
+            if (!string.Equals(Hashing.Sha256File(target, ct: ct), Hashing.Sha256Hex(exe), StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"Launcher {version} already exists with different bytes; launcher releases are immutable.");
+        }
+        else
+        {
+            string temp = target + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            await File.WriteAllBytesAsync(temp, exe, ct);
+            File.Move(temp, target);
+        }
         channel.Launcher = new LauncherRelease { Version = version, Url = relative, Sha256 = Hashing.Sha256Hex(exe) };
+        channel.Sequence = Math.Max(channel.Sequence + 1, await NextSequenceAsync(repo, channelName, ct));
+        channel.Published = DateTimeOffset.UtcNow;
+        channel.Expires = signing is null ? null : DateTimeOffset.UtcNow.AddDays(14);
+        await WriteChannelAsync(repo, channel, signing, ct);
+        return channel;
+    }
+
+    /// <summary>Publishes a JSON news/banner document and authenticates it through the channel.</summary>
+    public static async Task<ChannelInfo> PublishNewsAsync(string repoDirectory, string channelName, string newsPath,
+        RepositorySigningOptions? signing = null, CancellationToken ct = default)
+    {
+        string repo = Path.GetFullPath(repoDirectory);
+        using var repoLock = AcquireLock(repo);
+        byte[] news = await File.ReadAllBytesAsync(newsPath, ct);
+        try { using var _ = JsonDocument.Parse(news); }
+        catch (JsonException e) { throw new InvalidDataException("News content is not valid JSON.", e); }
+
+        var channel = await ReadChannelForPublishAsync(repo, channelName, signing, ct);
+        await ValidateChannelReferencesAsync(repo, channel, ct);
+        string hash = Hashing.Sha256Hex(news);
+        string relative = $"content/news/{hash}.json";
+        string target = Path.Combine(repo, relative.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        if (!File.Exists(target))
+        {
+            string temp = target + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            await File.WriteAllBytesAsync(temp, news, ct);
+            File.Move(temp, target);
+        }
+        channel.News = new ChannelAsset { Url = relative, Sha256 = hash };
         channel.Sequence = Math.Max(channel.Sequence + 1, await NextSequenceAsync(repo, channelName, ct));
         channel.Published = DateTimeOffset.UtcNow;
         channel.Expires = signing is null ? null : DateTimeOffset.UtcNow.AddDays(14);
@@ -286,12 +327,12 @@ public static class Publisher
         {
             throw new InvalidOperationException($"Channel '{channelName}' does not exist.");
         }
-        var channel = JsonSerializer.Deserialize<ChannelInfo>(await File.ReadAllBytesAsync(path, ct), Json.Compact)
-            ?? throw new InvalidDataException($"Channel '{channelName}' is empty.");
+        var channel = await ReadChannelForPublishAsync(repo, channelName, signing, ct);
         if (!string.Equals(channel.Channel, channelName, StringComparison.Ordinal))
         {
             throw new InvalidDataException($"Channel identity '{channel.Channel}' does not match '{channelName}'.");
         }
+        await ValidateChannelReferencesAsync(repo, channel, ct);
         channel.Sequence = Math.Max(1, checked(channel.Sequence + 1));
         channel.Published = DateTimeOffset.UtcNow;
         channel.Expires = DateTimeOffset.UtcNow.AddDays(14);
@@ -317,28 +358,88 @@ public static class Publisher
     static async Task WriteChannelAsync(string repo, ChannelInfo channel, RepositorySigningOptions? signing, CancellationToken ct)
     {
         string path = Path.Combine(repo, "channels", channel.Channel + ".json");
-        if (channel.Launcher is null && File.Exists(path))
+        if (File.Exists(path))
         {
-            // A game release keeps the launcher release the channel already points at.
+            string existingSignaturePath = path + ".sig";
+            if (File.Exists(existingSignaturePath) && signing is null)
+                throw new InvalidOperationException($"Channel '{channel.Channel}' is signed; a signing key is required to update it.");
+            // A game release keeps auxiliary releases the channel already points at, after verifying their bytes.
             var existing = JsonSerializer.Deserialize<ChannelInfo>(await File.ReadAllBytesAsync(path, ct), Json.Compact);
-            channel.Launcher = existing?.Launcher;
+            if (existing is not null)
+            {
+                await ValidateChannelReferencesAsync(repo, existing, ct);
+                channel.Launcher ??= existing.Launcher;
+                channel.News ??= existing.News;
+            }
         }
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         string temp = path + ".tmp";
         byte[] raw = JsonSerializer.SerializeToUtf8Bytes(channel, Json.Indented);
         await File.WriteAllBytesAsync(temp, raw, ct);
-        File.Move(temp, path, overwrite: true);
         string signaturePath = path + ".sig";
         if (signing is not null)
         {
             byte[] signature = RepositorySignatures.Sign(raw, signing);
             string signatureTemp = signaturePath + ".tmp";
             await File.WriteAllBytesAsync(signatureTemp, signature, ct);
+            // Publish the new signature first. A reader in the tiny gap rejects the pair instead of accepting
+            // unauthenticated metadata; publishing the channel second makes the pair valid atomically per file.
             File.Move(signatureTemp, signaturePath, overwrite: true);
+            File.Move(temp, path, overwrite: true);
         }
-        else if (File.Exists(signaturePath))
+        else
         {
-            File.Delete(signaturePath);
+            File.Move(temp, path, overwrite: true);
+            if (File.Exists(signaturePath)) File.Delete(signaturePath);
         }
+    }
+
+    static async Task<ChannelInfo> ReadChannelForPublishAsync(string repo, string channelName,
+        RepositorySigningOptions? signing, CancellationToken ct)
+    {
+        string path = Path.Combine(repo, "channels", channelName + ".json");
+        if (!File.Exists(path)) throw new InvalidOperationException($"Channel '{channelName}' does not exist.");
+        byte[] raw = await File.ReadAllBytesAsync(path, ct);
+        if (signing is not null && File.Exists(path + ".sig"))
+        {
+            using var rsa = RSA.Create();
+            rsa.ImportFromPem(signing.PrivateKeyPem);
+            byte[] signature = await File.ReadAllBytesAsync(path + ".sig", ct);
+            RepositorySignatures.Verify(raw, signature, new RepositoryTrustOptions
+            {
+                RequireSignedChannel = true,
+                TrustedPublicKeys = new Dictionary<string, string> { [signing.KeyId] = rsa.ExportSubjectPublicKeyInfoPem() },
+            });
+        }
+        var channel = JsonSerializer.Deserialize<ChannelInfo>(raw, Json.Compact)
+            ?? throw new InvalidDataException($"Channel '{channelName}' is empty.");
+        if (!string.Equals(channel.Channel, channelName, StringComparison.Ordinal))
+            throw new InvalidDataException($"Channel identity '{channel.Channel}' does not match '{channelName}'.");
+        return channel;
+    }
+
+    static async Task ValidateChannelReferencesAsync(string repo, ChannelInfo channel, CancellationToken ct)
+    {
+        await ValidateReferenceAsync(repo, channel.Manifest, channel.ManifestSha256, "manifest", ct);
+        if (channel.Launcher is { } launcher)
+            await ValidateReferenceAsync(repo, launcher.Url, launcher.Sha256, "launcher", ct);
+        if (channel.News is { } news)
+            await ValidateReferenceAsync(repo, news.Url, news.Sha256, "news", ct);
+    }
+
+    static async Task ValidateReferenceAsync(string repo, string relative, string expectedHash, string kind, CancellationToken ct)
+    {
+        PathRules.ValidateRelative(relative);
+        if (!Manifest.IsSha256Hex(expectedHash)) throw new InvalidDataException($"Channel {kind} hash is invalid.");
+        string path = Path.Combine(repo, relative.Replace('/', Path.DirectorySeparatorChar));
+        if (!File.Exists(path)) throw new InvalidDataException($"Channel {kind} file '{relative}' is missing.");
+        await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 20, FileOptions.SequentialScan);
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        byte[] buffer = new byte[1 << 20];
+        int read;
+        while ((read = await stream.ReadAsync(buffer, ct)) > 0) hash.AppendData(buffer, 0, read);
+        string actual = Convert.ToHexStringLower(hash.GetHashAndReset());
+        if (!string.Equals(actual, expectedHash, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException($"Channel {kind} file '{relative}' does not match its hash.");
     }
 }

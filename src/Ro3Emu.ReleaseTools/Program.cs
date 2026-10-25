@@ -28,6 +28,12 @@ try
                 new RepositorySigningOptions(args[6], await File.ReadAllTextAsync(args[5])));
             Console.WriteLine($"已發布啟動器 {published.Launcher!.Version}，頻道序號 {published.Sequence}");
             return 0;
+        case "publish-news":
+            if (args.Length != 6) throw new ArgumentException("publish-news 需要 <repo> <channel> <news.json> <private.pem> <key-id>");
+            var news = await Publisher.PublishNewsAsync(args[1], args[2], args[3],
+                new RepositorySigningOptions(args[5], await File.ReadAllTextAsync(args[4])));
+            Console.WriteLine($"已發布簽章公告，頻道 {news.Channel}，序號 {news.Sequence}");
+            return 0;
         default:
             throw new ArgumentException($"未知命令：{args[0]}");
     }
@@ -65,4 +71,5 @@ static void Usage() => Console.Error.WriteLine("""
       keygen <輸出資料夾> <key-id>
       sign-channel <repo> <channel> <private.pem> <key-id>
       publish-launcher <repo> <channel> <exe> <version> <private.pem> <key-id>
+      publish-news <repo> <channel> <news.json> <private.pem> <key-id>
     """);

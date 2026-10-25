@@ -19,7 +19,7 @@ This page explains how to host your own patch repository and publish to it.
   - `manifests/`: one immutable manifest per published version;
   - `chunks/`: the content-addressed, compressed data chunks;
   - `launcher/<version>/Ro3EmuLauncher.exe`: published launcher builds for self-update;
-  - optional `news.json` for the launcher page:
+  - `content/news/<sha256>.json`: optional immutable launcher notices and banners, referenced by the signed Channel:
     `{ "items": [ { "tag", "color": "blue|green|orange|red", "title", "text" } ],
        "banners": [ { "image": "https://...", "url": "https://..." } ] }`.
 - The launcher pings `<server>/ro3emu/status` (player count only) for the online indicator.
@@ -40,6 +40,9 @@ local repository.
   "serverName": "RO3Emu",
   // Optional. If omitted, Register explains that accounts are created on first login.
   "registerUrl": "https://account.example.com/register",
+  "websiteUrl": "https://www.example.com/",
+  "discordUrl": "https://discord.gg/example",
+  "allowedExternalHosts": [ "www.example.com", "discord.gg" ],
   "requireHttpsRepository": true,
   "requireSignedChannel": true,
   "trustedPublisherKeys": {
@@ -68,8 +71,10 @@ dotnet run --project src/Ro3Emu.ReleaseTools -- sign-channel <repo dir> <channel
 ```
 
 The launcher verifies the detached signature before reading the channel. The signed channel authenticates the
-manifest hash and launcher self-update hash, has an expiry, and carries a monotonically increasing sequence. Each
-launcher remembers the highest accepted sequence and rejects a rollback.
+manifest, launcher self-update and news hashes, has an expiry, and carries a positive monotonically increasing
+sequence. Each launcher remembers the highest accepted sequence and rejects a rollback. A public release also rejects
+an HTTPS-to-HTTP redirect. Banner links open only when their HTTPS host is explicitly listed in
+`allowedExternalHosts`; the launcher-owned footer and registration URLs are allowed by exact configured URL.
 
 ## Releasing
 
@@ -102,9 +107,19 @@ dotnet publish src/Ro3Emu.Launcher -c Release -o <out>
 dotnet run --project src/Ro3Emu.ReleaseTools -- publish-launcher <repo dir> <channel> <out>\Ro3EmuLauncher.exe <version> <private.pem> <key-id>
 ```
 
+Publish notices and banner metadata through the same signed Channel instead of copying an unsigned `news.json` to
+the repository root:
+
+```
+dotnet run --project src/Ro3Emu.ReleaseTools -- publish-news <repo dir> <channel> <news.json> <private.pem> <key-id>
+```
+
+The publisher validates every existing manifest, launcher and news reference before it signs a new Channel. It also
+refuses to overwrite an existing launcher version with different bytes; publish changed bytes under a new version.
+
 ### Upload
 
-Copy `chunks/`, `manifests/` and `launcher/` to the web server first and `channels/` last, so a player never sees a
+Copy `chunks/`, `manifests/`, `launcher/` and `content/` to the web server first and `channels/` last, so a player never sees a
 channel that points at files that are not there yet. Any method works (rsync, scp, tar over ssh, an object-storage
 sync). Also put a copy of `Ro3EmuLauncher.exe` at the repository root (for example
 `https://patch.example.com/ro3/Ro3EmuLauncher.exe`) as the download link for new players.
@@ -117,3 +132,6 @@ sync). Also put a copy of `Ro3EmuLauncher.exe` at the repository root (for examp
   The destination `src/Ro3Emu.Launcher/PrivateAssets/` is gitignored.
 - A `launcher.json` beside the exe overrides the built-in one (for example a local repository such as
   `http://localhost:8790/`).
+- `uiFixture` is a local visual-test switch (`home`, `progress`, `queue`, `maintenance`, `failure-help-open` or
+  `settings`). Never put it in a player release configuration: fixture mode intentionally does not contact a patch
+  repository or start the game.

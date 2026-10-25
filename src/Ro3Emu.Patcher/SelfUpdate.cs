@@ -31,9 +31,8 @@ public static class SelfUpdate
         {
             return false;
         }
-        PathRules.ValidateRelative(release.Url);
-        byte[]? data = await repo.TryGetBytesAsync(release.Url, ct);
-        if (data is null || !string.Equals(Hashing.Sha256Hex(data), release.Sha256, StringComparison.OrdinalIgnoreCase))
+        byte[]? data = await repo.GetVerifiedBytesAsync(new ChannelAsset { Url = release.Url, Sha256 = release.Sha256 }, ct);
+        if (data is null)
         {
             return false; // a broken launcher release must never replace a working one
         }

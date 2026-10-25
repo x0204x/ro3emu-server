@@ -29,15 +29,17 @@ REA evidence:
 |---|---|---|
 | 1200×800 WPF shell over a 1536×1024 design surface | `Ro3Emu.Launcher/MainWindow.xaml` | Built, runtime-captured and compared with the official window in the same session |
 | Home, news and settings navigation | pure-WPF tabs and code-behind | Runtime-captured |
-| Registration link, banner slot, notice cards, entrance motion, drifting hero and particles | pure-WPF controls and animations | Runtime-captured; remote banner feed remains repository-controlled |
-| Rounded progress, recovery actions and error-help panel | pure-WPF state projection | Progress geometry compared with the live official checking state; failure overlay is synthetic-state only |
+| Registration link, 5-second banner carousel, clickable bullets, notice cards and 22 px/s hover-paused loop | pure-WPF controls and animations | Static behavior mapping plus deterministic local fixtures; current full DPI pixel matrix is pending |
+| Fixed-seed ambient particles and poring drift | 14 sprites, seed 7351, matching observed timing/easing constants | Static behavior mapping plus local fixture runtime; video-cycle comparison is pending |
+| Rounded progress, queue/maintenance/retry states, recovery actions and error-help panel | pure-WPF state projection | Progress geometry compared with the live official checking state; deterministic synthetic states are available |
 | Install, verify and ready steps | state projection from `LauncherController` | Synthetic/static state paths |
 | Install, update, repair, pause/resume and launch | existing `Ro3Emu.Patcher` plus `GameStarter` | Patcher tests; live player test pending |
 | SHA-256 file/chunk validation and journaled commit | `Updater` | Automated tests |
 | Publisher-authenticated channel | `RepositoryTrust` and detached RSA-PSS/SHA-256 signature | Automated tests |
-| Signed self-update metadata | launcher hash and URL authenticated by signed Channel | Automated trust-chain tests; live self-update pending |
-| Channel expiry and rollback resistance | `ChannelInfo.Expires/Sequence` plus per-user accepted sequence | Automated expiry test; live rollback pending |
-| Traditional Chinese UI | WPF labels and `Microsoft JhengHei UI` fallback | Runtime-captured |
+| Signed news and self-update metadata | content-addressed hashes and URLs authenticated by signed Channel | Automated tamper and self-update swap tests; live process restart pending |
+| Channel expiry and rollback resistance | positive `ChannelInfo.Sequence`, required expiry and per-user accepted sequence | Automated trust tests; live rollback pending |
+| Publisher continuity | validates existing references, refuses same-version launcher overwrite and signs Channel last | Automated negative tests |
+| Traditional Chinese UI | WPF labels with the observed YaHei geometry and JhengHei fallback | Runtime-captured |
 | Private artwork without public redistribution | local import script and gitignored `PrivateAssets` | Build verified |
 
 ## Evidence boundaries
@@ -49,6 +51,9 @@ REA evidence:
   actions and footer positions match. The rebuilt copy reached its offline/reconnect state without starting the game.
 - **Content boundary:** the frame is intentionally reproduced, while account URLs, news, banners, localization and
   release metadata belong to RO3Emu and must not impersonate the official service.
+- **Automated verification:** the isolated patcher suite currently has 32 passing, 0 failing and 0 skipped tests,
+  including signed install/update/repair, signed-news tamper rejection, self-update swap/tamper handling and publisher
+  refusal cases. This is synthetic/local evidence, not a public CDN or player-login acceptance.
 - **Not yet accepted:** an automated pixel-difference threshold across every dynamic state, a signed production
   repository, self-update over the production host, and end-to-end player install/update/repair/login.
 - **Out of scope:** official Asia account enrollment, publisher anti-cheat identity and official service credentials.

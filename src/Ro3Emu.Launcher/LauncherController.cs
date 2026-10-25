@@ -51,7 +51,6 @@ public sealed class LauncherController : IDisposable
                 {
                     _started = true;
                     _ = PingLoopAsync();
-                    _ = LoadNewsAsync();
                 }
                 await CheckAsync();
                 break;
@@ -101,6 +100,7 @@ public sealed class LauncherController : IDisposable
             _channel = check.Channel;
             if (_config.RequireSignedChannel) _settings.AcceptChannelSequence(_channel.Channel, _channel.Sequence);
             _installed = check.Installed;
+            await LoadNewsAsync();
             if (_channel.Launcher is { } release && SelfUpdate.IsNewer(release.Version, _version))
             {
                 PostState("checking", $"正在將啟動器更新至 {release.Version}…");
@@ -235,18 +235,22 @@ public sealed class LauncherController : IDisposable
         }
     }
 
-    /// <summary>news.json in the repository root: { "items": [ { tag, color, title, text } ] }.</summary>
+    /// <summary>Loads only the content-addressed news document authenticated by the current channel.</summary>
     async Task LoadNewsAsync()
     {
+        if (_channel?.News is not { } release) return;
         try
         {
-            byte[]? bytes = await _repo.TryGetBytesAsync("news.json", _life.Token);
+            byte[]? bytes = await _repo.GetVerifiedBytesAsync(release, _life.Token);
             if (bytes is null) return;
             using var json = JsonDocument.Parse(bytes);
-            if (json.RootElement.TryGetProperty("items", out var items))
+            bool hasItems = json.RootElement.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array;
+            bool hasBanners = json.RootElement.TryGetProperty("banners", out var bannerItems) && bannerItems.ValueKind == JsonValueKind.Array;
+            if (hasItems || hasBanners)
             {
-                JsonElement? banners = json.RootElement.TryGetProperty("banners", out var bannerItems) ? bannerItems.Clone() : null;
-                _post(new { type = "news", items = items.Clone(), banners });
+                JsonElement? notices = hasItems ? items.Clone() : null;
+                JsonElement? banners = hasBanners ? bannerItems.Clone() : null;
+                _post(new { type = "news", items = notices, banners, trusted = _config.RequireSignedChannel });
             }
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or PatcherException) { }

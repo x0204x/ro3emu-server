@@ -3,8 +3,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <Application.Resources>
     <ResourceDictionary>
-      <FontFamily x:Key="DisplayFont">/Assets/fonts/#Roboto Medium, Microsoft JhengHei UI</FontFamily>
-      <FontFamily x:Key="BodyFont">Segoe UI, Microsoft JhengHei UI</FontFamily>
+      <FontFamily x:Key="DisplayFont">/Assets/fonts/#Roboto Medium, Microsoft YaHei UI, Microsoft JhengHei UI</FontFamily>
+      <FontFamily x:Key="BodyFont">Segoe UI, Microsoft YaHei UI, Microsoft JhengHei UI</FontFamily>
       <SolidColorBrush x:Key="InkBrush" Color="#493B2E" />
       <SolidColorBrush x:Key="MutedInkBrush" Color="#776958" />
       <SolidColorBrush x:Key="GoldBrush" Color="#B78A4A" />
@@ -150,9 +150,10 @@
 
       <Style x:Key="SettingsCheckBox" TargetType="CheckBox">
         <Setter Property="FontFamily" Value="{DynamicResource BodyFont}" />
-        <Setter Property="FontSize" Value="15" />
+        <Setter Property="FontSize" Value="17" />
+        <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
-        <Setter Property="Margin" Value="0,6" />
+        <Setter Property="Margin" Value="0,10" />
       </Style>
 
       <Style x:Key="BannerArrowButton" TargetType="Button">
@@ -170,7 +171,26 @@
         <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Grid>
           <Ellipse x:Name="Disc" Fill="{TemplateBinding Background}" Stroke="{TemplateBinding BorderBrush}" StrokeThickness="1.5" />
           <TextBlock Text="?" FontFamily="{DynamicResource DisplayFont}" FontSize="15" FontWeight="Bold" Foreground="{TemplateBinding Foreground}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,1" />
-        </Grid><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Disc" Property="Fill" Value="#F3E3C4" /></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+        </Grid><ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Disc" Property="Fill" Value="#F3E3C4" /></Trigger>
+          <Trigger Property="IsPressed" Value="True"><Setter TargetName="Disc" Property="Fill" Value="#E6D0A8" /></Trigger>
+        </ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+      </Style>
+
+      <Style x:Key="HelpCloseButton" TargetType="Button">
+        <Setter Property="Width" Value="30" /><Setter Property="Height" Value="30" /><Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Foreground" Value="#7A4A22" /><Setter Property="Background" Value="Transparent" /><Setter Property="BorderThickness" Value="0" />
+        <Setter Property="FontFamily" Value="Segoe MDL2 Assets" /><Setter Property="FontSize" Value="12.5" />
+        <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+          <Border x:Name="CloseDisc" Background="{TemplateBinding Background}" CornerRadius="15">
+            <TextBlock Text="&#xE8BB;" FontFamily="{TemplateBinding FontFamily}" FontSize="{TemplateBinding FontSize}"
+                       Foreground="{TemplateBinding Foreground}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="CloseDisc" Property="Background" Value="#24A6421F" /></Trigger>
+            <Trigger Property="IsPressed" Value="True"><Setter TargetName="CloseDisc" Property="Background" Value="#40A6421F" /></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate></Setter.Value></Setter>
       </Style>
 
       <ImageBrush x:Key="ButtonCreamBrush" ImageSource="/Assets/ui/buttons/buttoncream.png" Stretch="Fill" />
