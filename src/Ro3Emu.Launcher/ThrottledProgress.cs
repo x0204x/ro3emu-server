@@ -22,7 +22,10 @@ public sealed class ThrottledProgress(Action<UpdateProgress> show) : IProgress<U
             if (_stage == value.Stage && now - _lastShown < 150) return;
             _stage = value.Stage;
             _lastShown = now;
+            // Updater workers report in parallel.  Keep the callback inside the gate so
+            // stateful consumers (speed sampling, logging and UI posting) see one ordered
+            // stream and cannot race each other.
+            show(value);
         }
-        show(value);
     }
 }

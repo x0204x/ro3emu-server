@@ -150,6 +150,18 @@ Bind the host's current Tailscale IP, not `0.0.0.0`; the tool deliberately rejec
 publisher private key on the release-management computer, never in this served directory. This HTTP option is only
 for a private tailnet with a signed Channel; an Internet-facing repository must use HTTPS on a maintained web server.
 
+## Player diagnostics
+
+The download percentage covers compressed repository chunks. After it completes, the launcher changes to
+**Decompress, assemble and verify files** while it builds and hashes the full installed client; this second phase can
+write substantially more data than the download size. A phase that has not actually finished is displayed at no more
+than 99%, and the current relative file name is shown while assembling.
+
+`launcher.log` is kept beside `RO3Launcher.exe` (rotated to `launcher.log.old` at 2 MB). It records phase changes,
+bounded progress samples, the selected client directory, exceptions and the exact game PID/exit code. Ask a player
+for this file when an update or launch appears stuck; it contains no account password. While that PID is alive the
+Start button is disabled, and it returns to Ready after a normal game exit.
+
 ## Development
 
 - The launcher UI is pure WPF; it does not require WebView2.

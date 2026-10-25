@@ -134,14 +134,22 @@ public partial class MainWindow : Window
         string stage = String(root, "stage");
         long done = Long(root, "done");
         long total = Long(root, "total");
+        string file = String(root, "file");
         double rate = Double(root, "rate");
         double eta = Double(root, "eta");
-        double percent = total > 0 ? Math.Clamp(done * 100d / total, 0, 100) : 0;
+        double rawPercent = total > 0 ? Math.Clamp(done * 100d / total, 0, 100) : 0;
+        // A full download or assembly byte count is not the end of the update: the last
+        // chunk may still be getting decompressed, hashed and committed.  Reserve 100%
+        // for the updater's final committing report so the UI never claims completion early.
+        bool completed = stage.Equals("committing", StringComparison.OrdinalIgnoreCase)
+            && total > 0 && done >= total;
+        double percent = completed ? 100 : Math.Min(99, Math.Floor(rawPercent));
         UpdateProgress.Visibility = Visibility.Visible;
         ProgressDetails.Visibility = Visibility.Visible;
         UpdateProgress.Value = percent;
         ProgressPercentText.Text = percent.ToString("0", CultureInfo.InvariantCulture) + "%";
-        PackageText.Text = StageName(stage);
+        PackageText.Text = string.IsNullOrWhiteSpace(file) ? StageName(stage)
+            : $"{StageName(stage)} · {System.IO.Path.GetFileName(file)}";
         TransferText.Text = total > 0
             ? $"{Size(done)} / {Size(total)}" + (rate > 0 ? $"  ·  {Size((long)rate)}/s  ·  剩餘 {Eta(eta)}" : "")
             : "";
@@ -207,7 +215,8 @@ public partial class MainWindow : Window
             "queued" => ("排隊中…", false),
             "maintenance" => ("維護中", false),
             "repair" => ("修復遊戲", true),
-            "ready" or "running" or "offline-ready" => ("開始遊戲", true),
+            "ready" or "offline-ready" => ("開始遊戲", true),
+            "running" => ("遊戲執行中", false),
             "offline" => ("重新連線", true),
             "error" => ("再試一次", true),
             "launching" => ("啟動中…", false),
@@ -234,7 +243,8 @@ public partial class MainWindow : Window
             UriKind.Relative));
         PrimaryButton.IsEnabled = enabled;
         RepairButtonText.Text = _phase == "offline-ready" ? "重新檢查更新" : "修復遊戲";
-        RepairButton.IsEnabled = !_busy && (_installedVersion is not null || _phase == "offline-ready") && _phase is not "launching";
+        RepairButton.IsEnabled = !_busy && (_installedVersion is not null || _phase == "offline-ready")
+            && _phase is not ("launching" or "running");
         int step = _phase switch
         {
             "ready" or "running" or "launching" or "offline-ready" => 3,
@@ -276,7 +286,7 @@ public partial class MainWindow : Window
     {
         "scanning" => "檢查檔案",
         "downloading" => "下載中",
-        "assembling" => "組裝檔案",
+        "assembling" => "解壓、組裝與驗證檔案",
         "verifying" => "驗證中",
         "committing" => "套用更新",
         _ => "處理中",

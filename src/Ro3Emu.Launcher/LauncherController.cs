@@ -23,12 +23,17 @@ public sealed class LauncherController : IDisposable
     readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(5) };
     readonly string _version = typeof(LauncherController).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
     readonly CancellationTokenSource _life = new();
+    readonly Lock _logGate = new();
+    readonly string _logPath;
     InstallLayout _layout;
     ChannelInfo? _channel;
     LocalState? _installed;
     string _phase = "checking";
     CancellationTokenSource? _work;
+    Process? _game;
     bool _started;
+    UpdateStage? _loggedStage;
+    DateTimeOffset _lastProgressLog;
 
     public LauncherController(LauncherConfig config, string exePath, Action<object> post, Func<string, string?> pickFolder, Action minimize)
     {
@@ -40,9 +45,11 @@ public sealed class LauncherController : IDisposable
         _minimize = minimize;
         _repo = new RepositoryClient(new Uri(config.Repository), config.RepositoryTrust);
         string executableDirectory = Path.GetDirectoryName(exePath)!;
+        _logPath = Path.Combine(executableDirectory, "launcher.log");
         _layout = new InstallLayout(_settings.ClientDirectory
             ?? config.ResolveClientDirectory(executableDirectory)
             ?? executableDirectory);
+        Log($"Launcher {_version} started; client={_layout.GameDirectory}");
     }
 
     public async Task HandleAsync(string cmd)
@@ -60,7 +67,8 @@ public sealed class LauncherController : IDisposable
                 break;
             case "primary":
                 if (_work != null) return;
-                if (_phase is "ready" or "running" or "offline-ready") await PlayAsync();
+                if (_phase == "running") return;
+                if (_phase is "ready" or "offline-ready") await PlayAsync();
                 else if (_phase is "install" or "update" or "repair") await UpdateAsync(verifyAll: _phase == "repair");
                 else await CheckAsync();
                 break;
@@ -91,6 +99,7 @@ public sealed class LauncherController : IDisposable
     void PostState(string phase, string? message = null)
     {
         _phase = phase;
+        Log($"State={phase}" + (string.IsNullOrWhiteSpace(message) ? "" : $"; {message}"));
         _post(new { type = "state", phase, installed = _installed?.Version, remote = _channel?.Version, message });
     }
 
@@ -126,6 +135,7 @@ public sealed class LauncherController : IDisposable
         }
         catch (Exception e) when (e is PatcherException or HttpRequestException or TaskCanceledException or IOException or JsonException)
         {
+            Log("Update check failed", e);
             _installed = new Updater(_layout, _repo).LoadState();
             // Offline but installed: the game can still start (the update server and the game server are separate).
             if (_installed is not null)
@@ -151,26 +161,39 @@ public sealed class LauncherController : IDisposable
         var progress = new ThrottledProgress(p =>
         {
             var (rate, eta) = p.Stage == UpdateStage.Downloading ? meter.Sample(p.BytesDone, p.BytesTotal) : (0, 0);
-            _post(new { type = "progress", stage = p.Stage.ToString().ToLowerInvariant(), done = p.BytesDone, total = p.BytesTotal, rate, eta });
+            _post(new { type = "progress", stage = p.Stage.ToString().ToLowerInvariant(), done = p.BytesDone,
+                total = p.BytesTotal, file = p.File, rate, eta });
+            var now = DateTimeOffset.UtcNow;
+            if (_loggedStage != p.Stage || now - _lastProgressLog >= TimeSpan.FromSeconds(5)
+                || p.BytesTotal > 0 && p.BytesDone >= p.BytesTotal)
+            {
+                _loggedStage = p.Stage;
+                _lastProgressLog = now;
+                Log($"Update {p.Stage}: {p.BytesDone}/{p.BytesTotal}" +
+                    (string.IsNullOrWhiteSpace(p.File) ? "" : $"; file={p.File}"));
+            }
         });
         try
         {
             var updater = new Updater(_layout, _repo);
             var channel = _channel;
             var token = _work.Token;
-            await Task.Run(() => updater.UpdateAsync(channel, verifyAll, progress, token));
+            var summary = await Task.Run(() => updater.UpdateAsync(channel, verifyAll, progress, token));
+            Log($"Update completed: version={summary.Version}; changed={summary.ChangedFiles}; deleted={summary.DeletedFiles}; downloaded={summary.DownloadedBytes}; reused={summary.ReusedBytes}");
             _work.Dispose();
             _work = null;
             await CheckAsync();
         }
         catch (OperationCanceledException)
         {
+            Log("Update paused by cancellation");
             _work?.Dispose();
             _work = null;
             PostState(_installed is null ? "install" : "update", "下載已暫停；已下載的內容會保留，之後可繼續。");
         }
         catch (Exception e)
         {
+            Log("Update failed", e);
             _work?.Dispose();
             _work = null;
             PostState("error", $"更新失敗：{e.Message}");
@@ -185,17 +208,60 @@ public sealed class LauncherController : IDisposable
         try
         {
             if (launch is null) throw new PatcherException("No packaged client is installed.");
-            string? failure = await GameStarter.StartAsync(_layout.GameDirectory, launch);
-            if (failure is null)
+            if (_game is { HasExited: false }) return;
+            _game?.Dispose();
+            _game = null;
+            var started = await GameStarter.StartAsync(_layout.GameDirectory, launch);
+            if (started.Process is { } game)
             {
+                _game = game;
+                Log($"Game running: pid={game.Id}");
                 PostState("running");
                 _minimize();
+                _ = ObserveGameAsync(game);
             }
-            else PostState("repair", $"遊戲未能啟動：{failure}。");
+            else PostState("repair", $"遊戲未能啟動：{started.Failure}。");
         }
         catch (Exception e)
         {
+            Log("Game launch failed", e);
             PostState("error", $"啟動失敗：{e.Message}");
+        }
+    }
+
+    async Task ObserveGameAsync(Process game)
+    {
+        try
+        {
+            await game.WaitForExitAsync(_life.Token);
+            int exitCode = game.ExitCode;
+            Log($"Game exited: pid={game.Id}; code={exitCode}");
+            if (!ReferenceEquals(_game, game) || _life.IsCancellationRequested)
+            {
+                game.Dispose();
+                return;
+            }
+            _game = null;
+            game.Dispose();
+            if (exitCode == 0)
+                PostState(_installed is null ? "offline-ready" : "ready", "遊戲已關閉，可以再次啟動。");
+            else
+                PostState("repair", $"遊戲意外結束（代碼 {exitCode}），建議先執行修復遊戲。");
+        }
+        catch (OperationCanceledException) when (_life.IsCancellationRequested)
+        {
+            if (ReferenceEquals(_game, game)) _game = null;
+            game.Dispose();
+        }
+        catch (Exception e)
+        {
+            Log("Game process monitoring failed", e);
+            if (ReferenceEquals(_game, game))
+            {
+                _game = null;
+                game.Dispose();
+                if (!_life.IsCancellationRequested) PostState("repair", "無法追蹤遊戲程序，請重新檢查或修復遊戲。");
+            }
         }
     }
 
@@ -274,6 +340,23 @@ public sealed class LauncherController : IDisposable
     {
         _life.Cancel();
         _work?.Cancel();
+        Log("Launcher closed");
+    }
+
+    void Log(string message, Exception? error = null)
+    {
+        try
+        {
+            lock (_logGate)
+            {
+                if (File.Exists(_logPath) && new FileInfo(_logPath).Length > 2 * 1024 * 1024)
+                    File.Move(_logPath, _logPath + ".old", overwrite: true);
+                File.AppendAllText(_logPath, $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff zzz} {message}{Environment.NewLine}" +
+                    (error is null ? "" : error + Environment.NewLine));
+            }
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 
     /// <summary>Download speed over the last ~5 seconds and the remaining seconds at that speed.</summary>
