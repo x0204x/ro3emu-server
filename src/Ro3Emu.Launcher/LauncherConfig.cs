@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Ro3Emu.Patcher;
 
 namespace Ro3Emu.Launcher;
 
@@ -11,6 +12,10 @@ public sealed class LauncherConfig
     [JsonPropertyName("channel")] public string Channel { get; set; } = "test";
     [JsonPropertyName("server")] public string? Server { get; set; }
     [JsonPropertyName("serverName")] public string ServerName { get; set; } = "RO3Emu";
+    [JsonPropertyName("registerUrl")] public string? RegisterUrl { get; set; }
+    [JsonPropertyName("requireHttpsRepository")] public bool RequireHttpsRepository { get; set; }
+    [JsonPropertyName("requireSignedChannel")] public bool RequireSignedChannel { get; set; }
+    [JsonPropertyName("trustedPublisherKeys")] public Dictionary<string, string> TrustedPublisherKeys { get; set; } = new();
 
     static readonly JsonSerializerOptions Options = new() { ReadCommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
 
@@ -27,12 +32,20 @@ public sealed class LauncherConfig
             return new();
         }
     }
+
+    public RepositoryTrustOptions RepositoryTrust => new()
+    {
+        RequireHttps = RequireHttpsRepository,
+        RequireSignedChannel = RequireSignedChannel,
+        TrustedPublicKeys = TrustedPublisherKeys,
+    };
 }
 
 /// <summary>Per-user choices (%APPDATA%\RO3Emu\launcher-settings.json): only the client folder so far.</summary>
 public sealed class UserSettings
 {
     [JsonPropertyName("clientDirectory")] public string? ClientDirectory { get; set; }
+    [JsonPropertyName("acceptedChannelSequences")] public Dictionary<string, long> AcceptedChannelSequences { get; set; } = new(StringComparer.Ordinal);
 
     static string FilePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RO3Emu", "launcher-settings.json");
 
@@ -48,13 +61,28 @@ public sealed class UserSettings
         }
     }
 
-    public void Save()
+    public bool Save()
     {
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
             File.WriteAllText(FilePath, JsonSerializer.Serialize(this));
+            return true;
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return false; }
+    }
+
+    public void AcceptChannelSequence(string channel, long sequence)
+    {
+        long accepted = AcceptedChannelSequences.GetValueOrDefault(channel);
+        if (sequence < accepted)
+        {
+            throw new PatcherException($"The update channel sequence went backwards ({sequence} < {accepted}); update refused.");
+        }
+        if (sequence > accepted)
+        {
+            AcceptedChannelSequences[channel] = sequence;
+            if (!Save()) throw new PatcherException("The accepted update sequence could not be saved.");
+        }
     }
 }

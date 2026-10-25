@@ -1,4 +1,6 @@
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using System.Windows;
 using Ro3Emu.Patcher;
 
@@ -11,13 +13,14 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        _singleInstance = new Mutex(true, @"Local\Ro3Emu.Launcher", out bool first);
+        string exePath = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "Ro3EmuLauncher.exe");
+        string instanceId = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(exePath).ToUpperInvariant())))[..16];
+        _singleInstance = new Mutex(true, @"Local\Ro3Emu.Launcher." + instanceId, out bool first);
         if (!first)
         {
             Shutdown();
             return;
         }
-        string exePath = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "Ro3EmuLauncher.exe");
         SelfUpdate.DeleteLeftovers(exePath);
         var config = LauncherConfig.Load(Path.Combine(Path.GetDirectoryName(exePath)!, "launcher.json"));
         MainWindow = new MainWindow(config, exePath);

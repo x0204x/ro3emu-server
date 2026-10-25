@@ -96,10 +96,12 @@ public sealed class LauncherRelease
 public sealed class ChannelInfo
 {
     [JsonPropertyName("channel")] public string Channel { get; set; } = "";
+    [JsonPropertyName("sequence")] public long Sequence { get; set; }
     [JsonPropertyName("version")] public string Version { get; set; } = "";
     [JsonPropertyName("manifest")] public string Manifest { get; set; } = "";
     [JsonPropertyName("manifestSha256")] public string ManifestSha256 { get; set; } = "";
     [JsonPropertyName("published")] public DateTimeOffset Published { get; set; }
+    [JsonPropertyName("expires")] public DateTimeOffset? Expires { get; set; }
     [JsonPropertyName("launcher")] public LauncherRelease? Launcher { get; set; }
 }
 

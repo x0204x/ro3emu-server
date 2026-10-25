@@ -20,6 +20,7 @@ public sealed class PublishOptions
     /// <summary>Write the manifest but leave the channel pointing at its previous release.</summary>
     public bool SkipChannel { get; init; }
     public LauncherRelease? Launcher { get; init; }
+    public RepositorySigningOptions? Signing { get; init; }
 }
 
 public sealed record PublishResult(Manifest Manifest, ChannelInfo Channel, int NewChunks, long NewStoredBytes, int ReusedChunks);
@@ -181,15 +182,17 @@ public static class Publisher
         var channel = new ChannelInfo
         {
             Channel = options.Channel,
+            Sequence = await NextSequenceAsync(repo, options.Channel, ct),
             Version = options.Version,
             Manifest = manifestRelative,
             ManifestSha256 = Hashing.Sha256Hex(manifestBytes),
             Published = DateTimeOffset.UtcNow,
+            Expires = options.Signing is null ? null : DateTimeOffset.UtcNow.AddDays(14),
             Launcher = options.Launcher,
         };
         if (!options.SkipChannel)
         {
-            await WriteChannelAsync(repo, channel, ct);
+            await WriteChannelAsync(repo, channel, options.Signing, ct);
         }
         return new PublishResult(manifest, channel, newChunks, newBytes, reused);
     }
@@ -220,7 +223,8 @@ public static class Publisher
     }
 
     /// <summary>Points a channel at an existing release (promote beta → stable, roll back).</summary>
-    public static async Task<ChannelInfo> SetChannelAsync(string repoDirectory, string channelName, string version, LauncherRelease? launcher, CancellationToken ct = default)
+    public static async Task<ChannelInfo> SetChannelAsync(string repoDirectory, string channelName, string version, LauncherRelease? launcher,
+        RepositorySigningOptions? signing = null, CancellationToken ct = default)
     {
         string repo = Path.GetFullPath(repoDirectory);
         using var repoLock = AcquireLock(repo);
@@ -230,18 +234,21 @@ public static class Publisher
         var channel = new ChannelInfo
         {
             Channel = channelName,
+            Sequence = await NextSequenceAsync(repo, channelName, ct),
             Version = version,
             Manifest = manifestRelative,
             ManifestSha256 = Hashing.Sha256Hex(bytes),
             Published = DateTimeOffset.UtcNow,
+            Expires = signing is null ? null : DateTimeOffset.UtcNow.AddDays(14),
             Launcher = launcher,
         };
-        await WriteChannelAsync(repo, channel, ct);
+        await WriteChannelAsync(repo, channel, signing, ct);
         return channel;
     }
 
     /// <summary>Publishes a launcher exe (launcher/&lt;version&gt;/) and points the channel's launcher field at it.</summary>
-    public static async Task<ChannelInfo> PublishLauncherAsync(string repoDirectory, string channelName, string exePath, string version, CancellationToken ct = default)
+    public static async Task<ChannelInfo> PublishLauncherAsync(string repoDirectory, string channelName, string exePath, string version,
+        RepositorySigningOptions? signing = null, CancellationToken ct = default)
     {
         if (!Version.TryParse(version, out _))
         {
@@ -261,11 +268,53 @@ public static class Publisher
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         await File.WriteAllBytesAsync(target, exe, ct);
         channel.Launcher = new LauncherRelease { Version = version, Url = relative, Sha256 = Hashing.Sha256Hex(exe) };
-        await WriteChannelAsync(repo, channel, ct);
+        channel.Sequence = Math.Max(channel.Sequence + 1, await NextSequenceAsync(repo, channelName, ct));
+        channel.Published = DateTimeOffset.UtcNow;
+        channel.Expires = signing is null ? null : DateTimeOffset.UtcNow.AddDays(14);
+        await WriteChannelAsync(repo, channel, signing, ct);
         return channel;
     }
 
-    static async Task WriteChannelAsync(string repo, ChannelInfo channel, CancellationToken ct)
+    /// <summary>Reissues an existing channel with a new sequence, expiry and detached publisher signature.</summary>
+    public static async Task<ChannelInfo> SignExistingChannelAsync(string repoDirectory, string channelName,
+        RepositorySigningOptions signing, CancellationToken ct = default)
+    {
+        string repo = Path.GetFullPath(repoDirectory);
+        using var repoLock = AcquireLock(repo);
+        string path = Path.Combine(repo, "channels", channelName + ".json");
+        if (!File.Exists(path))
+        {
+            throw new InvalidOperationException($"Channel '{channelName}' does not exist.");
+        }
+        var channel = JsonSerializer.Deserialize<ChannelInfo>(await File.ReadAllBytesAsync(path, ct), Json.Compact)
+            ?? throw new InvalidDataException($"Channel '{channelName}' is empty.");
+        if (!string.Equals(channel.Channel, channelName, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException($"Channel identity '{channel.Channel}' does not match '{channelName}'.");
+        }
+        channel.Sequence = Math.Max(1, checked(channel.Sequence + 1));
+        channel.Published = DateTimeOffset.UtcNow;
+        channel.Expires = DateTimeOffset.UtcNow.AddDays(14);
+        await WriteChannelAsync(repo, channel, signing, ct);
+        return channel;
+    }
+
+    static async Task<long> NextSequenceAsync(string repo, string channelName, CancellationToken ct)
+    {
+        string path = Path.Combine(repo, "channels", channelName + ".json");
+        if (!File.Exists(path)) return 1;
+        try
+        {
+            var current = JsonSerializer.Deserialize<ChannelInfo>(await File.ReadAllBytesAsync(path, ct), Json.Compact);
+            return Math.Max(1, checked((current?.Sequence ?? 0) + 1));
+        }
+        catch (Exception e) when (e is JsonException or OverflowException)
+        {
+            throw new InvalidDataException($"Existing channel '{channelName}' is invalid.", e);
+        }
+    }
+
+    static async Task WriteChannelAsync(string repo, ChannelInfo channel, RepositorySigningOptions? signing, CancellationToken ct)
     {
         string path = Path.Combine(repo, "channels", channel.Channel + ".json");
         if (channel.Launcher is null && File.Exists(path))
@@ -276,7 +325,20 @@ public static class Publisher
         }
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         string temp = path + ".tmp";
-        await File.WriteAllBytesAsync(temp, JsonSerializer.SerializeToUtf8Bytes(channel, Json.Indented), ct);
+        byte[] raw = JsonSerializer.SerializeToUtf8Bytes(channel, Json.Indented);
+        await File.WriteAllBytesAsync(temp, raw, ct);
         File.Move(temp, path, overwrite: true);
+        string signaturePath = path + ".sig";
+        if (signing is not null)
+        {
+            byte[] signature = RepositorySignatures.Sign(raw, signing);
+            string signatureTemp = signaturePath + ".tmp";
+            await File.WriteAllBytesAsync(signatureTemp, signature, ct);
+            File.Move(signatureTemp, signaturePath, overwrite: true);
+        }
+        else if (File.Exists(signaturePath))
+        {
+            File.Delete(signaturePath);
+        }
     }
 }

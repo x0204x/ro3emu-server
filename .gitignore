@@ -30,3 +30,5 @@ tools/unluac-batch/*.class
 
 # Temporary solution of tools/AnalyzerBaseline
 /.analyzer-baseline.slnx
+# Proprietary launcher art imported from a locally owned installation. Never publish these files.
+src/Ro3Emu.Launcher/PrivateAssets/

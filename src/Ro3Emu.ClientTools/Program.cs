@@ -11,7 +11,7 @@ if (args.Length < 2)
           launch  <client dir> [ro3.exe args...]
           release <client dir> <server url> <gate_rsa_public.pem> <repo dir> <version> [channel] [zstd level] [--loc-map <file>]
                                                 publish the client patched for that server for Ro3Emu.Launcher
-          release-launcher <repo dir> <channel> <Ro3EmuLauncher.exe> <version>
+          release-launcher <repo dir> <channel> <Ro3EmuLauncher.exe> <version> [--signing-key <private.pem> --key-id <id>]
           scan    <client dir> <text>...        list string literals in the client DLLs
           members <client dir> <dll> <type> [method]  list a type's methods with their parameters
           delete-role <server url> <account> <password> <character name or id>
@@ -28,7 +28,9 @@ try
     if (args.Length == 0) throw new ArgumentException("missing command");
 
     string? locMap = null;
-    if (args[0] == "release")
+    string? repositorySigningKey = null;
+    string? repositoryKeyId = null;
+    if (args[0] is "release" or "release-launcher")
     {
         var filtered = new List<string>();
         for (int i = 0; i < args.Length; i++)
@@ -39,9 +41,28 @@ try
                 locMap = args[i];
                 continue;
             }
+            if (args[i] == "--signing-key")
+            {
+                if (++i >= args.Length) throw new ArgumentException("--signing-key needs <private.pem>");
+                repositorySigningKey = args[i];
+                continue;
+            }
+            if (args[i] == "--key-id")
+            {
+                if (++i >= args.Length) throw new ArgumentException("--key-id needs <id>");
+                repositoryKeyId = args[i];
+                continue;
+            }
             filtered.Add(args[i]);
         }
         args = [.. filtered];
+    }
+    Ro3Emu.Patcher.RepositorySigningOptions? repositorySigning = null;
+    if (repositorySigningKey is not null || repositoryKeyId is not null)
+    {
+        if (repositorySigningKey is null || repositoryKeyId is null)
+            throw new ArgumentException("--signing-key and --key-id must be supplied together");
+        repositorySigning = new(repositoryKeyId, File.ReadAllText(repositorySigningKey));
     }
     switch (args[0])
     {
@@ -57,10 +78,10 @@ try
         case "release":
             if (args.Length < 6) throw new ArgumentException("release needs <client dir> <server url> <pem> <repo dir> <version>");
             return await ReleaseBuilder.PublishAsync(args[1], args[2].TrimEnd('/'), File.ReadAllText(args[3]), args[4], args[5],
-                args.Length > 6 ? args[6] : "test", args.Length > 7 ? int.Parse(args[7]) : 9, locMap);
+                args.Length > 6 ? args[6] : "test", args.Length > 7 ? int.Parse(args[7]) : 9, locMap, repositorySigning);
         case "release-launcher":
             if (args.Length < 5) throw new ArgumentException("release-launcher needs <repo dir> <channel> <Ro3EmuLauncher.exe> <version>");
-            var withLauncher = await Ro3Emu.Patcher.Publisher.PublishLauncherAsync(args[1], args[2], args[3], args[4]);
+            var withLauncher = await Ro3Emu.Patcher.Publisher.PublishLauncherAsync(args[1], args[2], args[3], args[4], repositorySigning);
             Console.WriteLine($"channel {withLauncher.Channel}: game {withLauncher.Version}, launcher {withLauncher.Launcher!.Version}");
             return 0;
         case "scan":

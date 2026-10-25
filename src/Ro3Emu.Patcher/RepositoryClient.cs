@@ -8,13 +8,29 @@ public sealed class RepositoryClient : IDisposable
 {
     readonly HttpClient _http;
     readonly bool _ownsClient;
+    readonly RepositoryTrustOptions _trust;
 
     public RepositoryClient(Uri baseUri, HttpMessageHandler? handler = null)
+        : this(baseUri, RepositoryTrustOptions.UnsignedLab, handler)
     {
+    }
+
+    public RepositoryClient(Uri baseUri, RepositoryTrustOptions trust, HttpMessageHandler? handler = null)
+    {
+        ArgumentNullException.ThrowIfNull(trust);
         if (!baseUri.AbsoluteUri.EndsWith('/'))
         {
             baseUri = new Uri(baseUri.AbsoluteUri + "/");
         }
+        if (trust.RequireHttps && baseUri.Scheme != Uri.UriSchemeHttps)
+        {
+            throw new PatcherException("This launcher only accepts an HTTPS update repository.");
+        }
+        if (trust.RequireSignedChannel && trust.TrustedPublicKeys.Count == 0)
+        {
+            throw new PatcherException("Signed update channels are required but no trusted publisher key is configured.");
+        }
+        _trust = trust;
         _http = handler is null
             ? new HttpClient(new SocketsHttpHandler
             {
@@ -33,17 +49,42 @@ public sealed class RepositoryClient : IDisposable
 
     public async Task<ChannelInfo> GetChannelAsync(string channel, CancellationToken ct)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"channels/{channel}.json");
-        request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true };
-        using var response = await _http.SendAsync(request, ct);
-        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        if (string.IsNullOrWhiteSpace(channel) || channel.Any(ch => !(char.IsAsciiLetterOrDigit(ch) || ch == '-')))
         {
-            throw new PatcherException($"Channel '{channel}' does not exist on the update server.");
+            throw new PatcherException("The update channel name is invalid.");
         }
-        response.EnsureSuccessStatusCode();
-        await using var stream = await response.Content.ReadAsStreamAsync(ct);
-        return await JsonSerializer.DeserializeAsync<ChannelInfo>(stream, Json.Compact, ct)
+        string relative = $"channels/{channel}.json";
+        byte[] raw = await GetMetadataAsync(relative, required: true, ct)
             ?? throw new PatcherException("The update server returned an empty channel.");
+        if (_trust.RequireSignedChannel)
+        {
+            byte[] signature = await GetMetadataAsync(relative + ".sig", required: true, ct)
+                ?? throw new PatcherException("The update channel has no signature.");
+            RepositorySignatures.Verify(raw, signature, _trust);
+        }
+        ChannelInfo result;
+        try
+        {
+            result = JsonSerializer.Deserialize<ChannelInfo>(raw, Json.Compact)
+                ?? throw new PatcherException("The update server returned an empty channel.");
+        }
+        catch (JsonException e)
+        {
+            throw new PatcherException("The update channel is invalid JSON.", e);
+        }
+        if (!string.Equals(result.Channel, channel, StringComparison.Ordinal))
+        {
+            throw new PatcherException("The signed update channel identity does not match the requested channel.");
+        }
+        if (result.Sequence < 0)
+        {
+            throw new PatcherException("The update channel sequence is invalid.");
+        }
+        if (result.Expires is { } expires && expires <= DateTimeOffset.UtcNow)
+        {
+            throw new PatcherException("The signed update channel has expired.");
+        }
+        return result;
     }
 
     public async Task<(Manifest Manifest, byte[] Raw)> GetManifestAsync(ChannelInfo channel, CancellationToken ct)
@@ -92,6 +133,37 @@ public sealed class RepositoryClient : IDisposable
             return null;
         }
         return await response.Content.ReadAsByteArrayAsync(ct);
+    }
+
+    async Task<byte[]?> GetMetadataAsync(string relative, bool required, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, relative);
+        request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true };
+        using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            if (required) throw new PatcherException($"The update repository is missing '{relative}'.");
+            return null;
+        }
+        response.EnsureSuccessStatusCode();
+        if (response.Content.Headers.ContentLength is > 0 and var length && length > _trust.MaxMetadataBytes)
+        {
+            throw new PatcherException($"The update metadata '{relative}' is too large.");
+        }
+        await using var stream = await response.Content.ReadAsStreamAsync(ct);
+        using var output = new MemoryStream();
+        byte[] buffer = new byte[32 * 1024];
+        while (true)
+        {
+            int read = await stream.ReadAsync(buffer, ct);
+            if (read == 0) break;
+            if (output.Length + read > _trust.MaxMetadataBytes)
+            {
+                throw new PatcherException($"The update metadata '{relative}' is too large.");
+            }
+            output.Write(buffer, 0, read);
+        }
+        return output.ToArray();
     }
 
     public void Dispose()

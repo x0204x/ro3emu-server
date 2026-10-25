@@ -1,13 +1,300 @@
 <Window x:Class="Ro3Emu.Launcher.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
-        Title="RO3Emu" Width="1180" Height="740" ResizeMode="CanMinimize"
-        WindowStyle="None" WindowStartupLocation="CenterScreen" Background="#EFE6CC">
-    <WindowChrome.WindowChrome>
-        <WindowChrome CaptionHeight="0" ResizeBorderThickness="0" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False" />
-    </WindowChrome.WindowChrome>
-    <Grid>
-        <wv2:WebView2 x:Name="Web" DefaultBackgroundColor="#EFE6CC" />
-    </Grid>
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        Title="RO3Emu" Width="1200" Height="800" MinWidth="1080" MinHeight="720" Icon="/Assets/app.ico"
+        WindowStyle="None" ResizeMode="CanResize" AllowsTransparency="False"
+        Background="#E9DDC7" WindowStartupLocation="CenterScreen">
+  <shell:WindowChrome.WindowChrome>
+    <shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="7" CornerRadius="0" GlassFrameThickness="0" />
+  </shell:WindowChrome.WindowChrome>
+
+  <Window.Resources>
+    <Storyboard x:Key="EntranceStoryboard">
+      <DoubleAnimation Storyboard.TargetName="LeftPanel" Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="0:0:0.45" />
+      <DoubleAnimation Storyboard.TargetName="LeftPanelTranslate" Storyboard.TargetProperty="Y" From="26" To="0" Duration="0:0:0.45" />
+      <DoubleAnimation Storyboard.TargetName="BottomPanel" Storyboard.TargetProperty="Opacity" From="0" To="1" BeginTime="0:0:0.14" Duration="0:0:0.45" />
+      <DoubleAnimation Storyboard.TargetName="ActionsPanel" Storyboard.TargetProperty="Opacity" From="0" To="1" BeginTime="0:0:0.20" Duration="0:0:0.45" />
+    </Storyboard>
+    <DataTemplate x:Key="NoticeCardTemplate">
+      <Border Background="#F6FFFDF4" BorderBrush="#59946D42" BorderThickness="1" CornerRadius="6"
+              Margin="2,0,10,12" Padding="0">
+        <Grid>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="5" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+          <Border Grid.Column="0" CornerRadius="3,0,0,3" Background="{Binding Accent}" />
+          <StackPanel Grid.Column="1" Margin="13,9,13,11">
+            <Grid Margin="0,0,0,6">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+              <Border CornerRadius="3" Padding="8,2.5" Background="{Binding Accent}">
+                <TextBlock Foreground="#FFF9E9" FontSize="10" FontWeight="Bold" Text="{Binding Tag}" />
+              </Border>
+              <TextBlock Grid.Column="2" FontSize="10.5" VerticalAlignment="Center" Foreground="{StaticResource MutedInkBrush}" Text="{Binding Date}" />
+            </Grid>
+            <TextBlock FontSize="13.5" TextWrapping="Wrap" Style="{StaticResource DisplayTitle}" Text="{Binding Title}" />
+            <TextBlock FontSize="12" Margin="0,4,0,0" Style="{StaticResource BodyText}" Foreground="{StaticResource MutedInkBrush}" Text="{Binding Text}" />
+          </StackPanel>
+        </Grid>
+      </Border>
+    </DataTemplate>
+  </Window.Resources>
+
+  <Grid>
+    <Image Source="/Assets/ui/background/paperbackdrop.png" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" />
+    <Viewbox Stretch="Uniform" StretchDirection="Both">
+      <Grid Width="1536" Height="1024" Background="#E9DDC7" UseLayoutRounding="False" SnapsToDevicePixels="False"
+            TextOptions.TextFormattingMode="Ideal" RenderOptions.BitmapScalingMode="HighQuality">
+        <Image Source="/Assets/ui/background/backgroundclean.png" Stretch="UniformToFill" />
+        <Rectangle Fill="#28F5E9D3" />
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="104" />
+            <RowDefinition Height="654" />
+            <RowDefinition Height="222" />
+            <RowDefinition Height="44" />
+          </Grid.RowDefinitions>
+
+          <Border Grid.Row="0" Background="#E2F7F0E3" BorderBrush="#7C9E7545" BorderThickness="0,0,0,1.5"
+                  MouseLeftButtonDown="OnDragWindow">
+            <Grid>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="350" /><ColumnDefinition Width="*" /><ColumnDefinition Width="330" /></Grid.ColumnDefinitions>
+              <Image Grid.Column="0" Source="/Assets/ui/brand/logo.png" Width="260" Height="92" HorizontalAlignment="Left"
+                     Margin="34,5,0,5" Stretch="Uniform" />
+              <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center">
+                <TextBlock Text="✦" FontSize="13" Foreground="{StaticResource GoldBrush}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                <RadioButton x:Name="HomeTab" Style="{StaticResource NavTab}" GroupName="Nav" Content="首頁" IsChecked="True" Checked="OnNavigationChanged" Tag="0" />
+                <RadioButton x:Name="NewsTab" Style="{StaticResource NavTab}" GroupName="Nav" Content="新聞" Checked="OnNavigationChanged" Tag="1" />
+                <Button Style="{StaticResource NavLink}" Content="註冊" Click="OnRegister" />
+                <RadioButton x:Name="SettingsTab" Style="{StaticResource NavTab}" GroupName="Nav" Content="設定" Checked="OnNavigationChanged" Tag="2" />
+                <TextBlock Text="✦" FontSize="13" Foreground="{StaticResource GoldBrush}" VerticalAlignment="Center" Margin="6,0,0,0" />
+              </StackPanel>
+              <Grid Grid.Column="2">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="1" /><ColumnDefinition Width="52" /><ColumnDefinition Width="52" /><ColumnDefinition Width="52" /></Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                  <TextBlock Text="" FontFamily="Segoe MDL2 Assets" FontSize="17" Foreground="#6C4F2C" VerticalAlignment="Center" Margin="0,0,7,0" />
+                  <ComboBox x:Name="LanguageBox" Style="{StaticResource FlatLanguageCombo}" SelectedIndex="0">
+                    <ComboBoxItem Content="繁" />
+                  </ComboBox>
+                </StackPanel>
+                <Border Grid.Column="1" Width="1" Height="44" Background="#4985684B" VerticalAlignment="Center" />
+                <Button Grid.Column="2" Style="{StaticResource WindowButton}" Content="" Click="OnMinimize" />
+                <Button Grid.Column="3" Style="{StaticResource WindowButton}" Content="" Click="OnMaximize" />
+                <Button Grid.Column="4" Style="{StaticResource CloseWindowButton}" Content="" Click="OnClose" />
+              </Grid>
+            </Grid>
+          </Border>
+
+          <TabControl x:Name="Pages" Grid.Row="1" Background="#00FFFFFF" BorderThickness="0" SelectedIndex="0">
+            <TabControl.ItemContainerStyle>
+              <Style TargetType="TabItem"><Setter Property="Visibility" Value="Collapsed" /></Style>
+            </TabControl.ItemContainerStyle>
+            <TabItem>
+              <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="575" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                <ContentControl x:Name="LeftPanel" Grid.Column="0" Style="{StaticResource ParchmentPanel}" Margin="28,23,15,16" Padding="20,14">
+                  <ContentControl.RenderTransform><TranslateTransform x:Name="LeftPanelTranslate" /></ContentControl.RenderTransform>
+                  <Grid>
+                    <Grid.RowDefinitions><RowDefinition Height="54" /><RowDefinition Height="44" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="35" /></Grid.RowDefinitions>
+                    <Grid Grid.Row="0">
+                      <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                      <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="✦" FontSize="25" Foreground="#805C32" VerticalAlignment="Center" Margin="3,0,14,0" />
+                        <TextBlock Style="{StaticResource DisplayTitle}" FontSize="18" VerticalAlignment="Center" Text="公告" />
+                      </StackPanel>
+                      <Border Grid.Column="1" Background="#6F8651" CornerRadius="5" Padding="13,7" VerticalAlignment="Center">
+                        <TextBlock Foreground="#FFF9E9" FontSize="11" FontWeight="Bold" Text="已簽章內容" />
+                      </Border>
+                    </Grid>
+                    <Grid Grid.Row="1">
+                      <TextBlock Style="{StaticResource BodyText}" FontSize="12.5" Foreground="{StaticResource MutedInkBrush}"
+                                 VerticalAlignment="Top" Margin="3,2,0,0" Text="RO3Emu 團隊的公告。" />
+                      <Image Source="/Assets/ui/decoration/dividergem.png" Height="16" Opacity="0.9" VerticalAlignment="Bottom" Margin="0,0,0,2" Stretch="Uniform" />
+                    </Grid>
+                    <Grid x:Name="BannerHost" Grid.Row="2" Height="180" Margin="2,6,0,0" Visibility="Collapsed">
+                      <Border CornerRadius="6" ClipToBounds="True" BorderBrush="#59946D42" BorderThickness="1">
+                        <Grid>
+                          <Image x:Name="BannerImage" Stretch="UniformToFill" />
+                          <Button x:Name="BannerLinkButton" Background="Transparent" BorderThickness="0" Cursor="Hand" Visibility="Collapsed" Click="OnBannerLink" />
+                          <Button x:Name="BannerPrev" Content="‹" Style="{StaticResource BannerArrowButton}" HorizontalAlignment="Left" Margin="6,0,0,0" Click="OnBannerPrevious" />
+                          <Button x:Name="BannerNext" Content="›" Style="{StaticResource BannerArrowButton}" HorizontalAlignment="Right" Margin="0,0,6,0" Click="OnBannerNext" />
+                          <StackPanel x:Name="BannerBullets" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,9" />
+                        </Grid>
+                      </Border>
+                    </Grid>
+                    <Border x:Name="NoticesViewport" Grid.Row="3" ClipToBounds="True" Background="Transparent" Margin="2,6,0,2">
+                      <ScrollViewer VerticalScrollBarVisibility="Hidden">
+                        <ItemsControl x:Name="HomeNotices" ItemTemplate="{StaticResource NoticeCardTemplate}" />
+                      </ScrollViewer>
+                    </Border>
+                    <TextBlock Grid.Row="4" Style="{StaticResource DisplayTitle}" FontSize="12" Foreground="#925D30"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" Text="RO3EMU 更新頻道" />
+                  </Grid>
+                </ContentControl>
+                <Grid Grid.Column="1" ClipToBounds="True">
+                  <Image x:Name="PoringDrifter" Source="/Assets/ui/hero/poringpink.png" Width="104" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="64,84,0,0" IsHitTestVisible="False">
+                    <Image.RenderTransform><TranslateTransform x:Name="PoringTranslate" /></Image.RenderTransform>
+                  </Image>
+                  <Canvas x:Name="ParticleLayer" IsHitTestVisible="False" ClipToBounds="True" />
+                </Grid>
+              </Grid>
+            </TabItem>
+
+            <TabItem>
+              <Grid>
+                <ContentControl Style="{StaticResource ParchmentPanel}" Width="900" Height="520" Padding="44,30" HorizontalAlignment="Center" VerticalAlignment="Center">
+                  <Grid>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                    <TextBlock Style="{StaticResource DisplayTitle}" FontSize="28" Text="新聞" />
+                    <TextBlock Grid.Row="1" Style="{StaticResource BodyText}" FontSize="15" Foreground="{StaticResource MutedInkBrush}" Margin="0,8,0,14"
+                               Text="RO3Emu 團隊的公告與版本資訊。" />
+                    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Padding="0,2,6,0">
+                      <ItemsControl x:Name="NewsNotices" ItemTemplate="{StaticResource NoticeCardTemplate}" />
+                    </ScrollViewer>
+                  </Grid>
+                </ContentControl>
+              </Grid>
+            </TabItem>
+
+            <TabItem>
+              <Grid>
+                <ContentControl Style="{StaticResource ParchmentPanel}" Width="900" Height="520" Padding="44,34" HorizontalAlignment="Center" VerticalAlignment="Center">
+                  <Grid>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                    <TextBlock Style="{StaticResource DisplayTitle}" FontSize="28" Text="設定" />
+                    <Grid Grid.Row="1" Margin="0,28,0,20">
+                      <Grid.ColumnDefinitions><ColumnDefinition Width="220" /><ColumnDefinition Width="260" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                      <TextBlock Style="{StaticResource DisplayTitle}" FontSize="16" VerticalAlignment="Center" Text="介面語言" />
+                      <ComboBox Grid.Column="1" Height="38" Background="#FFF9EA" BorderBrush="#A57B42" Foreground="{StaticResource InkBrush}"
+                                FontSize="15" SelectedIndex="0"><ComboBoxItem Content="繁體中文" /></ComboBox>
+                      <CheckBox x:Name="MotionCheckBox" Grid.Column="2" Style="{StaticResource SettingsCheckBox}" VerticalAlignment="Center"
+                                IsChecked="True" Content="啟用動態效果" Checked="OnMotionChanged" Unchecked="OnMotionChanged" />
+                    </Grid>
+                    <Border Grid.Row="2" Background="#AFFFFFF4" BorderBrush="#7E9E7545" BorderThickness="1" CornerRadius="5" Padding="24">
+                      <StackPanel>
+                        <TextBlock Style="{StaticResource DisplayTitle}" FontSize="20" Text="診斷與安全" />
+                        <TextBlock Style="{StaticResource BodyText}" FontSize="14" Foreground="{StaticResource MutedInkBrush}"
+                                   Margin="0,7,0,18" Text="更新內容會先驗證完整性，診斷記錄只保留在本機。" />
+                        <CheckBox Style="{StaticResource SettingsCheckBox}" IsChecked="True" IsEnabled="False" Content="檔案完整性驗證" />
+                        <CheckBox Style="{StaticResource SettingsCheckBox}" IsChecked="True" IsEnabled="False" Content="本機診斷記錄" />
+                      </StackPanel>
+                    </Border>
+                  </Grid>
+                </ContentControl>
+              </Grid>
+            </TabItem>
+          </TabControl>
+
+          <Grid Grid.Row="2" Margin="28,0,28,0">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="1022" /><ColumnDefinition Width="14" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <ContentControl x:Name="BottomPanel" Grid.Column="0" Style="{StaticResource ParchmentPanel}" Padding="28,18,28,14">
+              <Grid>
+                <Grid.RowDefinitions><RowDefinition Height="80" /><RowDefinition Height="28" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                <Grid Grid.Row="0">
+                  <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="38" /><ColumnDefinition /><ColumnDefinition Width="38" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                  <Grid x:Name="StepInstall" Grid.Column="0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="72" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                    <Image Source="/Assets/ui/steps/step01.png" Width="58" Height="58" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                      <TextBlock Style="{StaticResource DisplayTitle}" FontSize="16" Text="安裝" />
+                      <TextBlock Style="{StaticResource BodyText}" FontSize="12.5" Foreground="{StaticResource MutedInkBrush}" Margin="0,4,0,0" Text="下載遊戲檔案" />
+                    </StackPanel>
+                  </Grid>
+                  <TextBlock Grid.Column="1" Text="›" FontSize="37" Foreground="{StaticResource InkBrush}" VerticalAlignment="Center" HorizontalAlignment="Center" />
+                  <Grid x:Name="StepVerify" Grid.Column="2" Opacity="0.45">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="72" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                    <Image Source="/Assets/ui/steps/step02.png" Width="58" Height="58" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                      <TextBlock Style="{StaticResource DisplayTitle}" FontSize="16" Text="驗證" />
+                      <TextBlock Style="{StaticResource BodyText}" FontSize="12.5" Foreground="{StaticResource MutedInkBrush}" Margin="0,4,0,0" Text="檢查檔案完整性" />
+                    </StackPanel>
+                  </Grid>
+                  <TextBlock Grid.Column="3" Text="›" FontSize="37" Foreground="{StaticResource InkBrush}" VerticalAlignment="Center" HorizontalAlignment="Center" />
+                  <Grid x:Name="StepReady" Grid.Column="4" Opacity="0.45">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="72" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                    <Image Source="/Assets/ui/steps/step03.png" Width="58" Height="58" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                      <TextBlock Style="{StaticResource DisplayTitle}" FontSize="16" Text="就緒" />
+                      <TextBlock Style="{StaticResource BodyText}" FontSize="12.5" Foreground="{StaticResource MutedInkBrush}" Margin="0,4,0,0" Text="啟動或修復" />
+                    </StackPanel>
+                  </Grid>
+                </Grid>
+                <ProgressBar x:Name="UpdateProgress" Grid.Row="1" Minimum="0" Maximum="100" Height="20" Foreground="{StaticResource BlueBrush}"
+                             Background="#D8C6A4" BorderBrush="#9D7546" BorderThickness="1" Value="0" Visibility="Collapsed">
+                  <ProgressBar.Template><ControlTemplate TargetType="ProgressBar">
+                    <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="10" ClipToBounds="True">
+                      <Grid x:Name="PART_Track"><Border x:Name="PART_Indicator" Background="{TemplateBinding Foreground}" HorizontalAlignment="Left" CornerRadius="9" /></Grid>
+                    </Border>
+                  </ControlTemplate></ProgressBar.Template>
+                </ProgressBar>
+                <Grid Grid.Row="2" Margin="0,7,0,0">
+                  <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="250" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                  <TextBlock x:Name="PackageText" Style="{StaticResource BodyText}" FontSize="12.5" VerticalAlignment="Center" Text="正在檢查更新…" />
+                  <StackPanel x:Name="ProgressDetails" Grid.Column="1" HorizontalAlignment="Center" Visibility="Collapsed">
+                    <TextBlock x:Name="ProgressPercentText" Style="{StaticResource DisplayTitle}" FontSize="19" HorizontalAlignment="Center" Text="0%" />
+                    <TextBlock x:Name="TransferText" Style="{StaticResource BodyText}" FontSize="11.5" Foreground="{StaticResource MutedInkBrush}" HorizontalAlignment="Center" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <TextBlock x:Name="ErrorGlyph" Text="⚠" FontSize="15" Margin="0,0,7,0" Foreground="{StaticResource AmberBrush}" Visibility="Collapsed" />
+                    <TextBlock x:Name="DetailText" Style="{StaticResource BodyText}" FontSize="12.5" MaxWidth="300" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    <Button x:Name="ErrorHelpButton" Style="{StaticResource HelpCircleButton}" Margin="9,0,0,0" Visibility="Collapsed" Click="OnErrorHelpClick" />
+                  </StackPanel>
+                </Grid>
+              </Grid>
+            </ContentControl>
+            <ContentControl x:Name="ActionsPanel" Grid.Column="2" Style="{StaticResource ParchmentPanel}" Padding="34,16">
+              <Grid>
+                <Grid.RowDefinitions><RowDefinition Height="35" /><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Style="{StaticResource DisplayTitle}" FontSize="14" HorizontalAlignment="Center" Text="復原操作" />
+                <Button x:Name="PrimaryButton" Grid.Row="1" Style="{StaticResource LauncherButton}" IsEnabled="False" Click="OnPrimaryAction">
+                  <StackPanel Orientation="Horizontal">
+                    <Image x:Name="PrimaryButtonIcon" Source="/Assets/ui/icons/download.png" Width="42" Height="42" Margin="0,0,18,0" />
+                    <TextBlock x:Name="PrimaryButtonText" VerticalAlignment="Center" Text="檢查中…" />
+                  </StackPanel>
+                </Button>
+                <Button x:Name="RepairButton" Grid.Row="2" Style="{StaticResource PrimaryLauncherButton}" IsEnabled="False" Click="OnRepair">
+                  <StackPanel Orientation="Horizontal">
+                    <Image Source="/Assets/ui/icons/repair.png" Width="42" Height="42" Margin="0,0,18,0" />
+                    <TextBlock VerticalAlignment="Center" Text="修復遊戲" />
+                  </StackPanel>
+                </Button>
+              </Grid>
+            </ContentControl>
+          </Grid>
+
+          <Grid Grid.Row="3" Background="#DDF2E7D5">
+            <TextBlock x:Name="WebsiteText" Text="RO3Emu" Style="{StaticResource DisplayTitle}" FontSize="11.5" Margin="42,0,0,0" VerticalAlignment="Center" />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,46,0">
+              <TextBlock x:Name="VersionText" Style="{StaticResource BodyText}" FontSize="11.5" Foreground="{StaticResource MutedInkBrush}" Margin="0,0,20,0" />
+              <Image Source="/Assets/ui/icons/discord.png" Width="28" Height="28" Margin="11,0" />
+              <Image Source="/Assets/ui/icons/facebook.png" Width="28" Height="28" Margin="11,0" />
+              <Image Source="/Assets/ui/icons/youtube.png" Width="28" Height="28" Margin="11,0" />
+            </StackPanel>
+          </Grid>
+
+          <Grid x:Name="ErrorHelpOverlay" Grid.Row="0" Grid.RowSpan="4" Visibility="Collapsed">
+            <Border Background="Transparent" MouseDown="OnErrorHelpDismiss" />
+            <Grid HorizontalAlignment="Left" VerticalAlignment="Bottom" Width="480" Margin="552,0,0,132">
+              <Border Background="#FFFBF2" BorderBrush="#9D7546" BorderThickness="1.5" CornerRadius="8" Padding="20,14,14,16" Effect="{StaticResource SoftShadow}">
+                <StackPanel>
+                  <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <Grid Width="26" Height="26" VerticalAlignment="Center" Margin="0,0,10,0">
+                      <Ellipse Fill="#A6421F" /><TextBlock Text="?" FontSize="16" FontWeight="Bold" Foreground="#FFF9E9" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Grid>
+                    <TextBlock Grid.Column="1" Style="{StaticResource DisplayTitle}" FontSize="17" Text="需要協助嗎？" VerticalAlignment="Center" />
+                    <Button Grid.Column="2" Style="{StaticResource HelpCircleButton}" Content="×" Margin="6,-4,0,0" Click="OnErrorHelpClose" />
+                  </Grid>
+                  <TextBlock x:Name="ErrorHelpCause" Style="{StaticResource BodyText}" FontSize="13" Margin="0,10,6,0" />
+                  <TextBlock Style="{StaticResource DisplayTitle}" FontSize="13.5" Margin="0,13,0,5" Foreground="#7A4A22" Text="建議處理方式" />
+                  <TextBlock Style="{StaticResource BodyText}" FontSize="13" Margin="0,0,6,6" Text="1. 確認網路與伺服器位址。&#x0a;2. 重新檢查，或執行修復遊戲。&#x0a;3. 若仍失敗，保留診斷記錄以供分析。" />
+                  <TextBlock x:Name="ErrorHelpCode" Style="{StaticResource BodyText}" FontSize="11.5" Foreground="{StaticResource MutedInkBrush}" Margin="0,6,6,0" />
+                </StackPanel>
+              </Border>
+              <Path Data="M0,0 L9,10 L18,0" Fill="#FFFBF2" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,20,-9" />
+              <Path Data="M0,0 L9,10 L18,0" Stroke="#9D7546" StrokeThickness="1.5" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,20,-9" />
+            </Grid>
+          </Grid>
+        </Grid>
+      </Grid>
+    </Viewbox>
+  </Grid>
 </Window>

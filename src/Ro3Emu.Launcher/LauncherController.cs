@@ -37,7 +37,7 @@ public sealed class LauncherController : IDisposable
         _post = post;
         _pickFolder = pickFolder;
         _minimize = minimize;
-        _repo = new RepositoryClient(new Uri(config.Repository));
+        _repo = new RepositoryClient(new Uri(config.Repository), config.RepositoryTrust);
         _layout = new InstallLayout(_settings.ClientDirectory ?? Path.Combine(Path.GetDirectoryName(exePath)!, "Client"));
     }
 
@@ -99,6 +99,7 @@ public sealed class LauncherController : IDisposable
             var updater = new Updater(_layout, _repo);
             var check = await updater.CheckAsync(_config.Channel, _life.Token);
             _channel = check.Channel;
+            if (_config.RequireSignedChannel) _settings.AcceptChannelSequence(_channel.Channel, _channel.Sequence);
             _installed = check.Installed;
             if (_channel.Launcher is { } release && SelfUpdate.IsNewer(release.Version, _version))
             {
@@ -243,7 +244,10 @@ public sealed class LauncherController : IDisposable
             if (bytes is null) return;
             using var json = JsonDocument.Parse(bytes);
             if (json.RootElement.TryGetProperty("items", out var items))
-                _post(new { type = "news", items = items.Clone() });
+            {
+                JsonElement? banners = json.RootElement.TryGetProperty("banners", out var bannerItems) ? bannerItems.Clone() : null;
+                _post(new { type = "news", items = items.Clone(), banners });
+            }
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or PatcherException) { }
     }

@@ -9,7 +9,7 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>Ro3EmuLauncher</AssemblyName>
     <RootNamespace>Ro3Emu.Launcher</RootNamespace>
-    <Version>1.1.0</Version>
+    <Version>2.0.0</Version>
     <Product>RO3Emu Launcher</Product>
     <!-- Release: one self-contained exe, players need no .NET install. -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -26,15 +26,19 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Web.WebView2" />
     <ProjectReference Include="..\Ro3Emu.Patcher\Ro3Emu.Patcher.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <!-- The shipped settings live in the exe; a launcher.json beside it still wins. -->
     <EmbeddedResource Include="$(LauncherConfigFile)" LogicalName="launcher.json" />
-    <!-- The page (ui/index.html + app.css/js + assets), served to WebView2 from the exe. -->
-    <EmbeddedResource Include="ui\**\*" LogicalName="ui/$([System.String]::Copy('%(RecursiveDir)').Replace('\', '/'))%(Filename)%(Extension)" />
+    <!-- Optional private art imported by tools/Import-OfficialLauncherAssets.ps1. It is gitignored. -->
+    <Resource Include="PrivateAssets\Assets\**\*" Link="Assets\%(RecursiveDir)%(Filename)%(Extension)" Condition="Exists('PrivateAssets\Assets')" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Legacy WebView2 code-behind is retained for history but no longer compiled by the pure-WPF launcher. -->
+    <Compile Remove="MainWindow.xaml.cs" />
   </ItemGroup>
 
 </Project>
