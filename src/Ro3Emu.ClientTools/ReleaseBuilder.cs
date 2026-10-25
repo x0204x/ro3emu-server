@@ -15,7 +15,8 @@ public static class ReleaseBuilder
     private const string BaselineHeader = "RO3RECOVERYVERIFIEDBASELINE1";
     private const string ManagedPrefix = "ro3_Data/Managed/";
 
-    public static async Task<int> PublishAsync(string clientDir, string serverUrl, string pem, string repoDir, string version, string channel, int compression)
+    public static async Task<int> PublishAsync(string clientDir, string serverUrl, string pem, string repoDir, string version, string channel, int compression,
+        string? localizationMap = null)
     {
         clientDir = Path.GetFullPath(clientDir);
         var baseline = ReadBaseline(clientDir);
@@ -60,6 +61,7 @@ public static class ReleaseBuilder
             if (!files.Any(f => string.Equals(f.Key, relative, StringComparison.OrdinalIgnoreCase)))
                 files.Add(new(relative, Path.Combine(stagedManaged, extra!)));
         }
+        if (ReleaseFileSources.LocalizationMap(clientDir, localizationMap) is { } localization) files.Add(localization);
         Console.WriteLine($"publishing {files.Count} files as {channel}/{version} into {repoDir}");
 
         var progress = new Progress<string>(Console.WriteLine);

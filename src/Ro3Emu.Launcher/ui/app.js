@@ -10,9 +10,9 @@
   var stage = null;
 
   var DEFAULT_NEWS = [
-    { tag: "Welcome", color: "blue", title: "Welcome to RO3Emu", text: "Our own Ragnarok Online 3 server. Everything is still being built, so report anything that breaks." },
-    { tag: "Account", color: "green", title: "No registration needed", text: "Type any username and password in the game. The account is created on your first login." },
-    { tag: "Updates", color: "orange", title: "Automatic game updates", text: "New versions download here. Interrupted downloads resume where they stopped." },
+    { tag: "歡迎", color: "blue", title: "歡迎來到 RO3Emu", text: "這是我們自己的 Ragnarok Online 3 伺服器。目前仍在持續開發中，若遇到問題請協助回報。" },
+    { tag: "帳號", color: "green", title: "不需事先註冊", text: "在遊戲中輸入任意帳號與密碼，第一次登入時會自動建立帳號。" },
+    { tag: "更新", color: "orange", title: "自動更新遊戲", text: "新版本會由此自動下載；如果下載中斷，下次可以從中斷處繼續。" },
   ];
   var COLORS = { blue: "var(--blue)", green: "var(--green)", orange: "var(--orange)", red: "var(--red)" };
 
@@ -21,24 +21,25 @@
   function eta(s) {
     if (!(s > 0) || !isFinite(s)) return "";
     s = Math.round(s);
-    if (s >= 3600) return Math.floor(s / 3600) + " h " + Math.floor(s % 3600 / 60) + " min";
-    if (s >= 60) return Math.floor(s / 60) + " min " + (s % 60) + " s";
-    return s + " s";
+    if (s >= 3600) return Math.floor(s / 3600) + " 小時 " + Math.floor(s % 3600 / 60) + " 分";
+    if (s >= 60) return Math.floor(s / 60) + " 分 " + (s % 60) + " 秒";
+    return s + " 秒";
   }
 
   // phase -> active step (1 install, 2 verify, 3 ready), button label/icon, default message
   var PHASES = {
-    checking: { step: 0, button: "Checking…", icon: "download", wait: true, text: "Checking for updates…" },
-    install: { step: 1, button: "Install", icon: "download", text: "The game is not installed yet. About 13 GB to download." },
-    update: { step: 1, button: "Update", icon: "download", text: "A new version is available." },
-    repair: { step: 2, button: "Repair", icon: "repair", text: "Some game files differ from the release.", warn: true },
-    ready: { step: 3, button: "Play", icon: null, text: "Up to date. Have fun!" },
-    offline: { step: 0, button: "Retry", icon: "repair", text: "Can't reach the update server.", warn: true },
-    error: { step: 0, button: "Retry", icon: "repair", text: "Something went wrong.", warn: true },
-    launching: { step: 3, button: "Starting…", icon: null, wait: true, text: "Starting the game…" },
-    running: { step: 3, button: "Play", icon: null, text: "The game is running." },
+    checking: { step: 0, button: "檢查中…", icon: "download", wait: true, text: "正在檢查更新…" },
+    install: { step: 1, button: "安裝遊戲", icon: "download", text: "尚未安裝遊戲，需要下載完整遊戲檔案。" },
+    update: { step: 1, button: "立即更新", icon: "download", text: "有新的遊戲版本可以更新。" },
+    updating: { step: 1, button: "暫停下載", icon: null, wait: true, text: "正在更新遊戲檔案…" },
+    repair: { step: 2, button: "修復遊戲", icon: "repair", text: "部分遊戲檔案與目前版本不一致。", warn: true },
+    ready: { step: 3, button: "開始遊戲", icon: null, text: "已更新至最新版本，祝您遊戲愉快！" },
+    offline: { step: 0, button: "重新連線", icon: "repair", text: "無法連線至更新伺服器。", warn: true },
+    error: { step: 0, button: "再試一次", icon: "repair", text: "發生未預期的錯誤。", warn: true },
+    launching: { step: 3, button: "啟動中…", icon: null, wait: true, text: "正在啟動遊戲…" },
+    running: { step: 3, button: "開始遊戲", icon: null, text: "遊戲目前正在執行。" },
   };
-  var STAGES = { scanning: "Checking files", downloading: "Downloading", assembling: "Assembling files", verifying: "Verifying", committing: "Saving" };
+  var STAGES = { scanning: "檢查檔案", downloading: "下載中", assembling: "組裝檔案", verifying: "驗證中", committing: "儲存中" };
 
   function setSteps(active) {
     for (var i = 1; i <= 3; i++) {
@@ -59,7 +60,7 @@
     var btn = $("primary"), ico = $("primary-icon");
     if (busy) {
       btn.disabled = false;
-      $("primary-label").textContent = "Pause";
+      $("primary-label").textContent = "暫停下載";
       ico.hidden = true;
     } else {
       btn.disabled = !!p.wait;
@@ -70,20 +71,20 @@
     $("repair").disabled = busy || !state.installed || !!p.wait;
     $("set-dir-change").disabled = busy;
 
-    var v = "Launcher " + (state.launcher || "") ;
-    if (state.installed && state.remote && state.installed !== state.remote) v += " · Game " + state.installed + " → " + state.remote;
-    else if (state.installed || state.remote) v += " · Game " + (state.installed || state.remote);
+    var v = "啟動器 " + (state.launcher || "") ;
+    if (state.installed && state.remote && state.installed !== state.remote) v += " · 遊戲版本 " + state.installed + " → " + state.remote;
+    else if (state.installed || state.remote) v += " · 遊戲版本 " + (state.installed || state.remote);
     $("ver-line").textContent = v;
   }
 
   function renderProgress(m) {
     stage = m.stage;
-    $("p-stage").textContent = STAGES[m.stage] || "Working";
+    $("p-stage").textContent = STAGES[m.stage] || "處理中";
     var f = m.total > 0 ? Math.min(1, m.done / m.total) : 0;
     $("p-pct").textContent = Math.floor(f * 100) + "%";
     $("p-fill").style.width = (f * 100).toFixed(2) + "%";
     $("p-bytes").textContent = m.total > 0 ? size(m.done) + " / " + size(m.total) : "";
-    $("p-rate").textContent = m.stage === "downloading" && m.rate > 0 ? (m.rate / 1048576).toFixed(1) + " MB/s · " + eta(m.eta) + " left" : "";
+    $("p-rate").textContent = m.stage === "downloading" && m.rate > 0 ? (m.rate / 1048576).toFixed(1) + " MB/s · 剩餘 " + eta(m.eta) : "";
   }
 
   function renderNews(items) {
@@ -92,12 +93,20 @@
     (items && items.length ? items : DEFAULT_NEWS).forEach(function (n) {
       var li = document.createElement("li");
       li.style.setProperty("--c", COLORS[n.color] || COLORS.blue);
-      var tag = document.createElement("span"); tag.className = "tag"; tag.textContent = n.tag || "News";
+      var tag = document.createElement("span"); tag.className = "tag"; tag.textContent = n.tag || "公告";
       var b = document.createElement("b"); b.textContent = n.title;
       var p = document.createElement("p"); p.textContent = n.text || "";
       li.appendChild(tag); li.appendChild(b); li.appendChild(p);
       list.appendChild(li);
     });
+  }
+
+  function setBrand(name) {
+    if (typeof name !== "string" || !name.trim()) return;
+    name = name.trim();
+    $("brand").textContent = name;
+    $("realm-name").textContent = name + " · 私人測試伺服器";
+    document.title = name;
   }
 
   function showTab(name) {
@@ -113,7 +122,12 @@
         busy = m.phase === "updating";
         var launcher = state.launcher;
         if (!busy) { state = m; state.launcher = launcher; stage = null; }
-        else { state.installed = m.installed || state.installed; state.remote = m.remote || state.remote; }
+        else {
+          state.phase = m.phase;
+          state.message = m.message;
+          state.installed = m.installed || state.installed;
+          state.remote = m.remote || state.remote;
+        }
         render();
         break;
       case "progress":
@@ -123,12 +137,13 @@
         break;
       case "server":
         $("server").className = "server " + (m.online ? "on" : "off");
-        $("server-text").innerHTML = m.online ? "<b>Online</b>" + (m.players != null ? " · " + m.players + (m.players === 1 ? " player" : " players") : "") : "<b>Offline</b>";
+        $("server-text").innerHTML = m.online ? "<b>伺服器上線</b>" + (m.players != null ? " · " + m.players + " 位玩家" : "") : "<b>伺服器離線</b>";
         break;
       case "settings":
         $("set-dir").textContent = m.dir;
         state.launcher = m.launcher;
-        $("set-version").textContent = "Launcher " + m.launcher;
+        $("set-version").textContent = "啟動器版本 " + m.launcher;
+        setBrand(m.serverName);
         render();
         break;
       case "news":
@@ -157,7 +172,7 @@
     return {
       post: function (c) {
         if (c.cmd !== "ready") return;
-        emit({ type: "settings", dir: "C:\\Games\\RO3Emu\\Client", launcher: "1.0.0" });
+        emit({ type: "settings", dir: "C:\\Games\\RO3Emu\\Client", launcher: "1.0.0", serverName: "RO3 私人伺服器" });
         emit({ type: "server", online: scenario !== "offline", players: 7 });
         if (scenario === "offline") return emit({ type: "state", phase: "offline" });
         if (scenario === "downloading") {

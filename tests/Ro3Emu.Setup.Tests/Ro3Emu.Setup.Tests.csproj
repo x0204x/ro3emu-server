@@ -24,4 +24,9 @@
     <ProjectReference Include="..\..\src\Ro3Emu.DataExport\Ro3Emu.DataExport.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Pure source-resolution helper: test the ClientTools production source without loading its Unity client references. -->
+    <Compile Include="..\..\src\Ro3Emu.ClientTools\ReleaseFileSources.cs" Link="ClientTools\ReleaseFileSources.cs" />
+  </ItemGroup>
+
 </Project>

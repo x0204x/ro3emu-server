@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-Hant-TW">
 <head>
 <meta charset="utf-8">
 <title>RO3Emu</title>
@@ -7,67 +7,67 @@
 </head>
 <body>
 <header class="topbar" id="drag">
-  <span class="logo">RO3Emu</span>
+  <span class="logo" id="brand">RO3Emu</span>
   <nav class="tabs">
     <span class="star">✦</span>
-    <button class="tab active" data-tab="home">Home</button>
-    <button class="tab" data-tab="news">News</button>
-    <button class="tab" data-tab="settings">Settings</button>
+    <button class="tab active" data-tab="home">首頁</button>
+    <button class="tab" data-tab="news">公告</button>
+    <button class="tab" data-tab="settings">設定</button>
     <span class="star">✦</span>
   </nav>
   <div class="right">
-    <span class="server" id="server"><i></i><span id="server-text">Connecting…</span></span>
+    <span class="server" id="server"><i></i><span id="server-text">連線中…</span></span>
     <span class="vsep"></span>
-    <button class="wbtn" id="btn-min" title="Minimize"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg></button>
-    <button class="wbtn" id="btn-close" title="Close"><svg viewBox="0 0 16 16"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg></button>
+    <button class="wbtn" id="btn-min" title="最小化"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg></button>
+    <button class="wbtn" id="btn-close" title="關閉"><svg viewBox="0 0 16 16"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg></button>
   </div>
 </header>
 
 <section class="card notices" id="notices">
   <div class="card-head">
-    <h2><span class="star">✦</span>Notices</h2>
-    <span class="pill green">Test server</span>
+    <h2><span class="star">✦</span>最新公告</h2>
+    <span class="pill green">測試伺服器</span>
   </div>
-  <p class="card-sub">News from the RO3Emu team.</p>
+  <p class="card-sub">RO3Emu 團隊的最新消息與更新說明。</p>
   <hr class="gem">
   <ul class="list" id="news-list"></ul>
-  <p class="card-foot">RO3Emu · private test realm</p>
+  <p class="card-foot" id="realm-name">RO3Emu · 私人測試伺服器</p>
 </section>
 
 <section class="card settings" id="settings" hidden>
-  <div class="card-head"><h2><span class="star">✦</span>Settings</h2></div>
-  <p class="card-sub">Where the game lives on this PC.</p>
+  <div class="card-head"><h2><span class="star">✦</span>啟動器設定</h2></div>
+  <p class="card-sub">設定這台電腦上的遊戲安裝位置。</p>
   <hr class="gem">
-  <label class="field-label">Game folder</label>
+  <label class="field-label">遊戲資料夾</label>
   <div class="field" id="set-dir"></div>
   <div class="row">
-    <button class="cream small" id="set-dir-change">Change folder</button>
-    <button class="cream small" id="set-open">Open folder</button>
+    <button class="cream small" id="set-dir-change">變更資料夾</button>
+    <button class="cream small" id="set-open">開啟資料夾</button>
   </div>
-  <p class="hint">Already have the RO3 PC client? Point this at its ROO_PC folder and only the changed files are downloaded.</p>
+  <p class="hint">如果已安裝 RO3 電腦版，請選擇其中的 ROO_PC 資料夾；啟動器只會下載缺少或已變更的檔案。</p>
   <p class="card-foot" id="set-version"></p>
 </section>
 
 <section class="panel steps-panel">
   <div class="steps">
-    <div class="step" id="step-1"><span class="hex">1</span><div><b>Install</b><small>Download game files</small></div></div>
+    <div class="step" id="step-1"><span class="hex">1</span><div><b>安裝</b><small>下載遊戲檔案</small></div></div>
     <span class="chev">›</span>
-    <div class="step" id="step-2"><span class="hex">2</span><div><b>Verify</b><small>Check file integrity</small></div></div>
+    <div class="step" id="step-2"><span class="hex">2</span><div><b>驗證</b><small>檢查檔案完整性</small></div></div>
     <span class="chev">›</span>
-    <div class="step" id="step-3"><span class="hex">3</span><div><b>Ready</b><small>Launch the game</small></div></div>
+    <div class="step" id="step-3"><span class="hex">3</span><div><b>就緒</b><small>啟動遊戲</small></div></div>
   </div>
   <div class="progress" id="progress" hidden>
-    <div class="p-top"><b id="p-stage">Downloading</b><span id="p-pct">0%</span></div>
+    <div class="p-top"><b id="p-stage">下載中</b><span id="p-pct">0%</span></div>
     <div class="bar"><div id="p-fill"></div></div>
     <div class="p-bottom"><span id="p-bytes"></span><span id="p-rate"></span></div>
   </div>
-  <p class="message" id="message"><span id="message-text">Checking for updates…</span></p>
+  <p class="message" id="message"><span id="message-text">正在檢查更新…</span></p>
 </section>
 
 <section class="panel actions-panel">
-  <h3>Actions</h3>
-  <button class="blue" id="primary" disabled><img id="primary-icon" alt="" hidden><span id="primary-label">Checking…</span></button>
-  <button class="cream" id="repair"><span>Repair</span></button>
+  <h3>遊戲操作</h3>
+  <button class="blue" id="primary" disabled><img id="primary-icon" alt="" hidden><span id="primary-label">檢查中…</span></button>
+  <button class="cream" id="repair"><span>修復遊戲</span></button>
 </section>
 
 <footer class="version" id="ver-line"></footer>

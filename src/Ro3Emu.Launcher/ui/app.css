@@ -5,7 +5,7 @@
   --ink:#3a2f1e; --ink-2:#5a4a30; --muted:#8a7756; --gold:#b48a45; --gold-2:#9a7333; --rule:rgba(160,125,60,.45);
   --blue:#2e5aa8; --green:#5c7a32; --orange:#d9902a; --red:#c4503c;
   --caps:Georgia,"Times New Roman",serif;
-  --body:"Segoe UI","Segoe UI Variable",system-ui,sans-serif;
+  --body:"Microsoft JhengHei UI","Microsoft JhengHei","Segoe UI","Segoe UI Variable",system-ui,sans-serif;
   --top:92px; --pad:26px; --bottom:206px;
 }
 
@@ -27,8 +27,8 @@ ul{list-style:none;margin:0;padding:0}
   background:linear-gradient(180deg,#f7eed8,#eadbb6);box-shadow:0 2px 0 rgba(160,125,60,.35),0 6px 18px rgba(50,35,10,.28);app-region:drag}
 .logo{font-family:var(--caps);font-size:34px;font-weight:700;letter-spacing:.08em;color:var(--gold-2);text-shadow:0 1px 0 #fff8e6}
 .tabs{position:absolute;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:48px;app-region:no-drag}
-.tab{position:relative;font-family:var(--caps);font-weight:600;font-size:18px;letter-spacing:.32em;text-transform:uppercase;color:var(--ink-2);
-  padding:6px 0 8px .32em;transition:color .15s}
+.tab{position:relative;font-family:var(--body);font-weight:600;font-size:18px;letter-spacing:.14em;color:var(--ink-2);
+  padding:6px 0 8px .14em;transition:color .15s}
 .tab:hover{color:var(--ink)}
 .tab.active{color:var(--ink)}
 .tab.active::after{content:"";position:absolute;left:50%;bottom:-16px;width:76px;height:12px;transform:translateX(-50%);
@@ -105,6 +105,7 @@ ul{list-style:none;margin:0;padding:0}
   text-shadow:0 1px 2px rgba(0,0,30,.5);transition:transform .12s,filter .12s}
 .cream{background:linear-gradient(180deg,#fff8e6,#ecdcb4);box-shadow:inset 0 0 0 1px #fff,0 0 0 1px var(--gold-2);color:var(--ink);text-shadow:none;font-size:18px;height:52px;width:320px}
 .cream.small{width:auto;height:40px;padding:0 22px;font-size:13px;letter-spacing:.08em}
+.blue,.cream{font-family:var(--body)}
 .blue img,.cream img{width:30px;height:30px}
 .blue:not(:disabled):hover,.cream:not(:disabled):hover{filter:brightness(1.08);transform:translateY(-1px)}
 .blue:not(:disabled):active,.cream:not(:disabled):active{transform:translateY(1px)}

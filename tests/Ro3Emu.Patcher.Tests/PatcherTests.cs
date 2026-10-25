@@ -103,7 +103,10 @@ public sealed class PatcherTests : IDisposable
         WriteBuild("Game.exe", Random(30_000, 10));
         WriteBuild("data/a.bin", shared.Concat(shared).ToArray());
         WriteBuild("data/b.bin", shared.Concat(Random(20_000, 12)).ToArray());
-        await Publish("1.0.0");
+        WriteBuild("ro3emu/loc_en.tsv", "zh_CN\tzh_TW"u8.ToArray());
+        var published = await Publish("1.0.0");
+
+        Assert.Contains(published.Manifest.Files, f => f.Path == "ro3emu/loc_en.tsv");
 
         await Update(new FileRepoHandler(Repo));
 

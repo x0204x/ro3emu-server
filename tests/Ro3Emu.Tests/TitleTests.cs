@@ -92,11 +92,14 @@ public sealed class TitleTests : IAsyncLifetime
         Assert.Equal(1, (await Next(alice, TitleService.Sync, DBTitleInfoIncrement.Parser, m => !m.SyncAllMark)).TitleId);
         // Rank 2 needs base level 20 and power 5000.
         Assert.Equal(ErrorCodes.LevelTooLow, await Claim(alice));
-        await Gm(alice, "!lvl 99");
+        // Keep the role at rank 2's actual level while testing its power gate. At level 99 the 250 ms power ticker
+        // recalculates a base power above 5000 and races the deliberately lowered best-power snapshot.
+        await Gm(alice, "!lvl 20");
         await SetBestPower(alice, 4999);
         Assert.Equal(ErrorCodes.Parameter, await Claim(alice));
         await SetBestPower(alice, 1_000_000);
         Assert.Equal(0, await Claim(alice));
+        await Gm(alice, "!lvl 99");
         Assert.Equal(0, await Claim(alice)); // rank 3
         // Rank 4 spends two Crests of Journey.
         Assert.Equal(ErrorCodes.ItemsShort, await Claim(alice));

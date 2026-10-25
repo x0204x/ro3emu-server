@@ -53,12 +53,15 @@ Publish a new client version after a change to `Ro3Emu.ClientHooks` or the local
 or gate key changes:
 
 ```
-Ro3Emu.ClientTools release <client dir> <server url> <gate_rsa_public.pem> <repo dir> <version> <channel>
+Ro3Emu.ClientTools release <client dir> <server url> <gate_rsa_public.pem> <repo dir> <version> <channel> 9 --loc-map <loc_en.tsv>
 ```
 
 The published file set is exactly the official install (`.ro3-update/verified-baseline.txt`). The patched DLLs are
 rebuilt from the originals in `ro3emu-backup` inside a staging copy, so the source client itself may already be
-patched for another server. Only changed chunks are new, so a hooks change is a few MB.
+patched for another server. The optional `--loc-map` file is published as `ro3emu/loc_en.tsv`; without that option,
+the tool uses `<client dir>/ro3emu/loc_en.tsv` when it exists. This lets a clean official client stay untouched while
+a reviewed localization overlay is supplied from elsewhere. Only changed chunks are new, so a hooks or localization
+change is a few MB.
 
 ### Launcher
 

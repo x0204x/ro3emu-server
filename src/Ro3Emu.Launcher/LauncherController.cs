@@ -77,7 +77,13 @@ public sealed class LauncherController : IDisposable
         }
     }
 
-    void PostSettings() => _post(new { type = "settings", dir = _layout.GameDirectory, launcher = _version });
+    void PostSettings() => _post(new
+    {
+        type = "settings",
+        dir = _layout.GameDirectory,
+        launcher = _version,
+        serverName = _config.ServerName,
+    });
 
     void PostState(string phase, string? message = null)
     {
@@ -96,7 +102,7 @@ public sealed class LauncherController : IDisposable
             _installed = check.Installed;
             if (_channel.Launcher is { } release && SelfUpdate.IsNewer(release.Version, _version))
             {
-                PostState("checking", $"Updating the launcher to {release.Version}…");
+                PostState("checking", $"正在將啟動器更新至 {release.Version}…");
                 if (await SelfUpdate.ApplyAsync(_repo, release, _version, _exePath, _life.Token))
                 {
                     SelfUpdate.Restart(_exePath);
@@ -107,17 +113,17 @@ public sealed class LauncherController : IDisposable
             if (check.Installed is null)
             {
                 bool existing = File.Exists(Path.Combine(_layout.GameDirectory, "ro3.exe"));
-                PostState("install", existing ? "Found an RO3 client in this folder: only the changed files will be downloaded." : null);
+                PostState("install", existing ? "已在此資料夾找到 RO3 客戶端，只會下載缺少或已變更的檔案。" : null);
             }
-            else if (check.UpdateRequired) PostState("update", $"Version {_channel.Version} is available.");
-            else if (updater.QuickVerify(check.Installed) is { Count: > 0 } changed) PostState("repair", $"{changed.Count} game files differ from the release.");
+            else if (check.UpdateRequired) PostState("update", $"已有遊戲版本 {_channel.Version} 可供更新。");
+            else if (updater.QuickVerify(check.Installed) is { Count: > 0 } changed) PostState("repair", $"有 {changed.Count} 個遊戲檔案與目前版本不一致。");
             else PostState("ready");
         }
         catch (Exception e) when (e is PatcherException or HttpRequestException or TaskCanceledException or IOException or JsonException)
         {
             _installed = new Updater(_layout, _repo).LoadState();
             // Offline but installed: the game can still start (the update server and the game server are separate).
-            PostState(_installed is not null ? "ready" : "offline", _installed is not null ? "Can't reach the update server; playing the installed version." : null);
+            PostState(_installed is not null ? "ready" : "offline", _installed is not null ? "目前無法連線至更新伺服器，仍可啟動已安裝的版本。" : null);
         }
     }
 
@@ -151,13 +157,13 @@ public sealed class LauncherController : IDisposable
         {
             _work?.Dispose();
             _work = null;
-            PostState(_installed is null ? "install" : "update", "Paused. Downloaded parts are kept; continue any time.");
+            PostState(_installed is null ? "install" : "update", "下載已暫停；已下載的內容會保留，之後可繼續。");
         }
         catch (Exception e)
         {
             _work?.Dispose();
             _work = null;
-            PostState("error", e.Message);
+            PostState("error", $"更新失敗：{e.Message}");
         }
     }
 
@@ -172,18 +178,18 @@ public sealed class LauncherController : IDisposable
                 PostState("running");
                 _minimize();
             }
-            else PostState("repair", $"The game did not start: {failure}.");
+            else PostState("repair", $"遊戲未能啟動：{failure}。");
         }
         catch (Exception e)
         {
-            PostState("error", e.Message);
+            PostState("error", $"啟動失敗：{e.Message}");
         }
     }
 
     async Task ChangeDirectoryAsync()
     {
         if (_work != null) return;
-        string? folder = _pickFolder("Game folder (an existing ROO_PC folder or an empty one)");
+        string? folder = _pickFolder("遊戲資料夾（既有的 ROO_PC 資料夾，或空白資料夾）");
         if (folder is null) return;
         // An existing client (ro3.exe) or an empty folder is used as is; anything else gets its own subfolder.
         bool usable = File.Exists(Path.Combine(folder, "ro3.exe")) || !Directory.EnumerateFileSystemEntries(folder).Any();

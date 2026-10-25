@@ -9,7 +9,7 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>Ro3EmuLauncher</AssemblyName>
     <RootNamespace>Ro3Emu.Launcher</RootNamespace>
-    <Version>1.0.1</Version>
+    <Version>1.1.0</Version>
     <Product>RO3Emu Launcher</Product>
     <!-- Release: one self-contained exe, players need no .NET install. -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
