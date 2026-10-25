@@ -29,13 +29,31 @@ public class SetupTests
     [Fact]
     public void OptionsParse()
     {
-        var o = Options.Parse(["host", "--public", "10.0.0.5", "--gm", "alice", "--gm", "bob", "--http-port", "6000", "--yes"]);
+        var o = Options.Parse(["host", "--public", "10.0.0.5", "--gm", "alice", "--gm", "bob", "--http-port", "6000", "--yes",
+            "--cluster-name", "RO3 繁中測試伺服器", "--area-name", "普隆德拉"]);
         Assert.Equal(("host", "10.0.0.5", 6000, true), (o.Command, o.PublicHost, o.Ports.Http, o.Yes));
+        Assert.Equal(("RO3 繁中測試伺服器", "普隆德拉"), (o.ClusterName, o.AreaName));
         Assert.Equal(["alice", "bob"], o.GmAccounts);
         Assert.Equal("start", Options.Parse([]).Command);
+        Assert.Null(Options.Parse(["host"]).ClusterName);
+        Assert.Null(Options.Parse(["host"]).AreaName);
         Assert.Equal(["1.2.3.4"], Options.Parse(["join", "1.2.3.4"]).Positional);
         Assert.Throws<SetupException>(() => Options.Parse(["--nope"]));
         Assert.Throws<SetupException>(() => Options.Parse(["fly"]));
+        Assert.Throws<SetupException>(() => Options.Parse(["host", "--cluster-name"]));
+        Assert.Throws<SetupException>(() => Options.Parse(["host", "--area-name", "  "]));
+    }
+
+    [Fact]
+    public void ServerDisplayNamesReachTheServerConfiguration()
+    {
+        var options = Options.Parse(["host", "--cluster-name", "RO3 繁中測試伺服器", "--area-name", "普隆德拉"]);
+
+        Assert.Equal([
+            "--Ro3Emu:ClusterName=RO3 繁中測試伺服器",
+            "--Ro3Emu:AreaName=普隆德拉",
+        ], Flows.ServerDisplayArgs(options));
+        Assert.Empty(Flows.ServerDisplayArgs(Options.Parse(["host"])));
     }
 
     [Fact]

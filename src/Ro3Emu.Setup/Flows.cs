@@ -186,6 +186,7 @@ internal static class Flows
             }
             env["ASPNETCORE_ENVIRONMENT"] = "Production";
             args.AddRange([$"--Ro3Emu:PublicHost={publicHost}", "--Ro3Emu:OpenContent:Enabled=true", "--Ro3Emu:Pass:Play=true", "--Ro3Emu:Pass:FreePremium=true"]);
+            args.AddRange(ServerDisplayArgs(options));
             for (int i = 0; i < gms.Count; i++) args.Add($"--Ro3Emu:GmAccounts:{i}={gms[i]}");
         }
         else
@@ -250,6 +251,15 @@ internal static class Flows
                 if (running) Ui.Ok($"stopped. Your characters are saved in {SetupHome.DataDir}.");
             }
         }
+    }
+
+    /// <summary>Optional login-screen labels passed through to the server's standard .NET configuration.</summary>
+    internal static List<string> ServerDisplayArgs(Options options)
+    {
+        var args = new List<string>();
+        if (options.ClusterName is not null) args.Add($"--Ro3Emu:ClusterName={options.ClusterName}");
+        if (options.AreaName is not null) args.Add($"--Ro3Emu:AreaName={options.AreaName}");
+        return args;
     }
 
     /// <summary>Starts the game (unless asked not to) and keeps the server up until the player is done.</summary>

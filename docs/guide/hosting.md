@@ -5,6 +5,16 @@ may use the network: allow it). Friends run `RO3Emu.exe join <that address>`. Fo
 forward TCP ports `5380`, `20000` and `33100` on your router to the host and share your public IP. Party voice chat
 is off unless the host adds `--voice-port 33101` (any free port); then forward that port too.
 
+The two labels on the server-selection screen are optional host settings. For example:
+
+```powershell
+.\RO3Emu.exe host --client 'C:\Games\Ragnarok3' --public '100.126.246.106' --no-launch `
+  --cluster-name 'RO3 繁中測試伺服器' --area-name '普隆德拉'
+```
+
+The names are read when the server starts, so restart the host after changing them. They only change display text;
+the numeric cluster and area identities stay unchanged.
+
 **On Linux.** Download **`RO3Emu-server-linux-x64.tar.gz`**, extract it and run `server.sh`; nothing to install:
 
 ```bash

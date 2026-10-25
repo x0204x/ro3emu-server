@@ -18,6 +18,8 @@ internal static class Program
           host               like start, but friends on your network or the Internet can join
                                --public <ip>     the address friends connect to (default: this PC's LAN address)
                                --gm <account>    an account that gets GM commands (repeatable)
+                               --cluster-name <name>  name above the server list (default: RO3Emu)
+                               --area-name <name>     name of the server inside the cluster (default: Prontera)
           join <address>     play on someone else's server: host, host:port or http://host:port
           install [folder]   download the game from the official Genesis servers (about 24 GB), every file
                              checked against the publisher's signature
@@ -143,6 +145,8 @@ internal sealed class Options
     public bool NoLaunch { get; private set; }
     public bool Yes { get; private set; }
     public string? PublicHost { get; private set; }
+    public string? ClusterName { get; private set; }
+    public string? AreaName { get; private set; }
     public List<string> GmAccounts { get; } = [];
     public string? Only { get; private set; }
     public bool ListInputs { get; private set; }
@@ -163,6 +167,13 @@ internal sealed class Options
             i = 1;
         }
         string Value(string name) => i + 1 < args.Length ? args[++i] : throw new SetupException($"{name} needs a value.", "Run RO3Emu.exe help.");
+        string DisplayName(string name)
+        {
+            string value = Value(name).Trim();
+            if (value.Length == 0 || value.Contains('\r') || value.Contains('\n'))
+                throw new SetupException($"{name} needs a non-empty single-line name.", "Run RO3Emu.exe help.");
+            return value;
+        }
         int Port(string name) => int.TryParse(Value(name), out var p) && p is > 0 and < 65536 ? p : throw new SetupException($"{name} needs a port number.", "Run RO3Emu.exe help.");
         for (; i < args.Length; i++)
         {
@@ -175,6 +186,8 @@ internal sealed class Options
                 case "--yes": case "-y": o.Yes = true; break;
                 case "--public": o.PublicHost = Value("--public"); break;
                 case "--gm": o.GmAccounts.Add(Value("--gm")); break;
+                case "--cluster-name": o.ClusterName = DisplayName("--cluster-name"); break;
+                case "--area-name": o.AreaName = DisplayName("--area-name"); break;
                 case "--only": o.Only = Value("--only"); break;
                 case "--list-inputs": o.ListInputs = true; break;
                 case "--server-files": o.ServerFiles = true; break;
