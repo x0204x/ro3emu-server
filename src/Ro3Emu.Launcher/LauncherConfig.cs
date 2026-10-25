@@ -23,6 +23,7 @@ public sealed class LauncherConfig
     [JsonPropertyName("requireSignedChannel")] public bool RequireSignedChannel { get; set; }
     [JsonPropertyName("trustedPublisherKeys")] public Dictionary<string, string> TrustedPublisherKeys { get; set; } = new();
     [JsonPropertyName("settingsFile")] public string? SettingsFile { get; set; }
+    [JsonPropertyName("clientDirectory")] public string? ClientDirectory { get; set; }
 
     static readonly JsonSerializerOptions Options = new() { ReadCommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
 
@@ -51,6 +52,11 @@ public sealed class LauncherConfig
         => string.IsNullOrWhiteSpace(SettingsFile)
             ? UserSettings.DefaultFilePath
             : Path.GetFullPath(SettingsFile, executableDirectory);
+
+    public string? ResolveClientDirectory(string executableDirectory)
+        => string.IsNullOrWhiteSpace(ClientDirectory)
+            ? null
+            : Path.GetFullPath(ClientDirectory, executableDirectory);
 }
 
 /// <summary>Per-user choices (%APPDATA%\RO3Emu\launcher-settings.json): only the client folder so far.</summary>

@@ -39,7 +39,10 @@ public sealed class LauncherController : IDisposable
         _pickFolder = pickFolder;
         _minimize = minimize;
         _repo = new RepositoryClient(new Uri(config.Repository), config.RepositoryTrust);
-        _layout = new InstallLayout(_settings.ClientDirectory ?? Path.Combine(Path.GetDirectoryName(exePath)!, "Client"));
+        string executableDirectory = Path.GetDirectoryName(exePath)!;
+        _layout = new InstallLayout(_settings.ClientDirectory
+            ?? config.ResolveClientDirectory(executableDirectory)
+            ?? Path.Combine(executableDirectory, "Client"));
     }
 
     public async Task HandleAsync(string cmd)
@@ -57,7 +60,7 @@ public sealed class LauncherController : IDisposable
                 break;
             case "primary":
                 if (_work != null) return;
-                if (_phase is "ready" or "running") await PlayAsync();
+                if (_phase is "ready" or "running" or "offline-ready") await PlayAsync();
                 else if (_phase is "install" or "update" or "repair") await UpdateAsync(verifyAll: _phase == "repair");
                 else await CheckAsync();
                 break;
@@ -125,7 +128,12 @@ public sealed class LauncherController : IDisposable
         {
             _installed = new Updater(_layout, _repo).LoadState();
             // Offline but installed: the game can still start (the update server and the game server are separate).
-            PostState(_installed is not null ? "ready" : "offline", _installed is not null ? "目前無法連線至更新伺服器，仍可啟動已安裝的版本。" : null);
+            if (_installed is not null)
+                PostState("ready", "目前無法連線至更新伺服器，仍可啟動已安裝的版本。");
+            else if (HasLocalClient())
+                PostState("offline-ready", "目前無法連線至更新伺服器；可啟動本機客戶端進行測試，但尚未核對更新版本。");
+            else
+                PostState("offline");
         }
     }
 
@@ -171,11 +179,13 @@ public sealed class LauncherController : IDisposable
 
     async Task PlayAsync()
     {
+        LaunchInfo? launch = _installed?.Launch;
+        if (launch is null && HasLocalClient()) launch = new LaunchInfo { Exe = "ro3.exe" };
         PostState("launching");
         try
         {
-            if (_installed is null) throw new PatcherException("No packaged client is installed.");
-            string? failure = await GameStarter.StartAsync(_layout.GameDirectory, _installed.Launch);
+            if (launch is null) throw new PatcherException("No packaged client is installed.");
+            string? failure = await GameStarter.StartAsync(_layout.GameDirectory, launch);
             if (failure is null)
             {
                 PostState("running");
@@ -188,6 +198,8 @@ public sealed class LauncherController : IDisposable
             PostState("error", $"啟動失敗：{e.Message}");
         }
     }
+
+    bool HasLocalClient() => File.Exists(Path.Combine(_layout.GameDirectory, "ro3.exe"));
 
     async Task ChangeDirectoryAsync()
     {

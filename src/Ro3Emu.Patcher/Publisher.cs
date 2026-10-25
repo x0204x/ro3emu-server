@@ -264,7 +264,7 @@ public static class Publisher
         var channel = await ReadChannelForPublishAsync(repo, channelName, signing, ct);
         await ValidateChannelReferencesAsync(repo, channel, ct);
         byte[] exe = await File.ReadAllBytesAsync(exePath, ct);
-        string relative = $"launcher/{version}/Ro3EmuLauncher.exe";
+        string relative = $"launcher/{version}/RO3Launcher.exe";
         string target = Path.Combine(repo, relative);
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         if (File.Exists(target))

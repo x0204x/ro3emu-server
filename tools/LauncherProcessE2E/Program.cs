@@ -85,7 +85,7 @@ static async Task PrepareAsync(string rootArg, string oldLauncherArg, string new
     WriteJson(Path.Combine(root, "lab.json"), metadata);
     await PublishGameAsync(root, "1.0.0", update: false);
     var signing = new RepositorySigningOptions(metadata.KeyId, privatePem);
-    ChannelInfo channel = await Publisher.PublishLauncherAsync(repo, "stable", newLauncher, "2.0.1", signing);
+    ChannelInfo channel = await Publisher.PublishLauncherAsync(repo, "stable", newLauncher, "2.0.2", signing);
 
     var config = new
     {
@@ -244,7 +244,7 @@ static void FinalizeLegacyEvidence(string root, int oldPid, int newPid, string c
     File.WriteAllLines(Path.Combine(root, "legacy-processes.ndjson"),
     [
         JsonSerializer.Serialize(new { role = "legacy-2.0.0", pid = oldPid, executable = metadata.LauncherPath, state = "exited" }),
-        JsonSerializer.Serialize(new { role = "replacement-2.0.1", pid = newPid, parentPid = oldPid,
+        JsonSerializer.Serialize(new { role = "replacement-2.0.2", pid = newPid, parentPid = oldPid,
             executable = metadata.LauncherPath, arguments = Array.Empty<string>(), state = "exited" }),
     ]);
     WriteJson(Path.Combine(root, "legacy-result.json"), new
@@ -259,10 +259,10 @@ static void FinalizeLegacyEvidence(string root, int oldPid, int newPid, string c
         afterSha256 = launcherSha256,
         requestCount,
         oldAndNewLeftoversRemoved = !File.Exists(metadata.LauncherPath + ".old") && !File.Exists(metadata.LauncherPath + ".new"),
-        boundary = "驗證既有無 PID/token 參數的 2.0.0 更新器可交接至 2.0.1；未執行公開 HTTPS/CDN 或真實遊戲。",
+        boundary = "驗證既有無 PID/token 參數的 2.0.0 更新器可交接至 2.0.2；未執行公開 HTTPS/CDN 或真實遊戲。",
     });
     if (!passed) throw new InvalidDataException("舊版無參數重啟交接未通過。");
-    Console.WriteLine("PASS legacy 2.0.0 -> 2.0.1 handoff");
+    Console.WriteLine("PASS legacy 2.0.0 -> 2.0.2 handoff");
 }
 
 static async Task ServeAsync(string root, int port, string requestLog)

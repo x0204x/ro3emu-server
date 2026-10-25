@@ -266,7 +266,7 @@
                 <Button x:Name="RepairButton" Grid.Row="2" Style="{StaticResource PrimaryLauncherButton}" IsEnabled="False" Click="OnRepair">
                   <StackPanel Orientation="Horizontal">
                     <Image Source="/Assets/ui/icons/repair.png" Width="42" Height="42" Margin="0,0,18,0" />
-                    <TextBlock VerticalAlignment="Center" Text="修復遊戲" />
+                    <TextBlock x:Name="RepairButtonText" VerticalAlignment="Center" Text="修復遊戲" />
                   </StackPanel>
                 </Button>
               </Grid>

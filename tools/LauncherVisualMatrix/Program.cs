@@ -12,7 +12,7 @@ using Ro3Emu.Launcher;
 
 internal static class Program
 {
-    static readonly string[] Fixtures = ["home", "progress", "queue", "maintenance", "failure-help-open", "settings"];
+    static readonly string[] Fixtures = ["home", "progress", "queue", "maintenance", "failure-help-open", "offline-local", "settings"];
     static readonly (int Dpi, double Scale)[] Dpis = [(96, 1d), (120, 1.25d), (144, 1.5d)];
     static readonly (int Width, int Height, string Name)[] Sizes = [(1200, 800, "standard"), (1080, 720, "minimum")];
     static readonly string[] ControlNames =
@@ -20,7 +20,7 @@ internal static class Program
         "LeftPanel", "BannerHost", "NoticesViewport", "BottomPanel", "ActionsPanel",
         "StepInstall", "StepVerify", "StepReady", "UpdateProgress", "PackageText",
         "ProgressDetails", "DetailText", "QueueStatusText", "PrimaryButton", "RetryButton",
-        "RepairButton", "ErrorHelpOverlay", "MotionCheckBox",
+        "RepairButton", "RepairButtonText", "ErrorHelpOverlay", "MotionCheckBox",
     ];
 
     [STAThread]
@@ -238,6 +238,11 @@ internal static class Program
             case "queue":
             case "maintenance": Need(Visible("PrimaryButton") && !Enabled("PrimaryButton"), "主要按鈕應顯示但停用"); break;
             case "failure-help-open": Need(Visible("RetryButton") && !Visible("PrimaryButton") && Visible("ErrorHelpOverlay"), "錯誤復原畫面狀態不一致"); break;
+            case "offline-local":
+                Need(Visible("PrimaryButton") && Enabled("PrimaryButton"), "離線本機模式仍應允許開始遊戲");
+                Need(root.FindName("PrimaryButtonText") is TextBlock { Text: "開始遊戲" }, "離線本機模式主要按鈕文字錯誤");
+                Need(Enabled("RepairButton") && root.FindName("RepairButtonText") is TextBlock { Text: "重新檢查更新" }, "離線本機模式缺少獨立更新重試");
+                break;
             case "settings": Need(Visible("MotionCheckBox"), "設定頁未顯示動態效果控制項"); break;
             default: Need(Visible("PrimaryButton"), "首頁主要按鈕未顯示"); break;
         }

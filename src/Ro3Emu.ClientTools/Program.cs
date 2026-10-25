@@ -11,7 +11,7 @@ if (args.Length < 2)
           launch  <client dir> [ro3.exe args...]
           release <client dir> <server url> <gate_rsa_public.pem> <repo dir> <version> [channel] [zstd level] [--loc-map <file>]
                                                 publish the client patched for that server for Ro3Emu.Launcher
-          release-launcher <repo dir> <channel> <Ro3EmuLauncher.exe> <version> [--signing-key <private.pem> --key-id <id>]
+          release-launcher <repo dir> <channel> <RO3Launcher.exe> <version> [--signing-key <private.pem> --key-id <id>]
           scan    <client dir> <text>...        list string literals in the client DLLs
           members <client dir> <dll> <type> [method]  list a type's methods with their parameters
           delete-role <server url> <account> <password> <character name or id>
@@ -80,7 +80,7 @@ try
             return await ReleaseBuilder.PublishAsync(args[1], args[2].TrimEnd('/'), File.ReadAllText(args[3]), args[4], args[5],
                 args.Length > 6 ? args[6] : "test", args.Length > 7 ? int.Parse(args[7]) : 9, locMap, repositorySigning);
         case "release-launcher":
-            if (args.Length < 5) throw new ArgumentException("release-launcher needs <repo dir> <channel> <Ro3EmuLauncher.exe> <version>");
+            if (args.Length < 5) throw new ArgumentException("release-launcher needs <repo dir> <channel> <RO3Launcher.exe> <version>");
             var withLauncher = await Ro3Emu.Patcher.Publisher.PublishLauncherAsync(args[1], args[2], args[3], args[4], repositorySigning);
             Console.WriteLine($"channel {withLauncher.Channel}: game {withLauncher.Version}, launcher {withLauncher.Launcher!.Version}");
             return 0;

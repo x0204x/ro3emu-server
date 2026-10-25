@@ -26,6 +26,9 @@ This page explains how to host your own patch repository and publish to it.
 - The game process is resolved only as `<installed client directory>/ro3.exe`, where the installed client directory
   is the directory managed by this launcher. The signed manifest must name `ro3.exe`, include that file, and use a
   relative non-escaping path; the launcher never falls back to a Genesis/Asia installation elsewhere on the PC.
+- If the update repository is temporarily unreachable but that managed directory already contains `ro3.exe`, the
+  launcher enters an explicit offline-local state: **Start Game** remains available and **Check Updates Again** is a
+  separate action. This permits local launch testing without treating an unverified copy as an installed release.
 
 ## Configure the launcher
 
@@ -38,6 +41,8 @@ local repository.
   // Patch repository (static HTTP) and the channel this launcher follows.
   "repository": "https://patch.example.com/ro3/",
   "channel": "test",
+  // Optional client folder. Relative paths resolve from RO3Launcher.exe; user-selected Settings still wins.
+  "clientDirectory": "../Client",
   // The game server's HTTP base; the launcher pings it for the online indicator.
   "server": "http://127.0.0.1:5380",
   "serverName": "Ragnarok 3",
@@ -58,7 +63,8 @@ local repository.
 
 Set `repository` to the public URL of your repository folder and `server` to your game server's public HTTP address.
 For an isolated Tailscale/LAN lab, both trust flags may be `false`. A public player release should require HTTPS and
-a signed channel.
+a signed channel. `clientDirectory` lets a packaged layout keep `RO3Launcher.exe` in one folder and the game in a
+sibling folder; for example, `G:\RO3 test\RO3Emu\RO3Launcher.exe` plus `G:\RO3 test\Client\ro3.exe` uses `../Client`.
 
 ## Publisher identity
 
@@ -137,8 +143,8 @@ sync). Also put a copy of `RO3Launcher.exe` at the repository root (for example
   The destination `src/Ro3Emu.Launcher/PrivateAssets/` is gitignored.
 - A `launcher.json` beside the exe overrides the built-in one (for example a local repository such as
   `http://localhost:8790/`).
-- `uiFixture` is a local visual-test switch (`home`, `progress`, `queue`, `maintenance`, `failure-help-open` or
-  `settings`). Never put it in a player release configuration: fixture mode intentionally does not contact a patch
+- `uiFixture` is a local visual-test switch (`home`, `progress`, `queue`, `maintenance`, `failure-help-open`,
+  `offline-local` or `settings`). Never put it in a player release configuration: fixture mode intentionally does not contact a patch
   repository or start the game.
 - `settingsFile` is optional and exists so an isolated LAB can keep accepted channel sequences and the selected
   client directory out of the player's normal AppData. Relative paths resolve beside the launcher. Omit it from a
@@ -150,7 +156,7 @@ Run the deterministic visual matrix after changing WPF layout or state projectio
 dotnet run --project tools/LauncherVisualMatrix -- <output directory>
 ```
 
-It produces 36 PNGs plus layout JSON for six states, two logical window sizes, and 96/120/144 DPI. A successful run
+It produces 42 PNGs plus layout JSON for seven states, two logical window sizes, and 96/120/144 DPI. A successful run
 still reports `PARTIAL`, because an off-screen `RenderTargetBitmap` is not a real monitor-DPI transition.
 
 `tools/LauncherProcessE2E` is a deliberately explicit LAB harness for signed loopback process acceptance. It can

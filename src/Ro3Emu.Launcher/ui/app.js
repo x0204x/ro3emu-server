@@ -34,6 +34,7 @@
     updating: { step: 1, button: "暫停下載", icon: null, wait: true, text: "正在更新遊戲檔案…" },
     repair: { step: 2, button: "修復遊戲", icon: "repair", text: "部分遊戲檔案與目前版本不一致。", warn: true },
     ready: { step: 3, button: "開始遊戲", icon: null, text: "已更新至最新版本，祝您遊戲愉快！" },
+    "offline-ready": { step: 3, button: "開始遊戲", icon: null, text: "更新伺服器目前離線，可先啟動本機客戶端進行測試。", warn: true },
     offline: { step: 0, button: "重新連線", icon: "repair", text: "無法連線至更新伺服器。", warn: true },
     error: { step: 0, button: "再試一次", icon: "repair", text: "發生未預期的錯誤。", warn: true },
     launching: { step: 3, button: "啟動中…", icon: null, wait: true, text: "正在啟動遊戲…" },
@@ -68,7 +69,8 @@
       ico.hidden = !p.icon;
       // Button icons: drop PNGs into ui/assets/ui/<name>.png and set ico.src here.
     }
-    $("repair").disabled = busy || !state.installed || !!p.wait;
+    $("repair-label").textContent = state.phase === "offline-ready" ? "重新檢查更新" : "修復遊戲";
+    $("repair").disabled = busy || (!state.installed && state.phase !== "offline-ready") || !!p.wait;
     $("set-dir-change").disabled = busy;
 
     var v = "啟動器 " + (state.launcher || "") ;
@@ -175,6 +177,7 @@
         emit({ type: "settings", dir: "C:\\Games\\Ragnarok3\\Client", launcher: "1.0.0", serverName: "RO3 私人伺服器" });
         emit({ type: "server", online: scenario !== "offline", players: 7 });
         if (scenario === "offline") return emit({ type: "state", phase: "offline" });
+        if (scenario === "offline-local") return emit({ type: "state", phase: "offline-ready" });
         if (scenario === "downloading") {
           emit({ type: "state", phase: "install", remote: remote });
           emit({ type: "progress", stage: "downloading", done: 6.3e9, total: 14.1e9, rate: 31.4 * 1048576, eta: 254 });
