@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Options;
 using Romsg;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Data;
@@ -27,6 +28,7 @@ public sealed class RewardService
     private readonly Random _random = new();
     private Dictionary<int, long>? _expCorrection;
     private readonly DropAttenuation _attenuation;
+    private readonly RewardRateOptions _rates;
 
     /// <summary>Field AFK selects the enhanced _iDrop table only for qualified ordinary field kills.
     /// Other kills use environment 0, preserving ordinary rewards (localization 10960000077; mapping inferred).</summary>
@@ -39,12 +41,14 @@ public sealed class RewardService
     /// <summary>Monster Hunt: its kill counters join the kill's own transaction, after the AFK child (MonsterHuntService).</summary>
     internal Action<GameSession, MonsterUnit, RewardSettlement>? StageHuntKill { get; set; }
 
-    public RewardService(CombatService combat, CharacterService character, TeamService teams, GameData data, ILogger<RewardService> log)
+    public RewardService(CombatService combat, CharacterService character, TeamService teams, GameData data,
+        IOptions<ServerOptions> options, ILogger<RewardService> log)
     {
         this._character = character;
         this._teams = teams;
         this._data = data;
         this._log = log;
+        _rates = options.Value.RewardRates;
         _attenuation = new DropAttenuation(data);
         combat.BeforeKilled.Add(PrepareKilledAsync);
         combat.Killed.Add(KilledAsync);
@@ -97,6 +101,17 @@ public sealed class RewardService
             if (!_outcomes.TryGetValue(monster, out var outcome))
             {
                 var (items, baseExp, jobExp) = ResolveKill(player, monster, bonus);
+                items = items.Select(item =>
+                    {
+                        if (_data.Row("ItemConfig", item.Entry) is { } row && new ItemConfig(row).Type == 1)
+                            return item.Entry == 1
+                                ? (item.Entry, _rates.ScaleZenyToInt(item.Count))
+                                : item;
+                        return (item.Entry, _rates.ScaleMonsterDrop(item.Count, _random));
+                    })
+                    .Where(item => item.Item2 > 0).ToList();
+                baseExp = _rates.ScaleBaseExperience(baseExp);
+                jobExp = _rates.ScaleJobExperience(jobExp);
                 outcome = new KillOutcome { Role = role, Items = items, BaseExp = baseExp, JobExp = jobExp };
                 _outcomes.Add(monster, outcome);
             }
@@ -255,6 +270,13 @@ public sealed class RewardService
     /// same item ids merged. Used for MVP rewards.
     /// </summary>
     public List<(int Entry, int Count)> RollAward(long multiverseId, GameSession player)
+        => ScaleAwardGoods(RollAwardRaw(multiverseId, player));
+
+    /// <summary>
+    /// The unscaled award draw used only while composing a monster-kill outcome. CommitKillAsync applies the
+    /// monster outcome rates once after all ordinary and extra kill drops have been merged.
+    /// </summary>
+    internal List<(int Entry, int Count)> RollAwardRaw(long multiverseId, GameSession player)
     {
         var drops = new List<(int, int)>();
         if (Resolve(multiverseId) is var awardId and > 0 && _data.Row("AwardConfig", awardId) is { ValueKind: JsonValueKind.Array } rows
@@ -268,7 +290,8 @@ public sealed class RewardService
     {
         var bound = new List<(int Entry, int Count, int Bind)>();
         RollPool(poolId, progress, new List<(int, int)>(), bound);
-        return bound.GroupBy(x => (x.Entry, x.Bind)).Select(g => (g.Key.Entry, g.Sum(x => x.Count), g.Key.Bind)).ToList();
+        return ScaleAwardGoods(bound.GroupBy(x => (x.Entry, x.Bind))
+            .Select(g => (g.Key.Entry, g.Sum(x => x.Count), g.Key.Bind)));
     }
 
     /// <summary>Stage-box pool draw with each chosen DropGroupConfig._iBind retained (draw rules inferred).</summary>
@@ -285,7 +308,8 @@ public sealed class RewardService
             if (row.ValueKind == JsonValueKind.Object && GameData.Int(row, "_iDropPool") is var pool and > 0)
                 RollPool(pool, progress, new List<(int, int)>(), bound);
         }
-        return bound.GroupBy(x => (x.Entry, x.Bind)).Select(g => (g.Key.Entry, g.Sum(x => x.Count), g.Key.Bind)).ToList();
+        return ScaleAwardGoods(bound.GroupBy(x => (x.Entry, x.Bind))
+            .Select(g => (g.Key.Entry, g.Sum(x => x.Count), g.Key.Bind)));
     }
 
     /// <summary>
@@ -316,8 +340,21 @@ public sealed class RewardService
             }
         if (GameData.Int(row, "_iDropPool") is var pool and > 0)
             RollPool(pool, progress, [], goods);
-        return goods.GroupBy(g => (g.Entry, g.Bind)).Select(g => (g.Key.Entry, g.Sum(x => x.Count), g.Key.Bind)).ToList();
+        return ScaleAwardGoods(goods.GroupBy(g => (g.Entry, g.Bind))
+            .Select(g => (g.Key.Entry, g.Sum(x => x.Count), g.Key.Bind)));
     }
+
+    private List<(int Entry, int Count)> ScaleAwardGoods(IEnumerable<(int Entry, int Count)> goods) => goods
+        .Select(g => (Original: g, Scaled: (g.Entry, Count: g.Count <= 0 ? g.Count : ScaleAwardQuantity(g.Entry, g.Count))))
+        .Where(g => g.Original.Count <= 0 || g.Scaled.Count > 0).Select(g => g.Scaled).ToList();
+
+    private List<(int Entry, int Count, int Bind)> ScaleAwardGoods(IEnumerable<(int Entry, int Count, int Bind)> goods) => goods
+        .Select(g => (Original: g, Scaled: (g.Entry, Count: g.Count <= 0 ? g.Count : ScaleAwardQuantity(g.Entry, g.Count), g.Bind)))
+        .Where(g => g.Original.Count <= 0 || g.Scaled.Count > 0).Select(g => g.Scaled).ToList();
+
+    internal int ScaleConfiguredAward(int entry, int count) => _rates.ScaleConfiguredAward(entry, count);
+
+    private int ScaleAwardQuantity(int entry, int count) => ScaleConfiguredAward(entry, count);
 
     private void PickFromGroup(long group, GameSession player, List<(int, int)> drops, List<(int Entry, int Count, int Bind)>? bound = null)
         => PickFromGroup(group, player.Progress!, drops, bound);

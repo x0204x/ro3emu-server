@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Romsg;
 using Ro3Emu.Bot;
 using Ro3Emu.Server;
@@ -401,5 +402,22 @@ public sealed class MailClientDataTests : MailTestsHost
         Assert.Equal(6000, app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == role)
             .Progress!.Currency[1]);
         await Assert.ThrowsAsync<AwardResolutionException>(() => Mail.SendTemplateAsync(role, 1025)); // conditional group
+    }
+
+    [ClientDataFact]
+    public async Task HalfZenyRateIsFrozenIntoConfiguredTemplateMailBeforeClaim()
+    {
+        app.Services.GetRequiredService<IOptions<ServerOptions>>().Value.RewardRates.Zeny = 0.5m;
+        var (alice, role) = await InWorld("HalfMailReward");
+        await using var _ = alice;
+
+        string id = await Mail.SendTemplateAsync(role, 1024);
+        var row = Row(Assert.Single(await Letters(alice, role)));
+        var item = Assert.Single(MailItemList.Parser.ParseFrom((byte[])Params(row)["items"]!).Items);
+        Assert.Equal((1, 2500), (item.ItemEntry, item.Stack));
+
+        Assert.Equal(0, (await Claim(alice, id)).Result);
+        Assert.Equal(3500, app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == role)
+            .Progress!.Currency[1]);
     }
 }

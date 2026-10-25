@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
+using Microsoft.Extensions.Options;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Data;
 using Ro3Emu.Server.Data.Config;
@@ -24,9 +25,13 @@ public sealed class AwardResolutionException(string message) : InvalidOperationE
 /// Pool slot chance/roll/pick and candidate weight/count semantics follow the current RewardService (inferred);
 /// unsupported server policy fails the source grant instead of silently omitting an obligation.
 /// </summary>
-public sealed class AwardService(GameData data)
+public sealed class AwardService(GameData data, IOptions<ServerOptions>? options = null)
 {
     private const int BaseExpItem = 100;
+    private const int JobExpItem = 101;
+    private const int ZenyItem = 1;
+    // Small resolver-only tests do not need to build the full options container.
+    private readonly RewardRateOptions rates = options?.Value.RewardRates ?? new();
 
     public AwardPlan Resolve(GameSession session, long multiverseGroupId, int? playBookId = null)
         => ResolveGroup(session?.Progress, multiverseGroupId, playBookId);
@@ -92,8 +97,25 @@ public sealed class AwardService(GameData data)
         long poolId = GameData.Int(row, "_iDropPool");
         if (poolId < 0) throw Fail($"AwardConfig {awardId} has invalid pool id");
         if (poolId > 0) RollPool(poolId, progress, grants);
-        return new AwardPlan(multiverseGroupId, awardId, grants);
+        return new AwardPlan(multiverseGroupId, awardId, ScaleRewardGrants(grants));
     }
+
+    /// <summary>
+    /// Applies only the server reward families represented by AwardConfig. Costs and ordinary items remain exact;
+    /// monster item rates are handled by RewardService because an AwardConfig is not necessarily a monster drop.
+    /// </summary>
+    internal IReadOnlyList<AwardGrant> ScaleRewardGrants(IEnumerable<AwardGrant> grants)
+    {
+        var scaled = new List<AwardGrant>();
+        foreach (var grant in grants)
+        {
+            int count = rates.ScaleConfiguredAward(grant.Entry, grant.Count);
+            if (count > 0) scaled.Add(grant with { Count = count });
+        }
+        return scaled;
+    }
+
+    internal long ScaleQuestBaseExperience(long amount) => rates.ScaleBaseExperience(amount);
 
     private void RollPool(long poolId, RoleProgress? progress, List<AwardGrant> grants)
     {

@@ -1,6 +1,7 @@
 using Google.Protobuf;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Romsg;
 using Ro3Emu.Bot;
 using Ro3Emu.Server;
@@ -131,6 +132,7 @@ public sealed class ValhallaTests : IAsyncLifetime
         Assert.Equal(ValhallaService.ErrPrevious, await Challenge(alice, SecondLayer)); // layer 1 not cleared
         Assert.Equal(ValhallaService.ErrLevel, await Challenge(alice, FirstLayer)); // base level 11 needed
         await Gm(alice, "!lvl 30");
+        Service<IOptions<ServerOptions>>().Value.RewardRates.BaseExperience = 0.5m;
 
         Assert.Equal(0, await Challenge(alice, FirstLayer));
         long instance = await Load(alice);
@@ -138,6 +140,7 @@ public sealed class ValhallaTests : IAsyncLifetime
         var result = await Next(alice, DungeonService.Result, DungeonResNotify.Parser);
         Assert.Equal((DungeonRes)1, result.Res);
         Assert.Equal(5, result.Rewards[Coin]); // AwardConfig 100201001: 5 Einherjar Coins, 10 Talent Remnants, 15000 Base EXP
+        Assert.Equal(7500, result.Rewards[100]);
 
         Assert.Contains(FirstLayer, await Read(() => DungeonService.ValhallaCleared(Session(alice).Dungeons).ToArray()));
         Assert.Equal(5, await Read(() => Service<CharacterService>().CountOf(Session(alice), Coin)));

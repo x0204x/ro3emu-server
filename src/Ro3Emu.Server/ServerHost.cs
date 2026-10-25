@@ -419,6 +419,7 @@ public static class ServerHost
     {
         var options = configuration.GetSection("Ro3Emu").Get<ServerOptions>() ?? new ServerOptions();
         configure?.Invoke(options);
+        options.RewardRates.Validate();
         // An empty GM list means nobody on a host started as Production on purpose (docs/guide/gm-access.md). Only an explicit
         // environment counts: the host's own default is also "Production", and tests and local play set none.
         options.GmOpenWhenEmpty ??= !ExplicitProduction(configuration);

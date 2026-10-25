@@ -448,8 +448,10 @@ public sealed partial class TerritoryWarsService
             || fixedItems.ValueKind != JsonValueKind.Array)
             throw new InvalidOperationException($"Siege reward {id} is unavailable");
         return fixedItems.EnumerateArray().Where(a => a.ValueKind == JsonValueKind.Array && a.GetArrayLength() >= 2)
-            .Select(a => new MailService.Attachment((int)(GameData.Number(a[0]) ?? 0), (int)(GameData.Number(a[1]) ?? 0),
-                a.GetArrayLength() > 2 ? (int)(GameData.Number(a[2]) ?? 0) : 0)).ToList();
+            .Select(a => new MailService.Attachment((int)(GameData.Number(a[0]) ?? 0),
+                _rewards.ScaleConfiguredAward((int)(GameData.Number(a[0]) ?? 0), (int)(GameData.Number(a[1]) ?? 0)),
+                a.GetArrayLength() > 2 ? (int)(GameData.Number(a[2]) ?? 0) : 0))
+            .Where(a => a.Count > 0).ToList();
     }
 
     private DungeonStatisticsInfoWithDungeon SiegeStatistics(SiegeRunState run)

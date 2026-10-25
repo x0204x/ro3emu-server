@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Romsg;
 using Ro3Emu.Bot;
 using Ro3Emu.LoadTest;
@@ -72,6 +73,42 @@ public sealed class KillEconomyTests : IAsyncLifetime
     {
         using var db = Service<AccountStore>().Open(); using var c = db.CreateCommand();
         c.CommandText = "SELECT count(*) FROM operation_receipt WHERE command_kind='monster-kill'"; return (long)c.ExecuteScalar()!;
+    }
+
+    [ClientDataFact]
+    public async Task HalfRatesScaleMonsterOutcomeOnceBeforeCommitAndObservers()
+    {
+        await using var bot = await Enter();
+        var player = Session;
+        var rates = Service<IOptions<ServerOptions>>().Value.RewardRates;
+        rates.BaseExperience = rates.JobExperience = rates.Zeny = rates.MonsterDrops = 0.5m;
+        IReadOnlyList<(int Entry, long Count)>? observed = null;
+        await OnLoop(() =>
+        {
+            Service<RewardService>().ResolveKillForTest = (_, _) => ([(1000000, 4), (1, 8), (2, 6)], 4, 4);
+            Service<RewardService>().KillDropsGranted.Add((_, _, rewards) =>
+            {
+                observed = rewards.ToArray();
+                return Task.CompletedTask;
+            });
+            return Task.CompletedTask;
+        });
+        long zeny = player.Progress!.Currency[1];
+        long premium = player.Progress.Currency.GetValueOrDefault(2);
+        int potions = player.Items.Single(item => item.Entry == 1000000).Stack;
+
+        await OnLoop(() => Reward(player, Monster()));
+
+        Assert.NotNull(observed);
+        Assert.Contains((1000000, 2L), observed!);
+        Assert.Contains((1, 4L), observed!);
+        Assert.Contains((2, 6L), observed!);
+        Assert.Contains((100, 2L), observed!);
+        Assert.Contains((101, 2L), observed!);
+        Assert.Equal(zeny + 4, player.Progress.Currency[1]);
+        Assert.Equal(premium + 6, player.Progress.Currency.GetValueOrDefault(2));
+        Assert.Equal(potions + 2, player.Items.Single(item => item.Entry == 1000000).Stack);
+        Assert.Equal(1, ReceiptCount());
     }
 
     [ClientDataFact]

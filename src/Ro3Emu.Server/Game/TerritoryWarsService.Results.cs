@@ -139,7 +139,12 @@ public sealed partial class TerritoryWarsService
         if (row.TryGetProperty("_kAward", out var fixedItems) && fixedItems.ValueKind == JsonValueKind.Array)
             foreach (var t in fixedItems.EnumerateArray())
                 if (t.ValueKind == JsonValueKind.Array && t.GetArrayLength() >= 2 && GameData.Number(t[1]) is > 0)
-                    grants.Add(new Grant((int)(GameData.Number(t[0]) ?? 0), (int)(GameData.Number(t[1]) ?? 0), t.GetArrayLength() > 2 ? (int)(GameData.Number(t[2]) ?? 0) : 0));
+                {
+                    int entry = (int)(GameData.Number(t[0]) ?? 0);
+                    int count = _rewards.ScaleConfiguredAward(entry, (int)(GameData.Number(t[1]) ?? 0));
+                    if (count > 0) grants.Add(new Grant(entry, count,
+                        t.GetArrayLength() > 2 ? (int)(GameData.Number(t[2]) ?? 0) : 0));
+                }
         grants.AddRange(_rewards.RollAwardBound(id, s).Select(g => new Grant(g.Entry, g.Count, g.Bind)));
     }
 

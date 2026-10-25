@@ -597,7 +597,7 @@ public sealed partial class TaskService
             var runtime = new TaskRuntimeState { CompletedGuides = session.TaskRuntime.CompletedGuides.ToHashSet(), InCutScene = session.InCutScene || cutScene };
             string awardSource = $"task/{session.Role!.Id}/{id}/{next.CompleteTaskNum[id]}/" +
                 $"{session.Daily?.DailyEpoch ?? 0}/{session.Daily?.WeeklyEpoch ?? 0}";
-            if (!await _character.ApplyAwardAsync(session, plan, def.Exp, costs, next.ToByteArray(),
+            if (!await _character.ApplyAwardAsync(session, plan, _awards.ScaleQuestBaseExperience(def.Exp), costs, next.ToByteArray(),
                 JsonSerializer.SerializeToUtf8Bytes(runtime), expectedDaily: daily?.Before, nextDaily: daily?.After,
                 expectedTasks: expectedTasks, persist: questMount is { } ride ? tx => _mounts.PersistQuestRide(session, ride, tx) : null,
                 committed: questMount is { } appliedRide ? () => _mounts.ApplyQuestRideCore(session, context, appliedRide) : null,

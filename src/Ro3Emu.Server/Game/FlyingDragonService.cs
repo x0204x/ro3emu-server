@@ -47,6 +47,7 @@ public sealed class FlyingDragonService : IGameTicker
     private readonly SessionRegistry _sessions;
     private readonly GameLoop _loop;
     private readonly Maps.WorldData _world;
+    private readonly RewardRateOptions _rewardRates;
     private DBFlyingDragonProduceInfo? _state;
     private TimeSpan _lastCheck;
 
@@ -56,6 +57,7 @@ public sealed class FlyingDragonService : IGameTicker
     {
         this._data = data; this._character = character; this._mail = mail; this._accounts = accounts;
         this._sessions = sessions; this._loop = loop; this._world = world;
+        this._rewardRates = options.Value.RewardRates;
         mvps.LordsManePercent = Math.Clamp(options.Value.LordsManePercent, 0, 100);
         loop.Add(this);
         gm.Register("dragon", "info | start [packet 0-3] | progress <0-10000> | complete | end | timeout (Starshatter ritual test aid)", GmAsync);
@@ -225,7 +227,9 @@ public sealed class FlyingDragonService : IGameTicker
     private List<(int Entry, int Count)> HelpReward() =>
         _data.Row("AwardConfig", Param("DragonTaskHelpReward", 1001)) is { ValueKind: JsonValueKind.Array } rows && rows.GetArrayLength() > 0
             && new AwardConfig(rows[0]).Award is { } award
-            ? [.. award.Where(a => a.Length >= 2).Select(a => ((int)a[0], (int)a[1]))] : [];
+            ? [.. award.Where(a => a.Length >= 2)
+                .Select(a => (Entry: (int)a[0], Count: _rewardRates.ScaleConfiguredAward((int)a[0], (int)a[1])))
+                .Where(a => a.Count > 0)] : [];
 
     public async Task AccelerateAsync(GameSession s)
     {

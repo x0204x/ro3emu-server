@@ -23,6 +23,7 @@ public sealed partial class PetService
 
     private readonly GameData _data;
     private readonly CharacterService _character;
+    private readonly AwardService _awards;
     private readonly FunctionService _functions;
     private readonly RoleStore _roles;
     private readonly PetFollowerService _follower;
@@ -31,11 +32,12 @@ public sealed partial class PetService
     private readonly Dictionary<(int Pet, int Star, int Stage), JsonElement> _stars;
     private readonly Dictionary<(int Quality, int Level), JsonElement> _levels;
 
-    public PetService(GameData data, CharacterService character, FunctionService functions, RoleStore roles,
+    public PetService(GameData data, CharacterService character, AwardService awards, FunctionService functions, RoleStore roles,
         PetFollowerService follower, TimeProvider clock, SeasonService seasons)
     {
         this._data = data;
         this._character = character;
+        this._awards = awards;
         this._functions = functions;
         this._roles = roles;
         this._follower = follower;
@@ -442,8 +444,9 @@ public sealed partial class PetService
         if (_data.Row("AwardConfig", award) is not { ValueKind: JsonValueKind.Array } rows
             || rows.GetArrayLength() != 1 || rows[0].ValueKind != JsonValueKind.Object) return null;
         var values = Cost(rows[0], "_kAward");
-        return values.Any(p => p.Item2 is <= 0 or > int.MaxValue || _data.Row("ItemConfig", p.Item1) == null)
-            ? null : values.Select(p => (p.Item1, (int)p.Item2)).ToList();
+        if (values.Any(p => p.Item2 is <= 0 or > int.MaxValue || _data.Row("ItemConfig", p.Item1) == null)) return null;
+        return _awards.ScaleRewardGrants(values.Select(p => new AwardGrant(p.Item1, (int)p.Item2)))
+            .Select(g => (g.Entry, g.Count)).ToList();
     }
 
     /// <summary>33312: fragment item _kDecompose, distinct positive counts. Multiplying the preview by count is inferred.</summary>

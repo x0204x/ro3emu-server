@@ -424,25 +424,29 @@ public sealed partial class DailyActivityService : IGameTicker
     {
         int group = (int)GameData.Int(_data.Row("GenericStageRewardsConfig", stageId)!.Value, "_iAward");
         if (group == 0) return [];
-        var award = StageAward(session, group);
-        return award.Count == 0 ? null : award;
+        return StageAward(session, group);
     }
 
-    private List<(int Entry, int Count, int Bind)> StageAward(GameSession session, int group)
+    private List<(int Entry, int Count, int Bind)>? StageAward(GameSession session, int group)
     {
         var award = new List<(int, int, int)>();
-        if (_data.Row("MultiverseGroupConfig", group) is not { } mv) return award;
+        if (_data.Row("MultiverseGroupConfig", group) is not { } mv) return null;
         int book = _seasons.PlayBook;
         long target = GameData.Int(mv, $"_iValue_{book}");
         if (target == 0) target = GameData.Int(mv, "_iValue_default");
-        if (_data.Row("AwardConfig", target) is not { ValueKind: JsonValueKind.Array } rows || rows.GetArrayLength() == 0) return award;
+        if (_data.Row("AwardConfig", target) is not { ValueKind: JsonValueKind.Array } rows || rows.GetArrayLength() == 0) return null;
         var first = rows[0];
         if (first.TryGetProperty("_kAward", out var fixedAward) && fixedAward.ValueKind == JsonValueKind.Array)
             foreach (var item in fixedAward.EnumerateArray())
                 if (item.ValueKind == JsonValueKind.Array && item.GetArrayLength() >= 2)
-                    award.Add(((int)(GameData.Number(item[0]) ?? 0), (int)(GameData.Number(item[1]) ?? 0), item.GetArrayLength() > 2 ? (int)(GameData.Number(item[2]) ?? 0) : 0));
+                {
+                    int entry = (int)(GameData.Number(item[0]) ?? 0), count = (int)(GameData.Number(item[1]) ?? 0);
+                    count = _rewards.ScaleConfiguredAward(entry, count);
+                    if (count > 0) award.Add((entry, count, item.GetArrayLength() > 2 ? (int)(GameData.Number(item[2]) ?? 0) : 0));
+                }
         award.AddRange(_rewards.RollAwardBound(target, session));
-        return award.Where(a => a.Item1 > 0 && a.Item2 > 0 && _data.Row("ItemConfig", a.Item1) != null).ToList();
+        return award.Any(a => a.Item1 <= 0 || a.Item2 <= 0 || _data.Row("ItemConfig", a.Item1) == null)
+            ? null : award;
     }
 
     public void Tick(GameTime time)

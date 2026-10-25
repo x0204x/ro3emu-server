@@ -244,7 +244,9 @@ public sealed partial class DungeonService
             foreach (var tuple in fixedGoods.EnumerateArray())
             {
                 if (tuple.ValueKind != JsonValueKind.Array || tuple.GetArrayLength() < 2) return null;
-                goods.Add(((int)(GameData.Number(tuple[0]) ?? 0), (int)(GameData.Number(tuple[1]) ?? 0),
+                int entry = (int)(GameData.Number(tuple[0]) ?? 0), count = (int)(GameData.Number(tuple[1]) ?? 0);
+                count = _rewards.ScaleConfiguredAward(entry, count);
+                if (count > 0) goods.Add((entry, count,
                     tuple.GetArrayLength() > 2 ? (int)(GameData.Number(tuple[2]) ?? 0) : 0));
             }
         if (GameData.Int(row, "_iDropPool") is var pool and > 0 && _data.Row("DropPoolConfig", pool) == null) return null;

@@ -80,6 +80,12 @@ public sealed class ServerOptions
     public PassOptions Pass { get; set; } = new();
 
     /// <summary>
+    /// Server-wide reward multipliers. These are orthogonal: monster Zeny is affected by <see cref="RewardRateOptions.Zeny"/>
+    /// but not by <see cref="RewardRateOptions.MonsterDrops"/>, while quest EXP uses the Base/Job rates only.
+    /// </summary>
+    public RewardRateOptions RewardRates { get; set; } = new();
+
+    /// <summary>
     /// Accounts allowed to use GM commands in game ("!" lines in chat, the client's GM panel, 1031/1034). Empty:
     /// <see cref="GmOpenWhenEmpty"/> decides. docs/guide/gm-access.md.
     /// </summary>
@@ -181,6 +187,81 @@ public sealed class ServerOptions
 
     /// <summary>Boss special skills (BossSkillSets, MonsterService.BossSkills): the scheduler's inferred numbers.</summary>
     public BossSkillOptions BossSkills { get; set; } = new();
+}
+
+/// <summary>Server-wide reward rates. 1 is unchanged, 0.5 is half, and 0 disables that reward family.</summary>
+public sealed class RewardRateOptions
+{
+    private const decimal Maximum = 100m;
+
+    /// <summary>Base EXP from kills, quests and resolved server awards.</summary>
+    public decimal BaseExperience { get; set; } = 1m;
+
+    /// <summary>JOB EXP from kills and resolved server awards.</summary>
+    public decimal JobExperience { get; set; } = 1m;
+
+    /// <summary>Zeny (item 1) produced by reward transactions. Costs, shops, refunds and transfers are unchanged.</summary>
+    public decimal Zeny { get; set; } = 1m;
+
+    /// <summary>Non-currency item quantities from monster kills. Fractional units use one random remainder roll.</summary>
+    public decimal MonsterDrops { get; set; } = 1m;
+
+    internal void Validate()
+    {
+        Validate(nameof(BaseExperience), BaseExperience);
+        Validate(nameof(JobExperience), JobExperience);
+        Validate(nameof(Zeny), Zeny);
+        Validate(nameof(MonsterDrops), MonsterDrops);
+    }
+
+    private static void Validate(string name, decimal value)
+    {
+        if (value is < 0m or > Maximum)
+            throw new InvalidOperationException($"Ro3Emu:RewardRates:{name} must be between 0 and {Maximum}.");
+    }
+
+    internal long ScaleBaseExperience(long amount) => ScaleWhole(amount, BaseExperience);
+    internal long ScaleJobExperience(long amount) => ScaleWhole(amount, JobExperience);
+    internal long ScaleZeny(long amount) => ScaleWhole(amount, Zeny);
+    internal int ScaleBaseExperienceToInt(int amount) => ScaleWholeToInt(amount, BaseExperience);
+    internal int ScaleJobExperienceToInt(int amount) => ScaleWholeToInt(amount, JobExperience);
+    internal int ScaleZenyToInt(int amount) => ScaleWholeToInt(amount, Zeny);
+
+    /// <summary>Scales the three reward-only ItemConfig entries used inside AwardConfig.</summary>
+    internal int ScaleConfiguredAward(int entry, int amount) => entry switch
+    {
+        1 => ScaleZenyToInt(amount),
+        100 => ScaleBaseExperienceToInt(amount),
+        101 => ScaleJobExperienceToInt(amount),
+        _ => amount,
+    };
+
+    internal int ScaleMonsterDrop(int amount, Random random)
+    {
+        if (amount <= 0 || MonsterDrops == 1m) return amount;
+        if (MonsterDrops == 0m) return 0;
+        decimal exact = amount * MonsterDrops;
+        if (exact >= int.MaxValue) return int.MaxValue;
+        int whole = (int)decimal.Floor(exact);
+        decimal remainder = exact - whole;
+        return whole + (remainder > 0m && (decimal)random.NextDouble() < remainder ? 1 : 0);
+    }
+
+    private static long ScaleWhole(long amount, decimal rate)
+    {
+        if (amount <= 0 || rate == 1m) return amount;
+        if (rate == 0m) return 0;
+        decimal exact = decimal.Floor(amount * rate);
+        long scaled = exact >= long.MaxValue ? long.MaxValue : (long)exact;
+        // Positive EXP/Zeny rewards keep one indivisible unit; large values still converge on the requested rate.
+        return Math.Max(1, scaled);
+    }
+
+    private static int ScaleWholeToInt(int amount, decimal rate)
+    {
+        long scaled = ScaleWhole(amount, rate);
+        return scaled >= int.MaxValue ? int.MaxValue : (int)scaled;
+    }
 }
 
 /// <summary>

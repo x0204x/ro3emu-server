@@ -84,4 +84,61 @@ public sealed class ServerOptionsTests
     {
         Assert.Throws<FormatException>(() => new ServerOptions { BindAddress = bindAddress }.ListenAddress());
     }
+
+    [Fact]
+    public void HalfRewardRatesBindAndScaleIndependently()
+    {
+        var options = ServerHost.ResolveOptions([
+            "--Ro3Emu:RewardRates:BaseExperience=0.5",
+            "--Ro3Emu:RewardRates:JobExperience=0.5",
+            "--Ro3Emu:RewardRates:Zeny=0.5",
+            "--Ro3Emu:RewardRates:MonsterDrops=0.5"
+        ]);
+
+        Assert.Equal(0.5m, options.RewardRates.BaseExperience);
+        Assert.Equal(0.5m, options.RewardRates.JobExperience);
+        Assert.Equal(0.5m, options.RewardRates.Zeny);
+        Assert.Equal(0.5m, options.RewardRates.MonsterDrops);
+        Assert.Equal(4, options.RewardRates.ScaleBaseExperience(8));
+        Assert.Equal(4, options.RewardRates.ScaleJobExperience(8));
+        Assert.Equal(4, options.RewardRates.ScaleZeny(8));
+        Assert.Equal(1, options.RewardRates.ScaleMonsterDrop(2, new Random(1)));
+        Assert.Equal(1, options.RewardRates.ScaleBaseExperience(1));
+        Assert.Equal(1, options.RewardRates.ScaleZeny(1));
+    }
+
+    [Theory]
+    [InlineData("BaseExperience", "-0.1")]
+    [InlineData("JobExperience", "100.1")]
+    [InlineData("Zeny", "-1")]
+    [InlineData("MonsterDrops", "101")]
+    public void InvalidRewardRateIsRejectedAtStartup(string field, string rate)
+    {
+        Assert.Throws<InvalidOperationException>(() => ServerHost.ResolveOptions([
+            $"--Ro3Emu:RewardRates:{field}={rate}"
+        ]));
+    }
+
+    [Fact]
+    public void RewardRateBoundariesAndFractionalMonsterRemainderAreExplicit()
+    {
+        var disabled = new RewardRateOptions { BaseExperience = 0, JobExperience = 0, Zeny = 0, MonsterDrops = 0 };
+        Assert.Equal(0, disabled.ScaleBaseExperience(99));
+        Assert.Equal(0, disabled.ScaleJobExperience(99));
+        Assert.Equal(0, disabled.ScaleZeny(99));
+        Assert.Equal(0, disabled.ScaleMonsterDrop(1, new FixedRandom(0)));
+
+        var half = new RewardRateOptions { MonsterDrops = 0.5m };
+        Assert.Equal(1, half.ScaleMonsterDrop(1, new FixedRandom(0.49)));
+        Assert.Equal(0, half.ScaleMonsterDrop(1, new FixedRandom(0.50)));
+
+        var maximum = new RewardRateOptions { Zeny = 100m };
+        Assert.Equal(int.MaxValue, maximum.ScaleZenyToInt(int.MaxValue));
+        Assert.Equal(long.MaxValue, maximum.ScaleZeny(long.MaxValue));
+    }
+
+    private sealed class FixedRandom(double value) : Random
+    {
+        public override double NextDouble() => value;
+    }
 }

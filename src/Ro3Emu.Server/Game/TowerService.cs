@@ -26,6 +26,7 @@ public sealed partial class TowerService
     private readonly RoleStore _roles;
     private readonly AccountStore _accounts;
     private readonly CharacterService _character;
+    private readonly AwardService _awards;
     private readonly FunctionService _functions;
     private readonly SeasonService _seasons;
     private readonly SceneService _scene;
@@ -38,7 +39,7 @@ public sealed partial class TowerService
     private readonly GameLoop _loop;
     private readonly TimeProvider _clock;
     private readonly ILogger<TowerService> _log;
-    public TowerService(GameData data, RoleStore roles, AccountStore accounts, CharacterService character, FunctionService functions,
+    public TowerService(GameData data, RoleStore roles, AccountStore accounts, CharacterService character, AwardService awards, FunctionService functions,
         SeasonService seasons, SceneService scene, WorldData worldData, World world, InstanceService instances, MonsterService monsters,
         CombatService combat, BuffService buffs, GameLoop loop, PetFollowerService followers, TimeProvider clock, ILogger<TowerService> log)
     {
@@ -47,6 +48,7 @@ public sealed partial class TowerService
         this._roles = roles;
         this._accounts = accounts;
         this._character = character;
+        this._awards = awards;
         this._functions = functions;
         this._seasons = seasons;
         this._scene = scene;
@@ -621,7 +623,7 @@ public sealed partial class TowerService
                 goods.AddRange(award);
                 watermark = floor;
             }
-            if (error == 0 && goods.Count == 0) error = ErrorCodes.Parameter;
+            if (error == 0 && watermark == previousWatermark) error = ErrorCodes.Parameter;
         }
         if (error == 0)
         {
@@ -672,7 +674,8 @@ public sealed partial class TowerService
                 if (tuple.ValueKind != JsonValueKind.Array || tuple.GetArrayLength() < 2) return null;
                 int entry = (int)(GameData.Number(tuple[0]) ?? 0), count = (int)(GameData.Number(tuple[1]) ?? 0);
                 if (count <= 0 || _data.Row("ItemConfig", entry) == null) return null;
-                result.Add((entry, count));
+                var scaled = _awards.ScaleRewardGrants([new AwardGrant(entry, count)]).SingleOrDefault();
+                if (scaled != null) result.Add((scaled.Entry, scaled.Count));
             }
         }
         return result;

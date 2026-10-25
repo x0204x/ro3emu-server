@@ -602,16 +602,18 @@ public sealed partial class TimedBattleService
         {
             foreach (var item in RestrictedExtra(GameData.Int(reward, "_iExtraAward")))
             {
-                int prior = next.OnePieceWeekItems.GetValueOrDefault(item.Grant.Entry);
-                int count = item.Cap is { } cap ? Math.Min(item.Grant.Count, Math.Max(0, cap - prior)) : item.Grant.Count;
+                var scaled = _awards.ScaleRewardGrants([item.Grant]).SingleOrDefault();
+                if (scaled == null) continue;
+                int prior = next.OnePieceWeekItems.GetValueOrDefault(scaled.Entry);
+                int count = item.Cap is { } cap ? Math.Min(scaled.Count, Math.Max(0, cap - prior)) : scaled.Count;
                 if (count <= 0) continue;
-                extraGrants.Add(item.Grant with { Count = count });
-                next.OnePieceWeekItems[item.Grant.Entry] = prior + count;
+                extraGrants.Add(scaled with { Count = count });
+                next.OnePieceWeekItems[scaled.Entry] = prior + count;
             }
             if (extraGrants.Count > 0) next.OnePieceExtraUsed++;
         }
         var grants = baseGrants.Concat(extraGrants).ToArray();
-        if (grants.Length == 0) throw new AwardResolutionException("OnePiece has no resolved reward.");
+        // A zero configured rate still settles the valid reward source and its one-time state with no goods.
         string source = TreasureSource(a, roleId);
         var obligation = new TimedBattleObligationRow(source, a.Room.Id, checked((int)a.Room.SceneEntry), roleId,
             JsonSerializer.SerializeToUtf8Bytes(grants), JsonSerializer.SerializeToUtf8Bytes(Array.Empty<object>()),

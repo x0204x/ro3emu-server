@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Romsg;
 using Ro3Emu.Bot;
 using Ro3Emu.Server;
@@ -106,6 +107,35 @@ public sealed class AwardTests : IAsyncLifetime
         var check = EconomyExactnessChecker.Check(opening, closing, ledger);
         Assert.DoesNotContain(check.Issues, issue => issue.Kind == EconomyIssueKind.Corruption);
         Assert.All(check.Assets, asset => { Assert.Equal("0", asset.Residual); Assert.Equal("0", asset.LegResidual); });
+    }
+
+    [ClientDataFact]
+    public async Task HalfRatesScaleAwardExpAndZenyOnce()
+    {
+        await using var bot = await InWorld("HalfAwardAlice");
+        await Next(bot, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser);
+        await Next(bot, CharacterService.RoleBaseInfoSync, RoleBaseInfoIncrement.Parser);
+        var rates = _app.Services.GetRequiredService<IOptions<ServerOptions>>().Value.RewardRates;
+        rates.BaseExperience = rates.JobExperience = rates.Zeny = 0.5m;
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All()
+            .Single(s => s.Role?.Name == "HalfAwardAlice");
+        var character = _app.Services.GetRequiredService<CharacterService>();
+        var awards = _app.Services.GetRequiredService<AwardService>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
+        long before = session.Progress!.Currency[1];
+        var plan = new AwardPlan(0, 0, awards.ScaleRewardGrants(
+            [new AwardGrant(1, 10), new AwardGrant(100, 4), new AwardGrant(101, 4)]));
+
+        Assert.True(await loop.InvokeAsync(() => character.ApplyAwardAsync(session,
+            plan, taskBaseExp: awards.ScaleQuestBaseExperience(2),
+            ownedAward: new CharacterService.OwnedAwardSource("cd13e/grant",
+                $"test/half-rate/{session.Role!.Id}", new { Version = 1 }))));
+
+        var notice = await Next(bot, CharacterService.GetRewardNotify, GetRewardNotify.Parser,
+            message => message.Rewards.Any(reward => reward.ItemEntry == 1 && reward.Stack == 5));
+        Assert.Contains(notice.Rewards, reward => reward.ItemEntry == 100 && reward.Stack == 3);
+        Assert.Contains(notice.Rewards, reward => reward.ItemEntry == 101 && reward.Stack == 2);
+        Assert.Equal(before + 5, session.Progress.Currency[1]);
     }
 
     [ClientDataFact]

@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Google.Protobuf;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Options;
 using Romsg;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Accounts.Persistence;
@@ -20,12 +21,14 @@ namespace Ro3Emu.Server.Game;
 /// with their economic source. The mailbox gate remains only for unowned compatibility callers.
 /// </summary>
 public sealed partial class MailService(AccountStore accounts, RoleStore roles, SessionRegistry sessions, MicroSessions micro, CharacterService character,
-    SeasonService seasons, GameData data, TimeProvider clock, ILogger<MailService> log, GameLoop? loop = null) : IMicroService
+    SeasonService seasons, GameData data, TimeProvider clock, IOptions<ServerOptions> options,
+    ILogger<MailService> log, GameLoop? loop = null) : IMicroService
 {
     public const uint ClaimMail = 31602;
     public string Name => "MailService";
 
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly RewardRateOptions rewardRates = options.Value.RewardRates;
     private SemaphoreSlim Gate(long _) => _gate;
     private async Task<IDisposable> EnterMailboxAsync(long role)
     {
@@ -387,7 +390,8 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
     /// </summary>
     public Task<string> SendTemplateAsync(long role, int templateId, DateTimeOffset? expiresAt = null,
         int category = 1, int importantType = 0) =>
-        SendTemplateAsync(role, templateId, ResolveTemplateAward(templateId), expiresAt, category, importantType);
+        SendTemplateAsync(role, templateId, ScaleRewardAttachments(ResolveTemplateAward(templateId)),
+            expiresAt, category, importantType);
 
     /// <summary>Source-owned once-only delivery with the source's state saved in the same SQLite transaction.</summary>
     public Task<string> SendTemplateOnceAsync(long role, int templateId, IReadOnlyList<Attachment> attachments,
@@ -412,7 +416,7 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
 
     /// <summary>A template's fixed _iAward grants (as <see cref="SendTemplateAsync(long, int, DateTimeOffset?, int, int)"/>
     /// resolves them), for a source that delivers the letter once with <see cref="SendTemplateOnceAsync"/>.</summary>
-    internal IReadOnlyList<Attachment> TemplateAward(int templateId) => ResolveTemplateAward(templateId);
+    internal IReadOnlyList<Attachment> TemplateAward(int templateId) => ScaleRewardAttachments(ResolveTemplateAward(templateId));
 
     private IReadOnlyList<Attachment> ResolveTemplateAward(int templateId)
     {
@@ -445,6 +449,12 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
         }
         return grants;
     }
+
+    private List<Attachment> ScaleRewardAttachments(IEnumerable<Attachment> attachments) => attachments
+        .Select(grant => (Original: grant, Scaled: grant.Count <= 0 ? grant
+            : grant with { Count = rewardRates.ScaleConfiguredAward(grant.Entry, grant.Count) }))
+        .Where(pair => pair.Original.Count <= 0 || pair.Scaled.Count > 0)
+        .Select(pair => pair.Scaled).ToList();
 
     private static bool HasValues(JsonElement row, string field) => row.TryGetProperty(field, out var value) && (value.ValueKind switch
     {

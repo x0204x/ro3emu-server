@@ -94,7 +94,7 @@ public sealed class MonsterHuntService
     /// <summary>Hunt Medals and region points: the area's drop, rolled with the kill's own loot (word 74005).</summary>
     private IEnumerable<(int Entry, int Count)> AreaDrops(GameSession s, MonsterUnit monster) =>
         Counting(s) is { } hunt && GameData.Int(hunt.Area, "_iAreaDropAward") is var drop and > 0
-            ? _rewards.RollAward(drop, s) : [];
+            ? _rewards.RollAwardRaw(drop, s) : [];
 
     /// <summary>
     /// The kill's counters, staged into its transaction like the AFK record: the stored blob must still be the one this

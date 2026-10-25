@@ -15,6 +15,27 @@ The two labels on the server-selection screen are optional host settings. For ex
 The names are read when the server starts, so restart the host after changing them. They only change display text;
 the numeric cluster and area identities stay unchanged.
 
+## Reward rates
+
+`server/appsettings.json` has four independent server-wide reward rates. `1.0` keeps the client data value, `0.5`
+halves it, and `0` disables that reward family:
+
+```json
+"RewardRates": {
+  "BaseExperience": 0.5,
+  "JobExperience": 0.5,
+  "Zeny": 0.5,
+  "MonsterDrops": 0.5
+}
+```
+
+Base/JOB rates cover monster kills, quest EXP and configured AwardConfig rewards. `Zeny` covers monster Zeny and
+configured reward plans; direct GM grants, shop prices, costs, existing mail escrow, refunds and player transfers stay
+exact. `MonsterDrops` affects non-currency items from monster kills, so monster Zeny is not multiplied a second time.
+Positive EXP and Zeny smaller than one scaled unit stay at one; an individual fractional monster item uses a
+remainder roll. Valid values are `0` through `100`. The settings are read at server startup and require a restart;
+they are not hot-reloaded.
+
 **On Linux.** Download **`RO3Emu-server-linux-x64.tar.gz`**, extract it and run `server.sh`; nothing to install:
 
 ```bash

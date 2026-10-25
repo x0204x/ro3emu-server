@@ -322,7 +322,11 @@ public sealed class SeasonPageService(GameData data, CharacterService character,
         if (rows[0].TryGetProperty("_kAward", out var fixedAward) && fixedAward.ValueKind == JsonValueKind.Array)
             foreach (var item in fixedAward.EnumerateArray())
                 if (item.ValueKind == JsonValueKind.Array && item.GetArrayLength() >= 2)
-                    result.Add((item[0].GetInt32(), item[1].GetInt32(), item.GetArrayLength() > 2 ? item[2].GetInt32() : 0));
+                {
+                    int entry = item[0].GetInt32();
+                    int count = rewards.ScaleConfiguredAward(entry, item[1].GetInt32());
+                    if (count > 0) result.Add((entry, count, item.GetArrayLength() > 2 ? item[2].GetInt32() : 0));
+                }
         result.AddRange(rewards.RollAwardBound(id, session));
         return result;
     }

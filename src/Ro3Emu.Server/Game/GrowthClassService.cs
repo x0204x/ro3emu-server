@@ -167,7 +167,7 @@ public sealed class GrowthClassService
                 || count <= 0 || _data.Row("ItemConfig", entry) == null) return null;
             grants.Add(new AwardGrant(entry, count, bind));
         }
-        return grants.Count > 0 ? new AwardPlan(group, id, grants) : null;
+        return grants.Count > 0 ? new AwardPlan(group, id, _awards.ScaleRewardGrants(grants)) : null;
     }
 
     private async Task GmAsync(GameSession s, string[] args)

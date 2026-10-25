@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Romsg;
 using Ro3Emu.Bot;
 using Ro3Emu.Server;
@@ -357,5 +358,23 @@ public sealed class MarketOwnerTests(ITestOutputHelper output) : IAsyncLifetime
         var result = ClaimMailRsp.Parser.ParseFrom((await bot.Inbox.WaitAsync(x => x.IsGame(MailService.ClaimMail), TimeSpan.FromSeconds(10))).Body);
         Assert.Equal(0, result.Result); Assert.Equal(new[] { mail }, result.MailUid);
         Assert.Equal(before + 7, owner.Progress.Currency[1]);
+    }
+
+    [Fact]
+    public async Task HalfRewardRateDoesNotScaleExistingMailOrPlayerTransferValue()
+    {
+        _app.Services.GetRequiredService<IOptions<ServerOptions>>().Value.RewardRates.Zeny = 0.5m;
+        var (bot, owner) = await Login("FullMailValue"); await using var client = bot;
+        long role = owner.Role!.Id, before = owner.Progress!.Currency[1];
+        string mail = await _app.Services.GetRequiredService<MailService>()
+            .SendRawAsync(role, "Exact transfer", "Claim must realize the full escrowed amount", [new(1, 8)]);
+
+        await bot.SendGameAsync(MailService.ClaimMail, new ClaimMailReq { MailUid = { mail } });
+        var response = ClaimMailRsp.Parser.ParseFrom((await bot.Inbox
+            .WaitAsync(x => x.IsGame(MailService.ClaimMail), TimeSpan.FromSeconds(10))).Body);
+
+        Assert.Equal(0, response.Result);
+        Assert.Equal(before + 8, owner.Progress.Currency[1]);
+        Assert.Equal(before + 8, Roles.LoadProgress(role).Currency[1]);
     }
 }
