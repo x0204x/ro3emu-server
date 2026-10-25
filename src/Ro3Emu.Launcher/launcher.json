@@ -5,5 +5,5 @@
   "channel": "test",
   // The game server's HTTP base; the launcher pings it for the online pill.
   "server": "http://127.0.0.1:5380",
-  "serverName": "RO3Emu"
+  "serverName": "Ragnarok 3"
 }

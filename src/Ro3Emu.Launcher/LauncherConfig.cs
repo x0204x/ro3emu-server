@@ -11,7 +11,7 @@ public sealed class LauncherConfig
     [JsonPropertyName("repository")] public string Repository { get; set; } = "http://localhost:8790/";
     [JsonPropertyName("channel")] public string Channel { get; set; } = "test";
     [JsonPropertyName("server")] public string? Server { get; set; }
-    [JsonPropertyName("serverName")] public string ServerName { get; set; } = "RO3Emu";
+    [JsonPropertyName("serverName")] public string ServerName { get; set; } = "Ragnarok 3";
     [JsonPropertyName("registerUrl")] public string? RegisterUrl { get; set; }
     [JsonPropertyName("websiteUrl")] public string? WebsiteUrl { get; set; }
     [JsonPropertyName("discordUrl")] public string? DiscordUrl { get; set; }
@@ -22,6 +22,7 @@ public sealed class LauncherConfig
     [JsonPropertyName("requireHttpsRepository")] public bool RequireHttpsRepository { get; set; }
     [JsonPropertyName("requireSignedChannel")] public bool RequireSignedChannel { get; set; }
     [JsonPropertyName("trustedPublisherKeys")] public Dictionary<string, string> TrustedPublisherKeys { get; set; } = new();
+    [JsonPropertyName("settingsFile")] public string? SettingsFile { get; set; }
 
     static readonly JsonSerializerOptions Options = new() { ReadCommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
 
@@ -45,6 +46,11 @@ public sealed class LauncherConfig
         RequireSignedChannel = RequireSignedChannel,
         TrustedPublicKeys = TrustedPublisherKeys,
     };
+
+    public string ResolveSettingsFile(string executableDirectory)
+        => string.IsNullOrWhiteSpace(SettingsFile)
+            ? UserSettings.DefaultFilePath
+            : Path.GetFullPath(SettingsFile, executableDirectory);
 }
 
 /// <summary>Per-user choices (%APPDATA%\RO3Emu\launcher-settings.json): only the client folder so far.</summary>
@@ -53,17 +59,21 @@ public sealed class UserSettings
     [JsonPropertyName("clientDirectory")] public string? ClientDirectory { get; set; }
     [JsonPropertyName("acceptedChannelSequences")] public Dictionary<string, long> AcceptedChannelSequences { get; set; } = new(StringComparer.Ordinal);
 
-    static string FilePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RO3Emu", "launcher-settings.json");
+    [JsonIgnore] string _filePath = DefaultFilePath;
+    public static string DefaultFilePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RO3Emu", "launcher-settings.json");
 
-    public static UserSettings Load()
+    public static UserSettings Load(string? filePath = null)
     {
+        filePath = Path.GetFullPath(filePath ?? DefaultFilePath);
         try
         {
-            return File.Exists(FilePath) ? JsonSerializer.Deserialize<UserSettings>(File.ReadAllBytes(FilePath)) ?? new() : new();
+            var settings = File.Exists(filePath) ? JsonSerializer.Deserialize<UserSettings>(File.ReadAllBytes(filePath)) ?? new() : new();
+            settings._filePath = filePath;
+            return settings;
         }
         catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException)
         {
-            return new();
+            return new UserSettings { _filePath = filePath };
         }
     }
 
@@ -71,8 +81,9 @@ public sealed class UserSettings
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(this));
+            string? directory = Path.GetDirectoryName(_filePath);
+            if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+            File.WriteAllText(_filePath, JsonSerializer.Serialize(this));
             return true;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return false; }

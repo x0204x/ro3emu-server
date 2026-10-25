@@ -7,10 +7,14 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <AssemblyName>Ro3EmuLauncher</AssemblyName>
+    <AssemblyName>RO3Launcher</AssemblyName>
     <RootNamespace>Ro3Emu.Launcher</RootNamespace>
-    <Version>2.0.0</Version>
-    <Product>RO3Emu Launcher</Product>
+    <Version>2.0.1</Version>
+    <Title>Ragnarok 3 Launcher</Title>
+    <AssemblyTitle>Ragnarok 3 Launcher</AssemblyTitle>
+    <Description>Ragnarok 3 Launcher</Description>
+    <Company>Ragnarok 3</Company>
+    <Product>Ragnarok 3 Launcher</Product>
     <!-- Release: one self-contained exe, players need no .NET install. -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>

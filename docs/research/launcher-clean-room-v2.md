@@ -29,14 +29,14 @@ REA evidence:
 |---|---|---|
 | 1200×800 WPF shell over a 1536×1024 design surface | `Ro3Emu.Launcher/MainWindow.xaml` | Built, runtime-captured and compared with the official window in the same session |
 | Home, news and settings navigation | pure-WPF tabs and code-behind | Runtime-captured |
-| Registration link, 5-second banner carousel, clickable bullets, notice cards and 22 px/s hover-paused loop | pure-WPF controls and animations | Static behavior mapping plus deterministic local fixtures; current full DPI pixel matrix is pending |
+| Registration link, 5-second banner carousel, clickable bullets, notice cards and 22 px/s hover-paused loop | pure-WPF controls and animations | Static behavior mapping plus deterministic local fixtures; 36-image synthetic DPI matrix passes |
 | Fixed-seed ambient particles and poring drift | 14 sprites, seed 7351, matching observed timing/easing constants | Static behavior mapping plus local fixture runtime; video-cycle comparison is pending |
 | Rounded progress, queue/maintenance/retry states, recovery actions and error-help panel | pure-WPF state projection | Progress geometry compared with the live official checking state; deterministic synthetic states are available |
 | Install, verify and ready steps | state projection from `LauncherController` | Synthetic/static state paths |
 | Install, update, repair, pause/resume and launch | existing `Ro3Emu.Patcher` plus `GameStarter` | Patcher tests; live player test pending |
 | SHA-256 file/chunk validation and journaled commit | `Updater` | Automated tests |
 | Publisher-authenticated channel | `RepositoryTrust` and detached RSA-PSS/SHA-256 signature | Automated tests |
-| Signed news and self-update metadata | content-addressed hashes and URLs authenticated by signed Channel | Automated tamper and self-update swap tests; live process restart pending |
+| Signed news and self-update metadata | content-addressed hashes and URLs authenticated by signed Channel | Automated tamper tests plus a real 2.0.0 → 2.0.1 signed process replacement and restart handoff |
 | Channel expiry and rollback resistance | positive `ChannelInfo.Sequence`, required expiry and per-user accepted sequence | Automated trust tests; live rollback pending |
 | Publisher continuity | validates existing references, refuses same-version launcher overwrite and signs Channel last | Automated negative tests |
 | Traditional Chinese UI | WPF labels with the observed YaHei geometry and JhengHei fallback | Runtime-captured |
@@ -51,9 +51,21 @@ REA evidence:
   actions and footer positions match. The rebuilt copy reached its offline/reconnect state without starting the game.
 - **Content boundary:** the frame is intentionally reproduced, while account URLs, news, banners, localization and
   release metadata belong to RO3Emu and must not impersonate the official service.
-- **Automated verification:** the isolated patcher suite currently has 32 passing, 0 failing and 0 skipped tests,
-  including signed install/update/repair, signed-news tamper rejection, self-update swap/tamper handling and publisher
-  refusal cases. This is synthetic/local evidence, not a public CDN or player-login acceptance.
-- **Not yet accepted:** an automated pixel-difference threshold across every dynamic state, a signed production
-  repository, self-update over the production host, and end-to-end player install/update/repair/login.
+- **Automated verification:** the isolated patcher suite currently has 44 passing, 0 failing and 0 skipped tests,
+  including signed install/update/repair, signed-news tamper rejection, self-update swap/tamper handling, bounded
+  restart-handoff parsing and publisher refusal cases.
+- **Synthetic DPI verification:** `LauncherVisualMatrix` renders six deterministic fixture states at standard and
+  minimum window sizes for 96, 120 and 144 DPI (36 PNGs). The 96-DIP calibration and structural bounds pass with
+  zero failures. Its verdict remains `PARTIAL`: off-screen rasterization is not `WM_DPICHANGED`, real Per-Monitor V2,
+  DWM, GPU, HDR or cross-monitor acceptance.
+- **Local process verification:** an isolated signed loopback repository replaced the real launcher process from
+  2.0.0 to 2.0.1, handed off from PID 36656 to PID 23296, then installed 1.0.0, updated to 1.0.1 and repaired two
+  deliberately damaged files while preserving an untracked player file. All 29 HTTP requests returned 200. The
+  test used an explicit temporary `settingsFile`, so it did not use the player's normal AppData settings.
+  The 2.0.1 startup path also recognizes a remaining `.old` file and waits at most 15 seconds for the legacy 2.0.0
+  mutex owner, so already-distributed launchers that predate the PID/token protocol can upgrade without the new
+  process losing the single-instance race.
+- **Not yet accepted:** real 100%/125%/150% monitor transitions, a signed production repository and HTTPS/CDN,
+  self-update over that production host, or a real RO3 client/player login. These gates are `PARTIAL` or `NOT_RUN`,
+  not inferred from the successful synthetic tests.
 - **Out of scope:** official Asia account enrollment, publisher anti-cheat identity and official service credentials.

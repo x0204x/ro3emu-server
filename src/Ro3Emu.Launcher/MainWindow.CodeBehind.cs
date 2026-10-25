@@ -67,7 +67,7 @@ public partial class MainWindow : Window
 
     void AddDefaultNotices()
     {
-        _notices.Add(new("系統", "歡迎使用 RO3Emu 啟動器", "正在取得最新公告與版本資訊。", "#315D94", ""));
+        _notices.Add(new("系統", "歡迎使用 Ragnarok 3 啟動器", "正在取得最新公告與版本資訊。", "#315D94", ""));
         _notices.Add(new("安全", "完整性驗證", "更新、修復與啟動器檔案都會在套用前驗證。", "#6F8651", ""));
     }
 

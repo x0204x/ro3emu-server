@@ -1,6 +1,6 @@
 # Launcher and client distribution
 
-Players can get one file, `Ro3EmuLauncher.exe` (`src/Ro3Emu.Launcher`, pure .NET 10 WPF, self-contained). It
+Players can get one file, `RO3Launcher.exe` (`src/Ro3Emu.Launcher`, pure .NET 10 WPF, self-contained). It
 installs the RO3 client patched for your server, keeps it updated, updates itself and starts `ro3.exe` with the launch
 proof. The official RO3 launchers cannot be reused for this: they pin the publisher's manifest signing key and update
 hosts in the exe, update themselves, and their Repair restores the original DLLs.
@@ -18,11 +18,14 @@ This page explains how to host your own patch repository and publish to it.
   - `channels/<channel>.json.sig`: optional detached RSA-PSS/SHA-256 publisher signature;
   - `manifests/`: one immutable manifest per published version;
   - `chunks/`: the content-addressed, compressed data chunks;
-  - `launcher/<version>/Ro3EmuLauncher.exe`: published launcher builds for self-update;
+  - `launcher/<version>/RO3Launcher.exe`: published launcher builds for self-update;
   - `content/news/<sha256>.json`: optional immutable launcher notices and banners, referenced by the signed Channel:
     `{ "items": [ { "tag", "color": "blue|green|orange|red", "title", "text" } ],
        "banners": [ { "image": "https://...", "url": "https://..." } ] }`.
 - The launcher pings `<server>/ro3emu/status` (player count only) for the online indicator.
+- The game process is resolved only as `<installed client directory>/ro3.exe`, where the installed client directory
+  is the directory managed by this launcher. The signed manifest must name `ro3.exe`, include that file, and use a
+  relative non-escaping path; the launcher never falls back to a Genesis/Asia installation elsewhere on the PC.
 
 ## Configure the launcher
 
@@ -37,7 +40,7 @@ local repository.
   "channel": "test",
   // The game server's HTTP base; the launcher pings it for the online indicator.
   "server": "http://127.0.0.1:5380",
-  "serverName": "RO3Emu",
+  "serverName": "Ragnarok 3",
   // Optional. If omitted, Register explains that accounts are created on first login.
   "registerUrl": "https://account.example.com/register",
   "websiteUrl": "https://www.example.com/",
@@ -45,6 +48,8 @@ local repository.
   "allowedExternalHosts": [ "www.example.com", "discord.gg" ],
   "requireHttpsRepository": true,
   "requireSignedChannel": true,
+  // Optional LAB/test isolation. Player releases normally omit this and use %APPDATA%/RO3Emu.
+  "settingsFile": "D:/isolated-lab/launcher-settings.json",
   "trustedPublisherKeys": {
     "my-server-2026": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
   }
@@ -104,7 +109,7 @@ Bump `<Version>` in `src/Ro3Emu.Launcher/Ro3Emu.Launcher.csproj` first, then:
 
 ```
 dotnet publish src/Ro3Emu.Launcher -c Release -o <out>
-dotnet run --project src/Ro3Emu.ReleaseTools -- publish-launcher <repo dir> <channel> <out>\Ro3EmuLauncher.exe <version> <private.pem> <key-id>
+dotnet run --project src/Ro3Emu.ReleaseTools -- publish-launcher <repo dir> <channel> <out>\RO3Launcher.exe <version> <private.pem> <key-id>
 ```
 
 Publish notices and banner metadata through the same signed Channel instead of copying an unsigned `news.json` to
@@ -121,8 +126,8 @@ refuses to overwrite an existing launcher version with different bytes; publish 
 
 Copy `chunks/`, `manifests/`, `launcher/` and `content/` to the web server first and `channels/` last, so a player never sees a
 channel that points at files that are not there yet. Any method works (rsync, scp, tar over ssh, an object-storage
-sync). Also put a copy of `Ro3EmuLauncher.exe` at the repository root (for example
-`https://patch.example.com/ro3/Ro3EmuLauncher.exe`) as the download link for new players.
+sync). Also put a copy of `RO3Launcher.exe` at the repository root (for example
+`https://patch.example.com/ro3/RO3Launcher.exe`) as the download link for new players.
 
 ## Development
 
@@ -135,3 +140,20 @@ sync). Also put a copy of `Ro3EmuLauncher.exe` at the repository root (for examp
 - `uiFixture` is a local visual-test switch (`home`, `progress`, `queue`, `maintenance`, `failure-help-open` or
   `settings`). Never put it in a player release configuration: fixture mode intentionally does not contact a patch
   repository or start the game.
+- `settingsFile` is optional and exists so an isolated LAB can keep accepted channel sequences and the selected
+  client directory out of the player's normal AppData. Relative paths resolve beside the launcher. Omit it from a
+  normal player configuration.
+
+Run the deterministic visual matrix after changing WPF layout or state projection:
+
+```
+dotnet run --project tools/LauncherVisualMatrix -- <output directory>
+```
+
+It produces 36 PNGs plus layout JSON for six states, two logical window sizes, and 96/120/144 DPI. A successful run
+still reports `PARTIAL`, because an off-screen `RenderTargetBitmap` is not a real monitor-DPI transition.
+
+`tools/LauncherProcessE2E` is a deliberately explicit LAB harness for signed loopback process acceptance. It can
+prepare and serve a synthetic client repository, prove the 15-second bounded old/new process handoff, and verify
+install/update/repair hashes without launching a real game. Its private test key and generated client must remain in
+`TestResults` or another disposable LAB directory; never reuse them for a player channel.

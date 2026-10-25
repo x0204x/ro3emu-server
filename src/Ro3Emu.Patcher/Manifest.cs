@@ -70,6 +70,7 @@ public sealed class Manifest
         {
             throw new InvalidDataException($"Unsupported manifest format {manifest.Format}; update the launcher.");
         }
+        PathRules.ValidateRelative(manifest.Launch.Exe);
         foreach (var file in manifest.Files)
         {
             PathRules.ValidateRelative(file.Path);
@@ -80,6 +81,10 @@ public sealed class Manifest
                 if (!IsSha256Hex(chunk.Hash) || chunk.Size < 0 || chunk.StoredSize < 0)
                     throw new InvalidDataException($"Bad chunk in the manifest: {file.Path}");
             }
+        }
+        if (!manifest.Files.Any(file => string.Equals(file.Path, manifest.Launch.Exe, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidDataException($"The launch executable '{manifest.Launch.Exe}' is not part of the packaged client.");
         }
         return manifest;
     }

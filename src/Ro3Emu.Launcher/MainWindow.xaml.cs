@@ -41,7 +41,7 @@ public partial class MainWindow : Window
         catch (WebView2RuntimeNotFoundException)
         {
             var answer = MessageBox.Show("The launcher needs the Microsoft Edge WebView2 Runtime, which is not installed on this PC.\n\nOpen the download page?",
-                "RO3Emu", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                "Ragnarok 3", MessageBoxButton.YesNo, MessageBoxImage.Warning);
             if (answer == MessageBoxResult.Yes) OpenExternal("https://go.microsoft.com/fwlink/p/?LinkId=2124703");
             Application.Current.Shutdown();
             return;

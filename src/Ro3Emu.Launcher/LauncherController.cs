@@ -18,7 +18,7 @@ public sealed class LauncherController : IDisposable
     readonly Action<object> _post;
     readonly Func<string, string?> _pickFolder;
     readonly Action _minimize;
-    readonly UserSettings _settings = UserSettings.Load();
+    readonly UserSettings _settings;
     readonly RepositoryClient _repo;
     readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(5) };
     readonly string _version = typeof(LauncherController).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
@@ -34,6 +34,7 @@ public sealed class LauncherController : IDisposable
     {
         _config = config;
         _exePath = exePath;
+        _settings = UserSettings.Load(config.ResolveSettingsFile(Path.GetDirectoryName(exePath)!));
         _post = post;
         _pickFolder = pickFolder;
         _minimize = minimize;
@@ -106,7 +107,7 @@ public sealed class LauncherController : IDisposable
                 PostState("checking", $"正在將啟動器更新至 {release.Version}…");
                 if (await SelfUpdate.ApplyAsync(_repo, release, _version, _exePath, _life.Token))
                 {
-                    SelfUpdate.Restart(_exePath);
+                    using (SelfUpdate.Restart(_exePath, Environment.ProcessId)) { }
                     System.Windows.Application.Current.Dispatcher.Invoke(() => System.Windows.Application.Current.Shutdown());
                     return;
                 }
@@ -173,7 +174,8 @@ public sealed class LauncherController : IDisposable
         PostState("launching");
         try
         {
-            string? failure = await GameStarter.StartAsync(_layout.GameDirectory);
+            if (_installed is null) throw new PatcherException("No packaged client is installed.");
+            string? failure = await GameStarter.StartAsync(_layout.GameDirectory, _installed.Launch);
             if (failure is null)
             {
                 PostState("running");
@@ -194,7 +196,7 @@ public sealed class LauncherController : IDisposable
         if (folder is null) return;
         // An existing client (ro3.exe) or an empty folder is used as is; anything else gets its own subfolder.
         bool usable = File.Exists(Path.Combine(folder, "ro3.exe")) || !Directory.EnumerateFileSystemEntries(folder).Any();
-        if (!usable) folder = Path.Combine(folder, "RO3Emu");
+        if (!usable) folder = Path.Combine(folder, "Ragnarok3");
         _settings.ClientDirectory = folder;
         _settings.Save();
         _layout = new InstallLayout(folder);

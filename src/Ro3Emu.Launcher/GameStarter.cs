@@ -3,6 +3,7 @@ using System.IO;
 using System.IO.Pipes;
 using System.Security.Cryptography;
 using System.Text;
+using Ro3Emu.Patcher;
 
 namespace Ro3Emu.Launcher;
 
@@ -14,9 +15,11 @@ namespace Ro3Emu.Launcher;
 public static class GameStarter
 {
     /// <summary>Returns null when the game is running, or the reason it stopped within the first seconds.</summary>
-    public static async Task<string?> StartAsync(string clientDir)
+    public static async Task<string?> StartAsync(string clientDir, LaunchInfo launch)
     {
-        string exe = Path.Combine(clientDir, "ro3.exe");
+        if (!string.Equals(launch.Exe, "ro3.exe", StringComparison.OrdinalIgnoreCase))
+            return $"the signed package launch target is '{launch.Exe}', not ro3.exe";
+        string exe = PathRules.ToLocal(clientDir, launch.Exe);
         if (!File.Exists(exe)) return "ro3.exe not found";
 
         using var pipe = new AnonymousPipeServerStream(PipeDirection.Out, HandleInheritability.Inheritable);

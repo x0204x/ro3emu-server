@@ -10,7 +10,7 @@
   var stage = null;
 
   var DEFAULT_NEWS = [
-    { tag: "歡迎", color: "blue", title: "歡迎來到 RO3Emu", text: "這是我們自己的 Ragnarok Online 3 伺服器。目前仍在持續開發中，若遇到問題請協助回報。" },
+    { tag: "歡迎", color: "blue", title: "歡迎來到 Ragnarok 3", text: "這是我們自己的 Ragnarok Online 3 伺服器。目前仍在持續開發中，若遇到問題請協助回報。" },
     { tag: "帳號", color: "green", title: "不需事先註冊", text: "在遊戲中輸入任意帳號與密碼，第一次登入時會自動建立帳號。" },
     { tag: "更新", color: "orange", title: "自動更新遊戲", text: "新版本會由此自動下載；如果下載中斷，下次可以從中斷處繼續。" },
   ];
@@ -172,7 +172,7 @@
     return {
       post: function (c) {
         if (c.cmd !== "ready") return;
-        emit({ type: "settings", dir: "C:\\Games\\RO3Emu\\Client", launcher: "1.0.0", serverName: "RO3 私人伺服器" });
+        emit({ type: "settings", dir: "C:\\Games\\Ragnarok3\\Client", launcher: "1.0.0", serverName: "RO3 私人伺服器" });
         emit({ type: "server", online: scenario !== "offline", players: 7 });
         if (scenario === "offline") return emit({ type: "state", phase: "offline" });
         if (scenario === "downloading") {

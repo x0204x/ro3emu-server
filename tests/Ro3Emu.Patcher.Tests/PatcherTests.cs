@@ -185,10 +185,41 @@ public sealed class PatcherTests : IDisposable
     public void Manifest_ChunkHashesThatAreNotSha256AreRejected(string hash)
     {
         // A chunk hash names a cache file; anything but 64 lower-case hex digits could point outside the cache.
-        var manifest = new Manifest { Files = [new ManifestFile { Path = "Game.exe", Chunks = [new ChunkRef { Hash = hash, Size = 1, StoredSize = 1 }] }] };
+        var manifest = new Manifest
+        {
+            Launch = new LaunchInfo { Exe = "Game.exe" },
+            Files = [new ManifestFile { Path = "Game.exe", Chunks = [new ChunkRef { Hash = hash, Size = 1, StoredSize = 1 }] }],
+        };
         Assert.Throws<InvalidDataException>(() => Manifest.FromCompressedBytes(manifest.ToCompressedBytes()));
         manifest.Files[0].Chunks[0].Hash = new string('a', 64);
         Assert.Single(Manifest.FromCompressedBytes(manifest.ToCompressedBytes()).Files);
+    }
+
+    [Theory]
+    [InlineData("C:/Windows/notepad.exe")]
+    [InlineData("../outside.exe")]
+    [InlineData("/absolute.exe")]
+    public void Manifest_LaunchExecutableCannotEscapeThePackagedClient(string launchExe)
+    {
+        var manifest = new Manifest
+        {
+            Launch = new LaunchInfo { Exe = launchExe },
+            Files = [new ManifestFile { Path = "ro3.exe" }],
+        };
+
+        Assert.Throws<InvalidDataException>(() => Manifest.FromCompressedBytes(manifest.ToCompressedBytes()));
+    }
+
+    [Fact]
+    public void Manifest_LaunchExecutableMustBeAFileInThePackage()
+    {
+        var manifest = new Manifest
+        {
+            Launch = new LaunchInfo { Exe = "ro3.exe" },
+            Files = [new ManifestFile { Path = "ro3_Data/data.unity3d" }],
+        };
+
+        Assert.Throws<InvalidDataException>(() => Manifest.FromCompressedBytes(manifest.ToCompressedBytes()));
     }
 
     [Fact]

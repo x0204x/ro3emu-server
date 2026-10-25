@@ -14,6 +14,10 @@
     <Project Path="src/Ro3Emu.Server.Generators/Ro3Emu.Server.Generators.csproj" />
     <Project Path="src/Ro3Emu.Setup/Ro3Emu.Setup.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/LauncherProcessE2E/LauncherProcessE2E.csproj" />
+    <Project Path="tools/LauncherVisualMatrix/LauncherVisualMatrix.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Ro3Emu.Patcher.Tests/Ro3Emu.Patcher.Tests.csproj" />
     <Project Path="tests/Ro3Emu.Setup.Tests/Ro3Emu.Setup.Tests.csproj" />

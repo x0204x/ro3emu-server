@@ -53,8 +53,20 @@ public static class SelfUpdate
         return true;
     }
 
-    public static void Restart(string exePath, string arguments = "")
+    public static Process Restart(string exePath, int previousProcessId, string? token = null)
     {
-        Process.Start(new ProcessStartInfo(exePath, arguments) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(exePath)! });
+        if (previousProcessId <= 0) throw new ArgumentOutOfRangeException(nameof(previousProcessId));
+        token ??= Guid.NewGuid().ToString("N");
+        if (!RestartHandoff.IsValidToken(token)) throw new ArgumentException("The restart token must be 32 hexadecimal characters.", nameof(token));
+        var start = new ProcessStartInfo(exePath)
+        {
+            UseShellExecute = false,
+            WorkingDirectory = Path.GetDirectoryName(exePath)!,
+        };
+        start.ArgumentList.Add(RestartHandoff.PreviousProcessOption);
+        start.ArgumentList.Add(previousProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        start.ArgumentList.Add(RestartHandoff.TokenOption);
+        start.ArgumentList.Add(token);
+        return Process.Start(start) ?? throw new InvalidOperationException("The updated launcher process could not be started.");
     }
 }
