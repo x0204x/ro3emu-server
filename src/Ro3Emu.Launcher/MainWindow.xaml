@@ -26,12 +26,12 @@
             <Grid Margin="0,0,0,6">
               <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
               <Border CornerRadius="3" Padding="8,2.5" Background="{Binding Accent}">
-                <TextBlock Foreground="#FFF9E9" FontSize="10" FontWeight="Bold" Text="{Binding Tag}" />
+                <TextBlock Foreground="#FFF9E9" FontSize="15.5" FontWeight="Bold" Text="{Binding Tag}" />
               </Border>
-              <TextBlock Grid.Column="2" FontSize="10.5" VerticalAlignment="Center" Foreground="{StaticResource MutedInkBrush}" Text="{Binding Date}" />
+              <TextBlock Grid.Column="2" FontSize="15.5" VerticalAlignment="Center" Foreground="{StaticResource MutedInkBrush}" Text="{Binding Date}" />
             </Grid>
-            <TextBlock FontSize="13.5" TextWrapping="Wrap" Style="{StaticResource DisplayTitle}" Text="{Binding Title}" />
-            <TextBlock FontSize="12" Margin="0,4,0,0" Style="{StaticResource BodyText}" Foreground="{StaticResource MutedInkBrush}" Text="{Binding Text}" />
+            <TextBlock FontSize="16" TextWrapping="Wrap" Style="{StaticResource DisplayTitle}" Text="{Binding Title}" />
+            <TextBlock FontSize="15.5" Margin="0,4,0,0" Style="{StaticResource BodyText}" Foreground="{StaticResource MutedInkBrush}" Text="{Binding Text}" />
           </StackPanel>
         </Grid>
       </Border>
@@ -41,8 +41,9 @@
   <Grid>
     <Image Source="/Assets/ui/background/paperbackdrop.png" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" />
     <Viewbox Stretch="Uniform" StretchDirection="Both">
-      <Grid Width="1536" Height="1024" Background="#E9DDC7" UseLayoutRounding="False" SnapsToDevicePixels="False"
-            TextOptions.TextFormattingMode="Ideal" RenderOptions.BitmapScalingMode="HighQuality">
+      <Grid Width="1536" Height="1024" Background="#E9DDC7" UseLayoutRounding="True" SnapsToDevicePixels="True"
+            TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType"
+            RenderOptions.BitmapScalingMode="HighQuality">
         <Image Source="/Assets/ui/background/backgroundclean.png" Stretch="UniformToFill" />
         <Rectangle Fill="#28F5E9D3" />
         <Grid>
@@ -102,11 +103,11 @@
                         <TextBlock Style="{StaticResource DisplayTitle}" FontSize="18" VerticalAlignment="Center" Text="公告" />
                       </StackPanel>
                       <Border Grid.Column="1" Background="#6F8651" CornerRadius="5" Padding="13,7" VerticalAlignment="Center">
-                        <TextBlock x:Name="SignedContentText" Foreground="#FFF9E9" FontSize="11" FontWeight="Bold" Text="本機內容" />
+                        <TextBlock x:Name="SignedContentText" Foreground="#FFF9E9" FontSize="15.5" FontWeight="Bold" Text="本機內容" />
                       </Border>
                     </Grid>
                     <Grid Grid.Row="1">
-                      <TextBlock Style="{StaticResource BodyText}" FontSize="12.5" Foreground="{StaticResource MutedInkBrush}"
+                      <TextBlock Style="{StaticResource BodyText}" FontSize="15.5" Foreground="{StaticResource MutedInkBrush}"
                                  VerticalAlignment="Top" Margin="3,2,0,0" Text="遊戲團隊的公告。" />
                       <Image Source="/Assets/ui/decoration/dividergem.png" Height="16" Opacity="0.9" VerticalAlignment="Bottom" Margin="0,0,0,2" Stretch="Uniform" />
                     </Grid>
@@ -131,7 +132,7 @@
                         </StackPanel>
                       </Canvas>
                     </Border>
-                    <TextBlock Grid.Row="4" Style="{StaticResource DisplayTitle}" FontSize="12" Foreground="#925D30"
+                    <TextBlock Grid.Row="4" Style="{StaticResource DisplayTitle}" FontSize="16" Foreground="#925D30"
                                HorizontalAlignment="Center" VerticalAlignment="Center" Text="遊戲更新頻道" />
                   </Grid>
                 </ContentControl>
@@ -150,7 +151,7 @@
                   <Grid>
                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
                     <TextBlock Style="{StaticResource DisplayTitle}" FontSize="28" Text="新聞" />
-                    <TextBlock Grid.Row="1" Style="{StaticResource BodyText}" FontSize="15" Foreground="{StaticResource MutedInkBrush}" Margin="0,8,0,14"
+                    <TextBlock Grid.Row="1" Style="{StaticResource BodyText}" FontSize="15.5" Foreground="{StaticResource MutedInkBrush}" Margin="0,8,0,14"
                                Text="遊戲團隊的公告與版本資訊。" />
                     <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Padding="0,2,6,0">
                       <ItemsControl x:Name="NewsNotices" ItemTemplate="{StaticResource NoticeCardTemplate}" />
@@ -170,14 +171,14 @@
                       <Grid.ColumnDefinitions><ColumnDefinition Width="220" /><ColumnDefinition Width="260" /><ColumnDefinition /></Grid.ColumnDefinitions>
                       <TextBlock Style="{StaticResource DisplayTitle}" FontSize="16" VerticalAlignment="Center" Text="介面語言" />
                       <ComboBox Grid.Column="1" Height="38" Background="#FFF9EA" BorderBrush="#A57B42" Foreground="{StaticResource InkBrush}"
-                                FontSize="15" SelectedIndex="0"><ComboBoxItem Content="繁體中文" /></ComboBox>
+                                FontSize="15.5" SelectedIndex="0"><ComboBoxItem Content="繁體中文" /></ComboBox>
                       <CheckBox x:Name="MotionCheckBox" Grid.Column="2" Style="{StaticResource SettingsCheckBox}" VerticalAlignment="Center"
                                 IsChecked="True" Content="啟用動態效果" Checked="OnMotionChanged" Unchecked="OnMotionChanged" />
                     </Grid>
                     <Border Grid.Row="2" Background="#AFFFFFF4" BorderBrush="#7E9E7545" BorderThickness="1" CornerRadius="5" Padding="24">
                       <StackPanel>
                         <TextBlock Style="{StaticResource DisplayTitle}" FontSize="20" Text="診斷與安全" />
-                        <TextBlock Style="{StaticResource BodyText}" FontSize="14" Foreground="{StaticResource MutedInkBrush}"
+                        <TextBlock Style="{StaticResource BodyText}" FontSize="15.5" Foreground="{StaticResource MutedInkBrush}"
                                    Margin="0,7,0,18" Text="更新內容會先驗證完整性，診斷記錄只保留在本機。" />
                         <CheckBox Style="{StaticResource SettingsCheckBox}" IsChecked="True" IsEnabled="False" Content="檔案完整性驗證" />
                         <CheckBox Style="{StaticResource SettingsCheckBox}" IsChecked="True" IsEnabled="False" Content="本機診斷記錄" />
@@ -201,7 +202,7 @@
                     <Image Source="/Assets/ui/steps/step01.png" Width="58" Height="58" />
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                       <TextBlock Style="{StaticResource DisplayTitle}" FontSize="16" Text="安裝" />
-                      <TextBlock Style="{StaticResource BodyText}" FontSize="12.5" Foreground="{StaticResource MutedInkBrush}" Margin="0,4,0,0" Text="下載遊戲檔案" />
+                      <TextBlock Style="{StaticResource BodyText}" FontSize="15.5" Foreground="{StaticResource MutedInkBrush}" Margin="0,4,0,0" Text="下載遊戲檔案" />
                     </StackPanel>
                   </Grid>
                   <TextBlock Grid.Column="1" Text="›" FontSize="37" Foreground="{StaticResource InkBrush}" VerticalAlignment="Center" HorizontalAlignment="Center" />
@@ -210,7 +211,7 @@
                     <Image Source="/Assets/ui/steps/step02.png" Width="58" Height="58" />
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                       <TextBlock Style="{StaticResource DisplayTitle}" FontSize="16" Text="驗證" />
-                      <TextBlock Style="{StaticResource BodyText}" FontSize="12.5" Foreground="{StaticResource MutedInkBrush}" Margin="0,4,0,0" Text="檢查檔案完整性" />
+                      <TextBlock Style="{StaticResource BodyText}" FontSize="15.5" Foreground="{StaticResource MutedInkBrush}" Margin="0,4,0,0" Text="檢查檔案完整性" />
                     </StackPanel>
                   </Grid>
                   <TextBlock Grid.Column="3" Text="›" FontSize="37" Foreground="{StaticResource InkBrush}" VerticalAlignment="Center" HorizontalAlignment="Center" />
@@ -219,7 +220,7 @@
                     <Image Source="/Assets/ui/steps/step03.png" Width="58" Height="58" />
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
                       <TextBlock Style="{StaticResource DisplayTitle}" FontSize="16" Text="就緒" />
-                      <TextBlock Style="{StaticResource BodyText}" FontSize="12.5" Foreground="{StaticResource MutedInkBrush}" Margin="0,4,0,0" Text="啟動或修復" />
+                      <TextBlock Style="{StaticResource BodyText}" FontSize="15.5" Foreground="{StaticResource MutedInkBrush}" Margin="0,4,0,0" Text="啟動或修復" />
                     </StackPanel>
                   </Grid>
                 </Grid>
@@ -233,14 +234,14 @@
                 </ProgressBar>
                 <Grid Grid.Row="2" Margin="0,7,0,0">
                   <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="250" /><ColumnDefinition /></Grid.ColumnDefinitions>
-                  <TextBlock x:Name="PackageText" Style="{StaticResource BodyText}" FontSize="12.5" VerticalAlignment="Center" Text="正在檢查更新…" />
+                  <TextBlock x:Name="PackageText" Style="{StaticResource BodyText}" FontSize="15.5" VerticalAlignment="Center" Text="正在檢查更新…" />
                   <StackPanel x:Name="ProgressDetails" Grid.Column="1" HorizontalAlignment="Center" Visibility="Collapsed">
                     <TextBlock x:Name="ProgressPercentText" Style="{StaticResource DisplayTitle}" FontSize="19" HorizontalAlignment="Center" Text="0%" />
-                    <TextBlock x:Name="TransferText" Style="{StaticResource BodyText}" FontSize="11.5" Foreground="{StaticResource MutedInkBrush}" HorizontalAlignment="Center" />
+                    <TextBlock x:Name="TransferText" Style="{StaticResource BodyText}" FontSize="15.5" Foreground="{StaticResource MutedInkBrush}" HorizontalAlignment="Center" />
                   </StackPanel>
                   <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                     <TextBlock x:Name="ErrorGlyph" Text="⚠" FontSize="15" Margin="0,0,7,0" Foreground="{StaticResource AmberBrush}" Visibility="Collapsed" />
-                    <TextBlock x:Name="DetailText" Style="{StaticResource BodyText}" FontSize="12.5" MaxWidth="300" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    <TextBlock x:Name="DetailText" Style="{StaticResource BodyText}" FontSize="15.5" MaxWidth="300" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                     <Button x:Name="ErrorHelpButton" Style="{StaticResource HelpCircleButton}" Margin="9,0,0,0" Visibility="Collapsed" Click="OnErrorHelpClick" />
                   </StackPanel>
                 </Grid>
@@ -249,7 +250,7 @@
             <ContentControl x:Name="ActionsPanel" Grid.Column="2" Style="{StaticResource ParchmentPanel}" Padding="34,16">
               <Grid>
                 <Grid.RowDefinitions><RowDefinition Height="35" /><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
-                <TextBlock x:Name="QueueStatusText" Grid.Row="0" Style="{StaticResource DisplayTitle}" FontSize="14"
+                <TextBlock x:Name="QueueStatusText" Grid.Row="0" Style="{StaticResource DisplayTitle}" FontSize="16"
                            HorizontalAlignment="Center" Text="復原操作" />
                 <Button x:Name="PrimaryButton" Grid.Row="1" Style="{StaticResource LauncherButton}" IsEnabled="False" Click="OnPrimaryAction">
                   <StackPanel Orientation="Horizontal">
@@ -274,10 +275,10 @@
           </Grid>
 
           <Grid Grid.Row="3" Background="#DDF2E7D5">
-            <TextBlock x:Name="WebsiteText" Text="Ragnarok 3" Style="{StaticResource DisplayTitle}" FontSize="11.5" Margin="42,0,0,0"
+            <TextBlock x:Name="WebsiteText" Text="Ragnarok 3" Style="{StaticResource DisplayTitle}" FontSize="15.5" Margin="42,0,0,0"
                        VerticalAlignment="Center" MouseLeftButtonDown="OnWebsiteLink" />
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,46,0">
-              <TextBlock x:Name="VersionText" Style="{StaticResource BodyText}" FontSize="11.5" Foreground="{StaticResource MutedInkBrush}" Margin="0,0,20,0" />
+              <TextBlock x:Name="VersionText" Style="{StaticResource BodyText}" FontSize="15.5" Foreground="{StaticResource MutedInkBrush}" Margin="0,0,20,0" />
               <Image x:Name="DiscordLink" Source="/Assets/ui/icons/discord.png" Width="28" Height="28" Margin="11,0" MouseLeftButtonDown="OnDiscordLink" />
               <Image x:Name="FacebookLink" Source="/Assets/ui/icons/facebook.png" Width="28" Height="28" Margin="11,0" MouseLeftButtonDown="OnFacebookLink" />
               <Image x:Name="YoutubeLink" Source="/Assets/ui/icons/youtube.png" Width="28" Height="28" Margin="11,0" MouseLeftButtonDown="OnYoutubeLink" />
@@ -297,10 +298,10 @@
                     <TextBlock Grid.Column="1" Style="{StaticResource DisplayTitle}" FontSize="17" Text="需要協助嗎？" VerticalAlignment="Center" />
                     <Button Grid.Column="2" Style="{StaticResource HelpCloseButton}" Margin="6,-4,0,0" Click="OnErrorHelpClose" />
                   </Grid>
-                  <TextBlock x:Name="ErrorHelpCause" Style="{StaticResource BodyText}" FontSize="13" Margin="0,10,6,0" />
-                  <TextBlock Style="{StaticResource DisplayTitle}" FontSize="13.5" Margin="0,13,0,5" Foreground="#7A4A22" Text="建議處理方式" />
-                  <TextBlock Style="{StaticResource BodyText}" FontSize="13" Margin="0,0,6,6" Text="1. 確認網路與伺服器位址。&#x0a;2. 重新檢查，或執行修復遊戲。&#x0a;3. 若仍失敗，保留診斷記錄以供分析。" />
-                  <TextBlock x:Name="ErrorHelpCode" Style="{StaticResource BodyText}" FontSize="11.5" Foreground="{StaticResource MutedInkBrush}" Margin="0,6,6,0" />
+                  <TextBlock x:Name="ErrorHelpCause" Style="{StaticResource BodyText}" FontSize="15.5" Margin="0,10,6,0" />
+                  <TextBlock Style="{StaticResource DisplayTitle}" FontSize="16" Margin="0,13,0,5" Foreground="#7A4A22" Text="建議處理方式" />
+                  <TextBlock Style="{StaticResource BodyText}" FontSize="15.5" Margin="0,0,6,6" Text="1. 確認網路與伺服器位址。&#x0a;2. 重新檢查，或執行修復遊戲。&#x0a;3. 若仍失敗，保留診斷記錄以供分析。" />
+                  <TextBlock x:Name="ErrorHelpCode" Style="{StaticResource BodyText}" FontSize="15.5" Foreground="{StaticResource MutedInkBrush}" Margin="0,6,6,0" />
                 </StackPanel>
               </Border>
               <Path Data="M0,0 L9,10 L18,0" Fill="#FFFBF2" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,20,-9" />

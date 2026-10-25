@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
+using Ro3Emu.ClientTools;
 using Ro3Emu.Setup.Install;
 
 namespace Ro3Emu.Setup;
@@ -90,6 +91,7 @@ internal static class InstallFlow
               + $", {plan.Needed.Count} to get ({Ui.Size(plan.NeededBytes)})");
         if (plan.Needed.Count == 0)
         {
+            if (include == null) WriteBaseline(folder, manifests.Full);
             Record(folder, release.Sequence);
             Ui.Ok(include == null ? "the game is complete and up to date" : "the needed files are complete and up to date");
             return;
@@ -111,8 +113,16 @@ internal static class InstallFlow
         }
         finally { Console.CancelKeyPress -= stop; }
         Ui.EndProgress();
+        if (include == null) WriteBaseline(folder, manifests.Full);
         Record(folder, release.Sequence);
         Ui.Ok($"{plan.Needed.Count} files written and checked in {Ui.Duration(watch.Elapsed)}");
+    }
+
+    private static void WriteBaseline(string folder, ReleaseManifest manifest)
+    {
+        var release = manifest.Release;
+        VerifiedBaseline.Write(folder, release.Id, release.Sequence, release.TargetBuild.Id, release.TargetBuild.ContentSha256,
+            manifest.TargetFiles.Select(file => new VerifiedBaseline.Entry(file.Length, file.Sha256, file.Path)));
     }
 
     private static void Record(string folder, long sequence)

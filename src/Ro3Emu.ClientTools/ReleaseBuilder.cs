@@ -11,15 +11,13 @@ namespace Ro3Emu.ClientTools;
 /// </summary>
 public static class ReleaseBuilder
 {
-    private const string BaselineFile = ".ro3-update/verified-baseline.txt";
-    private const string BaselineHeader = "RO3RECOVERYVERIFIEDBASELINE1";
     private const string ManagedPrefix = "ro3_Data/Managed/";
 
     public static async Task<int> PublishAsync(string clientDir, string serverUrl, string pem, string repoDir, string version, string channel, int compression,
         string? localizationMap = null, RepositorySigningOptions? signing = null)
     {
         clientDir = Path.GetFullPath(clientDir);
-        var baseline = ReadBaseline(clientDir);
+        var baseline = VerifiedBaseline.Read(clientDir);
         Console.WriteLine($"baseline: {baseline.Count} files");
 
         // Stage ro3.exe + Managed + the pristine originals, then patch the staging copy only.
@@ -41,8 +39,9 @@ public static class ReleaseBuilder
 
         var files = new List<KeyValuePair<string, string>>();
         var mismatched = new List<string>();
-        foreach (var (relative, size) in baseline)
+        foreach (var entry in baseline)
         {
+            string relative = entry.Path;
             if (relative.StartsWith(ManagedPrefix, StringComparison.OrdinalIgnoreCase))
             {
                 files.Add(new(relative, Path.Combine(stagedManaged, relative[ManagedPrefix.Length..])));
@@ -50,7 +49,8 @@ public static class ReleaseBuilder
             }
             string source = Path.Combine(clientDir, relative.Replace('/', Path.DirectorySeparatorChar));
             var info = new FileInfo(source);
-            if (!info.Exists || info.Length != size) mismatched.Add($"{relative} (baseline {size}, disk {(info.Exists ? info.Length : -1)})");
+            if (!info.Exists || info.Length != entry.Size)
+                mismatched.Add($"{relative} (baseline {entry.Size}, disk {(info.Exists ? info.Length : -1)})");
             files.Add(new(relative, source));
         }
         if (mismatched.Count > 0)
@@ -78,22 +78,5 @@ public static class ReleaseBuilder
         Console.WriteLine($"done: {result.NewChunks} new chunks ({result.NewStoredBytes / 1048576} MiB stored), {result.ReusedChunks} reused");
         Directory.Delete(staging, recursive: true);
         return 0;
-    }
-
-    private static List<(string Relative, long Size)> ReadBaseline(string clientDir)
-    {
-        string path = Path.Combine(clientDir, BaselineFile);
-        if (!File.Exists(path)) throw new FileNotFoundException("not an installed RO3 client (no verified baseline)", path);
-        var lines = File.ReadAllLines(path);
-        if (lines.Length < 3 || lines[0] != BaselineHeader) throw new InvalidDataException($"unknown baseline format in {path}");
-        var result = new List<(string, long)>();
-        foreach (var line in lines.Skip(3))
-        {
-            if (line.Length == 0) continue;
-            var parts = line.Split('\t');
-            if (parts.Length != 3 || !long.TryParse(parts[0], out long size)) throw new InvalidDataException($"bad baseline line: {line}");
-            result.Add((parts[2], size));
-        }
-        return result;
     }
 }

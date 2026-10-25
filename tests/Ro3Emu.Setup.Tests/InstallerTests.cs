@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using Ro3Emu.ClientTools;
 using Ro3Emu.Setup.Install;
 
 namespace Ro3Emu.Setup.Tests;
@@ -309,6 +310,42 @@ public sealed class InstallerTests : IAsyncLifetime
     [InlineData("C:/Windows/x.dll")]
     [InlineData("a/../../b")]
     public void RejectsUnsafePaths(string path) => Assert.False(ReleaseManifest.SafePath(path));
+
+    [Fact]
+    public void VerifiedBaselineRoundTripsSignedManifestEntries()
+    {
+        string game = Path.Combine(_dir.FullName, "baseline-game");
+        var entries = new[]
+        {
+            new VerifiedBaseline.Entry(3, new string('a', 64), "ro3.exe"),
+            new VerifiedBaseline.Entry(5, new string('b', 64), "ro3_Data/Managed/HUD.dll"),
+        };
+
+        VerifiedBaseline.Write(game, "release-7", 7, "build-7", new string('c', 64), entries);
+
+        Assert.Equal(entries, VerifiedBaseline.Read(game));
+        string path = Path.Combine(game, ".ro3-update", "verified-baseline.txt");
+        Assert.DoesNotContain('\r', File.ReadAllText(path));
+    }
+
+    [Theory]
+    [InlineData("../secret.txt")]
+    [InlineData("C:/secret.txt")]
+    [InlineData("safe/../../secret.txt")]
+    public void VerifiedBaselineRejectsUnsafePublishPaths(string unsafePath)
+    {
+        string game = Path.Combine(_dir.FullName, "unsafe-baseline-game");
+        Directory.CreateDirectory(Path.Combine(game, ".ro3-update"));
+        File.WriteAllLines(Path.Combine(game, ".ro3-update", "verified-baseline.txt"),
+        [
+            "RO3RECOVERYVERIFIEDBASELINE1",
+            "release\t7\trelease-7",
+            $"build\tbuild-7\t{new string('c', 64)}",
+            $"1\t{new string('a', 64)}\t{unsafePath}",
+        ]);
+
+        Assert.Throws<InvalidDataException>(() => VerifiedBaseline.Read(game));
+    }
 
     [Fact]
     public void RefusesPackageUrlsOutsideThePublishersOrigins()

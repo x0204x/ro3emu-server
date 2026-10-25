@@ -5,5 +5,7 @@
   "channel": "test",
   // The game server's HTTP base; the launcher pings it for the online pill.
   "server": "http://127.0.0.1:5380",
-  "serverName": "Ragnarok 3"
+  "serverName": "Ragnarok 3",
+  // Install and launch ro3.exe beside RO3Launcher.exe unless the player chooses another folder in Settings.
+  "clientDirectory": "."
 }

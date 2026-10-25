@@ -30,6 +30,7 @@
     <Compile Include="..\Ro3Emu.ClientTools\AccessFixPatch.cs" Link="Client\AccessFixPatch.cs" />
     <Compile Include="..\Ro3Emu.ClientTools\VoiceStubPatch.cs" Link="Client\VoiceStubPatch.cs" />
     <Compile Include="..\Ro3Emu.ClientTools\Launcher.cs" Link="Client\Launcher.cs" />
+    <Compile Include="..\Ro3Emu.ClientTools\VerifiedBaseline.cs" Link="Client\VerifiedBaseline.cs" />
   </ItemGroup>
 
   <!-- Our English translations (public sources, no client text beyond the strings they translate); merged on the

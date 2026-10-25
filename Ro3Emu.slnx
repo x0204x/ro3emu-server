@@ -17,6 +17,7 @@
   <Folder Name="/tools/">
     <Project Path="tools/LauncherProcessE2E/LauncherProcessE2E.csproj" />
     <Project Path="tools/LauncherVisualMatrix/LauncherVisualMatrix.csproj" />
+    <Project Path="tools/Ro3Emu.RepositoryServer/Ro3Emu.RepositoryServer.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Ro3Emu.Patcher.Tests/Ro3Emu.Patcher.Tests.csproj" />

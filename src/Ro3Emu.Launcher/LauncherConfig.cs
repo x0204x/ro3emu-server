@@ -23,7 +23,7 @@ public sealed class LauncherConfig
     [JsonPropertyName("requireSignedChannel")] public bool RequireSignedChannel { get; set; }
     [JsonPropertyName("trustedPublisherKeys")] public Dictionary<string, string> TrustedPublisherKeys { get; set; } = new();
     [JsonPropertyName("settingsFile")] public string? SettingsFile { get; set; }
-    [JsonPropertyName("clientDirectory")] public string? ClientDirectory { get; set; }
+    [JsonPropertyName("clientDirectory")] public string? ClientDirectory { get; set; } = ".";
 
     static readonly JsonSerializerOptions Options = new() { ReadCommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
 

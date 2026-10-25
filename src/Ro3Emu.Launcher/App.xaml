@@ -3,8 +3,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <Application.Resources>
     <ResourceDictionary>
-      <FontFamily x:Key="DisplayFont">/Assets/fonts/#Roboto Medium, Microsoft YaHei UI, Microsoft JhengHei UI</FontFamily>
-      <FontFamily x:Key="BodyFont">Segoe UI, Microsoft YaHei UI, Microsoft JhengHei UI</FontFamily>
+      <FontFamily x:Key="DisplayFont">/Assets/fonts/#Roboto Medium, Microsoft JhengHei UI, Microsoft YaHei UI</FontFamily>
+      <FontFamily x:Key="BodyFont">Microsoft JhengHei UI, Segoe UI, Microsoft YaHei UI</FontFamily>
       <SolidColorBrush x:Key="InkBrush" Color="#493B2E" />
       <SolidColorBrush x:Key="MutedInkBrush" Color="#776958" />
       <SolidColorBrush x:Key="GoldBrush" Color="#B78A4A" />
@@ -15,10 +15,12 @@
 
       <Style x:Key="DisplayTitle" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{DynamicResource DisplayFont}" />
+        <Setter Property="FontSize" Value="16" />
         <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
       </Style>
       <Style x:Key="BodyText" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="{DynamicResource BodyFont}" />
+        <Setter Property="FontSize" Value="15.5" />
         <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
         <Setter Property="TextWrapping" Value="Wrap" />
       </Style>
@@ -144,7 +146,7 @@
           </Setter.Value>
         </Setter>
         <Setter Property="ItemContainerStyle">
-          <Setter.Value><Style TargetType="ComboBoxItem"><Setter Property="Padding" Value="12,7" /><Setter Property="Foreground" Value="{StaticResource InkBrush}" /><Setter Property="FontSize" Value="14" /></Style></Setter.Value>
+          <Setter.Value><Style TargetType="ComboBoxItem"><Setter Property="Padding" Value="12,7" /><Setter Property="Foreground" Value="{StaticResource InkBrush}" /><Setter Property="FontSize" Value="15.5" /></Style></Setter.Value>
         </Setter>
       </Style>
 

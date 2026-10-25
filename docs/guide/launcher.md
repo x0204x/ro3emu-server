@@ -42,7 +42,7 @@ local repository.
   "repository": "https://patch.example.com/ro3/",
   "channel": "test",
   // Optional client folder. Relative paths resolve from RO3Launcher.exe; user-selected Settings still wins.
-  "clientDirectory": "../Client",
+  "clientDirectory": ".",
   // The game server's HTTP base; the launcher pings it for the online indicator.
   "server": "http://127.0.0.1:5380",
   "serverName": "Ragnarok 3",
@@ -63,8 +63,9 @@ local repository.
 
 Set `repository` to the public URL of your repository folder and `server` to your game server's public HTTP address.
 For an isolated Tailscale/LAN lab, both trust flags may be `false`. A public player release should require HTTPS and
-a signed channel. `clientDirectory` lets a packaged layout keep `RO3Launcher.exe` in one folder and the game in a
-sibling folder; for example, `G:\RO3 test\RO3Emu\RO3Launcher.exe` plus `G:\RO3 test\Client\ro3.exe` uses `../Client`.
+a signed channel. `clientDirectory` defaults to `.` so a packaged launcher installs and starts `ro3.exe` beside
+`RO3Launcher.exe`. Players can still choose another folder in Settings; their saved choice wins. A split layout can
+opt in explicitly: `G:\RO3 test\RO3Emu\RO3Launcher.exe` plus `G:\RO3 test\Client\ro3.exe` uses `../Client`.
 
 ## Publisher identity
 
@@ -134,6 +135,20 @@ Copy `chunks/`, `manifests/`, `launcher/` and `content/` to the web server first
 channel that points at files that are not there yet. Any method works (rsync, scp, tar over ssh, an object-storage
 sync). Also put a copy of `RO3Launcher.exe` at the repository root (for example
 `https://patch.example.com/ro3/RO3Launcher.exe`) as the download link for new players.
+
+For a small Tailscale-only Windows host, the repository includes a static server that binds one explicit address,
+does not list directories, and supports the byte ranges used to resume chunk downloads. The host needs the .NET 8
+runtime (or publish the tool self-contained):
+
+```
+dotnet publish tools/Ro3Emu.RepositoryServer -c Release -o <server tool dir>
+dotnet <server tool dir>/Ro3Emu.RepositoryServer.dll <repo dir> --bind <tailscale-ip> --port 8080 --path /ro3/
+```
+
+`<repo dir>` is the directory whose root contains `channels/`, `manifests/`, `chunks/` and `RO3Launcher.exe`.
+Bind the host's current Tailscale IP, not `0.0.0.0`; the tool deliberately rejects wildcard addresses. Keep the
+publisher private key on the release-management computer, never in this served directory. This HTTP option is only
+for a private tailnet with a signed Channel; an Internet-facing repository must use HTTPS on a maintained web server.
 
 ## Development
 

@@ -42,7 +42,7 @@ public sealed class LauncherController : IDisposable
         string executableDirectory = Path.GetDirectoryName(exePath)!;
         _layout = new InstallLayout(_settings.ClientDirectory
             ?? config.ResolveClientDirectory(executableDirectory)
-            ?? Path.Combine(executableDirectory, "Client"));
+            ?? executableDirectory);
     }
 
     public async Task HandleAsync(string cmd)
