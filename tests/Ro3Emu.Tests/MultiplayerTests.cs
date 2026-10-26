@@ -157,6 +157,22 @@ public sealed class MultiplayerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GmSkillTraceCommandReachesTheClientHookUnchanged()
+    {
+        await using var alice = await InWorld("Alice");
+        await alice.JoinChatAsync("4_1");
+
+        await alice.SendChatAsync("4_1", 2, "!client skilltrace on", channelIndex: 4);
+
+        var command = await alice.Inbox.WaitAsync(e => e.IsGame(77012), Wait);
+        Assert.Equal("skilltrace on", System.Text.Encoding.UTF8.GetString(command.Body));
+        var reply = BroadCastNotify.Parser.ParseFrom((await alice.Inbox.WaitAsync(
+            e => e.IsGame(Ro3Emu.Server.Game.GmCommands.BroadcastNotify), Wait)).Body);
+        Assert.Contains("Player.log", reply.Content);
+        Assert.Contains("Ro3Emu.SkillTrace", reply.Content);
+    }
+
+    [Fact]
     public async Task GateKeyIsServedOverHttp()
     {
         using var http = new HttpClient();

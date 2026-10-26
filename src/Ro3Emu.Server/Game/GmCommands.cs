@@ -257,7 +257,7 @@ public sealed class GmCommands(IOptions<ServerOptions> options, GameData data, S
         ["points"] = ("<n>", (s, a) => Op(s, OpAddAttrPnt, a)),
         ["job"] = ("<jobId>", (s, a) => Op(s, OpSetJob, a)),
         ["clearbag"] = ("", (s, a) => Op(s, OpClearPack, a)),
-        ["client"] = ("<find name>", ClientDiagnostics),
+        ["client"] = ("find <name> | skilltrace on|off|status", ClientDiagnostics),
         ["speed"] = ("<speed, 0 = normal>", async (s, a) => await ReplyAsync(s, await character.SetSpeedAsync(s, L(a[0])))),
         ["quest"] = ("[accept|finish|done <taskId> | reset]", async (s, a) => await ReplyAsync(s, a.Length == 0
             ? "Quests: " + tasks.Describe(s)
@@ -348,7 +348,7 @@ public sealed class GmCommands(IOptions<ServerOptions> options, GameData data, S
     {
         if (args.Length == 0) throw new ArgumentException("command");
         await s.SendGameRawAsync(ClientDiagnosticsMsg, System.Text.Encoding.UTF8.GetBytes(string.Join(' ', args)));
-        await ReplyAsync(s, "Sent to the client; see Player.log [Ro3Emu.Diag].");
+        await ReplyAsync(s, "Sent to the client; see Player.log [Ro3Emu.Diag] / [Ro3Emu.SkillTrace].");
     }
 
     private const uint ClientDiagnosticsMsg = 77012;

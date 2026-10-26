@@ -38,6 +38,9 @@ namespace Ro3Emu.ClientHooks
                         foreach (var name in (parts.Length > 1 ? parts[1] : "").Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
                             SpritePng(name);
                         break;
+                    case "skilltrace":
+                        SkillTrace.Command(parts.Length > 1 ? parts[1] : "status");
+                        break;
                     default:
                         Debug.Log("[Ro3Emu.Diag] unknown command " + line);
                         break;

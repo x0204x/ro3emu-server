@@ -26,6 +26,7 @@ namespace Ro3Emu.ClientHooks
         public static void Tick()
         {
             Diagnostics.AutoDump();
+            SkillTrace.Tick();
             TextFit.Tick();
             if (++_frame % 10 != 0) return;
             try
