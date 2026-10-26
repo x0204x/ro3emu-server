@@ -25,7 +25,10 @@ public static class ServerHost
         // the logging thread - the game loop included (a quarter of a walk's cost at 500 players). The console logger
         // queues to a background writer; the metrics provider registered below stays.
         builder.Logging.ClearProviders();
-        builder.Logging.AddConsole();
+        builder.Logging.AddSimpleConsole(console =>
+        {
+            console.TimestampFormat = "yyyy-MM-dd HH:mm:ss.fff zzz ";
+        });
         // One server per data dir (C/D 19): taken before anything opens the database, released when the app is disposed.
         builder.Services.AddSingleton(_ => RealmLock.Acquire(options.DataDir));
         builder.Services.AddSingleton(Options.Create(options));
@@ -230,8 +233,23 @@ public static class ServerHost
                 context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
                 return;
             }
-            app.Logger.LogInformation("HTTP {Method} {Path}{Query}", context.Request.Method, context.Request.Path, context.Request.QueryString);
-            await next();
+            long started = System.Diagnostics.Stopwatch.GetTimestamp();
+            app.Logger.LogInformation("HTTP {TraceId} {Method} {Path}{Query}", context.TraceIdentifier,
+                context.Request.Method, context.Request.Path, context.Request.QueryString);
+            try
+            {
+                await next();
+                app.Logger.LogInformation("HTTP completed {TraceId} {Method} {Path}: {StatusCode} in {ElapsedMs:F1} ms",
+                    context.TraceIdentifier, context.Request.Method, context.Request.Path, context.Response.StatusCode,
+                    System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            }
+            catch (Exception exception)
+            {
+                app.Logger.LogError(exception, "HTTP failed {TraceId} {Method} {Path} after {ElapsedMs:F1} ms",
+                    context.TraceIdentifier, context.Request.Method, context.Request.Path,
+                    System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+                throw;
+            }
         });
         SdkEndpoints.Map(app);
         Diagnostics.MetricsEndpoints.Map(app);

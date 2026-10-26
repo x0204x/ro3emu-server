@@ -31,16 +31,40 @@ public static class SdkEndpoints
 
         app.MapPost(LoginPath, async (HttpRequest request, CredentialLimiter limiter, AccountStore accounts, ILogger<AccountStore> log) =>
         {
-            if (!limiter.TryAcquire(request.HttpContext.Connection.RemoteIpAddress)) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
-            var form = await request.ReadFormAsync();
+            string traceId = request.HttpContext.TraceIdentifier;
+            log.LogInformation("SDK login request {TraceId}: ContentType={ContentType}, ContentLength={ContentLength}, HasFormContentType={HasFormContentType}",
+                traceId, request.ContentType, request.ContentLength, request.HasFormContentType);
+            if (!limiter.TryAcquire(request.HttpContext.Connection.RemoteIpAddress))
+            {
+                log.LogWarning("SDK login rejected {TraceId}: credential attempt limit reached", traceId);
+                return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+            }
+
+            IFormCollection form;
+            try
+            {
+                form = await request.ReadFormAsync(request.HttpContext.RequestAborted);
+            }
+            catch (OperationCanceledException) when (request.HttpContext.RequestAborted.IsCancellationRequested)
+            {
+                log.LogWarning("SDK login canceled {TraceId} while reading the form", traceId);
+                throw;
+            }
+            catch (Exception exception) when (exception is InvalidDataException or InvalidOperationException or BadHttpRequestException)
+            {
+                log.LogWarning(exception, "SDK login rejected {TraceId}: form could not be read", traceId);
+                return Results.Json(new { code = 401, message = "invalid login form" });
+            }
             string identity = form["identity"].ToString().Trim();
             string credential = form["credential"].ToString();
             if (identity.Length == 0 || credential.Length == 0)
             {
-                return Results.Json(new { code = 401 });
+                log.LogWarning("SDK login rejected {TraceId}: IdentityPresent={IdentityPresent}, CredentialPresent={CredentialPresent}, ChannelPresent={ChannelPresent}",
+                    traceId, identity.Length != 0, credential.Length != 0, !string.IsNullOrWhiteSpace(form["channel_id"].ToString()));
+                return Results.Json(new { code = 401, message = "missing credentials" });
             }
             var (result, account) = await accounts.SignInAsync(identity, credential);
-            log.LogInformation("SDK login {Identity}: {Result}", account, result);
+            log.LogInformation("SDK login {TraceId}: {Result}", traceId, result);
             if (result == AccountStore.LoginResult.BadPassword)
             {
                 return Results.Json(new { code = 401 });
