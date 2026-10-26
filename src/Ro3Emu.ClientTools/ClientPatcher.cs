@@ -82,6 +82,7 @@ public static class ClientPatcher
             Func<ModuleDefinition, string>? extra = file switch
             {
                 AsiaProfileFile => m => AsiaProfilePatch.Patch(m, serverBaseUrl, LoginPath, ServerListPathAndQuery),
+                "Happyengine.Network.dll" => LoginPreflightPatch.Patch,
                 "Assembly-CSharp.dll" => m => RedirectChat(m, hooksDll) + "; " + VoiceStubPatch.Patch(m, hooksDll) + "; " + VoiceEnablePatch.Patch(m)
                     + "; " + TextSink.PatchLanguageGet(m, locDll),
                 "Happyengine.Base.Runtime.dll" when VerboseLogs => ForceShowLog,
@@ -311,6 +312,11 @@ public static class ClientPatcher
                 try { VoiceStubPatch.Patch(assembly.MainModule, File.Exists(hooksDll) ? hooksDll : null); }
                 catch (InvalidOperationException e) { problems.Add(e.Message); }
                 try { VoiceEnablePatch.Patch(assembly.MainModule); }
+                catch (InvalidOperationException e) { problems.Add(e.Message); }
+            }
+            if (file == "Happyengine.Network.dll")
+            {
+                try { LoginPreflightPatch.Patch(assembly.MainModule); }
                 catch (InvalidOperationException e) { problems.Add(e.Message); }
             }
             if (file == AsiaProfileFile)
