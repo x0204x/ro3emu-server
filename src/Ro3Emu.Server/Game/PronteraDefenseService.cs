@@ -205,9 +205,11 @@ public sealed class PronteraDefenseService : IGameTicker
     private async Task AdvanceAsync(long now)
     {
         bool roundChanged;
+        long opening = Opening();
+        var reservations = AdvanceReservations(opening, _data.Table("PronteraDefenseMapConfig").Values
+            .Select(row => GameData.Int(row, "_iMapId")));
         using (var scope = _loop.Owners is { } owners
-            ? await owners.EnterAsync("defense/advance",
-                [Ownership.ReservationKey.Entity("prontera_event", Opening().ToString(System.Globalization.CultureInfo.InvariantCulture))]) : null)
+            ? await owners.EnterAsync("defense/advance", reservations) : null)
         {
             int round = RoundAt(now);
             roundChanged = round != _activeRound;
@@ -219,7 +221,7 @@ public sealed class PronteraDefenseService : IGameTicker
             }
             if (round != 0 && RoundWindow(round) is { } w)
             {
-                await DamageDefensesAsync(now);
+                await DamageDefensesAsync(now, opening);
                 foreach (var point in _data.Table("PronteraDefensePointConfig").Values)
                 {
                     int pointId = (int)GameData.Int(point, "_iId");
@@ -259,7 +261,15 @@ public sealed class PronteraDefenseService : IGameTicker
                 async s => { await SettleClosedOwnedAsync(s); await NotifyAsync(s); });
     }
 
-    private async Task DamageDefensesAsync(long now)
+    internal static Ownership.ReservationKey[] AdvanceReservations(long opening, IEnumerable<long> maps)
+    {
+        string open = opening.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return [Ownership.ReservationKey.Entity("prontera_event", open),
+            .. maps.Where(map => map > 0).Distinct().Select(map => Ownership.ReservationKey.Entity("prontera_point",
+                $"{open}:{map.ToString(System.Globalization.CultureInfo.InvariantCulture)}"))];
+    }
+
+    private async Task DamageDefensesAsync(long now, long opening)
     {
         long minute = now / 60;
         if (minute == _lastDamageMinute) return;
@@ -280,7 +290,7 @@ public sealed class PronteraDefenseService : IGameTicker
         }
         if (changed.Count == 0) { _lastDamageMinute = minute; return; }
         var tx = _accounts.NewTransaction();
-        foreach (var (map, point) in changed) tx.Add(new PronteraDefensePointPlan(Opening(), map, point));
+        foreach (var (map, point) in changed) tx.Add(new PronteraDefensePointPlan(opening, map, point));
         await tx.CommitAsync(_accounts, "prontera-defense/damage", _ =>
         {
             foreach (var (map, point) in changed) _defensePoints[map] = point;
