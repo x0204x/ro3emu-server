@@ -166,6 +166,7 @@ public static class ServerHost
         builder.Services.AddSingleton<FriendExtraService>();
         builder.Services.AddSingleton<ChatService>();
         builder.Services.AddSingleton<FeedbackService>();
+        builder.Services.AddSingleton<SkillTraceTelemetryService>();
         builder.Services.AddSingleton<GmCommands>();
         builder.Services.AddSingleton<Ro3Emu.Server.Data.GameData>();
         builder.Services.AddSingleton<SessionRegistry>();
@@ -189,6 +190,7 @@ public static class ServerHost
         builder.Services.AddSingleton<Game.Messaging.IMessageModule, ActivitiesMessages>();
         builder.Services.AddSingleton<Game.Messaging.IMessageModule, AdventureGroupMessages>();
         builder.Services.AddSingleton<Game.Messaging.IMessageModule, Voice.VoiceTicketService>();
+        builder.Services.AddSingleton<Game.Messaging.IMessageModule>(sp => sp.GetRequiredService<SkillTraceTelemetryService>());
         builder.Services.AddSingleton<Game.Messaging.IMessageModule>(sp => sp.GetRequiredService<GuildVoiceService>());
         builder.Services.AddSingleton<GameMessageHandler>();
         builder.Services.AddSingleton(sp => GateCrypto.LoadOrCreate(options.DataDir, sp.GetRequiredService<ILogger<GateCrypto>>()));
@@ -438,6 +440,7 @@ public static class ServerHost
         var options = configuration.GetSection("Ro3Emu").Get<ServerOptions>() ?? new ServerOptions();
         configure?.Invoke(options);
         options.RewardRates.Validate();
+        options.SkillTraceTelemetry.Validate();
         // An empty GM list means nobody on a host started as Production on purpose (docs/guide/gm-access.md). Only an explicit
         // environment counts: the host's own default is also "Production", and tests and local play set none.
         options.GmOpenWhenEmpty ??= !ExplicitProduction(configuration);

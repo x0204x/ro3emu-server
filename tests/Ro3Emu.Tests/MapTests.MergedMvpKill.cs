@@ -128,6 +128,13 @@ public sealed partial class MapTests
                 Assert.DoesNotContain(alice.Inbox.Snapshot(), e => e.IsGame(CombatService.SkillHit)
                     && SkillHitInfo.Parser.ParseFrom(e.Body).Dsts.Any(d => d.DstID == uid && d.IsDead));
                 accounts.BeforeOwnedCommitForTest = null;
+                await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+                {
+                    var session = _app.Services.GetRequiredService<SessionRegistry>().All()
+                        .Single(s => s.Account == "alice");
+                    CombatTestFixture.ReadyNormalAttack(_app.Services.GetRequiredService<GameLoop>(), session);
+                    return Task.CompletedTask;
+                });
                 await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = uid });
                 Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
                 await Next(alice, MvpService.DeadNotify, MVPDeadNotify.Parser);

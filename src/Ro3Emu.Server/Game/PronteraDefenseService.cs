@@ -3,6 +3,7 @@ using Romsg;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Accounts.Persistence;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Maps;
 using Ro3Emu.Server.Economy;
 
@@ -206,8 +207,7 @@ public sealed class PronteraDefenseService : IGameTicker
     {
         bool roundChanged;
         long opening = Opening();
-        var reservations = AdvanceReservations(opening, _data.Table("PronteraDefenseMapConfig").Values
-            .Select(row => GameData.Int(row, "_iMapId")));
+        var reservations = AdvanceReservations(opening, PronteraDefenseMapConfig.All(_data).Select(row => row.MapId));
         using (var scope = _loop.Owners is { } owners
             ? await owners.EnterAsync("defense/advance", reservations) : null)
         {

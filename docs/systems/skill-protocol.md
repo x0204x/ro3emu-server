@@ -20,6 +20,9 @@ Mode rows are looked up by actual `(group, level, mode)` identities, never arith
 
 The client evidence is `re/clientB/lua-src/Logic/Asset/LC_DAL_Joystick.lua:48-95` for 31027, `Logic/Skill/LC_DynamicParamMgr.lua:20-320` and `Network/NW_GameServerHandler.lua:960-965,1728-1746` for 31132, `Logic/Scene/LC_Scene_Sync.lua:3730-3896,3898-4434,4521-4539,4742-4762,7766-7912` for route handling, `Logic/Asset/LC_DAL_BossShowSkill.lua:8-73` and `Logic/Selector/LC_SelectorManager.lua:2474-2494` for boss display, and `Logic/Damage/LC_DamageStatistics.lua:378-405,450-538` for training. Proto fields are in `MG_Skill.proto:27-101,182-204,306-423`.
 
+The clean Asia/Genesis identity comparison, the nine-route client presentation bridge, and its REA/IDA evidence
+limits are recorded in [Skill animation client bridge evidence](../research/skill-animation-client-bridge.md).
+
 An exact `rg -a -l` search for route and selector evidence over `data/config/*.json`, `data/sceneeditor` (including monster-id maps), `data/nav`, `data/loc`, the complete `re/lua-src` Config and Logic trees (counted separately), `re/decomp` and the protos found these matching file counts:
 
 | Exact pattern | data/config | sceneeditor | nav | loc | Lua Config | Lua Logic | decomp | protos |

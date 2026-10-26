@@ -12,7 +12,7 @@ namespace Ro3Emu.Server.Game;
 /// named RPCs (methodName + msgpack values concatenated without an array header) or raw game messages
 /// (no methodName, parameters = uint32 LE msgId ‖ romsg protobuf).
 /// </summary>
-public sealed class GameSession(PhonestChannel channel, TrafficLog traffic)
+public sealed class GameSession(PhonestChannel channel, TrafficLog traffic, SkillTraceTelemetryService? skillTrace = null)
 {
     /// <summary>The current game transport. A silent reconnect (ReconnectService) swaps it on the loop; frames and
     /// closes of a swapped-out channel are ignored by the gate.</summary>
@@ -502,6 +502,7 @@ public sealed class GameSession(PhonestChannel channel, TrafficLog traffic)
         if (!CanPresent()) return Task.CompletedTask;
         var bytes = body.ToByteArray();
         traffic?.ServerToClient(Account, msgId, body.Descriptor, bytes);
+        skillTrace?.ServerToClient(this, msgId, bytes);
         return SendGameBytesAsync(msgId, bytes);
     }
 
@@ -515,6 +516,7 @@ public sealed class GameSession(PhonestChannel channel, TrafficLog traffic)
             return Task.CompletedTask;
         }
         traffic?.ServerToClient(Account, prepared.MsgId, prepared.Type, prepared.Body);
+        skillTrace?.ServerToClient(this, prepared.MsgId, prepared.Body);
         Diagnostics.MessageCoverage.Outbound(prepared.MsgId);
         using var measurement = Channel.Metrics?.Outgoing(prepared.MsgId, prepared.Body.Length);
         return Channel.SendFrameAsync(prepared.Frame);

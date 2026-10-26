@@ -109,6 +109,7 @@ public sealed class TowerPlayerLifecycleTests : IAsyncLifetime
             monster.SlowMovementBp = 10000;
             monster.SlowMovementExpireMs = long.MaxValue;
             position = monster.Pos;
+            CombatTestFixture.ReadyNormalAttack(Service<GameLoop>(), Session);
             return Task.CompletedTask;
         });
         await bot.SendGameAsync(MsgId.Walk, new WalkReq { Pos = position, BStop = true, SpeedRate = 1 });

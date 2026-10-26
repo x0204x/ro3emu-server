@@ -9,7 +9,10 @@ namespace Ro3Emu.Server.Game;
 /// they are admitted: role creation under its account, the session's own continuations as runtime, the few that
 /// change only the sender's role under that role.
 /// </summary>
-public sealed class CoreMessages(RoleSessionService roleSessions, ChatService chat, BuffService buffs, GmCommands gm, SceneService scene, TaskService tasks, DailyActivityService daily, TeamService teams, GuildService guilds, DungeonService dungeons, Ownership.RoleHandover handover, Micro.RankService ranks) : Messaging.IMessageModule
+public sealed class CoreMessages(RoleSessionService roleSessions, ChatService chat, BuffService buffs, GmCommands gm,
+    SceneService scene, TaskService tasks, DailyActivityService daily, TeamService teams, GuildService guilds,
+    DungeonService dungeons, Ownership.RoleHandover handover, Micro.RankService ranks,
+    SkillTraceTelemetryService skillTrace) : Messaging.IMessageModule
 {
     private const uint EquipGetRank = 31470;
 
@@ -177,11 +180,13 @@ public sealed class CoreMessages(RoleSessionService roleSessions, ChatService ch
         });
         routes.Map(MsgId.Logout, "handover", async (session, msgId, body) =>
         {
+            skillTrace.Reset(session);
             await handover.Begin(session);
             await session.SendGameAsync(MsgId.Logout, new LogoutResp());
         });
         routes.Map(MsgId.PreSwitchRole, "handler", async (session, msgId, body) =>
         {
+            skillTrace.Reset(session);
             // The client then calls the avatar RPC SwitchToAccount (see RoleSessionService.SwitchToAccountAsync).
             await session.SendGameAsync(MsgId.PreSwitchRole, new PreSwitchRoleResp { Result = 0 });
         });

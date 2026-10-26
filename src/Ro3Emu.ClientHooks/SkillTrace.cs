@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Reflection;
 using HappyEngine.Base;
 using UnityEngine;
@@ -17,19 +18,36 @@ namespace Ro3Emu.ClientHooks
         public delegate void RouteHandler(Obf_R.Obf_ff self, Obf_R.Obf_ff message);
         public delegate void BuildTimeline(Obf_R.Obf_ff self, object unit, Obf_R.Obf_ff message, object parentAgent);
 
-        private static readonly string[] RouteSymbols =
+        private sealed class RouteSpec
         {
-            "USEINSKILL", "USEINSKILL_HIGH_LEVEL", "EXTRA_USEINSKILL", "EXTRA_USEINSKILL_HIGH_LEVEL",
-            "SKILLHIT", "SKILL_EFFECT_DISPLAY_NOTIFY", "SKILL_EFFECT_DISPLAY_NOTIFY_HIGH_LEVEL",
-            "SKILL_FIXTIME_BULLET_NOTIFY", "SKILL_FIXTIME_BULLET_NOTIFY_HIGH_LEVEL",
+            public RouteSpec(string symbol, uint msgId) { Symbol = symbol; MsgId = msgId; }
+            public string Symbol { get; }
+            public uint MsgId { get; }
+        }
+
+        private static readonly RouteSpec[] Routes =
+        {
+            new RouteSpec("USEINSKILL", 31100), new RouteSpec("USEINSKILL_HIGH_LEVEL", 31106),
+            new RouteSpec("EXTRA_USEINSKILL", 31121), new RouteSpec("EXTRA_USEINSKILL_HIGH_LEVEL", 31107),
+            new RouteSpec("SKILLHIT", 31101), new RouteSpec("SKILL_EFFECT_DISPLAY_NOTIFY", 31119),
+            new RouteSpec("SKILL_EFFECT_DISPLAY_NOTIFY_HIGH_LEVEL", 31109),
+            new RouteSpec("SKILL_FIXTIME_BULLET_NOTIFY", 31120),
+            new RouteSpec("SKILL_FIXTIME_BULLET_NOTIFY_HIGH_LEVEL", 31108),
         };
-        private static readonly RouteHandler RouteWrapper = TraceRoute;
         private static readonly BuildTimeline BuildWrapper = TraceBuild;
         private static readonly Dictionary<string, Obf_R.Obf_Ef> OriginalRoutes = new Dictionary<string, Obf_R.Obf_Ef>();
+        private static readonly Dictionary<string, RouteHandler> RouteWrappers = new Dictionary<string, RouteHandler>();
+        private static readonly Dictionary<string, uint> RouteIds = new Dictionary<string, uint>();
         private static Obf_R.Obf_ff _global, _sceneInstance, _routeTable, _timelineClass;
         private static Obf_R.Obf_Ef _originalBuild;
         private static object _environment;
         private static bool _enabled;
+        private static bool _markerControls;
+        private static byte[] _telemetryToken;
+        private static DateTime _telemetryExpiresUtc;
+        private static uint _telemetrySequence;
+        private static SkillTraceReportLimiter _telemetryLimiter;
+        private static int _nextMarkerCheckFrame;
 
         internal static void Command(string command)
         {
@@ -71,6 +89,7 @@ namespace Ro3Emu.ClientHooks
             }
             catch (Exception e)
             {
+                RestoreHooks();
                 DisableCore();
                 Debug.LogError("[Ro3Emu.SkillTrace] enable failed: " + e);
             }
@@ -81,18 +100,29 @@ namespace Ro3Emu.ClientHooks
             if (!_enabled) { Debug.Log("[Ro3Emu.SkillTrace] already off"); return; }
             try
             {
-                RestoreScene();
-                if (_timelineClass != null && _originalBuild != null)
-                    _timelineClass.Obf_luA<string, Obf_R.Obf_Ef>("Build", _originalBuild);
+                RestoreHooks();
                 Debug.Log("[Ro3Emu.SkillTrace] off");
             }
-            catch (Exception e) { Debug.LogWarning("[Ro3Emu.SkillTrace] restore failed: " + e.Message); }
             finally { DisableCore(); }
+        }
+
+        private static void RestoreHooks()
+        {
+            try { RestoreScene(); }
+            catch (Exception e) { Debug.LogWarning("[Ro3Emu.SkillTrace] route restore failed: " + e.Message); }
+            try
+            {
+                if (_timelineClass != null && _originalBuild != null)
+                    _timelineClass.Obf_luA<string, Obf_R.Obf_Ef>("Build", _originalBuild);
+            }
+            catch (Exception e) { Debug.LogWarning("[Ro3Emu.SkillTrace] timeline restore failed: " + e.Message); }
         }
 
         /// <summary>Rebind after a map switch: LC_Scene_Sync snapshots its handlers into each instance's KVMsgFunc.</summary>
         internal static void Tick()
         {
+            CheckLocalMarker();
+            CheckTelemetryGrant();
             if (!_enabled) return;
             if (!EnvironmentAlive())
             {
@@ -104,50 +134,150 @@ namespace Ro3Emu.ClientHooks
             catch (Exception e) { Debug.LogWarning("[Ro3Emu.SkillTrace] scene bind failed: " + e.Message); }
         }
 
-        private static void TraceRoute(Obf_R.Obf_ff self, Obf_R.Obf_ff message)
+        /// <summary>
+        /// A local marker enables tracing without sending a chat/GM command to the connected server. This is useful
+        /// when comparing a client against a server that does not implement RO3Emu's diagnostic command.
+        /// </summary>
+        private static void CheckLocalMarker()
         {
-            string fields = Fields(message);
-            Debug.Log("[Ro3Emu.SkillTrace] recv " + fields);
+            if (Time.frameCount < _nextMarkerCheckFrame) return;
+            _nextMarkerCheckFrame = Time.frameCount + 60;
             try
             {
-                string route = Value(message?.Obf_RuA<object>("pbc_msg_name"));
-                if (!OriginalRoutes.TryGetValue(route, out var original))
+                string marker = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "ro3emu", "skilltrace.on"));
+                bool requested = File.Exists(marker);
+                if (requested && !_markerControls)
                 {
-                    Debug.LogError("[Ro3Emu.SkillTrace] original route not found: " + route);
-                    return;
+                    if (!_enabled) Enable();
+                    _markerControls = _enabled;
+                    if (_enabled) Debug.Log("[Ro3Emu.SkillTrace] enabled by local marker " + marker);
                 }
+                else if (!requested && _markerControls)
+                {
+                    _markerControls = false;
+                    Disable();
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("[Ro3Emu.SkillTrace] local marker check failed: " + e.Message);
+            }
+        }
+
+        /// <summary>The server grant arrives on the network thread and is handed here by ServerImAdapter's main-thread pump.</summary>
+        internal static void Grant(byte[] body)
+        {
+            if (!SkillTraceProtocol.TryDecodeGrant(body, out var grant))
+            {
+                Debug.LogWarning("[Ro3Emu.SkillTrace] invalid telemetry grant");
+                return;
+            }
+            _telemetryToken = grant.Token;
+            _telemetryExpiresUtc = DateTime.UtcNow.AddSeconds(grant.TtlSeconds);
+            _telemetrySequence = 0;
+            _telemetryLimiter = new SkillTraceReportLimiter(grant.EventsPerSecond, grant.Burst, MonotonicMs());
+            Debug.Log("[Ro3Emu.SkillTrace] telemetry grant received; local tracing remains opt-in");
+        }
+
+        internal static void Disconnect()
+        {
+            _telemetryToken = null;
+            _telemetryExpiresUtc = default;
+            _telemetrySequence = 0;
+            _telemetryLimiter = null;
+        }
+
+        private static void CheckTelemetryGrant()
+        {
+            if (_telemetryToken == null || DateTime.UtcNow < _telemetryExpiresUtc) return;
+            Disconnect();
+            Debug.Log("[Ro3Emu.SkillTrace] telemetry grant expired");
+        }
+
+        private static void TraceRoute(uint msgId, string route, Obf_R.Obf_Ef original, Obf_R.Obf_ff self, Obf_R.Obf_ff message)
+        {
+            string fields = SafeFields(message, route);
+            Debug.Log("[Ro3Emu.SkillTrace] recv " + fields);
+            Report(message, msgId, SkillTraceProtocol.Stage.RouteReceived, true, null, 0);
+            try
+            {
                 original.Obf_HuA(self, message);
                 Debug.Log("[Ro3Emu.SkillTrace] handler complete " + fields);
+                Report(message, msgId, SkillTraceProtocol.Stage.HandlerCompleted, true, null, 0);
             }
             catch (Exception e)
             {
                 Debug.LogError("[Ro3Emu.SkillTrace] handler failed " + fields + ": " + e);
+                Report(message, msgId, SkillTraceProtocol.Stage.HandlerFailed, false, e.GetType().Name, 0);
                 throw;
             }
         }
 
         private static void TraceBuild(Obf_R.Obf_ff self, object unit, Obf_R.Obf_ff message, object parentAgent)
         {
-            string fields = Fields(message);
+            string route = Value(message?.Obf_RuA<object>("pbc_msg_name"));
+            uint msgId = RouteIds.TryGetValue(route, out uint id) ? id : 0;
+            string fields = SafeFields(message, route == "null" ? "timeline.Build" : route);
             try
             {
                 _originalBuild?.Obf_HuA(self, unit, message, parentAgent);
-                bool hasSkillData = self?.Obf_RuA<object>("m_kNowSkillData") != null;
-                object correlation = self?.Obf_RuA<object>("m_iCorKey");
-                Debug.Log("[Ro3Emu.SkillTrace] timeline built=" + hasSkillData
-                    + " corKey=" + Value(correlation) + " " + fields);
             }
             catch (Exception e)
             {
                 Debug.LogError("[Ro3Emu.SkillTrace] timeline failed " + fields + ": " + e);
+                Report(message, msgId, SkillTraceProtocol.Stage.TimelineFailed, false, e.GetType().Name, 0);
                 throw;
+            }
+            try
+            {
+                bool hasSkillData = self?.Obf_RuA<object>("m_kNowSkillData") != null;
+                object correlation = self?.Obf_RuA<object>("m_iCorKey");
+                Debug.Log("[Ro3Emu.SkillTrace] timeline built=" + hasSkillData
+                    + " corKey=" + Value(correlation) + " " + fields);
+                Report(message, msgId, SkillTraceProtocol.Stage.TimelineBuilt, hasSkillData,
+                    hasSkillData ? null : "NoSkillData", Number(correlation));
+            }
+            catch (Exception e) { Debug.LogWarning("[Ro3Emu.SkillTrace] timeline trace failed " + fields + ": " + e.Message); }
+        }
+
+        private static void Report(Obf_R.Obf_ff message, uint msgId, SkillTraceProtocol.Stage stage, bool success,
+            string reason, long correlation)
+        {
+            if (!_enabled || _telemetryToken == null || _telemetryLimiter == null
+                || DateTime.UtcNow >= _telemetryExpiresUtc || !SkillTraceProtocol.IsSkillMessage(msgId)) return;
+            try
+            {
+                long clientMs = MonotonicMs();
+                if (!_telemetryLimiter.TryTake(clientMs)) return;
+                var report = new SkillTraceProtocol.Report(_telemetryToken, ++_telemetrySequence,
+                    clientMs, msgId,
+                    (int)FirstNumber(message, "skillID", "skillId", "skill_id", "skillConfigId"),
+                    FirstNumber(message, "srcID", "sourceId", "entityID"), Number(message?.Obf_RuA<object>("targetId")),
+                    Number(message?.Obf_RuA<object>("sessionId")), correlation,
+                    (int)Number(message?.Obf_RuA<object>("showPoint")),
+                    (int)Number(message?.Obf_RuA<object>("effectId")),
+                    FirstNumber(message, "startTimestampMs", "startTime", "iStartClientTime"), stage, success, reason);
+                SingletonMonoBehaviour<NW_CBBNetworkManager>.Instance.Obf_jBd(
+                    SkillTraceProtocol.ReportMsgId, SkillTraceProtocol.EncodeReport(report));
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("[Ro3Emu.SkillTrace] telemetry send failed: " + e.GetType().Name + ": " + e.Message);
             }
         }
 
-        private static string Fields(Obf_R.Obf_ff message)
+        private static long MonotonicMs() => (long)(Time.realtimeSinceStartup * 1000d);
+
+        private static string SafeFields(Obf_R.Obf_ff message, string route)
+        {
+            try { return Fields(message, route); }
+            catch (Exception e) { return "route=" + route + " traceError=" + e.GetType().Name + ":" + e.Message; }
+        }
+
+        private static string Fields(Obf_R.Obf_ff message, string route)
         {
             if (message == null) return "message=null";
-            return "route=" + Value(message.Obf_RuA<object>("pbc_msg_name"))
+            return "route=" + route
                 + " src=" + First(message, "srcID", "sourceId", "entityID")
                 + " skill=" + First(message, "skillID", "skillId", "skill_id", "skillConfigId")
                 + " target=" + Value(message.Obf_RuA<object>("targetId"))
@@ -173,6 +303,24 @@ namespace Ro3Emu.ClientHooks
             return "null";
         }
 
+        private static long FirstNumber(Obf_R.Obf_ff message, params string[] names)
+        {
+            if (message == null) return 0;
+            foreach (string name in names)
+            {
+                object value = message.Obf_RuA<object>(name);
+                if (value != null) return Number(value);
+            }
+            return 0;
+        }
+
+        private static long Number(object value)
+        {
+            if (value == null) return 0;
+            try { return Convert.ToInt64(value, CultureInfo.InvariantCulture); }
+            catch (Exception) { return 0; }
+        }
+
         private static void BindScene()
         {
             var manager = _global?.Obf_RuA<Obf_R.Obf_ff>("LC_SceneManagerIns");
@@ -183,14 +331,17 @@ namespace Ro3Emu.ClientHooks
             RestoreScene();
             var routes = scene.Obf_RuA<Obf_R.Obf_ff>("KVMsgFunc");
             if (routes == null) return;
-            foreach (string symbol in RouteSymbols)
+            foreach (RouteSpec spec in Routes)
             {
-                string route = Value(_global.Obf_LuA<object>("NW_Helper.ProtobufNameMap." + symbol));
+                string route = Value(_global.Obf_LuA<object>("NW_Helper.ProtobufNameMap." + spec.Symbol));
                 if (route == "null" || OriginalRoutes.ContainsKey(route)) continue;
                 var original = routes.Obf_RuA<Obf_R.Obf_Ef>(route);
                 if (original == null) continue;
+                RouteHandler wrapper = (self, message) => TraceRoute(spec.MsgId, route, original, self, message);
                 OriginalRoutes.Add(route, original);
-                routes.Obf_luA<string, RouteHandler>(route, RouteWrapper);
+                RouteWrappers.Add(route, wrapper);
+                RouteIds.Add(route, spec.MsgId);
+                routes.Obf_luA<string, RouteHandler>(route, wrapper);
             }
             _sceneInstance = scene;
             _routeTable = routes;
@@ -202,6 +353,8 @@ namespace Ro3Emu.ClientHooks
             if (_routeTable != null)
                 foreach (var item in OriginalRoutes) _routeTable.Obf_luA<string, Obf_R.Obf_Ef>(item.Key, item.Value);
             OriginalRoutes.Clear();
+            RouteWrappers.Clear();
+            RouteIds.Clear();
             _routeTable = null;
             _sceneInstance = null;
         }
@@ -232,9 +385,12 @@ namespace Ro3Emu.ClientHooks
         private static void DisableCore()
         {
             _enabled = false;
+            _markerControls = false;
             _environment = null;
             _global = _sceneInstance = _routeTable = _timelineClass = null;
             OriginalRoutes.Clear();
+            RouteWrappers.Clear();
+            RouteIds.Clear();
             _originalBuild = null;
         }
     }

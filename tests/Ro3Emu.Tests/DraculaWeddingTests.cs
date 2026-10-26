@@ -160,6 +160,7 @@ public sealed class DraculaWeddingTests : IAsyncLifetime
             await Service<SceneService>().TeleportInMapAsync(Session(bot), new MapPoint(actor.X + 1, actor.Y, actor.Z, actor.Face));
             Service<MonsterService>().Engage(actor, Session(bot));
             actor.Hp = 1;
+            CombatTestFixture.ReadyNormalAttack(Service<GameLoop>(), Session(bot));
         });
         await bot.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = actor.Uid });
         Assert.Equal(0, (await Next(bot, CombatService.UseSkill, CastSkillRsp.Parser)).Result);

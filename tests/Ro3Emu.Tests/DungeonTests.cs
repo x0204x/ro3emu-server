@@ -161,6 +161,7 @@ public sealed partial class DungeonTests : IAsyncLifetime
             // controlled HP setup, so the next return-completion tick cannot restore full health.
             Service<MonsterService>().Engage(actor, Session(bot));
             actor.Hp = 1;
+            CombatTestFixture.ReadyNormalAttack(Service<GameLoop>(), Session(bot));
         });
         await bot.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = actor.Uid });
         Assert.Equal(0, (await Next(bot, CombatService.UseSkill, CastSkillRsp.Parser)).Result);

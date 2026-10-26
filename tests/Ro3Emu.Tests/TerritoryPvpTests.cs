@@ -531,6 +531,7 @@ public sealed class TerritoryPvpTests : IAsyncLifetime
             second = (await Service<MonsterService>().SpawnSingleAsync(source.SceneEntry, 5000001,
                 new MapPoint(at.X, at.Y, at.Z, 0)))!;
             Assert.NotNull(second);
+            CombatTestFixture.ReadyNormalAttack(Service<GameLoop>(), source);
         });
         await attacker.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = second.Uid });
         Assert.Equal(0, (await Next(attacker, CombatService.UseSkill, CastSkillRsp.Parser)).Result);

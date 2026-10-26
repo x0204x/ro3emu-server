@@ -85,6 +85,9 @@ public sealed class ServerOptions
     /// </summary>
     public RewardRateOptions RewardRates { get; set; } = new();
 
+    /// <summary>Opt-in, account-scoped client evidence for diagnosing missing skill presentation.</summary>
+    public SkillTraceTelemetryOptions SkillTraceTelemetry { get; set; } = new();
+
     /// <summary>
     /// Accounts allowed to use GM commands in game ("!" lines in chat, the client's GM panel, 1031/1034). Empty:
     /// <see cref="GmOpenWhenEmpty"/> decides. docs/guide/gm-access.md.
@@ -261,6 +264,34 @@ public sealed class RewardRateOptions
     {
         long scaled = ScaleWhole(amount, rate);
         return scaled >= int.MaxValue ? int.MaxValue : (int)scaled;
+    }
+}
+
+/// <summary>
+/// Diagnostic client telemetry. Off and open to nobody by default; installing ClientHooks alone sends nothing.
+/// </summary>
+public sealed class SkillTraceTelemetryOptions
+{
+    public bool Enabled { get; set; }
+    /// <summary>Allow every signed-in player to receive a trace grant. Kept explicit so an empty list is never ambiguous.</summary>
+    public bool AllowAllAccounts { get; set; }
+    public string[] Accounts { get; set; } = [];
+    public int GrantSeconds { get; set; } = 3600;
+    public int EventsPerSecond { get; set; } = 20;
+    public int Burst { get; set; } = 40;
+    public int MaxPayloadBytes { get; set; } = 256;
+
+    internal void Validate()
+    {
+        if (GrantSeconds is < 60 or > 86400)
+            throw new InvalidOperationException("Ro3Emu:SkillTraceTelemetry:GrantSeconds must be between 60 and 86400.");
+        if (EventsPerSecond is < 1 or > ushort.MaxValue)
+            throw new InvalidOperationException("Ro3Emu:SkillTraceTelemetry:EventsPerSecond must be between 1 and 65535.");
+        if (Burst is < 0 or > ushort.MaxValue)
+            throw new InvalidOperationException("Ro3Emu:SkillTraceTelemetry:Burst must be between 0 and 65535.");
+        if (MaxPayloadBytes is < Ro3Emu.ClientHooks.SkillTraceProtocol.MaxReportSize or > 4096)
+            throw new InvalidOperationException($"Ro3Emu:SkillTraceTelemetry:MaxPayloadBytes must be between " +
+                $"{Ro3Emu.ClientHooks.SkillTraceProtocol.MaxReportSize} and 4096.");
     }
 }
 

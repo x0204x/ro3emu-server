@@ -13,6 +13,7 @@ namespace Ro3Emu.Server.Game;
 /// </summary>
 public sealed class GameGateServer(
     IOptions<ServerOptions> options, GateCrypto crypto, AccountStore accounts, GameMessageHandler messages, RoleSessionService roleSessions, TrafficLog traffic,
+    SkillTraceTelemetryService skillTrace,
     SessionRegistry sessions, GameLoop loop, ReconnectService reconnects, ILogger<GameGateServer> log, Diagnostics.ServerMetrics metrics)
     : GateListener(options.Value.ListenAddress(), options.Value.GameGatePort, log, metrics)
 {
@@ -43,7 +44,7 @@ public sealed class GameGateServer(
     protected override async ValueTask OnFrameAsync(PhonestChannel channel, ushort index, ReadOnlyMemory<byte> body)
     {
         if (loop.Phase != GameLoopPhase.Accepting) throw new OperationCanceledException("Game gate is quiescing.");
-        var session = channel.Session as GameSession ?? (GameSession)(channel.Session = new GameSession(channel, traffic));
+        var session = channel.Session as GameSession ?? (GameSession)(channel.Session = new GameSession(channel, traffic, skillTrace));
         // A silent reconnect moved the session to a newer connection: this (half-open) one is ignored.
         if (!ReferenceEquals(session.Channel, channel)) return;
         switch (index)

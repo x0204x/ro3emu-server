@@ -132,6 +132,7 @@ public sealed class TowerTests : IAsyncLifetime
                 monster.Moving = false;
                 monster.NextRoamMs = long.MaxValue;
                 position = monster.Pos;
+                CombatTestFixture.ReadyNormalAttack(Service<GameLoop>(), Session(bot));
                 return Task.CompletedTask;
             });
             await bot.SendGameAsync(MsgId.Walk, new WalkReq { Pos = position, BStop = true, SpeedRate = 1 });
@@ -500,6 +501,7 @@ public sealed class TowerTests : IAsyncLifetime
             final = Service<World>().AllUnits().OfType<MonsterUnit>().Single(m => m.Uid == (long)a.Monsters[1].Uuid);
             final.Hp = 1;
             position = final.Pos;
+            CombatTestFixture.ReadyNormalAttack(Service<GameLoop>(), Session(alice));
             return Task.CompletedTask;
         });
         var staged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -561,6 +563,7 @@ public sealed class TowerTests : IAsyncLifetime
                     .Single(m => m.Uid == (long)entered.Monsters[1].Uuid);
                 final.Hp = 1;
                 position = final.Pos;
+                CombatTestFixture.ReadyNormalAttack(Service<GameLoop>(), Session(alice));
                 return Task.CompletedTask;
             });
             var staged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

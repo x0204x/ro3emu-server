@@ -194,6 +194,7 @@ public sealed class GuildCampfireTests : IAsyncLifetime
         await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
         {
             fruit!.Hp = 1;
+            CombatTestFixture.ReadyNormalAttack(_app.Services.GetRequiredService<GameLoop>(), Session(alice));
             return Task.CompletedTask;
         });
         await alice.SendGameAsync(MsgId.Walk, new WalkReq { Pos = fruit!.Pos, BStop = true, SpeedRate = 1 });
@@ -223,6 +224,7 @@ public sealed class GuildCampfireTests : IAsyncLifetime
         await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
         {
             boss!.Hp = 1;
+            CombatTestFixture.ReadyNormalAttack(_app.Services.GetRequiredService<GameLoop>(), Session(alice));
             return Task.CompletedTask;
         });
         await alice.SendGameAsync(MsgId.Walk, new WalkReq { Pos = boss!.Pos, BStop = true, SpeedRate = 1 });

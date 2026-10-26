@@ -96,15 +96,24 @@ public sealed partial class CombatService
         if (error == 0)
         {
             int group = (int)GameData.Int(row!.Value, "_iSkillID"), mode = (int)GameData.Int(row.Value, "_iMode");
+            float askedRange = _data.Row("SkillConfig", request.SkillId) is { } askedRow ? Range(askedRow) : 0;
             if (Math.Max(s.SkillCds.GetValueOrDefault(group), s.SkillModeCds.GetValueOrDefault((group, mode))) > Now) error = ErrorCodes.SkillCooldown;
-            // Normal attacks intentionally have no visible _iCD. Their authored action time is nevertheless an
-            // internal attack-speed interval: _bCancelCast permits input replacement, not extra hits inside it.
-            else if (normalAttack && s.NormalAttackReadyMs > Now) error = ErrorCodes.SkillBusy;
-            // Preserve the established cooldown refusal for a repeated cast, including during its action tail.
-            else if (s.SkillCast is { Cancelled: false } active && Now < active.StartMs + active.ChantMs + active.ActionMs
-                && GameData.Int(row.Value, "_bCancelCast") == 0) error = ErrorCodes.SkillBusy;
-            else error = ValidateTarget(s, row.Value, req, origin, owned == null ? WalkSlack(s) : 0,
-                _data.Row("SkillConfig", request.SkillId) is { } askedRow ? Range(askedRow) : 0);
+            else
+            {
+                // A denied/dead/foreign target remains the protocol result even while a previous normal attack's
+                // hidden action interval is running. Valid targets still pay the full authored attack-speed interval.
+                if (normalAttack) error = ValidateTarget(s, row.Value, req, origin,
+                    owned == null ? WalkSlack(s) : 0, askedRange);
+                // Normal attacks intentionally have no visible _iCD. Their authored action time is nevertheless an
+                // internal attack-speed interval: _bCancelCast permits input replacement, not extra hits inside it.
+                if (error == 0 && normalAttack && s.NormalAttackReadyMs > Now) error = ErrorCodes.SkillBusy;
+                // Preserve the established cooldown refusal for a repeated cast, including during its action tail.
+                else if (error == 0 && s.SkillCast is { Cancelled: false } active
+                    && Now < active.StartMs + active.ChantMs + active.ActionMs
+                    && GameData.Int(row.Value, "_bCancelCast") == 0) error = ErrorCodes.SkillBusy;
+                else if (error == 0 && !normalAttack) error = ValidateTarget(s, row.Value, req, origin,
+                    owned == null ? WalkSlack(s) : 0, askedRange);
+            }
         }
         var costs = row is { } value ? ResolveCosts(s, value) : new CastCosts();
         long errorParam = 0;

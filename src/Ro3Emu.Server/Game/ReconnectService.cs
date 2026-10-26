@@ -66,6 +66,7 @@ public sealed class ReconnectService
     private readonly Ownership.RoleHandover _handover;
     private readonly SceneService _scene;
     private readonly GateAuthRegistry _gateAuths;
+    private readonly SkillTraceTelemetryService _skillTrace;
     private readonly TimeProvider _clock;
     private readonly ILogger<ReconnectService> _log;
     private readonly Dictionary<string, ReconnectTicket> _byEntity = new(StringComparer.Ordinal);
@@ -75,7 +76,7 @@ public sealed class ReconnectService
 
     public ReconnectService(IOptions<ServerOptions> options, GameLoop loop, Deadlines deadlines, SessionRegistry sessions,
         Ownership.RoleHandover handover, SceneService scene, GateAuthRegistry gateAuths, GmCommands gm, TimeProvider clock,
-        ILogger<ReconnectService> log)
+        ILogger<ReconnectService> log, SkillTraceTelemetryService skillTrace)
     {
         _options = options.Value;
         _loop = loop;
@@ -84,6 +85,7 @@ public sealed class ReconnectService
         _handover = handover;
         _scene = scene;
         _gateAuths = gateAuths;
+        _skillTrace = skillTrace;
         _clock = clock;
         _log = log;
         handover.Beginning += Revoke;
@@ -313,6 +315,7 @@ public sealed class ReconnectService
         var old = session.Channel;
         bool oldOpen = !session.TransportLost && !ReferenceEquals(old, channel);
         session.Channel = channel;
+        _skillTrace.Reset(session);
         channel.Session = session;
         _deadlines.CancelGlobal(GraceKeyPrefix + ticket.EntityId);
         long lostAt = ticket.LostAt;
@@ -379,6 +382,7 @@ public sealed class ReconnectService
         if (!Current()) return;
         if (handoffPending) session.ReconnectAoiPending = true;
         else await _scene.ResyncAsync(session, Current);
+        if (Current()) await _skillTrace.GrantAsync(session);
         Reconnects++;
         _log.LogInformation("{Account} resynced after reconnect (scene {Scene}{Pending})", session.Account, session.SceneEntry,
             handoffPending ? ", map load pending" : "");

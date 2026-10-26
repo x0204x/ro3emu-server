@@ -32,6 +32,8 @@
     <!-- The voice frame cipher: one copy for the relay, the bot (through this project) and the in-game client hooks,
          which compile it against the client's own mscorlib. -->
     <Compile Include="..\Ro3Emu.ClientHooks\VoiceCipher.cs" Link="Voice\VoiceCipher.cs" />
+    <!-- The bounded client/server skill-trace wire format is shared for the same reason. -->
+    <Compile Include="..\Ro3Emu.ClientHooks\SkillTraceProtocol.cs" Link="Game\SkillTraceProtocol.cs" />
   </ItemGroup>
 
   <ItemGroup>

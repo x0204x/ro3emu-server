@@ -28,6 +28,7 @@ namespace Ro3Emu.ClientHooks
         private readonly ConcurrentQueue<Frame> _inbound = new ConcurrentQueue<Frame>();
         private readonly ConcurrentQueue<uint> _status = new ConcurrentQueue<uint>();
         private readonly ConcurrentQueue<string> _diagnostics = new ConcurrentQueue<string>();
+        private readonly ConcurrentQueue<byte[]> _skillTraceGrants = new ConcurrentQueue<byte[]>();
         private readonly Dictionary<uint, Action> _statusCallbacks = new Dictionary<uint, Action>();
         private Action _requestCallback;
         private LuaArrAccess _requestArray;
@@ -81,6 +82,7 @@ namespace Ro3Emu.ClientHooks
             n = 0;
             while (_requestCallback != null && n++ < MaxPerFrame && _inbound.TryDequeue(out var frame)) Deliver(frame);
             while (_diagnostics.TryDequeue(out var line)) Diagnostics.Run(line);
+            while (_skillTraceGrants.TryDequeue(out var grant)) SkillTrace.Grant(grant);
             VoiceClient.Pump();
             UiTweaks.Tick();
         }
@@ -98,6 +100,8 @@ namespace Ro3Emu.ClientHooks
             while (_status.TryDequeue(out _)) { }
             _requestCallback = null;
             _requestArray = null;
+            while (_skillTraceGrants.TryDequeue(out _)) { }
+            SkillTrace.Disconnect();
             VoiceClient.Shutdown(); // voice must not outlive the game connection (mic left open after logout)
         }
 
@@ -150,6 +154,11 @@ namespace Ro3Emu.ClientHooks
             if (msgId == VoiceProtocol.TicketMsgId)
             {
                 VoiceClient.OnTicket(memory.ToArray());
+                return;
+            }
+            if (msgId == SkillTraceProtocol.GrantMsgId)
+            {
+                _skillTraceGrants.Enqueue(memory.ToArray());
                 return;
             }
             if (msgId != DownMsgId || memory.Length < 8) return;

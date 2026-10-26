@@ -577,6 +577,7 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
                     await character.SetHpSpAsync(me, character.Stats(me)[101], null);
                     Service<MonsterService>().Engage(target, me);
                     target.Hp = 1;
+                    CombatTestFixture.ReadyNormalAttack(Service<GameLoop>(), me);
                 });
                 await _bot.SendGameAsync(CombatService.LockEnemy, new LockEnemyReq { EnemyId = target.Uid });
                 lastResult = (await RequestAsync(CombatService.UseSkill, new CastSkillReq { SkillId = attack, TargetId = target.Uid }, CastSkillRsp.Parser)).Result;

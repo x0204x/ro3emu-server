@@ -26,6 +26,15 @@ Other things it can do (open a command prompt in this folder):
   RO3Emu.exe diag                  write RO3Emu-diagnostics.zip for a bug report
   RO3Emu.exe help                  everything else
 
+Skill animation diagnostics (only when the server owner asks)
+  - Join normally first so RO3Emu can apply the complete client patch. Copying only
+    client\Ro3Emu.ClientHooks.dll into the game folder is not enough.
+  - To opt in on this PC, create an empty file named ro3emu\skilltrace.on under the
+    game folder (beside ro3.exe), then restart the game.
+  - Delete that marker and restart the game to opt out. A server grant alone never
+    turns tracing on, and the diagnostic sends no account name, IP address, chat,
+    credentials, raw packet or stack trace.
+
 What it changes on your PC
   - In the game folder: a few DLLs in ro3_Data\Managed (the originals are kept in
     ro3emu-backup; "RO3Emu.exe restore" puts them back) and ro3emu\loc_en.tsv

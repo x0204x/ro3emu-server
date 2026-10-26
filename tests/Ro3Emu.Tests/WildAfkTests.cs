@@ -271,6 +271,7 @@ public sealed class WildAfkTests : IAsyncLifetime
                 var monster = Service<World>().Map(s.WorldScene).Units.OfType<MonsterUnit>()
                     .First(m => !m.Dead && m.Template.NpcId == 5000021);
                 monster.Hp = 1; monster.Moving = false; monster.NextRoamMs = long.MaxValue;
+                CombatTestFixture.ReadyNormalAttack(Service<GameLoop>(), s);
                 uid = monster.Uid; position = monster.Pos;
                 return Task.CompletedTask;
             });

@@ -446,6 +446,8 @@ public sealed partial class MapTests : IAsyncLifetime
                     .Single(m => m.Uid == (long)angeling.Uuid);
                 Assert.Equal(1, boss.Hp);
                 Assert.False(boss.Returning);
+                var player = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
+                CombatTestFixture.ReadyNormalAttack(_app.Services.GetRequiredService<GameLoop>(), player);
                 return Task.CompletedTask;
             });
         }

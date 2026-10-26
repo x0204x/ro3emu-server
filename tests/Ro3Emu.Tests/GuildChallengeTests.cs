@@ -176,6 +176,11 @@ public sealed class GuildChallengeTests : IAsyncLifetime
         // (cooldown cleared as a test aid) until the authoritative lethal hit arrives.
         for (int swing = 0; ; swing++)
         {
+            await OnLoop(() =>
+            {
+                CombatTestFixture.ReadyNormalAttack(Service<GameLoop>(), Session(bot));
+                return Task.CompletedTask;
+            });
             await bot.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = actor.Uid });
             Assert.Equal(0, (await Next(bot, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
             var hit = await Next(bot, CombatService.SkillHit, SkillHitInfo.Parser, h => h.Dsts.Any(d => d.DstID == actor.Uid));

@@ -922,7 +922,12 @@ public sealed class TimedEventTests : IAsyncLifetime
 
     private async Task RiftKillAsync(BotClient bot, MonsterUnit boss)
     {
-        await OnLoop(() => { boss.Hp = 1; return Task.CompletedTask; });
+        await OnLoop(() =>
+        {
+            boss.Hp = 1;
+            CombatTestFixture.ReadyNormalAttack(Service<GameLoop>(), Session(bot));
+            return Task.CompletedTask;
+        });
         await bot.SendGameAsync(MsgId.Walk, new WalkReq { Pos = boss.Pos, BStop = true, SpeedRate = 1 });
         await bot.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = boss.Uid });
         Assert.Equal(0, (await Next(bot, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
