@@ -73,6 +73,7 @@ public sealed partial class CombatService
     {
         var req = request.Clone();
         var row = EffectiveSkillRow(s, req.SkillId);
+        bool normalAttack = false;
         var owned = req.OpUnitId == 0 || req.OpUnitId == s.Role?.Id ? null
             : s.SkillObjects.FirstOrDefault(u => u.Uid == req.OpUnitId && u.WorldScene == s.WorldScene && u.ExpiresMs > Now);
         int error = s.Role == null || s.Progress == null || s.Dead || s.SceneLoading ? ErrorCodes.SkillBadState
@@ -82,11 +83,11 @@ public sealed partial class CombatService
         if (error == 0)
         {
             req.SkillId = (int)GameData.Int(row!.Value, "_iID");
+            normalAttack = owned == null && _skills.IsCurrentNormalAttack(s, req.SkillId);
             if (owned != null ? !owned.Skills.Contains(req.SkillId) : !Learned(s, row!.Value)) error = ErrorCodes.SkillNotLearned;
             else if (!SkillModeAllowed(s, row!.Value)) error = ErrorCodes.SkillRequirements;
             else if (GameData.Int(row!.Value, "_iBasicType") != 1) error = ErrorCodes.SkillPassive;
-            else if (_buffs.HasForbidden(s, _skills.IsCurrentNormalAttack(s, req.SkillId)
-                ? ForbiddenState.NormalAttack : ForbiddenState.CastSkill)) error = ErrorCodes.SkillBadState;
+            else if (_buffs.HasForbidden(s, normalAttack ? ForbiddenState.NormalAttack : ForbiddenState.CastSkill)) error = ErrorCodes.SkillBadState;
             else if (req.SkillId == PublicSkill("WorldTreeSkillId") && _buffs.HasForbidden(s, ForbiddenState.UseItem)) error = ErrorCodes.ItemUseForbidden;
             else if (req.SkillId == PublicSkill("WorldTreeSkillId") && !ItemAllowedInMap(s, (int)PublicSkill("WorldTreeItemId"))) error = ErrorCodes.ItemUseAreaForbidden;
             else if (req.IsExtraSkill && owned == null && GameData.Int(row.Value, "_iExtraType") == 0) error = ErrorCodes.SkillRequirements;
@@ -96,6 +97,9 @@ public sealed partial class CombatService
         {
             int group = (int)GameData.Int(row!.Value, "_iSkillID"), mode = (int)GameData.Int(row.Value, "_iMode");
             if (Math.Max(s.SkillCds.GetValueOrDefault(group), s.SkillModeCds.GetValueOrDefault((group, mode))) > Now) error = ErrorCodes.SkillCooldown;
+            // Normal attacks intentionally have no visible _iCD. Their authored action time is nevertheless an
+            // internal attack-speed interval: _bCancelCast permits input replacement, not extra hits inside it.
+            else if (normalAttack && s.NormalAttackReadyMs > Now) error = ErrorCodes.SkillBusy;
             // Preserve the established cooldown refusal for a repeated cast, including during its action tail.
             else if (s.SkillCast is { Cancelled: false } active && Now < active.StartMs + active.ChantMs + active.ActionMs
                 && GameData.Int(row.Value, "_bCancelCast") == 0) error = ErrorCodes.SkillBusy;
@@ -124,6 +128,7 @@ public sealed partial class CombatService
         }
         if (lease?.Cancelled == true || !ReferenceEquals(s.Attachment, lease) ||
             s.SceneGeneration != scene || s.WorldScene != worldScene || s.SceneLoading) return;
+        if (normalAttack) s.NormalAttackReadyMs = Now + SkillMs(s, row!.Value);
         await CancelCastAsync(s, SkillInterruptedInfo.Types.SkillInterruptType.Skill);
         _eventAttacks.Remove(s);
         await PayCostsAsync(s, costs);
@@ -418,6 +423,7 @@ public sealed partial class CombatService
             TargetPos = target?.Pos ?? s.Position.Clone(), Face = s.Face
         };
         if (!await AdmitAutomaticCostAsync(s, row, request, id)) { s.Attack = null; return; }
+        s.NormalAttackReadyMs = Math.Max(s.NormalAttackReadyMs, Now + SkillMs(s, row));
         await StartCastAsync(s, row, request, id);
     }
 
