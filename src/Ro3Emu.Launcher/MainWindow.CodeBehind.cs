@@ -215,7 +215,7 @@ public partial class MainWindow : Window
             "queued" => ("排隊中…", false),
             "maintenance" => ("維護中", false),
             "repair" => ("修復遊戲", true),
-            "ready" or "offline-ready" => ("開始遊戲", true),
+            "ready" => ("開始遊戲", true),
             "running" => ("遊戲執行中", false),
             "offline" => ("重新連線", true),
             "error" => ("再試一次", true),
@@ -232,22 +232,21 @@ public partial class MainWindow : Window
             "queued" => "正在等待伺服器佇列",
             "maintenance" => "伺服器維護中",
             "error" => "操作失敗",
-            "offline-ready" => "離線啟動",
             _ => "復原操作",
         };
-        bool primaryHasIcon = _phase is "install" or "update" or "repair" or "ready" or "running" or "offline-ready";
+        bool primaryHasIcon = _phase is "install" or "update" or "repair" or "ready" or "running";
         PrimaryButtonIcon.Visibility = primaryHasIcon ? Visibility.Visible : Visibility.Collapsed;
         PrimaryButtonIcon.Margin = primaryHasIcon ? new Thickness(0, 0, 18, 0) : new Thickness(0);
         PrimaryButtonIcon.Source = new BitmapImage(new Uri(
-            _phase is "ready" or "running" or "launching" or "offline-ready" ? "/Assets/ui/steps/step03.png" : "/Assets/ui/icons/download.png",
+            _phase is "ready" or "running" or "launching" ? "/Assets/ui/steps/step03.png" : "/Assets/ui/icons/download.png",
             UriKind.Relative));
         PrimaryButton.IsEnabled = enabled;
-        RepairButtonText.Text = _phase == "offline-ready" ? "重新檢查更新" : "修復遊戲";
-        RepairButton.IsEnabled = !_busy && (_installedVersion is not null || _phase == "offline-ready")
+        RepairButtonText.Text = "修復遊戲";
+        RepairButton.IsEnabled = !_busy && _installedVersion is not null
             && _phase is not ("launching" or "running");
         int step = _phase switch
         {
-            "ready" or "running" or "launching" or "offline-ready" => 3,
+            "ready" or "running" or "launching" => 3,
             "repair" => 2,
             _ => 1,
         };
@@ -275,7 +274,6 @@ public partial class MainWindow : Window
         "maintenance" => "伺服器目前正在維護，請稍後再試。",
         "repair" => "部分遊戲檔案需要重新驗證。",
         "ready" => "已更新至最新版本，祝您遊戲愉快！",
-        "offline-ready" => "更新伺服器目前離線，可先啟動本機客戶端進行測試。",
         "offline" => "無法連線至更新伺服器。",
         "launching" => "正在啟動遊戲…",
         "running" => "遊戲目前正在執行。",
@@ -592,9 +590,9 @@ public partial class MainWindow : Window
                 Pages.SelectedIndex = 2;
                 SettingsTab.IsChecked = true;
                 break;
-            case "offline-local":
-                Post(new { type = "state", phase = "offline-ready", installed = (string?)null, remote = (string?)null,
-                    message = "目前無法連線至更新伺服器；可啟動本機客戶端進行測試，但尚未核對更新版本。" });
+            case "offline-unmanaged":
+                Post(new { type = "state", phase = "offline", installed = (string?)null, remote = (string?)null,
+                    message = "找不到由此啟動器完成的安裝紀錄。請連線至更新伺服器並完成安裝或修復。" });
                 break;
             default:
                 Post(new { type = "state", phase = "ready", installed = "140080", remote = "140080", message = (string?)null });

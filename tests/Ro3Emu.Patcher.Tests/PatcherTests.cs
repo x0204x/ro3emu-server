@@ -328,6 +328,49 @@ public sealed class PatcherTests : IDisposable
         Assert.True(handler.ChunkBytesServed < 60_000, "repair should fetch only the damaged chunk and the missing exe");
     }
 
+    [Fact]
+    public void OfflineLaunch_RejectsLooseClientWithoutManagedState()
+    {
+        Directory.CreateDirectory(Game);
+        File.WriteAllBytes(Path.Combine(Game, "ro3.exe"), Random(256, 32));
+        using var client = new RepositoryClient(new Uri("http://repo.test/"), new FileRepoHandler(Repo));
+        var validation = new Updater(Layout, client).ValidateOfflineInstall(null, "stable");
+
+        Assert.False(validation.CanLaunch);
+        Assert.Contains("安裝紀錄", validation.Reason);
+    }
+
+    [Fact]
+    public async Task OfflineLaunch_RequiresIntactManagedInstallOnConfiguredChannel()
+    {
+        WriteBuild("Game.exe", Random(10_000, 33));
+        WriteBuild("Game_Data/a.assets", Random(20_000, 34));
+        await Publish("1.0.0");
+        var handler = new FileRepoHandler(Repo);
+        await Update(handler);
+
+        using var client = new RepositoryClient(new Uri("http://repo.test/"), handler);
+        var updater = new Updater(Layout, client);
+        LocalState state = updater.LoadState()!;
+        Assert.True(updater.ValidateOfflineInstall(state, "stable").CanLaunch);
+
+        var wrongChannel = updater.ValidateOfflineInstall(state, "preview");
+        Assert.False(wrongChannel.CanLaunch);
+        Assert.Contains("不同的更新頻道", wrongChannel.Reason);
+
+        string asset = Path.Combine(Game, "Game_Data", "a.assets");
+        File.SetLastWriteTimeUtc(asset, File.GetLastWriteTimeUtc(asset).AddSeconds(1));
+        OfflineInstallValidation changed = updater.ValidateOfflineInstall(state, "stable");
+        Assert.False(changed.CanLaunch);
+        Assert.Contains("已變更", changed.Reason);
+        Assert.Contains("Game_Data/a.assets", changed.ChangedFiles);
+
+        state.Launch.Exe = "../outside.exe";
+        OfflineInstallValidation escaping = updater.ValidateOfflineInstall(state, "stable");
+        Assert.False(escaping.CanLaunch);
+        Assert.Contains("無法驗證", escaping.Reason);
+    }
+
     [WindowsFact]
     public async Task LockedFile_FailsCommit_AndJournalFinishesItLater()
     {

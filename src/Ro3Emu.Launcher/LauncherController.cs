@@ -68,7 +68,7 @@ public sealed class LauncherController : IDisposable
             case "primary":
                 if (_work != null) return;
                 if (_phase == "running") return;
-                if (_phase is "ready" or "offline-ready") await PlayAsync();
+                if (_phase == "ready") await PlayAsync();
                 else if (_phase is "install" or "update" or "repair") await UpdateAsync(verifyAll: _phase == "repair");
                 else await CheckAsync();
                 break;
@@ -136,14 +136,25 @@ public sealed class LauncherController : IDisposable
         catch (Exception e) when (e is PatcherException or HttpRequestException or TaskCanceledException or IOException or JsonException)
         {
             Log("Update check failed", e);
-            _installed = new Updater(_layout, _repo).LoadState();
-            // Offline but installed: the game can still start (the update server and the game server are separate).
-            if (_installed is not null)
-                PostState("ready", "目前無法連線至更新伺服器，仍可啟動已安裝的版本。");
-            else if (HasLocalClient())
-                PostState("offline-ready", "目前無法連線至更新伺服器；可啟動本機客戶端進行測試，但尚未核對更新版本。");
-            else
-                PostState("offline");
+            var updater = new Updater(_layout, _repo);
+            try
+            {
+                _installed = updater.LoadState();
+                OfflineInstallValidation offline = updater.ValidateOfflineInstall(_installed, _config.Channel);
+                if (offline.CanLaunch)
+                    PostState("ready", offline.Reason);
+                else
+                {
+                    _installed = null;
+                    PostState("offline", offline.Reason);
+                }
+            }
+            catch (Exception offlineError) when (offlineError is PatcherException or IOException or JsonException or UnauthorizedAccessException or ArgumentException)
+            {
+                Log("Offline install validation failed", offlineError);
+                _installed = null;
+                PostState("offline", "無法驗證本機客戶端；請在更新伺服器恢復後重新連線並執行修復。");
+            }
         }
     }
 
@@ -203,7 +214,6 @@ public sealed class LauncherController : IDisposable
     async Task PlayAsync()
     {
         LaunchInfo? launch = _installed?.Launch;
-        if (launch is null && HasLocalClient()) launch = new LaunchInfo { Exe = "ro3.exe" };
         PostState("launching");
         try
         {
@@ -244,7 +254,7 @@ public sealed class LauncherController : IDisposable
             _game = null;
             game.Dispose();
             if (exitCode == 0)
-                PostState(_installed is null ? "offline-ready" : "ready", "遊戲已關閉，可以再次啟動。");
+                PostState("ready", "遊戲已關閉，可以再次啟動。");
             else
                 PostState("repair", $"遊戲意外結束（代碼 {exitCode}），建議先執行修復遊戲。");
         }
@@ -264,8 +274,6 @@ public sealed class LauncherController : IDisposable
             }
         }
     }
-
-    bool HasLocalClient() => File.Exists(Path.Combine(_layout.GameDirectory, "ro3.exe"));
 
     async Task ChangeDirectoryAsync()
     {

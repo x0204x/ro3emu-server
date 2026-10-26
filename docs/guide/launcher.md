@@ -26,9 +26,10 @@ This page explains how to host your own patch repository and publish to it.
 - The game process is resolved only as `<installed client directory>/ro3.exe`, where the installed client directory
   is the directory managed by this launcher. The signed manifest must name `ro3.exe`, include that file, and use a
   relative non-escaping path; the launcher never falls back to a Genesis/Asia installation elsewhere on the PC.
-- If the update repository is temporarily unreachable but that managed directory already contains `ro3.exe`, the
-  launcher enters an explicit offline-local state: **Start Game** remains available and **Check Updates Again** is a
-  separate action. This permits local launch testing without treating an unverified copy as an installed release.
+- If the update repository is temporarily unreachable, the launcher permits an offline start only when its local
+  state belongs to the configured channel, names a packaged launch executable and every managed file still matches
+  the last committed size and timestamp. A loose or modified `ro3.exe` is blocked until **Reconnect** can verify and
+  repair it; this prevents an official or otherwise unpatched client from silently connecting to the wrong server.
 
 ## Configure the launcher
 
@@ -171,7 +172,7 @@ Start button is disabled, and it returns to Ready after a normal game exit.
 - A `launcher.json` beside the exe overrides the built-in one (for example a local repository such as
   `http://localhost:8790/`).
 - `uiFixture` is a local visual-test switch (`home`, `progress`, `queue`, `maintenance`, `failure-help-open`,
-  `offline-local` or `settings`). Never put it in a player release configuration: fixture mode intentionally does not contact a patch
+  `offline-unmanaged` or `settings`). Never put it in a player release configuration: fixture mode intentionally does not contact a patch
   repository or start the game.
 - `settingsFile` is optional and exists so an isolated LAB can keep accepted channel sequences and the selected
   client directory out of the player's normal AppData. Relative paths resolve beside the launcher. Omit it from a

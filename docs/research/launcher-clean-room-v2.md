@@ -33,7 +33,7 @@ REA evidence:
 | Fixed-seed ambient particles and poring drift | 14 sprites, seed 7351, matching observed timing/easing constants | Static behavior mapping plus local fixture runtime; video-cycle comparison is pending |
 | Rounded progress, queue/maintenance/retry states, recovery actions and error-help panel | pure-WPF state projection | Progress geometry compared with the live official checking state; deterministic synthetic states are available |
 | Install, verify and ready steps | state projection from `LauncherController` | Synthetic/static state paths |
-| Install, update, repair, pause/resume, offline-local launch and launch | existing `Ro3Emu.Patcher` plus `GameStarter` | Patcher tests and offline-local visual fixture; live player test pending |
+| Install, update, repair, pause/resume, verified offline launch and launch | existing `Ro3Emu.Patcher` plus `GameStarter` | Patcher tests and offline-unmanaged visual fixture; live player test pending |
 | SHA-256 file/chunk validation and journaled commit | `Updater` | Automated tests |
 | Publisher-authenticated channel | `RepositoryTrust` and detached RSA-PSS/SHA-256 signature | Automated tests |
 | Signed news and self-update metadata | content-addressed hashes and URLs authenticated by signed Channel | Automated tamper tests plus a real 2.0.0 → 2.0.1 signed process replacement and restart handoff |
@@ -55,7 +55,7 @@ REA evidence:
   including signed install/update/repair, signed-news tamper rejection, self-update swap/tamper handling, bounded
   restart-handoff parsing and publisher refusal cases.
 - **Synthetic DPI verification:** `LauncherVisualMatrix` renders seven deterministic fixture states at standard and
-  minimum window sizes for 96, 120 and 144 DPI (42 PNGs), including the offline-local Start Game state. The 96-DIP calibration and structural bounds pass with
+  minimum window sizes for 96, 120 and 144 DPI (42 PNGs), including the offline-unmanaged reconnect state. The 96-DIP calibration and structural bounds pass with
   zero failures. Its verdict remains `PARTIAL`: off-screen rasterization is not `WM_DPICHANGED`, real Per-Monitor V2,
   DWM, GPU, HDR or cross-monitor acceptance.
 - **Local process verification:** an isolated signed loopback repository replaced the real launcher process from

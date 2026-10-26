@@ -9,7 +9,7 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>RO3Launcher</AssemblyName>
     <RootNamespace>Ro3Emu.Launcher</RootNamespace>
-    <Version>2.0.7</Version>
+    <Version>2.0.8</Version>
     <Title>Ragnarok 3 Launcher</Title>
     <AssemblyTitle>Ragnarok 3 Launcher</AssemblyTitle>
     <Description>Ragnarok 3 Launcher</Description>

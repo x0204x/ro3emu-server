@@ -15,6 +15,9 @@ public sealed record UpdateCheck(ChannelInfo Channel, LocalState? Installed, boo
 
 public sealed record UpdateSummary(string Version, int ChangedFiles, int DeletedFiles, long DownloadedBytes, long ReusedBytes);
 
+/// <summary>Whether a previously managed install is safe to start while the repository is unavailable.</summary>
+public sealed record OfflineInstallValidation(bool CanLaunch, string Reason, IReadOnlyList<string> ChangedFiles);
+
 /// <summary>
 /// Brings a game directory to a release: scan → plan → download missing chunks → assemble changed files into
 /// staging → verify → commit through a journal. Originals are untouched until every new file is complete and
@@ -64,6 +67,37 @@ public sealed class Updater(InstallLayout layout, RepositoryClient repository)
             }
         }
         return changed;
+    }
+
+    /// <summary>
+    /// An offline launch is allowed only for an install previously committed by this launcher and still matching
+    /// its recorded channel and file metadata. A loose ro3.exe is not proof that the client contains this server's
+    /// routing patch.
+    /// </summary>
+    public OfflineInstallValidation ValidateOfflineInstall(LocalState? state, string expectedChannel)
+    {
+        if (state is null)
+            return new(false, "找不到由此啟動器完成的安裝紀錄。請連線至更新伺服器並完成安裝或修復。", []);
+        if (!string.Equals(state.Channel, expectedChannel, StringComparison.OrdinalIgnoreCase))
+            return new(false, "本機安裝紀錄屬於不同的更新頻道。請連線至更新伺服器重新驗證。", []);
+        if (state.Launch is null || state.Files is null)
+            return new(false, "本機安裝紀錄不完整。請連線至更新伺服器重新驗證。", []);
+        try
+        {
+            PathRules.ValidateRelative(state.Launch.Exe);
+            if (!state.Files.ContainsKey(state.Launch.Exe))
+                return new(false, "本機安裝紀錄未包含啟動檔。請連線至更新伺服器執行修復。", []);
+            if (!File.Exists(_layout.Resolve(state.Launch.Exe)))
+                return new(false, "遊戲啟動檔遺失。請連線至更新伺服器執行修復。", []);
+            List<string> changed = QuickVerify(state);
+            if (changed.Count > 0)
+                return new(false, $"有 {changed.Count} 個受管理的遊戲檔案已變更；更新伺服器恢復前不會啟動，以免連到錯誤的伺服器。", changed);
+            return new(true, "目前無法連線至更新伺服器，使用上次已驗證的安裝版本。", []);
+        }
+        catch (Exception e) when (e is InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            return new(false, $"本機安裝紀錄無法驗證：{e.Message}", []);
+        }
     }
 
     sealed record ChunkSource(string Path, long Offset, int Size);
