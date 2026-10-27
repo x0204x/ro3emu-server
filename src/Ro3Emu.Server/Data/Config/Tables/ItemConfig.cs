@@ -39,5 +39,6 @@ public readonly partial record struct ItemConfig(JsonElement Row)
     [ConfigField("_kIcon")] public partial string Icon { get; }
     [ConfigField("_kJobNeed")] public partial long[] JobNeed { get; }
     [ConfigField("_kMultiverseArray")] public partial long[] MultiverseArray { get; }
+    [ConfigField("_kParam1")] public partial string Param1 { get; }
     [ConfigField("_kUseTimes")] public partial long[] UseTimes { get; }
 }

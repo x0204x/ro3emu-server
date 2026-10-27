@@ -689,6 +689,16 @@ public sealed partial class CombatService : IGameTicker
     private static double CritRate(Fighter a, Fighter b, JsonElement skill) =>
         Math.Max(0, a.Cri - b.ResCri) / 10000.0 * GameData.Int(skill, "_iSkillCri") / 10000.0;
 
+    /// <summary>SkillConfig._iAffectByArrow selects the equipped arrow ItemConfig._kParam1 element.</summary>
+    private int AttackElement(GameSession source, JsonElement row)
+    {
+        var skill = new SkillConfig(row);
+        if (skill.AffectByArrow != 0 && source.BagState.Info.CurrentArrowID is var arrowId and > 0
+            && ItemConfig.Get(_data, arrowId) is { } arrow && int.TryParse(arrow.Param1, out int element)
+            && element is >= 1 and <= 10) return element;
+        return (int)Math.Max(1, skill.EleType);
+    }
+
     /// <summary>The roll-free part of a hit: skill ratio and flat, defense and element.</summary>
     private double BaseDamage(Fighter a, Fighter b, JsonElement skill, int branch, out bool magic)
     {
@@ -721,7 +731,7 @@ public sealed partial class CombatService : IGameTicker
     {
         var stats = _character.Stats(p);
         var playerSkill = _data.Row("SkillConfig", _skills.NormalAttack(p))!.Value;
-        var player = new Fighter(stats[103], stats[104], stats[109], stats[111], p.Progress!.Level, 1);
+        var player = new Fighter(stats[103], stats[104], stats[109], stats[111], p.Progress!.Level, AttackElement(p, playerSkill));
         var asTarget = new Fighter(0, 0, m.Flee, 0, m.Level, m.Element) { Def = m.Def, Mdef = m.Mdef, Flee = m.Flee };
         double playerDps = ExpectedDamage(player, asTarget, playerSkill) * 1000.0 / Math.Max(1, SkillMs(p, playerSkill));
         var monster = new Fighter(m.Atk, m.Matk, m.Hit, m.Cri, m.Level, m.Element);
