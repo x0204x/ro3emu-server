@@ -30,8 +30,9 @@ public sealed class LauncherController : IDisposable
     LocalState? _installed;
     string _phase = "checking";
     CancellationTokenSource? _work;
-    Process? _game;
+    readonly GameProcessTracker<Process> _games = new();
     bool _started;
+    bool _launching;
     UpdateStage? _loggedStage;
     DateTimeOffset _lastProgressLog;
 
@@ -66,14 +67,18 @@ public sealed class LauncherController : IDisposable
                 await CheckAsync();
                 break;
             case "primary":
-                if (_work != null) return;
-                if (_phase == "running") return;
+                if (_work != null || _launching) return;
+                if (_games.State.AnyRunning)
+                {
+                    if (_games.State.CanStartAnother) await PlayAsync();
+                    return;
+                }
                 if (_phase == "ready") await PlayAsync();
                 else if (_phase is "install" or "update" or "repair") await UpdateAsync(verifyAll: _phase == "repair");
                 else await CheckAsync();
                 break;
             case "repair":
-                if (_work == null) await UpdateAsync(verifyAll: true);
+                if (_work == null && !_launching && _games.State.CanChangeInstallation) await UpdateAsync(verifyAll: true);
                 break;
             case "pause":
                 _work?.Cancel();
@@ -99,12 +104,28 @@ public sealed class LauncherController : IDisposable
     void PostState(string phase, string? message = null)
     {
         _phase = phase;
+        GameProcessState games = _games.State;
         Log($"State={phase}" + (string.IsNullOrWhiteSpace(message) ? "" : $"; {message}"));
-        _post(new { type = "state", phase, installed = _installed?.Version, remote = _channel?.Version, message });
+        _post(new
+        {
+            type = "state",
+            phase,
+            installed = _installed?.Version,
+            remote = _channel?.Version,
+            message,
+            activeGames = games.ActiveCount,
+            maxGames = GameProcessState.Capacity,
+        });
     }
 
     async Task CheckAsync()
     {
+        if (_launching) return;
+        if (_games.State.AnyRunning)
+        {
+            PostRunningState("遊戲執行期間不會檢查或套用更新。");
+            return;
+        }
         PostState("checking");
         try
         {
@@ -160,6 +181,12 @@ public sealed class LauncherController : IDisposable
 
     async Task UpdateAsync(bool verifyAll)
     {
+        if (_launching) return;
+        if (_games.State.AnyRunning)
+        {
+            PostRunningState("請先關閉所有遊戲，再執行更新或修復。");
+            return;
+        }
         if (_channel is null)
         {
             await CheckAsync();
@@ -172,8 +199,16 @@ public sealed class LauncherController : IDisposable
         var progress = new ThrottledProgress(p =>
         {
             var (rate, eta) = p.Stage == UpdateStage.Downloading ? meter.Sample(p.BytesDone, p.BytesTotal) : (0, 0);
-            _post(new { type = "progress", stage = p.Stage.ToString().ToLowerInvariant(), done = p.BytesDone,
-                total = p.BytesTotal, file = p.File, rate, eta });
+            _post(new
+            {
+                type = "progress",
+                stage = p.Stage.ToString().ToLowerInvariant(),
+                done = p.BytesDone,
+                total = p.BytesTotal,
+                file = p.File,
+                rate,
+                eta,
+            });
             var now = DateTimeOffset.UtcNow;
             if (_loggedStage != p.Stage || now - _lastProgressLog >= TimeSpan.FromSeconds(5)
                 || p.BytesTotal > 0 && p.BytesDone >= p.BytesTotal)
@@ -213,30 +248,38 @@ public sealed class LauncherController : IDisposable
 
     async Task PlayAsync()
     {
+        GameProcessState before = _games.State;
+        if (!before.CanStartAnother || _launching) return;
         LaunchInfo? launch = _installed?.Launch;
-        PostState("launching");
+        _launching = true;
+        PostState("launching", before.AnyRunning ? "正在啟動第二個遊戲…" : null);
         try
         {
             if (launch is null) throw new PatcherException("No packaged client is installed.");
-            if (_game is { HasExited: false }) return;
-            _game?.Dispose();
-            _game = null;
             var started = await GameStarter.StartAsync(_layout.GameDirectory, launch);
             if (started.Process is { } game)
             {
-                _game = game;
+                if (!_games.TryAdd(game.Id, game))
+                {
+                    try { if (!game.HasExited) game.Kill(entireProcessTree: true); } catch (Exception) { }
+                    game.Dispose();
+                    throw new InvalidOperationException("No game process slot was available after launch.");
+                }
                 Log($"Game running: pid={game.Id}");
-                PostState("running");
+                PostRunningState();
                 _minimize();
                 _ = ObserveGameAsync(game);
             }
+            else if (_games.State.AnyRunning) PostRunningState($"第二個遊戲未能啟動：{started.Failure}。");
             else PostState("repair", $"遊戲未能啟動：{started.Failure}。");
         }
         catch (Exception e)
         {
             Log("Game launch failed", e);
-            PostState("error", $"啟動失敗：{e.Message}");
+            if (_games.State.AnyRunning) PostRunningState($"第二個遊戲啟動失敗：{e.Message}");
+            else PostState("error", $"啟動失敗：{e.Message}");
         }
+        finally { _launching = false; }
     }
 
     async Task ObserveGameAsync(Process game)
@@ -246,38 +289,53 @@ public sealed class LauncherController : IDisposable
             await game.WaitForExitAsync(_life.Token);
             int exitCode = game.ExitCode;
             Log($"Game exited: pid={game.Id}; code={exitCode}");
-            if (!ReferenceEquals(_game, game) || _life.IsCancellationRequested)
+            if (!_games.TryRemove(game.Id, game) || _life.IsCancellationRequested)
             {
                 game.Dispose();
                 return;
             }
-            _game = null;
             game.Dispose();
-            if (exitCode == 0)
+            if (_games.State.AnyRunning)
+                PostRunningState(exitCode == 0 ? "一個遊戲已關閉，另一個仍在執行。"
+                    : $"一個遊戲意外結束（代碼 {exitCode}），另一個仍在執行。");
+            else if (exitCode == 0)
                 PostState("ready", "遊戲已關閉，可以再次啟動。");
             else
                 PostState("repair", $"遊戲意外結束（代碼 {exitCode}），建議先執行修復遊戲。");
         }
         catch (OperationCanceledException) when (_life.IsCancellationRequested)
         {
-            if (ReferenceEquals(_game, game)) _game = null;
+            _games.TryRemove(game.Id, game);
             game.Dispose();
         }
         catch (Exception e)
         {
             Log("Game process monitoring failed", e);
-            if (ReferenceEquals(_game, game))
+            if (_games.TryRemove(game.Id, game))
             {
-                _game = null;
                 game.Dispose();
-                if (!_life.IsCancellationRequested) PostState("repair", "無法追蹤遊戲程序，請重新檢查或修復遊戲。");
+                if (!_life.IsCancellationRequested)
+                {
+                    if (_games.State.AnyRunning) PostRunningState("一個遊戲的程序監看失敗，另一個仍在執行。");
+                    else PostState("repair", "無法追蹤遊戲程序，請重新檢查或修復遊戲。");
+                }
             }
         }
     }
 
+    void PostRunningState(string? message = null)
+    {
+        int count = _games.State.ActiveCount;
+        PostState("running", message ?? $"目前有 {count} 個遊戲正在執行。");
+    }
+
     async Task ChangeDirectoryAsync()
     {
-        if (_work != null) return;
+        if (_work != null || _launching || !_games.State.CanChangeInstallation)
+        {
+            if (_games.State.AnyRunning) PostRunningState("請先關閉所有遊戲，再更換遊戲資料夾。");
+            return;
+        }
         string? folder = _pickFolder("遊戲資料夾（既有的 ROO_PC 資料夾，或空白資料夾）");
         if (folder is null) return;
         // An existing client (ro3.exe) or an empty folder is used as is; anything else gets its own subfolder.

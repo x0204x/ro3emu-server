@@ -21,4 +21,9 @@
     <ProjectReference Include="..\..\src\Ro3Emu.Patcher\Ro3Emu.Patcher.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Pure launcher slot logic is source-linked so these tests stay platform-neutral. -->
+    <Compile Include="..\..\src\Ro3Emu.Launcher\GameProcessTracker.cs" Link="Launcher\GameProcessTracker.cs" />
+  </ItemGroup>
+
 </Project>

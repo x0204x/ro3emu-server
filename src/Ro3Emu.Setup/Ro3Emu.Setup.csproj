@@ -25,6 +25,7 @@
   <ItemGroup>
     <Compile Include="..\Ro3Emu.ClientTools\ClientPatcher.cs" Link="Client\ClientPatcher.cs" />
     <Compile Include="..\Ro3Emu.ClientTools\LoginPreflightPatch.cs" Link="Client\LoginPreflightPatch.cs" />
+    <Compile Include="..\Ro3Emu.ClientTools\ControlledMultiInstancePatch.cs" Link="Client\ControlledMultiInstancePatch.cs" />
     <Compile Include="..\Ro3Emu.ClientTools\AsiaProfilePatch.cs" Link="Client\AsiaProfilePatch.cs" />
     <Compile Include="..\Ro3Emu.ClientTools\TextSink.cs" Link="Client\TextSink.cs" />
     <Compile Include="..\Ro3Emu.ClientTools\ImageSwapPatch.cs" Link="Client\ImageSwapPatch.cs" />

@@ -7,6 +7,7 @@ namespace Ro3Emu.ClientTools;
 /// Repoints the RO3 client (the PC build) at an emulator by rewriting string literals in managed DLLs:
 ///   SDK login URL and server list URL (Happyengine.Network Obf_dI + callers, Assembly-CSharp MetaSDKUtil);
 ///   gate RSA public key (Phonest.Common Utils.GenEncryptKeyFromToken);
+///   replaces the scene-zero one-client guard with RO3Emu's controlled two-client guard;
 ///   and makes internal the private members the client's own code uses where they are not visible (AccessFixPatch).
 /// Originals are copied once to &lt;client&gt;\ro3emu-backup and every patch starts from them, so it is repeatable.
 /// New DLLs are staged, checked and journalled before any replaces its Managed copy (<see cref="ReplaceManaged"/>), so
@@ -21,7 +22,8 @@ public static class ClientPatcher
     private const string PemMarker = "-----BEGIN RSA PUBLIC KEY-----";
 
     private const string AsiaProfileFile = "RO3.AsiaProfile.dll";
-    internal static readonly string[] PatchedFiles = ["Happyengine.Network.dll", "Assembly-CSharp.dll", "Phonest.Common.dll", "Happyengine.Base.Runtime.dll", "Unity.TextMeshPro.dll", "HUD.dll", "HappyEngine.Resource.dll", "UnityEngine.UI.dll"];
+    private const string HybridLauncherFile = "com.happyengine-hybridclr.dll";
+    internal static readonly string[] PatchedFiles = ["Happyengine.Network.dll", "Assembly-CSharp.dll", "Phonest.Common.dll", "Happyengine.Base.Runtime.dll", "Unity.TextMeshPro.dll", "HUD.dll", "HappyEngine.Resource.dll", "UnityEngine.UI.dll", HybridLauncherFile];
 
     /// <summary>--verbose: GS_Debug.ShowLog always true, so the Lua debug logs (Lua_Debug reads it) reach Player.log.</summary>
     public static bool VerboseLogs { get; set; }
@@ -90,6 +92,7 @@ public static class ClientPatcher
                 "HUD.dll" => m => TextSink.PatchHud(m, locDll),
                 "HappyEngine.Resource.dll" => m => TextSink.PatchLauncher(m, locDll),
                 "UnityEngine.UI.dll" => m => ImageSwapPatch.Patch(m, hooksDll),
+                HybridLauncherFile => m => ControlledMultiInstancePatch.Patch(m, hooksDll),
                 _ => null,
             };
             RewriteStrings(clientDir, file, source, destination, rules, extra);
@@ -322,6 +325,11 @@ public static class ClientPatcher
             if (file == AsiaProfileFile)
             {
                 try { AsiaProfilePatch.Patch(assembly.MainModule, "http://127.0.0.1", LoginPath, ServerListPathAndQuery); }
+                catch (InvalidOperationException e) { problems.Add(e.Message); }
+            }
+            if (file == HybridLauncherFile)
+            {
+                try { ControlledMultiInstancePatch.Patch(assembly.MainModule, File.Exists(hooksDll) ? hooksDll : null); }
                 catch (InvalidOperationException e) { problems.Add(e.Message); }
             }
             if (file == "Unity.TextMeshPro.dll" && assembly.MainModule.GetType("TMPro.TMP_Text") == null) problems.Add("TMPro.TMP_Text not found");

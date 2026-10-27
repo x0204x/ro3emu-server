@@ -29,6 +29,7 @@ public partial class MainWindow : Window
     string _launcherVersion = "";
     string? _installedVersion;
     string? _remoteVersion;
+    int _activeGames;
     bool _busy;
     int _bannerIndex;
     DispatcherTimer? _bannerTimer;
@@ -110,6 +111,8 @@ public partial class MainWindow : Window
             _installedVersion = installed.ValueKind == JsonValueKind.String ? installed.GetString() : null;
         if (root.TryGetProperty("remote", out JsonElement remote))
             _remoteVersion = remote.ValueKind == JsonValueKind.String ? remote.GetString() : null;
+        if (root.TryGetProperty("activeGames", out JsonElement activeGames) && activeGames.TryGetInt32(out int count))
+            _activeGames = Math.Clamp(count, 0, GameProcessState.Capacity);
         string? detail = NullableString(root, "message");
         PackageText.Text = detail ?? DefaultMessage(_phase);
         DetailText.Text = _phase == "error" ? detail ?? "發生未預期的錯誤。" : "";
@@ -216,7 +219,8 @@ public partial class MainWindow : Window
             "maintenance" => ("維護中", false),
             "repair" => ("修復遊戲", true),
             "ready" => ("開始遊戲", true),
-            "running" => ("遊戲執行中", false),
+            "running" when _activeGames == 1 => ("啟動第二個遊戲", true),
+            "running" => ($"遊戲執行中（{_activeGames}/{GameProcessState.Capacity}）", false),
             "offline" => ("重新連線", true),
             "error" => ("再試一次", true),
             "launching" => ("啟動中…", false),
@@ -242,7 +246,7 @@ public partial class MainWindow : Window
             UriKind.Relative));
         PrimaryButton.IsEnabled = enabled;
         RepairButtonText.Text = "修復遊戲";
-        RepairButton.IsEnabled = !_busy && _installedVersion is not null
+        RepairButton.IsEnabled = !_busy && _activeGames == 0 && _installedVersion is not null
             && _phase is not ("launching" or "running");
         int step = _phase switch
         {
@@ -495,8 +499,11 @@ public partial class MainWindow : Window
             image.BeginAnimation(OpacityProperty, opacity);
             if (rotates)
             {
-                rotate.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation(0, random.Next(2) == 0 ? 360 : -360,
-                    TimeSpan.FromSeconds(9 + random.NextDouble() * 9)) { RepeatBehavior = RepeatBehavior.Forever });
+                rotate.BeginAnimation(RotateTransform.AngleProperty,
+                    new DoubleAnimation(0, random.Next(2) == 0 ? 360 : -360, TimeSpan.FromSeconds(9 + random.NextDouble() * 9))
+                    {
+                        RepeatBehavior = RepeatBehavior.Forever,
+                    });
             }
         }
     }
@@ -591,8 +598,14 @@ public partial class MainWindow : Window
                 SettingsTab.IsChecked = true;
                 break;
             case "offline-unmanaged":
-                Post(new { type = "state", phase = "offline", installed = (string?)null, remote = (string?)null,
-                    message = "找不到由此啟動器完成的安裝紀錄。請連線至更新伺服器並完成安裝或修復。" });
+                Post(new
+                {
+                    type = "state",
+                    phase = "offline",
+                    installed = (string?)null,
+                    remote = (string?)null,
+                    message = "找不到由此啟動器完成的安裝紀錄。請連線至更新伺服器並完成安裝或修復。",
+                });
                 break;
             default:
                 Post(new { type = "state", phase = "ready", installed = "140080", remote = "140080", message = (string?)null });
