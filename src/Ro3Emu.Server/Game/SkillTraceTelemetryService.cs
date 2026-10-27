@@ -46,6 +46,7 @@ public sealed class SkillTraceTelemetryService : Messaging.IMessageModule, IDisp
         public LinkedList<ExpectedEvent> Expected { get; } = [];
         public uint LastSequence { get; set; }
         public long NextEventId { get; set; }
+        public int ClientSeen;
     }
 
     private readonly record struct Entry(DateTimeOffset At, string TraceId, long RoleId, string Side, uint MsgId,
@@ -74,7 +75,8 @@ public sealed class SkillTraceTelemetryService : Messaging.IMessageModule, IDisp
     private readonly Task? _writerTask;
     private readonly CancellationTokenSource? _sweepStop;
     private readonly Task? _sweepTask;
-    private long _accepted, _serverEvents, _unmatched, _completed, _gaps, _dropped, _reportedDropped;
+    private long _accepted, _serverEvents, _unmatched, _completed, _gaps, _dropped, _reportedDropped, _grantRetries;
+    private long _grantRetryFailures;
     private long _writerFailures;
     private int _disposed;
     private string? _lastWriterError;
@@ -106,6 +108,8 @@ public sealed class SkillTraceTelemetryService : Messaging.IMessageModule, IDisp
     internal long Completed => Interlocked.Read(ref _completed);
     internal long Gaps => Interlocked.Read(ref _gaps);
     internal long Dropped => Interlocked.Read(ref _dropped);
+    internal long GrantRetries => Interlocked.Read(ref _grantRetries);
+    internal long GrantRetryFailures => Interlocked.Read(ref _grantRetryFailures);
     internal long WriterFailures => Interlocked.Read(ref _writerFailures);
     internal string? LastWriterError => Volatile.Read(ref _lastWriterError);
     internal bool HasGrant(GameSession session) => _states.ContainsKey(session);
@@ -126,8 +130,7 @@ public sealed class SkillTraceTelemetryService : Messaging.IMessageModule, IDisp
             _clock.GetUtcNow().AddSeconds(_options.GrantSeconds),
             new SkillTraceRateLimiter(_options.EventsPerSecond, _options.Burst));
         _states[session] = state;
-        await session.SendGameRawAsync(SkillTraceProtocol.GrantMsgId, SkillTraceProtocol.EncodeGrant(token,
-            (uint)_options.GrantSeconds, (ushort)_options.EventsPerSecond, (ushort)_options.Burst));
+        await SendGrantAsync(session, state, _clock.GetUtcNow());
     }
 
     /// <summary>A role switch or reconnect invalidates the previous connection's token.</summary>
@@ -177,6 +180,7 @@ public sealed class SkillTraceTelemetryService : Messaging.IMessageModule, IDisp
             || !CryptographicOperations.FixedTimeEquals(report.Token, state.Token)
             || report.Sequence <= state.LastSequence || !state.Limiter.TryTake()) return Task.CompletedTask;
         state.LastSequence = report.Sequence;
+        Volatile.Write(ref state.ClientSeen, 1);
         DateTimeOffset now = _clock.GetUtcNow();
         long roleId = session.Role?.Id ?? 0;
         Expire(state, roleId, now, "timeout");
@@ -337,9 +341,42 @@ public sealed class SkillTraceTelemetryService : Messaging.IMessageModule, IDisp
             {
                 DateTimeOffset now = _clock.GetUtcNow();
                 foreach (var item in _states) Expire(item.Value, item.Key.Role?.Id ?? 0, now, "timeout");
+                await RetryUnacknowledgedGrantsAsync(now).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+    }
+
+    /// <summary>
+    /// The client's game-message hook is installed by its chat adapter and may become ready after the scene-loaded
+    /// grant was sent. Retry the same connection token until the first valid client checkpoint proves the hook is
+    /// listening; do not rotate the token or extend the server-side expiry.
+    /// </summary>
+    internal Task RetryUnacknowledgedGrantsAsync() => RetryUnacknowledgedGrantsAsync(_clock.GetUtcNow());
+
+    private async Task RetryUnacknowledgedGrantsAsync(DateTimeOffset now)
+    {
+        foreach (var item in _states)
+        {
+            if (Volatile.Read(ref item.Value.ClientSeen) != 0 || now >= item.Value.Expires) continue;
+            try
+            {
+                await SendGrantAsync(item.Key, item.Value, now).ConfigureAwait(false);
+                Interlocked.Increment(ref _grantRetries);
+            }
+            catch (Exception)
+            {
+                // A disconnect racing the sweep is cleaned up by Reset; it must not stop retries for other players.
+                Interlocked.Increment(ref _grantRetryFailures);
+            }
+        }
+    }
+
+    private Task SendGrantAsync(GameSession session, SessionState state, DateTimeOffset now)
+    {
+        uint ttl = (uint)Math.Max(1, Math.Ceiling((state.Expires - now).TotalSeconds));
+        return session.SendGameRawAsync(SkillTraceProtocol.GrantMsgId, SkillTraceProtocol.EncodeGrant(state.Token,
+            ttl, (ushort)_options.EventsPerSecond, (ushort)_options.Burst));
     }
 
     private async Task WriteLoopAsync(ChannelReader<Entry> reader)

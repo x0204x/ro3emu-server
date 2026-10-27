@@ -176,6 +176,35 @@ public sealed class SkillTraceTelemetryTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task MissedSceneGrantIsRetriedUntilTheClientAcknowledgesIt()
+    {
+        await using var alice = await InWorld("GrantRetryAlice");
+        var firstFrame = await alice.Inbox.WaitAsync(e => e.IsGame(SkillTraceProtocol.GrantMsgId), Wait);
+        Assert.True(SkillTraceProtocol.TryDecodeGrant(firstFrame.Body, out var first));
+        var service = _app.Services.GetRequiredService<SkillTraceTelemetryService>();
+
+        long before = service.GrantRetries;
+        await service.RetryUnacknowledgedGrantsAsync();
+        var retryFrame = await alice.Inbox.WaitAsync(e => e.IsGame(SkillTraceProtocol.GrantMsgId), Wait);
+        Assert.True(SkillTraceProtocol.TryDecodeGrant(retryFrame.Body, out var retry));
+        Assert.Equal(first.Token, retry.Token);
+        Assert.InRange(retry.TtlSeconds, 1u, first.TtlSeconds);
+        Assert.Equal(before + 1, service.GrantRetries);
+        Assert.Equal(0, service.GrantRetryFailures);
+
+        var report = new SkillTraceProtocol.Report(first.Token, 1, 1, CombatService.UseInSkill, 1200401,
+            Session("grantretryalice").Role!.Id, 0, 0, 0, 0, 0, 0,
+            SkillTraceProtocol.Stage.RouteReceived, true, "");
+        await alice.SendGameBytesAsync(SkillTraceProtocol.ReportMsgId, SkillTraceProtocol.EncodeReport(report));
+        await Eventually(() => service.Unmatched == 1);
+
+        long acknowledged = service.GrantRetries;
+        await service.RetryUnacknowledgedGrantsAsync();
+        Assert.Equal(acknowledged, service.GrantRetries);
+        Assert.Equal(0, service.GrantRetryFailures);
+    }
+
+    [Fact]
     public void RateLimiterAllowsConfiguredBurstThenDrops()
     {
         var limiter = new SkillTraceRateLimiter(10, 5);
