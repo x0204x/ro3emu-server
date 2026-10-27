@@ -72,21 +72,25 @@ public static class SdkEndpoints
             return Results.Json(new { code = 0, data = new { token = await accounts.IssueSdkTokenAsync(account) } });
         });
 
-        app.MapGet(ServerListPath, (HttpContext context, IOptions<ServerOptions> options) =>
+        app.MapGet(ServerListPath, (HttpContext context, IOptions<ServerOptions> options, TimeProvider clock) =>
         {
             var o = options.Value;
             string host = GateHost(context.Request.Host.Host, o.PublicHost);
             string microGate = $"{host}:{o.MicroGatePort}";
             string gameGate = $"{host}:{o.GameGatePort}";
+            int utcOffsetSeconds = checked((int)clock.LocalTimeZone.GetUtcOffset(clock.GetUtcNow()).TotalSeconds);
             // `ext` is a JSON string that Lua decodes and uses as the cluster entry (LC_LoginManager._GetAreaListCallback).
             // playbook_id 0 = base pack (installed; other ids pop a download dialog), season 1 = "Beginner Season" tab,
             // area numbers must stay numeric, big_area per area becomes regionID in role create (spec-login-flow §2, §11).
+            // Genesis clients use utc_offset_seconds for every displayed civil time; without it their fallback is UTC-3.
             var ext = JsonSerializer.Serialize(new
             {
                 playbook_id = 0,
                 season = 1,
                 is_cross_area = false,
                 need_in_white = false,
+                utc_offset_seconds = utcOffsetSeconds,
+                tz = clock.LocalTimeZone.Id,
                 areas = new[] { new { area = AreaId, name = o.AreaName, big_area = BigArea } },
             });
             var body = new
