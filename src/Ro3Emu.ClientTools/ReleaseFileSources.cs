@@ -10,4 +10,13 @@ internal static class ReleaseFileSources
         if (explicitMap is not null) throw new FileNotFoundException("the localization map does not exist", path);
         return null;
     }
+
+    internal static KeyValuePair<string, string>? SkillTraceMarker(string stagingDir, bool enabled)
+    {
+        if (!enabled) return null;
+        string path = Path.GetFullPath(Path.Combine(stagingDir, "ro3emu", "skilltrace.on"));
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllBytes(path, []);
+        return new("ro3emu/skilltrace.on", path);
+    }
 }

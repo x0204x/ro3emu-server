@@ -14,7 +14,7 @@ public static class ReleaseBuilder
     private const string ManagedPrefix = "ro3_Data/Managed/";
 
     public static async Task<int> PublishAsync(string clientDir, string serverUrl, string pem, string repoDir, string version, string channel, int compression,
-        string? localizationMap = null, RepositorySigningOptions? signing = null)
+        string? localizationMap = null, bool skillTrace = false, RepositorySigningOptions? signing = null)
     {
         clientDir = Path.GetFullPath(clientDir);
         var baseline = VerifiedBaseline.Read(clientDir);
@@ -62,6 +62,7 @@ public static class ReleaseBuilder
                 files.Add(new(relative, Path.Combine(stagedManaged, extra!)));
         }
         if (ReleaseFileSources.LocalizationMap(clientDir, localizationMap) is { } localization) files.Add(localization);
+        if (ReleaseFileSources.SkillTraceMarker(staging, skillTrace) is { } marker) files.Add(marker);
         Console.WriteLine($"publishing {files.Count} files as {channel}/{version} into {repoDir}");
 
         var progress = new Progress<string>(Console.WriteLine);

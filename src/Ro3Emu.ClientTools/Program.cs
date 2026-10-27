@@ -9,7 +9,7 @@ if (args.Length < 2)
           patch   <client dir> <server url> [gate_rsa_public.pem] [Ro3Emu.ClientHooks.dll] [--verbose]
           restore <client dir>                  put the original DLLs back
           launch  <client dir> [ro3.exe args...]
-          release <client dir> <server url> <gate_rsa_public.pem> <repo dir> <version> [channel] [zstd level] [--loc-map <file>]
+          release <client dir> <server url> <gate_rsa_public.pem> <repo dir> <version> [channel] [zstd level] [--loc-map <file>] [--skill-trace]
                                                 publish the client patched for that server for Ro3Emu.Launcher
           release-launcher <repo dir> <channel> <RO3Launcher.exe> <version> [--signing-key <private.pem> --key-id <id>]
           scan    <client dir> <text>...        list string literals in the client DLLs
@@ -30,6 +30,7 @@ try
     string? locMap = null;
     string? repositorySigningKey = null;
     string? repositoryKeyId = null;
+    bool skillTrace = false;
     if (args[0] is "release" or "release-launcher")
     {
         var filtered = new List<string>();
@@ -51,6 +52,11 @@ try
             {
                 if (++i >= args.Length) throw new ArgumentException("--key-id needs <id>");
                 repositoryKeyId = args[i];
+                continue;
+            }
+            if (args[i] == "--skill-trace")
+            {
+                skillTrace = true;
                 continue;
             }
             filtered.Add(args[i]);
@@ -78,7 +84,7 @@ try
         case "release":
             if (args.Length < 6) throw new ArgumentException("release needs <client dir> <server url> <pem> <repo dir> <version>");
             return await ReleaseBuilder.PublishAsync(args[1], args[2].TrimEnd('/'), File.ReadAllText(args[3]), args[4], args[5],
-                args.Length > 6 ? args[6] : "test", args.Length > 7 ? int.Parse(args[7]) : 9, locMap, repositorySigning);
+                args.Length > 6 ? args[6] : "test", args.Length > 7 ? int.Parse(args[7]) : 9, locMap, skillTrace, repositorySigning);
         case "release-launcher":
             if (args.Length < 5) throw new ArgumentException("release-launcher needs <repo dir> <channel> <RO3Launcher.exe> <version>");
             var withLauncher = await Ro3Emu.Patcher.Publisher.PublishLauncherAsync(args[1], args[2], args[3], args[4], repositorySigning);

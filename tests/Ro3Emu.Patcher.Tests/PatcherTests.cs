@@ -104,13 +104,18 @@ public sealed class PatcherTests : IDisposable
         WriteBuild("data/a.bin", shared.Concat(shared).ToArray());
         WriteBuild("data/b.bin", shared.Concat(Random(20_000, 12)).ToArray());
         WriteBuild("ro3emu/loc_en.tsv", "zh_CN\tzh_TW"u8.ToArray());
+        WriteBuild("ro3emu/skilltrace.on", []);
         var published = await Publish("1.0.0");
 
         Assert.Contains(published.Manifest.Files, f => f.Path == "ro3emu/loc_en.tsv");
+        var marker = Assert.Single(published.Manifest.Files, f => f.Path == "ro3emu/skilltrace.on");
+        Assert.Equal(0, marker.Size);
+        Assert.Empty(marker.Chunks);
 
         await Update(new FileRepoHandler(Repo));
 
         AssertGameMatchesBuild();
+        Assert.Empty(File.ReadAllBytes(Path.Combine(Game, "ro3emu", "skilltrace.on")));
         string cache = Path.Combine(Meta, "cache");
         Assert.True(!Directory.Exists(cache) || !Directory.EnumerateFiles(cache).Any(), "chunks left in the cache after the install");
     }

@@ -49,5 +49,17 @@ public sealed class ReleaseFileSourcesTests : IDisposable
         Assert.Equal(Path.GetFullPath(map), error.FileName);
     }
 
+    [Fact]
+    public void SkillTraceMarkerIsCreatedOnlyWhenRequested()
+    {
+        Assert.Null(ReleaseFileSources.SkillTraceMarker(_dir, false));
+
+        var file = ReleaseFileSources.SkillTraceMarker(_dir, true);
+
+        Assert.Equal("ro3emu/skilltrace.on", file?.Key);
+        Assert.Equal(Path.Combine(_dir, "ro3emu", "skilltrace.on"), file?.Value);
+        Assert.Empty(File.ReadAllBytes(file!.Value.Value));
+    }
+
     public void Dispose() => Directory.Delete(_dir, recursive: true);
 }

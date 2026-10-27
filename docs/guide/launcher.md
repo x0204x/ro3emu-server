@@ -101,7 +101,7 @@ Publish a new client version after a change to `Ro3Emu.ClientHooks` or the local
 or gate key changes:
 
 ```
-Ro3Emu.ClientTools release <client dir> <server url> <gate_rsa_public.pem> <repo dir> <version> <channel> 9 --loc-map <loc_en.tsv>
+Ro3Emu.ClientTools release <client dir> <server url> <gate_rsa_public.pem> <repo dir> <version> <channel> 9 --loc-map <loc_en.tsv> [--skill-trace]
 ```
 
 The published file set is exactly the official install (`.ro3-update/verified-baseline.txt`). The patched DLLs are
@@ -110,6 +110,11 @@ patched for another server. The optional `--loc-map` file is published as `ro3em
 the tool uses `<client dir>/ro3emu/loc_en.tsv` when it exists. This lets a clean official client stay untouched while
 a reviewed localization overlay is supplied from elsewhere. Only changed chunks are new, so a hooks or localization
 change is a few MB.
+
+During a bounded animation investigation, `--skill-trace` adds the zero-byte `ro3emu/skilltrace.on` marker to the
+signed release. Updated players then enable the client-side skill trace automatically without a chat command or a
+manual file. This may create additional player logs and telemetry, so remove the option from the next release after
+the investigation; the launcher will delete the marker because it is no longer owned by that manifest.
 
 ### Launcher
 
