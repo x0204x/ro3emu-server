@@ -169,6 +169,10 @@ public sealed class WorldRoleOperationsTests : IAsyncLifetime
             for (int i = 1; i <= 6; i++) allocation.Points[i] = i == 1 ? 5 : 1;
             await alice.SendGameAsync(CharacterService.AllocateAttrPoints, allocation);
             Assert.Equal(0, (await Next(alice, CharacterService.AllocateAttrPoints, AllocateAttrPointRsp.Parser)).Result);
+            var allocated = await Next(alice, CharacterService.OnePropertyChange, OnePropertyChange.Parser,
+                m => m.Property.Propertys.Any(p => p.PropertyId == 1 && p.Data == 5));
+            Assert.Single(allocated.AttrModTypes);
+            Assert.Equal((int)EAttrModType.Base, allocated.AttrModTypes[0]);
 
             await alice.SendGameAsync(CharacterService.RenameStatPlan, new PlanAttrPointNameChangeReq { PlanIndex = 1, PlanName = "Tank" });
             Assert.Equal("Tank", (await Next(alice, CharacterService.RenameStatPlan, PlanAttrPointNameChangeResq.Parser)).PlanName);
@@ -176,6 +180,10 @@ public sealed class WorldRoleOperationsTests : IAsyncLifetime
             Assert.Equal(0, (await Next(alice, CharacterService.ChangeStatPlan, PlanAttrPointChangeResq.Parser)).Result);
             var swapped = await Next(alice, CharacterService.BaseAttrSync, BaseAttrInfoIncrement.Parser, m => !m.SyncAllMark && m.CurPlanIndex == 1);
             Assert.Equal(1, swapped.CurPlanIndex);
+            var tankStats = await Next(alice, CharacterService.OnePropertyChange, OnePropertyChange.Parser,
+                m => m.Property.Propertys.Any(p => p.PropertyId == 1 && p.Data == 1));
+            Assert.Single(tankStats.AttrModTypes);
+            Assert.Equal((int)EAttrModType.Base, tankStats.AttrModTypes[0]);
 
             await alice.SendGameAsync(CharacterService.ChangeStatPlan, new PlanAttrPointChangeReq { DestPlanIndex = 77 });
             var rejected = await Next(alice, CharacterService.ChangeStatPlan, PlanAttrPointChangeResq.Parser);
@@ -184,6 +192,10 @@ public sealed class WorldRoleOperationsTests : IAsyncLifetime
 
             await alice.SendGameAsync(CharacterService.ChangeStatPlan, new PlanAttrPointChangeReq { DestPlanIndex = 0 });
             Assert.Equal(0, (await Next(alice, CharacterService.ChangeStatPlan, PlanAttrPointChangeResq.Parser)).Result);
+            var attackStats = await Next(alice, CharacterService.OnePropertyChange, OnePropertyChange.Parser,
+                m => m.Property.Propertys.Any(p => p.PropertyId == 1 && p.Data == 5));
+            Assert.Single(attackStats.AttrModTypes);
+            Assert.Equal((int)EAttrModType.Base, attackStats.AttrModTypes[0]);
         }
         await using var again = await InWorld("Alice", create: false);
         var plans = await Next(again, CharacterService.BaseAttrSync, BaseAttrInfoIncrement.Parser);

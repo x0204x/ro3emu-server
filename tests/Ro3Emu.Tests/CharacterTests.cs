@@ -194,11 +194,21 @@ public sealed class CharacterTests : IAsyncLifetime
         Assert.Equal(8, ok.PlanBaseProperty.UsedAttrPoints);
         Assert.Equal(68 - 8, ok.PlanBaseProperty.AttrPoints);
         var str = await Next(alice, CharacterService.OnePropertyChange, OnePropertyChange.Parser, m => m.Property.Propertys.Any(p => p.PropertyId == 1 && p.Data == 5));
+        Assert.Single(str.AttrModTypes);
+        Assert.Equal((int)EAttrModType.Base, str.AttrModTypes[0]);
         Assert.Contains(str.Property.Propertys, p => p.PropertyId == 103);
 
         req.Points[1] = 2;
         await alice.SendGameAsync(CharacterService.AllocateAttrPoints, req);
         Assert.NotEqual(0, (await Next(alice, CharacterService.AllocateAttrPoints, AllocateAttrPointRsp.Parser)).Result);
+
+        await alice.SendGameAsync(CharacterService.ResetAttrPoints, new ResetAttrPointReq { PlanIndex = 0 });
+        Assert.Equal(0, (await Next(alice, CharacterService.ResetAttrPoints, ResetAttrPointResp.Parser)).Result);
+        var reset = await Next(alice, CharacterService.OnePropertyChange, OnePropertyChange.Parser,
+            m => m.Property.Propertys.Any(p => p.PropertyId == 1 && p.Data == 1)
+                && m.AttrModTypes.Contains((int)EAttrModType.Base));
+        Assert.Single(reset.AttrModTypes);
+        Assert.Equal((int)EAttrModType.Base, reset.AttrModTypes[0]);
     }
 
     [ClientDataFact]

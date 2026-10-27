@@ -223,7 +223,7 @@ public sealed partial class CharacterService
     /// <summary>Set by BuffService: puts a buff on the player (item use action 203).</summary>
     public Func<GameSession, int, int, Task>? GiveBuff { get; set; }
 
-    private async Task SendStatsAsync(GameSession session)
+    private async Task SendStatsAsync(GameSession session, EAttrModType? attrModType = null)
     {
         var oldIds = session.EntityProperties.Select(p => (int)p.Id).ToHashSet();
         Refresh(session);
@@ -235,7 +235,9 @@ public sealed partial class CharacterService
             all.Propertys.Add(new Property { PropertyId = id, Data = value, BaseData = stats.Base.GetValueOrDefault(id, value), Vd64 = value });
             session.SentPropertyIds.Add(id);
         }
-        await session.SendGameAsync(OnePropertyChange, new Romsg.OnePropertyChange { Property = all });
+        var change = new Romsg.OnePropertyChange { Property = all };
+        if (attrModType is { } type) change.AttrModTypes.Add((int)type);
+        await session.SendGameAsync(OnePropertyChange, change);
 
         var aoi = new AOIAttrChange { EntityUuid = (ulong)session.Role.Id };
         foreach (var id in AoiProperties) aoi.Property.Add(new AoIProperty { Idx = id, Data = stats[id], BaseData = stats[id] });

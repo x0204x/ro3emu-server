@@ -103,7 +103,7 @@ public sealed partial class CharacterService
         { Result = result, DestPlanIndex = result == 0 ? dest : old.CurPlanIndex, Flag = result == 0 ? 0 : 1 });
         if (result != 0 || dest == old.CurPlanIndex) return;
         await SendStatPlanAsync(session);
-        await SendStatsAsync(session);
+        await SendStatsAsync(session, EAttrModType.Base);
         foreach (var handler in ProgressHandlers) await handler(session);
         foreach (var handler in StateChanged) handler(session);
     }
