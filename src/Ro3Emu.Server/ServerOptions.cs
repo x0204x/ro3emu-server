@@ -268,13 +268,14 @@ public sealed class RewardRateOptions
 }
 
 /// <summary>
-/// Diagnostic client telemetry. Off and open to nobody by default; installing ClientHooks alone sends nothing.
+/// Diagnostic client telemetry. Enabled for every signed-in account during the animation investigation;
+/// installing ClientHooks alone still sends nothing without the local marker.
 /// </summary>
 public sealed class SkillTraceTelemetryOptions
 {
-    public bool Enabled { get; set; }
+    public bool Enabled { get; set; } = true;
     /// <summary>Allow every signed-in player to receive a trace grant. Kept explicit so an empty list is never ambiguous.</summary>
-    public bool AllowAllAccounts { get; set; }
+    public bool AllowAllAccounts { get; set; } = true;
     public string[] Accounts { get; set; } = [];
     public int GrantSeconds { get; set; } = 3600;
     public int EventsPerSecond { get; set; } = 20;

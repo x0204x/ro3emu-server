@@ -66,11 +66,11 @@ public sealed class SkillTraceTelemetryTests : IAsyncLifetime
     }
 
     [Fact]
-    public void TelemetryCodeDefaultsRemainClosedUntilExplicitlyEnabled()
+    public void TelemetryCodeDefaultsStayOpenForTheCurrentAnimationInvestigation()
     {
         var options = new SkillTraceTelemetryOptions();
-        Assert.False(options.Enabled);
-        Assert.False(options.AllowAllAccounts);
+        Assert.True(options.Enabled);
+        Assert.True(options.AllowAllAccounts);
         Assert.Empty(options.Accounts);
     }
 

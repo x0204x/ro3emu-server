@@ -6,18 +6,19 @@ not claim that an animation or VFX rendered successfully.
 
 ## Privacy and admission
 
-The feature is off by default. A report contains only a connection token, sequence and monotonic time, skill message
-and numeric skill/source/target/session/correlation/show/effect identifiers, stage, success flag and a bounded ASCII
-reason. It does not send account credentials, chat, IP addresses, character names, stack traces or arbitrary packets.
-The server writes neither the account nor the connection token to the trace log.
+The current investigation build enables the server side for every signed-in account by default. Player reporting is
+still locally opt-in through the marker below. A report contains only a connection token, sequence and monotonic
+time, skill message and numeric skill/source/target/session/correlation/show/effect identifiers, stage, success flag
+and a bounded ASCII reason. It does not send account credentials, chat, IP addresses, character names, stack traces
+or arbitrary packets. The server writes neither the account nor the connection token to the trace log.
 
 Each connection receives a random, expiring token and a client-side rate budget. The server rejects unknown or
 expired tokens, repeated sequence numbers, non-skill message identifiers, oversized payloads and reports above the
 rate limit. The expected-event cache and writer queue are bounded so diagnostics cannot block the game loop.
 
-## Enable for all players
+## Current all-account default
 
-Add this to the server's `Ro3Emu` configuration and restart it:
+The shipped server configuration currently contains:
 
 ```json
 "SkillTraceTelemetry": {
@@ -33,6 +34,8 @@ Add this to the server's `Ro3Emu` configuration and restart it:
 
 `AllowAllAccounts` is explicit: an empty `Accounts` list by itself never means everybody. Set it to `false` and list
 specific account names if a later test should be limited.
+
+After the animation investigation is complete, set `Enabled` to `false` and restart the server.
 
 The patched hook is safe to install for every player, but reporting is still locally opt-in. Create an empty file at:
 

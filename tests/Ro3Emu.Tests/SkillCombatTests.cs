@@ -3,6 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Romsg;
 using Ro3Emu.Bot;
 using Ro3Emu.Server;
+using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Game;
 using Ro3Emu.Server.Game.Ownership;
 using Ro3Emu.Server.Maps;
@@ -280,7 +282,12 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         Assert.Equal(split, bullet.Split);
         Assert.Equal(target.Pos, bullet.TargetPosition);
         Assert.Equal(Session("alice").Position, bullet.SourcePosition);
-        Assert.True(bullet.StartTimestampMs >= timeline.StartTime);
+        var data = _app.Services.GetRequiredService<GameData>();
+        var row = SkillConfig.Get(data, skillId)!.Value;
+        var template = data.SkillTemplate(row.ScriptShow)!.Value;
+        double attackPoint = template.GetProperty("m_kAtkPoints").EnumerateArray().First().GetDouble();
+        int scheduledOnset = CombatService.ImpactOffset(template, attackPoint, timeline.ChantMs, timeline.SkillMs);
+        Assert.Equal(timeline.StartTime + scheduledOnset, bullet.StartTimestampMs);
 
         var hit = await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser,
             x => x.SessionId == accepted.SessionId);

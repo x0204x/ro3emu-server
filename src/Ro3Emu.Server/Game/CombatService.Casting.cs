@@ -490,7 +490,9 @@ public sealed partial class CombatService
                     SourceId = action.OwnerId, TargetId = req.TargetId, EffectId = bulletEffect,
                     FixedTime = bulletTravel, Split = PresentationSplit(row), TargetPosition = bulletTarget.Clone(),
                     SkillConfigId = req.SkillId, MasterId = action.OwnerId, SourcePosition = action.Origin.Clone(),
-                    StartTimestampMs = Now,
+                    // LC_Bullet_Helper subtracts elapsed server time from the authored projectile duration. Preserve
+                    // the scheduled onset rather than hiding a late scheduler callback behind its execution time.
+                    StartTimestampMs = action.StartMs + at,
                 }, highLevel: skill.SkillEffectLevel > 0);
             });
         }
