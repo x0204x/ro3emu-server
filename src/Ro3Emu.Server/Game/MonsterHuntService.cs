@@ -12,14 +12,15 @@ namespace Ro3Emu.Server.Game;
 /// A field kill on a Hunt map counts for that map (AreaConcurMapConfig, its caves in _kNextMap) and, for a listed
 /// monster, for that monster (AreaConcurMonsterConfig: kills = curScore, "(Kills: N)"), and rolls the area's drop
 /// (_iAreaDropAward: Hunt Medals and region points). The counters ride the kill's own transaction (RewardService
-/// StageHuntKill). 83623 claims a monster's reached stages, 83622 one area stage once enough monster stages are
-/// claimed in the area (the client's red-dot rule, LC_System_MonsterCrusadeRedDot.lua:40-110); claims are their own
-/// cd13e/monsterhunt-award receipts. 5053 DBAreaConcurInfo shows it all; the role blob is "area_concur".
+/// StageHuntKill). 83621 claims a map reward after _iMapRequest kills, 83623 claims a monster's reached stages, and
+/// 83622 claims one area stage once enough monster stages are claimed in the area (the client's red-dot rule,
+/// LC_System_MonsterCrusadeRedDot.lua:40-110); claims are their own cd13e/monsterhunt-award receipts. 5053
+/// DBAreaConcurInfo shows it all; the role blob is "area_concur".
 /// (inferred) The killer alone gets credit, as for the kill's loot; area and map scores have no reset.
 /// </summary>
 public sealed class MonsterHuntService
 {
-    public const uint Sync = 5053, GainAreaAward = 83622, GainMonsterAward = 83623;
+    public const uint Sync = 5053, GainMapAward = 83621, GainAreaAward = 83622, GainMonsterAward = 83623;
     public const int Function = 92;
 
     private readonly GameData _data;
@@ -32,6 +33,7 @@ public sealed class MonsterHuntService
     private readonly RoleStore _roles;
     private readonly ILogger<MonsterHuntService> _log;
 
+    private readonly Dictionary<long, JsonElement> _mapById = new();
     private readonly Dictionary<long, JsonElement> _mapByScene = new();
     private readonly Dictionary<(long Map, int Npc), JsonElement> _monsterByMapNpc = new();
     private readonly Dictionary<long, long> _areaOfMap = new();
@@ -44,6 +46,7 @@ public sealed class MonsterHuntService
         foreach (var map in Rows("AreaConcurMapConfig"))
         {
             long id = GameData.Int(map, "_iID");
+            _mapById.TryAdd(id, map);
             _areaOfMap[id] = GameData.Int(map, "_iArea");
             _mapByScene.TryAdd(GameData.Int(map, "_iMap"), map);
             // A cave of the map counts for it (_kNextMap, e.g. 10150 -> 10153; inferred attribution).
@@ -174,6 +177,41 @@ public sealed class MonsterHuntService
         return Math.Min(count, GameData.Int(area, "_iAreaLimit"));
     }
 
+    /// <summary>83621: one configured map reward after the durable map score reaches _iMapRequest.</summary>
+    public async Task ClaimMapAsync(GameSession s, AreaConcurGainMapAwardReq req)
+    {
+        int result;
+        using (await CharacterService.Lock(s))
+        {
+            var state = s.AreaConcur;
+            if (s.Role == null || s.Progress == null || state == null) result = ErrorCodes.FeatureUnavailable;
+            else if (req.MapId <= 0) result = ErrorCodes.Parameter;
+            else if (!_mapById.TryGetValue(req.MapId, out var map)) result = ErrorCodes.RewardMissing;
+            else if (Area(GameData.Int(map, "_iArea")) is not { } area) result = ErrorCodes.RewardMissing;
+            else if (!AreaOpen(s, area)) result = ErrorCodes.FunctionLocked;
+            else if (state.MapInfo.GetValueOrDefault(req.MapId)?.IsClaimedAward == true) result = ErrorCodes.RewardClaimed;
+            else if ((state.MapInfo.GetValueOrDefault(req.MapId)?.CurScore ?? 0) < GameData.Int(map, "_iMapRequest"))
+                result = ErrorCodes.TaskRequirements;
+            else
+            {
+                long award = GameData.Int(map, "_iMapAward");
+                if (award <= 0) result = ErrorCodes.RewardMissing;
+                else
+                {
+                    var next = state.Clone();
+                    if (!next.MapInfo.TryGetValue(req.MapId, out var info))
+                        next.MapInfo[req.MapId] = info = new AreaConcurMapInfo();
+                    info.IsClaimedAward = true;
+                    result = await CommitClaimAsync(s, next, [award], $"map/{req.MapId}");
+                }
+            }
+
+            if (result == 0) await s.SendGameAsync(GainMapAward, new AreaConcurGainMapAwardResp { Req = req });
+            else await WorldCoreService.ErrorAsync(s, GainMapAward, result);
+        }
+        if (result == 0) await SyncAsync(s);
+    }
+
     /// <summary>83623: every requested stage the monster's kills reach and that is not claimed yet (the client sends them all).</summary>
     public async Task ClaimMonsterAsync(GameSession s, AreaConcurGainMonsterAwardReq req)
     {
@@ -233,7 +271,7 @@ public sealed class MonsterHuntService
     }
 
     /// <summary>The stages' awards and the claimed markers in one owned-award receipt; on any failure nothing changed.</summary>
-    private async Task CommitClaimAsync(GameSession s, DBAreaConcurInfo next, long[] groups, string claim)
+    private async Task<int> CommitClaimAsync(GameSession s, DBAreaConcurInfo next, long[] groups, string claim)
     {
         long role = s.Role!.Id;
         AwardPlan[] plans;
@@ -241,7 +279,7 @@ public sealed class MonsterHuntService
         catch (AwardResolutionException e)
         {
             _log.LogWarning("Monster Hunt {Claim} reward unresolved for {Role}: {Reason}", claim, role, e.Message);
-            return;
+            return ErrorCodes.RewardMissing;
         }
         byte[] bytes = next.ToByteArray();
         try
@@ -251,11 +289,17 @@ public sealed class MonsterHuntService
                 committed: () => { s.AreaConcur = next; s.AreaConcurPersisted = bytes; },
                 ownedAward: new CharacterService.OwnedAwardSource("cd13e/monsterhunt-award", $"monsterhunt/{role}/{claim}",
                     new { Version = 1, Claim = claim, Awards = plans.Select(p => p.AwardId).ToArray() }));
-            if (!ok) _log.LogWarning("Monster Hunt {Claim} not paid for {Role}", claim, role);
+            if (!ok)
+            {
+                _log.LogWarning("Monster Hunt {Claim} not paid for {Role}", claim, role);
+                return ErrorCodes.Unknown;
+            }
+            return 0;
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
             _log.LogError(e, "Monster Hunt {Claim} transaction failed for {Role}", claim, role);
+            return ErrorCodes.Unknown;
         }
     }
 

@@ -88,6 +88,18 @@ public sealed class MonsterHuntTests : IAsyncLifetime
         Group = new SpawnGroup(-1, false, 1, 0, [], []), Home = new SpawnPoint(-1, 0, 0, 0, 0, Npc)
     };
 
+    private long Receipts(long role)
+    {
+        using var db = Service<AccountStore>().Open();
+        using var command = db.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM operation_receipt WHERE command_kind='cd13e/monsterhunt-award' AND actor_role=$role";
+        command.Parameters.AddWithValue("$role", role);
+        return (long)command.ExecuteScalar()!;
+    }
+
+    private static async Task<APIErrorMsg> Error(BotClient bot, uint origin) =>
+        await Next(bot, 99999, APIErrorMsg.Parser, e => e.OriginMsgId == origin);
+
     [ClientDataFact]
     public async Task AFieldKillCountsInItsOwnTransactionAndDropsTheRegionPoint()
     {
@@ -110,6 +122,84 @@ public sealed class MonsterHuntTests : IAsyncLifetime
         await bob.Inbox.WaitAsync(e => e.IsGame(MsgId.SceneLoaded), Wait);
         await OnLoop(() => Service<RewardService>().PrepareKilledAsync(b, Monster(b, 900002)));
         Assert.Empty(await Read(() => b.AreaConcur!.MonsterInfo.Keys.ToArray()));
+    }
+
+    [ClientDataFact]
+    public async Task MapAwardRejectsEarlyAndDuplicateClaimsAndPaysExactlyOnce()
+    {
+        await using var alice = await OnHuntMap("Alice");
+        var s = Session(alice); long role = s.Role!.Id;
+        async Task<long> ClaimError(long mapId)
+        {
+            await alice.SendGameAsync(MonsterHuntService.GainMapAward, new AreaConcurGainMapAwardReq { MapId = mapId });
+            return (await Error(alice, MonsterHuntService.GainMapAward)).ErrorCode;
+        }
+
+        int replies = alice.Inbox.Snapshot().Count(e => e.IsGame(MonsterHuntService.GainMapAward));
+        Assert.Equal(ErrorCodes.RewardMissing, await ClaimError(99999999));
+        await OnLoop(() =>
+        {
+            s.AreaConcur!.MapInfo[Map] = new AreaConcurMapInfo { CurScore = 999 };
+            return Task.CompletedTask;
+        });
+        Assert.Equal(ErrorCodes.TaskRequirements, await ClaimError(Map));
+        Assert.Equal(replies, alice.Inbox.Snapshot().Count(e => e.IsGame(MonsterHuntService.GainMapAward)));
+        Assert.Equal(0, Receipts(role));
+
+        await OnLoop(() =>
+        {
+            s.AreaConcur!.MapInfo[Map].CurScore = 1000;
+            return Task.CompletedTask;
+        });
+        long zeny = await Read(() => s.Progress!.Currency.GetValueOrDefault(1));
+        var request = new AreaConcurGainMapAwardReq { MapId = Map };
+        await alice.SendGameAsync(MonsterHuntService.GainMapAward, request);
+        var response = await Next(alice, MonsterHuntService.GainMapAward, AreaConcurGainMapAwardResp.Parser);
+        Assert.Equal(Map, response.Req.MapId);
+        Assert.Equal(zeny + 50, await Read(() => s.Progress!.Currency.GetValueOrDefault(1)));
+        Assert.True(await Read(() => s.AreaConcur!.MapInfo[Map].IsClaimedAward));
+        Assert.True(DBAreaConcurInfo.Parser.ParseFrom(Service<RoleStore>().LoadAreaConcur(role)!).MapInfo[Map].IsClaimedAward);
+        Assert.Equal(1, Receipts(role));
+
+        Assert.Equal(ErrorCodes.RewardClaimed, await ClaimError(Map));
+        Assert.Equal(zeny + 50, await Read(() => s.Progress!.Currency.GetValueOrDefault(1)));
+        Assert.Equal(1, Receipts(role));
+        Assert.Equal(replies + 1, alice.Inbox.Snapshot().Count(e => e.IsGame(MonsterHuntService.GainMapAward)));
+    }
+
+    [ClientDataFact]
+    public async Task MapAwardTransactionFailureRollsBackClaimAndRewardAndCanRetry()
+    {
+        await using var alice = await OnHuntMap("Alice");
+        var s = Session(alice); long role = s.Role!.Id;
+        await OnLoop(() =>
+        {
+            s.AreaConcur!.MapInfo[Map] = new AreaConcurMapInfo { CurScore = 1000 };
+            return Task.CompletedTask;
+        });
+        long zeny = await Read(() => s.Progress!.Currency.GetValueOrDefault(1));
+        int replies = alice.Inbox.Snapshot().Count(e => e.IsGame(MonsterHuntService.GainMapAward));
+        FixtureSql.Execute(Service<AccountStore>(),
+            "CREATE TRIGGER fail_monster_hunt_map_claim BEFORE UPDATE OF area_concur ON role BEGIN SELECT RAISE(ABORT,'map claim rollback'); END");
+        try
+        {
+            await alice.SendGameAsync(MonsterHuntService.GainMapAward, new AreaConcurGainMapAwardReq { MapId = Map });
+            Assert.Equal(ErrorCodes.Unknown, (await Error(alice, MonsterHuntService.GainMapAward)).ErrorCode);
+            Assert.False(await Read(() => s.AreaConcur!.MapInfo[Map].IsClaimedAward));
+            Assert.Equal(zeny, await Read(() => s.Progress!.Currency.GetValueOrDefault(1)));
+            byte[]? storedBytes = Service<RoleStore>().LoadAreaConcur(role);
+            Assert.False(storedBytes is { Length: > 0 }
+                && DBAreaConcurInfo.Parser.ParseFrom(storedBytes).MapInfo.GetValueOrDefault(Map)?.IsClaimedAward == true);
+            Assert.Equal(0, Receipts(role));
+            Assert.Equal(replies, alice.Inbox.Snapshot().Count(e => e.IsGame(MonsterHuntService.GainMapAward)));
+        }
+        finally { FixtureSql.Execute(Service<AccountStore>(), "DROP TRIGGER fail_monster_hunt_map_claim"); }
+
+        await alice.SendGameAsync(MonsterHuntService.GainMapAward, new AreaConcurGainMapAwardReq { MapId = Map });
+        await Next(alice, MonsterHuntService.GainMapAward, AreaConcurGainMapAwardResp.Parser);
+        Assert.True(await Read(() => s.AreaConcur!.MapInfo[Map].IsClaimedAward));
+        Assert.Equal(zeny + 50, await Read(() => s.Progress!.Currency.GetValueOrDefault(1)));
+        Assert.Equal(1, Receipts(role));
     }
 
     [ClientDataFact]

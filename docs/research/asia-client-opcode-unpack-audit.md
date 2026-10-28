@@ -164,9 +164,19 @@ DAL dispatch，正式伺服器是否仍會傳送仍是 `UNKNOWN`。
 「邀請已失效」的專用 guild-voice error code；這兩條路徑因此以既有通用錯誤 fail closed，不建立狀態、
 不送通知，沒有猜造成功回覆。合成測試另鎖定接受、拒絕、逾時、session replacement 與容量競爭。
 
-下一批有 wire 證據但尚未安全落地的候選為 `82403/82406` Library；它們仍需角色間頁面所有權驗證與
-「頁面狀態、獎勵、持久化」單一交易。`31464–31468` Card Bonds 與 `32304–32309` Guild Tech／Timed
-Strategy 雖有完整 descriptor，server 沒有對應狀態模型，維持未實作而不是回空成功。
+同一候選矩陣另閉合 `83621 AREACONCUR_GAIN_MAP_AWARD`：production sender 只送 `mapId`，成功 handler
+只接受回顯 request，再由 `5053 DBAreaConcurInfo` 的 `mapInfo[mapId].isClaimedAward` 更新 UI。伺服器已有
+同一 map key 的 kill counter、`AreaConcurMapConfig._iMapRequest/_iMapAward`、playbook award resolver、
+角色 blob 與 owned-award 交易，因此現在只在門檻達成且未領取時，將獎勵、claim bit 與 receipt 原子提交；
+未知 map、門檻不足、重複領取、獎勵解析或資料庫提交失敗都走 APIError，不傳假成功。針對性測試涵蓋
+達標只付一次與資料庫錯誤完整回滾；玩家端 runtime 驗收仍是 `NOT_RUN`。
+
+`82403/82406` Library 的 wire、成功狀態與獎勵來源已可閉合，但目標不存在／未持有、親密度不足、
+頁面未完成／已領取等正式拒絕碼沒有出現在 Lua、proto 或 config；因此本輪撤回原型，保留 `BLOCKED`，
+不以 `Unknown` 假裝 1:1 行為。排除 Library、`83621` 與只有 synthetic client price 的 `32514` 後，剩餘
+49 條完整 descriptor＋production sender＋unrouted 候選仍缺少完整狀態 owner 或生命周期；例如
+`31464–31468` Card Bonds、`32304–32309` Guild Tech／Timed Strategy、`30442–30451` Virtual Team 與
+BarRoom 全家族都維持未實作，而不是回空成功。
 
 ## Managed Chat 與模擬器私有 Opcode
 
@@ -213,6 +223,15 @@ Game Gate S→C method 19／20 雖在泛型 `IGateClientService.DispatchProtobuf
 則是 inherited base throw。相對地，Micro Gate 34／35 有 `MicroGateHandler` concrete implementation；Micro
 Gate 5／12 只接受後直接忽略且不 parse body，所以 payload 型別維持 `UNKNOWN`，不猜成 `Void`。
 
+REA 對 `Phonest.ClientForUnity.dll` 的 Managed IL 進一步確認：`ClientAccount.OnCallRpcMessage` 與
+`ClientAvatar.OnCallRpcMessage` 都把 `(uint32 opcode, ReadOnlyMemory<byte> payload)` 原樣交給
+`HappyEngineClient.OnMsgReceived`；`Happyengine.Network.dll` 的 `NW_CBBNetworkManager.Obf_hBd` 才把一般訊息
+與 outer opcode `2` 的批次容器分流並排入共享記憶體佇列。Micro Gate 則走獨立的
+`OnMicroServiceMsgReceived(service, method, payload)` delegate，不是 numeric game opcode 的另一個入口。
+因此若要補 `31022` 的 protobuf tag，正確 runtime 擷取點是 `Obf_hBd` 入列前的 opcode／payload，而不是從
+Lua callback 名稱或畫面結果猜欄位；本輪未獲授權啟動客戶端做 runtime instrumentation，所以這個擷取門檻
+維持 `NOT_RUN`。
+
 主要 REA evidence IDs：RPC frame `ev_1edaf9959631101c267b45675c3001e317c9f2a58032bc25642754bb079af298`；
 game envelope `ev_121f08d8efc91d1fffc97921881fb3ee6f980b87fee9db77072d0fcae5f05b77`；batch
 `ev_044540dddb583cb2b09982c0654efd86b4286a089dcb48718fe1b4e1c023c1c9`；Lua bridge
@@ -224,6 +243,16 @@ RSA/zlib/RC4、單包 EntityMessage 與 micro 33/34/35 路徑相符；KCP server
 producer 仍是 `PARTIAL/UNKNOWN`。game gate method 19／20 已從模糊的 runtime `UNKNOWN` 收斂為 concrete
 handler 靜態不支援，但未做 live fault injection。Client 具有 KCP 建連失敗後切回 TCP 的明確路徑。本輪
 未啟動 client，因此這些靜態結果不等於 live handshake 或 gameplay 驗收。
+
+上述 Managed dispatch 補充證據為 `Happyengine.Network.dll`
+`ev_35133587c93d70b62abb844b91587d2fecdfd4e021294987a043d6c08c440ccc`、
+`Phonest.ClientForUnity.dll` 的 `HappyEngineClient`
+`ev_12cdc8550dcbf34c3bf50bdd4515b045db138b68d7a0a21add47051c90fc5b42` 與完整 members
+`ev_1157ab831a87360d0b849cb060a12551b08c23aa911f597a0f11bc9e66682370`。本輪 evidence bundle 位於隔離 LAB
+`OfflineLab/attempt_output/opcode-continuation-20261029/rea-managed-dispatch-evidence-20261029.json`，SHA-256
+`1B7CBD48EE92FFBC9700B0E5F7CFEB49DBD8B8A7E5F4E5E04B520D230F2782B6`，共 35 records／1 unknown。
+`31022` 的缺口以 `unk_0337dbf2e23bdb15cf169c3de3575d925e23160e16b712643e6c401a94ab4644`
+保留在 evidence ledger；這是靜態 evidence 與後續擷取義務，不是封包實錄。
 
 傳輸清冊重現方式：
 
