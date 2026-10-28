@@ -10,7 +10,8 @@ ignored `data/` and `re/` folders. The main [README](../README.md#1-export-the-g
 | `ConfigExport` | exports the Lua config modules (`Config\DataConfig`, `Config\SceneEditor`) to JSON for the server |
 | `ProtoDump` | rebuilds `.proto` files from the client's `LocalProto/proto.pb.bytes` |
 | `msgtable.js` | extracts the message table (id, name, request and response types) from the decompiled Lua |
-| `opcode-matrix.js` | cross-checks the Lua registries, callbacks, Scene/AutoSync consumers and protobuf descriptor, and emits the complete static numeric-union and reachable wire-schema audit |
+| `opcode-matrix.js` | cross-checks the Lua registries, callbacks, Scene/AutoSync/AssetDataset consumers and protobuf descriptor, and emits the complete static numeric-union and reachable wire-schema audit |
+| `transport-opcode-matrix.js` | emits the hash-bound Game Gate and Micro Gate RPC method catalog without merging those transport indexes into game opcodes |
 | `WorldData/` | reads the client's VFS: nav grids (`navexport.js`, `navparse.js`, `navquery.js`), scene editor data, single assets (`vfsget.js`) |
 | `Loc/` | the localization pipeline behind `Ro3Emu.Loc`: scans the client for Chinese text, builds the translation queue and the `loc_*.tsv` maps |
 | `ClientTextures/` | renders English versions of images with baked-in Chinese text from a texture dump of your client |
@@ -19,3 +20,8 @@ ignored `data/` and `re/` folders. The main [README](../README.md#1-export-the-g
 | `run-server.ps1` | runs the server and restarts it when it exits, logging to `data/logs/` |
 
 `opcode-matrix.js` always emits the generic static decode. Version-specific evidence IDs and semantic overrides are emitted only when every recorded descriptor and Lua input hash matches a known profile; unknown builds remain unclassified instead of inheriting stale evidence.
+
+`transport-opcode-matrix.js` is stricter: its method meanings come from version-specific Managed CIL, so all three
+`Phonest.Proto.dll`, `Phonest.Client.dll` and `Phonest.Common.dll` hashes must match a known profile. It refuses to
+emit a stale catalog for a different client build. Its RPC method indexes are a separate protocol layer and must not
+be joined to `opcode-matrix.js` rows by number alone.

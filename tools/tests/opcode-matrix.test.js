@@ -12,6 +12,7 @@ const {
   inputProfileFor,
   parseAutoSyncBridge,
   parseAutoSyncConsumers,
+  parseAssetDatasetConsumers,
   parseDescriptorSet,
   parseSchemaFile,
 } = require('../opcode-matrix.js');
@@ -149,12 +150,58 @@ test('AutoSync data definition parser links message names to DAL consumers', t =
   }]);
 });
 
+test('asset dataset parser handles direct and register-indexed consumer definitions', t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ro3-opcode-dataset-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'dataset.lua');
+  fs.writeFileSync(file, [
+    'L0_1 = {}',
+    'L1_1 = {}',
+    'L2_1 = {}',
+    'L2_1.DAL = "lc_dal_direct"',
+    'L2_1.PBFiled = "payload"',
+    'L1_1.DirectConsumer = L2_1',
+    'L0_1.DIRECT_MESSAGE = L1_1',
+    'L1_1 = "INDEXED_MESSAGE"',
+    'L2_1 = {}',
+    'L3_1 = "IndexedConsumer"',
+    'L4_1 = {}',
+    'L5_1 = "lc_dal_indexed"',
+    'L4_1.DAL = L5_1',
+    'L6_1 = "IndexedParam"',
+    'L4_1.CustomParam = L6_1',
+    'L7_1 = "body"',
+    'L4_1.PBFiled = L7_1',
+    'L2_1[L3_1] = L4_1',
+    'L0_1[L1_1] = L2_1',
+  ].join('\n'));
+  const parsed = parseAssetDatasetConsumers(file);
+  assert.deepEqual(parsed.get('DIRECT_MESSAGE').consumers, [{
+    field: 'DirectConsumer',
+    dal: 'lc_dal_direct',
+    custom_param: null,
+    line: 6,
+    pb_field: 'payload',
+  }]);
+  assert.deepEqual(parsed.get('INDEXED_MESSAGE').consumers, [{
+    field: 'IndexedConsumer',
+    dal: 'lc_dal_indexed',
+    custom_param: 'IndexedParam',
+    line: 18,
+    pb_field: 'body',
+  }]);
+});
+
 test('version-specific evidence is selected only for an exact input hash profile', () => {
   const hashes = structuredClone(KNOWN_INPUT_PROFILES[0].input_hashes);
   assert.equal(inputProfileFor(hashes)?.id, 'asia-client-2026-10-28');
 
   hashes.callback_lua_sha256 = '0'.repeat(64);
   assert.equal(inputProfileFor(hashes), null);
+
+  const datasetHashes = structuredClone(KNOWN_INPUT_PROFILES[0].input_hashes);
+  datasetHashes.asset_dataset_lua_sha256 = '0'.repeat(64);
+  assert.equal(inputProfileFor(datasetHashes), null);
 });
 
 test('AutoSync bridge line numbers are derived from the supplied Lua file', t => {

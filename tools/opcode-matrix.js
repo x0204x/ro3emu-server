@@ -35,6 +35,7 @@ const KNOWN_INPUT_PROFILES = [{
     base_handler_lua_sha256: '1E79406199B8BBEB0026606EAD4EDDFE8E54BF7E5BD822AB66FC5488984EAE3A',
     autosync_consumer_lua_sha256: 'A554AAB7221051527B93FB0A1FD59AD92E03BCA2EE0C44FBEB9BD82EF66A0EAA',
     asset_manager_lua_sha256: 'B143168287EDC5569B80D1819FD73F248CD3E5A8B3276EABBFAE0BB2B8D8CEEF',
+    asset_dataset_lua_sha256: '7B5BC575E22239833464B4B529B8FA63898C1233CCA98AE1259FD52D5D0EEC80',
   },
   managed_bridge: 'HappyEngineClient.OnMsgReceived -> NW_CBBNetworkManager -> Lua HandlerArray',
   managed_bridge_evidence: {
@@ -81,7 +82,8 @@ function inputProfileFor(hashes) {
       && expected.scene_consumer_lua_sha256 === hashes.scene_consumer_lua_sha256
       && expected.base_handler_lua_sha256 === hashes.base_handler_lua_sha256
       && expected.autosync_consumer_lua_sha256 === hashes.autosync_consumer_lua_sha256
-      && expected.asset_manager_lua_sha256 === hashes.asset_manager_lua_sha256;
+      && expected.asset_manager_lua_sha256 === hashes.asset_manager_lua_sha256
+      && expected.asset_dataset_lua_sha256 === hashes.asset_dataset_lua_sha256;
   }) || null;
 }
 
@@ -242,7 +244,7 @@ function parseBaseRoutes(file) {
   };
 }
 
-function parseAutoSyncConsumers(file) {
+function parseDatasetConsumers(file, logicalFile, includeName) {
   const lines = lineArray(file);
   const registers = new Map();
   registers.set('L0_1', { properties: new Map() });
@@ -284,17 +286,32 @@ function parseAutoSyncConsumers(file) {
   const root = registers.get('L0_1');
   const result = new Map();
   for (const [name, entry] of root.properties) {
-    if (!name.startsWith('AUTO_SYNC_CLIENT_') || !entry.value?.properties) continue;
+    if (!includeName(name) || !entry.value?.properties) continue;
     const consumers = [];
     for (const [field, fieldEntry] of entry.value.properties) {
       const dal = fieldEntry.value?.properties?.get('DAL')?.value;
       if (typeof dal !== 'string') continue;
       const customParam = fieldEntry.value.properties.get('CustomParam')?.value ?? null;
-      consumers.push({ field, dal, custom_param: customParam, line: fieldEntry.line });
+      const pbField = fieldEntry.value.properties.get('PBFiled')?.value ?? null;
+      const consumer = { field, dal, custom_param: customParam, line: fieldEntry.line };
+      if (pbField !== null) consumer.pb_field = pbField;
+      consumers.push(consumer);
     }
-    result.set(name, { file: 'Logic/Asset/LC_AssetAutoSyncDataDefine.lua', line: entry.line, consumers });
+    result.set(name, { file: logicalFile, line: entry.line, consumers });
   }
   return result;
+}
+
+function parseAutoSyncConsumers(file) {
+  return parseDatasetConsumers(
+    file,
+    'Logic/Asset/LC_AssetAutoSyncDataDefine.lua',
+    name => name.startsWith('AUTO_SYNC_CLIENT_'),
+  );
+}
+
+function parseAssetDatasetConsumers(file) {
+  return parseDatasetConsumers(file, 'Logic/Asset/LC_AssetDatasetDefine.lua', () => true);
 }
 
 function parseAutoSyncBridge(file) {
@@ -550,7 +567,8 @@ function buildMatrix(options) {
   const baseHandlerFile = path.join(options.lua, 'Network', 'NW_ServerClientHandler.lua');
   const autoSyncConsumerFile = path.join(options.lua, 'Logic', 'Asset', 'LC_AssetAutoSyncDataDefine.lua');
   const assetManagerFile = path.join(options.lua, 'Logic', 'Asset', 'LC_AssetManager.lua');
-  for (const file of [gameHandlerFile, sceneSyncFile, baseHandlerFile, autoSyncConsumerFile, assetManagerFile]) {
+  const assetDatasetFile = path.join(options.lua, 'Logic', 'Asset', 'LC_AssetDatasetDefine.lua');
+  for (const file of [gameHandlerFile, sceneSyncFile, baseHandlerFile, autoSyncConsumerFile, assetManagerFile, assetDatasetFile]) {
     if (!fs.existsSync(file)) throw new Error(`missing Lua consumer: ${file}`);
   }
   const inputHashes = {
@@ -561,6 +579,7 @@ function buildMatrix(options) {
     base_handler_lua_sha256: sha256(baseHandlerFile),
     autosync_consumer_lua_sha256: sha256(autoSyncConsumerFile),
     asset_manager_lua_sha256: sha256(assetManagerFile),
+    asset_dataset_lua_sha256: sha256(assetDatasetFile),
   };
   const inputProfile = inputProfileFor(inputHashes);
   const callbacks = parseNameHandlerMappings(gameHandlerFile, 'Network/NW_GameServerHandler.lua', gameCallbackBound);
@@ -568,6 +587,7 @@ function buildMatrix(options) {
   const baseRoutes = parseBaseRoutes(baseHandlerFile);
   const autoSyncConsumers = parseAutoSyncConsumers(autoSyncConsumerFile);
   const autoSyncBridge = parseAutoSyncBridge(assetManagerFile);
+  const assetDatasetConsumers = parseAssetDatasetConsumers(assetDatasetFile);
 
   const descriptor = parseDescriptorSet(options.descriptor);
   const msgType = descriptor.enums.find(item => item.full_name === 'romsg.MSG_Type');
@@ -609,6 +629,7 @@ function buildMatrix(options) {
     const autoSyncConsumer = schema?.source.family === 'autosync'
       ? autoSyncConsumers.get(schema.name) || { file: 'Logic/Asset/LC_AssetAutoSyncDataDefine.lua', line: null, consumers: [] }
       : null;
+    const assetDatasetConsumer = [...candidateNames].map(name => assetDatasetConsumers.get(name)).find(Boolean) || null;
     const anomalies = [];
     if (schemaGroup.length > 1) anomalies.push('duplicate_schema_id');
     if (schema && descriptorItem && schema.name !== descriptorItem.name) anomalies.push('schema_descriptor_name_mismatch');
@@ -617,6 +638,9 @@ function buildMatrix(options) {
     if (callback && !schema) anomalies.push('registered_without_lua_schema');
     if (sceneConsumer && !callback) anomalies.push('scene_consumer_without_game_callback');
     if (autoSyncConsumer && autoSyncConsumer.consumers.length === 0) anomalies.push('autosync_dal_mapping_absent');
+    if (assetDatasetConsumer && (requestPresent === false || responsePresent === false)) {
+      anomalies.push('asset_dataset_consumer_with_incomplete_schema');
+    }
 
     let reachability;
     if (callback && sceneConsumer) reachability = 'explicit_game_callback_and_scene_consumer';
@@ -655,6 +679,11 @@ function buildMatrix(options) {
         mapping_line: autoSyncConsumer.line,
         dals: autoSyncConsumer.consumers,
       } : null,
+      asset_dataset_consumer: assetDatasetConsumer ? {
+        file: assetDatasetConsumer.file,
+        line: assetDatasetConsumer.line,
+        dals: assetDatasetConsumer.consumers,
+      } : null,
       base_route: {
         queued_before_dispatch: routeByKind.queued_before_dispatch.get(routeName)?.value ?? null,
         decode_turn: routeByKind.decode_turn.get(routeName)?.value ?? null,
@@ -689,6 +718,7 @@ function buildMatrix(options) {
       callback: kind === 'callback' ? { handler: item.handler, file: item.file, line: item.line } : null,
       scene_consumer: kind === 'scene' ? { handler: item.handler, file: item.file, line: item.line } : null,
       autosync_consumer: null,
+      asset_dataset_consumer: null,
       base_route: { queued_before_dispatch: null, decode_turn: null, no_decode: null, bounded_counter: null },
       managed_bridge: inputProfile?.managed_bridge || null,
       reachability: kind === 'callback' ? 'registered_without_schema' : 'scene_consumer_without_schema',
@@ -735,6 +765,9 @@ function buildMatrix(options) {
   }
   const luaOnlyEz = rows.filter(row => row.schema_family === 'ezprotobuf' && !row.descriptor_enum_present);
   const autoSyncOverlay = rows.filter(row => row.schema_family === 'autosync' && !row.descriptor_enum_present);
+  const rowsWithAssetDatasetConsumer = rows.filter(row => row.asset_dataset_consumer);
+  const incompleteWithAssetDatasetConsumer = unresolvedTypes.filter(row => row.asset_dataset_consumer);
+  const incompleteWithConcreteDownstreamConsumer = unresolvedTypes.filter(row => row.scene_consumer || row.asset_dataset_consumer);
   const sceneWithoutGameCallback = rows.filter(row => row.reachability === 'scene_consumer_without_game_callback');
   const opcodeRootTypes = new Set();
   for (const row of rows) {
@@ -803,6 +836,10 @@ function buildMatrix(options) {
       autosync_overlay_without_msg_type_enum: autoSyncOverlay.length,
       autosync_with_dal_mapping: autoSyncOverlay.filter(row => row.autosync_consumer?.dals.length > 0).length,
       autosync_without_dal_mapping: autoSyncOverlay.filter(row => row.autosync_consumer?.dals.length === 0).length,
+      asset_dataset_definitions: assetDatasetConsumers.size,
+      matrix_rows_with_asset_dataset_consumer: rowsWithAssetDatasetConsumer.length,
+      schema_incomplete_with_asset_dataset_consumer: incompleteWithAssetDatasetConsumer.length,
+      schema_incomplete_with_concrete_downstream_consumer: incompleteWithConcreteDownstreamConsumer.length,
       registered_without_schema: callbackOnly.length,
       scene_consumer_without_schema: sceneOnly.length,
       scene_consumer_without_game_callback: sceneWithoutGameCallback.length,
@@ -842,6 +879,7 @@ function buildMatrix(options) {
   return {
     rows, summary, descriptorOnly, luaOnlyEz, autoSyncOverlay, callbackOnly, sceneOnly,
     sceneWithoutGameCallback, nullNull, unresolvedTypes, callbacks, sceneConsumers, baseRoutes,
+    assetDatasetRegistry: [...assetDatasetConsumers].map(([name, value]) => ({ name, ...value })),
     wireSchemaCatalog,
   };
 }
@@ -866,13 +904,14 @@ function emit(result, outDir) {
     scene_consumer_source: row.scene_consumer ? `${row.scene_consumer.file}:${row.scene_consumer.line}` : null,
     autosync_consumer: row.autosync_consumer?.handler,
     autosync_dals: row.autosync_consumer?.dals,
+    asset_dataset_dals: row.asset_dataset_consumer?.dals,
     base_route: row.base_route,
     reachability: row.reachability,
     anomalies: row.anomalies,
   })), [
     'opcode', 'name', 'direction', 'request_type', 'response_type', 'schema_family', 'schema_sources',
     'descriptor_enum_name', 'request_type_in_descriptor', 'response_type_in_descriptor', 'callback',
-    'callback_source', 'scene_consumer', 'scene_consumer_source', 'autosync_consumer', 'autosync_dals',
+    'callback_source', 'scene_consumer', 'scene_consumer_source', 'autosync_consumer', 'autosync_dals', 'asset_dataset_dals',
     'base_route', 'reachability', 'anomalies',
   ]);
   fs.writeFileSync(path.join(outDir, 'summary.json'), `${JSON.stringify(result.summary, null, 2)}\n`);
@@ -902,6 +941,7 @@ function emit(result, outDir) {
   fs.writeFileSync(path.join(outDir, 'callback-registry.json'), `${JSON.stringify(result.callbacks, null, 2)}\n`);
   fs.writeFileSync(path.join(outDir, 'scene-consumer-registry.json'), `${JSON.stringify(result.sceneConsumers, null, 2)}\n`);
   fs.writeFileSync(path.join(outDir, 'base-route-registry.json'), `${JSON.stringify(result.baseRoutes, null, 2)}\n`);
+  fs.writeFileSync(path.join(outDir, 'asset-dataset-consumer-registry.json'), `${JSON.stringify(result.assetDatasetRegistry, null, 2)}\n`);
 }
 
 if (require.main === module) {
@@ -926,6 +966,7 @@ module.exports = {
   parseNameHandlerMappings,
   parseAutoSyncBridge,
   parseAutoSyncConsumers,
+  parseAssetDatasetConsumers,
   parseSchemaFile,
   protobufFields,
 };
