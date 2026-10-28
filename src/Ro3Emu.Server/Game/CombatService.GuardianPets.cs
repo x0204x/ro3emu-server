@@ -75,7 +75,7 @@ public sealed partial class CombatService
         {
             SrcID = action.OwnerId, SkillID = skill.EffectId, PetConfigId = skill.PetId,
             TargetId = action.Request.TargetId, TargetPos = action.Request.TargetPos, Face = req.Face,
-            SessionId = action.Id, SkillMs = action.ActionMs, StartTime = action.StartMs,
+            SessionId = action.Id, SkillMs = action.ActionMs, StartTime = action.StartMs, PlayAct = true,
         }, extra: true); // LC_Scene_Sync._useExtraSkill requires child type 41 + petConfigId.
         ScheduleGuardianPulses(s, skill, action);
         if (CurrentCastMap(s, action)) await SyncGuardianWheelAsync(s);

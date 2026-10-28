@@ -52,6 +52,19 @@ The current player cast producer supplies `PlayAct=true`, positive bounded cast 
 source, target and facing. No missing protobuf field was established. `isPlayAnim` and `iStartClientTime` seen in
 the extra-timeline path are client-created Lua fields, not fields the server can add to `UseInSkillInfo`.
 
+### Guardian-pet extra timeline
+
+Guardian-pet child skills use the extra `UseInSkill` timeline rather than the ordinary player-cast route. In the
+recovered Asia `LC_TimeLine_Object`, an Animation event is executed only when `isPlayAnim` or the protobuf-derived
+`playAct` flag is true; GFX events can still execute when both animation flags are false. The server's guardian-pet
+producer supplied the child skill, pet, target, timing and session fields but omitted `PlayAct`. That omission explains
+the bounded symptom "effect is present but the guardian-pet cast action is absent" without changing every skill route.
+
+The guardian-pet producer now sets `PlayAct=true`, and its wire test asserts the flag on the emitted extra-skill
+message. This is a source- and test-verified correction. It is not evidence that Fire Bolt, Fire Ball or every other
+ordinary player skill is visually accepted; those skills remain on the separate general route and still require the
+runtime trace described below.
+
 ## Projectile and hit presentation
 
 The fixed-time bullet path treats `startTimestampMs` as the projectile's scheduled server-time onset. The client stores
@@ -102,12 +115,15 @@ a managed or Lua method does not exist.
 | Asia/Genesis input identities | `VERIFIED` |
 | REA native payload boundary | `VERIFIED` within the provider-version limitation above |
 | Managed network-to-Lua callback chain | `VERIFIED` (static, type-specific scope) |
+| Guardian-pet extra-skill `PlayAct` gate | `VERIFIED` (Asia Lua, server source and wire test) |
 | Generated xLua wrapper native addresses | `UNKNOWN` |
 | Official Asia runtime packet values and order | `NOT_RUN` |
+| Player-visible guardian-pet cast action | `NOT_RUN` |
 | Player-visible Fire Bolt / Fire Ball animation | `NOT_RUN` |
 
-The server now preserves the scheduled projectile onset in `31120.startTimestampMs`; this is a testable correction,
-not player-visible acceptance. The next gate is a bounded trace of `31100 -> 31120/31108 -> 31101`, including server
-send time, client receive time, timeline stage, bullet emission and hit display for Fire Bolt 1200401 and Fire Ball
-1201201 at a fixed distance. Compare it with a separately authorized official-Asia observation before declaring
-timing equivalent or qualifying an independent 31119/31109 producer.
+The server now preserves the scheduled projectile onset in `31120.startTimestampMs` and sets `PlayAct=true` on the
+guardian-pet extra timeline; these are testable corrections, not player-visible acceptance. The next general-skill gate
+is a bounded trace of `31100 -> 31120/31108 -> 31101`, including server send time, client receive time, timeline stage,
+bullet emission and hit display for Fire Bolt 1200401 and Fire Ball 1201201 at a fixed distance. Compare it with a
+separately authorized official-Asia observation before declaring timing equivalent or qualifying an independent
+31119/31109 producer.

@@ -278,6 +278,7 @@ public sealed class GuardianPetTests
         var extra = UseInSkillInfo.Parser.ParseFrom(animation.Body);
         Assert.Equal(Child, extra.SkillID);
         Assert.Equal(Pet, extra.PetConfigId);
+        Assert.True(extra.PlayAct); // LC_TimeLine_Object only runs EXTRA skill Animation events when this is true.
         await bot.Inbox.WaitAsync(e => e.IsGame(BuffService.BuffUpdate), TimeSpan.FromSeconds(5));
         await f.Loop.InvokeAsync(() =>
         {

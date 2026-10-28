@@ -6,7 +6,11 @@ This page records static evidence from the shipped Asia and Genesis clients. It 
 
 The ten `Logic/Actor/AutoAttack` Lua payloads compared for this audit are byte-identical between the Asia and Genesis clients. `LC_AutoAttack_SeekSubState`, `LC_AutoAttack_AttackSubState`, `LC_AutoAttackHelper`, `LC_DAL_AutoAttack` and `LC_System_AutoAttackMode` own target selection, reachability, movement and optional Fly Wing use. The server receives the resulting ordinary movement, skill and item-use requests; it does not select the client's next automatic target.
 
-`LC_AutoAttackHelper.IsTargetReachable` calls the movement layer's `CheckAutoAtkReachable`. Chasing calls `CanArriveToPos`; an unreachable target is cleared instead of being approached through an invented straight-line server move. Seek movement also checks reachability before `SetMoveTargetPos(... BattleAuto)`. These calls prove that the client asks its navigation layer for a route, but they do not prove that the navigation mesh can route around a particular obstacle in a live map.
+`LC_AutoAttackHelper.IsTargetReachable` first calls the movement layer's `CheckAutoAtkReachable`. That method does not run a fresh path search: it bounds the candidate against the current auto-battle anchor and reads the shared reachable-area grid previously filled by `UpdateReachableArea`. The immediately following `CanMoveTo` method, not `CheckAutoAtkReachable`, is the method that calls `CheckDirectWalk`; the recovered decompiler assignment boundary makes those two methods distinct.
+
+Actual chasing separately calls `CanArriveToPos`; an unreachable target is cleared instead of being approached through an invented straight-line server move. A reachable target goes through `SetMoveTargetPos(... BattleAuto)` and `FindPathWithShareArr`, so the movement controller uses its A* path rather than a server-synthesised straight line. A zero-length path makes the controller return without entering navigation. `LC_Movement_AStarAgentNew.SetMoveTargetPos` can forward that failure only when its caller supplied a failure callback; the automatic seek dispatch does not supply one. These calls prove that the client owns and invokes a real navigation path, but they do not prove that the navigation mesh can route around a particular obstacle in a live map.
+
+The recovered move-seek fallback has an additional bounded-loop hazard. `_pickAndDispatchToNearestSpawn` tests each unvisited spawn with `CheckCanArriveTo`, but an unreachable spawn is not added to the visited set. If no spawn can be dispatched, `_tryMoveToNearestSpawn` calls `_resetMoveSeekRuntime`, which clears the visited set. On the next update the same unreachable candidates can therefore be selected and rejected again. This is a static client-side explanation for a repeated idle decision; matching it to the reported map remains a live-trace gate.
 
 ## REA and IDA receipts
 
@@ -35,7 +39,9 @@ It then sends the ordinary item-use request. `_tryBuyFly` is separately gated by
 
 The server validates Fly/Butterfly Wing item use and chooses an authored walkable destination for a successful wing jump. That path is already covered by the ordinary bag and movement services. It cannot make the client choose a wing or a different auto-battle target before an item request arrives.
 
-For the reported idle-behind-obstacle case, static evidence establishes two contributing conditions: the target can be rejected as unreachable, and automatic Fly Wing use is off by default. The newest G-drive Lua still filters candidates with `IsTargetReachable`, calls `CanArriveToPos` before chasing, clears an unreachable target and advances to the next skill/target. Fly Wing use occurs in the seek loop only when its opt-in preference, scene and cooldown gates pass. Whether the client should find a detour on the exact map remains `UNKNOWN` until a bounded live trace captures target position, `CanArriveToPos`, selected path, preference values and the next seek decision. A client-side reroute change must be validated on that trace rather than by sending synthetic movement from the server.
+For the reported idle-behind-obstacle case, static evidence establishes three contributing conditions: the reachable-area filter can reject a target, a zero-path seek has no failure callback, and a fully unreachable spawn set can be cleared and retried. Automatic Fly Wing use is also off by default. The newest G-drive Lua still filters candidates with `IsTargetReachable`, calls `CanArriveToPos` before chasing, clears an unreachable target and advances to the next skill/target. Fly Wing use occurs in the seek loop only when its opt-in preference, scene and cooldown gates pass.
+
+Whether the client should find a detour on the exact map remains `UNKNOWN` until a bounded live trace captures anchor/target position, reachable-grid result, `CanArriveToPos`, selected path count, preference values and the next seek decision. Silently forcing `autoUseFlyItem` would consume player-owned items, while replacing failed movement with a server-synthesised segment would bypass the client's authored navigation. Neither is accepted as a safe correction. A client-side retry/fallback change must first be validated against that trace.
 
 ## Acceptance state
 
@@ -45,6 +51,8 @@ For the reported idle-behind-obstacle case, static evidence establishes two cont
 | Managed `PF_AStar` pathfinding ownership | `VERIFIED` (REA static) |
 | Native xLua bridge boundary | `VERIFIED` (IDA static) |
 | Target/reachability/Fly Wing decision ownership | `VERIFIED` (static) |
+| Reachable-grid versus direct-walk method boundary | `VERIFIED` (recovered Lua assignment boundary) |
+| Unreachable spawn retry loop | `VERIFIED` (static control flow); reported-map match `UNKNOWN` |
 | Server item-use and wing-jump boundary | `VERIFIED` (source/tests) |
 | Exact obstacle runtime decision | `NOT_RUN` |
 | Player-visible reroute or automatic wing use | `NOT_RUN` |
