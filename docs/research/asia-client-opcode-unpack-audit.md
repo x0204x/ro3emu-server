@@ -37,7 +37,7 @@
   `ev_6aa3d256b93b523977308f7d972e3235162203aa645d74489a2268fd541224c0`、34-name negative search
   `ev_932909c14825d5440a25fa9b99ab47531e21dc2202cd631823525878f1ff85c0`。
 - 四個 native 檔案的 PE sections、imports、TLS 與 entropy 都沒有形成可確認的 VMP／packer 證據。LAB 的 bounded VMP 嘗試沒有產生可用輸出，因此 `unpacked_artifact = NONE`，不得解讀成「已成功脫殼」。
-- 可讀的 Opcode 真實來源是 Managed 網路橋接、Lua `NW_GameServerHandler`／`LC_Scene_Sync` 與 protobuf descriptor。`tools/opcode-matrix.js` 的全量交叉矩陣顯示：descriptor 的 `romsg.MSG_Type` 有 1,031 個值（含 `TT_None`），PB Lua map 有 1,012 筆，另有 14 筆 EZ 與 64 筆 AutoSync overlay，完整 Lua schema map 為 1,090 個唯一 ID，numeric union 為 1,109 列。將 `romsg.null` 與 `ezmsg.NullArg` 兩個歷史空封包別名納入方向判定後，全矩陣為 653 筆 request/response、43 筆 C2S only、392 筆 S2C notify、2 筆 null/null、19 筆 descriptor-only／未知方向。1,696 個 request／response root 遞迴展開為 3,789 個 message 與 177 個 enum，descriptor closure 的未解析型別引用為 0。先前 1,045 是 `1,031 descriptor 值 + 14 EZ`，不是完整 runtime schema map；每列仍須依方向及實際 producer 分別驗證。生成矩陣含客戶端衍生資料，只保留在被忽略的本機 LAB，不能進 Git。
+- 可讀的 Opcode 真實來源是 Managed 網路橋接、Lua `NW_GameServerHandler`／`LC_Scene_Sync` 與 protobuf descriptor。`tools/opcode-matrix.js` 的全量交叉矩陣顯示：descriptor 的 `romsg.MSG_Type` 有 1,031 個值（含 `TT_None`），PB Lua map 有 1,012 筆，另有 14 筆 EZ 與 64 筆 AutoSync overlay，完整 Lua schema map 為 1,090 個唯一 ID，numeric union 為 1,109 列。1,090 筆 Lua schema 只能依 request／response 型別的空值形狀分成 653 筆 `nonempty_pair`、43 筆 `empty_response`、392 筆 `empty_request` 與 2 筆 `empty_both`；另有 19 筆 descriptor-only／未知 shape。這些數字不是方向統計，尤其 `empty_request` 不能單憑 `romsg.NullArg`、`romsg.null` 或 `ezmsg.NullArg` 推成 S2C。1,696 個 request／response root 遞迴展開為 3,789 個 message 與 177 個 enum，descriptor closure 的未解析型別引用為 0。先前 1,045 是 `1,031 descriptor 值 + 14 EZ`，不是完整 runtime schema map；每列的 observed role 仍須由實際 client sender／consumer 證據分別確認。生成矩陣含客戶端衍生資料，只保留在被忽略的本機 LAB，不能進 Git。
 
 因此本版應採「直接還原可讀協定層」，而不是繼續對 Unity bootstrap 強制脫殼。`NO_CONFIRMED_VMP` 只表示本輪沒有確認外殼，不是對所有未命名或 inline transform 的絕對否定。
 
@@ -50,18 +50,37 @@
 `37EE0E6903C3407E2DDE353F91C6C1F0FD195341076C57008BD29AD817C19E18`。這證明本輪是在同一輸入 epoch
 延續，不是拿 D 版 `Assembly-CSharp.dll` 的不同 build 混用。
 
-registry 中有 11 筆 `romsg.null` 與一筆 `ezmsg.NullArg`。它們沒有 descriptor，因此舊方向函式把 12 筆
-S2C notify 誤列為 request/response。名稱、對端 payload 與 notify consumer 一致證明它們是
-`romsg.NullArg` 的空 request 別名；方向修正後 S2C 由 380 增為 392，request/response 由 665 降為 653，
-其他類別不變。這 12 筆仍保留 `noncanonical_null_alias` anomaly，因為 registry 與 descriptor 的版本偏差
-本身仍需可見，不能假裝 schema 已補齊。
+registry 中有 11 筆 `romsg.null` 與一筆 `ezmsg.NullArg`；它們沒有 descriptor，只能作為
+`empty_request` shape 的歷史別名。舊方向函式把 empty-request marker 直接解讀成 S2C，因而產生「653 筆
+request/response、392 筆 S2C notify」這組錯誤方向敘述。正確統計是 653 `nonempty_pair`、43
+`empty_response`、392 `empty_request`、2 `empty_both`；12 筆別名仍保留 `noncanonical_null_alias`
+anomaly，不能假裝 schema 已補齊，也不能單靠 shape 指派方向。
 
-server `MsgCatalog` 現在保留原始 request／response type name，並將三種空參數標記一致處理。空 request 的
-S2C notify、空 response 的 C2S one-way 以及 null/null 都不再由 unrouted fallback 建立假回覆；只有真正的
-Game Gate request/response 且兩端 descriptor 都存在時才建立空 response；14 筆 `ezmsg` service row 也
-不會再被 Game Gate fallback 當成一般遊戲請求。這修正的是 wire domain、方向與 fallback 行為，沒有
-發明任何缺失欄位；request 或 response 任一端缺 descriptor 的 incomplete row 也會 fail closed，不建立
-猜測回覆。Node 方向測試與合成 msgtable 的 server 單元測試均已釘住三種空參數拼法。
+相反地，G 版 Lua 中至少有下列七個直接 `NW_Helper.SendMessage` 的 C2S 反證；名稱後為 sender 來源：
+
+- `1038 CLIENT_ENTER_MAIN_UI` — `UI/Common/Controllers/UI_Com_MainTipsWidgetCtrl.lua:1672`
+- `83491 HEROICSPIRIT_PRAY` — `Logic/Asset/LC_DAL_Valhalla.lua:227`
+- `33509 LIFEJOB_CheckCanCollect` — `Logic/LifeJob/LC_LifeJobHelper.lua:2423`
+- `33316 PET_INCUBATION_LEVEL_UP` — `Logic/Asset/LC_DAL_Pet.lua:1967`
+- `84067 TRAINING_CHALLENGE_RESET` — `Logic/Asset/LC_DAL_Piling.lua:121`
+- `84063 TRAINING_EXIT_CHALLENGE_MODE` — `Logic/Asset/LC_DAL_Piling.lua:321`
+- `84065 TRAINING_RECONNECT` — `Logic/Asset/LC_DAL_Piling.lua:333`
+
+因此矩陣必須把 schema shape 與 observed role 分開：client sender 才能證明 C2S，client handler／consumer
+才能證明 S2C；只有型別名稱、空參數拼法或對端 payload 都不足以單獨定向。
+
+新版 sender registry 對 13,486 個 Lua 檔做 function／block scope 的 fail-closed 資料流分析：725 個 raw
+`.SendMessage` property load 中，724 個是 `r = r.SendMessage` self-chain，723 個可回溯到 `NW_Helper`；
+704 個實際呼叫可解析明確訊息名、19 個為動態或參數式呼叫，另 1 個跨 register load 不提升為確認證據。
+最終 1,109 列矩陣依證據分為 517 個 client request/response、36 個 client one-way、100 個只確認
+client-side S2C consumer，以及 456 個方向未知；這些數字是靜態可達性，不是本次遊戲執行曾送收的封包統計。
+
+server `MsgCatalog` 現在保留原始 request／response type name，但 `EmptyResponse` 不會只因 request 是
+canonical `romsg.NullArg` 就抑制回覆。Game Gate 的 canonical NullArg C2S request 若 request／response
+descriptor 都完整，仍須建立該 typed response；例如 `1038`、`33316`、`83491`、`84063`、`84065`、
+`84067` 都不能被誤當 notification 而略過。response 是空參數、`romsg.null` 等非 canonical request
+別名缺 descriptor、任一端 descriptor 缺失，或 row 屬 14 筆 `ezmsg` service 時才 fail closed，不由
+unrouted fallback 猜測回覆。Node schema-shape 測試與合成 msgtable 的 server 單元測試均已釘住這條界線。
 
 另以 49 個 schema 缺失端名稱對 G 版完整 `StreamingAssets` 做 bounded plaintext scan，結果為 0 命中。
 這只排除已掃描檔案中的明文名稱，不能排除壓縮 bundle、計算生成字串、外部正式伺服器 schema 或 runtime
@@ -112,7 +131,7 @@ REA 另對 34 個缺失具名 schema 做完整名稱查核：在 `Assembly-CShar
 `31022 SyncMoveStateNotify` 的 Siege wrapper 可讀到部分欄位輪廓：`move_states[]`、`entity_id`、
 `move_state_info.move_type`、`current_position`、`face`，之後呼叫 `_syncMoveState`。但整套 Lua 沒有該函式
 實作，亦沒有 field tag、wire type、cardinality 或 nested message 型別，所以只能列為 partial field-name
-shape，仍不能從名稱反推出可序列化 protobuf。主要 REA evidence 為 Managed 名稱查核
+shape，仍不能從名稱反推出可序列化 protobuf，也不猜補 `31022` schema。主要 REA evidence 為 Managed 名稱查核
 `ev_2c69d5e5054f076e8fa3652c2412ba45906228951de1858b494f6b8cb72d6cbc`、
 `ev_167c141d3f55423eb455ab2e6edd03ab58577123def6a7a0d5c0ebff2f61cb12`、
 `ev_857b3934bb2cfcc30011c2112a34e1cc65971bc3dbd494b6084b015d1ebd30b3`，Managed bridge
@@ -131,6 +150,23 @@ consumer 的 `31110`／`31111`。
 四個 AutoSync (`5038`、`5042`、`5054`、`5063`) 雖會通過通用 parse/cache，但
 `LC_AssetAutoSyncDataDefine` 沒有 DAL mapping，`LC_AssetManager.AutoSync` 因而直接返回；本 build 沒有下游
 DAL dispatch，正式伺服器是否仍會傳送仍是 `UNKNOWN`。
+
+### 已證實 sender 與伺服器缺失 route
+
+將 production Lua direct sender、完整 request／response descriptor、Game Gate、dispatcher snapshot 的
+`unrouted` 狀態交叉，再排除 8 組 interceptor 後，共有 56 個強候選。核心技能、EXP、JOB EXP 與自動戰鬥
+不在這 56 個候選內，所以不能以新增一個空 handler 宣稱修好那些問題。
+
+本輪先補上已有完整狀態邊界的公會語音邀請鏈：`83707 GUILD_VOICE_CHANNEL_INVITE`、
+`83708 GUILD_VOICE_CHANNEL_INVITE_RESPONSE`、`83720 GUILD_VOICE_GET_NOT_IN_CD_PLAYER`，以及
+`83716/83717` 通知。服務會驗證同公會、精確 live session、頻道、封鎖、既有席位、單一 pending invite、
+15 秒 cooldown、拒絕全部 10 分鐘、30 秒 expiry 與 `Voice.MaxRoomSize`。客戶端資料沒有證實「頻道已滿」與
+「邀請已失效」的專用 guild-voice error code；這兩條路徑因此以既有通用錯誤 fail closed，不建立狀態、
+不送通知，沒有猜造成功回覆。合成測試另鎖定接受、拒絕、逾時、session replacement 與容量競爭。
+
+下一批有 wire 證據但尚未安全落地的候選為 `82403/82406` Library；它們仍需角色間頁面所有權驗證與
+「頁面狀態、獎勵、持久化」單一交易。`31464–31468` Card Bonds 與 `32304–32309` Guild Tech／Timed
+Strategy 雖有完整 descriptor，server 沒有對應狀態模型，維持未實作而不是回空成功。
 
 ## Managed Chat 與模擬器私有 Opcode
 

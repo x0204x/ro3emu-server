@@ -10,11 +10,14 @@ const {
   KNOWN_INPUT_PROFILES,
   directionFor,
   inputProfileFor,
+  observedRoleFor,
   parseAutoSyncBridge,
   parseAutoSyncConsumers,
   parseAssetDatasetConsumers,
   parseDescriptorSet,
+  parseGameSenders,
   parseSchemaFile,
+  schemaShape,
 } = require('../opcode-matrix.js');
 
 function varint(input) {
@@ -38,15 +41,190 @@ function fieldBytes(number, value) {
   return Buffer.concat([varint((number << 3) | 2), varint(bytes.length), bytes]);
 }
 
-test('direction classification keeps request, notify, oneway and null/null distinct', () => {
-  assert.equal(directionFor({ request_type: 'romsg.Req', response_type: 'romsg.Res' }), 'client_request_server_response');
-  assert.equal(directionFor({ request_type: 'romsg.NullArg', response_type: 'romsg.Ntf' }), 'server_to_client_notify');
-  assert.equal(directionFor({ request_type: 'romsg.null', response_type: 'romsg.Ntf' }), 'server_to_client_notify');
-  assert.equal(directionFor({ request_type: 'ezmsg.NullArg', response_type: 'ezmsg.Ntf' }), 'server_to_client_notify');
-  assert.equal(directionFor({ request_type: 'romsg.Req', response_type: 'romsg.NullArg' }), 'client_to_server_oneway');
-  assert.equal(directionFor({ request_type: 'romsg.Req', response_type: 'romsg.null' }), 'client_to_server_oneway');
-  assert.equal(directionFor({ request_type: 'ezmsg.Req', response_type: 'ezmsg.NullArg' }), 'client_to_server_oneway');
-  assert.equal(directionFor({ request_type: 'romsg.NullArg', response_type: 'romsg.NullArg' }), 'null_null');
+test('schema shape is separate from evidence-derived direction and sender evidence wins', () => {
+  const sender = [{ file: 'Logic/client.lua', line: 5, call_line: 6 }];
+  assert.equal(schemaShape({ request_type: 'romsg.NullArg', response_type: 'romsg.Res' }), 'empty_request');
+  assert.equal(schemaShape({ request_type: 'romsg.null', response_type: 'romsg.Ntf' }), 'empty_request');
+  assert.equal(schemaShape({ request_type: 'romsg.Req', response_type: 'romsg.NullArg' }), 'empty_response');
+  assert.equal(schemaShape({ request_type: 'romsg.NullArg', response_type: 'romsg.NullArg' }), 'empty_both');
+
+  const nullArgRequest = { request_type: 'romsg.NullArg', response_type: 'romsg.Res', client_senders: sender };
+  const legacyNullRequest = { request_type: 'romsg.null', response_type: 'romsg.Ntf', client_senders: sender };
+  assert.equal(observedRoleFor(nullArgRequest), 'client_sender');
+  assert.equal(directionFor(nullArgRequest), 'client_request_server_response');
+  assert.equal(directionFor(legacyNullRequest), 'client_request_server_response');
+  assert.equal(directionFor({ request_type: 'romsg.Req', response_type: 'romsg.NullArg', client_senders: sender }), 'client_to_server_oneway');
+  assert.equal(directionFor({ request_type: 'romsg.NullArg', response_type: 'romsg.NullArg', client_senders: sender }), 'client_to_server_oneway');
+
+  const callbackOnly = { request_type: 'romsg.NullArg', response_type: 'romsg.Ntf', callback: { handler: 'OnNotify' }, client_senders: [] };
+  assert.equal(observedRoleFor(callbackOnly), 'server_consumer');
+  assert.equal(directionFor(callbackOnly), 'server_to_client_observed');
+  const both = { ...nullArgRequest, callback: { handler: 'OnResponse' } };
+  assert.equal(observedRoleFor(both), 'both');
+  assert.equal(directionFor(both), 'client_request_server_response');
+  assert.equal(directionFor({ client_senders: sender }), 'client_to_server_unknown_reply_shape');
+  assert.equal(directionFor({ request_type: 'romsg.Req', response_type: 'romsg.Res' }), 'unknown');
+});
+
+test('game sender parser resolves only confirmed calls and retains dynamic or numeric calls as unresolved', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ro3-opcode-senders-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const logic = path.join(root, 'Logic');
+  fs.mkdirSync(logic);
+  fs.writeFileSync(path.join(logic, 'senders.lua'), [
+    'function SendNullArg()',
+    '  sender = NW_Helper',
+    '  sender = sender.SendMessage',
+    '  map = ProtobufNameMap',
+    '  message = map.NULL_ARG_TO_RES',
+    '  sender(message)',
+    'end',
+    '',
+    'function SendLegacyNull()',
+    '  sender = NW_Helper',
+    '  map = sender.ProtobufNameMap',
+    '  sender = sender.SendMessage',
+    '  message = map.LEGACY_NULL_TO_NTF',
+    '  sender(message, {})',
+    'end',
+    '',
+    'function Reassigned()',
+    '  sender = NW_Helper',
+    '  sender = sender.SendMessage',
+    '  map = ProtobufNameMap',
+    '  message = map.MUST_NOT_SURVIVE',
+    '  sender = OtherWrapper',
+    '  sender(message)',
+    'end',
+    '',
+    'function Wrapper(messageName)',
+    '  sender = NW_Helper',
+    '  sender = sender.SendMessage',
+    '  sender(messageName, {})',
+    '  sender(123, {})',
+    'end',
+    '',
+    'function CrossRegisterIsNotConfirmed()',
+    '  helper = NW_Helper',
+    '  sender = helper.SendMessage',
+    '  map = ProtobufNameMap',
+    '  message = map.CROSS_REGISTER',
+    '  sender(message)',
+    'end',
+  ].join('\n'));
+
+  const parsed = parseGameSenders(root);
+  assert.deepEqual(parsed.summary, {
+    lua_files_scanned: 1,
+    candidate_files: 1,
+    raw_loads: 5,
+    loads: 4,
+    confirmed: 4,
+    resolved: 2,
+    unresolved: 2,
+    unconfirmed: 1,
+    unique_names: 2,
+  });
+  assert.deepEqual(parsed.rows.map(row => ({
+    name: row.name,
+    line: row.line,
+    call_line: row.call_line,
+    confirmed: row.confirmed,
+    resolved: row.resolved,
+    unresolved_kind: row.unresolved_kind,
+  })), [
+    { name: 'NULL_ARG_TO_RES', line: 5, call_line: 6, confirmed: true, resolved: true, unresolved_kind: null },
+    { name: 'LEGACY_NULL_TO_NTF', line: 13, call_line: 14, confirmed: true, resolved: true, unresolved_kind: null },
+    { name: null, line: 28, call_line: 29, confirmed: true, resolved: false, unresolved_kind: 'parameter_or_dynamic' },
+    { name: null, line: 28, call_line: 30, confirmed: true, resolved: false, unresolved_kind: 'numeric' },
+    { name: null, line: 35, call_line: 38, confirmed: false, resolved: false, unresolved_kind: 'cross_register_send_message' },
+  ]);
+  assert.ok(parsed.rows.every(row => row.file === 'Logic/senders.lua' && row.development === false));
+});
+
+test('game sender parser resets nested function scope and restores the outer scope', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ro3-opcode-sender-scope-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(root, 'nested.lua'), [
+    'function Outer()',
+    '  sender = NW_Helper',
+    '  sender = sender.SendMessage',
+    '  map = ProtobufNameMap',
+    '  message = map.OUTER_ONLY',
+    '  function Inner()',
+    '    sender(message)',
+    '  end',
+    '  sender(message)',
+    'end',
+  ].join('\n'));
+
+  const parsed = parseGameSenders(root);
+  assert.deepEqual(parsed.rows.map(row => ({ name: row.name, line: row.line, call_line: row.call_line })), [
+    { name: 'OUTER_ONLY', line: 5, call_line: 9 },
+  ]);
+});
+
+test('game sender parser does not leak symbols created inside conditional or loop blocks', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ro3-opcode-sender-block-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(root, 'blocks.lua'), [
+    'function BranchLeak(flag)',
+    '  if flag then',
+    '    sender = NW_Helper',
+    '    sender = sender.SendMessage',
+    '    map = ProtobufNameMap',
+    '    message = map.BRANCH_LEAK',
+    '  end',
+    '  sender(message)',
+    'end',
+    '',
+    'function LoopLeak(flag)',
+    '  while flag do',
+    '    sender = NW_Helper',
+    '    sender = sender.SendMessage',
+    '    map = ProtobufNameMap',
+    '    message = map.LOOP_LEAK',
+    '  end',
+    '  sender(message)',
+    'end',
+    '',
+    'function BranchLocalCall(flag)',
+    '  if flag then',
+    '    sender = NW_Helper',
+    '    sender = sender.SendMessage',
+    '    map = ProtobufNameMap',
+    '    message = map.BRANCH_LOCAL',
+    '    sender(message)',
+    '  end',
+    'end',
+    '',
+    'function ElseDoesNotInherit(flag)',
+    '  if flag then',
+    '    sender = NW_Helper',
+    '    sender = sender.SendMessage',
+    '    map = ProtobufNameMap',
+    '    message = map.ELSE_LEAK',
+    '  else',
+    '    sender(message)',
+    '  end',
+    'end',
+  ].join('\n'));
+
+  const parsed = parseGameSenders(root);
+  assert.deepEqual(parsed.rows.map(row => ({ name: row.name, line: row.line, call_line: row.call_line })), [
+    { name: 'BRANCH_LOCAL', line: 26, call_line: 27 },
+  ]);
+  assert.deepEqual(parsed.summary, {
+    lua_files_scanned: 1,
+    candidate_files: 1,
+    raw_loads: 4,
+    loads: 4,
+    confirmed: 4,
+    resolved: 1,
+    unresolved: 0,
+    unconfirmed: 0,
+    unique_names: 1,
+  });
 });
 
 test('decompiled Lua schema parser preserves id, types, msg_type and source line', t => {

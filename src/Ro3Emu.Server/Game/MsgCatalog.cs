@@ -21,7 +21,6 @@ public sealed class MsgCatalog
     {
         public bool HasNullRequest => IsNullArgType(RequestTypeName);
         public bool HasNullResponse => IsNullArgType(ResponseTypeName);
-        public bool IsServerNotification => HasNullRequest && !HasNullResponse;
         public bool IsGameGate => !RequestTypeName.StartsWith("ezmsg.", StringComparison.Ordinal)
             && !ResponseTypeName.StartsWith("ezmsg.", StringComparison.Ordinal);
     }
@@ -68,10 +67,6 @@ public sealed class MsgCatalog
 
     public string Name(uint id) => _entries.TryGetValue(id, out var e) ? e.Name : id.ToString();
 
-    /// <summary>True when the client registry defines this id as a server-to-client notification.</summary>
-    public bool IsServerNotification(uint id) =>
-        _entries.TryGetValue(id, out var entry) && entry.IsServerNotification;
-
     /// <summary>Request body as JSON for logs, or a byte count when the type is unknown.</summary>
     public string Describe(uint id, ReadOnlyMemory<byte> body)
     {
@@ -92,7 +87,7 @@ public sealed class MsgCatalog
     public IMessage? EmptyResponse(uint id)
     {
         var entry = Get(id);
-        if (entry is null || !entry.IsGameGate || entry.HasNullRequest || entry.HasNullResponse) return null;
+        if (entry is null || !entry.IsGameGate || entry.HasNullResponse) return null;
         if (entry.Request == null || entry.Response == null) return null;
         return (IMessage)Activator.CreateInstance(entry.Response.ClrType)!;
     }

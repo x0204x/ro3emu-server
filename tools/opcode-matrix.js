@@ -160,18 +160,36 @@ function parseSchemaFile(file, logicalFile, family) {
   return rows;
 }
 
-function directionFor(row) {
+function schemaShape(row) {
   const req = row.request_type;
   const res = row.response_type;
   if (!req || !res) return 'unknown';
-  // The current Asia registry uses two historical empty-body aliases in addition to the canonical
-  // romsg.NullArg. They are wire-equivalent direction markers even though neither alias has a descriptor.
   const reqNull = NULL_ARG_TYPES.has(req);
   const resNull = NULL_ARG_TYPES.has(res);
-  if (reqNull && resNull) return 'null_null';
-  if (reqNull) return 'server_to_client_notify';
-  if (resNull) return 'client_to_server_oneway';
-  return 'client_request_server_response';
+  if (reqNull && resNull) return 'empty_both';
+  if (reqNull) return 'empty_request';
+  if (resNull) return 'empty_response';
+  return 'nonempty_pair';
+}
+
+function observedRoleFor(row) {
+  const clientSender = Array.isArray(row.client_senders) && row.client_senders.length > 0;
+  const serverConsumer = Boolean(row.callback || row.scene_consumer);
+  if (clientSender && serverConsumer) return 'both';
+  if (clientSender) return 'client_sender';
+  if (serverConsumer) return 'server_consumer';
+  return 'unknown';
+}
+
+function directionFor(row, observedRole = observedRoleFor(row)) {
+  const shape = schemaShape(row);
+  if (observedRole === 'client_sender' || observedRole === 'both') {
+    if (shape === 'empty_response' || shape === 'empty_both') return 'client_to_server_oneway';
+    if (shape === 'nonempty_pair' || shape === 'empty_request') return 'client_request_server_response';
+    return 'client_to_server_unknown_reply_shape';
+  }
+  if (observedRole === 'server_consumer') return 'server_to_client_observed';
+  return 'unknown';
 }
 
 function findBound(lines, startPattern, endPattern) {
@@ -551,6 +569,214 @@ function countBy(rows, selector) {
   return Object.fromEntries(Object.entries(result).sort(([a], [b]) => a.localeCompare(b)));
 }
 
+function luaFilesBelow(root) {
+  const result = [];
+  function visit(directory) {
+    const entries = fs.readdirSync(directory, { withFileTypes: true })
+      .sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
+      const absolute = path.join(directory, entry.name);
+      if (entry.isDirectory()) visit(absolute);
+      else if (entry.isFile() && entry.name.toLowerCase().endsWith('.lua')) result.push(absolute);
+    }
+  }
+  visit(root);
+  return result;
+}
+
+function isDevelopmentLua(logicalFile) {
+  const normalized = logicalFile.replace(/\\/g, '/');
+  return /(^|\/)Editors?\//i.test(normalized)
+    || /(^|\/)[^/]*(?:Test|Mock|Profiler)[^/]*\.lua$/i.test(normalized);
+}
+
+function firstLuaArgument(argumentsText) {
+  let quote = null;
+  let escaped = false;
+  let depth = 0;
+  for (let index = 0; index < argumentsText.length; index++) {
+    const character = argumentsText[index];
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (character === '\\') escaped = true;
+      else if (character === quote) quote = null;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      continue;
+    }
+    if ('([{'.includes(character)) depth++;
+    else if (')]}'.includes(character)) depth--;
+    else if (character === ',' && depth === 0) return argumentsText.slice(0, index).trim();
+  }
+  return argumentsText.trim();
+}
+
+function parseGameSenders(luaRoot) {
+  if (!fs.statSync(luaRoot).isDirectory()) throw new Error(`Lua root is not a directory: ${luaRoot}`);
+  const luaFiles = luaFilesBelow(luaRoot);
+  const rows = [];
+  let candidateFiles = 0;
+  let rawLoads = 0;
+  let loads = 0;
+  let confirmed = 0;
+
+  for (const absolute of luaFiles) {
+    const text = fs.readFileSync(absolute, 'utf8');
+    if (!/\.SendMessage\b/.test(text)) continue;
+    candidateFiles++;
+    const logicalFile = path.relative(luaRoot, absolute).split(path.sep).join('/');
+    const development = isDevelopmentLua(logicalFile);
+    const lines = text.split(/\r?\n/);
+    let registers = new Map();
+    const blocks = [];
+
+    function openFunction() {
+      blocks.push({ type: 'function', parent: registers });
+      registers = new Map();
+    }
+
+    function openBlock(type = 'block') {
+      blocks.push({ type, entry: new Map(registers) });
+    }
+
+    function sameSymbol(left, right) {
+      return left?.kind === right?.kind
+        && left?.line === right?.line
+        && left?.name === right?.name
+        && left?.reason === right?.reason;
+    }
+
+    function closeBlock() {
+      const block = blocks.pop();
+      if (block?.type === 'function') {
+        registers = block.parent;
+      } else if (block) {
+        const merged = new Map();
+        for (const [name, symbol] of block.entry) {
+          const current = registers.get(name);
+          if (sameSymbol(symbol, current)) merged.set(name, current);
+        }
+        registers = merged;
+      }
+    }
+
+    for (let index = 0; index < lines.length; index++) {
+      const code = lines[index].replace(/--.*$/, '').trim();
+      if (!code) continue;
+
+      const structural = code
+        .replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, ' ')
+        .match(/\b(function|elseif|else|if|for|while|repeat|do|end|until)\b/g) || [];
+      let pendingLoopDo = 0;
+      for (const token of structural) {
+        if (token === 'function') openFunction();
+        else if (token === 'if') openBlock('if');
+        else if (token === 'elseif' || token === 'else') {
+          const block = blocks.at(-1);
+          if (block?.type === 'if') registers = new Map(block.entry);
+        }
+        else if (token === 'for' || token === 'while') {
+          openBlock('loop');
+          pendingLoopDo++;
+        } else if (token === 'repeat') openBlock('repeat');
+        else if (token === 'do') {
+          if (pendingLoopDo > 0) pendingLoopDo--;
+          else openBlock();
+        } else if (token === 'end' || token === 'until') closeBlock();
+      }
+      if (structural.length > 0) continue;
+
+      const call = code.match(/^\s*(?:(?:return)\s+|(?:local\s+)?[A-Za-z_][A-Za-z0-9_]*\s*=\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*\((.*)\)\s*;?\s*$/);
+      if (call) {
+        const sender = registers.get(call[1]);
+        if (sender?.kind === 'sender' || sender?.kind === 'unconfirmed_sender') {
+          const argument = firstLuaArgument(call[2]);
+          const argumentRegister = /^[A-Za-z_][A-Za-z0-9_]*$/.test(argument)
+            ? registers.get(argument)
+            : null;
+          const callConfirmed = sender.kind === 'sender';
+          const resolved = callConfirmed && argumentRegister?.kind === 'message_name';
+          rows.push({
+            file: logicalFile,
+            line: resolved ? argumentRegister.line : sender.line,
+            call_line: index + 1,
+            name: resolved ? argumentRegister.name : null,
+            development,
+            confirmed: callConfirmed,
+            resolved,
+            unresolved_kind: resolved
+              ? null
+              : !callConfirmed
+                ? sender.reason
+                : /^-?\d+$/.test(argument) ? 'numeric' : 'parameter_or_dynamic',
+          });
+        }
+      }
+
+      const assignment = code.match(/^\s*(?:local\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*;?\s*$/);
+      if (assignment) {
+        const [, target, rhs] = assignment;
+        let symbol = null;
+        if (rhs === 'NW_Helper') {
+          symbol = { kind: 'helper' };
+        } else if (rhs === 'ProtobufNameMap') {
+          symbol = { kind: 'name_map' };
+        } else {
+          const property = rhs.match(/^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)$/);
+          if (property) {
+            const source = property[1] === 'NW_Helper' ? { kind: 'helper' } : registers.get(property[1]);
+            if (property[2] === 'SendMessage') {
+              rawLoads++;
+              if (target === property[1]) {
+                loads++;
+                if (source?.kind === 'helper') {
+                  confirmed++;
+                  symbol = { kind: 'sender', line: index + 1 };
+                }
+              } else {
+                symbol = { kind: 'unconfirmed_sender', line: index + 1, reason: 'cross_register_send_message' };
+              }
+            } else if (property[2] === 'ProtobufNameMap' && source?.kind === 'helper') {
+              symbol = { kind: 'name_map' };
+            } else if (source?.kind === 'name_map') {
+              symbol = { kind: 'message_name', name: property[2], line: index + 1 };
+            }
+          }
+        }
+        if (symbol) registers.set(target, symbol);
+        else registers.delete(target);
+        continue;
+      }
+
+      const assignmentTargets = code.match(/^\s*(?:local\s+)?((?:[A-Za-z_][A-Za-z0-9_]*\s*,\s*)+[A-Za-z_][A-Za-z0-9_]*)\s*(?:=|$)/);
+      if (assignmentTargets) {
+        for (const target of assignmentTargets[1].split(',').map(value => value.trim())) registers.delete(target);
+      }
+    }
+  }
+
+  rows.sort((a, b) => a.file.localeCompare(b.file) || a.call_line - b.call_line);
+  const resolved = rows.filter(row => row.confirmed && row.resolved).length;
+  const unresolved = rows.filter(row => row.confirmed && !row.resolved).length;
+  const unconfirmed = rows.filter(row => !row.confirmed).length;
+  return {
+    rows,
+    summary: {
+      lua_files_scanned: luaFiles.length,
+      candidate_files: candidateFiles,
+      raw_loads: rawLoads,
+      loads,
+      confirmed,
+      resolved,
+      unresolved,
+      unconfirmed,
+      unique_names: new Set(rows.map(row => row.name).filter(Boolean)).size,
+    },
+  };
+}
+
 function buildMatrix(options) {
   const schemaRows = [];
   for (const [relative, family] of SCHEMA_FILES) {
@@ -592,6 +818,13 @@ function buildMatrix(options) {
   const autoSyncConsumers = parseAutoSyncConsumers(autoSyncConsumerFile);
   const autoSyncBridge = parseAutoSyncBridge(assetManagerFile);
   const assetDatasetConsumers = parseAssetDatasetConsumers(assetDatasetFile);
+  const senderRegistry = parseGameSenders(options.lua);
+  const sendersByName = new Map();
+  for (const sender of senderRegistry.rows) {
+    if (!sender.name) continue;
+    if (!sendersByName.has(sender.name)) sendersByName.set(sender.name, []);
+    sendersByName.get(sender.name).push(sender);
+  }
 
   const descriptor = parseDescriptorSet(options.descriptor);
   const msgType = descriptor.enums.find(item => item.full_name === 'romsg.MSG_Type');
@@ -625,6 +858,13 @@ function buildMatrix(options) {
     ]);
     const callback = [...candidateNames].map(name => callbackByName.get(name)).find(Boolean) || null;
     const sceneConsumer = [...candidateNames].map(name => sceneByName.get(name)).find(Boolean) || null;
+    const clientSenders = [...new Map(
+      [...candidateNames]
+        .flatMap(name => sendersByName.get(name) || [])
+        .map(sender => [`${sender.file}:${sender.call_line}`, sender]),
+    ).values()];
+    const observedRole = observedRoleFor({ client_senders: clientSenders, callback, scene_consumer: sceneConsumer });
+    const direction = directionFor({ ...(schema || {}), client_senders: clientSenders, callback, scene_consumer: sceneConsumer }, observedRole);
     if (callback) representedCallbacks.add(callback.name);
     if (sceneConsumer) representedScene.add(sceneConsumer.name);
 
@@ -650,8 +890,8 @@ function buildMatrix(options) {
     if (callback && sceneConsumer) reachability = 'explicit_game_callback_and_scene_consumer';
     else if (callback) reachability = 'explicit_game_callback';
     else if (sceneConsumer) reachability = 'scene_consumer_without_game_callback';
+    else if (clientSenders.length > 0) reachability = 'explicit_client_sender';
     else if (schema?.source.family === 'autosync') reachability = 'generic_autosync_schema';
-    else if (schema && ['client_request_server_response', 'client_to_server_oneway'].includes(directionFor(schema))) reachability = 'request_response_dispatch';
     else if (schema) reachability = 'schema_without_explicit_callback';
     else reachability = 'descriptor_enum_only';
 
@@ -659,7 +899,10 @@ function buildMatrix(options) {
     rows.push({
       opcode: id,
       name: routeName,
-      direction: schema ? directionFor(schema) : 'unknown',
+      direction,
+      schema_shape: schema ? schemaShape(schema) : 'unknown',
+      observed_role: observedRole,
+      client_senders: clientSenders,
       request_type: schema?.request_type || null,
       response_type: schema?.response_type || null,
       lua_message_type: schema?.message_type ?? null,
@@ -703,10 +946,17 @@ function buildMatrix(options) {
   function addNameOnly(item, kind) {
     const resolvedId = schemaNameToId.get(item.name) ?? descriptorNameToId.get(item.name) ?? null;
     if (resolvedId !== null) return;
+    const clientSenders = sendersByName.get(item.name) || [];
+    const callback = kind === 'callback' ? { handler: item.handler, file: item.file, line: item.line } : null;
+    const sceneConsumer = kind === 'scene' ? { handler: item.handler, file: item.file, line: item.line } : null;
+    const observedRole = observedRoleFor({ client_senders: clientSenders, callback, scene_consumer: sceneConsumer });
     rows.push({
       opcode: null,
       name: item.name,
-      direction: 'unknown',
+      direction: directionFor({ client_senders: clientSenders, callback, scene_consumer: sceneConsumer }, observedRole),
+      schema_shape: 'unknown',
+      observed_role: observedRole,
+      client_senders: clientSenders,
       request_type: null,
       response_type: null,
       lua_message_type: null,
@@ -719,8 +969,8 @@ function buildMatrix(options) {
       response_type_in_descriptor: null,
       request_type_source_file: null,
       response_type_source_file: null,
-      callback: kind === 'callback' ? { handler: item.handler, file: item.file, line: item.line } : null,
-      scene_consumer: kind === 'scene' ? { handler: item.handler, file: item.file, line: item.line } : null,
+      callback,
+      scene_consumer: sceneConsumer,
       autosync_consumer: null,
       asset_dataset_consumer: null,
       base_route: { queued_before_dispatch: null, decode_turn: null, no_decode: null, bounded_counter: null },
@@ -754,7 +1004,7 @@ function buildMatrix(options) {
   }
   const callbackOnly = rows.filter(row => row.reachability === 'registered_without_schema');
   const sceneOnly = rows.filter(row => row.reachability === 'scene_consumer_without_schema');
-  const nullNull = rows.filter(row => row.direction === 'null_null');
+  const nullNull = rows.filter(row => row.schema_shape === 'empty_both');
   const unresolvedTypes = rows.filter(row => row.anomalies.some(item => item.endsWith('_type_missing_from_descriptor')));
   for (const row of unresolvedTypes) {
     const missing = [
@@ -816,6 +1066,7 @@ function buildMatrix(options) {
     input_profile: inputProfile?.id || null,
     input_hashes: inputHashes,
     managed_bridge_evidence: inputProfile?.managed_bridge_evidence || null,
+    client_sender_scan: senderRegistry.summary,
     counts: {
       descriptor_files: descriptor.files.length,
       descriptor_message_types_top_level: descriptor.topLevelMessageCount,
@@ -831,8 +1082,16 @@ function buildMatrix(options) {
       lua_schema_families: families,
       game_callbacks: callbacks.length,
       scene_consumers: sceneConsumers.length,
+      client_sender_raw_loads: senderRegistry.summary.raw_loads,
+      client_sender_loads: senderRegistry.summary.loads,
+      client_sender_confirmed: senderRegistry.summary.confirmed,
+      client_sender_resolved: senderRegistry.summary.resolved,
+      client_sender_unresolved: senderRegistry.summary.unresolved,
+      client_sender_unconfirmed: senderRegistry.summary.unconfirmed,
+      client_sender_unique_names: senderRegistry.summary.unique_names,
       matrix_rows: rows.length,
       directions: countBy(rows.filter(row => row.opcode !== null), row => row.direction),
+      observed_roles: countBy(rows, row => row.observed_role),
       reachability: countBy(rows, row => row.reachability),
       descriptor_only: descriptorOnly.length,
       descriptor_only_classes: countBy(descriptorOnly, row => row.registry_class),
@@ -883,6 +1142,7 @@ function buildMatrix(options) {
   return {
     rows, summary, descriptorOnly, luaOnlyEz, autoSyncOverlay, callbackOnly, sceneOnly,
     sceneWithoutGameCallback, nullNull, unresolvedTypes, callbacks, sceneConsumers, baseRoutes,
+    clientSenderRegistry: senderRegistry.rows,
     assetDatasetRegistry: [...assetDatasetConsumers].map(([name, value]) => ({ name, ...value })),
     wireSchemaCatalog,
   };
@@ -895,6 +1155,9 @@ function emit(result, outDir) {
     opcode: row.opcode,
     name: row.name,
     direction: row.direction,
+    schema_shape: row.schema_shape,
+    observed_role: row.observed_role,
+    client_senders: row.client_senders,
     request_type: row.request_type,
     response_type: row.response_type,
     schema_family: row.schema_family,
@@ -913,7 +1176,8 @@ function emit(result, outDir) {
     reachability: row.reachability,
     anomalies: row.anomalies,
   })), [
-    'opcode', 'name', 'direction', 'request_type', 'response_type', 'schema_family', 'schema_sources',
+    'opcode', 'name', 'direction', 'schema_shape', 'observed_role', 'client_senders',
+    'request_type', 'response_type', 'schema_family', 'schema_sources',
     'descriptor_enum_name', 'request_type_in_descriptor', 'response_type_in_descriptor', 'callback',
     'callback_source', 'scene_consumer', 'scene_consumer_source', 'autosync_consumer', 'autosync_dals', 'asset_dataset_dals',
     'base_route', 'reachability', 'anomalies',
@@ -944,6 +1208,7 @@ function emit(result, outDir) {
   ]);
   fs.writeFileSync(path.join(outDir, 'callback-registry.json'), `${JSON.stringify(result.callbacks, null, 2)}\n`);
   fs.writeFileSync(path.join(outDir, 'scene-consumer-registry.json'), `${JSON.stringify(result.sceneConsumers, null, 2)}\n`);
+  fs.writeFileSync(path.join(outDir, 'client-sender-registry.json'), `${JSON.stringify(result.clientSenderRegistry, null, 2)}\n`);
   fs.writeFileSync(path.join(outDir, 'base-route-registry.json'), `${JSON.stringify(result.baseRoutes, null, 2)}\n`);
   fs.writeFileSync(path.join(outDir, 'asset-dataset-consumer-registry.json'), `${JSON.stringify(result.assetDatasetRegistry, null, 2)}\n`);
 }
@@ -964,6 +1229,9 @@ if (require.main === module) {
 module.exports = {
   buildMatrix,
   directionFor,
+  observedRoleFor,
+  parseGameSenders,
+  schemaShape,
   inputProfileFor,
   KNOWN_INPUT_PROFILES,
   parseDescriptorSet,

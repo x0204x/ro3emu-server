@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Options;
 using Romsg;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Data;
@@ -18,14 +19,17 @@ namespace Ro3Emu.Server.Game;
 /// once-a-second sweep also drops replaced sessions and members no longer in that guild. The audio
 /// itself is the voice relay's: room "2_&lt;guildId&gt;_&lt;index&gt;" admits who <see cref="IsSeated"/> and holds the mic
 /// off for whoever may not speak (<see cref="MaySpeak"/>).
-/// Invites (83707/83708/83716/83720) are not handled yet; 83718/83719 are never sent by this client.
+/// Invitations last 30 seconds. Their target-wide cooldown and reject-all window come from
+/// GuildVoiceChannelInviteCooldown and GuildVoiceChannelInviteRejectDuration. Like the channels, invitation state is
+/// in memory only; 83718/83719 are never sent by this client.
 /// </summary>
 public sealed class GuildVoiceService(GameData data, GuildStore store, GuildService guilds, SessionRegistry sessions,
-    GameLoop loop, TimeProvider clock) : Messaging.IMessageModule, IGameTicker
+    GameLoop loop, TimeProvider clock, IOptions<ServerOptions> options) : Messaging.IMessageModule, IGameTicker
 {
     public const uint JoinMsg = 83700, LeaveMsg = 83701, SetSpeakModeMsg = 83702, ApplyMicMsg = 83703, HandleApplyMsg = 83704;
-    public const uint KickMsg = 83705, UnbanMsg = 83706, UpdateNotify = 83709, KickedNotify = 83711;
-    public const uint BlackListMsg = 83721, SetSpeakPermissionMsg = 83722, AllMemberCountMsg = 83723;
+    public const uint KickMsg = 83705, UnbanMsg = 83706, InviteMsg = 83707, InviteResponseMsg = 83708;
+    public const uint UpdateNotify = 83709, KickedNotify = 83711, InviteNotify = 83716, InviteResponseNotify = 83717;
+    public const uint NotInCooldownMsg = 83720, BlackListMsg = 83721, SetSpeakPermissionMsg = 83722, AllMemberCountMsg = 83723;
 
     /// <summary>enum_GuildPermission.GuildVoice (Lua_GameDefine), GuildPermissionConfig row 23.</summary>
     public const int VoiceRight = 23;
@@ -35,6 +39,10 @@ public sealed class GuildVoiceService(GameData data, GuildStore store, GuildServ
 
     private const int DefaultChannelCount = 3;
     private const long DefaultBlockMs = 86_400_000;
+    private const long DefaultInviteCooldownMs = 15_000;
+    private const long DefaultInviteRejectMs = 600_000;
+    private const int InviteTimeoutSeconds = 30;
+    private const long InviteTimeoutMs = InviteTimeoutSeconds * 1_000L;
     private static readonly TimeSpan SweepInterval = TimeSpan.FromSeconds(1);
 
     private sealed class Seat(GameSession session, long joinMs)
@@ -45,6 +53,15 @@ public sealed class GuildVoiceService(GameData data, GuildStore store, GuildServ
     }
 
     private sealed record Application(long Role, string Reason, long AtMs);
+
+    private sealed record PendingInvite(long Guild, int Channel, long Inviter, GameSession InviterSession,
+        GameSession TargetSession, long ExpiresMs);
+
+    private sealed class InviteState
+    {
+        public long LastInviteMs { get; set; }
+        public long RejectUntilMs { get; set; }
+    }
 
     private sealed class Channel(int index)
     {
@@ -58,6 +75,8 @@ public sealed class GuildVoiceService(GameData data, GuildStore store, GuildServ
     private readonly object _sync = new();
     private readonly Dictionary<long, Channel[]> _byGuild = new();
     private readonly Dictionary<long, (long Guild, int Index)> _where = new();
+    private readonly Dictionary<long, PendingInvite> _pendingInvites = new(); // target role -> one live invitation
+    private readonly Dictionary<(long Guild, long Role), InviteState> _inviteStates = new();
     private readonly HashSet<long> _rechecking = new(); // roles with a sweep recheck already posted
     private TimeSpan _lastSweep;
 
@@ -72,6 +91,10 @@ public sealed class GuildVoiceService(GameData data, GuildStore store, GuildServ
         routes.Map(SetSpeakPermissionMsg, "guildVoice", (s, _, body) => SetPermissionAsync(s, GuildVoiceChannelSetSpeakPermissionReq.Parser.ParseFrom(body.Span)));
         routes.Map(KickMsg, "guildVoice", (s, _, body) => KickAsync(s, GuildVoiceChannelKickPlayerReq.Parser.ParseFrom(body.Span)));
         routes.Map(UnbanMsg, "guildVoice", (s, _, body) => UnbanAsync(s, GuildVoiceChannelUnbanPlayerReq.Parser.ParseFrom(body.Span)));
+        routes.Map(InviteMsg, "guildVoice", (s, _, body) => InviteAsync(s, GuildVoiceChannelInviteReq.Parser.ParseFrom(body.Span)));
+        routes.Map(InviteResponseMsg, "guildVoice", (s, _, body) => InviteResponseAsync(s,
+            GuildVoiceChannelInviteResponseReq.Parser.ParseFrom(body.Span)));
+        routes.Map(NotInCooldownMsg, "guildVoice", (s, _, _) => NotInCooldownAsync(s));
         routes.Map(BlackListMsg, "guildVoice", (s, _, body) => BlackListAsync(s, GuildVoiceChannelGetBlackListReq.Parser.ParseFrom(body.Span)));
     }
 
@@ -89,6 +112,7 @@ public sealed class GuildVoiceService(GameData data, GuildStore store, GuildServ
         Channel? left = null;
         lock (_sync)
         {
+            CancelInvites(role.Id, session);
             if (!OwnsSeat(role.Id, session) || !_where.TryGetValue(role.Id, out var at)) return;
             guild = store.Get(at.Guild);
             left = Unseat(role.Id);
@@ -334,6 +358,132 @@ public sealed class GuildVoiceService(GameData data, GuildStore store, GuildServ
         await s.SendGameAsync(BlackListMsg, reply);
     }
 
+    private async Task InviteAsync(GameSession s, GuildVoiceChannelInviteReq req)
+    {
+        var (code, guild, channel) = Seated(s, req.ChannelIndex);
+        var reply = new GuildVoiceChannelInviteRsp { ErrorCode = code };
+        List<(GameSession Session, GuildVoiceChannelInviteNotify Notify)> notifications = [];
+        lock (_sync)
+        {
+            if (code == 0 && req.TargetPlayerIds.Count == 0) reply.ErrorCode = code = ErrorCodes.Parameter;
+            // No guild-voice-specific full code was recovered. Refuse with the repository's explicit generic failure.
+            if (code == 0 && ChannelFull(channel!)) reply.ErrorCode = code = ErrorCodes.Unknown;
+            if (code == 0) AddInvites(s, guild!, channel!, req.TargetPlayerIds, reply, notifications);
+        }
+        await s.SendGameAsync(InviteMsg, reply);
+        foreach (var (target, notify) in notifications)
+            if (ReferenceEquals(Online(target.Role!.Id), target)) await target.SendGameAsync(InviteNotify, notify);
+    }
+
+    private void AddInvites(GameSession inviter, GuildStore.State guild, Channel channel, IEnumerable<long> targets,
+        GuildVoiceChannelInviteRsp reply, List<(GameSession, GuildVoiceChannelInviteNotify)> notifications)
+    {
+        long now = NowMs();
+        foreach (long target in targets)
+        {
+            int code = InviteFailure(guild, channel, target, now, out var targetSession);
+            if (code != 0)
+            {
+                reply.PlayersResult.Add(new GuildVoiceChannelInviteFailedPlayer { PlayerId = target, ErrorCode = code });
+                continue;
+            }
+            InviteState state = StateFor(guild.Id, target);
+            state.LastInviteMs = now;
+            _pendingInvites[target] = new PendingInvite(guild.Id, channel.Index, inviter.Role!.Id, inviter,
+                targetSession!, now + InviteTimeoutMs);
+            notifications.Add((targetSession!, new GuildVoiceChannelInviteNotify
+            {
+                ChannelIndex = channel.Index, InviterPlayerId = inviter.Role.Id, TimeoutSeconds = InviteTimeoutSeconds,
+            }));
+        }
+    }
+
+    private async Task InviteResponseAsync(GameSession s, GuildVoiceChannelInviteResponseReq req)
+    {
+        long self = s.Role!.Id;
+        GuildStore.State? guild = Guild(s);
+        Channel? channel = null;
+        PendingInvite? invite = null;
+        GuildVoiceChannelInfo? info = null;
+        int code;
+        lock (_sync)
+        {
+            code = guild == null ? ErrorCodes.GuildVoiceNotInGuild
+                : !ValidIndex(req.ChannelIndex) ? ErrorCodes.GuildVoiceBadChannel : 0;
+            if (code == 0) code = ValidateResponse(s, guild!, req, out invite, out channel);
+            if (invite != null) _pendingInvites.Remove(self); // a matching response consumes the one-shot invitation
+            if (code == 0)
+            {
+                if (!req.IsAccept && req.RejectAll)
+                    StateFor(guild!.Id, self).RejectUntilMs = NowMs() + InviteRejectMs();
+                if (req.IsAccept) info = AcceptInvite(s, guild!, channel!, out code);
+            }
+        }
+        await s.SendGameAsync(InviteResponseMsg, new GuildVoiceChannelInviteResponseRsp { ErrorCode = code, ChannelInfo = info });
+        if (code != 0 || invite == null) return;
+        if (ReferenceEquals(Online(invite.Inviter), invite.InviterSession))
+            await invite.InviterSession.SendGameAsync(InviteResponseNotify, new GuildVoiceChannelInviteResponseNotify
+            {
+                ChannelIndex = invite.Channel, TargetPlayerId = self, IsAccept = req.IsAccept,
+            });
+        if (req.IsAccept) await PushAsync(guild!, channel!, except: self);
+    }
+
+    private int ValidateResponse(GameSession target, GuildStore.State guild, GuildVoiceChannelInviteResponseReq req,
+        out PendingInvite? invite, out Channel? channel)
+    {
+        var pending = ActiveInvite(target.Role!.Id, NowMs());
+        invite = null;
+        channel = null;
+        // No dedicated missing/expired-invite code is present in the recovered guild-voice range. Use the same
+        // explicit generic request failure as TeamService instead of acknowledging an unmatched response.
+        if (pending == null || pending.Guild != guild.Id || pending.Channel != req.ChannelIndex
+            || pending.Inviter != req.InviteUserId || !ReferenceEquals(pending.TargetSession, target)) return ErrorCodes.Parameter;
+        invite = pending;
+        channel = Channels(guild.Id)[req.ChannelIndex];
+        if (!req.IsAccept) return 0;
+        if (_where.TryGetValue(target.Role.Id, out var at))
+            return at.Guild == guild.Id && at.Index == req.ChannelIndex
+                ? ErrorCodes.GuildVoiceAlreadyInChannel : ErrorCodes.GuildVoiceInAnotherChannel;
+        if (ChannelFull(channel)) return ErrorCodes.Unknown;
+        return IsBlocked(channel, target.Role.Id) ? ErrorCodes.GuildVoiceBlocked : 0;
+    }
+
+    private GuildVoiceChannelInfo? AcceptInvite(GameSession target, GuildStore.State guild, Channel channel, out int code)
+    {
+        long self = target.Role!.Id;
+        if (!ReferenceEquals(Online(self), target) || store.ForRole(self)?.Id != guild.Id)
+        {
+            code = ErrorCodes.GuildVoiceTargetOffline;
+            return null;
+        }
+        channel.Members[self] = new Seat(target, NowMs());
+        _where[self] = (guild.Id, channel.Index);
+        code = 0;
+        return Info(guild, channel);
+    }
+
+    private async Task NotInCooldownAsync(GameSession s)
+    {
+        GuildStore.State? guild = Guild(s);
+        var reply = new GuildVoiceGetNotInCdPlayerResp();
+        lock (_sync)
+        {
+            if (guild == null) reply.ErrorCode = ErrorCodes.GuildVoiceNotInGuild;
+            else if (!_where.TryGetValue(s.Role!.Id, out var at) || at.Guild != guild.Id || !OwnsSeat(s.Role.Id, s))
+                reply.ErrorCode = ErrorCodes.GuildVoiceNotInChannel;
+            else if (ChannelFull(Channels(guild.Id)[at.Index])) reply.ErrorCode = ErrorCodes.Unknown;
+            else
+            {
+                long now = NowMs();
+                var channel = Channels(guild.Id)[at.Index];
+                foreach (long role in guild.Members.Keys.Order())
+                    if (role != s.Role.Id && InviteFailure(guild, channel, role, now, out _) == 0) reply.UserIds.Add(role);
+            }
+        }
+        await s.SendGameAsync(NotInCooldownMsg, reply);
+    }
+
     // ---- membership ----
 
     /// <summary>Drops <paramref name="role"/> from its channel when its session is gone/replaced or it left the guild; on a
@@ -355,7 +505,11 @@ public sealed class GuildVoiceService(GameData data, GuildStore store, GuildServ
     /// <summary>The guild itself is gone: the seat just goes.</summary>
     private Task DropAsync(long role)
     {
-        lock (_sync) Unseat(role);
+        lock (_sync)
+        {
+            RecheckInvites(role);
+            Unseat(role);
+        }
         return Task.CompletedTask;
     }
 
@@ -379,7 +533,65 @@ public sealed class GuildVoiceService(GameData data, GuildStore store, GuildServ
         var channel = channels[at.Index];
         channel.Members.Remove(role);
         channel.Applications.RemoveAll(a => a.Role == role);
+        CancelInvites(role);
         return channel;
+    }
+
+    private int InviteFailure(GuildStore.State guild, Channel channel, long target, long now,
+        out GameSession? targetSession)
+    {
+        targetSession = null;
+        if (!guild.Members.ContainsKey(target)) return ErrorCodes.GuildVoiceTargetNotInGuild;
+        targetSession = Online(target);
+        if (targetSession == null || store.ForRole(target)?.Id != guild.Id) return ErrorCodes.GuildVoiceTargetOffline;
+        if (_where.ContainsKey(target)) return ErrorCodes.GuildVoiceTargetAlreadyInChannel;
+        if (IsBlocked(channel, target)) return ErrorCodes.GuildVoiceBlocked;
+        InviteState state = StateFor(guild.Id, target);
+        if (state.RejectUntilMs > now) return ErrorCodes.GuildVoiceInviteDeclined;
+        if (ActiveInvite(target, now) != null) return ErrorCodes.GuildVoiceInvitePending;
+        return state.LastInviteMs > 0 && state.LastInviteMs + InviteCooldownMs() > now
+            ? ErrorCodes.GuildVoiceInviteCooldown : 0;
+    }
+
+    /// <summary>Returns a still actionable, session-bound invitation; stale records are consumed. Under the lock.</summary>
+    private PendingInvite? ActiveInvite(long target, long now)
+    {
+        if (!_pendingInvites.TryGetValue(target, out var invite)) return null;
+        bool inviterSeated = _where.TryGetValue(invite.Inviter, out var at) && at.Guild == invite.Guild
+            && at.Index == invite.Channel && _byGuild.TryGetValue(invite.Guild, out var channels)
+            && channels[invite.Channel].Members.TryGetValue(invite.Inviter, out var seat)
+            && ReferenceEquals(seat.Session, invite.InviterSession);
+        if (invite.ExpiresMs > now && inviterSeated && ReferenceEquals(Online(target), invite.TargetSession)
+            && ReferenceEquals(Online(invite.Inviter), invite.InviterSession)
+            && store.ForRole(target)?.Id == invite.Guild && store.ForRole(invite.Inviter)?.Id == invite.Guild) return invite;
+        _pendingInvites.Remove(target);
+        return null;
+    }
+
+    /// <summary>Removes invitations received or sent by a role. A session narrows logout cleanup to that attachment.</summary>
+    private void CancelInvites(long role, GameSession? session = null)
+    {
+        if (_pendingInvites.TryGetValue(role, out var received)
+            && (session == null || ReferenceEquals(received.TargetSession, session))) _pendingInvites.Remove(role);
+        foreach (var (target, invite) in _pendingInvites.ToList())
+            if (invite.Inviter == role && (session == null || ReferenceEquals(invite.InviterSession, session)))
+                _pendingInvites.Remove(target);
+    }
+
+    /// <summary>Consumes only invitation records made stale by a membership/session change. Under the lock.</summary>
+    private void RecheckInvites(long role)
+    {
+        long now = NowMs();
+        if (_pendingInvites.ContainsKey(role)) ActiveInvite(role, now);
+        foreach (long target in _pendingInvites.Where(x => x.Value.Inviter == role).Select(x => x.Key).ToArray())
+            ActiveInvite(target, now);
+    }
+
+    private InviteState StateFor(long guild, long role)
+    {
+        var key = (guild, role);
+        if (!_inviteStates.TryGetValue(key, out var state)) _inviteStates[key] = state = new InviteState();
+        return state;
     }
 
     // ---- state helpers ----
@@ -444,6 +656,12 @@ public sealed class GuildVoiceService(GameData data, GuildStore store, GuildServ
     private void PruneBlocks()
     {
         long now = NowMs();
+        foreach (var (target, invite) in _pendingInvites.ToList())
+            if (invite.ExpiresMs <= now) _pendingInvites.Remove(target);
+        foreach (var (key, state) in _inviteStates.ToList())
+            if (state.RejectUntilMs <= now && state.LastInviteMs + InviteCooldownMs() <= now
+                && (!_pendingInvites.TryGetValue(key.Role, out var invite) || invite.Guild != key.Guild))
+                _inviteStates.Remove(key);
         foreach (var (guildId, channels) in _byGuild.ToList())
         {
             foreach (var channel in channels)
@@ -493,6 +711,12 @@ public sealed class GuildVoiceService(GameData data, GuildStore store, GuildServ
     private GameSession? Online(long role) => sessions.All().FirstOrDefault(s => s.Role?.Id == role);
 
     private long NowMs() => clock.GetUtcNow().ToUnixTimeMilliseconds();
+
+    private bool ChannelFull(Channel channel) => channel.Members.Count >= options.Value.Voice.MaxRoomSize;
+
+    private long InviteCooldownMs() => Math.Max(0, Setting("GuildVoiceChannelInviteCooldown", DefaultInviteCooldownMs));
+
+    private long InviteRejectMs() => Math.Max(0, Setting("GuildVoiceChannelInviteRejectDuration", DefaultInviteRejectMs));
 
     private int ChannelCount() => (int)Math.Clamp(Setting("GuildVoiceChannelCount", DefaultChannelCount), 1, 16);
 
