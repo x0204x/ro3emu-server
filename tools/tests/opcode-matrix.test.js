@@ -41,7 +41,11 @@ function fieldBytes(number, value) {
 test('direction classification keeps request, notify, oneway and null/null distinct', () => {
   assert.equal(directionFor({ request_type: 'romsg.Req', response_type: 'romsg.Res' }), 'client_request_server_response');
   assert.equal(directionFor({ request_type: 'romsg.NullArg', response_type: 'romsg.Ntf' }), 'server_to_client_notify');
+  assert.equal(directionFor({ request_type: 'romsg.null', response_type: 'romsg.Ntf' }), 'server_to_client_notify');
+  assert.equal(directionFor({ request_type: 'ezmsg.NullArg', response_type: 'ezmsg.Ntf' }), 'server_to_client_notify');
   assert.equal(directionFor({ request_type: 'romsg.Req', response_type: 'romsg.NullArg' }), 'client_to_server_oneway');
+  assert.equal(directionFor({ request_type: 'romsg.Req', response_type: 'romsg.null' }), 'client_to_server_oneway');
+  assert.equal(directionFor({ request_type: 'ezmsg.Req', response_type: 'ezmsg.NullArg' }), 'client_to_server_oneway');
   assert.equal(directionFor({ request_type: 'romsg.NullArg', response_type: 'romsg.NullArg' }), 'null_null');
 });
 

@@ -18,6 +18,8 @@ const SCHEMA_FILES = [
   ['Network/NW_AutoSyncClient_Define.lua', 'autosync'],
 ];
 
+const NULL_ARG_TYPES = new Set(['romsg.NullArg', 'romsg.null', 'ezmsg.NullArg']);
+
 // Version-specific interpretation is fail-closed.  Generic descriptor/Lua
 // decoding remains available for other builds, but evidence IDs and semantic
 // overrides are emitted only when every relevant input hash matches.
@@ -162,8 +164,10 @@ function directionFor(row) {
   const req = row.request_type;
   const res = row.response_type;
   if (!req || !res) return 'unknown';
-  const reqNull = req === 'romsg.NullArg';
-  const resNull = res === 'romsg.NullArg';
+  // The current Asia registry uses two historical empty-body aliases in addition to the canonical
+  // romsg.NullArg. They are wire-equivalent direction markers even though neither alias has a descriptor.
+  const reqNull = NULL_ARG_TYPES.has(req);
+  const resNull = NULL_ARG_TYPES.has(res);
   if (reqNull && resNull) return 'null_null';
   if (reqNull) return 'server_to_client_notify';
   if (resNull) return 'client_to_server_oneway';

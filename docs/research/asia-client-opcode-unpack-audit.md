@@ -37,9 +37,35 @@
   `ev_6aa3d256b93b523977308f7d972e3235162203aa645d74489a2268fd541224c0`、34-name negative search
   `ev_932909c14825d5440a25fa9b99ab47531e21dc2202cd631823525878f1ff85c0`。
 - 四個 native 檔案的 PE sections、imports、TLS 與 entropy 都沒有形成可確認的 VMP／packer 證據。LAB 的 bounded VMP 嘗試沒有產生可用輸出，因此 `unpacked_artifact = NONE`，不得解讀成「已成功脫殼」。
-- 可讀的 Opcode 真實來源是 Managed 網路橋接、Lua `NW_GameServerHandler`／`LC_Scene_Sync` 與 protobuf descriptor。`tools/opcode-matrix.js` 的全量交叉矩陣顯示：descriptor 的 `romsg.MSG_Type` 有 1,031 個值（含 `TT_None`），PB Lua map 有 1,012 筆（316 筆 S2C notify、43 筆 C2S only、651 筆 request/response、2 筆 null/null），另有 14 筆 EZ 與 64 筆 AutoSync overlay，完整 Lua schema map 為 1,090 個唯一 ID，numeric union 為 1,109 列。1,696 個 request／response root 遞迴展開為 3,789 個 message 與 177 個 enum，descriptor closure 的未解析型別引用為 0。先前 1,045 是 `1,031 descriptor 值 + 14 EZ`，不是完整 runtime schema map；每列仍須依方向及實際 producer 分別驗證。生成矩陣含客戶端衍生資料，只保留在被忽略的本機 `docs/artifacts/`，不進 Git。
+- 可讀的 Opcode 真實來源是 Managed 網路橋接、Lua `NW_GameServerHandler`／`LC_Scene_Sync` 與 protobuf descriptor。`tools/opcode-matrix.js` 的全量交叉矩陣顯示：descriptor 的 `romsg.MSG_Type` 有 1,031 個值（含 `TT_None`），PB Lua map 有 1,012 筆，另有 14 筆 EZ 與 64 筆 AutoSync overlay，完整 Lua schema map 為 1,090 個唯一 ID，numeric union 為 1,109 列。將 `romsg.null` 與 `ezmsg.NullArg` 兩個歷史空封包別名納入方向判定後，全矩陣為 653 筆 request/response、43 筆 C2S only、392 筆 S2C notify、2 筆 null/null、19 筆 descriptor-only／未知方向。1,696 個 request／response root 遞迴展開為 3,789 個 message 與 177 個 enum，descriptor closure 的未解析型別引用為 0。先前 1,045 是 `1,031 descriptor 值 + 14 EZ`，不是完整 runtime schema map；每列仍須依方向及實際 producer 分別驗證。生成矩陣含客戶端衍生資料，只保留在被忽略的本機 LAB，不能進 Git。
 
 因此本版應採「直接還原可讀協定層」，而不是繼續對 Unity bootstrap 強制脫殼。`NO_CONFIRMED_VMP` 只表示本輪沒有確認外殼，不是對所有未命名或 inline transform 的絕對否定。
+
+### 2026-10-29 延續驗證與空封包別名修正
+
+以相同 G 版雜湊重新執行 opcode、wire closure 與傳輸清冊，輸入與 2026-10-28 鎖定值一致；重新生成的
+`msgtable.tsv`、修正前 opcode matrix、transport matrix SHA-256 分別為
+`79E7937FA97F099FE3092C1F8B29422CAFD063B5C08282014AEB3E868914EE72`、
+`C5CCB90284EBABEC12E4B7272A6C84C160E76A5A84AC1BDDF4C694F3AFA9EAF3`、
+`37EE0E6903C3407E2DDE353F91C6C1F0FD195341076C57008BD29AD817C19E18`。這證明本輪是在同一輸入 epoch
+延續，不是拿 D 版 `Assembly-CSharp.dll` 的不同 build 混用。
+
+registry 中有 11 筆 `romsg.null` 與一筆 `ezmsg.NullArg`。它們沒有 descriptor，因此舊方向函式把 12 筆
+S2C notify 誤列為 request/response。名稱、對端 payload 與 notify consumer 一致證明它們是
+`romsg.NullArg` 的空 request 別名；方向修正後 S2C 由 380 增為 392，request/response 由 665 降為 653，
+其他類別不變。這 12 筆仍保留 `noncanonical_null_alias` anomaly，因為 registry 與 descriptor 的版本偏差
+本身仍需可見，不能假裝 schema 已補齊。
+
+server `MsgCatalog` 現在保留原始 request／response type name，並將三種空參數標記一致處理。空 request 的
+S2C notify、空 response 的 C2S one-way 以及 null/null 都不再由 unrouted fallback 建立假回覆；只有真正的
+Game Gate request/response 且兩端 descriptor 都存在時才建立空 response；14 筆 `ezmsg` service row 也
+不會再被 Game Gate fallback 當成一般遊戲請求。這修正的是 wire domain、方向與 fallback 行為，沒有
+發明任何缺失欄位；request 或 response 任一端缺 descriptor 的 incomplete row 也會 fail closed，不建立
+猜測回覆。Node 方向測試與合成 msgtable 的 server 單元測試均已釘住三種空參數拼法。
+
+另以 49 個 schema 缺失端名稱對 G 版完整 `StreamingAssets` 做 bounded plaintext scan，結果為 0 命中。
+這只排除已掃描檔案中的明文名稱，不能排除壓縮 bundle、計算生成字串、外部正式伺服器 schema 或 runtime
+封包；34 個具名缺失 schema 與 `31022` 欄位 tag 因此仍維持 `UNKNOWN`。
 
 `UnityPlayer.dll` 的本輪 IDA 冷開啟超過 300,000 ms registration deadline，沒有產生完整 IDA 字串 Evidence；
 因此不能宣稱整個 Unity engine 已完整反編譯。兩次精確 close 都回 `cleanup_incomplete`，尚無法證明該次

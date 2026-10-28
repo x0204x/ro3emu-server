@@ -11,7 +11,20 @@ namespace Ro3Emu.Server.Game;
 /// </summary>
 public sealed class MsgCatalog
 {
-    public sealed record Entry(uint Id, string Name, MessageDescriptor? Request, MessageDescriptor? Response);
+    public sealed record Entry(
+        uint Id,
+        string Name,
+        string RequestTypeName,
+        string ResponseTypeName,
+        MessageDescriptor? Request,
+        MessageDescriptor? Response)
+    {
+        public bool HasNullRequest => IsNullArgType(RequestTypeName);
+        public bool HasNullResponse => IsNullArgType(ResponseTypeName);
+        public bool IsServerNotification => HasNullRequest && !HasNullResponse;
+        public bool IsGameGate => !RequestTypeName.StartsWith("ezmsg.", StringComparison.Ordinal)
+            && !ResponseTypeName.StartsWith("ezmsg.", StringComparison.Ordinal);
+    }
 
     private readonly Dictionary<uint, Entry> _entries = new();
 
@@ -39,7 +52,8 @@ public sealed class MsgCatalog
         {
             var cols = line.Split('\t');
             if (cols.Length < 4 || !uint.TryParse(cols[0], out var id)) continue;
-            _entries[id] = new Entry(id, cols[1], types.GetValueOrDefault(cols[2]), types.GetValueOrDefault(cols[3]));
+            _entries[id] = new Entry(id, cols[1], cols[2], cols[3],
+                types.GetValueOrDefault(cols[2]), types.GetValueOrDefault(cols[3]));
         }
         log.LogInformation("Message catalog: {Count} ids", _entries.Count);
     }
@@ -54,11 +68,16 @@ public sealed class MsgCatalog
 
     public string Name(uint id) => _entries.TryGetValue(id, out var e) ? e.Name : id.ToString();
 
+    /// <summary>True when the client registry defines this id as a server-to-client notification.</summary>
+    public bool IsServerNotification(uint id) =>
+        _entries.TryGetValue(id, out var entry) && entry.IsServerNotification;
+
     /// <summary>Request body as JSON for logs, or a byte count when the type is unknown.</summary>
     public string Describe(uint id, ReadOnlyMemory<byte> body)
     {
-        var descriptor = Get(id)?.Request;
-        if (descriptor == null || descriptor.FullName == "romsg.NullArg") return $"{body.Length} bytes";
+        var entry = Get(id);
+        var descriptor = entry?.Request;
+        if (entry is null || !entry.IsGameGate || entry.HasNullRequest || descriptor == null) return $"{body.Length} bytes";
         try
         {
             return JsonFormatter.Default.Format(descriptor.Parser.ParseFrom(body.Span));
@@ -69,11 +88,15 @@ public sealed class MsgCatalog
         }
     }
 
-    /// <summary>An empty instance of the response type (result fields default to 0 = success), or null.</summary>
+    /// <summary>An empty instance only for a complete Game Gate request/response pair, or null.</summary>
     public IMessage? EmptyResponse(uint id)
     {
-        var descriptor = Get(id)?.Response;
-        if (descriptor == null || descriptor.FullName == "romsg.NullArg") return null;
-        return (IMessage)Activator.CreateInstance(descriptor.ClrType)!;
+        var entry = Get(id);
+        if (entry is null || !entry.IsGameGate || entry.HasNullRequest || entry.HasNullResponse) return null;
+        if (entry.Request == null || entry.Response == null) return null;
+        return (IMessage)Activator.CreateInstance(entry.Response.ClrType)!;
     }
+
+    private static bool IsNullArgType(string typeName) =>
+        typeName is "romsg.NullArg" or "romsg.null" or "ezmsg.NullArg";
 }
