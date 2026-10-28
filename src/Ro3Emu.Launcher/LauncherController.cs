@@ -18,6 +18,7 @@ public sealed class LauncherController : IDisposable
     readonly Action<object> _post;
     readonly Func<string, string?> _pickFolder;
     readonly Action _minimize;
+    readonly Action _restore;
     readonly UserSettings _settings;
     readonly RepositoryClient _repo;
     readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(5) };
@@ -36,7 +37,7 @@ public sealed class LauncherController : IDisposable
     UpdateStage? _loggedStage;
     DateTimeOffset _lastProgressLog;
 
-    public LauncherController(LauncherConfig config, string exePath, Action<object> post, Func<string, string?> pickFolder, Action minimize)
+    public LauncherController(LauncherConfig config, string exePath, Action<object> post, Func<string, string?> pickFolder, Action minimize, Action restore)
     {
         _config = config;
         _exePath = exePath;
@@ -44,6 +45,7 @@ public sealed class LauncherController : IDisposable
         _post = post;
         _pickFolder = pickFolder;
         _minimize = minimize;
+        _restore = restore;
         _repo = new RepositoryClient(new Uri(config.Repository), config.RepositoryTrust);
         string executableDirectory = Path.GetDirectoryName(exePath)!;
         _logPath = Path.Combine(executableDirectory, "launcher.log");
@@ -298,10 +300,14 @@ public sealed class LauncherController : IDisposable
             if (_games.State.AnyRunning)
                 PostRunningState(exitCode == 0 ? "一個遊戲已關閉，另一個仍在執行。"
                     : $"一個遊戲意外結束（代碼 {exitCode}），另一個仍在執行。");
-            else if (exitCode == 0)
-                PostState("ready", "遊戲已關閉，可以再次啟動。");
             else
-                PostState("repair", $"遊戲意外結束（代碼 {exitCode}），建議先執行修復遊戲。");
+            {
+                if (exitCode == 0)
+                    PostState("ready", "遊戲已關閉，可以再次啟動。");
+                else
+                    PostState("repair", $"遊戲意外結束（代碼 {exitCode}），建議先執行修復遊戲。");
+                _restore();
+            }
         }
         catch (OperationCanceledException) when (_life.IsCancellationRequested)
         {
@@ -317,7 +323,11 @@ public sealed class LauncherController : IDisposable
                 if (!_life.IsCancellationRequested)
                 {
                     if (_games.State.AnyRunning) PostRunningState("一個遊戲的程序監看失敗，另一個仍在執行。");
-                    else PostState("repair", "無法追蹤遊戲程序，請重新檢查或修復遊戲。");
+                    else
+                    {
+                        PostState("repair", "無法追蹤遊戲程序，請重新檢查或修復遊戲。");
+                        _restore();
+                    }
                 }
             }
         }

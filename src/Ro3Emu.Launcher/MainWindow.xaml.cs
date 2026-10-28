@@ -24,7 +24,9 @@ public partial class MainWindow : Window
     public MainWindow(LauncherConfig config, string exePath)
     {
         InitializeComponent();
-        _controller = new LauncherController(config, exePath, Post, PickFolder, () => WindowState = WindowState.Minimized);
+        _controller = new LauncherController(config, exePath, Post, PickFolder,
+            () => WindowState = WindowState.Minimized,
+            RestoreAndActivate);
         SourceInitialized += (_, _) => RoundCorners();
         Loaded += async (_, _) => await InitializeWebAsync();
         Closing += (_, _) => _controller.Dispose();
@@ -143,6 +145,19 @@ public partial class MainWindow : Window
             return;
         }
         Web.CoreWebView2?.PostWebMessageAsJson(JsonSerializer.Serialize(message));
+    }
+
+    internal void RestoreAndActivate()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            _ = Dispatcher.InvokeAsync(RestoreAndActivate);
+            return;
+        }
+        if (!IsVisible) Show();
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
+        Focus();
     }
 
     string? PickFolder(string title)

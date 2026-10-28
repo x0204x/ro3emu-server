@@ -9,7 +9,7 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>RO3Launcher</AssemblyName>
     <RootNamespace>Ro3Emu.Launcher</RootNamespace>
-    <Version>2.0.9</Version>
+    <Version>2.0.10</Version>
     <Title>Ragnarok 3 Launcher</Title>
     <AssemblyTitle>Ragnarok 3 Launcher</AssemblyTitle>
     <Description>Ragnarok 3 Launcher</Description>
@@ -27,6 +27,7 @@
 
   <PropertyGroup>
     <LauncherConfigFile Condition="'$(LauncherConfigFile)' == ''">launcher.json</LauncherConfigFile>
+    <LauncherAssetsDirectory Condition="'$(LauncherAssetsDirectory)' == ''">PrivateAssets\Assets</LauncherAssetsDirectory>
   </PropertyGroup>
 
   <ItemGroup>
@@ -37,8 +38,50 @@
     <!-- The shipped settings live in the exe; a launcher.json beside it still wins. -->
     <EmbeddedResource Include="$(LauncherConfigFile)" LogicalName="launcher.json" />
     <!-- Optional private art imported by tools/Import-OfficialLauncherAssets.ps1. It is gitignored. -->
-    <Resource Include="PrivateAssets\Assets\**\*" Link="Assets\%(RecursiveDir)%(Filename)%(Extension)" Condition="Exists('PrivateAssets\Assets')" />
+    <Resource Include="$(LauncherAssetsDirectory)\**\*" Link="Assets\%(RecursiveDir)%(Filename)%(Extension)" Condition="Exists('$(LauncherAssetsDirectory)')" />
   </ItemGroup>
+
+  <!-- Production builds must fail closed when the private visual bundle was not copied into this worktree. -->
+  <ItemGroup Condition="'$(LauncherConfigFile)' != 'launcher.json'">
+    <ProductionAssetFile Include="$(LauncherAssetsDirectory)\**\*" />
+    <RequiredProductionAsset Include="$(LauncherAssetsDirectory)\app.ico" />
+    <RequiredProductionAsset Include="$(LauncherAssetsDirectory)\fonts\marcellus-regular.ttf" />
+    <RequiredProductionAsset Include="$(LauncherAssetsDirectory)\fonts\roboto-medium.ttf" />
+    <RequiredProductionAsset Include="$(LauncherAssetsDirectory)\ui\background\backgroundclean.png" />
+    <RequiredProductionAsset Include="$(LauncherAssetsDirectory)\ui\background\paperbackdrop.png" />
+    <RequiredProductionAsset Include="$(LauncherAssetsDirectory)\ui\brand\logo.png" />
+    <RequiredProductionAsset Include="$(LauncherAssetsDirectory)\ui\buttons\buttonblue.png" />
+    <RequiredProductionAsset Include="$(LauncherAssetsDirectory)\ui\buttons\buttoncream.png" />
+    <RequiredProductionAsset Include="$(LauncherAssetsDirectory)\ui\decoration\dividergem.png" />
+    <RequiredProductionAsset Include="$(LauncherAssetsDirectory)\ui\decoration\parchment.png" />
+    <RequiredProductionAsset Include="$(LauncherAssetsDirectory)\ui\hero\poringpink.png" />
+    <RequiredProductionAsset Include="$(LauncherAssetsDirectory)\ui\icons\discord.png" />
+    <RequiredProductionAsset Include="$(LauncherAssetsDirectory)\ui\icons\download.png" />
+    <RequiredProductionAsset Include="$(LauncherAssetsDirectory)\ui\icons\facebook.png" />
+    <RequiredProductionAsset Include="$(LauncherAssetsDirectory)\ui\icons\repair.png" />
+    <RequiredProductionAsset Include="$(LauncherAssetsDirectory)\ui\icons\youtube.png" />
+    <RequiredProductionAsset Include="$(LauncherAssetsDirectory)\ui\steps\step01.png" />
+    <RequiredProductionAsset Include="$(LauncherAssetsDirectory)\ui\steps\step02.png" />
+    <RequiredProductionAsset Include="$(LauncherAssetsDirectory)\ui\steps\step03.png" />
+  </ItemGroup>
+
+  <Target Name="ValidateProductionLauncherAssets" BeforeTargets="PrepareForBuild" Condition="'$(LauncherConfigFile)' != 'launcher.json'">
+    <Error Condition="'@(ProductionAssetFile->Count())' &lt; '40'"
+           Text="Production launcher asset bundle is incomplete: found @(ProductionAssetFile->Count()) files, expected at least 40." />
+    <Error Condition="!Exists('%(RequiredProductionAsset.Identity)')"
+           Text="Production launcher asset is missing: %(RequiredProductionAsset.Identity). Copy the verified PrivateAssets bundle before publishing." />
+  </Target>
+
+  <!-- WPF's timestamp-only resource target can reuse stale resources when an older private bundle is copied into an
+       already-built worktree. Production builds deliberately regenerate the compiled resource container. -->
+  <Target Name="ForceProductionLauncherResourceRebuild" BeforeTargets="MainResourcesGeneration" Condition="'$(LauncherConfigFile)' != 'launcher.json'">
+    <Delete Files="$(IntermediateOutputPath)$(AssemblyName).g.resources" />
+  </Target>
+
+  <Target Name="ValidateCompiledProductionLauncherResources" AfterTargets="MainResourcesGeneration" Condition="'$(LauncherConfigFile)' != 'launcher.json'">
+    <Error Condition="!Exists('$(IntermediateOutputPath)$(AssemblyName).g.resources')"
+           Text="Production launcher compiled resources were not generated." />
+  </Target>
 
   <ItemGroup>
     <!-- Legacy WebView2 code-behind is retained for history but no longer compiled by the pure-WPF launcher. -->

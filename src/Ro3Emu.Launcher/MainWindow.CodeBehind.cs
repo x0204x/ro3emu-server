@@ -49,7 +49,9 @@ public partial class MainWindow : Window
         ConfigureExternalLink(DiscordLink, config.DiscordUrl, "Discord");
         ConfigureExternalLink(FacebookLink, config.FacebookUrl, "Facebook");
         ConfigureExternalLink(YoutubeLink, config.YoutubeUrl, "YouTube");
-        _controller = new LauncherController(config, exePath, Post, PickFolder, () => WindowState = WindowState.Minimized);
+        _controller = new LauncherController(config, exePath, Post, PickFolder,
+            () => WindowState = WindowState.Minimized,
+            RestoreAndActivate);
         SourceInitialized += (_, _) => RoundCorners();
         Loaded += async (_, _) =>
         {
@@ -629,6 +631,19 @@ public partial class MainWindow : Window
     }
     void OnClose(object sender, RoutedEventArgs e) => Close();
     void OnDragWindow(object sender, MouseButtonEventArgs e) { if (e.LeftButton == MouseButtonState.Pressed) DragMove(); }
+
+    internal void RestoreAndActivate()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            _ = Dispatcher.InvokeAsync(RestoreAndActivate);
+            return;
+        }
+        if (!IsVisible) Show();
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
+        Focus();
+    }
 
     string? PickFolder(string title)
     {
