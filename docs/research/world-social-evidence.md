@@ -18,6 +18,14 @@ This page binds the MG_Team and MG_Friend implementation to static client eviden
 
 `PartyService.getPartysSummary` returns protobuf `TeamTotalSimpleInfo` bytes in `GameSummaryData`; `getParty` returns `PartyData` and member bytes for recruit links; `getSubPartysCountByType` returns target counts. These keys are read in `LC_DAL_Team.lua:1967-2123,3146-3282`. Browsing applies area/target/playBook/map conditions from `LC_TeamServer.lua:714-929,1088-1384`. An unresolved `getParty` uses micro `Ret:false`, never a malformed success. All three directory replies are built on `GameLoop`, where team rosters are owned, so concurrent joins/leaves cannot tear a micro snapshot. Five/forty type and target data come from `MG_Team.proto`, `TeamTargetConfig.json`, `PublicParamConfig.json`, and `LC_TeamHelper.lua:1051-1128`.
 
+## Field party experience
+
+`PublicParamConfig.TeamExpBuffNum` is `[10000,12500,15000,17500,20000]`. Localization rows 1232-1236 describe the same field-map condition and Base/Job EXP bonuses of 0/25/50/75/100 percent for one through five members. The same rows describe drop bonuses of 0/30/60/90/120 percent, matching `TeamDropBuffWeights=3000`. An older localization row 1171 instead says 20/30/40/50 percent; the config array and the newer per-size rows agree with the current server's 25-percent EXP steps.
+
+The current implementation only counts live sessions in the killer's `WorldScene`, multiplies the killer's reward, and commits one role. It does not distribute Base or Job EXP to other team members and does not apply the configured team drop bonus. It also does not enforce the localization's field-map condition, distance, death or loading state. This is a verified implementation gap, not a client display problem.
+
+The static client does not establish whether the boosted pool is divided equally, copied in full, weighted by level, or restricted by distance, participation, death or a level range. A multi-role reward must therefore mark its chosen formula as **(inferred)** and commit all recipients in one durable transaction; independent per-member writes could leave a kill partially paid or repeat a subset after recovery. Original-server two-account observations remain the acceptance gate for the exact formula and eligibility rules.
+
 ## Friend packet ownership
 
 `FriendStore` persists relationship intimacy, friend metadata, group/member/DND state, gift records and recent team peers in the same SQLite database as roles. `Game/FriendExtraService.cs` owns 82200-82210 plus pushes 82250-82251; `Micro/FriendService.cs` handles the base add/accept/block path. The client wire contract is `MG_Friend.proto` with its consumers in `LC_DAL_Friend.lua`.

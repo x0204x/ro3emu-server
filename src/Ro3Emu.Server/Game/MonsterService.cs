@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Romsg;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Maps;
 
 namespace Ro3Emu.Server.Game;
@@ -87,7 +88,8 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
 
         int ai = (int)GameData.Int(npc, "_iAI");
         var aiRow = _data.Row("AIConfig", ai);
-        float Cm(string field, float fallback) => aiRow is { } r && GameData.Int(r, field) is var v and > 0 ? v / 100f : fallback;
+        AIConfig? aiConfig = aiRow is { } rawAi ? new AIConfig(rawAi) : null;
+        static float Cm(long value, float fallback) => value > 0 ? value / 100f : fallback;
 
         int skill = 0, skillMs = 1000, swing = 2000;
         float hitPoint = 0.2f, range = 2f;
@@ -118,9 +120,9 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
             speed, (int)GameData.Int(npc, "_iElement"), (int)GameData.Int(npc, "_iRace"), (int)GameData.Int(npc, "_iSize"),
             Math.Max(1, (int)GameData.Int(npc, "_iCamp")),
             Aggressive: ai == AggressiveAi,
-            RoamDistance: speed > 0 ? Cm("_iRoamDis", 0) : 0, RoamTimeMs: aiRow is { } r2 ? (int)Math.Max(2000, GameData.Int(r2, "_iRoamTime")) : 8000,
-            ViewRange: Cm("_iViewRange", 5), LeashDistance: aiRow is { } r3 && r3.TryGetProperty("_iUnFightParam", out var uf) && uf.ValueKind == JsonValueKind.Array
-                && uf.GetArrayLength() > 0 && GameData.Number(uf[0]) is { } leash ? (float)leash / 100 : Cm("_iChaseDistance", 18),
+            RoamDistance: speed > 0 ? Cm(aiConfig?.RoamDis ?? 0, 0) : 0,
+            RoamTimeMs: aiConfig is { } typedAi ? (int)Math.Max(2000, typedAi.RoamTime) : 8000,
+            ViewRange: Cm(aiConfig?.ViewRange ?? 0, 5), LeashDistance: Cm(aiConfig?.ChaseDistance ?? 0, 18),
             skill, skillMs, hitPoint, swing, range, (int)Math.Max(500, GameData.Int(npc, "_iBodyRemainTime")))
         {
             Skills = BossBook(npcId, npc, skill),
