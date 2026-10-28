@@ -67,6 +67,18 @@ Game Gate request/response 且兩端 descriptor 都存在時才建立空 respons
 這只排除已掃描檔案中的明文名稱，不能排除壓縮 bundle、計算生成字串、外部正式伺服器 schema 或 runtime
 封包；34 個具名缺失 schema 與 `31022` 欄位 tag 因此仍維持 `UNKNOWN`。
 
+同一輪另以目前 source exporter 將 G 版客戶端完整匯出到隔離 LAB。結果為 516 個 config table、381 個
+scene map、2,222 個 skill、172 個 nav、1,090 個 message、`FailedTables=[]`，fingerprint 為
+`85a9f63af0f4ed058e84ba5fbd067bf2a363955c5f15a7fccf92c788f8212cf0`。與 repo 內 2026-10-18 的 D 版匯出
+逐檔比較，伺服器可見差異只有 `BackpackConfig.json`、`LC_ConditionList.json`、`SkillConfig.json` 三檔；
+`msgtable.tsv` SHA-256 仍同為 `79E7937FA97F099FE3092C1F8B29422CAFD063B5C08282014AEB3E868914EE72`，opcode
+資料沒有因這次 G 版更新再變動。
+
+三個資料差異都由現有 typed data view 動態讀取，不需要硬編碼：背包分頁 1／3 容量為 500／200、條件
+`2000296` 的 Base 等級門檻為 40、守護寵物技能 23373／23374／23443 使用 G 版係數（例如 2337401 的
+`_kDamageParam1=13700`）。產物屬客戶端衍生資料，只留 LAB、不提交 Git；實際主機要取得這三項更新時，
+必須以相同 G 客戶端重新執行 `RO3Emu.exe export`／`--reexport`。這是資料世代更新，不是通用技能動畫修正。
+
 `UnityPlayer.dll` 的本輪 IDA 冷開啟超過 300,000 ms registration deadline，沒有產生完整 IDA 字串 Evidence；
 因此不能宣稱整個 Unity engine 已完整反編譯。兩次精確 close 都回 `cleanup_incomplete`，尚無法證明該次
 IDA 私有暫存工作區已釋放。依 REA
