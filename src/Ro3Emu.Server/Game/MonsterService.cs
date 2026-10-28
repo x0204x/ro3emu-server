@@ -553,9 +553,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         if (!m.Moving || now >= m.NextChaseMs)
         {
             m.NextChaseMs = now + 400;
-            float dx = target.X - m.X, dz = target.Z - m.Z;
-            float go = Math.Min(MaxSegment, dist - m.Template.AttackRange * 0.8f);
-            if (go > 0.2f) WalkTo(m, map, m.X + dx / dist * go, m.Z + dz / dist * go, 1f);
+            ChaseTo(m, map, target.X, target.Z, m.Template.AttackRange * 0.8f, 1f);
         }
     }
 
@@ -602,10 +600,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         if (!m.Moving || now >= m.NextChaseMs)
         {
             m.NextChaseMs = now + 400;
-            float dx = target.Position.X - m.X, dz = target.Position.Z - m.Z;
-            float len = MathF.Sqrt(dx * dx + dz * dz);
-            float go = Math.Min(MaxSegment, len - m.Template.AttackRange * 0.8f);
-            if (go > 0.2f) WalkTo(m, map, m.X + dx / len * go, m.Z + dz / len * go, 1f);
+            ChaseTo(m, map, target.Position.X, target.Position.Z, m.Template.AttackRange * 0.8f, 1f);
         }
     }
 
@@ -625,19 +620,55 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         WalkTo(m, map, m.Home.X + (float)Math.Cos(angle) * r, m.Home.Z + (float)Math.Sin(angle) * r, 1f);
     }
 
-    /// <summary>One straight Walk segment when the nav grid allows it.</summary>
+    /// <summary>Chases a target by a bounded straight segment, falling back to the nav grid's A* route around obstacles.</summary>
+    private void ChaseTo(MonsterUnit m, MapInstance map, float x, float z, float stopDistance, float speedFactor)
+    {
+        if (Forbidden?.Invoke(m, ForbiddenState.Walk) == true) return;
+        float dx = x - m.X, dz = z - m.Z, distance = MathF.Sqrt(dx * dx + dz * dz);
+        float travel = MathF.Min(MaxSegment, distance - stopDistance);
+        if (travel < 0.1f || distance < 0.001f) return;
+
+        var nav = _worldData.Map(m.SceneEntry)?.Nav;
+        if (nav == null)
+        {
+            MoveSegment(m, map, m.X + dx / distance * travel, m.Y, m.Z + dz / distance * travel, speedFactor);
+            return;
+        }
+
+        float directX = m.X + dx / distance * travel, directZ = m.Z + dz / distance * travel;
+        if (nav.WalkHeight(directX, directZ, m.Y) is { } directY && nav.CanWalk(m.X, m.Y, m.Z, directX, directZ))
+        {
+            MoveSegment(m, map, directX, directY, directZ, speedFactor);
+            return;
+        }
+
+        if (nav.TryFindNextWaypoint(m.X, m.Y, m.Z, x, z, MaxSegment, stopDistance, out var waypoint))
+            MoveSegment(m, map, waypoint.X, waypoint.Y, waypoint.Z, speedFactor);
+    }
+
+    /// <summary>One straight Walk segment when the nav grid allows it, or the first A* segment when it does not.</summary>
     private void WalkTo(MonsterUnit m, MapInstance map, float x, float z, float speedFactor)
     {
         if (Forbidden?.Invoke(m, ForbiddenState.Walk) == true) return;
         var nav = _worldData.Map(m.SceneEntry)?.Nav;
         float? y = nav?.WalkHeight(x, z, m.Y) ?? m.Y;
-        if (y == null || nav != null && !nav.CanWalk(m.X, m.Y, m.Z, x, z)) return;
+        if (y == null) return;
+        if (nav != null && !nav.CanWalk(m.X, m.Y, m.Z, x, z))
+        {
+            if (!nav.TryFindNextWaypoint(m.X, m.Y, m.Z, x, z, MaxSegment, 0, out var waypoint)) return;
+            x = waypoint.X; y = waypoint.Y; z = waypoint.Z;
+        }
+        MoveSegment(m, map, x, y.Value, z, speedFactor);
+    }
+
+    private void MoveSegment(MonsterUnit m, MapInstance map, float x, float y, float z, float speedFactor)
+    {
         float dx = x - m.X, dz = z - m.Z, len = MathF.Sqrt(dx * dx + dz * dz);
         if (len < 0.1f) return;
         long now = NowMs;
         float speed = m.SpeedCm(now) / 100f * speedFactor;
         m.FromX = m.X; m.FromY = m.Y; m.FromZ = m.Z;
-        m.ToX = x; m.ToY = y.Value; m.ToZ = z;
+        m.ToX = x; m.ToY = y; m.ToZ = z;
         m.StartMs = now;
         m.EndMs = now + (long)Math.Max(1, len / speed * 1000);
         m.SegmentSpeed = speed;
@@ -654,7 +685,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
                 MoveDuration = (int)(m.EndMs - now),
                 Face = m.Face,
                 MoveType = MovementType.MoveTypeWalk,
-                MovementWalk = new MovementWalk { Dir = m.Face, Speed = speed, Acc = 0, EndHeight = y.Value },
+                MovementWalk = new MovementWalk { Dir = m.Face, Speed = speed, Acc = 0, EndHeight = y },
             },
         }));
     }

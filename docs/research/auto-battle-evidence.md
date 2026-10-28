@@ -8,6 +8,12 @@ The ten `Logic/Actor/AutoAttack` Lua payloads compared for this audit are byte-i
 
 `LC_AutoAttackHelper.IsTargetReachable` calls the movement layer's `CheckAutoAtkReachable`. Chasing calls `CanArriveToPos`; an unreachable target is cleared instead of being approached through an invented straight-line server move. Seek movement also checks reachability before `SetMoveTargetPos(... BattleAuto)`. These calls prove that the client asks its navigation layer for a route, but they do not prove that the navigation mesh can route around a particular obstacle in a live map.
 
+## REA and IDA receipts
+
+The current Asia `Assembly-CSharp.dll` (SHA-256 `4365bccfb4badbf9d73c39cd8491f8bcfaf7604fc09c91dbc71123b100602e11`) was inspected read-only with REA. Its exact `PF_AStar` type contains the waypoint, async block-loading and path-search state machine, including `IsWaitWayPointFind`, `IsWaitFindPath`, `IsWaitArriveNextWayPoint`, `CantFindPath` and `CantFindNextPt`. The managed inventory receipt is `ev_089d6e0679f9558e9a9f5c5d534fbde2e3c7961ba0f1bd906bdad778b1095518` (parent `ev_62ca499215d1bc3f5b9032f8644dbd09a896ed3599f7c493ce22a1993159d996`). This proves that the shipped client has a real pathfinding layer; it does not prove success on the reported obstacle.
+
+The matching `xlua.dll` (SHA-256 `c189e0fdfb23782d381dfd761a4d746c1e195508ed8eecbe25f23a39bfc7309a`) was opened in IDA through REA and closed after the read-only session. `xluaL_loadbuffer_0` only forwards to `luaL_loadbufferx` (`ev_38dea9c38b708e452816d746e7c3e576a112b1a171bfa0e448d829f8f4f39672`); the native Lua load and hook receipts are `ev_6047a2c1ba73a5a9762a77c60ef755c1bde6601a3f359cff3ebc04862f8c5769` and `ev_9895ed7fe6651ae30d341a939ae914fa0699869239e2ed09a06b8b3edb009890`. No game-specific target-selection policy was promoted from those generic bridge functions. The relevant behavior remains in the signed Lua payload and managed movement layer.
+
 ## Fly Wing setting
 
 `LC_AutoAttack_SeekSubState._tryUseFly` runs during seeking, but only when all of these conditions hold:
@@ -30,6 +36,8 @@ For the reported idle-behind-obstacle case, static evidence establishes two cont
 | Gate | State |
 | --- | --- |
 | Asia/Genesis AutoAttack Lua identity | `VERIFIED` |
+| Managed `PF_AStar` pathfinding ownership | `VERIFIED` (REA static) |
+| Native xLua bridge boundary | `VERIFIED` (IDA static) |
 | Target/reachability/Fly Wing decision ownership | `VERIFIED` (static) |
 | Server item-use and wing-jump boundary | `VERIFIED` (source/tests) |
 | Exact obstacle runtime decision | `NOT_RUN` |

@@ -732,7 +732,7 @@ public sealed partial class TaskService
             if (id == 0) continue;
             defs[id] = new TaskDef(id, (int)GameData.Int(row, "_iTaskType"), Longs(row, "_kPreTask"), GameData.Int(row, "_iCondition"),
                 (int)First(row, "_kAcceptTask"), (int)First(row, "_kDeliverTask"), Targets(row), GameData.Int(row, "_iAward"),
-                Longs(row, "_kEXP") is [1, var exp, ..] ? exp : 0,
+                ParseTaskBaseExperience(id, row),
                 Longs(row, "_kAcceptTask"), Longs(row, "_kDeliverTask"), Actions(row, "_kAcceptAction"), Actions(row, "_kEXECAction"), Actions(row, "_kTrack"));
         }
         var children = new Dictionary<long, List<long>>();
@@ -744,6 +744,41 @@ public sealed partial class TaskService
         _log.LogInformation("Tasks: {Count} TaskConfig rows", defs.Count);
         return defs;
     }
+
+    /// <summary>
+    /// Decodes TaskConfig._kEXP. Current D/Genesis task data uses an empty table or [1, amount], where type 1 is Base EXP.
+    /// Reject every other shape instead of silently turning a future reward type or malformed value into zero.
+    /// </summary>
+    internal static long ParseTaskBaseExperience(long taskId, JsonElement row)
+    {
+        if (!row.TryGetProperty("_kEXP", out var encoded)) return 0;
+        // The exporter represents an empty Lua table as {}, while synthetic typed input may use [].
+        if (encoded.ValueKind == JsonValueKind.Object && !encoded.EnumerateObject().Any()) return 0;
+        if (encoded.ValueKind != JsonValueKind.Array)
+            throw InvalidTaskExperience(taskId, "must be an array");
+
+        var values = new long[encoded.GetArrayLength()];
+        int index = 0;
+        foreach (var value in encoded.EnumerateArray())
+        {
+            if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt64(out values[index]))
+                throw InvalidTaskExperience(taskId, $"element {index} must be a 64-bit integer");
+            index++;
+        }
+        return ParseTaskBaseExperience(taskId, values);
+    }
+
+    internal static long ParseTaskBaseExperience(long taskId, long[] encoded) => encoded switch
+    {
+        [] => 0,
+        [1, var amount] when amount >= 0 => amount,
+        [1, var amount] => throw InvalidTaskExperience(taskId, $"Base EXP amount cannot be negative ({amount})"),
+        [var type, _] => throw InvalidTaskExperience(taskId, $"unknown reward type {type}"),
+        _ => throw InvalidTaskExperience(taskId, $"expected [] or [1, amount], got {encoded.Length} elements")
+    };
+
+    private static InvalidDataException InvalidTaskExperience(long taskId, string detail) =>
+        new($"TaskConfig {taskId} _kEXP {detail}.");
 
     private static long[] Longs(JsonElement row, string field) =>
         row.TryGetProperty(field, out var a) && a.ValueKind == JsonValueKind.Array
