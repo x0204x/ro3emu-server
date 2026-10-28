@@ -75,12 +75,28 @@ public sealed partial class TeamService(SessionRegistry sessions, CharacterServi
     private long _nextId = 1L << 24;
     private TimeSpan _sinceUpdate;
 
-    /// <summary>Party EXP multiplier for a kill (‱ of TeamExpBuffNum by same-map members; the split rule itself is inferred).</summary>
+    /// <summary>Party EXP multiplier for a kill (‱ of TeamExpBuffNum by same-map members; the split rule itself is inferred).
+    /// A 40-person team is eight independent five-person groups for this bonus, as the client derives from teamIndex.</summary>
     public int ExpBonus(GameSession killer)
     {
         if (killer.Role is not { } role || !_byMember.TryGetValue(role.Id, out var team)) return 10000;
-        int sameMap = team.Members.Count(m => Session(m) is { } s && s.WorldScene == killer.WorldScene);
+        var (start, count) = ExpGroupRange(team.Type, team.Members, role.Id);
+        int sameMap = 0;
+        for (int i = start; i < start + count; i++)
+            if (Session(team.Members[i]) is { } s && s.WorldScene == killer.WorldScene) sameMap++;
         return ExpBuff[Math.Clamp(sameMap, 1, ExpBuff.Length) - 1];
+    }
+
+    /// <summary>The current Asia client projects TeamTypeForty member indices into fixed slots 1-5, 6-10, ... .</summary>
+    internal static (int Start, int Count) ExpGroupRange(TeamType type, IReadOnlyList<long> members, long member)
+    {
+        if (type != TeamType.Forty) return (0, members.Count);
+        int index = -1;
+        for (int i = 0; i < members.Count; i++)
+            if (members[i] == member) { index = i; break; }
+        if (index < 0) return (0, 0);
+        int start = index / 5 * 5;
+        return (start, Math.Min(5, members.Count - start));
     }
 
     /// <summary>After a party's roster or a member's card (career, online state) changed, with the roles it concerns: the
