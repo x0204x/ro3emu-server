@@ -1017,6 +1017,10 @@ public sealed partial class CombatService : IGameTicker
     }
 
     /// <summary>HP/SP regeneration every 5 s out of combat: FinalReHp = ReHP + MaxHP × per_rehp (117/118, inferred).</summary>
+    internal static (long Hp, long Sp) Regeneration(StatSheet stats) =>
+        (stats[107] + stats[101] * stats.Data.GetValueOrDefault(1071) / 10000,
+            stats[108] + stats[102] * stats.Data.GetValueOrDefault(1081) / 10000);
+
     private async Task RegenAsync(GameSession s)
     {
         if (s.Role == null || s.Progress == null) return;
@@ -1025,8 +1029,7 @@ public sealed partial class CombatService : IGameTicker
         if (s.CurrentHp == null && s.CurrentSp == null) return; // unset = full (CharacterService.Stats): nothing to restore
         var st = _character.Stats(s);
         if (st[2000] >= st[101] && st[2001] >= st[102]) return;
-        long rehp = st[107] + st[101] * st.Data.GetValueOrDefault(1071) / 10000;
-        long resp = st[108] + st[102] * st.Data.GetValueOrDefault(1081) / 10000;
+        var (rehp, resp) = Regeneration(st);
         await _character.SetHpSpAsync(s, st[2000] + Math.Max(1, rehp), st[2001] + Math.Max(1, resp));
     }
 

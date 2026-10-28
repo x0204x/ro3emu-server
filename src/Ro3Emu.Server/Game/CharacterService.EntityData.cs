@@ -66,7 +66,14 @@ public sealed partial class CharacterService
     /// AttributeConversionConfig per point of STR..LUK (_kAttribute2 for ranged jobs), grouped and rounded up.
     /// Current HP/SP come from the session (full when unset).
     /// </summary>
-    public StatSheet Stats(GameSession session)
+    public StatSheet Stats(GameSession session) => Stats(session, null);
+
+    /// <summary>The player's own build plus live guardian modifiers used by player chant timing. Ordinary timed buffs
+    /// stay outside this guardian-specific path, matching the existing guardian reaction scope.</summary>
+    internal StatSheet ChantStats(GameSession session) =>
+        Stats(session, static buff => buff.IsGuardianOwned && buff.ExpireMs > MonsterService.NowMs);
+
+    private StatSheet Stats(GameSession session, Func<ActiveBuff, bool>? includeBuff)
     {
         var p = session.Progress!;
         var raw = new Dictionary<int, double>();
@@ -78,10 +85,10 @@ public sealed partial class CharacterService
             // A Survivor Battle career replaces the character's own build for the match (TimedBattleService.Chicken):
             // EatChickenGameCareer._iJobAttr and the worn match equipment, plus the buffs of the match.
             foreach (var (id, value) in matchAttributes) Add(id, value);
-            foreach (var buff in session.Buffs)
+            foreach (var buff in session.Buffs.Where(buff => includeBuff?.Invoke(buff) != false))
                 foreach (var (id, v) in buff.Changes) Add(id, v);
         }
-        else AddOwnAttributes(session, p, Add);
+        else AddOwnAttributes(session, p, Add, includeBuff);
         if (!raw.ContainsKey(Speed)) raw[Speed] = RoleSessionService.DefaultSpeed;
         raw[Speed] += session.SpeedBonus;
         if (!raw.ContainsKey(BaseAspd)) raw[BaseAspd] = 100;
@@ -103,7 +110,8 @@ public sealed partial class CharacterService
     }
 
     /// <summary>The character's own raw contributions (gear, cards, talents, buffs, level and job rows, conversions).</summary>
-    private void AddOwnAttributes(GameSession session, RoleProgress p, Action<long, double> Add)
+    private void AddOwnAttributes(GameSession session, RoleProgress p, Action<long, double> Add,
+        Func<ActiveBuff, bool>? includeBuff)
     {
         var baseStats = new double[6];
         for (int i = 0; i < 6; i++) baseStats[i] = p.Stats[i];
@@ -182,7 +190,7 @@ public sealed partial class CharacterService
                 else Add(id, value);
             }
         for (int i = 0; i < 6; i++) Add(i + 1, baseStats[i]);
-        foreach (var buff in session.Buffs)
+        foreach (var buff in session.Buffs.Where(buff => includeBuff?.Invoke(buff) != false))
             foreach (var (id, v) in buff.Changes) Add(id, v);
         if (BaseRow(p.Career, p.Level) is { } flat)
             foreach (var (id, v) in GameData.Pairs(flat, "_kAttri")) Add(id, v);
