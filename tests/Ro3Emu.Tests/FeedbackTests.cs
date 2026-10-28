@@ -11,7 +11,7 @@ using Ro3Emu.Server.Game;
 namespace Ro3Emu.Tests;
 
 /// <summary>
-/// In-game bug reports (FeedbackService, docs/guide/feedback.md): "/bug" in chat and the Feedback button's message 77013
+/// In-game bug reports (FeedbackService, docs/guide/feedback.md): "/bug" in chat and the Feedback button's private message
 /// store one JSON line each with who/where/when and recent log context; loopback GET /ro3emu/reports reads them.
 /// </summary>
 public sealed class FeedbackTests : IAsyncLifetime

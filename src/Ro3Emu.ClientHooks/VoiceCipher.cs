@@ -8,7 +8,7 @@ namespace Ro3Emu.ClientHooks
     /// <summary>
     /// Encryption of every voice frame after Auth (and the Auth's proof of the secret), one copy for the in-game client (compiled against the client's own
     /// mscorlib/System.Core: it has AES and HMAC-SHA256 but no AES-GCM), the relay and the bot (both link this file
-    /// through Ro3Emu.Server). The session secret rides in the 77016 ticket over the encrypted game gate.
+    /// through Ro3Emu.Server). The session secret rides in the private voice ticket over the encrypted game gate.
     ///
     /// Sealed payload: counter u64 LE | AES-128-CTR ciphertext | first 16 bytes of HMAC-SHA256(direction | frame type |
     /// counter | ciphertext). Encrypt-then-MAC; the CTR block is direction | 3 zero bytes | counter u64 LE | block u32

@@ -13,13 +13,14 @@ namespace Ro3Emu.ClientHooks
     /// Stand-in for the client's Tencent IM adapter (Obf_CA.Obf_ei): the Lua chat code speaks Tencent.IM protobuf
     /// (GM_Chat.proto) with a command id, and this adapter tunnels those bytes through the game connection instead of
     /// Tencent's cloud. Frames both ways: uint32 LE cmd ‖ int32 LE errorCode ‖ protobuf.
-    /// Up: game message 77010; down: game message 77011.
-    /// Its per-frame pump and receive hook also carry the voice relay ticket (77016) and pump (VoiceClient).
+    /// Up/down use <see cref="PrivateMessageIds.ChatTunnelUp"/> and
+    /// <see cref="PrivateMessageIds.ChatTunnelDown"/>. Its per-frame pump and receive hook also carry the voice relay
+    /// ticket and pump (<see cref="VoiceClient"/>).
     /// </summary>
     public sealed class ServerImAdapter : Obf_ci
     {
-        public const uint UpMsgId = 77010;
-        public const uint DownMsgId = 77011;
+        public const uint UpMsgId = PrivateMessageIds.ChatTunnelUp;
+        public const uint DownMsgId = PrivateMessageIds.ChatTunnelDown;
 
         private const uint StatusLoginSucc = 9;
         private const uint StatusLogoutSucc = 11;

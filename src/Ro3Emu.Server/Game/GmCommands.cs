@@ -343,7 +343,7 @@ public sealed class GmCommands(IOptions<ServerOptions> options, GameData data, S
         ),
     };
 
-    /// <summary>Asks the client hook (Ro3Emu.ClientHooks Diagnostics, msg 77012) to inspect itself into Player.log.</summary>
+    /// <summary>Asks the client hook (Ro3Emu.ClientHooks Diagnostics) to inspect itself into Player.log.</summary>
     private async Task ClientDiagnostics(GameSession s, string[] args)
     {
         if (args.Length == 0) throw new ArgumentException("command");
@@ -351,7 +351,7 @@ public sealed class GmCommands(IOptions<ServerOptions> options, GameData data, S
         await ReplyAsync(s, "Sent to the client; see Player.log [Ro3Emu.Diag] / [Ro3Emu.SkillTrace].");
     }
 
-    private const uint ClientDiagnosticsMsg = 77012;
+    private const uint ClientDiagnosticsMsg = Ro3Emu.ClientHooks.PrivateMessageIds.Diagnostics;
 
     private async Task Op(GameSession s, int op, string[] args)
     {

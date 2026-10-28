@@ -16,8 +16,8 @@ namespace Ro3Emu.ClientHooks
     /// (ClientTools VoiceStubPatch) keeps its own join/leave bookkeeping and Lua OnJoinChannel/OnLeaveChannel, and also
     /// calls the static methods here with the same arguments as Lua gave it.
     /// <list type="bullet">
-    /// <item>JoinChannel (team channels only: the team id in decimal) asks the game server for a ticket (77015), connects
-    /// to the relay the ticket names (77016), authenticates and joins. One connection; Leave closes it.</item>
+    /// <item>JoinChannel (team channels only: the team id in decimal) asks the game server for a private ticket,
+    /// connects to the relay the reply names, authenticates and joins. One connection; Leave closes it.</item>
     /// <item>SetMicrophoneMute / SetSpeakerMute become Mic / Speaker on the relay and start or stop capture and playback.
     /// The relay echoes MicState to the sender too, and that echo is what turns on the client's Talk state.</item>
     /// <item>Relay events become the VoiceCall_Util callbacks GME used to fire: OnMemberChange, OnMemberMicMute
@@ -156,7 +156,7 @@ namespace Ro3Emu.ClientHooks
 
         // ---- From the game connection and the frame pump. ----
 
-        /// <summary>77016 from the game connection's receive callback (any thread).</summary>
+        /// <summary>The private voice ticket from the game connection's receive callback (any thread).</summary>
         public static void OnTicket(byte[] body) => Post(() => UseTicket(VoiceProtocol.ParseTicket(body)));
 
         /// <summary>Every frame from ServerImAdapter's pump: relay events into Lua, keep-alive.</summary>

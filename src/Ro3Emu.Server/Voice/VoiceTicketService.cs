@@ -5,21 +5,20 @@ using Microsoft.Extensions.Options;
 namespace Ro3Emu.Server.Voice;
 
 /// <summary>
-/// The 77015/77016 handoff from the encrypted game gate to the voice gate (which seals its stream with the secret
-/// handed out here). Ours (the client's message
-/// table has no such id; 77010-77014 are already taken by ServerImAdapter/Diagnostics/FeedbackButton/PassChallenges).
+/// The RO3Emu-private handoff from the encrypted game gate to the voice gate (which seals its stream with the secret
+/// handed out here).
 /// Routed like FeedbackService.SubmitMsg: AdmitRole, since it only reads and writes the sender's own ticket.
 /// </summary>
 public sealed class VoiceTicketService(IOptions<ServerOptions> options, VoiceTicketRegistry tickets) : Game.Messaging.IMessageModule
 {
     /// <summary>Up: empty body.</summary>
-    public const uint TicketReq = 77015;
+    public const uint TicketReq = Ro3Emu.ClientHooks.PrivateMessageIds.VoiceTicketRequest;
 
     /// <summary>Down: u16 port | u8 hostLen | host ASCII | i64 roleId | 16-byte token | u32 ttlSeconds | 32-byte
     /// stream secret, little-endian. The host is <see cref="Http.SdkEndpoints.GateHost"/> of the address this session
     /// reached the game gate on (the in-game client does not know it), the same rule as the server list. Relay off:
     /// port 0, empty host, zero token, ttl 0, zero secret.</summary>
-    public const uint Ticket = 77016;
+    public const uint Ticket = Ro3Emu.ClientHooks.PrivateMessageIds.VoiceTicket;
 
     public void Map(Game.Messaging.MessageRoutes routes)
     {

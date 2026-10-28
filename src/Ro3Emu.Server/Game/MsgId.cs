@@ -4,6 +4,8 @@ namespace Ro3Emu.Server.Game;
 public static class MsgId
 {
     public const uint Heartbeat = 1;
+    /// <summary>COMMON_ERROR_NTF; on S→C it is carried as inner id 2 in the outer id 2 batch envelope.</summary>
+    public const uint CommonError = 2;
     public const uint LoginRoleCreate = 1006;
     public const uint LoginRoleSelect = 1007;
     /// <summary>LOGIN_RECONNECT: a server push only, after a silent gate reconnect.</summary>

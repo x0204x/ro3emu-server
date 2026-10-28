@@ -705,11 +705,6 @@
 77001	session Realm:legacy: dispatcher/77001	refused
 77002	session role:WholeRole dispatcher/77002	refused
 77003	session Realm:legacy: dispatcher/unrouted	refused
-77010	session role:WholeRole dispatcher/77010	refused
-77013	session role:WholeRole dispatcher/77013	refused
-77014	session role:WholeRole dispatcher/77014	refused
-77015	session role:WholeRole dispatcher/77015	refused
-77017	session role:WholeRole dispatcher/77017	refused
 82000	economic dispatcher/economic request	refused
 82001	economic dispatcher/economic request	refused
 82002	economic dispatcher/economic request	refused
@@ -1094,3 +1089,8 @@
 19008020	session Realm:legacy: dispatcher/unrouted	refused
 19009015	session Realm:legacy: dispatcher/unrouted	refused
 19010015	session Realm:legacy: dispatcher/unrouted	refused
+2136080385	session role:WholeRole dispatcher/2136080385	refused
+2136080388	session role:WholeRole dispatcher/2136080388	refused
+2136080389	session role:WholeRole dispatcher/2136080389	refused
+2136080390	session role:WholeRole dispatcher/2136080390	refused
+2136080392	session role:WholeRole dispatcher/2136080392	refused

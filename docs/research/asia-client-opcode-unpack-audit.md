@@ -21,9 +21,74 @@
 - `Assembly-CSharp.dll` 可直接讀取完整 Mono CIL metadata（2,044 個 TypeDef、22,758 個 MethodDef），不需要先脫殼。
 - `xlua.dll` 的載入鏈為一般的 `xluaL_loadbuffer -> luaL_loadbufferx -> lua_load`；沒有找到可證實的 XXTEA、AES 或自訂 Lua payload 解密路徑。
 - 三個 native 檔案的 PE sections、imports、TLS 與 entropy 都沒有形成可確認的 VMP／packer 證據。LAB 的 bounded VMP 嘗試沒有產生可用輸出，因此 `unpacked_artifact = NONE`，不得解讀成「已成功脫殼」。
-- 可讀的 Opcode 真實來源是 Managed 網路橋接、Lua `NW_GameServerHandler`／`LC_Scene_Sync` 與 protobuf descriptor。現有靜態 catalog 共有 1,045 列，其中 1,012 筆有 protobuf map：316 筆 S2C notify、43 筆 C2S only、651 筆 request/response、2 筆 null/null；每列仍須依方向及實際 producer 分別驗證。
+- 可讀的 Opcode 真實來源是 Managed 網路橋接、Lua `NW_GameServerHandler`／`LC_Scene_Sync` 與 protobuf descriptor。`tools/opcode-matrix.js` 的全量交叉矩陣顯示：descriptor 的 `romsg.MSG_Type` 有 1,031 個值（含 `TT_None`），PB Lua map 有 1,012 筆（316 筆 S2C notify、43 筆 C2S only、651 筆 request/response、2 筆 null/null），另有 14 筆 EZ 與 64 筆 AutoSync overlay，完整 Lua schema map 為 1,090 個唯一 ID，numeric union 為 1,109 列。1,696 個 request／response root 遞迴展開為 3,789 個 message 與 177 個 enum，descriptor closure 的未解析型別引用為 0。先前 1,045 是 `1,031 descriptor 值 + 14 EZ`，不是完整 runtime schema map；每列仍須依方向及實際 producer 分別驗證。生成矩陣含客戶端衍生資料，只保留在被忽略的本機 `docs/artifacts/`，不進 Git。
 
 因此本版應採「直接還原可讀協定層」，而不是繼續對 Unity bootstrap 強制脫殼。`NO_CONFIRMED_VMP` 只表示本輪沒有確認外殼，不是對所有未命名或 inline transform 的絕對否定。
+
+矩陣另交叉核對 113 個 `NW_GameServerHandler` callback、59 個 Scene consumer 與 AutoSync DAL。19 個
+descriptor-only 值可分為 13 個範圍 sentinel、4 個 Managed Chat、`84072` 的 paired response enum，以及
+缺少 Lua route 的舊／外部 `1008`。37 個 Lua rows 共有 49 個 request／response 缺失端：14 個是 registry
+直接寫入的 placeholder（`romsg.` 2、`romsg.null` 11、`ezmsg.NullArg` 1），另有 35 個具名端／34 個唯一
+型別真的沒有 schema。34 個名稱在 Asia 6,001-message descriptor、Genesis 5,990-message descriptor、D 槽
+28 份 descriptor 複本、259 個歷史 ZIP、Managed assemblies 與三份本機 repo history 的恢復數都是 0；
+2026-10-13 舊稽核的 49 筆也與本輪逐筆相同。這些缺口保留原始名稱與來源行，不以猜測欄位補成可用
+封包；唯一同時有明確 callback 與 Scene consumer 的具名缺口是 `31022 SyncMoveStateNotify`，維持高優先
+`UNKNOWN`。
+
+## Managed Chat 與模擬器私有 Opcode
+
+亞服 descriptor `B5CF4377...DEA00` 新增官方 `77010–77013`：`MANAGED_CHAT_BOOTSTRAP`、
+`MANAGED_CHAT_CREDENTIAL_REFRESH`、`MANAGED_CHAT_SEND`、`MANAGED_CHAT_CHANNEL_STATE_NTF`，以及 11 個
+`ManagedChat*` message 與四組 enum。Genesis descriptor `F80474D8...95664` 尚未包含它們。舊版 RO3Emu
+卻把 `77010–77013` 當成聊天 tunnel、診斷與玩家回報，會與亞服官方命名空間碰撞。
+
+本輪把九個模擬器專用訊息集中到 `PrivateMessageIds` 的 `0x7F52_0001–0x7F52_0009`。ClientHooks 的
+`NW_CBBNetworkManager.Obf_jBd(uint, byte[])`、server `MessageRoutes` 與 `GameSession.SendGameRawAsync(uint, ...)`
+都保留完整 uint32 id；這個 block 低於 `Int32.MaxValue`，也不在 Asia／Genesis descriptor、Lua protobuf、
+EZ protobuf 或 AutoSync catalog 的 1,109 個 numeric union 內。測試另鎖定 id 唯一、與 checked-in client
+catalog 無交集，且不落在官方 `77000–77099` 範圍。
+
+以 `tools/ProtoDump` 從同一亞服 descriptor 重建的 144 份 proto，與 server proto 比對達到 144/144
+schema parity；唯一文字差異是 `MG_Chat.proto` 未保留未使用的 `import FieldOption.proto`，不影響 descriptor
+語意。這證實可以安全加入 Managed Chat 的序列化型別；但沒有官方 runtime trace 能證明 provider、驗證、
+重試或 channel state 的伺服器觸發規則，因此 `77010–77013` 目前只保留官方 schema，沒有猜測 handler 或
+producer，也不能把 RO3Emu 自訂 chat tunnel 當成官方 Managed Chat 實作。
+
+## 傳輸層與 Opcode 封裝
+
+Managed CIL 顯示 TCP 與 KCP 最後都把相同 byte stream 交給 `RpcChannel`。每個 Phonest frame 是
+`int32_le(length = 2 + protobuf bytes) | uint16_le method | protobuf`，最大 body 16,777,216 bytes；出站轉換
+順序為 stateful zlib `Z_SYNC_FLUSH` 後 RC4，入站則先 RC4 再 stateful zlib。握手以 method 1 要 token、
+method 10 回 token；client 將 16 個 random bytes 做 SHA-1 得到 20-byte session key，以 RSA-OAEP-SHA1
+送 method 2，method 11 是啟用轉換後的第一個 ACK。此 active path 沒有找到額外 app CRC 或 HMAC。
+
+Game client→server 的 `EntityMessage` 使用外層 method 4，server→client 使用 method 2；沒有 named RPC 時，
+`parameters` 前四 bytes 是 little-endian uint32 game opcode，其後為原始 payload。一般 game gate C→S method
+為 1 token、2 key、3 connect、4 entity、5 channel；S→C method 1–20 的型別均已由 client stub 解出。
+Micro gate 另使用 33 request、34 response、35 push。這些 method index 是 Phonest RPC 層，不能與 1,109
+列 game opcode 矩陣混成同一層。
+
+主要 REA evidence IDs：RPC frame `ev_1edaf9959631101c267b45675c3001e317c9f2a58032bc25642754bb079af298`；
+game envelope `ev_121f08d8efc91d1fffc97921881fb3ee6f980b87fee9db77072d0fcae5f05b77`；batch
+`ev_044540dddb583cb2b09982c0654efd86b4286a089dcb48718fe1b4e1c023c1c9`；Lua bridge
+`ev_3ad1dbcb274bc8f9f4d99eb89d932481500aa4956d41d915967b8dc1124a4559`。Server 的核心 TCP、
+RSA/zlib/RC4、單包 EntityMessage 與 micro 33/34/35 路徑相符；KCP server、部分不使用的 gate method
+producer，以及 game gate method 19/20 的 runtime 可達性仍是 `PARTIAL/UNKNOWN`。Client 具有 KCP 建連
+失敗後切回 TCP 的明確路徑。本輪未啟動 client，因此這些靜態結果不等於 live handshake 或 gameplay
+驗收。
+
+## 外層 Opcode 2 批次封裝
+
+可讀的 `NW_CBBNetworkManager.OnMsgReceived` 路徑顯示，S→C 的外層 `msgId == 2` 不是
+`COMMON_ERROR_NTF` 本體，而是批次容器。容器內每筆為 `int32BE payloadLength` +
+`int32BE innerOpcode` + `payload`；`payloadLength` 只計 payload，不含 8-byte header，零長度
+payload 合法。`COMMON_ERROR_NTF` 的官方路徑是 outer `2` 內含 inner `2`。C→S 沒有這個
+批次層，不得將所有送出訊息一律批次化。
+
+伺服器原本直接送出 `[uint32LE 2][CommonErrorNtf]`，客戶端會把 protobuf 開頭誤讀為
+批次長度。本輪將 `GameSession` 與 `PreparedMessage` 統一改用單筆批次編碼，並讓
+`BotClient` 按相同 contract 解包。位元組測試釘住空／非空 CommonError payload，原有非 2
+封包保持不變。此結論來自靜態反編譯；玩家端 runtime 驗收仍是 `NOT_RUN`。
 
 ## 技能呈現 Opcode 對照
 

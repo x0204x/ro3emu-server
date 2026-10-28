@@ -9,7 +9,7 @@ using Ro3Emu.Server.Voice;
 
 namespace Ro3Emu.Bot;
 
-/// <summary>The 77016 voice ticket: u16 port | u8 hostLen | host ASCII | i64 roleId | 16-byte token | u32 ttlSeconds |
+/// <summary>The private voice ticket: u16 port | u8 hostLen | host ASCII | i64 roleId | 16-byte token | u32 ttlSeconds |
 /// 32-byte stream secret. Port 0 means the relay is off on that server.</summary>
 public sealed record BotVoiceTicket(ushort Port, string Host, long RoleId, byte[] Token, uint TtlSeconds, byte[] Secret)
 {
@@ -28,7 +28,7 @@ public sealed record BotVoiceTicket(ushort Port, string Host, long RoleId, byte[
         return new BotVoiceTicket(port, host, roleId, token, ttl, secret);
     }
 
-    /// <summary>Asks the game gate for a ticket (77015) and waits for the 77016 reply.</summary>
+    /// <summary>Asks the game gate for a private voice ticket and waits for its reply.</summary>
     public static async Task<BotVoiceTicket> RequestAsync(BotClient bot, TimeSpan timeout)
     {
         using var expected = bot.Inbox.Expect(e => e.IsGame(VoiceTicketService.Ticket));

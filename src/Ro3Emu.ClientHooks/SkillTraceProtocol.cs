@@ -9,8 +9,8 @@ namespace Ro3Emu.ClientHooks
     /// </summary>
     public static class SkillTraceProtocol
     {
-        public const uint ReportMsgId = 77017;
-        public const uint GrantMsgId = 77018;
+        public const uint ReportMsgId = PrivateMessageIds.SkillTraceReport;
+        public const uint GrantMsgId = PrivateMessageIds.SkillTraceGrant;
         public const byte Version = 1;
         public const int TokenSize = 16;
         public const uint MaxGrantSeconds = 86400;

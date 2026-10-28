@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
@@ -428,7 +429,7 @@ public sealed class BotClient : IAsyncDisposable
         if (response.Result != 0) throw Refused("join-chat", response.Result, $"chat join refused for {groupId}: {response.Result}");
     }
 
-    /// <summary>Sends a Tencent.IM text command through the 77010 tunnel (what the patched client's ServerImAdapter does).</summary>
+    /// <summary>Sends a Tencent.IM text command through the RO3Emu-private tunnel (what the patched client's ServerImAdapter does).</summary>
     public Task SendChatAsync(string receiveId, uint chatType, string content, int channelIndex = 0)
     {
         // The client always sends this JSON; LC_ChatHelper.SaveAllChannelContent drops lines without iChannelIndex.
@@ -655,9 +656,35 @@ public sealed class BotClient : IAsyncDisposable
                 else
                 {
                     var p = message.Parameters.Memory;
-                    _inbox.Add(new BotEvent(BotEventKind.Game) { MsgId = BitConverter.ToUInt32(p.Span), Body = p[4..].ToArray() });
+                    uint msgId = BinaryPrimitives.ReadUInt32LittleEndian(p.Span);
+                    if (msgId == MsgId.CommonError) UnpackServerBatch(p[4..].Span);
+                    else _inbox.Add(new BotEvent(BotEventKind.Game) { MsgId = msgId, Body = p[4..].ToArray() });
                 }
                 break;
+        }
+    }
+
+    /// <summary>
+    /// The real client treats outer message id 2 as a sequence of
+    /// <c>int32BE payloadLength, int32BE innerMessageId, payload</c> records.
+    /// </summary>
+    internal void UnpackServerBatch(ReadOnlySpan<byte> batch)
+    {
+        int offset = 0;
+        while (offset < batch.Length)
+        {
+            if (batch.Length - offset < 8) throw new InvalidDataException("truncated game-message batch header");
+            int payloadLength = BinaryPrimitives.ReadInt32BigEndian(batch[offset..]);
+            uint innerMessageId = BinaryPrimitives.ReadUInt32BigEndian(batch[(offset + 4)..]);
+            offset += 8;
+            if (payloadLength < 0 || payloadLength > batch.Length - offset)
+                throw new InvalidDataException("invalid game-message batch payload length");
+            _inbox.Add(new BotEvent(BotEventKind.Game)
+            {
+                MsgId = innerMessageId,
+                Body = batch.Slice(offset, payloadLength).ToArray(),
+            });
+            offset += payloadLength;
         }
     }
 

@@ -72,12 +72,12 @@ public sealed class TitleTests : IAsyncLifetime
     }
 
     /// <summary>The best power ever reached, as PowerService keeps it.</summary>
-    private Task SetBestPower(BotClient bot, long power) => Service<GameLoop>().InvokeAsync(() =>
+    private Task SetBestPower(BotClient bot, long power) => Service<GameLoop>().InvokeAsync(async () =>
     {
         var s = Session(bot);
+        using var gate = await CharacterService.Lock(s);
         var current = PowerService.Current(s);
         s.Power = new PowerService.Snapshot(current, new PowerUnit { NormalPower = power }, new PlayerPowerPackage());
-        return Task.CompletedTask;
     });
 
     [ClientDataFact]

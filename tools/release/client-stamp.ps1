@@ -9,7 +9,16 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 
 Push-Location $root
 try {
-    $files = @(git ls-files src/Ro3Emu.ClientHooks src/Ro3Emu.Loc | Where-Object { $_ -notmatch '/(bin|obj)/' })
+    # Include ordinary untracked project inputs as well as tracked files.  A new
+    # hook source must change the stamp before it is staged; otherwise -Check
+    # could incorrectly bless DLLs that were built without that source file.
+    # git ls-files merges cache and worktree entries in Git's canonical path
+    # order, so the stamp is stable before and after a new input is staged.
+    $files = @(git ls-files --cached --others --exclude-standard -- src/Ro3Emu.ClientHooks src/Ro3Emu.Loc |
+        Where-Object { $_ -notmatch '/(bin|obj)/' })
+    if ($files.Count -eq 0) {
+        throw 'No Ro3Emu.ClientHooks/Ro3Emu.Loc source inputs were found.'
+    }
     $hashes = @($files | git hash-object --stdin-paths)
     $text = (0..($files.Count - 1) | ForEach-Object { "$($files[$_]) $($hashes[$_])" }) -join "`n"
     $sha = [Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($text))

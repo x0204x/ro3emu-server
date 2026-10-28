@@ -167,7 +167,7 @@ public sealed partial class NewActivityService
         var response = new NewActivityFragmentGatherAskFinishedResp();
         try { error = await FragmentAskFinishedCoreAsync(session, 105, req, response); }
         finally { session.ActivityGate.Release(); scope.Dispose(); }
-        if (error != 0) await session.SendGameAsync(2, new CommonErrorNtf { ErrorCode = error });
+        if (error != 0) await session.SendGameAsync(MsgId.CommonError, new CommonErrorNtf { ErrorCode = error });
         await session.SendGameAsync(82967, response);
     }
 
@@ -243,7 +243,7 @@ public sealed partial class NewActivityService
             try { await notices.FlushAsync(); }
             catch (Exception e) { _log.LogWarning(e, "Committed fragment notice failed for {Role}", session.Role?.Id); }
         }
-        if (error != 0) await session.SendGameAsync(2, new CommonErrorNtf { ErrorCode = error });
+        if (error != 0) await session.SendGameAsync(MsgId.CommonError, new CommonErrorNtf { ErrorCode = error });
         await session.SendGameAsync(82964, new NewActivityFragmentGatherSendResp());
     }
 
@@ -368,7 +368,7 @@ public sealed partial class NewActivityService
         try { error = await handler(res); }
         finally { session.ActivityGate.Release(); }
         // Legacy 82963–67 responses have no result field; 2 is the client error channel.
-        if (error != 0) await session.SendGameAsync(2, new CommonErrorNtf { ErrorCode = error });
+        if (error != 0) await session.SendGameAsync(MsgId.CommonError, new CommonErrorNtf { ErrorCode = error });
         await session.SendGameAsync(id, res);
     }
 

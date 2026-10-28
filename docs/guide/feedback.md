@@ -41,9 +41,9 @@ Nothing, in this client build:
   delegate that opens the client's generic text panel `UI_Com_InputContentPanel` (the stall's share-text panel,
   `UI_Sys_Stall_SellerWidgetCtrl.lua:966-990`, generic part `UI/Common/Controllers/UI_Com_InputContentWidgetCtrl.lua`)
   titled UIWords 90505 "Feedback". Its confirm callback sends the text as
-  game message **77013** (UTF-8; an emulator-defined id, the client's table has none).
+  RO3Emu-private game message `PrivateMessageIds.Feedback` (UTF-8).
 - **Server:** function 41 is in `OpenContent.Functions`, so the button shows wherever OpenContent is on (a
-  hosted server, see [open-content.md](open-content.md)). Message 77013 and the chat command go to `FeedbackService.SubmitAsync`.
+  hosted server, see [open-content.md](open-content.md)). The private message and chat command go to `FeedbackService.SubmitAsync`.
 - An old client without the new hook still shows the button (the server opens 41) but the click does nothing; `/bug`
   works on every client. Players get the hook with the next patched client (`tools/patch-client.ps1`, or the launcher: [launcher.md](launcher.md)).
 

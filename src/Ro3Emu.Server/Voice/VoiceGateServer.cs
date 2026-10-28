@@ -9,7 +9,7 @@ namespace Ro3Emu.Server.Voice;
 
 /// <summary>
 /// The voice relay's own TCP listener (VoiceFrame framing, not Phonest/PhonestChannel: the gate carries no
-/// client identity of its own, only the 77015/77016 ticket). Registered when <see cref="VoiceOptions.Port"/> is
+/// client identity of its own, only the private game-gate ticket). Registered when <see cref="VoiceOptions.Port"/> is
 /// set (ServerHost.Create) and serving only when <see cref="ServerOptions.VoiceServed"/>. Every frame after Auth is
 /// sealed with the ticket's secret (<see cref="VoiceConnection.Cipher"/>), so it serves off loopback as well. Binds in <see cref="StartAsync"/>
 /// and drains in <see cref="StopAsync"/>, like <see cref="Net.GateListener"/>.

@@ -7,12 +7,12 @@ using UnityEngine.UI;
 namespace Ro3Emu.ClientHooks
 {
     /// <summary>
-    /// Server-triggered client inspection (game message 77012, UTF-8 command line; GM "!client ..."), written to
-    /// Player.log. Runs on the main thread from the chat adapter's pump.
+    /// Server-triggered client inspection (<see cref="PrivateMessageIds.Diagnostics"/>, UTF-8 command line; GM
+    /// "!client ..."), written to Player.log. Runs on the main thread from the chat adapter's pump.
     /// </summary>
     public static class Diagnostics
     {
-        public const uint MsgId = 77012;
+        public const uint MsgId = PrivateMessageIds.Diagnostics;
 
         public static void Run(string line)
         {

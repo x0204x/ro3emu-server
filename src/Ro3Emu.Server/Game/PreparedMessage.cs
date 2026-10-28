@@ -15,9 +15,7 @@ public sealed class PreparedMessage
         MsgId = msgId;
         Type = message.Descriptor;
         Body = message.ToByteArray();
-        var parameters = new byte[4 + Body.Length];
-        BitConverter.TryWriteBytes(parameters, msgId);
-        Body.CopyTo(parameters, 4);
+        var parameters = GameMessageWire.Parameters(msgId, Body);
         Envelope = new EntityMessage { Parameters = ByteString.CopyFrom(parameters) }.ToByteArray();
         Frame = Net.PhonestChannel.Frame(GameGateServer.EntityMessageOut, Envelope);
     }

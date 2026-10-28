@@ -34,6 +34,8 @@
     <Compile Include="..\Ro3Emu.ClientHooks\VoiceCipher.cs" Link="Voice\VoiceCipher.cs" />
     <!-- The bounded client/server skill-trace wire format is shared for the same reason. -->
     <Compile Include="..\Ro3Emu.ClientHooks\SkillTraceProtocol.cs" Link="Game\SkillTraceProtocol.cs" />
+    <!-- Emulator-only game message ids: one collision-checked source shared with the patched client. -->
+    <Compile Include="..\Ro3Emu.ClientHooks\PrivateMessageIds.cs" Link="Game\PrivateMessageIds.cs" />
   </ItemGroup>
 
   <ItemGroup>

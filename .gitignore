@@ -10,6 +10,7 @@ TestResults/
 # Game data and client research: exported from your own client, never committed
 /data/
 /re/
+/docs/artifacts/
 
 # Third-party decompiler (download it yourself)
 unluac.jar

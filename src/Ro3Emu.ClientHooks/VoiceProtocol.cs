@@ -5,13 +5,13 @@ namespace Ro3Emu.ClientHooks
 {
     /// <summary>
     /// The voice relay's wire format (the server's VoiceRelay): every frame is 'V' 'T' | type u8 | length u16 LE | payload,
-    /// numbers little endian. Up 0x01..0x08, down 0x81..0x88. The ticket comes over the game connection (77015 up with
-    /// an empty body, 77016 down).
+    /// numbers little endian. Up 0x01..0x08, down 0x81..0x88. The ticket comes over the game connection using the
+    /// private request/reply ids below.
     /// </summary>
     public static class VoiceProtocol
     {
-        public const uint TicketRequestMsgId = 77015;
-        public const uint TicketMsgId = 77016;
+        public const uint TicketRequestMsgId = PrivateMessageIds.VoiceTicketRequest;
+        public const uint TicketMsgId = PrivateMessageIds.VoiceTicket;
 
         public const int HeaderSize = 5;
         public const int MaxPayload = 0xFFFF;
@@ -28,7 +28,7 @@ namespace Ro3Emu.ClientHooks
         /// <summary>Audio payload codec ids (first payload byte; the server does not look inside).</summary>
         public const byte CodecMuLaw = 1;
 
-        /// <summary>The 77016 body: where the relay is, the one-time token and the stream secret for it. Port 0 = voice
+        /// <summary>The ticket body: where the relay is, the one-time token and the stream secret for it. Port 0 = voice
         /// off on this server.</summary>
         public sealed class Ticket
         {

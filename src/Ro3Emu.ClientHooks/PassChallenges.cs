@@ -24,7 +24,7 @@ namespace Ro3Emu.ClientHooks
     public static class PassChallenges
     {
         /// <summary>Must equal the server's NewActivityService.PassPanelMsg.</summary>
-        public const uint MsgId = 77014;
+        public const uint MsgId = PrivateMessageIds.PassChallenges;
 
         private const long ActivityId = 99139;
         private const long DailySonType = 139, WeeklySonType = 138;

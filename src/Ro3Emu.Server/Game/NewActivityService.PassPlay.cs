@@ -75,9 +75,9 @@ public sealed partial class NewActivityService
     }
 
     /// <summary>Ro3Emu.ClientHooks.PassChallenges sends it before opening the panel: its TaskConfig has the rows.</summary>
-    public const uint PassPanelMsg = 77014;
+    public const uint PassPanelMsg = Ro3Emu.ClientHooks.PrivateMessageIds.PassChallenges;
 
-    /// <summary>77014: from now on this session's 5027 carries the challenges (a client without the rows never asks).</summary>
+    /// <summary>From now on this session's 5027 carries the challenges (a client without the rows never asks).</summary>
     public Task PassPanelAsync(GameSession session)
     {
         if (!_passPlay || session.Role == null || session.Tasks == null) return Task.CompletedTask;

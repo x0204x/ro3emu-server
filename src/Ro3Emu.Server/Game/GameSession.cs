@@ -10,7 +10,7 @@ namespace Ro3Emu.Server.Game;
 /// <summary>
 /// One client on the game gate. Server -> client traffic is Phonest EntityMessage on gate index 2:
 /// named RPCs (methodName + msgpack values concatenated without an array header) or raw game messages
-/// (no methodName, parameters = uint32 LE msgId ‖ romsg protobuf).
+/// (no methodName, ordinarily parameters = uint32 LE msgId ‖ romsg protobuf; outer id 2 is a batch envelope).
 /// </summary>
 public sealed class GameSession(PhonestChannel channel, TrafficLog traffic, SkillTraceTelemetryService? skillTrace = null)
 {
@@ -230,7 +230,7 @@ public sealed class GameSession(PhonestChannel channel, TrafficLog traffic, Skil
     public ActivityRuntimeState ActivityRuntime { get; set; } = new();
     public SemaphoreSlim ActivityGate { get; } = new(1, 1);
     public bool ActivitiesReady { get; set; }
-    /// <summary>The client has the pass challenge rows (Ro3Emu.ClientHooks.PassChallenges sent 77014): 5027 may carry them.</summary>
+    /// <summary>The client has the pass challenge rows (Ro3Emu.ClientHooks.PassChallenges opted in): 5027 may carry them.</summary>
     public bool PassChallengeRows { get; set; }
     public PronteraDefenseService.State? Defense { get; set; }
     public TimedBattleService.State? TimedBattle { get; set; }
@@ -544,9 +544,7 @@ public sealed class GameSession(PhonestChannel channel, TrafficLog traffic, Skil
         }
         Diagnostics.MessageCoverage.Outbound(msgId);
         using var measurement = Channel.Metrics?.Outgoing(msgId, bytes.Length);
-        var parameters = new byte[4 + bytes.Length];
-        BitConverter.TryWriteBytes(parameters, msgId);
-        bytes.CopyTo(parameters, 4);
+        var parameters = GameMessageWire.Parameters(msgId, bytes);
         return Channel.SendAsync(GameGateServer.EntityMessageOut, new EntityMessage { Parameters = ByteString.CopyFrom(parameters) });
     }
 

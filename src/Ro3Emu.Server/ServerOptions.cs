@@ -359,7 +359,7 @@ public sealed class FeedbackOptions
 
 /// <summary>
 /// Team voice relay (Talk/Listen/Mute in the party panel). The listener only opens when <see cref="Port"/> is set;
-/// an off relay still answers the 77015 ticket request with port 0 so the client's menu can disable itself cleanly.
+/// an off relay still answers the private ticket request with port 0 so the client's menu can disable itself cleanly.
 /// </summary>
 public sealed class VoiceOptions
 {
@@ -386,7 +386,7 @@ public sealed class VoiceOptions
     /// <summary>Longest opus payload accepted in one Audio frame, in bytes.</summary>
     public int MaxPayload { get; set; } = 512;
 
-    /// <summary>How long a 77015 ticket stays valid before a connection must present it.</summary>
+    /// <summary>How long a voice ticket stays valid before a connection must present it.</summary>
     public int TicketSeconds { get; set; } = 60;
 
     /// <summary>Voice connections the listener accepts at once; past this new connections are refused.</summary>

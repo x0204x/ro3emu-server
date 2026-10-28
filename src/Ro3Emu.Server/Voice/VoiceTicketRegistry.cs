@@ -4,7 +4,7 @@ namespace Ro3Emu.Server.Voice;
 
 /// <summary>
 /// One-time handoff from the encrypted game gate to the voice gate: the game gate hands the client a 16-byte token
-/// for its own role id and the session's 32-byte stream secret (77016 VoiceTicket); the voice gate's Auth frame
+/// for its own role id and the session's 32-byte stream secret (the private voice ticket); the voice gate's Auth frame
 /// presents the token back, and every frame after it is sealed with the secret
 /// (<see cref="Ro3Emu.ClientHooks.VoiceCipher"/>). Mirrors <see cref="Micro.GateAuthRegistry"/>'s lock +
 /// constant-time compare shape. In memory only.

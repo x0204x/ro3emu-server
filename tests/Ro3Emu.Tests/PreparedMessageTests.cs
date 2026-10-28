@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using Google.Protobuf;
 using Phonest.Proto;
 using Romsg;
@@ -27,5 +28,22 @@ public sealed class PreparedMessageTests
         Assert.Equal(expected, prepared.Envelope);
         Assert.Equal(body, prepared.Body);
         Assert.Equal(MovementChangeNtf.Descriptor, prepared.Type);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1234)]
+    public void CommonErrorUsesTheClientsSingleRecordBatchEnvelope(int errorCode)
+    {
+        var message = new CommonErrorNtf { ErrorCode = errorCode };
+        var body = message.ToByteArray();
+        var prepared = new PreparedMessage(MsgId.CommonError, message);
+        var parameters = EntityMessage.Parser.ParseFrom(prepared.Envelope).Parameters.Span;
+
+        Assert.Equal(12 + body.Length, parameters.Length);
+        Assert.Equal(MsgId.CommonError, BinaryPrimitives.ReadUInt32LittleEndian(parameters));
+        Assert.Equal(body.Length, BinaryPrimitives.ReadInt32BigEndian(parameters[4..]));
+        Assert.Equal(MsgId.CommonError, BinaryPrimitives.ReadUInt32BigEndian(parameters[8..]));
+        Assert.Equal(body, parameters[12..].ToArray());
     }
 }

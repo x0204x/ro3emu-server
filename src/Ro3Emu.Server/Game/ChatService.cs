@@ -11,7 +11,7 @@ namespace Ro3Emu.Server.Game;
 
 /// <summary>
 /// Player chat. The client's chat is Tencent IM only; the patched client (Ro3Emu.ClientHooks
-/// ServerImAdapter) tunnels the Tencent.IM protobuf commands through game messages 77010 (up) / 77011 (down),
+/// ServerImAdapter) tunnels the Tencent.IM protobuf commands through RO3Emu-private game messages,
 /// frame = uint32 LE cmd ‖ int32 LE errorCode ‖ body. Groups are the client's opaque conversation ids
 /// ("4_&lt;sceneId&gt;" map chat, "@TGS#_1_&lt;cluster&gt;" world, ...), joined through romsg 77002; whispers address
 /// a role id.
@@ -44,8 +44,8 @@ public sealed partial class ChatService
 
     public const uint ImUserSig = 77001;
     public const uint JoinChannel = 77002;
-    public const uint TunnelUp = 77010;
-    public const uint TunnelDown = 77011;
+    public const uint TunnelUp = Ro3Emu.ClientHooks.PrivateMessageIds.ChatTunnelUp;
+    public const uint TunnelDown = Ro3Emu.ClientHooks.PrivateMessageIds.ChatTunnelDown;
     public const uint FunctionOpenSync = 5056;
 
     /// <summary>LauncherConfig im_app_id of this build (the client-side check is patched out anyway).</summary>

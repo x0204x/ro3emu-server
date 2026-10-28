@@ -164,7 +164,7 @@ public sealed class MultiplayerTests : IAsyncLifetime
 
         await alice.SendChatAsync("4_1", 2, "!client skilltrace on", channelIndex: 4);
 
-        var command = await alice.Inbox.WaitAsync(e => e.IsGame(77012), Wait);
+        var command = await alice.Inbox.WaitAsync(e => e.IsGame(Ro3Emu.ClientHooks.PrivateMessageIds.Diagnostics), Wait);
         Assert.Equal("skilltrace on", System.Text.Encoding.UTF8.GetString(command.Body));
         var reply = BroadCastNotify.Parser.ParseFrom((await alice.Inbox.WaitAsync(
             e => e.IsGame(Ro3Emu.Server.Game.GmCommands.BroadcastNotify), Wait)).Body);

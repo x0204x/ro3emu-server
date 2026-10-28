@@ -25,7 +25,7 @@ public sealed class FeedbackService(IOptions<ServerOptions> options, GameData da
     ILogger<FeedbackService> log)
 {
     /// <summary>Client hook → server: the report text, UTF-8. Ours (the client's message table has no such id).</summary>
-    public const uint SubmitMsg = 77013;
+    public const uint SubmitMsg = Ro3Emu.ClientHooks.PrivateMessageIds.Feedback;
 
     private static readonly string[] ChatCommands = ["/bug", "/feedback"];
 

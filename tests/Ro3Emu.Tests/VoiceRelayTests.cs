@@ -10,7 +10,7 @@ namespace Ro3Emu.Tests;
 [CollectionDefinition("Voice relay timing", DisableParallelization = true)]
 public sealed class VoiceRelayTimingSerialGroup;
 
-/// <summary>Team voice relay PoC: the 77015/77016 ticket handoff and the voice gate's own frames.</summary>
+/// <summary>Team voice relay PoC: the private ticket handoff and the voice gate's own frames.</summary>
 [Collection("Voice relay timing")]
 public sealed class VoiceRelayTests : IAsyncLifetime
 {
@@ -93,7 +93,7 @@ public sealed class VoiceRelayTests : IAsyncLifetime
         return (ticket.RoleId, new TestVoiceKey(ticket.Token, ticket.Secret));
     }
 
-    /// <summary>77016 parsed by hand (not through BotVoiceTicket) so the wire layout itself is pinned here:
+    /// <summary>The private ticket parsed by hand (not through BotVoiceTicket) so the wire layout itself is pinned here:
     /// u16 port | u8 hostLen | host ASCII | i64 roleId | 16-byte token | u32 ttlSeconds | 32-byte secret.</summary>
     private static async Task<(ushort Port, string Host, long RoleId, byte[] Token, uint Ttl, byte[] Secret)> GetRawTicketAsync(BotClient bot)
     {

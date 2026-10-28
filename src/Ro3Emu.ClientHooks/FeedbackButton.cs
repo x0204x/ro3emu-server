@@ -18,7 +18,7 @@ namespace Ro3Emu.ClientHooks
     public static class FeedbackButton
     {
         /// <summary>Must equal the server's FeedbackService.SubmitMsg.</summary>
-        public const uint MsgId = 77013;
+        public const uint MsgId = PrivateMessageIds.Feedback;
 
         private const long FeedbackFunction = 41;
         private const long TitleWord = 90505; // UIWords "Feedback"

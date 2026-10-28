@@ -87,6 +87,43 @@ enum ChatParamType {
   CHAT_PARAM_PLAYER_NAME = 28;
 }
 
+enum ManagedChatProvider {
+  MANAGED_CHAT_PROVIDER_UNSPECIFIED = 0;
+  MANAGED_CHAT_PROVIDER_TENCENT = 1;
+  MANAGED_CHAT_PROVIDER_STREAM = 2;
+}
+
+enum ManagedChatCredentialMode {
+  MANAGED_CHAT_CREDENTIAL_UNSPECIFIED = 0;
+  MANAGED_CHAT_CREDENTIAL_DIRECT_TOKEN = 1;
+  MANAGED_CHAT_CREDENTIAL_HTTPS_EXCHANGE_TICKET = 2;
+}
+
+enum ManagedChatContentKind {
+  MANAGED_CHAT_CONTENT_UNSPECIFIED = 0;
+  MANAGED_CHAT_CONTENT_TEXT = 1;
+  MANAGED_CHAT_CONTENT_LEGACY_RICH = 2;
+}
+
+enum ManagedChatErrorCode {
+  MANAGED_CHAT_ERROR_UNSPECIFIED = 0;
+  MANAGED_CHAT_ERROR_OK = 1;
+  MANAGED_CHAT_ERROR_UPDATE_REQUIRED = 2;
+  MANAGED_CHAT_ERROR_TEMPORARILY_UNAVAILABLE = 3;
+  MANAGED_CHAT_ERROR_CREDENTIAL_EXPIRED = 4;
+  MANAGED_CHAT_ERROR_NOT_MEMBER = 5;
+  MANAGED_CHAT_ERROR_NOT_ALLOWED = 6;
+  MANAGED_CHAT_ERROR_RATE_LIMITED = 7;
+  MANAGED_CHAT_ERROR_INVALID_CONTENT = 8;
+  MANAGED_CHAT_ERROR_PROVIDER_RATE_LIMITED = 9;
+  MANAGED_CHAT_ERROR_PROVIDER_TIMEOUT = 10;
+  MANAGED_CHAT_ERROR_PROVIDER_UNAVAILABLE = 11;
+  MANAGED_CHAT_ERROR_PROVIDER_CONFIGURATION = 12;
+  MANAGED_CHAT_ERROR_IDEMPOTENCY_CONFLICT = 13;
+  MANAGED_CHAT_ERROR_COMMIT_STATUS_UNKNOWN = 14;
+  MANAGED_CHAT_ERROR_INTERNAL = 15;
+}
+
 message CommonLinkInfo {
   int32 templateId = 1;
   string commonData = 2;
@@ -298,5 +335,79 @@ message JoinChatChannelRsp {
 message MutePlayerInChannelNotify {
   string chatChannelGroupId = 1;
   bool isMute = 2;
+}
+
+message ManagedChatClientCapability {
+  repeated romsg.ManagedChatProvider supportedProviders = 1;
+  uint32 protocolVersion = 2;
+  uint64 featureBits = 3;
+}
+
+message ManagedChatChannelRef {
+  romsg.ChatChannelType channelType = 1;
+  string targetId = 2;
+}
+
+message ManagedChatCredential {
+  romsg.ManagedChatCredentialMode mode = 1;
+  string value = 2;
+  int64 expiresAtMs = 3;
+}
+
+message ManagedChatBootstrapReq {
+  romsg.ManagedChatClientCapability capability = 1;
+}
+
+message ManagedChatBootstrapRsp {
+  romsg.ManagedChatErrorCode error = 1;
+  romsg.ManagedChatProvider provider = 2;
+  string publicApiKey = 3;
+  string providerUserId = 4;
+  romsg.ManagedChatCredential credential = 5;
+  uint64 rolloutEpoch = 6;
+  uint32 policyVersion = 7;
+  repeated romsg.ManagedChatChannelRef channels = 8;
+  uint64 featureBits = 9;
+}
+
+message ManagedChatCredentialRefreshReq {
+  uint64 rolloutEpoch = 1;
+}
+
+message ManagedChatCredentialRefreshRsp {
+  romsg.ManagedChatErrorCode error = 1;
+  romsg.ManagedChatCredential credential = 2;
+  uint64 rolloutEpoch = 3;
+}
+
+message ManagedChatContent {
+  romsg.ManagedChatContentKind kind = 1;
+  string text = 2;
+  bytes legacyExtraPayload = 3;
+}
+
+message ManagedChatSendReq {
+  bytes clientMessageId = 1;
+  romsg.ManagedChatChannelRef channel = 2;
+  romsg.ManagedChatContent content = 3;
+  uint64 rolloutEpoch = 4;
+}
+
+message ManagedChatSendRsp {
+  romsg.ManagedChatErrorCode error = 1;
+  bytes clientMessageId = 2;
+  string providerMessageId = 3;
+  int64 providerCreatedAtMs = 4;
+  bool retryable = 5;
+  bool commitUnknown = 6;
+  uint32 retryAfterMs = 7;
+  bool accepted = 8;
+}
+
+message ManagedChatChannelStateNtf {
+  uint64 rolloutEpoch = 1;
+  uint64 stateVersion = 2;
+  repeated romsg.ManagedChatChannelRef watch = 3;
+  repeated romsg.ManagedChatChannelRef unwatch = 4;
 }
 
