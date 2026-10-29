@@ -30,6 +30,9 @@ public sealed partial class DungeonService
 
     /// <summary>Committed clears only; consumers receive the scene entry and whether an actual personal award was paid.</summary>
     public List<Func<GameSession, int, bool, Task>> Completed { get; } = new();
+    internal Func<GameSession, DungeonRewardObligation, DungeonTaskClear>? CaptureTaskClear { get; set; }
+    internal Func<GameSession, DungeonTaskClear, Task>? ApplyTaskClear { get; set; }
+    internal Func<GameSession, Task>? ResumeTaskClearFollowup { get; set; }
     /// <summary>After <see cref="Completed"/> for a TenGameplay run: the boss (TenGameplayBossConfig._iBoss) and the
     /// run's settled participants (quest target 106602).</summary>
     public List<Func<GameSession, long, IReadOnlyCollection<GameSession>, Task>> MultiBossCleared { get; } = new();
@@ -604,8 +607,8 @@ public sealed partial class DungeonService
             if (a.Plan.SceneEntry == AirshipScene && Step(a)?.Cannon != null
                 && _monsters.Template(spawn.NpcId) is { } cannonTarget)
             {
-                // G's authored ships are 100+ m from the cannons and TPS targeting needs their client units.
-                // (inferred) Show these two configured targets to this room beyond ordinary 60 m AOI.
+                // G 的敵艦距離炮台超過 100 公尺，TPS 瞄準前必須先在客戶端建立敵艦單位。
+                // (inferred) 僅讓本房間的兩個設定目標超出一般 60 公尺視野後仍可見。
                 waveTemplate = cannonTarget with { VisibleAcrossScene = true };
             }
             else if (a.Plan.SceneEntry == EggThiefDungeon && _monsters.Template(spawn.NpcId) is { } template)
@@ -939,6 +942,17 @@ public sealed partial class DungeonService
             if (!committed) continue;
             if (committed && success)
             {
+                try { await DeliverTaskClearsAsync(s); }
+                catch (Exception e)
+                {
+                    _log.LogError(e, "副本 {Instance} 的任務通關仍待恢復，角色 {Role}", a.Room.Id, roleId);
+                    if (s.Owner?.State == Ownership.RoleOwnerState.RecoveryRequired)
+                    {
+                        s.CancelPendingCharacterIntents();
+                        s.AbortForRecovery();
+                    }
+                    continue;
+                }
                 foreach (var handler in Completed)
                     try { await handler(s, (int)a.Plan.SceneEntry, goods.Count > 0); }
                     catch (Exception e) { _log.LogError(e, "Dungeon clear callback failed for {Role}, instance {Instance}", roleId, a.Room.Id); }

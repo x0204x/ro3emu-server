@@ -189,7 +189,10 @@ public sealed partial class DungeonService
         }
         finally { if (lethalDamage > 0) a.Stats[a.TerminalKillerRole].TotalDamage -= lethalDamage; }
         // One writer transaction establishes every recipient, including disconnected roles present at the barrier.
-        try { await _obligations.FreezeAsync(rows); }
+        var taskClears = rows.Select(row => CaptureTaskClear?.Invoke(
+            participants.Single(s => s.Role!.Id == row.RoleId), row)
+            ?? throw new InvalidOperationException("副本任務快照處理尚未設定。")).ToArray();
+        try { await _obligations.FreezeWithTaskClearsAsync(rows, taskClears); }
         catch
         {
             // A lost writer acknowledgement may follow a committed freeze. Adopt its exact stored
@@ -197,7 +200,9 @@ public sealed partial class DungeonService
             var stored = _obligations.FrozenRoom(a.Room.Id);
             if (stored.Count != rows.Count || rows.Any(row => !stored.Any(old => old.Key == row.Key
                 && JsonSerializer.SerializeToUtf8Bytes(old).AsSpan()
-                    .SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(row)))))
+                    .SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(row))))
+                || taskClears.Any(clear => !_obligations.PendingTaskClears(clear.RoleId, earnedOnly: false)
+                    .Any(old => old.SourceKey == clear.SourceKey && old.Encode().AsSpan().SequenceEqual(clear.Encode()))))
                 throw;
         }
         a.ObligationsFrozen = true;
@@ -394,6 +399,8 @@ public sealed partial class DungeonService
         if (s.Role == null || s.Dungeons == null) return;
         foreach (var row in _obligations.Pending(s.Role.Id))
         {
+            if (!_obligations.PendingTaskClears(s.Role.Id, earnedOnly: false).Any(c => c.SourceKey == row.Key))
+                _log.LogWarning("舊副本 {Source} 缺少任務實例快照；任務通關恢復為 UNKNOWN，不補算後來接受的任務", row.Key);
             // Inside the role select only the obligations it reserved are delivered; one frozen after its admission
             // stays durable and pending for the next entry or login.
             if (_loop.Owners is { } owners && !owners.CurrentCovers(RunKey(row.RoomId))) continue;
@@ -413,5 +420,14 @@ public sealed partial class DungeonService
                 throw;
             }
         }
+        await DeliverTaskClearsAsync(s);
+    }
+
+    private async Task DeliverTaskClearsAsync(GameSession s)
+    {
+        if (s.Role == null) return;
+        foreach (var clear in _obligations.PendingTaskClears(s.Role.Id))
+            await (ApplyTaskClear ?? throw new InvalidOperationException("副本任務恢復處理尚未設定。"))(s, clear);
+        await (ResumeTaskClearFollowup ?? throw new InvalidOperationException("副本任務後續恢復處理尚未設定。"))(s);
     }
 }

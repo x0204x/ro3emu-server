@@ -392,9 +392,12 @@ public static class ServerHost
         app.Services.GetRequiredService<WorldCoreService>();
         app.Services.GetRequiredService<WorldInteractionService>();
         app.Services.GetRequiredService<SkillService>().Learned.Add(app.Services.GetRequiredService<CharacterService>().NotifyCareerCapacityAsync);
-        // A committed dungeon clear counts toward quest target 101018 (story steps such as Payon Forest, the airship).
+        // 副本通關以耐久任務旁表計數；完成回呼仍留給其他系統，不能在重登時重加一次。
         var questTasks = app.Services.GetRequiredService<TaskService>();
-        app.Services.GetRequiredService<DungeonService>().Completed.Add((s, scene, _) => questTasks.OnDungeonClearedAsync(s, scene));
+        var questDungeons = app.Services.GetRequiredService<DungeonService>();
+        questDungeons.CaptureTaskClear = questTasks.CaptureDungeonClear;
+        questDungeons.ApplyTaskClear = questTasks.ApplyDungeonClearAsync;
+        questDungeons.ResumeTaskClearFollowup = questTasks.ResumeDungeonClearFollowupAsync;
         app.Services.GetRequiredService<TotemService>().Combined.Add(questTasks.OnTotemCombined); // target 315004
         // Participation and state targets (TaskService.ParticipationTargets.cs).
         app.Services.GetRequiredService<DungeonService>().MultiBossCleared.Add(questTasks.OnTenBossClearedAsync); // 106602

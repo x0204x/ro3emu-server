@@ -76,7 +76,10 @@ public static partial class EconomySnapshotReader
     // reached rank, claimed rank markers and today's counters. No balance and no asset: the points themselves are
     // currency 15 in the purse, granted by the earner's event/battle-glory receipt with this state; a rank reward is
     // its event/battle-glory-rank receipt, whose claimed marker is that receipt's once-only source.
-    public const string ExpectedFormatManifestHash = "BA5E8395604B3C714F797006E333C5049C1890E5468ED623A68D953FB65ED5E7";
+    // 副本任務旁表：來源、角色、房間、場景與版本識別，以及原任務實例、目標與所需次數。
+    // 這些欄位只恢復進度，不持有獎勵；物品與貨幣仍由副本／任務原獎勵收據入帳。
+    // 將兩個快照 DTO 納入固定格式雜湊，之後新增欄位仍需重新檢視分類。
+    public const string ExpectedFormatManifestHash = "FD48F195063F796A5772E200CFDF9F17EC222C2CA55D203A66E2058A3DFF2F1A";
     public static string FormatManifestHash => State.FormatManifestHash;
 
     private sealed partial class State
@@ -135,6 +138,8 @@ public static partial class EconomySnapshotReader
             entries.Add("role-string-set:task_followup:System.String");
             entries.Add("dungeon_reward_obligation:Ro3Emu.Server.Accounts.DungeonRewardObligation");
             TypeShape(typeof(Ro3Emu.Server.Accounts.DungeonRewardObligation));
+            entries.Add("dungeon_task_clear_outbox:Ro3Emu.Server.Accounts.DungeonTaskClear");
+            TypeShape(typeof(Ro3Emu.Server.Accounts.DungeonTaskClear));
             entries.Add("casual_battle_obligation:Ro3Emu.Server.Game.CasualBattleService+Payout");
             TypeShape(typeof(Ro3Emu.Server.Game.CasualBattleService.Payout));
             // These JSON wrappers carry embedded protobuf bytes in addition to their explicit DTO graph.

@@ -74,6 +74,18 @@ public sealed class EconomyMixedFamilyTests : IDisposable
     private long CreateRole(string account) => _roles.Create(account, 1,
         "M" + Guid.NewGuid().ToString("N")[..10], 1, 1000, 1)!.Id;
 
+    [Fact]
+    public void TaskClearMetadataDoesNotHideAnUnclassifiedFutureColumn()
+    {
+        var baseline = EconomySnapshotReader.Read(_accounts.DatabasePath, Catalog, "auto");
+        Assert.DoesNotContain(baseline.Issues, issue => issue.Kind == EconomyIssueKind.UnknownSchema
+            && issue.Key.StartsWith("schema/dungeon_task_clear_outbox", StringComparison.Ordinal));
+        FixtureSql.Execute(_accounts, "ALTER TABLE dungeon_task_clear_outbox ADD COLUMN unreviewed_asset BLOB");
+        var changed = EconomySnapshotReader.Read(_accounts.DatabasePath, Catalog, "auto");
+        Assert.Contains(changed.Issues, issue => issue.Kind == EconomyIssueKind.UnknownSchema
+            && issue.Key == "schema/dungeon_task_clear_outbox.unreviewed_asset");
+    }
+
     [Theory]
     [InlineData("e01")]
     [InlineData("e05b")]

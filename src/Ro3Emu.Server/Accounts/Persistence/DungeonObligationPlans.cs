@@ -19,6 +19,11 @@ internal sealed class DungeonObligationSchemaPlan : DbPlan
                 ON dungeon_reward_obligation(role_id) WHERE completed=0 AND activated=1;
             CREATE INDEX IF NOT EXISTS dungeon_obligation_pending_room
                 ON dungeon_reward_obligation(room_id) WHERE completed=0 AND activated=1;
+            CREATE TABLE IF NOT EXISTS dungeon_task_clear_outbox (
+                source_key TEXT PRIMARY KEY, role_id INTEGER NOT NULL, room_id INTEGER NOT NULL,
+                applied INTEGER NOT NULL CHECK(applied IN (0,1)), state BLOB NOT NULL);
+            CREATE INDEX IF NOT EXISTS dungeon_task_clear_pending_role
+                ON dungeon_task_clear_outbox(role_id) WHERE applied=0;
             """);
         cmd.ExecuteNonQuery();
         return 1;
@@ -145,6 +150,14 @@ internal sealed class DungeonObligationCancelPreparedPlan(long roomId) : DbPlan
             "SELECT 1 FROM dungeon_reward_obligation WHERE room_id=$room AND activated=1 LIMIT 1");
         active.Parameters.AddWithValue("$room", roomId);
         if (active.ExecuteScalar() != null) return 0;
+        // 尚未贏得的尾擊取消時，任務旁表也必須一併取消。
+        using var clear = DbSql.Command(db, tx, """
+            DELETE FROM dungeon_task_clear_outbox WHERE room_id=$room AND applied=0
+              AND source_key IN (SELECT source_key FROM dungeon_reward_obligation
+                WHERE room_id=$room AND activated=0 AND completed=0)
+            """);
+        clear.Parameters.AddWithValue("$room", roomId);
+        clear.ExecuteNonQuery();
         using var cancel = DbSql.Command(db, tx,
             "DELETE FROM dungeon_reward_obligation WHERE room_id=$room AND activated=0 AND completed=0");
         cancel.Parameters.AddWithValue("$room", roomId);

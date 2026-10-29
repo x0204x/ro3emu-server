@@ -12,6 +12,13 @@ public sealed class DungeonObligationStore(AccountStore accounts)
     public Task FreezeAsync(IReadOnlyList<DungeonRewardObligation> obligations) =>
         _accounts.WriteAsync<int>(new DungeonObligationFreezePlan(obligations));
 
+    internal Task FreezeWithTaskClearsAsync(IReadOnlyList<DungeonRewardObligation> obligations,
+        IReadOnlyList<DungeonTaskClear> clears) =>
+        _accounts.WriteAsync<int>(new DungeonTaskClearFreezePlan(obligations, clears));
+
+    internal IReadOnlyList<DungeonTaskClear> PendingTaskClears(long role, bool earnedOnly = true) =>
+        _accounts.ReadSync<List<DungeonTaskClear>>(new DungeonTaskClearReadPlan(role, earnedOnly));
+
     public IReadOnlyList<DungeonRewardObligation> Pending(long role) =>
         _accounts.ReadSync<List<DungeonRewardObligation>>(new DungeonObligationReadPlan(role));
 
