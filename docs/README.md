@@ -36,7 +36,7 @@
 - [World core](research/world-core-evidence.md) · [world effects](research/world-effects-evidence.md) · [NPC interaction](research/world-interaction-evidence.md) · [role operations](research/world-role-operations-evidence.md) · [social](research/world-social-evidence.md) · [MG_Common](research/world-common-evidence.md)
 - [Activities census](research/activities-evidence.md) · [season page](research/season-page-evidence.md) · [season refine](research/season-refine-evidence.md) · [equipment rating](research/equipment-rating-evidence.md)
 - [Pet guardian skills and reactive effects](research/pet-skills-evidence.md)
-- [Skill obstruction](research/skill-pass-block-evidence.md) · [party EXP](research/party-experience-evidence.md) · [quest EXP](research/quest-experience-evidence.md)
+- [Skill obstruction](research/skill-pass-block-evidence.md) · [skill cooldown](research/skill-cooldown-evidence.md) · [party EXP](research/party-experience-evidence.md) · [quest EXP](research/quest-experience-evidence.md)
 - [Airship story and QTE](research/airship-evidence.md) · [Tiger King return](research/tiger-dungeon-return-evidence.md)
 
 Citations such as `re/clientB/lua-src/Logic/...lua:123` point into your own decompiled client (see the main

@@ -106,7 +106,8 @@ public sealed partial class CombatService
             if (own == null && Math.Max(s.SkillCds.GetValueOrDefault(group), s.SkillModeCds.GetValueOrDefault((group, mode))) > Now) error = ErrorCodes.SkillCooldown;
             // Preserve the established cooldown refusal for a repeated cast, including during its action tail.
             else if (s.SkillCast is { Cancelled: false } active && Now < active.StartMs + active.ChantMs + active.ActionMs
-                && (!new SkillConfig(row.Value).CancelCast || SwingInFlight(active, row.Value, req))) error = ErrorCodes.SkillBusy;
+                && (!new SkillConfig(row.Value).CancelCast || RepeatsActiveSkill(active, row.Value, req)
+                    || SwingInFlight(active, row.Value, req))) error = ErrorCodes.SkillBusy;
             else
             {
                 error = ValidateTarget(s, row.Value, req, origin, owned == null ? WalkSlack(s) : 0,
@@ -189,6 +190,8 @@ public sealed partial class CombatService
     // Refusal must not interrupt a different accepted cast: the client does not compare 31103.sessionId.
     private async Task RefuseCoreAsync(GameSession s, CastSkillReq req, int error, long parameter)
     {
+        // LC_PbHelper formats error 3012's first parameter through SkillConfig._iName, using the skill row ID.
+        if (error == ErrorCodes.SkillCooldown) parameter = req.SkillId;
         var reply = new CastSkillRsp { Result = error, IsAutoCast = req.IsAutoCast };
         if (parameter != 0) reply.Params.Add(parameter);
         await s.SendGameAsync(UseSkill, reply);
@@ -199,6 +202,14 @@ public sealed partial class CombatService
             await s.SendGameAsync(SkillEnd, end);
         }
     }
+
+    /// <summary>
+    /// (inferred safeguard) A repeated non-normal row cannot restart its own chant/action when its configured CD is
+    /// zero or shorter than that action. Different rows keep their configured cancellation behavior; normal attacks
+    /// keep their separate swing/jitter rule.
+    /// </summary>
+    private static bool RepeatsActiveSkill(ActiveSkillCast active, JsonElement row, CastSkillReq req) =>
+        req.SkillId == active.Request.SkillId && new SkillConfig(row).IsNormalAtk != 1;
 
     /// <summary>
     /// A normal attack (_bCancelCast 1) may cut a skill's action short, but not the swing before it at the same target:
@@ -407,13 +418,20 @@ public sealed partial class CombatService
         int group = (int)GameData.Int(row, "_iSkillID"), mode = (int)GameData.Int(row, "_iMode");
         long now = Now, cd = GameData.Int(row, "_iCD");
         var notice = new SkillCdNotify { Uuid = s.Role!.Id };
+        var shown = new Dictionary<(int Group, int Mode), SkillCdInfo>();
         void Set(int g, int m, long duration, bool shared, int shownMode)
         {
             if (duration <= 0) return;
             long end = now + duration;
             s.SkillModeCds[(g, m)] = Math.Max(end, s.SkillModeCds.GetValueOrDefault((g, m)));
             if (shared) s.SkillCds[g] = Math.Max(end, s.SkillCds.GetValueOrDefault(g));
-            notice.Infos.Add(new SkillCdInfo { SkillId = g, SkillMode = shownMode, CdStartTimestampMs = now, CdEndTimestampMs = end });
+            end = Math.Max(s.SkillModeCds[(g, m)], s.SkillCds.GetValueOrDefault(g));
+            if (shown.TryGetValue((g, shownMode), out var prior))
+                prior.CdEndTimestampMs = Math.Max(prior.CdEndTimestampMs, end);
+            else shown[(g, shownMode)] = new SkillCdInfo
+            {
+                SkillId = g, SkillMode = shownMode, CdStartTimestampMs = now, CdEndTimestampMs = end,
+            };
         }
         // The client files a 31113 under group * 10000 + its mode (LC_Skill_Function.GetSkillCDInfoKey) and its bar reads
         // the key of the row it keeps, the row it asks to cast. A mode a talent or a mount selects (type 15: Joint Beat,
@@ -429,6 +447,13 @@ public sealed partial class CombatService
             int sibling = (int)groups[i];
             if (_data.Row("SkillConfig", sibling) is { } siblingRow) sibling = (int)GameData.Int(siblingRow, "_iSkillID");
             if (sibling > 0) Set(sibling, 0, (long)shared[i], true, 0);
+        }
+        // LC_Scene_Sync overwrites a cache entry for every 31113 row. A short public cooldown must not replace
+        // this cast's longer own cooldown (BackSlide), or an already running group/mode cooldown, in that cache.
+        foreach (var info in shown.Values)
+        {
+            info.CdEndTimestampMs = Math.Max(info.CdEndTimestampMs, s.SkillCds.GetValueOrDefault((int)info.SkillId));
+            notice.Infos.Add(info);
         }
         if (notice.Infos.Count > 0) await s.SendGameAsync(SkillCdUpdate, notice);
     }

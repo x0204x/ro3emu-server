@@ -69,7 +69,20 @@ public sealed partial class DungeonTests
             SkillId = 5353001, OpUnitId = gun.Uid, TargetId = ship.Uid,
             TargetPos = new Vec3 { X = ship.X, Y = ship.Y, Z = ship.Z },
         };
-        ships[0].Hp = 1; // exercise real damage/death without inventing an original fixed shot count
+        Task PrepareLethalShot(MonsterUnit ship) => OnLoop(() =>
+        {
+            // Story waves engage on spawn. Moving to the cannon can put the player outside the ship's leash;
+            // its return-completion tick would then replace the test's 1 HP with full health before impact.
+            // These non-aggressive ships stay idle after this owned setup; the shot still uses real combat/death.
+            Assert.False(ship.Template.Aggressive);
+            ship.Target = null;
+            ship.PetTarget = null;
+            ship.Returning = false;
+            ship.Moving = false;
+            ship.Hp = 1;
+            return Task.CompletedTask;
+        });
+        await PrepareLethalShot(ships[0]); // no invented original fixed shot count
         await alice.SendGameAsync(CombatService.UseSkill, Shot(cannon, ships[0]));
         Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
         await alice.SendGameAsync(CombatService.UseSkill, Shot(cannon, ships[1]));
@@ -88,7 +101,7 @@ public sealed partial class DungeonTests
         Assert.Equal(0, await Interact(alice, cannon, 5300006));
         await Next(alice, WorldInteractionService.Change, InteractChangeNtf.Parser,
             n => n.Uid == Session(alice).Role!.Id && n.DataInfo.EType == InteractInfo.Types.EState.UpperCannon);
-        ships[1].Hp = 1;
+        await PrepareLethalShot(ships[1]);
         await alice.SendGameAsync(CombatService.UseSkill, Shot(cannon, ships[1]));
         Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
         var second = await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser, h => h.SkillId == 5353001);
