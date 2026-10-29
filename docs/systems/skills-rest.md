@@ -19,6 +19,12 @@ The set contains **34** messages: **15 done, 17 partial, 2 missing, 0 stub**. Al
 * **Buff/resource integration:** **31332/31333/31334, 31134/31135**, actual 31048 status masks, item/movement/cast restrictions, death prevention, energy costs/recovery, late-viewer buff snapshots and controlled expiry. See [skill-buffs.md](skill-buffs.md).
 * **Presentation and dynamic parameters:** **31027/31132**, actual damage **31129**, pause/resume **31133**, boss snapshot **31127**, scene clear **31126**, and bounded server-timed bullets **31120/31108** when an authored timeline lacks client bullet points. High/extra timeline and boss-CD dispatch share the actual cast/source owners. See [skill-protocol.md](skill-protocol.md) for qualified routes and exact boundaries.
 
+Skill obstruction uses the selected `SkillConfig` row's `_iPassBlock` for targeted position checks. A block must exceed
+that level; ordinary nonwalkable ground cells are not movement-ray skill blockers. Authored AirWall cells are checked
+separately, while missing wall metadata and the siege unit wall retain a conservative movement fallback. Wall runtime
+activation is not fully tracked. See [skill-pass-block-evidence.md](../research/skill-pass-block-evidence.md) for the
+client predicate, tests, and remaining dynamic-collision limits.
+
 ## Inferred mechanics
 
 The documents linked above enumerate plan entitlement/reset/serialization, buff stacking/status/death, resource and dynamic-parameter policies. Additional combat inferences are:

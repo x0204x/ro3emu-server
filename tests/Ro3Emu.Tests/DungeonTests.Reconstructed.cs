@@ -180,7 +180,13 @@ public sealed partial class DungeonTests
         Assert.Contains(interaction, npc.GetProperty("_iInteractID").EnumerateArray()
             .Select(e => (int)(GameData.Number(e) ?? 0)));
 
-        await ReturnFromDungeon(alice, field);
+        // (inferred) Tiger King returns after the committed clear and 30403, without a player 30402.
+        var returned = await Next(alice, MsgId.SwitchSceneLine, SwitchSceneLineResp.Parser,
+            sw => sw.SceneEntry == field);
+        Assert.Equal(field, returned.SceneEntry);
+        await alice.SendGameAsync(MsgId.SceneLoaded, new SceneLoadedReq { SceneId = field });
+        Assert.Equal(0, (await Next(alice, MsgId.SceneLoaded, SceneLoadedResp.Parser)).Result);
+        await Next(alice, MsgId.EntitySelf, EntitySelf.Parser);
         await OnLoop(() => Service<SceneService>().TeleportInMapAsync(Session(alice), point));
         await alice.SendGameAsync(TaskService.TriggerTaskEvent,
             new TriggerTaskEventReq { TaskId = interaction, GoalCount = 1 });

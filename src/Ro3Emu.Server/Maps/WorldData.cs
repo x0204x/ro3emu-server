@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 
 namespace Ro3Emu.Server.Maps;
 
@@ -79,6 +80,13 @@ public sealed class MapWorld
     public IReadOnlyList<GatheringSpawnPoint> GatheringPoints { get; init; } = [];
     public IReadOnlyDictionary<long, MapRegion> Regions { get; init; } = new Dictionary<long, MapRegion>();
 
+    // LC_SceneCom_AirWall loads m_kAirWalls as dynamic blockers. Null means the scene
+    // file could not be loaded or its wall table was malformed; a valid scene without
+    // that table has no authored wall points.
+    internal int? MaxAuthoredAirWallLevel { get; init; }
+    internal IReadOnlyDictionary<(int X, int Z), int>? AuthoredAirWallCells { get; init; }
+    internal bool HasUntrackedUnitAirWall { get; init; }
+
     /// <summary>Dungeon m_kGroups joined to m_kMonsterSpawnPoints; templates/timing belong to PetFloorConfig.</summary>
     public IReadOnlyDictionary<int, IReadOnlyList<SpawnPoint>> DungeonGroups { get; init; } = new Dictionary<int, IReadOnlyList<SpawnPoint>>();
 
@@ -95,6 +103,87 @@ public sealed class MapWorld
         Nav?.WalkHeight(p.X, p.Z, p.Y) is { } h ? p with { Y = h } : p;
 
     public bool IsWalkable(float x, float y, float z) => Nav?.IsWalkable(x, y, z) ?? true;
+
+    /// <summary>
+    /// LC_Skill_Function.CanInputSkillByPosition -> Lua_SceneSpace.CheckIndirectPass ->
+    /// SceneSpaceDynamic.CheckInDirectPassFromTo. RoSpace's map loader only calls
+    /// SceneSpaceStatic.AddHeight, leaving static block level zero. Authored air walls cannot
+    /// block a skill whose pass level meets or exceeds every wall level. The only G unit air
+    /// wall has level one (UnitAirWallConfig[4900022]). Scene-editor wall points are potential
+    /// blockers: their active state is not yet tracked, so checking all of them is conservative.
+    /// The siege map with a spawned unit wall and scenes lacking wall data retain the old
+    /// movement fallback (inferred).
+    /// </summary>
+    public bool CanSkillPass(float ax, float ay, float az, float bx, float by, float bz, int passLevel)
+    {
+        if (Nav is not { } nav) return true;
+        if (MaxAuthoredAirWallLevel is not { } wallLevel || HasUntrackedUnitAirWall)
+            return nav.CanWalk(ax, ay, az, bx, bz);
+        if (ax < 0 || az < 0 || bx < 0 || bz < 0 || ax >= nav.Width || bx >= nav.Width
+            || az >= nav.Height || bz >= nav.Height) return false;
+        if (wallLevel > passLevel && CrossesAuthoredAirWall(ax, az, bx, bz, passLevel)) return false;
+
+        // Lua_SceneSpace.CheckIndirectPass adds 0.5 m to both endpoint heights.
+        float startHeight = ay + 0.5f, endHeight = by + 0.5f;
+        if (MathF.Abs(startHeight - endHeight) < 0.001f) return true;
+        // G tries a vertical segment at either endpoint and the plane at the other height.
+        return VerticalSkillPass(nav, ax, az, startHeight, endHeight)
+            || VerticalSkillPass(nav, bx, bz, startHeight, endHeight);
+    }
+
+    private static bool VerticalSkillPass(NavGrid nav, float x, float z, float from, float to)
+    {
+        int low = NormalizeHeight(MathF.Min(from, to)), high = NormalizeHeight(MathF.Max(from, to));
+        return !nav.Layers(x, z).Any(layer => layer.Walkable
+            && NormalizeHeight(layer.Height) >= low && NormalizeHeight(layer.Height) <= high);
+    }
+
+    // RoSceneSpace.SpaceCommon.HeightToNormalizeValue: 5 cm units with a -500 m base.
+    private static int NormalizeHeight(float height) => (int)((Math.Clamp(height, -500f, 1138.35f) + 500f) * 20f + 0.5f);
+
+    // SceneSpaceDynamic._checkPassPlane uses SpaceCommon.WalkOnSegment: cell midpoints,
+    // the endpoint and both side cells at a diagonal grid crossing (5 cm cross width).
+    private bool CrossesAuthoredAirWall(float ax, float az, float bx, float bz, int passLevel)
+    {
+        if (AuthoredAirWallCells is not { Count: > 0 }) return false;
+        float dx = bx - ax, dz = bz - az;
+        if (MathF.Abs(dx) < 0.001f && MathF.Abs(dz) < 0.001f) return WallAt(ax, az, passLevel);
+        float length = MathF.Sqrt(dx * dx + dz * dz);
+        float tx = NextGridBoundary(ax, dx), tz = NextGridBoundary(az, dz);
+        float stepX = MathF.Abs(dx) < 0.001f ? float.MaxValue : MathF.Abs(1f / dx);
+        float stepZ = MathF.Abs(dz) < 0.001f ? float.MaxValue : MathF.Abs(1f / dz);
+        float prior = 0;
+        for (int i = 0; i < 10000; i++)
+        {
+            float next = MathF.Min(MathF.Min(tx, tz), 1f);
+            float middle = (prior + next) * 0.5f;
+            if (WallAt(ax + middle * dx, az + middle * dz, passLevel)) return true;
+            if (next >= 1f - 0.0001f) return WallAt(bx, bz, passLevel);
+            if (MathF.Abs(tx - tz) <= 0.0001f)
+            {
+                float x = ax + next * dx, z = az + next * dz;
+                float sideX = -dz / length * 0.05f, sideZ = dx / length * 0.05f;
+                if (WallAt(x + sideX, z + sideZ, passLevel)
+                    || WallAt(x - sideX, z - sideZ, passLevel)) return true;
+            }
+            prior = next;
+            if (MathF.Abs(tx - prior) < 0.0001f) tx = tx >= float.MaxValue - stepX ? float.MaxValue : tx + stepX;
+            if (MathF.Abs(tz - prior) < 0.0001f) tz = tz >= float.MaxValue - stepZ ? float.MaxValue : tz + stepZ;
+        }
+        return true; // G's segment walker also fails closed after 10,000 steps.
+    }
+
+    private bool WallAt(float x, float z, int passLevel) =>
+        AuthoredAirWallCells?.TryGetValue(((int)MathF.Floor(x), (int)MathF.Floor(z)), out int level) == true
+        && level > passLevel;
+
+    private static float NextGridBoundary(float start, float delta)
+    {
+        if (MathF.Abs(delta) < 0.001f) return float.MaxValue;
+        float boundary = delta > 0 ? MathF.Ceiling(start) : MathF.Floor(start);
+        if (MathF.Abs(boundary - start) < 0.001f) boundary += delta > 0 ? 1 : -1;
+        return (boundary - start) / delta;
+    }
 
     /// <summary>
     /// A point a player can stand on: the point itself when walkable at its height, else its cell's walkable layer, else
@@ -138,6 +227,10 @@ public sealed partial class WorldData(IOptions<ServerOptions> options, GameData 
 
     /// <summary>NPCConfig._iNPCSubType of the "flying trigger" air portals, skipped until flying exists.</summary>
     private const int SubTypeAirTeleport = 300;
+
+    // The sole G UnitAirWallConfig row corresponds to NPCConfig subtype 18. G's enum_NpcSubType
+    // does not name 18, so this table correlation is inferred until the injected table is exported.
+    private const int SubTypeUnitAirWall = 18;
 
     private readonly Dictionary<long, MapWorld?> _maps = new();
     private readonly object _sync = new();
@@ -275,13 +368,45 @@ public sealed partial class WorldData(IOptions<ServerOptions> options, GameData 
                     WorldNpc.Float(pos, "y"), WorldNpc.Float(pos, "z"), WorldNpc.Float(p, "direction"), p));
             }
         var spawnGroups = LoadSpawnGroups(se);
+        var airWalls = LoadAirWallCells(se);
         log.LogInformation("Map {Scene} {Name}: {Npcs} NPC/portal/Kafra, {Groups} spawn groups, born {Born}, nav {W}x{H}",
             sceneEntry, data.MapName(sceneEntry), npcs.Count, spawnGroups.Count, born, map.Nav?.Width, map.Nav?.Height);
         return new MapWorld
         {
             SceneEntry = sceneEntry, Born = born, Revive = revive, Npcs = npcs, Points = points, Nav = map.Nav, SpawnGroups = spawnGroups,
-            GatheringPoints = LoadGatheringPoints(se, sceneEntry), DungeonGroups = LoadDungeonGroups(se), Regions = LoadRegions(se)
+            GatheringPoints = LoadGatheringPoints(se, sceneEntry), DungeonGroups = LoadDungeonGroups(se), Regions = LoadRegions(se),
+            MaxAuthoredAirWallLevel = airWalls.MaxLevel, AuthoredAirWallCells = airWalls.Cells,
+            HasUntrackedUnitAirWall = NpcLevelPointRespawnConfig.All(data)
+                .Any(row => row.Mapid == sceneEntry && NPCConfig.Get(data, row.Npcid) is { NPCSubType: SubTypeUnitAirWall })
         };
+    }
+
+    /// <summary>Scene editor wall points become full-height grid blockers; Lua defaults an omitted level to one.</summary>
+    internal static (int? MaxLevel, IReadOnlyDictionary<(int X, int Z), int>? Cells) LoadAirWallCells(JsonElement scene)
+    {
+        if (!scene.TryGetProperty("m_kAirWalls", out var walls))
+            return (0, new Dictionary<(int X, int Z), int>());
+        if (walls.ValueKind != JsonValueKind.Object) return (null, null);
+        int highest = 0;
+        var cells = new Dictionary<(int X, int Z), int>();
+        foreach (var wall in walls.EnumerateObject())
+        {
+            int level = wall.Value.TryGetProperty("gridLevel", out var value) && value.ValueKind == JsonValueKind.Number
+                ? value.GetInt32() : 1;
+            level = Math.Clamp(level, 0, 255); // SceneSpaceDynamic.AddDynamic clamps block levels.
+            highest = Math.Max(highest, level);
+            if (!wall.Value.TryGetProperty("wallPoints", out var points) || points.ValueKind != JsonValueKind.Array)
+                return (null, null);
+            foreach (var point in points.EnumerateArray())
+            {
+                if (!point.TryGetProperty("x", out var x) || !point.TryGetProperty("z", out var z)
+                    || x.ValueKind != JsonValueKind.Number || z.ValueKind != JsonValueKind.Number)
+                    return (null, null);
+                var cell = ((int)MathF.Floor(x.GetSingle()), (int)MathF.Floor(z.GetSingle()));
+                cells[cell] = Math.Max(cells.GetValueOrDefault(cell), level);
+            }
+        }
+        return (highest, cells);
     }
 
     private static Dictionary<long, MapRegion> LoadRegions(JsonElement se)

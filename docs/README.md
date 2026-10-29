@@ -15,6 +15,7 @@
 - [Launcher and patch repository](guide/launcher.md): hosting the client for your players
 - [Tests](guide/testing.md): content tests on your exported data, rule tests on the invented fixture that CI runs
 - [Config tables](guide/config-tables.md): the typed views of the client's tables and the startup check of the export
+- [Prepare missing task award groups](guide/task-award-repair.md): compare local exports and create a reviewed candidate table
 - [Security model](systems/security.md): what the server exposes, what it trusts, and how to report a vulnerability
 
 ## Systems: how each part is implemented
@@ -35,6 +36,8 @@
 - [World core](research/world-core-evidence.md) · [world effects](research/world-effects-evidence.md) · [NPC interaction](research/world-interaction-evidence.md) · [role operations](research/world-role-operations-evidence.md) · [social](research/world-social-evidence.md) · [MG_Common](research/world-common-evidence.md)
 - [Activities census](research/activities-evidence.md) · [season page](research/season-page-evidence.md) · [season refine](research/season-refine-evidence.md) · [equipment rating](research/equipment-rating-evidence.md)
 - [Pet guardian skills and reactive effects](research/pet-skills-evidence.md)
+- [Skill obstruction](research/skill-pass-block-evidence.md) · [party EXP](research/party-experience-evidence.md) · [quest EXP](research/quest-experience-evidence.md)
+- [Airship story and QTE](research/airship-evidence.md) · [Tiger King return](research/tiger-dungeon-return-evidence.md)
 
 Citations such as `re/clientB/lua-src/Logic/...lua:123` point into your own decompiled client (see the main
 [README](../README.md#1-export-the-game-data)); `MG_*.proto` files are in `src/Ro3Emu.Server/Protos/romsg/`.

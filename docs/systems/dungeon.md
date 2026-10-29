@@ -183,12 +183,14 @@ Reconstructed scripted scenes (`Reconstructed/scripted-scenes.json`, same switch
     interaction 5300021, message 5300022), 'Help the Professor Up' (5300026, message 5300023) and the chest (5300052,
     message 5300024), each interaction opened by buff group 53014.
   - The airship (1000501): the chitchat with Bobo, the captain, Wule and Boya (their gated auto-range bubbles
-    5300031-5300034, all four), the boarding and the Evil Boss as before, the look around after the battle (five
-    bubbles 5300048-5300052) and the talk with the injured captain (dialogue 530003802, whose option triggers
-    interaction 5300039 and message 5300039). Stage 2, the cannons, is **inferred**: each 'Board the Cannon' (5300006) on
-    one of the three Cannons 5300022 fires 5365001 from the player at the nearest enemy airship (5300015 at point 24,
-    5300053 at 61), and three boardings sink a ship at any level; sinking both ends the stage. The original's
-    UpperCannon gameplay status (GameplayStatusConfig 12) has no abilities in the client data.
+    5300031-5300034, all four), the boarding and the Evil Boss, the look around after the battle (five bubbles
+    5300048-5300052) and the talk with the injured captain (dialogue 530003802, whose option triggers interaction
+    5300039 and message 5300039). Stage 2 has three Cannons 5300022. 'Board the Cannon' (5300006) mounts the
+    UpperCannon status 12; status button 27 casts 5353001 at the enemy airships (5300015 at point 24, 5300053 at
+    point 61), and button 28 exits. The stage ends on the ships' actual deaths. After the captain's dialogue the server
+    pushes story 130161: video 30161 opens QTE 6. The client plays story 130162/video 30162 on success or
+    130163/video 30163 on failure; either ending's action 601 reports the plot end and clears the dungeon. The
+    exact shot count and the earlier stage pacing remain inferred; the three videos and QTE branch are client data.
   - Payon Forest (1022001): 'Cover Boya and Wule' (reach the standoff point 22 between them and Eddga), then Eddga
     with Boya and Wule (5300086/5300087) fighting beside the player as companions (below).
   - The Peco Peco nest (1051001): the Elusive Pecopeco with the Ancient Nest and Bragis shown.

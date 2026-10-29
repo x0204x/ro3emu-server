@@ -5,6 +5,51 @@ namespace Ro3Emu.Tests;
 
 public sealed partial class DungeonTests
 {
+    [ClientDataFact]
+    public async Task RepeatedThreeMemberFieldKillsCommitBothPartyExperienceObligations()
+    {
+        await using var alice = await InWorld("ExpThreeA");
+        await using var bob = await InWorld("ExpThreeB");
+        await using var carol = await InWorld("ExpThreeC");
+        await Party(alice, bob, carol);
+
+        var killer = Session(alice);
+        var first = Session(bob);
+        var second = Session(carol);
+        var reward = Service<RewardService>();
+        await OnLoop(() =>
+        {
+            reward.ResolveKillForTest = (_, _) => ([], 100, 50);
+            return Task.CompletedTask;
+        });
+        try
+        {
+            for (int i = 0; i < 5; i++)
+            {
+                var firstBefore = Progression(first);
+                var secondBefore = Progression(second);
+                var monster = PartyExperienceMonster(killer, 910000001 + i);
+                await OnLoop(async () =>
+                {
+                    await reward.PrepareKilledAsync(killer, monster);
+                    await reward.KilledAsync(killer, monster);
+                });
+                Assert.NotEqual(firstBefore.Base, Progression(first).Base);
+                Assert.NotEqual(firstBefore.Job, Progression(first).Job);
+                Assert.NotEqual(secondBefore.Base, Progression(second).Base);
+                Assert.NotEqual(secondBefore.Job, Progression(second).Job);
+            }
+        }
+        finally
+        {
+            await OnLoop(() =>
+            {
+                reward.ResolveKillForTest = null;
+                return Task.CompletedTask;
+            });
+        }
+    }
+
     /// <summary>
     /// Minimum red contract for field-party EXP sharing. The exact split, level eligibility, distance,
     /// death/loading, contribution and offline rules are not established by the Asia client and must not
@@ -70,9 +115,9 @@ public sealed partial class DungeonTests
         return ((progress.Level, progress.Exp), (progress.JobLevel, progress.JobExp));
     }
 
-    private static MonsterUnit PartyExperienceMonster(GameSession killer) => new()
+    private static MonsterUnit PartyExperienceMonster(GameSession killer, long uid = 910000001) => new()
     {
-        Uid = 910000001,
+        Uid = uid,
         SceneEntry = killer.SceneEntry,
         RuntimeMap = killer.RuntimeMap,
         Template = new MonsterTemplate(10001, 1, 10, 0, 1, 1, 0, 0, 1, 0, 0, 100, 1, 1, 1, 1,

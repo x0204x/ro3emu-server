@@ -55,12 +55,13 @@ cache; the main and role-info widgets consume that same cache. `31322 GetRewardN
 notification and does not update EXP. `TeamMemberDetailInfo` contains member level, career, map and team index, but no
 member EXP fields. The client therefore proves a per-recipient EXP update contract, not a client-side party fanout.
 
-The current server's ordinary kill settlement still owns one recipient and invokes `ExchangeLockedAsync` once for the
-killer. Consequently, a same-map party member currently receives no ordinary kill EXP; that is a verified server gap,
-not a UI-only symptom. The client does not contain the authoritative server formula for splitting the original kill EXP
-pool, rounding a remainder, applying level eligibility or selecting dead/offline/distant/non-participating members.
-Those rules remain `UNKNOWN`; this audit does not invent them from UI-only data. A two-player Asia runtime sample of one
-controlled kill is the remaining gate for distinguishing independent full grants from a divided pool.
+The server now selects eligible online roles in the killer's five-slot subgroup and same public field scene, applies
+the configured team EXP bonus and divides the resulting Base/Job pools evenly. Other members receive durable EXP
+obligations; the split and eligibility are **inferred server policy**, not an original-server formula. The client does
+not contain the authoritative formula for splitting the original kill EXP pool, rounding a remainder, applying level
+eligibility or selecting dead/offline/distant/non-participating members. Those rules remain `UNKNOWN`. A two-player
+original-server runtime sample of one controlled kill is the remaining gate for distinguishing independent full grants
+from a divided pool. See [party-experience-evidence.md](party-experience-evidence.md).
 
 ## Task Job EXP
 
@@ -98,7 +99,7 @@ boundary and the remaining live-trace gate.
 | General player skill animation | `VERIFIED`, G and D identical | No generic packet added | `UNKNOWN` |
 | Guardian-pet cast action | Extra-timeline `PlayAct` gate verified | `PlayAct=true` implemented and unit-tested | `NOT_RUN` |
 | Forty-person EXP subgroup | `VERIFIED` | Implemented and unit-tested | `NOT_RUN` |
-| Party EXP distribution | Per-recipient update verified; formula absent | Killer-only server gap verified; formula `UNKNOWN` | `NOT_RUN` |
+| Party EXP distribution | Per-recipient update verified; original formula absent | Inferred same-field subgroup split and durable delivery implemented; original formula `UNKNOWN` | `NOT_RUN` |
 | Task Job EXP route | No route in current 1,072 tasks | Existing typed parser retained | `NOT_RUN` |
 | Auto-battle obstacle case | Reachable-grid/A*/retry chain verified | Unsafe server bypass rejected | `NOT_RUN` |
 

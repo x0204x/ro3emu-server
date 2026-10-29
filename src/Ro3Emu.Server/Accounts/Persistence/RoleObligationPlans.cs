@@ -80,7 +80,9 @@ internal sealed class RoleObligationCreatePlan<TRow> : DbPlan where TRow : class
             for (int i = 0; i < values.Length; i++) cmd.Parameters.AddWithValue("$p" + i, values[i]);
             if (cmd.ExecuteNonQuery() != 1) throw new OwnerRevisionConflictException();
         }
-        return rows.Length;
+        // Parent economic receipts encode each child as a 0/1 success marker. The frozen row count
+        // is already part of this typed plan and every insert above runs in the same transaction.
+        return rows.Length == 0 ? 0 : 1;
     }
 }
 

@@ -148,6 +148,9 @@ public sealed class AwardTests : IAsyncLifetime
         Assert.Equal(defaultPlan.Grants.ToArray(), awards.Resolve(null!, 1001, 103).Grants.ToArray()); // explicit zero falls back
         Assert.Equal(new AwardGrant(1250900, 10), Assert.Single(awards.Resolve(null!, 4).Grants)); // preview says 30
         Assert.Equal(new AwardGrant(2, 200000, 1), Assert.Single(awards.Resolve(null!, 31116).Grants));
+        var restoredTask = awards.Resolve(null!, 920160);
+        Assert.Equal(920160, restoredTask.AwardId);
+        Assert.Equal(new AwardGrant(920132, 2000, 1), Assert.Single(restoredTask.Grants));
         Assert.Empty(awards.Resolve(null!, 31104).Grants); // novice trial's separate TaskConfig EXP remains
         Assert.Equal(new[] { new AwardGrant(102, 100), new AwardGrant(2, 2500) },
             awards.Resolve(null!, 2131).Grants.ToArray()); // declared but empty drop pool keeps its fixed grants

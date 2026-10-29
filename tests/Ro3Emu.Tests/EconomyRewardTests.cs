@@ -69,6 +69,50 @@ public sealed class EconomyRewardTests : IDisposable
     }
 
     [Fact]
+    public async Task TwoPartyExperienceObligationsCommitWithRewardAndReplayWithoutDuplicates()
+    {
+        string operation = Guid.NewGuid().ToString("N"), source = "monster:party:" + operation;
+        long firstRole = _roles.Create("reward-party-b", 1, "PExpB" + operation[..7], 1, 1000, 1)!.Id;
+        long secondRole = _roles.Create("reward-party-c", 1, "PExpC" + operation[..7], 1, 1000, 1)!.Id;
+        PartyExperienceObligationRow[] obligations =
+        [
+            new($"{source}/party-exp/{firstRole}", firstRole, 33, 17),
+            new($"{source}/party-exp/{secondRole}", secondRole, 34, 16)
+        ];
+        RoleItemPlanBuilder Build()
+        {
+            var tx = _roles.NewTransaction();
+            tx.ItemDelta(_role, [], []);
+            var progress = _roles.LoadProgress(_role);
+            progress.Exp = 10;
+            tx.Progress(_role, progress);
+            tx.Add(RoleObligations<PartyExperienceObligationRow>.CreatePlan(obligations));
+            tx.WithEconomy(new EconomyMutation(operation, "reward-account", _role, "monster-kill", "party-exp",
+                source, 1_000_000, [], [], [1], new EconomyRewardEvidence(1, 0, 1, 10, 1, 0, 1, 0, 10, 0)));
+            return tx;
+        }
+        async Task<PartyExperienceObligationRow[]> Pending()
+        {
+            var firstRows = await _accounts.ReadAsync<List<PartyExperienceObligationRow>>(
+                new RoleObligationPendingReadPlan<PartyExperienceObligationRow>(firstRole));
+            var secondRows = await _accounts.ReadAsync<List<PartyExperienceObligationRow>>(
+                new RoleObligationPendingReadPlan<PartyExperienceObligationRow>(secondRole));
+            return [.. firstRows, .. secondRows];
+        }
+
+        var first = Build();
+        var duplicate = Build();
+        await _roles.CommitAsync(first, "test/e04-party-obligations");
+        Assert.Equal(obligations, await Pending());
+        Assert.NotNull(EconomyReceiptReader.Read(_accounts.DatabasePath, operation));
+        await _roles.CommitAsync(duplicate, "test/e04-party-obligations-replay");
+        Assert.Equal(obligations, await Pending());
+        Assert.Equal(10, _roles.LoadProgress(_role).Exp);
+        var ledger = EconomyLedgerReader.Read(_accounts.DatabasePath, Catalog, "auto", 0, 1);
+        Assert.Equal(operation, Assert.Single(ledger.Receipts).OperationId);
+    }
+
+    [Fact]
     public void StarterItemAndMarkerBuilderRollsBackTogetherWithoutLoginActivation()
     {
         // E02 proves the common builder boundary; concurrent first-login activation is E06's owner.

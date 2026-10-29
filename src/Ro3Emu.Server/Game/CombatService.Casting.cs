@@ -301,8 +301,10 @@ public sealed partial class CombatService
             return ErrorCodes.SkillDistance;
         float height = GameData.Int(row, "_iHeightRange") / 100f;
         if (height > 0 && MathF.Abs(origin.Y - targetPosition.Y) > height) return ErrorCodes.SkillHeight;
-        if (GameData.Int(row, "_iPassBlock") == 2 && _worldData.Map(s.SceneEntry)?.Nav is { } nav
-            && !nav.CanWalk(origin.X, origin.Y, origin.Z, targetPosition.X, targetPosition.Z)
+        int passLevel = (int)new SkillConfig(row).PassBlock;
+        if (passLevel >= 0 && _worldData.Map(s.SceneEntry) is { Nav: not null } map
+            && !map.CanSkillPass(origin.X, origin.Y, origin.Z, targetPosition.X, targetPosition.Y,
+                targetPosition.Z, passLevel)
             && (release != 1 || monster == null
                 || BlockedMonsterEndpointAllowed?.Invoke(s, monster, origin, targetPosition) != true))
             return ErrorCodes.SkillBlocked;
