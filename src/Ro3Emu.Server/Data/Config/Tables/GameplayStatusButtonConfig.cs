@@ -7,5 +7,6 @@ namespace Ro3Emu.Server.Data.Config;
 public readonly partial record struct GameplayStatusButtonConfig(JsonElement Row)
 {
     [ConfigField("_iButtonFuncType")] public partial long ButtonFuncType { get; }
+    [ConfigField("_iSkill")] public partial long Skill { get; }
     [ConfigField("_kAction")] public partial JsonElement? Action { get; }
 }

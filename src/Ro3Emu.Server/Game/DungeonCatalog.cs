@@ -341,6 +341,9 @@ public sealed class DungeonCatalog(GameData data, WorldData worldData, MonsterSe
             if (step.Companions.Any(c => !map.Points.ContainsKey(c.Point) || c.Buffs.Count > 0
                     || CompanionUnit.Build(data, monsters, c.NpcId) == null)) return [];
             if (step.Story != 0 && data.Row("PlotInterpretation", step.Story) == null) return [];
+            if (step.Outro is { } outro && (outro.Complete.Count == 0 || data.Row("PlotInterpretation", outro.Story) == null
+                    || outro.Complete.Any(t => t.Kind != ReconstructedDungeons.TriggerKind.Plot
+                        || data.Row("PlotInterpretation", t.Id) == null))) return [];
             if (step.TeleportAfter != 0 && !map.Points.ContainsKey(step.TeleportAfter)) return [];
             foreach (var t in step.Complete.Concat(step.Ignore))
             {
@@ -366,6 +369,17 @@ public sealed class DungeonCatalog(GameData data, WorldData worldData, MonsterSe
             foreach (var (interaction, skill, shots) in step.Strikes ?? [])
                 if (step.Fight.Count == 0 || shots < 0 || data.Row("SkillConfig", skill) == null
                     || !step.Actors.Any(a => Interactions(a.NpcId).Contains(interaction))) return [];
+            if (step.Cannon is { } cannon)
+            {
+                var fireButton = Ro3Emu.Server.Data.Config.GameplayStatusButtonConfig.Get(data, cannon.FireButton);
+                var exitButton = Ro3Emu.Server.Data.Config.GameplayStatusButtonConfig.Get(data, cannon.ExitButton);
+                if (step.Fight.Count == 0 || data.Row("GameplayStatusConfig", cannon.Status) == null
+                    || data.Row("SkillConfig", cannon.FireSkill) == null
+                    || !step.Actors.Any(a => Interactions(a.NpcId).Contains(cannon.Interaction))
+                    || fireButton is not { } fire || fire.ButtonFuncType != 1 || fire.Skill != cannon.FireSkill
+                    || exitButton is not { } exit || exit.ButtonFuncType != 0
+                        || exit.Action?.ToString().Contains("5004", StringComparison.Ordinal) != true) return [];
+            }
             var fight = new List<Spawn>();
             foreach (var spawn in step.Fight)
             {

@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Romsg;
 using Ro3Emu.Server.Accounts;
+using Ro3Emu.Server.Accounts.Persistence;
 using Ro3Emu.Server.Data;
 using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Maps;
@@ -16,7 +17,7 @@ namespace Ro3Emu.Server.Game;
 /// else to the bag; then one 31322 drop notify makes
 /// the client animate the loot from the corpse.
 /// </summary>
-public sealed class RewardService
+public sealed class RewardService : IGameTicker
 {
     private const int BaseExpItem = 100, JobExpItem = 101;
     private const int RewardDrop = 8; // ManifestType Drop
@@ -29,6 +30,8 @@ public sealed class RewardService
     private Dictionary<int, long>? _expCorrection;
     private readonly DropAttenuation _attenuation;
     private readonly RewardRateOptions _rates;
+    private readonly SessionRegistry _sessions;
+    private readonly RoleObligations<PartyExperienceObligationRow> _partyExperience;
 
     /// <summary>Field AFK selects the enhanced _iDrop table only for qualified ordinary field kills.
     /// Other kills use environment 0, preserving ordinary rewards (localization 10960000077; mapping inferred).</summary>
@@ -42,14 +45,19 @@ public sealed class RewardService
     internal Action<GameSession, MonsterUnit, RewardSettlement>? StageHuntKill { get; set; }
 
     public RewardService(CombatService combat, CharacterService character, TeamService teams, GameData data,
+        AccountStore accounts, SessionRegistry sessions, GameLoop loop, TimeProvider time,
         IOptions<ServerOptions> options, ILogger<RewardService> log)
     {
         this._character = character;
         this._teams = teams;
         this._data = data;
         this._log = log;
+        this._sessions = sessions;
         _rates = options.Value.RewardRates;
         _attenuation = new DropAttenuation(data);
+        _partyExperience = new RoleObligations<PartyExperienceObligationRow>("Party experience", accounts, loop, time,
+            Online, s => s.Role != null && s.Progress != null && s.Attachment?.Cancelled != true,
+            DeliverPartyExperienceAsync, ObligationRetry.TickWithBackoff, log);
         combat.BeforeKilled.Add(PrepareKilledAsync);
         combat.Killed.Add(KilledAsync);
     }
@@ -60,6 +68,7 @@ public sealed class RewardService
         internal required List<(int Entry, int Count)> Items;
         internal long BaseExp;
         internal long JobExp;
+        internal required PartyExperienceObligationRow[] PartyExperience;
         internal bool Published;
     }
     private readonly System.Runtime.CompilerServices.ConditionalWeakTable<MonsterUnit, KillOutcome> _outcomes = new();
@@ -95,35 +104,62 @@ public sealed class RewardService
             // Bonus eligibility may wait on the AFK owner; no successful lethal output precedes admission.
             bool bonus = QualifiesForBonus != null && await QualifiesForBonus(player, monster);
             var taskParticipants = _character.GetKillTaskParticipantKeys?.Invoke(player, monster) ?? [];
-            using var held = await CharacterService.Lock(player, taskParticipants);
-            if (!SameRole()) throw new OperationCanceledException("Kill recipient detached before reward admission.");
             if (_outcomes.TryGetValue(monster, out var stale) && stale.Role.Id != role.Id) _outcomes.Remove(monster);
-            if (!_outcomes.TryGetValue(monster, out var outcome))
+            _outcomes.TryGetValue(monster, out var existing);
+            var candidates = existing == null
+                ? _teams.ExperienceRecipients(player)
+                    .Select(s => new PartyCandidate(s, s.Role!.Id, s.Attachment)).ToArray()
+                : new[] { new PartyCandidate(player, role.Id, player.Attachment) }
+                    .Concat(existing.PartyExperience.Select(row =>
+                        new PartyCandidate(Online(row.RoleId), row.RoleId, Online(row.RoleId)?.Attachment))).ToArray();
+            var partyKeys = candidates.SelectMany(candidate => new[]
+                {
+                    Ownership.ReservationKey.Role(candidate.RoleId),
+                    RoleObligations<PartyExperienceObligationRow>.Key(PartyExperienceSource(settlement, candidate.RoleId))
+                })
+                .Concat(taskParticipants).Distinct().ToArray();
+            using (await CharacterService.Lock(player, partyKeys))
             {
-                var (items, baseExp, jobExp) = ResolveKill(player, monster, bonus);
-                items = items.Select(item =>
+                if (!SameRole()) throw new OperationCanceledException("Kill recipient detached before reward admission.");
+                if (!_outcomes.TryGetValue(monster, out var outcome))
+                {
+                    var eligibleNow = _teams.ExperienceRecipients(player).ToHashSet(ReferenceEqualityComparer.Instance);
+                    var eligible = candidates.Where(candidate => candidate.Session != null && candidate.RoleId == candidate.Session.Role?.Id &&
+                            ReferenceEquals(candidate.Attachment, candidate.Session.Attachment) && eligibleNow.Contains(candidate.Session))
+                        .Select(candidate => candidate.Session!).ToArray();
+                    if (!eligible.Contains(player, ReferenceEqualityComparer.Instance)) eligible = [player];
+                    var (items, baseExp, jobExp) = ResolveKill(player, monster, bonus);
+                    items = items.Select(item =>
+                        {
+                            if (_data.Row("ItemConfig", item.Entry) is { } row && new ItemConfig(row).Type == 1)
+                                return item.Entry == 1
+                                    ? (item.Entry, _rates.ScaleZenyToInt(item.Count))
+                                    : item;
+                            return (item.Entry, _rates.ScaleMonsterDrop(item.Count, _random));
+                        })
+                        .Where(item => item.Item2 > 0).ToList();
+                    baseExp = _rates.ScaleBaseExperience(baseExp);
+                    jobExp = _rates.ScaleJobExperience(jobExp);
+                    var shares = SplitPartyExperience(settlement, eligible, baseExp, jobExp, role.Id);
+                    outcome = new KillOutcome
                     {
-                        if (_data.Row("ItemConfig", item.Entry) is { } row && new ItemConfig(row).Type == 1)
-                            return item.Entry == 1
-                                ? (item.Entry, _rates.ScaleZenyToInt(item.Count))
-                                : item;
-                        return (item.Entry, _rates.ScaleMonsterDrop(item.Count, _random));
-                    })
-                    .Where(item => item.Item2 > 0).ToList();
-                baseExp = _rates.ScaleBaseExperience(baseExp);
-                jobExp = _rates.ScaleJobExperience(jobExp);
-                outcome = new KillOutcome { Role = role, Items = items, BaseExp = baseExp, JobExp = jobExp };
-                _outcomes.Add(monster, outcome);
+                        Role = role, Items = items, BaseExp = shares.KillerBaseExp, JobExp = shares.KillerJobExp,
+                        PartyExperience = shares.Obligations
+                    };
+                    _outcomes.Add(monster, outcome);
+                }
+                StagePartyExperience(settlement, outcome.PartyExperience);
+                _character.StageKillTaskObligations?.Invoke(player, monster, settlement);
+                // A retry re-stages: the later stage is undone first, so the AFK reset never restores a stale wrapper.
+                settlement.ResetHuntStage?.Invoke();
+                StageAfkKill?.Invoke(player, monster, settlement, outcome.Items, outcome.BaseExp, outcome.JobExp);
+                StageHuntKill?.Invoke(player, monster, settlement);
+                settlement.LibraryMonster = monster.Template.NpcId;
+                await _character.ExchangeLockedAsync(player, [], outcome.Items, popup: false, sync: outcome.Items.Count > 0,
+                    baseExp: outcome.BaseExp, jobExp: outcome.JobExp, rewardSettlement: settlement,
+                    persist: settlement.Enlist, committed: settlement.Applied);
+                foreach (var row in outcome.PartyExperience) _partyExperience.Track(row);
             }
-            _character.StageKillTaskObligations?.Invoke(player, monster, settlement);
-            // A retry re-stages: the later stage is undone first, so the AFK reset never restores a stale wrapper.
-            settlement.ResetHuntStage?.Invoke();
-            StageAfkKill?.Invoke(player, monster, settlement, outcome.Items, outcome.BaseExp, outcome.JobExp);
-            StageHuntKill?.Invoke(player, monster, settlement);
-            settlement.LibraryMonster = monster.Template.NpcId;
-            await _character.ExchangeLockedAsync(player, [], outcome.Items, popup: false, sync: outcome.Items.Count > 0,
-                baseExp: outcome.BaseExp, jobExp: outcome.JobExp, rewardSettlement: settlement,
-                persist: settlement.Enlist, committed: settlement.Applied);
         }
         catch
         {
@@ -150,6 +186,93 @@ public sealed class RewardService
             throw;
         }
     }
+
+    private sealed record PartyCandidate(GameSession? Session, long RoleId, object? Attachment);
+    private sealed record PartyShares(long KillerBaseExp, long KillerJobExp,
+        PartyExperienceObligationRow[] Obligations);
+
+    private static string PartyExperienceSource(RewardSettlement settlement, long roleId) =>
+        $"{settlement.SourceKey}/party-exp/{roleId}";
+
+    /// <summary>
+    /// Server policy while the publisher formula remains unobservable: the already corrected, boosted and rate-scaled
+    /// field EXP pool is divided evenly among the frozen five-slot recipients.  Any integer remainder follows slot order.
+    /// </summary>
+    private static PartyShares SplitPartyExperience(RewardSettlement settlement,
+        IReadOnlyList<GameSession> recipients, long baseExp, long jobExp, long killerRole)
+    {
+        int count = Math.Max(1, recipients.Count);
+        static long Share(long total, int divisor, int index) =>
+            total <= 0 ? 0 : total / divisor + (index < total % divisor ? 1 : 0);
+        long killerBase = 0, killerJob = 0;
+        var obligations = new List<PartyExperienceObligationRow>();
+        for (int i = 0; i < recipients.Count; i++)
+        {
+            long role = recipients[i].Role!.Id;
+            long baseShare = Share(baseExp, count, i), jobShare = Share(jobExp, count, i);
+            if (role == killerRole)
+            {
+                killerBase = baseShare;
+                killerJob = jobShare;
+            }
+            else if (baseShare > 0 || jobShare > 0)
+            {
+                obligations.Add(new PartyExperienceObligationRow(PartyExperienceSource(settlement, role),
+                    role, baseShare, jobShare));
+            }
+        }
+        return new PartyShares(killerBase, killerJob, obligations.ToArray());
+    }
+
+    private static void StagePartyExperience(RewardSettlement settlement,
+        IReadOnlyList<PartyExperienceObligationRow> obligations)
+    {
+        if (obligations.Count == 0 || settlement.PartyExperienceStaged) return;
+        var prior = settlement.Enlist;
+        settlement.Enlist = builder =>
+        {
+            prior?.Invoke(builder);
+            builder.Add(RoleObligations<PartyExperienceObligationRow>.CreatePlan(obligations));
+        };
+        settlement.PartyExperienceStaged = true;
+    }
+
+    private GameSession? Online(long roleId) =>
+        _sessions.All().FirstOrDefault(session => session.Role?.Id == roleId);
+
+    private async Task<bool> DeliverPartyExperienceAsync(GameSession session, PartyExperienceObligationRow row)
+    {
+        using (await CharacterService.Lock(session,
+                   [RoleObligations<PartyExperienceObligationRow>.Key(row.SourceKey)]))
+        {
+            if (session.Role?.Id != row.RoleId || session.Progress == null || session.Attachment?.Cancelled == true)
+                throw new OperationCanceledException("Party experience recipient left the game.");
+            var grants = new List<AwardGrant>();
+            long remainingJob = row.JobExp;
+            while (remainingJob > 0)
+            {
+                int part = (int)Math.Min(int.MaxValue, remainingJob);
+                grants.Add(new AwardGrant(JobExpItem, part));
+                remainingJob -= part;
+            }
+            bool paid = await _character.ApplyAwardAsync(session, new AwardPlan(0, 0, grants),
+                taskBaseExp: row.BaseExp, persist: builder =>
+                    builder.Add(RoleObligations<PartyExperienceObligationRow>.DeliverPlan(row)),
+                stateLockHeld: true);
+            if (!paid) throw new InvalidOperationException("Frozen party experience was not delivered.");
+            return true;
+        }
+    }
+
+    internal Task<Ownership.ReservationKey[]> PartyExperienceLoginKeysAsync(long roleId) =>
+        _partyExperience.LoginKeysAsync(roleId);
+
+    internal Task RecoverPartyExperienceAsync(GameSession session) => session.Role is not { } role
+        ? Task.CompletedTask
+        : _partyExperience.DeliverPendingAsync(session, role.Id,
+            () => session.Role?.Id == role.Id && session.Attachment?.Cancelled != true);
+
+    public void Tick(GameTime _) => _partyExperience.Tick();
 
     private (List<(int Entry, int Count)> Items, long BaseExp, long JobExp) ResolveKill(GameSession player, MonsterUnit monster, bool bonus)
     {
@@ -190,7 +313,7 @@ public sealed class RewardService
         return (items, _character.WithPursueBonus(player.Progress!.Level, baseExp), baseExp);
     }
 
-    private async Task KilledAsync(GameSession player, MonsterUnit monster)
+    internal async Task KilledAsync(GameSession player, MonsterUnit monster)
     {
         await PrepareKilledAsync(player, monster); // also covers existing service/test callbacks
         if (!_outcomes.TryGetValue(monster, out var outcome) || outcome.Published) return;
@@ -216,6 +339,14 @@ public sealed class RewardService
                     });
                 await player.SendGameAsync(CharacterService.GetRewardNotify, notify);
             }
+        }
+        // The death is now published.  Pay every frozen share independently; a disconnect or failure leaves its
+        // obligation for the retry ticker/login, while the kill source and the whole recipient set remain durable.
+        foreach (var row in outcome.PartyExperience)
+        {
+            if (Online(row.RoleId) is { Progress: not null } recipient && recipient.Attachment?.Cancelled != true)
+                await _partyExperience.TryPayAsync(recipient, row);
+            else _partyExperience.Forget(row.SourceKey);
         }
         var granted = outcome.Items.Select(i => (i.Entry, Count: (long)i.Count)).ToList();
         if (outcome.BaseExp > 0) granted.Add((BaseExpItem, outcome.BaseExp));

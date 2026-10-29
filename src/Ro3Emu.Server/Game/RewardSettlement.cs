@@ -35,6 +35,8 @@ public sealed class RewardSettlement(string sourceKey, string commandKind, bool 
     internal Action? ResetAfkStage { get; set; }
     internal bool HuntStaged { get; set; }
     internal Action? ResetHuntStage { get; set; }
+    /// <summary>Whether the kill transaction already enlisted its frozen per-role field-party EXP rows.</summary>
+    internal bool PartyExperienceStaged { get; set; }
     /// <summary>The slain monster's NPC id for its Codex kill count (CardService, with the kill's first card sight).</summary>
     internal int LibraryMonster { get; set; }
     internal Action? Applied { get; set; }

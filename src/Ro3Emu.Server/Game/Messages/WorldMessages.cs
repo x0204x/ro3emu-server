@@ -51,7 +51,9 @@ public sealed class WorldMessages(Maps.World world, CombatService combat, SceneS
         });
         routes.Map(32703, "interaction", async (session, msgId, body) =>
         {
-            await interaction.UseActionAsync(session, UseInteractActionReq.Parser.ParseFrom(body.Span));
+            var request = UseInteractActionReq.Parser.ParseFrom(body.Span);
+            if (!await dungeons.TryUseActionAsync(session, request))
+                await interaction.UseActionAsync(session, request);
         });
         routes.Map(32708, "interaction", async (session, msgId, body) =>
         {

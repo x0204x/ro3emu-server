@@ -260,6 +260,10 @@ public sealed partial class CombatService : IGameTicker
     public List<Func<GameSession, Task>> PlayerRevived { get; } = new();
     /// <summary>A match owner decides which skills a participant may cast (true/false), or defers (null).</summary>
     public Func<GameSession, int, bool?>? MatchSkillRule { get; set; }
+    /// <summary>Feature-scoped skill grants that retain the ordinary target, cooldown, cost and effect pipeline.</summary>
+    internal List<Func<GameSession, CastSkillReq, bool>> SkillGrants { get; } = [];
+    /// <summary>Feature-scoped exceptions to a generic target gate; all unlisted target errors remain closed.</summary>
+    internal List<Func<GameSession, CastSkillReq, int, bool>> SkillTargetErrorOverrides { get; } = [];
     /// <summary>
     /// A skill a feature owns outright (the war commander's): null for any other skill, else 0 to cast it or the refusal.
     /// Such a cast skips the job-tree check and the SkillConfig cooldowns; <see cref="OwnSkillCast"/> runs in their place

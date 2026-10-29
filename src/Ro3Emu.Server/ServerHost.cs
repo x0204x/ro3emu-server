@@ -501,6 +501,7 @@ internal sealed class GameLoopTickers(IServiceProvider services) : IHostedServic
         Add<MonsterService>();
         Add<BuffService>();
         Add<CombatService>();
+        Add<RewardService>(); // retries durable field-party EXP shares
         Add<SeasonService>();
         Add<MountService>();
         Add<RidingEffects>();

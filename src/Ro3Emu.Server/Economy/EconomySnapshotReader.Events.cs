@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using Microsoft.Data.Sqlite;
 using Ro3Emu.Server.Accounts.Persistence;
 
@@ -157,6 +159,27 @@ public static partial class EconomySnapshotReader
                 if (delivered == 0 && Elements(Prop(value, "Pools")).Any())
                     Issue(EconomyIssueKind.RecoveryDebt, key,
                         "Unpaid Mock Battle DropPools; random contents cannot be resolved at read time.");
+            });
+        }
+
+        /// <summary>Field-party EXP is a frozen progression entitlement, not an item/currency holding.</summary>
+        private void ReadPartyExperience()
+        {
+            using var read = Command("SELECT source_key,role_id,base_exp,job_exp,delivered " +
+                "FROM party_experience_obligation ORDER BY source_key");
+            using var row = read.ExecuteReader();
+            int rowNumber = 0;
+            while (row.Read()) Guard("party_experience_obligation/row/" + rowNumber++, () =>
+            {
+                string source = SqlText(row, 0);
+                long role = SqlLong(row, 1), baseExp = SqlLong(row, 2), jobExp = SqlLong(row, 3);
+                long delivered = SqlLong(row, 4);
+                Measure("party_experience_obligation", Encoding.UTF8.GetByteCount(source));
+                if (string.IsNullOrWhiteSpace(source) || role <= 0 || baseExp < 0 || jobExp < 0
+                    || baseExp == 0 && jobExp == 0 || delivered is not (0 or 1)
+                    || !source.EndsWith("/party-exp/" + role.ToString(CultureInfo.InvariantCulture),
+                        StringComparison.Ordinal))
+                    throw new InvalidDataException("Invalid field-party experience obligation.");
             });
         }
 

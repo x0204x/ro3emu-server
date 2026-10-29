@@ -8,7 +8,7 @@ namespace Ro3Emu.Server.Game;
 /// selection check), when it moves and when it leaves. RoleSessionService runs the selection around these; the order
 /// here is the client's, see the comments on each step.
 /// </summary>
-public sealed class RoleSystems(Maps.World world, ChatService chat, CharacterService character, SkillService skills, FunctionService functions, CombatService combat, BuffService buffs, SceneService scene, TaskService tasks, DailyActivityService daily, GuideService guides, EmojiService emoji, PersonalService personal, SocialOutfitService socialOutfit, AchievementService achievements, Micro.FriendService friends, MvpService mvps, CardService cards, ShopService shops, EmblemService emblems, SeasonService seasons, SeasonPageService seasonPage, SeasonRefineService seasonRefine, SeasonTalentService talents, PetService pets, TowerService tower, ValhallaService valhalla, FlyingDragonService dragon, MonsterHuntService monsterHunt, GrowthClassService growthClass, ParagonService paragon, TitleService titles, FirstHeartService firstHeart, MailService mail, AuctionService auctions, GuildService guilds, GuildVoiceService guildVoice, AdventureGroupService adventureGroups, GuildCaravanService caravan, GuildChallengeService guildChallenge, DungeonService dungeons, DungeonMatchService dungeonMatches, InstanceService instances, TradeService trade, StallsService stalls, LifeJobService life, GatheringService gathering, WildAfkService afk, WorldCoreService worldCore, WorldInteractionService interaction, NewActivityService activities, TimedEventService timedEvents, PronteraDefenseService defense, TimedBattleService timedBattles, CasualBattleService casual, FestivalService festival, TrainingService training, LotteryService lottery, MountService mounts, CareerSpecialService careerSpecial, WardrobeService wardrobe, TotemService totems, GenreService genre, PowerService power, TerritoryWarsService territory, TerritoryEscortService escort, Persistence.SettingsPersistence settings, ILogger<RoleSystems> log)
+public sealed class RoleSystems(Maps.World world, ChatService chat, CharacterService character, RewardService rewards, SkillService skills, FunctionService functions, CombatService combat, BuffService buffs, SceneService scene, TaskService tasks, DailyActivityService daily, GuideService guides, EmojiService emoji, PersonalService personal, SocialOutfitService socialOutfit, AchievementService achievements, Micro.FriendService friends, MvpService mvps, CardService cards, ShopService shops, EmblemService emblems, SeasonService seasons, SeasonPageService seasonPage, SeasonRefineService seasonRefine, SeasonTalentService talents, PetService pets, TowerService tower, ValhallaService valhalla, FlyingDragonService dragon, MonsterHuntService monsterHunt, GrowthClassService growthClass, ParagonService paragon, TitleService titles, FirstHeartService firstHeart, MailService mail, AuctionService auctions, GuildService guilds, GuildVoiceService guildVoice, AdventureGroupService adventureGroups, GuildCaravanService caravan, GuildChallengeService guildChallenge, DungeonService dungeons, DungeonMatchService dungeonMatches, InstanceService instances, TradeService trade, StallsService stalls, LifeJobService life, GatheringService gathering, WildAfkService afk, WorldCoreService worldCore, WorldInteractionService interaction, NewActivityService activities, TimedEventService timedEvents, PronteraDefenseService defense, TimedBattleService timedBattles, CasualBattleService casual, FestivalService festival, TrainingService training, LotteryService lottery, MountService mounts, CareerSpecialService careerSpecial, WardrobeService wardrobe, TotemService totems, GenreService genre, PowerService power, TerritoryWarsService territory, TerritoryEscortService escort, Persistence.SettingsPersistence settings, ILogger<RoleSystems> log)
 {
     internal async Task LoadAsync(GameSession session)
     {
@@ -47,6 +47,8 @@ public sealed class RoleSystems(Maps.World world, ChatService chat, CharacterSer
         await character.SendLoginSyncAsync(session);
         checkpoint();
         await skills.LoadAsync(session); // after character/cart sync, before login rewards can call skill sync under StateLock
+        checkpoint();
+        await rewards.RecoverPartyExperienceAsync(session); // field-party EXP frozen by a kill before disconnect/restart
         checkpoint();
         await life.LoginAsync(session); // 5018 vigor then 5010 before To-Do/tasks/functions consume life state.
         checkpoint();
@@ -163,7 +165,8 @@ public sealed class RoleSystems(Maps.World world, ChatService chat, CharacterSer
         [.. defense.LoginKeys(roleId), .. activities.LoginKeys(roleId), .. territory.LoginKeys(),
          .. caravan.LoginKeys(roleId), .. guildChallenge.LoginKeys(roleId),
          .. await mvps.LoginKeysAsync(roleId), .. await dungeons.LoginKeysAsync(roleId),
-         .. await casual.LoginKeysAsync(roleId), .. await timedBattles.LoginKeysAsync(roleId)];
+         .. await casual.LoginKeysAsync(roleId), .. await timedBattles.LoginKeysAsync(roleId),
+         .. await rewards.PartyExperienceLoginKeysAsync(roleId)];
 
     /// <summary>The shared keys the leave steps write: the own guild (offline publication) and the timed battle.</summary>
     internal Ownership.ReservationKey[] LeaveKeys(GameSession session) =>

@@ -34,16 +34,25 @@ public sealed partial class ReconstructedDungeons
     /// whose hiding places are its Point triggers; walking there does not complete it, winning the game does.
     /// <paramref name="Companions"/>: the actors marked "companion", shown as allied fighters (CompanionUnit) instead of
     /// plain scene actors; they are not in <paramref name="Actors"/>.
+    /// <paramref name="Cannon"/>: an authored UpperCannon interaction. Entering it does not fire; its gameplay-status
+    /// skill does. <paramref name="Outro"/>: a story started after the ordinary completing event, whose listed plot end
+    /// must arrive before this step is really complete.
     /// <paramref name="React"/>: what the step's speaker says, and the effect shown, when it begins, when an ignored event
     /// arrives and when it completes.
     /// </summary>
     public sealed record ScriptedStep(string Stage, int Quest, (int Done, int Total) Goal, IReadOnlyList<SceneActor> Actors,
         long Story, IReadOnlyList<StepTrigger> Complete, IReadOnlyList<StepTrigger> Ignore, long TeleportAfter,
         IReadOnlyList<Spawn> Fight, bool All, IReadOnlyList<(long Interaction, long Skill, int Shots)>? Strikes = null,
-        Seek? Seek = null, Shelter? Shelter = null, Reaction? React = null)
+        Seek? Seek = null, Shelter? Shelter = null, Reaction? React = null, Cannon? Cannon = null, Outro? Outro = null)
     {
         public IReadOnlyList<SceneActor> Companions { get; init; } = [];
     }
+
+    /// <summary>An UpperCannon status reconstructed from NPCInteractConfig, GamePlayStatusExtraConfig and its buttons.</summary>
+    public sealed record Cannon(long Interaction, int Status, int FireButton, int ExitButton, int FireSkill);
+
+    /// <summary>A post-completion client story and the authoritative plot-end events that close it.</summary>
+    public sealed record Outro(long Story, IReadOnlyList<StepTrigger> Complete);
 
     /// <summary>
     /// A step's reactions (inferred, Louie's 3120703 shell game: his lines and the right/wrong Bell effects are client rows
@@ -145,7 +154,15 @@ public sealed partial class ReconstructedDungeons
                     shelter.GetProperty("skill").GetInt64(), shelter.GetProperty("everyMs").GetInt32(), shelter.GetProperty("warnMs").GetInt32(),
                     shelter.GetProperty("width").GetSingle(), shelter.GetProperty("depth").GetSingle())
                 : null,
-            s.TryGetProperty("react", out var react) ? ParseReaction(react) : null)
+            s.TryGetProperty("react", out var react) ? ParseReaction(react) : null,
+            s.TryGetProperty("cannon", out var cannon)
+                ? new Cannon(cannon.GetProperty("interaction").GetInt64(), cannon.GetProperty("status").GetInt32(),
+                    cannon.GetProperty("fireButton").GetInt32(), cannon.GetProperty("exitButton").GetInt32(),
+                    cannon.GetProperty("fireSkill").GetInt32())
+                : null,
+            s.TryGetProperty("outro", out var outro)
+                ? new Outro(outro.GetProperty("story").GetInt64(), Triggers(outro, "complete"))
+                : null)
         { Companions = [.. listed.Where(IsCompanion).Select(Actor)] };
     }
 

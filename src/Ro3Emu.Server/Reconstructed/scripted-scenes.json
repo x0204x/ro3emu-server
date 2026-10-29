@@ -195,7 +195,7 @@
       "name": "Airship: the chitchat, the boarding, the Evil Boss and the captain",
       "confidence": "medium",
       "evidence": ["DungeonQuestConfig 5300021-5300026: 1 'Aboard the Airship' 'Have a Chitchat with them.'; 2 'Use the ship's cannons to attack the enemy vessels.'; 3 'The enemy has boarded the ship!' 'Eliminate all enemies.'; 4 'Defeat the Evil Boss'; 5 'The Battle temporarily subsides' 'Take a look around'; 6 \"Check the Captain's injuries\" 'Talk to the captain', its _kAction [142, 1000501, 55, 9, 530003802] (the captain's point and dialogue).", "Editor sc_plot_airship_001_pl01: group 53 holds 54 波波NPC (Bobo), 55 船长NPC (captain), 56 晤勒 (Wule), 57 保亚 (Boya), 58 团长 (chief); 40/42/43 火炮 (cannons); 24 and 61 敌方飞空艇 (enemy airships); 44-47 冲锋怪 (chargers), 48-52 弓箭 (archers).", "NPCConfig 5300031 Bobo, 5300032 Captain, 5300033 Wule, 5300034 Boya, 5300035 Eden Group Chief (born buff 5364501); interactions 5300031-5300034: mode 2 (AutoInteractWhenInRange), gated by 7100026-7100029 [1004, 53645] (group of 5364501), each a 4001 bubble (530003101/530003201/530003301/530003401).", "NPCConfig 5300061-5300065 (Bobo, Captain, Wule, Boya, Eden Group Chief): interactions 5300048-5300052, mode 2 without a gate, bubbles 530003901, 530004001, 530004201, 530004101, 530004301 (after the battle).", "NPCConfig 5300038 Captain: interaction 5300035 (dialogue 530003802 'Are you badly hurt?'), whose option 'Can I really do it?' runs [211, 5300038, 5300039] TriggerNpcInteract; interaction 5300039 (mode 4) sends dungeon message 5300039.", "NPCConfig 5300022 Cannon (type 2/101, camp 1) with interaction 5300006 'Board the Cannon' (skill 5365001 'Use the Turret', script beginnerGetOncannon, _kDamageParam1 100000), gated by 7100018: not CheckInteractState 0, i.e. shown while nobody occupies the cannon; GameplayStatusConfig 12 新手教程上炮 (tutorial cannon, UpperCannon) has no abilities. Fire 5353001 ('Fire - Rapid', script beginnercannon) is GameplayStatusButtonConfig 27.", "NPCConfig 5300015 Enemy Airship and 5300053 Small Enemy Airship: camp 2, level 20, AI 5300005, born state buffs; editor points 24 and 61 are 敌方飞空艇1/2 (enemy airship 1/2), 100 m off the deck."],
-      "guessed": ["Stage 2, the cannons: each 'Board the Cannon' fires the cannon at once: the player casts 5365001 at the nearest enemy airship and three boardings sink a ship whatever the damage (a volley, for the rapid fire button); sinking both airships ends the stage. The original put the player into the UpperCannon gameplay status with a fire button, which no client data describes for this cannon.", "Stage 1 'Have a Chitchat with them' needs all four gated bubbles (Bobo, Captain, Wule, Boya); the chief has no interaction.", "Stage 5 'Take a look around' needs all five post-battle bubbles.", "The nine boarders come in three groups of three (as before)."],
+      "guessed": ["Stage 1 'Have a Chitchat with them' needs all four gated bubbles (Bobo, Captain, Wule, Boya); the chief has no interaction.", "Stage 5 'Take a look around' needs all five post-battle bubbles.", "The nine boarders come in three groups of three (as before)."],
       "steps": [
         {
           "quest": 1,
@@ -227,9 +227,14 @@
             { "point": 24, "npc": 5300015, "why": "the Enemy Airship at 敌方飞空艇1" },
             { "point": 61, "npc": 5300053, "why": "the Small Enemy Airship at 敌方飞空艇2" }
           ],
-          "strike": [
-            { "interaction": 5300006, "skill": 5365001, "shots": 3, "why": "'Board the Cannon' fires a volley; three sink a ship (inferred)" }
-          ]
+          "cannon": {
+            "interaction": 5300006,
+            "status": 12,
+            "fireButton": 27,
+            "exitButton": 28,
+            "fireSkill": 5353001,
+            "why": "5300006 enters UpperCannon; GamePlayStatusExtraConfig status 12 exposes buttons 27/28; 27 casts 5353001 and 28 runs QuitStatus. The stage advances only after the enemy-airship actors really die; the recording's 0/3 is not treated as proof of a fixed shot count."
+          }
         },
         {
           "quest": 3,
@@ -292,7 +297,14 @@
           ],
           "complete": [
             { "message": 5300039, "why": "the dialogue option 'Can I really do it?' triggers interaction 5300039, which sends dungeon message 5300039" }
-          ]
+          ],
+          "outro": {
+            "story": 130161,
+            "complete": [
+              { "plot": 130162, "why": "QTE 6 success locally starts story 130162; its action 601 sends PlotActingEnd" },
+              { "plot": 130163, "why": "QTE 6 failure locally starts story 130163; its action 601 sends PlotActingEnd" }
+            ]
+          }
         }
       ]
     },

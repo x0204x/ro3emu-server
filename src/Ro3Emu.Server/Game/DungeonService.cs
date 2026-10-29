@@ -102,6 +102,8 @@ public sealed partial class DungeonService
         combat.Dealt.Add((s, m, n) => { if (Active(s) is { } a && m.InstanceId == a.Room.Id) a.Stats[s.Role!.Id].TotalDamage += n; });
         combat.Taken.Add((m, s, n, dead) => { if (Active(s) is { } a && m.InstanceId == a.Room.Id) a.Stats[s.Role!.Id].TotalBeDamage += n; });
         combat.Healed.Add((s, n) => { if (Active(s) is { } a) a.Stats[s.Role!.Id].TotalCure += n; });
+        combat.SkillGrants.Add(CannonSkillGranted);
+        combat.SkillTargetErrorOverrides.Add(CannonTargetErrorAllowed);
         character.ProgressHandlers.Add(SyncLockedAsync); // CharacterService invokes these while holding StateLock.
     }
 
@@ -122,6 +124,11 @@ public sealed partial class DungeonService
         public HashSet<(ReconstructedDungeons.TriggerKind Kind, long Id)> StepSeen { get; } = [];
         /// <summary>A scripted step's strikes taken so far, by monster uid.</summary>
         public Dictionary<long, int> Struck { get; } = [];
+        /// <summary>Players mounted on this scripted step's UpperCannon scene actors.</summary>
+        internal Dictionary<GameSession, SceneActorUnit> CannonUsers { get; } = [];
+        internal Dictionary<long, GameSession> CannonOccupants { get; } = [];
+        /// <summary>The ordinary completion happened and the step now waits for its post-completion story branch.</summary>
+        public bool StepOutroPending { get; set; }
         /// <summary>A step's own timers' generation: each step (and each new hide-and-seek game) starts a new one, so a
         /// stale timer does nothing.</summary>
         public int StepGeneration { get; set; }
@@ -830,6 +837,7 @@ public sealed partial class DungeonService
     {
         if (_pending.TryGetValue(s, out var p)) await CancelAsync(p, ErrorCodes.MemberLeft, s.Role?.Id ?? 0);
         if (s.DungeonAttempt is not { } a) return;
+        await ExitCannonAsync(a, s, interrupt: true);
         s.DungeonAttempt = null; s.Attack = null;
         if (a.Dracula is { } dracula) await dracula.Owner.LeftAsync(a, s);
         await ClearBondsAsync(s, a);
@@ -853,6 +861,7 @@ public sealed partial class DungeonService
     private async Task SettleAsync(Attempt a, bool won)
     {
         if (a.Settled || a.Room.Closed) return;
+        await ExitAllCannonsAsync(a, interrupt: true);
         if (a.GuildChallenge is { } challenge)
         {
             a.Settled = true;

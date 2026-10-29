@@ -102,6 +102,16 @@ public sealed partial class DungeonTests
                         await Gm(alice, FormattableString.Invariant($"!actors walk {p.X} {p.Z}"));
                         break;
                 }
+            if (step.Outro is { } outro)
+            {
+                await Story(alice, outro.Story);
+                // The helm QTE is local. Its opening story and PlotActingTrigger(10) must not settle the dungeon.
+                await PlotEnd(alice, outro.Story);
+                await alice.SendGameAsync(DungeonService.PlotSceneEvent, new PlotActingTriggerReq { PlotId = 10 });
+                await Task.Delay(100);
+                Assert.Equal(wave, Session(alice).DungeonAttempt!.Wave);
+                await PlotEnd(alice, outro.Complete[0].Id);
+            }
         }
         Assert.Equal((DungeonRes)1, (await Next(alice, DungeonService.Result, DungeonResNotify.Parser)).Res);
     }
@@ -140,7 +150,11 @@ public sealed partial class DungeonTests
             // A step's fight: its monsters, then its event if it has one.
             if (plan.Waves[wave].Spawns.Count > 0)
                 foreach (var monster in await WaveIn(instance, plan.Waves[wave].Spawns.Count)) await Kill(alice, monster);
-            if (step.Complete.Count > 0) await Gm(alice, "!actors use");
+            if (step.Complete.Count > 0)
+            {
+                await Gm(alice, "!actors use");
+                if (step.Outro != null) await Gm(alice, "!actors use");
+            }
         }
         Assert.Equal((DungeonRes)1, (await Next(alice, DungeonService.Result, DungeonResNotify.Parser)).Res);
     }

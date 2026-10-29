@@ -37,8 +37,8 @@ public sealed partial class DungeonTests
         Assert.Equal(plan.Waves.Select(w => w.Quest).Order(), plan.Waves.Select(w => w.Quest));
     }
 
-    // The airship's cannons (inferred): 'Board the Cannon' (5300006) on a Cannon fires 5365001 at the nearest enemy
-    // airship, three boardings a ship; sinking both (5300015 at point 24, 5300053 at 61) ends stage 2 and the boarders come.
+    // The airship cannon route recovered from G client data: 5300006 mounts status 12; status button 27 casts 5353001
+    // through ordinary combat, button 28 quits, and only the enemy ships' real deaths advance the stage.
     [ClientDataFact]
     public async Task TheAirshipCannonsSinkTheEnemyShips()
     {
@@ -55,16 +55,48 @@ public sealed partial class DungeonTests
         Assert.Equal([5300015, 5300053], ships.Select(m => m.Template.NpcId).Order());
         var cannon = cannons[0];
         await Gm(alice, "!actors 5300022");
-        int boardings = 0;
-        for (; boardings < 20 && ships.Any(m => !m.Dead); boardings++)
+        Assert.Equal(0, await Interact(alice, cannon, 5300006));
+        var mounted = await Next(alice, WorldInteractionService.Change, InteractChangeNtf.Parser,
+            n => n.Uid == Session(alice).Role!.Id && n.DataInfo.EType == InteractInfo.Types.EState.UpperCannon);
+        Assert.Equal((12L, 5300006, cannon.Uid, cannon.Uid),
+            (mounted.DataInfo.StateId, mounted.DataInfo.InteractConfigId, mounted.DataInfo.ActiveObjId,
+                mounted.DataInfo.UpperCannonInfo.CannonGuId));
+        Assert.DoesNotContain(alice.Inbox.Snapshot().Where(e => e.IsGame(CombatService.SkillHit))
+            .Select(e => SkillHitInfo.Parser.ParseFrom(e.Body)), h => h.SkillId == 5365001);
+
+        static CastSkillReq Shot(DungeonService.SceneActorUnit gun, MonsterUnit ship) => new()
         {
-            Assert.Equal(0, await Interact(alice, cannon, 5300006));
-            await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser, h => h.SkillId == 5365001);
-            foreach (var ship in ships.Where(m => !m.Dead)) ship.Hp = ship.Template.MaxHp; // a far ship's leash reset
-        }
+            SkillId = 5353001, OpUnitId = gun.Uid, TargetId = ship.Uid,
+            TargetPos = new Vec3 { X = ship.X, Y = ship.Y, Z = ship.Z },
+        };
+        ships[0].Hp = 1; // exercise real damage/death without inventing an original fixed shot count
+        await alice.SendGameAsync(CombatService.UseSkill, Shot(cannon, ships[0]));
+        Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
+        await alice.SendGameAsync(CombatService.UseSkill, Shot(cannon, ships[1]));
+        Assert.NotEqual(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result); // 500 ms action/CD gate
+        var first = await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser, h => h.SkillId == 5353001);
+        Assert.Contains(first.Dsts, d => d.DstID == ships[0].Uid && d.IsDead);
+
+        await alice.SendGameAsync(WorldInteractionService.Action, new UseInteractActionReq { ButtonId = 28 });
+        Assert.Equal(0, (await Next(alice, WorldInteractionService.Action, UseInteractActionRes.Parser)).Result);
+        await Next(alice, WorldInteractionService.Change, InteractChangeNtf.Parser,
+            n => n.Uid == Session(alice).Role!.Id && n.DataInfo.EType == InteractInfo.Types.EState.Idle);
+        await alice.SendGameAsync(CombatService.UseSkill, Shot(cannon, ships[1]));
+        Assert.NotEqual(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
+
+        await Task.Delay(600);
+        Assert.Equal(0, await Interact(alice, cannon, 5300006));
+        await Next(alice, WorldInteractionService.Change, InteractChangeNtf.Parser,
+            n => n.Uid == Session(alice).Role!.Id && n.DataInfo.EType == InteractInfo.Types.EState.UpperCannon);
+        ships[1].Hp = 1;
+        await alice.SendGameAsync(CombatService.UseSkill, Shot(cannon, ships[1]));
+        Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
+        var second = await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser, h => h.SkillId == 5353001);
+        Assert.Contains(second.Dsts, d => d.DstID == ships[1].Uid && d.IsDead);
         Assert.All(ships, m => Assert.True(m.Dead));
-        Assert.InRange(boardings, 6, 8); // three a ship (a miss costs one more)
         await Stage(alice, 3, quest: 3); // the boarding
+        await Next(alice, WorldInteractionService.Change, InteractChangeNtf.Parser,
+            n => n.Uid == Session(alice).Role!.Id && n.DataInfo.EType == InteractInfo.Types.EState.Idle && n.Interrupt);
     }
 
     // Moonlight Flower's hide-and-seek (inferred): standing in the open is found and the game starts over; a darkness

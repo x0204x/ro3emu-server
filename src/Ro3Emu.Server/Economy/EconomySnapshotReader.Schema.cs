@@ -40,6 +40,7 @@ public static partial class EconomySnapshotReader
         ["mvp_settlement"] = "source_key cfg_id death_ms",
         ["timed_battle_obligation"] = "source_key match_id entry role_id grants costs next_state result delivered",
         ["casual_battle_obligation"] = "source_key match_id role_id payout delivered",
+        ["party_experience_obligation"] = "source_key role_id base_exp job_exp delivered",
         ["activity_pre_progress"] = "activity_id cycle_start area score",
         ["activity_pre_donation_area"] = "activity_id cycle_start area day role_id amount",
         ["activity_eve_global"] = "activity_id cycle_start blob",

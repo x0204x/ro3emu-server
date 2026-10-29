@@ -642,14 +642,33 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
         while (!result.IsCompleted && DateTime.UtcNow < until)
         {
             // A scripted scene: send its client event, then clear any fight attached to that step.
-            var (wave, step, stepDone) = await OnLoop(s => s.DungeonAttempt is { Settled: false } a && a.Wave < a.Plan.Waves.Count
-                ? (a.Wave, a.Plan.Waves[a.Wave].Step, a.StepDone) : (-1, null, false));
+            var (wave, step, stepDone, outroPending) = await OnLoop(s =>
+                s.DungeonAttempt is { Settled: false } a && a.Wave < a.Plan.Waves.Count
+                    ? (a.Wave, a.Plan.Waves[a.Wave].Step, a.StepDone, a.StepOutroPending)
+                    : (-1, null, false, false));
             if (step != null)
             {
                 if (step.Seek != null)
                 {
                     if (await HideForSeekAsync(scene, wave, step, detail)) steps++;
                     await Task.Delay(100);
+                    continue;
+                }
+                if (outroPending)
+                {
+                    var outro = step.Outro ?? throw new WalkBlocked($"dungeon {scene} step {wave + 1}: outro pending without a route");
+                    if (outro.Complete.Count == 0)
+                        throw new WalkBlocked($"dungeon {scene} step {wave + 1}: outro {outro.Story} has no client completion event");
+                    await PlayStepTriggerAsync(scene, wave, outro.Complete[0], detail);
+                    for (int i = 0; i < 100 && !result.IsCompleted; i++)
+                    {
+                        var state = await OnLoop(s => s.DungeonAttempt is { } a
+                            ? (Wave: a.Wave, OutroPending: a.StepOutroPending)
+                            : (Wave: -1, OutroPending: false));
+                        if (state.Wave != wave || !state.OutroPending) break;
+                        await Task.Delay(50);
+                    }
+                    steps++;
                     continue;
                 }
                 if (!stepDone)
@@ -664,6 +683,12 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
                         await Task.Delay(50);
                     }
                     steps++;
+                    continue;
+                }
+                if (step.Cannon != null)
+                {
+                    if (await FireCannonOnceAsync(scene, wave, step, instance, detail)) kills++;
+                    else await Task.Delay(100);
                     continue;
                 }
                 if (step.Fight.Count > 0)
@@ -686,6 +711,57 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
         using var back = _bot.Inbox.Expect(x => x.IsGame(MsgId.SwitchSceneLine));
         await _bot.SendGameAsync(DungeonService.Leave, new LeaveDungeonReq());
         await LoadSceneAsync(SwitchSceneLineResp.Parser.ParseFrom((await back.WaitAsync(Wait)).Body).SceneEntry);
+    }
+
+    /// <summary>
+    /// Drives the airship fight through the route recovered from the G client: interaction 5300006 enters UpperCannon,
+    /// then ordinary 31102 casts skill 5353001 from that cannon at one of the authored enemy ships. HP=1 remains this
+    /// story walk's fast-kill shortcut; the real combat/death pipeline still has to accept and settle the hit.
+    /// </summary>
+    private async Task<bool> FireCannonOnceAsync(long scene, int wave, ReconstructedDungeons.ScriptedStep step,
+        long instance, List<string> detail)
+    {
+        var cannon = step.Cannon ?? throw new ArgumentException("The step has no cannon.", nameof(step));
+        var world = Service<World>();
+        var (gun, ship, mounted) = await OnLoop(s =>
+        {
+            var attempt = s.DungeonAttempt;
+            var actor = attempt?.SceneActors.FirstOrDefault(a => a.NpcId == 5300022);
+            var target = world.AllUnits().OfType<MonsterUnit>().FirstOrDefault(m => m.InstanceId == instance && !m.Dead && m.Hp > 0
+                && step.Fight.Any(spawn => spawn.NpcId == m.Template.NpcId));
+            return (actor, target, attempt?.CannonUsers.ContainsKey(s) == true);
+        });
+        if (gun == null || ship == null) return false;
+
+        if (!mounted)
+        {
+            await Service<GameLoop>().InvokeAsync(() => Service<SceneService>().TeleportInMapAsync(Session(),
+                new MapPoint(gun.X + 1, gun.Y, gun.Z, gun.Face)));
+            var entered = await RequestAsync(SceneService.NpcInteraction, new NpcInteractionReq
+            {
+                NpcUid = gun.Uid,
+                InteractionId = (int)cannon.Interaction,
+                SceneConfigId = scene,
+            }, NpcInteractionRsp.Parser);
+            if (entered.Result != 0)
+                throw new WalkBlocked($"dungeon {scene} step {wave + 1}: cannon {gun.Uid} refused {entered.Result}");
+            detail.Add($"step {wave + 1}: 32700 interaction {cannon.Interaction} mounted cannon {gun.Uid}");
+        }
+
+        await Task.Delay(600); // the G client's gameplay-status button has a 500 ms action/cooldown gate
+        await Service<GameLoop>().InvokeAsync(() => { ship.Hp = 1; return Task.CompletedTask; });
+        var fired = await RequestAsync(CombatService.UseSkill, new CastSkillReq
+        {
+            SkillId = cannon.FireSkill,
+            OpUnitId = gun.Uid,
+            TargetId = ship.Uid,
+            TargetPos = new Vec3 { X = ship.X, Y = ship.Y, Z = ship.Z },
+        }, CastSkillRsp.Parser);
+        detail.Add($"step {wave + 1}: 31102 cannon skill {cannon.FireSkill} on {ship.Template.NpcId}"
+            + (fired.Result == 0 ? "" : $" refused {fired.Result}"));
+        if (fired.Result != 0) return false;
+        for (int i = 0; i < 40 && !ship.Dead; i++) await Task.Delay(50);
+        return ship.Dead;
     }
 
     /// <summary>

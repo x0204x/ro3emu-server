@@ -282,7 +282,9 @@ internal sealed class EconomyTransactionPlan(RoleItemPlan child, EconomyMutation
             : mutation.CommandKind is "gather-yield" or "dungeon-reward"
                 ? [.. requiredColumns, "library", "task_followup"] : requiredColumns;
         var activation = extra.OfType<DungeonObligationActivatePlan>().SingleOrDefault();
-        var ordinaryExtra = extra.Where(x => x is not DungeonObligationActivatePlan and not KillTaskProgressPlan).ToArray();
+        var partyExperience = extra.OfType<RoleObligationCreatePlan<PartyExperienceObligationRow>>().SingleOrDefault();
+        var ordinaryExtra = extra.Where(x => x is not DungeonObligationActivatePlan and not KillTaskProgressPlan &&
+            x is not RoleObligationCreatePlan<PartyExperienceObligationRow>).ToArray();
         bool MonsterExtrasValid()
         {
             int index = 0;
@@ -307,6 +309,9 @@ internal sealed class EconomyTransactionPlan(RoleItemPlan child, EconomyMutation
             "monster-kill" => (activation is null || extra[0] == activation &&
                     activation.KillSourceKey == mutation.SourceKey &&
                     ordinaryExtra.All(x => x is RoleBlobWritePlan { Column: "library" or "task_followup" or "wild_afk" or "area_concur" })) &&
+                (partyExperience is null || partyExperience.Rows.Count > 0 && partyExperience.Rows.All(row =>
+                    row.RoleId != mutation.ActorRoleId && row.BaseExp >= 0 && row.JobExp >= 0 &&
+                    (row.BaseExp > 0 || row.JobExp > 0) && row.SourceKey == $"{mutation.SourceKey}/party-exp/{row.RoleId}")) &&
                 MonsterExtrasValid(),
             "gather-yield" => sourceExtra is [RoleBlobWritePlan { Column: "lifejob" },
                 RoleBlobWritePlan { Column: "life_restrict" }, RoleBlobWritePlan { Column: "life_runtime" }],
@@ -327,7 +332,8 @@ internal sealed class EconomyTransactionPlan(RoleItemPlan child, EconomyMutation
                 !allowedColumns.Contains(x.Part) && !(mutation.CommandKind == "dungeon-reward" && x.Part == RevisionStore.AuctionOrder)))
             throw new InvalidOperationException("E04 reward has an unapproved source child, guard or revision part.");
         bool AllowedEntity(OwnerRevisionKey key) => mutation.CommandKind == "dungeon-reward" &&
-            key.Kind is "auction_run" or "dungeon_reward_obligation";
+                key.Kind is "auction_run" or "dungeon_reward_obligation" ||
+            mutation.CommandKind == "monster-kill" && key.Kind == "party_experience_obligation";
     }
 
     private List<EconomyLeg> BuildLegs(Dictionary<(EconomyAsset Asset, EconomyLocation Location), EconomyHolding> before,

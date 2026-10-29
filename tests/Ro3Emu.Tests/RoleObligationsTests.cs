@@ -325,7 +325,8 @@ public sealed class RoleObligationsTests : IAsyncLifetime
             .Where(type => type.GetInterfaces().Any(i => i.IsGenericType
                 && i.GetGenericTypeDefinition() == typeof(IRoleObligationRow<>)))
             .ToArray();
-        Assert.Equal(new[] { "CasualBattleObligationRow", "MvpObligationRow", "TimedBattleObligationRow" },
+        Assert.Equal(new[] { "CasualBattleObligationRow", "MvpObligationRow", "PartyExperienceObligationRow",
+                "TimedBattleObligationRow" },
             kinds.Select(type => type.Name).Order(StringComparer.Ordinal).ToArray());
         var known = (Dictionary<string, string>)typeof(EconomySnapshotReader)
             .GetField("KnownColumns", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;

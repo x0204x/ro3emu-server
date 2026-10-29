@@ -76,7 +76,9 @@ public sealed partial class DungeonService
     /// <summary>Called by SpawnWaveAsync for a scripted step instead of spawning monsters.</summary>
     private async Task BeginStepAsync(Attempt a, ReconstructedDungeons.ScriptedStep step)
     {
+        await ExitAllCannonsAsync(a, interrupt: true);
         a.StepSeen.Clear();
+        a.StepOutroPending = false;
         // A fight-only step has no client event to wait for: its kills complete it.
         a.StepDone = step.Complete.Count == 0;
         await SyncSceneActorsAsync(a, step.Actors);
@@ -86,13 +88,16 @@ public sealed partial class DungeonService
         if (step.Shelter is { } shelter) StartShelter(a, shelter);
         if (step.React is { } react) StartReaction(a, react);
         if (step.Story != 0 && !a.Settled && !a.Room.Closed)
-            // Once, in a var-change event: the client calls PlayCutSceneStory on every push of this var.
-            await BroadcastAsync(a, Event, new DungeonEventNotify
-            {
-                DungeonEntry = a.Plan.SceneEntry, EventType = (DungeonEventType)4, // DungeonEventDungeonVarChange
-                StageNum = a.Wave + 1, LevelNum = 1, Vars = { new DungeonVar { VarId = StoryVar, Vi64 = { step.Story } } },
-            });
+            await BroadcastStoryAsync(a, step.Story);
     }
+
+    /// <summary>Once, in a var-change event: the client calls PlayCutSceneStory on every push of this var.</summary>
+    private Task BroadcastStoryAsync(Attempt a, long story) =>
+        BroadcastAsync(a, Event, new DungeonEventNotify
+        {
+            DungeonEntry = a.Plan.SceneEntry, EventType = (DungeonEventType)4, // DungeonEventDungeonVarChange
+            StageNum = a.Wave + 1, LevelNum = 1, Vars = { new DungeonVar { VarId = StoryVar, Vi64 = { story } } },
+        });
 
     /// <summary>
     /// Shows exactly the step's actors: one already shown at the same point with the same NPC stays (its buffs change in
@@ -171,11 +176,16 @@ public sealed partial class DungeonService
         if (req.NpcUid < SceneActorUidBase || req.NpcUid >= SceneActorUidBase << 1) return false;
         var a = Active(s);
         var actor = a?.SceneActors.FirstOrDefault(u => u.Uid == req.NpcUid);
+        var cannon = a == null ? null : Step(a)?.Cannon;
+        bool entersCannon = actor != null && cannon != null && req.InteractionId == cannon.Interaction;
         int code = actor == null ? ErrorCodes.NpcMissing
             : req.SceneConfigId != 0 && req.SceneConfigId != s.SceneEntry ? ErrorCodes.NpcParameter
             : !_catalog.Interactions(actor.NpcId).Contains(req.InteractionId) ? ErrorCodes.NpcParameter
             : MonsterService.Distance(s.Position.X, s.Position.Z, actor.X, actor.Z) > SceneActorReach ? ErrorCodes.NpcTooFar
             : a!.Dracula is { } lair ? lair.Owner.InteractionError(a, s, actor.NpcId) : 0;
+        if (code == 0 && entersCannon
+            && (a!.CannonUsers.ContainsKey(s) || a.CannonOccupants.ContainsKey(actor!.Uid)))
+            code = ErrorCodes.NpcParameter;
         _log.LogInformation("{Name} interacts {Interaction} with scene actor {Npc} {Uid} (scene {Scene}, config scene {ConfigScene}, "
             + "distance {Distance:0.0} m): {Result}", s.Role?.Name, req.InteractionId, actor?.NpcId, req.NpcUid, s.SceneEntry,
             req.SceneConfigId, actor == null ? -1 : MonsterService.Distance(s.Position.X, s.Position.Z, actor.X, actor.Z), code);
@@ -183,10 +193,95 @@ public sealed partial class DungeonService
         if (code != 0) return true;
         // Dracula's Lair: a bush search may find the key; its finder is the rescuer, the only one the cage opens for.
         if (a!.Dracula is { } dracula) await dracula.Owner.InteractedAsync(a, s, actor!.NpcId);
+        if (entersCannon)
+        {
+            a.CannonUsers[s] = actor!;
+            a.CannonOccupants[actor!.Uid] = s;
+            await NotifyCannonAsync(s, actor, cannon!, interrupt: false);
+            return true;
+        }
         await StrikeAsync(a!, s, actor!, req.InteractionId);
         var events = new List<(Kind, long)> { (Kind.Interaction, req.InteractionId) };
         if (_catalog.DungeonMessage(req.InteractionId) is { } message) events.Add((Kind.Message, message));
         await StepEventAsync(a!, s, events, actor);
+        return true;
+    }
+
+    /// <summary>
+    /// The G client grants 5353001 only while UpperCannon status 12 is active. This grant bypasses the player's job tree,
+    /// but keeps CombatService's ordinary target, range, cooldown, cost, damage, hit and death processing.
+    /// </summary>
+    private bool CannonSkillGranted(GameSession s, CastSkillReq req)
+    {
+        if (Active(s) is not { } a || Step(a) is not { Cannon: { } cannon } step
+            || !a.CannonUsers.TryGetValue(s, out var actor) || req.SkillId != cannon.FireSkill
+            || req.OpUnitId != 0 && req.OpUnitId != s.Role?.Id && req.OpUnitId != actor.Uid)
+            return false;
+        if (req.TargetId == 0) return true; // TPS aiming may supply a position instead of a locked target.
+        return a.Room.Monsters.Any(m => m.Uid == req.TargetId && !m.Dead && m.Hp > 0
+            && step.Fight.Any(spawn => spawn.NpcId == m.Template.NpcId));
+    }
+
+    /// <summary>
+    /// The beginner cannon is a 990 m TPS projectile aimed at aerial NPC-tag 4000 targets. Generic player combat's
+    /// three-metre vertical and walk-nav gates do not model that projectile; only those two errors are waived, and only
+    /// after the mounted cannon grant has already bound the request to a living authored enemy ship.
+    /// </summary>
+    private bool CannonTargetErrorAllowed(GameSession s, CastSkillReq req, int error) =>
+        (error is ErrorCodes.SkillHeight or ErrorCodes.SkillBlocked) && CannonSkillGranted(s, req);
+
+    private async Task NotifyCannonAsync(GameSession s, SceneActorUnit actor,
+        ReconstructedDungeons.Cannon cannon, bool interrupt)
+    {
+        if (s.Role == null || s.SceneLoading) return;
+        var message = new InteractChangeNtf
+        {
+            Uid = s.Role.Id, Interrupt = interrupt,
+            DataInfo = new InteractInfo
+            {
+                EType = InteractInfo.Types.EState.UpperCannon, StateId = cannon.Status,
+                InteractConfigId = (int)cannon.Interaction, ActiveObjId = actor.Uid,
+                UpperCannonInfo = new UpperCannonState { CannonGuId = actor.Uid },
+            },
+        };
+        foreach (var viewer in _world.Viewers(s).Prepend(s).Distinct())
+            await viewer.SendGameAsync(WorldInteractionService.Change, message);
+    }
+
+    private async Task ExitCannonAsync(Attempt a, GameSession s, bool interrupt)
+    {
+        if (!a.CannonUsers.Remove(s, out var actor)) return;
+        a.CannonOccupants.Remove(actor.Uid);
+        if (s.Role == null || s.SceneLoading) return;
+        var message = new InteractChangeNtf
+        {
+            Uid = s.Role.Id, Interrupt = interrupt,
+            DataInfo = new InteractInfo { EType = InteractInfo.Types.EState.Idle },
+        };
+        foreach (var viewer in _world.Viewers(s).Prepend(s).Distinct())
+            await viewer.SendGameAsync(WorldInteractionService.Change, message);
+    }
+
+    private async Task ExitAllCannonsAsync(Attempt a, bool interrupt)
+    {
+        foreach (var user in a.CannonUsers.Keys.ToArray()) await ExitCannonAsync(a, user, interrupt);
+        a.CannonOccupants.Clear();
+    }
+
+    /// <summary>32703 while mounted: button 28 is the authored QuitStatus action. False delegates non-dungeon states.</summary>
+    public async Task<bool> TryUseActionAsync(GameSession s, UseInteractActionReq req)
+    {
+        if (Active(s) is not { } a || !a.CannonUsers.ContainsKey(s)) return false;
+        int code = ErrorCodes.NpcParameter;
+        if (Step(a) is { Cannon: { } cannon } && req.ButtonId == cannon.ExitButton
+            && Ro3Emu.Server.Data.Config.GameplayStatusButtonConfig.Get(_data, cannon.ExitButton) is { } button
+            && button.ButtonFuncType == 0
+            && button.Action?.ToString().Contains("5004", StringComparison.Ordinal) == true)
+        {
+            await ExitCannonAsync(a, s, interrupt: false);
+            code = 0;
+        }
+        await s.SendGameAsync(WorldInteractionService.Action, new UseInteractActionRes { Result = code });
         return true;
     }
 
@@ -216,9 +311,8 @@ public sealed partial class DungeonService
     }
 
     /// <summary>
-    /// 84011 or 84012 from a participant: the story the step started (or any listed plot) has ended. The client sends
-    /// both at a story's end (its plot's actions 601 and 150, LC_CutSceneManager._doEndAction), also when it is skipped;
-    /// the first one completes the step, the second is ignored.
+    /// 84011 or 84012 from a participant: only a plot explicitly listed by the step may complete it. The airship helm
+    /// QTE is local: 130161 opens it; success/failure starts 130162/130163, whose action 601 sends the authoritative end.
     /// </summary>
     public Task PlotEndedAsync(GameSession s, long plotId) =>
         Active(s) is { } a && Step(a) != null ? StepEventAsync(a, s, [(Kind.Plot, plotId)]) : Task.CompletedTask;
@@ -239,7 +333,7 @@ public sealed partial class DungeonService
             // problem is investigated. The usual step completion runs (teleport, next step, settlement).
             if (Active(s) is not { } used || Step(used) is not { } current || used.StepDone)
                 throw new ArgumentException("not in a scripted scene step that is waiting (a fight-only step ends on its kills)");
-            var t = current.Complete[0];
+            var t = used.StepOutroPending ? current.Outro!.Complete[0] : current.Complete[0];
             _log.LogWarning("GM test aid: {Role} completes scripted scene {Scene} step {Step} with {Kind} {Id}",
                 s.Role?.Id, used.Plan.SceneEntry, used.Wave + 1, t.Kind, t.Id);
             // An "all" step takes every one of its events.
@@ -307,15 +401,16 @@ public sealed partial class DungeonService
     {
         if (a.Settled || a.Room.Closed || a.Spawning || a.StepDone || Step(a) is not { } step) return;
         bool Matches(ReconstructedDungeons.StepTrigger t) => events.Any(e => e.Kind == t.Kind && e.Id == t.Id);
-        if (!step.Complete.Any(Matches))
+        var expected = a.StepOutroPending ? step.Outro?.Complete ?? [] : step.Complete;
+        if (!expected.Any(Matches))
         {
-            if (!step.Ignore.Any(Matches)) return;
+            if (a.StepOutroPending || !step.Ignore.Any(Matches)) return;
             _log.LogInformation("Scripted scene {Scene} step {Step}: {Role} sent {Events}, which does not advance it",
                 a.Plan.SceneEntry, a.Wave + 1, s.Role?.Id, string.Join(", ", events));
             await RespondAsync(a, step.React, step.React?.Ignored, used);
             return;
         }
-        if (step.All)
+        if (step.All && !a.StepOutroPending)
         {
             foreach (var t in step.Complete.Where(Matches)) a.StepSeen.Add((t.Kind, t.Id));
             if (a.StepSeen.Count < step.Complete.Count)
@@ -325,6 +420,16 @@ public sealed partial class DungeonService
                 return;
             }
         }
+        if (!a.StepOutroPending && step.Outro is { } outro)
+        {
+            a.StepOutroPending = true;
+            a.StepSeen.Clear();
+            _log.LogInformation("Scripted scene {Scene} step {Step} '{Stage}' starts outro story {Story} after {Events}",
+                a.Plan.SceneEntry, a.Wave + 1, step.Stage, outro.Story, string.Join(", ", events));
+            await BroadcastStoryAsync(a, outro.Story);
+            return;
+        }
+        a.StepOutroPending = false;
         a.StepDone = true;
         _log.LogInformation("Scripted scene {Scene} step {Step} '{Stage}' completed by {Role} ({Events})",
             a.Plan.SceneEntry, a.Wave + 1, step.Stage, s.Role?.Id, string.Join(", ", events));

@@ -73,6 +73,10 @@ public sealed partial class CombatService
     {
         var req = request.Clone();
         var row = EffectiveSkillRow(s, req.SkillId);
+        bool granted = row != null && SkillGrants.Any(grant => grant(s, req));
+        // A mounted gameplay-status skill can name its scene actor as the operator. Its effects still originate from
+        // the role's authoritative position, as the ordinary client-side custom-skill path does.
+        if (granted) req.OpUnitId = 0;
         var owned = req.OpUnitId == 0 || req.OpUnitId == s.Role?.Id ? null
             : s.SkillObjects.FirstOrDefault(u => u.Uid == req.OpUnitId && u.WorldScene == s.WorldScene && u.ExpiresMs > Now);
         int error = s.Role == null || s.Progress == null || s.Dead || s.SceneLoading ? ErrorCodes.SkillBadState
@@ -85,7 +89,8 @@ public sealed partial class CombatService
             req.SkillId = (int)GameData.Int(row!.Value, "_iID");
             own = owned == null ? OwnSkillAdmit?.Invoke(s, req.SkillId) : null;
             if (own is { } ownError && ownError != 0) error = ownError;
-            else if (own == null && (owned != null ? !owned.Skills.Contains(req.SkillId) : !Learned(s, row!.Value))) error = ErrorCodes.SkillNotLearned;
+            else if (own == null && !granted
+                && (owned != null ? !owned.Skills.Contains(req.SkillId) : !Learned(s, row!.Value))) error = ErrorCodes.SkillNotLearned;
             else if (!SkillModeAllowed(s, row!.Value)) error = ErrorCodes.SkillRequirements;
             else if (GameData.Int(row!.Value, "_iBasicType") != 1) error = ErrorCodes.SkillPassive;
             else if (_buffs.HasForbidden(s, new SkillConfig(row.Value).IsNormalAtk == 1
@@ -102,8 +107,12 @@ public sealed partial class CombatService
             // Preserve the established cooldown refusal for a repeated cast, including during its action tail.
             else if (s.SkillCast is { Cancelled: false } active && Now < active.StartMs + active.ChantMs + active.ActionMs
                 && (!new SkillConfig(row.Value).CancelCast || SwingInFlight(active, row.Value, req))) error = ErrorCodes.SkillBusy;
-            else error = ValidateTarget(s, row.Value, req, origin, owned == null ? WalkSlack(s) : 0,
-                _data.Row("SkillConfig", request.SkillId) is { } askedRow ? Range(askedRow) : 0);
+            else
+            {
+                error = ValidateTarget(s, row.Value, req, origin, owned == null ? WalkSlack(s) : 0,
+                    _data.Row("SkillConfig", request.SkillId) is { } askedRow ? Range(askedRow) : 0);
+                if (error != 0 && SkillTargetErrorOverrides.Any(allow => allow(s, req, error))) error = 0;
+            }
         }
         var costs = row is { } value ? ResolveCosts(s, value) : new CastCosts();
         long errorParam = 0;

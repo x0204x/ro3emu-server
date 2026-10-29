@@ -75,17 +75,37 @@ public sealed partial class TeamService(SessionRegistry sessions, CharacterServi
     private long _nextId = 1L << 24;
     private TimeSpan _sinceUpdate;
 
-    /// <summary>Party EXP multiplier for a kill (‱ of TeamExpBuffNum by same-map members; the split rule itself is inferred).
-    /// A 40-person team is eight independent five-person groups for this bonus, as the client derives from teamIndex.</summary>
-    public int ExpBonus(GameSession killer)
+    /// <summary>
+    /// Frozen recipients of an ordinary field kill.  Exact Asia eligibility (distance, death and contribution) is not
+    /// exposed by the client, so the server policy is deliberately narrow and explicit: the current five-slot group,
+    /// online on the same public field runtime, with an attached, loaded role.  Slot order is retained for deterministic
+    /// division of an EXP-pool remainder.
+    /// </summary>
+    internal IReadOnlyList<GameSession> ExperienceRecipients(GameSession killer)
     {
-        if (killer.Role is not { } role || !_byMember.TryGetValue(role.Id, out var team)) return 10000;
+        if (killer.Role is not { } role || killer.Progress == null || killer.Attachment?.Cancelled != false ||
+            killer.SceneLoading || killer.InstanceId != 0 ||
+            Ro3Emu.Server.Data.Config.MapConfig.Get(_data, killer.SceneEntry) is not { SceneType: 1 } ||
+            !_byMember.TryGetValue(role.Id, out var team))
+            return [killer];
+
         var (start, count) = ExpGroupRange(team.Type, team.Members, role.Id);
-        int sameMap = 0;
+        var result = new List<GameSession>(count);
         for (int i = start; i < start + count; i++)
-            if (Session(team.Members[i]) is { } s && s.WorldScene == killer.WorldScene) sameMap++;
-        return ExpBuff[Math.Clamp(sameMap, 1, ExpBuff.Length) - 1];
+        {
+            if (Session(team.Members[i]) is not { } session || session.Role == null || session.Progress == null ||
+                session.Attachment?.Cancelled != false || session.SceneLoading || session.InstanceId != 0 ||
+                session.WorldScene != killer.WorldScene)
+                continue;
+            result.Add(session);
+        }
+        if (!result.Contains(killer, ReferenceEqualityComparer.Instance)) return [killer];
+        return result;
     }
+
+    /// <summary>Party EXP pool multiplier (‱ of TeamExpBuffNum) for the server's eligible field recipients.</summary>
+    public int ExpBonus(GameSession killer) =>
+        ExpBuff[Math.Clamp(ExperienceRecipients(killer).Count, 1, ExpBuff.Length) - 1];
 
     /// <summary>The current Asia client projects TeamTypeForty member indices into fixed slots 1-5, 6-10, ... .</summary>
     internal static (int Start, int Count) ExpGroupRange(TeamType type, IReadOnlyList<long> members, long member)
