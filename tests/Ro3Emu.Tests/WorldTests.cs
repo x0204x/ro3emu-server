@@ -45,6 +45,8 @@ public class WorldTests
 
     private sealed class TestUnit : WorldUnit
     {
+        public bool SceneWide { get; init; }
+        internal override bool VisibleAcrossScene => SceneWide;
         public override EntityBase Entity() => new() { Uuid = (ulong)Uid, EntityType = 1 };
     }
 
@@ -187,6 +189,45 @@ public class WorldTests
         _sink.Events.Clear();
         await _world.JoinAsync(b);
         Assert.Contains("B units +[7] -[]", _sink.Events);
+    }
+
+    [Fact]
+    public async Task SceneWideUnitsReachDistantRoomMembersWithoutBroadeningOrdinaryAoi()
+    {
+        var a = Player("A", 100, 100); a.InstanceId = 7;
+        var otherRoom = Player("Other", 100, 100); otherRoom.InstanceId = 8;
+        await _world.JoinAsync(a);
+        await _world.JoinAsync(otherRoom);
+        var wide = new TestUnit { Uid = 7, SceneEntry = 10111, InstanceId = 7, X = 400, Z = 100, SceneWide = true };
+        var ordinary = new TestUnit { Uid = 8, SceneEntry = 10111, InstanceId = 7, X = 400, Z = 100 };
+        await _world.AddUnitAsync(wide);
+        await _world.AddUnitAsync(ordinary);
+        Assert.Contains(wide, a.VisibleUnits);
+        Assert.DoesNotContain(ordinary, a.VisibleUnits);
+        Assert.DoesNotContain(wide, otherRoom.VisibleUnits);
+
+        var late = Player("Late", 0, 0); late.InstanceId = 7;
+        await _world.JoinAsync(late);
+        Assert.Contains(wide, late.VisibleUnits);
+        Assert.DoesNotContain(ordinary, late.VisibleUnits);
+        await _world.MoveAsync(a, To(a, 390, 100));
+        Assert.Contains(ordinary, a.VisibleUnits);
+        await _world.MoveAsync(a, To(a, 0, 0));
+        Assert.Contains(wide, a.VisibleUnits);
+        Assert.DoesNotContain(ordinary, a.VisibleUnits);
+        wide.X = 600;
+        await _world.MoveUnitAsync(wide, new MovementChangeNtf { Uid = wide.Uid });
+        Assert.Contains("A unit~7", _sink.Events);
+        Assert.Contains("Late unit~7", _sink.Events);
+
+        await _world.LeaveAsync(a);
+        a.InstanceId = 8;
+        await _world.JoinAsync(a);
+        Assert.DoesNotContain(wide, a.VisibleUnits);
+        await _world.RemoveUnitAsync(wide);
+        Assert.DoesNotContain(wide, late.VisibleUnits);
+        Assert.Contains("Late units +[] -[7]", _sink.Events);
+        Assert.Empty(_world.Map(wide.WorldScene).SceneWideUnits);
     }
 
     [Fact]

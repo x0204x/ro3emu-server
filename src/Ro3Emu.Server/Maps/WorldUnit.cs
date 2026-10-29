@@ -27,6 +27,8 @@ public abstract class WorldUnit
     public float Y { get; set; }
     public float Z { get; set; }
     public float Face { get; set; }
+    /// <summary>A scoped encounter target that must be registered even beyond ordinary AOI, in this runtime only.</summary>
+    internal virtual bool VisibleAcrossScene => false;
 
     /// <summary>The grid cell the unit is filed under (MapInstance).</summary>
     internal (int X, int Z) Cell { get; set; }
@@ -56,6 +58,7 @@ public sealed class MapInstance(long sceneEntry, World world) : IGameTicker
     public const int CellSize = 32;
 
     private readonly List<WorldUnit> _units = new();
+    private readonly List<WorldUnit> _sceneWideUnits = new();
     // Membership for Contains: every walk's unit refresh asks it per candidate, and a field map holds ~1500 units
     // (as a list scan it was 13% of the loop's work at 500 players, stage G).
     private readonly HashSet<WorldUnit> _members = new(ReferenceEqualityComparer.Instance);
@@ -64,6 +67,7 @@ public sealed class MapInstance(long sceneEntry, World world) : IGameTicker
     public long SceneEntry => sceneEntry;
     public World World => world;
     public IReadOnlyList<WorldUnit> Units => _units;
+    internal IReadOnlyList<WorldUnit> SceneWideUnits => _sceneWideUnits;
     public bool Contains(WorldUnit unit) => _members.Contains(unit);
 
     private static (int, int) CellOf(float x, float z) => ((int)MathF.Floor(x / CellSize), (int)MathF.Floor(z / CellSize));
@@ -71,6 +75,7 @@ public sealed class MapInstance(long sceneEntry, World world) : IGameTicker
     internal void Add(WorldUnit unit)
     {
         _units.Add(unit);
+        if (unit.VisibleAcrossScene) _sceneWideUnits.Add(unit);
         _members.Add(unit);
         unit.Cell = CellOf(unit.X, unit.Z);
         if (!_cells.TryGetValue(unit.Cell, out var list)) _cells[unit.Cell] = list = new();
@@ -80,6 +85,7 @@ public sealed class MapInstance(long sceneEntry, World world) : IGameTicker
     internal void Remove(WorldUnit unit)
     {
         _units.Remove(unit);
+        _sceneWideUnits.Remove(unit);
         _members.Remove(unit);
         if (_cells.TryGetValue(unit.Cell, out var list)) list.Remove(unit);
     }

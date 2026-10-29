@@ -17,6 +17,7 @@
 | `Config/DataConfig/SkillConfig.lua.bytes` | `07A97ACA31C74CCEB850853660CE3E9C5FF2406C6E74DBE4FB06FBC879558339` |
 | `Config/DataConfig/GameplayStatusButtonConfig.lua.bytes` | `A8562265CC36DD4D4DA549040A57CE347E01B30860375C84DFBCD1B3B067C80F` |
 | `Config/InjectConfig/DungeonVariableFunctionConfig.lua.bytes` | `A0CBD39304311C84E6DEB95D4FFF911B8D7CBE27C598536F64A324AE257BBB31` |
+| `Config/SceneEditor/sc_plot_airship_001_pl01_sceneeditor.lua.bytes` | `4475BDF9DE048C7A4CBE558AA9F7058A017A141CF046FFE8802462C64D0768B4` |
 | `Xinshou_Fktcursh_part1.mp4` | `4C15E38263D55427D24D6FC8B184CD321F65F6618EAF78058B2FC3370D9FC933` |
 | `Xinshou_Fktcursh_Part2success.mp4` | `DA9E05EB9191CD311ACC1084C6051B370908870D6D3A70C960305199077A626A` |
 | `Xinshou_Fktcursh_Part2fail.mp4` | `A3DFBB511D58D8A8FDBF07D1AE33509B67744051D1FD8B547580687B2E55130B` |
@@ -43,11 +44,21 @@
 5. `VideoConfig` 的 30161/30162/30163 依序指向上表三個實際存在的 G 影片。三片均為 H.264/AAC、2650×1080、25 fps，片長依序 9.64／19.12／14.36 秒；內容分別為敵艦接近、成功分支與失敗分支。來源影片可解碼不代表玩家播放器已正確呈現，後者仍為 `NOT_RUN`。
 6. 炮擊呈現由 G `SkillConfig.lua:581648-581666` 的技能 5353001 指到 `_iScriptShow=61098`、`_kScriptLogic="beginnercannon"`、500 ms 動作/冷卻；`GameplayStatusButtonConfig.lua:194` 的按鈕 27 指這個技能。這只建立技能視效設定鏈，未取得玩家畫面的動畫播放證據。
 
+## 炮台遠距目標與階段身分
+
+- `DungeonQuestConfig[5300022..5300024]` 的 quest 2、3、4 都使用標題鍵 `11080700041`（遭遇邪惡首領／Encounter the Evil Boss）。標題本身不能判定階段；quest 2 的 detail `11080900041` 才明確要求用船上火炮攻擊敵艦，quest 3 是敵人登船，quest 4 是擊敗首領。
+- `sc_plot_airship_001_pl01_sceneeditor` 的炮台點 40／42／43 位於約 `(241.5,229.039,458..470)`；敵艦點 24 為 `(346.8,224.64,451.9)`，點 61 為 `(141.63,211.245,471)`。從炮台到兩艦的水平距離約 100–107 m，超過伺服器一般 60 m AOI。
+- G `LC_TPSComponent.lua:692–735` 的瞄準射線先取得客戶端已存在的 monster unit，才把其 UUID 寫入 `targetsId`。僅在伺服器存在遠距怪物不足以提供可瞄準目標；客戶端必須先收到其 31037 base。
+- 伺服器因此對 `1000501` 的 Cannon 步驟兩艘 configured fight targets 使用 `(inferred)` 同房間完整可見政策。該設定只跟隨這兩個執行個體，場景／房間仍隔離；一般單位保留 60／68 m 進出視野，移動、後加入與轉場仍透過一般 AOI 生命週期，敵艦移除仍送正常 leave。這是相容性重建，不是已取得原服 AOI 半徑的證明。
+- 炮口／爆炸呈現仍有獨立缺口：5353001 使用的 `Config/Skill/skill_61098` 是空 shows；G 另有 `skill_53530` 的炮口點 5353004、`skill_53535` 的炮口點 5353503 及子彈效果 5353504，`skill_53531` 的爆炸、`skill_53532` 的震屏／甲板爆炸音效。`NPCConfig[5300037]` 是帶 `_kRespawnSkill=5353101` 的隱形演出單位。原服 `beginnercannon` 服務端腳本未提供，這些演出的精確選用與觸發時序仍 `UNKNOWN`，不能由素材存在自行推定。
+- 首領 `NPCConfig[5300018]._kRespawnSkill=5351901` 對應 `skill_53519` 的 4.5 秒 `Born` 動畫；目前沒有通用故事怪出生技能演出。此項與炮擊視效分開，玩家畫面驗收仍待完成。
+
 ## 伺服器與測試覆蓋
 
 - 炮台互動 5300006 掛載狀態，按鈕 27 施放 5353001、按鈕 28 離炮；敵艦真實死亡推進階段。沒有固定三次登炮或直接施放 5365001 的 G 證據。
 - 伺服器的末段故事變數、QTE 兩結局等待及通關順序與 G 靜態路徑一致。
 - `DungeonTests.AirshipQte` 分別走到船長對話後，核對 130161 不先結算、130162/130163 的 84011 各能結算；`TheAirshipCannonsSinkTheEnemyShips` 覆蓋炮台；`EveryInteractionAStepWaitsOnIsOfferedByTheClientsOwnRules` 的 1000501 案例覆蓋全階段互動。這些測試使用本地 loopback 服務及 HP=1 速殺，屬 LAB 遊戲協定路徑，並非玩家畫面驗收。
+- 炮台案例從客戶端收到的 31037 bases／leaves 重建敵艦清單，確認登炮位置在一般 AOI 範圍外仍收到兩艦，再使用那些 UUID 發出攻擊並驗證死亡與後續 despawn。`WorldTests.SceneWideUnitsReachDistantRoomMembersWithoutBroadeningOrdinaryAoi` 覆蓋已在房內、後加入、玩家／單位移動、換房、正常移除及一般 AOI 範圍保留。
 
 ## 尚未驗收
 

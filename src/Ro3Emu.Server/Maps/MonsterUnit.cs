@@ -21,12 +21,15 @@ public sealed record MonsterTemplate(
     public float BattleCallRange { get; init; }
     /// <summary>AIConfig _iBattleCallResponse 1: it answers such a call.</summary>
     public bool AnswersBattleCall { get; init; }
+    /// <summary>Instance-specific target visibility for authored long-range encounters, not a field NPC default.</summary>
+    internal bool VisibleAcrossScene { get; init; }
 }
 
 /// <summary>A live monster on a map (entityType 1): HP, home point, current walk segment and AI state.</summary>
 public sealed class MonsterUnit : WorldUnit
 {
     public required MonsterTemplate Template { get; init; }
+    internal override bool VisibleAcrossScene => Template.VisibleAcrossScene;
     /// <summary>Instance-specific final outgoing damage rate; 10000 leaves field and dungeon monsters unchanged.</summary>
     public int DamageRatio { get; init; } = 10000;
     public required SpawnGroup Group { get; init; }

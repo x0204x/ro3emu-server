@@ -61,13 +61,19 @@ public sealed partial class DungeonTests
         Assert.Equal((12L, 5300006, cannon.Uid, cannon.Uid),
             (mounted.DataInfo.StateId, mounted.DataInfo.InteractConfigId, mounted.DataInfo.ActiveObjId,
                 mounted.DataInfo.UpperCannonInfo.CannonGuId));
+        var clientShips = await ClientAirships(alice);
+        Assert.Equal(new ulong[] { 5300015, 5300053 }, clientShips.Select(ship => ship.EntityTemplateID));
+        Assert.All(clientShips, ship => Assert.True(MonsterService.Distance(ship.MovementInfo.Pos.X,
+            ship.MovementInfo.Pos.Z, Session(alice).Position.X, Session(alice).Position.Z) > World.ViewRadius));
+        // The HP fixture follows client-received identities; target discovery must work from the actual cannon.
+        ships = clientShips.Select(ship => ships.Single(monster => monster.Uid == (long)ship.Uuid)).ToArray();
         Assert.DoesNotContain(alice.Inbox.Snapshot().Where(e => e.IsGame(CombatService.SkillHit))
             .Select(e => SkillHitInfo.Parser.ParseFrom(e.Body)), h => h.SkillId == 5365001);
 
-        static CastSkillReq Shot(DungeonService.SceneActorUnit gun, MonsterUnit ship) => new()
+        static CastSkillReq Shot(DungeonService.SceneActorUnit gun, EntityBase ship) => new()
         {
-            SkillId = 5353001, OpUnitId = gun.Uid, TargetId = ship.Uid,
-            TargetPos = new Vec3 { X = ship.X, Y = ship.Y, Z = ship.Z },
+            SkillId = 5353001, OpUnitId = gun.Uid, TargetId = (long)ship.Uuid,
+            TargetPos = ship.MovementInfo.Pos.Clone(),
         };
         Task PrepareLethalShot(MonsterUnit ship) => OnLoop(() =>
         {
@@ -83,9 +89,9 @@ public sealed partial class DungeonTests
             return Task.CompletedTask;
         });
         await PrepareLethalShot(ships[0]); // no invented original fixed shot count
-        await alice.SendGameAsync(CombatService.UseSkill, Shot(cannon, ships[0]));
+        await alice.SendGameAsync(CombatService.UseSkill, Shot(cannon, clientShips[0]));
         Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
-        await alice.SendGameAsync(CombatService.UseSkill, Shot(cannon, ships[1]));
+        await alice.SendGameAsync(CombatService.UseSkill, Shot(cannon, clientShips[1]));
         Assert.NotEqual(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result); // 500 ms action/CD gate
         var first = await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser, h => h.SkillId == 5353001);
         Assert.Contains(first.Dsts, d => d.DstID == ships[0].Uid && d.IsDead);
@@ -94,7 +100,7 @@ public sealed partial class DungeonTests
         Assert.Equal(0, (await Next(alice, WorldInteractionService.Action, UseInteractActionRes.Parser)).Result);
         await Next(alice, WorldInteractionService.Change, InteractChangeNtf.Parser,
             n => n.Uid == Session(alice).Role!.Id && n.DataInfo.EType == InteractInfo.Types.EState.Idle);
-        await alice.SendGameAsync(CombatService.UseSkill, Shot(cannon, ships[1]));
+        await alice.SendGameAsync(CombatService.UseSkill, Shot(cannon, clientShips[1]));
         Assert.NotEqual(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
 
         await Task.Delay(600);
@@ -102,7 +108,7 @@ public sealed partial class DungeonTests
         await Next(alice, WorldInteractionService.Change, InteractChangeNtf.Parser,
             n => n.Uid == Session(alice).Role!.Id && n.DataInfo.EType == InteractInfo.Types.EState.UpperCannon);
         await PrepareLethalShot(ships[1]);
-        await alice.SendGameAsync(CombatService.UseSkill, Shot(cannon, ships[1]));
+        await alice.SendGameAsync(CombatService.UseSkill, Shot(cannon, clientShips[1]));
         Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
         var second = await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser, h => h.SkillId == 5353001);
         Assert.Contains(second.Dsts, d => d.DstID == ships[1].Uid && d.IsDead);
@@ -110,6 +116,7 @@ public sealed partial class DungeonTests
         await Stage(alice, 3, quest: 3); // the boarding
         await Next(alice, WorldInteractionService.Change, InteractChangeNtf.Parser,
             n => n.Uid == Session(alice).Role!.Id && n.DataInfo.EType == InteractInfo.Types.EState.Idle && n.Interrupt);
+        await ClientAirships(alice, expected: 0); // corpse/step cleanup still sends the normal 31037 leaves
     }
 
     // Moonlight Flower's hide-and-seek (inferred): standing in the open is found and the game starts over; a darkness

@@ -119,7 +119,7 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
             unit.Removed = false;
             Map(unit.WorldScene).Add(unit);
             List<GameSession> near;
-            lock (_sync) near = NearLocked(unit.WorldScene, unit.X, unit.Z).ToList();
+            lock (_sync) near = UnitCandidatesLocked(unit).ToList();
             foreach (var player in near.Where(p => InRange(p, unit, ViewRadius)))
             {
                 unit.Viewers.Add(player);
@@ -166,7 +166,7 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
             if (unit.Removed) return;
             Map(unit.WorldScene).Moved(unit);
             List<GameSession> candidates;
-            lock (_sync) candidates = NearLocked(unit.WorldScene, unit.X, unit.Z).Concat(unit.Viewers).Distinct().ToList();
+            lock (_sync) candidates = UnitCandidatesLocked(unit).Concat(unit.Viewers).Distinct().ToList();
             var movers = new List<GameSession>();
             foreach (var player in candidates)
             {
@@ -208,7 +208,7 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
         if (!_maps.TryGetValue(player.WorldScene, out var map)) return;
         var left = new List<long>();
         // Candidates: units near the player plus the ones it shows (they may have walked away).
-        var candidates = map.Near(player.Position.X, player.Position.Z, LeaveRadius).Concat(player.VisibleUnits)
+        var candidates = map.Near(player.Position.X, player.Position.Z, LeaveRadius).Concat(map.SceneWideUnits).Concat(player.VisibleUnits)
             .Distinct().OrderBy(unit => unit.Uid).ToArray();
         var held = new List<WorldUnit>(candidates.Length);
         try
@@ -272,9 +272,14 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
 
     private static bool InRange(GameSession player, WorldUnit unit, float radius)
     {
+        if (unit.VisibleAcrossScene) return player.WorldScene == unit.WorldScene;
         float dx = player.Position.X - unit.X, dz = player.Position.Z - unit.Z;
         return dx * dx + dz * dz <= radius * radius;
     }
+
+    private IEnumerable<GameSession> UnitCandidatesLocked(WorldUnit unit) => unit.VisibleAcrossScene
+        ? _scenes.GetValueOrDefault(unit.WorldScene) ?? []
+        : NearLocked(unit.WorldScene, unit.X, unit.Z);
 
     /// <summary>The session's player is now in its scene (after ENTITYSELF).</summary>
     public async Task JoinAsync(GameSession session, Func<bool>? current = null)

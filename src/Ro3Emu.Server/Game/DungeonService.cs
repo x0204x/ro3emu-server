@@ -601,7 +601,14 @@ public sealed partial class DungeonService
         {
             if (a.Settled || a.Room.Closed) { a.Spawning = false; return; }
             MonsterTemplate? waveTemplate = null;
-            if (a.Plan.SceneEntry == EggThiefDungeon && _monsters.Template(spawn.NpcId) is { } template)
+            if (a.Plan.SceneEntry == AirshipScene && Step(a)?.Cannon != null
+                && _monsters.Template(spawn.NpcId) is { } cannonTarget)
+            {
+                // G's authored ships are 100+ m from the cannons and TPS targeting needs their client units.
+                // (inferred) Show these two configured targets to this room beyond ordinary 60 m AOI.
+                waveTemplate = cannonTarget with { VisibleAcrossScene = true };
+            }
+            else if (a.Plan.SceneEntry == EggThiefDungeon && _monsters.Template(spawn.NpcId) is { } template)
             {
                 // (inferred) The missing original encounter script sent these three portal waves toward the player. The
                 // reconstructed first-wave Pupa is immobile and all three authored portals lie outside its normal

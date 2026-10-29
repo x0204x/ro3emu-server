@@ -11,10 +11,11 @@ namespace Ro3Emu.Server.Game;
 /// of its actors (or the dungeon message that interaction's server-hosted action 210 names), the participant's walked
 /// position in a server region or near a point, or 84011 at the end of a story. Then the room moves on to the next
 /// step, and the last one settles the room as a clear (so DungeonService.Completed counts quest target 101018).
-/// Generic: nothing here knows a scene, task or NPC id.
+/// The event flow is generic; named scene-specific compatibility rules are scoped to their authored steps.
 /// </summary>
 public sealed partial class DungeonService
 {
+    private const long AirshipScene = 1000501;
     /// <summary>DungeonVariableFunctionConfig 100020016: start function PlayCutSceneStory, array; [plot] plays it.</summary>
     public const int StoryVar = 100020016;
     /// <summary>
