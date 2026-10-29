@@ -54,6 +54,12 @@ public sealed partial class SkillCombatTests
         Assert.Equal(5, bullet.Split);
 
         var emitted = alice.Inbox.Snapshot().Skip(mark).ToList();
+        int extraIndex = emitted.FindIndex(e => e.IsGame(CombatService.ExtraUseInSkillHigh)
+            && UseInSkillInfo.Parser.ParseFrom(e.Body).SessionId == 70001);
+        int bulletIndex = emitted.FindIndex(e => e.IsGame(CombatService.SkillBulletHigh)
+            && SkillFixTimeBulletNotify.Parser.ParseFrom(e.Body).SkillConfigId == 1200401);
+        Assert.True(extraIndex >= 0 && extraIndex < bulletIndex,
+            $"high-level packet order was {extraIndex}, {bulletIndex}");
         Assert.DoesNotContain(emitted, e => e.IsGame(CombatService.UseInSkill));
         Assert.DoesNotContain(emitted, e => e.IsGame(CombatService.UseInSkillHigh));
         Assert.DoesNotContain(emitted, e => e.IsGame(CombatService.ExtraUseInSkill));

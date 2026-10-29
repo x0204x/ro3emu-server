@@ -59,11 +59,17 @@ public sealed partial class MapTests
         Assert.All(angeling.BuffData.AddBuffs, b => Assert.Equal(0L, b.ExpireTime));
 
         // Summon Self-Destruct Poring: each minion starts its 16 s Poring Explosion at once.
-        await alice.Inbox.WaitAsync(e => e.IsGame(CombatService.UseInSkill) && UseInSkillInfo.Parser.ParseFrom(e.Body) is var u
-            && u.SrcID == uid && u.SkillID == 5202101, Wait);
+        var summon = UseInSkillInfo.Parser.ParseFrom((await alice.Inbox.WaitAsync(
+            e => e.IsGame(CombatService.UseInSkill) && UseInSkillInfo.Parser.ParseFrom(e.Body) is var u
+                && u.SrcID == uid && u.SkillID == 5202101, Wait)).Body);
+        Assert.True(summon.PlayAct);
+        Assert.True(summon.SkillMs > 0);
+        Assert.True(summon.StartTime > 0);
         var blast = UseInSkillInfo.Parser.ParseFrom((await alice.Inbox.WaitAsync(e => e.IsGame(CombatService.UseInSkill)
             && UseInSkillInfo.Parser.ParseFrom(e.Body).SkillID == 5201501, Wait)).Body);
         Assert.Equal(16000, blast.SkillMs);
+        Assert.True(blast.PlayAct);
+        Assert.True(blast.StartTime > 0);
         var mvp = _app.Services.GetRequiredService<MvpService>();
         var loop = _app.Services.GetRequiredService<GameLoop>();
         bool ready = false;

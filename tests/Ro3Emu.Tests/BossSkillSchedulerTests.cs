@@ -123,6 +123,7 @@ public sealed class BossSkillSchedulerTests : IAsyncLifetime
         var first = casts[0];
         Assert.Equal(book.Skills.Single(k => k.Id == first.SkillID).ActionMs, first.SkillMs);
         Assert.True(first.SessionId > 0);
+        Assert.True(first.PlayAct);
     }
 
     [ClientDataFact]

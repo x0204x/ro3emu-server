@@ -66,6 +66,7 @@ public sealed partial class CombatService
         {
             SrcID = pet.Uid, SkillID = skillId, PetConfigId = pet.PetId, TargetId = pet.Uid,
             TargetPos = pet.Pos, Face = pet.Face, SessionId = castId, SkillMs = actionMs, StartTime = Now,
+            PlayAct = true,
         };
         await _world.ToUnitViewersAsync(pet, UseInSkill, use);
         if (!pet.Viewers.Contains(owner)) await owner.SendGameAsync(UseInSkill, use);

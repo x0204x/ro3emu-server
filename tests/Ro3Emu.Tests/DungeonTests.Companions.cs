@@ -73,6 +73,9 @@ public sealed partial class DungeonTests
             m => companions.Any(c => c.Uid == m.Uid) && m.MovementInfo.MoveType == MovementType.MoveTypeWalk);
         var cast = await Next(alice, CombatService.UseInSkill, UseInSkillInfo.Parser,
             u => companions.Any(c => c.Uid == u.SrcID) && u.TargetId == eddga.Uid);
+        Assert.True(cast.PlayAct);
+        Assert.True(cast.SkillMs > 0);
+        Assert.True(cast.StartTime > 0);
         await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser,
             h => companions.Any(c => c.Uid == h.SrcID) && h.Dsts.Any(d => d.DstID == eddga.Uid && d.Damage > 0));
         var caster = companions.Single(c => c.Uid == cast.SrcID);

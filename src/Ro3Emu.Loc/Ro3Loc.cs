@@ -18,7 +18,8 @@ namespace Ro3Emu.Loc
     /// <item>templates: keys with %d / %s / {0} / ${1} / @{1} match runtime-built strings;</item>
     /// <item>misses are appended once to &lt;client&gt;/ro3emu/loc_misses.tsv (collect mode).</item>
     /// </list>
-    /// Data: the embedded loc_en.tsv, then &lt;client&gt;/ro3emu/loc_en.tsv (overrides). Lines are "zh\ten" with \t \n \\ escaped.
+    /// Data: the embedded loc_en.tsv, then &lt;client&gt;/ro3emu/loc_en.tsv. Lines are "source\ttarget" with
+    /// \t \n \\ escaped; the last matching row wins. Source-controlled Localization-ID corrections are separate.
     /// </summary>
     public static class Ro3Loc
     {
@@ -40,11 +41,13 @@ namespace Ro3Emu.Loc
         public static string MapHud(string text) => MapFrom(text, 2);
 
         /// <summary>
-        /// LanguageMain.Get(sid) result: a sid that is in no Localization table comes back "" / "None" / "Not Find Key",
-        /// so the label would be empty. Those sids map to the Chinese baked into the prefab (loc_sids.tsv), then to English.
+        /// LanguageMain.Get(sid) result: source-controlled SID corrections win first. A sid that is in no Localization
+        /// table comes back "" / "None" / "Not Find Key", so the label would otherwise be empty. Those missing sids
+        /// map to the Chinese baked into the prefab (loc_sids.tsv), then through the ordinary text map.
         /// </summary>
         public static string Sid(string value, long sid)
         {
+            if (SidOverrides.Count != 0 && SidOverrides.TryGetValue(sid, out var corrected)) return corrected;
             if (!string.IsNullOrEmpty(value) && value != "None" && !value.StartsWith("Not Find Key", StringComparison.Ordinal)) return value;
             try
             {
@@ -66,6 +69,9 @@ namespace Ro3Emu.Loc
         /// <summary>English the client ships that we replace (en_overrides.tsv): exact strings, checked before the CJK fast path.</summary>
         private static readonly Dictionary<string, string> EnglishOverrides = LoadEnglishOverrides();
 
+        /// <summary>Exact Localization IDs whose visible condition text needs more detail than the shipped row.</summary>
+        private static readonly Dictionary<long, string> SidOverrides = LoadSidOverrides();
+
         private static Dictionary<string, string> LoadEnglishOverrides()
         {
             var map = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -86,6 +92,31 @@ namespace Ro3Emu.Loc
             catch
             {
                 // no overrides
+            }
+            return map;
+        }
+
+        private static Dictionary<long, string> LoadSidOverrides()
+        {
+            var map = new Dictionary<long, string>();
+            try
+            {
+                using (var stream = typeof(Ro3Loc).Assembly.GetManifestResourceStream("loc_sid_overrides.tsv"))
+                using (var reader = stream == null ? null : new StreamReader(stream, Encoding.UTF8))
+                {
+                    string line;
+                    while (reader != null && (line = reader.ReadLine()) != null)
+                    {
+                        int tab = line.IndexOf('\t');
+                        if (line.Length == 0 || line[0] == '#' || tab <= 0 || !long.TryParse(line.Remove(tab), out long sid)) continue;
+                        string text = Unescape(line.Remove(0, tab + 1));
+                        if (text.Length != 0) map[sid] = text;
+                    }
+                }
+            }
+            catch
+            {
+                // no SID overrides
             }
             return map;
         }

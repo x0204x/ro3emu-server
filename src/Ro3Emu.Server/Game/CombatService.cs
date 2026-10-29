@@ -324,23 +324,24 @@ public sealed partial class CombatService : IGameTicker
     }
 
     /// <summary>
-    /// The first visible authored damage entry. A named Bullet entry can drive a client's own projectile (Double
-    /// Strafe); an empty Bullet entry is only a timing/audio helper and must not hide a later Action hit (Fire Ball).
+    /// The first authored Action damage entry, which LC_DamageHelper can turn into a target hit animation. A named
+    /// Bullet entry is only the fallback for timelines without an Action hit; it must not hide a later Action entry.
     /// </summary>
     private int HitEffect(long scriptShow)
     {
         var effects = _data.SkillTemplateTable("Lua_Config_EffectData");
         int firstDamage = 0;
+        int firstBullet = 0;
         for (long id = scriptShow * 100; id < scriptShow * 100 + 100; id++)
         {
             if (!effects.TryGetValue(id.ToString(), out var e)
                 || new SkillEffectData(e).Damage is not { } damage) continue;
             firstDamage = firstDamage == 0 ? (int)id : firstDamage;
-            if (damage is { DamageType: 3, HasActionDamage: true }
-                || damage is { DamageType: 2, Bullet: { } bullet } && !string.IsNullOrWhiteSpace(bullet.Name))
-                return (int)id;
+            if (damage is { DamageType: 3, HasActionDamage: true }) return (int)id;
+            if (firstBullet == 0 && damage is { DamageType: 2, Bullet: { } bullet }
+                && !string.IsNullOrWhiteSpace(bullet.Name)) firstBullet = (int)id;
         }
-        return firstDamage != 0 ? firstDamage : 1000002;
+        return firstBullet != 0 ? firstBullet : firstDamage != 0 ? firstDamage : 1000002;
     }
 
     /// <summary>The first visible authored Bullet entry for a timeline that has no client bullet points.</summary>
@@ -414,6 +415,7 @@ public sealed partial class CombatService : IGameTicker
         {
             SrcID = pet.Uid, SkillID = skillId, TargetId = target.Uid, TargetPos = target.Pos,
             Face = pet.Face, SessionId = castId, SkillMs = duration, StartTime = now, PetConfigId = pet.PetId,
+            PlayAct = true,
         };
         await _world.ToUnitViewersAsync(pet, UseInSkill, use);
         if (!pet.Viewers.Contains(owner)) await owner.SendGameAsync(UseInSkill, use);
@@ -517,7 +519,7 @@ public sealed partial class CombatService : IGameTicker
         var use = new UseInSkillInfo
         {
             SrcID = monster.Uid, SkillID = monster.Template.NormalSkill, TargetId = pet.Uid, TargetPos = pet.Pos,
-            Face = monster.Face, SessionId = castId, SkillMs = monster.Template.SkillMs, StartTime = Now,
+            Face = monster.Face, SessionId = castId, SkillMs = monster.Template.SkillMs, StartTime = Now, PlayAct = true,
         };
         await _world.ToUnitViewersAsync(monster, UseInSkill, use);
         ScheduleRuntime(monster.WorldScene, TimeSpan.FromSeconds(monster.Template.HitPointSeconds), async () =>
@@ -578,7 +580,7 @@ public sealed partial class CombatService : IGameTicker
         var use = new UseInSkillInfo
         {
             SrcID = m.Uid, SkillID = m.Template.NormalSkill, TargetId = p.Role!.Id, TargetPos = p.Position.Clone(), Face = m.Face,
-            SessionId = session, ChantMs = 0, SkillMs = m.Template.SkillMs, StartTime = Now,
+            SessionId = session, ChantMs = 0, SkillMs = m.Template.SkillMs, StartTime = Now, PlayAct = true,
         };
         // Like a player's cast: a row with an _iSkillEffectLevel takes the HIGH_LEVEL route (the Phantom Realm and
         // Valhalla Maya swings 4340001/5920101 have level 1). A normal attack never starts a boss-panel cooldown

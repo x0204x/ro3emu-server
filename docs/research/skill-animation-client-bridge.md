@@ -65,6 +65,15 @@ message. This is a source- and test-verified correction. It is not evidence that
 ordinary player skill is visually accepted; those skills remain on the separate general route and still require the
 runtime trace described below.
 
+### Non-player cast producers
+
+The same G `LC_TimeLine_Object` gate applies to ordinary/high-level timelines emitted for monsters, bosses, allied
+companions and tower pets. An all-producer audit found that these server paths populated skill, target and timing but
+left protobuf `playAct` at its false default. The shared player/monster timeline senders now force `PlayAct=true`, and
+the direct companion, tower-pet and legacy MVP producers set it explicitly. Regression tests cover a high-level boss
+swing, a scheduled boss skill, an allied companion cast, a tower-pet cast and an MVP summon/blast. This establishes
+the emitted field and route, not player-visible rendering on every actor model.
+
 ## Projectile and hit presentation
 
 The fixed-time bullet path treats `startTimestampMs` as the projectile's scheduled server-time onset. The client stores
@@ -86,6 +95,21 @@ equivalence to official-server packet timing remains `UNKNOWN` until a same-skil
 31101 feeds `LC_DamageHelper.CacheDamageHit`. Correct hit action and VFX depend on `showPoint` resolving to an
 EffectData Action damage entry. The server fills the required hit fields, but its generic fallback effect can still
 be a fidelity gap for a skill whose authored action point is unresolved.
+
+### Double Strafe bullet and hit separation
+
+The clean Asia `skill_13003.lua.bytes` (SHA-256
+`CF18B403CE0FCD0332352DBD90A3032DC36E6844B5F8D69CAAD414EB9B6B8F82`) and EffectData table (SHA-256
+`2280112984F1BF2C462C37CA1C6E2E3AAF29CAD52B76465FD30D31D154026C1E`) establish two different presentation
+rows for Double Strafe 1300301. EffectData 1300304 is the named `fx_bullet_arrownormal_normal` Bullet and belongs in
+31120 `effectId`; EffectData 1300305 is the following `m_kActionDamge` row with `fx_common_hit_1` and belongs in 31101
+`showPoint`. `LC_DamageHelper.CalcDamageHitPoint` consumes the Action damage row for the target hit presentation.
+
+The former resolver returned as soon as it found the named Bullet, so both routes used 1300304 and the target hit
+effect was absent. `HitEffect` now scans past Bullet rows and gives an authored Action damage row priority, retaining
+the named Bullet only as a fallback when no Action row exists. The client-data wire test fixes the expected sequence
+as 31100 cast, 31120 bullet 1300304, then 31101 hit 1300305. This is source- and test-verified packet behavior; the
+player-visible G-client result remains `NOT_RUN` until a post-update playtest observes both arrows and the target hit.
 
 ## Independent effect route
 
@@ -116,13 +140,16 @@ a managed or Lua method does not exist.
 | REA native payload boundary | `VERIFIED` within the provider-version limitation above |
 | Managed network-to-Lua callback chain | `VERIFIED` (static, type-specific scope) |
 | Guardian-pet extra-skill `PlayAct` gate | `VERIFIED` (Asia Lua, server source and wire test) |
+| Monster/Boss/companion/tower-pet `PlayAct` gate | `VERIFIED` (Asia Lua, server source and producer tests) |
+| Double Strafe 31120 bullet / 31101 hit separation | `VERIFIED` (Asia Lua and EffectData, server source and wire test) |
 | Generated xLua wrapper native addresses | `UNKNOWN` |
 | Official Asia runtime packet values and order | `NOT_RUN` |
 | Player-visible guardian-pet cast action | `NOT_RUN` |
 | Player-visible Fire Bolt / Fire Ball animation | `NOT_RUN` |
+| Player-visible Double Strafe target hit | `NOT_RUN` |
 
-The server now preserves the scheduled projectile onset in `31120.startTimestampMs` and sets `PlayAct=true` on the
-guardian-pet extra timeline; these are testable corrections, not player-visible acceptance. The next general-skill gate
+The server now preserves the scheduled projectile onset in `31120.startTimestampMs` and sets `PlayAct=true` on every
+admitted cast producer audited above; these are testable corrections, not player-visible acceptance. The next general-skill gate
 is a bounded trace of `31100 -> 31120/31108 -> 31101`, including server send time, client receive time, timeline stage,
 bullet emission and hit display for Fire Bolt 1200401 and Fire Ball 1201201 at a fixed distance. Compare it with a
 separately authorized official-Asia observation before declaring timing equivalent or qualifying an independent

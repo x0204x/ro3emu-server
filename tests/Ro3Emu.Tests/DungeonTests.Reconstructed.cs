@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Romsg;
+using Ro3Emu.Bot;
 using Ro3Emu.Server;
 using Ro3Emu.Server.Data;
 using Ro3Emu.Server.Game;
@@ -129,6 +130,79 @@ public sealed partial class DungeonTests
         for (int i = 0; i < 100 && State() == TaskState.Running && !TaskService.IsDelivered(Session(alice), 10103120); i++)
             await Task.Delay(20);
         Assert.True(State() is TaskState.Finish || TaskService.IsDelivered(Session(alice), 10103120), $"quest state {State()}");
+    }
+
+    [ClientDataTheory]
+    [InlineData(1021301L, 10102100L, 10102110L)]
+    [InlineData(1022001L, 10102200L, 10102210L)]
+    [InlineData(1051001L, 10103120L, 10103130L)]
+    public async Task AStoryDungeonClearDeliversItsQuestAndAcceptsTheFollowUp(long scene, long task, long next)
+    {
+        await using var alice = await InWorld("Alice");
+        await Gm(alice, "!lvl 99");
+        await Gm(alice, $"!quest accept {task}");
+        var completed = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Service<DungeonService>().Completed.Add((s, completedScene, _) =>
+        {
+            if (s.Account == alice.Account && completedScene == scene) completed.TrySetResult(completedScene);
+            return Task.CompletedTask;
+        });
+        Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
+        long instance = await Load(alice, scene);
+        await ClearReconstructedStoryRun(alice, instance);
+        Assert.Equal((DungeonRes)1, (await Next(alice, DungeonService.Result, DungeonResNotify.Parser)).Res);
+        Assert.Equal(scene, await completed.Task.WaitAsync(Wait));
+        await StoryMovesOn(alice, task, next);
+    }
+
+    [ClientDataFact]
+    public async Task TheTigerKingsFollowUpUsesTheFieldTaskPointAfterTheDungeonIsCleared()
+    {
+        const long field = 10220, dungeon = 1022001;
+        const long clearTask = 10102200, peltTask = 10102210, nextTask = 10102220;
+        const long taskPoint = 1010221001;
+        const int interaction = 40022001;
+
+        await using var alice = await InWorld("Alice");
+        await Gm(alice, "!lvl 99");
+        await Gm(alice, $"!quest accept {clearTask}");
+        await MovePublic(alice, field);
+        Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = dungeon }));
+        long instance = await Load(alice, dungeon);
+        await ClearReconstructedStoryRun(alice, instance);
+        Assert.Equal((DungeonRes)1, (await Next(alice, DungeonService.Result, DungeonResNotify.Parser)).Res);
+        await StoryMovesOn(alice, clearTask, peltTask);
+
+        // The pelt is not the private-dungeon Eddga corpse. TaskConfig tracks a client-side
+        // task-point NPC (400220) on the public Payon Forest map, where 40022001 reports 31214.
+        var point = Service<WorldData>().Map(field)!.Points[taskPoint];
+        var npc = Service<GameData>().Row("NPCConfig", 400220)!.Value;
+        Assert.Contains(interaction, npc.GetProperty("_iInteractID").EnumerateArray()
+            .Select(e => (int)(GameData.Number(e) ?? 0)));
+
+        await ReturnFromDungeon(alice, field);
+        await OnLoop(() => Service<SceneService>().TeleportInMapAsync(Session(alice), point));
+        await alice.SendGameAsync(TaskService.TriggerTaskEvent,
+            new TriggerTaskEventReq { TaskId = interaction, GoalCount = 1 });
+        Assert.Equal(0, (await Next(alice, TaskService.TriggerTaskEvent, TriggerTaskEventResp.Parser)).Result);
+        await StoryMovesOn(alice, peltTask, nextTask);
+    }
+
+    private async Task ClearReconstructedStoryRun(BotClient bot, long instance)
+    {
+        var plan = Session(bot).DungeonAttempt!.Plan;
+        for (int wave = 0; wave < plan.Waves.Count; wave++)
+        {
+            var step = plan.Waves[wave].Step;
+            if (step != null)
+            {
+                await Stage(bot, wave + 1, quest: step.Quest);
+                await ActorsIn(bot, step.Actors.Count);
+            }
+            if (plan.Waves[wave].Spawns.Count > 0)
+                foreach (var monster in await WaveIn(instance, plan.Waves[wave].Spawns.Count)) await Kill(bot, monster);
+            if (step?.Complete.Count > 0) await Gm(bot, "!actors use");
+        }
     }
 
     [ClientDataFact]

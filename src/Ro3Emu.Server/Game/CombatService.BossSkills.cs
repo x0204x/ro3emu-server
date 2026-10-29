@@ -59,7 +59,7 @@ public sealed partial class CombatService
         await SendMonsterTimelineAsync(boss, new UseInSkillInfo
         {
             SrcID = boss.Uid, SkillID = skill.Id, TargetId = targetId, TargetPos = hasTarget ? targetPos : origin, Face = face,
-            SessionId = session, ChantMs = chant, SkillMs = skill.ActionMs, StartTime = now,
+            SessionId = session, ChantMs = chant, SkillMs = skill.ActionMs, StartTime = now, PlayAct = true,
         }, highLevel: skill.HighLevel);
         if (!skill.Once && skill.CdMs > 0) await BossCooldownStartedAsync(boss, skill.Id, now + skill.CdMs);
         await FightingAsync(boss);
@@ -238,6 +238,7 @@ public sealed partial class CombatService
                 {
                     SrcID = minion.Uid, SkillID = skill.SummonBlast, TargetPos = minion.Pos, Face = minion.Face,
                     SessionId = ++_sessionIds, SkillMs = (int)GameData.Int(row, "_iActionTime"), StartTime = Now,
+                    PlayAct = true,
                 });
             else if (target != null && !target.Dead) _monsters.Engage(minion, target);
             ScheduleRuntime(boss.WorldScene, TimeSpan.FromMilliseconds(skill.SummonLifeMs), () => SummonLifeEndsAsync(rt, minion, skill));

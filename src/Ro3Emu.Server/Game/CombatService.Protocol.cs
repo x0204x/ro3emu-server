@@ -162,6 +162,9 @@ public sealed partial class CombatService
         bool ownedSource = extra && OwnsActiveSkillSource(caster, info.SrcID);
         if (caster.Role == null || (info.SrcID != caster.Role.Id && !ownedSource) || info.SessionId <= 0
             || _data.Row("SkillConfig", info.SkillID) == null) return Task.CompletedTask;
+        // LC_TimeLine_Object gates authored Animation events on playAct. Every accepted cast timeline is a real
+        // action; callers must not accidentally suppress the caster animation by leaving protobuf's bool default.
+        info.PlayAct = true;
         uint route = extra ? highLevel ? ExtraUseInSkillHigh : ExtraUseInSkill : highLevel ? UseInSkillHigh : UseInSkill;
         return ToPlayerAndViewersAsync(caster, route, info);
     }
@@ -170,6 +173,7 @@ public sealed partial class CombatService
     {
         if (monster.Dead || info.SrcID != monster.Uid || info.SessionId <= 0
             || _data.Row("SkillConfig", info.SkillID) == null) return Task.CompletedTask;
+        info.PlayAct = true;
         uint route = extra ? highLevel ? ExtraUseInSkillHigh : ExtraUseInSkill : highLevel ? UseInSkillHigh : UseInSkill;
         return _world.ToUnitViewersAsync(monster, route, info);
     }

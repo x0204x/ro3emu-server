@@ -20,6 +20,7 @@
     <Project Path="tools/Ro3Emu.RepositoryServer/Ro3Emu.RepositoryServer.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Ro3Emu.Loc.Tests/Ro3Emu.Loc.Tests.csproj" />
     <Project Path="tests/Ro3Emu.Patcher.Tests/Ro3Emu.Patcher.Tests.csproj" />
     <Project Path="tests/Ro3Emu.Setup.Tests/Ro3Emu.Setup.Tests.csproj" />
     <Project Path="tests/Ro3Emu.Tests/Ro3Emu.Tests.csproj" />

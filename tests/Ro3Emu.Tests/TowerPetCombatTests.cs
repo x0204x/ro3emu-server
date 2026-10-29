@@ -95,7 +95,11 @@ public sealed class TowerPetCombatTests : IAsyncLifetime
         foreach (var (id, value) in new (long, long)[] { (101, 3363), (103, 218), (104, 218), (105, 240), (106, 240), (2002, 12) })
             Assert.Equal(value, entity.Property.Single(p => p.Idx == id).Data);
         var pet = Assert.Single(Session.TowerAttempt!.Pets);
-        await Next(bot, CombatService.UseInSkill, UseInSkillInfo.Parser, c => c.SrcID == pet.Uid && c.SkillID == 2354301);
+        var cast = await Next(bot, CombatService.UseInSkill, UseInSkillInfo.Parser,
+            c => c.SrcID == pet.Uid && c.SkillID == 2354301);
+        Assert.True(cast.PlayAct);
+        Assert.True(cast.SkillMs > 0);
+        Assert.True(cast.StartTime > 0);
         var shield = await Next(bot, BuffService.BuffUpdate, BuffUpdateNotify.Parser,
             b => b.UnitId == pet.Uid && b.Buffs.Any(x => x.ConfigId == 2354401));
         Assert.Equal(3000, Assert.Single(shield.Buffs).Duration);

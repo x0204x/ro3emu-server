@@ -80,6 +80,9 @@ public sealed partial class SkillCombatTests
         await Loop.InvokeAsync(() => _app.Services.GetRequiredService<MonsterService>().Attack!(maya, Session("alice")));
         var swing = await Next(alice, CombatService.UseInSkillHigh, UseInSkillInfo.Parser, u => u.SrcID == maya.Uid);
         Assert.Equal(4340001, swing.SkillID);
+        Assert.True(swing.PlayAct);
+        Assert.True(swing.SkillMs > 0);
+        Assert.True(swing.StartTime > 0);
         Assert.DoesNotContain(alice.Inbox.Snapshot(), e => e.IsGame(CombatService.UseInSkill)
             && UseInSkillInfo.Parser.ParseFrom(e.Body).SrcID == maya.Uid);
     }

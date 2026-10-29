@@ -176,7 +176,7 @@ public sealed partial class MvpService
             {
                 SrcID = boss.Uid, SkillID = plan.Skill, TargetId = target?.Role?.Id ?? 0,
                 TargetPos = plan.Kind == BossSkillKind.Field && target != null ? target.Position.Clone() : boss.Pos,
-                Face = boss.Face, SkillMs = plan.ActionMs, StartTime = MonsterService.NowMs,
+                Face = boss.Face, SkillMs = plan.ActionMs, StartTime = MonsterService.NowMs, PlayAct = true,
             });
             switch (plan.Kind)
             {
@@ -214,7 +214,7 @@ public sealed partial class MvpService
                 await _world.ToUnitViewersAsync(m, CombatService.UseInSkill, new UseInSkillInfo
                 {
                     SrcID = m.Uid, SkillID = plan.BlastSkill, TargetPos = m.Pos, Face = m.Face,
-                    SkillMs = (int)GameData.Int(blast, "_iActionTime"), StartTime = MonsterService.NowMs,
+                    SkillMs = (int)GameData.Int(blast, "_iActionTime"), StartTime = MonsterService.NowMs, PlayAct = true,
                 });
             }
             else if (boss.Target is { } target) _monsters.Engage(m, target);

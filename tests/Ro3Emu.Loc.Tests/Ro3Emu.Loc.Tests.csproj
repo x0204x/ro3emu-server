@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <IsPackable>false</IsPackable>
+    <!-- Match the client project: these analyzer findings predate this test harness. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);CA1846;CA2249</WarningsNotAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <!-- Compile the client-compatible source against the test runtime; the production project still builds against
+       the game's own mscorlib. This keeps exact-map and SID override behavior covered without client files in CI. -->
+  <ItemGroup>
+    <Compile Include="..\..\src\Ro3Emu.Loc\Ro3Loc.cs" Link="Ro3Loc.cs" />
+    <EmbeddedResource Include="..\..\src\Ro3Emu.Loc\en_overrides.tsv" LogicalName="en_overrides.tsv" />
+    <EmbeddedResource Include="..\..\src\Ro3Emu.Loc\loc_sid_overrides.tsv" LogicalName="loc_sid_overrides.tsv" />
+  </ItemGroup>
+
+</Project>

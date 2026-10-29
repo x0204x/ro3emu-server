@@ -30,7 +30,7 @@ public sealed partial class CombatService
         await _world.ToUnitViewersAsync(companion, UseInSkill, new UseInSkillInfo
         {
             SrcID = companion.Uid, SkillID = skill.Id, TargetId = target.Uid, TargetPos = target.Pos, Face = companion.Face,
-            SessionId = castId, SkillMs = skill.ActionMs, StartTime = Now,
+            SessionId = castId, SkillMs = skill.ActionMs, StartTime = Now, PlayAct = true,
         });
         ScheduleRuntime(companion.WorldScene, TimeSpan.FromMilliseconds(skill.ActionMs * CompanionHitShare),
             () => CompanionHitAsync(companion, target, skill, config.Row, castId));
@@ -106,7 +106,7 @@ public sealed partial class CombatService
         await _world.ToUnitViewersAsync(monster, UseInSkill, new UseInSkillInfo
         {
             SrcID = monster.Uid, SkillID = monster.Template.NormalSkill, TargetId = companion.Uid, TargetPos = companion.Pos,
-            Face = monster.Face, SessionId = castId, SkillMs = monster.Template.SkillMs, StartTime = Now,
+            Face = monster.Face, SessionId = castId, SkillMs = monster.Template.SkillMs, StartTime = Now, PlayAct = true,
         });
         ScheduleRuntime(monster.WorldScene, TimeSpan.FromSeconds(monster.Template.HitPointSeconds), async () =>
         {

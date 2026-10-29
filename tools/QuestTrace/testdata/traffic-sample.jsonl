@@ -1,0 +1,7 @@
+{"t":"12:00:00.000","acc":"alice","dir":"s2c","id":5027,"name":"AUTO_SYNC_CLIENT_ROMSG_DBTASKINFO","body":{"version":"7","syncAllMark":false,"infos":{"10102100":{"all":{"taskId":"10102100","status":"TASK_STATE_DELIVERY","completeNum":["1"]}},"10102110":{"all":{"taskId":"10102110","status":"TASK_STATE_RUNNING","completeNum":["0"]}},"99999999":{"all":{"taskId":"99999999","status":"TASK_STATE_RUNNING"}}},"completeTaskNum":{"10102100":{"all":1},"99999999":{"all":1}}}}
+{"t":"12:00:00.100","acc":"alice","dir":"s2c","id":30401,"name":"CELL_DUNGEON_BASEINFO_NOTIFY","body":{"dungeonEntry":"1021301","dungeonId":"88","stage":3,"vars":[{"varId":10003,"vi64":[3,3]}]}}
+{"t":"12:00:00.200","acc":"alice","dir":"s2c","id":30401,"name":"CELL_DUNGEON_BASEINFO_NOTIFY","body":{"dungeonEntry":"9999999","stage":1}}
+{"t":"12:00:00.300","acc":"alice","dir":"c2s","id":31214,"name":"TASK_TRIGGER_EVENT","body":{"taskId":40022001,"goalCount":1}}
+{"t":"12:00:00.400","acc":"alice","dir":"c2s","id":31214,"name":"TASK_TRIGGER_EVENT","body":{"taskId":123,"goalCount":1}}
+{"t":"12:00:00.500","acc":"alice","dir":"s2c","id":30403,"name":"CELL_DUNGEON_RES_NOTIFY","body":{"dungeonEntry":"1021301","res":"DUNGEON_RES_SUCCESS"}}
+{"t":"12:00:00.600","acc":"alice","dir":"c2s","id":1101,"name":"CHAT","body":{"content":"private text"}}
