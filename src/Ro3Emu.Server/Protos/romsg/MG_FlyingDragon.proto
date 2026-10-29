@@ -1,6 +1,9 @@
 syntax = "proto3";
 package romsg;
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum FlyingDragonProductStatus {
   FlyingDragonProductStatusIdle = 0;
@@ -85,26 +88,26 @@ message FlyingDragonProductNotify {
 }
 
 message DBProductInfo {
-  int32 ReleaseProgress = 1;
-  int64 ProcessEndTimeStamp = 2;
-  map<int64, bool> AssistantRoles = 3;
-  int32 ExtraRewardIndex = 4;
-  map<int32, int32> OriItems = 5;
-  bool HasSelfAccelerate = 6;
+  int32 ReleaseProgress = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ProcessEndTimeStamp = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, bool> AssistantRoles = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 ExtraRewardIndex = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, int32> OriItems = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool HasSelfAccelerate = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBCeremonyInfo {
-  bool CanThumbsUp = 1;
-  int64 ThumbsUpEndTimeStamp = 2;
-  map<int64, bool> ThumbsUpRoles = 3;
-  int64 CeremonyStartTime = 4;
+  bool CanThumbsUp = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ThumbsUpEndTimeStamp = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, bool> ThumbsUpRoles = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 CeremonyStartTime = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBFlyingDragonProduceInfo {
-  romsg.DBProductInfo productInfo = 1;
-  romsg.DBCeremonyInfo ceremonyInfo = 2;
-  int64 ProcessUniqueId = 3;
-  int64 OwnerRoleId = 4;
-  map<int64, int64> StartRoles = 5;
+  romsg.DBProductInfo productInfo = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBCeremonyInfo ceremonyInfo = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ProcessUniqueId = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 OwnerRoleId = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, int64> StartRoles = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 

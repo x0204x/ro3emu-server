@@ -1,6 +1,10 @@
 syntax = "proto3";
 package romsg;
 import "MG_Common.proto";
+import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum BroadCastType {
   BROADCAST_TYPE_MIN = 0;
@@ -338,19 +342,19 @@ message MutePlayerInChannelNotify {
 }
 
 message ManagedChatClientCapability {
-  repeated romsg.ManagedChatProvider supportedProviders = 1;
+  repeated romsg.ManagedChatProvider supportedProviders = 1 [(romsg.max_count) = 8];
   uint32 protocolVersion = 2;
   uint64 featureBits = 3;
 }
 
 message ManagedChatChannelRef {
   romsg.ChatChannelType channelType = 1;
-  string targetId = 2;
+  string targetId = 2 [(romsg.max_count) = 128];
 }
 
 message ManagedChatCredential {
   romsg.ManagedChatCredentialMode mode = 1;
-  string value = 2;
+  string value = 2 [(romsg.max_count) = 4096];
   int64 expiresAtMs = 3;
 }
 
@@ -361,12 +365,12 @@ message ManagedChatBootstrapReq {
 message ManagedChatBootstrapRsp {
   romsg.ManagedChatErrorCode error = 1;
   romsg.ManagedChatProvider provider = 2;
-  string publicApiKey = 3;
-  string providerUserId = 4;
+  string publicApiKey = 3 [(romsg.max_count) = 256];
+  string providerUserId = 4 [(romsg.max_count) = 128];
   romsg.ManagedChatCredential credential = 5;
   uint64 rolloutEpoch = 6;
   uint32 policyVersion = 7;
-  repeated romsg.ManagedChatChannelRef channels = 8;
+  repeated romsg.ManagedChatChannelRef channels = 8 [(romsg.max_count) = 64];
   uint64 featureBits = 9;
 }
 
@@ -382,12 +386,12 @@ message ManagedChatCredentialRefreshRsp {
 
 message ManagedChatContent {
   romsg.ManagedChatContentKind kind = 1;
-  string text = 2;
-  bytes legacyExtraPayload = 3;
+  string text = 2 [(romsg.max_count) = 600];
+  bytes legacyExtraPayload = 3 [(romsg.max_count) = 8192];
 }
 
 message ManagedChatSendReq {
-  bytes clientMessageId = 1;
+  bytes clientMessageId = 1 [(romsg.max_count) = 16];
   romsg.ManagedChatChannelRef channel = 2;
   romsg.ManagedChatContent content = 3;
   uint64 rolloutEpoch = 4;
@@ -395,8 +399,8 @@ message ManagedChatSendReq {
 
 message ManagedChatSendRsp {
   romsg.ManagedChatErrorCode error = 1;
-  bytes clientMessageId = 2;
-  string providerMessageId = 3;
+  bytes clientMessageId = 2 [(romsg.max_count) = 16];
+  string providerMessageId = 3 [(romsg.max_count) = 128];
   int64 providerCreatedAtMs = 4;
   bool retryable = 5;
   bool commitUnknown = 6;
@@ -407,7 +411,7 @@ message ManagedChatSendRsp {
 message ManagedChatChannelStateNtf {
   uint64 rolloutEpoch = 1;
   uint64 stateVersion = 2;
-  repeated romsg.ManagedChatChannelRef watch = 3;
-  repeated romsg.ManagedChatChannelRef unwatch = 4;
+  repeated romsg.ManagedChatChannelRef watch = 3 [(romsg.max_count) = 64];
+  repeated romsg.ManagedChatChannelRef unwatch = 4 [(romsg.max_count) = 64];
 }
 

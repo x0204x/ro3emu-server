@@ -1,6 +1,9 @@
 syntax = "proto3";
 package romsg;
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum ChatGroupTitle {
   ChatGroupTitle_None = 0;
@@ -23,14 +26,14 @@ enum FriendChatGroupNotifyType {
 }
 
 message DBFriendSystemInfo {
-  repeated string groupIds = 1;
-  romsg.FriendChatRecordList recentlyChats = 2;
-  romsg.FriendChatRecordList topChats = 3;
-  romsg.FriendGroupList friendPartitions = 4;
-  repeated romsg.FriendGiftRecord sendGiftRecords = 5;
-  repeated romsg.FriendGiftRecord receiveGiftRecords = 6;
-  romsg.FriendChatRecordList recentlyData = 7;
-  repeated string ownerGroupIds = 8;
+  repeated string groupIds = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.FriendChatRecordList recentlyChats = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.FriendChatRecordList topChats = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.FriendGroupList friendPartitions = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.FriendGiftRecord sendGiftRecords = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.FriendGiftRecord receiveGiftRecords = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.FriendChatRecordList recentlyData = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated string ownerGroupIds = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message ChatGroupMemberData {
@@ -44,7 +47,7 @@ message ChatGroupData {
 }
 
 message FriendGroupList {
-  repeated romsg.FriendGroup customGroupList = 1;
+  repeated romsg.FriendGroup customGroupList = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message FriendGroup {
@@ -53,8 +56,8 @@ message FriendGroup {
 }
 
 message CreateFriendChatGroupReq {
-  string groupName = 1;
-  repeated int64 inviteGuids = 2;
+  string groupName = 1 [(romsg.max_count) = 100];
+  repeated int64 inviteGuids = 2 [(romsg.max_count) = 50];
 }
 
 message CreateFriendChatGroupResp {
@@ -64,7 +67,7 @@ message CreateFriendChatGroupResp {
 
 message RenameFriendChatGroupReq {
   string groupId = 1;
-  string newName = 2;
+  string newName = 2 [(romsg.max_count) = 100];
 }
 
 message RenameFriendChatGroupResp {
@@ -73,7 +76,7 @@ message RenameFriendChatGroupResp {
 
 message InviteFriendChatGroupReq {
   string groupId = 1;
-  repeated int64 inviteRoleIds = 2;
+  repeated int64 inviteRoleIds = 2 [(romsg.max_count) = 50];
 }
 
 message InviteFriendChatGroupResp {
@@ -82,7 +85,7 @@ message InviteFriendChatGroupResp {
 
 message KickFriendChatGroupReq {
   string groupId = 1;
-  repeated int64 kickRoleIds = 2;
+  repeated int64 kickRoleIds = 2 [(romsg.max_count) = 50];
 }
 
 message KickFriendChatGroupResp {
@@ -123,7 +126,7 @@ message FriendChatListItem {
 }
 
 message FriendChatRecordList {
-  repeated romsg.FriendChatListItem items = 1;
+  repeated romsg.FriendChatListItem items = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message FriendChatGroupNotify {
@@ -167,7 +170,7 @@ message GiveFriendGiftReq {
   int64 roleId = 1;
   int64 itemId = 2;
   int32 count = 3;
-  string message = 4;
+  string message = 4 [(romsg.max_count) = 500];
   bool isAnonymous = 5;
 }
 
@@ -188,16 +191,16 @@ message FetchRecommendFriendsResp {
 }
 
 message FriendGiftRecord {
-  int64 sender = 1;
-  int64 receiver = 2;
-  int64 itemId = 3;
-  int32 count = 4;
-  bool isAnonymous = 5;
-  string message = 6;
-  int64 sendTime = 7;
-  int32 affection = 8;
-  int32 popularity = 9;
-  int32 intimacy = 10;
+  int64 sender = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 receiver = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 itemId = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 count = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool isAnonymous = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string message = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 sendTime = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 affection = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 popularity = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 intimacy = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message PopularityStarData {

@@ -4,27 +4,31 @@ import "MG_Common.proto";
 import "MG_DB.proto";
 import "MG_PublicServer.proto";
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 message DBMultiDungeonHallOfFame {
-  int32 multiDungeonBossId = 1;
-  int32 passTime = 2;
-  repeated romsg.RoleDetailInfo roleInfo = 3;
-  int64 passTimestamp = 4;
-  string teamLeaderName = 5;
-  int64 teamLeaderId = 6;
+  int32 multiDungeonBossId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 passTime = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.RoleDetailInfo roleInfo = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 passTimestamp = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string teamLeaderName = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 teamLeaderId = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBMultiDungeonServerInfo {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  int32 week = 1;
-  repeated int32 fivePeakChallengeBossIds = 2;
-  repeated int32 difficultBuffBossIds = 3;
-  map<int32, romsg.DBMultiDungeonHallOfFame> hallOfFame = 6;
-  map<int32, bool> firstBroadCast = 7;
-  map<int32, romsg.DBMultiDungeonSacredBlessings> sacredBlessings = 8;
-  map<int32, int32> fiveDungeonMaxMark = 9;
-  map<int32, int32> gveDifficultyPassTime = 10;
+  option (romsg.dbsync) = "MultiDungeonServerInfo|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 week = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int32 fivePeakChallengeBossIds = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int32 difficultBuffBossIds = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.DBMultiDungeonHallOfFame> hallOfFame = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, bool> firstBroadCast = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.DBMultiDungeonSacredBlessings> sacredBlessings = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, int32> fiveDungeonMaxMark = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, int32> gveDifficultyPassTime = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DungeonPlayerLeaderBoardInfo {

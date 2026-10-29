@@ -5,6 +5,9 @@ import "MG_Guild.proto";
 import "MG_Common.proto";
 import "MG_Season.proto";
 import "MG_Interact.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum EPvpRoleCampNum {
   EPvpRoleCampNum_None = 0;
@@ -124,61 +127,61 @@ message TerritoryWarsMapDataNotify {
 }
 
 message DBTerritoryWarData {
-  romsg.TerritoryZoneData zoneData = 1;
-  romsg.TerritoryZoneData battleZoneData = 2;
-  romsg.TerritoryStage stage = 3;
-  int64 auctionId = 4;
+  romsg.TerritoryZoneData zoneData = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.TerritoryZoneData battleZoneData = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.TerritoryStage stage = 3 [(romsg.save) = 0, (romsg.self) = 1, (romsg.other) = 0];
+  int64 auctionId = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message TerritoryStage {
-  int32 StageType = 1;
-  int64 StartTime = 2;
-  int64 EndTime = 3;
-  int64 StageAction = 4;
+  int32 StageType = 1 [(romsg.save) = 0, (romsg.self) = 1, (romsg.other) = 0];
+  int64 StartTime = 2 [(romsg.save) = 0, (romsg.self) = 1, (romsg.other) = 0];
+  int64 EndTime = 3 [(romsg.save) = 0, (romsg.self) = 1, (romsg.other) = 0];
+  int64 StageAction = 4 [(romsg.save) = 0, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message TerritoryZoneData {
-  map<int32, romsg.TerritoryZoneInfo> ZoneInfo = 1;
+  map<int32, romsg.TerritoryZoneInfo> ZoneInfo = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message TerritoryZoneInfo {
-  repeated int64 guildId = 1;
+  repeated int64 guildId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBTerritoryWarsData {
-  romsg.TerritoryWarsMapData mapData = 1;
-  romsg.TerritoryWarsHistoryStatistics statisticData = 2;
-  romsg.TerritoryWarsFlowData flowData = 3;
+  romsg.TerritoryWarsMapData mapData = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.TerritoryWarsHistoryStatistics statisticData = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.TerritoryWarsFlowData flowData = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TerritoryWarsMapData {
-  map<int32, romsg.TerritoryWarsZoneMapData> ZoneDatas = 1;
-  map<int64, romsg.TerritoryWarsStateMapData> StateDatas = 2;
-  map<int64, romsg.TerritoryWarsPointMapData> PointDatas = 3;
+  map<int32, romsg.TerritoryWarsZoneMapData> ZoneDatas = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.TerritoryWarsStateMapData> StateDatas = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.TerritoryWarsPointMapData> PointDatas = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TerritoryWarsZoneMapData {
-  int32 zoneId = 1;
-  int64 strategyGuildId = 2;
-  romsg.GuildSnapInfo strategyGuildInfo = 3;
-  repeated int64 stateIds = 4;
-  repeated int64 pointIds = 5;
+  int32 zoneId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 strategyGuildId = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.GuildSnapInfo strategyGuildInfo = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 stateIds = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 pointIds = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TerritoryWarsStateMapData {
-  int32 stateId = 1;
-  int64 strategyGuildId = 2;
-  romsg.GuildSnapInfo strategyGuildInfo = 3;
-  int32 zoneId = 4;
-  repeated int64 pointIds = 5;
+  int32 stateId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 strategyGuildId = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.GuildSnapInfo strategyGuildInfo = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 zoneId = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 pointIds = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TerritoryWarsPointMapData {
-  int32 pointId = 1;
-  int64 strategyGuildId = 2;
-  romsg.GuildSnapInfo strategyGuildInfo = 3;
-  int32 zoneId = 4;
-  int64 stateId = 5;
+  int32 pointId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 strategyGuildId = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.GuildSnapInfo strategyGuildInfo = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 zoneId = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 stateId = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TerritoryWarsGetGuildDataReq {
@@ -194,14 +197,16 @@ message TerritoryWarsNotifySiegeCampChange {
 }
 
 message DBTerritoryWarsInfo {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  int32 seasonAreaId = 2;
-  romsg.TerritoryWarsAuctionInfo auctionInfo = 3;
-  romsg.TerritoryWarsGuildScoreBoard scoreBoard = 4;
-  romsg.TerritoryWarsEscortInfo escortInfo = 5;
-  romsg.SeasonState seasonState = 6;
+  option (romsg.dbsync) = "TerritoryWarsGuildInfo|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 seasonAreaId = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.TerritoryWarsAuctionInfo auctionInfo = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.TerritoryWarsGuildScoreBoard scoreBoard = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.TerritoryWarsEscortInfo escortInfo = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.SeasonState seasonState = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   reserved 1 to 1;
+  reserved "result";
 }
 
 message PvpSetRoleCampReq {
@@ -215,20 +220,20 @@ message PvpSetRoleCampResp {
 }
 
 message TerritoryWarsAuctionInfo {
-  map<int32, romsg.TerritoryWarsAuctionStateInfo> stateInfos = 1;
+  map<int32, romsg.TerritoryWarsAuctionStateInfo> stateInfos = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TerritoryWarsAuctionStateInfo {
-  int32 stateId = 1;
-  map<int64, romsg.TerritoryWarsAuctionGuildInfo> guildInfos = 2;
+  int32 stateId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.TerritoryWarsAuctionGuildInfo> guildInfos = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TerritoryWarsAuctionGuildInfo {
-  int64 guildId = 1;
-  romsg.GuildSnapInfo guildInfo = 2;
-  int64 auctionPrice = 3;
-  map<int32, int32> occupyPointId = 4;
-  int64 auctionTime = 5;
+  int64 guildId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.GuildSnapInfo guildInfo = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 auctionPrice = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, int32> occupyPointId = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 auctionTime = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TerritoryWarsAuctionReq {
@@ -252,16 +257,16 @@ message GetTerritoryWarsAuctionInfoResp {
 }
 
 message TerritoryWarsFlowData {
-  int32 curState = 1;
-  int64 startTime = 2;
+  int32 curState = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 startTime = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TerritoryWarsHistoryStatistics {
-  map<int32, romsg.TerritoryWarsGroupStatistics> groupStatistic = 1;
+  map<int32, romsg.TerritoryWarsGroupStatistics> groupStatistic = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TerritoryWarsGroupStatistics {
-  map<int64, int64> statisticIds = 1;
+  map<int64, int64> statisticIds = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message GetTerritoryWarsStageReq {
@@ -316,9 +321,9 @@ message TerritoryWarsMapOpenMinimapStatus {
 }
 
 message TerritoryWarsGuildScoreBoard {
-  map<int64, int64> occupyScore = 1;
-  map<int64, int64> playerHonor = 2;
-  map<int64, int64> playerValor = 3;
+  map<int64, int64> occupyScore = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, int64> playerHonor = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, int64> playerValor = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TerritoryWarsEscortRankReq {
@@ -335,107 +340,107 @@ message TerritoryWarsEscortRankInfo {
 }
 
 message TerritoryWarsEscortGuildApplyBuyer {
-  int64 guildId = 1;
-  int64 timestamp = 2;
-  string message = 3;
+  int64 guildId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 timestamp = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string message = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TerritoryWarsEscortGuildRejectBuyer {
-  int64 guildId = 1;
-  int64 timestamp = 2;
-  romsg.TerritoryWarsEscortTradeRejectReason reason = 3;
+  int64 guildId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 timestamp = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.TerritoryWarsEscortTradeRejectReason reason = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TerritoryWarsEscortGuildSuccessBuyer {
-  int64 guildId = 1;
-  int64 timestamp = 2;
+  int64 guildId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 timestamp = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TerritoryWarsEscortGuildSellingGoodsOrderData {
-  repeated romsg.TerritoryWarsEscortGuildApplyBuyer applyBuyers = 1;
-  repeated romsg.TerritoryWarsEscortGuildRejectBuyer rejectBuyers = 2;
-  romsg.TerritoryWarsEscortGuildSuccessBuyer successBuyer = 3;
-  repeated romsg.TerritoryWarsEscortGuildRejectBuyer rejectHistory = 4;
+  repeated romsg.TerritoryWarsEscortGuildApplyBuyer applyBuyers = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.TerritoryWarsEscortGuildRejectBuyer rejectBuyers = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.TerritoryWarsEscortGuildSuccessBuyer successBuyer = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.TerritoryWarsEscortGuildRejectBuyer rejectHistory = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TerritoryWarsEscortGuildSellingGoods {
-  int64 goodsUid = 1;
-  int64 guildId = 2;
-  int32 sellingNum = 3;
-  int32 unitPrice = 4;
-  string sellingMessage = 5;
-  romsg.TerritoryWarsEscortGoodsState state = 6;
-  int64 timestamp = 7;
-  romsg.TerritoryWarsEscortGuildSellingGoodsOrderData stateData = 8;
+  int64 goodsUid = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 guildId = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 sellingNum = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 unitPrice = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string sellingMessage = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.TerritoryWarsEscortGoodsState state = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 timestamp = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.TerritoryWarsEscortGuildSellingGoodsOrderData stateData = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TerritoryWarsEscortGoodsMap {
-  map<int64, romsg.TerritoryWarsEscortGuildSellingGoods> goodsMap = 1;
+  map<int64, romsg.TerritoryWarsEscortGuildSellingGoods> goodsMap = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TerritoryWarsEscortTradeInfo {
-  map<int64, romsg.TerritoryWarsEscortGoodsMap> guildGoodsMap = 1;
+  map<int64, romsg.TerritoryWarsEscortGoodsMap> guildGoodsMap = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TerritoryWarsEscortPlayerPlayInfo {
-  int64 roleId = 1;
-  int32 killNum = 2;
-  int32 assistNum = 3;
-  int32 deadNum = 6;
-  int64 transferNum = 4;
-  int64 robNum = 5;
-  int64 partRobNum = 7;
+  int64 roleId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 killNum = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 assistNum = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 deadNum = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 transferNum = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 robNum = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 partRobNum = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   int64 score = 8;
   string playerName = 9;
-  int64 awardStates = 10;
-  int64 pickNum = 11;
+  int64 awardStates = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 pickNum = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TerritoryWarsEscortGuildPlayInfo {
-  int64 guildId = 1;
-  bool isBuyer = 2;
-  int64 buyNum = 3;
-  int64 sellNum = 4;
-  int64 startPlayTime = 5;
-  int64 transportNum = 6;
-  int64 robNum = 7;
-  int64 toTransportNum = 8;
-  int32 startCartNum = 9;
-  int32 transportCartNum = 10;
-  int32 destoryCartNum = 11;
-  int32 pointId = 12;
-  int64 lostNum = 13;
-  int64 pickNum = 14;
+  int64 guildId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool isBuyer = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 buyNum = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 sellNum = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 startPlayTime = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 transportNum = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 robNum = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 toTransportNum = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 startCartNum = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 transportCartNum = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 destoryCartNum = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 pointId = 12 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 lostNum = 13 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 pickNum = 14 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   string guildName = 15;
   romsg.GuildHeadIcon headIcon = 16;
-  int32 startAdvancedCartNum = 17;
-  int32 transportAdvancedCartNum = 18;
+  int32 startAdvancedCartNum = 17 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 transportAdvancedCartNum = 18 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TerritoryWarsEscortGuildInfo {
-  romsg.TerritoryWarsEscortGuildPlayInfo playInfo = 1;
+  romsg.TerritoryWarsEscortGuildPlayInfo playInfo = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TerritoryWarsEscortPlayInfo {
-  map<int64, romsg.TerritoryWarsEscortGuildInfo> guildInfos = 1;
-  map<int64, romsg.TerritoryWarsEscortPlayerPlayInfo> playerInfos = 2;
+  map<int64, romsg.TerritoryWarsEscortGuildInfo> guildInfos = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.TerritoryWarsEscortPlayerPlayInfo> playerInfos = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TerritoryWarsEscortPlayInfoHistory {
-  int64 playTime = 1;
-  romsg.TerritoryWarsEscortPlayInfo playInfo = 2;
+  int64 playTime = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.TerritoryWarsEscortPlayInfo playInfo = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TerritoryWarsZoneEscortInfo {
-  romsg.TerritoryWarsEscortStage stage = 1;
-  int64 startTime = 2;
-  romsg.TerritoryWarsEscortTradeInfo tradeInfo = 3;
-  romsg.TerritoryWarsEscortPlayInfo playInfo = 4;
-  repeated romsg.TerritoryWarsEscortPlayInfoHistory historyPlayInfos = 5;
+  romsg.TerritoryWarsEscortStage stage = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 startTime = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.TerritoryWarsEscortTradeInfo tradeInfo = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.TerritoryWarsEscortPlayInfo playInfo = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.TerritoryWarsEscortPlayInfoHistory historyPlayInfos = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TerritoryWarsEscortInfo {
-  map<int32, romsg.TerritoryWarsZoneEscortInfo> zoneEscortInfoMap = 1;
+  map<int32, romsg.TerritoryWarsZoneEscortInfo> zoneEscortInfoMap = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TerritoryWarsEscortCartInfoChange {
@@ -507,7 +512,7 @@ message TerritoryWarsEscortGuildTradeHistoryRes {
 
 message TerritoryWarsEscortGuildBuyReq {
   int64 goodsUid = 1;
-  string message = 2;
+  string message = 2 [(romsg.max_count) = 1000];
 }
 
 message TerritoryWarsEscortGuildBuyRes {
@@ -527,7 +532,7 @@ message TerritoryWarsEscortGuildSellReq {
   int64 goodsUid = 1;
   int32 sellingNum = 2;
   int32 unitPrice = 3;
-  string sellingMessage = 4;
+  string sellingMessage = 4 [(romsg.max_count) = 1000];
 }
 
 message TerritoryWarsEscortGuildSellRes {

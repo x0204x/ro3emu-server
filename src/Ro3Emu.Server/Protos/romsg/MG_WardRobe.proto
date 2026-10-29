@@ -1,6 +1,9 @@
 syntax = "proto3";
 package romsg;
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum EAppearance_Type {
   EAppearance_None = 0;
@@ -46,7 +49,7 @@ message WardRobeAppearanceUpdateNtf {
 }
 
 message WardRobeUseAppearanceReq {
-  repeated int32 appearanceIds = 1;
+  repeated int32 appearanceIds = 1 [(romsg.max_count) = 500];
 }
 
 message WardRobeUseAppearanceRes {
@@ -65,7 +68,7 @@ message WardRobeUseAppearanceAttrRes {
 
 message WardRobeSaveAppearancePlanReq {
   int32 index = 1;
-  map<int32, int32> appearances = 2;
+  map<int32, int32> appearances = 2 [(romsg.max_count) = 500];
 }
 
 message WardRobeSaveAppearancePlanRes {

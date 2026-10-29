@@ -2,6 +2,9 @@ syntax = "proto3";
 package romsg;
 import "MG_PublicServer.proto";
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum CollectOperateType {
   CollectOperateType_None = 0;
@@ -135,7 +138,7 @@ message BatchBuyCommodityItem {
 }
 
 message BatchBuyCommodityReq {
-  repeated romsg.BatchBuyCommodityItem items = 1;
+  repeated romsg.BatchBuyCommodityItem items = 1 [(romsg.max_count) = 50];
   int64 npcId = 2;
 }
 

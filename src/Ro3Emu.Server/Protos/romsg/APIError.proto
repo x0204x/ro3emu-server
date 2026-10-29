@@ -1,6 +1,9 @@
 syntax = "proto3";
 package romsg;
 import "MG_Common.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum ErrorParamType {
   ErrorParamUnknown = 0;

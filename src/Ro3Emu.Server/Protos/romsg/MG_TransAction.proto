@@ -2,34 +2,39 @@ syntax = "proto3";
 package romsg;
 import "MG_Common.proto";
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 message ResourceOperate {
-  repeated romsg.ItemBaseInfo item = 1;
-  int64 tarPlayerId = 2;
+  repeated romsg.ItemBaseInfo item = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 tarPlayerId = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message ActionOneStep {
-  string actionName = 1;
-  repeated romsg.ResourceOperate resourceOperate = 2;
-  string checkParam = 3;
+  string actionName = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.ResourceOperate resourceOperate = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string checkParam = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message SaleTransAction {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  romsg.TransAction transaction = 1;
+  option (romsg.dbsync) = "action_tm_sale__|string";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.TransAction transaction = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message BuyTransAction {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  romsg.TransAction transaction = 1;
+  option (romsg.dbsync) = "action_tm_buy__|string";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.TransAction transaction = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TransAction {
-  string transActionId = 1;
-  string name = 2;
-  repeated romsg.ActionOneStep steps = 3;
-  int64 ownerRoleID = 4;
+  string transActionId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string name = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.ActionOneStep steps = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ownerRoleID = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 

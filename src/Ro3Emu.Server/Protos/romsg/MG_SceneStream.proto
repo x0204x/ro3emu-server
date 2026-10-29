@@ -1,5 +1,8 @@
 syntax = "proto3";
 package clientromsg;
+option optimize_for = LITE_RUNTIME;
+option go_package = "./clientromsg";
+option cc_generic_services = false;
 
 message MapElement {
   repeated float m_kWorldMatrix4X4 = 1;

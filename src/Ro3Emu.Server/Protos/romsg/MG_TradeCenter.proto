@@ -2,6 +2,9 @@ syntax = "proto3";
 package romsg;
 import "MG_Common.proto";
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum ETradeItemSpecialType {
   ETradeItemSpecialType_None = 0;
@@ -121,7 +124,7 @@ message SQueryProductByParamRequest {
 }
 
 message SQueryMultiProductByParamRequest {
-  repeated romsg.SQueryProductByParamRequest items = 1;
+  repeated romsg.SQueryProductByParamRequest items = 1 [(romsg.max_count) = 1000];
 }
 
 message SFieldWhereFilter {
@@ -666,7 +669,7 @@ message TradePutOffItemResp {
 message TradeAttionReq {
   int32 opType = 1;
   int32 attionType = 2;
-  string id = 3;
+  string id = 3 [(romsg.max_count) = 2000];
   int32 key = 4;
 }
 

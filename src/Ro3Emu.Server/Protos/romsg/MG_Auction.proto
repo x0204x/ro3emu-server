@@ -1,6 +1,9 @@
 syntax = "proto3";
 package romsg;
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum AuctionType {
   TNONE = 0;
@@ -47,102 +50,106 @@ enum AuctionReddotType {
 }
 
 message DBAutoBidding {
-  int64 roleId = 1;
-  int32 maxPrice = 2;
-  int64 biddingTime = 3;
-  bool isPaused = 4;
+  int64 roleId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 maxPrice = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 biddingTime = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool isPaused = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBAuctionItem {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  int64 auctionId = 1;
-  romsg.AuctionType auctionType = 2;
-  int64 guildId = 3;
-  int32 srcType = 4;
-  int64 actId = 5;
-  int64 actWeekDay = 6;
-  int64 actDayStartTime = 7;
-  int32 itemId = 8;
-  int32 itemPrice = 9;
-  int64 startTime = 10;
-  int64 endTime = 11;
-  romsg.AuctionState state = 12;
-  int64 ownerId = 13;
-  map<int64, bool> bonusRoleIds = 14;
-  map<int64, int64> biddingRoleIds = 15;
-  map<int64, romsg.DBAutoBidding> autoBiddings = 16;
-  romsg.DBAutoBidding curMaxAutoBidding = 17;
-  romsg.DungeonAuctionData dungeonaucData = 18;
-  int64 lastBiddingTime = 19;
-  bool isEnterFastBidding = 20;
-  map<int64, int64> joinBiddingRoleIds = 21;
-  int64 GuildActivityId = 22;
-  bytes strategyData = 23;
+  option (romsg.dbsync) = "AuctionList|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 auctionId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.AuctionType auctionType = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 guildId = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 srcType = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 actId = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 actWeekDay = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 actDayStartTime = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 itemId = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 itemPrice = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 startTime = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 endTime = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.AuctionState state = 12 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ownerId = 13 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, bool> bonusRoleIds = 14 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, int64> biddingRoleIds = 15 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.DBAutoBidding> autoBiddings = 16 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBAutoBidding curMaxAutoBidding = 17 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DungeonAuctionData dungeonaucData = 18 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 lastBiddingTime = 19 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool isEnterFastBidding = 20 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, int64> joinBiddingRoleIds = 21 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 GuildActivityId = 22 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bytes strategyData = 23 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBGuildAuctionBonus {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  int64 guildId = 1;
-  map<int64, romsg.DBGuildAuctionActBonus> actBonuses = 3;
+  option (romsg.dbsync) = "GuildAuctionBonus|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 guildId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.DBGuildAuctionActBonus> actBonuses = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBGuildAuctionActBonus {
-  map<int64, int32> auctionItemBonuses = 2;
-  int64 expireTs = 3;
-  bool hasBidding = 4;
-  map<int64, int64> bonusPlayerRatios = 5;
-  map<int64, int64> currencyBonus = 6;
+  map<int64, int32> auctionItemBonuses = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 expireTs = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool hasBidding = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, int64> bonusPlayerRatios = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, int64> currencyBonus = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBAuctionServerGlobalData {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  int64 areaId = 1;
-  map<int64, romsg.DBAuctionGoodRecord> goodRecords = 2;
-  map<int64, romsg.DBHistoryQueue> historyAuctionItems = 3;
+  option (romsg.dbsync) = "AuctionGlobalData|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 areaId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.DBAuctionGoodRecord> goodRecords = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.DBHistoryQueue> historyAuctionItems = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBHistoryQueue {
-  romsg.HistoryAuctionItem history = 1;
-  repeated int64 roleIds = 2;
+  romsg.HistoryAuctionItem history = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 roleIds = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBAuctionGoodRecord {
-  int64 lastGenerateTime = 1;
-  int64 lastSystemGenerateTime = 2;
-  map<int64, int64> guildGenerateCount = 3;
-  int64 generateTotalCount = 4;
-  int64 systemGenerateCount = 5;
+  int64 lastGenerateTime = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 lastSystemGenerateTime = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, int64> guildGenerateCount = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 generateTotalCount = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 systemGenerateCount = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DungeonAuctionData {
-  int64 dungeonBeginTime = 1;
-  repeated int64 cantbonusRoleIds = 2;
-  int64 quUniqueId = 3;
-  repeated int64 giveupUsers = 4;
-  bool preBidding = 5;
+  int64 dungeonBeginTime = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 cantbonusRoleIds = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 quUniqueId = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 giveupUsers = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool preBidding = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message RealQueue {
-  repeated int64 auctionId = 1;
+  repeated int64 auctionId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DungeonAuctionQueue {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  map<int64, romsg.RealQueue> dungeonQueue = 1;
+  option (romsg.dbsync) = "DungeonAuctionList|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.RealQueue> dungeonQueue = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message HistoryAuctionItem {
-  int32 itemId = 1;
-  int32 itemPrice = 2;
-  int64 endTime = 3;
-  int32 srcType = 4;
-  int64 userId = 5;
-  int64 auctionId = 6;
-  int64 auctionType = 7;
+  int32 itemId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 itemPrice = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 endTime = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 srcType = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 userId = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 auctionId = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 auctionType = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message QueryHistoryAuctionReq {
@@ -179,7 +186,7 @@ message BiddingAuctionItem {
 
 message GetAuctionReq {
   romsg.AuctionType auctionType = 1;
-  repeated int64 auctionIds = 2;
+  repeated int64 auctionIds = 2 [(romsg.max_count) = 100];
   int32 srcType = 3;
   int64 guildId = 4;
 }
@@ -255,8 +262,8 @@ message CancelBiddingAuctionRes {
 }
 
 message BatchCancelBiddingAuctionReq {
-  repeated int64 auctionIds = 1;
-  map<int64, int64> afterCancelPreBuyNum = 2;
+  repeated int64 auctionIds = 1 [(romsg.max_count) = 100];
+  map<int64, int64> afterCancelPreBuyNum = 2 [(romsg.max_count) = 1000];
   int64 auctionType = 3;
   int64 srcType = 4;
   int64 guildId = 5;
@@ -302,19 +309,20 @@ message BatchUploadAuctionReq {
 }
 
 message DBBonus {
-  int32 bonus = 1;
-  int64 guildId = 2;
-  int64 actId = 3;
-  int64 actWeekDay = 4;
-  int64 actDayStartTime = 5;
-  romsg.GroupBonusState state = 6;
+  int32 bonus = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 guildId = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 actId = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 actWeekDay = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 actDayStartTime = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.GroupBonusState state = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBAuctionRoleBonus {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  int64 roleId = 1;
-  map<string, romsg.DBBonus> groupBonus = 2;
+  option (romsg.dbsync) = "AuctionBonus|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 roleId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<string, romsg.DBBonus> groupBonus = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message QueryAuctionBonusReq {
@@ -326,7 +334,7 @@ message QueryAuctionBonusRes {
 }
 
 message GetAuctionBonusReq {
-  string srcTypeGroupKey = 1;
+  string srcTypeGroupKey = 1 [(romsg.max_count) = 200];
 }
 
 message GetAuctionBonusRes {
@@ -343,7 +351,7 @@ message BatchBiddingAuctionItem {
 }
 
 message BatchBiddingAuctionReq {
-  repeated romsg.BatchBiddingAuctionItem biddingItems = 1;
+  repeated romsg.BatchBiddingAuctionItem biddingItems = 1 [(romsg.max_count) = 100];
   romsg.AuctionType auctionType = 2;
   int64 srcType = 3;
   int64 itemID = 4;

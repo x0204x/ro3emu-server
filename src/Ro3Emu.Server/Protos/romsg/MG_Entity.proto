@@ -7,6 +7,9 @@ import "MG_Dungeon.proto";
 import "MG_Interact.proto";
 import "FieldOption.proto";
 import "MG_TerritoryWars.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum EntityState {
   EntityState_Alive = 0;
@@ -213,7 +216,7 @@ message NameBoardListNotify {
 }
 
 message GetPlayerInSceneDetailReq {
-  repeated uint64 ids = 1;
+  repeated uint64 ids = 1 [(romsg.max_count) = 500];
   bool bGetGuildOfficals = 2;
   bool bGetName = 3;
   bool bGetGuildFull = 4;

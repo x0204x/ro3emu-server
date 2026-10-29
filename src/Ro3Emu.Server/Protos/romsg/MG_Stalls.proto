@@ -2,48 +2,51 @@ syntax = "proto3";
 package romsg;
 import "MG_Common.proto";
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 message StallsBaseInfo {
-  string stallsTitle = 1;
-  int64 StallsID = 2;
-  int64 SceneID = 3;
-  int64 openTs = 4;
-  int64 sceneEntryID = 5;
-  int64 sceneLineNum = 6;
-  int64 SystemStallID = 7;
+  string stallsTitle = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 StallsID = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 SceneID = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 openTs = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 sceneEntryID = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 sceneLineNum = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 SystemStallID = 7 [(romsg.save) = 0, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message StallsRecord {
-  int64 itemEntryID = 1;
-  int64 itemNum = 2;
-  int64 buytime = 3;
-  int64 tradetax = 4;
-  int64 gainmoney = 5;
-  int32 areaid = 6;
-  int64 buyerid = 7;
-  string buyername = 8;
-  int64 coinEntryID = 9;
+  int64 itemEntryID = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 itemNum = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 buytime = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 tradetax = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 gainmoney = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 areaid = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 buyerid = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string buyername = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 coinEntryID = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message StallsItemInfo {
-  int64 stallsItemID = 1;
-  romsg.ItemBaseInfo itembase = 2;
-  int32 price = 3;
-  int32 pricetype = 4;
+  int64 stallsItemID = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.ItemBaseInfo itembase = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 price = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 pricetype = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   int64 systemStallCfgID = 5;
 }
 
 message StallsInfo {
-  romsg.StallsBaseInfo baseinfo = 1;
-  repeated romsg.StallsItemInfo itembase = 2;
-  int64 timeout = 3;
-  map<int32, int64> allgainmoney = 4;
-  romsg.Vec3 pos = 5;
-  int32 maxgrid = 6;
-  repeated romsg.StallsRecord record = 7;
-  bool bEnd = 8;
-  int32 endMailid = 9;
-  romsg.LongLongPair curTax = 10;
+  romsg.StallsBaseInfo baseinfo = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.StallsItemInfo itembase = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 timeout = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, int64> allgainmoney = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.Vec3 pos = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 maxgrid = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.StallsRecord record = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool bEnd = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 endMailid = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.LongLongPair curTax = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message EndStallsMailContent {
@@ -102,16 +105,17 @@ message PlayerStallsSyncBuyerStallsInfoNtf {
 }
 
 message DBPlayerStallsInfo {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  int64 lastAliveTime = 1;
-  romsg.StallsInfo info = 2;
-  romsg.LongLongPair weekMoney = 10;
+  option (romsg.dbsync) = "StallsInfo|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 lastAliveTime = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.StallsInfo info = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.LongLongPair weekMoney = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message PlayerStartStallsReq {
-  string stallsTitle = 1;
-  repeated romsg.StallsPutItem itembase = 2;
+  string stallsTitle = 1 [(romsg.max_count) = 200];
+  repeated romsg.StallsPutItem itembase = 2 [(romsg.max_count) = 1000];
 }
 
 message PlayerStartStallsRsp {
@@ -235,7 +239,7 @@ message PlayerStallsQueryItemPriceResp {
 }
 
 message PlayerStallsShareCheckReq {
-  string shareData = 1;
+  string shareData = 1 [(romsg.max_count) = 1000];
 }
 
 message PlayerStallsShareCheckResp {

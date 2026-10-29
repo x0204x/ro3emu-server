@@ -3,6 +3,9 @@ package romsg;
 import "MG_Skill.proto";
 import "MG_Common.proto";
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum ETerritoryBossStage {
   EClose = 0;
@@ -127,7 +130,7 @@ message InteractChangeNtf {
 
 message UseInteractActionReq {
   int64 buttonId = 1;
-  map<int64, romsg.ActionParam> actionParams = 2;
+  map<int64, romsg.ActionParam> actionParams = 2 [(romsg.max_count) = 100];
   romsg.CannonUseSkill cannonUseSkill = 3;
 }
 
@@ -139,7 +142,7 @@ message BulletExtraParam {
 
 message CannonUseSkill {
   romsg.CastSkillReq useSkillParam = 1;
-  repeated romsg.BulletExtraParam bulletExtraParam = 2;
+  repeated romsg.BulletExtraParam bulletExtraParam = 2 [(romsg.max_count) = 100];
 }
 
 message ActionParam {

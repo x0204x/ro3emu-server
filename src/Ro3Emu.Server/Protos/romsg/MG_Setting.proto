@@ -1,6 +1,9 @@
 syntax = "proto3";
 package romsg;
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum SettingType {
   SettingType_AutoBattle = 0;
@@ -160,12 +163,12 @@ message SaveSettingResp {
 }
 
 message SettingGuild {
-  bool disableShowMyNews = 1;
+  bool disableShowMyNews = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message SettingShowDetailInfo {
-  romsg.ShowDetailInfoType showDetailInfo = 1;
-  bool init = 2;
+  romsg.ShowDetailInfoType showDetailInfo = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool init = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message SettingPublicChatInfo {
@@ -192,10 +195,10 @@ message ChatTabInfo {
 }
 
 message SettingWildAFKInfo {
-  bool disAbleConsumeAFKTime = 1;
-  bool autoBack = 2;
-  bool timeBack = 3;
-  bool autoCancel = 4;
+  bool disAbleConsumeAFKTime = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool autoBack = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool timeBack = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool autoCancel = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message GuideData {
@@ -267,14 +270,17 @@ message MapTargetSetting {
 }
 
 message DBSettingInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  romsg.SettingGuild guildSettingInfo = 3;
-  romsg.SettingShowDetailInfo showDetailInfo = 4;
-  romsg.SettingWildAFKInfo wildAFKInfo = 5;
-  map<int32, bytes> clientSetting = 6;
-  map<int32, int64> commonSetting = 7;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.SettingGuild guildSettingInfo = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.SettingShowDetailInfo showDetailInfo = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.SettingWildAFKInfo wildAFKInfo = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, bytes> clientSetting = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int64> commonSetting = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
   reserved 1 to 1;
   reserved 2 to 2;
+  reserved "autoBattleInfo";
+  reserved "baseBattleInfo";
 }
 
 message ShowSettingInfo {

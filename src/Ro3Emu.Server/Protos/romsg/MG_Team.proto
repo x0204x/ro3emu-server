@@ -15,6 +15,9 @@ import "MG_GuildDraculaWedding_Init.proto";
 import "MG_RainbowKoi_Init.proto";
 import "MG_AdventureGroup.proto";
 import "MG_Training.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum TeamType {
   TeamTypeNone = 0;
@@ -102,7 +105,7 @@ message TeamCreateReq {
   romsg.TeamType teamType = 1;
   int64 targetId = 2;
   int64 limitScore = 3;
-  string teamDesc = 4;
+  string teamDesc = 4 [(romsg.max_count) = 500];
   string teamAreaInfo = 5;
   romsg.TeamMemberDetailInfo info = 6;
   int64 playBookId = 7;
@@ -150,10 +153,10 @@ message TeamMemberBattleInfo {
   int32 hpPercent = 1;
   int32 mpPercent = 2;
   int64 battlePoint = 3;
-  romsg.Vec3 pos = 4;
+  romsg.Vec3 pos = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
   int64 maxHpValue = 5;
   int64 maxMpValue = 6;
-  romsg.PlayerShieldInfo shieldInfo = 7;
+  romsg.PlayerShieldInfo shieldInfo = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
   romsg.EPlayerLifeStatus playerLifeStatus = 8;
 }
 
@@ -250,7 +253,7 @@ message ChangeTeamInfoReq {
   int64 targetId = 1;
   int64 minBattlePoint = 2;
   string teamDesc = 3;
-  string teamName = 4;
+  string teamName = 4 [(romsg.max_count) = 500];
   bool isAutoAgree = 5;
   int64 guid = 6;
 }
@@ -546,7 +549,7 @@ message TeamTargetAndEnemy {
 }
 
 message TeamRecruitReq {
-  string content = 1;
+  string content = 1 [(romsg.max_count) = 500];
   int64 operGuid = 2;
 }
 

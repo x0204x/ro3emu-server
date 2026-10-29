@@ -5,6 +5,9 @@ import "MG_Common.proto";
 import "FieldOption.proto";
 import "MG_SeasonPage.proto";
 import "MG_Guild.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum EGlobalCacheExtDataKey {
   EGlobalCacheExtDataKey_None = 0;
@@ -72,6 +75,7 @@ message RoleAdditionBaseInfo {
   int64 bornArea = 35;
   bool cantBeInvited = 36;
   reserved 3 to 3;
+  reserved "powerfight";
 }
 
 message RoleExpandInfo {
@@ -79,9 +83,9 @@ message RoleExpandInfo {
 }
 
 message SeasonPageExternalData {
-  map<int64, romsg.SeasonPageHonorBadgeData> honorBadgeData = 1;
-  romsg.SeasonPageHistoryFunctionScoreData current = 2;
-  romsg.SeasonPageHistoryFunctionScoreData history = 3;
+  map<int64, romsg.SeasonPageHonorBadgeData> honorBadgeData = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.SeasonPageHistoryFunctionScoreData current = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.SeasonPageHistoryFunctionScoreData history = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message GlobalCacheTeam {

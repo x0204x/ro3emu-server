@@ -114,6 +114,8 @@ import "MG_TypeWriter.proto";
 import "MG_WardRobe.proto";
 import "MG_WorldExploration.proto";
 import "MG_Zone.proto";
+option optimize_for = LITE_RUNTIME;
+option cc_generic_services = false;
 
 message DBTerritoryWarDataIncrement {
   message zoneDataFieldIncrement {

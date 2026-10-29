@@ -1,6 +1,9 @@
 syntax = "proto3";
 package romsg;
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum GuildSpeakAuthorityType {
   GuildSpeakAuthorityType_Free = 0;
@@ -8,35 +11,35 @@ enum GuildSpeakAuthorityType {
 }
 
 message GuildVoiceChannelMemberData {
-  int64 playerId = 1;
-  int64 joinTime = 2;
+  int64 playerId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 joinTime = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message GuildVoiceInviteState {
-  int64 playerId = 1;
-  int64 lastInviteTime = 3;
-  int64 rejectInviteUntil = 4;
+  int64 playerId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 lastInviteTime = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 rejectInviteUntil = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message GuildVoiceApplyInfo {
-  int64 playerId = 1;
-  string reason = 2;
-  int64 applyTime = 3;
+  int64 playerId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string reason = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 applyTime = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message GuildVoiceAllData {
-  map<int32, romsg.GuildVoiceChannelData> voiceChannels = 1;
-  map<int64, romsg.GuildVoiceInviteState> memberVoiceStates = 2;
+  map<int32, romsg.GuildVoiceChannelData> voiceChannels = 1 [(romsg.save) = 0, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.GuildVoiceInviteState> memberVoiceStates = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message GuildVoiceChannelData {
-  int32 channelIndex = 1;
-  map<int64, int64> blackList = 2;
-  map<int64, romsg.GuildVoiceChannelMemberData> currentMembers = 3;
-  romsg.GuildSpeakAuthorityType speakMode = 4;
-  repeated int64 speakerList = 5;
-  map<int64, romsg.GuildVoiceApplyInfo> applyList = 6;
-  int64 createTime = 7;
+  int32 channelIndex = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, int64> blackList = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.GuildVoiceChannelMemberData> currentMembers = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.GuildSpeakAuthorityType speakMode = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 speakerList = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.GuildVoiceApplyInfo> applyList = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 createTime = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message GuildVoiceChannelJoinReq {
@@ -105,7 +108,7 @@ message GuildVoiceChannelUnbanPlayerRsp {
 
 message GuildVoiceChannelInviteReq {
   int32 channelIndex = 1;
-  repeated int64 targetPlayerIds = 2;
+  repeated int64 targetPlayerIds = 2 [(romsg.max_count) = 50];
 }
 
 message GuildVoiceChannelInviteFailedPlayer {
@@ -173,7 +176,7 @@ message GuildVoiceChannelSpeakPermissionItem {
 
 message GuildVoiceChannelSetSpeakPermissionReq {
   int32 channelIndex = 1;
-  repeated romsg.GuildVoiceChannelSpeakPermissionItem permissionItems = 2;
+  repeated romsg.GuildVoiceChannelSpeakPermissionItem permissionItems = 2 [(romsg.max_count) = 50];
   romsg.GuildSpeakAuthorityType speakMode = 3;
 }
 

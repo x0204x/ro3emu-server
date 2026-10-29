@@ -1,6 +1,9 @@
 syntax = "proto3";
 package romsg;
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum TaskReceiveType {
   TaskReciveType_Other = 0;
@@ -31,17 +34,17 @@ enum ETaskRewardNum {
 }
 
 message TaskInfo {
-  int64 taskId = 1;
-  romsg.TaskState status = 2;
-  repeated int64 completeNum = 3;
-  int64 startTime = 4;
-  bool follow = 5;
-  int64 limitStartTime = 6;
-  bool isChapterLocked = 7;
+  int64 taskId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.TaskState status = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated int64 completeNum = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 startTime = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool follow = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 limitStartTime = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool isChapterLocked = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message TaskDeliveryReq {
-  repeated romsg.TaskDeliverySingleReq req = 1;
+  repeated romsg.TaskDeliverySingleReq req = 1 [(romsg.max_count) = 100];
 }
 
 message TaskDeliverySingleReq {

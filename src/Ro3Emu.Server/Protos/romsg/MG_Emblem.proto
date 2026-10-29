@@ -1,6 +1,9 @@
 syntax = "proto3";
 package romsg;
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 message SetUpEmblemReq {
   int32 emblemPos = 1;
@@ -26,8 +29,8 @@ message SetDownEmblemResp {
 
 message UpgradeEmblemReq {
   int64 emblemGuid = 1;
-  repeated int64 consumeEmblemGuids = 2;
-  map<int32, int32> consumeItems = 3;
+  repeated int64 consumeEmblemGuids = 2 [(romsg.max_count) = 100];
+  map<int32, int32> consumeItems = 3 [(romsg.max_count) = 100];
 }
 
 message UpgradeEmblemResp {

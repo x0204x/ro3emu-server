@@ -2,6 +2,9 @@ syntax = "proto3";
 package romsg;
 import "MG_Common.proto";
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum CardLevelSourceType {
   CardLevelSourceTypeNone = 0;
@@ -12,8 +15,8 @@ enum CardLevelSourceType {
 }
 
 message BondsInfo {
-  int32 entryId = 1;
-  map<int32, romsg.ItemBaseInfo> cardList = 2;
+  int32 entryId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.ItemBaseInfo> cardList = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message CardInfoNtf {

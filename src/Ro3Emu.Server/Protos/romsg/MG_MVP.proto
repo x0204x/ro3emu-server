@@ -2,6 +2,9 @@ syntax = "proto3";
 package romsg;
 import "FieldOption.proto";
 import "MG_Common.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum MVP_STATE {
   MVP_STATE_INVALID = 0;
@@ -28,57 +31,59 @@ enum MVPRankType {
 }
 
 message MVPPlayerStatisticsInfo {
-  int64 player_id = 1;
-  int64 team_id = 2;
-  int32 team_idx = 3;
-  int64 attack = 4;
-  int64 attack_time = 5;
-  int64 be_attack = 6;
-  int64 be_attack_time = 7;
-  int64 cure = 8;
-  int64 cure_time = 9;
-  int64 dead = 10;
-  int32 level = 11;
-  int32 job = 12;
-  romsg.AwardConditionParam params = 13;
-  int64 sceneEntryId = 14;
-  int32 lineId = 15;
+  int64 player_id = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 team_id = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 team_idx = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 attack = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 attack_time = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 be_attack = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 be_attack_time = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 cure = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 cure_time = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 dead = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 level = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 job = 12 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.AwardConditionParam params = 13 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 sceneEntryId = 14 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 lineId = 15 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message MVPInfo {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  int64 server_open_time = 2;
-  int64 cfg_id = 3;
-  int32 level = 4;
-  int64 map_id = 5;
-  int64 hp = 6;
-  int64 max_hp = 7;
-  romsg.MVP_STATE state = 8;
-  int64 change_time = 9;
-  int64 first_player_id = 10;
-  int64 end_player_id = 11;
-  map<int64, romsg.MVPPlayerStatisticsInfo> player_info = 12;
-  int64 create_time = 13;
-  int64 seasonArea = 15;
-  repeated int64 dead_ms = 16;
+  option (romsg.dbsync) = "MvpBaseDetailInfo|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 server_open_time = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 cfg_id = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 level = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 map_id = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 hp = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 max_hp = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.MVP_STATE state = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 change_time = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 first_player_id = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 end_player_id = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.MVPPlayerStatisticsInfo> player_info = 12 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 create_time = 13 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 seasonArea = 15 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 dead_ms = 16 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message MVPPlayerInfo {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  int64 player_id = 1;
-  int64 first_num = 2;
-  int64 end_num = 3;
-  int64 join_num = 4;
-  int64 team_num = 5;
-  int64 last_time = 6;
+  option (romsg.dbsync) = "MvpPlayerDetailInfo|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 player_id = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 first_num = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 end_num = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 join_num = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 team_num = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 last_time = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message MVPPlayerAwardItem {
-  int64 item_id = 1;
-  int64 count = 2;
-  romsg.MVP_AWARD_TYPE tp = 3;
+  int64 item_id = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 count = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.MVP_AWARD_TYPE tp = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message MVPPlayerHurtInfo {
@@ -173,32 +178,33 @@ message MVPAwardNumRsp {
 }
 
 message MVPReportPlayerInfo {
-  int64 player_id = 1;
-  repeated romsg.MVPPlayerAwardItem items = 2;
-  int64 param1 = 3;
-  int64 param2 = 4;
+  int64 player_id = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.MVPPlayerAwardItem items = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 param1 = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 param2 = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message MVPReportTeamInfo {
-  int64 team_id = 1;
-  int64 leader_id = 2;
-  repeated romsg.MVPReportPlayerInfo players = 3;
-  int64 param1 = 4;
-  int64 param2 = 5;
+  int64 team_id = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 leader_id = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.MVPReportPlayerInfo players = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 param1 = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 param2 = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message MVPReportRankInfo {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  int64 cfg_id = 1;
-  romsg.MVPRankType tp = 2;
-  int64 first_player_id = 3;
-  int64 end_player_id = 4;
-  int64 time_stamp = 5;
-  repeated romsg.MVPReportTeamInfo teams = 6;
-  int64 dead_ms = 7;
-  int64 rare_player_id = 8;
-  int64 rare_team_id = 9;
+  option (romsg.dbsync) = "MvpReportDetailInfo|string";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 cfg_id = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.MVPRankType tp = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 first_player_id = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 end_player_id = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 time_stamp = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.MVPReportTeamInfo teams = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 dead_ms = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 rare_player_id = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 rare_team_id = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message MVPReportRankReq {

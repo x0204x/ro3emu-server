@@ -1,6 +1,9 @@
 syntax = "proto3";
 package romsg;
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum MatchReadyStatus {
   MatchReadyStatus_None = 0;
@@ -16,9 +19,9 @@ enum MatchPunishReason {
 }
 
 message MatchPenaltyData {
-  int64 count = 1;
-  int64 unlockTime = 2;
-  int64 remainingPunishTime = 3;
+  int64 count = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 unlockTime = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 remainingPunishTime = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message StartMatchReq {
@@ -28,16 +31,16 @@ message StartMatchReq {
 }
 
 message MatchData {
-  romsg.ChickenMatchData chicken = 1;
-  romsg.MultiDungeonMatchData multiDungeon = 2;
-  int64 matchEntryId = 3;
+  romsg.ChickenMatchData chicken = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.MultiDungeonMatchData multiDungeon = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 matchEntryId = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message ChickenMatchData {
-  int64 ownerId = 1;
-  repeated int64 playerGuids = 2;
-  int32 score = 3;
-  bool isFirstChicken = 4;
+  int64 ownerId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 playerGuids = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 score = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool isFirstChicken = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message MultiDungeonMatchData {

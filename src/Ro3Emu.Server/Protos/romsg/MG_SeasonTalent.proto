@@ -2,6 +2,9 @@ syntax = "proto3";
 package romsg;
 import "google/protobuf/descriptor.proto";
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 message SeasonTalentUpgradeReq {
   int32 talentId = 1;

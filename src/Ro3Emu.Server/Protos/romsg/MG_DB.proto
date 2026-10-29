@@ -20,6 +20,9 @@ import "FieldOption.proto";
 import "MG_Auction.proto";
 import "MG_Adventure.proto";
 import "MG_AdventureGroup.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum MultiDungeonFirstPassState {
   MultiDungeonFirstPassState_NotPass = 0;
@@ -163,131 +166,145 @@ enum EDragonIslandSeasonStatisticNum {
 }
 
 message DBTest_Node {
-  int64 node_n1_int = 1;
-  string node_s2_str = 2;
+  option (romsg.gentest) = "true";
+  int64 node_n1_int = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string node_s2_str = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   oneof n3_oneof {
-    int32 node_oneofn3_n1_int = 3;
-    int32 node_oneofn3_n2_int = 4;
-    int32 node_oneofn3_n3_int = 5;
+    int32 node_oneofn3_n1_int = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    int32 node_oneofn3_n2_int = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    int32 node_oneofn3_n3_int = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   }
-  repeated int32 node_n4_repeated_int = 6;
-  map<int32, string> node_n5_map_string = 7;
+  repeated int32 node_n4_repeated_int = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, string> node_n5_map_string = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBTest_Layer4 {
-  string l4_s1_str = 1;
-  romsg.DBTest_Node l4_n1_node = 2;
-  repeated romsg.DBTest_Node l4_n2_repeated_node = 3;
-  map<int32, romsg.DBTest_Node> l4_n3_map_node = 4;
+  option (romsg.gentest) = "true";
+  string l4_s1_str = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBTest_Node l4_n1_node = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.DBTest_Node l4_n2_repeated_node = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.DBTest_Node> l4_n3_map_node = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   oneof n4_oneof {
-    int32 l4_oneofn4_n1_int = 5;
-    romsg.DBTest_Node l4_oneofn4_n2_node = 6;
+    int32 l4_oneofn4_n1_int = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    romsg.DBTest_Node l4_oneofn4_n2_node = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   }
   oneof n5_oneof {
-    romsg.DBTest_Node l4_oneofn5_n1_node = 8;
-    romsg.DBTest_Node l4_oneofn5_n2_node = 9;
-    romsg.DBTest_Node l4_oneofn5_n3_node = 10;
+    romsg.DBTest_Node l4_oneofn5_n1_node = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    romsg.DBTest_Node l4_oneofn5_n2_node = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    romsg.DBTest_Node l4_oneofn5_n3_node = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   }
-  romsg.DBTest_Node l4_n6 = 11;
+  romsg.DBTest_Node l4_n6 = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBTest_Layer3 {
-  string l3_s1_str = 1;
-  romsg.DBTest_Node l3_n1_node = 2;
-  repeated romsg.DBTest_Layer4 l3_n2_repeated_layer4 = 3;
-  map<int32, romsg.DBTest_Layer4> l3_n3_map_layer4 = 4;
+  option (romsg.gentest) = "true";
+  string l3_s1_str = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBTest_Node l3_n1_node = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.DBTest_Layer4 l3_n2_repeated_layer4 = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.DBTest_Layer4> l3_n3_map_layer4 = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   oneof n4_oneof {
-    int32 l3_oneofn4_n1_int = 5;
-    int32 l3_oneofn4_n2_int = 6;
+    int32 l3_oneofn4_n1_int = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    int32 l3_oneofn4_n2_int = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   }
   oneof n5_oneof {
-    romsg.DBTest_Node l3_oneofn5_n1_node = 8;
-    romsg.DBTest_Layer4 l3_oneofn5_n2_layer4 = 9;
-    romsg.DBTest_Layer4 l3_oneofn5_n3_layer4 = 10;
+    romsg.DBTest_Node l3_oneofn5_n1_node = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    romsg.DBTest_Layer4 l3_oneofn5_n2_layer4 = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    romsg.DBTest_Layer4 l3_oneofn5_n3_layer4 = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   }
-  romsg.DBTest_Layer4 l3_n6_layer4 = 11;
+  romsg.DBTest_Layer4 l3_n6_layer4 = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBTest_Layer2 {
-  string l2_s1_str = 1;
-  romsg.DBTest_Node l2_n1_node = 2;
-  repeated romsg.DBTest_Layer3 l2_n2_repeated_layer3 = 3;
-  map<int32, romsg.DBTest_Layer3> l2_n3_map_layer3 = 4;
+  option (romsg.gentest) = "true";
+  string l2_s1_str = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBTest_Node l2_n1_node = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.DBTest_Layer3 l2_n2_repeated_layer3 = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.DBTest_Layer3> l2_n3_map_layer3 = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   oneof n4_oneof {
-    int32 l2_oneofn4_n1_int = 5;
-    int32 l2_oneofn4_n2_int = 6;
+    int32 l2_oneofn4_n1_int = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    int32 l2_oneofn4_n2_int = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   }
   oneof n5_oneof {
-    romsg.DBTest_Node l2_oneofn5_n1_node = 8;
-    romsg.DBTest_Layer3 l2_oneofn5_n2_layer3 = 9;
-    romsg.DBTest_Layer3 l2_oneofn5_n3_layer3 = 10;
+    romsg.DBTest_Node l2_oneofn5_n1_node = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    romsg.DBTest_Layer3 l2_oneofn5_n2_layer3 = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    romsg.DBTest_Layer3 l2_oneofn5_n3_layer3 = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   }
-  romsg.DBTest_Layer3 l2_n6_layer3 = 11;
+  romsg.DBTest_Layer3 l2_n6_layer3 = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBTest_Layer1 {
-  string l1_s1_str = 1;
-  romsg.DBTest_Node l1_n1_node = 2;
-  repeated romsg.DBTest_Layer2 l1_n2_repeated_Layer2 = 3;
-  map<int32, romsg.DBTest_Layer2> l1_n3_map_Layer2 = 4;
+  option (romsg.gentest) = "true";
+  string l1_s1_str = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBTest_Node l1_n1_node = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.DBTest_Layer2 l1_n2_repeated_Layer2 = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.DBTest_Layer2> l1_n3_map_Layer2 = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   oneof n4_oneof {
-    int32 l1_oneofn4_n1_int = 5;
-    int32 l1_oneofn4_n2_int = 6;
+    int32 l1_oneofn4_n1_int = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    int32 l1_oneofn4_n2_int = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   }
   oneof n5_oneof {
-    romsg.DBTest_Node l1_oneofn5_n1_node = 8;
-    romsg.DBTest_Layer2 l1_oneofn5_n2_layer2 = 9;
-    romsg.DBTest_Layer2 l1_oneofn5_n3_layer2 = 10;
+    romsg.DBTest_Node l1_oneofn5_n1_node = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    romsg.DBTest_Layer2 l1_oneofn5_n2_layer2 = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    romsg.DBTest_Layer2 l1_oneofn5_n3_layer2 = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   }
-  romsg.DBTest_Layer2 l1_n6_layer2 = 11;
+  romsg.DBTest_Layer2 l1_n6_layer2 = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBTestInfo {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  int64 rt_nKey = 1;
-  romsg.DBTest_Node rt_n1_node = 2;
-  repeated romsg.DBTest_Layer1 rt_n2_repeated_Layer1 = 3;
-  map<int32, romsg.DBTest_Layer1> rt_n3_map_Layer1 = 4;
+  option (romsg.dbsync) = "DBTestInfo|ulong";
+  option (romsg.gentest) = "true";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 rt_nKey = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBTest_Node rt_n1_node = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.DBTest_Layer1 rt_n2_repeated_Layer1 = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.DBTest_Layer1> rt_n3_map_Layer1 = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   oneof n4_oneof {
-    int32 rt_oneofn4_n1_int = 5;
-    int32 rt_oneofn4_n2_int = 6;
-    int32 rt_oneofn4_n3_int = 7;
+    int32 rt_oneofn4_n1_int = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    int32 rt_oneofn4_n2_int = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    int32 rt_oneofn4_n3_int = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   }
   oneof n5_oneof {
-    romsg.DBTest_Node rt_oneofn5_n1_node = 8;
-    romsg.DBTest_Layer1 rt_oneofn5_n2_layer1 = 9;
-    romsg.DBTest_Layer1 rt_oneofn5_n3_layer1 = 10;
+    romsg.DBTest_Node rt_oneofn5_n1_node = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    romsg.DBTest_Layer1 rt_oneofn5_n2_layer1 = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    romsg.DBTest_Layer1 rt_oneofn5_n3_layer1 = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   }
-  romsg.DBTest_Layer1 rt_n6_layer1 = 11;
+  romsg.DBTest_Layer1 rt_n6_layer1 = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBTestTagNode {
-  string name = 1;
+  option (romsg.gentest) = "true";
+  string name = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBTestTagLayer4 {
-  repeated romsg.DBTestTagNode nodes = 2;
+  option (romsg.gentest) = "true";
+  repeated romsg.DBTestTagNode nodes = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBTestTagLayer3 {
-  romsg.DBTestTagLayer4 layer4 = 1;
+  option (romsg.gentest) = "true";
+  romsg.DBTestTagLayer4 layer4 = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBTestTagLayer2 {
-  romsg.DBTestTagLayer3 layer3 = 1;
+  option (romsg.gentest) = "true";
+  romsg.DBTestTagLayer3 layer3 = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBTestTagLayer1 {
-  romsg.DBTestTagLayer2 layer2 = 1;
+  option (romsg.gentest) = "true";
+  romsg.DBTestTagLayer2 layer2 = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBTestTagInfo {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  string name = 1;
-  romsg.DBTestTagLayer1 layer1 = 2;
-  repeated romsg.DBTestTagNode nodes = 3;
+  option (romsg.dbsync) = "DBTagTest|ulong";
+  option (romsg.gentest) = "true";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string name = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBTestTagLayer1 layer1 = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.DBTestTagNode nodes = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBMsg {
@@ -297,596 +314,620 @@ message DBMsg {
 }
 
 message DBMultiDungeonSacredBlessings {
-  string firstPassTeamLeaderName = 1;
-  bool isNeedTip = 2;
-  int64 firstUnlockTime = 4;
-  int64 unlockSacredBlessingID = 5;
-  int64 teamLeaderId = 6;
+  string firstPassTeamLeaderName = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool isNeedTip = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 firstUnlockTime = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 unlockSacredBlessingID = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 teamLeaderId = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBMultiDungeonHonor {
-  map<int64, romsg.DBMultiDungeonHonorState> honorInfo = 1;
+  map<int64, romsg.DBMultiDungeonHonorState> honorInfo = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBMultiDungeonAwardInfo {
-  int32 isFirst = 1;
-  romsg.MultiDungeonFirstPassState firstPassState = 2;
-  int64 fastRecord = 3;
-  int32 totalNumber = 4;
-  int32 useNumber = 5;
-  romsg.DBMultiDungeonSacredBlessings sacredBlessings = 6;
-  romsg.DBMultiDungeonHonor honor = 7;
+  int32 isFirst = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.MultiDungeonFirstPassState firstPassState = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 fastRecord = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 totalNumber = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 useNumber = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBMultiDungeonSacredBlessings sacredBlessings = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBMultiDungeonHonor honor = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBMultiDungeon {
-  int32 multiDungeonId = 1;
-  repeated romsg.DBMultiDungeonAwardInfo awardInfo = 2;
+  int32 multiDungeonId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated romsg.DBMultiDungeonAwardInfo awardInfo = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBMultiDungeonInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int32, romsg.DBMultiDungeon> dungeonInfo = 1;
-  int64 score = 2;
-  bool firstSetted = 3;
-  int64 jobPosition = 4;
-  map<int64, int32> multiDungeonUnlockIndex = 5;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.DBMultiDungeon> dungeonInfo = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 score = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool firstSetted = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 jobPosition = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int32> multiDungeonUnlockIndex = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBSceneInfo {
-  int64 sceneEntry = 1;
-  romsg.Vec3 pos = 2;
-  float face = 3;
-  int64 sceneId = 4;
-  int32 area = 5;
-  int64 lastSceneEntry = 6;
-  romsg.Vec3 lastPos = 7;
-  float lastFace = 8;
-  int64 lastSceneId = 9;
-  int32 lastArea = 10;
-  repeated int64 visitMap = 11;
-  romsg.Vec3 corpsePos = 12;
-  romsg.Vec3 ghostPos = 13;
-  romsg.LastSceneInfo lastNotPvpSceneInfo = 14;
+  int64 sceneEntry = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.Vec3 pos = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  float face = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 sceneId = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 area = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 lastSceneEntry = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.Vec3 lastPos = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  float lastFace = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 lastSceneId = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 lastArea = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 visitMap = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.Vec3 corpsePos = 12 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.Vec3 ghostPos = 13 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.LastSceneInfo lastNotPvpSceneInfo = 14 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message LastSceneInfo {
-  int64 lastSceneEntry = 1;
-  romsg.Vec3 lastPos = 2;
-  float lastFace = 3;
-  int64 lastSceneId = 4;
-  int32 lastArea = 5;
+  int64 lastSceneEntry = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.Vec3 lastPos = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  float lastFace = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 lastSceneId = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 lastArea = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBBuffBase {
-  int64 sourceObject = 1;
-  int64 buffConfigId = 2;
-  int32 sourceSceneId = 3;
-  int32 buffPiles = 4;
-  int64 expireTimestamp = 5;
-  int64 leftTime = 6;
-  int32 duration = 7;
-  int32 belong = 8;
-  int32 tmpUnEffect = 9;
-  int64 tmpUnEffectByBuffId = 10;
-  int64 createTime = 11;
-  int64 ownerId = 12;
-  int64 sourceSkillId = 13;
+  int64 sourceObject = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 buffConfigId = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 sourceSceneId = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 buffPiles = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 expireTimestamp = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 leftTime = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 duration = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 belong = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 tmpUnEffect = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 tmpUnEffectByBuffId = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 createTime = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ownerId = 12 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 sourceSkillId = 13 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBBuffInfo {
-  map<int64, romsg.DBBuffBase> buffs = 1;
+  map<int64, romsg.DBBuffBase> buffs = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBTaskInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int64, romsg.TaskInfo> infos = 1;
-  map<int64, int32> completeTaskNum = 2;
-  map<int64, int64> npcChatIds = 3;
-  int64 questBranch = 4;
-  map<int64, bool> selectBranch = 5;
-  map<int64, int64> waitSelectBranch = 6;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.TaskInfo> infos = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int32> completeTaskNum = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int64> npcChatIds = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 questBranch = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, bool> selectBranch = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int64> waitSelectBranch = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBPackInfo {
-  map<int64, romsg.ItemBaseInfo> items = 1;
-  map<int64, int64> sortedIndex = 2;
-  int32 packCapacity = 3;
+  map<int64, romsg.ItemBaseInfo> items = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int64> sortedIndex = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 packCapacity = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBItemsInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int32, romsg.DBPackInfo> packInfo = 1;
-  repeated romsg.QuickUseSaveInfo quickUseInfos = 2;
-  romsg.CdData itemCds = 3;
-  romsg.CdData shareCds = 4;
-  map<int32, int32> useTimes = 5;
-  romsg.MedicinesAutoUseSet medicinesAutoUse = 6;
-  int64 currentArrowID = 7;
-  romsg.AutoDecomposeSetting autoDecomposeSetting = 8;
-  int64 flowId = 9;
-  map<int32, int64> currency = 10;
-  romsg.DBStoragePack storagePack = 11;
-  map<int64, bool> guidToNew = 12;
-  repeated romsg.ShortcutBarInfo shortcutBarInfos = 13;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.DBPackInfo> packInfo = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated romsg.QuickUseSaveInfo quickUseInfos = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.CdData itemCds = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.CdData shareCds = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int32> useTimes = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.MedicinesAutoUseSet medicinesAutoUse = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 currentArrowID = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.AutoDecomposeSetting autoDecomposeSetting = 8 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 flowId = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, int64> currency = 10 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBStoragePack storagePack = 11 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, bool> guidToNew = 12 [(romsg.save) = 0, (romsg.self) = 1, (romsg.other) = 0];
+  repeated romsg.ShortcutBarInfo shortcutBarInfos = 13 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBStoragePack {
-  map<int32, romsg.DBStoragePackCardInfo> cardInfo = 1;
+  map<int32, romsg.DBStoragePackCardInfo> cardInfo = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBStoragePackCardInfo {
-  map<int32, romsg.ItemBaseInfo> cardSlotInfo = 1;
+  map<int32, romsg.ItemBaseInfo> cardSlotInfo = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBEquipCraftInfo {
-  int32 rank = 1;
-  int32 equipType = 2;
-  int32 orangeGuarantee = 3;
-  int32 redGuarantee = 4;
-  int32 craftCount = 5;
+  int32 rank = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 equipType = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 orangeGuarantee = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 redGuarantee = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 craftCount = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBStorageHoleInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int32, romsg.DBStoragePlanInfo> storagePlans = 1;
-  int32 currentPlan = 2;
-  bool inited = 3;
-  map<int64, int64> treasureTimes = 4;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.DBStoragePlanInfo> storagePlans = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 currentPlan = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool inited = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int64> treasureTimes = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBStoragePlanInfo {
-  map<int32, romsg.DBInsertCardInfo> cardInfo = 1;
-  string planName = 2;
-  romsg.PowerUnit power = 3;
+  map<int32, romsg.DBInsertCardInfo> cardInfo = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  string planName = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.PowerUnit power = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBInsertCardInfo {
-  map<int32, romsg.DBSlotItemInfo> cardSlotInfo = 1;
+  map<int32, romsg.DBSlotItemInfo> cardSlotInfo = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBSlotItemInfo {
-  int64 ItemId = 1;
-  int64 StarLevel = 2;
-  int64 treasured = 3;
-  romsg.ItemBindInfo itemBindInfo = 4;
+  int64 ItemId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 StarLevel = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 treasured = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.ItemBindInfo itemBindInfo = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message GeneralCollectionTimesByMap {
-  map<int64, int32> times = 1;
+  map<int64, int32> times = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBLifeJobInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int32, int64> activeLifejob = 1;
-  map<int64, romsg.DBLifeJobInfoDetail> lifeJobInfoMap = 2;
-  map<int64, int32> lifeJobUnLockDrop = 3;
-  map<int64, int32> generalCollectionTimes = 4;
-  map<int32, int32> alreadyNtf = 5;
-  romsg.NextTimeGameInfo gameInfo = 6;
-  map<int64, int64> magicFoodTimes = 7;
-  map<int64, romsg.GeneralCollectionTimesByMap> generalCollectionTimesByMap = 8;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, int64> activeLifejob = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.DBLifeJobInfoDetail> lifeJobInfoMap = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int32> lifeJobUnLockDrop = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int32> generalCollectionTimes = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int32> alreadyNtf = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.NextTimeGameInfo gameInfo = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, int64> magicFoodTimes = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.GeneralCollectionTimesByMap> generalCollectionTimesByMap = 8 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message NextTimeGameInfo {
-  map<int64, int32> GameTrigerInfo = 1;
+  map<int64, int32> GameTrigerInfo = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBLifeJobInfoDetail {
-  int64 job_id = 1;
-  int64 job_exp = 2;
-  int64 job_level = 3;
-  romsg.LifeJobTitleInfo titleInfo = 4;
-  romsg.LifeJobToolsInfo toolsInfo = 5;
-  romsg.GatherJobInfo gatherInfo = 6;
-  romsg.BuildJobInfo buildInfo = 7;
+  int64 job_id = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 job_exp = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 job_level = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.LifeJobTitleInfo titleInfo = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.LifeJobToolsInfo toolsInfo = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.GatherJobInfo gatherInfo = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.BuildJobInfo buildInfo = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message LifeJobTitleInfo {
-  int32 jobLevel = 1;
-  map<int32, romsg.LifeJobTitleSkillInfo> jobTitleDetail = 2;
-  map<int32, romsg.LifeJobTitleSkillInfo> skillExtraSkill = 3;
+  int32 jobLevel = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.LifeJobTitleSkillInfo> jobTitleDetail = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.LifeJobTitleSkillInfo> skillExtraSkill = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message LifeJobTitleSkillInfo {
-  map<int32, int32> optionalSkills = 1;
-  int32 selectedSkill = 2;
-  int32 originalSkill = 3;
-  romsg.SkillExtraInfo extraInfo = 4;
+  map<int32, int32> optionalSkills = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 selectedSkill = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 originalSkill = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.SkillExtraInfo extraInfo = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message SkillExtraInfo {
-  int64 param1 = 1;
-  int64 param2 = 2;
-  int64 param3 = 3;
-  int64 param4 = 4;
+  int64 param1 = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 param2 = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 param3 = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 param4 = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message LifeJobToolsInfo {
-  map<int64, bool> unlockedTools = 1;
-  int64 currentWearTool = 2;
+  map<int64, bool> unlockedTools = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 currentWearTool = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message BuildJobInfo {
-  map<int64, bool> recipeList = 1;
-  repeated int64 buffs = 2;
+  map<int64, bool> recipeList = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated int64 buffs = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message GatherJobInfo {
-  map<int64, int32> itemDetails = 1;
-  repeated int64 buffs = 2;
+  map<int64, int32> itemDetails = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated int64 buffs = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBEquipCardInfo {
-  map<int32, romsg.ItemBaseInfo> cardSlotInfo = 1;
+  map<int32, romsg.ItemBaseInfo> cardSlotInfo = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBEquipInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int32, int32> itemsRefine = 1;
-  map<int64, romsg.ItemBaseInfo> items = 2;
-  map<int32, int32> itemsStrength = 3;
-  map<int32, int32> refineLuckyAdd = 4;
-  map<int32, romsg.DBEquipCraftInfo> craftInfo = 5;
-  map<int32, romsg.DBEquipCardInfo> cardInfo = 6;
-  map<int32, romsg.DBEquipPlan> equipPlans = 7;
-  int32 currentEquipPlan = 8;
-  bool inited = 9;
-  map<int64, int64> CraftRankCount = 10;
-  int32 refineEffectLv = 11;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, int32> itemsRefine = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.ItemBaseInfo> items = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int32> itemsStrength = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int32> refineLuckyAdd = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.DBEquipCraftInfo> craftInfo = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.DBEquipCardInfo> cardInfo = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.DBEquipPlan> equipPlans = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 currentEquipPlan = 8 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool inited = 9 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int64> CraftRankCount = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 refineEffectLv = 11 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBEquipPlan {
-  map<int32, int64> itemsEquipGrid = 1;
-  string planName = 2;
-  romsg.PowerUnit power = 3;
+  map<int32, int64> itemsEquipGrid = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  string planName = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.PowerUnit power = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBCardInfo {
-  map<int32, romsg.BondsInfo> bondsList = 1;
-  map<int32, int32> setUpBondsList = 2;
+  map<int32, romsg.BondsInfo> bondsList = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, int32> setUpBondsList = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBRecentlyTeamMemberInfo {
-  int64 guid = 1;
-  int64 clearTime = 2;
-  int32 weight = 3;
+  int64 guid = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 clearTime = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 weight = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBTeamInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  int64 teamId = 1;
-  repeated romsg.DBRecentlyTeamMemberInfo recommendList = 2;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 teamId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated romsg.DBRecentlyTeamMemberInfo recommendList = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBTitleInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  int64 titleId = 1;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 titleId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBDungeonEmojiInstall {
-  int32 dungeonId = 1;
-  repeated int32 emojiIds = 2;
+  int32 dungeonId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated int32 emojiIds = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBEmojiInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  repeated int64 emojiInfo = 1;
-  map<int32, romsg.DBDungeonEmojiInstall> dungeonEmojiInstalls = 2;
-  map<int64, int64> emojiExpireTime = 3;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 emojiInfo = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.DBDungeonEmojiInstall> dungeonEmojiInstalls = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int64> emojiExpireTime = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DailyAFKDropRecord {
-  map<int64, int64> itemDropCount = 1;
-  map<int64, int64> itemDropCountFromTeam = 2;
-  map<int64, int64> monsterKillCount = 3;
-  map<int64, int64> monsterKillCountFromTeam = 4;
+  map<int64, int64> itemDropCount = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int64> itemDropCountFromTeam = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int64> monsterKillCount = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int64> monsterKillCountFromTeam = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message AFKDropSnapshot {
-  int64 timestamp = 1;
-  map<int64, int64> itemDropCount = 2;
-  map<int64, int64> itemDropCountFromTeam = 3;
+  int64 timestamp = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int64> itemDropCount = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int64> itemDropCountFromTeam = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBWildAFKInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  bool isInit = 1;
-  bool isHighMagnification = 2;
-  int64 highMultiplierTimeSeconds = 6;
-  int64 todayKillCount = 7;
-  int64 highMultiplierPausedAt = 9;
-  int64 sumHighMultiplierTime = 13;
-  bool isSuspended = 14;
-  repeated int32 monsterCollection = 4;
-  map<int64, romsg.DailyAFKDropRecord> dailyDropRecords = 10;
-  romsg.AFKDropSnapshot currentSnapshot = 11;
-  romsg.AFKDropSnapshot previousSnapshot = 12;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool isInit = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool isHighMagnification = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 highMultiplierTimeSeconds = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 todayKillCount = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 highMultiplierPausedAt = 9 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 sumHighMultiplierTime = 13 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool isSuspended = 14 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated int32 monsterCollection = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.DailyAFKDropRecord> dailyDropRecords = 10 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.AFKDropSnapshot currentSnapshot = 11 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.AFKDropSnapshot previousSnapshot = 12 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBRoleGuildInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  int64 lastGuildId = 1;
-  int64 historyContribute = 2;
-  int64 prayCount = 3;
-  int64 lastRefleshTime = 4;
-  repeated int64 weekPrayAwardGot = 5;
-  romsg.GuildOfficalRight right = 7;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 lastGuildId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 historyContribute = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 prayCount = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 lastRefleshTime = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 weekPrayAwardGot = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.GuildOfficalRight right = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   romsg.WartimeToolType wartimeUseToolPermission = 8;
-  string guildName = 100;
-  int64 official = 101;
-  int64 honorOfficial = 102;
-  int64 guildId = 103;
-  romsg.GuildHeadIcon guildIcon = 104;
-  int64 guildLeaderId = 105;
-  string guildLeaderName = 106;
-  int64 guildLeaderJob = 107;
-  int64 guildEventCount = 108;
-  int64 punishTime = 109;
-  int64 multiApplicationTime = 110;
-  map<int64, int64> activeRewardReceived = 111;
-  bool cantBeInvited = 112;
-  bool isCatShopAllSubmit = 113;
-  int32 status = 114;
-  romsg.DBGuildCatShopInfo catShopInfo = 115;
+  string guildName = 100 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 official = 101 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 honorOfficial = 102 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 guildId = 103 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.GuildHeadIcon guildIcon = 104 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 guildLeaderId = 105 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string guildLeaderName = 106 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 guildLeaderJob = 107 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 guildEventCount = 108 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 punishTime = 109 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 multiApplicationTime = 110 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, int64> activeRewardReceived = 111 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool cantBeInvited = 112 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool isCatShopAllSubmit = 113 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 status = 114 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBGuildCatShopInfo catShopInfo = 115 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBMount {
-  int64 mountId = 1;
-  int64 overdueTimeMs = 2;
-  int32 type = 3;
-  int64 uniqueId = 4;
-  int32 etChantId = 5;
-  map<int32, romsg.MountEtchant> etChantInfo = 6;
+  int64 mountId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 overdueTimeMs = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 type = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 uniqueId = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 etChantId = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.MountEtchant> etChantInfo = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message MountEtchant {
-  map<int32, int32> etChantData = 1;
+  map<int32, int32> etChantData = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message MountInfo {
-  int64 mountId = 1;
-  bool isRiding = 2;
+  int64 mountId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool isRiding = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBMountsInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int64, romsg.DBMount> mounts = 1;
-  map<int32, romsg.MountInfo> mountIds = 2;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.DBMount> mounts = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.MountInfo> mountIds = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBClimTower {
-  int64 ro3Define_SyncVersion = 9998;
-  int64 completeTime = 2;
-  int32 remainDuration = 3;
-  bool isCanSweep = 4;
-  repeated int32 petIds = 5;
-  int32 curDay = 6;
-  int64 challengeTime = 7;
-  int64 layerConfID = 8;
-  int64 lastLayerConfID = 9;
-  bool isNewbeeInit = 10;
-  map<int64, bool> rewardRecord = 11;
-  int64 serverFirstPassClaimedLayer = 12;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 completeTime = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 remainDuration = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool isCanSweep = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated int32 petIds = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 curDay = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 challengeTime = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 layerConfID = 8 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 lastLayerConfID = 9 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool isNewbeeInit = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, bool> rewardRecord = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 serverFirstPassClaimedLayer = 12 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message TimeRefreshInfo {
-  int32 needRefreshTime = 1;
-  int64 lastRefreshTime = 2;
+  int32 needRefreshTime = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 lastRefreshTime = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBTimeRefreshInfo {
-  repeated romsg.TimeRefreshInfo timeRefreshList = 1;
+  repeated romsg.TimeRefreshInfo timeRefreshList = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBRoleAchievementInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int64, romsg.AchievementInfo> infos = 1;
-  map<int64, romsg.AchievementLevelInfo> achievementLevelInfo = 2;
-  repeated int64 serverGetReward = 3;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.AchievementInfo> infos = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.AchievementLevelInfo> achievementLevelInfo = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated int64 serverGetReward = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBPetInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int32, romsg.PetData> listPet = 1;
-  map<int32, romsg.DBPetSetUpPlan> setupPlans = 4;
-  int32 currentPlan = 5;
-  bool inited = 6;
-  int64 incubationLv = 7;
-  int64 incubationExp = 8;
-  map<int64, romsg.DBSlotInfo> incubationSlot = 10;
-  repeated romsg.DBIncubateHistory incubationHistory = 11;
-  int64 incubationCount = 12;
-  bool skipAnim = 13;
-  int64 onOpenUIRoomLv = 14;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.PetData> listPet = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.DBPetSetUpPlan> setupPlans = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 currentPlan = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool inited = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 incubationLv = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 incubationExp = 8 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.DBSlotInfo> incubationSlot = 10 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated romsg.DBIncubateHistory incubationHistory = 11 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 incubationCount = 12 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool skipAnim = 13 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 onOpenUIRoomLv = 14 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBIncubateHistory {
-  int64 roundId = 1;
-  int64 itemId = 2;
-  int64 type = 3;
-  int64 time = 4;
+  int64 roundId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 itemId = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 type = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 time = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBSlotInfo {
-  int64 slotId = 1;
-  map<int64, romsg.DBIncubateInfo> incubateInfo = 2;
+  int64 slotId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.DBIncubateInfo> incubateInfo = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBIncubateInfo {
-  int64 incubateTime = 1;
-  int64 accTime = 2;
-  int64 awardType = 3;
-  int64 awardId = 4;
-  int64 awardCount = 5;
+  int64 incubateTime = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 accTime = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 awardType = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 awardId = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 awardCount = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBPetSetUpPlan {
-  map<int32, int32> setUpPets = 1;
-  map<int32, int32> supportPets = 2;
-  string planName = 3;
-  romsg.PowerUnit power = 4;
+  map<int32, int32> setUpPets = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int32> supportPets = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  string planName = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.PowerUnit power = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBStageRewardInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  repeated int32 allStageRewardsFinished = 1;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int32 allStageRewardsFinished = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBGrowthClassInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int32, int32> rankReward = 2;
-  int32 rankProgress = 3;
-  map<int32, int32> moduleProgress = 4;
-  map<int32, int32> moduleTaskCompleteNum = 5;
-  map<int32, int32> moduleUnlockedStage = 6;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, int32> rankReward = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 rankProgress = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int32> moduleProgress = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int32> moduleTaskCompleteNum = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int32> moduleUnlockedStage = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBPlayerResetCfgData {
-  int64 resetCfgId = 1;
-  int64 lastResetTime = 2;
+  int64 resetCfgId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 lastResetTime = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBPlayerResetInfo {
-  repeated romsg.DBPlayerResetCfgData resetData = 1;
+  repeated romsg.DBPlayerResetCfgData resetData = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBOfflineInfo {
-  int64 maxTime = 1;
-  uint64 seqID = 2;
-  map<string, int64> asyncMsgState = 3;
+  int64 maxTime = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  uint64 seqID = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<string, int64> asyncMsgState = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBWizardInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int32, int32> forbiddenItems = 1;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, int32> forbiddenItems = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBReviveInfo {
-  bool bDead = 1;
-  map<int64, int32> freeReviveNum = 2;
-  int64 extraReviveTime = 3;
-  int64 reviveTime = 4;
-  int64 deadSceneEntry = 5;
+  bool bDead = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, int32> freeReviveNum = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 extraReviveTime = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 reviveTime = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 deadSceneEntry = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBShopInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int32, int32> commodityBuyTimes = 1;
-  map<int32, bool> collectCommodities = 2;
-  map<int32, romsg.ShoppingCartItem> shoppingCart = 3;
-  int32 shoppingCartProtocolVersion = 4;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, int32> commodityBuyTimes = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, bool> collectCommodities = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.ShoppingCartItem> shoppingCart = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 shoppingCartProtocolVersion = 4 [(romsg.save) = 0, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message ShoppingCartItem {
-  int32 commodityId = 1;
-  int32 count = 2;
-  int64 addTime = 3;
+  int32 commodityId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 count = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 addTime = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBTotemInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  int64 totemTotalExp = 1;
-  map<int32, romsg.TotemPlan> totemPlans = 2;
-  int32 currentPlan = 3;
-  bool Inited = 4;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 totemTotalExp = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.TotemPlan> totemPlans = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 currentPlan = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool Inited = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message TotemPlan {
-  map<int32, int64> setUpTotem = 1;
-  string planName = 2;
-  romsg.PowerUnit power = 3;
+  map<int32, int64> setUpTotem = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  string planName = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.PowerUnit power = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBEmblemInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int32, romsg.DBEmblemPlan> emblePlans = 1;
-  int32 currentPlan = 2;
-  bool Inited = 3;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.DBEmblemPlan> emblePlans = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 currentPlan = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool Inited = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBEmblemPlan {
-  map<int32, int64> setUpEmblem = 1;
-  string planName = 2;
-  romsg.PowerUnit power = 3;
+  map<int32, int64> setUpEmblem = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  string planName = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.PowerUnit power = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message LibraryCardInfo {
-  int32 cardId = 1;
-  bool unlock = 2;
-  int32 cardStar = 3;
-  int64 treasured = 4;
-  bool treasureUnlock = 5;
+  int32 cardId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool unlock = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 cardStar = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 treasured = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool treasureUnlock = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message LibraryMonsterInfo {
-  int32 monsterId = 1;
-  int32 killCount = 2;
-  bool unlock = 3;
+  int32 monsterId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 killCount = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool unlock = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message LibraryPageInfo {
-  int32 pageId = 1;
-  romsg.LibraryPageState state = 2;
+  int32 pageId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.LibraryPageState state = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBLibraryInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  int32 overviewTheme = 1;
-  map<int32, romsg.LibraryCardInfo> cards = 2;
-  map<int32, romsg.LibraryMonsterInfo> monsters = 3;
-  map<int32, romsg.LibraryPageInfo> pages = 4;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 overviewTheme = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.LibraryCardInfo> cards = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.LibraryMonsterInfo> monsters = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.LibraryPageInfo> pages = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBBarRoomInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  int32 popularity = 1;
-  int32 actDays = 2;
-  int64 beginBarRoomTime = 3;
-  int32 inBarRoomTime = 4;
-  bool isToDayActComplete = 5;
-  int32 weekPopularity = 6;
-  int64 barRoomId = 7;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 popularity = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 actDays = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 beginBarRoomTime = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 inBarRoomTime = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool isToDayActComplete = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 weekPopularity = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 barRoomId = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBPopularityStar {
-  int32 Affection = 2;
-  int32 popularity = 3;
-  int32 popularityWeekly = 4;
-  int64 updateTime = 5;
+  int32 Affection = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 popularity = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 popularityWeekly = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 updateTime = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   reserved 1 to 1;
 }
 
 message ChickenUpdateData {
-  int32 key = 1;
-  int64 value = 2;
-  int64 updateTime = 3;
+  int32 key = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 value = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 updateTime = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBChickenCareerRecord {
-  int32 useTimes = 1;
-  int32 firstPlaceCount = 2;
-  map<int32, int64> maxRecordValues = 3;
+  int32 useTimes = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 firstPlaceCount = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int64> maxRecordValues = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBChickenInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  int64 matchPenaltyTime = 1;
-  map<int32, int32> skillLibrary = 2;
-  map<int32, int32> careerLibrary = 3;
-  map<int64, int64> statisticsTime = 4;
-  int32 rankId = 5;
-  int32 matchPenaltyCount = 6;
-  map<int32, romsg.ChickenUpdateData> updateData = 7;
-  int32 chickenTimes = 8;
-  map<int32, romsg.DBChickenCareerRecord> careerRecords = 9;
-  map<int64, romsg.ChickenSeasonStatistic> seasonStatistic = 10;
-  map<int64, int64> soloStatisticsTime = 11;
-  int64 exitMatchTimes = 12;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 matchPenaltyTime = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int32> skillLibrary = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int32> careerLibrary = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int64> statisticsTime = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 rankId = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 matchPenaltyCount = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.ChickenUpdateData> updateData = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 chickenTimes = 8 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.DBChickenCareerRecord> careerRecords = 9 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.ChickenSeasonStatistic> seasonStatistic = 10 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int64> soloStatisticsTime = 11 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 exitMatchTimes = 12 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message ChickenSeasonStatistic {
-  map<int64, int64> singleRoundInfo = 1;
-  map<int64, int64> overviewInfo = 2;
+  map<int64, int64> singleRoundInfo = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int64> overviewInfo = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message ChickenSettlementMsg {
@@ -894,201 +935,207 @@ message ChickenSettlementMsg {
 }
 
 message DBDailyActivityData {
-  int32 activityId = 1;
-  int32 taskCompleteTimes = 2;
-  int64 startTime = 3;
-  int64 endTime = 4;
-  map<int64, int32> tasks = 5;
-  int32 index = 6;
-  romsg.EDailyState activityState = 7;
-  romsg.PlayerActivityInfo activityInfo = 8;
-  int64 lastRefreshTime = 9;
+  int32 activityId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 taskCompleteTimes = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 startTime = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 endTime = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int32> tasks = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 index = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.EDailyState activityState = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.PlayerActivityInfo activityInfo = 8 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 lastRefreshTime = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBDailyActivityInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int32, romsg.DBDailyActivityData> activityData = 1;
-  int32 lastWeekActivity = 2;
-  int32 weekActivity = 3;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.DBDailyActivityData> activityData = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 lastWeekActivity = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 weekActivity = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message SeasonInfo {
-  int32 seasonId = 1;
-  int64 seasonAreaId = 2;
-  int32 playBookId = 3;
-  int64 startTime = 4;
-  int64 endTime = 5;
-  map<int32, bytes> selfData = 6;
-  int64 breakTime = 7;
-  int64 stageId = 8;
+  int32 seasonId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 seasonAreaId = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 playBookId = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 startTime = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 endTime = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, bytes> selfData = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 breakTime = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 stageId = 8 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBSeasonInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  romsg.SeasonInfo current = 1;
-  map<int32, romsg.SeasonInfo> history = 3;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.SeasonInfo current = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.SeasonInfo> history = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBMatchInfo {
-  int32 matchEntryId = 1;
-  int64 matchSceneId = 2;
-  map<int64, romsg.MatchPenaltyData> matchPenaltyData = 3;
-  romsg.MatchData matchData = 4;
-  int64 matchStartTime = 5;
-  romsg.MatchPunishReason matchPunishReason = 6;
+  int32 matchEntryId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 matchSceneId = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.MatchPenaltyData> matchPenaltyData = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.MatchData matchData = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 matchStartTime = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.MatchPunishReason matchPunishReason = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBRoleSiegeData {
-  int64 ro3Define_SyncVersion = 9998;
-  int64 honorPoints = 1;
-  int64 valorPoints = 2;
-  map<int64, int64> guildValorPoints = 3;
-  romsg.PlayerHonor historyHonor = 4;
-  map<int32, int32> hegemonyData = 5;
-  bool isRoyalQualification = 6;
-  bool isSeniorQualification = 7;
-  romsg.TerritoryFatigueInfo fatigueInfo = 8;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 honorPoints = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 valorPoints = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, int64> guildValorPoints = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.PlayerHonor historyHonor = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, int32> hegemonyData = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool isRoyalQualification = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool isSeniorQualification = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.TerritoryFatigueInfo fatigueInfo = 8 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message TerritoryFatigueInfo {
-  int64 fatigueBuffPile = 1;
-  int64 fatigueKillPlayerCount = 2;
-  int64 fatigueEnterTime = 3;
-  int64 lastAddBuffPileTime = 4;
-  int64 fatigueLeaveTime = 5;
-  int64 lastDelBuffPileTime = 6;
-  int64 allBuffPileDelTime = 7;
-  bool isNeedSendFatigueTPNtf = 8;
-  int64 sendNtfLimitTime = 9;
+  int64 fatigueBuffPile = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 fatigueKillPlayerCount = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 fatigueEnterTime = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 lastAddBuffPileTime = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 fatigueLeaveTime = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 lastDelBuffPileTime = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 allBuffPileDelTime = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool isNeedSendFatigueTPNtf = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 sendNtfLimitTime = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBSeasonPage {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int32, romsg.FunctionList> rankRewardReceiveInfo = 1;
-  map<int64, int64> mailRewardReceiveInfo = 2;
-  map<int64, romsg.SeasonPageHonorBadgeData> honorBadgeData = 3;
-  map<int64, romsg.SeasonPageHistoryFunctionScoreData> historyFunctionScoreData = 4;
-  romsg.SeasonPageHistoryFunctionScoreData historySnapshot = 5;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.FunctionList> rankRewardReceiveInfo = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int64> mailRewardReceiveInfo = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.SeasonPageHonorBadgeData> honorBadgeData = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.SeasonPageHistoryFunctionScoreData> historyFunctionScoreData = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.SeasonPageHistoryFunctionScoreData historySnapshot = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBNewActivityInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int64, romsg.PlayerActivityTypeState> activityTypeState = 1;
-  map<int64, romsg.PlayerActivityInfo> activityInfo = 2;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.PlayerActivityTypeState> activityTypeState = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.PlayerActivityInfo> activityInfo = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBPlayerBattleData {
-  romsg.DBPlayerEnergyInfo energyInfo = 1;
-  int64 lastOfflineHp = 2;
-  int64 lastOfflineMp = 3;
-  int64 lastOfflineTime = 4;
-  romsg.DBPlayerImmuneDeadInfo immuneDeadInfo = 5;
-  map<int64, int64> buffEffectCdMap = 6;
-  map<int64, int64> buffEffectGroupCdMap = 7;
+  romsg.DBPlayerEnergyInfo energyInfo = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 lastOfflineHp = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 lastOfflineMp = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 lastOfflineTime = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBPlayerImmuneDeadInfo immuneDeadInfo = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, int64> buffEffectCdMap = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, int64> buffEffectGroupCdMap = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBPlayerEnergyInfo {
-  map<int64, int64> energyInfoMap = 1;
-  map<int64, int64> lastRecoverTimeMap = 2;
+  map<int64, int64> energyInfoMap = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, int64> lastRecoverTimeMap = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBPlayerImmuneDeadInfo {
-  map<int64, int64> immuneDeadInfoMap = 1;
+  map<int64, int64> immuneDeadInfoMap = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBMailPersist {
-  map<string, bool> pendingClaimMailIdSet = 1;
+  map<string, bool> pendingClaimMailIdSet = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBPlayerInfo {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  int64 roleID = 1;
-  int64 versionTimeStamp = 2;
-  romsg.DBSceneInfo scene = 3;
-  romsg.DBTaskInfo task = 4;
-  romsg.DBItemsInfo items = 5;
-  romsg.BaseAttrInfo baseAttrInfo = 6;
-  romsg.RoleBaseInfo roleBaseInfo = 7;
-  romsg.DBSkillData skillInfo = 9;
-  romsg.DBSettingInfo settingInfo = 10;
-  romsg.DBEquipInfo equipInfo = 11;
-  string userName = 12;
-  romsg.DBTeamInfo teamInfo = 13;
-  romsg.DBRoleGuildInfo guildInfo = 14;
-  romsg.DBBuffInfo buffInfo = 15;
-  romsg.DBTitleInfo titleInfo = 17;
-  romsg.DBClimTower climTowerInfo = 18;
-  romsg.DBRoleAchievementInfo roleAchievementInfo = 20;
-  romsg.DBEmojiInfo emojiInfo = 21;
-  romsg.DBWildAFKInfo wildAFKInfo = 23;
-  romsg.DBMountsInfo mountInfo = 24;
-  romsg.DBStageRewardInfo stageReward = 25;
-  romsg.DBPetInfo petInfo = 26;
-  romsg.DBActivityInfo activityInfo = 27;
-  romsg.DBTaskInfo activityTask = 28;
-  romsg.DBOfflineInfo offlineInfo = 29;
-  romsg.DBPlayerResetInfo systemResetInfo = 30;
-  romsg.DBWizardInfo wizardInfo = 31;
-  romsg.DBWardRobeInfo wardRobeInfo = 33;
-  romsg.DBReviveInfo reviveInfo = 34;
-  romsg.DBShopInfo shopInfo = 35;
-  romsg.DBStorageHoleInfo storageHoleInfo = 36;
-  romsg.DBTotemInfo totemInfo = 37;
-  romsg.DBLibraryInfo libraryInfo = 38;
-  romsg.DBEmblemInfo emblemInfo = 39;
-  romsg.DBPersonalInfo personalInfo = 40;
-  romsg.DBMultiDungeonInfo multiDungeonInfo = 41;
-  romsg.DBBarRoomInfo barroomInfo = 43;
-  romsg.DBPopularityStar popularityValue = 44;
-  romsg.DBEmojiPlayInfo emojiPlayInfo = 45;
-  romsg.DBChickenInfo chickenInfo = 46;
-  romsg.DBDailyActivityInfo dailyActivityInfo = 47;
-  romsg.DBGenre genreInfo = 48;
-  romsg.DBSeasonInfo seasonInfo = 50;
-  romsg.DBMatchInfo matchInfo = 51;
-  romsg.DBSeasonPage seasonPage = 52;
-  romsg.DBNewActivityInfo newActivityInfo = 53;
-  string gameLocation = 62;
-  romsg.DBParagonLevel paragonLevel = 63;
-  romsg.DBUserTradeInfo userTradeInfo = 64;
-  romsg.TradeLock tradeLock = 65;
-  romsg.DBSeasonRefine seasonRefine = 67;
-  romsg.DBRestrictInfo restrictInfo = 68;
-  bytes clientSDKInfo = 69;
-  romsg.DBLifeJobInfo lifejobInfo = 70;
-  romsg.DBRoleSiegeData siegeData = 71;
-  romsg.DBTreasureInfo treasureInfo = 72;
-  romsg.DBAuction auction = 73;
-  romsg.DBBattleGloryInfo battleGlory = 74;
-  romsg.DBStallsInfo stallsInfo = 75;
-  romsg.DBPayInfo payInfo = 76;
-  romsg.DBMailPersist mailPersist = 77;
-  romsg.DBFriendSystemInfo friendSystemInfo = 78;
-  romsg.DBLotteryData lotteryData = 79;
-  romsg.DBCareerSpecial careerSpecial = 80;
-  romsg.DBOnePieceInfo onePieceInfo = 81;
-  romsg.DBAdventureInfo adventure = 83;
-  romsg.DBSystemSwitch systemSwitch = 84;
-  romsg.DBSocialOutfit socialOutfitData = 86;
-  romsg.DBPlayerBattleData battleData = 87;
-  romsg.DBGrowthClassInfo classInfo = 88;
-  romsg.FunctionOpenInfo functionOpenInfo = 89;
-  romsg.DBHeroicSpiritInfo heroicSpirit = 90;
-  romsg.DBFirstHeartTaskActivityData firstHeartData = 91;
-  romsg.DBSeasonTalent seasonTalent = 92;
-  romsg.DBQuestionnaireData questionnaireData = 94;
-  romsg.DBAreaConcurInfo areaConcurInfo = 95;
-  romsg.DBGuideInfo guideInfo = 97;
-  romsg.DBAdventureGroupRelationData adventureGroupData = 98;
-  romsg.DBBattlePassInfo battlePassInfo = 99;
-  romsg.DBTrainingGroundInfo trainingGroundInfo = 100;
-  romsg.DBCasualBattleInfo casualBattleInfo = 101;
-  romsg.DBRoleGmtData roleGmtData = 102;
-  romsg.DBDragonIslandInfo dragonIslandInfo = 103;
-  map<string, int64> reliablePushReceivedTime = 997;
-  bool NewRoleFlag = 999;
-  map<int32, bool> AssetInitFlag = 1000;
+  option (romsg.dbsync) = "PlayerInfo|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 roleID = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 versionTimeStamp = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBSceneInfo scene = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBTaskInfo task = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBItemsInfo items = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.BaseAttrInfo baseAttrInfo = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.RoleBaseInfo roleBaseInfo = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBSkillData skillInfo = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBSettingInfo settingInfo = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBEquipInfo equipInfo = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string userName = 12 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBTeamInfo teamInfo = 13 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBRoleGuildInfo guildInfo = 14 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBBuffInfo buffInfo = 15 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBTitleInfo titleInfo = 17 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBClimTower climTowerInfo = 18 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBRoleAchievementInfo roleAchievementInfo = 20 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBEmojiInfo emojiInfo = 21 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBWildAFKInfo wildAFKInfo = 23 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBMountsInfo mountInfo = 24 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBStageRewardInfo stageReward = 25 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBPetInfo petInfo = 26 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBActivityInfo activityInfo = 27 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBTaskInfo activityTask = 28 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBOfflineInfo offlineInfo = 29 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBPlayerResetInfo systemResetInfo = 30 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBWizardInfo wizardInfo = 31 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBWardRobeInfo wardRobeInfo = 33 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBReviveInfo reviveInfo = 34 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBShopInfo shopInfo = 35 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBStorageHoleInfo storageHoleInfo = 36 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBTotemInfo totemInfo = 37 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBLibraryInfo libraryInfo = 38 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBEmblemInfo emblemInfo = 39 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBPersonalInfo personalInfo = 40 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBMultiDungeonInfo multiDungeonInfo = 41 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBBarRoomInfo barroomInfo = 43 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBPopularityStar popularityValue = 44 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBEmojiPlayInfo emojiPlayInfo = 45 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBChickenInfo chickenInfo = 46 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBDailyActivityInfo dailyActivityInfo = 47 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBGenre genreInfo = 48 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBSeasonInfo seasonInfo = 50 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBMatchInfo matchInfo = 51 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBSeasonPage seasonPage = 52 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBNewActivityInfo newActivityInfo = 53 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string gameLocation = 62 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBParagonLevel paragonLevel = 63 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBUserTradeInfo userTradeInfo = 64 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.TradeLock tradeLock = 65 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBSeasonRefine seasonRefine = 67 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBRestrictInfo restrictInfo = 68 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bytes clientSDKInfo = 69 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBLifeJobInfo lifejobInfo = 70 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBRoleSiegeData siegeData = 71 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBTreasureInfo treasureInfo = 72 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBAuction auction = 73 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBBattleGloryInfo battleGlory = 74 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBStallsInfo stallsInfo = 75 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBPayInfo payInfo = 76 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBMailPersist mailPersist = 77 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBFriendSystemInfo friendSystemInfo = 78 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBLotteryData lotteryData = 79 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBCareerSpecial careerSpecial = 80 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBOnePieceInfo onePieceInfo = 81 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBAdventureInfo adventure = 83 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBSystemSwitch systemSwitch = 84 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBSocialOutfit socialOutfitData = 86 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBPlayerBattleData battleData = 87 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBGrowthClassInfo classInfo = 88 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.FunctionOpenInfo functionOpenInfo = 89 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBHeroicSpiritInfo heroicSpirit = 90 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBFirstHeartTaskActivityData firstHeartData = 91 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBSeasonTalent seasonTalent = 92 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBQuestionnaireData questionnaireData = 94 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBAreaConcurInfo areaConcurInfo = 95 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBGuideInfo guideInfo = 97 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBAdventureGroupRelationData adventureGroupData = 98 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBBattlePassInfo battlePassInfo = 99 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBTrainingGroundInfo trainingGroundInfo = 100 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBCasualBattleInfo casualBattleInfo = 101 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBRoleGmtData roleGmtData = 102 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBDragonIslandInfo dragonIslandInfo = 103 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<string, int64> reliablePushReceivedTime = 997 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool NewRoleFlag = 999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, bool> AssetInitFlag = 1000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   reserved 19 to 19;
   reserved 8 to 8;
   reserved 16 to 16;
@@ -1096,21 +1143,28 @@ message DBPlayerInfo {
   reserved 61 to 61;
   reserved 32 to 32;
   reserved 998 to 998;
+  reserved "timeRefreshInfo";
+  reserved "mailInfo";
+  reserved "selfproperty";
+  reserved "dbTerm";
+  reserved "dbVersion";
+  reserved "reliablePushReceived";
 }
 
 message DBAdventureGroupRelationData {
-  int64 ro3Define_SyncVersion = 9998;
-  int64 adventureGroupId = 1;
-  int32 lockApplyTime = 2;
-  string chatGroupid = 3;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 adventureGroupId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 lockApplyTime = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string chatGroupid = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
   romsg.AdventureGroupStatus status = 4;
-  int64 owner = 5;
-  romsg.AdventureGroupCreateType createType = 6;
-  int32 managerLeavePunishTime = 7;
-  int32 level = 8;
-  repeated int32 takenGroupRewardLevel = 9;
-  int32 socialMoneyWeekLimit = 10;
-  repeated int32 availablebackground = 11;
+  int64 owner = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.AdventureGroupCreateType createType = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 managerLeavePunishTime = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 level = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int32 takenGroupRewardLevel = 9 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 socialMoneyWeekLimit = 10 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated int32 availablebackground = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TerritoryWarStatistics {
@@ -1157,115 +1211,120 @@ message TargetPosition {
 }
 
 message PrivilegeInfo {
-  map<int32, romsg.Privilege> state = 1;
+  map<int32, romsg.Privilege> state = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message Privilege {
-  int64 expire_ts = 1;
-  string information = 2;
+  int64 expire_ts = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string information = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message ItemControlInfo {
-  map<int32, int32> itemRatio = 1;
-  int32 reason = 2;
-  int64 time = 3;
+  map<int32, int32> itemRatio = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 reason = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 time = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message ItemControlServerInfo {
-  map<int32, romsg.ItemControlServer> itemControl = 1;
-  int32 reason = 2;
-  int64 time = 3;
+  map<int32, romsg.ItemControlServer> itemControl = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 reason = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 time = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message ItemControlServer {
-  map<int32, int32> itemRatio = 1;
+  map<int32, int32> itemRatio = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message FunctionOpenInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int64, bool> functionOpenInfos = 1;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, bool> functionOpenInfos = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBSystemSwitch {
-  map<int64, romsg.SystemSwitchInfo> systemTypeInfos = 1;
+  map<int64, romsg.SystemSwitchInfo> systemTypeInfos = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message SystemSwitchInfo {
-  map<int64, int64> systemSubTypeInfos = 1;
-  int64 closeEndTime = 2;
+  map<int64, int64> systemSubTypeInfos = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 closeEndTime = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBAdventureInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int64, romsg.AdventureFunctionInfo> functionInfos = 1;
-  int64 curActiveFunctionId = 2;
-  int64 curActiveSourceId = 3;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.AdventureFunctionInfo> functionInfos = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 curActiveFunctionId = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 curActiveSourceId = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message AdventureFunctionInfo {
-  map<int64, romsg.AdventureCardDeck> deck = 1;
-  map<int64, romsg.AdventureCardLibraryInfo> library = 2;
+  map<int64, romsg.AdventureCardDeck> deck = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.AdventureCardLibraryInfo> library = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message AdventureCardDeck {
-  map<int64, romsg.AdventureCardInfo> cards = 1;
-  int64 functionId = 2;
-  map<int64, romsg.AdventureEventSelectInfo> needSelectMap = 3;
-  map<int64, romsg.AdventureProgress> progressInfo = 4;
-  int64 createTime = 5;
+  map<int64, romsg.AdventureCardInfo> cards = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 functionId = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.AdventureEventSelectInfo> needSelectMap = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.AdventureProgress> progressInfo = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 createTime = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message AdventureEventSelectInfo {
-  int64 operateId = 1;
-  int32 poolId = 2;
-  int32 refreshCount = 3;
-  int32 chooseCount = 4;
-  map<int32, int64> cards = 5;
-  int64 endTime = 6;
+  int64 operateId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 poolId = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 refreshCount = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 chooseCount = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int64> cards = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 endTime = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message AdventureProgress {
-  int64 adventureId = 1;
-  repeated int64 completeNum = 2;
-  int64 triggerTimes = 3;
+  int64 adventureId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated int64 completeNum = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 triggerTimes = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message AdventureCardInfo {
-  int64 cardId = 1;
+  int64 cardId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message AdventureCardLibraryInfo {
-  int64 cardId = 1;
+  int64 cardId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBEmojiPlayInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  repeated int32 emojiCollections = 1;
-  repeated int32 emojiUnlocks = 2;
-  int32 idleEmojiID = 3;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int32 emojiCollections = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated int32 emojiUnlocks = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 idleEmojiID = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBAppearancePlan {
-  int32 index = 1;
-  bool isUnlock = 2;
-  map<int32, int32> appearances = 3;
-  string name = 4;
+  int32 index = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool isUnlock = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int32> appearances = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  string name = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBAppearanceInfo {
-  int32 appearanceId = 1;
-  int64 overdueTimeMs = 2;
+  int32 appearanceId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 overdueTimeMs = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBWardRobeInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  bool isInit = 1;
-  map<int32, romsg.DBAppearanceInfo> allLightUpAppearances = 2;
-  map<int32, int32> curUseAppearances = 3;
-  map<int32, int32> curUseAppearanceAttrs = 4;
-  map<int32, romsg.DBAppearancePlan> appearancePlans = 5;
-  map<int32, int32> LikeAppearance = 7;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool isInit = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.DBAppearanceInfo> allLightUpAppearances = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int32> curUseAppearances = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int32> curUseAppearanceAttrs = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.DBAppearancePlan> appearancePlans = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int32> LikeAppearance = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
   reserved 6 to 6;
+  reserved "lastUseForeverAppearanceAttrs";
 }
 
 message DBTMItemBlockCareData {
@@ -1273,60 +1332,62 @@ message DBTMItemBlockCareData {
 }
 
 message DBTMRecordData {
-  romsg.ItemBaseInfo itemInfo = 1;
-  int64 price = 2;
-  int64 currencyType = 3;
-  int64 time = 4;
+  romsg.ItemBaseInfo itemInfo = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 price = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 currencyType = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 time = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBTMCareSpuData {
-  int64 careSpuId = 1;
-  bool isPublicity = 2;
+  int64 careSpuId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool isPublicity = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBTMPlayerData {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  repeated romsg.DBTMCareSpuData careSpuIds = 3;
-  repeated string careSkuUuid = 4;
-  int64 lastRefleshUITime = 5;
-  map<int64, int64> validSaleCount = 6;
-  int64 lastRefleshDataTime = 7;
-  int64 totalSalePriceMiao = 8;
-  int64 totalSalePirceZeny = 9;
-  int64 curVipLevel = 10;
-  int64 totalRefleshTime = 11;
-  int64 salePositionExtraCount = 12;
-  repeated romsg.DBTMRecordData saleRecords = 13;
-  repeated romsg.DBTMRecordData buyRecords = 14;
+  option (romsg.dbsync) = "tm_playerinfo|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.DBTMCareSpuData careSpuIds = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated string careSkuUuid = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 lastRefleshUITime = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, int64> validSaleCount = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 lastRefleshDataTime = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 totalSalePriceMiao = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 totalSalePirceZeny = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 curVipLevel = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 totalRefleshTime = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 salePositionExtraCount = 12 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.DBTMRecordData saleRecords = 13 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.DBTMRecordData buyRecords = 14 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message singleHistoryInfo {
-  int64 price = 1;
-  int64 time = 2;
-  int64 count = 3;
+  int64 price = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 time = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 count = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message copySaleHistoryInfo {
-  repeated romsg.singleHistoryInfo datas = 1;
+  repeated romsg.singleHistoryInfo datas = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message SpuPriceInfo {
-  map<int64, int64> priceStand = 1;
-  int64 refleshTime = 4;
+  map<int64, int64> priceStand = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 refleshTime = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBTMMarketData {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  map<string, int64> careSkuNums = 3;
-  romsg.SpuPriceInfo priceInfo = 5;
-  map<int64, romsg.copySaleHistoryInfo> spuCopySaleHistory = 6;
+  option (romsg.dbsync) = "tm_serverinfo|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<string, int64> careSkuNums = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.SpuPriceInfo priceInfo = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.copySaleHistoryInfo> spuCopySaleHistory = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBServerInfo {
-  uint32 server_area_id = 1;
-  uint64 server_open_time = 2;
+  uint32 server_area_id = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  uint64 server_open_time = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBCommonCDData {
@@ -1340,15 +1401,17 @@ message DBCommonCDData {
 }
 
 message DBPlayerOfflineMsg {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  map<int64, romsg.OfflineMessageData> offlineMsgs = 1;
+  option (romsg.dbsync) = "OfflineInfo|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.OfflineMessageData> offlineMsgs = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message ServerDungeonFirstClearDataDb {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  map<uint32, bool> BossInfo = 1;
+  option (romsg.dbsync) = "ServerDungeonFirstClearDataInfo|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<uint32, bool> BossInfo = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBIntData {
@@ -1360,77 +1423,78 @@ message DBStrData {
 }
 
 message DBGenre {
-  int64 ro3Define_SyncVersion = 9998;
-  int32 seekerId = 1;
-  romsg.DBGenreSystemMap genreMap = 2;
-  int32 currentPlan = 3;
-  romsg.DBGenreOtherRecommend otherRecommend = 4;
-  romsg.DBGenreMyRecommendPlan myRecommend = 5;
-  int32 responseId = 6;
-  bool inited = 7;
-  map<int64, int32> record = 8;
-  romsg.SeekerCodeInfo codeInfo = 9;
-  bool isNewSeasonNtf = 10;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 seekerId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBGenreSystemMap genreMap = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 currentPlan = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBGenreOtherRecommend otherRecommend = 4 [(romsg.save) = 0, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBGenreMyRecommendPlan myRecommend = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 responseId = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool inited = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int32> record = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.SeekerCodeInfo codeInfo = 9 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool isNewSeasonNtf = 10 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message SeekerCodeInfo {
-  string CodeInfo = 1;
-  int64 expireTime = 2;
+  string CodeInfo = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 expireTime = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBGenreSystemMap {
-  map<int32, romsg.DBGenrePlan> systemMap = 1;
+  map<int32, romsg.DBGenrePlan> systemMap = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBGenrePlan {
-  map<int32, int32> genrePlans = 1;
-  romsg.PowerUnit power = 2;
-  map<int32, int64> property = 3;
-  string planName = 4;
+  map<int32, int32> genrePlans = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.PowerUnit power = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int64> property = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  string planName = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBGenreOtherRecommend {
-  map<int64, romsg.DBGenrePlanRecommends> recommend = 1;
+  map<int64, romsg.DBGenrePlanRecommends> recommend = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBGenreMyRecommendPlan {
-  map<int64, romsg.DBGenrePlanRecommends> myRecommendPlans = 1;
+  map<int64, romsg.DBGenrePlanRecommends> myRecommendPlans = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBGenrePlanRecommends {
-  map<int64, romsg.PlanGenreConcreteAndInfo> genrePlans = 1;
+  map<int64, romsg.PlanGenreConcreteAndInfo> genrePlans = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message PlanGenreConcreteAndInfo {
-  romsg.GenrePlanConcrete plans = 1;
-  romsg.GenreRougeRecommend rougeInfo = 2;
-  int64 planBeginTime = 3;
-  bool notWork = 4;
-  bool haveCommited = 5;
-  int64 seekerZoneId = 6;
-  int64 commitTime = 7;
-  bool expired = 8;
+  romsg.GenrePlanConcrete plans = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.GenreRougeRecommend rougeInfo = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 planBeginTime = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool notWork = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool haveCommited = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 seekerZoneId = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 commitTime = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool expired = 8 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message GenreRougeRecommend {
-  int64 seekUserId = 1;
-  int32 zoneId = 2;
-  string planName = 3;
-  string planExplain = 4;
-  romsg.PowerUnit power = 5;
-  int64 responserUserId = 6;
-  int64 responseId = 7;
+  int64 seekUserId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 zoneId = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  string planName = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  string planExplain = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.PowerUnit power = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 responserUserId = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 responseId = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message GenrePlanConcrete {
-  romsg.DBEquipPlan equipPlan = 1;
-  romsg.TotemPlan totemPlan = 2;
-  romsg.DBStoragePack cardPlan = 3;
-  romsg.DBEmblemPlan emblePlan = 4;
-  romsg.DBPetSetUpPlan petPlan = 5;
-  romsg.SkillPlan skillPlan = 6;
-  romsg.PlanBaseProperty attrPointPlan = 7;
-  romsg.SeasonTalentPlan seasonTalentPlan = 8;
+  romsg.DBEquipPlan equipPlan = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.TotemPlan totemPlan = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBStoragePack cardPlan = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBEmblemPlan emblePlan = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBPetSetUpPlan petPlan = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.SkillPlan skillPlan = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.PlanBaseProperty attrPointPlan = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.SeasonTalentPlan seasonTalentPlan = 8 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBUserGenreData {
@@ -1455,63 +1519,67 @@ message DBUserGenreData {
 }
 
 message DBGenreResponseInfo {
-  map<int64, int64> responseInfo = 1;
+  map<int64, int64> responseInfo = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBGenreSeekerData {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  romsg.DBGenreOtherRecommend otherRecommend = 1;
-  map<int64, int64> respondersInProgress = 2;
+  option (romsg.dbsync) = "DBGenreSeekerData|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBGenreOtherRecommend otherRecommend = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, int64> respondersInProgress = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBNewActivityPublicData {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  romsg.DBNewActivityPublicDataPre pre = 1;
+  option (romsg.dbsync) = "DBNewActivityPublicData|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBNewActivityPublicDataPre pre = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message ParagonLevelRune {
-  int32 points = 1;
-  romsg.ItemBaseInfo rune = 2;
-  int32 runeState = 3;
+  int32 points = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.ItemBaseInfo rune = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 runeState = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBParagonLevel {
-  int64 ro3Define_SyncVersion = 9998;
-  int64 exp = 1;
-  int64 leftPoints = 2;
-  int32 lv = 3;
-  map<int32, romsg.ParagonLevelRune> runegroup = 4;
-  map<int32, int32> activeGroup = 5;
-  int32 lvPower = 6;
-  double extraAdd = 7;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 exp = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 leftPoints = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 lv = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.ParagonLevelRune> runegroup = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int32> activeGroup = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 lvPower = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  double extraAdd = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBPersonalUnlockInfo {
-  map<int32, bool> unlockMap = 1;
+  map<int32, bool> unlockMap = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBPersonalInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int32, romsg.DBPersonalUnlockInfo> unlockInfos = 1;
-  map<int64, int64> upvoteTimes = 2;
-  map<int32, romsg.PersonalInfo> planInfos = 3;
-  int32 curPlanId = 4;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.DBPersonalUnlockInfo> unlockInfos = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int64> upvoteTimes = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.PersonalInfo> planInfos = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 curPlanId = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message PersonalInfo {
-  int32 themeId = 1;
-  int32 backgroundId = 2;
-  repeated romsg.PersonalDecalInfo decalInfos = 3;
-  repeated int32 showcaseVisibleList = 4;
-  repeated romsg.PersonalRoleInfo roleInfos = 5;
-  string sign = 6;
-  int32 mood = 7;
-  string planName = 8;
-  int32 avatarId = 9;
-  int32 avatarFrameId = 10;
-  int32 personalTitleId = 11;
+  int32 themeId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 backgroundId = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated romsg.PersonalDecalInfo decalInfos = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated int32 showcaseVisibleList = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated romsg.PersonalRoleInfo roleInfos = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  string sign = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 mood = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  string planName = 8 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 avatarId = 9 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 avatarFrameId = 10 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 personalTitleId = 11 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message PersonalUpvoteCount {
@@ -1523,253 +1591,257 @@ message PersonalUpvoteList {
 }
 
 message PersonalRoleInfo {
-  romsg.EditorRole clientEditorData = 1;
-  int32 actionId = 2;
+  romsg.EditorRole clientEditorData = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0, (romsg.max_count) = 1000];
+  int32 actionId = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message PersonalDecalInfo {
-  int32 decalId = 1;
-  romsg.EditorDecals clientEditorData = 2;
+  int32 decalId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.EditorDecals clientEditorData = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBUserTradeInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int32, int32> tradeTimes = 1;
-  map<int32, romsg.TradeCareInfo> attentionItemTypes = 2;
-  map<string, int64> attentionUniqueItems = 3;
-  int64 lastRefreshTime = 4;
-  int32 stallsNum = 5;
-  int32 CreditPoint = 6;
-  map<string, int64> serialNumbers = 7;
-  map<string, int64> skuQueue = 8;
-  int64 lastClientRefreshTime = 9;
-  romsg.TradeApprovalList tradeAppoval = 10;
-  bool lowCreditAlertSent = 11;
-  bool autoRemovedForLowCredit = 12;
-  bool autoRemovedForFunctionBan = 13;
-  int32 creditScoreRatio = 14;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, int32> tradeTimes = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.TradeCareInfo> attentionItemTypes = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<string, int64> attentionUniqueItems = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 lastRefreshTime = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 stallsNum = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 CreditPoint = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<string, int64> serialNumbers = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<string, int64> skuQueue = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 lastClientRefreshTime = 9 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.TradeApprovalList tradeAppoval = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool lowCreditAlertSent = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool autoRemovedForLowCredit = 12 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool autoRemovedForFunctionBan = 13 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 creditScoreRatio = 14 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message TradeApprovalList {
-  map<int32, romsg.TradePunishList> punishList = 1;
-  map<string, int32> dealedOrders = 2;
+  map<int32, romsg.TradePunishList> punishList = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<string, int32> dealedOrders = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TradePunishList {
-  map<string, int32> approvalSerials = 1;
+  map<string, int32> approvalSerials = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBStallsInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  int64 stallsSceneID = 1;
-  int64 stallEndTs = 2;
-  bool needNotify = 3;
-  romsg.LongLongPair weekMoney = 4;
-  romsg.LongLongPair curTax = 5;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 stallsSceneID = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 stallEndTs = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool needNotify = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.LongLongPair weekMoney = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.LongLongPair curTax = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TradeCareInfo {
-  map<string, int64> itemIdList = 1;
+  map<string, int64> itemIdList = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message vector2 {
-  int32 x = 1;
-  int32 y = 2;
+  int32 x = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 y = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message EditorBaseUI {
-  romsg.EPersonalEditorType eItemType = 1;
-  romsg.vector2 kItemPosition = 2;
-  int32 iItemIndex = 3;
-  romsg.vector2 kRotation = 4;
-  romsg.vector2 kItemScale = 5;
-  int64 iHandleId = 6;
+  romsg.EPersonalEditorType eItemType = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.vector2 kItemPosition = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 iItemIndex = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.vector2 kRotation = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.vector2 kItemScale = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 iHandleId = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message EditorDecals {
-  int32 iDecalId = 1;
-  romsg.EditorBaseUI kEditorData = 2;
-  int32 iGroupId = 3;
+  int32 iDecalId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.EditorBaseUI kEditorData = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 iGroupId = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message EditorRole {
-  int32 iJobID = 1;
-  int32 iSex = 2;
-  romsg.DBEquipInfo kEquipInfo = 3;
-  map<int32, int32> kAppearances = 4;
-  romsg.EditorBaseUI kEditorData = 5;
-  int64 iGuid = 6;
+  int32 iJobID = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 iSex = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBEquipInfo kEquipInfo = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int32> kAppearances = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.EditorBaseUI kEditorData = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 iGuid = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message EditorPet {
-  int32 iPetId = 1;
-  romsg.EditorBaseUI kEditorData = 2;
+  int32 iPetId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.EditorBaseUI kEditorData = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBGmtSystemCloseInfo {
-  map<int64, int32> subSystemCloseInfos = 1;
-  int32 operationSource = 2;
-  bool allCose = 3;
+  map<int64, int32> subSystemCloseInfos = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 operationSource = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool allCose = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBLeaderBoardLastCloseTime {
-  map<int64, int64> subLeaderBoardCloseTimes = 1;
-  int64 LeaderBoardCloseTime = 2;
+  map<int64, int64> subLeaderBoardCloseTimes = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 LeaderBoardCloseTime = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBGmtForbidChat {
-  int64 roleId = 1;
-  int64 endTimeStamp = 2;
-  int32 duration = 3;
-  string title = 4;
-  string content = 5;
-  string scope = 6;
+  int64 roleId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 endTimeStamp = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 duration = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string title = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string content = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string scope = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBGmtPlayerForbidChatInfo {
-  map<int64, romsg.DBGmtForbidChat> forbidChatList = 1;
+  map<int64, romsg.DBGmtForbidChat> forbidChatList = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBGmtMailItem {
-  int32 itemId = 1;
-  int32 itemNum = 2;
+  int32 itemId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 itemNum = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBGmtMailCondition {
-  int32 conditionType = 1;
-  repeated int32 params = 2;
+  int32 conditionType = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int32 params = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBGmtAreaMailInfo {
-  int64 serialId = 1;
-  string data = 2;
-  bool isSent = 3;
-  string mailUid = 4;
+  int64 serialId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string data = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool isSent = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string mailUid = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBGmtBroadcastInfo {
-  int64 id = 1;
-  int64 startTime = 2;
-  int64 endTime = 3;
-  int32 interval = 4;
-  int32 effectId = 5;
-  int64 localizationCfgId = 6;
-  bool enabled = 7;
+  int64 id = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 startTime = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 endTime = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 interval = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 effectId = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 localizationCfgId = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool enabled = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBQuestionnaireRewardInfo {
-  int32 itemId = 1;
-  int32 itemNum = 2;
-  bool isBind = 3;
+  int32 itemId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 itemNum = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool isBind = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBGmtHotfixVersionInfo {
-  int32 version = 1;
-  string info = 2;
+  int32 version = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string info = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBGmtQuestionnaireInfo {
-  int64 id = 1;
-  int64 localizationId = 2;
-  romsg.QuestionnaireType type = 3;
-  int64 endTime = 4;
-  int32 progressId = 5;
-  repeated romsg.DBQuestionnaireRewardInfo rewards = 6;
+  int64 id = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 localizationId = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.QuestionnaireType type = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 endTime = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 progressId = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated romsg.DBQuestionnaireRewardInfo rewards = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBGmtQuestionnaireData {
-  map<int64, romsg.DBGmtQuestionnaireInfo> gmtQuestionnaireInfos = 1;
+  map<int64, romsg.DBGmtQuestionnaireInfo> gmtQuestionnaireInfos = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message PopupImage {
-  string imageUrl = 1;
-  string language = 2;
-  string exJump = 3;
-  string internalJumpFunctionId = 4;
-  string internalJumpPanel = 5;
+  string imageUrl = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string language = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string exJump = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string internalJumpFunctionId = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string internalJumpPanel = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message PopupImageInfo {
-  int64 serialId = 1;
-  int64 id = 2;
-  string startTime = 3;
-  string endTime = 4;
-  int32 minPlayerLevel = 5;
-  int32 maxPlayerLevel = 6;
-  int32 rank = 7;
-  repeated string channels = 8;
-  string title = 9;
-  int32 showType = 10;
-  map<int64, int64> sendPlayerList = 11;
-  repeated romsg.PopupImage images = 12;
-  bool isOpen = 13;
+  int64 serialId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 id = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string startTime = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string endTime = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 minPlayerLevel = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 maxPlayerLevel = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 rank = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated string channels = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string title = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 showType = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, int64> sendPlayerList = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.PopupImage images = 12 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool isOpen = 13 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBGmtPopupImageInfo {
-  map<int64, romsg.PopupImageInfo> images = 1;
+  map<int64, romsg.PopupImageInfo> images = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBGmtAreaData {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  int64 areaId = 1;
-  map<int64, romsg.DBGmtAreaMailInfo> kGmtMailInfos = 2;
-  map<int64, romsg.DBGmtBroadcastInfo> kGmtBroadcastInfos = 3;
-  map<int64, romsg.DBGmtSystemCloseInfo> kGmtSystemCloseInfos = 4;
-  romsg.DBGmtPlayerForbidChatInfo kGmtPlayerForbidChatInfo = 5;
-  romsg.DBGmtHotfixVersionInfo kGmtHotfixVersionInfo = 6;
-  romsg.DBGmtQuestionnaireData kGmtQuestionnaireData = 7;
-  romsg.DBLeaderBoardLastCloseTime kLeaderBoardLastCloseTime = 8;
-  romsg.DBGmtPopupImageInfo kGmtPopupImageInfo = 9;
-  repeated int64 serverFunctionInfos = 10;
-  romsg.ItemControlServerInfo itemControlInfo = 11;
-  repeated int64 closedDungeonEntryIds = 12;
-  romsg.DBGmtLeaderBoardInfo leaderBoard = 13;
+  option (romsg.dbsync) = "GmtAreaData|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 areaId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.DBGmtAreaMailInfo> kGmtMailInfos = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.DBGmtBroadcastInfo> kGmtBroadcastInfos = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.DBGmtSystemCloseInfo> kGmtSystemCloseInfos = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBGmtPlayerForbidChatInfo kGmtPlayerForbidChatInfo = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBGmtHotfixVersionInfo kGmtHotfixVersionInfo = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBGmtQuestionnaireData kGmtQuestionnaireData = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBLeaderBoardLastCloseTime kLeaderBoardLastCloseTime = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBGmtPopupImageInfo kGmtPopupImageInfo = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 serverFunctionInfos = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.ItemControlServerInfo itemControlInfo = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 closedDungeonEntryIds = 12 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBGmtLeaderBoardInfo leaderBoard = 13 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBGmtLeaderBoardInfo {
-  map<int64, romsg.GmtLeaderBoardBanList> banTypeInfo = 1;
+  map<int64, romsg.GmtLeaderBoardBanList> banTypeInfo = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message GmtLeaderBoardBanList {
-  map<int64, romsg.GmtLeaderBoardBanPage> banPageInfo = 1;
+  map<int64, romsg.GmtLeaderBoardBanPage> banPageInfo = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message GmtLeaderBoardBanPage {
-  map<int64, romsg.GmtLeaderBoardBanInfo> banInfo = 1;
+  map<int64, romsg.GmtLeaderBoardBanInfo> banInfo = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message GmtLeaderBoardBanInfo {
-  int64 banType = 1;
-  romsg.EGmtLeaderBoardBanType targetType = 2;
-  int64 banId = 3;
-  int64 leaderBoardId = 4;
-  int64 createTime = 5;
-  int64 banTime = 6;
-  int64 banGuildId = 7;
-  string reason = 8;
+  int64 banType = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.EGmtLeaderBoardBanType targetType = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 banId = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 leaderBoardId = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 createTime = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 banTime = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 banGuildId = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string reason = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBRolePopupImageData {
-  map<int64, int64> receivedPopupImages = 1;
+  map<int64, int64> receivedPopupImages = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBRoleGmtData {
-  romsg.DBRolePopupImageData popupImageData = 1;
+  romsg.DBRolePopupImageData popupImageData = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBInnerGmData {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  int64 areaId = 1;
-  int64 gmTimeOffset = 2;
-  map<int64, romsg.GmBanInfo> banGm = 3;
-  bool isBanAll = 4;
+  option (romsg.dbsync) = "InnerGmData|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 areaId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 gmTimeOffset = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.GmBanInfo> banGm = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool isBanAll = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message GmBanInfo {
-  bool isBanAll = 1;
-  map<string, bool> banPrefix = 2;
+  bool isBanAll = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<string, bool> banPrefix = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TradeLock {
@@ -1777,291 +1849,310 @@ message TradeLock {
 }
 
 message DBSeasonRefine {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int32, romsg.DBSeasonRefineEquipPart> equipParts = 1;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.DBSeasonRefineEquipPart> equipParts = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBSeasonRefineEquipPart {
-  map<int32, romsg.DBSeasonRefineSlot> refineSlots = 2;
+  map<int32, romsg.DBSeasonRefineSlot> refineSlots = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBSeasonRefineSlot {
-  int32 activeAttr = 1;
-  map<int32, int32> canSelectedAttr = 2;
+  int32 activeAttr = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int32> canSelectedAttr = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBSeasonTalentNode {
-  int64 talentId = 1;
-  int64 currentLevel = 2;
-  bool isActivated = 3;
+  int64 talentId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 currentLevel = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool isActivated = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBSeasonTalentSkillInfo {
-  int64 totalSkillPoints = 1;
-  int64 usedSkillPoints = 2;
+  int64 totalSkillPoints = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 usedSkillPoints = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBSeasonTalent {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int64, romsg.SeasonTalentPlan> plan = 1;
-  map<int64, bool> unlockedTrees = 2;
-  map<int64, bool> unlockedNode = 3;
-  map<int64, romsg.DBSeasonTalentNode> talentNodes = 4;
-  int64 battleOathLevel = 5;
-  int64 battleOathMaxLevel = 6;
-  int64 curPlanId = 7;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.SeasonTalentPlan> plan = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, bool> unlockedTrees = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, bool> unlockedNode = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.DBSeasonTalentNode> talentNodes = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 battleOathLevel = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 battleOathMaxLevel = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 curPlanId = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message SeasonTalentPlan {
-  map<int64, romsg.DBSeasonTalentNode> talentNodes = 1;
-  string planName = 2;
+  map<int64, romsg.DBSeasonTalentNode> talentNodes = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  string planName = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBQuestionnaireData {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int64, romsg.QuestionnaireInfo> questionnaireInfos = 1;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.QuestionnaireInfo> questionnaireInfos = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message QuestionnaireInfo {
-  int64 id = 1;
-  int64 localizationId = 2;
-  romsg.QuestionnaireType type = 3;
-  repeated int64 scores = 4;
-  romsg.QuestionnaireStatus status = 5;
-  int64 endTime = 6;
-  int32 progressId = 7;
-  repeated romsg.DBQuestionnaireRewardInfo rewards = 8;
-  bool IsPrivate = 9;
+  int64 id = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 localizationId = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.QuestionnaireType type = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated int64 scores = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.QuestionnaireStatus status = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 endTime = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 progressId = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated romsg.DBQuestionnaireRewardInfo rewards = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool IsPrivate = 9 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message RestrictInfo {
-  int32 id = 1;
-  int64 count = 2;
-  int64 lastRecoverTime = 3;
-  int64 historyUseCount = 4;
-  int64 nextRecoverTime = 5;
-  int64 limitCount = 6;
+  int32 id = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 count = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 lastRecoverTime = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 historyUseCount = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 nextRecoverTime = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 limitCount = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBRestrictInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int32, romsg.RestrictInfo> restrictCount = 1;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.RestrictInfo> restrictCount = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBTreasureInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  int64 pointId = 1;
-  int64 groupId = 2;
-  int64 itemId = 3;
-  int64 eventId = 4;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 pointId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 groupId = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 itemId = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 eventId = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBAuction {
-  int64 ro3Define_SyncVersion = 9998;
-  map<string, int64> preBuyNum = 1;
-  map<int64, romsg.HistoryAuctionItem> guildHistoryJoinAuctionItems = 2;
-  int64 guildHistoryOldestId = 3;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<string, int64> preBuyNum = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.HistoryAuctionItem> guildHistoryJoinAuctionItems = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 guildHistoryOldestId = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBCareerSpecialPendantSlot {
-  int64 cartRemouldCfg = 1;
+  int64 cartRemouldCfg = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBCareerSpecialMountsSlot {
-  int64 cartRemouldCfg = 1;
+  int64 cartRemouldCfg = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBCareerSpecial {
-  int64 ro3Define_SyncVersion = 9998;
-  romsg.DBCareerSpecialPendantSlot pendantSlot = 1;
-  romsg.DBCareerSpecialMountsSlot mountsSlot = 2;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBCareerSpecialPendantSlot pendantSlot = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBCareerSpecialMountsSlot mountsSlot = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBBattleGloryInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int64, int64> rankRewardReceiveInfo = 1;
-  int64 dayGainScore = 2;
-  int64 curRankId = 3;
-  bool isSpecialRank = 4;
-  map<int64, romsg.BattleGlorySceneInfo> sceneInfo = 9;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, int64> rankRewardReceiveInfo = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 dayGainScore = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 curRankId = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool isSpecialRank = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.BattleGlorySceneInfo> sceneInfo = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message BattleGlorySceneInfo {
-  map<int64, romsg.BattleGloryBehaviorInfo> behaviorInfo = 1;
+  map<int64, romsg.BattleGloryBehaviorInfo> behaviorInfo = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message BattleGloryBehaviorInfo {
-  map<int64, int64> record = 1;
+  map<int64, int64> record = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBOnePieceInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int64, int64> dungeonMinPassTime = 3;
-  map<int64, int64> npcPunishTime = 4;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, int64> dungeonMinPassTime = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int64> npcPunishTime = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBPayInfo {
-  map<int64, int64> rechargeCount = 1;
+  map<int64, int64> rechargeCount = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBLotteryData {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int32, romsg.LotteryPoolData> lotteryPool = 1;
-  map<int32, romsg.LotteryPityRecord> pityRecords = 2;
-  map<int32, romsg.LotteryModuleDailyCount> dailyRecord = 3;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.LotteryPoolData> lotteryPool = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.LotteryPityRecord> pityRecords = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.LotteryModuleDailyCount> dailyRecord = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message LotteryPoolData {
-  int32 poolId = 1;
-  int32 freeCount = 2;
-  int32 dailyCount = 3;
-  bool isOpen = 4;
-  bool maxDrawTypeOpen = 6;
+  int32 poolId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 freeCount = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 dailyCount = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool isOpen = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool maxDrawTypeOpen = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
   reserved 5 to 5;
+  reserved "totalCount";
 }
 
 message LotteryPityRecord {
-  int32 pityCount = 1;
-  int32 mustCount = 2;
-  int32 totalCount = 3;
-  int32 hitPityCount = 4;
+  int32 pityCount = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 mustCount = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 totalCount = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 hitPityCount = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message LotteryModuleDailyCount {
-  int32 count = 1;
+  int32 count = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBFragmentRequest {
-  int64 reqId = 1;
-  int64 itemConfigId = 2;
-  int64 helpedByPlayerId = 3;
+  int64 reqId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 itemConfigId = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 helpedByPlayerId = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBFragmentGatherPlayerData {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  int64 playerId = 1;
-  map<int64, romsg.DBFragmentRequest> requests = 2;
-  int32 dailyAskCount = 3;
-  int32 dailyReceiveCount = 4;
-  int64 lastDailyResetTs = 5;
-  int64 expireTimeTs = 6;
+  option (romsg.dbsync) = "FragmentGatherPlayer|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 playerId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.DBFragmentRequest> requests = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 dailyAskCount = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 dailyReceiveCount = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 lastDailyResetTs = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 expireTimeTs = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBBattlePassPlayerData {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  int64 playerId = 1;
-  int64 senderPlayerId = 2;
-  int64 activityId = 3;
-  int64 expireTimeTs = 4;
+  option (romsg.dbsync) = "BattlePassGiftPlayer|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 playerId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 senderPlayerId = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 activityId = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 expireTimeTs = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBSocialOutfitInfo {
-  int64 cfgId = 1;
-  int32 status = 2;
-  int64 unlockTimestamp = 3;
-  int64 expireTimestamp = 4;
-  int64 frozeTimestamp = 5;
-  uint64 timerId = 6;
+  int64 cfgId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 status = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 unlockTimestamp = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 expireTimestamp = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 frozeTimestamp = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  uint64 timerId = 6 [(romsg.save) = 0, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBSocialOutfitContainer {
-  map<int64, romsg.DBSocialOutfitInfo> socialOutfitInfos = 1;
+  map<int64, romsg.DBSocialOutfitInfo> socialOutfitInfos = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBSocialOutfitEquip {
-  int64 cfgId = 1;
+  int64 cfgId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBSocialOutfitProgressInfo {
-  int64 socialOutfitCfgID = 1;
-  repeated int64 completeNum = 2;
+  int64 socialOutfitCfgID = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated int64 completeNum = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBSocialOutfit {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int32, romsg.DBSocialOutfitContainer> socialOutfitContainer = 1;
-  map<int32, romsg.DBSocialOutfitEquip> socialOutfitEquip = 2;
-  map<int64, romsg.DBSocialOutfitProgressInfo> socialOutfitProgress = 3;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.DBSocialOutfitContainer> socialOutfitContainer = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.DBSocialOutfitEquip> socialOutfitEquip = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.DBSocialOutfitProgressInfo> socialOutfitProgress = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBOdinStatue {
-  int64 curExp = 1;
-  int64 curLv = 2;
-  int64 inited = 3;
+  int64 curExp = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 curLv = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 inited = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBHeroicSpiritInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int64, int64> finishedChallenge = 1;
-  romsg.DBOdinStatue odinStatue = 2;
-  int64 latestChallengeId = 3;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, int64> finishedChallenge = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.DBOdinStatue odinStatue = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 latestChallengeId = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBFirstHeartTaskActivityData {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int64, romsg.FirstHeartTaskCfgData> activityData = 1;
-  map<int64, int64> GetLvTime = 2;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.FirstHeartTaskCfgData> activityData = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int64> GetLvTime = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message FirstHeartTaskCfgData {
-  map<int64, int64> cfgData = 1;
-  map<int64, int64> GetRewards = 2;
-  int64 scores = 3;
-  map<int64, romsg.FirstHeartTaskInfo> tasks = 4;
-  bool isAllTaskComplete = 5;
+  map<int64, int64> cfgData = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int64> GetRewards = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 scores = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.FirstHeartTaskInfo> tasks = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool isAllTaskComplete = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message FirstHeartTaskInfo {
-  int64 taskId = 1;
-  romsg.FirstHeartTaskState status = 2;
-  repeated int64 scores = 3;
+  int64 taskId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.FirstHeartTaskState status = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated int64 scores = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBAreaConcurInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int64, romsg.AreaConcurAreaInfo> areaInfo = 1;
-  map<int64, romsg.AreaConcurMapInfo> mapInfo = 2;
-  map<int64, romsg.AreaConcurMonsterInfo> monsterInfo = 3;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.AreaConcurAreaInfo> areaInfo = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.AreaConcurMapInfo> mapInfo = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.AreaConcurMonsterInfo> monsterInfo = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message AreaConcurAreaInfo {
-  int64 curScore = 1;
-  map<int64, bool> claimedAward = 2;
+  int64 curScore = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, bool> claimedAward = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message AreaConcurMapInfo {
-  int64 curScore = 1;
-  bool isClaimedAward = 2;
+  int64 curScore = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool isClaimedAward = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message AreaConcurMonsterInfo {
-  int64 curScore = 1;
-  map<int64, bool> claimedAward = 2;
+  int64 curScore = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, bool> claimedAward = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBDungeonResultData {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  string resultId = 1;
-  int32 serverId = 2;
-  int64 dungeonId = 3;
-  int32 dungeonEntryId = 4;
-  int64 createTime = 5;
-  int32 winCamp = 6;
-  int32 firstResultType = 7;
-  int32 secondResultType = 8;
-  repeated int64 resultParam = 9;
-  repeated romsg.DungeonSnapshotData snapshots = 10;
-  map<string, string> metaData = 11;
-  romsg.GuildLeagueHistory leagueBattleData = 12;
+  option (romsg.dbsync) = "DungeonResultData|string";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string resultId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 serverId = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 dungeonId = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 dungeonEntryId = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 createTime = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 winCamp = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 firstResultType = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 secondResultType = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 resultParam = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.DungeonSnapshotData snapshots = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<string, string> metaData = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.GuildLeagueHistory leagueBattleData = 12 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBGuideInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  repeated int64 finishedGuideIds = 1;
-  map<int64, int64> guideFinishRecord = 2;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 finishedGuideIds = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int64> guideFinishRecord = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message PendingGiftInfo {
@@ -2071,41 +2162,43 @@ message PendingGiftInfo {
 }
 
 message DBBattlePassInfo {
-  map<int64, romsg.PendingGiftInfo> pendingGiftMap = 1;
+  map<int64, romsg.PendingGiftInfo> pendingGiftMap = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBTrainingGroundInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  int64 maxDps = 1;
-  repeated int64 claimedAwardIds = 2;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 maxDps = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated int64 claimedAwardIds = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message CasualBattleHistoryRecord {
-  string result_id = 1;
-  int64 battle_time = 2;
-  int32 outcome = 3;
+  string result_id = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 battle_time = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 outcome = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message CasualBattleStats {
-  int64 personal_score = 1;
-  int64 damage = 2;
-  int64 kills = 3;
-  int64 assists = 4;
-  int64 damage_taken = 5;
-  int64 healing = 6;
+  int64 personal_score = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 damage = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 kills = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 assists = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 damage_taken = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 healing = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBCasualBattleInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  int32 mmr = 1;
-  repeated romsg.CasualBattleHistoryRecord recent_records = 2;
-  romsg.CasualBattleStats best_record = 3;
-  romsg.CasualBattleStats lifetime_total = 4;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 mmr = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated romsg.CasualBattleHistoryRecord recent_records = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.CasualBattleStats best_record = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.CasualBattleStats lifetime_total = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DragonIslandSeasonStatistic {
-  map<int64, int64> overview_info = 1;
-  map<int64, int64> single_round_info = 2;
+  map<int64, int64> overview_info = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int64> single_round_info = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DragonIslandSettlementMsg {
@@ -2113,37 +2206,38 @@ message DragonIslandSettlementMsg {
 }
 
 message DragonIslandHistoryRecord {
-  int32 result_type = 1;
-  int32 rank_id = 2;
-  int64 net_score_delta = 3;
-  int64 protect_score_delta = 4;
-  int32 ranking = 5;
-  int32 kill_count = 6;
-  int32 near_death_count = 7;
-  int32 assist_count = 8;
-  bool is_mvp = 9;
-  repeated int32 title_list = 10;
-  string result_id = 11;
-  int64 new_net_score = 12;
-  bool is_negative_play = 13;
-  int64 protect_consumed = 14;
+  int32 result_type = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 rank_id = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 net_score_delta = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 protect_score_delta = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 ranking = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 kill_count = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 near_death_count = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 assist_count = 8 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool is_mvp = 9 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated int32 title_list = 10 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  string result_id = 11 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 new_net_score = 12 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool is_negative_play = 13 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 protect_consumed = 14 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBDragonIslandInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  int32 consecutive_loss_count = 1;
-  int32 newbie_match_count = 2;
-  map<int32, bool> rank_award_claimed = 3;
-  int32 daily_first_win_count = 4;
-  int64 first_win_reset_time = 5;
-  int64 season_id = 6;
-  int32 rank_id = 7;
-  map<int64, romsg.DragonIslandHistoryRecord> recent_records = 8;
-  map<int64, romsg.DragonIslandSeasonStatistic> season_statistic = 9;
-  int64 rank_leaderboard_position = 10;
-  bool is_lone_wolf = 11;
-  int64 week_mvp_count = 12;
-  int64 week_mvp_reset_time = 13;
-  int64 exitMatchTimes = 14;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 consecutive_loss_count = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 newbie_match_count = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, bool> rank_award_claimed = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 daily_first_win_count = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 first_win_reset_time = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 season_id = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 rank_id = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.DragonIslandHistoryRecord> recent_records = 8 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.DragonIslandSeasonStatistic> season_statistic = 9 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 rank_leaderboard_position = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool is_lone_wolf = 11 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 week_mvp_count = 12 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 week_mvp_reset_time = 13 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 exitMatchTimes = 14 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 

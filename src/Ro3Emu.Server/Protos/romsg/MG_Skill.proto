@@ -2,6 +2,9 @@ syntax = "proto3";
 package romsg;
 import "MG_Common.proto";
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum DamageType {
   DamageType_Damage = 0;
@@ -124,7 +127,7 @@ message CastSkillReq {
   int64 targetId = 2;
   romsg.Vec3 targetPos = 3;
   float face = 4;
-  repeated int64 targetsId = 5;
+  repeated int64 targetsId = 5 [(romsg.max_count) = 1000];
   romsg.Vec3 faceVector3D = 6;
   int64 opUnitId = 7;
   bool isExtraSkill = 8;

@@ -6,6 +6,9 @@ import "MG_Team.proto";
 import "MG_Chicken.proto";
 import "FieldOption.proto";
 import "MG_Training.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum DungeonFirstResultType {
   DungeonFirstResultType_None = 0;
@@ -296,35 +299,36 @@ message DungeonGatherMarkPosNtf {
 }
 
 message ClientDungeonEvent {
-  string strCmd = 1;
-  repeated romsg.CustomParam customParams = 2;
+  string strCmd = 1 [(romsg.max_count) = 100];
+  repeated romsg.CustomParam customParams = 2 [(romsg.max_count) = 100];
 }
 
 message RoundTeamMemberInfo {
-  int64 memberGuid = 1;
-  int32 career = 2;
-  map<int32, int64> battleAttr = 3;
-  romsg.Vec3 pos = 4;
-  romsg.RoundRoleStatus state = 5;
-  int32 teamIndex = 6;
-  int32 inAreaId = 7;
+  int64 memberGuid = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 career = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int64> battleAttr = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.Vec3 pos = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.RoundRoleStatus state = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 teamIndex = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 inAreaId = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message RoundDungeonInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  int64 teamId = 1;
-  map<int64, romsg.RoundTeamMemberInfo> teamMemberInfo = 2;
-  int32 careerId = 4;
-  map<int32, int64> itemCdExpireTime = 5;
-  romsg.RoundDungeonExtendInfo extendInfo = 6;
-  int64 packWeight = 7;
-  int32 freeRelifeCountLeft = 8;
-  map<int64, romsg.ItemBaseInfo> packInfos = 9;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 teamId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.RoundTeamMemberInfo> teamMemberInfo = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 careerId = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int64> itemCdExpireTime = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.RoundDungeonExtendInfo extendInfo = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 packWeight = 7 [(romsg.save) = 0, (romsg.self) = 0, (romsg.other) = 0];
+  int32 freeRelifeCountLeft = 8 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.ItemBaseInfo> packInfos = 9 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
   reserved 3 to 3;
 }
 
 message RoundDungeonExtendInfo {
-  romsg.ChickenDungeonInfo chickenDungeonInfo = 1;
+  romsg.ChickenDungeonInfo chickenDungeonInfo = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message GlobalObjectDataNotify {

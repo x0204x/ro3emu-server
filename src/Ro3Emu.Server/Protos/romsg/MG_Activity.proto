@@ -6,6 +6,9 @@ import "MG_TerritoryWars.proto";
 import "MG_Siege.proto";
 import "MG_GuildLeague.proto";
 import "MG_FlyingDragon.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum ActivityStatus {
   ActivityStatus_None = 0;
@@ -29,7 +32,7 @@ enum ENewActivityState {
 }
 
 message NoviceActivity {
-  map<int32, int32> taskIds = 1;
+  map<int32, int32> taskIds = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message NoviceActivityReq {
@@ -43,13 +46,13 @@ message NoviceActivityResp {
 
 message ActivityParam {
   oneof val {
-    romsg.NoviceActivity noviceActivity = 1;
+    romsg.NoviceActivity noviceActivity = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   }
 }
 
 message ActivityBaseInfo {
-  int32 activityId = 1;
-  romsg.ActivityParam activityParam = 2;
+  int32 activityId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.ActivityParam activityParam = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message ActivityReqParam {
@@ -77,85 +80,86 @@ message ActivityResp {
 
 message DBActivityParam {
   oneof val {
-    romsg.NoviceActivity noviceActivity = 1;
-    romsg.SiegeEntityTotalInfo siegeData = 2;
-    romsg.DBTerritoryWarsData territoryWarsData = 3;
-    romsg.GuildLeagueTotalInfo guildLeagueTotalInfo = 4;
-    romsg.DBFlyingDragonProduceInfo flyingDragonProduceInfo = 5;
-    romsg.DBSeasonEveInfo seasonEveInfo = 6;
-    romsg.DBJourneyActivity journey = 7;
-    romsg.DBPronteraDefenseInfo pronteraDefense = 8;
-    romsg.DBTerritoryWarData territoryWarData = 9;
-    romsg.DBRainbowKoiActivityData rainbowKoiData = 10;
-    romsg.DBGveHuntingActivityData gveHuntingData = 11;
-    romsg.DBCasualBattleActivityData casualBattleData = 12;
-    romsg.DBOnePieceActivity OnePieceInfo = 13;
+    romsg.NoviceActivity noviceActivity = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    romsg.SiegeEntityTotalInfo siegeData = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    romsg.DBTerritoryWarsData territoryWarsData = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    romsg.GuildLeagueTotalInfo guildLeagueTotalInfo = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    romsg.DBFlyingDragonProduceInfo flyingDragonProduceInfo = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    romsg.DBSeasonEveInfo seasonEveInfo = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    romsg.DBJourneyActivity journey = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    romsg.DBPronteraDefenseInfo pronteraDefense = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    romsg.DBTerritoryWarData territoryWarData = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    romsg.DBRainbowKoiActivityData rainbowKoiData = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    romsg.DBGveHuntingActivityData gveHuntingData = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    romsg.DBCasualBattleActivityData casualBattleData = 12 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    romsg.DBOnePieceActivity OnePieceInfo = 13 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   }
 }
 
 message RainbowKoiCandidateInfo {
-  bool isEliminated = 1;
-  bool isGiveUp = 2;
-  int32 rank = 3;
-  bool isSettle = 4;
+  bool isEliminated = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool isGiveUp = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 rank = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool isSettle = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message RainbowKoiProgress {
-  map<int64, romsg.RainbowKoiCandidateInfo> candidateMap = 1;
-  bool isGameOver = 2;
+  map<int64, romsg.RainbowKoiCandidateInfo> candidateMap = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool isGameOver = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBRainbowKoiActivityData {
-  romsg.RainbowKoiProgress progress = 1;
-  int64 dungeonId = 2;
-  map<int64, int64> actorBetMap = 3;
-  bool isSettled = 4;
+  romsg.RainbowKoiProgress progress = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 dungeonId = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, int64> actorBetMap = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool isSettled = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message GveHuntingGuildResult {
-  int64 guildId = 1;
-  int64 score = 2;
-  int64 reachTs = 3;
-  int32 rank = 4;
-  int64 commandSkillKill = 5;
+  int64 guildId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 score = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 reachTs = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 rank = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 commandSkillKill = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message GveHuntingGroupMatchResult {
-  repeated romsg.GveHuntingGuildResult guildResults = 1;
+  repeated romsg.GveHuntingGuildResult guildResults = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBGveHuntingActivityData {
-  map<int64, romsg.GveHuntingMatchGroup> groupMap = 1;
-  repeated romsg.GveHuntingGuildResult topResults = 2;
-  bool isSettled = 3;
-  int64 candidateEndMs = 4;
-  int64 startPhaseEndMs = 5;
-  int64 settlementPhaseEndMs = 6;
-  map<int64, romsg.GveHuntingGroupMatchResult> guildMatchResults = 7;
+  map<int64, romsg.GveHuntingMatchGroup> groupMap = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.GveHuntingGuildResult topResults = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool isSettled = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 candidateEndMs = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 startPhaseEndMs = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 settlementPhaseEndMs = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.GveHuntingGroupMatchResult> guildMatchResults = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBActivityData {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  romsg.DBActivityParam activityParam = 1;
-  string activityKey = 2;
-  int64 activityInstance = 3;
-  string businessState = 4;
-  bool isOldRound = 5;
-  bool IsEnterComplete = 6;
-  bool IsExitComplete = 7;
-  map<string, int64> StateTimeStamps = 8;
-  int64 stateInstance = 9;
-  bool IsShielded = 10;
-  repeated romsg.TimeSegment StateTimeStampList = 11;
-  int64 CurStartTime = 12;
-  int64 CurEndTime = 13;
-  int64 CycleStartTime = 14;
-  int64 CycleEndTime = 15;
+  option (romsg.dbsync) = "ActivityInfo|string";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBActivityParam activityParam = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string activityKey = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 activityInstance = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string businessState = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool isOldRound = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool IsEnterComplete = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool IsExitComplete = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<string, int64> StateTimeStamps = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 stateInstance = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool IsShielded = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.TimeSegment StateTimeStampList = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 CurStartTime = 12 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 CurEndTime = 13 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 CycleStartTime = 14 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 CycleEndTime = 15 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBActivityInfo {
-  map<int32, romsg.ActivityBaseInfo> activityInfo = 1;
+  map<int32, romsg.ActivityBaseInfo> activityInfo = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message ActivityDataUploadParam {
@@ -218,76 +222,76 @@ message SeasonEveBulletInfo {
 }
 
 message DBSeasonEveInfo {
-  int64 progress = 1;
-  map<int64, romsg.DBSeasonEveChapterInfo> chapterInfo = 2;
-  repeated romsg.SeasonEveBulletInfo playerBullet = 3;
-  int64 lastCalcTime = 4;
+  int64 progress = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.DBSeasonEveChapterInfo> chapterInfo = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.SeasonEveBulletInfo playerBullet = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 lastCalcTime = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBSeasonEveChapterInfo {
-  map<int64, int64> notes = 1;
-  map<int64, int64> clues = 2;
-  int64 openTime = 3;
-  int64 chapterId = 4;
+  map<int64, int64> notes = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, int64> clues = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 openTime = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 chapterId = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBJourneyActivity {
-  map<int64, romsg.JourneyPlayerCompleteInfo> playerCompleteInfo = 1;
+  map<int64, romsg.JourneyPlayerCompleteInfo> playerCompleteInfo = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message JourneyPlayerCompleteInfo {
-  int64 playerId = 1;
-  map<int64, romsg.JourneyCompleteInfo> completeNode = 2;
-  map<int64, romsg.JourneyCompleteInfo> completeAct = 3;
-  map<int64, romsg.JourneyCompleteInfo> completeEvent = 4;
-  map<int64, romsg.JourneyCompleteInfo> completeTravel = 5;
-  int64 gainCoinCount = 6;
-  map<int64, int64> attributes = 7;
-  int64 titleId = 8;
+  int64 playerId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.JourneyCompleteInfo> completeNode = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.JourneyCompleteInfo> completeAct = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.JourneyCompleteInfo> completeEvent = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.JourneyCompleteInfo> completeTravel = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 gainCoinCount = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, int64> attributes = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 titleId = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message JourneyCompleteInfo {
-  int64 chapterId = 1;
-  int64 count = 2;
+  int64 chapterId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 count = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBPronteraDefenseInfo {
-  map<int64, romsg.DBPronteraDefenseMapInfo> mapInfo = 1;
-  map<int64, romsg.DBPronteraDefenseRoundInfo> roundInfo = 2;
-  map<int64, romsg.DBPronteraDefenseGuildInfo> guildInfo = 3;
-  int64 curRound = 4;
-  int64 curIntensity = 5;
+  map<int64, romsg.DBPronteraDefenseMapInfo> mapInfo = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.DBPronteraDefenseRoundInfo> roundInfo = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.DBPronteraDefenseGuildInfo> guildInfo = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 curRound = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 curIntensity = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBPronteraDefenseMapInfo {
-  int64 mapId = 1;
-  int64 curResistLevel = 2;
-  int64 defensePoint = 3;
-  int64 maxDefensePoint = 4;
-  int64 defendRoundCount = 5;
-  bool isFall = 6;
-  int64 fallRound = 7;
-  map<int64, bool> defenseGuilds = 8;
-  map<int64, romsg.DBPronteraDefenseGuildBoardInfo> guildContributionBoard = 9;
+  int64 mapId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 curResistLevel = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 defensePoint = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 maxDefensePoint = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 defendRoundCount = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool isFall = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 fallRound = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, bool> defenseGuilds = 8 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, romsg.DBPronteraDefenseGuildBoardInfo> guildContributionBoard = 9 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBPronteraDefenseGuildBoardInfo {
-  int64 guildId = 1;
-  int64 contribution = 2;
+  int64 guildId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 contribution = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBPronteraDefenseRoundInfo {
-  int64 roundId = 1;
-  int64 startTime = 2;
-  int64 endTime = 3;
-  map<int64, bool> mapIds = 4;
+  int64 roundId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 startTime = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 endTime = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, bool> mapIds = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBPronteraDefenseGuildInfo {
-  int64 guildId = 1;
-  int64 guildPrepLv = 2;
-  int64 guildPrepExp = 3;
-  int64 guildContribution = 4;
+  int64 guildId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 guildPrepLv = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 guildPrepExp = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 guildContribution = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DailyActivityPlaceholderReq {
@@ -398,52 +402,52 @@ message UseHuntingSkillNtf {
 }
 
 message CasualBattlePlayerList {
-  repeated int64 values = 1;
+  repeated int64 values = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message CasualBattlePlayerInfo {
-  int64 playerId = 1;
-  int32 mmr = 2;
-  int64 joinTimeMs = 3;
+  int64 playerId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 mmr = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 joinTimeMs = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message CasualBattleMatchUnit {
-  int64 teamId = 1;
-  repeated int64 playerIds = 2;
-  int32 totalMmr = 3;
-  int32 squadIndex = 4;
+  int64 teamId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 playerIds = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 totalMmr = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 squadIndex = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message CasualBattleSide {
-  repeated romsg.CasualBattleMatchUnit units = 1;
-  int32 playerCount = 2;
-  int32 totalMmr = 3;
+  repeated romsg.CasualBattleMatchUnit units = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 playerCount = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 totalMmr = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message CasualBattleGroup {
-  romsg.CasualBattleSide sideA = 1;
-  romsg.CasualBattleSide sideB = 2;
+  romsg.CasualBattleSide sideA = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.CasualBattleSide sideB = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBCasualBattleActivityData {
-  map<int64, romsg.CasualBattlePlayerInfo> playerMap = 1;
-  map<int64, romsg.CasualBattlePlayerList> teamPlayerMap = 2;
-  map<int32, romsg.CasualBattleGroup> battleGroupMap = 3;
-  repeated int64 battleSceneIds = 4;
-  int64 current_match_scene_id = 5;
-  int32 current_match_player_count = 6;
+  map<int64, romsg.CasualBattlePlayerInfo> playerMap = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.CasualBattlePlayerList> teamPlayerMap = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.CasualBattleGroup> battleGroupMap = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 battleSceneIds = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 current_match_scene_id = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 current_match_player_count = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBOnePieceActivity {
-  map<int64, romsg.OnePieceSceneNpcInfo> npcInfo = 1;
-  int64 endTime = 2;
+  map<int64, romsg.OnePieceSceneNpcInfo> npcInfo = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 endTime = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message OnePieceSceneNpcInfo {
-  map<int64, int64> npcPointInfo = 1;
-  int64 sceneGuid = 2;
-  int64 sceneEntry = 3;
-  int64 sceneLineId = 4;
-  int64 sceneNpcRoundCount = 5;
+  map<int64, int64> npcPointInfo = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 sceneGuid = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 sceneEntry = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 sceneLineId = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 sceneNpcRoundCount = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 

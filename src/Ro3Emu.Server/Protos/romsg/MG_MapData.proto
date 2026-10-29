@@ -1,5 +1,8 @@
 syntax = "proto3";
 package MapProto;
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 message NodeData {
   message LayerData {

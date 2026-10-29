@@ -2,10 +2,14 @@ syntax = "proto3";
 package romsg;
 import "FieldOption.proto";
 import "MG_Common.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 message DBIDIPSerialNumberInfo {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  int64 save_time = 1;
+  option (romsg.dbsync) = "IDIPSerialNumber|string";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 save_time = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 

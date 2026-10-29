@@ -2,6 +2,8 @@ syntax = "proto3";
 package romsg;
 import "MG_Auction.proto";
 import "MG_Team.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "common/";
 
 enum PlayerOfflineMsgID {
   OfflinePing = 0;

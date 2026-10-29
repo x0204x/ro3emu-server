@@ -3,6 +3,9 @@ package romsg;
 import "FieldOption.proto";
 import "MG_Common.proto";
 import "MG_Guild.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum SiegeCityActivityState {
   SiegeCityActivityStateNone = 0;
@@ -12,10 +15,10 @@ enum SiegeCityActivityState {
 }
 
 message SiegeEntityTotalInfo {
-  map<int32, romsg.SiegeCityBattleInfo> battleInfos = 1;
-  map<int32, romsg.SiegeCityHistoryInfoList> cityHistoryInfo = 2;
-  int32 week = 3;
-  map<int64, int64> guildSceneMap = 4;
+  map<int32, romsg.SiegeCityBattleInfo> battleInfos = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.SiegeCityHistoryInfoList> cityHistoryInfo = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 week = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, int64> guildSceneMap = 4 [(romsg.save) = 0, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message SiegeBaseInfoNtf {
@@ -34,12 +37,12 @@ message GetSiegeBaseInfoRsp {
 }
 
 message SiegeCityBattleInfo {
-  int32 cityId = 1;
-  romsg.GuildSnapInfo attackGuildInfo = 2;
-  romsg.GuildSnapInfo defenseGuildInfo = 3;
-  int64 startTime = 4;
-  int64 endTime = 5;
-  romsg.SiegeCityActivityState activityState = 6;
+  int32 cityId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.GuildSnapInfo attackGuildInfo = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.GuildSnapInfo defenseGuildInfo = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 startTime = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 endTime = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.SiegeCityActivityState activityState = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message SiegeCityHistoryInfoReq {

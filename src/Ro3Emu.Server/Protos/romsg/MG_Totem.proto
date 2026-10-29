@@ -2,6 +2,9 @@ syntax = "proto3";
 package romsg;
 import "MG_Common.proto";
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 message TotemInfoNotify {
   int64 totemTotalExp = 1;
@@ -48,7 +51,7 @@ message RefineTotemSkillResp {
 }
 
 message UpgradeTotemSystemReq {
-  repeated int64 totemGuids = 1;
+  repeated int64 totemGuids = 1 [(romsg.max_count) = 30];
   map<int32, int32> consumeItems = 2;
 }
 
@@ -95,7 +98,7 @@ message TotemSwapResp {
 }
 
 message TotemAppraiseReq {
-  repeated int64 ItemGuids = 1;
+  repeated int64 ItemGuids = 1 [(romsg.max_count) = 30];
 }
 
 message TotemAppraiseResp {

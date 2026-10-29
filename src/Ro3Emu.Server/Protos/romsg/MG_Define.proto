@@ -1,5 +1,8 @@
 syntax = "proto3";
 package romsg;
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum MSG_Type {
   TT_None = 0;
@@ -1170,6 +1173,7 @@ enum EServerType {
   SERVER_TYPE_MATCH = 19;
   SERVER_TYPE_SEASON = 20;
   SERVER_TYPE_END = 21;
+  reserved 5 to 5;
 }
 
 enum INFO_AREA_TYPE {

@@ -2,6 +2,9 @@ syntax = "proto3";
 package romsg;
 import "MG_DB.proto";
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 message PopupImageReq {
   string language = 1;

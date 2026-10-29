@@ -4,6 +4,9 @@ import "MG_Define.proto";
 import "MG_Chat.proto";
 import "google/protobuf/any.proto";
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum MsgSource {
   MsgSource_none = 0;
@@ -30,7 +33,7 @@ message SystemBoardCastMsgNtf {
 
 message SoundTransmissionReq {
   int32 itemId = 1;
-  string words = 2;
+  string words = 2 [(romsg.max_count) = 500];
 }
 
 message SoundTransmissionRes {

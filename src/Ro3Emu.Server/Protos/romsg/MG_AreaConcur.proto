@@ -1,6 +1,9 @@
 syntax = "proto3";
 package romsg;
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 message AreaConcurGainMapAwardReq {
   int64 mapId = 1;
@@ -12,7 +15,7 @@ message AreaConcurGainMapAwardResp {
 
 message AreaConcurGainAreaAwardReq {
   int64 areaId = 1;
-  map<int64, bool> stageIds = 2;
+  map<int64, bool> stageIds = 2 [(romsg.max_count) = 50];
 }
 
 message AreaConcurGainAreaAwardResp {
@@ -21,7 +24,7 @@ message AreaConcurGainAreaAwardResp {
 
 message AreaConcurGainMonsterAwardReq {
   int64 monsterId = 1;
-  map<int64, bool> stageIds = 2;
+  map<int64, bool> stageIds = 2 [(romsg.max_count) = 50];
 }
 
 message AreaConcurGainMonsterAwardResp {

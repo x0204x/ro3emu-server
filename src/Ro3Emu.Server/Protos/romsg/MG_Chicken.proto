@@ -2,6 +2,9 @@ syntax = "proto3";
 package romsg;
 import "MG_Common.proto";
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum ChickenItemType {
   ChickenItemType_None = 0;
@@ -34,11 +37,11 @@ message ChickenInitData {
 }
 
 message ChickenDungeonInfo {
-  int64 chickenOpenTime = 1;
-  map<int32, int64> skills = 2;
-  map<int32, int32> items = 3;
-  map<int32, int64> equips = 4;
-  map<int64, int64> identityCards = 5;
+  int64 chickenOpenTime = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int64> skills = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int32> items = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int64> equips = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int64> identityCards = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message NpcBuyItemReq {
@@ -79,7 +82,7 @@ message UseChickenItemResp {
 }
 
 message DiscardChickenItemReq {
-  map<int64, int32> items = 1;
+  map<int64, int32> items = 1 [(romsg.max_count) = 300];
   int64 npcId = 2;
   romsg.Vec3 pos = 3;
 }

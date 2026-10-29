@@ -1,5 +1,7 @@
 syntax = "proto3";
 package ezmsg;
+option optimize_for = LITE_RUNTIME;
+option cc_generic_services = false;
 
 enum ESErrorCode {
   EsSuccess = 0;

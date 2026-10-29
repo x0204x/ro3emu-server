@@ -4,6 +4,8 @@ import "google/protobuf/descriptor.proto";
 import "MG_DB.proto";
 import "MG_Common.proto";
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
 
 message GenreSeekerReq {
 }
@@ -78,7 +80,7 @@ message GenreSeekerDeleteResp {
 
 message SwitchGenrePlanReq {
   int32 targetPlan = 1;
-  map<int32, int32> childSystem = 2;
+  map<int32, int32> childSystem = 2 [(romsg.max_count) = 200];
   bool isApply = 3;
 }
 
@@ -91,7 +93,7 @@ message SwitchGenrePlanResp {
 
 message GenreChangePlanNameReq {
   int32 targetIndex = 1;
-  string name = 2;
+  string name = 2 [(romsg.max_count) = 100];
 }
 
 message GenreChangePlanNameResp {
@@ -134,7 +136,7 @@ message GenreGetAllOtherRecommendResp {
 }
 
 message GenreResponseCodeReq {
-  string code = 1;
+  string code = 1 [(romsg.max_count) = 200];
 }
 
 message GenreResponseCodeResp {
@@ -145,8 +147,8 @@ message GenreResponseCodeResp {
 
 message GenreSeekerApplyPlanReq {
   int32 planId = 1;
-  map<int32, int32> systemType = 2;
-  map<int32, int32> childType = 3;
+  map<int32, int32> systemType = 2 [(romsg.max_count) = 100];
+  map<int32, int32> childType = 3 [(romsg.max_count) = 100];
   int64 responseId = 4;
   int64 responseUserId = 5;
 }
@@ -160,7 +162,7 @@ message GenreUpdateNtf {
 }
 
 message GenreGetPlanPropertyReq {
-  map<int32, int32> genrePlans = 1;
+  map<int32, int32> genrePlans = 1 [(romsg.max_count) = 100];
 }
 
 message GenreGetPlanPropertyResp {
@@ -169,7 +171,7 @@ message GenreGetPlanPropertyResp {
 }
 
 message GenrePlanPowerReq {
-  map<int32, int32> genrePlans = 1;
+  map<int32, int32> genrePlans = 1 [(romsg.max_count) = 100];
 }
 
 message GenrePlanPowerResp {

@@ -1,6 +1,9 @@
 syntax = "proto3";
 package romsg;
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum SpeakAuthorityType {
   Free = 0;
@@ -114,9 +117,9 @@ message ExitBarRoomResp {
 
 message InviteEnterBarRoomReq {
   int64 barRoomGuid = 1;
-  repeated int64 targetGuidList = 2;
-  string roomName = 3;
-  string inviterName = 4;
+  repeated int64 targetGuidList = 2 [(romsg.max_count) = 50];
+  string roomName = 3 [(romsg.max_count) = 100];
+  string inviterName = 4 [(romsg.max_count) = 100];
   int32 inviterJob = 5;
   int32 inviterLevel = 6;
 }
@@ -151,7 +154,7 @@ message ResponseInviteEnterBarRoomResp {
 }
 
 message SetMicOrderReq {
-  repeated romsg.CurSpeakUsers SpeakUsers = 1;
+  repeated romsg.CurSpeakUsers SpeakUsers = 1 [(romsg.max_count) = 100];
   int64 barRoomGuid = 2;
 }
 
@@ -161,7 +164,7 @@ message SetMicOrderResp {
 
 message ApplyOpenMicReq {
   int64 barRoomGuid = 1;
-  string reason = 2;
+  string reason = 2 [(romsg.max_count) = 100];
 }
 
 message ApplyOpenMicResp {

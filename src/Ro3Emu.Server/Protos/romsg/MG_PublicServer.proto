@@ -3,6 +3,9 @@ package romsg;
 import "MG_DB.proto";
 import "MG_Common.proto";
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum RecommendType {
   RecommendType_None = 0;
@@ -34,9 +37,9 @@ message RoleBriefInfo {
 }
 
 message RoleDetailInfo {
-  romsg.RolePublicBaseInfo rolebase = 1;
-  romsg.DBEquipInfo equipInfo = 2;
-  romsg.AllProperty selfproperty = 3;
+  romsg.RolePublicBaseInfo rolebase = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DBEquipInfo equipInfo = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.AllProperty selfproperty = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message GmSetServerOpenDayNtf {
@@ -70,67 +73,71 @@ message PullRecommendPlayersRes {
 }
 
 message DBPublicRestrictInfo {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  map<int32, romsg.RestrictInfo> restrictInfoMap = 1;
+  option (romsg.dbsync) = "PublicRestrictInfo|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.RestrictInfo> restrictInfoMap = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message PresentOrderInfo {
-  int64 orderId = 1;
-  int64 senderId = 2;
-  int64 receiverId = 3;
-  int64 appranceId = 4;
-  int64 appranceAwardId = 5;
-  int64 currencyId = 6;
-  int32 currencyCount = 7;
-  int64 createTime = 8;
-  romsg.EPresentOrderState state = 9;
-  string giftContent = 10;
+  int64 orderId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 senderId = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 receiverId = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 appranceId = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 appranceAwardId = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 currencyId = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 currencyCount = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 createTime = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.EPresentOrderState state = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string giftContent = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBPresentInfo {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  map<int64, romsg.PresentOrderInfo> orders = 1;
-  map<int64, romsg.ReceiverOrders> receiverOrdersMap = 2;
-  int64 nextOrderId = 3;
-  map<int64, romsg.SenderOrders> senderOrdersMap = 4;
+  option (romsg.dbsync) = "DBPresentInfo|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.PresentOrderInfo> orders = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.ReceiverOrders> receiverOrdersMap = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 nextOrderId = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.SenderOrders> senderOrdersMap = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message ReceiverOrders {
-  repeated int64 orderIds = 1;
+  repeated int64 orderIds = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message SenderOrders {
-  repeated int64 orderIds = 1;
+  repeated int64 orderIds = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBPublicOnlineCount {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  map<int64, romsg.PublicOnlineHourInfo> hourInfo = 1;
+  option (romsg.dbsync) = "PublicOnlineCount|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.PublicOnlineHourInfo> hourInfo = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message PublicOnlineHourInfo {
-  int64 hourId = 1;
-  int64 maxOnlineNum = 2;
-  int64 minOnlineNum = 3;
+  int64 hourId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 maxOnlineNum = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 minOnlineNum = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message FirstPassRecord {
-  int64 layer = 1;
-  int64 playerId = 2;
-  string playerName = 3;
-  int64 passTime = 4;
-  int64 recordTime = 5;
-  int32 headImage = 6;
-  int32 job = 7;
-  int32 gender = 8;
+  int64 layer = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 playerId = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string playerName = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 passTime = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 recordTime = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 headImage = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 job = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 gender = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBClimbTowerFirstPass {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  map<int64, romsg.FirstPassRecord> recordMap = 1;
+  option (romsg.dbsync) = "ClimbTowerFirstPass|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.FirstPassRecord> recordMap = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 

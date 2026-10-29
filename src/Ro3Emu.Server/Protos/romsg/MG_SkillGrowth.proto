@@ -2,6 +2,9 @@ syntax = "proto3";
 package romsg;
 import "FieldOption.proto";
 import "MG_Common.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum SkillWheelSlotType {
   SkillWheelNone = 0;
@@ -34,50 +37,51 @@ enum SkillLoadOperation {
 }
 
 message SkillData {
-  int32 skillId = 1;
-  int32 skillLevel = 2;
+  int32 skillId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 skillLevel = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message SkillPlan {
-  bool isUnlock = 1;
-  map<int32, romsg.SkillData> skillAssigns = 2;
-  repeated romsg.SkillData manualLoadSkill = 3;
-  repeated romsg.SkillData autoLoadSkill = 4;
-  map<int32, romsg.SkillData> skillQueue = 5;
-  string name = 6;
-  romsg.PowerUnit power = 7;
-  int32 skillGenre = 8;
-  map<int32, int32> skillPoints = 9;
+  bool isUnlock = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.SkillData> skillAssigns = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated romsg.SkillData manualLoadSkill = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated romsg.SkillData autoLoadSkill = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.SkillData> skillQueue = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  string name = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.PowerUnit power = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 skillGenre = 8 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, int32> skillPoints = 9 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message SkillWheelSlot {
-  int32 skillConfigId = 1;
-  bool enable = 2;
-  bool isHighlight = 3;
-  bool isInteraction = 4;
-  romsg.ESkillDisableReason disableReason = 5;
-  int64 highlightEndTimeMs = 6;
-  int32 mode = 7;
+  int32 skillConfigId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool enable = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool isHighlight = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool isInteraction = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.ESkillDisableReason disableReason = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 highlightEndTimeMs = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 mode = 7 [(romsg.save) = 0, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message SkillWheel {
-  map<int32, romsg.SkillWheelSlot> whellSkills = 1;
-  int32 atkSkillId = 2;
-  romsg.SkillWheelSlot skillQueue = 3;
-  romsg.SkillWheelSlot petSkill = 4;
-  map<int32, romsg.SkillWheelSlot> dungeonSkills = 5;
+  map<int32, romsg.SkillWheelSlot> whellSkills = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 atkSkillId = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.SkillWheelSlot skillQueue = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.SkillWheelSlot petSkill = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.SkillWheelSlot> dungeonSkills = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message DBSkillData {
-  int64 ro3Define_SyncVersion = 9998;
-  int32 maxPlanCount = 1;
-  int32 currentPlanIndex = 2;
-  repeated int32 skillList = 3;
-  repeated romsg.SkillPlan skillAssignPlans = 4;
-  int32 currentAtkSkillId = 5;
-  romsg.SkillWheel skillWheel = 6;
-  bytes skillCdData = 7;
-  romsg.SkillWheel originSkillWheel = 8;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 maxPlanCount = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 currentPlanIndex = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated int32 skillList = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated romsg.SkillPlan skillAssignPlans = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 currentAtkSkillId = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.SkillWheel skillWheel = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bytes skillCdData = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.SkillWheel originSkillWheel = 8 [(romsg.save) = 0, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message SkillSwitchGenreReq {

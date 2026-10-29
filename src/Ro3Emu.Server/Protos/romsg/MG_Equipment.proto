@@ -3,6 +3,9 @@ package romsg;
 import "MG_Common.proto";
 import "MG_Pack.proto";
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum EquipPosType {
   EquipPosType_None = 0;
@@ -39,7 +42,7 @@ message EquipBaseNtf {
 }
 
 message EquipAppraiseReq {
-  repeated int64 itemGuids = 3;
+  repeated int64 itemGuids = 3 [(romsg.max_count) = 100];
 }
 
 message EquipAppraiseResp {

@@ -2,6 +2,7 @@ syntax = "proto3";
 package romsg;
 import "MG_Define.proto";
 import "MG_Common.proto";
+option optimize_for = LITE_RUNTIME;
 
 message DragonIslandClaimRankRewardReq {
 }

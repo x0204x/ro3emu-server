@@ -2,6 +2,9 @@ syntax = "proto3";
 package romsg;
 import "FieldOption.proto";
 import "MG_Auction.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum TerritoryAuctionPhase {
   TERRITORY_PHASE_UNKNOWN = 0;

@@ -3,6 +3,9 @@ package romsg;
 import "MG_Common.proto";
 import "MG_Season.proto";
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum DeclarationType {
   NoneType = 0;
@@ -81,88 +84,89 @@ enum ChangeType {
 }
 
 message DeclarationInfo {
-  string content = 1;
-  romsg.DeclarationType declarationType = 2;
-  bytes voice = 3;
-  int32 voiceDuration = 4;
+  string content = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0, (romsg.max_count) = 1000];
+  romsg.DeclarationType declarationType = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bytes voice = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0, (romsg.max_count) = 100000];
+  int32 voiceDuration = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message PlayerBaseInfo {
-  int64 playerID = 1;
-  int32 enterTime = 2;
-  int32 bornAreaId = 3;
-  int32 offTime = 4;
-  string nickname = 5;
-  romsg.DeclarationInfo declarationData = 6;
-  int32 wateringCount = 7;
-  string userName = 8;
+  int64 playerID = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 enterTime = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 bornAreaId = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 offTime = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string nickname = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DeclarationInfo declarationData = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 wateringCount = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string userName = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message Resource {
-  int64 adventGroupMoney = 1;
-  int32 weekMoney = 2;
+  int64 adventGroupMoney = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 weekMoney = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message ConveneData {
-  int32 useTime = 1;
-  int32 lastConveneTime = 2;
+  int32 useTime = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 lastConveneTime = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message SaplingData {
-  int32 saplingId = 1;
-  int32 wateringCount = 2;
-  int32 upvoteCount = 3;
+  int32 saplingId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 wateringCount = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 upvoteCount = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message AdventureGroupBaseInfo {
-  string name = 1;
-  int32 level = 2;
-  string announce = 3;
-  int32 createTime = 4;
-  int32 status = 5;
-  repeated int32 label = 6;
-  bool autoAgreeHelperApply = 7;
-  int32 background = 8;
-  int64 owner = 9;
-  bool autoAgreeApply = 10;
-  int32 recruitTime = 11;
-  int32 changeOwnerTime = 12;
-  string chatGroupid = 13;
-  bool canSeeMemberAnnounce = 14;
-  romsg.AdventureGroupCreateType createType = 15;
-  romsg.SaplingData saplingData = 16;
-  romsg.Resource resourceData = 17;
-  int32 weekResetTime = 18;
-  int32 dayResetTime = 19;
-  romsg.ConveneData conveneData = 20;
-  repeated int32 availablebackground = 21;
-  romsg.SeasonState seasonState = 22;
-  int32 lastUpdateTime = 23;
+  string name = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 level = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string announce = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 createTime = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 status = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int32 label = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool autoAgreeHelperApply = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 background = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 owner = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool autoAgreeApply = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 recruitTime = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 changeOwnerTime = 12 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string chatGroupid = 13 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool canSeeMemberAnnounce = 14 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.AdventureGroupCreateType createType = 15 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.SaplingData saplingData = 16 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.Resource resourceData = 17 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 weekResetTime = 18 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 dayResetTime = 19 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.ConveneData conveneData = 20 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int32 availablebackground = 21 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.SeasonState seasonState = 22 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 lastUpdateTime = 23 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message EventData {
-  romsg.AdventureGroupEventType eventType = 1;
-  int32 eventTime = 2;
-  int64 eventFirstParam = 3;
-  int64 eventSecondParam = 4;
-  string eventThirdParam = 5;
+  romsg.AdventureGroupEventType eventType = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 eventTime = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 eventFirstParam = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 eventSecondParam = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string eventThirdParam = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DBAdventureGroupData {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  int64 uuid = 1;
-  int32 bornAreaId = 2;
-  romsg.AdventureGroupBaseInfo baseData = 3;
-  repeated romsg.PlayerBaseInfo memberData = 4;
-  repeated romsg.PlayerBaseInfo applyData = 5;
-  repeated romsg.EventData eventData = 7;
+  option (romsg.dbsync) = "AdventureGroup|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 uuid = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 bornAreaId = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.AdventureGroupBaseInfo baseData = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.PlayerBaseInfo memberData = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.PlayerBaseInfo applyData = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.EventData eventData = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message CreateAdventureGroupReq {
   string name = 1;
-  repeated int32 label = 2;
-  string announce = 3;
+  repeated int32 label = 2 [(romsg.max_count) = 10];
+  string announce = 3 [(romsg.max_count) = 100];
   bool autoAgreeHelperApply = 4;
   int32 background = 5;
   romsg.AdventureGroupCreateType createType = 6;
@@ -182,7 +186,7 @@ message DeleteAdventureGroupRes {
 }
 
 message PullHelperAdventureGroupListReq {
-  string searchName = 1;
+  string searchName = 1 [(romsg.max_count) = 100];
   int32 count = 2;
   int64 lastAdventureGroupId = 3;
   romsg.ConditionJoin conditionJoinData = 4;
@@ -229,13 +233,13 @@ message HelperAdventureGroupApplyerOpeRes {
 }
 
 message editData {
-  string announce = 2;
-  string name = 3;
-  string notice = 4;
+  string announce = 2 [(romsg.max_count) = 100];
+  string name = 3 [(romsg.max_count) = 100];
+  string notice = 4 [(romsg.max_count) = 100];
   bool autoAcceptApply = 5;
   bool autoCreateHelper = 6;
   bool canSeeAnnounce = 7;
-  repeated int32 label = 8;
+  repeated int32 label = 8 [(romsg.max_count) = 10];
   int32 background = 9;
 }
 
@@ -256,7 +260,7 @@ message ConditionJoin {
 }
 
 message PullAdventureGroupReq {
-  string searchName = 1;
+  string searchName = 1 [(romsg.max_count) = 100];
   int32 count = 2;
   int64 lastAdventureGroupId = 3;
   romsg.ConditionJoin conditionJoinData = 4;
@@ -310,7 +314,7 @@ message NormalOpeData {
   int64 invitedPlayerId = 4;
   bool isAgree = 5;
   string announce = 6;
-  repeated int32 label = 7;
+  repeated int32 label = 7 [(romsg.max_count) = 10];
   bool isFriend = 8;
   int64 inviteToken = 9;
   int64 inviter = 10;

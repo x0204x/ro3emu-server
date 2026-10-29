@@ -1,4 +1,18 @@
 syntax = "proto3";
 package romsg;
 import "google/protobuf/descriptor.proto";
+option go_package = "./romsg";
+
+extend google.protobuf.FieldOptions {
+  optional int32 save = 50001;
+  optional int32 self = 50002;
+  optional int32 other = 50003;
+  optional int32 max_count = 50004;
+}
+
+extend google.protobuf.MessageOptions {
+  string dbsync = 51239;
+  string clientsync = 51240;
+  string gentest = 51241;
+}
 

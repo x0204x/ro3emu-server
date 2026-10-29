@@ -2,6 +2,9 @@ syntax = "proto3";
 package romsg;
 import "MG_Common.proto";
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum MailCategoryTypeEnum {
   Invalid = 0;
@@ -53,7 +56,7 @@ message MailItemList {
 }
 
 message ClaimMailReq {
-  repeated string mail_uid = 1;
+  repeated string mail_uid = 1 [(romsg.max_count) = 199];
 }
 
 message ClaimMailRsp {

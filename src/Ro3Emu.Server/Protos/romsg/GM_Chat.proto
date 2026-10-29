@@ -1,5 +1,6 @@
 syntax = "proto3";
 package Tencent.IM;
+option optimize_for = LITE_RUNTIME;
 
 message TextChatMessage {
   string message_id = 1;

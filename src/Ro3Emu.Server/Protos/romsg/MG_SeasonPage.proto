@@ -1,17 +1,20 @@
 syntax = "proto3";
 package romsg;
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 message FunctionList {
-  repeated int32 functions = 1;
+  repeated int32 functions = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message SeasonPageHonorBadgeData {
-  int64 id = 1;
-  int64 getTime = 2;
-  int64 getSeasonId = 3;
-  int64 getPlayBookId = 4;
-  bool isPutOn = 5;
+  int64 id = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 getTime = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 getSeasonId = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 getPlayBookId = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool isPutOn = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message SeasonPageHistoryFunctionScoreData {
@@ -46,7 +49,7 @@ message SeasonPagePutOnHonorBadgeResp {
 }
 
 message BattleGloryRankRewardReq {
-  map<int32, int32> rankReward = 1;
+  map<int32, int32> rankReward = 1 [(romsg.max_count) = 100];
 }
 
 message BattleGloryRankRewardResp {

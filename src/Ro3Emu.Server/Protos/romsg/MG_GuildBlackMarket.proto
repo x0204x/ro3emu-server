@@ -1,44 +1,47 @@
 syntax = "proto3";
 package romsg;
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 message BlackMarketStack {
-  string stallUniqueId = 1;
-  int64 unitPrice = 3;
-  int64 totalCount = 4;
-  int64 remainCount = 5;
-  int64 displayAvailableTimeMs = 6;
-  int64 expireTimeMs = 7;
+  string stallUniqueId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 unitPrice = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 totalCount = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 remainCount = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 displayAvailableTimeMs = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 expireTimeMs = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message BlackMarketTradeRecord {
-  string orderId = 1;
-  int32 recordType = 2;
-  int64 unitPrice = 3;
-  int64 count = 4;
-  int64 fee = 5;
-  int64 counterpartGuildId = 6;
-  int64 tradeTimeMs = 7;
-  bool isRead = 8;
+  string orderId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 recordType = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 unitPrice = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 count = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 fee = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 counterpartGuildId = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 tradeTimeMs = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool isRead = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message BlackMarketPriceHistory {
-  int64 avgPrice = 1;
-  int32 dateHour = 2;
+  int64 avgPrice = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 dateHour = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message BlackMarketGuildData {
-  repeated romsg.BlackMarketStack stacks = 1;
-  repeated romsg.BlackMarketTradeRecord sellRecords = 2;
-  repeated romsg.BlackMarketTradeRecord buyRecords = 3;
+  repeated romsg.BlackMarketStack stacks = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.BlackMarketTradeRecord sellRecords = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.BlackMarketTradeRecord buyRecords = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message BlackMarketGlobalData {
-  int64 rollingAvgPrice = 1;
-  int64 recentAvgPrice = 2;
-  repeated int64 samplePrices = 3;
-  repeated romsg.BlackMarketPriceHistory priceHistory = 4;
-  repeated int64 sampleCounts = 5;
+  int64 rollingAvgPrice = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 recentAvgPrice = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 samplePrices = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.BlackMarketPriceHistory priceHistory = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 sampleCounts = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message GetBlackMarketBoothReq {
@@ -75,7 +78,7 @@ message ListOnBlackMarketRsp {
 }
 
 message UnlistFromBlackMarketReq {
-  string stallUniqueId = 1;
+  string stallUniqueId = 1 [(romsg.max_count) = 64];
   bool confirm = 2;
 }
 
@@ -142,7 +145,7 @@ message BlackMarketBuyRecordInfo {
 }
 
 message UpdateBlackMarketBoothReq {
-  string stallUniqueId = 1;
+  string stallUniqueId = 1 [(romsg.max_count) = 64];
   int64 unitPrice = 2;
   int64 count = 3;
   bool confirm = 4;

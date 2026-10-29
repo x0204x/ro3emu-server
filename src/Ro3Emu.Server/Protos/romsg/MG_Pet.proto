@@ -1,6 +1,9 @@
 syntax = "proto3";
 package romsg;
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum EPetCamp_Type {
   EPetCamp_None = 0;
@@ -23,13 +26,13 @@ enum PetStateSource_Type {
 }
 
 message PetData {
-  int32 petId = 1;
-  int32 level = 2;
-  int32 star = 3;
-  int32 starProgress = 4;
-  int64 levelExp = 5;
-  map<int64, int64> breakLv = 6;
-  bool isActiveCollect = 7;
+  int32 petId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 level = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 star = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 starProgress = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 levelExp = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int64, int64> breakLv = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool isActiveCollect = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message PetListUpdateNtf {

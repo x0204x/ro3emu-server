@@ -2,6 +2,9 @@ syntax = "proto3";
 package romsg;
 import "MG_Define.proto";
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum LanguageParamType {
   LanguageParamType_Str = 0;
@@ -634,13 +637,13 @@ message NullArg {
 }
 
 message LanguageParam {
-  romsg.LanguageParamType tp = 1;
-  string strParam = 2;
-  int64 intParam = 3;
+  romsg.LanguageParamType tp = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string strParam = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 intParam = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message LanguageData {
-  repeated romsg.LanguageParam param = 1;
+  repeated romsg.LanguageParam param = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message UserDataType {
@@ -653,37 +656,38 @@ message UserDataType {
 }
 
 message TimeSegment {
-  string stateName = 1;
-  int64 startTime = 2;
-  int64 endTime = 3;
+  string stateName = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 startTime = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 endTime = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message RolePublicBaseInfo {
-  int64 roleid = 1;
-  string name = 2;
-  int64 guildID = 3;
-  int64 headtitle = 5;
-  int64 title = 6;
-  int32 career = 8;
-  int64 offlinetime = 9;
-  int64 guildOfficial = 10;
-  int64 guildHonorOffcial = 11;
-  romsg.GuildHeadIcon guildIcon = 12;
-  int32 baseLevel = 13;
-  int32 jobLevel = 14;
-  bool isShowDetail = 15;
-  int32 AchievementLevel = 16;
-  int32 Gender = 17;
-  string ServerId = 18;
-  int32 dailyActivity = 19;
-  bool bSaveCharge = 20;
-  int32 avatarId = 21;
-  int32 avatarFrameId = 22;
-  int32 personalTitleId = 23;
-  romsg.PowerUnit power = 24;
-  map<int32, int32> appearances = 25;
-  romsg.SocialOutfitData socialOutfitData = 26;
+  int64 roleid = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string name = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 guildID = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 headtitle = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 title = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 career = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 offlinetime = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 guildOfficial = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 guildHonorOffcial = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.GuildHeadIcon guildIcon = 12 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 baseLevel = 13 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 jobLevel = 14 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool isShowDetail = 15 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 AchievementLevel = 16 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 Gender = 17 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string ServerId = 18 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 dailyActivity = 19 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool bSaveCharge = 20 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 avatarId = 21 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 avatarFrameId = 22 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 personalTitleId = 23 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.PowerUnit power = 24 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, int32> appearances = 25 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.SocialOutfitData socialOutfitData = 26 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   reserved 7 to 7;
+  reserved "powerfight";
 }
 
 message SocialOutfitData {
@@ -691,15 +695,15 @@ message SocialOutfitData {
 }
 
 message GuildHeadIcon {
-  int64 backgroundType = 1;
-  int64 iconType = 2;
+  int64 backgroundType = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 iconType = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   int32 star = 3;
 }
 
 message Vec3 {
-  float x = 1;
-  float y = 2;
-  float z = 3;
+  float x = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  float y = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  float z = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message StepSyncInfo {
@@ -851,15 +855,15 @@ message CellScenes {
 }
 
 message Property {
-  string name = 1;
+  string name = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   oneof val {
-    int64 vi64 = 2;
-    double vd64 = 3;
-    string vstr = 4;
+    int64 vi64 = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    double vd64 = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+    string vstr = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   }
-  int32 property_id = 5;
-  int64 data = 6;
-  int64 baseData = 7;
+  int32 property_id = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 data = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 baseData = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message AoIProperty {
@@ -869,24 +873,25 @@ message AoIProperty {
 }
 
 message AllProperty {
-  int64 entityID = 1;
-  repeated romsg.Property propertys = 2;
+  int64 entityID = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.Property propertys = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message PlanBaseProperty {
-  map<int32, int32> baseProperty = 1;
-  string planName = 2;
-  int32 attrPoints = 3;
-  int32 usedAttrPoints = 4;
-  romsg.PowerUnit power = 5;
-  int32 skillGenre = 6;
+  map<int32, int32> baseProperty = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  string planName = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 attrPoints = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 usedAttrPoints = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.PowerUnit power = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 skillGenre = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message BaseAttrInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  map<int32, romsg.PlanBaseProperty> allPlanBaseProperty = 1;
-  int32 curPlanIndex = 2;
-  int32 allAttrPoints = 3;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.PlanBaseProperty> allPlanBaseProperty = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 curPlanIndex = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 allAttrPoints = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message OnePropertyChange {
@@ -925,35 +930,36 @@ message ShapeRange {
 }
 
 message RoleBaseInfo {
-  int64 ro3Define_SyncVersion = 9998;
-  int64 id = 1;
-  string name = 2;
-  int32 sex = 3;
-  int32 career = 4;
-  int32 level = 5;
-  int64 flags1 = 6;
-  int32 jobLevel = 8;
-  int64 exp = 9;
-  int64 jobExp = 10;
-  int64 vipLevel = 12;
-  int64 lastFriendRecommendTime = 14;
-  int64 createTime = 15;
-  int64 lastLoginTime = 16;
-  int64 lastLogoutTime = 17;
-  int64 lastLoginSceneHash = 18;
-  romsg.Vec3 lastLoginSceneVec3 = 19;
-  int32 lastLoginSceneLineNum = 20;
-  int32 loginDayCumulativeNum = 21;
-  int32 achievementLevel = 22;
-  string account = 23;
-  string accountNick = 24;
-  romsg.PowerUnit curPower = 26;
-  romsg.PowerUnit historyMaxPower = 27;
-  int64 lastAtkPlayerTime = 28;
-  int64 bornArea = 29;
-  int64 patchVersion = 30;
-  bool excutedPatch = 31;
-  string country = 32;
+  option (romsg.clientsync) = "watchable|synallmark|synversion";
+  int64 ro3Define_SyncVersion = 9998 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 id = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  string name = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 sex = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 career = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 level = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 flags1 = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 jobLevel = 8 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 exp = 9 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 jobExp = 10 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 vipLevel = 12 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 lastFriendRecommendTime = 14 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 createTime = 15 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 lastLoginTime = 16 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 lastLogoutTime = 17 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 lastLoginSceneHash = 18 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.Vec3 lastLoginSceneVec3 = 19 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 lastLoginSceneLineNum = 20 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 loginDayCumulativeNum = 21 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 achievementLevel = 22 [(romsg.self) = 1];
+  string account = 23 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  string accountNick = 24 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.PowerUnit curPower = 26 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.PowerUnit historyMaxPower = 27 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 lastAtkPlayerTime = 28 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 bornArea = 29 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 patchVersion = 30 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool excutedPatch = 31 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string country = 32 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message ServerBasicInfo {
@@ -1002,29 +1008,29 @@ message DebugErrorNotify {
 
 message ItemAttrValue {
   oneof val {
-    int64 longVal = 1;
-    string strVal = 2;
+    int64 longVal = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+    string strVal = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
   }
 }
 
 message ItemBindInfo {
-  romsg.ItemBindType itemBindType = 1;
-  int64 expireTimeStamp = 2;
+  romsg.ItemBindType itemBindType = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 expireTimeStamp = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message ItemBaseInfo {
-  int64 itemGuid = 1;
-  int32 itemEntry = 2;
-  int32 stack = 3;
-  int64 expireTm = 4;
-  bool isLocked = 5;
-  romsg.ItemBindInfo itemBindInfo = 6;
-  int64 season = 7;
-  int32 playBook = 8;
-  map<int32, romsg.ItemAttrValue> itemInfos = 9;
-  map<int32, romsg.EnchantAttr> enchantment = 10;
-  map<int32, romsg.EnchantAttr> playBookEnchantment = 11;
-  int64 ownerGuildId = 12;
+  int64 itemGuid = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 itemEntry = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 stack = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 expireTm = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool isLocked = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.ItemBindInfo itemBindInfo = 6 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 season = 7 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 playBook = 8 [(romsg.save) = 1, (romsg.self) = 2, (romsg.other) = 0];
+  map<int32, romsg.ItemAttrValue> itemInfos = 9 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.EnchantAttr> enchantment = 10 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.EnchantAttr> playBookEnchantment = 11 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 ownerGuildId = 12 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message RepeatedItemBaseInfo {
@@ -1032,8 +1038,8 @@ message RepeatedItemBaseInfo {
 }
 
 message EnchantAttr {
-  map<int32, int32> attr = 1;
-  int64 getTime = 2;
+  map<int32, int32> attr = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 getTime = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message GetRewardNotify {
@@ -1070,220 +1076,221 @@ message ClientEnterAreaReq {
 }
 
 message AwardCheckData {
-  int32 serverLevel = 1;
-  int32 playerLevel = 2;
-  int32 job = 3;
-  repeated int64 listTask = 4;
-  int64 dropChange = 5;
-  romsg.AwardConditionParam params = 6;
+  int32 serverLevel = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 playerLevel = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 job = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 listTask = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 dropChange = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.AwardConditionParam params = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message ObjScoreBaseInfo {
-  int64 id = 1;
-  int32 area = 2;
-  string name = 3;
-  int32 job = 4;
-  romsg.AwardCheckData rewardData = 5;
+  int64 id = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 area = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string name = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 job = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.AwardCheckData rewardData = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message ObjScoreInfo {
-  map<int64, int64> score = 1;
+  map<int64, int64> score = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DungeonScoreInfo {
-  map<int64, romsg.ObjScoreInfo> scoreinfo = 1;
+  map<int64, romsg.ObjScoreInfo> scoreinfo = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DungeonTotalScoreInfo {
-  map<int32, romsg.DungeonAllRoleInfo> dungeonScoreInfo = 1;
+  map<int32, romsg.DungeonAllRoleInfo> dungeonScoreInfo = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DungeonStatisticsReq {
 }
 
 message DungeonRoleInfo {
-  romsg.ObjScoreBaseInfo roleBase = 1;
-  int64 totalDamage = 2;
-  int64 totalBeDamage = 3;
-  int64 totalCure = 4;
-  int64 totalscore = 5;
-  map<int32, int64> dicParams = 6;
-  int64 guildId = 7;
+  romsg.ObjScoreBaseInfo roleBase = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 totalDamage = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 totalBeDamage = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 totalCure = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 totalscore = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, int64> dicParams = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 guildId = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DungeonAllRoleInfo {
-  map<int64, romsg.DungeonRoleInfo> roleinfo = 1;
+  map<int64, romsg.DungeonRoleInfo> roleinfo = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DungeonGuildGvGInfo {
-  int64 guildId = 1;
-  repeated int64 playIds = 2;
-  int64 guildOccPoint = 3;
-  int64 guildScore = 4;
-  map<int32, int64> dicParams = 5;
+  int64 guildId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 playIds = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 guildOccPoint = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 guildScore = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, int64> dicParams = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DungeonReportSpecialData {
-  repeated int64 params = 1;
+  repeated int64 params = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DungeonTitleData {
-  repeated int64 playerList = 1;
-  repeated int64 sortList = 2;
-  map<int32, int64> titleData = 3;
+  repeated int64 playerList = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 sortList = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, int64> titleData = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DungeonStatisticsInfo {
-  int64 dungeonMapId = 1;
-  repeated romsg.DungeonRoleInfo dungeonRolesInfo = 2;
-  map<int64, romsg.DungeonGuildGvGInfo> dungeonGuildGvGInfos = 3;
-  map<int64, romsg.DungeonReportSpecialData> dungeonReportSpecialData = 4;
-  map<int64, romsg.DungeonTitleData> dungeonTitleData = 5;
+  int64 dungeonMapId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.DungeonRoleInfo dungeonRolesInfo = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.DungeonGuildGvGInfo> dungeonGuildGvGInfos = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.DungeonReportSpecialData> dungeonReportSpecialData = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.DungeonTitleData> dungeonTitleData = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DungeonStatisticsRes {
   int32 result = 1;
-  map<int64, romsg.DungeonStatisticsInfo> dungeonRolesInfo = 2;
+  map<int64, romsg.DungeonStatisticsInfo> dungeonRolesInfo = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message ExtraValueData {
-  int64 longValue = 1;
-  repeated int64 longListValue = 2;
+  int64 longValue = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 longListValue = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message StatisticsAwardCheckData {
-  int32 serverLevel = 1;
-  int32 playerLevel = 2;
-  int32 job = 3;
-  repeated int64 listTask = 4;
-  int64 dropChange = 5;
+  int32 serverLevel = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 playerLevel = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 job = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 listTask = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 dropChange = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message StatisticsRoleBaseInfo {
-  int64 id = 1;
-  int32 area = 2;
-  string name = 3;
-  int32 job = 4;
-  int64 guildId = 5;
-  int64 teamId = 6;
-  int32 groupId = 7;
-  romsg.StatisticsAwardCheckData rewardData = 8;
-  int32 campId = 9;
-  int32 avatarId = 10;
+  int64 id = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 area = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string name = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 job = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 guildId = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 teamId = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 groupId = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.StatisticsAwardCheckData rewardData = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 campId = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 avatarId = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message RoleStatisticsInfo {
-  romsg.StatisticsRoleBaseInfo baseInfo = 1;
-  int64 totalDamage = 2;
-  int64 totalBeDamage = 3;
-  int64 totalCure = 4;
-  int64 totalscore = 5;
-  map<int32, romsg.ExtraValueData> extraData = 6;
-  map<int32, romsg.ExtraValueData> killNpcData = 7;
+  romsg.StatisticsRoleBaseInfo baseInfo = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 totalDamage = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 totalBeDamage = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 totalCure = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 totalscore = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.ExtraValueData> extraData = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.ExtraValueData> killNpcData = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message TeamStatisticsInfo {
-  int64 teamId = 1;
-  string teamName = 2;
-  map<int32, romsg.ExtraValueData> extraData = 3;
-  map<int32, romsg.GroupStatisticsInfo> groupStatistics = 4;
-  map<int32, romsg.ExtraValueData> killNpcData = 5;
-  repeated int64 memberIds = 6;
+  int64 teamId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string teamName = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.ExtraValueData> extraData = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.GroupStatisticsInfo> groupStatistics = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.ExtraValueData> killNpcData = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 memberIds = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message GroupStatisticsInfo {
-  int64 groupId = 1;
-  map<int32, romsg.ExtraValueData> extraData = 2;
-  map<int32, romsg.ExtraValueData> killNpcData = 3;
-  repeated int64 memberIds = 4;
+  int64 groupId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.ExtraValueData> extraData = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.ExtraValueData> killNpcData = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 memberIds = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message GuildStatisticsInfo {
-  int64 guildId = 1;
-  string guildName = 2;
-  map<int32, romsg.ExtraValueData> extraData = 3;
-  map<int32, romsg.ExtraValueData> killNpcData = 4;
-  romsg.GuildHeadIcon guildIcon = 5;
+  int64 guildId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string guildName = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.ExtraValueData> extraData = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.ExtraValueData> killNpcData = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.GuildHeadIcon guildIcon = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message CampStatisticsInfo {
-  int64 campId = 1;
-  map<int32, romsg.ExtraValueData> extraData = 2;
-  map<int32, romsg.ExtraValueData> killNpcData = 3;
+  int64 campId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.ExtraValueData> extraData = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.ExtraValueData> killNpcData = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message SceneStatisticsInfo {
-  int64 sceneId = 1;
-  int32 dungeonId = 2;
-  map<int64, romsg.RoleStatisticsInfo> roleStatistics = 3;
-  map<int64, romsg.TeamStatisticsInfo> teamStatistics = 4;
-  map<int64, romsg.GuildStatisticsInfo> guildStatistics = 5;
-  map<int32, romsg.ExtraValueData> sceneStatistics = 6;
-  map<int32, romsg.ExtraValueData> killNpcData = 7;
-  map<int64, romsg.CampStatisticsInfo> campStatistics = 8;
+  int64 sceneId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 dungeonId = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.RoleStatisticsInfo> roleStatistics = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.TeamStatisticsInfo> teamStatistics = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.GuildStatisticsInfo> guildStatistics = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.ExtraValueData> sceneStatistics = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, romsg.ExtraValueData> killNpcData = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.CampStatisticsInfo> campStatistics = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DungeonStatisticsInfoWithDungeon {
-  int64 ro3Define_SaveVersion = 9999;
-  int64 ro3Define_DbTerm = 10000;
-  int64 statisticsId = 1;
-  map<int64, romsg.SceneStatisticsInfo> sceneStatistics = 2;
-  int32 dungeonId = 3;
-  int64 statisticsTime = 4;
+  option (romsg.dbsync) = "DungeonStatisticsInfo|ulong";
+  int64 ro3Define_SaveVersion = 9999 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 ro3Define_DbTerm = 10000 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 statisticsId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.SceneStatisticsInfo> sceneStatistics = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 dungeonId = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 statisticsTime = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DungeonResultInfo {
-  int32 firstResultType = 1;
-  int32 result = 2;
-  int64 winEntityId = 3;
-  int64 statisticsId = 4;
-  map<int64, romsg.SceneStatisticsInfo> sceneStatistics = 5;
-  int32 dungeonId = 6;
-  int64 statisticsTime = 7;
-  map<int64, romsg.DungeonTitleData> dungeonTitleData = 8;
-  int32 winCamp = 9;
-  int32 secondResultType = 10;
-  repeated int64 resultParam = 11;
-  map<string, string> metaData = 12;
-  romsg.DungeonMetaData dungeonMetaData = 13;
-  int64 dungeonStartTimestamp = 14;
+  int32 firstResultType = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 result = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 winEntityId = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 statisticsId = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.SceneStatisticsInfo> sceneStatistics = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 dungeonId = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 statisticsTime = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.DungeonTitleData> dungeonTitleData = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 winCamp = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 secondResultType = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 resultParam = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<string, string> metaData = 12 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.DungeonMetaData dungeonMetaData = 13 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 dungeonStartTimestamp = 14 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message DungeonMetaData {
 }
 
 message DungeonSnapshotData {
-  string snapshotId = 1;
-  int32 type = 2;
-  int32 reason = 3;
-  int32 stageId = 4;
-  int64 sceneEntryId = 5;
-  int64 timestamp = 6;
-  map<int64, romsg.SceneStatisticsInfo> sceneStatistics = 7;
-  int32 dungeonId = 8;
-  int64 statisticsId = 9;
-  map<string, string> extraData = 10;
-  int64 dungeonStartTimestamp = 11;
+  string snapshotId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 type = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 reason = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 stageId = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 sceneEntryId = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 timestamp = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.SceneStatisticsInfo> sceneStatistics = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 dungeonId = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 statisticsId = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<string, string> extraData = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 dungeonStartTimestamp = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message CdData {
-  map<int64, int64> data = 1;
+  map<int64, int64> data = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message AchievementInfo {
-  int64 achieveId = 1;
-  romsg.AchievementStatusType status = 2;
-  repeated int64 scores = 3;
-  int64 stamptime = 4;
-  repeated string names = 5;
+  int64 achieveId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.AchievementStatusType status = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated int64 scores = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 stamptime = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated string names = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message AchievementLevelInfo {
-  int64 type = 1;
-  int64 point = 2;
-  int32 level = 3;
-  int32 curLevelRewardLevel = 4;
-  int32 curHintLevel = 5;
+  int64 type = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 point = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 level = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 curLevelRewardLevel = 4 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 curHintLevel = 5 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message CommonBigMask {
@@ -1305,8 +1312,8 @@ message PlayerAvatarInfo {
 }
 
 message OfflineMessageData {
-  romsg.MSG_Type msgType = 1;
-  bytes data = 2;
+  romsg.MSG_Type msgType = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bytes data = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message SyncClientPlayerReviveInfoNtf {
@@ -1391,7 +1398,7 @@ message FormulaInfo {
 }
 
 message CheckSensitiveWordReq {
-  string content = 1;
+  string content = 1 [(romsg.max_count) = 1000];
   int32 key = 2;
 }
 
@@ -1466,17 +1473,17 @@ message DungeonStatisticsModuleReq {
 }
 
 message DungeonStatisticsModuleRsp {
-  int32 result = 1;
-  int64 statisticsId = 2;
-  map<int64, romsg.SceneStatisticsInfo> sceneStatistics = 3;
-  int32 dungeonId = 4;
-  int64 statisticsTime = 5;
-  map<int64, romsg.DungeonTitleData> dungeonTitleData = 6;
+  int32 result = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 statisticsId = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.SceneStatisticsInfo> sceneStatistics = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 dungeonId = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 statisticsTime = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.DungeonTitleData> dungeonTitleData = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message PlayerHonor {
-  int32 warzoneStar = 1;
-  map<int32, int32> warzoneStarGainTime = 2;
+  int32 warzoneStar = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int32, int32> warzoneStarGainTime = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message BroadCastNotify {
@@ -1492,8 +1499,8 @@ message GuildChallengeInitData {
 }
 
 message LongLongPair {
-  int64 key = 1;
-  int64 value = 2;
+  int64 key = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 value = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message CommonErrorNtf {
@@ -1534,9 +1541,9 @@ message CommonPublicVar {
 }
 
 message GveHuntingMatchGroup {
-  int64 groupId = 1;
-  repeated int64 guildIds = 2;
-  bool isSettled = 3;
+  int64 groupId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated int64 guildIds = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool isSettled = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message QueryEquipRankReq {
@@ -1568,11 +1575,11 @@ message CustomParam {
   }
 
   romsg.CustomParam.ParamType tp = 1;
-  string strParam = 2;
+  string strParam = 2 [(romsg.max_count) = 100];
   int64 intParam = 3;
   double doubleParam = 4;
   int64 longParam = 5;
-  repeated int64 listLongParam = 6;
+  repeated int64 listLongParam = 6 [(romsg.max_count) = 100];
   romsg.Vec3 vec3Param = 7;
 }
 

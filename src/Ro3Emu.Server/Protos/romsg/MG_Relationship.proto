@@ -1,5 +1,7 @@
 syntax = "proto3";
 package EZ;
+option optimize_for = LITE_RUNTIME;
+option go_package = "relationship/";
 
 enum RelationshipMsgID {
   RelationshipMsgNone = 0;

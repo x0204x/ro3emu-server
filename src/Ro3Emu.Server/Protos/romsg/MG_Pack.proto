@@ -3,6 +3,9 @@ package romsg;
 import "MG_Common.proto";
 import "FieldOption.proto";
 import "MG_Chat.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum ItemQualityType {
   ItemQualityType_None = 0;
@@ -198,8 +201,8 @@ enum MedicineAutoUseOpType {
 }
 
 message QuickUseSaveInfo {
-  int32 lieQuickUse = 1;
-  int32 itemEntry = 2;
+  int32 lieQuickUse = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 itemEntry = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message ArrangeItemReq {
@@ -222,8 +225,8 @@ message QuickUseSaveRes {
 }
 
 message ShortcutBarInfo {
-  int32 slotIndex = 1;
-  int64 itemGuid = 2;
+  int32 slotIndex = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int64 itemGuid = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message ShortcutBarSaveReq {
@@ -263,14 +266,14 @@ message SendItemCds {
 }
 
 message MedicinesAutoUse {
-  bool isOpen = 1;
-  int32 condition = 2;
-  repeated int32 itemEntrys = 3;
+  bool isOpen = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  int32 condition = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  repeated int32 itemEntrys = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message MedicinesAutoUseSet {
-  romsg.MedicinesAutoUse hpConfig = 1;
-  romsg.MedicinesAutoUse spConfig = 2;
+  romsg.MedicinesAutoUse hpConfig = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  romsg.MedicinesAutoUse spConfig = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message MedicinesAutoUseSetReq {
@@ -371,17 +374,17 @@ message ItemDecomposeResp {
 }
 
 message AutoDecomposeSetting {
-  map<int32, romsg.ItemAutoDecomposeSettingReq> tabOptionSetting = 1;
+  map<int32, romsg.ItemAutoDecomposeSettingReq> tabOptionSetting = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message OptionGroup {
-  repeated int32 options = 1;
+  repeated int32 options = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message ItemAutoDecomposeSettingReq {
-  int32 tabId = 1;
-  map<int32, romsg.OptionGroup> optionSetting = 2;
-  bool isOpen = 3;
+  int32 tabId = 1 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  map<int32, romsg.OptionGroup> optionSetting = 2 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
+  bool isOpen = 3 [(romsg.save) = 1, (romsg.self) = 1, (romsg.other) = 0];
 }
 
 message ItemAutoDecomposeSettingResp {

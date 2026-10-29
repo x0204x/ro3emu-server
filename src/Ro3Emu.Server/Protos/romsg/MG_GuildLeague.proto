@@ -3,6 +3,9 @@ package romsg;
 import "MG_Common.proto";
 import "MG_Guild.proto";
 import "FieldOption.proto";
+option optimize_for = LITE_RUNTIME;
+option go_package = "./romsg";
+option cc_generic_services = false;
 
 enum GuildLeagueStatus {
   GuildLeagueStatus_None = 0;
@@ -20,69 +23,69 @@ enum GuildLeagueResult {
 }
 
 message LeagueActivityInfo {
-  bool open = 1;
-  int64 startTime = 2;
-  int64 endTime = 3;
-  romsg.GuildLeagueStatus eStatus = 4;
-  int64 initTime = 5;
-  int64 preliminaryTime = 7;
-  int64 semiFinalTime = 8;
-  int64 finalTime = 9;
-  string errMsg = 10;
-  int32 index = 11;
-  int64 nextPreliminaryTime = 12;
-  int64 preliminaryEndTime = 13;
-  int64 semiFinalEndTime = 14;
-  int64 finalEndTime = 15;
+  bool open = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 startTime = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 endTime = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.GuildLeagueStatus eStatus = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 initTime = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 preliminaryTime = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 semiFinalTime = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 finalTime = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string errMsg = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 index = 11 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 nextPreliminaryTime = 12 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 preliminaryEndTime = 13 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 semiFinalEndTime = 14 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 finalEndTime = 15 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
   reserved 6 to 6;
 }
 
 message GuildLeagueMatchPair {
-  int64 blueGuildId = 1;
-  int64 redGuildId = 2;
+  int64 blueGuildId = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 redGuildId = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message GuildLeagueGuildMatchInfo {
-  int64 guildID = 1;
-  int64 power = 2;
-  int32 rank = 3;
-  int32 rankOrder = 4;
-  int32 matcharea = 5;
-  int32 score = 6;
-  romsg.GuildLeagueRankLift rankLift = 7;
+  int64 guildID = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 power = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 rank = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 rankOrder = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 matcharea = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 score = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.GuildLeagueRankLift rankLift = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message GuildLeagueMatchGroupInfo {
-  int64 rank = 1;
-  int64 rankorder = 2;
-  repeated romsg.GuildLeagueGuildMatchInfo guildData = 3;
-  repeated romsg.GuildLeagueMatchPair matchpair = 4;
-  repeated romsg.LeagueResultInfo resultInfo = 5;
-  repeated romsg.GuildLeagueMatchPair preliMatchpair = 6;
+  int64 rank = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 rankorder = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.GuildLeagueGuildMatchInfo guildData = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.GuildLeagueMatchPair matchpair = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.LeagueResultInfo resultInfo = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.GuildLeagueMatchPair preliMatchpair = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message GuildLeagueGuildInfo {
-  int64 guildID = 1;
-  int64 power = 2;
-  string name = 3;
-  romsg.GuildHeadIcon icon = 4;
-  int32 memberCount = 5;
-  int32 guildWeekActivity = 6;
-  int32 WarnNum = 7;
-  bool del = 8;
-  int32 areaId = 9;
-  romsg.GuildHistoryHonor honor = 10;
+  int64 guildID = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int64 power = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  string name = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.GuildHeadIcon icon = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 memberCount = 5 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 guildWeekActivity = 6 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 WarnNum = 7 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  bool del = 8 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  int32 areaId = 9 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  romsg.GuildHistoryHonor honor = 10 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message GuildSceneDungeonMap {
-  map<int64, int64> dungeonSceneMap = 1;
+  map<int64, int64> dungeonSceneMap = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message GuildLeagueTotalInfo {
-  romsg.LeagueActivityInfo activityInfo = 1;
-  repeated romsg.GuildLeagueMatchGroupInfo matchInfo = 2;
-  repeated romsg.GuildLeagueGuildInfo guildInfo = 3;
-  map<int64, romsg.GuildSceneDungeonMap> guildSceneMap = 4;
+  romsg.LeagueActivityInfo activityInfo = 1 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.GuildLeagueMatchGroupInfo matchInfo = 2 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  repeated romsg.GuildLeagueGuildInfo guildInfo = 3 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
+  map<int64, romsg.GuildSceneDungeonMap> guildSceneMap = 4 [(romsg.save) = 1, (romsg.self) = 0, (romsg.other) = 0];
 }
 
 message GetGuildLeagueMgrDataReq {
