@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Romsg;
+using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Game;
 
 namespace Ro3Emu.Tests;
@@ -38,6 +39,38 @@ internal static class QuestProbe
     /// <summary>Every target met: finished (a claimed quest) or already delivered (an automatic one).</summary>
     public static Task<TaskInfo> DoneAsync(WebApplication app, string account, long task) =>
         WaitAsync(app, account, task, i => i.Status is TaskState.Finish or TaskState.Delivery, "done");
+
+    /// <summary>等待已提交的完成次數；可重複任務可能已重新指派為 Running，不能只等 Finish／Delivery。</summary>
+    public static async Task<TaskInfo> DeliveredAsync(WebApplication app, string account, long task, int count = 1)
+    {
+        var deadline = DateTime.UtcNow + Wait;
+        while (true)
+        {
+            var value = await app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+            {
+                var session = Online(app, account);
+                return Task.FromResult((Count: session?.Tasks?.CompleteTaskNum.GetValueOrDefault(task) ?? 0,
+                    Info: session?.Tasks?.Infos.GetValueOrDefault(task)?.Clone()));
+            });
+            if (value.Count > count) throw new InvalidOperationException($"{account} quest {task}: expected {count} committed deliveries, got {value.Count}");
+            if (value.Count == count && value.Info != null) return value.Info;
+            if (DateTime.UtcNow > deadline) throw new TimeoutException($"{account} quest {task}: no committed delivery {count}");
+            await Task.Delay(25);
+        }
+    }
+
+    /// <summary>只計算該角色／任務實際提交的獎勵來源，不把重新指派的 Running 列當成未交付。</summary>
+    public static long AwardSourceCount(WebApplication app, long role, long task)
+    {
+        using var db = app.Services.GetRequiredService<AccountStore>().Open();
+        using var command = db.CreateCommand();
+        command.CommandText = """
+            SELECT COUNT(*) FROM operation_source s JOIN operation_receipt r ON r.operation_id=s.operation_id
+            WHERE s.source_key LIKE $prefix AND r.command_kind='cd13e/quest-award'
+            """;
+        command.Parameters.AddWithValue("$prefix", $"task/{role}/{task}/%");
+        return (long)command.ExecuteScalar()!;
+    }
 
     public static async Task GmAsync(string http, string account, string command)
     {

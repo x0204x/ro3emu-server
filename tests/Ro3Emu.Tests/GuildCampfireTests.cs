@@ -112,6 +112,7 @@ public sealed class GuildCampfireTests : IAsyncLifetime
             Name = "Campers", Icon = new GuildHeadIcon { BackgroundType = 100101, IconType = 200101 },
         });
         Assert.Equal(0, (await Next(alice, GuildService.Create, GuildCreateResp.Parser)).Result);
+        await Gm(alice, "!quest done 10105090"); // 開啟每日活動，讓 3004 的五次上限與重新指派真正參與本案。
         await QuestProbe.AcceptAsync(_app, _http, "alice", 1602000); // [106018,1] "Guild Event - Campfire Quest"
         // The guild home itself is always open (GuildHomeService); before 20:00 it shows no event content.
         await alice.SendGameAsync(DungeonService.Enter, new EnterDungeonReq { SceneEntry = GuildCampfireService.Dungeon });
@@ -135,7 +136,12 @@ public sealed class GuildCampfireTests : IAsyncLifetime
         var seed = ao.Bases.First(b => b.EntityTemplateID == 7020001);
         Assert.Equal(1, (await Next(alice, GuildCampfireService.Stage, GuildCampFireStageInfo.Parser)).NowStage);
         // Present at the bonfire as the event starts: quest target 106018 is met.
-        await QuestProbe.DoneAsync(_app, "alice", 1602000); // delivery waits on its action 115
+        var repeated = await QuestProbe.DeliveredAsync(_app, "alice", 1602000);
+        // 115 提交後每日活動只累計一次；尚未達五次，Running／0 是正常重新指派，並非未發獎。
+        Assert.Equal(TaskState.Running, repeated.Status);
+        Assert.Equal(0, repeated.CompleteNum[0]);
+        Assert.Equal(1, Session(alice).DailyRows!.ActivityData[3004].TaskCompleteTimes);
+        Assert.Equal(1, QuestProbe.AwardSourceCount(_app, (long)alice.Self!.Uuid, 1602000));
 
         await alice.SendGameAsync(GuildCampfireService.Info, new GetGuildCampFireReq());
         var info = await Next(alice, GuildCampfireService.Info, GetGuildCampFireRsp.Parser);
@@ -238,6 +244,9 @@ public sealed class GuildCampfireTests : IAsyncLifetime
 
         await alice.DisposeAsync();
         await using var again = await InWorld("Alice", create: false);
+        Assert.Equal(TaskState.Running, (await QuestProbe.DeliveredAsync(_app, "alice", 1602000)).Status);
+        Assert.Equal(1, Session(again).DailyRows!.ActivityData[3004].TaskCompleteTimes);
+        Assert.Equal(1, QuestProbe.AwardSourceCount(_app, (long)again.Self!.Uuid, 1602000));
         await again.SendGameAsync(GuildCampfireService.PlayerInfo, new NullArg());
         Assert.Equal(1, (await Next(again, GuildCampfireService.PlayerInfo, CampFirePlayerInfo.Parser)).AddSeedCount);
         _clock.Advance(600);

@@ -6,6 +6,9 @@ namespace Ro3Emu.Server.Accounts;
 internal sealed record DungeonTaskClear(string SourceKey, long RoleId, long RoomId, long SceneEntry,
     IReadOnlyList<DungeonTaskClearTarget> Targets, int Version = 1)
 {
+    // G TaskConfig._kProgressTarget 的副本通關目標；快照只接受這一種來源。
+    private const long DungeonPassTarget = 101018;
+
     internal byte[] Encode()
     {
         Validate();
@@ -28,7 +31,7 @@ internal sealed record DungeonTaskClear(string SourceKey, long RoleId, long Room
             || Targets == null || Targets.Count > 1024
             || Targets.Select(t => (t.TaskId, t.Goal)).Distinct().Count() != Targets.Count
             || Targets.Any(t => t.TaskId <= 0 || t.StartTime < 0 || t.CompleteCount < 0 || t.Goal < 0
-                || t.Required <= 0 || t.Target is not [101018, var scene, var required]
+                || t.Required <= 0 || t.Target is not [DungeonPassTarget, var scene, var required]
                 || scene != SceneEntry || required != t.Required))
             throw new InvalidDataException("副本任務快照版本或目標不符。");
     }

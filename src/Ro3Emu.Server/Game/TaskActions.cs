@@ -30,9 +30,9 @@ public sealed partial class TaskService
     /// Host-1 effects. 20's [item,count] is an inferred inventory cost, committed with delivery.
     /// 621 tracks cutscene state; no invented packet, invulnerability or movement rule. The resource semantics of
     /// 54/412 stage mount ride/recycle state with the same award transaction; other unsupported actions hold delivery.
-    /// 115 MarkGuildActivityJoin [activity] marks the role as having joined a GuildActivityConfig activity (1601000, the
-    /// guild caravan quest: 3000). The client never reads such a mark, so it is reported through
-    /// <see cref="GuildActivityJoined"/> after the delivery commits, for the activity's own bookkeeping (inferred).
+    /// 115 的參數是 DailyActivityConfig 識別碼，例如 1601010 的 3001；GuildActivityConfig 的對應列為 1010，
+    /// 其 _iDailyActivity 才是 3001。保留原參數於交付提交後通知，不能用 GuildActivityConfig 的列鍵阻擋交付。
+    /// 原服額外的活動記帳規則仍未知；此處沒有新增點數或推定狀態。
     /// This method only builds a plan, so a refusal cannot mutate action state or consume inventory.
     /// </summary>
     private bool TryDeliveryActions(GameSession session, Ownership.OwnerContext context, TaskDef def,
@@ -71,7 +71,7 @@ public sealed partial class TaskService
                 case 621 when action.Length == 1: cutScene = true; break;
                 case MarkGuildActivityJoin when action.Length == 2
                     && long.TryParse(action[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out long activity)
-                    && GuildActivityConfig.Get(_data, activity) != null:
+                    && DailyActivityConfig.Get(_data, activity) != null:
                     guildActivities.Add(activity);
                     break;
                 default:
@@ -100,7 +100,7 @@ public sealed partial class TaskService
     /// <summary>ActionConfig 115 MarkGuildActivityJoin (_iEXECHost 1).</summary>
     internal const int MarkGuildActivityJoin = 115;
 
-    /// <summary>A delivered task's 115 MarkGuildActivityJoin: the role and the GuildActivityConfig id.</summary>
+    /// <summary>任務交付提交後的 115 通知：角色與原動作指定的 DailyActivityConfig 識別碼。</summary>
     public List<Action<GameSession, long>> GuildActivityJoined { get; } = [];
 
     private readonly HashSet<(long Role, long Task, string Reason)> _heldLogged = [];

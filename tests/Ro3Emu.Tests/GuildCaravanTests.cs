@@ -368,6 +368,8 @@ public sealed class GuildCaravanTests : IAsyncLifetime
             {
                 Assert.True(session.DailyRows!.ActivityData[101].TaskCompleteTimes == 1,
                     $"daily={session.DailyRows.ActivityData[101].TaskCompleteTimes}; task={session.Tasks!.Infos.GetValueOrDefault(500080)}; completed={session.Tasks.CompleteTaskNum.GetValueOrDefault(500080)}; function={_app.Services.GetRequiredService<FunctionService>().IsOpen(session, 1320)}");
+                await QuestProbe.DeliveredAsync(_app, "alice", 1601000);
+                Assert.Equal(1, QuestProbe.AwardSourceCount(_app, (long)alice.Self!.Uuid, 1601000));
             }
         }
         Assert.Equal(5, show.CurRound);
@@ -377,6 +379,9 @@ public sealed class GuildCaravanTests : IAsyncLifetime
         Assert.Equal(ErrorCodes.CaravanDeparted,
             (await Next(alice, GuildCaravanService.Depart, GuildCatShopDepartResp.Parser)).Result);
         Assert.Equal(1, session.DailyRows!.ActivityData[101].TaskCompleteTimes);
+        // 公會任務 3000 的上限是一，後四次出車不能再次建立 115 的任務獎勵來源。
+        Assert.Equal(1, session.Tasks!.CompleteTaskNum.GetValueOrDefault(1601000));
+        Assert.Equal(1, QuestProbe.AwardSourceCount(_app, (long)alice.Self!.Uuid, 1601000));
     }
 
     [ClientDataFact]

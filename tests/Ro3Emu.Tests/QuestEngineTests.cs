@@ -104,7 +104,7 @@ public sealed class QuestEngineTests : IAsyncLifetime
     [ClientDataFact]
     public async Task TheCaravanQuestMarksItsGuildActivityJoinAndIsDelivered()
     {
-        // 1601000's _kEXECAction [115,3000]: ActionConfig 115 MarkGuildActivityJoin with GuildActivityConfig 3000 (#166).
+        // 1601000 的 [115,3000] 指 DailyActivityConfig 3000；其 GuildActivityConfig 列鍵為 1000。
         await using var bot = await InWorld();
         var joined = new List<long>();
         Service<TaskService>().GuildActivityJoined.Add((_, activity) => joined.Add(activity));

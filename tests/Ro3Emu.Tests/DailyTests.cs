@@ -704,6 +704,8 @@ public sealed class DailyTests : IAsyncLifetime
         });
         Assert.Equal(20, await State(s => s.Progress!.Currency.GetValueOrDefault(5)));
         Assert.Equal(5, await State(s => s.DailyRows!.ActivityData[105].TaskCompleteTimes));
+        Assert.Equal(5, await State(s => s.Tasks!.CompleteTaskNum.GetValueOrDefault(500010)));
+        Assert.Equal(5, QuestProbe.AwardSourceCount(_app, (long)bot.Self!.Uuid, 500010));
     }
 
     [ClientDataFact]
