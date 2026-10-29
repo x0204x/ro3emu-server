@@ -6,7 +6,7 @@ namespace Ro3Emu.Tests;
 
 public sealed partial class DungeonTests
 {
-    // Rebuild exactly the 31037 bases/leaves the client holds; no server monster list supplies these target IDs.
+    // 依客戶端實際收到的 31037 進出視野重建清單，不從伺服器怪物表取得目標 ID。
     private static async Task<EntityBase[]> ClientAirships(BotClient bot, int expected = 2)
     {
         var deadline = DateTime.UtcNow + Wait;

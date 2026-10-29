@@ -21,7 +21,7 @@ public sealed record MonsterTemplate(
     public float BattleCallRange { get; init; }
     /// <summary>AIConfig _iBattleCallResponse 1: it answers such a call.</summary>
     public bool AnswersBattleCall { get; init; }
-    /// <summary>Instance-specific target visibility for authored long-range encounters, not a field NPC default.</summary>
+    /// <summary>僅供指定遠距戰鬥執行個體使用的可見性，不作為野外 NPC 預設。</summary>
     internal bool VisibleAcrossScene { get; init; }
 }
 

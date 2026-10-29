@@ -27,7 +27,7 @@ public abstract class WorldUnit
     public float Y { get; set; }
     public float Z { get; set; }
     public float Face { get; set; }
-    /// <summary>A scoped encounter target that must be registered even beyond ordinary AOI, in this runtime only.</summary>
+    /// <summary>僅在同一執行房間內，讓指定戰鬥目標超出一般視野後仍可註冊。</summary>
     internal virtual bool VisibleAcrossScene => false;
 
     /// <summary>The grid cell the unit is filed under (MapInstance).</summary>
