@@ -471,6 +471,9 @@ public sealed class SkillService
                     && assigned.SkillLevel > Initial(preview, group)) preview.Skills[group] = assigned.SkillLevel;
             plan.SkillPoints.Clear();
             foreach (var (rank, points) in SkillPoints(preview)) plan.SkillPoints[rank] = Math.Max(0, points);
+            // A rebuilt plan (a job change, an invalid saved plan) keeps no bar, Auto-Battle or queue slot for a skill
+            // the plan no longer has: the client casts its AutoLoadSkill list as is and every cast came back 3002.
+            PruneLoads(plan, preview);
             if (plan.SkillQueue.Count == 0) plan.SkillQueue[0] = new SkillData();
             if (plan.ManualLoadSkill.Count == 0) plan.ManualLoadSkill.Add(new SkillData());
             if (plan.AutoLoadSkill.Count == 0) plan.AutoLoadSkill.Add(new SkillData());

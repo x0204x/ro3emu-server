@@ -90,6 +90,30 @@ public sealed class QuestEngineTests : IAsyncLifetime
     }
 
     [ClientDataFact]
+    public async Task TheNovicePassActivityTaskGrantsTheAwardConfigRowItNames()
+    {
+        // 9201101's _iAward 920160 has no MultiverseGroupConfig row; AwardConfig 920160 is 2000 novice pass EXP (#166).
+        await using var bot = await InWorld();
+        await Gm("!quest done 9201101");
+        Assert.True(await Read(s => TaskService.IsDelivered(s, 9201101)));
+        var plan = Service<AwardService>().ResolveTask(Alice, 920160, null);
+        Assert.Equal(920160, plan.AwardId);
+        Assert.Contains(plan.Grants, g => g.Entry == NewActivityService.NovicePassExpCurrency && g.Count == 2000);
+    }
+
+    [ClientDataFact]
+    public async Task TheCaravanQuestMarksItsGuildActivityJoinAndIsDelivered()
+    {
+        // 1601000's _kEXECAction [115,3000]: ActionConfig 115 MarkGuildActivityJoin with GuildActivityConfig 3000 (#166).
+        await using var bot = await InWorld();
+        var joined = new List<long>();
+        Service<TaskService>().GuildActivityJoined.Add((_, activity) => joined.Add(activity));
+        await Gm("!quest done 1601000");
+        Assert.True(await Read(s => TaskService.IsDelivered(s, 1601000)));
+        Assert.Equal([3000L], joined);
+    }
+
+    [ClientDataFact]
     public async Task NoviceTrialGrantsExactlySevenExpAndReplaySurvivesRelog()
     {
         long role;

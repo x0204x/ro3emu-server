@@ -140,7 +140,7 @@ public sealed class EquipmentRefineEconomyTests : IAsyncLifetime
         }
         finally { release.TrySetResult(); accounts.BeforeOwnedCommitForTest = null; }
         var reply = await command.WaitAsync(Wait);
-        Assert.Equal((0, 5, 500), (reply.Result, reply.RefineLv, reply.RefineLuckyAdd));
+        Assert.Equal((0, 0, 500), (reply.Result, reply.RefineLv, reply.RefineLuckyAdd)); // a failed roll leaves refineLv unset
         Assert.Equal(500, Saved().Luck[Grid]);
         Assert.Equal(beforeMaterial - cost.Material, MaterialCount());
         Assert.Equal(beforeCurrency - cost.Currency, Currency());
@@ -180,7 +180,7 @@ public sealed class EquipmentRefineEconomyTests : IAsyncLifetime
         var opening = Cut();
         Service<AccountStore>().FailNextEconomyAcknowledgementForTest();
         var reply = await Refine(bot);
-        Assert.Equal((0, 5, 500), (reply.Result, reply.RefineLv, reply.RefineLuckyAdd));
+        Assert.Equal((0, 0, 500), (reply.Result, reply.RefineLv, reply.RefineLuckyAdd)); // a failed roll leaves refineLv unset
         Assert.Equal((5, 500), (Saved().Refine[Grid], Saved().Luck[Grid]));
         Assert.Equal(beforeMaterial - cost.Material, MaterialCount());
         Assert.Equal(beforeCurrency - cost.Currency, Currency());

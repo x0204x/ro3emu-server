@@ -447,6 +447,7 @@ public sealed partial class DungeonService
         }
         if (a.Dracula is { } dracula) snapshot.Vars.Add(dracula.Vars());
         if (FunctionButtons(a) is { } buttons) snapshot.Vars.Add(buttons);
+        if (GuideWays(a) is { } ways) snapshot.Vars.Add(ways);
         if (a.Preparing)
         {
             // (inferred) The preparation phase is the map's initializing state, ending when the boss fight begins.
@@ -958,6 +959,7 @@ public sealed partial class DungeonService
                 {
                     if (committed && goods.Count > 0) await _character.ItemsChangedAsync(s, stats: false);
                     await s.SendGameAsync(Result, result);
+                    if (success) await HideGuideWaysAsync(s, a);
                     // The personal award and Completed quest callbacks have already committed before 30403.
                     if (success && a.Plan.SceneEntry == TigerKingSceneEntry && a.Plan.Multi == null)
                         ScheduleTigerKingReturn(a, s, roleId);

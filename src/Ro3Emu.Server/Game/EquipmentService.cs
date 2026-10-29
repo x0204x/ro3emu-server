@@ -164,9 +164,13 @@ public sealed partial class EquipmentService
             }
             levels = session.EquipLevels;
             _log.LogInformation("{Name} refines grid {Grid} +{Level}: {Result}", session.Role!.Name, grid, level, error?.Why ?? (success ? "success" : $"failed, now +{levels.Refine.GetValueOrDefault(grid)}"));
+            // LC_DAL_Equipment._processRefineEquipments plays the success settlement (its animation and sound) for a
+            // refineLv above the stored level and the failure one only when refineLv is absent; a failed roll therefore
+            // leaves refineLv unset (0), and the client keeps its level until the 5007 grid sync that follows.
             await session.SendGameAsync(Refine, new RefineEquipmentRsp
             {
-                Result = error?.Code ?? 0, EquipPos = req.EquipPos, RefineLv = levels.Refine.GetValueOrDefault(grid),
+                Result = error?.Code ?? 0, EquipPos = req.EquipPos,
+                RefineLv = error == null && !success ? 0 : levels.Refine.GetValueOrDefault(grid),
                 RefineEffectLv = _character.Resonance(session, "RefiningEffectTable"), RefineLuckyAdd = levels.Luck.GetValueOrDefault(grid),
             });
             await AfterUpgradeAsync(session, error == null);

@@ -136,6 +136,12 @@ Reconstructed story encounters (`ReconstructedDungeons`, switch `Ro3Emu:Reconstr
   tracker follows the Culvert quests with its counter, the story Golden Thief Bug fights back with its borrowed
   attack, the elite Scorpion run ends in DungeonResSuccess, leaving returns to the field. The client shows no result
   window for these Plane scenes (as with Payon Forest).
+- Guide arrows: a solo story scene whose scene editor file has guide routes (`m_kGuidePoints`, e.g. the Culvert
+  plane's 19 and 21, the Geffen field plane's 17) sets dungeon var 10021 `PGuideWayList` to their ids in 30401
+  (`LC_DunGeon_VarDefine.lua:736-741`, processed by `LC_SceneCom_GuideGfx`, which draws each route as the guide arrow
+  line), and to an empty list in a 30404 var change after the clear. **(inferred)**: the scripts that set 10021 are
+  not in the client, so all routes show from the start (a scene's routes chain into one path: the Culvert's 19 ends
+  where 21 starts). `DungeonService.GuideWays`, `SceneEditorGuides`.
 - Solo tuning: the story bosses were built for the original's allied NPC
   companions (mostly not reproduced); untuned, a level-matched player died in 3-36 s and needed 3-38 minutes to win.
   `soloTuning` scales each story template's HP and attack (basis points) so a Swordman at the boss level, every stat

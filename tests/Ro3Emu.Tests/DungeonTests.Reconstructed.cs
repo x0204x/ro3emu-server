@@ -1,9 +1,11 @@
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Romsg;
 using Ro3Emu.Bot;
 using Ro3Emu.Server;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Game;
 using Ro3Emu.Server.Maps;
 
@@ -74,6 +76,43 @@ public sealed partial class DungeonTests
         var result = await Next(alice, DungeonService.Result, DungeonResNotify.Parser);
         Assert.Equal((DungeonRes)1, result.Res);
         Assert.DoesNotContain(Service<World>().AllUnits(), m => m.InstanceId == instance && m is MonsterUnit);
+    }
+
+    [ClientDataFact]
+    public async Task ASoloStoryPlaneShowsItsGuideRoutesUntilItIsCleared()
+    {
+        // The Culvert plane's scene editor (sc_prt_sewb1_001_pl01) has the guide routes 19 and 21.
+        const long scene = 1015051;
+        await using var alice = await InWorld("Alice");
+        await Gm(alice, "!lvl 99");
+        Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
+        long instance = await Load(alice, scene);
+        var running = await Next(alice, DungeonService.BaseInfo, DungeonBaseInfoNotify.Parser,
+            info => info.DungeonId == instance && info.Vars.Any(v => v.VarId == DungeonService.GuideWayVar));
+        long[] routes = [19, 21];
+        Assert.Equal(routes, running.Vars.Single(v => v.VarId == DungeonService.GuideWayVar).Vi64);
+
+        using var hidden = alice.Inbox.Expect(e => e.IsGame(DungeonService.Event)
+            && DungeonEventNotify.Parser.ParseFrom(e.Body).Vars.Any(v => v.VarId == DungeonService.GuideWayVar));
+        var plan = Session(alice).DungeonAttempt!.Plan;
+        for (int wave = 0; wave < plan.Waves.Count; wave++)
+            foreach (var actor in await WaveIn(instance, plan.Waves[wave].Spawns.Count)) await Kill(alice, actor);
+        Assert.Equal((DungeonRes)1, (await Next(alice, DungeonService.Result, DungeonResNotify.Parser)).Res);
+        var cleared = DungeonEventNotify.Parser.ParseFrom((await hidden.WaitAsync(TimeSpan.FromSeconds(10))).Body);
+        Assert.Empty(cleared.Vars.Single(v => v.VarId == DungeonService.GuideWayVar).Vi64);
+    }
+
+    [Fact]
+    public void GuideRoutesAreTheSceneEditorRoutesWithAPath()
+    {
+        using var editor = JsonDocument.Parse("""
+            { "m_kGuidePoints": { "21": { "pointList": [ {}, {} ] }, "19": { "pointList": [ {}, {}, {} ] },
+              "7": { "pointList": [ {} ] }, "x": { "pointList": [ {}, {} ] }, "8": null } }
+            """);
+        long[] routes = [19, 21];
+        Assert.Equal(routes, SceneEditorGuides.RouteIds(editor.RootElement));
+        using var none = JsonDocument.Parse("{}");
+        Assert.Empty(SceneEditorGuides.RouteIds(none.RootElement));
     }
 
     [ClientDataFact]

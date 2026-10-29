@@ -486,6 +486,9 @@ public sealed class DungeonCatalog(GameData data, WorldData worldData, MonsterSe
     public MapPoint? ScenePoint(long scene, long point) =>
         worldData.Map(scene)?.Points.TryGetValue(point, out var p) == true ? p : null;
 
+    /// <summary>The guide routes (m_kGuidePoints) of the scene's scene editor file.</summary>
+    public IReadOnlyList<long> GuideRoutes(long scene) => worldData.Map(scene)?.GuideRoutes ?? [];
+
     /// <summary>A scene-editor region (m_kRegins) of the scene's map.</summary>
     public MapRegion? SceneRegion(long scene, long region) =>
         worldData.Map(scene)?.Regions.TryGetValue(region, out var r) == true ? r : null;

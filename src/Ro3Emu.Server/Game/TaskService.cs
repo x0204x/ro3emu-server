@@ -574,7 +574,8 @@ public sealed partial class TaskService
         var daily = PrepareDailyDelivery?.Invoke(session, id);
         if (IsDelivered(session, id) && daily?.MirrorChanged != true) return ErrorCodes.TaskStatus;
         var def = Defs()[id];
-        if (!TryDeliveryActions(session, context, def, out var costs, out bool cutScene, out int? questMount)) return ErrorCodes.TaskRequirements;
+        if (!TryDeliveryActions(session, context, def, out var costs, out bool cutScene, out int? questMount, out var guildActivities))
+            return ErrorCodes.TaskRequirements;
         foreach (var target in def.Targets.Where(t => t[0] == TSubmit))
         {
             if (!Supported(target) || target[2] > int.MaxValue) return ErrorCodes.TaskRequirements;
@@ -593,7 +594,7 @@ public sealed partial class TaskService
             // 5021 is the authoritative season snapshot sent to this session, also used by client previews.
             int? playBook = session.Synced.GetValueOrDefault(SeasonService.SeasonSync) is DBSeasonInfo { Current: { } current }
                 ? (int)current.PlayBookId : null;
-            var plan = _awards.Resolve(session, def.Award, playBook);
+            var plan = _awards.ResolveTask(session, def.Award, playBook);
             var runtime = new TaskRuntimeState { CompletedGuides = session.TaskRuntime.CompletedGuides.ToHashSet(), InCutScene = session.InCutScene || cutScene };
             string awardSource = $"task/{session.Role!.Id}/{id}/{next.CompleteTaskNum[id]}/" +
                 $"{session.Daily?.DailyEpoch ?? 0}/{session.Daily?.WeeklyEpoch ?? 0}";
@@ -611,7 +612,7 @@ public sealed partial class TaskService
         }
         catch (AwardResolutionException e)
         {
-            _log.LogWarning("Task {Task} reward held: {Reason}", id, e.Message);
+            LogHeldOnce(session, id, "reward held: " + e.Message);
             return ErrorCodes.TaskRequirements;
         }
         catch (Exception e) when (daily != null || _roles.HasTaskFollowup(session.Role!.Id))
@@ -623,6 +624,8 @@ public sealed partial class TaskService
         if (daily?.MirrorChanged == true && SyncDailyDelivery is { } sync) await sync(session);
         if (cutScene) session.InCutScene = true;
         if (deliveredPlan != null) foreach (var handler in QuestDelivered) handler(session, id, deliveredPlan);
+        foreach (long activity in guildActivities)
+            foreach (var handler in GuildActivityJoined) handler(session, activity);
         _log.LogInformation("{Name} delivers task {Task} {TaskName}: exp {Exp}", session.Role?.Name, id,
             _data.TextOf(_data.Row("TaskConfig", id)!.Value, "_iName"), def.Exp);
         return 0;

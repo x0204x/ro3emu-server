@@ -63,6 +63,18 @@ public sealed class AwardService(GameData data, IOptions<ServerOptions>? options
         return ResolveAward(progress, multiverseGroupId, awardId, serverOpenDay);
     }
 
+    /// <summary>
+    /// A TaskConfig _iAward. Lua_CFG_TaskConfig.GetTaskAward reads it as a MultiverseGroupConfig id
+    /// (Lua_CFG_MultiverseGroupConfig.GetSeasonAwardPreview). One task names an AwardConfig row with no
+    /// MultiverseGroupConfig row instead: 9201101 (the novice pass's 60 daily activity, _iTaskSonType 9201), _iAward
+    /// 920160 = 2000 novice pass EXP. The client then previews nothing (GetSeasonRewardType logs the missing row); the
+    /// task grants the AwardConfig row it names (inferred), as the novice pass 9201 names its awards directly.
+    /// </summary>
+    public AwardPlan ResolveTask(GameSession session, long award, int? playBookId)
+        => award != 0 && data.Row("MultiverseGroupConfig", award) == null && data.Row("AwardConfig", award) != null
+            ? ResolveDirect(session, award)
+            : Resolve(session, award, playBookId);
+
     /// <summary>Resolve a direct AwardConfig ID, used only where BattlePassRewardConfig 9201 names awards directly.</summary>
     public AwardPlan ResolveDirect(GameSession session, long awardId) => ResolveAward(session?.Progress, 0, awardId);
 

@@ -6,7 +6,7 @@ This page records the TaskConfig and award-chain evidence for quest Base and Job
 
 The audited Asia and Genesis exports each contain 1,072 TaskConfig rows. In both exports, the 358 non-empty `_kEXP` values are type-1 tuples (`[1, amount]`); none is type 2. The two exports have no per-task difference in `_kEXP` or `_iAward`. Expanding all 632 tasks that carry `_iAward` through the default and playbook 101-107 selections covers 5,056 routes. Four playbook selections choose a different award from their default.
 
-The full-route audit followed `TaskConfig._iAward -> MultiverseGroupConfig -> AwardConfig -> DropPoolConfig -> DropGroupConfig`, including level-banded pool rows. The audited Asia export resolves all 5,056 routes. The audited Genesis export resolves 5,048: task 9201101 names group 920160, which Genesis lacks, across all eight selections. Asia has the identity group and both exports have AwardConfig 920160 (item 920132 x 2,000), but the missing Genesis group is not permission to invent a fallback. This task has empty `_kEXP`; its actual acceptance and delivery remain unobserved.
+The full-route audit followed `TaskConfig._iAward -> MultiverseGroupConfig -> AwardConfig -> DropPoolConfig -> DropGroupConfig`, including level-banded pool rows. The audited Asia export resolves all 5,056 routes. The audited Genesis export resolves 5,048: task 9201101 names group 920160, which Genesis lacks, across all eight selections. Asia has the identity group and both exports have AwardConfig 920160 (item 920132 x 2,000), which establishes a source-backed candidate data repair; the original missing-group resolution remains unproven. This task has empty `_kEXP`; its actual acceptance and delivery remain unobserved.
 
 No route reaches non-empty `AwardConfig._kEXP` or a fixed `_kAward` virtual item 100/101. That statement does **not** cover pools: 27 type-24 tasks (3001-3009, 3011-3019, 3021-3029) have Base EXP item 100 through pool 84001-84009, in 216 task/playbook routes. Each pool's EXP slot has chance 1,000,000/1,000,000 and one roll/pick; its group has one eligible row per Base level 1-99. The Genesis rows explicitly name item 100; the Asia rows rely on the server's documented group-3000 default. For a claimable task and an eligible level, the current server's pool resolver therefore selects one Base EXP grant. No audited task route has a fixed or pool Job EXP item 101. Tasks 3004, 3008, 3014 and 3018 also have `_kEXP=[1,60000]`, separate from their pool grant. Counting that overlap, 381 tasks have a configured Base EXP path and 691 have none; all 1,072 have no configured Job EXP path. These are configuration and source-path conclusions, not an original-server runtime or player grant capture.
 
@@ -21,6 +21,16 @@ can copy the proven mapping from a second local export after checking the target
 runtime fallback or embed client data in the repository.
 
 ## Server interpretation
+
+`AwardService.ResolveTask` first follows an existing `MultiverseGroupConfig` row. If that row is absent but an
+`AwardConfig` group with the same ID exists, it resolves that award directly as an **inferred compatibility rule**.
+This supports the novice-pass task on an unpatched export without changing a present season mapping. An ID absent
+from both tables is still refused. The Asia identity-group evidence establishes a candidate data repair; it does
+not independently prove the original server's missing-group fallback.
+
+Task delivery also handles host action 115 (`ActionConfig.MarkGuildActivityJoin`) when its activity exists in
+`GuildActivityConfig`: task 1601000 names activity 3000. The server publishes a `GuildActivityJoined` callback after
+the task award commits. The callback is inferred server bookkeeping, not proof of a separate durable activity mark.
 
 `TaskService` currently accepts type 1 as task Base EXP, scales it with `RewardRates.BaseExperience`, and passes it to the character award transaction. `AwardService` separately resolves configured fixed and pool grants; virtual item 100 is Base EXP and item 101 is Job EXP, each with its own configured rate. `CharacterService` combines the task Base amount and resolved item-100 amount in one award transaction. Monster-kill Job EXP is a different inferred rule in `RewardService` and must not be copied into quest delivery.
 
@@ -39,7 +49,7 @@ The task parser now accepts only the observed empty shape and `[1, amount]`, and
 | Level-banded task award pools | `VERIFIED` config/source: 27 tasks, 216 routes with Base item 100; no Job item 101 |
 | Current type-1 Base EXP delivery and replay protection | `VERIFIED` (source/tests) |
 | Current task-configured Job EXP | `ABSENT` in both audited exports, including fixed and pool award terminals |
-| Task 9201101 award group | Asia defines identity group 920160; the audited Genesis export needs that client-backed group; actual player delivery `NOT_RUN` |
+| Task 9201101 award group | Asia defines identity group 920160; the server also supports a marked inferred direct-award fallback on an unpatched export; player delivery `NOT_RUN` |
 | Meaning of unreachable AwardConfig type 2 | `UNKNOWN` |
 | Original-server task Job EXP behavior | `NOT_RUN` |
 | Job EXP parity for a claimed affected task | `UNKNOWN` |
