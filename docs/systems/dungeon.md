@@ -118,7 +118,7 @@ Reconstructed story encounters (`ReconstructedDungeons`, switch `Ro3Emu:Reconstr
   This also gives Payon Forest's story Eddga (5300001) an attack.
 - Not reconstructed as monster waves (listed in the file): pure scripted scenes without a fight (ant nest
   exploration, Deniro ride, Louie's game, Moonlight Flower's hide-and-seek), the MVP party event, the Ring Test map and
-  scenes without points. The first three are rebuilt as scripted scenes (below).
+  scenes without points. The four scenes are rebuilt as scripted scenes (below).
   Airship cannons, allied NPC companions, the Professor rescue and the Goblin Forest transfer are not reproduced.
 - The task widget: each reconstructed wave names the DungeonQuestConfig quest it plays. 30401 carries var 10001
   `PDungeonQuestIdList` (the scene's quests up to the current one; the widget shows the last one's title and goals)
@@ -128,8 +128,8 @@ Reconstructed story encounters (`ReconstructedDungeons`, switch `Ro3Emu:Reconstr
 - Quest target 101018 [scene, n] "dungeon pass" now counts a committed successful clear (`DungeonService.Completed`
   to `TaskService.OnDungeonClearedAsync`); entering is not a pass. Story steps waiting on a reconstructed scene
   (Payon Forest, the airship, Desert Crossroad, the sphinx, the Baphomet maze, Southern Payon) can now complete.
-  Steps waiting on a scene that is still not reconstructed stay blocked as before: Louie's game in the Pharaoh
-  branch story (3120703) and Moonlight Flower (3120802).
+  Steps waiting on Louie's shell game in the Pharaoh branch story (3120703) or on Moonlight Flower (3120802) complete
+  through their scripted scenes (below).
 - Live check with the real client: Culvert waves 1-3 spawn and render with names and models, the
   tracker follows the Culvert quests with its counter, the story Golden Thief Bug fights back with its borrowed
   attack, the elite Scorpion run ends in DungeonResSuccess, leaving returns to the field. The client shows no result
@@ -160,6 +160,12 @@ Reconstructed scripted scenes (`Reconstructed/scripted-scenes.json`, same switch
   the darkness within 8 m of the hiding place, so the second round needs another side of the room; it wins (5310007)
   and completes the step. The lines go out as 1022 with her uid, which the client's Bubbling rows need for the head
   bubble. `ScriptedScenePacePercent` shortens these timers for tests.
+- Louie's shell game in the Pharaoh branch story (3120703, entered by task 205170 'A New Round') reuses the Culvert's
+  gang, rings and Bells on the Culvert editor's layout moved 5 m south (`sc_pm_branchstory_sphinx_001`). It plays two
+  rounds, each won by Katie's ring (400134, dungeon message 11); the other rings (message 12) change nothing and the
+  round goes on. Guessed: the two rounds (from Louis's lines 'Let's go again' and 'I give up'), where Katie hides in
+  each round (the east Bell, then the west one) and the Bell row 400138. Louis's lines, the bubbles and the right/wrong
+  effects (buffs 5402101, 5402201) are not shown.
 - Five story dungeons that were monster waves (or bare point respawns) now play their scripted stages around the
   fights, each with its evidence and guessed parts in the file:
   - Maya's nest (1000401): Maya, then 'Find the Professor' (within 10 m of the egg point), 'Free the Ant Egg' (5300056,
@@ -180,6 +186,7 @@ Reconstructed scripted scenes (`Reconstructed/scripted-scenes.json`, same switch
     from the raid Pharaoh's tip 4370002 'Pharaoh is unleashing Cleansing Light! Quickly, hide behind the Pyramid!': every
     20 s of the fight the tip goes out, Pharaoh holds still for 4 s, then his strongest skill 5340301 (whose effect the
     client draws as a cross of light) hits everyone outside the Pyramid's shadow (a step `shelter`, DungeonService.Shelter).
+  - Prontera North Gate (1011301): stage 1 'Investigate the fork in the road' completes within 17 m of Baphomet's point 20, which takes in the end of the client's guide line 24 but not the born point (inferred), then stage 2 is Baphomet (5300003) at point 20.
 
 
 - The last three main-story blockers of the story walk: the ant nest vortex and egg passage (1000201, task 10104290),

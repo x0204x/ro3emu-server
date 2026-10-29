@@ -34,6 +34,7 @@ public sealed partial class DungeonTests
             """);
         try
         {
+            await SwingWait.UntilDoneAsync(Service<GameLoop>(), Session(alice), actor.Uid);
             await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = actor.Uid });
             Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
             await staged.Task.WaitAsync(Wait);

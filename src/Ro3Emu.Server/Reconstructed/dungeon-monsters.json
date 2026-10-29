@@ -88,24 +88,6 @@
     "about": "Story bosses were fought with allied NPC companions in the original; those are not reproduced. Each is scaled (basis points of HP and of attack) so a Swordman at the boss level, every stat point spent STR:VIT 2:1, no equipment, normal attacks only, kills it in about 90 s and would fall to it in about 1.4 times that (DungeonTests.EveryStoryBossIsASoloFightAtItsLevel). Inferred, not original data."
   },
   "dungeons": {
-    "1011301": {
-      "name": "Prontera North Gate",
-      "confidence": "high",
-      "skipped": "Stage 1 is walking to the fork (no enemy). Points 21-23 are copies of the spawn point; one Baphomet.",
-      "waves": [
-        {
-          "stage": "Defeat Baphomet",
-          "quest": 2,
-          "spawns": [
-            {
-              "point": 20,
-              "npc": 5300003,
-              "why": "stage 2 'Encountered Baphomet at Prontera's North Gate / Defeat Baphomet'; 5300003 is the client's story Baphomet (L40)"
-            }
-          ]
-        }
-      ]
-    },
     "1015051": {
       "name": "Culvert (story)",
       "confidence": "high",
@@ -484,6 +466,7 @@
     "1000401": "Maya's nest: rebuilt as a scripted scene with a fight step (scripted-scenes.json).",
     "1000501": "Airship: rebuilt as a scripted scene with fight steps (scripted-scenes.json).",
     "1010101": "Izlude scene; no spawn points.",
+    "1011301": "Prontera North Gate: rebuilt as a scripted scene with a fight step (scripted-scenes.json).",
     "1015052": "Culvert variant without spawn points.",
     "1022001": "Payon Forest: rebuilt as a scripted scene with a fight step (scripted-scenes.json).",
     "1023001": "Payon instance without spawn points.",

@@ -106,6 +106,7 @@ public sealed class TerritoryPvpTests : IAsyncLifetime
         long enemyId = (long)enemy.Self!.Uuid, allyId = (long)ally.Self!.Uuid;
         Assert.Equal(Session(attacker).WorldScene, Session(enemy).WorldScene);
 
+        await SwingWait.UntilDoneAsync(Service<GameLoop>(), Session(attacker), enemyId);
         await attacker.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = enemyId });
         Assert.Equal(3022, (await Next(attacker, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
 
@@ -132,8 +133,10 @@ public sealed class TerritoryPvpTests : IAsyncLifetime
             victim.StatusBits |= 1L << 15;
         });
 
+        await SwingWait.UntilDoneAsync(Service<GameLoop>(), Session(attacker), allyId);
         await attacker.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = allyId });
         Assert.Equal(3022, (await Next(attacker, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
+        await SwingWait.UntilDoneAsync(Service<GameLoop>(), Session(attacker), enemyId);
         await attacker.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = enemyId });
         Assert.Equal(0, (await Next(attacker, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
         var hit = await Next(attacker, CombatService.SkillHit, SkillHitInfo.Parser,
@@ -147,6 +150,7 @@ public sealed class TerritoryPvpTests : IAsyncLifetime
         Assert.Equal(1, dealt[0].Amount); // Effective HP loss, not overkill or absorbed damage.
         Assert.Equal(1, killed);
 
+        await SwingWait.UntilDoneAsync(Service<GameLoop>(), Session(attacker), enemyId);
         await attacker.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = enemyId });
         Assert.Equal(3022, (await Next(attacker, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
 
@@ -157,11 +161,13 @@ public sealed class TerritoryPvpTests : IAsyncLifetime
         Assert.True(await Service<GameLoop>().InvokeAsync(() => Service<SceneService>().EnterSceneAsync(Session(enemy), 30303)));
         var scene = await Next(enemy, MsgId.SwitchSceneLine, SwitchSceneLineResp.Parser, s => s.SceneEntry == 30303);
         Assert.True(Session(enemy).SceneLoading);
+        await SwingWait.UntilDoneAsync(Service<GameLoop>(), Session(attacker), enemyId);
         await attacker.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = enemyId });
         Assert.Equal(3022, (await Next(attacker, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
         await enemy.SendGameAsync(MsgId.SceneLoaded, new SceneLoadedReq { SceneId = scene.SceneEntry });
         Assert.Equal(0, (await Next(enemy, MsgId.SceneLoaded, SceneLoadedResp.Parser)).Result);
         await Next(enemy, MsgId.EntitySelf, EntitySelf.Parser);
+        await SwingWait.UntilDoneAsync(Service<GameLoop>(), Session(attacker), enemyId);
         await attacker.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = enemyId });
         Assert.Equal(3022, (await Next(attacker, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
     }
@@ -332,6 +338,7 @@ public sealed class TerritoryPvpTests : IAsyncLifetime
             await Service<CharacterService>().SetHpSpAsync(target, 1, null);
         });
 
+        await SwingWait.UntilDoneAsync(Service<GameLoop>(), Session(attacker), victimId);
         await attacker.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = victimId });
         Assert.Equal(0, (await Next(attacker, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
         await Next(victim, CombatService.EntityBaseChange, EntityBase.Parser,
@@ -387,6 +394,7 @@ public sealed class TerritoryPvpTests : IAsyncLifetime
         await target.StateLock.WaitAsync();
         try
         {
+            await SwingWait.UntilDoneAsync(Service<GameLoop>(), Session(attacker), victimId);
             await attacker.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = victimId });
             Assert.Equal(0, (await Next(attacker, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
             await landed.Task.WaitAsync(Wait);
@@ -518,6 +526,7 @@ public sealed class TerritoryPvpTests : IAsyncLifetime
             });
         });
 
+        await SwingWait.UntilDoneAsync(Service<GameLoop>(), Session(attacker), first.Uid);
         await attacker.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = first.Uid });
         Assert.Equal(0, (await Next(attacker, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
         await firstKilled.Task.WaitAsync(Wait);
@@ -533,6 +542,7 @@ public sealed class TerritoryPvpTests : IAsyncLifetime
             Assert.NotNull(second);
             CombatTestFixture.ReadyNormalAttack(Service<GameLoop>(), source);
         });
+        await SwingWait.UntilDoneAsync(Service<GameLoop>(), Session(attacker), second.Uid);
         await attacker.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = second.Uid });
         Assert.Equal(0, (await Next(attacker, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
         await secondDamaged.Task.WaitAsync(Wait);

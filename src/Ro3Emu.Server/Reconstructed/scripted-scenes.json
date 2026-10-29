@@ -448,7 +448,7 @@
         "The bells stand at group 28 (points 29-31), where story 1014 reveals the gang; the shuffle animation is not reproduced.",
         "Katie's ring (400134, message 11) is under the bell at x 60 (point 31), where Katie stands in both stories; which of 400135/400136 is Louie's or Martha's bell does not matter (both send 12).",
         "A wrong guess (message 12) changes nothing and the player may choose again; the original consequence ('join us as our lowest-ranking lackey') is not recovered.",
-        "Retrieving the instrument completes within 4 m of mark point 37, where guide point 38 leads; no instrument actor or item is named by the client data."
+        "Retrieving the instrument: NPC 400046 Strange Device (unit 100210 '教授的奇怪机器', interaction 40004601 'Pick up') at mark point 37, where guide point 38 leads; walking within 4 m also completes it."
       ],
       "steps": [
         {
@@ -489,7 +489,11 @@
         {
           "quest": 2,
           "stage": "Retrieve the Professor's instrument",
+          "actors": [
+            { "npc": 400046, "point": 37, "why": "the Professor's instrument (Strange Device 400046, unit 100210 '教授的奇怪机器') at mark point 37" }
+          ],
           "complete": [
+            { "interaction": 40004601, "why": "Pick up the Strange Device (Professor's instrument)" },
             { "point": 37, "radius": 4, "why": "mark point 37, where guide point 38 leads from the game area" }
           ]
         }
@@ -631,6 +635,35 @@
             { "point": 108, "radius": 3, "why": "group 27, west (48.8, 72.7)" }
           ],
           "seek": { "rounds": 2, "searchedRadius": 8, "opening": [5310011, 5310012, 5310013], "round": 5310005, "countdown": 5310010, "longer": 5310006, "won": 5310007, "found": 5310014, "why": "the round structure built from the game's ChatConfig lines (inferred)" }
+        }
+      ]
+    },
+    "1011301": {
+      "name": "Prontera North Gate: Baphomet",
+      "confidence": "medium",
+      "evidence": [
+        "DungeonQuestConfig: quest 1 'Investigate the fork in the road' [5,0,1], quest 2 'Encounter Baphomet at Prontera's North Gate / Defeat Baphomet' [5,0,1].",
+        "Editor sc_prt_fild01_001_pl01: born point 19 (116.1, 72.8), spawn point 20 (104.5, 102.2) for Baphomet 5300003, guide line 24 (m_kGuidePoints) from the born point to (109.6, 87.0), the arrow the client draws toward the fork. Points 21-23 are spawn points (22 is named 刷怪点_副本, a spawn point copy), unmarked in the client.",
+        "NPCConfig: 5300003 story Baphomet (L40, MainStory_BaFengTe)."
+      ],
+      "guessed": [
+        "Stage 1 completes within 17 m of point 20: the end of guide line 24 is 16.1 m from it and the born point 31 m, so it completes where the arrow leads and not on arrival. The step engine targets points, not guide lines.",
+        "Baphomet appears at point 20 once stage 2 starts."
+      ],
+      "steps": [
+        {
+          "quest": 1,
+          "stage": "Investigate the fork in the road",
+          "complete": [
+            { "point": 20, "radius": 17, "why": "the fork the guide line leads to (inferred: within 17 m of the spawn point reaches the end of the arrow)" }
+          ]
+        },
+        {
+          "quest": 2,
+          "stage": "Defeat Baphomet",
+          "fight": [
+            { "point": 20, "npc": 5300003, "why": "story Baphomet (L40)" }
+          ]
         }
       ]
     }

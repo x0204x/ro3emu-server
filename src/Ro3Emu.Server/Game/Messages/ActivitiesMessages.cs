@@ -413,6 +413,14 @@ public sealed class ActivitiesMessages(PraiseService praise, CasualBattleService
         {
             await dungeons.ClaimHonorAsync(session, MultiDungeonClaimHonorAwardReq.Parser.ParseFrom(body.Span));
         });
+        routes.Map(CasualBattleService.Transfer, "dungeons", async (session, msgId, body) =>
+        {
+            await casual.TransferAsync(session, DungeonTeamTransferReq.Parser.ParseFrom(body.Span));
+        });
+        routes.Map(CasualBattleService.Follow, "dungeons", async (session, msgId, body) =>
+        {
+            await casual.FollowAsync(session, DungeonTeamFollowReq.Parser.ParseFrom(body.Span));
+        });
         routes.Map(PraiseService.Praise, "praise", async (session, msgId, body) =>
         {
             await praise.PraiseAsync(session, MultiDungeonPraiseReq.Parser.ParseFrom(body.Span));

@@ -221,6 +221,7 @@ public sealed partial class TimedBattleService : IGameTicker
         combat.PvpDealt.Add(ChickenDealt);
         combat.Healed.Add(ChickenHealed);
         combat.CastLanded.Add(ChickenCastAsync);
+        world.CanObserve = CanBeSeen; // Survivor Battle watchers (TimedBattleService.ChickenWatch)
         combat.Dealt.Add(DragonDealt);
         combat.Killed.Add(DragonBossKilledAsync);
         combat.MatchSkillRule = MatchSkillRule;

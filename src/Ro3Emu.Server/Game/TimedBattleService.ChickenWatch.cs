@@ -14,6 +14,19 @@ public sealed partial class TimedBattleService
 {
     public const uint ChangeWatch = 82640, WatchNotify = 82675;
 
+    /// <summary>
+    /// Watchers: their client shows what is around the watched teammate, so the server keeps the watcher's own
+    /// position (and with it its area of interest) on the teammate, and nobody else sees the watcher meanwhile
+    /// (World.CanObserve). Its own client gets no movement for it; a revive teleports it to its chosen point.
+    /// (inferred) The original's way is not in the client: an eliminated player's body is gone for the others.
+    /// </summary>
+    private readonly HashSet<GameSession> _spectators = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>How far the watched teammate may get before the watcher's view is moved after it (m).</summary>
+    private const float WatchViewSlack = 6f;
+
+    private bool CanBeSeen(GameSession viewer, GameSession subject) => viewer == subject || !_spectators.Contains(subject);
+
     /// <summary>PublicParam EatChickenObserve 10 (s): (inferred) also the wait before spectating starts on its own.</summary>
     private const long AutoWatchMs = 10_000;
 
@@ -75,6 +88,26 @@ public sealed partial class TimedBattleService
             me.State = target != 0 ? RoundRoleStatus.Watch : RoundRoleStatus.Death;
         await SendCameraAsync(watcher, target);
         await SyncTeamAsync(match, match.Faction[watcher]);
+        if (target != 0 && _spectators.Add(watcher)) await _world.RefreshVisibilityAsync(watcher);
+        await FollowViewAsync(match, watcher, me);
+    }
+
+    /// <summary>Moves a watcher's view onto its watched teammate once it is more than a few metres away.</summary>
+    private async Task FollowViewAsync(Match match, GameSession watcher, ChickenPlayer me)
+    {
+        if (me.Watching == 0 || watcher.SceneLoading
+            || Team(match, match.Faction[watcher]).FirstOrDefault(p => match.Participants[p].Id == me.Watching) is not { } target
+            || target.SceneLoading || target.WorldScene != watcher.WorldScene) return;
+        if (MonsterService.Distance(watcher.Position.X, watcher.Position.Z, target.Position.X, target.Position.Z) <= WatchViewSlack) return;
+        var pos = target.Position.Clone();
+        watcher.Position = pos;
+        await _world.MoveAsync(watcher, new WalkReq { Pos = pos, Face = watcher.Face, BStop = true, SpeedRate = 1 }, forceTeleport: true);
+    }
+
+    /// <summary>A watcher that stops watching is seen again (after its revive moved it, or as it leaves).</summary>
+    private async Task ReappearAsync(GameSession player)
+    {
+        if (_spectators.Remove(player) && !player.SceneLoading) await _world.RefreshVisibilityAsync(player);
     }
 
     /// <summary>31018 with 1002 on the watcher's entity, to the watcher only (see <see cref="CustomCamera"/>).</summary>
@@ -103,17 +136,19 @@ public sealed partial class TimedBattleService
             }
             bool fighting = Team(match, match.Faction[player]).Any(mate => match.Participants[mate].Id == me.Watching
                 && !mate.Dead && run.Players[mate].State == RoundRoleStatus.InWar && InRoom(match).Contains(mate));
+            await FollowViewAsync(match, player, me);
             if (fighting || now < me.WatchSwitchMs + 2 * WatchSwitchMs) continue;
             if (FightingMate(match, run, player, me.Watching) is { } next)
                 await WatchAsync(match, run, player, match.Participants[next].Id, now);
         }
     }
 
-    /// <summary>A revived player gets its own camera back.</summary>
-    private static async Task StopWatchingAsync(Match match, ChickenRun run, GameSession player)
+    /// <summary>A revived player gets its own camera back (and is seen again once its revive has moved it).</summary>
+    private async Task StopWatchingAsync(Match match, ChickenRun run, GameSession player)
     {
         var me = run.Players[player];
         me.AutoWatchAtMs = 0;
+        _spectators.Remove(player);
         if (me.Watching == 0) return;
         me.Watching = 0;
         await SendCameraAsync(player, 0);

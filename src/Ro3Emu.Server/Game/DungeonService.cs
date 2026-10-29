@@ -838,6 +838,10 @@ public sealed partial class DungeonService
         else if (!a.Settled && Defeated(a)) await SettleAsync(a, false);
     }
 
+    // A scripted scene logs each walk/interaction step as it completes; its last fight step ends here, at the clear.
+    [LoggerMessage(Level = LogLevel.Information, Message = "Dungeon {Scene} instance {Instance} settled (cleared: {Cleared}) at step {Step}/{Steps}")]
+    private static partial void LogSettled(ILogger logger, long scene, long instance, bool cleared, int step, int steps);
+
     /// <summary>
     /// All configured actors dead before timeout wins (inferred predicate). Reserve once before any await.
     /// Each role's earned personal award and allowance are one SQLite transaction; disconnect is not a clear.
@@ -867,6 +871,9 @@ public sealed partial class DungeonService
         await FreezeAsync(a, won);
         won = a.FrozenWin;
         a.Settled = true;
+        long scene = a.Plan.SceneEntry, instance = a.Room.Id;
+        int steps = a.Plan.Waves.Count, step = Math.Min(a.Wave + 1, steps);
+        LogSettled(_log, scene, instance, won, step, steps);
         var participants = Present(a).Where(a.Loaded.Contains).Select(s => (Session: s, Role: s.Role!.Id)).ToArray();
         var notifications = new List<Func<Task>>();
         var auctionAwards = new List<ItemBaseInfo>();

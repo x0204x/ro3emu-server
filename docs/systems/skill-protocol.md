@@ -139,6 +139,21 @@ A minion with a blast stands, shows it and blasts when its life ends: the blast'
 
 A boss skill whose show has a displacement EffectData (`m_kPoint.m_bMovement`, `CombatService.FindMovementEffect`) moves either the boss (a charge or a leap) or the players it hits. It moves the players when the move curve is a knockback (击退, 震退) or a pull (勾, 吸, 拉), or when the skill's name or description says knock, repel or pull (Powerful Drain: "Pulls enemies inward toward yourself") **(inferred)**. Each player hit is moved along the line from the boss with a 31112 (MoveType 2, the show's effect and time, as a player skill moves its target), and its position follows. A knockback moves the player 3 m away, as the player skills' Arrow Repel does. A pull stops the player 1 m in front of the boss, as Phantom Thrust's pull "in front of you" does. Both distances are **inferred**. Today this covers Phreeoni's Powerful Drain 5205501 and the Evil Boss's hook 5352701 (pulls), and the story Golden Thief Bug's 5310201 and Eddga's 5300801 (knockbacks). `BossSkillSetsTests.BossKnockbacksAndPullsMoveThePlayersHit` lists them.
 
+## Player knockbacks and pulls
+
+`CombatService.Displacements` lists every player and pet skill whose description says it knocks back or pulls what it hits. A hit moves the monster, or in PvP the player, with a 31112 (MoveType 2) to it and its viewers; the move is clipped to navigation and the server position follows. Bosses and PvP hits share one player path (`KnockPlayerAsync`).
+
+- Away from the caster: Arrow Repel, Pile Bunker, Spear Stab, Sightrasher, Jupitel Thunder, Fearless Charge, Earthshaker (its final hit), Whirling Whip, Ninja Art: Chain Blast, Root Burst.
+- Away from the area: Fire Wall knocks whatever touches it 2 m away from the field's centre.
+- Toward the caster, stopping 1 m in front: Phantom Thrust, Spear Formation - Crescent Moon, Melodic Axe Tornado, Melodic High-Energy Impact, AoE Surgery, Ancient Tree Entanglement.
+- Toward the area's centre, stopping 1 m from it: Tetra Vortex (its target point) and Gravitational Impact (the selected enemy).
+
+The distance is the one the description names. Where it names none, the inferred values are 3 m for a knockback (as the bosses' and Arrow Repel's) and 1 m from the caster or centre for a pull **(inferred)**. Effects apply once per cast or per field tick, so a "continuous" or "periodic" pull moves the target once per hit.
+
+The client moves a unit only on a 31112 that names a displacement EffectData. It looks the effect up by id alone. Where a skill's show and hit effects carry none, `MovementEffectOverrides` names a like one: knockbacks take Pile Bunker's flat 200 ms 1631405, pulls take Gravitational Impact's 200 ms 1234212 **(inferred)**. Fearless Charge and Melodic High-Energy Impact also name theirs, because their show's first movement effect moves the caster: 1162411 is the charge, and 16307509 is the slam, which has a height curve. Fearless Charge's knockback is 1162412. Checked in the client: a unit moves with a named effect and stays put with effect 0.
+
+Not done: Shield Defense's knockback belongs to its periodic aura, which is not simulated; enhanced Axe Tornado (`AxeTornadoProS1BD2`) pulls only under Enhance; Fearless Charge's own 12 m charge; knock-ups (Sonic Burst, Energy Release, Execution Time) move nobody. `SkillCombatTests.KnockbacksAndPullsMoveTheMonstersHit` covers one skill of each kind, and `SkillCombatTests.APvpHitKnocksThePlayerBack` covers Arrow Repel, Sightrasher and Tetra Vortex in PvP.
+
 ## Auto-attack after walking into range
 
 The client can send attack request 31102 before its arrival-stop movement message. Previously that stop moved the role off the attack loop's origin and cancelled repeated swings. A loop accepted while walking now anchors to the first stop received within 300 ms, provided the displacement fits the captured walking speed and elapsed walk time. Later movement still cancels it. The timing tolerance is inferred from the observed client sequence. Upstream's existing cast interruption rules remain unchanged. `ApproachAttackTests` covers arrival, duplicate stops, expired tolerances and deliberate movement on synthetic data; `SkillCombatTests.AnAutoAttackStartedOnTheWayInKeepsSwingingAfterTheArrivalStop` covers subsequent swings through protocol messages.

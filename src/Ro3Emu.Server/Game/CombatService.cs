@@ -315,16 +315,23 @@ public sealed partial class CombatService : IGameTicker
     }
 
     /// <summary>
-    /// The authored Action damage entry drives 31101 hit presentation. Bullet entries are a different client path:
-    /// LC_DamageHelper only builds an action hit from m_kDamageType 3, while type 2 belongs to LC_Bullet_Mgr.
+    /// The first visible authored damage entry. A named Bullet entry can drive a client's own projectile (Double
+    /// Strafe); an empty Bullet entry is only a timing/audio helper and must not hide a later Action hit (Fire Ball).
     /// </summary>
     private int HitEffect(long scriptShow)
     {
         var effects = _data.SkillTemplateTable("Lua_Config_EffectData");
+        int firstDamage = 0;
         for (long id = scriptShow * 100; id < scriptShow * 100 + 100; id++)
-            if (effects.TryGetValue(id.ToString(), out var e)
-                && new SkillEffectData(e).Damage is { DamageType: 3, HasActionDamage: true }) return (int)id;
-        return 1000002;
+        {
+            if (!effects.TryGetValue(id.ToString(), out var e)
+                || new SkillEffectData(e).Damage is not { } damage) continue;
+            firstDamage = firstDamage == 0 ? (int)id : firstDamage;
+            if (damage is { DamageType: 3, HasActionDamage: true }
+                || damage is { DamageType: 2, Bullet: { } bullet } && !string.IsNullOrWhiteSpace(bullet.Name))
+                return (int)id;
+        }
+        return firstDamage != 0 ? firstDamage : 1000002;
     }
 
     /// <summary>The first visible authored Bullet entry for a timeline that has no client bullet points.</summary>
@@ -668,8 +675,7 @@ public sealed partial class CombatService : IGameTicker
     private (long Damage, DamageHitResult Result) Damage(Fighter a, Fighter b, JsonElement skill, int branch = 0,
         double bonusCrit = 0, bool forceCrit = false)
     {
-        // A skill that never misses (_iSkillHit 10000) draws no hit roll, as before.
-        if (GameData.Int(skill, "_iSkillHit") < 10000 && Rolls.Hit() >= HitRate(a, b, skill)) return (0, DamageHitResult.Miss);
+        if (!NeverMisses(skill) && Rolls.Hit() >= HitRate(a, b, skill)) return (0, DamageHitResult.Miss);
         double dmg = BaseDamage(a, b, skill, branch, out bool magic);
         dmg *= 0.97 + Rolls.DamageFloat() * 0.06; // DamageFloat [9700, 10300]
         var result = DamageHitResult.Normal;
@@ -683,14 +689,22 @@ public sealed partial class CombatService : IGameTicker
     }
 
     // Hit: dodge = FLEE/(FLEE + ParHit 600), attacker HIT adds back; HitRateRange [0.3, 1]; _iSkillHit 10000 never misses.
-    private static double HitRate(Fighter a, Fighter b, JsonElement skill) => GameData.Int(skill, "_iSkillHit") >= 10000 ? 1
+    private static double HitRate(Fighter a, Fighter b, JsonElement skill) => NeverMisses(skill) ? 1
         : Math.Clamp(1 - b.Flee / (double)(b.Flee + 600) + a.Hit / (double)(a.Hit + 600) * 0.5, 0.3, 1.0);
+
+    /// <summary>
+    /// _iSkillHit 10000 never misses (inferred). The data sets it per row: nearly every damaging skill, physical and
+    /// magic, and 444 monster normal attacks carry 10000; the players' normal attacks and 55 monster ones (MVP swings,
+    /// GvG and Pet Tower monsters) carry 0 and roll against FLEE. So FLEE dodges players and those monsters, not the
+    /// rest, as the data was set up (#bug-reports "163 FLEE, every attack hits" is that rule, not a bug).
+    /// </summary>
+    internal static bool NeverMisses(JsonElement skill) => new Data.Config.SkillConfig(skill).SkillHit >= 10000;
 
     private static double CritRate(Fighter a, Fighter b, JsonElement skill) =>
         Math.Max(0, a.Cri - b.ResCri) / 10000.0 * GameData.Int(skill, "_iSkillCri") / 10000.0;
 
     /// <summary>SkillConfig._iAffectByArrow selects the equipped arrow ItemConfig._kParam1 element.</summary>
-    private int AttackElement(GameSession source, JsonElement row)
+    internal int AttackElement(GameSession source, JsonElement row)
     {
         var skill = new SkillConfig(row);
         if (skill.AffectByArrow != 0 && source.BagState.Info.CurrentArrowID is var arrowId and > 0

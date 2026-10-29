@@ -182,7 +182,7 @@ public sealed partial class CharacterService
         await session.SendGameAsync(AllocateAttrPoints, new AllocateAttrPointRsp { Result = code, PlanIndex = req.PlanIndex, PlanBaseProperty = selected.Clone() });
         if (!ok) return;
         await SendStatPlanAsync(session);
-        if (req.PlanIndex == plans.CurPlanIndex) await SendStatsAsync(session, EAttrModType.Base);
+        if (req.PlanIndex == plans.CurPlanIndex) await SendStatsAsync(session, showChange: true);
         foreach (var handler in ProgressHandlers) await handler(session);
         foreach (var handler in StateChanged) handler(session);
     }
@@ -207,7 +207,7 @@ public sealed partial class CharacterService
         await CommitStatsAsync(session, "stat-reset", p, plans);
         await session.SendGameAsync(ResetAttrPoints, new ResetAttrPointResp { Result = 0, PlanIndex = index, PlanBaseProperty = plan.Clone() });
         await SendStatPlanAsync(session);
-        if (index == plans.CurPlanIndex) await SendStatsAsync(session, EAttrModType.Base);
+        if (index == plans.CurPlanIndex) await SendStatsAsync(session, showChange: true);
         foreach (var handler in ProgressHandlers) await handler(session);
         foreach (var handler in StateChanged) handler(session);
     }

@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Text.Json;
+using Google.Protobuf;
 using Microsoft.Data.Sqlite;
 using Romsg;
 using Ro3Emu.Bot;
@@ -210,6 +212,79 @@ public sealed partial class GroupContentTests
         AssertPaidOnce(await CasualState(bob), match, 997, 2, 0);
         Assert.Equal(2, CasualObligations(match, delivered: 1));
         Assert.Equal(1, CasualReceipts(match, (long)alice.Self!.Uuid));
+    }
+
+    /// <summary>A settled match lands in the role's ordinary 30128 history, the same as a boss dungeon's clear
+    /// (DungeonService.StoreExternalResultAsync), and an outsider's query for it stays empty.</summary>
+    [ClientDataFact]
+    public async Task MockBattleResultIsQueryableFrom30128AfterSettlement()
+    {
+        await using var alice = await InWorld("Alice");
+        await using var bob = await InWorld("Bob");
+        long match = await PlayMockBattle(alice, bob);
+        string matchId = match.ToString(CultureInfo.InvariantCulture);
+        _clock.Advance(TimeSpan.FromSeconds(600));
+        await Tick();
+        await Next(alice, CasualBattleService.ResultNotify, DungeonResultNotify.Parser);
+        await Next(bob, CasualBattleService.ResultNotify, DungeonResultNotify.Parser);
+
+        await alice.SendGameAsync(DungeonService.QueryResult, new QueryDungeonResultReq { ResultIds = { matchId } });
+        var result = Assert.Single((await Next(alice, DungeonService.QueryResult, QueryDungeonResultResp.Parser)).Results);
+        Assert.Equal(matchId, result.ResultId);
+        Assert.Equal(1, result.WinCamp);
+        var snapshot = Assert.Single(result.Snapshots);
+        Assert.Equal(2, Assert.Single(snapshot.SceneStatistics).Value.RoleStatistics.Count);
+
+        await using (var outsider = await InWorld("Outsider"))
+        {
+            await outsider.SendGameAsync(DungeonService.QueryResult, new QueryDungeonResultReq { ResultIds = { matchId } });
+            Assert.Empty((await Next(outsider, DungeonService.QueryResult, QueryDungeonResultResp.Parser)).Results);
+        }
+        // Still there after a restart: the history is in the role's own persisted state, not match memory.
+        await _app.StopAsync();
+        await _app.DisposeAsync();
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        await InitializeAsync();
+        await using var aliceAgain = await LogIn("Alice");
+        await aliceAgain.SendGameAsync(DungeonService.QueryResult, new QueryDungeonResultReq { ResultIds = { matchId } });
+        Assert.Equal(matchId, Assert.Single((await Next(aliceAgain, DungeonService.QueryResult,
+            QueryDungeonResultResp.Parser)).Results).ResultId);
+    }
+
+    /// <summary>The pruning in StoreExternalResultAsync only ever drops its own (Mock Battle) entries: a dungeon
+    /// clear already in history (a Statistics entry with no counterpart here) keeps its Results entry no matter how
+    /// many matches follow, and only the oldest match drops once the external entries alone pass 20.</summary>
+    [ClientDataFact]
+    public async Task MockBattleHistoryPruningLeavesAnOrdinaryDungeonClearAlone()
+    {
+        await using var alice = await InWorld("Alice");
+        await OnLoop(() =>
+        {
+            var state = Session(alice).Dungeons!;
+            state.Statistics[1] = new DungeonStatisticsInfoWithDungeon { StatisticsId = 1, DungeonId = 9999 }.ToByteArray();
+            state.Results["1"] = new DBDungeonResultData { ResultId = "1", ServerId = 1, DungeonId = 1, DungeonEntryId = 9999 }.ToByteArray();
+            return Task.CompletedTask;
+        });
+
+        for (int i = 2; i <= 22; i++)
+        {
+            int id = i;
+            var notice = new DungeonResultNotify
+            {
+                ResultId = id.ToString(CultureInfo.InvariantCulture),
+                ResultInfo = new DungeonResultInfo { StatisticsId = id, DungeonId = CasualBattleService.Scene, WinCamp = 1 },
+            };
+            await OnLoop(() => Service<DungeonService>().StoreExternalResultAsync(Session(alice), notice));
+        }
+
+        async Task<bool> Has(string id)
+        {
+            await alice.SendGameAsync(DungeonService.QueryResult, new QueryDungeonResultReq { ResultIds = { id } });
+            return (await Next(alice, DungeonService.QueryResult, QueryDungeonResultResp.Parser)).Results.Count == 1;
+        }
+        Assert.True(await Has("1")); // the ordinary dungeon clear, untouched by the Mock Battle pruning
+        Assert.False(await Has("2")); // the oldest of 21 matches, pruned to keep the newest 20
+        Assert.True(await Has("22")); // the newest match
     }
 
     [ClientDataFact]

@@ -176,6 +176,7 @@ public sealed partial class TimedBattleService
             await _combat.PublishReviveAsync(player, WalkablePoint(x, z));
         }
         finally { _combat.ReleaseReviveClaim(player); }
+        if (!player.SceneLoading) await _world.RefreshVisibilityAsync(player);
         await player.SendGameAsync(RelifeNotify, new ChickenRelifeNotify { RelifeEndTime = 0 });
         await SyncTeamAsync(match, match.Faction[player]);
         await BroadcastHudAsync(match);
@@ -351,6 +352,7 @@ public sealed partial class TimedBattleService
     {
         player.Synced.Remove(RoundSync);
         ClearChickenCustom(player);
+        await ReappearAsync(player);
         await ClearAdventureAsync(player);
         if (match.Chicken is { } run && run.Channels.Count > 0) await InterruptChannelsAsync(match, run, c => c.Reviver == player);
         if (player.Role != null && player.Progress != null)

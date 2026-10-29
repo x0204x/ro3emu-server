@@ -475,6 +475,8 @@ public sealed class RoleStore(AccountStore accounts)
     public void SaveEmblems(long id, byte[] emblems, RoleItemPlanBuilder? transaction = null) => SaveBlob(id, "emblems", emblems, transaction);
 
     public void SaveShop(long id, byte[] shop, RoleItemPlanBuilder? tx = null) => SaveBlob(id, "shop", shop, tx);
+    public byte[]? LoadGifts(long id, RoleItemPlanBuilder? transaction = null) => LoadBlob(id, "gifts", transaction);
+    public void SaveGifts(long id, byte[] gifts, RoleItemPlanBuilder? tx = null) => SaveBlob(id, "gifts", gifts, tx);
     public byte[]? LoadGuildInfo(long id) => LoadBlob(id, "guild_info");
     public void SaveGuildInfo(long id, byte[] info, RoleItemPlanBuilder? transaction = null) => SaveBlob(id, "guild_info", info, transaction);
 

@@ -206,6 +206,16 @@ public sealed partial class SurvivorBattleTests
             Assert.Equal(RoundRoleStatus.Watch, Round(bob).TeamMemberInfo[Id(alice)].State);
             Assert.False(Session(alice).WorldState.CustomData.ContainsKey(TimedBattleService.CustomCamera)); // not on her AOI entity
             Assert.True(Session(alice).WorldState.CustomData.ContainsKey(TimedBattleService.CustomCareer));
+            Assert.Empty(Service<Ro3Emu.Server.Maps.World>().Viewers(Session(alice))); // a watcher is seen by nobody
+            Session(bob).Position = new Vec3 { X = 520, Y = Session(bob).Position.Y, Z = 520 }; // Bob runs off
+            return Task.CompletedTask;
+        });
+        // Her view follows Bob, so his surroundings stay in her area of interest.
+        await Tick(watch.AutoWatchTime + 2);
+        await OnLoop(() =>
+        {
+            var a = Session(alice);
+            Assert.True(Math.Abs(a.Position.X - 520) < 1 && Math.Abs(a.Position.Z - 520) < 1, $"view at {a.Position}");
             return Task.CompletedTask;
         });
 

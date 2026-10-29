@@ -159,10 +159,10 @@
 30445	session Realm:legacy: dispatcher/unrouted	refused
 30446	session Realm:legacy: dispatcher/unrouted	refused
 30447	session Realm:legacy: dispatcher/unrouted	refused
-30448	session Realm:legacy: dispatcher/unrouted	refused
+30448	session Realm:legacy: dispatcher/30448	refused
 30449	session Realm:legacy: dispatcher/unrouted	refused
 30450	session Realm:legacy: dispatcher/unrouted	refused
-30451	session Realm:legacy: dispatcher/unrouted	refused
+30451	session Realm:legacy: dispatcher/30451	refused
 30452	session Realm:legacy: dispatcher/30452	refused
 30501	session Realm:legacy: dispatcher/unrouted	refused
 30502	session Realm:legacy: dispatcher/unrouted	refused
@@ -742,8 +742,8 @@
 82332	session role:WholeRole dispatcher/82332	refused
 82333	session role:WholeRole dispatcher/82333	refused
 82334	session role:WholeRole dispatcher/82334	refused
-82335	session role:WholeRole dispatcher/82335	refused
-82336	session role:WholeRole dispatcher/unrouted	refused
+82335	economic dispatcher/economic request	refused
+82336	economic dispatcher/economic request	refused
 82337	session role:WholeRole dispatcher/unrouted	refused
 82338	session role:WholeRole dispatcher/82338	refused
 82339	session role:WholeRole dispatcher/unrouted	refused

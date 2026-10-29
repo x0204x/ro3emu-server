@@ -13,7 +13,7 @@
 <p align="center">
   <a href="https://github.com/aethai/ro3emu-server/releases/latest"><img src="https://img.shields.io/github/v/release/aethai/ro3emu-server?label=latest&color=d8b46a&labelColor=1b2740" alt="Latest release"></a>
   <a href="https://github.com/aethai/ro3emu-server/actions/workflows/tests.yml"><img src="https://img.shields.io/github/actions/workflow/status/aethai/ro3emu-server/tests.yml?branch=main&label=tests&labelColor=1b2740" alt="Tests"></a>
-  <img src="https://img.shields.io/badge/client-Genesis%202026.10.23.1-3fb950?labelColor=1b2740" alt="Works with the Genesis client 2026.10.23.1">
+  <img src="https://img.shields.io/badge/client-Genesis%202026.10.25.1-3fb950?labelColor=1b2740" alt="Works with the Genesis client 2026.10.25.1">
   <img src="https://img.shields.io/badge/license-GPL--3.0-8b949e?labelColor=1b2740" alt="GPL-3.0">
 </p>
 
@@ -65,7 +65,7 @@ Hosting on Linux, a VPS or a home server? One script, nothing to install: see [h
 
 ## What works today
 
-<p align="center"><img src="docs/assets/progress.svg" alt="Progress: world, combat and bosses, story dungeons, character progress and guilds are done; Survivor Battle is in progress; War of Emperium, the Tavern, the remaining client tables and a many-player test are next" width="100%"></p>
+<p align="center"><img src="docs/assets/progress.svg" alt="Progress: world, combat and bosses, story dungeons, character progress, guilds and Survivor Battle are done; War of Emperium is in progress; the Tavern, the remaining client tables and a many-player test are next" width="100%"></p>
 
 Everything the client can show is playable from day one, without season gates. The full list is in
 [What works](docs/features.md), and each release lists what is new in its [release notes](https://github.com/aethai/ro3emu-server/releases).

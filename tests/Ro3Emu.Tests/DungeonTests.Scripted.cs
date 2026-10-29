@@ -270,6 +270,8 @@ public sealed partial class DungeonTests
         await PlotEnd(alice, 140020);
 
         await Stage(alice, 4, quest: 2);
+        var device = Assert.Single(await ActorsIn(alice, 1));
+        Assert.Equal((400046, 37L), (device.NpcId, device.Point));
         var instrument = Service<WorldData>().Map(scene)!.Points[37];
         await WalkTo(alice, instrument.X + 6, instrument.Y, instrument.Z); // not yet within its 4 m
         await Task.Delay(200);
@@ -438,6 +440,30 @@ public sealed partial class DungeonTests
     {
         var e = await Next(bot, DungeonService.Event, DungeonEventNotify.Parser, n => (int)n.EventType == 4);
         Assert.Equal([plot], e.Vars.Single(v => v.VarId == DungeonService.StoryVar).Vi64);
+    }
+
+    /// <summary>Prontera North Gate's 'Investigate the fork in the road' completes where the client's guide arrow ends
+    /// (line 24, to (109.6, 87.0)), not at the born point or halfway along; then Baphomet comes at his point 20.</summary>
+    [ClientDataFact]
+    public async Task TheNorthGateForkIsWhereTheGuideArrowEnds()
+    {
+        const long scene = 1011301;
+        await using var alice = await InWorld("Alice");
+        await Gm(alice, "!lvl 99");
+        Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
+        long instance = await Load(alice, scene);
+        await Stage(alice, 1, quest: 1);
+        var map = Service<WorldData>().Map(scene)!;
+        var born = map.Points[19];
+        await WalkTo(alice, born.X, born.Y, born.Z);
+        await WalkTo(alice, 112.7f, born.Y, 80f); // halfway along the arrow, 23.7 m from point 20
+        await Task.Delay(200);
+        Assert.Equal(0, Session(alice).DungeonAttempt!.Wave);
+
+        await WalkTo(alice, 109.6f, born.Y, 87.0f);
+        await Stage(alice, 2, quest: 2);
+        var baphomet = await BossIn(instance, 5300003);
+        Assert.Equal((map.Points[20].X, map.Points[20].Z), (baphomet.Home.X, baphomet.Home.Z));
     }
 
     /// <summary>What the client sends when the story ends: 32709 and the plot's end action 601 → 84011.</summary>

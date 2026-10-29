@@ -202,6 +202,7 @@ public sealed partial class MapTests : IAsyncLifetime
         await Gm("alice", "!quest accept 10101220"); // Monster Hunt: 310001 [20, 10111] = kill 20 on South Gate
         await Gm("alice", $"!jump {monster.MovementInfo.Pos.X:0.0} {monster.MovementInfo.Pos.Z + 1:0.0}".Replace(',', '.'));
         await alice.SendGameAsync(CombatService.LockEnemy, new LockEnemyReq { EnemyId = (long)monster.Uuid });
+        await SwingWait.UntilDoneAsync(_app.Services.GetRequiredService<GameLoop>(), _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == alice.Account && s.Role != null), (long)monster.Uuid);
         await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = (long)monster.Uuid });
         var rsp = await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser);
         Assert.Equal(0, rsp.Result);
@@ -367,8 +368,8 @@ public sealed partial class MapTests : IAsyncLifetime
         Assert.Equal(1, angeling.EntityType);
 
         // The GM shortcut offsets x by 3m while retaining the previous scene's height hint.
-        // A random MVP location can put that offset off the walkable layer; this test exercises
-        // combat/settlement, so start at the live boss's grounded position and stop idle roaming.
+        // A random MVP location can put either that offset or the spawn cell itself off the walkable layer; this test
+        // exercises combat/settlement, so move both actors to the nearest standable point and stop idle roaming.
         await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(async () =>
         {
             var player = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
@@ -377,12 +378,18 @@ public sealed partial class MapTests : IAsyncLifetime
             boss.Advance(MonsterService.NowMs);
             boss.Moving = false;
             boss.NextRoamMs = long.MaxValue;
+            var at = _app.Services.GetRequiredService<WorldData>().Map(player.SceneEntry)!
+                .Standable(new MapPoint(boss.X, boss.Y, boss.Z, boss.Face), radius: 32);
+            boss.X = at.X;
+            boss.Y = at.Y;
+            boss.Z = at.Z;
             await _app.Services.GetRequiredService<SceneService>().TeleportInMapAsync(player,
-                new MapPoint(boss.X, boss.Y, boss.Z, boss.Face));
+                at);
         });
 
         // Hit it: the boss fights back with its own normal attack and summons 3 Self-Destruct Porings.
         await alice.SendGameAsync(CombatService.LockEnemy, new LockEnemyReq { EnemyId = (long)angeling.Uuid });
+        await SwingWait.UntilDoneAsync(_app.Services.GetRequiredService<GameLoop>(), _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == alice.Account && s.Role != null), (long)angeling.Uuid);
         await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = (long)angeling.Uuid });
         Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
         var summon = await alice.Inbox.WaitAsync(e => e.IsGame(CombatService.UseInSkill) && UseInSkillInfo.Parser.ParseFrom(e.Body) is var u
@@ -488,6 +495,7 @@ public sealed partial class MapTests : IAsyncLifetime
         };
         try
         {
+            await SwingWait.UntilDoneAsync(_app.Services.GetRequiredService<GameLoop>(), _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == alice.Account && s.Role != null), (long)angeling.Uuid);
             await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = (long)angeling.Uuid });
             Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
             try { await rejected.Task.WaitAsync(TimeSpan.FromSeconds(10)); }
@@ -517,6 +525,7 @@ public sealed partial class MapTests : IAsyncLifetime
         combat.EventDamageRecorded.Add(failDamage);
         try
         {
+            await SwingWait.UntilDoneAsync(_app.Services.GetRequiredService<GameLoop>(), _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == alice.Account && s.Role != null), (long)angeling.Uuid);
             await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = (long)angeling.Uuid });
             Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
             Assert.Equal((1L, 1L, false), await damageRestored.Task.WaitAsync(TimeSpan.FromSeconds(10)));
@@ -541,6 +550,7 @@ public sealed partial class MapTests : IAsyncLifetime
         };
         try
         {
+            await SwingWait.UntilDoneAsync(_app.Services.GetRequiredService<GameLoop>(), _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == alice.Account && s.Role != null), (long)angeling.Uuid);
             await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = (long)angeling.Uuid });
             Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
             await probeFault.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -583,6 +593,7 @@ public sealed partial class MapTests : IAsyncLifetime
         };
         try
         {
+            await SwingWait.UntilDoneAsync(_app.Services.GetRequiredService<GameLoop>(), _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == alice.Account && s.Role != null), (long)angeling.Uuid);
             await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = (long)angeling.Uuid });
             Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
             await prepEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -755,6 +766,7 @@ public sealed partial class MapTests : IAsyncLifetime
             };
             try
             {
+                await SwingWait.UntilDoneAsync(_app.Services.GetRequiredService<GameLoop>(), _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == alice.Account && s.Role != null), uid);
                 await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = uid });
                 Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
                 await committed.Task.WaitAsync(Wait);
@@ -848,6 +860,7 @@ public sealed partial class MapTests : IAsyncLifetime
             };
             try
             {
+                await SwingWait.UntilDoneAsync(_app.Services.GetRequiredService<GameLoop>(), _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == alice.Account && s.Role != null), uid);
                 await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = uid });
                 Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
                 await firstProbe.Task.WaitAsync(Wait);

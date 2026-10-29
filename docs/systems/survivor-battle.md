@@ -42,8 +42,9 @@ use). The client only counts down; when the time comes the server binds the came
 shows the watcher as `Watch` in 5036. 82640 switches to another living teammate (the client allows it every 2 s), and a
 watcher whose teammate falls is moved on. A revive gives the camera back.
 
-Known limit: the server's area of interest still follows the watcher's own body, so on the large island a watched
-teammate far away is not visible to the watcher.
+While a player watches, the server keeps its position, and with it its area of interest, on the watched teammate,
+and nobody else sees it *(inferred: the eliminated body is gone for the others)*. Its own client gets no movement for
+that; a revive teleports it to the chosen point.
 
 ## Shops
 

@@ -82,6 +82,7 @@ public sealed partial class DungeonTests
             new MapPoint(boss.X + 1, boss.Y, boss.Z, 270)));
         await Task.Delay(500);
         await OnLoop(() => { Assert.Null(boss.Target); return Task.CompletedTask; });
+        await SwingWait.UntilDoneAsync(Service<GameLoop>(), Session(alice), boss.Uid);
         await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = boss.Uid });
         Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
         await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser, h => h.SrcID == (long)alice.Self.Uuid

@@ -319,11 +319,16 @@ public static class ErrorCodes
     public const int NotForSale = 2303;         // "Item is not currently available for purchase"
     public const int PurchaseLimit = 2304;      // "Item purchase limit reached"
     public const int PurchaseRequirements = 2311; // "Purchase requirements not met"
+    public const int ShopGiftFriendsOnly = 2312;   // "Gifts can only be sent to friends"
+    public const int ShopGiftOrderMissing = 2314;  // "Order does not exist"
     public const int ShopAppearanceMissing = 2315; // "Appearance does not exist"
     public const int ShopAppearanceOwned = 2316;   // "Appearance already unlocked"
     public const int ShopGiftNotAllowed = 2317;    // "This shop does not allow gifts"
+    public const int ShopGiftDuplicate = 2318;     // "You already have an unclaimed gift containing the same appearance"
     public const int ShopMissing = 2323;        // "Shop Configuration not found."
     public const int ShopRewardMissing = 2324;  // "Reward Configuration not found."
+    public const int ShopGiftSelf = 2325;          // "You cannot send gifts to yourself"
+    public const int ShopGiftMessageLength = 2327;  // "Invalid gift message length"
 
     // Soul Echo (the client's name for emblems; exact operation mapping inferred).
     public const int FunctionLocked = 2057;       // "Function locked"

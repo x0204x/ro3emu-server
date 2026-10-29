@@ -109,7 +109,7 @@ dotnet_diagnostic.CA1832.severity = suggestion
 dotnet_diagnostic.CA1836.severity = suggestion
 # 4: prefer Dictionary.Contains methods
 dotnet_diagnostic.CA1841.severity = suggestion
-# 380: use LoggerMessage delegates
+# 379: use LoggerMessage delegates
 dotnet_diagnostic.CA1848.severity = suggestion
 # 5: prefer TryGetValue
 dotnet_diagnostic.CA1854.severity = suggestion
@@ -123,7 +123,7 @@ dotnet_diagnostic.CA1861.severity = suggestion
 dotnet_diagnostic.CA1862.severity = suggestion
 # 10: cache and reuse JsonSerializerOptions
 dotnet_diagnostic.CA1869.severity = suggestion
-# 147: avoid potentially expensive logging
+# 146: avoid potentially expensive logging
 dotnet_diagnostic.CA1873.severity = suggestion
 # 15: instantiate argument exceptions correctly
 dotnet_diagnostic.CA2208.severity = suggestion

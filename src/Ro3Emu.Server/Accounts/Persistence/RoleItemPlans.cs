@@ -578,7 +578,7 @@ internal static class RoleColumns
         "life_runtime", "season_talent", "season_page", "season_page_meta", "season_refine", "pets", "mounts",
         "wardrobe", "totems", "totem_refine_epoch", "genre", "skill_plans", "pet_books", "equip_levels",
         "equip_plans", "auto_decompose", "bag_state", "stat_plans", "world_state", "emblems", "guild_info",
-        "mailbox", "auction", "tasks", "task_runtime", "task_followup", "wild_afk", "career_special", "heroic_spirit", "paragon", "title", "area_concur", "growth_class", "first_heart", "personal", "personal_upvote", "popularity", "social_outfit", "emoji_info"
+        "mailbox", "auction", "tasks", "task_runtime", "task_followup", "wild_afk", "career_special", "heroic_spirit", "paragon", "title", "area_concur", "growth_class", "first_heart", "personal", "personal_upvote", "popularity", "social_outfit", "emoji_info", "gifts"
     };
 
     internal static void Validate(string column)

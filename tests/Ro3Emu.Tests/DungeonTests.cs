@@ -149,6 +149,7 @@ public sealed partial class DungeonTests : IAsyncLifetime
 
     private async Task Kill(BotClient bot, MonsterUnit actor)
     {
+        await SwingWait.UntilDoneAsync(Service<GameLoop>(), Session(bot), actor.Uid);
         await OnLoop(async () =>
         {
             Assert.True(actor.Hp > 1);

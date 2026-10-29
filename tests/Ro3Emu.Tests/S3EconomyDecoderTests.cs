@@ -72,7 +72,7 @@ public sealed class S3EconomyDecoderTests
                 "auction guild_info guild_challenge pet_books daily new_activities activity_runtime timed_activity timed_battle " +
                 "training lottery tower wild_afk dungeons territory_escort lifejob life_restrict life_runtime season_talent " +
                 "season_page season_page_meta season_refine equip_levels equip_plans auto_decompose bag_state stat_plans " +
-                "world_state emblems pets mounts wardrobe totems totem_refine_epoch genre career_special heroic_spirit paragon title area_concur growth_class first_heart personal personal_upvote popularity social_outfit emoji_info").Split(' '))
+                "world_state emblems pets mounts wardrobe totems totem_refine_epoch genre career_special heroic_spirit paragon title area_concur growth_class first_heart personal personal_upvote popularity social_outfit emoji_info gifts").Split(' '))
                 Exec("ALTER TABLE role ADD COLUMN " + column + " BLOB");
         }
         internal void Exec(string sql)

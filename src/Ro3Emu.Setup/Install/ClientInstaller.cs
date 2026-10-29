@@ -73,7 +73,9 @@ public sealed class ClientInstaller(PublisherConfig config, HttpClient http, str
         }
         if (last is InstallException install) throw install;
         throw new InstallException("The publisher's download servers could not be reached.",
-            "Check the internet connection and try again. If the servers moved, a newer RO3Emu (or RO3Emu.download.json) has the new addresses.");
+            "Check the internet connection and try again. Some internet providers block the publisher's mirror: connecting through "
+            + "Cloudflare WARP (or another VPN) helps, or install the game with the Genesis launcher and pick its folder instead. "
+            + "If the servers moved, a newer RO3Emu (or RO3Emu.download.json) has the new addresses.");
     }
 
     private async Task<byte[]> GetBytesAsync(string url, CancellationToken ct)
