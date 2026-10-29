@@ -8,10 +8,7 @@ namespace Ro3Emu.Server.Game;
 public sealed partial class TerritoryWarsService
 {
     public const uint SiegeBaseQuery = 44402, SiegeHistoryQuery = 44403, SiegeResultNotify = 44404;
-    public const uint SiegeToolAssign = 32282, SiegeToolExchange = 32283, SiegeToolList = 32284,
-        SiegeToolPermissionNotify = 32285, SiegeToolChangeNotify = 32286;
-    public const uint SiegeToolPrepay = 32270, SiegeToolBuild = 32271, SiegeToolCancel = 32272,
-        SiegeToolAdd = 32275, SiegeVehicleUse = 32281;
+    public const uint SiegeToolAdd = 32275;
     private const int SiegeActivity = 115;
     private bool? _siegeTestOpen;
     private long _siegeTestStart;
@@ -147,25 +144,6 @@ public sealed partial class TerritoryWarsService
             response.Result = ErrorCodes.DataNotFound; // (inferred) Avoid nil infos in no_decode_default_array Lua.
         return Send(s, SiegeHistoryQuery, response);
     }
-
-    /// <summary>The panel's War Machine page queries 32284. No server ownership or inventory semantics
-    /// for assignable machines are exported, so its list is empty and mutations refuse (inferred).</summary>
-    private Task SiegeToolListAsync(GameSession s) => Send(s, SiegeToolList,
-        new GetGuildWartimeToolBelongListRsp { Result = Own(s) == null ? ErrorCodes.TerritoryGuild : ErrorCodes.DataNotFound });
-
-    private Task SiegeToolAssignAsync(GameSession s, GuildWartimeToolBelongOperReq req) => Send(s, SiegeToolAssign,
-        new GuildWartimeToolBelongOperRsp
-        {
-            Result = Own(s) == null ? ErrorCodes.TerritoryGuild : ErrorCodes.FeatureUnavailable,
-            ToolType = req.ToolType, BagIndex = req.BagIndex, RoleGuildId = req.RoleGuildId
-        });
-
-    private Task SiegeToolExchangeAsync(GameSession s, GuildWartimeToolExchangeOperReq req) => Send(s, SiegeToolExchange,
-        new GuildWartimeToolExchangeOperRsp
-        {
-            Result = Own(s) == null ? ErrorCodes.TerritoryGuild : ErrorCodes.FeatureUnavailable,
-            ToolType = req.ToolType, SrcBagIndex = req.SrcBagIndex, TargetBagIndex = req.TargetBagIndex
-        });
 
     private async Task PublishSiegeIfChangedAsync()
     {

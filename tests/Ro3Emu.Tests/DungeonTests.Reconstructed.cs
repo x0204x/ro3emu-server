@@ -79,6 +79,27 @@ public sealed partial class DungeonTests
     }
 
     [ClientDataFact]
+    public async Task ASoloStoryPlaneReturnsThePlayerToTheFieldAfterItsClear()
+    {
+        // Seen on a player's client: Southern Payon's portal waves ended at (3/3) and the empty plane stayed until exit.
+        const long scene = 1021301;
+        await using var alice = await InWorld("Alice");
+        await Gm(alice, "!lvl 99");
+        Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
+        long instance = await Load(alice, scene);
+        var plan = Session(alice).DungeonAttempt!.Plan;
+        for (int wave = 0; wave < plan.Waves.Count; wave++)
+            foreach (var actor in await WaveIn(instance, plan.Waves[wave].Spawns.Count)) await Kill(alice, actor);
+        using var left = alice.Inbox.Expect(e => e.IsGame(DungeonService.Leave));
+        Assert.Equal((DungeonRes)1, (await Next(alice, DungeonService.Result, DungeonResNotify.Parser)).Res);
+        Assert.Equal(instance, Session(alice).InstanceId); // the result first, the return a moment later
+        var leave = await left.WaitAsync(TimeSpan.FromSeconds(DungeonService.PlaneExitSeconds + 10));
+        Assert.Equal(0, LeaveDungeonRsp.Parser.ParseFrom(leave.Body).Result);
+        for (int i = 0; i < 100 && Session(alice).InstanceId != 0; i++) await Task.Delay(50);
+        Assert.Equal(0, Session(alice).InstanceId);
+    }
+
+    [ClientDataFact]
     public async Task ASoloStoryPlaneShowsItsGuideRoutesUntilItIsCleared()
     {
         // The Culvert plane's scene editor (sc_prt_sewb1_001_pl01) has the guide routes 19 and 21.

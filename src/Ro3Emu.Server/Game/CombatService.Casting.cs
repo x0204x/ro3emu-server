@@ -27,6 +27,8 @@ public sealed class ActiveSkillCast
     public required int ActionMs { get; init; }
     public bool Cancelled { get; set; }
     public bool Resolved { get; set; }
+    /// <summary>此施放已排程來源目標的彈道；命中通知不得為同一目標再送一次。</summary>
+    internal bool HasTimedBullet { get; set; }
     public SkillObject? Operator { get; init; }
     /// <summary>Extra effects remain bound to their equipped source after asynchronous publication.</summary>
     internal Func<bool>? SourceEligible { get; init; }
@@ -90,10 +92,12 @@ public sealed partial class CombatService
             own = owned == null ? OwnSkillAdmit?.Invoke(s, req.SkillId) : null;
             if (own is { } ownError && ownError != 0) error = ownError;
             else if (own == null && !granted
-                && (owned != null ? !owned.Skills.Contains(req.SkillId) : !Learned(s, row!.Value))) error = ErrorCodes.SkillNotLearned;
+                && (owned != null ? !owned.Skills.Contains(req.SkillId)
+                    : !Learned(s, row!.Value) && !GrantedSkill.Exists(grant => grant(s, req.SkillId))))
+                error = ErrorCodes.SkillNotLearned;
             else if (!SkillModeAllowed(s, row!.Value)) error = ErrorCodes.SkillRequirements;
             else if (GameData.Int(row!.Value, "_iBasicType") != 1) error = ErrorCodes.SkillPassive;
-            else if (_buffs.HasForbidden(s, new SkillConfig(row.Value).IsNormalAtk == 1
+            else if (_buffs.HasForbidden(s, new SkillConfig(row.Value).IsNormalAttack(_data)
                 ? ForbiddenState.NormalAttack : ForbiddenState.CastSkill)) error = ErrorCodes.SkillBadState;
             else if (req.SkillId == PublicSkill("WorldTreeSkillId") && _buffs.HasForbidden(s, ForbiddenState.UseItem)) error = ErrorCodes.ItemUseForbidden;
             else if (req.SkillId == PublicSkill("WorldTreeSkillId") && !ItemAllowedInMap(s, (int)PublicSkill("WorldTreeItemId"))) error = ErrorCodes.ItemUseAreaForbidden;
@@ -218,9 +222,9 @@ public sealed partial class CombatService
     /// ASPD-scaled action time (the normal attack shows' m_fInterruptTime is their whole length) from its own send, so
     /// network jitter can bring a legitimate next swing a little early: <see cref="SwingJitterMs"/> of slack (inferred).
     /// </summary>
-    private static bool SwingInFlight(ActiveSkillCast active, JsonElement row, CastSkillReq req) =>
+    private bool SwingInFlight(ActiveSkillCast active, JsonElement row, CastSkillReq req) =>
         req.TargetId != 0 && req.TargetId == active.Request.TargetId
-        && new Data.Config.SkillConfig(row).IsNormalAtk == 1 && new Data.Config.SkillConfig(active.Row).IsNormalAtk == 1
+        && new Data.Config.SkillConfig(row).IsNormalAttack(_data) && new Data.Config.SkillConfig(active.Row).IsNormalAttack(_data)
         && Now < active.StartMs + active.ChantMs + active.ActionMs - SwingJitterMs;
 
     internal const int SwingJitterMs = 150;
@@ -318,6 +322,9 @@ public sealed partial class CombatService
                 targetPosition.Z, passLevel)
             && (release != 1 || monster == null
                 || BlockedMonsterEndpointAllowed?.Invoke(s, monster, origin, targetPosition) != true))
+            return ErrorCodes.SkillBlocked;
+        // 上游城戰靜態牆的推定規則保留原 pass level 2 範圍，動態牆仍逐技能等級驗證。
+        if (passLevel == 2 && SkillLineBlocked?.Invoke(s, release == 1 ? monster : null, origin, targetPosition) == true)
             return ErrorCodes.SkillBlocked;
         return 0;
     }
@@ -521,6 +528,7 @@ public sealed partial class CombatService
         int bulletTravel = bulletEffect > 0 ? BulletTravelMs(bulletEffect, origin, bulletTarget) : 0;
         if (bulletTravel > 0)
         {
+            action.HasTimedBullet = true;
             ScheduleRuntime(action.WorldScene, TimeSpan.FromMilliseconds(at), async () =>
             {
                 if (!Live(s, action)) return;

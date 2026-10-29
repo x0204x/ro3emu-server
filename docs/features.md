@@ -11,7 +11,8 @@ show is playable from day one, without season or server-day gates ([details](gui
 **World**
 - login, server list, both gates, character create / select / delete
 - maps, portals, NPCs, Kafra travel, wings, map channels
-- monsters, MVPs with their summons and fields, death and revive
+- monsters (they surround the player they attack, [monster AI](systems/monster-ai.md)), MVPs with their summons
+  and fields, death and revive
 - silent reconnect, emotes and sitting
 
 **Character and combat**
@@ -61,7 +62,7 @@ show is playable from day one, without season or server-day gates ([details](gui
 **Not yet**
 - **Boss script mechanics:** the special skills are in, but mechanics that lived only in the original server's scripts
   (bubbles, bells, rhythm stages) are plain area attacks.
-- **Mock Battle extras:** the arena's monsters, and the 40-player team frame's remaining squad commands (flag, rally).
+- **Mock Battle extras:** the arena's monsters.
 - **War of Emperium extras:** commander tools, siege weapons and vehicles.
 - **Smaller missing pieces:** some stages of the story dungeons
   that are still simplified.

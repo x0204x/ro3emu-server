@@ -146,7 +146,13 @@ public sealed partial class TaskService
     //   Battles" (LC_InteractCondition.lua:1403-1445): one per settled siege the role was loaded into / its guild won.
     // - 106801 [n] "Log in ${1} times" (110007, Lost Treasure): one per login while the quest runs; the login that
     //   accepts it counts as the first (inferred).
-    private const int TGvgJoin = 106605, TGvgWin = 106606, TLogin = 106801;
+    // - 106610 [n] "Reach @{1} Battle Merit" (120001-120005, Realm Campaign 107; ProgressConfig "Earn a total of ${1} Personal
+    //   Points in the Territory War"): the Battle Merit points earned this Territory War season (TerritoryWarsService
+    //   GloryState.Points, not the spendable currency 15).
+    private const int TGvgJoin = 106605, TGvgWin = 106606, TLogin = 106801, TBattleMerit = 106610;
+
+    /// <summary>106610: this season's Battle Merit points of a loaded role, -1 before it loads (TerritoryWarsService.GloryPoints).</summary>
+    public Func<GameSession, long>? BattleMeritPoints { get; set; }
 
     // 106010 BarroomToDayActTime [n] "Today's active time in the Tavern" is the Tavern quest's target (TaskConfig 2000,
     // type 9, [106010,1200]); the guild To-Do tasks reuse it as a stand-in, [106010,5] (TaskService.GuildEvents). Only
@@ -177,7 +183,7 @@ public sealed partial class TaskService
             or TTalentLevels or TPetsDeployed or TTowerFloor or TGuildHunt or TDraculaWedding or TPetSupport
             or TPetRoom or TTreasureDig or TCoffinOrSurvivor or TDragonCoffin or TGveJoin or TFriends or TEchoLevelSum
             or TEchoUpgrade or TTowerJoin or TTowerWin or TTowerFloorReached or TLike or TLiveness or TCampfire
-            or TGvgJoin or TGvgWin or TLogin or TBarroomActTime, var n] => n,
+            or TGvgJoin or TGvgWin or TLogin or TBarroomActTime or TBattleMerit, var n] => n,
         [TTenBossWin, var n, _, ..] => n,
         [TChickenRank or TChickenUse or TChickenEquip, _, var n] => n,
         [TChickenMonster or TChickenBox or TChickenKill, var n] => n,
@@ -335,6 +341,7 @@ public sealed partial class TaskService
             TFriends => FriendCount(s),
             TEchoLevelSum => EmblemService.Worn(s).Sum(i => i.Attrs?.GetValueOrDefault(1001) ?? 0),
             TLiveness => _character.CountOf(s, 5),
+            TBattleMerit => BattleMeritPoints?.Invoke(s) ?? -1,
             _ => -1,
         };
     }

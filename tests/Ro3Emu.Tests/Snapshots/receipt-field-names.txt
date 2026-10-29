@@ -211,6 +211,11 @@ Ro3Emu.Server.Accounts.Persistence.FriendWritePlan/_participants
 Ro3Emu.Server.Accounts.Persistence.FriendWritePlan/_roles
 Ro3Emu.Server.Accounts.Persistence.FriendWritePlan/_time
 Ro3Emu.Server.Accounts.Persistence.FriendWritePlan/_value
+Ro3Emu.Server.Accounts.Persistence.GiftCodeRedeemPlan/<account>P
+Ro3Emu.Server.Accounts.Persistence.GiftCodeRedeemPlan/<code>P
+Ro3Emu.Server.Accounts.Persistence.GiftCodeRedeemPlan/<redeemedUtc>P
+Ro3Emu.Server.Accounts.Persistence.GiftCodeRedeemPlan/<redemptionKey>P
+Ro3Emu.Server.Accounts.Persistence.GiftCodeRedeemPlan/<roleId>P
 Ro3Emu.Server.Accounts.Persistence.GuildCampfireStatePlan/_guild
 Ro3Emu.Server.Accounts.Persistence.GuildCampfireStatePlan/_state
 Ro3Emu.Server.Accounts.Persistence.GuildCaravanRewardPlan/<contribution>P
@@ -372,6 +377,9 @@ Ro3Emu.Server.Accounts.Persistence.PronteraDefenseStationPlan/<map>P
 Ro3Emu.Server.Accounts.Persistence.PronteraDefenseStationPlan/<open>P
 Ro3Emu.Server.Accounts.Persistence.RealmStatePlan/_kind
 Ro3Emu.Server.Accounts.Persistence.RealmStatePlan/_state
+Ro3Emu.Server.Accounts.Persistence.ReceiptCompactionPlan/<afterSeq>P
+Ro3Emu.Server.Accounts.Persistence.ReceiptCompactionPlan/<batch>P
+Ro3Emu.Server.Accounts.Persistence.ReceiptCompactionPlan/<cutoffUtcMs>P
 Ro3Emu.Server.Accounts.Persistence.RoleAwardStatePlan/_checkTasks
 Ro3Emu.Server.Accounts.Persistence.RoleAwardStatePlan/_daily
 Ro3Emu.Server.Accounts.Persistence.RoleAwardStatePlan/_expectedDaily
@@ -662,6 +670,7 @@ Ro3Emu.Server.Economy.EventEconomyMutation#EffectiveUtcMs
 Ro3Emu.Server.Economy.EventEconomyMutation#Goods
 Ro3Emu.Server.Economy.EventEconomyMutation#IntentHash
 Ro3Emu.Server.Economy.EventEconomyMutation#IntentPayload
+Ro3Emu.Server.Economy.EventEconomyMutation#IntentVersion
 Ro3Emu.Server.Economy.EventEconomyMutation#OperationId
 Ro3Emu.Server.Economy.EventEconomyMutation#Outcome
 Ro3Emu.Server.Economy.EventEconomyMutation#OwnerDeltas
@@ -679,6 +688,7 @@ Ro3Emu.Server.Economy.EventEconomyMutation/<Costs>k__BackingField
 Ro3Emu.Server.Economy.EventEconomyMutation/<EffectiveUtcMs>k__BackingField
 Ro3Emu.Server.Economy.EventEconomyMutation/<Goods>k__BackingField
 Ro3Emu.Server.Economy.EventEconomyMutation/<IntentHash>k__BackingField
+Ro3Emu.Server.Economy.EventEconomyMutation/<IntentVersion>k__BackingField
 Ro3Emu.Server.Economy.EventEconomyMutation/<OperationId>k__BackingField
 Ro3Emu.Server.Economy.EventEconomyMutation/<OwnerDeltas>k__BackingField
 Ro3Emu.Server.Economy.EventEconomyMutation/<RequestFingerprint>k__BackingField

@@ -234,6 +234,12 @@ public sealed partial class CombatService : IGameTicker
     public Func<GameSession, GameSession, bool>? PlayerHostile { get; set; }
     public Func<GameSession, MonsterUnit, bool>? MonsterTargetAllowed { get; set; }
     public Func<GameSession, MonsterUnit, Vec3, Vec3, bool>? BlockedMonsterEndpointAllowed { get; set; }
+    /// <summary>
+    /// Whether something stands between the caster and the target of a skill that walls stop (_iPassBlock 2): the
+    /// monster aimed at (null for a ground or player target), the caster's and the target's positions. Unset, nothing
+    /// does (see <see cref="ValidateTarget"/>).
+    /// </summary>
+    public Func<GameSession, MonsterUnit?, Vec3, Vec3, bool>? SkillLineBlocked { get; set; }
 
     /// <summary>A monster damaged a player; the flag says the hit was lethal (MVP statistics).</summary>
     public List<Action<MonsterUnit, GameSession, long, bool>> Taken { get; } = new();
@@ -272,6 +278,12 @@ public sealed partial class CombatService : IGameTicker
     public Func<GameSession, int, int?>? OwnSkillAdmit { get; set; }
     public Func<GameSession, int, Task>? OwnSkillCast { get; set; }
     public Func<GameSession, JsonElement, Task>? OwnSkillLanded { get; set; }
+
+    /// <summary>
+    /// Skills a player may cast without learning them, resolved like any other (a war vehicle seat's skills,
+    /// VehicleSeatConfig _kMainSkills / _kSkills); their cooldowns are the ordinary SkillConfig ones.
+    /// </summary>
+    public List<Func<GameSession, int, bool>> GrantedSkill { get; } = [];
     /// <summary>World-core owns the dead player's explicit accept/decline invitation.</summary>
     public Func<GameSession, GameSession, JsonElement, Task>? ReviveOffer { get; set; }
     public Func<GameSession, int>? ReviveCheck { get; set; }

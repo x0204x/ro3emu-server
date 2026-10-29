@@ -17,16 +17,17 @@
 - [Config tables](guide/config-tables.md): the typed views of the client's tables and the startup check of the export
 - [Prepare missing task award groups](guide/task-award-repair.md): compare local exports and create a reviewed candidate table
 - [Security model](systems/security.md): what the server exposes, what it trusts, and how to report a vulnerability
+- [Account bans](systems/account-bans.md): the `account_ban` table the admin panel writes and where the server checks it
 
 ## Systems: how each part is implemented
 
 | Area | Notes |
 |---|---|
-| Combat and skills | [skill protocol](systems/skill-protocol.md) · [buffs and resources](systems/skill-buffs.md) · [skill growth](systems/skill-growth.md) · [remaining skill messages](systems/skills-rest.md) · [totem effects](systems/totem-effects.md) |
+| Combat and skills | [monster AI](systems/monster-ai.md) · [skill protocol](systems/skill-protocol.md) · [buffs and resources](systems/skill-buffs.md) · [skill growth](systems/skill-growth.md) · [remaining skill messages](systems/skills-rest.md) · [totem effects](systems/totem-effects.md) |
 | Character and items | [Astral Level (Paragon)](systems/paragon.md) · [Starshatter ritual](systems/starshatter.md) · [title ranks](systems/titles.md) · [equipment affixes](systems/equipment-affixes.md) · [build presets](systems/genre.md) · [wardrobe](systems/wardrobe.md) · [mounts and totems](systems/mount-totem.md) |
 | Pets | [pets](systems/pet.md) · [ordinary guardian skills](systems/pet-guardian-skills.md) · [pets in the world](systems/pet-world-follow.md) · [tower companions and Bonus Time](systems/tower-pets-afk.md) |
 | Life jobs | [life jobs and production](systems/lifejob.md) · [gathering](systems/gathering.md) |
-| Economy | [trade and stalls](systems/trade-stalls.md) · [auctions](systems/auction.md) · [mail](systems/mail.md) · [durable activity settlement](systems/durable-settlement.md) |
+| Economy | [gift codes](systems/gift-codes.md) · [trade and stalls](systems/trade-stalls.md) · [auctions](systems/auction.md) · [mail](systems/mail.md) · [durable activity settlement](systems/durable-settlement.md) |
 | Guilds | [guilds](systems/guild.md) · [territory wars](systems/territory-wars.md) · [escort and guild trading](systems/territory-escort.md) |
 | Instances | [dungeons](systems/dungeon.md) · [story dungeon inventory](systems/dungeon-inventory.md) |
 | Activities | [overview](systems/activities.md) · [timed activities](systems/activities-timed-events.md) · [Survivor Battle in the match](systems/survivor-battle.md) · [adventures](systems/activities-adventures.md) · [battle pass and month card](systems/activities-battlepass-monthcard.md) · [guild campfire](systems/activities-guild-campfire.md) · [lottery](systems/activities-lottery.md) |

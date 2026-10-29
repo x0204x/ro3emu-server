@@ -79,6 +79,16 @@ public sealed class GuildStore(AccountStore accounts)
         public long MergeAtSec { get; set; }
         public List<long> MergeMemberIds { get; set; } = [];
         public long MergeCooldownSec { get; set; }
+        /// <summary>The war warehouse (DBGuildData guildWartimeInfo, GuildService.Wartime): machine item to count once
+        /// WartimeStocked; before that the guild holds PublicParamConfig SiegeInitItemList.</summary>
+        public Dictionary<int, int> WartimeItems { get; set; } = [];
+        public bool WartimeStocked { get; set; }
+        /// <summary>War machine operators (guildWartimeInfo itemRoleUseInfo): machine type (WartimeToolType) to slot
+        /// (1-based bag index) to role.</summary>
+        public Dictionary<int, Dictionary<int, long>> WartimeSlots { get; set; } = [];
+        /// <summary>Machines reserved for building (guildWartimeInfo prepayInfo): role to machine item, one each; they
+        /// already left <see cref="WartimeItems"/> and go back on cancel.</summary>
+        public Dictionary<long, int> WartimePrepay { get; set; } = [];
         /// <summary>32228 journal rows (GuildEventData bytes) to append with this state's next save; not part of the state.</summary>
         internal List<byte[]> PendingEvents { get; } = new();
     }

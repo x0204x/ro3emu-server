@@ -425,6 +425,18 @@ public sealed class ActivitiesMessages(PraiseService praise, CasualBattleService
         {
             await casual.SwapPositionAsync(session, DungeonTeamSwapPositionReq.Parser.ParseFrom(body.Span));
         });
+        routes.Map(CasualBattleService.SetFlag, "dungeons", async (session, msgId, body) =>
+        {
+            await casual.SetFlagAsync(session, DungeonTeamSetFlagReq.Parser.ParseFrom(body.Span));
+        });
+        routes.Map(CasualBattleService.Rally, "dungeons", async (session, msgId, body) =>
+        {
+            await casual.RallyAsync(session, DungeonTeamRallyReq.Parser.ParseFrom(body.Span));
+        });
+        routes.Map(CasualBattleService.RallyReply, "dungeons", async (session, msgId, body) =>
+        {
+            await casual.RallyReplyAsync(session, DungeonTeamRallyReplyReq.Parser.ParseFrom(body.Span));
+        });
         routes.Map(PraiseService.Praise, "praise", async (session, msgId, body) =>
         {
             await praise.PraiseAsync(session, MultiDungeonPraiseReq.Parser.ParseFrom(body.Span));

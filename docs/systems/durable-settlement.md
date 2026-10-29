@@ -46,3 +46,23 @@ plans.
 | MVP | `mvp_award_obligation` (revision kind `mvp_obligation`) | next kill / login | rows saved with the kill's settlement (`mvp_settlement`, counters, realm receipt); goods rolled at the kill |
 | Survivor, Dragon Island, Rift | `timed_battle_obligation` | login | shared plans and login reservation; delivery stays in `TimedBattleService` (role + row scope right after the settlement commit, again at login) |
 | Dungeons | `dungeon_reward_obligation` | own | not on the shared component: two-phase rows (prepared, then activated by the terminal kill) with their own ledger earn rows (`DungeonObligationLedger`) |
+
+## Receipts and their retention
+
+Every economy commit writes one `operation_receipt` row: its gap-free `commit_seq`, the request fingerprint, the
+intent (`intent_hash` and `intent_payload`), the result returned to the caller (`outcome`), its child receipts and
+the owner revisions it moved. A repeated operation id (a lost acknowledgement, a crash before the reply) is matched
+against that row and gets the stored result instead of a second payment; a different request under the same id is a
+conflict.
+
+- **Intent v2.** The intent no longer embeds the outcome (it used to, in base64, so large activity results were stored
+  twice); it binds it with `OutcomeHash`. Receipts written with the v1 intent stay valid: replay and
+  `EconomyLedgerReader` recompute the v1 bytes (`LegacyIntent()`) when the stored hash is not the v2 one.
+- **Retention** (`Accounts/ReceiptRetention.cs`, options `ReceiptRetention`). A receipt older than `Days` (2) has its
+  `intent_payload` replaced by the marker `compacted` and its `outcome` emptied, `BatchSize` (500) rows per write
+  transaction, every `IntervalMinutes` (60). The row, its hashes, sequence, child receipts, revisions, legs and source
+  claims stay. A replay of a compacted operation is accepted by its intent hash (the same request) and returns the
+  stored child receipts; the ledger reader certifies its sequence, legs and sources and counts it in
+  `CompactedReceipts` instead of re-checking its intent. `mail/*` receipts are never compacted: a delivery's payload is
+  read again when its delivery key comes back.
+- SQLite reuses the freed pages, so the file stops growing; it only shrinks after an offline `VACUUM`.

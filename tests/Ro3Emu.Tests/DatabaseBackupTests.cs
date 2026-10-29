@@ -14,8 +14,18 @@ public sealed class DatabaseBackupTests : IDisposable
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "ro3-backup-" + Guid.NewGuid().ToString("N"));
     private ServerOptions Options() => new() { DataDir = _dir };
     private AccountStore Store() => new(Microsoft.Extensions.Options.Options.Create(Options()));
-    private DatabaseBackup Backup(AccountStore accounts) =>
-        new(Microsoft.Extensions.Options.Options.Create(Options()), accounts, NullLogger<DatabaseBackup>.Instance);
+    private DatabaseBackup Backup(AccountStore accounts, BackupOptions? settings = null) =>
+        new(Microsoft.Extensions.Options.Options.Create(new ServerOptions { DataDir = _dir, Backup = settings ?? new() }), accounts, NullLogger<DatabaseBackup>.Instance);
+
+    /// <summary>A plain copy as is; a compressed one unpacked beside the test data, then checked like a plain one.</summary>
+    private string Unpacked(string copy)
+    {
+        if (!DatabaseBackup.IsCompressed(copy)) return copy;
+        string plain = Path.Combine(_dir, Path.GetFileNameWithoutExtension(copy) + ".unpacked");
+        using (var gzip = new System.IO.Compression.GZipStream(File.OpenRead(copy), System.IO.Compression.CompressionMode.Decompress))
+        using (var to = File.Create(plain)) gzip.CopyTo(to);
+        return plain;
+    }
 
     private static (double X, long Revision) PositionAndRevision(string path, long role)
     {
@@ -61,7 +71,8 @@ public sealed class DatabaseBackupTests : IDisposable
         long previous = 0;
         foreach (var copy in copies)
         {
-            var (x, revision) = PositionAndRevision(copy, role.Id);
+            // Later backups compressed the older copies.
+            var (x, revision) = PositionAndRevision(File.Exists(copy) ? copy : Unpacked(copy[..^3] + DatabaseBackup.CompressedExtension), role.Id);
             Assert.Equal(offset, (long)x - revision); // the row and its revision come from the same commit
             Assert.True(revision >= previous, "later backups never go back in time");
             previous = revision;
@@ -84,9 +95,53 @@ public sealed class DatabaseBackupTests : IDisposable
         var made = Enumerable.Range(0, 22).Select(_ => backup.Backup()).ToList();
         var kept = DatabaseBackup.Completed(backup.Directory).ToList();
         Assert.Equal(20, kept.Count);
-        Assert.Equal(made.TakeLast(20).OrderBy(f => f), kept.OrderBy(f => f));
-        foreach (var file in kept) DatabaseRestore.Validate(file);
+        // The newest two stay plain, the other eighteen are their compressed selves.
+        Assert.Equal(made.TakeLast(2).OrderBy(f => f), kept.Take(2).OrderBy(f => f));
+        Assert.Equal(made.Skip(2).Take(18).Select(f => f[..^3] + DatabaseBackup.CompressedExtension).OrderBy(f => f),
+            kept.Skip(2).OrderBy(f => f));
+        foreach (var file in kept) DatabaseRestore.Validate(Unpacked(file));
         Assert.True(File.Exists(stale)); // only the service's startup removes it (no backup can be running then)
+    }
+
+    [Fact]
+    public void CompressedCopiesKeepTheirTimeAndRestoreLikePlainOnes()
+    {
+        string first;
+        long id;
+        using (var accounts = Store())
+        {
+            var roles = new RoleStore(accounts);
+            id = roles.Create("packed", 1, "Before", 1, 1000, 1)!.Id;
+            var backup = Backup(accounts, new BackupOptions { Keep = 5, Uncompressed = 1 });
+            first = backup.Backup();
+            var time = File.GetLastWriteTimeUtc(first);
+            roles.Create("packed", 1, "After", 1, 1000, 1);
+            backup.Backup();
+            string packed = first[..^3] + DatabaseBackup.CompressedExtension;
+            Assert.False(File.Exists(first));
+            Assert.Equal(time, File.GetLastWriteTimeUtc(packed));
+            Assert.True(new FileInfo(packed).Length < new FileInfo(DatabaseBackup.Completed(backup.Directory).First()).Length);
+            first = packed;
+        }
+        SqliteConnection.ClearAllPools();
+
+        Assert.NotNull(DatabaseRestore.Restore(_dir, first));
+        Assert.False(File.Exists(Path.Combine(_dir, "ro3emu.db.restoring")));
+        using var restored = Store();
+        Assert.Equal(["Before"], new RoleStore(restored).ForAccount("packed").Select(r => r.Name).ToList());
+        Assert.NotNull(new RoleStore(restored).Get(id));
+    }
+
+    [Fact]
+    public void KeepAndUncompressedSetHowManyCopiesStayAndHowManyArePlain()
+    {
+        using var accounts = Store();
+        new RoleStore(accounts).Create("count", 1, "Count", 1, 1000, 1);
+        var backup = Backup(accounts, new BackupOptions { Keep = 4, Uncompressed = 4 });
+        for (int i = 0; i < 6; i++) backup.Backup();
+        var kept = DatabaseBackup.Completed(backup.Directory).ToList();
+        Assert.Equal(4, kept.Count);
+        Assert.All(kept, f => Assert.False(DatabaseBackup.IsCompressed(f)));
     }
 
     [Fact]

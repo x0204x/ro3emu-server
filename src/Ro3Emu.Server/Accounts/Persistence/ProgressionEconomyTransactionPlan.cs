@@ -77,10 +77,10 @@ internal sealed class ProgressionEconomyTransactionPlan(RoleItemPlan child, Econ
         }
         if (row.GetString(1) != mutation.ActorAccount || row.GetInt64(2) != mutation.ActorRoleId ||
             row.GetString(3) != mutation.CommandKind || row.GetString(4) != mutation.RequestFingerprint ||
-            row.GetString(5) != mutation.IntentHash ||
-            !((byte[])row.GetValue(6)).AsSpan().SequenceEqual(mutation.IntentPayload) ||
+            !ReceiptBlobs.SameIntent(row.GetString(5), (byte[])row.GetValue(6), mutation.IntentHash,
+                mutation.IntentPayload, mutation.LegacyIntent) ||
             row.GetString(7) != mutation.SourceKey ||
-            !((byte[])row.GetValue(8)).AsSpan().SequenceEqual(mutation.Outcome))
+            !ReceiptBlobs.SameOutcome((byte[])row.GetValue(8), (byte[])row.GetValue(6), mutation.Outcome))
             throw new EconomyOperationConflictException("Committed operation ID belongs to another actor or intent.");
         string realm = row.GetString(0);
         var values = EconomyTransactionPlan.DecodeChildReceipts((byte[])row.GetValue(9));

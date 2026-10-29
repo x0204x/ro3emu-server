@@ -30,6 +30,18 @@ public readonly partial record struct SkillConfig(JsonElement Row)
     [ConfigField("_iImportantSkill")] public partial long ImportantSkill { get; }
     [ConfigField("_iInitialLevel")] public partial long InitialLevel { get; }
     [ConfigField("_iIsNormalAtk")] public partial long IsNormalAtk { get; }
+
+    /// <summary>
+    /// Whether the skill is a career or monster normal attack: _iIsNormalAtk 1, or a career's attack in JobAttackConfig.
+    /// The Archer series' attack (1300001 HunterAttack) is the one JobAttackConfig row whose skill has _iIsNormalAtk 0.
+    /// </summary>
+    public bool IsNormalAttack(GameData data) => IsNormalAtk == 1 || CareerAttacks(data).Contains(Id);
+
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<GameData, HashSet<long>> CareerAttackSets = [];
+
+    private static HashSet<long> CareerAttacks(GameData data) =>
+        CareerAttackSets.GetValue(data, d => [.. JobAttackConfig.All(d).Select(r => r.SkillId)]);
+
     [ConfigField("_iJob")] public partial long Job { get; }
     [ConfigField("_iLevel")] public partial long Level { get; }
     [ConfigField("_iMaxLevel")] public partial long MaxLevel { get; }

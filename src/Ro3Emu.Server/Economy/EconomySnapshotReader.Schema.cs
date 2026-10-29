@@ -8,6 +8,7 @@ public static partial class EconomySnapshotReader
     {
         ["account"] = "name password_hash salt created_utc",
         ["auth_token"] = "token kind account expires_utc",
+        ["account_ban"] = "account reason banned_utc until_utc banned_by",
         ["role_lifecycle"] = "role_id epoch deleted",
         ["owner_revision"] = "kind id part revision",
         ["owner_operation_receipt"] = "operation_id family result",
@@ -43,6 +44,8 @@ public static partial class EconomySnapshotReader
         ["timed_battle_obligation"] = "source_key match_id entry role_id grants costs next_state result delivered",
         ["casual_battle_obligation"] = "source_key match_id role_id payout delivered",
         ["party_experience_obligation"] = "source_key role_id base_exp job_exp delivered",
+        ["gift_code"] = "code items max_uses per_account starts_utc expires_utc disabled created_by created_utc note",
+        ["gift_code_redemption"] = "redemption_key code account role_id redeemed_utc",
         ["activity_pre_progress"] = "activity_id cycle_start area score",
         ["activity_pre_donation_area"] = "activity_id cycle_start area day role_id amount",
         ["activity_eve_global"] = "activity_id cycle_start blob",

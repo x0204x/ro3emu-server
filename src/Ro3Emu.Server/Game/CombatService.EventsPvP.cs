@@ -57,7 +57,8 @@ public sealed partial class CombatService
         await StartCastAsync(source, row, request, session);
     }
     private async Task HitEventPlayersAsync(GameSession source, GameSession[] targets, JsonElement row,
-        int skillId, int show, long session, Func<bool> currentSource, Action<long, long>? onHit = null, Vec3? center = null)
+        int skillId, int show, long session, Func<bool> currentSource, Action<long, long>? onHit = null, Vec3? center = null,
+        long scheduledBulletTarget = 0)
     {
         if (FirstNumber(row, "_kDamageParam1") is not > 0 && FirstNumber(row, "_kDamageParam2") is not > 0) return;
         foreach (var target in targets)
@@ -92,8 +93,9 @@ public sealed partial class CombatService
                 };
                 var sourceViewers = CurrentPlayerHit(source, target, attackerRole, targetRole, sceneId)
                     ? _world.Viewers(source).Append(source) : Enumerable.Empty<GameSession>();
-                foreach (var viewer in sourceViewers.Concat(_world.Viewers(target)).Append(target).Distinct())
-                    await viewer.SendGameAsync(SkillHit, hit);
+                var hitViewers = sourceViewers.Concat(_world.Viewers(target)).Append(target).Distinct().ToArray();
+                await SendHitBulletsAsync(hitViewers, row, hit, attackerRole.Id, scheduledBulletTarget);
+                foreach (var viewer in hitViewers) await viewer.SendGameAsync(SkillHit, hit);
                 if (!ReferenceEquals(target.Role, targetRole)) continue;
                 await _character.SetHpSpAsync(target, null, null); // publish current HP after the serialized reservation
                 if (!ReferenceEquals(target.Role, targetRole)) continue;

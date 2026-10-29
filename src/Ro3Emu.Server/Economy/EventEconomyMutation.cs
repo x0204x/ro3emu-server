@@ -37,7 +37,7 @@ public sealed class EventEconomyMutation
         string commandKind, string sourceKey, long effectiveUtcMs, IReadOnlyList<EconomyQuantity> costs,
         IReadOnlyList<EconomyQuantity> goods, IReadOnlyList<EventEconomyOwnerDelta> ownerDeltas, byte[] outcome,
         EconomyReason sourceReason = EconomyReason.ActivityReward, EconomyReason sinkReason = EconomyReason.ItemUse,
-        EconomyReason transferReason = EconomyReason.MailDelivery, string? childPlanHash = null)
+        EconomyReason transferReason = EconomyReason.MailDelivery, string? childPlanHash = null, int intentVersion = 2)
     {
         static string Required(string text, int limit) => !string.IsNullOrWhiteSpace(text) && text.Length <= limit
             ? text : throw new ArgumentException("Missing or oversized event identity.");
@@ -63,18 +63,41 @@ public sealed class EventEconomyMutation
         this.outcome = (byte[])outcome.Clone();
         if (this.outcome.Length is 0 or > 262144) throw new ArgumentException("Event result exceeds receipt bound.");
         RequestFingerprint = Convert.ToHexString(SHA256.HashData(this.outcome));
-        payload = JsonSerializer.SerializeToUtf8Bytes(new
-        {
-            Version = 1, OperationId, ActorAccount, ActorRoleId,
-            CommandKind, RequestFingerprint, SourceKey, EffectiveUtcMs, CatalogVersion = Catalog.DenominationsVersion,
-            Costs, Goods, OwnerDeltas, SourceReason, SinkReason, TransferReason, ChildPlanHash, Outcome = Convert.ToBase64String(this.outcome)
-        });
+        if (intentVersion is not (1 or 2)) throw new ArgumentException("Unsupported event intent version.");
+        IntentVersion = intentVersion;
+        payload = Canonical(intentVersion);
         if (payload.Length > 1048576) throw new ArgumentException("Event intent exceeds receipt bound.");
         IntentHash = Convert.ToHexString(SHA256.HashData(payload));
     }
 
+    /// <summary>1: receipts written before 29.10.2026, which embedded the outcome in base64 next to the receipt's own
+    /// outcome column; 2: the outcome is bound only by <see cref="RequestFingerprint"/> (its SHA-256).</summary>
+    public int IntentVersion { get; }
+
+    private byte[] Canonical(int version) => version == 1
+        ? JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            Version = 1, OperationId, ActorAccount, ActorRoleId,
+            CommandKind, RequestFingerprint, SourceKey, EffectiveUtcMs, CatalogVersion = Catalog.DenominationsVersion,
+            Costs, Goods, OwnerDeltas, SourceReason, SinkReason, TransferReason, ChildPlanHash, Outcome = Convert.ToBase64String(outcome)
+        })
+        : JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            Version = 2, OperationId, ActorAccount, ActorRoleId,
+            CommandKind, RequestFingerprint, SourceKey, EffectiveUtcMs, CatalogVersion = Catalog.DenominationsVersion,
+            Costs, Goods, OwnerDeltas, SourceReason, SinkReason, TransferReason, ChildPlanHash
+        });
+
+    /// <summary>The v1 intent and its hash, for a receipt committed before intent v2.</summary>
+    internal (string Hash, byte[] Payload) LegacyIntent()
+    {
+        byte[] legacy = Canonical(1);
+        return (Convert.ToHexString(SHA256.HashData(legacy)), legacy);
+    }
+
     internal EventEconomyMutation BindPlan(string hash) => new(Catalog, OperationId, ActorAccount, ActorRoleId,
-        CommandKind, SourceKey, EffectiveUtcMs, Costs, Goods, OwnerDeltas, outcome, SourceReason, SinkReason, TransferReason, hash);
+        CommandKind, SourceKey, EffectiveUtcMs, Costs, Goods, OwnerDeltas, outcome, SourceReason, SinkReason, TransferReason, hash,
+        IntentVersion);
 
     internal static bool ValidAsset(EconomyAsset asset) => Enum.IsDefined(asset.Kind) && asset.Id > 0 &&
         asset.Epoch != null && (asset.Kind == EconomyAssetKind.EventResource ? asset.Epoch.Length > 0 : asset.Epoch == "");

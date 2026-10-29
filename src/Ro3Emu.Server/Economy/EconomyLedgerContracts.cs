@@ -124,6 +124,10 @@ public sealed record EconomyLedgerWindow(string RealmId, string CatalogVersion, 
     IReadOnlyList<EconomyIssue> Issues, IReadOnlyList<string> UncoveredMutationFamilies)
 {
     public string ReasonVersion { get; init; } = EconomyReasonCatalog.Version;
+
+    /// <summary>Receipts read whose intent was compacted (ReceiptRetention): their sequence, legs and source claims
+    /// were certified, their intent amounts and leg reasons could not be.</summary>
+    public int CompactedReceipts { get; init; }
 }
 
 public enum EconomyVerdict { Pass, Fail, NotMeasured }

@@ -177,6 +177,8 @@ public static class ServerHost
         // The voice relay PoC only opens a second listener when a port is configured for it.
         if (options.Voice.Port > 0) builder.Services.AddHostedService<Voice.VoiceGateServer>();
         builder.Services.AddHostedService<DatabaseBackup>();
+        builder.Services.AddSingleton<ReceiptRetention>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<ReceiptRetention>());
         builder.Services.AddSingleton<Game.Persistence.PositionPersistence>();
         builder.Services.AddSingleton<Game.Persistence.SettingsPersistence>();
         builder.Services.AddSingleton<RoleSystems>();
@@ -218,6 +220,8 @@ public static class ServerHost
         builder.Services.AddHostedService<ReconnectShutdownService>();
 
         builder.Services.AddSingleton<CredentialLimiter>();
+        builder.Services.AddSingleton<GiftCodeLimiter>();
+        builder.Services.AddSingleton<GiftCodeService>();
 
         var app = builder.Build();
         app.Lifetime.ApplicationStopping.Register(() => httpConnections.AbortAfter(HttpConnectionReaper.Grace));
@@ -254,6 +258,7 @@ public static class ServerHost
             }
         });
         SdkEndpoints.Map(app);
+        GiftCodeEndpoints.Map(app);
         Diagnostics.MetricsEndpoints.Map(app);
         // Run a GM command as an online player (loopback only): POST /ro3emu/gm?account=tester body "!warp 10111 150 190".
         app.MapPost("/ro3emu/gm", async (HttpContext context, SessionRegistry sessions, GmCommands gm, GameLoop loop) =>
@@ -382,6 +387,8 @@ public static class ServerHost
         escort.OwnerOf = territory.OwnerOf;
         escort.GuildPoint = territory.GuildPoint;
         territory.GuildEscortScore = (guild, round) => escort.GetGuildEscortScore(guild, round);
+        var ranks = app.Services.GetRequiredService<RankService>();
+        territory.GloryBoardRank = role => ranks.RankOfAsync(RankService.BattleGlory, role);
         app.Services.GetRequiredService<GuildService>().ItemDataOf = escort.GuildItems;
         var territoryCombat = app.Services.GetRequiredService<CombatService>();
         var league = app.Services.GetRequiredService<GuildLeagueService>(); // 30410-30412 hooks, battlefield scene/combat hooks
@@ -404,6 +411,7 @@ public static class ServerHost
         app.Services.GetRequiredService<GuildChallengeService>().Participated.Add(questTasks.OnGveJoined); // 103014
         league.MatchCommitted.Add(questTasks.OnGuildLeagueMatch); // 106603, 106019
         territory.SiegeSettled.Add(questTasks.OnSiegeSettled); // 106611, 106605, 106606
+        questTasks.BattleMeritPoints = territory.GloryPoints; // 106610
         territory.SiegeSettled.Add((role, _, _) => questTasks.OnGuildEventJoined(role, TaskService.GuildEvent.RoyalCity)); // 106010
         territory.BattleSettled.Add(questTasks.OnTerritoryBattleSettled); // 106010 Stronghold / Regional Capital War
         escort.CartStarted.Add(s => questTasks.OnGuildEventJoined(s, TaskService.GuildEvent.Escort)); // 106010 Escort

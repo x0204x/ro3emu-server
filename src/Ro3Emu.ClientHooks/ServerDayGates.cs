@@ -76,6 +76,9 @@ namespace Ro3Emu.ClientHooks
         private static bool _gatesOpen, _contentOpen;
         private static float _nextProbe = float.MinValue;
 
+        /// <summary>The cached "server opens content" answer of <see cref="Probe"/> (LevelCapTip reads it).</summary>
+        internal static bool ContentOpen => _contentOpen;
+
         /// <summary>From LuaPatches.Tick, once per LuaEnv.</summary>
         internal static void Install(Obf_R.Obf_ff global, Obf_R.Obf_ff functionHelper, Obf_R.Obf_ff conditionDefine,
             Obf_R.Obf_ff seasonHelper, Obf_R.Obf_ff exploration)

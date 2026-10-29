@@ -23,6 +23,7 @@ address (local play), and to every interface otherwise (`ServerOptions.ListenAdd
 | `GET` server list, `GET /ro3emu/gate-key.pem` | public | the gate's RSA public key |
 | `GET /ro3emu/status` | public | the player count only, from the loop's census |
 | `POST /ro3emu/account/delete-role` | public, rate limited | needs the account's password; refuses a role that is in the world |
+| `POST /gift-card/use/v2` | public, rate limited | the client's gift-code redemption; needs the account's engine sign (the micro-gate login token); see [gift codes](gift-codes.md) |
 | `/ro3emu/gm`, `/ro3emu/metrics*`, `/ro3emu/online`, `/ro3emu/reports`, `/ro3emu/shutdown` | loopback only | answer 404 to any other address |
 
 A reverse proxy on the same machine makes every request arrive from loopback. Do not forward the loopback-only paths.
@@ -35,6 +36,8 @@ A reverse proxy on the same machine makes every request arrive from loopback. Do
   set. Behind a reverse proxy every player shares the proxy's address, so raise the limit there.
 - `/sdk/login` returns a token. The client presents it to `LoginService.verifySdk` on the micro gate, which binds
   the account to that connection.
+- A banned account cannot sign in. The admin panel writes the `account_ban` table and the server reads it on every
+  password, token and gate-bind check; a ban is refused like a wrong credential. See [account bans](account-bans.md).
 - The client sends the password over the HTTP port. That is plain HTTP unless the client was patched with an
   `https://` server address and a TLS-terminating proxy stands in front of the server. Tell players not to reuse a
   password they use elsewhere.

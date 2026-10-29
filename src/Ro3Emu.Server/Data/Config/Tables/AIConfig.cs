@@ -12,10 +12,12 @@ public readonly partial record struct AIConfig(JsonElement Row)
     [ConfigField("_iBattleCallType")] public partial long BattleCallType { get; }
     [ConfigField("_iChaseDistance")] public partial long ChaseDistance { get; }
     [ConfigField("_iID")] public partial long Id { get; }
+    [ConfigField("_iIsSurround")] public partial long IsSurround { get; }
     [ConfigField("_iRoamDis")] public partial long RoamDis { get; }
     [ConfigField("_iRoamTime")] public partial long RoamTime { get; }
     [ConfigField("_iSearchTime")] public partial long SearchTime { get; }
     [ConfigField("_iStayInPlace")] public partial long StayInPlace { get; }
+    [ConfigField("_iSurroundDistance")] public partial long SurroundDistance { get; }
     [ConfigField("_iUnFightBUFF")] public partial long[] UnFightBUFF { get; }
     [ConfigField("_iUnFightParam")] public partial long[] UnFightParam { get; }
     [ConfigField("_iUnFightType")] public partial long[] UnFightType { get; }

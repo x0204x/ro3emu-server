@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Google.Protobuf;
 using Romsg;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Accounts.Persistence;
@@ -37,17 +38,18 @@ namespace Ro3Emu.Server.Game;
 /// 85202 (the losers' 85203 is not in DropPoolConfig); assists are the hits on the victim in its last 10 s.
 /// Not built: the arena's monsters and boss (their spawn script is not in the client) and the pre-start notices
 /// 5711/5712. Each camp gets the 40-player Virtual team roster (30441, TeamRoster), its leadership transfer (30451,
-/// TransferAsync), a member's own follow toggle (30448, FollowAsync) and a squad's own position swap (30450,
-/// SwapPositionAsync); the roster's remaining commands (30442-30447: flag, rally) are not. A settled match's result
-/// is also kept in
+/// TransferAsync), a member's own follow toggle (30448, FollowAsync), a squad's own position swap (30450,
+/// SwapPositionAsync), a squad's own flag (30442/30443, SetFlagAsync) and a squad's own rally (30444-30447,
+/// RallyAsync/RallyReplyAsync). A settled match's result is also kept in
 /// the role's ordinary 30128 history (DungeonService.StoreExternalResultAsync), the same as a boss dungeon's clear,
 /// for every player still online at settlement; one offline then is still paid at login (TryPayAsync's own retry)
 /// but gets no history entry, since nothing here revisits a login after the fact to write one.
 /// </summary>
 public sealed class CasualBattleService : IGameTicker
 {
-    public const uint Sync = 5070, ResultNotify = 30132, Follow = 30448, FollowNotify = 30449, SwapPosition = 30450,
-        Transfer = 30451;
+    public const uint Sync = 5070, ResultNotify = 30132, SetFlag = 30442, FlagNotify = 30443, Rally = 30444,
+        RallyNotify = 30445, RallyReply = 30446, RallyReplyNotify = 30447, Follow = 30448, FollowNotify = 30449,
+        SwapPosition = 30450, Transfer = 30451;
     public const int ActivityId = 3304, Function = 5903, Scene = 2220104, TimeLimit = 1084;
     private const int SquadSize = 5;
     private const long PrepareSeconds = 60, MainSeconds = 540, BattleSeconds = 660, ExitSeconds = 30;
@@ -117,6 +119,11 @@ public sealed class CasualBattleService : IGameTicker
         /// <summary>A squad member's own position override after a 30450 DUNGEON_TEAM_SWAP_POSITION, by role id;
         /// absent members keep the roster's own default order (the squad leader first, then ascending role id).</summary>
         public readonly Dictionary<long, int> PositionOverride = [];
+        /// <summary>A squad's own flag (30442/30443 DUNGEON_TEAM_SET_FLAG), by squad index; absent is no flag.</summary>
+        public readonly Dictionary<int, DungeonTeamFlagInfo> Flags = [];
+        /// <summary>A squad's own most recent Rally caller (30444/30445 DUNGEON_TEAM_RALLY), by squad index; absent
+        /// means that squad has no rally for a 30446/30447 DUNGEON_TEAM_RALLY_REPLY to answer.</summary>
+        public readonly Dictionary<int, long> Rally = [];
         public long Deadline => Open + BattleSeconds;
     }
 
@@ -319,8 +326,8 @@ public sealed class CasualBattleService : IGameTicker
     /// whole match (inferred: no client-visible value names a Mock Battle camp). A real party (TeamService) stays in one
     /// squad and lone players fill the free slots, five to a squad (inferred packing). The notify's own leaderGuid is the explicit
     /// Transfer (30451) target if the camp has one and it is still present, else the lowest-indexed squad's own
-    /// leader (inferred default); a member's own followType mirrors its Follow (30448) state. The remaining squad
-    /// commands (30442-30447: flag, rally) are not implemented and flags stay empty. A member's position is its slot in
+    /// leader (inferred default); a member's own followType mirrors its Follow (30448) state, and each squad's own
+    /// flags entry mirrors its SetFlag (30442) state. A member's position is its slot in
     /// the whole team (squad n: 5(n-1) .. 5(n-1)+4), ordered leader first unless a swap (30450) moved it.
     /// </summary>
     private DungeonTeamInfoNotify TeamRoster(Match match, int camp)
@@ -361,10 +368,15 @@ public sealed class CasualBattleService : IGameTicker
                 squad.Members[id] = new DungeonTeamMemberInfo
                 { Guid = id, Position = position++, FollowType = match.Follow.GetValueOrDefault(id) };
             notify.Squads[squad.SquadIdx] = squad;
+            if (match.Flags.TryGetValue(squad.SquadIdx, out var flag)) notify.Flags[squad.SquadIdx] = flag;
         }
         notify.LeaderGuid = TeamLeader(match, camp, members, notify);
         return notify;
     }
+
+    private static Task BroadcastCampAsync(Match match, int camp, uint id, IMessage msg) =>
+        RoleFanout.EachAsync(match.Players.Values.Where(p => p.Camp == camp && !p.Left && match.Loaded.Contains(p.Session))
+            .Select(p => p.Session), s => s.SendGameAsync(id, msg));
 
     /// <summary>The camp's current Virtual team leader: its own Transfer (30451) target while still present in the
     /// camp, else (the default, and after that leader is gone) the lowest-indexed squad's own leader.</summary>
@@ -469,6 +481,99 @@ public sealed class CasualBattleService : IGameTicker
         }
         await s.SendGameAsync(SwapPosition, new DungeonTeamSwapPositionResp { Result = code });
         if (code == 0 && match != null) await SendTeamRosterAsync(match, camp);
+    }
+
+    /// <summary>
+    /// 30442 DUNGEON_TEAM_SET_FLAG: a squad's own leader marks or clears its own flag. The request's own slot is
+    /// read as the sender's own squadIdx (inferred, like SwapPosition's own-squad reading: the panel only ever
+    /// shows the viewer marking its own squad). FlagType.Player names a present member of that squad (inferred,
+    /// like Transfer's own target); FlagType.None clears the flag. It changes the match, not just the sender's own
+    /// role, so it keeps the default realm-wide admission like Transfer/Follow/SwapPosition. No client-visible
+    /// result mapping is named (LC_DAL_VirtualTeam's own 30443 handler is empty; the client's flag display reads
+    /// the next 30441 roster instead); ErrorCodes.NoPermission (not that squad's leader) and ErrorCodes.Parameter
+    /// (a Player flag naming no present member of that squad) are (inferred).
+    /// </summary>
+    public async Task SetFlagAsync(GameSession s, DungeonTeamSetFlagReq req)
+    {
+        int code;
+        Match? match = null;
+        int camp = 0, squadIdx = 0;
+        if (s.Role == null || Live(s) is not { } m) code = ErrorCodes.SceneMissing;
+        else
+        {
+            match = m; camp = match.Players[s].Camp;
+            var squad = TeamRoster(match, camp).Squads.Values.FirstOrDefault(sq => sq.Members.ContainsKey(s.Role.Id));
+            if (squad == null || s.Role.Id != squad.SquadLeaderGuid) code = ErrorCodes.NoPermission;
+            else if (req.FlagInfo is null
+                || req.FlagInfo.Type == DungeonTeamFlagType.Player && !squad.Members.ContainsKey(req.FlagInfo.TargetGuid))
+                code = ErrorCodes.Parameter;
+            else
+            {
+                squadIdx = squad.SquadIdx;
+                if (req.FlagInfo.Type == DungeonTeamFlagType.None) match.Flags.Remove(squadIdx);
+                else match.Flags[squadIdx] = req.FlagInfo;
+                code = 0;
+            }
+        }
+        await s.SendGameAsync(SetFlag, new DungeonTeamSetFlagResp { Result = code, Slot = squadIdx });
+        if (code != 0 || match == null) return;
+        var notify = new DungeonTeamFlagNotify { SquadIdx = squadIdx };
+        if (match.Flags.TryGetValue(squadIdx, out var flag)) notify.Flags[squadIdx] = flag;
+        await BroadcastCampAsync(match, camp, FlagNotify, notify);
+        await SendTeamRosterAsync(match, camp);
+    }
+
+    /// <summary>
+    /// 30444 DUNGEON_TEAM_RALLY: a squad's own leader calls its squad to convene (the request names no squad or
+    /// point, read as the sender's own squad like SwapPosition and SetFlag). LC_DAL_VirtualTeam's own 30445 handler
+    /// opens a countdown invite from PublicParamConfig TeamGatheringTime; it does not itself move anyone. It
+    /// changes the match, not just the sender's own role, so it keeps the default realm-wide admission like
+    /// Transfer/Follow/SwapPosition/SetFlag. No client-visible result mapping is named; ErrorCodes.NoPermission
+    /// (not that squad's leader) is (inferred).
+    /// </summary>
+    public async Task RallyAsync(GameSession s, DungeonTeamRallyReq req)
+    {
+        int code;
+        Match? match = null;
+        int camp = 0, squadIdx = 0;
+        if (s.Role == null || Live(s) is not { } m) code = ErrorCodes.SceneMissing;
+        else
+        {
+            match = m; camp = match.Players[s].Camp;
+            var squad = TeamRoster(match, camp).Squads.Values.FirstOrDefault(sq => sq.Members.ContainsKey(s.Role.Id));
+            if (squad == null || s.Role.Id != squad.SquadLeaderGuid) code = ErrorCodes.NoPermission;
+            else { squadIdx = squad.SquadIdx; match.Rally[squadIdx] = s.Role.Id; code = 0; }
+        }
+        await s.SendGameAsync(Rally, new DungeonTeamRallyResp { Result = code, SquadIdx = squadIdx });
+        if (code == 0 && match != null)
+            await BroadcastCampAsync(match, camp, RallyNotify, new DungeonTeamRallyNotify { OperGuid = s.Role!.Id, SquadIdx = squadIdx });
+    }
+
+    /// <summary>
+    /// 30446 DUNGEON_TEAM_RALLY_REPLY: a camp member answers its own squad's most recent Rally (30444); the request
+    /// names no squad, read as the sender's own one like Rally itself. LC_DAL_VirtualTeam's own 30447 handler
+    /// switches an agreeing replier into follow mode by sending its own Follow (30448) on the client's own
+    /// initiative; the server does not mirror that here. It changes the match, not just the sender's own role, so
+    /// it keeps the default realm-wide admission like Rally. ErrorCodes.Parameter (the sender's own squad has no
+    /// pending Rally) is (inferred).
+    /// </summary>
+    public async Task RallyReplyAsync(GameSession s, DungeonTeamRallyReplyReq req)
+    {
+        int code;
+        Match? match = null;
+        int camp = 0, squadIdx = 0;
+        if (s.Role == null || Live(s) is not { } m) code = ErrorCodes.SceneMissing;
+        else
+        {
+            match = m; camp = match.Players[s].Camp;
+            var squad = TeamRoster(match, camp).Squads.Values.FirstOrDefault(sq => sq.Members.ContainsKey(s.Role.Id));
+            if (squad == null || !match.Rally.ContainsKey(squad.SquadIdx)) code = ErrorCodes.Parameter;
+            else { squadIdx = squad.SquadIdx; code = 0; }
+        }
+        await s.SendGameAsync(RallyReply, new DungeonTeamRallyReplyResp { Result = code });
+        if (code == 0 && match != null)
+            await BroadcastCampAsync(match, camp, RallyReplyNotify,
+                new DungeonTeamRallyReplyNotify { ReplyGuid = s.Role!.Id, IsAgree = req.IsAgree, SquadIdx = squadIdx });
     }
 
     public bool CanFight(GameSession attacker, GameSession target) => Live(attacker) is { } m && Live(target) == m && m.Stage > 0

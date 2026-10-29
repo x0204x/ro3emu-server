@@ -191,6 +191,8 @@ public sealed partial class TerritoryWarsService : IGameTicker
         scene.Leaving.Add(LeavingAsync);
         scene.Leaving.Add(SiegeLeavingAsync);
         scene.Leaving.Add(GloryLeavingAsync);
+        scene.Leaving.Add(CannonLeavingAsync);
+        scene.Leaving.Add(VehicleLeavingAsync);
         combat.Killed.Add(KilledAsync);
         combat.Killed.Add(SiegeKilledAsync);
         combat.Killed.Add(WorldKilledAsync);
@@ -198,10 +200,16 @@ public sealed partial class TerritoryWarsService : IGameTicker
         // DiedAsync publishes the battle's own countdown for a recorded participant.
         combat.ReviveInfoOwners.Add(s => s.TerritoryBattle is { } battle && s.Role is { } role && battle.State.Players.ContainsKey(role.Id));
         combat.PlayerDied.Add(WorldDiedAsync);
+        combat.PlayerDied.Add(CannonDiedAsync);
+        combat.PlayerDied.Add(VehicleDiedAsync);
+        combat.GrantedSkill.Add(SeatSkill);
+        combat.AfterLethalPublication.Add(MachineDestroyedAsync);
+        world.PlayerEntered.Add(VehicleRiderSeenAsync);
         combat.EventDamageRecorded.Add(DamageRecordedAsync);
         combat.EventDamageRecorded.Add(SiegeDamageRecordedAsync);
         combat.PlayerHostile = Hostile;
         combat.MonsterTargetAllowed = CanHitObjective;
+        combat.SkillLineBlocked = SiegeSkillLineBlocked;
         combat.BlockedMonsterEndpointAllowed = SiegeCrystalBlockedEndpointAllowed;
         combat.PvpDealtAsync.Add(PvpRecordedAsync);
         combat.PvpDealtAsync.Add(SiegePvpRecordedAsync);
@@ -213,6 +221,8 @@ public sealed partial class TerritoryWarsService : IGameTicker
         combat.PlayerKilled.Add(GloryKilledAsync);
         combat.PvpDealtAsync.Add(GloryHitAsync);
         character.StateChanged.Add(s => _ = SyncGloryAsync(s));
+        guilds.WarSideOf = WarSide;
+        guilds.WarMachines = new MachineSite(this);
     }
 
     public sealed class RoleState
@@ -253,6 +263,8 @@ public sealed partial class TerritoryWarsService : IGameTicker
         public Dictionary<int, long> WorldActivityRespawns { get; set; } = new();
         public Dictionary<int, long> WorldActivityOccurrences { get; set; } = new();
         public Dictionary<string, WorldPickupOccurrence> WorldPickupOccurrences { get; set; } = new();
+        /// <summary>Past seasons whose Battle Merit standings are still to be mailed (TerritoryWarsService.BattleGlorySeason).</summary>
+        public List<string> GlorySettle { get; set; } = [];
     }
     private static T Copy<T>(T value) => JsonSerializer.Deserialize<T>(JsonSerializer.SerializeToUtf8Bytes(value))!;
     private async Task SaveAsync(WorldState value, string kind = "state", GameSession? actor = null,
@@ -368,8 +380,7 @@ public sealed partial class TerritoryWarsService : IGameTicker
             or StageNotify or History or ResultNotify or AuctionTimeNotify or MarkerNotify or Minimap or FatigueNotify
             or QueueNotify or QueueEnter or QueueCancel or QueueArea or SubmitDrop or Bid or AuctionQuery or AutoSet
             or AutoCancel or AutoQuery or AutoNotify or RankNotify or WarHall or SiegeBaseQuery or SiegeHistoryQuery or SiegeResultNotify
-            or SiegeToolAssign or SiegeToolExchange or SiegeToolList or SiegeToolPermissionNotify or SiegeToolChangeNotify
-            or SiegeToolPrepay or SiegeToolBuild or SiegeToolCancel or SiegeToolAdd or SiegeVehicleUse
+            or SiegeToolAdd
             or SetMark or GatherMark or CommandMark or TeleportResponse or GloryRankReward;
 
     /// <summary>Route only shared packets that this territory family can actually consume.</summary>
@@ -427,14 +438,7 @@ public sealed partial class TerritoryWarsService : IGameTicker
                 case WarHall: await WarHallAsync(s); break;
                 case SiegeBaseQuery: await SiegeBaseAsync(s, GetSiegeBaseInfoReq.Parser.ParseFrom(body.Span)); break;
                 case SiegeHistoryQuery: await SiegeHistoryAsync(s, SiegeCityHistoryInfoReq.Parser.ParseFrom(body.Span)); break;
-                case SiegeToolList: await SiegeToolListAsync(s); break;
-                case SiegeToolAssign: await SiegeToolAssignAsync(s, GuildWartimeToolBelongOperReq.Parser.ParseFrom(body.Span)); break;
-                case SiegeToolExchange: await SiegeToolExchangeAsync(s, GuildWartimeToolExchangeOperReq.Parser.ParseFrom(body.Span)); break;
-                case SiegeToolPrepay: await Send(s, id, new GuildWartimeStorePrepayResp { Result = ErrorCodes.FeatureUnavailable }); break;
-                case SiegeToolBuild: await Send(s, id, new GuildAttackCityBuildResp { Result = ErrorCodes.FeatureUnavailable }); break;
-                case SiegeToolCancel: await Send(s, id, new GuildWartimeStoreItemCancelUseResp { Result = ErrorCodes.FeatureUnavailable }); break;
                 case SiegeToolAdd: await Send(s, id, new GuildWartimeStoreItemAddResp { Result = ErrorCodes.FeatureUnavailable }); break;
-                case SiegeVehicleUse: await Send(s, id, new GuildVehicleUseRsp { Result = ErrorCodes.FeatureUnavailable }); break;
                 case SetMark: await SetMarkAsync(s, DungeonSetMarkPosReq.Parser.ParseFrom(body.Span)); break;
                 case GatherMark: await GatherAsync(s, DungeonGatherMarkPosReq.Parser.ParseFrom(body.Span)); break;
                 case CommandMark: await CommandMarkAsync(s, GvgWarUpdateCommandMarkReq.Parser.ParseFrom(body.Span)); break;
@@ -700,6 +704,7 @@ public sealed partial class TerritoryWarsService : IGameTicker
         try { await ReconcileLockedAsync(); }
         finally { stagedTerritoryState.Dispose(); _gate.Release(); reservation?.Dispose(); }
         await FlushActivityAsync();
+        await SettleGlorySeasonsAsync();
     }
     private async Task ReconcileLockedAsync()
     {

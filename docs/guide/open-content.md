@@ -49,6 +49,11 @@ content open turns it on:
     `LC_SeasonExplorationHelper.IsChapterInActivityTime` answers true while the server opens content (movement
     chapters, play panel, big-map tabs, condition 16001); the server's `WorldPhaseOpen` opens them with
     `PerpetualWindows`. Pinned by `FreshRealmTests`.
+  - the server level cap shown (`ClientHooks/LevelCapTip.cs`): the quest tracker's "Current Server Level Cap: Lv. N /
+    date: increases to Lv. M" under a level target (`LC_TaskHelper.GetBaseLevelLimitTip`) and the cap with its next rise
+    in the character panel come from `Lua_CFG_BaseLvLimitConfig.GetBaseLimit`/`GetNextBaseInfo` of the client's day.
+    While the server opens content both answer for the table's last day, so the panel shows the final cap (99) with no
+    rise and the tracker line disappears, as on the original's final stage. `GetWorldLevel` is not touched.
 
   The season page's stage activities (`MultiverseStage._kStageActivity`: 105, 106, 107, 109, 110, 111, 115) all carry
   `[1002,99]`, the final level cap (day 198 of `BaseLvLimitConfig`). With `SeasonStageActivities` (on) the server
@@ -59,8 +64,7 @@ content open turns it on:
   `msgtable.tsv` from `DataDir`, else from `GameDataDir`; without it no unrouted request gets its empty reply. The
   Fashion tab's 82338 `COMMODITY_GET_INFO` is answered by `ShopService.CommodityInfoAsync` either way.
 
-  Still on the client's day count, display only: the level-cap line and tip by open day (`BaseLvLimitConfig`, the
-  server applies no cap), world level (3033), the guild member list's "last week / this week" activity column and the
+  Still on the client's day count, display only: world level (3033), the guild member list's "last week / this week" activity column and the
   daily schedule's week number. Not covered: the AFK adventure stages (`OnHookDungeonConfig._kUnlock`, world level
   3033; no server backend, a mobile mechanic) and the Guild Strategy Library unlocks (`[10002,101,days]` since the
   playbook start; no server backend).

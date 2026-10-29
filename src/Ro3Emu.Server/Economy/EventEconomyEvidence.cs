@@ -12,7 +12,8 @@ internal static class EventEconomyEvidence
     {
         using var document = JsonDocument.Parse(payload);
         var root = document.RootElement;
-        if (root.GetProperty("Version").GetInt32() != 1 || root.GetProperty("CatalogVersion").GetString() != catalog.DenominationsVersion)
+        int version = root.GetProperty("Version").GetInt32();
+        if (version is not (1 or 2) || root.GetProperty("CatalogVersion").GetString() != catalog.DenominationsVersion)
             throw new InvalidDataException("Unsupported event intent/catalog version.");
         var result = new EventEconomyMutation(catalog, operation, account, actor, command, source, effective,
             root.GetProperty("Costs").Deserialize<EconomyQuantity[]>()!,
@@ -20,7 +21,8 @@ internal static class EventEconomyEvidence
             root.GetProperty("OwnerDeltas").Deserialize<EventEconomyOwnerDelta[]>()!, outcome,
             root.GetProperty("SourceReason").Deserialize<EconomyReason>(),
             root.GetProperty("SinkReason").Deserialize<EconomyReason>(),
-            root.GetProperty("TransferReason").Deserialize<EconomyReason>(), root.GetProperty("ChildPlanHash").GetString());
+            root.GetProperty("TransferReason").Deserialize<EconomyReason>(), root.GetProperty("ChildPlanHash").GetString(),
+            version);
         if (result.ChildPlanHash is null) throw new InvalidDataException("Event receipt has no detached plan fingerprint.");
         if (result.RequestFingerprint != fingerprint || result.IntentHash != hash ||
             !result.IntentPayload.AsSpan().SequenceEqual(payload))

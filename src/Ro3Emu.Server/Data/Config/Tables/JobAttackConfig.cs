@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace Ro3Emu.Server.Data.Config;
 
-/// <summary>The client's JobAttackConfig (data/config/JobAttackConfig.json).</summary>
+/// <summary>The client's JobAttackConfig (data/config/JobAttackConfig.json): each career's normal attack, per mount.</summary>
 [ConfigTable("JobAttackConfig")]
 public readonly partial record struct JobAttackConfig(JsonElement Row)
 {

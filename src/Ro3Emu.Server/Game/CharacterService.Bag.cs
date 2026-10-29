@@ -425,6 +425,12 @@ public sealed partial class CharacterService
     private static long NextSort(GameSession session, int pack) =>
         session.Items.Where(i => i.Grid == 0 && i.Pack == pack).Select(i => i.Sort).DefaultIfEmpty(0).Max() + 1;
 
+    /// <summary>
+    /// A granted equipment piece as the bag shows it (instance id, appraisal, score), or null for anything else: a loot
+    /// notice must carry them for the client's quick-equip offer (RewardService.KilledAsync).
+    /// </summary>
+    internal ItemBaseInfo? EquipmentInfo(InvItem item) => IsEquipment(item.Entry) ? ItemInfo(item) : null;
+
     /// <summary>ItemBaseInfo as the client parses it: itemInfos must not be empty; equipment must be appraised to be worn.</summary>
     private ItemBaseInfo ItemInfo(InvItem item)
     {

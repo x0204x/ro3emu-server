@@ -65,7 +65,8 @@ public static class SdkEndpoints
             }
             var (result, account) = await accounts.SignInAsync(identity, credential);
             log.LogInformation("SDK login {TraceId}: {Result}", traceId, result);
-            if (result == AccountStore.LoginResult.BadPassword)
+            // (inferred) 尚未找到客戶端的封鎖專用代碼，因此與密碼錯誤使用相同回應。
+            if (result is AccountStore.LoginResult.BadPassword or AccountStore.LoginResult.Banned)
             {
                 return Results.Json(new { code = 401 });
             }

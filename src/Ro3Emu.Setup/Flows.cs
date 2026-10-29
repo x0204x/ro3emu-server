@@ -11,8 +11,8 @@ namespace Ro3Emu.Setup;
 /// <summary>The player-facing modes: play locally, host, join, restore, check, export, diagnostics.</summary>
 internal static class Flows
 {
-    private static string? HooksDll => ClientDll("Ro3Emu.ClientHooks");
-    private static string? LocDll => ClientDll("Ro3Emu.Loc");
+    internal static string? HooksDll => ClientDll("Ro3Emu.ClientHooks");
+    internal static string? LocDll => ClientDll("Ro3Emu.Loc");
 
     /// <summary>client\&lt;name&gt;.dll next to RO3Emu.exe; for developers the repository's Release or Debug build.</summary>
     private static string? ClientDll(string project) =>
@@ -90,7 +90,7 @@ internal static class Flows
     }
 
     /// <summary>Stops when the folder cannot work with this RO3Emu, with the reason.</summary>
-    private static void CheckClient(string client, bool needExport)
+    internal static void CheckClient(string client, bool needExport)
     {
         var problems = ClientLocator.Problems(client, needExport, HooksDll, LocDll);
         foreach (var p in problems) SetupLog.Write("check: " + p);
@@ -128,7 +128,7 @@ internal static class Flows
             {
                 if (last.ElapsedMilliseconds < 200 && done != total) return;
                 last.Restart();
-                Ui.Progress(total > 0 ? $"{stage}: {done * 100 / total}%" : stage + "...");
+                Ui.Progress(stage, done, total, total > 0 ? $"{stage}: {done * 100 / total}%" : stage + "...");
             },
         });
         Ui.EndProgress();
@@ -162,31 +162,62 @@ internal static class Flows
         Ui.Ok("this game version works with RO3Emu");
         EnsureGameData(client, options.Reexport);
 
+        var gms = options.GmAccounts.ToList();
+        if (host && gms.Count == 0 && Ui.Interactive)
+        {
+            // Several accounts, comma separated: a host and the friends it plays with (issue #97).
+            var gm = Ui.Ask("Account names that get GM commands in game, separated by commas (Enter for nobody):");
+            gms.AddRange(gm.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        }
+        var local = await StartServerAsync(client, host, options.PublicHost, gms, options.Ports, options.PurchaseUrl, options);
+        var server = local.Process;
+        try
+        {
+            if (host)
+            {
+                Ui.Step("Friends can join");
+                Ui.Info($"They run:  RO3Emu.exe join {local.PublicHost}{(local.Ports.Http == 5380 ? "" : ":" + local.Ports.Http)}");
+                Ui.Info($"Windows may ask whether Ro3Emu.Server may use the network: allow it.");
+                Ui.Info($"For players outside your network, forward TCP ports {ServerProcess.PortList(local.Ports)} on your router");
+                Ui.Info("to this PC and start with --public <your public IP>.");
+            }
+            if (server != null) Program.OnClose = () => server.Stop(TimeSpan.FromSeconds(4));
+            return await PlayAndWaitAsync(client, server, options.NoLaunch);
+        }
+        finally
+        {
+            Program.OnClose = null;
+            StopServer(server);
+        }
+    }
+
+    /// <summary>A started (or found) local server: the address the game connects to, and the process (null = one was already running).</summary>
+    internal sealed record LocalServer(ServerProcess? Process, string ServerUrl, string PublicHost, ServerProcess.Ports Ports);
+
+    /// <summary>
+    /// Starts the bundled server on this PC (or uses one already answering, for local play) and patches the game for
+    /// it. Local play binds loopback only (PublicHost 127.0.0.1); a host binds every interface for its friends.
+    /// </summary>
+    internal static async Task<LocalServer> StartServerAsync(string client, bool host, string? publicHostOption, IReadOnlyList<string> gms,
+        ServerProcess.Ports ports, string? purchaseUrl = null, Options? options = null)
+    {
         var serverExe = ServerProcess.FindExecutable()
             ?? throw new SetupException("The server is missing (server\\Ro3Emu.Server.exe next to RO3Emu.exe).",
                 SetupHome.AppDir.StartsWith(Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase)
                     ? "RO3Emu.exe was started from inside the zip. Extract the whole zip first (right-click it, Extract All), then run RO3Emu.exe from the extracted folder."
                     : "Extract the whole RO3Emu zip again, keeping its folders.");
-        var ports = options.Ports;
         string publicHost = "127.0.0.1";
         var args = new List<string>();
         var env = new Dictionary<string, string>();
         if (host)
         {
-            publicHost = options.PublicHost ?? LanAddress()
+            publicHost = publicHostOption ?? LanAddress()
                 ?? throw new SetupException("This PC has no network address to host on.", "Connect to a network, or give the address with --public <ip>.");
             if (!IPAddress.TryParse(publicHost, out _))
                 throw new SetupException($"'{publicHost}' is not an IP address.", "Give an address like 192.168.1.20 or your public IP with --public.");
-            var gms = options.GmAccounts.ToList();
-            if (gms.Count == 0 && Ui.Interactive)
-            {
-                // Several accounts, comma separated: a host and the friends it plays with (issue #97).
-                var gm = Ui.Ask("Account names that get GM commands in game, separated by commas (Enter for nobody):");
-                gms.AddRange(gm.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-            }
             env["ASPNETCORE_ENVIRONMENT"] = "Production";
             args.AddRange([$"--Ro3Emu:PublicHost={publicHost}", "--Ro3Emu:OpenContent:Enabled=true", "--Ro3Emu:Pass:Play=true", "--Ro3Emu:Pass:FreePremium=true"]);
-            args.AddRange(ServerDisplayArgs(options));
+            if (options != null) args.AddRange(ServerDisplayArgs(options));
             for (int i = 0; i < gms.Count; i++) args.Add($"--Ro3Emu:GmAccounts:{i}={gms[i]}");
         }
         else
@@ -208,7 +239,8 @@ internal static class Flows
                     "Close the other program (or another RO3Emu window), or start with other ports, for example --http-port 5381 --micro-port 20001 --game-port 33101.");
             server = ServerProcess.Start(serverExe, SetupHome.DataDir, ports, args, env);
             var watch = Stopwatch.StartNew();
-            bool ready = await server.WaitReadyAsync(TimeSpan.FromMinutes(5), t => Ui.Progress($"loading the game data... {(int)t.TotalSeconds} s"));
+            bool ready = await server.WaitReadyAsync(TimeSpan.FromMinutes(5),
+                t => Ui.Progress("Loading the game data", 0, 0, $"loading the game data... {(int)t.TotalSeconds} s"));
             Ui.EndProgress();
             if (!ready)
             {
@@ -226,30 +258,13 @@ internal static class Flows
         {
             var serverUrl = $"http://{(publicHost.Contains(':') ? "[" + publicHost + "]" : publicHost)}:{ports.Http}";
             var pem = await http.GetStringAsync($"http://127.0.0.1:{ports.Http}/ro3emu/gate-key.pem");
-            PatchClient(client, serverUrl, pem);
-
-            if (host)
-            {
-                Ui.Step("Friends can join");
-                Ui.Info($"They run:  RO3Emu.exe join {publicHost}{(ports.Http == 5380 ? "" : ":" + ports.Http)}");
-                Ui.Info($"Windows may ask whether Ro3Emu.Server may use the network: allow it.");
-                Ui.Info($"For players outside your network, forward TCP ports {ServerProcess.PortList(ports)} on your router");
-                Ui.Info("to this PC and start with --public <your public IP>.");
-            }
-            if (server != null) Program.OnClose = () => server.Stop(TimeSpan.FromSeconds(4));
-            return await PlayAndWaitAsync(client, server, options.NoLaunch);
+            PatchClient(client, serverUrl, pem, purchaseUrl);
+            return new LocalServer(server, serverUrl, publicHost, ports);
         }
-        finally
+        catch
         {
-            Program.OnClose = null;
-            if (server != null)
-            {
-                bool running = !server.HasExited;
-                if (running) Ui.Step("Stopping the server");
-                server.Stop(TimeSpan.FromSeconds(30));
-                server.Dispose();
-                if (running) Ui.Ok($"stopped. Your characters are saved in {SetupHome.DataDir}.");
-            }
+            StopServer(server);
+            throw;
         }
     }
 
@@ -260,6 +275,17 @@ internal static class Flows
         if (options.ClusterName is not null) args.Add($"--Ro3Emu:ClusterName={options.ClusterName}");
         if (options.AreaName is not null) args.Add($"--Ro3Emu:AreaName={options.AreaName}");
         return args;
+    }
+
+    /// <summary>Stops a server this program started (a clean shutdown first), with the console's messages.</summary>
+    internal static void StopServer(ServerProcess? server)
+    {
+        if (server == null) return;
+        bool running = !server.HasExited;
+        if (running) Ui.Step("Stopping the server");
+        server.Stop(TimeSpan.FromSeconds(30));
+        server.Dispose();
+        if (running) Ui.Ok($"stopped. Your characters are saved in {SetupHome.DataDir}.");
     }
 
     /// <summary>Starts the game (unless asked not to) and keeps the server up until the player is done.</summary>
@@ -316,7 +342,7 @@ internal static class Flows
 
     private static bool GameRunning() => Process.GetProcessesByName("ro3").Any();
 
-    private static Process LaunchGame(string client)
+    internal static Process LaunchGame(string client)
     {
         Ui.Step("Starting the game");
         var game = Quiet(() => Launcher.Start(client, []));
@@ -331,10 +357,10 @@ internal static class Flows
     }
 
     /// <summary>Patches the client for the server and writes the English text map next to it.</summary>
-    private static void PatchClient(string client, string serverUrl, string pem)
+    internal static void PatchClient(string client, string serverUrl, string pem, string? purchaseUrl)
     {
         Ui.Step("Patching the game for this server");
-        try { Quiet(() => { ClientPatcher.Patch(client, serverUrl, pem, HooksDll, LocDll); return 0; }); }
+        try { Quiet(() => { ClientPatcher.Patch(client, serverUrl, pem, HooksDll, LocDll, purchaseUrl); return 0; }); }
         catch (UnauthorizedAccessException e)
         {
             throw new SetupException("The game folder cannot be written: " + e.Message,
@@ -384,6 +410,16 @@ internal static class Flows
         CheckClient(client, needExport: false);
         Ui.Ok("this game version works with RO3Emu");
 
+        await PrepareJoinAsync(client, serverUrl, options.PurchaseUrl);
+        if (!options.NoLaunch) LaunchGame(client);
+        Ui.Info($"Next time, run RO3Emu.exe join {address} again. This window can be closed.");
+        if (Ui.OwnsConsole() && Ui.Interactive) await Task.Delay(8000);
+        return 0;
+    }
+
+    /// <summary>Contacts someone else's server and patches the game for it (its gate key, our English texts).</summary>
+    internal static async Task PrepareJoinAsync(string client, string serverUrl, string? purchaseUrl = null)
+    {
         Ui.Step($"Contacting {serverUrl}");
         string pem;
         try
@@ -398,11 +434,7 @@ internal static class Flows
         }
         Ui.Ok("the server answers");
         EnsureLocMap(client);
-        PatchClient(client, serverUrl, pem);
-        if (!options.NoLaunch) LaunchGame(client);
-        Ui.Info($"Next time, run RO3Emu.exe join {address} again. This window can be closed.");
-        if (Ui.OwnsConsole() && Ui.Interactive) await Task.Delay(8000);
-        return 0;
+        PatchClient(client, serverUrl, pem, purchaseUrl);
     }
 
     /// <summary>

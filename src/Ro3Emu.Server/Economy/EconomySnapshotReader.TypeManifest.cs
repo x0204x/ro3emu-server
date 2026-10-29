@@ -76,6 +76,10 @@ public static partial class EconomySnapshotReader
     // reached rank, claimed rank markers and today's counters. No balance and no asset: the points themselves are
     // currency 15 in the purse, granted by the earner's event/battle-glory receipt with this state; a rank reward is
     // its event/battle-glory-rank receipt, whose claimed marker is that receipt's once-only source.
+    // 領地 WorldState.GlorySettle 只保存尚待寄送排名郵件的賽季識別，不持有餘額；
+    // 賽季獎勵是 1090 郵件附件，由 battle-merit-season 的 delivery key 保證只領一次。
+    // 公會戰時倉庫 WartimeItems／WartimeStocked 保存只能在戰場建造的戰爭機具；
+    // WartimeSlots 是操作權限，WartimePrepay 是放置藍圖前的預留，不是背包、錢包或交易資產。
     // 副本任務旁表：來源、角色、房間、場景與版本識別，以及原任務實例、目標與所需次數。
     // 這些欄位只恢復進度，不持有獎勵；物品與貨幣仍由副本／任務原獎勵收據入帳。
     // 將兩個快照 DTO 納入固定格式雜湊，之後新增欄位仍需重新檢視分類。

@@ -391,7 +391,7 @@ public sealed partial class TalentProcs
         foreach (var (buff, description) in s.TalentProcBuffs)
         {
             if (!Rules.TryGetValue(buff, out var rule)) continue;
-            if (rule.NormalAttack ? cast.IsNormalAtk != 1 : Array.IndexOf(rule.Groups, (int)cast.SkillId) < 0) continue;
+            if (rule.NormalAttack ? !cast.IsNormalAttack(_data) : Array.IndexOf(rule.Groups, (int)cast.SkillId) < 0) continue;
             var target = processed.FirstOrDefault(m => m.Uid == action.Request.TargetId && m.Hp > 0) ?? processed.FirstOrDefault(m => m.Hp > 0)
                 ?? (processed.Count == 0 && rule.Radius is int radius
                     ? _combat.MonstersNear(s, action.Request.TargetPos ?? s.Position, (float)Value(description, radius)).FirstOrDefault()

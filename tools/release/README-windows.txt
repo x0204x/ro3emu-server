@@ -1,23 +1,27 @@
 RO3Emu - play Ragnarok Online 3 (PC) on your own server
 =======================================================
 
-Nothing to install. Extract the whole zip, then double-click RO3Emu.exe.
+Nothing to install. Extract the whole zip, then double-click Ro3EmuLauncher.exe.
 If Windows says "Windows protected your PC" (RO3Emu is not signed), click
-"More info", then "Run anyway".
+"More info", then "Run anyway". The launcher needs the Microsoft Edge WebView2
+Runtime, which Windows 10 and 11 normally have.
 
-The first time it:
+The launcher:
   1. finds your Ragnarok 3 game folder (the one with ro3.exe), or lets you pick it,
      or downloads the game from the official Genesis servers (about 24 GB; every
      file is checked against the publisher's signature);
-  2. exports the game data it needs from your game folder (about a minute);
-  3. starts the server on this PC;
+  2. exports the game data it needs from your game folder (about a minute, first time);
+  3. starts the server on this PC when you press Play;
   4. patches the game to talk to it and starts the game.
 
 Log in with any account name and password: the account is created on first login.
-Keep the RO3Emu window open while you play; press Q there (or close it) to stop the server.
-Next time, just double-click RO3Emu.exe again.
+The server runs while the launcher is open (it waits in the tray while you play);
+exiting the launcher stops it. Settings > Play with friends hosts a server for
+friends or joins someone else's. The launcher updates itself from RO3Emu's
+releases and shows what changed.
 
-Other things it can do (open a command prompt in this folder):
+RO3Emu.exe does the same from a console window, and more:
+  RO3Emu.exe                       play on your own server (press Q to stop it)
   RO3Emu.exe join 203.0.113.10     play on a friend's server
   RO3Emu.exe host                  let friends on your network join your server
   RO3Emu.exe install               download the game from the official servers

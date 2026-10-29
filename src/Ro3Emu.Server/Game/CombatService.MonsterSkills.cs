@@ -55,7 +55,9 @@ public sealed partial class CombatService
                     Dsts = { new DamageInfo { DstID = targetRole.Id, Damage = damage, SheildDamage = shieldDamage, HitResult = result,
                         DstElement = 1, IsDead = hp == 0 } },
                 };
-                foreach (var viewer in _world.Viewers(p).Append(p).Distinct()) await viewer.SendGameAsync(SkillHit, hit);
+                var hitViewers = _world.Viewers(p).Append(p).Distinct().ToArray();
+                await SendHitBulletsAsync(hitViewers, row, hit, caster.Uid);
+                foreach (var viewer in hitViewers) await viewer.SendGameAsync(SkillHit, hit);
                 await _character.SetHpSpAsync(p, null, null);
                 foreach (var handler in TakenAsync) await handler(caster, p, damage);
                 await FightingAsync(p);

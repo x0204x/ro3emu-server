@@ -3,12 +3,6 @@ using System.Text.Json;
 namespace Ro3Emu.Server.Data.Config;
 
 /// <summary>Typed views over the nested Lua skill-template structures in data/skills.</summary>
-public readonly record struct SkillEffectData(JsonElement Row)
-{
-    public SkillEffectDamage? Damage => ConfigValue.Raw(Row, "m_kDamage") is { } value
-        ? new SkillEffectDamage(value) : null;
-}
-
 public readonly record struct SkillEffectDamage(JsonElement Row)
 {
     public long DamageType => ConfigValue.Integral(Row, "m_kDamageType");

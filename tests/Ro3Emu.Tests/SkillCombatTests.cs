@@ -73,7 +73,9 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         {
             template = monsters.Template(npcId);
             Assert.NotNull(template);
-            template = template with { RoamDistance = 0, SpeedCm = immobile ? 0 : template.SpeedCm };
+            // A stationary dummy neither roams nor walks out to a surround slot (MonsterService.Surround).
+            template = template with { RoamDistance = 0, SurroundDistance = 0,
+                SpeedCm = immobile ? 0 : template.SpeedCm };
         }
         var result = await monsters.SpawnSingleAsync(s.SceneEntry, npcId,
             new MapPoint(s.Position.X, s.Position.Y, s.Position.Z, 0), s.InstanceId, customTemplate: template);

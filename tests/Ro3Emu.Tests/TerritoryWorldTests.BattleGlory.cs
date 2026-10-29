@@ -1,5 +1,7 @@
+using System.Text.Json;
 using Romsg;
 using Ro3Emu.Bot;
+using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Game;
 
 namespace Ro3Emu.Tests;
@@ -93,6 +95,62 @@ public sealed partial class TerritoryWorldTests
             await killer.SendGameAsync(TerritoryWarsService.GloryRankReward, new BattleGloryRankRewardReq { RankReward = { [level] = 1 } });
             Assert.Equal(error, (await Next(killer, TerritoryWarsService.GloryRankReward, BattleGloryRankRewardResp.Parser,
                 r => r.ReceiveResult.ContainsKey(level))).Result);
+        }
+    }
+
+    /// <summary>The season's standings: leaderboard 2102 lists this season's points, a past season is mailed 1090 with
+    /// its place and the SiegeSettlementHonorAward goods once, and task target 106610 reads the season's points.</summary>
+    [ClientDataFact]
+    public async Task ASeasonsBattleMeritRanksOnTheBoardAndAPastSeasonIsMailedByPlaceOnce()
+    {
+        await using var first = await InWorld("GloryFirst");
+        await using var second = await InWorld("GlorySecond");
+        long firstId = 0, secondId = 0;
+        await OnLoop(() => { firstId = Session(first).Role!.Id; secondId = Session(second).Role!.Id; return Task.CompletedTask; });
+        string current = Service<TerritoryWarsClock>().Epoch, past = current + ":past";
+        async Task Save(long id, long pastPoints, long points) => await OnLoop(async () =>
+        {
+            var role = new TerritoryWarsService.RoleState
+            {
+                Epoch = current,
+                Glory = new TerritoryWarsService.GloryState { Epoch = current, Points = points },
+                GlorySeasons = { [past] = new TerritoryWarsService.GloryState { Epoch = past, Points = pastPoints } },
+            };
+            using var owner = await Service<GameLoop>().Owners!.EnterAsync("test/glory season",
+                Ro3Emu.Server.Game.Ownership.ReservationKey.Role(id));
+            var roles = Service<RoleStore>();
+            var tx = roles.NewTransaction();
+            tx.RoleBlob(id, "territory_wars", JsonSerializer.SerializeToUtf8Bytes(role));
+            await roles.CommitAsync(tx, "test/glory season");
+            Service<SessionRegistry>().All().First(s => s.Role?.Id == id).TerritoryWars = role;
+        });
+        await Save(firstId, pastPoints: 500, points: 40);
+        await Save(secondId, pastPoints: 300, points: 90);
+
+        var ranks = Service<Ro3Emu.Server.Micro.RankService>();
+        ranks.Invalidate();
+        Assert.Equal(1, await ranks.RankOfAsync(Ro3Emu.Server.Micro.RankService.BattleGlory, secondId));
+        Assert.Equal(2, await ranks.RankOfAsync(Ro3Emu.Server.Micro.RankService.BattleGlory, firstId));
+        await OnLoop(() =>
+        {
+            Assert.Equal((90L, 1000L), Service<TaskService>().SnapshotTarget(Session(second), [106610, 1000]));
+            return Task.CompletedTask;
+        });
+
+        var territory = Service<TerritoryWarsService>();
+        Assert.Equal([(1, firstId, 500L), (2, secondId, 300L)], await territory.GloryStandingsAsync(past));
+        await OnLoop(() => territory.QueueGlorySeasonAsync(past));
+        await OnLoop(() => territory.SettleGlorySeasonsAsync());
+        await OnLoop(() => territory.QueueGlorySeasonAsync(past));
+        await OnLoop(() => territory.SettleGlorySeasonsAsync()); // the same season again: no second letter
+        var roleStore = Service<RoleStore>();
+        foreach (var (id, place) in new[] { (firstId, 1L), (secondId, 2L) })
+        {
+            var letters = JsonSerializer.Deserialize<MailService.Mailbox>(roleStore.LoadMailbox(id)!)!.Letters
+                .Where(l => l.TemplateId == TerritoryWarsService.GlorySeasonMail).ToList();
+            var letter = Assert.Single(letters);
+            Assert.NotEmpty(letter.Attachments);
+            Assert.Equal(place, LanguageData.Parser.ParseFrom(letter.ContentParams).Param.Single().IntParam);
         }
     }
 }

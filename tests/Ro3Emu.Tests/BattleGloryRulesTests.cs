@@ -81,4 +81,32 @@ public sealed class BattleGloryRulesTests : IDisposable
         glory.Claimed.Add(2);
         Assert.Equal(ErrorCodes.RewardClaimed, _rules.ClaimError(2, glory, true));
     }
+
+    [Fact]
+    public void TheChampionRankNeedsTheTopPointsRankAndAPlaceWithinItsRankCondition()
+    {
+        // Rank 4 is the champion row (_iRankCondition 5); rank 3 is the highest points rank.
+        Assert.False(_rules.ChampionPossible(2));
+        Assert.True(_rules.ChampionPossible(3));
+        Assert.True(_rules.IsChampion(3, 1));
+        Assert.True(_rules.IsChampion(3, 5));
+        Assert.False(_rules.IsChampion(3, 6)); // past the top 5
+        Assert.False(_rules.IsChampion(3, 0)); // not on the board
+        Assert.False(_rules.IsChampion(2, 1)); // first on the board, but not the top points rank
+    }
+
+    [Fact]
+    public void ASeasonsPointsAreReadFromTheCurrentStateOrItsArchive()
+    {
+        var role = new TerritoryWarsService.RoleState
+        {
+            Glory = new TerritoryWarsService.GloryState { Epoch = "s2", Points = 40 },
+            GlorySeasons = { ["s1"] = new TerritoryWarsService.GloryState { Epoch = "s1", Points = 70 } },
+        };
+        byte[] saved = JsonSerializer.SerializeToUtf8Bytes(role);
+        Assert.Equal(40, TerritoryWarsService.GloryPointsOf(saved, "s2"));
+        Assert.Equal(70, TerritoryWarsService.GloryPointsOf(saved, "s1"));
+        Assert.Equal(0, TerritoryWarsService.GloryPointsOf(saved, "s3"));
+        Assert.Equal(0, TerritoryWarsService.GloryPointsOf(saved, ""));
+    }
 }

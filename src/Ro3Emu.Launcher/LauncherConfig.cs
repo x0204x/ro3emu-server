@@ -50,7 +50,7 @@ public sealed class LauncherConfig
 
     public string ResolveSettingsFile(string executableDirectory)
         => string.IsNullOrWhiteSpace(SettingsFile)
-            ? UserSettings.DefaultFilePath
+            ? UserSettings.RepositoryFilePath(Repository)
             : Path.GetFullPath(SettingsFile, executableDirectory);
 
     public string? ResolveClientDirectory(string executableDirectory)
@@ -59,21 +59,38 @@ public sealed class LauncherConfig
             : Path.GetFullPath(ClientDirectory, executableDirectory);
 }
 
-/// <summary>Per-user choices (%APPDATA%\RO3Emu\launcher-settings.json): only the client folder so far.</summary>
+/// <summary>各更新來源分開保存玩家設定；明確指定 settingsFile 的測試／發佈配置仍優先。</summary>
 public sealed class UserSettings
 {
     [JsonPropertyName("clientDirectory")] public string? ClientDirectory { get; set; }
     [JsonPropertyName("acceptedChannelSequences")] public Dictionary<string, long> AcceptedChannelSequences { get; set; } = new(StringComparer.Ordinal);
 
     [JsonIgnore] string _filePath = DefaultFilePath;
+    // 舊共用檔僅供未指定 settingsFile 的來源設定首次承接，不覆蓋各來源已建立的檔案。
     public static string DefaultFilePath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RO3Emu", "launcher-settings.json");
 
-    public static UserSettings Load(string? filePath = null)
+    public static string RepositoryFilePath(string repositoryUrl) => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RO3Emu", "launcher-settings-" + FileKey(repositoryUrl) + ".json");
+
+    public static UserSettings ForRepository(string repositoryUrl) => LoadCore(RepositoryFilePath(repositoryUrl), legacy: true);
+
+    internal static string FileKey(string repositoryUrl)
     {
-        filePath = Path.GetFullPath(filePath ?? DefaultFilePath);
+        string key = Uri.TryCreate(repositoryUrl, UriKind.Absolute, out var uri)
+            ? uri.Host + (uri.IsDefaultPort ? "" : "_" + uri.Port) + uri.AbsolutePath : repositoryUrl;
+        var chars = key.Select(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' ? char.ToLowerInvariant(c) : '_').ToArray();
+        return new string(chars).Trim('_', '.');
+    }
+
+    public static UserSettings Load(string? filePath = null) => LoadCore(filePath ?? DefaultFilePath, legacy: false);
+
+    private static UserSettings LoadCore(string filePath, bool legacy)
+    {
+        filePath = Path.GetFullPath(filePath);
         try
         {
-            var settings = File.Exists(filePath) ? JsonSerializer.Deserialize<UserSettings>(File.ReadAllBytes(filePath)) ?? new() : new();
+            string? source = File.Exists(filePath) ? filePath : legacy && File.Exists(DefaultFilePath) ? DefaultFilePath : null;
+            var settings = source != null ? JsonSerializer.Deserialize<UserSettings>(File.ReadAllBytes(source)) ?? new() : new();
             settings._filePath = filePath;
             return settings;
         }

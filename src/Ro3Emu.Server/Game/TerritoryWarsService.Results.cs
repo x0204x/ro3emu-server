@@ -83,7 +83,9 @@ public sealed partial class TerritoryWarsService
                 AddAward(goods, Param(p.Guild == winner ? "TerritoryStrongHoldOccupyAuctionAward" : "TerritoryStrongHoldJoinAuctionAward", 1001006), recipient);
                 // Settlement tables are rank/qualification awards. Roll once here and persist the exact goods.
                 AddRankAward(goods, "SiegeSettlementPrimaryAward", rank, recipient);
-                if (p.Score > 0) AddRankAward(goods, "SiegeSettlementHonorAward", rank, recipient);
+                // SiegeSettlementHonorAward is the Battle Merit season reward by board place (the client's
+                // BattleFeatsSettlementPanel and Season Honor widgets), mailed once per season by BattleGlorySeason;
+                // paying it per battle as well would pay it twice.
                 if (p.Guild == winner && r.Round >= 2) AddRankAward(goods, "SiegeSettlementSeniorAward", rank, recipient);
             }
             role.Pending[awardKey] = goods.GroupBy(x => (x.Entry, x.Bind)).Select(g => new Grant(g.Key.Entry, checked(g.Sum(x => x.Count)), g.Key.Bind)).ToList();

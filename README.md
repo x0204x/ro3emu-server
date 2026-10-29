@@ -15,6 +15,7 @@
   <a href="https://github.com/aethai/ro3emu-server/actions/workflows/tests.yml"><img src="https://img.shields.io/github/actions/workflow/status/aethai/ro3emu-server/tests.yml?branch=main&label=tests&labelColor=1b2740" alt="Tests"></a>
   <img src="https://img.shields.io/badge/client-Genesis%202026.10.25.1-3fb950?labelColor=1b2740" alt="Works with the Genesis client 2026.10.25.1">
   <img src="https://img.shields.io/badge/license-GPL--3.0-8b949e?labelColor=1b2740" alt="GPL-3.0">
+  <a href="https://discord.gg/vVkcvMFKy3"><img src="https://img.shields.io/badge/discord-join-5865f2?logo=discord&logoColor=white&labelColor=1b2740" alt="Join the Discord"></a>
 </p>
 
 <table>
@@ -77,7 +78,13 @@ RO3Emu is built in the open. Thank you to everyone who sends fixes and reports b
 <a href="https://github.com/aethai/ro3emu-server/graphs/contributors"><img src="https://contrib.rocks/image?repo=aethai/ro3emu-server" alt="Contributors"></a>
 
 - **Found a bug?** [Open an issue](https://github.com/aethai/ro3emu-server/issues/new/choose), or use the Feedback button in the game menu on a hosted server.
+- **Questions, or hosting a server?** Ask on [Discord](https://discord.gg/vVkcvMFKy3).
 - **Want to help?** Read [CONTRIBUTING.md](CONTRIBUTING.md) and the [developer guide](docs/development.md).
+
+**Community projects** (maintained outside this repository, by their authors):
+
+- [ro3-cpanel](https://github.com/soyerno/ro3-cpanel): a web control panel for server operators (accounts, characters, economy log, GM tools).
+- [ro3-emu-launcher](https://github.com/soyerno/ro3-emu-launcher): a desktop launcher with auto-patching, separate from `src/Ro3Emu.Launcher`.
 
 <details>
 <summary><b>For developers</b></summary>

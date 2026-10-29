@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
 using Ro3Emu.Server.Data;
@@ -19,15 +20,21 @@ namespace Ro3Emu.Server.Game;
 /// <item>chat: "/bug &lt;text&gt;" (or "/feedback &lt;text&gt;") in any channel, never shown to other players.</item>
 /// </list>
 /// Each report is one JSON line in DataDir/reports/feedback.jsonl with who, where and when, plus the server's recent log
-/// lines about that player (RecentLogBuffer). The owner reads them through loopback GET /ro3emu/reports.
+/// lines about that player (RecentLogBuffer). The owner reads them through loopback GET /ro3emu/reports, and with
+/// <see cref="FeedbackOptions.DiscordWebhookUrl"/> set each report is also posted to a Discord channel.
 /// </summary>
-public sealed class FeedbackService(IOptions<ServerOptions> options, GameData data, RecentLogBuffer logs, TimeProvider clock,
+public sealed partial class FeedbackService(IOptions<ServerOptions> options, GameData data, RecentLogBuffer logs, TimeProvider clock,
     ILogger<FeedbackService> log)
 {
     /// <summary>Client hook → server: the report text, UTF-8. Ours (the client's message table has no such id).</summary>
     public const uint SubmitMsg = Ro3Emu.ClientHooks.PrivateMessageIds.Feedback;
 
     private static readonly string[] ChatCommands = ["/bug", "/feedback"];
+
+    /// <summary>Discord's limit for an embed description.</summary>
+    private const int DiscordDescriptionMax = 4096;
+
+    private static readonly HttpClient Discord = new() { Timeout = TimeSpan.FromSeconds(10) };
 
     private readonly IOptions<ServerOptions> _options = options;
     private readonly GameData _data = data;
@@ -112,9 +119,70 @@ public sealed class FeedbackService(IOptions<ServerOptions> options, GameData da
         }
         _log.LogInformation("Feedback #{Id} from {Account} ({Name}) via {Source} at scene {Scene} {X:F0},{Z:F0}: {Text}",
             id, session.Account, role?.Name, source, session.SceneEntry, session.Position.X, session.Position.Z, text);
+        if (!string.IsNullOrWhiteSpace(settings.DiscordWebhookUrl))
+            _ = PostToDiscordAsync(settings.DiscordWebhookUrl, report);
         await GmCommands.ReplyAsync(session, $"Thank you! Report #{id} was saved.");
         return id;
     }
+
+    /// <summary>Posts one stored report to the webhook; a failure is logged and the report stays in the file.</summary>
+    private async Task PostToDiscordAsync(string url, FeedbackReport report)
+    {
+        try
+        {
+            using var content = new StringContent(DiscordPayload(report), Encoding.UTF8, "application/json");
+            using var response = await Discord.PostAsync(url, content);
+            if (!response.IsSuccessStatusCode) LogDiscordRefused(report.Id, (int)response.StatusCode);
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or InvalidOperationException)
+        {
+            LogDiscordFailed(e, report.Id);
+        }
+    }
+
+    /// <summary>
+    /// The webhook body: one embed with the text, who and where. allowed_mentions is empty so "@everyone" or a role
+    /// mention typed by a player never pings anyone.
+    /// </summary>
+    internal static string DiscordPayload(FeedbackReport r)
+    {
+        var text = r.Text.Length > DiscordDescriptionMax ? r.Text[..(DiscordDescriptionMax - 3)] + "..." : r.Text;
+        if (r.Truncated && text.Length <= DiscordDescriptionMax - 18) text += "\n(text truncated)";
+        var player = string.Create(CultureInfo.InvariantCulture,
+            $"{r.RoleName ?? "?"} ({r.Account ?? "?"})\nLv {r.Level}, job {r.Career}, role {r.RoleId}");
+        var where = string.Create(CultureInfo.InvariantCulture,
+            $"{r.Map ?? "?"} (scene {r.Scene}{(r.Instance != 0 ? $", instance {r.Instance}" : "")})\n{r.X:F0}, {r.Z:F0}, line {r.Line}");
+        var embed = new JsonObject
+        {
+            ["title"] = $"Report #{r.Id}",
+            ["description"] = text,
+            ["color"] = 0x3D7BE6,
+            ["timestamp"] = r.Time.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture),
+            ["fields"] = new JsonArray(
+                Field("Player", player),
+                Field("Where", where),
+                Field("Source", r.Source.Length == 0 ? "?" : r.Source)),
+            ["footer"] = new JsonObject
+            {
+                ["text"] = string.Create(CultureInfo.InvariantCulture,
+                    $"{r.Context.Count} log lines in /ro3emu/reports?since={r.Id - 1}"),
+            },
+        };
+        var body = new JsonObject
+        {
+            ["allowed_mentions"] = new JsonObject { ["parse"] = new JsonArray() },
+            ["embeds"] = new JsonArray(embed),
+        };
+        return body.ToJsonString();
+
+        static JsonObject Field(string name, string value) => new() { ["name"] = name, ["value"] = value, ["inline"] = true };
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Feedback #{Id} could not be posted to Discord")]
+    private partial void LogDiscordFailed(Exception error, long id);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Discord refused feedback #{Id} with HTTP {Status}")]
+    private partial void LogDiscordRefused(long id, int status);
 
     /// <summary>Control characters out (new lines stay), surrounding blanks trimmed.</summary>
     internal static string Clean(string? text)

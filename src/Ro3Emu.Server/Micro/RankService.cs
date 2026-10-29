@@ -31,12 +31,12 @@ namespace Ro3Emu.Server.Micro;
 /// </para>
 /// </summary>
 public sealed class RankService(GameData data, AccountStore accounts, GuildService guilds, CharacterService character,
-    EmblemService emblems, TimeProvider clock, ILogger<RankService> log) : IMicroService
+    EmblemService emblems, TerritoryWarsClock territory, TimeProvider clock, ILogger<RankService> log) : IMicroService
 {
     // Board ids: LeaderBoardsConfig _iID / enum_LeaderBoardType (Lua_GameDefine.lua:10440-10552).
     public const int SpiritTower = 1011, GuildPrestige = 1030, GuildActivity = 1031, SurvivorOverall = 1052, SurvivorWeeklyKills = 1053,
         SurvivorWeeklyWins = 1054, HeroAll = 1101, DummyOverall = 1201, Fashion = 1301, Equipment = 1401,
-        DragonOverall = 1601, DragonWeeklyMvp = 1602;
+        DragonOverall = 1601, DragonWeeklyMvp = 1602, BattleGlory = 2102;
 
     /// <summary>
     /// UI_Sys_RankCopyMainPanelModel.lua:24-45: job -1 (all) -> 1101, root jobs -> 1103-1108. 1101 has no
@@ -111,6 +111,10 @@ public sealed class RankService(GameData data, AccountStore accounts, GuildServi
     public async Task<int> EquipRankAsync(int boardId, long itemGuid) =>
         boardId == Equipment && (await BoardsAsync()).Boards.TryGetValue(Equipment, out var board)
             && board.RankOf.TryGetValue(itemGuid, out int rank) ? rank : 0;
+
+    /// <summary>A role's (or guild's) place on a board, 1-based; 0 when it is not listed.</summary>
+    public async Task<int> RankOfAsync(int boardId, long id) =>
+        (await BoardsAsync()).Boards.TryGetValue(boardId, out var board) && board.RankOf.TryGetValue(id, out int rank) ? rank : 0;
 
     /// <summary>Drops the cached boards so the next request recomputes them (tests, GM tools).</summary>
     internal void Invalidate()
@@ -246,6 +250,10 @@ public sealed class RankService(GameData data, AccountStore accounts, GuildServi
             // Hero Registry (UI_Sys_RankCopyMainPanel): ranked by the role's displayed power, normalPower +
             // seasonPower: the total PowerService last published and saved with the Soul Echo
             // state. A role that never logged in since has only its Soul Echo plan to rank by.
+            // 2102 Battle Merit (enum_LeaderBoardType.BattleGlory; UI_Sys_TerritoryWars_BattleFeatsSettlementPanelModel asks
+            // its own place with GetMyRankByBoardId): the Battle Merit points earned this Territory War season.
+            if (role.TerritoryWars is { Length: > 0 } && TerritoryWarsService.GloryPointsOf(role.TerritoryWars, territory.Epoch) is > 0 and var merit)
+                Add(BattleGlory, new Candidate(role.Id, merit, 0, 0, 0, () => []));
             long power = PowerService.StoredTotal(role.Emblems) ?? emblems.StoredPower(role.Emblems, items);
             if (power > 0)
             {
@@ -338,7 +346,7 @@ public sealed class RankService(GameData data, AccountStore accounts, GuildServi
         return map;
     }
 
-    /// <summary>LeaderBoardsConfig._iFullRankMax; 1101 has no row and takes its siblings' 3000 (inferred).</summary>
+    /// <summary>LeaderBoardsConfig._iFullRankMax; 1101 and 2102 have no row and take the other role boards' 3000 (inferred).</summary>
     private int FullRankMax(int board) => data.Row("LeaderBoardsConfig", board) is { } row
-        ? (int)GameData.Int(row, "_iFullRankMax") : board == HeroAll ? 3000 : 0;
+        ? (int)GameData.Int(row, "_iFullRankMax") : board is HeroAll or BattleGlory ? 3000 : 0;
 }

@@ -69,7 +69,7 @@ public static partial class EconomySnapshotReader
         private readonly HashSet<string> _activeWarsEpochs = [];
         private void DecodeWarsWorld(JsonElement state, string key, bool archived)
         {
-            Fields(state, "Epoch LastStage Owners Rounds Battles Results SiegeHistory SiegeRuns Donations RuleResults WorldDrops NextWorldDropId WorldActivityRespawns WorldActivityOccurrences WorldPickupOccurrences");
+            Fields(state, "Epoch LastStage Owners Rounds Battles Results SiegeHistory SiegeRuns Donations RuleResults WorldDrops NextWorldDropId WorldActivityRespawns WorldActivityOccurrences WorldPickupOccurrences GlorySettle");
             string epoch = String(state, "Epoch");
             if (archived && (epoch.Length == 0 || _activeWarsEpochs.Contains(epoch)))
             { Issue(EconomyIssueKind.Coverage, key, "Archive epoch absent or duplicates active state."); return; }

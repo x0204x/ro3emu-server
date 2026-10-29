@@ -48,7 +48,8 @@ public static class EconomyProbeCli
                     Verdict = verdict.ToString(), Scope = "Receipt and retained ledger consistency; no balance comparison."
                 },
                     Summary(command, verdict, snapshot.Cut, ledger.Issues, ledger.UncoveredMutationFamilies) +
-                    $"\nReceipts: {ledger.Receipts.Count}; legs: {ledger.Legs.Count}; range: ({from}, {through}].\n");
+                    $"\nReceipts: {ledger.Receipts.Count}; legs: {ledger.Legs.Count}; range: ({from}, {through}]." +
+                    $"\nCompacted receipts (intent checks skipped): {ledger.CompactedReceipts}.\n");
                 return Exit(verdict);
             }
             var opening = JsonSerializer.Deserialize<SnapshotArtifact>(File.ReadAllBytes(args[4]),

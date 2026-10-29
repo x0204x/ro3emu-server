@@ -11,6 +11,7 @@ namespace Ro3Emu.Tests;
 public sealed partial class SkillCombatTests
 {
     private const int NoviceAttack = 1000001;
+    private const int ArcherAttack = 1300001;
 
     [ClientDataFact]
     public async Task ANormalAttackWaitsForTheSwingBeforeIt()
@@ -41,5 +42,31 @@ public sealed partial class SkillCombatTests
         await Loop.InvokeAsync(() => { other.Hp = 1_000_000; return Task.CompletedTask; });
         await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = NoviceAttack, TargetId = other.Uid });
         Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
+    }
+
+    [ClientDataFact]
+    public async Task AnArcherNormalAttackWaitsForTheSwingBeforeIt()
+    {
+        await using var archer = await InWorld("Archer");
+        await Gm("archer", "!job 3100");
+        var target = await Target("archer", stationary: true);
+        await Loop.InvokeAsync(() => { target.Hp = 1_000_000; return Task.CompletedTask; });
+        var session = Session("archer");
+
+        await archer.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = ArcherAttack, TargetId = target.Uid });
+        Assert.Equal(0, (await Next(archer, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
+        long end = await Loop.InvokeAsync(() => Task.FromResult(
+            session.SkillCast!.StartMs + session.SkillCast.ChantMs + session.SkillCast.ActionMs));
+
+        // A second click in the middle of the swing is refused (SkillBusy 3022), even though HunterAttack has _iIsNormalAtk == 0.
+        await archer.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = ArcherAttack, TargetId = target.Uid });
+        Assert.Equal(ErrorCodes.SkillBusy, (await Next(archer, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
+
+        // Just inside the slack before the swing ends, the next one is taken.
+        long wait = end - CombatService.SwingJitterMs + 40 - MonsterService.NowMs;
+        if (wait > 0) await Task.Delay(TimeSpan.FromMilliseconds(wait));
+        Assert.True(MonsterService.NowMs < end, "the test ran past the swing; nothing left to check");
+        await archer.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = ArcherAttack, TargetId = target.Uid });
+        Assert.Equal(0, (await Next(archer, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
     }
 }

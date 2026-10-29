@@ -240,11 +240,12 @@ public sealed partial class GuildService(GameData data, GuildStore store, RoleSt
         PlayerID = a.RoleId, Name = a.Name, Level = a.Level, Career = a.Career, ApplyTime = a.ApplyTime,
     };
 
-    private Task SendFull(GameSession s, GuildStore.State g, bool joined)
+    private async Task SendFull(GameSession s, GuildStore.State g, bool joined)
     {
         var full = FullInfo(g, joined);
         full.IsLeagueElite = s.Role != null && IsLeagueElite(g, s.Role.Id);
-        return s.SendGameAsync(Full, full);
+        await s.SendGameAsync(Full, full);
+        await SendWartimeAsync(s, g);
     }
 
     /// <summary>Publish committed caravan funds/contribution from a freshly loaded guild aggregate.</summary>
@@ -309,6 +310,7 @@ public sealed partial class GuildService(GameData data, GuildStore store, RoleSt
         clear.HistoryNames.AddRange(former.HistoryNames.Count > 0 ? former.HistoryNames : [former.Name]);
         clear.Building.AddRange(former.Buildings.Select(k => BuildingInfo(former, k.Key)));
         await s.SendGameAsync(Full, clear);
+        await ClearWartimeAsync(s);
     }
 
     private int CheckName(string name, long except = 0)
@@ -704,6 +706,8 @@ public sealed partial class GuildService(GameData data, GuildStore store, RoleSt
             var member = g.Members[s.Role!.Id];
             g.Members.Remove(member.RoleId);
             bool elite = DropElite(g, member.RoleId);
+            var machines = DropWartime(g, member.RoleId);
+            bool returned = ReturnPrepay(g, member.RoleId);
             var impeach = DropImpeacher(g, [member]);
             if (g.Members.Count == 0) await DeleteGuildAsync(g, [member.RoleId]);
             else
@@ -711,6 +715,8 @@ public sealed partial class GuildService(GameData data, GuildStore store, RoleSt
                 Journal(g, EvLeft, [member.RoleId], Str(member.Name));
                 await SaveGuildAsync(g, [member.RoleId]);
                 if (elite) await PushElitesAsync(g, LeagueElites(g).Values.ToHashSet());
+                await PushToolChangesAsync(g, machines);
+                if (returned) await PushStoreAsync(g);
                 if (impeach != null) await impeach();
             }
             await s.SendGameAsync(Leave, new GuildMemberLeaveResp { Result = 0 });
@@ -730,6 +736,8 @@ public sealed partial class GuildService(GameData data, GuildStore store, RoleSt
         var removed = new List<GuildStore.Member>();
         var targetViews = new List<(GuildStore.Member Member, GameSession? Session, DBRoleGuildInfo Personal)>();
         bool eliteDropped = false;
+        var machines = new List<(WartimeToolType Type, int Index)>();
+        bool returned = false;
         Func<Task>? impeach = null;
         if (code == 0 && g != null)
         {
@@ -755,6 +763,8 @@ public sealed partial class GuildService(GameData data, GuildStore store, RoleSt
                 {
                     g.Members.Remove(m.RoleId);
                     eliteDropped |= DropElite(g, m.RoleId);
+                    machines.AddRange(DropWartime(g, m.RoleId));
+                    returned |= ReturnPrepay(g, m.RoleId);
                     Journal(g, EvKicked, [kicker.RoleId, m.RoleId], Str(kicker.Name), Str(m.Name));
                 }
                 impeach = DropImpeacher(g, removed);
@@ -787,6 +797,8 @@ public sealed partial class GuildService(GameData data, GuildStore store, RoleSt
                 }
             }
         if (code == 0 && g != null && eliteDropped) await PushElitesAsync(g, LeagueElites(g).Values.ToHashSet());
+        if (code == 0 && g != null) await PushToolChangesAsync(g, machines);
+        if (code == 0 && g != null && returned) await PushStoreAsync(g);
         if (impeach != null) await impeach();
         await s.SendGameAsync(Kick, resp);
     }

@@ -114,6 +114,20 @@ public sealed class QuestEngineTests : IAsyncLifetime
     }
 
     [ClientDataFact]
+    public async Task TheThirdClassAdvancementStartsOnItsOwnAtItsLevel()
+    {
+        // 19991050 has no pre-task, _kAcceptTask [1] Auto and _iCondition 88000107 (base level 50): it follows no quest,
+        // so nothing offered it to a role that finished the main story.
+        const long thirdClass = 19991050;
+        await using var bot = await InWorld();
+        await Refresh();
+        Assert.False(await Read(s => s.Tasks!.Infos.ContainsKey(thirdClass)));
+        await Gm("!lvl 50");
+        await Refresh();
+        Assert.Equal(TaskState.Running, (await State(thirdClass)).Status);
+    }
+
+    [ClientDataFact]
     public async Task NoviceTrialGrantsExactlySevenExpAndReplaySurvivesRelog()
     {
         long role;

@@ -39,6 +39,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
             return unit is MonsterUnit { BossSkills: not null } boss ? EndBossSkillsTask(boss, interrupt: false) ?? Task.CompletedTask : Task.CompletedTask;
         });
         world.UnitRemoved.Add(ForgetCompanionTargets);
+        world.UnitRemoved.Add(ForgetSurroundSlot);
     }
 
     private const long UidBase = 1L << 41;
@@ -50,6 +51,15 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
 
     /// <summary>A walk segment is capped so a monster seen mid-way is re-synchronized soon.</summary>
     private const float MaxSegment = 12f;
+
+    /// <summary>A chasing monster re-paths toward its target this often, or when its segment ended.</summary>
+    private const int ChaseRepathMs = 400;
+
+    /// <summary>A chase step shorter than this is not walked.</summary>
+    internal const float MinChaseStep = 0.2f;
+
+    /// <summary>The chase stops this share of the attack range away from the target.</summary>
+    private const float ApproachShare = 0.8f;
 
     private readonly Dictionary<int, MonsterTemplate?> _templates = new();
     private sealed class SpawnState
@@ -75,13 +85,26 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
 
     public MonsterTemplate? Template(int npcId)
     {
-        if (!_templates.TryGetValue(npcId, out var t)) _templates[npcId] = t = Build(npcId);
+        if (!_templates.TryGetValue(npcId, out var t)) _templates[npcId] = t = Build(npcId, machine: false);
         return t;
     }
 
-    private MonsterTemplate? Build(int npcId)
+    private readonly Dictionary<int, MonsterTemplate?> _machineTemplates = [];
+
+    /// <summary>
+    /// A siege war machine's stats: the cannons and vehicles are NPCConfig _iNPCType 2 rows (sub types 102 and 103), whose
+    /// _iAttributeVariated and _iLevel select an AttriMonsterConfig row as a monster's do (222059: 69 170 HP). The client
+    /// shows its HP bar from properties 101 and 2000 like a monster's.
+    /// </summary>
+    public MonsterTemplate? MachineTemplate(int npcId)
     {
-        if (_data.Row("NPCConfig", npcId) is not { } npc || GameData.Int(npc, "_iNPCType") != 1) return null;
+        if (!_machineTemplates.TryGetValue(npcId, out var t)) _machineTemplates[npcId] = t = Build(npcId, machine: true);
+        return t;
+    }
+
+    private MonsterTemplate? Build(int npcId, bool machine)
+    {
+        if (_data.Row("NPCConfig", npcId) is not { } npc || !machine && GameData.Int(npc, "_iNPCType") != 1) return null;
         int level = (int)GameData.Int(npc, "_iLevel");
         long attrId = GameData.Int(npc, "_iAttribute");
         if (attrId == 0) attrId = GameData.Int(npc, "_iAttributeVariated") * 1000 + level;
@@ -135,6 +158,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
             CastSpeed = A(AttributeId.CastSpeed),
             BattleCallRange = aiConfig is { BattleCallType: 1 } call ? call.BattleCallDistance / 100f : 0,
             AnswersBattleCall = aiConfig?.BattleCallResponse == 1,
+            SurroundDistance = SurroundSpacing(_data, ai),
         };
     }
 
@@ -531,6 +555,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         var previous = monster.Target;
         if (ReferenceEquals(previous, target)) return;
         monster.Target = target;
+        ReleaseSurroundSlot(monster);
         foreach (var handler in TargetChanged) _loop.TrackRuntimeDetached("monster target change", () => handler(monster, previous, target));
     }
 
@@ -610,28 +635,37 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         }
         float dist = Distance(m, target);
         if (m.Template.Skills != null && !m.SpecialsOwnedByMvp && TryBossSkill(m, target, null, dist, now)) return;
-        float reach = m.Template.AttackRange + 0.5f;
-        if (dist <= reach)
+        bool inReach = dist <= m.Template.AttackRange + 0.5f;
+        // AIConfig _iIsSurround: walk to a slot around the target instead, between swings (MonsterService.Surround).
+        if (!(inReach && SwingHolds(m, now)) && SurroundSlot(m, target) is { } slot
+            && WalksToSlot(m, map, slot, inReach, now)) return;
+        if (inReach)
         {
-            if (m.Moving)
-            {
-                m.Moving = false;
-                SendStop(m, now);
-            }
-            if (now >= m.NextSwingMs && Attack != null)
-            {
-                m.NextSwingMs = now + m.Template.SwingIntervalMs;
-                m.Face = Angle(m.X, m.Z, target.Position.X, target.Position.Z);
-                _loop.TrackRuntimeDetached("monster attack", () => Attack(m, target));
-            }
+            Swing(m, target, now);
             return;
         }
         if (m.Template.SpeedCm <= 0) return;
         // Chase: re-path toward the target every 400 ms or when the segment ended.
         if (!m.Moving || now >= m.NextChaseMs)
         {
-            m.NextChaseMs = now + 400;
-            ChaseTo(m, map, target.Position.X, target.Position.Z, m.Template.AttackRange * 0.8f, 1f);
+            m.NextChaseMs = now + ChaseRepathMs;
+            ChaseTo(m, map, target.Position.X, target.Position.Z, m.Template.AttackRange * ApproachShare, 1f);
+        }
+    }
+
+    /// <summary>In reach of its player: stand and swing when the swing interval allows.</summary>
+    private void Swing(MonsterUnit m, GameSession target, long now)
+    {
+        if (m.Moving)
+        {
+            m.Moving = false;
+            SendStop(m, now);
+        }
+        if (now >= m.NextSwingMs && Attack != null)
+        {
+            m.NextSwingMs = now + m.Template.SwingIntervalMs;
+            m.Face = Angle(m.X, m.Z, target.Position.X, target.Position.Z);
+            _loop.TrackRuntimeDetached("monster attack", () => Attack(m, target));
         }
     }
 
@@ -677,25 +711,24 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
             MoveSegment(m, map, waypoint.X, waypoint.Y, waypoint.Z, speedFactor);
     }
 
-    /// <summary>One straight Walk segment when the nav grid allows it, or the first A* segment when it does not.</summary>
-    private void WalkTo(MonsterUnit m, MapInstance map, float x, float z, float speedFactor)
+    /// <summary>One straight Walk segment when reachable, otherwise the first A* segment; false when none started.</summary>
+    private bool WalkTo(MonsterUnit m, MapInstance map, float x, float z, float speedFactor)
     {
-        if (Forbidden?.Invoke(m, ForbiddenState.Walk) == true) return;
+        if (Forbidden?.Invoke(m, ForbiddenState.Walk) == true) return false;
         var nav = _worldData.Map(m.SceneEntry)?.Nav;
-        float? y = nav?.WalkHeight(x, z, m.Y) ?? m.Y;
-        if (y == null) return;
-        if (nav != null && !nav.CanWalk(m.X, m.Y, m.Z, x, z))
+        float? y = nav is null ? m.Y : nav.WalkHeight(x, z, m.Y);
+        if (nav != null && (y == null || !nav.CanWalk(m.X, m.Y, m.Z, x, z)))
         {
-            if (!nav.TryFindNextWaypoint(m.X, m.Y, m.Z, x, z, MaxSegment, 0, out var waypoint)) return;
+            if (!nav.TryFindNextWaypoint(m.X, m.Y, m.Z, x, z, MaxSegment, 0, out var waypoint)) return false;
             x = waypoint.X; y = waypoint.Y; z = waypoint.Z;
         }
-        MoveSegment(m, map, x, y.Value, z, speedFactor);
+        return y is { } height && MoveSegment(m, map, x, height, z, speedFactor);
     }
 
-    private void MoveSegment(MonsterUnit m, MapInstance map, float x, float y, float z, float speedFactor)
+    private bool MoveSegment(MonsterUnit m, MapInstance map, float x, float y, float z, float speedFactor)
     {
         float dx = x - m.X, dz = z - m.Z, len = MathF.Sqrt(dx * dx + dz * dz);
-        if (len < 0.1f) return;
+        if (len < 0.1f) return false;
         long now = NowMs;
         float speed = m.SpeedCm(now) / 100f * speedFactor;
         m.FromX = m.X; m.FromY = m.Y; m.FromZ = m.Z;
@@ -719,6 +752,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
                 MovementWalk = new MovementWalk { Dir = m.Face, Speed = speed, Acc = 0, EndHeight = y },
             },
         }));
+        return true;
     }
 
     private static MovementChangeNtf Stop(MonsterUnit m, long now) => new()

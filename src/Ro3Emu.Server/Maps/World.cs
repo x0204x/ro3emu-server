@@ -155,9 +155,9 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
 
     /// <summary>
     /// The unit moved (its position is already updated): players still around get the movement, players it reached
-    /// get it as a new unit, players it left lose it.
+    /// get it as a new unit, players it left lose it. <paramref name="except"/> moves it itself (a vehicle's driver).
     /// </summary>
-    public async Task MoveUnitAsync(WorldUnit unit, MovementChangeNtf movement)
+    public async Task MoveUnitAsync(WorldUnit unit, MovementChangeNtf movement, GameSession? except = null)
     {
         var entered = new List<GameSession>();
         await unit.PresentationGate.WaitAsync();
@@ -184,7 +184,7 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
                     player.VisibleUnits.Remove(unit);
                     await Safe(player, () => sink.UnitsChangedAsync(player, [], [unit.Uid]));
                 }
-                else if (visible) movers.Add(player);
+                else if (visible && player != except) movers.Add(player);
             }
             if (movers.Count > 0) await Safe(movers[0], () => sink.UnitMoveManyAsync(movers, movement));
         }

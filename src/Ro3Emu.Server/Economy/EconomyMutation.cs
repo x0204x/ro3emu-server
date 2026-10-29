@@ -98,21 +98,34 @@ public sealed class EconomyMutation
         if (RewardEvidence is not null) ValidateRewardEvidence(RewardEvidence, Goods);
         this.outcome = (byte[])(outcome ?? throw new ArgumentNullException(nameof(outcome))).Clone();
         if (this.outcome.Length > 16 * 1024) throw new ArgumentException("Resolved outcome exceeds E01 receipt limit.", nameof(outcome));
-        // A caller-provided request fingerprint is useful evidence but cannot authorize altered resolved costs/goods.
-        // JSON's fixed property order and sorted denominations make this stable across an internal retry.
-        string canonical = JsonSerializer.Serialize(new
-        {
-            OperationId, ActorAccount, ActorRoleId, CommandKind, RequestFingerprint, SourceKey, EffectiveUtcMs,
-            Costs = Costs.OrderBy(q => (int)q.Asset.Kind).ThenBy(q => q.Asset.Id).ThenBy(q => q.Asset.Epoch, StringComparer.Ordinal).ToArray(),
-            Goods = Goods.OrderBy(q => (int)q.Asset.Kind).ThenBy(q => q.Asset.Id).ThenBy(q => q.Asset.Epoch, StringComparer.Ordinal).ToArray(),
-            Outcome = Convert.ToBase64String(this.outcome),
-            RewardEvidence, PlanFingerprint,
-            ProgressionCatalogVersion = progressionCatalog?.DenominationsVersion
-        }, CanonicalJson);
-        intentPayload = Encoding.UTF8.GetBytes(canonical);
+        intentPayload = Canonical(legacy: false);
         if (intentPayload.Length > (IsFamily || IsProgression ? MaxFamilyIntentBytes : 64 * 1024))
             throw new ArgumentException("Canonical intent exceeds receipt limit.");
         IntentHash = Convert.ToHexString(SHA256.HashData(intentPayload));
+    }
+
+    /// <summary>
+    /// A caller-provided request fingerprint is useful evidence but cannot authorize altered resolved costs/goods.
+    /// JSON's fixed property order and sorted denominations make this stable across an internal retry. Intent v2 binds
+    /// the outcome (already stored in the receipt's own column) by its hash; v1 (<paramref name="legacy"/>, receipts
+    /// written before 29.10.2026) embedded it in base64 and is rebuilt only to recognise those receipts.
+    /// </summary>
+    private byte[] Canonical(bool legacy) => Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new
+    {
+        OperationId, ActorAccount, ActorRoleId, CommandKind, RequestFingerprint, SourceKey, EffectiveUtcMs,
+        Costs = Costs.OrderBy(q => (int)q.Asset.Kind).ThenBy(q => q.Asset.Id).ThenBy(q => q.Asset.Epoch, StringComparer.Ordinal).ToArray(),
+        Goods = Goods.OrderBy(q => (int)q.Asset.Kind).ThenBy(q => q.Asset.Id).ThenBy(q => q.Asset.Epoch, StringComparer.Ordinal).ToArray(),
+        Outcome = legacy ? Convert.ToBase64String(outcome) : null,
+        OutcomeHash = legacy ? null : Convert.ToHexString(SHA256.HashData(outcome)),
+        RewardEvidence, PlanFingerprint,
+        ProgressionCatalogVersion = ProgressionCatalog?.DenominationsVersion
+    }, CanonicalJson));
+
+    /// <summary>The v1 intent and its hash, for a receipt committed before intent v2 (<see cref="Canonical"/>).</summary>
+    internal (string Hash, byte[] Payload) LegacyIntent()
+    {
+        byte[] payload = Canonical(legacy: true);
+        return (Convert.ToHexString(SHA256.HashData(payload)), payload);
     }
 
     public static bool IsRewardCommand(string command) => command is

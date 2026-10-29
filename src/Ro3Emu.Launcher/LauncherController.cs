@@ -41,7 +41,9 @@ public sealed class LauncherController : IDisposable
     {
         _config = config;
         _exePath = exePath;
-        _settings = UserSettings.Load(config.ResolveSettingsFile(Path.GetDirectoryName(exePath)!));
+        _settings = string.IsNullOrWhiteSpace(config.SettingsFile)
+            ? UserSettings.ForRepository(config.Repository)
+            : UserSettings.Load(config.ResolveSettingsFile(Path.GetDirectoryName(exePath)!));
         _post = post;
         _pickFolder = pickFolder;
         _minimize = minimize;

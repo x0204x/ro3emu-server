@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using Ro3Emu.Server.Accounts;
 
 namespace Ro3Emu.Server.Micro;
 
@@ -31,26 +32,27 @@ public sealed class PlatformProxyService : IMicroService
 /// <summary>
 /// Phonest gate auth (ClientAvatarEntity: PhonestGate.bind {Id, Auth, ClusterId} after the game gate's OnGetAuth RPC,
 /// refreshAuth {Id, OldAuth} hourly, whose Ret message is the new secret in base64). bind verifies the secret issued
-/// with OnGetAuth and binds this micro connection to its account, as verifySdk does.
+/// with OnGetAuth and binds this micro connection to its account, as verifySdk does, unless the account is banned.
 /// unbind keeps today's acceptance: the connection stays bound to the account it verified.
 /// </summary>
-public sealed class PhonestGateService(GateAuthRegistry auths, MicroSessions micro, ILogger<PhonestGateService> log) : IMicroService
+public sealed class PhonestGateService(GateAuthRegistry auths, AccountStore accounts, MicroSessions micro, ILogger<PhonestGateService> log)
+    : IMicroService
 {
     public string Name => "PhonestGate";
 
-    public ValueTask<object?> InvokeAsync(MicroSession session, string method, object? args) =>
-        ValueTask.FromResult<object?>(method switch
-        {
-            "bind" => Bind(session, args),
-            "unbind" => new Dictionary<string, object?> { ["Ret"] = MicroServiceRouter.Ret(true) },
-            "refreshAuth" => Refresh(session, args),
-            _ => null,
-        });
+    public async ValueTask<object?> InvokeAsync(MicroSession session, string method, object? args) => method switch
+    {
+        "bind" => await BindAsync(session, args),
+        "unbind" => new Dictionary<string, object?> { ["Ret"] = MicroServiceRouter.Ret(true) },
+        "refreshAuth" => Refresh(session, args),
+        _ => null,
+    };
 
-    private Dictionary<string, object?> Bind(MicroSession session, object? args)
+    private async Task<Dictionary<string, object?>> BindAsync(MicroSession session, object? args)
     {
         string? id = MicroServiceRouter.MapString(args, "Id");
-        var account = auths.Verify(id, MapBytes(args, "Auth"));
+        // The secret was issued to a signed-in account; a ban since then refuses the bind like a wrong secret (inferred).
+        var account = await accounts.UnlessBannedAsync(auths.Verify(id, MapBytes(args, "Auth")), "gate bind");
         if (account == null || (session.Account != null && !string.Equals(session.Account, account, StringComparison.Ordinal)))
         {
             log.LogWarning("PhonestGate.bind refused for {Id} from {Remote}", id, session.Channel.Remote);

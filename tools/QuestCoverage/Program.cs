@@ -48,6 +48,8 @@ void Own(long id, string owner)
     if (!list.Contains(owner)) list.Add(owner);
 }
 Own(TaskService.FirstTask, "TaskService.Login.FirstTask");
+foreach (var def in (IEnumerable)Call(service, "RootTasks")!)
+    Own((long)Property(def, "Id")!, "TaskService.AcceptRootTasks");
 foreach (var title in (IEnumerable)Call(service, "GrowthTitles")!)
 {
     Own((long)Field(title, "Item1")!, "TaskService.AcceptGrowthTitle.chapter");

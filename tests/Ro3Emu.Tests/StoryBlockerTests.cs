@@ -40,19 +40,21 @@ public sealed class StoryBlockerTests : IAsyncLifetime
         try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
-    private async Task<BotClient> InWorld()
+    private async Task<BotClient> InWorld(string name = "StoryAlice")
     {
         var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
-        await bot.LoginAsync("storyalice", "pw");
+        await bot.LoginAsync(name.ToLowerInvariant(), "pw");
         await bot.EnterGateAsync();
-        await bot.EnterWorldAsync((await bot.CreateRoleAsync("StoryAlice")).RoleBaseInfo.Id);
+        await bot.EnterWorldAsync((await bot.CreateRoleAsync(name)).RoleBaseInfo.Id);
         return bot;
     }
 
-    private async Task Gm(string line)
+    private async Task Gm(string line) => await Gm("storyalice", line);
+
+    private async Task Gm(string account, string line)
     {
         using var http = new HttpClient();
-        (await http.PostAsync($"{_http}/ro3emu/gm?account=storyalice", new StringContent(line))).EnsureSuccessStatusCode();
+        (await http.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(line))).EnsureSuccessStatusCode();
     }
 
     private Task<T> Read<T>(Func<GameSession, T> read) => Service<GameLoop>().InvokeAsync(() =>
@@ -97,6 +99,35 @@ public sealed class StoryBlockerTests : IAsyncLifetime
         using var sw = bot.Inbox.Expect(e => e.IsGame(MsgId.SwitchSceneLine) && SwitchSceneLineResp.Parser.ParseFrom(e.Body).SceneEntry == 1021301);
         await bot.SendGameAsync(SceneService.ClientEnterArea, new ClientEnterAreaReq { AreaId = region.Id });
         await sw.WaitAsync(Wait);
+    }
+
+    [ClientDataFact]
+    public async Task APartyMemberWhoIsNotTheLeaderEntersTheRegionsStoryDungeonAlone()
+    {
+        // sc_prt_sewb4_001 (10153) region 1010626001 "613|3120402|1|10106270": dungeon 3120402 takes up to 10 players, so a
+        // 30400 from a member who is not the leader would be refused with 1204 (issue #163).
+        await using var alice = await InWorld();
+        await using var bob = await InWorld("StoryBob");
+        var created = await Request(alice, TeamService.TeamCreate, new TeamCreateReq { TeamType = TeamType.Five, TargetId = 1001 },
+            TeamCreateResp.Parser);
+        Assert.Equal(0, created.Result);
+        using (var invite = bob.Inbox.Expect(e => e.IsGame(TeamService.TeamNotifyInvitee)))
+        {
+            Assert.Equal(0, (await Request(alice, TeamService.TeamInvite, new InviteIntoTeamReq { Guid = (long)bob.Self!.Uuid },
+                InviteIntoTeamResp.Parser)).Result);
+            await invite.WaitAsync(Wait);
+        }
+        Assert.Equal(0, (await Request(bob, TeamService.TeamInviteeResp,
+            new InviteeResp { TeamId = created.TeamId, IsAgree = true, InviteGuid = (long)alice.Self!.Uuid }, InviteeRespResp.Parser)).Result);
+
+        var region = Service<WorldData>().Map(10153)!.Regions[1010626001];
+        await WarpAsync(bob, line => Gm("storybob", line), 10153, region.X, region.Z);
+        await Gm("storybob", "!quest accept 10106270");
+        using var sw = bob.Inbox.Expect(e => e.IsGame(MsgId.SwitchSceneLine) && SwitchSceneLineResp.Parser.ParseFrom(e.Body).SceneEntry == 3120402);
+        await bob.SendGameAsync(SceneService.ClientEnterArea, new ClientEnterAreaReq { AreaId = region.Id });
+        await sw.WaitAsync(Wait);
+        Assert.DoesNotContain(alice.Inbox.Snapshot(), e => e.IsGame(MsgId.SwitchSceneLine)
+            && SwitchSceneLineResp.Parser.ParseFrom(e.Body).SceneEntry == 3120402);
     }
 
     [ClientDataFact]

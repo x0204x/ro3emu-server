@@ -27,9 +27,10 @@ internal sealed class EconomyEnvelopeResolveReadPlan(EconomyEnvelope envelope, i
         }
         if (row.GetString(1) != envelope.ActorAccount || row.GetInt64(2) != envelope.ActorRoleId ||
             row.GetString(3) != envelope.CommandKind || row.GetString(4) != envelope.RequestFingerprint ||
-            row.GetString(5) != envelope.SourceKey || row.GetString(6) != envelope.IntentHash ||
-            !((byte[])row.GetValue(7)).AsSpan().SequenceEqual(envelope.IntentPayload) ||
-            !((byte[])row.GetValue(8)).AsSpan().SequenceEqual(envelope.Outcome))
+            row.GetString(5) != envelope.SourceKey ||
+            !ReceiptBlobs.SameIntent(row.GetString(6), (byte[])row.GetValue(7), envelope.IntentHash,
+                envelope.IntentPayload, envelope.LegacyIntent) ||
+            !ReceiptBlobs.SameOutcome((byte[])row.GetValue(8), (byte[])row.GetValue(7), envelope.Outcome))
             throw new EconomyOperationConflictException("Committed E05d operation belongs to a different actor or intent.");
         var children = EconomyTransactionPlan.DecodeChildReceipts((byte[])row.GetValue(9));
         if (children.Length != childCount || row.GetInt32(10) < 0)

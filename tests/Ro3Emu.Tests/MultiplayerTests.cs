@@ -209,9 +209,18 @@ public sealed class MultiplayerTests : IAsyncLifetime
         finally { release.Set(); }
         var paths = await Task.WhenAll(calls);
 
-        foreach (var path in paths)
+        foreach (var copy in paths)
         {
-            Assert.True(File.Exists(path));
+            // Only the newest copies stay plain; a later backup compressed the older ones.
+            string path = copy;
+            if (!File.Exists(copy))
+            {
+                path = copy + ".unpacked";
+                using var gzip = new System.IO.Compression.GZipStream(File.OpenRead(copy[..^3] + DatabaseBackup.CompressedExtension),
+                    System.IO.Compression.CompressionMode.Decompress);
+                using var to = File.Create(path);
+                gzip.CopyTo(to);
+            }
             using var db = new SqliteConnection($"Data Source={path};Mode=ReadOnly;Pooling=False");
             db.Open();
             using var command = db.CreateCommand();

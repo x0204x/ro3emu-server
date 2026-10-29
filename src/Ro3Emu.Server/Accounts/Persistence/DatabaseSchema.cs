@@ -32,5 +32,7 @@ internal static class DatabaseSchema
         new TimedBattleSchemaPlan(),
         new CasualBattleSchemaPlan(),
         new PartyExperienceSchemaPlan(),
+        new GiftCodeSchemaPlan(),
+        new AccountBanSchemaPlan(),
     ];
 }

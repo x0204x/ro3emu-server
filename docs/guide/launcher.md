@@ -183,6 +183,11 @@ Start button is disabled, and it returns to Ready after a normal game exit.
   client directory out of the player's normal AppData. Relative paths resolve beside the launcher. Omit it from a
   normal player configuration.
 
+未指定 `settingsFile` 時，各更新來源分別使用 `%APPDATA%\RO3Emu\launcher-settings-<repository>.json`，避免
+不同伺服器的啟動器共用遊戲目錄與已接受的簽章更新序號。新來源設定檔尚不存在時，會承接舊共用
+`launcher-settings.json` 的既有選擇；已有來源設定不會被舊檔覆蓋。明確指定 `settingsFile` 時不讀取舊共用檔，
+維持 LAB 隔離與本地的更新序號倒退拒絕規則。
+
 Run the deterministic visual matrix after changing WPF layout or state projection:
 
 ```

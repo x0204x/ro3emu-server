@@ -139,7 +139,8 @@ public sealed partial class CombatService
             targets.RemoveAll(m => !selected.Contains(m.Uid));
             await HitEventPlayersAsync(s, playerTargets.Where(p => selected.Contains(p.Role!.Id)).ToArray(),
                 row, action.Request.SkillId, HitEffect(GameData.Int(row, "_iScriptShow")), action.Id, CanApplyMoreEffects,
-                action.GuardianDamage == null ? null : (id, amount) => RecordGuardianDamage(action, id, amount), center);
+                action.GuardianDamage == null ? null : (id, amount) => RecordGuardianDamage(action, id, amount), center,
+                action.HasTimedBullet ? action.Request.TargetId : 0);
             if (IsGuardianEffect(row))
                 await GuardianPlayerDebuffsAsync(s, row, playerTargets.Where(p => selected.Contains(p.Role!.Id)),
                     alreadySlowed, castingRole.Id, CanApplyMoreEffects);
@@ -266,7 +267,10 @@ public sealed partial class CombatService
                 }
                 if (CurrentCaster() && hit.Dsts.Any(d => d.HitResult != DamageHitResult.Miss)) await _buffs.RecoverEnergyOnHitAsync(s, row);
                 var sourceViewers = CurrentCaster() ? _world.Viewers(s).Append(s) : Enumerable.Empty<GameSession>();
-                foreach (var viewer in processed.SelectMany(t => t.Viewers).Concat(sourceViewers).Distinct()) await viewer.SendGameAsync(SkillHit, hit);
+                var hitViewers = processed.SelectMany(t => t.Viewers).Concat(sourceViewers).Distinct().ToArray();
+                await SendHitBulletsAsync(hitViewers, row, hit, castingRole.Id,
+                    action.HasTimedBullet ? action.Request.TargetId : 0);
+                foreach (var viewer in hitViewers) await viewer.SendGameAsync(SkillHit, hit);
                 if (CurrentCaster() && field?.Trap == true)
                     await ToPlayerAndViewersAsync(s, TrapDamage, new TrapDamageNtf { SkillConfigId = action.Request.SkillId, DamageValue = hit.Dsts.Sum(d => d.Damage), Pos = center.Clone() });
             }

@@ -79,3 +79,19 @@ curl -s 'http://127.0.0.1:5380/ro3emu/reports?since=2026-10-12T00:00:00Z&limit=5
 oldest first. From another machine: `ssh <your server> curl -s ...`. The file itself is plain JSON lines too.
 
 Each report also writes one log line: `Feedback #N from <account> (<role>) via <source> at scene ...`.
+
+## Posting reports to Discord
+
+Set a channel webhook (Discord: Edit channel → Integrations → Webhooks → New webhook → Copy webhook URL) and every
+stored report is also posted there as one message: the text, the player (role, account, level, job), where (map,
+scene, position, line) and the source. The server log lines stay in the file; the message footer says how to read them.
+Mentions typed by players (`@everyone`, roles, users) never ping. If Discord is down or refuses the post, the server
+logs a warning and the report is still in the file.
+
+The URL lets anyone post to that channel, so pass it through the environment rather than a committed config file:
+
+```bash
+Ro3Emu__Feedback__DiscordWebhookUrl='https://discord.com/api/webhooks/...'
+```
+
+Use a private channel: reports name the player's account.

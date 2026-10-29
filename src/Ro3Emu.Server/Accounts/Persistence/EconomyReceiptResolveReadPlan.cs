@@ -29,9 +29,10 @@ internal sealed class EconomyReceiptResolveReadPlan(EconomyMutation mutation, in
         }
         if (row.GetString(1) != mutation.ActorAccount || row.GetInt64(2) != mutation.ActorRoleId ||
             row.GetString(3) != mutation.CommandKind || row.GetString(4) != mutation.RequestFingerprint ||
-            row.GetString(5) != mutation.IntentHash || row.GetString(6) != mutation.SourceKey ||
-            !((byte[])row.GetValue(9)).AsSpan().SequenceEqual(mutation.IntentPayload) ||
-            !((byte[])row.GetValue(10)).AsSpan().SequenceEqual(mutation.Outcome))
+            row.GetString(6) != mutation.SourceKey ||
+            !ReceiptBlobs.SameIntent(row.GetString(5), (byte[])row.GetValue(9), mutation.IntentHash,
+                mutation.IntentPayload, mutation.LegacyIntent) ||
+            !ReceiptBlobs.SameOutcome((byte[])row.GetValue(10), (byte[])row.GetValue(9), mutation.Outcome))
             throw new EconomyOperationConflictException("Committed operation ID belongs to different actor or intent.");
         string realm = row.GetString(0);
         object?[] results = EconomyTransactionPlan.DecodeChildReceipts((byte[])row.GetValue(7));

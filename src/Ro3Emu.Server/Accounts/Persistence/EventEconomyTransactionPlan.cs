@@ -41,11 +41,11 @@ internal sealed class EventEconomyTransactionPlan(RoleItemPlan child, EventEcono
         using var row = query.ExecuteReader();
         if (row.Read())
         {
-            if (row.GetString(0) != mutation.IntentHash ||
-                !((byte[])row.GetValue(1)).AsSpan().SequenceEqual(mutation.IntentPayload) ||
+            if (!ReceiptBlobs.SameIntent(row.GetString(0), (byte[])row.GetValue(1), mutation.IntentHash,
+                    mutation.IntentPayload, mutation.LegacyIntent) ||
                 row.GetString(4) != mutation.ActorAccount || row.GetInt64(5) != mutation.ActorRoleId ||
                 row.GetString(6) != mutation.CommandKind || row.GetString(7) != mutation.RequestFingerprint ||
-                row.GetString(8) != mutation.SourceKey || !((byte[])row.GetValue(9)).AsSpan().SequenceEqual(mutation.Outcome) ||
+                row.GetString(8) != mutation.SourceKey || !ReceiptBlobs.SameOutcome((byte[])row.GetValue(9), (byte[])row.GetValue(1), mutation.Outcome) ||
                 row.GetInt64(11) != mutation.EffectiveUtcMs)
                 throw new EconomyOperationConflictException("Event operation ID belongs to another frozen intent.");
             result = EconomyTransactionPlan.DecodeChildReceipts((byte[])row.GetValue(2));

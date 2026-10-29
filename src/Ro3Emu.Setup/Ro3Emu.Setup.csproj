@@ -31,6 +31,7 @@
     <Compile Include="..\Ro3Emu.ClientTools\ImageSwapPatch.cs" Link="Client\ImageSwapPatch.cs" />
     <Compile Include="..\Ro3Emu.ClientTools\AccessFixPatch.cs" Link="Client\AccessFixPatch.cs" />
     <Compile Include="..\Ro3Emu.ClientTools\VoiceStubPatch.cs" Link="Client\VoiceStubPatch.cs" />
+    <Compile Include="..\Ro3Emu.ClientTools\OpenUrlPatch.cs" Link="Client\OpenUrlPatch.cs" />
     <Compile Include="..\Ro3Emu.ClientTools\Launcher.cs" Link="Client\Launcher.cs" />
     <Compile Include="..\Ro3Emu.ClientTools\VerifiedBaseline.cs" Link="Client\VerifiedBaseline.cs" />
   </ItemGroup>
@@ -43,6 +44,8 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Ro3Emu.Setup.Tests" />
+    <!-- The launcher (Ro3EmuLauncher.exe) drives the same flows from its window. -->
+    <InternalsVisibleTo Include="Ro3EmuLauncher" />
   </ItemGroup>
 
 </Project>

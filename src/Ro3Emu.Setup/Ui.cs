@@ -12,23 +12,35 @@ internal static class Ui
     /// <summary>False when nobody can answer (stdin redirected, --yes): questions take their default.</summary>
     public static bool Interactive { get; set; } = !Console.IsInputRedirected;
 
+    /// <summary>
+    /// The launcher's window instead of the console (Ro3EmuLauncher drives the same flows): messages and progress go
+    /// there and to the log, nothing is written to the console, and nobody is asked (<see cref="Interactive"/> false).
+    /// </summary>
+    public static IUiSink? Sink { get; set; }
+
     public static void Title(string text)
     {
-        Write(ConsoleColor.Cyan, "\n" + text + "\n" + new string('=', text.Length));
+        Write(ConsoleColor.Cyan, "\n" + text + "\n" + new string('=', text.Length), UiKind.Title, text);
     }
 
-    public static void Step(string text) => Write(ConsoleColor.Cyan, "\n> " + text);
+    public static void Step(string text) => Write(ConsoleColor.Cyan, "\n> " + text, UiKind.Step, text);
 
-    public static void Info(string text) => Write(null, "  " + text);
+    public static void Info(string text) => Write(null, "  " + text, UiKind.Info, text);
 
-    public static void Ok(string text) => Write(ConsoleColor.Green, "  " + text);
+    public static void Ok(string text) => Write(ConsoleColor.Green, "  " + text, UiKind.Ok, text);
 
-    public static void Warn(string text) => Write(ConsoleColor.Yellow, "  " + text);
+    public static void Warn(string text) => Write(ConsoleColor.Yellow, "  " + text, UiKind.Warn, text);
 
-    public static void Error(string text) => Write(ConsoleColor.Red, "\n" + text);
+    public static void Error(string text) => Write(ConsoleColor.Red, "\n" + text, UiKind.Error, text);
 
-    private static void Write(ConsoleColor? color, string text)
+    private static void Write(ConsoleColor? color, string text, UiKind kind, string plain)
     {
+        if (Sink is { } sink)
+        {
+            SetupLog.Write(text.Trim('\n'));
+            sink.Message(kind, plain);
+            return;
+        }
         lock (Gate)
         {
             EndProgress();
@@ -39,9 +51,24 @@ internal static class Ui
         }
     }
 
+    /// <summary>
+    /// A measured step (bytes or items done of total; total 0 = unknown): the launcher draws its bar from it, the
+    /// console shows <paramref name="text"/> as the status line.
+    /// </summary>
+    public static void Progress(string stage, long done, long total, string text)
+    {
+        if (Sink is { } sink) sink.Progress(stage, done, total);
+        else Progress(text);
+    }
+
     /// <summary>Rewrites one status line (no log).</summary>
     public static void Progress(string text)
     {
+        if (Sink is { } sink)
+        {
+            sink.Progress(text, 0, 0);
+            return;
+        }
         lock (Gate)
         {
             if (Console.IsOutputRedirected) return;
@@ -54,6 +81,7 @@ internal static class Ui
 
     public static void EndProgress()
     {
+        if (Sink != null) return;
         lock (Gate)
         {
             if (!_progressShown) return;
@@ -139,4 +167,15 @@ internal static class Ui
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern uint GetConsoleProcessList(uint[] processList, uint processCount);
+}
+
+internal enum UiKind { Title, Step, Info, Ok, Warn, Error }
+
+/// <summary>Where <see cref="Ui"/> goes when the flows run behind a window instead of a console.</summary>
+internal interface IUiSink
+{
+    void Message(UiKind kind, string text);
+
+    /// <summary><paramref name="stage"/> with <paramref name="done"/> of <paramref name="total"/> (0 = unknown).</summary>
+    void Progress(string stage, long done, long total);
 }

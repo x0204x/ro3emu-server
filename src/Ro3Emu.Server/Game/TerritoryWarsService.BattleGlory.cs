@@ -13,7 +13,10 @@ namespace Ro3Emu.Server.Game;
 /// rankRewardReceiveInfo; dayGainScore and sceneInfo are never read.</item>
 /// <item>BattleGloryDan: a rank needs the sum of the _iGloryCondition of the ranks below it
 /// (Lua_CFG_BattleGloryDan.GetNextGloryTotal): 1000 for rank 2 up to 36000 for rank 9. Rank 10 (_iRankCondition 10)
-/// is the champion rank of leaderboard 2102, which this client ships no LeaderBoardsConfig row for: it is never set.</item>
+/// is the champion rank: LC_DAL_BattleGlory._updateRealLevel shows GetFinallyLevelId (the row with an
+/// _iRankCondition) while 5001 isSpecialRank is set, curRankId still being the points rank. The server sets it for a
+/// role in the top _iRankCondition places of leaderboard 2102 (Micro/RankService, this season's points) that has
+/// reached the highest points rank (inferred: the champion stands above rank 9).</item>
 /// <item>83400 BattleGloryRankRewardReq {rankReward: {level: 1}} claims a reached rank's _iNormalRewardGroup once
 /// (UI_Sys_TerritoryWars_BattleFeatsRewardListWidgetCtrl: ranks 2-9, claimable at curRankId). The client has no
 /// handler for the reply; it reads the claim from 5001.</item>
@@ -52,6 +55,9 @@ public sealed partial class TerritoryWarsService
     /// assist window are dropped as hits come, and a role's are dropped when it leaves the scene.</summary>
     private readonly Dictionary<long, Dictionary<long, long>> _gloryHits = [];
     private BattleGloryRules? _gloryRules;
+
+    /// <summary>The role's place on leaderboard 2102 (RankService.RankOfAsync), 0 unlisted; set by the host.</summary>
+    public Func<long, Task<int>>? GloryBoardRank { get; set; }
     private BattleGloryRules GloryRules => _gloryRules ??= new BattleGloryRules(_data);
 
     private int GloryDay => DateOnly.FromDateTime(DailyActivityService.GameDay(_clock.LocalNow.DateTime)).DayNumber;
@@ -71,18 +77,32 @@ public sealed partial class TerritoryWarsService
     }
 
     /// <summary>5001 for a loaded role: read without copying (StateChanged calls it on every bag or EXP change).</summary>
-    private Task SyncGloryAsync(GameSession s)
+    private async Task SyncGloryAsync(GameSession s)
     {
-        if (s.Role == null || s.Progress == null || s.TerritoryWars is not { } role || !_functions.IsOpen(s, GloryFunction))
-            return Task.CompletedTask;
-        var glory = role.Glory.Epoch == Epoch ? role.Glory : role.GlorySeasons.GetValueOrDefault(Epoch);
+        if (s.Role is not { } owner || s.Progress == null || s.TerritoryWars is not { } role || !_functions.IsOpen(s, GloryFunction))
+            return;
+        var glory = SeasonGlory(role, Epoch);
         var info = new DBBattleGloryInfo
         {
             CurRankId = glory?.Rank ?? 1, DayGainScore = glory != null && glory.Day == GloryDay ? glory.DayGain : 0,
         };
         foreach (long rank in glory?.Claimed ?? []) info.RankRewardReceiveInfo[rank] = 1;
-        return CharacterService.SyncAsync(s, GlorySync, info);
+        if (glory != null && GloryBoardRank is { } boardRank && GloryRules.ChampionPossible(glory.Rank))
+            info.IsSpecialRank = GloryRules.IsChampion(glory.Rank, await boardRank(owner.Id));
+        if (ReferenceEquals(s.Role, owner)) await CharacterService.SyncAsync(s, GlorySync, info);
     }
+
+    /// <summary>A role's Battle Merit of one season: the current state, or its archived season.</summary>
+    private static GloryState? SeasonGlory(RoleState role, string epoch) =>
+        role.Glory.Epoch == epoch ? role.Glory : role.GlorySeasons.GetValueOrDefault(epoch);
+
+    /// <summary>The Battle Merit points a saved role.territory_wars earned in a season (leaderboard 2102).</summary>
+    public static long GloryPointsOf(byte[] territoryWars, string epoch) =>
+        epoch.Length > 0 && System.Text.Json.JsonSerializer.Deserialize<RoleState>(territoryWars) is { } role
+            ? SeasonGlory(role, epoch)?.Points ?? 0 : 0;
+
+    /// <summary>Task target 106610 (TaskObjectives): this season's points of a loaded role, -1 before it loads.</summary>
+    public long GloryPoints(GameSession s) => s.TerritoryWars is { } role ? SeasonGlory(role, Epoch)?.Points ?? 0 : -1;
 
     private BattleGloryBase? GloryMap(GameSession s) => s.InstanceId == 0 && s.LineNumber == 1
         ? BattleGloryBase.Get(_data, s.SceneEntry) : null;
@@ -268,6 +288,20 @@ internal sealed class BattleGloryRules(GameData data)
         long points = basePoints * Repeat(kind == TerritoryWarsService.GloryKind.Death ? _deaths : _kills, count) / 10000;
         return powerDifference is { } difference ? points * PowerCoe(difference) / 10000 : points;
     }
+
+    /// <summary>The champion rank: the BattleGloryDan row with an _iRankCondition (10, the top 10 of leaderboard 2102).</summary>
+    private BattleGloryDan? Champion => Ranks.Cast<BattleGloryDan?>().FirstOrDefault(d => d!.Value.RankCondition > 0);
+
+    /// <summary>The highest rank points reach (9).</summary>
+    private long TopPointsRank => Ranks.Where(d => d.RankCondition == 0).Select(d => d.Id).DefaultIfEmpty(1).Max();
+
+    /// <summary>Whether a points rank can stand for the champion rank at all (inferred: it reached the highest points rank).</summary>
+    public bool ChampionPossible(long pointsRank) => Champion != null && pointsRank >= TopPointsRank;
+
+    /// <summary>5001 isSpecialRank: the highest points rank and a place within the champion row's _iRankCondition on
+    /// leaderboard 2102 (0 = not listed). Inferred.</summary>
+    public bool IsChampion(long pointsRank, int boardPlace) =>
+        ChampionPossible(pointsRank) && boardPlace > 0 && boardPlace <= Champion!.Value.RankCondition;
 
     /// <summary>What the day still takes; a limit of 0 (no PublicParam row) caps nothing.</summary>
     public static long Cap(long points, long dayGain, long limit) =>

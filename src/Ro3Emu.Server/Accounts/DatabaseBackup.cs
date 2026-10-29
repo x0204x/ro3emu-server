@@ -1,23 +1,28 @@
 using System.Diagnostics;
+using System.IO.Compression;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Options;
 
 namespace Ro3Emu.Server.Accounts;
 
 /// <summary>
-/// Copies ro3emu.db to &lt;data&gt;/backups at startup and every 6 hours, keeping the newest 20 (C/D 19).
+/// Copies ro3emu.db to &lt;data&gt;/backups at startup and every <c>Backup:IntervalHours</c> (6), keeping the newest
+/// <c>Backup:Keep</c> (20) (C/D 19).
 /// - **Cut:** one SQLite online backup step reads a single WAL snapshot, so a copy holds exactly the transactions
 ///   committed before it started, however fast the writer advances meanwhile.
 /// - **Atomic:** the copy is written as <c>.partial</c>, checked with <c>PRAGMA quick_check</c> and only then renamed
 ///   to <c>ro3emu-*.db</c>. A crash or a failed check never leaves a file that pruning counts as a good backup.
 /// - **Startup validation:** the startup backup is the realm's integrity check. A copy that fails it is kept as
 ///   <c>.corrupt</c> and logged as critical (the live file is never touched).
+/// - **Compression:** all but the newest <c>Backup:Uncompressed</c> (2) copies become <c>ro3emu-*.db.gz</c>, written as
+///   <c>.partial</c> too and renamed only once complete, with the copy's time kept so pruning orders both kinds alike.
+///   <see cref="DatabaseRestore"/> takes either.
 /// </summary>
-public sealed class DatabaseBackup(IOptions<ServerOptions> options, AccountStore accounts, ILogger<DatabaseBackup> log, Diagnostics.ServerMetrics? metrics = null) : BackgroundService
+public sealed partial class DatabaseBackup(IOptions<ServerOptions> options, AccountStore accounts, ILogger<DatabaseBackup> log, Diagnostics.ServerMetrics? metrics = null) : BackgroundService
 {
-    internal const string Prefix = "ro3emu-", Extension = ".db", PartialExtension = ".partial", CorruptExtension = ".corrupt";
-    private const int Keep = 20;
-    private static readonly TimeSpan Interval = TimeSpan.FromHours(6);
+    internal const string Prefix = "ro3emu-", Extension = ".db", CompressedExtension = ".db.gz", PartialExtension = ".partial", CorruptExtension = ".corrupt";
+    private BackupOptions Settings => options.Value.Backup;
+    private TimeSpan Interval => TimeSpan.FromHours(Settings.IntervalHours > 0 ? Settings.IntervalHours : 6);
     private readonly object _backupGate = new();
     private string? _lastName;
     private int _sameNameCount;
@@ -89,10 +94,45 @@ public sealed class DatabaseBackup(IOptions<ServerOptions> options, AccountStore
         _lastBytes = new FileInfo(target).Length;
         _lastAt = DateTime.UtcNow;
         Interlocked.Increment(ref _backups);
-        foreach (var old in Completed(dir).Skip(Keep)) File.Delete(old);
         log.LogInformation("Database backed up to {Target} ({Bytes} bytes, {Ms:F0} ms)", target, _lastBytes, _lastMs);
+        int keep = Math.Max(1, Settings.Keep);
+        foreach (var old in Completed(dir).Skip(keep)) File.Delete(old);
+        CompressOlder(dir, Math.Clamp(Settings.Uncompressed, 1, keep));
         return target;
     }
+
+    /// <summary>
+    /// Compresses the plain copies past the newest <paramref name="uncompressed"/>. A failure leaves that copy plain (the
+    /// next backup tries again) and never touches the copy itself; the plain file goes only after its .gz is complete.
+    /// </summary>
+    private void CompressOlder(string dir, int uncompressed)
+    {
+        foreach (var plain in Completed(dir).Skip(uncompressed).Where(f => f.EndsWith(Extension, StringComparison.Ordinal)).ToList())
+        {
+            var compressed = plain[..^Extension.Length] + CompressedExtension;
+            var partial = compressed + PartialExtension;
+            try
+            {
+                using (var from = new FileStream(plain, FileMode.Open, FileAccess.Read, FileShare.Read))
+                using (var to = new FileStream(partial, FileMode.Create, FileAccess.Write, FileShare.None))
+                {
+                    using (var gzip = new GZipStream(to, CompressionLevel.Fastest, leaveOpen: true)) from.CopyTo(gzip);
+                    to.Flush(flushToDisk: true);
+                }
+                File.SetLastWriteTimeUtc(partial, File.GetLastWriteTimeUtc(plain));
+                File.Move(partial, compressed, overwrite: true);
+                File.Delete(plain);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                try { File.Delete(partial); } catch (Exception ignored) when (ignored is IOException or UnauthorizedAccessException) { }
+                LogCompressFailed(log, e, plain);
+            }
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not compress the backup {Backup}; it stays uncompressed")]
+    private static partial void LogCompressFailed(ILogger logger, Exception exception, string backup);
 
     /// <summary>Second-based names, made unique within a second, so concurrent requests never share a file.</summary>
     private string NextName()
@@ -104,15 +144,20 @@ public sealed class DatabaseBackup(IOptions<ServerOptions> options, AccountStore
         return name + Extension;
     }
 
-    /// <summary>Completed backups, newest first.</summary>
+    /// <summary>Completed backups, plain or compressed, newest first.</summary>
     internal static IEnumerable<string> Completed(string dir) =>
-        System.IO.Directory.GetFiles(dir, Prefix + "*" + Extension).Where(f => f.EndsWith(Extension, StringComparison.Ordinal))
+        System.IO.Directory.GetFiles(dir, Prefix + "*").Where(IsBackup)
             .OrderByDescending(File.GetLastWriteTimeUtc).ThenByDescending(f => f, StringComparer.Ordinal);
+
+    private static bool IsBackup(string file) =>
+        file.EndsWith(Extension, StringComparison.Ordinal) || file.EndsWith(CompressedExtension, StringComparison.Ordinal);
+
+    internal static bool IsCompressed(string file) => file.EndsWith(CompressedExtension, StringComparison.OrdinalIgnoreCase);
 
     private void RemoveStalePartials()
     {
         if (!System.IO.Directory.Exists(Directory)) return;
-        foreach (var partial in System.IO.Directory.GetFiles(Directory, Prefix + "*" + Extension + PartialExtension))
+        foreach (var partial in System.IO.Directory.GetFiles(Directory, Prefix + "*" + PartialExtension))
         {
             log.LogWarning("Removing an unfinished backup {Partial}", partial);
             File.Delete(partial);

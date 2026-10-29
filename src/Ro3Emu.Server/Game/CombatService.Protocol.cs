@@ -190,6 +190,52 @@ public sealed partial class CombatService
             && _data.Row("SkillConfig", bullet.SkillConfigId) != null
             ? ToPlayerAndViewersAsync(source, highLevel ? SkillBulletHigh : SkillBullet, bullet) : Task.CompletedTask;
 
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<long, int> _bulletEffects = new();
+
+    /// <summary>
+    /// The projectile a skill's hit flies: the first EffectData in [show*100, show*100+99] whose m_kDamage carries
+    /// m_kBulletData with a prefab (Fire Bolt 1200411 fx_bullet_magicfirearrow_new, Double Strafe 1300304), else 0.
+    /// The client launches such bullets only from 31120 (LC_Scene_Sync._skillFixTimeBullet ->
+    /// LC_PerformEffect_Agent.SkillCreateFixTimeBullet) or, for a template with m_kClientPoints, from the cast's own
+    /// timeline (LC_Skill_RunTimeContext.PlayClientEffect), so those get none from here. A 31101 hit never launches one.
+    /// </summary>
+    private int HitBulletEffect(long scriptShow) => _bulletEffects.GetOrAdd(scriptShow, show =>
+    {
+        if (_data.SkillTemplate(show) is { } template && SkillEffectData.HasClientPoints(template)) return 0;
+        var effects = _data.SkillTemplateTable("Lua_Config_EffectData");
+        for (long id = show * 100; id < show * 100 + 100; id++)
+            if (SkillEffectData.Find(effects, id)?.BulletName != null) return (int)id;
+        return 0;
+    });
+
+    /// <summary>
+    /// 31120 for each damaged target of a hit whose skill flies a bullet, sent just before the 31101 to the same viewers.
+    /// One notify launches <c>split</c> bullets m_fBulletHatchInterval apart (LC_BulletEmit_Mgr.Update), so Fire Bolt
+    /// Lv. 5 drops five. (inferred) one notify per target per hit, timed at the hit; fixedTime (unread by the client)
+    /// carries the bullet's configured life time.
+    /// </summary>
+    private async Task SendHitBulletsAsync(IEnumerable<GameSession> viewers, JsonElement row, SkillHitInfo hit, long masterId,
+        long scheduledBulletTarget = 0)
+    {
+        int effect = HitBulletEffect(new SkillConfig(row).ScriptShow);
+        if (effect == 0 || hit.Dsts.Count == 0) return;
+        var recipients = viewers.ToArray();
+        long now = Now;
+        foreach (var dst in hit.Dsts)
+        {
+            if (dst.DamageType is DamageType.Heal or DamageType.HealMana || dst.DstID == scheduledBulletTarget) continue;
+            var bullet = new SkillFixTimeBulletNotify
+            {
+                SourceId = hit.SrcID, TargetId = dst.DstID, EffectId = effect, FixedTime = BulletLifeTime(effect),
+                Split = Math.Max(1, hit.Split), SkillConfigId = hit.SkillId, MasterId = masterId, StartTimestampMs = now,
+            };
+            foreach (var viewer in recipients) await viewer.SendGameAsync(SkillBullet, bullet);
+        }
+    }
+
+    private int BulletLifeTime(int effect) =>
+        SkillEffectData.Find(_data.SkillTemplateTable("Lua_Config_EffectData"), effect)?.BulletLifeTime ?? 0;
+
     /// <summary>Reflect a real target eligibility transition for an AOI-visible unit (31122).</summary>
     public async Task SetSkillTargetSelectionAsync(GameSession viewer, WorldUnit target, int skillTag, bool white, bool enabled)
     {

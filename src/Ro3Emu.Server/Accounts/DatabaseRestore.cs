@@ -1,10 +1,12 @@
+using System.IO.Compression;
 using Microsoft.Data.Sqlite;
 
 namespace Ro3Emu.Server.Accounts;
 
 /// <summary>
 /// Offline restore of a backup made by <see cref="DatabaseBackup"/> (C/D 19): <c>Ro3Emu.Server --restore-backup &lt;file&gt;</c>.
-/// - The backup must pass <c>PRAGMA quick_check</c> and hold the realm's core tables.
+/// - The backup must pass <c>PRAGMA quick_check</c> and hold the realm's core tables. A compressed copy
+///   (<c>.db.gz</c>) is unpacked into the prepared copy and checked there.
 /// - The realm must not be open: the restore takes the data dir's <see cref="RealmLock"/>, which a running server holds.
 /// - **Prepare first:** the backup is copied beside the live file as <c>.restoring</c>, flushed and checked again before
 ///   anything live is touched, so a failed or bad copy leaves the realm as it was.
@@ -50,7 +52,9 @@ public static class DatabaseRestore
     {
         backup = Path.GetFullPath(backup);
         if (!File.Exists(backup)) throw new IOException($"No backup at {backup}");
-        Validate(backup);
+        // A compressed copy (DatabaseBackup) is checked once unpacked, below, still before anything live is touched.
+        bool compressed = DatabaseBackup.IsCompressed(backup);
+        if (!compressed) Validate(backup);
         var live = Path.Combine(dataDir, "ro3emu.db");
         if (string.Equals(Path.GetFullPath(live), backup, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("The backup is the live database.");
@@ -60,7 +64,7 @@ public static class DatabaseRestore
         var incoming = live + IncomingSuffix;
         try
         {
-            CopyDurably(backup, incoming);
+            CopyDurably(backup, incoming, compressed);
             stepForTest?.Invoke("copied");
             Validate(incoming);
         }
@@ -171,9 +175,10 @@ public static class DatabaseRestore
         file.Flush(flushToDisk: true);
     }
 
-    private static void CopyDurably(string source, string target)
+    private static void CopyDurably(string source, string target, bool compressed)
     {
-        using var from = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var file = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read);
+        using Stream from = compressed ? new GZipStream(file, CompressionMode.Decompress) : file;
         using var to = new FileStream(target, FileMode.Create, FileAccess.Write, FileShare.None);
         from.CopyTo(to);
         to.Flush(flushToDisk: true);

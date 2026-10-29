@@ -51,9 +51,10 @@ internal sealed class EconomyTransactionPlan(RoleItemPlan child, EconomyMutation
         {
             if (row.GetString(0) != mutation.ActorAccount || row.GetInt64(1) != mutation.ActorRoleId ||
                 row.GetString(2) != mutation.CommandKind || row.GetString(3) != mutation.RequestFingerprint ||
-                row.GetString(4) != mutation.SourceKey || row.GetString(6) != mutation.IntentHash ||
-                !((byte[])row.GetValue(9)).AsSpan().SequenceEqual(mutation.IntentPayload) ||
-                !((byte[])row.GetValue(10)).AsSpan().SequenceEqual(mutation.Outcome))
+                row.GetString(4) != mutation.SourceKey ||
+                !ReceiptBlobs.SameIntent(row.GetString(6), (byte[])row.GetValue(9), mutation.IntentHash,
+                    mutation.IntentPayload, mutation.LegacyIntent) ||
+                !ReceiptBlobs.SameOutcome((byte[])row.GetValue(10), (byte[])row.GetValue(9), mutation.Outcome))
                 throw new EconomyOperationConflictException("Committed operation ID belongs to different actor or intent.");
             object?[] original = DecodeChildReceipts((byte[])row.GetValue(5));
             if (row.GetInt32(8) < (mutation.RewardEvidence is null && mutation.CommandKind != "cd13e/daily-reset" ? 1 : 0))

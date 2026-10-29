@@ -110,6 +110,12 @@ public sealed class ServerOptions
     /// <summary>In-game bug reports (FeedbackService, docs/guide/feedback.md).</summary>
     public FeedbackOptions Feedback { get; set; } = new();
 
+    /// <summary>Database copies in DataDir/backups (DatabaseBackup).</summary>
+    public BackupOptions Backup { get; set; } = new();
+
+    /// <summary>How long economic receipts keep their payload and outcome bytes (ReceiptRetention).</summary>
+    public ReceiptRetentionOptions ReceiptRetention { get; set; } = new();
+
     /// <summary>
     /// Credential checks (SDK login, character deletion) one remote address may make per minute; past it the server
     /// answers 429 without hashing. Each check costs a 100 000-round PBKDF2 hash, and logins register accounts.
@@ -118,8 +124,16 @@ public sealed class ServerOptions
     /// </summary>
     public int LoginAttemptsPerMinute { get; set; } = 20;
 
-    /// <summary>Tests: the credential limit applies to loopback too.</summary>
+    /// <summary>Tests: the credential limit and the gift code address limit apply to loopback too.</summary>
     public bool LoginLimitIncludesLoopback { get; set; }
+
+    /// <summary>
+    /// Gift code attempts (POST /gift-card/use/v2, docs/systems/gift-codes.md) one remote address, and separately one
+    /// account, may make per minute; past it the server answers the refusal code GiftCardRateLimited without looking
+    /// the code up. Loopback is exempt from the address budget, as for <see cref="LoginAttemptsPerMinute"/>, but not
+    /// from the account budget. Behind a reverse proxy every player shares the proxy's address, so raise this there.
+    /// </summary>
+    public int GiftCodeAttemptsPerMinute { get; set; } = 10;
 
     /// <summary>Team voice relay proof of concept (Voice/, docs TBD). Off until a port is set.</summary>
     public VoiceOptions Voice { get; set; } = new();
@@ -345,6 +359,24 @@ public sealed class BossSkillOptions
     public int SummonLifeMs { get; set; } = 30000;
 }
 
+/// <summary>
+/// Compaction of old economic receipts (Accounts/ReceiptRetention.cs, docs/guide/hosting.md). Every row, hash, child
+/// receipt, revision, ledger leg and source claim stays; only the payload and outcome bytes of receipts older than
+/// <see cref="Days"/> are dropped.
+/// </summary>
+public sealed class ReceiptRetentionOptions
+{
+    /// <summary>Age in days after which a receipt is compacted; 0 keeps every receipt whole. A compacted receipt still
+    /// replays (by its intent hash), so the window only bounds how far back the offline audit re-checks intents.</summary>
+    public int Days { get; set; } = 2;
+
+    /// <summary>Receipts compacted per writer transaction.</summary>
+    public int BatchSize { get; set; } = 500;
+
+    /// <summary>Minutes between compaction runs (the first runs a few minutes after startup).</summary>
+    public int IntervalMinutes { get; set; } = 60;
+}
+
 /// <summary>In-game bug reports: the menu's Feedback button and "/bug" in chat (FeedbackService).</summary>
 public sealed class FeedbackOptions
 {
@@ -360,6 +392,30 @@ public sealed class FeedbackOptions
 
     /// <summary>Minimum seconds between two reports of one account.</summary>
     public int CooldownSeconds { get; set; } = 5;
+
+    /// <summary>
+    /// A Discord channel webhook (https://discord.com/api/webhooks/...): each stored report is also posted there. Unset
+    /// keeps reports in the file only. The URL lets anyone post to that channel, so keep it out of committed config.
+    /// </summary>
+    public string? DiscordWebhookUrl { get; set; }
+}
+
+/// <summary>
+/// Database copies (DatabaseBackup): one at start and one every <see cref="IntervalHours"/>. The receipt tables make the
+/// database grow with play, and every copy is a whole database, so all but the newest <see cref="Uncompressed"/> are
+/// gzip-compressed (about a quarter of the size).
+/// </summary>
+public sealed class BackupOptions
+{
+    /// <summary>Copies kept, compressed or not; older ones are deleted.</summary>
+    public int Keep { get; set; } = 20;
+
+    /// <summary>Hours between two copies.</summary>
+    public double IntervalHours { get; set; } = 6;
+
+    /// <summary>Newest copies left as plain .db files, ready to restore or open; at least 1. Set it to
+    /// <see cref="Keep"/> to compress nothing.</summary>
+    public int Uncompressed { get; set; } = 2;
 }
 
 /// <summary>

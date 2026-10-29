@@ -2,7 +2,10 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Romsg;
 using Ro3Emu.Bot;
 using Ro3Emu.Server;
@@ -135,6 +138,67 @@ public sealed class FeedbackTests : IAsyncLifetime
         Assert.Contains("#2 ", text);
         Assert.Contains("> Quest log froze", text);
         Assert.Equal(HttpStatusCode.BadRequest, (await http.GetAsync($"{_http}/ro3emu/reports?since=yesterday-ish")).StatusCode);
+    }
+
+    [Fact]
+    public async Task WithAWebhookEachReportIsAlsoPostedToDiscordWithoutPings()
+    {
+        // A stand-in for Discord on loopback: it records each webhook body.
+        var bodies = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        var discordPort = TestPorts.FreePort();
+        var builder = WebApplication.CreateSlimBuilder();
+        builder.WebHost.UseUrls($"http://127.0.0.1:{discordPort}");
+        await using var discord = builder.Build();
+        discord.MapPost("/api/webhooks/1/token", async (HttpContext context) =>
+        {
+            using var reader = new StreamReader(context.Request.Body);
+            bodies.Enqueue(await reader.ReadToEndAsync());
+            return Results.NoContent();
+        });
+        await discord.StartAsync();
+        _app.Services.GetRequiredService<IOptions<ServerOptions>>().Value.Feedback.DiscordWebhookUrl =
+            $"http://127.0.0.1:{discordPort}/api/webhooks/1/token";
+
+        await using var alice = await InWorld("Alice");
+        await alice.JoinChatAsync("4_1");
+        await alice.SendChatAsync("4_1", 2, "/bug @everyone the bridge has no floor", channelIndex: 4);
+        await Marquee(alice, "Report #1");
+
+        var deadline = DateTime.UtcNow + Wait;
+        while (bodies.IsEmpty && DateTime.UtcNow < deadline) await Task.Delay(50);
+        Assert.True(bodies.TryDequeue(out var body));
+        using var json = JsonDocument.Parse(body);
+        Assert.Equal(0, json.RootElement.GetProperty("allowed_mentions").GetProperty("parse").GetArrayLength());
+        var embed = json.RootElement.GetProperty("embeds")[0];
+        Assert.Equal("Report #1", embed.GetProperty("title").GetString());
+        Assert.Equal("@everyone the bridge has no floor", embed.GetProperty("description").GetString());
+        var fields = embed.GetProperty("fields").EnumerateArray()
+            .ToDictionary(f => f.GetProperty("name").GetString()!, f => f.GetProperty("value").GetString()!);
+        Assert.StartsWith("Alice (alice)", fields["Player"]);
+        Assert.Contains($"scene {Session("alice").SceneEntry}", fields["Where"]);
+        Assert.Equal("chat", fields["Source"]);
+        // The report is in the file as before.
+        Assert.Single(await Reports());
+        await discord.StopAsync();
+    }
+
+    [Fact]
+    public void TheDiscordPayloadKeepsItsFieldsWithinDiscordLimits()
+    {
+        var report = new FeedbackReport
+        {
+            Id = 7, Time = DateTimeOffset.UnixEpoch, Source = "button", Text = new string('x', 5000), Truncated = true,
+            Scene = 1001, Instance = 3, Map = "Prontera",
+        };
+        using var json = JsonDocument.Parse(FeedbackService.DiscordPayload(report));
+        var embed = json.RootElement.GetProperty("embeds")[0];
+        Assert.Equal(4096, embed.GetProperty("description").GetString()!.Length);
+        Assert.Equal("1970-01-01T00:00:00.000Z", embed.GetProperty("timestamp").GetString());
+        var fields = embed.GetProperty("fields").EnumerateArray().ToList();
+        Assert.StartsWith("? (?)", fields[0].GetProperty("value").GetString()); // no role or account
+        Assert.Contains("instance 3", fields[1].GetProperty("value").GetString());
+        Assert.All(fields, f => Assert.InRange(f.GetProperty("value").GetString()!.Length, 1, 1024));
+        Assert.Contains("since=6", embed.GetProperty("footer").GetProperty("text").GetString());
     }
 
     [Fact]

@@ -278,6 +278,34 @@ public sealed class SocialMessages(ChatService chat, TeamService teams, EmblemSe
         {
             await guilds.EliteSaveAsync(session, QuickJoinEliteGroupReq.Parser.ParseFrom(body.Span));
         });
+        routes.Map(GuildService.ToolList, "guilds", async (session, msgId, body) =>
+        {
+            await guilds.ToolListAsync(session);
+        });
+        routes.Map(GuildService.ToolAssign, "guilds", async (session, msgId, body) =>
+        {
+            await guilds.ToolAssignAsync(session, GuildWartimeToolBelongOperReq.Parser.ParseFrom(body.Span));
+        });
+        routes.Map(GuildService.ToolExchange, "guilds", async (session, msgId, body) =>
+        {
+            await guilds.ToolExchangeAsync(session, GuildWartimeToolExchangeOperReq.Parser.ParseFrom(body.Span));
+        });
+        routes.Map(GuildService.Prepay, "guilds", async (session, msgId, body) =>
+        {
+            await guilds.PrepayAsync(session, GuildWartimeStorePrepayReq.Parser.ParseFrom(body.Span));
+        });
+        routes.Map(GuildService.BuildCannon, "guilds", async (session, msgId, body) =>
+        {
+            await guilds.BuildCannonAsync(session, GuildAttackCityBuildReq.Parser.ParseFrom(body.Span));
+        });
+        routes.Map(GuildService.CancelPrepay, "guilds", async (session, msgId, body) =>
+        {
+            await guilds.CancelPrepayAsync(session);
+        });
+        routes.Map(GuildService.VehicleUse, "guilds", async (session, msgId, body) =>
+        {
+            await guilds.VehicleUseAsync(session, GuildVehicleUseReq.Parser.ParseFrom(body.Span));
+        });
         routes.Map(GuildService.MergePull, "guilds", async (session, msgId, body) =>
         {
             await guilds.MergePullAsync(session);

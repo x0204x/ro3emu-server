@@ -175,6 +175,7 @@ public sealed class RoleSystems(Maps.World world, ChatService chat, CharacterSer
     internal async Task MovedAsync(GameSession session, WalkReq walk)
     {
         await world.MoveAsync(session, walk);
+        await territory.VehicleMovedAsync(session, walk); // a driver's walk is its vehicle's
         await gathering.PlayerMovedAsync(session);
         combat.PlayerMoved(session);
         await emoji.PlayerMovedAsync(session);

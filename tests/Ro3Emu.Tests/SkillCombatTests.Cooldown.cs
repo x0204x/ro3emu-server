@@ -24,7 +24,15 @@ public sealed partial class SkillCombatTests
         await Gm("alice", "!lvl 20"); await Gm("alice", "!job 2100"); await Teach("alice", group);
         var target = await Target("alice", stationary: true, immobile: true);
         var player = Session("alice");
-        await Loop.InvokeAsync(() => { target.Hp = 1_000_000_000; return Task.CompletedTask; });
+        await Loop.InvokeAsync(() =>
+        {
+            target.Hp = 1_000_000_000;
+            // 本案例驗證技能扣費；自然回 SP 每五秒依角色相位執行，可能恰在詠唱期間插入。
+            // 將測試角色保持戰鬥狀態，排除這項與冷卻重按無關的背景補 SP。
+            player.StatusBits |= 1L << 15; // CombatService.FightBit：eObjectStateBattling
+            player.LastCombatMs = MonsterService.NowMs;
+            return Task.CompletedTask;
+        });
         long beforeSp = await Loop.InvokeAsync(() => Task.FromResult(Character.Stats(player)[AttributeId.Sp]));
         var request = new CastSkillReq { SkillId = fireBall, TargetId = target.Uid, IsAutoCast = automatic };
 

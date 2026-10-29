@@ -137,7 +137,7 @@ public sealed partial class TerritoryWarsService
         var transaction = _accounts.NewTransaction();
         int receipt = transaction.Add(new TerritoryWarsSeasonTransitionPlan(old.Epoch,
             JsonSerializer.SerializeToUtf8Bytes(old), Epoch,
-            JsonSerializer.SerializeToUtf8Bytes(new WorldState { Epoch = Epoch })));
+            JsonSerializer.SerializeToUtf8Bytes(new WorldState { Epoch = Epoch, GlorySettle = [old.Epoch] })));
         foreach (var guild in treasury.Values)
             _guildStore.EnlistSave(guild, transaction, "Guild changed during territory season rollover");
         var beforeArchives = targetBytes is { Length: > 0 }
@@ -160,6 +160,12 @@ public sealed partial class TerritoryWarsService
         }
         finally { PublishCommitted(next); }
         await ProjectSeasonRolesAsync();
+        // A restored archive replaces the fresh state the transition wrote: the old season still owes its Battle Merit mail.
+        if (!state.GlorySettle.Contains(old.Epoch))
+        {
+            state.GlorySettle.Add(old.Epoch);
+            await SaveAsync(state);
+        }
         foreach (long guild in treasury.Keys) await _guilds.RefreshResourceAsync(guild);
         await PublishAsync();
     }

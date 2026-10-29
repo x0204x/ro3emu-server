@@ -654,7 +654,7 @@ public sealed partial class TaskService
             }
         }
         return accepted + AcceptGrowthTitle(session) + AcceptGrowthClass(session) + AcceptActivityTasks(session)
-            + AcceptChickenTasks(session);
+            + AcceptChickenTasks(session) + AcceptRootTasks(session);
     }
 
     private bool Ready(GameSession session, TaskDef def) =>

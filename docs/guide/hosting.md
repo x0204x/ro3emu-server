@@ -49,12 +49,20 @@ Open TCP `5380`, `20000` and `33100`, and the voice port if you turn voice on wi
 **Good to know**
 - **GM commands** (`!help` in chat) are on for every account when you play on your own PC. A hosted server gives them
   only to the accounts you name with `--gm` ([GM access](gm-access.md)).
-- **Bug reports from players:** the Feedback button in the game menu or `/bug <text>` in chat ([feedback](feedback.md)).
+- **Bug reports from players:** the Feedback button in the game menu or `/bug <text>` in chat ([feedback](feedback.md)), optionally posted to a Discord channel.
 - **Monsters that attack on sight as in RO1** (on by default, as a trial): set `Ro3Emu__Ro1AggressiveMonsters=false` (or
   `"Ro1AggressiveMonsters": false` under `Ro3Emu` in `appsettings.json`) to turn it off. The field monsters whose Ragnarok Online 1
   counterpart is aggressive then attack players they see, like the few that already do. This follows RO1
   (rAthena's monster database), not the original RO3 server.
-- **Backups:** the database is backed up to `data/backups/` at start and every 6 hours (newest 20 kept).
+- **Backups:** the database is backed up to `data/backups/` at start and every 6 hours (newest 20 kept). All but the
+  newest two are gzip-compressed (`.db.gz`, about a quarter of the size); `Ro3Emu.Server --restore-backup` takes either
+  kind. `Ro3Emu__Backup__Keep`, `Ro3Emu__Backup__IntervalHours` and `Ro3Emu__Backup__Uncompressed` (or `Backup` under
+  `Ro3Emu` in `appsettings.json`) change the three numbers; `Uncompressed` equal to `Keep` compresses nothing.
+- **Database size:** every reward, purchase and activity writes a receipt so a lost or repeated request is never paid
+  twice. Receipts older than 2 days are trimmed to their hashes every hour, in small batches
+  (`Ro3Emu__ReceiptRetention__Days`, `__BatchSize`, `__IntervalMinutes`; `Days` 0 keeps them whole). The space freed
+  is reused, so the file stops growing; to shrink it on disk, stop the server and run `VACUUM` on `data/ro3emu.db`
+  once (`sqlite3 data/ro3emu.db "VACUUM"`).
 - **One session per account:** a second login takes over from the first. The client runs one instance per PC;
   `Ro3Emu.BotCli` can stand in for extra players when you test alone.
 
@@ -63,3 +71,18 @@ Open TCP `5380`, `20000` and `33100`, and the voice port if you turn voice on wi
 | CPU | 2 cores | at most 2 cores used by the server |
 | RAM | 2 GB | at most 2 GB working set |
 | Disk | 3 GB plus the game | SSD recommended |
+
+## Purchase links
+
+The game's recharge, shop top-up and monthly-card buttons open the publisher's payment page. RO3Emu never sends a
+player there: a payment made there reaches the publisher, not your server. Without any option the buttons open
+nothing. To send players to your own page (donations, a store), give its address every time you patch the game:
+
+```
+RO3Emu.exe join 203.0.113.10 --purchase-url https://example.com/donate
+```
+
+`start` and `host` take the option too. Only an `http` or `https` address is accepted. The patcher writes it into the
+client hooks it installs; the redirect sits on `UnityEngine.Application.OpenURL`, the call every one of those buttons
+ends in (`OpenUrlPatch`, `Ro3Emu.ClientHooks.UrlRewrite`).
+

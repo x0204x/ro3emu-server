@@ -92,8 +92,202 @@ Loading into the battle sends the side's commander marks, the party's own marks,
 | Power | kills and assists times `BattleGloryPowerDif` of the victim's power minus the earner's (the row with the largest threshold reached) |
 | Daily cap | `BattleGloryDailyLimit` 1,000,000 per game day (05:00) |
 | Rank | the sum of the `_iGloryCondition` of the ranks below: 1000 for rank 2 up to 36000 for rank 9; it never drops |
+| Leaderboard | 2102 (`enum_LeaderBoardType.BattleGlory`): this season's earned points, ties by role id; up to 3000 rows |
+| Champion (rank 10) | 5001 `isSpecialRank`: rank 9 reached and a place within the champion row's `_iRankCondition` (10) on board 2102 |
+| Season end | MailConfig 1090 with the place as `${1}` and the `SiegeSettlementHonorAward` row whose `_kRank` holds it (places 1-50), once per role and season |
+| Quests | target 106610 "Reach N Battle Merit" (TaskConfig 120001-120005, Realm Campaign 107): this season's earned points |
 
-**Inferred:** all the point rules (the client only displays results); an assist is a hit on the victim in the last 10 s; a death pays rather than costs (the record source enum names Kill, Assist and Death as ways points came); the state is the role's territory `RoleState.Glory`, per season. Not done: rank 10 (`_iRankCondition` 10, the top 10 of leaderboard 2102, which this client ships no LeaderBoardsConfig row for), the season-end SiegeSettlementHonorAward mail 1090, and the "Reach N Battle Merit" quests (target 106610).
+Evidence for the rest: `LC_DAL_BattleGlory._updateRealLevel` shows `Lua_CFG_BattleGloryDan.GetFinallyLevelId` (the row with an `_iRankCondition`) while `isSpecialRank` is set, `curRankId` staying the points rank. `UI_Sys_TerritoryWars_BattleFeatsSettlementPanelModel` asks board 2102 for the player's own place (`GetMyRankByBoardId`), and its panel shows the `SiegeSettlementHonorAward` award list for that place (`GetConfigIdByRank`, `GetAwardListById`) with the 1090 texts. Board 2102 has no LeaderBoardsConfig row, so `RankService` gives it the other role boards' 3000 rows.
+
+**Inferred:** all the point rules (the client only displays results); an assist is a hit on the victim in the last 10 s; a death pays rather than costs (the record source enum names Kill, Assist and Death as ways points came); the state is the role's territory `RoleState.Glory`, per season. The board's tie-break and size; the champion also needing rank 9; mailing the standings when the Territory War season rolls over (`WorldState.GlorySettle` keeps the seasons still to pay, retried by the reconciliation); a target 106610 reading earned points rather than the spendable currency 15.
+
+## War warehouse and machine permissions
+
+`GuildService.Wartime`, the guild's `guildWartimeInfo` (DBGuildData field 36): the warehouse view, the Tactics panel, reserving and building a cannon; firing and vehicles come later.
+
+| Message | Use |
+|---|---|
+| 32273 | The warehouse: every machine item and its count (`LC_DAL_Guild.ReceiveWartimeStoreItemNtf` -> `GNWartimeStoreItems`). The War Manager page counts firearms and vehicles from it, the siege battle bag lists it. Sent with every full guild info (login, join, refresh); a former member gets an empty one. |
+| 32284 | Both machine pages (Firearm 1, Vehicle 2), each a list of operator slots (`roleGuildId`, `roleUsingToolId`). The client stores slot *i* at list position *i*, and later messages address it as `bagIndex`. Any member may read it: the guild window's War Machine page asks too. |
+| 32282 | Put a member in a slot or clear it (`roleGuildId` 0). |
+| 32283 | Swap two slots of one page: dragging a name onto another slot; an empty slot moves the name. |
+| 32286 | The changed slots, to every online member. |
+| 32285 | To a member whose own page changed: the machine type they may use (`SiegePermissionSelfData`; the battle bag shows only that type), None when revoked. Also sent with the full guild info while the member holds a slot. |
+
+Editing needs GuildPermissionConfig 13 War Machine Management (`ErrorCodes.GuildPermission` 466); outside a guild every request is 6001 as before. A bad page or slot is 82, a non-member 454. A member who leaves or is kicked frees the slot.
+
+**Inferred:**
+- 10 slots per page. No config row gives a number and the panel shows what it receives.
+- A guild that never used its warehouse holds `SiegeInitItemList` (50 each of cannons 1006001-1006004).
+- A member holds at most one slot. The client only offers members without a slot; anything else is 82.
+- Slots are guild-wide: the siege `dungeonId` in 32282 is not used.
+- `roleUsingToolId` (the machine a member is in, which makes the client ask before revoking) stays 0 until machines can be built.
+
+### Reserving a machine (32270, 32272)
+
+Clicking a cannon in the siege battle bag (`LC_WartimeItemHelper.TryBuildCannon`) sends 32270 with that item. On
+success one machine leaves the warehouse and is held for the member (`prepayInfo`, `GuildStore.State.WartimePrepay`);
+the answer's `prepayItem` starts the blueprint (`ReceiveWartimeStoreItemPrepay` -> `DoPrepayAction` ->
+`LC_GVGBuildCannon.StartBuild` with the item's GVGCannonConfig row), and every online member gets the new 32273. A
+refusal shows its code instead (`LC_AssetManager` calls the DAL's `DecodeError` for a nonzero `result`). Esc on the
+blueprint sends 32272 (`LC_WartimeItemHelper.CancelPrepay`) and the machine goes back. Leaving or being kicked from the
+guild gives a held machine back too.
+
+Refusals: outside a guild 6001, not loaded into a running siege the member fights 28, an item that is not a cannon of
+GVGCannonConfig (`_iItemID`) 82, no Firearm permission 466, none left 535 "Not enough guild supplies".
+
+**Inferred:**
+- Reserving needs the Firearm permission: the battle bag only lists the member's own machine type (32285).
+- One machine per member: a second reservation gives the first one back.
+- The first reservation turns the initial list into the guild's own stock.
+- Cancelling with nothing held answers 0: the client sends it unconditionally and has no handler for the answer.
+- A machine held when the blueprint closes on death or a scene change (the client exits without 32272) stays held
+  until the member reserves again, cancels or builds.
+
+### Building a cannon (32271)
+
+Confirming the blueprint (`LC_GVGBuildCannon.Build`) sends 32271 with its position and facing. On success the reserved
+machine is used up and the answer closes the blueprint (`LC_DunGeon_Siege.GUILD_ATTACK_CITY_BUILD`). The builder then
+works for GVGCannonConfig `_iBuildTime` (3 s): 32702 `InteractChangeNtf` BuildingCannon (status 1, `_iBuildStatusID`)
+with `buildCannonInfo` {Building, the GVGCannonConfig id, the end time}, to the builder and everyone who sees it
+(`LC_GamePlayStatusMgr.BuildingCannon`). After it the cannon stands and the builder goes back to Idle.
+
+The cannon is the row's `_iNPCID` (NPCConfig type 2, sub type 102), a unit of the siege room, so it ends with the siege.
+Its entity names the builder as `owner` and carries the builder's camp, which interaction 4900005 checks (`CheckBuilder`
+reads the head info Owner, `CheckCamp` the EntityCamp), and wears the NPC's `_kBornEventBuff`. The builder's slot shows
+it as `roleUsingToolId` in 32284/32286 and in the builder's 32285. A member with a standing cannon who builds another
+loses the first (UIWords 61001, "Building another will destroy the current one").
+
+Refusals: 6001 outside a guild, 28 outside a running siege, 82 without a reserved machine or while building, 530
+"Cannot place this here." for a spot the client would refuse: farther than `_iBuildRadius` from the builder, not walkable,
+or inside another cannon's `_iExclusiveRadius` (both circles, as the client's `Circle.CheckCircleIntersection`).
+
+**Inferred:**
+- The server allows 3 m beyond `_iBuildRadius`: the builder may walk while placing.
+- No invalid areas: dungeon var 501 (`CInvalidBuildCannonAreasID`) is a server list the client does not hold.
+- A builder who dies or leaves the siege before the build time ends gets no cannon; the machine goes back to the
+  warehouse.
+- `roleUsingToolId` is not saved: cannons only stand during their siege.
+- The cannon's own HP is not simulated: players and monsters cannot destroy it yet.
+
+### Firing the cannons (32700, 32703, 32705)
+
+Code: `TerritoryWarsService.CannonFire.cs`, `TerritoryWarsService.CannonShots.cs`.
+
+- **Getting on.** The builder uses the cannon's interaction (NPCConfig `_iInteractID` 4900005). NPCInteractConfig
+  `_iStatusID` 2 is GameplayStatusConfig type 2 (GVGCannon). Its NPC condition 4900001 is checked on the server:
+  `CheckBuilder` 2201, `CheckCamp` 2200, and not already in a gameplay status (12001 inverted). The player must be within
+  NPCConfig `_iInteractDistance`, and a cannon has one operator. The answer is 32702 `InteractChangeNtf` GVGCannon with
+  `enterCannonInfo` {cannon uid, GVGCannonConfig id}. `LC_GamePlayStatusMgr.OperateCannon` then calls
+  `LC_GVGFireCannon.StartFire`, which enters the camera `_iChange3CConfigID` on the client.
+- **Bullets.** The cannon carries custom data 4900014 `GVGCannonBulletRestNum`, the fire button's cost (SkillConfig
+  `_kCost` [6, 4900014, 1]). It starts at `_iBulletNumLimit`, each volley costs one, and 31018 sends the new count.
+- **Firing.** The fire button (GameplayStatusButtonConfig `_iButtonFuncType` 2, its `_iSkill` the cannon's
+  `_iSkillID`) sends 32703 with `cannonUseSkill`: the skill and one `bulletExtraParam` per bullet of the volley, at most
+  `_iSingleShotNum`. Each param holds gravity in cm/s^2 (`LC_GVGFireCannon` multiplies `_fGravity` by 100), speed in cm/s
+  and the aim direction.
+- **The bullet.** Each bullet is a unit of SkillConfig `_kLogicData[2]`, an NPCConfig `_iNPCType` 10 row (4900101 and
+  others). Its entity carries a `MoveTypeMove` with `startVelocity` and `accVelocity` (0, -g, 0).
+  `LC_Movement_MoveSyncMove` draws that as pos + v t + a t^2 / 2. The shooter gets custom data 4900006
+  `CameraFollowBullet_ListLong` with the first bullet's uid, which `LC_GVGFireCannon.HandleBulletFollowData` follows.
+- **Cooldown.** 32705 `NpcSkillsCdNotify` gives the cannon skill's cooldown on the cannon NPC.
+- **Getting off.** The quit button (ActionConfig 5004 QuitStatus) or the exit interaction `_iExitInteractID` (4900002,
+  ActionConfig 6 LeaveFiredCannon) sends the player back to Idle. Death, leaving the scene and the cannon's removal do
+  the same, with `Interrupt`.
+- **Refusals.** 806 for a wrong interaction, button, skill or volley size, or another player on the cannon. 804 when too
+  far, 801 for a cannon of another room. 3012 during the cooldown and 3013 without bullets.
+
+**Inferred:**
+- Where a bullet lands: the server integrates the flight against the nav mesh (else the cannon's height) and starts it
+  at `_kFireOffset` (side, up, forward along the aim). It gives up after 12 s.
+- The explosion: GVG_S0_CannonFire is a server script. The cannon skill hits through the ordinary extra-cast paths, on
+  the monsters and the hostile players of the siege room within `_kLogicData[4]` cm of the landing point.
+- The cooldown after a volley is the longer of SkillConfig `_iCD` and `_iReloadTime`.
+- The camera follow values: a distance of 1000 cm, no screen offset.
+- An empty cannon stays standing.
+- PublicParamConfig `ArtilleryAttackCityGateReduceDamage` and `OutCannonHpPercent` are server parameters the client
+  never reads; see "Machine HP, destruction and repair" for why neither is applied.
+
+### War vehicles (32281, 32700, 32708, 31074)
+
+Code: `GuildService.WarVehicles.cs`, `TerritoryWarsService.WarVehicles.cs`.
+
+- **Using one.** A vehicle item of the siege battle bag (ItemConfig `_iSubType` 1402) sends 32281 from its "use" button
+  (`UI_Com_ItemTipsWidgetCtrl_Operation._gameplayUseVehicle` -> `LC_WartimeItemHelper.TryUseVehicle`). Its `_iUseEffect`
+  [606, skill] names a skill whose script `GVG_S0_BuildMecha` raises the NPC of its `_kLogicData[0]`: Tank 1006008 ->
+  4903501 -> NPC 4900301, Madogear 1006005..007 -> 4903201..401 -> 4900401..403, Jet Backpack 1006009 -> 4903601 ->
+  4900501. One leaves the warehouse (32273), and the member's slot and own permission name the vehicle
+  (`roleUsingToolId` in 32285 and 32286). The answer only clears the bag's busy state (`ReceiveGuildVehicleUseRsp`).
+  Refusals: 6001 outside a guild, 28 outside a running siege, 82 for an item that is not a vehicle, 466 without the
+  Vehicle permission, 535 without stock.
+- **The vehicle.** An NPC of `_iNPCSubType` 103 (`enum_NpcSubType.Vehicle`): `LC_Unit_NPC` gives it `LC_VehicleComponent`
+  with VehicleConfig `_iSubTypeValue` -> `_kSeats` (VehicleSeatConfig rows, 0-based seat index,
+  `LC_VehicleComponent.GetSeatConfig`). Its entity names its owner and camp and carries `_kBornEventBuff`.
+- **Seats.** The NPC's interactions 4900022..24 (NPCInteractConfig `_iStatusID` 3, GameplayStatusConfig type 3, seat
+  `_iStatusLocation`) take a seat. Their conditions are checked on the server: `CheckTakeOnVehicleSeat` 12003 (riding
+  nothing yet), `CheckGVGPermission` 2202 (the Vehicle permission), `VehicleHasEmptySeat` 12002 (a free seat of that
+  `enum_PassengerType` on a vehicle that is not an enemy) and `CheckCamp` 2200 (the same camp; the client ignores its
+  argument). Who sits where is AOI carry info (31036, `LC_VehicleHelper.ProcessVehicle`): the rider's `be_carried`
+  {vehicle, slot, `carry_type` = the seat's `_iType`} and the vehicle's `add_carries` / `remove_carries` (`all_carries` in
+  its entity). Then 32702 Vehicle (state 3, the interaction, the vehicle) and the seat's camera (32704 `_iChange3C`).
+- **Driving.** The driver controls the vehicle (`LC_PassengerComponent`: `ChangeControlUnit`), so its 31082 walks are
+  the vehicle's: the vehicle moves for everyone else, and the other riders follow it. 31074 turns the vehicle.
+- **Seat skills.** The seat's `_kMainSkills` and `_kSkills` are cast through 31102 like any skill, without being learned.
+- **Changing seats.** 32708 `ChangeVehicleSeatReq` with a free 0-based seat.
+- **Getting off.** The seat's `_iExitNpcAction` (4900025, ActionConfig 5004 QuitStatus, sent by
+  `LC_VehicleServer.QuitStatus` as an interaction on the vehicle) or a QuitStatus button of the seat. 32702 Idle goes
+  first (`LC_GamePlayStatusMgr.ExitVehicle` caches it on the passenger), then `be_carried` with id 0. Death, leaving the
+  scene and the vehicle's removal do the same.
+
+**Inferred:**
+- Using a vehicle needs the Vehicle permission, stock and a running siege, as for cannons. A second vehicle replaces
+  the member's first one (UIWords 61001 says so of cannons).
+- The vehicle stands 2 m in front of its owner: `GVG_S0_BuildMecha` is a server script. Nobody is seated by using it.
+- The vehicle moves at its driver's speed. The other riders' positions follow the driver's walks without a walk of
+  their own.
+- A gunner's 31074 face is its seat's `fire_dir` in the vehicle's AOI detail.
+- Any free seat can be changed to with 32708.
+- An empty vehicle keeps standing.
+
+### Machine HP, destruction and repair
+
+Code: `TerritoryWarsService.MachineDamage.cs`, `TerritoryWarsService.WarRepair.cs`, `MonsterService.MachineTemplate`.
+
+- **HP.** Cannons (`_iNPCSubType` 102) and vehicles (103) are NPCConfig `_iNPCType` 2 rows whose `_iAttributeVariated`
+  and `_iLevel` select an AttriMonsterConfig row as a monster's do (222059: 69 170 HP, scaled by `_kAttriScale`).
+  Their entity carries properties 101 (max HP), 2000 (HP) and 2002 (level), so the client shows an HP bar, and
+  `AOIAttrChange` 2000 updates it.
+- **Damage.** On the server a machine is a monster unit (`CannonUnit` and `VehicleUnit` derive from `MonsterUnit`): the
+  attacks, skills and cannon shots of the other camp's siege members damage it through the monster pipeline, with its
+  template's defences. Its own camp cannot hit it (`LC_CommonCondition.CheckCamp` compares `EntityCamp`: the machines of
+  the own camp are allies). The NPC rows drop nothing (`_iDrop` 0, `_iNormalDrop` empty), so a kill grants no reward.
+- **Destruction.** At 0 HP the machine dies as a monster does (HP 0, state Dead). Its operator or riders are put back on
+  foot, its owner's slot shows nothing in use (`roleUsingToolId` 0 in 32285 and 32286) and the wreck leaves after
+  `_iBodyRemainTime` (1.5 s for a cannon, 10 s for a vehicle).
+- **Repair.** The repair item 1006010 "Madogear Pilot Repair" sits in the vehicle bag (`_iSubType` 1402), so its use
+  button sends 32281 like a vehicle (`LC_WartimeItemHelper.TryUseVehicle`). Its `_iUseEffect` [606, 4901901] names skill
+  4901901 `GVG_S0_RepairArea`; the item text reads "Use to create a Madogear Pilot repair zone for @{1} seconds.
+  Madogear Pilots within the zone can be repaired." with @{1} = 30. It needs the Vehicle permission, stock and a running
+  siege, and leaves the warehouse (32273). BuffConfig 4903501 "Madogear Pilot Repair" ("The Madogear Pilot is being
+  repaired.") carries `T_AXadd0_etc` [2, 100, 101, 2]: 100 / 10 000 of the recipient's attribute 101 (max HP).
+
+**Inferred:**
+- The repair zone is the NPC named "Madogear Repair Zone" (4901010, `_iNPCType` 4, a ground object) at the member's
+  feet for the description's @{1} seconds; `GVG_S0_RepairArea` is a server script and names no NPC. Its radius is the
+  skill's `_iDistanceMax` (5 m).
+- Every war vehicle of the member's camp inside the zone carries buff 4903501 and heals 1% of its max HP each second
+  (the cadence of the other `T_AXadd0_etc` heals and drains). Cannons are not repaired (the item and the buff name the
+  Madogear); the tank and the Jet Backpack are, as the client's "Vehicles can be repaired here." (10370001103)
+  suggests.
+- A destroyed machine's wreck stays for its `_iBodyRemainTime`, and damage to machines counts in the siege's damage
+  statistics like damage to the crystal.
+- `OutCannonHpPercent` (80) sits among the GVE cannon parameters (`GVECannonExitInteractId`,
+  `GVESwitchBulletInteractIds`), not the siege ones, so it is not applied to siege cannons.
+- `ArtilleryAttackCityGateReduceDamage` [3002, 3003, -9000] would lower cannon damage against the city gates. The
+  siege has no gate units yet (NPC 4900005 and the "Break Through the Castle Gate" phase are not spawned), so it is
+  not applied.
+- Restocking the warehouse: 32275 has no client sender and no shop or award sells the machine items (the "War Machine
+  Shop" text has no data behind it), so the stock is only `SiegeInitItemList` and what the machines leave or return.
 
 ## Descriptor and runtime evidence boundaries
 

@@ -1,5 +1,6 @@
 # Builds the two release archives:
-#   dist/RO3Emu-win-x64.zip               RO3Emu.exe + the self-contained server + the client hooks/loc DLLs + README
+#   dist/RO3Emu-win-x64.zip               Ro3EmuLauncher.exe (the app players start) + RO3Emu.exe (the same from a console)
+#                                         + the self-contained server + the client hooks/loc DLLs + README
 #   dist/RO3Emu-server-linux-x64.tar.gz   the self-contained server + RO3Emu (export/install) + server.sh + README
 # Nothing from the game goes in: the archives are checked against an allowlist and the DLLs' embedded resources are
 # checked too, and the build fails if a client DLL, Lua, config JSON or exported data would ship.
@@ -71,6 +72,11 @@ function Publish([string]$project, [string]$rid, [string]$out) {
 }
 $win = Join-Path $work 'win\RO3Emu'
 Publish 'src\Ro3Emu.Setup' 'win-x64' $win
+# The launcher (RO3Emu mode, its built-in launcher.json) in its own folder: only its single exe ships (a publish next
+# to RO3Emu.exe would also drop RO3Emu.runtimeconfig.json from its Ro3Emu.Setup reference).
+$launcherOut = Join-Path $work 'launcher'
+Publish 'src\Ro3Emu.Launcher' 'win-x64' $launcherOut
+Copy-Item (Join-Path $launcherOut 'Ro3EmuLauncher.exe') $win
 Publish 'src\Ro3Emu.Server' 'win-x64' (Join-Path $win 'server')
 New-Item -ItemType Directory (Join-Path $win 'client') | Out-Null
 Copy-Item (Join-Path $clientDlls '*.dll') (Join-Path $win 'client')
@@ -84,7 +90,7 @@ Copy-Item (Join-Path $PSScriptRoot 'README-linux.txt') (Join-Path $linux 'README
 
 # 3. Nothing from the game: exactly these files, and the DLLs carry only our own resources.
 $allowed = @{
-    win = @('RO3Emu.exe', 'README.txt', 'server/Ro3Emu.Server.exe', 'server/appsettings.json', 'server/appsettings.Development.json',
+    win = @('Ro3EmuLauncher.exe', 'RO3Emu.exe', 'README.txt', 'server/Ro3Emu.Server.exe', 'server/appsettings.json', 'server/appsettings.Development.json',
         'client/Ro3Emu.ClientHooks.dll', 'client/Ro3Emu.Loc.dll')
     linux = @('RO3Emu', 'README.txt', 'server.sh', 'server/Ro3Emu.Server', 'server/appsettings.json', 'server/appsettings.Development.json')
 }
