@@ -620,6 +620,15 @@ public sealed partial class CardService
                 if (nextLibrary != null) session.Library = nextLibrary;
             },
             asyncCommit: true) == null) error = ErrorCodes.ItemsShort;
+        var response = new CardStarUpResp
+        {
+            Result = error, SourceType = req.SourceType, Guid = req.Guid,
+            SlotIndex = req.SlotIndex, GridType = req.GridType, NewStarNum = error == 0 ? tier + 1 : tier
+        };
+        // 裝備孔位卡片的進階動畫要先收到成功回應，之後的 5009 卡片資料變動才會觸發。
+        // 包包卡片會在回應當下讀取新資料，因此仍維持資料同步先於回應。
+        bool replyBeforeSync = error == 0 && req.SourceType == CardLevelSourceType.Equip && card?.Grid < 0;
+        if (replyBeforeSync) await session.SendGameAsync(StarUp, response);
         if (error == 0 && card != null)
         {
             tier++;
@@ -628,7 +637,7 @@ public sealed partial class CardService
             if (nextLibrary != null) await CharacterService.SyncAsync(session, LibrarySync, session.Library!.Clone());
             if (card.Grid < 0) await NotifySocketsChangedAsync(session);
         }
-        await session.SendGameAsync(StarUp, new CardStarUpResp { Result = error, SourceType = req.SourceType, Guid = req.Guid, SlotIndex = req.SlotIndex, GridType = req.GridType, NewStarNum = tier });
+        if (!replyBeforeSync) await session.SendGameAsync(StarUp, response);
     }
 
     private static List<PaidCost> ReadLedger(InvItem card)
