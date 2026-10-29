@@ -164,6 +164,10 @@ public sealed partial class DungeonService
         public JsonElement? Blessing { get; set; }
         /// <summary>The scripted scene actors shown now (also tracked by the room for cleanup).</summary>
         internal List<SceneActorUnit> SceneActors { get; } = new();
+        /// <summary>The scripted step's allied companions standing now (DungeonService.Companions; room props too).</summary>
+        internal List<CompanionUnit> Companions { get; } = [];
+        /// <summary>The companions (NPC, point) that fell in this run: they do not come back.</summary>
+        internal HashSet<(int NpcId, long Point)> FallenCompanions { get; } = [];
         internal GuildChallengeService.Run? GuildChallenge { get; set; }
         /// <summary>Dracula's Lair: DraculaWeddingService owns admission, the bride, the key and the settlement.</summary>
         internal DraculaWeddingService.Run? Dracula { get; set; }
@@ -862,6 +866,7 @@ public sealed partial class DungeonService
             a.Settled = true;
             await _instances.ClearMonstersAsync(a.Room);
             a.SceneActors.Clear(); // removed with the room's monsters
+            a.Companions.Clear();
             await BroadcastAsync(a, BaseInfo, Snapshot(a));
             await dracula.Owner.SettleAsync(a, won);
             return;
@@ -879,6 +884,7 @@ public sealed partial class DungeonService
         var auctionAwards = new List<ItemBaseInfo>();
         await _instances.ClearMonstersAsync(a.Room);
         a.SceneActors.Clear(); // removed with the room's monsters
+        a.Companions.Clear();
         foreach (var (s, roleId) in participants)
         {
             if (s.Role?.Id != roleId) continue;

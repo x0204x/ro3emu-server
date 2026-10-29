@@ -260,6 +260,14 @@ public sealed partial class CombatService : IGameTicker
     public List<Func<GameSession, Task>> PlayerRevived { get; } = new();
     /// <summary>A match owner decides which skills a participant may cast (true/false), or defers (null).</summary>
     public Func<GameSession, int, bool?>? MatchSkillRule { get; set; }
+    /// <summary>
+    /// A skill a feature owns outright (the war commander's): null for any other skill, else 0 to cast it or the refusal.
+    /// Such a cast skips the job-tree check and the SkillConfig cooldowns; <see cref="OwnSkillCast"/> runs in their place
+    /// once the cast is accepted, and <see cref="OwnSkillLanded"/> resolves it instead of the generic effects.
+    /// </summary>
+    public Func<GameSession, int, int?>? OwnSkillAdmit { get; set; }
+    public Func<GameSession, int, Task>? OwnSkillCast { get; set; }
+    public Func<GameSession, JsonElement, Task>? OwnSkillLanded { get; set; }
     /// <summary>World-core owns the dead player's explicit accept/decline invitation.</summary>
     public Func<GameSession, GameSession, JsonElement, Task>? ReviveOffer { get; set; }
     public Func<GameSession, int>? ReviveCheck { get; set; }
@@ -302,6 +310,7 @@ public sealed partial class CombatService : IGameTicker
         buffs.UnitChanged.Add(PublishTowerPetStatsAsync);
         WireBuffRules();
         WireBossSkills();
+        WireCompanions();
     }
 
     private static long Now => MonsterService.NowMs;
@@ -1025,7 +1034,16 @@ public sealed partial class CombatService : IGameTicker
                 {
                     long phase = (s.Role.Id % slots + slots) % slots;
                     for (long k = first; k <= slot; k++)
-                        if (k % slots == phase) { _loop.TrackRuntimeDetached("combat regeneration", () => RegenAsync(s)); break; }
+                        if (k % slots == phase)
+                        {
+                            var role = s.Role;
+                            var owner = s.Owner;
+                            var attachment = s.Attachment;
+                            bool CurrentTick() => ReferenceEquals(s.Role, role)
+                                && (_loop.Owners?.IsCurrentAttachedTimer(s, owner, attachment) ?? true);
+                            _loop.TrackRuntimeDetached("combat regeneration", () => RegenAsync(s, CurrentTick));
+                            break;
+                        }
                 }
         }
     }
@@ -1035,16 +1053,21 @@ public sealed partial class CombatService : IGameTicker
         (stats[107] + stats[101] * stats.Data.GetValueOrDefault(1071) / 10000,
             stats[108] + stats[102] * stats.Data.GetValueOrDefault(1081) / 10000);
 
-    private async Task RegenAsync(GameSession s)
+    private async Task RegenAsync(GameSession s, Func<bool> current)
     {
-        if (s.Role == null || s.Progress == null) return;
-        using var held = await CharacterService.Lock(s);
-        if (s.Role == null || s.Progress == null || s.Dead || (s.StatusBits & FightBit) != 0) return;
-        if (s.CurrentHp == null && s.CurrentSp == null) return; // unset = full (CharacterService.Stats): nothing to restore
-        var st = _character.Stats(s);
-        if (st[2000] >= st[101] && st[2001] >= st[102]) return;
-        var (rehp, resp) = Regeneration(st);
-        await _character.SetHpSpAsync(s, st[2000] + Math.Max(1, rehp), st[2001] + Math.Max(1, resp));
+        if (!current() || s.Role == null || s.Progress == null) return;
+        IDisposable held;
+        try { held = await CharacterService.Lock(s); }
+        catch (OperationCanceledException) when (!current()) { return; }
+        using (held)
+        {
+            if (!current() || s.Role == null || s.Progress == null || s.Dead || (s.StatusBits & FightBit) != 0) return;
+            if (s.CurrentHp == null && s.CurrentSp == null) return; // unset = full (CharacterService.Stats): nothing to restore
+            var st = _character.Stats(s);
+            if (st[2000] >= st[101] && st[2001] >= st[102]) return;
+            var (rehp, resp) = Regeneration(st);
+            await _character.SetHpSpAsync(s, st[2000] + Math.Max(1, rehp), st[2001] + Math.Max(1, resp));
+        }
     }
 
     private async Task ToPlayerAndViewersAsync(GameSession p, uint msgId, IMessage body)

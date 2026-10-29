@@ -6,11 +6,16 @@ namespace Ro3Emu.Server.Data.Config;
 [ConfigTable("AIConfig")]
 public readonly partial record struct AIConfig(JsonElement Row)
 {
+    [ConfigField("_iAttackTickTime")] public partial long AttackTickTime { get; }
+    [ConfigField("_iBattleCallDistance")] public partial long BattleCallDistance { get; }
+    [ConfigField("_iBattleCallResponse")] public partial long BattleCallResponse { get; }
+    [ConfigField("_iBattleCallType")] public partial long BattleCallType { get; }
     [ConfigField("_iChaseDistance")] public partial long ChaseDistance { get; }
     [ConfigField("_iID")] public partial long Id { get; }
     [ConfigField("_iRoamDis")] public partial long RoamDis { get; }
     [ConfigField("_iRoamTime")] public partial long RoamTime { get; }
     [ConfigField("_iSearchTime")] public partial long SearchTime { get; }
+    [ConfigField("_iStayInPlace")] public partial long StayInPlace { get; }
     [ConfigField("_iUnFightBUFF")] public partial long[] UnFightBUFF { get; }
     [ConfigField("_iUnFightParam")] public partial long[] UnFightParam { get; }
     [ConfigField("_iUnFightType")] public partial long[] UnFightType { get; }

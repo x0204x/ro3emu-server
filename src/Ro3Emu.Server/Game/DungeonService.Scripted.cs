@@ -80,9 +80,11 @@ public sealed partial class DungeonService
         // A fight-only step has no client event to wait for: its kills complete it.
         a.StepDone = step.Complete.Count == 0;
         await SyncSceneActorsAsync(a, step.Actors);
+        await SyncCompanionsAsync(a, step.Companions);
         a.StepGeneration++;
         if (step.Seek is { } seek) StartSeek(a, seek);
         if (step.Shelter is { } shelter) StartShelter(a, shelter);
+        if (step.React is { } react) StartReaction(a, react);
         if (step.Story != 0 && !a.Settled && !a.Room.Closed)
             // Once, in a var-change event: the client calls PlayCutSceneStory on every push of this var.
             await BroadcastAsync(a, Event, new DungeonEventNotify
@@ -184,7 +186,7 @@ public sealed partial class DungeonService
         await StrikeAsync(a!, s, actor!, req.InteractionId);
         var events = new List<(Kind, long)> { (Kind.Interaction, req.InteractionId) };
         if (_catalog.DungeonMessage(req.InteractionId) is { } message) events.Add((Kind.Message, message));
-        await StepEventAsync(a!, s, events);
+        await StepEventAsync(a!, s, events, actor);
         return true;
     }
 
@@ -299,15 +301,18 @@ public sealed partial class DungeonService
         }
     }
 
-    private async Task StepEventAsync(Attempt a, GameSession s, IReadOnlyList<(Kind Kind, long Id)> events)
+    /// <param name="used">The scene actor the player interacted with, which a reaction's effect is placed by.</param>
+    private async Task StepEventAsync(Attempt a, GameSession s, IReadOnlyList<(Kind Kind, long Id)> events,
+        SceneActorUnit? used = null)
     {
         if (a.Settled || a.Room.Closed || a.Spawning || a.StepDone || Step(a) is not { } step) return;
         bool Matches(ReconstructedDungeons.StepTrigger t) => events.Any(e => e.Kind == t.Kind && e.Id == t.Id);
         if (!step.Complete.Any(Matches))
         {
-            if (step.Ignore.Any(Matches))
-                _log.LogInformation("Scripted scene {Scene} step {Step}: {Role} sent {Events}, which does not advance it",
-                    a.Plan.SceneEntry, a.Wave + 1, s.Role?.Id, string.Join(", ", events));
+            if (!step.Ignore.Any(Matches)) return;
+            _log.LogInformation("Scripted scene {Scene} step {Step}: {Role} sent {Events}, which does not advance it",
+                a.Plan.SceneEntry, a.Wave + 1, s.Role?.Id, string.Join(", ", events));
+            await RespondAsync(a, step.React, step.React?.Ignored, used);
             return;
         }
         if (step.All)
@@ -323,11 +328,15 @@ public sealed partial class DungeonService
         a.StepDone = true;
         _log.LogInformation("Scripted scene {Scene} step {Step} '{Stage}' completed by {Role} ({Events})",
             a.Plan.SceneEntry, a.Wave + 1, step.Stage, s.Role?.Id, string.Join(", ", events));
+        int hold = await RespondAsync(a, step.React, step.React?.Complete, used);
         if (step.TeleportAfter != 0 && _catalog.ScenePoint(a.Plan.SceneEntry, step.TeleportAfter) is { } to)
             foreach (var member in Present(a).Where(m => a.Loaded.Contains(m) && !m.SceneLoading))
                 await _scenes.TeleportInMapAsync(member, to);
         // The next step or the settlement runs in its own owner scope, like the room's timers: the message that
-        // completed the step (a walk, an interaction, a plot end) reserves only what its own route needs.
-        _loop.PostLegacy(() => AdvanceAsync(a), "dungeon scripted step");
+        // completed the step (a walk, an interaction, a plot end) reserves only what its own route needs. A completing
+        // reaction's line is read first (inferred).
+        if (hold > 0)
+            _loop.ScheduleLegacy(Paced(hold), () => a.Room.Closed ? Task.CompletedTask : AdvanceAsync(a), "dungeon scripted step");
+        else _loop.PostLegacy(() => AdvanceAsync(a), "dungeon scripted step");
     }
 }

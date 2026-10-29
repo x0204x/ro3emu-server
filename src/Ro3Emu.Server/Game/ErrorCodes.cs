@@ -124,6 +124,10 @@ public static class ErrorCodes
     // Scenes
     public const int SceneMissing = 266;        // "The scene does not exist"
     public const int SwitchingScenes = 284;     // "Switching scenes"
+    public const int TeleportExpired = 292;     // "The instance teleport skill has expired."
+    public const int TeleportFull = 293;        // "The instance teleport skill is full."
+    public const int TeleportDead = 828;        // client-only text 61169 "Cannot teleport while dead." (LC_DAL_Dungeon)
+    public const int TeleportRiding = 5203;     // client-only text 61168 "Cannot teleport while riding a mount."
 
     // Skills
     public const int SkillPointsShort = 307;    // "Not enough skill points"

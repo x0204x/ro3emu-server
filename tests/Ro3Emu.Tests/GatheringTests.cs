@@ -29,6 +29,7 @@ public sealed class GatheringTests : IAsyncLifetime
             o.HttpPort = httpPort;
             o.MicroGatePort = microPort;
             o.GameGatePort = gamePort;
+            o.Ro1AggressiveMonsters = false; // field monsters near the nodes would interrupt the gathering casts
         });
         await _app.StartAsync();
         _http = $"http://127.0.0.1:{httpPort}";

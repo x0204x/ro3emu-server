@@ -13,6 +13,7 @@ public sealed class TerritoryWarsClock(GameData data, SeasonService seasons, Tim
 {
     public sealed record Stage(int Id, int Type, int Round, int ResultRule, long StartTime, long EndTime);
     public long Now => time.GetUtcNow().ToUnixTimeSeconds();
+    public DateTimeOffset LocalNow => time.GetLocalNow();
     public long SeasonStart => seasons.StartTime;
     public int PlayBook => seasons.PlayBook;
     private IReadOnlyList<Stage>? _exported;

@@ -35,7 +35,7 @@ public sealed partial class DungeonService
     /// <summary>A timer of the step: it does nothing once a newer game or step started, or (unless
     /// <paramref name="whileFighting"/>: a fight-only step is done from its start) once the step is done.</summary>
     private void StepLater(Attempt a, int generation, int ms, Func<Task> work, bool whileFighting = false) =>
-        _loop.ScheduleLegacy(TimeSpan.FromMilliseconds((long)ms * Math.Max(1, _options.ScriptedScenePacePercent) / 100),
+        _loop.ScheduleLegacy(Paced(ms),
             () => !a.Settled && !a.Room.Closed && (whileFighting || !a.StepDone) && a.StepGeneration == generation
                 ? work() : Task.CompletedTask);
 

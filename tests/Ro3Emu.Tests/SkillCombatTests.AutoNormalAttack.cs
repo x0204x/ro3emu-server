@@ -8,31 +8,6 @@ namespace Ro3Emu.Tests;
 
 public sealed partial class SkillCombatTests
 {
-    [ClientDataFact]
-    public async Task ManualNormalAttackUsesTheHiddenActionIntervalWithoutAUiCooldown()
-    {
-        await using var alice = await InWorld("Alice");
-        var target = await Target("alice", stationary: true);
-        await Loop.InvokeAsync(() => { target.Hp = 1_000_000_000; return Task.CompletedTask; });
-        var session = Session("alice");
-        int normal = _app.Services.GetRequiredService<SkillService>().NormalAttack(session);
-
-        await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = normal, TargetId = target.Uid });
-        var accepted = await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser);
-        Assert.Equal(0, accepted.Result);
-        await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser, hit => hit.SessionId == accepted.SessionId);
-        await Loop.InvokeAsync(() => { session.Attack = null; return Task.CompletedTask; });
-
-        await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = normal, TargetId = target.Uid });
-        Assert.Equal(ErrorCodes.SkillBusy, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
-        Assert.DoesNotContain(alice.Inbox.Snapshot(), item => item.IsGame(CombatService.SkillCdUpdate));
-
-        long wait = await Loop.InvokeAsync(() => Task.FromResult(Math.Max(1, session.NormalAttackReadyMs - MonsterService.NowMs + 20)));
-        await Task.Delay(TimeSpan.FromMilliseconds(wait));
-        await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = normal, TargetId = target.Uid });
-        Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
-    }
-
     /// <summary>
     /// SkillConfig._iIfAutoAtk 2 (enum_AutoNormalAttackType.AutoNormalAttack) on an active skill: the client follows
     /// the cast with the career's normal attack (LC_AutoAttackAppendState: GetNormalSkill). The server's attack loop

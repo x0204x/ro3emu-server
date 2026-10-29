@@ -37,16 +37,19 @@ namespace Ro3Emu.Server.Game;
 /// 85202 (the losers' 85203 is not in DropPoolConfig); assists are the hits on the victim in its last 10 s.
 /// Not built: the arena's monsters and boss (their spawn script is not in the client) and the pre-start notices
 /// 5711/5712. Each camp gets the 40-player Virtual team roster (30441, TeamRoster), its leadership transfer (30451,
-/// TransferAsync) and a member's own follow toggle (30448, FollowAsync); the roster's remaining commands (30442-30450:
-/// flag, rally, swap) are not. A settled match's result is also kept in
+/// TransferAsync), a member's own follow toggle (30448, FollowAsync) and a squad's own position swap (30450,
+/// SwapPositionAsync); the roster's remaining commands (30442-30447: flag, rally) are not. A settled match's result
+/// is also kept in
 /// the role's ordinary 30128 history (DungeonService.StoreExternalResultAsync), the same as a boss dungeon's clear,
 /// for every player still online at settlement; one offline then is still paid at login (TryPayAsync's own retry)
 /// but gets no history entry, since nothing here revisits a login after the fact to write one.
 /// </summary>
 public sealed class CasualBattleService : IGameTicker
 {
-    public const uint Sync = 5070, ResultNotify = 30132, Follow = 30448, FollowNotify = 30449, Transfer = 30451;
+    public const uint Sync = 5070, ResultNotify = 30132, Follow = 30448, FollowNotify = 30449, SwapPosition = 30450,
+        Transfer = 30451;
     public const int ActivityId = 3304, Function = 5903, Scene = 2220104, TimeLimit = 1084;
+    private const int SquadSize = 5;
     private const long PrepareSeconds = 60, MainSeconds = 540, BattleSeconds = 660, ExitSeconds = 30;
     private const long ScoreBar = 4500;
     private const int KillCamp = 41006, KillPersonal = 41003, AssistPersonal = 41019;
@@ -111,6 +114,9 @@ public sealed class CasualBattleService : IGameTicker
         /// <summary>A camp member's own Virtual team follow state (30448/30449 DUNGEON_TEAM_FOLLOW), by role id;
         /// absent (the default) is None, mirrored into its own roster entry's DungeonTeamMemberInfo.followType.</summary>
         public readonly Dictionary<long, DungeonTeamFollowType> Follow = [];
+        /// <summary>A squad member's own position override after a 30450 DUNGEON_TEAM_SWAP_POSITION, by role id;
+        /// absent members keep the roster's own default order (the squad leader first, then ascending role id).</summary>
+        public readonly Dictionary<long, int> PositionOverride = [];
         public long Deadline => Open + BattleSeconds;
     }
 
@@ -310,36 +316,51 @@ public sealed class CasualBattleService : IGameTicker
     /// <summary>
     /// 30441 DungeonTeamInfoNotify, one camp of a match: the Virtual team UI a group this large needs instead of the
     /// ordinary 5-person party HUD (LC_DAL_VirtualTeam). TeamId is the match's own room id, stable and nonzero for the
-    /// whole match (inferred: no client-visible value names a Mock Battle camp). Each squad is a camp member's own
-    /// real party (TeamService), a lone player its own one-member squad. The notify's own leaderGuid is the explicit
+    /// whole match (inferred: no client-visible value names a Mock Battle camp). A real party (TeamService) stays in one
+    /// squad and lone players fill the free slots, five to a squad (inferred packing). The notify's own leaderGuid is the explicit
     /// Transfer (30451) target if the camp has one and it is still present, else the lowest-indexed squad's own
     /// leader (inferred default); a member's own followType mirrors its Follow (30448) state. The remaining squad
-    /// commands (30442-30450: flag, rally, swap) are not implemented: flags stay empty and a member's position is
-    /// simply its order within the squad.
+    /// commands (30442-30447: flag, rally) are not implemented and flags stay empty. A member's position is its slot in
+    /// the whole team (squad n: 5(n-1) .. 5(n-1)+4), ordered leader first unless a swap (30450) moved it.
     /// </summary>
     private DungeonTeamInfoNotify TeamRoster(Match match, int camp)
     {
         var members = match.Players.Values.Where(p => p.Camp == camp && !p.Left).ToArray();
-        var squadOf = new Dictionary<long, int>();
-        int nextSquad = 1;
+        // Each real party stays together; lone players fill the squads' free slots (LC_TeamHelper.GetTeamFiveList
+        // shows a squad as five slots, GetFirstEmptyPos fills up to 40).
+        var units = new List<long[]>();
+        var placed = new HashSet<long>();
         foreach (var p in members)
         {
-            if (squadOf.ContainsKey(p.Id)) continue;
-            long teamId = _teams.TeamOf(p.Id).TeamId;
-            long[] mates = teamId > 0 ? [.. _teams.MembersOf(p.Id).Where(id => members.Any(m => m.Id == id))] : [p.Id];
-            int squad = nextSquad++;
-            foreach (long id in mates) squadOf[id] = squad;
+            if (placed.Contains(p.Id)) continue;
+            long[] mates = _teams.TeamOf(p.Id).TeamId > 0 ? [.. _teams.MembersOf(p.Id).Where(id => members.Any(m => m.Id == id))] : [p.Id];
+            if (mates.Length == 0) mates = [p.Id];
+            foreach (long id in mates) placed.Add(id);
+            units.Add(mates);
+        }
+        var squads = new List<List<long>>();
+        foreach (var unit in units.OrderByDescending(u => u.Length).ThenBy(u => u.Min()))
+        {
+            var fit = squads.FirstOrDefault(sq => sq.Count + unit.Length <= SquadSize);
+            if (fit == null) squads.Add(fit = []);
+            fit.AddRange(unit);
         }
         var notify = new DungeonTeamInfoNotify { TeamId = match.Room.Id, TeamType = (DungeonTeamType)2 };
-        foreach (var group in squadOf.GroupBy(kv => kv.Value).OrderBy(g => g.Key))
+        for (int index = 0; index < squads.Count; index++)
         {
-            long leader = _teams.TeamOf(group.First().Key).Leader is var l and > 0 && group.Any(kv => kv.Key == l) ? l : group.First().Key;
-            var squad = new DungeonTeamSquadInfo { SquadIdx = group.Key, SquadLeaderGuid = leader };
-            int position = 0;
-            foreach (var id in group.Select(kv => kv.Key).OrderBy(id => id == leader ? 0 : 1).ThenBy(id => id))
+            var group = squads[index];
+            long leader = _teams.TeamOf(group[0]).Leader is var l and > 0 && group.Contains(l) ? l : group[0];
+            var squad = new DungeonTeamSquadInfo { SquadIdx = index + 1, SquadLeaderGuid = leader };
+            // A position is the member's slot in the whole 40-player team: squad n holds 5(n-1) .. 5(n-1)+4
+            // (LC_DAL_VirtualTeam stores position + 1 as m_iIndex and GetTeamFiveList groups by it).
+            int first = index * SquadSize;
+            var defaultOrder = group.OrderBy(id => id == leader ? 0 : 1).ThenBy(id => id).ToList();
+            int position = first;
+            foreach (var id in defaultOrder.OrderBy(id => match.PositionOverride.TryGetValue(id, out int p) && p >= first && p < first + SquadSize
+                ? p : first + defaultOrder.IndexOf(id)))
                 squad.Members[id] = new DungeonTeamMemberInfo
                 { Guid = id, Position = position++, FollowType = match.Follow.GetValueOrDefault(id) };
-            notify.Squads[group.Key] = squad;
+            notify.Squads[squad.SquadIdx] = squad;
         }
         notify.LeaderGuid = TeamLeader(match, camp, members, notify);
         return notify;
@@ -415,6 +436,39 @@ public sealed class CasualBattleService : IGameTicker
                 .Select(p => p.Session), sess => sess.SendGameAsync(FollowNotify, notify));
             await SendTeamRosterAsync(match, camp);
         }
+    }
+
+    /// <summary>
+    /// 30450 DUNGEON_TEAM_SWAP_POSITION: a squad's own leader swaps two of its members' slots in the next 30441
+    /// roster. The request names no squad, so it is read as the sender's own one (inferred: the panel only ever
+    /// shows the viewer reordering its own squad). It changes the match, not just the sender's own role, so it
+    /// keeps the default realm-wide admission like Transfer (30451) and Follow (30448). No client-visible result
+    /// mapping is named; ErrorCodes.NoPermission (not that squad's leader) and ErrorCodes.Parameter (an empty or
+    /// repeated position) are (inferred).
+    /// </summary>
+    public async Task SwapPositionAsync(GameSession s, DungeonTeamSwapPositionReq req)
+    {
+        int code;
+        Match? match = null;
+        int camp = 0;
+        if (s.Role == null || Live(s) is not { } m) code = ErrorCodes.SceneMissing;
+        else
+        {
+            match = m; camp = match.Players[s].Camp;
+            var squad = TeamRoster(match, camp).Squads.Values.FirstOrDefault(sq => sq.Members.ContainsKey(s.Role.Id));
+            var first = squad?.Members.Values.FirstOrDefault(mem => mem.Position == req.PositionFirst);
+            var second = squad?.Members.Values.FirstOrDefault(mem => mem.Position == req.PositionSecond);
+            if (squad == null || s.Role.Id != squad.SquadLeaderGuid) code = ErrorCodes.NoPermission;
+            else if (first == null || second == null || first.Guid == second.Guid) code = ErrorCodes.Parameter;
+            else
+            {
+                match.PositionOverride[first.Guid] = req.PositionSecond;
+                match.PositionOverride[second.Guid] = req.PositionFirst;
+                code = 0;
+            }
+        }
+        await s.SendGameAsync(SwapPosition, new DungeonTeamSwapPositionResp { Result = code });
+        if (code == 0 && match != null) await SendTeamRosterAsync(match, camp);
     }
 
     public bool CanFight(GameSession attacker, GameSession target) => Live(attacker) is { } m && Live(target) == m && m.Stage > 0

@@ -76,8 +76,8 @@ public sealed partial class SkillCombatTests
         // The point the skill aims at (4 m out for an area, on the target for the rest) and where the monster stands.
         float aim = kind is "pull-point" or "push-field" or "pull-enemy" ? 4f : 3f;
         float stand = kind switch { "pull-point" => 6.5f, "push-field" => 4.5f, "pull-enemy" => 6f, "push-caster" => 1.5f, _ => 3f };
-        var target = await Target("alice", stationary: true, npcId: 5000002);
-        var anchor = kind == "pull-enemy" ? await Target("alice", stationary: true, npcId: 5000002) : null;
+        var target = await Target("alice", stationary: true, npcId: 5000002, immobile: true);
+        var anchor = kind == "pull-enemy" ? await Target("alice", stationary: true, npcId: 5000002, immobile: true) : null;
         await Loop.InvokeAsync(() =>
         {
             target.X = start.X + ux * stand; target.Z = start.Z + uz * stand; target.Hp = 1000000;

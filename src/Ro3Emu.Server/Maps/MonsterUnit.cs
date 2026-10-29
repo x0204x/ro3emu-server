@@ -17,6 +17,10 @@ public sealed record MonsterTemplate(
     public BossSkillBook? Skills { get; init; }
     /// <summary>AttriMonsterConfig cast speed (116), retained for live chant modifiers.</summary>
     public long CastSpeed { get; init; }
+    /// <summary>AIConfig _iBattleCallType 1: how far (m) it calls its kind into the fight it enters; 0 calls no one.</summary>
+    public float BattleCallRange { get; init; }
+    /// <summary>AIConfig _iBattleCallResponse 1: it answers such a call.</summary>
+    public bool AnswersBattleCall { get; init; }
 }
 
 /// <summary>A live monster on a map (entityType 1): HP, home point, current walk segment and AI state.</summary>

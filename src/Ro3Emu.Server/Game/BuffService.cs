@@ -68,6 +68,7 @@ public sealed partial class BuffService : IGameTicker
         SilenceGroup => 20, // Silence
         12003 => 11,
         9034 => 25,
+        49090 => 66, // Blessing of Light (4909001): SpecialStatusConfig 66 光明庇护, _kForbidden [10] (inferred pairing)
         _ => guardianOwned ? GuardianStateFor(buffGroup) : 0,
     };
 

@@ -238,37 +238,41 @@ public sealed partial class GroupContentTests : IAsyncLifetime
         Assert.Equal(1005, saved.CasualMmr);
     }
 
-    /// <summary>Each camp's 30441 Virtual team roster groups a real party into one squad and a lone player into its
-    /// own; the squad holding the match-wide leaderGuid is the lowest-indexed one.</summary>
+    /// <summary>Each camp's 30441 Virtual team roster keeps a real party in one squad and packs lone players into the
+    /// free slots, five to a squad, with team-wide positions; the squad holding the leaderGuid is the lowest-indexed one.</summary>
     [ClientDataFact]
     public async Task MockBattleGivesEachCampAVirtualTeamRosterGroupedByRealParty()
     {
         await using var alice = await InWorld("Alice");
         await using var carol = await InWorld("Carol");
         await using var bob = await InWorld("Bob");
-        foreach (var bot in new[] { alice, carol, bob }) await Gm(bot, "!lvl 99");
+        await using var dave = await InWorld("Dave");
+        foreach (var bot in new[] { alice, carol, bob, dave }) await Gm(bot, "!lvl 99");
         await Party(alice, carol);
         await Gm(alice, "!casual open");
         Assert.Equal(0, (await SignUp(alice)).Result);
         Assert.Equal(0, (await SignUp(bob)).Result);
+        Assert.Equal(0, (await SignUp(dave)).Result);
         await Gm(alice, "!casual start");
-        foreach (var bot in new[] { alice, carol, bob }) await Load(bot, CasualBattleService.Scene);
+        foreach (var bot in new[] { alice, carol, bob, dave }) await Load(bot, CasualBattleService.Scene);
 
         long room = Session(alice).InstanceId;
-        long aliceId = (long)alice.Self!.Uuid, carolId = (long)carol.Self!.Uuid, bobId = (long)bob.Self!.Uuid;
+        long aliceId = (long)alice.Self!.Uuid, carolId = (long)carol.Self!.Uuid, bobId = (long)bob.Self!.Uuid, daveId = (long)dave.Self!.Uuid;
         var mine = await Next(alice, DungeonService.TeamInfo, DungeonTeamInfoNotify.Parser);
         Assert.Equal(room, mine.TeamId);
         Assert.Equal(2, (int)mine.TeamType);
         var squad = Assert.Single(mine.Squads).Value;
         Assert.Equal(aliceId, squad.SquadLeaderGuid);
         Assert.Equal([aliceId, carolId], squad.Members.Keys.Order());
+        Assert.Equal([0, 1], squad.Members.Values.Select(m => m.Position).Order());
         Assert.Equal(mine.LeaderGuid, squad.SquadLeaderGuid);
 
-        var theirs = await Next(bob, DungeonService.TeamInfo, DungeonTeamInfoNotify.Parser);
+        // The two lone players share one squad, in slots 0 and 1 (the client groups slots by five: LC_TeamHelper).
+        var theirs = await Next(bob, DungeonService.TeamInfo, DungeonTeamInfoNotify.Parser, n => n.Squads.Values.Sum(s => s.Members.Count) == 2);
         Assert.Equal(room, theirs.TeamId);
-        var solo = Assert.Single(theirs.Squads).Value;
-        Assert.Equal(bobId, solo.SquadLeaderGuid);
-        Assert.Equal(bobId, Assert.Single(solo.Members).Key);
+        var lone = Assert.Single(theirs.Squads).Value;
+        Assert.Equal([bobId, daveId], lone.Members.Keys.Order());
+        Assert.Equal([0, 1], lone.Members.Values.Select(m => m.Position).Order());
     }
 
     /// <summary>30451 DUNGEON_TEAM_TRANSFER: only the Virtual team's current leader may hand the role to another
@@ -351,6 +355,46 @@ public sealed partial class GroupContentTests : IAsyncLifetime
         var rosterStopped = await Next(alice, DungeonService.TeamInfo, DungeonTeamInfoNotify.Parser,
             m => m.Squads.Values.Single().Members[carolId].FollowType != followSquad);
         Assert.Equal((DungeonTeamFollowType)0, rosterStopped.Squads.Values.Single().Members[carolId].FollowType);
+    }
+
+    /// <summary>30450 DUNGEON_TEAM_SWAP_POSITION: only the sender's own squad leader may swap two of that squad's
+    /// slots, read as the sender's own squad since the request names no squadIdx; everyone's next 30441 shows the
+    /// swap.</summary>
+    [ClientDataFact]
+    public async Task MockBattleVirtualTeamSwapPositionReordersTheSendersOwnSquad()
+    {
+        await using var alice = await InWorld("Alice");
+        await using var carol = await InWorld("Carol");
+        await using var bob = await InWorld("Bob");
+        foreach (var bot in new[] { alice, carol, bob }) await Gm(bot, "!lvl 99");
+        await Party(alice, carol);
+        await Gm(alice, "!casual open");
+        Assert.Equal(0, (await SignUp(alice)).Result);
+        Assert.Equal(0, (await SignUp(bob)).Result);
+        await Gm(alice, "!casual start");
+        foreach (var bot in new[] { alice, carol, bob }) await Load(bot, CasualBattleService.Scene);
+        long aliceId = (long)alice.Self!.Uuid, carolId = (long)carol.Self!.Uuid;
+        await Next(alice, DungeonService.TeamInfo, DungeonTeamInfoNotify.Parser); // the roster from loading, consumed
+        await Next(carol, DungeonService.TeamInfo, DungeonTeamInfoNotify.Parser);
+        await Next(bob, DungeonService.TeamInfo, DungeonTeamInfoNotify.Parser);
+
+        // Not the squad leader: refused.
+        await carol.SendGameAsync(CasualBattleService.SwapPosition, new DungeonTeamSwapPositionReq { PositionFirst = 0, PositionSecond = 1 });
+        Assert.Equal(ErrorCodes.NoPermission, (await Next(carol, CasualBattleService.SwapPosition, DungeonTeamSwapPositionResp.Parser)).Result);
+
+        // No member sits at position 5 in a two-person squad: refused.
+        await alice.SendGameAsync(CasualBattleService.SwapPosition, new DungeonTeamSwapPositionReq { PositionFirst = 0, PositionSecond = 5 });
+        Assert.Equal(ErrorCodes.Parameter, (await Next(alice, CasualBattleService.SwapPosition, DungeonTeamSwapPositionResp.Parser)).Result);
+
+        // The squad leader (position 0, Alice) swaps with Carol (position 1): both see the swapped positions.
+        await alice.SendGameAsync(CasualBattleService.SwapPosition, new DungeonTeamSwapPositionReq { PositionFirst = 0, PositionSecond = 1 });
+        Assert.Equal(0, (await Next(alice, CasualBattleService.SwapPosition, DungeonTeamSwapPositionResp.Parser)).Result);
+        var rosterSwapped = await Next(alice, DungeonService.TeamInfo, DungeonTeamInfoNotify.Parser,
+            m => m.Squads.Values.Single().Members[aliceId].Position == 1);
+        var squad = rosterSwapped.Squads.Values.Single();
+        Assert.Equal(1, squad.Members[aliceId].Position);
+        Assert.Equal(0, squad.Members[carolId].Position);
+        Assert.Equal(aliceId, squad.SquadLeaderGuid); // swapping slots does not change who leads the squad
     }
 
     // ---- MVP likes ----

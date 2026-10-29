@@ -66,6 +66,35 @@ These choices are implementation policy, not a claim of an observed original ser
 8. World supply starts with each exported spawn pool's minimum population, capped by its total; pickup reach is five meters and an over-cap pickup is refused whole. Normal supply respawns at the editor interval. Death-loss rates `[0,0.2,1]` are indexed by Peace/Free/Guild camp and loss is rounded upward; death drops persist until collected. World PvP is restricted to territory maps with configured PvP modes; Free/Guild can initiate against a non-guildmate and Peace cannot initiate. Supply donation converts 133 to guild Materials/126 one-for-one. AuctionMaterials/129 is the guild core treasury, kept distinct from that supply and escort stock; auction tests explicitly provision treasury fixtures.
 9. A land-activity killer receives the normal award, and an owner-guild killer in the configured owner radius also receives the extra award. Restrict recovery type 2 is interpreted as a UTC weekly limit (three claims for these rows), scoped to the epoch/activity. Map 30311 point 1000001 (named trap) and map 30336 point 10001 (named spawn) substitute for configured 100001; both are the second exported monster point alongside the black-hole point, matching the arrangement on the other maps. Six type-0 rows set map resource and point to 0; they are not attached to an invented map, and their exact scene binding is a remaining source-evidence boundary.
 
+## Commander tools (siege and territory battles)
+
+The commander's tools come from the client's own handlers (`LC_SceneCom_Command`, added only by the Siege and Territory Wars dungeon scenes). `TerritoryWarsService.Command` keeps them on the battle, so they end with it.
+
+| IDs | Behavior |
+|---|---|
+| 30407/30408 | Map marks on the siege map, up to 10 per type. Commander marks need guild right 12 (BattleFieldCommand) and are shared by the side; team-leader marks need the party leader and are shared by that party on the side. The client adds without an id and deletes by a global id (`(type - 1) * 10 + slot`, 0 = all of that type); 30408 is a full snapshot per type with slots 1-10. |
+| 30431 | Gather at a mark. The client drops the response and has no 30438 handler; the visible gather is system chat 4110041 (DungeonCollect) with a CHAT_PARAM_GATHER parameter [sender, mark type, slot], which raises the 3D guide on that mark. |
+| 30436/30437 | Command letters A-F on targets, right 12. Siege ids are dungeon point ids, territory ids are NPC config ids; 30437 is the side's six positional slots. |
+| 31102 + 30439 | Command skills (`TerritoryWarsService.CommandSkills`), right 12. The panel casts with the ordinary 31102 at the caster's position; CombatService's `OwnSkill*` hooks skip the job tree and the SkillConfig cooldowns. Charges and cooldowns are the scene's `DungeonBase.CommandModule` (DungeonLua_2230101 for the siege, DungeonLua_3030101 for territory battles via `PointWarCommandSkillConfigDungeonId`): Blessing of Light 4909001 two charges (skillCd 20 s in the siege, 180 s elsewhere), Battle Command 4909101, Defend the Glory 4909201, Emergency Call 4909301 one each, all with a 5 s common cooldown. 30439 is the side's whole panel in epoch ms. Blessing of Light and Battle Command put their `_kBuff1` on the side within 20 m; Defend the Glory revives up to 20 fallen allies there with 70% HP and SP. |
+| 30118-30122 | Emergency Call: 30118 invites the side with the commander's id, 30119 accepts (828 dead, 5203 mounted, 292 expired, 293 full), 30122 counts the accepted (max 20), 30120 clears the tips after 20 s or at 20. An accepted ally lands at the commander's position at the cast. |
+
+Loading into the battle sends the side's commander marks, the party's own marks, the letters and the command skill panel. A full mark list answers `ErrorCodes.Parameter` **(inferred)**: the client stops at 10 itself. Checked in the client: a commander gets the Commander and Management buttons, a letter shows on the target with its 3D guide and the "New marker!" notice, and a commander mark shows on the siege map with "Can Mark: 1/10". **Inferred** for the skills: the panel is the side's (any commander of the guild casts from the same charges), a used charge recovers `skillRecoverCd` after its use, one at a time, with a fresh 30439 then; Blessing of Light's buff group 49090 carries SpecialStatusConfig 66 (光明庇护, no knockback); 292/293 for an expired or full call; an arrival lands on the commander's cast position.
+
+## Battle Merit (Battle Glory)
+
+`TerritoryWarsService.BattleGlory` (function 7205, base level 99). The client shows the merit rank and its rewards from 5001 `DBBattleGloryInfo` (`curRankId`, `isSpecialRank`, the keys of `rankRewardReceiveInfo`) and the points from currency 15 ("War Merit Points"). 83400 claims a reached rank's `_iNormalRewardGroup` once (ranks 2-9, MultiverseGroup 50102); the client has no handler for the reply and reads the claim from 5001.
+
+| Rule | Value |
+|---|---|
+| Where | maps with a `BattleGloryBase` row (30301-30319), public line 1, between `WorldHostile` players |
+| Kill / assist / death | `_iKillBase` 150 / `_iAssistBase` 100 / `_iDeathBase` 100 |
+| Repeats | `BattleGloryKillDif` / `BattleGloryDeathDif` by how many times today the same pair met that way: 100%, 80%, 60%, 40%, 20%, then 0 |
+| Power | kills and assists times `BattleGloryPowerDif` of the victim's power minus the earner's (the row with the largest threshold reached) |
+| Daily cap | `BattleGloryDailyLimit` 1,000,000 per game day (05:00) |
+| Rank | the sum of the `_iGloryCondition` of the ranks below: 1000 for rank 2 up to 36000 for rank 9; it never drops |
+
+**Inferred:** all the point rules (the client only displays results); an assist is a hit on the victim in the last 10 s; a death pays rather than costs (the record source enum names Kill, Assist and Death as ways points came); the state is the role's territory `RoleState.Glory`, per season. Not done: rank 10 (`_iRankCondition` 10, the top 10 of leaderboard 2102, which this client ships no LeaderBoardsConfig row for), the season-end SiegeSettlementHonorAward mail 1090, and the "Reach N Battle Merit" quests (target 106610).
+
 ## Descriptor and runtime evidence boundaries
 
 The checked-in `MG_Guild.proto` defines `TerritoryWarsGuildData.occupyWarzone` and places auction fields inside `guildData`. `LC_DAL_TerritoryWars.lua:884-925,988-1008` reads `campDatas` and some wrapper-level auction fields instead. Implementation sends the supplied descriptor, plus the coherent modern 5013/84037 and deadline notifications; exact legacy panel decoding remains unverified. A new field number is not invented.

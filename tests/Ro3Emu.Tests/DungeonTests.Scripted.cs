@@ -363,6 +363,49 @@ public sealed partial class DungeonTests
         await StoryMovesOn(alice, 205170, 205180);
     }
 
+    // Louis's lines and the Bells' effects (inferred as to when): round 1 opens with 'Let's start the game!' and 'Guess which
+    // Bell ...'; a wrong ring answers 'Sorry, wrong guess!' and shatters its Bell (5402201); Katie's ring answers
+    // 'Congratulations ...' and lights hers (5402101); round 2 asks again and ends on 'Darn ... I give up.'.
+    [ClientDataFact]
+    public async Task LouisAnswersEveryGuessAndTheChosenBellShowsWhetherItWasRight()
+    {
+        const long scene = 3120703;
+        Service<IOptions<ServerOptions>>().Value.ScriptedScenePacePercent = 10;
+        await using var alice = await InWorld("Alice");
+        await Gm(alice, "!quest accept 205170");
+        Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
+        await Load(alice, scene);
+        await Stage(alice, 1, quest: 1);
+        var round1 = await ActorsIn(alice, 8);
+        Task<SystemBoardCastMsgNtf> Says(int chat) => Next(alice, 1022, SystemBoardCastMsgNtf.Parser, m => m.ChatId == chat);
+        Task<BuffUpdateNotify> Shows(IEnumerable<DungeonService.SceneActorUnit> shown, long point, int buff) =>
+            Next(alice, BuffService.BuffUpdate, BuffUpdateNotify.Parser, n => n.Buffs.Any(b => b.ConfigId == buff)
+                && n.UnitId == shown.Single(a => a.NpcId == 400138 && a.Point == point).Uid);
+
+        Assert.Equal(round1.Single(a => a.NpcId == 400131).Uid, (await Says(5310008)).PlayerId); // Louie's own uid
+        await Says(5310002);
+        var wrong = round1.Single(a => a.NpcId == 400135);
+        await Beside(alice, wrong.X, wrong.Y, wrong.Z);
+        Assert.Equal(0, await Interact(alice, wrong, 5300041));
+        await Says(5310004); // 'Sorry, wrong guess!'
+        await Shows(round1, wrong.Point, 5402201);
+        var katie = round1.Single(a => a.NpcId == 400134);
+        await Beside(alice, katie.X, katie.Y, katie.Z);
+        Assert.Equal(0, await Interact(alice, katie, 5300040));
+        await Says(5310003); // 'Congratulations ... Let's go again'
+        await Shows(round1, katie.Point, 5402101);
+
+        await Stage(alice, 2, quest: 1);
+        await Says(5310002);
+        var round2 = await ActorsWhen(alice, shown => shown.Count == 8 && shown.Any(a => a.NpcId == 400134 && a.Point == 29));
+        katie = round2.Single(a => a.NpcId == 400134);
+        await Beside(alice, katie.X, katie.Y, katie.Z);
+        Assert.Equal(0, await Interact(alice, katie, 5300040));
+        await Says(5310009); // 'Darn, you got it right again! I give up.'
+        await Shows(round2, katie.Point, 5402101);
+        Assert.Equal((DungeonRes)1, (await Next(alice, DungeonService.Result, DungeonResNotify.Parser)).Res);
+    }
+
     [ClientDataFact]
     public async Task TheOpeningDanceEndsWithLunasGoodbyeEvenWhenTheClientLeavesAtOnce()
     {
@@ -409,6 +452,20 @@ public sealed partial class DungeonTests
         var off = new ReconstructedDungeons(Options.Create(new ServerOptions { ReconstructedDungeons = false }));
         Assert.Null(off.Scripted(1000201));
         Assert.NotEmpty(off.AllScripted);
+    }
+
+    // A step's reactions come from scripted-scenes.json (no client data needed): Louie's shell game, both rounds.
+    [Fact]
+    public void AStepsReactionsAreReadFromTheScriptedScenes()
+    {
+        var louie = new ReconstructedDungeons(Options.Create(new ServerOptions())).Scripted(3120703)!;
+        Assert.All(louie.Steps, step => Assert.Equal(400131, step.React!.Speaker));
+        Assert.Equal([5310008, 5310002], louie.Steps[0].React!.Start);
+        Assert.Equal(new ReconstructedDungeons.Response(5310004, 5402201, 400138), louie.Steps[0].React!.Ignored);
+        Assert.Equal(new ReconstructedDungeons.Response(5310003, 5402101, 400138), louie.Steps[0].React!.Complete);
+        Assert.Equal(new ReconstructedDungeons.Response(5310009, 5402101, 400138), louie.Steps[1].React!.Complete);
+        Assert.All(new ReconstructedDungeons(Options.Create(new ServerOptions())).Scripted(3120802)!.Steps,
+            step => Assert.Null(step.React)); // a scene without reactions keeps none
     }
 
     [ClientDataFact]

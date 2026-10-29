@@ -75,6 +75,7 @@ public sealed partial class TerritoryWarsService
             : owner.state.Epoch == Epoch && owner.state.Battles.TryGetValue(Key, out var current) ? current
               : throw new InvalidOperationException("Territory battle has no active or retiring epoch state.");
         internal Dictionary<int, MonsterUnit> Actors { get; } = new();
+        internal CommandBoard Command { get; } = new();
         internal HashSet<long> CapturedActors { get; } = new();
         internal Dictionary<int, ScenePointUnit> ScenePointActors { get; } = new();
         internal bool Spawning;
@@ -335,6 +336,7 @@ public sealed partial class TerritoryWarsService
         await SendScenePointsAsync(s, b);
         await SyncSiegeAsync(s);
         await SendMarkersAsync(s);
+        await SendCommandBoardAsync(s);
         await UpdateFieldBuffsAsync(b);
     }
     private DungeonBaseInfoNotify BaseInfo(Battle b)

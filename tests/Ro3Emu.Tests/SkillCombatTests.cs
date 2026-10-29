@@ -64,7 +64,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         return dir?.FullName ?? throw new DirectoryNotFoundException();
     }
     private Task Teach(string name, int group, int level = 1) => Loop.InvokeAsync(() => { Session(name).Progress!.Skills[group] = level; return Task.CompletedTask; });
-    private Task<MonsterUnit> Target(string name, bool stationary = false, int npcId = 5000001) => Loop.InvokeAsync(async () =>
+    private Task<MonsterUnit> Target(string name, bool stationary = false, int npcId = 5000001, bool immobile = false) => Loop.InvokeAsync(async () =>
     {
         var s = Session(name);
         var monsters = _app.Services.GetRequiredService<MonsterService>();
@@ -73,7 +73,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         {
             template = monsters.Template(npcId);
             Assert.NotNull(template);
-            template = template with { RoamDistance = 0 };
+            template = template with { RoamDistance = 0, SpeedCm = immobile ? 0 : template.SpeedCm };
         }
         var result = await monsters.SpawnSingleAsync(s.SceneEntry, npcId,
             new MapPoint(s.Position.X, s.Position.Y, s.Position.Z, 0), s.InstanceId, customTemplate: template);

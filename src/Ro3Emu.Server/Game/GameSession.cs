@@ -136,11 +136,6 @@ public sealed class GameSession(PhonestChannel channel, TrafficLog traffic, Skil
     /// <summary>The 31029 lock target and the running auto-attack (CombatService).</summary>
     public long LockTarget { get; set; }
     public AttackLoop? Attack { get; set; }
-    /// <summary>
-    /// Server-only normal-attack interval. The client data sets _iCD to zero, so this never becomes a 31113 UI
-    /// cooldown; the action time, including attack-speed influence, still limits accepted manual attacks.
-    /// </summary>
-    public long NormalAttackReadyMs { get; set; }
 
     /// <summary>Authoritative cast generation; delayed effects cannot outlive an interrupted/replaced cast.</summary>
     public ActiveSkillCast? SkillCast { get; set; }

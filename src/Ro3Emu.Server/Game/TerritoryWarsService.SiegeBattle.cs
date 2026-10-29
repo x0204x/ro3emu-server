@@ -49,6 +49,7 @@ public sealed partial class TerritoryWarsService
             : owner.state.Epoch == Epoch && owner.state.SiegeRuns.TryGetValue(Key, out var current) ? current
               : throw new InvalidOperationException("Territory siege has no active or retiring epoch state.");
         public MonsterUnit? Crystal { get; set; }
+        internal CommandBoard Command { get; } = new();
         public bool Spawning { get; set; }
     }
 
@@ -160,6 +161,7 @@ public sealed partial class TerritoryWarsService
         var p = battle.State.Players[s.Role!.Id];
         p.Loaded = true; await SaveAsync(state);
         await Send(s, 30401, SiegeBaseInfo(battle));
+        await SendCommandBoardAsync(s);
         // DungeonLua_2230101: point 73 defender, point 75 attacker.
         int born = p.Guild == battle.State.Defense ? 73 : 75;
         if (_maps.Map(SiegeScene)?.Points.GetValueOrDefault(born) is { } point)

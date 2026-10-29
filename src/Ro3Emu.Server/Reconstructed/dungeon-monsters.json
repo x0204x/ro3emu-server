@@ -6,9 +6,9 @@
   },
   "soloTuning": {
     "5300001": {
-      "hp": 870,
+      "hp": 1170,
       "attack": 1500,
-      "why": "Eddga: solo tuning, see about"
+      "why": "Eddga: solo tuning, see about; fought beside the companions Boya and Wule (scripted-scenes.json 1022001), whose expected damage counts with the player's"
     },
     "5300002": {
       "hp": 580,
