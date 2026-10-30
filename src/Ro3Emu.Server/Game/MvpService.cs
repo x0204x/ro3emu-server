@@ -630,8 +630,10 @@ public sealed partial class MvpService : IGameTicker
         if (st.Retired) throw new OperationCanceledException("MVP line retired before lethal settlement.");
         online = online.Where(pair => pair.Value.Role?.Id == pair.Key && pair.Value.Progress != null
             && pair.Value.Attachment?.Cancelled != true).ToDictionary();
+        // Connect target 106012 asks for a party-mate among the participants (TaskService.Connect.cs).
         var taskPlans = online.ToDictionary(pair => pair.Key,
-            pair => _tasks.StageMvpParticipant(pair.Value, parentSource));
+            pair => _tasks.StageMvpParticipant(pair.Value, parentSource, st.Def.NpcId, st.Stats.TryGetValue(pair.Key, out var me)
+                && me.TeamId != 0 && st.Stats.Any(other => other.Key != pair.Key && other.Value.TeamId == me.TeamId)));
         var counters = new Dictionary<long, MVPPlayerInfo>();
         foreach (long player in online.Keys)
             counters[player] = (await LoadCountersAsync(player)).Info;

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 
 namespace Ro3Emu.Server.Data.Config;
@@ -25,4 +26,9 @@ public readonly partial record struct TaskConfig(JsonElement Row)
     [ConfigField("_kPreTask")] public partial long[] PreTask { get; }
     [ConfigField("_kProgressTarget")] public partial long[][] ProgressTarget { get; }
     [ConfigField("_kTrack")] public partial JsonElement? Track { get; }
+
+    /// <summary>任務名稱的第一個字串參數，按上游契約讀成整數；type25將它當作勢力子任務點數仍為(inferred)。</summary>
+    public long NameIntegerArgument => Name is { ValueKind: JsonValueKind.Array } name && name.GetArrayLength() >= 2
+        && name[1].ValueKind == JsonValueKind.String
+        && long.TryParse(name[1].GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out long value) ? value : 0;
 }

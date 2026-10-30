@@ -89,10 +89,10 @@ public sealed partial class TaskService
             return;
         }
         session.Tasks!.SelectBranch[req.BranchId] = true;
-        session.Tasks.WaitSelectBranch.Remove(req.BranchId);
+        session.Tasks.WaitSelectBranch.Clear(); // one choice ends the offer of the others (inferred)
         Save(session);
         await session.SendGameAsync(TaskSelectQuestBranch, new SelectTaskQuestBranchResp { Req = req });
-        await SyncTasksAsync(session);
+        await RefreshCoreAsync(session); // 103052 "select a main story branch" (TaskService.MiscTargets.cs)
     }
 
     /// <summary>

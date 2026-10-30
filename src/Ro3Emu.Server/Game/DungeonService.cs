@@ -37,6 +37,9 @@ public sealed partial class DungeonService
     /// <summary>After <see cref="Completed"/> for a TenGameplay run: the boss (TenGameplayBossConfig._iBoss) and the
     /// run's settled participants (quest target 106602).</summary>
     public List<Func<GameSession, long, IReadOnlyCollection<GameSession>, Task>> MultiBossCleared { get; } = new();
+    /// <summary>A loaded member's dungeon task tracker (TaskService.OnDungeonRun): scene, instance and the scripted steps
+    /// the run has passed. Listeners post their work.</summary>
+    public List<Action<GameSession, long, long, int>> RunTracked { get; } = [];
     /// <summary>Guild Challenge owns admission and rewards; this engine retains scenes, combat and cleanup.</summary>
     internal Func<GameSession, EnterDungeonReq, Task<bool>>? GuildChallengeEnter { get; set; }
     /// <summary>Another private-room owner whose 30402 exit revives a dead member on return (the guild home).</summary>
@@ -413,10 +416,23 @@ public sealed partial class DungeonService
     {
         if (s.DungeonAttempt is not { } a || s.InstanceId != a.Room.Id || a.Room.Closed || !a.Loaded.Add(s)) return;
         await s.SendGameAsync(BaseInfo, Snapshot(a));
+        TrackRun(a, [s], TrackerStep(a));
         await SendReviveInfoAsync(s, a);
         await SendRosterAsync(a);
         await RefreshBondsAsync(a);
         if (ReadyToStart(a)) await StartAsync(a);
+    }
+
+    /// <summary>
+    /// The tracker step a run is at: the lair's wave (each wave is one of its dungeon tasks, DraculaWeddingService); a Guild
+    /// Challenge stage is rebuilt as its boss fight, so its chain is at the last step, the boss (inferred).
+    /// </summary>
+    private static int TrackerStep(Attempt a) => a.Settled ? TaskService.RunOver : a.GuildChallenge != null ? TaskService.FinalStep : a.Wave;
+
+    internal void TrackRun(Attempt a, IEnumerable<GameSession> members, int step)
+    {
+        foreach (var s in members)
+            foreach (var handler in RunTracked) handler(s, a.Plan.SceneEntry, a.Room.Id, step);
     }
 
     // Waiting for all remaining members before starting the encounter clock is (inferred).
@@ -884,6 +900,7 @@ public sealed partial class DungeonService
             a.Settled = true;
             await _instances.ClearMonstersAsync(a.Room);
             await BroadcastAsync(a, BaseInfo, Snapshot(a));
+            TrackRun(a, LoadedMembers(a), TaskService.RunOver);
             await challenge.Owner.SettleAsync(a, won);
             return;
         }
@@ -894,6 +911,7 @@ public sealed partial class DungeonService
             a.SceneActors.Clear(); // removed with the room's monsters
             a.Companions.Clear();
             await BroadcastAsync(a, BaseInfo, Snapshot(a));
+            TrackRun(a, LoadedMembers(a), TaskService.RunOver);
             await dracula.Owner.SettleAsync(a, won);
             return;
         }

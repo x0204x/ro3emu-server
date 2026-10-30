@@ -209,7 +209,12 @@ public sealed class MonsterHuntService
             if (result == 0) await s.SendGameAsync(GainMapAward, new AreaConcurGainMapAwardResp { Req = req });
             else await WorldCoreService.ErrorAsync(s, GainMapAward, result);
         }
-        if (result == 0) await SyncAsync(s);
+        if (result == 0)
+        {
+            await SyncAsync(s);
+            // 318001／318003：已提交的地圖領獎在本次處理完成前更新任務，不依賴一般狀態事件的排程。
+            await _tasks.RefreshAsync(s);
+        }
     }
 
     /// <summary>83623: every requested stage the monster's kills reach and that is not claimed yet (the client sends them all).</summary>
@@ -268,6 +273,7 @@ public sealed class MonsterHuntService
             await s.SendGameAsync(GainAreaAward, new AreaConcurGainAreaAwardResp { Req = req });
         }
         await SyncAsync(s);
+        await _tasks.RefreshAsync(s); // 318002: the claimed area stages
     }
 
     /// <summary>The stages' awards and the claimed markers in one owned-award receipt; on any failure nothing changed.</summary>

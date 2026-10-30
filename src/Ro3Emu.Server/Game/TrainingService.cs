@@ -29,6 +29,7 @@ public sealed class TrainingService : IGameTicker
     private readonly InstanceService _instances;
     private readonly MonsterService _monsters;
     private readonly AwardService _awards;
+    private readonly TaskService _tasks;
     private readonly GameLoop _loop;
     private readonly Dictionary<long, MapPoint> _points = new();
     private readonly Dictionary<GameSession, Attempt> _attempts = new();
@@ -49,10 +50,11 @@ public sealed class TrainingService : IGameTicker
 
     public TrainingService(GameData data, RoleStore roles, CharacterService character, FunctionService functions,
         ActivityClock clock, InstanceService instances, SceneService scene, MonsterService monsters,
-        CombatService combat, AwardService awards, GameLoop loop, IOptions<ServerOptions> options)
+        CombatService combat, AwardService awards, TaskService tasks, GameLoop loop, IOptions<ServerOptions> options)
     {
         this._data = data; this._roles = roles; this._character = character; this._functions = functions;
         this._clock = clock; this._instances = instances; this._monsters = monsters; this._awards = awards; this._loop = loop;
+        this._tasks = tasks;
         foreach (long map in new long[] { 2100009, 2100010, 2100011 })
             if (data.Row("DungeonConfig", map) is { } config && config.TryGetProperty("_kResSceneEditorName", out var editor))
             {
@@ -297,22 +299,26 @@ public sealed class TrainingService : IGameTicker
     {
         try
         {
-            if (!a.Running || Now < a.End || !_attempts.TryGetValue(s, out var active) || active != a || s.InstanceId != a.Room.Id) return;
+            if (!a.Challenge || !a.Running || Now < a.End || !_attempts.TryGetValue(s, out var active)
+                || active != a || s.InstanceId != a.Room.Id) return;
             long dps = a.Damage / Math.Max(1, Duration);
             using var held = await CharacterService.Lock(s);
             if (!a.Running || Now < a.End || !_attempts.TryGetValue(s, out var current)
                 || current != a || s.InstanceId != a.Room.Id) return;
             var next = s.Training!.Clone(); next.MaxDps = Math.Max(next.MaxDps, dps);
+            var taskPlan = _tasks.StageTrainingChallenge(s, $"{a.Room.Id}/{a.End}");
             var builder = _roles.NewTransaction();
             builder.RoleBlob(s.Role!.Id, "training", next.ToByteArray());
+            taskPlan?.Persist(builder);
             await _roles.CommitAsync(builder, "training/result", _ =>
-            { s.Training = next; a.Running = false; });
+            { s.Training = next; taskPlan?.Apply(); a.Running = false; });
             await s.SendGameAsync(DungeonService.Result, new DungeonResNotify
             {
                 DungeonEntry = a.Room.SceneEntry,
                 Res = (DungeonRes)1, Data = new() { TrainingGroundData = new() { MaxDps = dps, SumDamage = a.Damage } }
             });
             await CharacterService.SyncAsync(s, Sync, next.Clone()); await SnapshotAsync(s, a);
+            if (taskPlan != null) await _tasks.SettleOwnerProgressCoreAsync(s);
         }
         finally { a.Settling = false; }
     }

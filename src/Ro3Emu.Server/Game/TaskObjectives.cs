@@ -203,12 +203,14 @@ public sealed partial class TaskService
         [TSaplingChosen or TDeclaration, var n] => n, // Adventure Group (TaskService.AdventureGroup.cs)
         [TWaterSapling, var n, _] => n,
         [TKill or TKillInvolved, _, _, ..] => t[^1],
+        [TConnectMvp or TConnectBoss, var n, _] => n, // Connect quests (TaskService.Connect.cs)
+        [TConnectSurvivor or TConnectAfk, var n] => n,
         [TClientInteract or TMapKill or TUse or TCardStars or TCardQuality or TTreasure or TSlotRefine
             or TCraftQuality or TCollect or TEquipmentQuality or TStrength or TSkillRank or TRestrictUse, _, var n] => n,
         [TEquipment, _, _, var n] => n,
         [TCraft, _, _, var n, _] => n,
         [TSubmit, _, var n, _] => n,
-        _ => -1,
+        _ => EventTargetRequired(t), // TaskService.EventTargets.cs
     };
 
     private bool Supported(long[] t)
@@ -245,7 +247,7 @@ public sealed partial class TaskService
             TLeagueJoin => t[1] is >= 0 and <= 3,
             TLeagueScore => t[1] is >= 0 and <= 2 && t[2] >= 0,
             TSiegeScore => t[1] >= 0,
-            _ => true, // Only the explicit formatter cases above can reach here.
+            _ => MiscSupported(t), // Only the explicit formatter cases above can reach here.
         };
     }
 
@@ -342,7 +344,7 @@ public sealed partial class TaskService
             TEchoLevelSum => EmblemService.Worn(s).Sum(i => i.Attrs?.GetValueOrDefault(1001) ?? 0),
             TLiveness => _character.CountOf(s, 5),
             TBattleMerit => BattleMeritPoints?.Invoke(s) ?? -1,
-            _ => -1,
+            _ => EventTargetValue(s, t), // TaskService.EventTargets.cs
         };
     }
 

@@ -154,7 +154,10 @@ public sealed partial class NewActivityService
         // (inferred) GetChapterProgress divides totalRate by 100 for the displayed
         // percentage, so normalize the filled note slots to 10,000 basis points.
         phase.TotalRate = slots > 0 ? (int)(10000L * phase.NodeInfos.Values.Sum(n => n.Items.Count) / slots) : 0;
-        return await CommitAdventureAsync(session, next, costs: [((int)req.ItemId, 1)]);
+        int result = await CommitAdventureAsync(session, next, costs: [((int)req.ItemId, 1)]);
+        // Quest target 107101 (TaskService.EventTargets.cs) and a finished node's quest (TaskService.MiscTargets.cs).
+        if (result == 0) _tasks.OnStateChanged(session);
+        return result;
     }
 
     private bool WorldPhaseOpen(GameSession session, JsonElement row)

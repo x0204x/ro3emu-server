@@ -102,6 +102,8 @@ public sealed partial class TaskService
         cards.RequiredCollectionRefresh = RefreshCollectionRequiredAsync;
         character.GetKillTaskParticipantKeys = GetKillTaskParticipantKeys;
         character.StageKillTaskObligations = StageKillTaskObligations;
+        ExtraTasks.Add(DungeonRunTasks); // TaskService.DungeonTasks.cs
+        QuestDelivered.Add(AddFactionPoints); // 101022 (TaskService.MiscTargets.cs)
     }
 
     /// <summary>Delivered = completeTaskNum &gt; 0 or status 4 (the client's CheckTaskDeliveryed). Without quest state: true.</summary>
@@ -659,7 +661,7 @@ public sealed partial class TaskService
             }
         }
         return accepted + AcceptGrowthTitle(session) + AcceptGrowthClass(session) + AcceptActivityTasks(session)
-            + AcceptChickenTasks(session) + AcceptRootTasks(session);
+            + AcceptChickenTasks(session) + AcceptRootTasks(session) + AcceptMiscTasks(session);
     }
 
     private bool Ready(GameSession session, TaskDef def) =>
@@ -670,6 +672,7 @@ public sealed partial class TaskService
     {
         session.Tasks!.Infos[id] = NewInfo(id, Running);
         StartLoginTargets(session, id);
+        StartMiscTargets(session, id);
         // Same current-step selection as LC_TaskHelper.DealAcception (inferred for server host).
         // Extra slots are retained, never treated as sequential instructions.
         EvaluatePassive(session);
@@ -677,7 +680,9 @@ public sealed partial class TaskService
         var info = session.Tasks.Infos[id];
         int step = Enumerable.Range(0, def.Targets.Length).FirstOrDefault(i => info.CompleteNum[i] != Required(session, def.Targets[i]), -1);
         if (step >= 0 && step < def.AcceptActions.Length && ServerOpcode(def.AcceptActions[step]) == 621) session.InCutScene = true;
-        _log.LogInformation("{Name} accepts task {Task} {TaskName}", session.Role?.Name, id, _data.TextOf(_data.Row("TaskConfig", id)!.Value, "_iName"));
+        // The 53 hidden Connect quests start together at login; at Information they would fill a /bug report's context.
+        _log.Log(def.Type == ConnectTaskType ? LogLevel.Debug : LogLevel.Information, "{Name} accepts task {Task} {TaskName}",
+            session.Role?.Name, id, _data.TextOf(_data.Row("TaskConfig", id)!.Value, "_iName"));
     }
 
     private TaskInfo NewInfo(long id, TaskState status)

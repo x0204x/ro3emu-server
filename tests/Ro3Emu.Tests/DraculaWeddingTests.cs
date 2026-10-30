@@ -263,9 +263,9 @@ public sealed class DraculaWeddingTests : IAsyncLifetime
         Assert.Equal(instance, await Read(() => Session(bob).InstanceId));
         var info = await Next(bob, DungeonService.BaseInfo, DungeonBaseInfoNotify.Parser);
         Assert.Equal([select.BridePlayerId], info.Vars.Single(v => v.VarId == 1301).Vi64);
-        // The tracker runs the lair's first task.
-        Assert.Contains(await Read(() => Service<TaskService>().ExtraTasks.SelectMany(f => f(Session(bob))).ToArray()),
-            t => t.TaskId == 9000100 && t.Status == TaskState.Running);
+        // The tracker runs the lair's first task (posted on the member's owner loop).
+        await Until(() => Service<TaskService>().ExtraTasks.SelectMany(f => f(Session(bob)))
+            .Any(t => t.TaskId == 9000100 && t.Status == TaskState.Running), "the lair's first task");
 
         var plan = await Read(() => Session(alice).DungeonAttempt!.Plan);
         var map = Service<WorldData>().Map(Lair)!;
@@ -284,8 +284,8 @@ public sealed class DraculaWeddingTests : IAsyncLifetime
 
         // The key: Alice did the fighting, Bob searches the bushes until one holds it.
         await Until(() => Session(alice).DungeonAttempt?.Wave == plan.Waves.Count - 1, "the key step");
-        Assert.Contains(await Read(() => Service<TaskService>().ExtraTasks.SelectMany(f => f(Session(bob))).ToArray()),
-            t => t.TaskId == 9000110);
+        await Until(() => Service<TaskService>().ExtraTasks.SelectMany(f => f(Session(bob))).Any(t => t.TaskId == 9000110),
+            "the lair's last task");
         var actors = await Read(() => Session(alice).DungeonAttempt!.SceneActors.ToArray());
         Assert.Equal(5, actors.Length);
         var cage = actors.Single(a => a.NpcId == 4114038);

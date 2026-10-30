@@ -8,7 +8,7 @@ namespace Ro3Emu.Server.Game;
 /// Which client functions (enum_FunctionType: bag, skills, party, chat channels...) are open: the 5056 FunctionOpenInfo
 /// dataset, computed from FunctionConfig._kOpenCondition → LC_ConditionList sub-conditions [type, param...]:
 /// 1002 base level ≥ param, 1019 job rank ≥ param (inferred), 1101 role has a running task, 3031 server-open days, 3030 playbook-open seconds,
-/// 4004 quest delivered (TaskService.IsDelivered), 1014 cleared Spirit Tower floor, 11001 active life skill. Resent when the level or
+/// 4004 quest delivered (TaskService.IsDelivered), 1014 cleared Spirit Tower floor, 11001 active life skill, 1102 learned skill. Resent when the level or
 /// job changes, so functions unlock as the player grows.
 /// </summary>
 public sealed class FunctionService
@@ -16,20 +16,22 @@ public sealed class FunctionService
     public const uint FunctionOpenSync = 5056;
 
     private const int CondBaseLevel = 1002, CondTowerFloor = 1014, CondJobRank = 1019, CondRoleHasTask = 1101,
-        CondServerStage = 3031, CondServerStage2 = 3030, CondQuestDone = 4004, CondItemCount = 1020;
+        CondLearnedSkill = 1102, CondServerStage = 3031, CondServerStage2 = 3030, CondQuestDone = 4004, CondItemCount = 1020;
     private const int CondJourneyAttr = 15100, CondJourneyDialogue = 15101;
     private const int CondGuildPosition = 9007;
     private const int CondChickenRank = 6508;
 
     private readonly GameData _data;
     private readonly CharacterService _character;
+    private readonly SkillService _skills;
     private readonly SeasonService _seasons;
     private readonly TimeProvider _clock;
 
-    public FunctionService(GameData data, CharacterService character, SeasonService seasons, TimeProvider clock)
+    public FunctionService(GameData data, CharacterService character, SkillService skills, SeasonService seasons, TimeProvider clock)
     {
         this._data = data;
         this._character = character;
+        this._skills = skills;
         this._seasons = seasons;
         this._clock = clock;
         character.ProgressHandlers.Add(SyncAsync);
@@ -99,6 +101,9 @@ public sealed class FunctionService
                 // LC_InteractCondition.CheckRoleHaveTask:732-752 requires the named task to be Running.
                 CondRoleHasTask => session.Tasks is { } tasks && tasks.Infos.TryGetValue(param, out var task)
                     && task.Status == TaskState.Running,
+                // LC_InteractCondition.CheckHasLearnedSkill [1102, skill] (:3510-3539): ServerAllSkills[skill] > 0, the
+                // current plan's skillAssigns level of that skill group (the rental side quests' 88000101-106).
+                CondLearnedSkill => param is > 0 and <= int.MaxValue && _skills.Level(p, (int)param) > 0,
                 // LC_InteractCondition.lua:1957-1979 checks iOpenDayCount. Start is the server's first day.
                 // OpenContent counts every server-day gate as met from the first day.
                 CondServerStage or CondServerStage2 when _seasons.OpenContent.ServerDayFree => true,

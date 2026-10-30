@@ -94,6 +94,9 @@ public sealed partial class TradeService
     private async Task Buy(GameSession s, TradeBuyNormalItemsReq req) => await Purchase(s, req.ItemId, req.SpuId,
         "", req.TotalQuantity, req.Price, req.TotalPrice, false);
 
+    /// <summary>After a committed purchase (quest target 103002, TaskService.MiscTargets.cs).</summary>
+    public List<Action<GameSession>> Bought { get; } = [];
+
     private async Task Purchase(GameSession s, int entry, string spu, string sku, int quantity, int quote, int total, bool premium)
     {
         uint id = premium ? BuyTop : BuyNormal;
@@ -161,6 +164,7 @@ public sealed partial class TradeService
             return 0;
         });
         log.LogInformation("{Role} buys {Entry} x{Count} via {Opcode}: {Result}", s.Role!.Id, entry, quantity, id, code);
+        if (code == 0) foreach (var handler in Bought) handler(s);
         if (premium) await s.SendGameAsync(id, new TradeBuyItemsResp { Result = code });
         else await s.SendGameAsync(id, new TradeBuyNormalItemsResp { Result = code });
     }

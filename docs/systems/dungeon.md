@@ -310,3 +310,13 @@ Tests (`DungeonTests`, `TowerTests`, `TowerShopTests`):
   service, enters the real point-respawn scene, kills its NPC through the wire and receives a result. The 4400001
   test spawns its source-backed 50-actor region plan. Separate two-wave execution uses a synthetic host-local
   editor fixture. The exported data is never modified; these tests do not claim complete solo script parity.
+
+## Dungeon task trackers
+
+TaskConfig type 4 (Dungeon) and type 24 (RingTask) son types 2/3 with an `_iDungeonID` are the run's tracker. The
+client shows them only inside that dungeon (`LC_TaskHelper`); they carry no award. `TaskService.DungeonTasks` chains
+each scene's rows by `_kPreTask` and shows the first unmet step as an extra 5027 entry, never stored or delivered.
+DungeonService reports the step: the Dracula lair's wave, the last step (the boss) for a Guild Challenge stage, and
+over at settlement. The siege reports its fight stage, and its 210003/200001 steps read the participant's assists and
+score. A siege assist is a hit on the victim in the 10 s before another participant's kill (inferred, Battle Merit's
+rule). Boneyard and Whaleback Chute (3011111/3011112/3011123/3011124) have trackers but no Guild Challenge entry.

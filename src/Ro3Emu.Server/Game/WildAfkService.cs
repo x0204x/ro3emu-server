@@ -229,6 +229,7 @@ public sealed class WildAfkService : IGameTicker
         if (info.IsSuspended && !wasSuspended) info.HighMultiplierPausedAt = now / 1000;
         Save(s);
         if (!publish) return; // Disconnected sockets must not interrupt durable accounting or world cleanup.
+        if (consumed > 0) await _tasks.OnBonusTimeConsumedAsync(s, consumed); // Connect target 106014
         if ((reset || consumed > 0 || PendingDailyAward(state, s.Daily, s.Tasks, s.DailyRows))
             && s.Tasks != null && s.DailyReady) await _tasks.RefreshAsync(s);
         await SyncAsync(s);

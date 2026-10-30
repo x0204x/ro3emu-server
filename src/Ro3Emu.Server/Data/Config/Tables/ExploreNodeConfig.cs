@@ -6,5 +6,8 @@ namespace Ro3Emu.Server.Data.Config;
 [ConfigTable("ExploreNodeConfig")]
 public readonly partial record struct ExploreNodeConfig(JsonElement Row)
 {
+    [ConfigField("_iFinishQuestID")] public partial long FinishQuestId { get; }
+    [ConfigField("_iNodeID")] public partial long NodeId { get; }
+    [ConfigField("_iQuestID")] public partial long QuestId { get; }
     [ConfigField("_kPiecesID")] public partial long[] PiecesId { get; }
 }

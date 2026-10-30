@@ -74,6 +74,8 @@ public sealed partial class TaskService
                     && DailyActivityConfig.Get(_data, activity) != null:
                     guildActivities.Add(activity);
                     break;
+                // 116 UpdateSocialityScore [SocialRelationsConfig id]: applied after the commit (TaskService.Connect.cs).
+                case UpdateSocialityScore when SocialityIntimacy(action) >= 0: break;
                 default:
                     LogHeldOnce(session, def.Id, $"server action {string.Join(',', action)}: resource semantics not implemented");
                     return false;

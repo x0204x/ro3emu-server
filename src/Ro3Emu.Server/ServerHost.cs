@@ -415,18 +415,36 @@ public static class ServerHost
         questTasks.BattleMeritPoints = territory.GloryPoints; // 106610
         territory.SiegeSettled.Add((role, _, _) => questTasks.OnGuildEventJoined(role, TaskService.GuildEvent.RoyalCity)); // 106010
         territory.BattleSettled.Add(questTasks.OnTerritoryBattleSettled); // 106010 Stronghold / Regional Capital War
+        territory.BattleSettled.Add((role, _) => questTasks.OnGuildWarScored(role)); // 106609
+        questTasks.GuildWarPoints = territory.GuildWarPoints; // 106609
+        // Dungeon task trackers (TaskService.DungeonTasks.cs): 210005, 200003, 210004, 200000; the siege's 200001, 210003.
+        app.Services.GetRequiredService<DungeonService>().RunTracked.Add(questTasks.OnDungeonRun);
+        territory.SiegeTracked.Add(questTasks.OnDungeonRun);
+        questTasks.DungeonRunValue = territory.SiegeTrackerValue;
         escort.CartStarted.Add(s => questTasks.OnGuildEventJoined(s, TaskService.GuildEvent.Escort)); // 106010 Escort
         app.Services.GetRequiredService<EmblemService>().Upgraded.Add(questTasks.OnEchoUpgraded); // 317002
         app.Services.GetRequiredService<TowerService>().Settled.Add(questTasks.OnTowerSettled); // 101007, 101010
         app.Services.GetRequiredService<PersonalService>().Upvoted.Add(questTasks.OnProfileLiked); // 106902
         app.Services.GetRequiredService<GuildCampfireService>().Joined.Add(questTasks.OnCampfireJoined); // 106018
         app.Services.GetRequiredService<GuildService>().MembershipChanged.Add(questTasks.OnStateChanged); // 104007
+        // The remaining targets (TaskService.MiscTargets.cs).
+        app.Services.GetRequiredService<TradeService>().Bought.Add(questTasks.OnExchangeBought); // 103002
+        app.Services.GetRequiredService<AuctionService>().GuildBid.Add(questTasks.OnGuildAuctionBid); // 103003
+        app.Services.GetRequiredService<GuildCampfireService>().Joined.Add(questTasks.OnBonfireJoined); // 103013
+        league.MatchCommitted.Add(questTasks.OnGuildLeagueFought); // 103015
+        app.Services.GetRequiredService<ChatService>().TextSent.Add(questTasks.OnChatSent); // 103020
+        app.Services.GetRequiredService<MountService>().RideChanged.Add(s => { questTasks.OnStateChanged(s); return Task.CompletedTask; }); // 101021
         app.Services.GetRequiredService<GuildService>().MembershipChanged.Add(app.Services.GetRequiredService<GuildVoiceService>().OnMembershipChanged);
         app.Services.GetRequiredService<GuildService>().RightsChanged.Add(app.Services.GetRequiredService<GuildVoiceService>().OnRightsChanged);
         var social = app.Services.GetRequiredService<Micro.SocialOwnerCache>();
         questTasks.LoadFriendCount = async s => s.Role is { } role
             ? (await social.LoadSocialAsync([role.Id])).GetValueOrDefault(role.Id)?.Friends.LongLength : null; // 103019
         app.Services.GetRequiredService<Micro.FriendService>().RelationChanged.Add(questTasks.OnRelationChanged);
+        // Connect quests (TaskService.Connect.cs): party-mates, the raid boss clears and 116's intimacy.
+        questTasks.PartyMembers = app.Services.GetRequiredService<TeamService>().MembersOf;
+        app.Services.GetRequiredService<DungeonService>().MultiBossCleared.Add(questTasks.OnConnectBossClearedAsync); // 107005
+        questTasks.GainIntimacy = app.Services.GetRequiredService<FriendExtraService>().GainIntimacy;
+        questTasks.QuestDelivered.Add(questTasks.OnConnectDelivered);
         app.Services.GetRequiredService<ReconnectService>(); // hooks the handover and registers !netdrop
         app.Services.GetRequiredService<CardEffects>(); // socketed-card passives and procs (sockets, scene loads, hits)
         app.Services.GetRequiredService<TalentProcs>(); // profession talent procs (cast resolutions)

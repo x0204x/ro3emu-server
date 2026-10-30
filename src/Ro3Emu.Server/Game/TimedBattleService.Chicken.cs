@@ -105,8 +105,10 @@ public sealed partial class TimedBattleService
         var ranks = ChickenRanks(match);
         int faction = match.Faction[player];
         var team = Team(match, faction).ToArray();
+        bool partyMate = _tasks.PartyMateIn(player, match.Players);
         return target => target switch
         {
+            [TaskService.TConnectSurvivor, _] => partyMate ? 1 : 0, // Connect quest 1903000 (TaskService.Connect.cs)
             [TaskService.TChickenRank, var top, _] => ranks.GetValueOrDefault(faction, int.MaxValue) <= top ? 1 : 0,
             [TaskService.TChickenUse, var sub, _] => me.UsedSubType.GetValueOrDefault((int)sub),
             [TaskService.TChickenBox, _] => me.OpenedCrates.Count,

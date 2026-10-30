@@ -41,6 +41,8 @@ public sealed partial class TerritoryWarsService
         public long Healed { get; set; }
         public long Score { get; set; }
         public int Kills { get; set; }
+        /// <summary>Siege assists (TerritoryWarsService.QuestTargets.cs).</summary>
+        public int Assists { get; set; }
         public int Deaths { get; set; }
         public long DeadUntil { get; set; }
         public long Joined { get; set; }
