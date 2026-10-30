@@ -37,6 +37,26 @@ public sealed partial class DungeonTests
         Assert.Equal(plan.Waves.Select(w => w.Quest).Order(), plan.Waves.Select(w => w.Quest));
     }
 
+    // The chitchat's last bubble is still being read when it completes the step: the crew stays for the step's hold (13 s,
+    // 1.3 s at the tests' pace) instead of leaving with the same tick.
+    [ClientDataFact]
+    public async Task TheAirshipCrewStaysWhileTheLastChitchatBubbleIsRead()
+    {
+        const long scene = 1000501;
+        Service<IOptions<ServerOptions>>().Value.ScriptedScenePacePercent = 10;
+        await using var alice = await InWorld("Alice");
+        await Gm(alice, "!lvl 99");
+        await Gm(alice, "!quest accept 10103210"); // 依既有 LAB 登船 gate 準備任務。
+        Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
+        await Load(alice, scene);
+        await Stage(alice, 1, quest: 1);
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        await Gm(alice, "!actors use"); // the four bubbles complete the step
+        Assert.Equal(1, Session(alice).DungeonAttempt!.Wave + 1);
+        await Stage(alice, 2, quest: 2);
+        Assert.True(started.ElapsedMilliseconds >= 1000, $"the next step came after {started.ElapsedMilliseconds} ms");
+    }
+
     // The airship cannon route recovered from G client data: 5300006 mounts status 12; status button 27 casts 5353001
     // through ordinary combat, button 28 quits, and only the enemy ships' real deaths advance the stage.
     [ClientDataFact]
@@ -223,10 +243,41 @@ public sealed partial class DungeonTests
         Assert.DoesNotContain(Service<World>().AllUnits(), u => u.InstanceId == instance);
     }
 
-    [ClientDataFact]
-    public async Task TheDeniroSceneOpensOneInteractionPerStepUntilTheRideToTheDepths()
+    private static readonly int[] RideWaypoints = [0, 4, 8, 13];
+
+    private async Task SeatedOnTheDeniroAsync(BotClient alice, DungeonService.SceneActorUnit actor, int interaction, bool exitByButton)
+    {
+        long me = Session(alice).Role!.Id;
+        if (exitByButton) Service<IOptions<ServerOptions>>().Value.ScriptedScenePacePercent = 1000; // the put-down is 20 s away
+        Assert.Equal(0, await Interact(alice, actor, interaction));
+        var seat = await Next(alice, WorldInteractionService.Change, InteractChangeNtf.Parser,
+            m => m.Uid == me && m.DataInfo.EType != InteractInfo.Types.EState.Idle);
+        Assert.Equal((InteractInfo.Types.EState.Vehicle, interaction, actor.Uid),
+            (seat.DataInfo.EType, seat.DataInfo.InteractConfigId, (long)seat.DataInfo.ActiveObjId));
+        Assert.Equal(9, (await Next(alice, WorldInteractionService.Change3C, Change3CNtf.Parser)).CfgId); // VehicleSeatConfig 5300005
+        if (exitByButton)
+        {
+            // An old put-down (another ride's token) leaves the seat alone.
+            await Service<GameLoop>().InvokeAsync(() => Service<WorldInteractionService>().PutDownFromSceneActorAsync(Session(alice), -1));
+            Assert.True(Service<WorldInteractionService>().IsSeatedOnSceneActor(Session(alice)));
+            await alice.SendGameAsync(WorldInteractionService.Action, new UseInteractActionReq { ButtonId = 26 });
+            Assert.Equal(0, (await Next(alice, WorldInteractionService.Action, UseInteractActionRes.Parser)).Result);
+            Service<IOptions<ServerOptions>>().Value.ScriptedScenePacePercent = 10;
+        }
+        var down = await Next(alice, WorldInteractionService.Change, InteractChangeNtf.Parser,
+            m => m.Uid == me && m.DataInfo.EType == InteractInfo.Types.EState.Idle);
+        Assert.False(down.Interrupt); // put down, not interrupted by leaving
+    }
+
+    // The first ride (5300005, a vehicle gameplay status) seats the player on the Deniro, which puts them down by itself
+    // (inferred) or when the client's own exit button asks (VehicleSeatConfig 5300005 _kGameplayBtnId 26).
+    [ClientDataTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TheDeniroSceneOpensOneInteractionPerStepUntilTheRideToTheDepths(bool exitByButton)
     {
         const long scene = 1000301;
+        Service<IOptions<ServerOptions>>().Value.ScriptedScenePacePercent = 10; // the ride lasts about 28 s at full pace
         await using var alice = await InWorld("Alice");
         await Gm(alice, "!quest accept 10104300"); // Explore the Ant Queen's Nest: [101018, 1000301, 1]
         Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
@@ -245,6 +296,7 @@ public sealed partial class DungeonTests
 
         await Beside(alice, deniro.X, deniro.Y, deniro.Z);
         Assert.Equal(0, await Interact(alice, deniro, 5300005)); // the Deniro's own ride, not this step's event
+        Assert.False(Service<WorldInteractionService>().IsSeatedOnSceneActor(Session(alice))); // ...so it seats nobody
         Assert.Equal(1, Session(alice).DungeonAttempt!.Wave + 1);
         Assert.Equal(ErrorCodes.NpcParameter, await Interact(alice, deniro, 5300028)); // not one of the Deniro's
 
@@ -273,13 +325,33 @@ public sealed partial class DungeonTests
             // The reverse dungeon's client reports the NPC's place (31089) before each interaction (LC_DAL_Interact.SyncNpcPos).
             await alice.SendGameAsync(WorldCoreService.TeleportObject, new ClientTeleportObject
             { TargetUid = actor.Uid, TargetPos = new Vec3 { X = actor.X, Y = actor.Y, Z = actor.Z } });
-            Assert.Equal(0, await Interact(alice, actor, chain[step].Interaction));
+            if (step != 1)
+            {
+                Assert.Equal(0, await Interact(alice, actor, chain[step].Interaction));
+                // Only the first Ride has a vehicle status: the ride to the depths seats nobody.
+                Assert.False(Service<WorldInteractionService>().IsSeatedOnSceneActor(Session(alice)));
+                continue;
+            }
+            await SeatedOnTheDeniroAsync(alice, actor, chain[step].Interaction, exitByButton);
         }
         // ... and gets no error tip for it.
         Assert.DoesNotContain(alice.Inbox.Snapshot(), e => e.IsGame(99999)
             && APIErrorMsg.Parser.ParseFrom(e.Body).OriginMsgId == WorldCoreService.TeleportObject);
         var result = await Next(alice, DungeonService.Result, DungeonResNotify.Parser);
         Assert.Equal((DungeonRes)1, result.Res);
+        // The ride (inferred): the player was moved from the start of guide 36 to its end in forced positions.
+        var route = Service<WorldData>().Map(scene)!.GuidePaths[36];
+        var moves = alice.Inbox.Snapshot().Where(e => e.IsGame(GameAoiSink.MovementChange))
+            .Select(e => MovementChangeNtf.Parser.ParseFrom(e.Body)).Where(m => m.Uid == Session(alice).Role!.Id && m.MovementInfo?.Pos != null)
+            .Select(m => m.MovementInfo.Pos).ToList();
+        int Reached(int waypoint) => moves.FindIndex(m => MonsterService.Distance(m.X, m.Z, route[waypoint].X, route[waypoint].Z) < 1.5f);
+        int[] passed = [.. RideWaypoints.Select(Reached)];
+        Assert.All(passed, i => Assert.True(i >= 0, "a waypoint was never reached"));
+        Assert.Equal(passed.Order(), passed); // in route order
+        // ... and the Deniro walked it too, ending where the route ends.
+        Assert.Contains(alice.Inbox.Snapshot().Where(e => e.IsGame(GameAoiSink.MovementChange))
+            .Select(e => MovementChangeNtf.Parser.ParseFrom(e.Body)).Where(m => m.Uid == deniro.Uid && m.MovementInfo?.Pos != null)
+            .Select(m => m.MovementInfo.Pos), m => MonsterService.Distance(m.X, m.Z, route[^1].X, route[^1].Z) < 1.5f);
         var end = Service<WorldData>().Map(scene)!.Points[31]; // the ride ends in the end region
         Assert.True(MonsterService.Distance(Session(alice).Position.X, Session(alice).Position.Z, end.X, end.Z) < 1);
         await StoryMovesOn(alice, 10104300, 10104310);

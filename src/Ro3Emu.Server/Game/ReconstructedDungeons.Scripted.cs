@@ -46,6 +46,14 @@ public sealed partial class ReconstructedDungeons
         Seek? Seek = null, Shelter? Shelter = null, Reaction? React = null, Cannon? Cannon = null, Outro? Outro = null)
     {
         public IReadOnlyList<SceneActor> Companions { get; init; } = [];
+
+        /// <summary>A scene-editor guide route (m_kGuidePoints) the actor a player used to complete the step walks, the
+        /// participants with it, before <see cref="TeleportAfter"/> and the next step (0: none; inferred).</summary>
+        public long RideAfter { get; init; }
+
+        /// <summary>Milliseconds the step stays on after it is completed, before the next step or the settlement (0: none;
+        /// inferred): a bubble of the actors it showed is still being read, or a defeated enemy is still falling.</summary>
+        public int HoldAfterMs { get; init; }
     }
 
     /// <summary>An UpperCannon status reconstructed from NPCInteractConfig, GamePlayStatusExtraConfig and its buttons.</summary>
@@ -163,7 +171,11 @@ public sealed partial class ReconstructedDungeons
             s.TryGetProperty("outro", out var outro)
                 ? new Outro(outro.GetProperty("story").GetInt64(), Triggers(outro, "complete"))
                 : null)
-        { Companions = [.. listed.Where(IsCompanion).Select(Actor)] };
+        {
+            Companions = [.. listed.Where(IsCompanion).Select(Actor)],
+            RideAfter = s.TryGetProperty("after", out var rideAfter) && rideAfter.TryGetProperty("ride", out var ride) ? ride.GetInt64() : 0,
+            HoldAfterMs = s.TryGetProperty("after", out var holdAfter) && holdAfter.TryGetProperty("hold", out var hold) ? hold.GetInt32() : 0,
+        };
     }
 
     private static SceneActor Actor(JsonElement x) => new(x.GetProperty("npc").GetInt32(), x.GetProperty("point").GetInt64(),

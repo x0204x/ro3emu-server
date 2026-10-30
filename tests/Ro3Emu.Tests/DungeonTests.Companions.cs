@@ -101,6 +101,9 @@ public sealed partial class DungeonTests
         var attempt = Session(alice).DungeonAttempt!;
         Assert.Equal(1, attempt.Stats[me].KillNpcData[Eddga].LongValue);
         Assert.Equal(attempt.Spawned, attempt.Killed.Count); // the companions are not room monsters
+        // Eddga's body stays where it fell when the run is won, and goes by its own timer (_iBodyRemainTime), not with the result.
+        Assert.Contains(Service<World>().AllUnits(), u => u.Uid == eddga.Uid);
+        await Until(() => Service<World>().AllUnits().All(u => u.Uid != eddga.Uid), "the body goes after its own time");
     }
 
     [ClientDataFact]

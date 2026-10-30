@@ -12,6 +12,7 @@ public readonly partial record struct NPCConfig(JsonElement Row)
     [ConfigField("_iAttributeVariated")] public partial long AttributeVariated { get; }
     [ConfigField("_iBattleAttributeVariated")] public partial long BattleAttributeVariated { get; }
     [ConfigField("_iBodyRemainTime")] public partial long BodyRemainTime { get; }
+    [ConfigField("_iUnitID")] public partial long UnitId { get; }
     [ConfigField("_iCAward")] public partial long CAward { get; }
     [ConfigField("_iCTimes")] public partial long[] CTimes { get; }
     [ConfigField("_iCamp")] public partial long Camp { get; }

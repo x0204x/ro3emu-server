@@ -57,6 +57,7 @@ public sealed partial class DungeonService
     private readonly SeasonService _seasons;
     private readonly InstanceService _instances;
     private readonly TeamService _teams;
+    private readonly WorldInteractionService _vehicles;
     private readonly SessionRegistry _sessions;
     private readonly RewardService _rewards;
     private readonly AuctionService _auctions;
@@ -81,7 +82,7 @@ public sealed partial class DungeonService
         SessionRegistry sessions, RewardService rewards, AuctionService auctions, GuildStore guilds, MonsterService monsters, CombatService combat,
         SceneService scene, BuffService buffs, GameLoop loop, TimeProvider clock, ILogger<DungeonService> log, World world,
         GmCommands gm, AccountStore accounts, AwardService awards, Microsoft.Extensions.Options.IOptions<ServerOptions> options,
-        PraiseService praise)
+        PraiseService praise, WorldInteractionService vehicles)
     {
         this._accounts = accounts; this._awards = awards; this._options = options.Value; this._praise = praise;
         gm.Register("firstclear", "<bossId> [daysAgo] | <bossId> clear (Realm of the Gods test aid: the server's first clear "
@@ -96,6 +97,7 @@ public sealed partial class DungeonService
         this._buffs = buffs;
         this._scenes = scene;
         this._world = world;
+        this._vehicles = vehicles;
         gm.Register("actors", "[npcId | walk <x> <z> | use] (scripted scene test aid: the step's scene actors, jump beside one, arrive at x z as a walk would, or complete the step server-side)", ActorsGmAsync);
         teams.MultiDungeonInfo = TeamDungeonInfo;
         combat.DamageAdjusters.Add((s, m, _, _, damage) => BondDamage(s, m, damage, incoming: false));
@@ -139,6 +141,9 @@ public sealed partial class DungeonService
         /// <summary>A step's own timers' generation: each step (and each new hide-and-seek game) starts a new one, so a
         /// stale timer does nothing.</summary>
         public int StepGeneration { get; set; }
+        /// <summary>The running step's <see cref="ReconstructedDungeons.ScriptedStep.HoldAfterMs"/> was started / is over.</summary>
+        public bool StepHeld { get; set; }
+        public bool StepHoldOver { get; set; }
         /// <summary>A hide-and-seek step: the round being played (1-based) and the hiding places already searched in
         /// this game.</summary>
         public int SeekRound { get; set; }
@@ -691,6 +696,19 @@ public sealed partial class DungeonService
     {
         if (a.Settled || a.Preparing || a.Spawning || a.Precounted.Count != 0 || a.Killed.Count != a.Spawned || a.Advancing) return;
         if (Step(a) != null && !a.StepDone) return;
+        // A scripted step's hold: what it showed (a bubble being read, an enemy falling) is not cut by the next step or the
+        // result. Only once per step, and not past the run's time limit.
+        if (Step(a) is { HoldAfterMs: > 0 } step && !a.StepHoldOver && _loop.Now - a.StartedAt < TimeSpan.FromMilliseconds(a.Plan.DurationMs))
+        {
+            if (a.StepHeld) return; // the hold is running; its end advances
+            a.StepHeld = true;
+            _loop.ScheduleLegacy(Paced(step.HoldAfterMs), () =>
+            {
+                a.StepHoldOver = true;
+                return a.Settled || a.Room.Closed ? Task.CompletedTask : AdvanceAsync(a);
+            }, "dungeon scripted step hold");
+            return;
+        }
         a.Advancing = true;
         if (_loop.Now - a.StartedAt >= TimeSpan.FromMilliseconds(a.Plan.DurationMs)) await SettleAsync(a, false);
         else if (a.Wave + 1 == a.Plan.Waves.Count) await SettleAsync(a, true);
@@ -926,7 +944,9 @@ public sealed partial class DungeonService
         var participants = Present(a).Where(a.Loaded.Contains).Select(s => (Session: s, Role: s.Role!.Id)).ToArray();
         var notifications = new List<Func<Task>>();
         var auctionAwards = new List<ItemBaseInfo>();
-        await _instances.ClearMonstersAsync(a.Room);
+        // A scripted scene's defeated enemies keep their bodies for their own remain time instead of vanishing with the result
+        // (the Eddga's body stays where it fell); the living ones and the scene actors are cleared as before.
+        await _instances.ClearMonstersAsync(a.Room, keepBodies: a.Plan.Waves.Any(w => w.Step != null));
         a.SceneActors.Clear(); // removed with the room's monsters
         a.Companions.Clear();
         foreach (var (s, roleId) in participants)

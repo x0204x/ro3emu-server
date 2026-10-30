@@ -81,6 +81,9 @@ public sealed class MapWorld
     public IReadOnlyDictionary<long, MapRegion> Regions { get; init; } = new Dictionary<long, MapRegion>();
     /// <summary>The scene editor's guide routes (SceneEditorGuides), drawn when a scene sets dungeon var 10021.</summary>
     public IReadOnlyList<long> GuideRoutes { get; init; } = [];
+    /// <summary>The points of each guide route, id -> (x, y, z) list (a scripted ride walks one).</summary>
+    public IReadOnlyDictionary<long, IReadOnlyList<(float X, float Y, float Z)>> GuidePaths { get; init; } =
+        new Dictionary<long, IReadOnlyList<(float X, float Y, float Z)>>();
 
     // LC_SceneCom_AirWall loads m_kAirWalls as dynamic blockers. Null means the scene
     // file could not be loaded or its wall table was malformed; a valid scene without
@@ -377,7 +380,7 @@ public sealed partial class WorldData(IOptions<ServerOptions> options, GameData 
         {
             SceneEntry = sceneEntry, Born = born, Revive = revive, Npcs = npcs, Points = points, Nav = map.Nav, SpawnGroups = spawnGroups,
             GatheringPoints = LoadGatheringPoints(se, sceneEntry), DungeonGroups = LoadDungeonGroups(se), Regions = LoadRegions(se),
-            GuideRoutes = SceneEditorGuides.RouteIds(se),
+            GuideRoutes = SceneEditorGuides.RouteIds(se), GuidePaths = SceneEditorGuides.Paths(se),
             MaxAuthoredAirWallLevel = airWalls.MaxLevel, AuthoredAirWallCells = airWalls.Cells,
             HasUntrackedUnitAirWall = NpcLevelPointRespawnConfig.All(data)
                 .Any(row => row.Mapid == sceneEntry && NPCConfig.Get(data, row.Npcid) is { NPCSubType: SubTypeUnitAirWall })

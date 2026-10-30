@@ -20,6 +20,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
     private readonly ILogger<MonsterService> _log;
     private readonly ReconstructedDungeons? _reconstructed;
     private readonly BossSkillOptions _bossOptions;
+    private readonly Dictionary<(long Scene, int Npc), int> _spawnLimits;
 
     public MonsterService(World world, WorldData worldData, GameData data, GameLoop loop, ILogger<MonsterService> log,
         ReconstructedDungeons? reconstructed = null, Microsoft.Extensions.Options.IOptions<ServerOptions>? options = null)
@@ -27,6 +28,9 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         this._reconstructed = reconstructed;
         _bossOptions = options?.Value.BossSkills ?? new BossSkillOptions();
         _ro1Aggressive = Ro1Aggressive(options?.Value); // MonsterService.Ro1Aggression
+        _spawnLimits = (options?.Value.SpawnLimits ?? []).Where(r => r.Npc > 0 && r.Max >= 0)
+            .GroupBy(r => (r.Scene, r.Npc)).ToDictionary(g => g.Key, g => g.Last().Max);
+        _ro1Hp = Ro1Hp(options?.Value); // MonsterService.Ro1Hp
         this._world = world;
         this._worldData = worldData;
         this._data = data;
@@ -144,7 +148,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
                 attr[id] = attr[id] * (id == 101 ? solo.Hp : solo.Attack) / 10000;
         }
         return new MonsterTemplate(
-            npcId, level, Math.Max(1, A(101)), A(102), A(103), A(104), A(105), A(106),
+            npcId, level, _ro1Hp.TryGetValue(npcId, out int ro1Hp) ? ro1Hp : Math.Max(1, A(101)), A(102), A(103), A(104), A(105), A(106),
             Hit: attr.ContainsKey(109) ? A(109) : level + 1, Flee: attr.ContainsKey(110) ? A(110) : level, Cri: A(111),
             speed, (int)GameData.Int(npc, "_iElement"), (int)GameData.Int(npc, "_iRace"), (int)GameData.Int(npc, "_iSize"),
             Math.Max(1, (int)GameData.Int(npc, "_iCamp")),
@@ -186,6 +190,9 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
 
     // ---- spawning ----
 
+    /// <summary>A pool group's rolled count under a <see cref="ServerOptions.SpawnLimits"/> rule (a negative limit: none).</summary>
+    internal static int LimitedCount(int count, int limit) => limit < 0 ? count : Math.Min(count, limit);
+
     /// <summary>Compatibility entry point for the original public map, line 1.</summary>
     public Task EnsureSpawnedAsync(long scene) => EnsureSpawnedAsync(RuntimeMapKey.Public(scene));
 
@@ -210,7 +217,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
                     {
                         if (state.Retired) break;
                         if (Template(npcId) == null) continue;
-                        int n = _random.Next(min, max + 1);
+                        int n = LimitedCount(_random.Next(min, max + 1), _spawnLimits.GetValueOrDefault((runtime.SceneEntry, npcId), -1));
                         for (int i = 0; i < n && !state.Retired; i++) count += await SpawnAsync(runtime, state, map, group, npcId) ? 1 : 0;
                     }
                 }

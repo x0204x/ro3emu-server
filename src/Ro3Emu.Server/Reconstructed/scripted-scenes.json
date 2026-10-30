@@ -70,9 +70,10 @@
       ],
       "guessed": [
         "Bobo stays where he was helped up for the rest of the scene; patrol 28 (his short walk) is not animated.",
-        "Step 2 answers the ride without mounting the player: the quest that follows ('Find a way to earn Deniro's Faith') says the first ride fails.",
+        "Step 2 seats the player on the Deniro (NPCInteractConfig 5300005, vehicle status 3, VehicleSeatConfig 5300005) and the Deniro puts them down 2 s later or when the exit button (action 5004) asks: the quest that follows ('Find a way to earn Deniro's Faith') says the first ride fails, but nothing says how long the rider stays on.",
         "Collecting the fluorescent substance grants no item: no item is named by the client data.",
-        "The ride to the depths (guide 36 down the ramp through regions 38, 37 and 31, camera prefab mianstorybingyicamera) is a teleport to region 31's centre."
+        "The ride to the depths walks guide 36 (down the ramp through regions 38, 37 and 31): the Deniro goes along its 14 points at its UnitConfig speed (5.25 m/s) and the player is moved with it in 100 ms forced-position steps, ending at region 31's centre. The client has no ride rule: the speed, the missing mount and the camera prefab mianstorybingyicamera (not played) are guesses.",
+        "Step 5's second Ride (5300008, no gameplay status) does not seat the player on the Deniro: the player slides beside it."
       ],
       "steps": [
         {
@@ -131,7 +132,7 @@
             { "message": 5300008, "why": "interaction 5300008 'Ride' sends dungeon message 5300008" },
             { "region": 31, "why": "the 'end region' (regionType 2) where the riding guide 36 ends" }
           ],
-          "after": { "teleport": 31, "why": "the ride itself is not reproduced: the player arrives at the end region" }
+          "after": { "ride": 36, "teleport": 31, "why": "the Deniro carries the player down guide 36 (the riding route) at its own walking speed, then the player stands at the end region" }
         }
       ]
     },
@@ -195,11 +196,12 @@
       "name": "Airship: the chitchat, the boarding, the Evil Boss and the captain",
       "confidence": "medium",
       "evidence": ["DungeonQuestConfig 5300021-5300026: 1 'Aboard the Airship' 'Have a Chitchat with them.'; 2 'Use the ship's cannons to attack the enemy vessels.'; 3 'The enemy has boarded the ship!' 'Eliminate all enemies.'; 4 'Defeat the Evil Boss'; 5 'The Battle temporarily subsides' 'Take a look around'; 6 \"Check the Captain's injuries\" 'Talk to the captain', its _kAction [142, 1000501, 55, 9, 530003802] (the captain's point and dialogue).", "Editor sc_plot_airship_001_pl01: group 53 holds 54 波波NPC (Bobo), 55 船长NPC (captain), 56 晤勒 (Wule), 57 保亚 (Boya), 58 团长 (chief); 40/42/43 火炮 (cannons); 24 and 61 敌方飞空艇 (enemy airships); 44-47 冲锋怪 (chargers), 48-52 弓箭 (archers).", "NPCConfig 5300031 Bobo, 5300032 Captain, 5300033 Wule, 5300034 Boya, 5300035 Eden Group Chief (born buff 5364501); interactions 5300031-5300034: mode 2 (AutoInteractWhenInRange), gated by 7100026-7100029 [1004, 53645] (group of 5364501), each a 4001 bubble (530003101/530003201/530003301/530003401).", "NPCConfig 5300061-5300065 (Bobo, Captain, Wule, Boya, Eden Group Chief): interactions 5300048-5300052, mode 2 without a gate, bubbles 530003901, 530004001, 530004201, 530004101, 530004301 (after the battle).", "NPCConfig 5300038 Captain: interaction 5300035 (dialogue 530003802 'Are you badly hurt?'), whose option 'Can I really do it?' runs [211, 5300038, 5300039] TriggerNpcInteract; interaction 5300039 (mode 4) sends dungeon message 5300039.", "NPCConfig 5300022 Cannon (type 2/101, camp 1) with interaction 5300006 'Board the Cannon' (skill 5365001 'Use the Turret', script beginnerGetOncannon, _kDamageParam1 100000), gated by 7100018: not CheckInteractState 0, i.e. shown while nobody occupies the cannon; GameplayStatusConfig 12 新手教程上炮 (tutorial cannon, UpperCannon) has no abilities. Fire 5353001 ('Fire - Rapid', script beginnercannon) is GameplayStatusButtonConfig 27.", "NPCConfig 5300015 Enemy Airship and 5300053 Small Enemy Airship: camp 2, level 20, AI 5300005, born state buffs; editor points 24 and 61 are 敌方飞空艇1/2 (enemy airship 1/2), 100 m off the deck."],
-      "guessed": ["Stage 1 'Have a Chitchat with them' needs all four gated bubbles (Bobo, Captain, Wule, Boya); the chief has no interaction.", "Stage 5 'Take a look around' needs all five post-battle bubbles.", "The nine boarders come in three groups of three (as before)."],
+      "guessed": ["Stage 1 'Have a Chitchat with them' needs all four gated bubbles (Bobo, Captain, Wule, Boya); the chief has no interaction.", "Stage 5 'Take a look around' needs all five post-battle bubbles.", "每步的 after.hold 為上游推定節奏；泡泡、敵船下沉及船長對話的精確時間尚無原服執行證據。", "The nine boarders come in three groups of three (as before)."],
       "steps": [
         {
           "quest": 1,
           "stage": "Aboard the Airship: chitchat",
+          "after": { "hold": 13000, "why": "inferred: the longest chitchat bubble (4 lines, 12 to 22 words each at BubblePerWordTime 2: about 6 to 13 s) is still being read when the fourth completes the step, and the crew leaves with it" },
           "all": true,
           "actors": [
             { "npc": 5300031, "point": 54, "buffs": [5364501], "why": "Bobo at 波波NPC; group 53645 opens his bubble" },
@@ -218,6 +220,7 @@
         {
           "quest": 2,
           "stage": "Encounter the Evil Boss: attack the enemy ships with the cannons",
+          "after": { "hold": 2000, "why": "inferred: the last enemy ship goes down before the boarders appear" },
           "actors": [
             { "npc": 5300022, "point": 40, "why": "the Cannon at 火炮1" },
             { "npc": 5300022, "point": 42, "why": "the Cannon at 火炮2" },
@@ -239,6 +242,7 @@
         {
           "quest": 3,
           "stage": "The enemy has boarded the ship: eliminate all enemies (1/3)",
+          "after": { "hold": 2000, "why": "inferred: a beat between boarding groups, so the defeated ones fall before the next arrive" },
           "fight": [
             { "point": 44, "npc": 5300042, "why": "label 冲锋怪-1 'charging monster'; the client has exactly four story 'Evil Warrior' templates 5300042-45 for the four charge points" },
             { "point": 45, "npc": 5300043, "why": "冲锋怪-2" },
@@ -248,6 +252,7 @@
         {
           "quest": 3,
           "stage": "The enemy has boarded the ship: eliminate all enemies (2/3)",
+          "after": { "hold": 2000, "why": "inferred: a beat between boarding groups" },
           "fight": [
             { "point": 46, "npc": 5300044, "why": "冲锋怪-3" },
             { "point": 49, "npc": 5300047, "why": "弓箭-2" },
@@ -257,6 +262,7 @@
         {
           "quest": 3,
           "stage": "The enemy has boarded the ship: eliminate all enemies (3/3)",
+          "after": { "hold": 2000, "why": "inferred: a beat before the Evil Boss" },
           "fight": [
             { "point": 47, "npc": 5300045, "why": "冲锋怪-4" },
             { "point": 51, "npc": 5300049, "why": "弓箭-4" },
@@ -266,6 +272,7 @@
         {
           "quest": 4,
           "stage": "Defeat the Evil Boss",
+          "after": { "hold": 3000, "why": "inferred: the Evil Boss falls before the crew comes out" },
           "fight": [
             { "point": 22, "npc": 5300018, "why": "stage 4 'Defeat the Evil Boss'; story template 5300018 'Evil Boss' (L25) at the first generic spawn point" }
           ]
@@ -273,6 +280,7 @@
         {
           "quest": 5,
           "stage": "The Battle temporarily subsides: take a look around",
+          "after": { "hold": 1000, "why": "inferred: the fifth short bubble (0.3 to 0.8 s) is read before the captain steps forward" },
           "all": true,
           "actors": [
             { "npc": 5300061, "point": 54, "why": "Bobo" },
@@ -292,6 +300,7 @@
         {
           "quest": 6,
           "stage": "Check the Captain's injuries: talk to the captain",
+          "after": { "hold": 4500, "why": "inferred: the captain's closing line 530003804 (22 words, about 4 s) is spoken before the result" },
           "actors": [
             { "npc": 5300038, "point": 55, "why": "the injured captain at 船长NPC (the quest's action names point 55 and dialogue 530003802)" }
           ],

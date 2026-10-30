@@ -51,6 +51,17 @@ separate ownership, selected slot and visible riding. In particular:
 - `TaskConfig[103012]` executes 412 for mount 60040033; 103014 recycles it with action 54.
   Task reward, task completion and temporary ride persistence share `ApplyAwardAsync`'s SQLite
   transaction. Mount publication follows its commit. It does not create permanent collection ownership.
+- A rider who casts or attacks gets off a system mount first and is not refused. The client never sends the
+  dismount for an ordinary skill (only an interaction skill sends `OffSystem`, `UI_Sys_MainRoleSkillWidgetCtrl.lua:481-488`),
+  and it holds a skill while its unit rides a system mount until the ride ends, then plays it sped up by the time spent
+  waiting (`LC_State_Unit_Skill.lua:51-102`, `m_bRideSystemMount`). The client plays the dismount itself when `curRider`
+  drops to 0 (`LC_MountComponent.GetDown`, the `RideMountFxPath` effect). So `CombatService.BeforeCast` (set by
+  `MountService.DismountForCastAsync`) commits the dismount and publishes 5012 and 31049 before the cast's reply, and the
+  cast's timeline (31100) and hit (31101) start `MountService.DismountMs` later. A battle mount (slot 2, `m_kMountType` Battle),
+  and a flying rider keep the ride. The cast is only delayed; a refused cast (cooldown, cost, target) dismounts nobody.
+  The fly mounts' take-off and landing skills (`MountsConfig._kFlySwitchSkills`, injected by `LC_MountComponent._injectSkillPos`)
+  have no server path that grants them yet, so a cast of them is refused as not learned before this runs; once one does,
+  those skills must be excluded here.
 - Connected-session expiry runs every second. Scene restrictions are reconciled after 30005 but
   before ENTITYSELF/AOI. Class changes revalidate riding. Role selection clears previous-role state.
 
@@ -65,6 +76,9 @@ Mount implementation inferences, rather than captured original-server behavior:
 5. Quest auto-ride persists until the matching recycle action or an explicit mount selection/dismount.
    The action names and arguments establish ride/recycle; this bounded lifetime is an implementation choice.
 6. Exact refusal-code mapping and notification order use the matching `ErrorCodeConfig` texts and DAL expectations.
+7. The dismount lead `MountService.DismountMs` (500 ms) is inferred: the dismount is a Unity animation plus an effect, with
+   no duration in the config tables or Lua. That every accepted cast of a system-mount rider dismounts it (not only damaging
+   ones) follows the client holding any skill, and that a flying rider keeps its mount is an implementation choice.
 
 ## Divine Totem behavior and evidence
 

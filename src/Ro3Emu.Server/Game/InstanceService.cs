@@ -492,10 +492,11 @@ public sealed class InstanceService
     });
 
     /// <summary>Idempotent actor removal, including a generation barrier for spawns already in flight.</summary>
-    public Task ClearMonstersAsync(Room room)
-        => _loop.TrackAsync("room removal", () => ClearMonstersCoreAsync(room));
+    /// <param name="keepBodies">Leave the defeated monsters in the world: each removes itself after its own body time.</param>
+    public Task ClearMonstersAsync(Room room, bool keepBodies = false)
+        => _loop.TrackAsync("room removal", () => ClearMonstersCoreAsync(room, keepBodies));
 
-    private async Task ClearMonstersCoreAsync(Room room)
+    private async Task ClearMonstersCoreAsync(Room room, bool keepBodies = false)
     {
         await room.Cleanup.WaitAsync();
         try
@@ -505,8 +506,9 @@ public sealed class InstanceService
             lock (room.Gate)
             {
                 room.Generation++;
-                actors = room.Actors.ToArray();
-                room.Actors.Clear();
+                actors = [.. room.Actors.Where(m => !keepBodies || !m.Dead)];
+                foreach (var gone in actors) room.Actors.Remove(gone);
+                if (!keepBodies) room.Actors.Clear();
                 props = room.Props.ToArray();
                 room.Props.Clear();
             }

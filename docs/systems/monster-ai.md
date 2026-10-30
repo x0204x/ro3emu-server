@@ -54,3 +54,38 @@ Everything in this section is *(inferred)*.
 - a row with `_iIsSurround` 0 keeps the straight approach;
 - against a player strafing within reach, a surrounding monster swings as often as one without surround (within one
   swing over 8 s).
+
+## Fewer monsters on a map (`Ro3Emu:SpawnLimits`)
+
+A field map's spawn pool group creates as many of an NPC as the client's scene data says: Payon Forest (10220) has one group of
+1120 monsters (`genNumberRandomRange` 1120, `refreshThreshold` 1120, the sum of its limits) with 400 Greatest Generals
+(5000070); Deep Forest (10219) rolls 425 to 435. The server follows that. A server operator who finds a map too crowded can cap
+one NPC on one map; the list is empty by default, so nothing changes unless it is set (**inferred**: the original had no such knob):
+
+```json
+{
+  "Ro3Emu": {
+    "SpawnLimits": [
+      { "Scene": 10220, "Npc": 5000070, "Max": 300 },
+      { "Scene": 10219, "Npc": 5000070, "Max": 400 }
+    ]
+  }
+}
+```
+
+A rule only lowers the count a pool group rolls for that NPC at the first spawn of a map line (a group that rolls fewer keeps its
+count); respawns replace each defeated monster one for one. It is read at start-up.
+## RO1 HP reference (`Ro3Emu:Ro1MonsterHp`)
+
+The client makes some RO1 cocoons and eggs die in one hit: the Ant Egg of the fields (5000085) has 92 HP and the Peco Peco Egg
+(5000033) 45, against 420 in RO1 (ids 1097 and 1047), and the Pupa:
+
+The client's Pupa (NPCConfig 5000035, level 4) has 4 HP: AttriMonsterConfig 110004 gives 40 and the NPC's own `_kAttriScale`
+`[[101, 1000]]` takes it to 10%, so it dies in one hit. In Ragnarok Online 1 the Pupa is a level 2 cocoon with 427 HP (rAthena
+pre-renewal `mob_db.yml`, id 1008). The client's beginner monsters already sit on the RO1 scale once `_kAttriScale` is applied
+(Fabre 63 HP against RO1's 63, Lunatic 58 against 60, Drops 40 against 55, Poring 32 to 65 against 50), so the RO1 number is used
+as it is. `Reconstructed/ro1-monster-hp.json` lists the monsters; with the switch on their templates take that HP. It is off
+by default: the client cuts their HP on purpose (`_kAttriScale`), so a 1:1 server keeps it, and an operator turns it on for the
+RO1 feel (`Ro3Emu__Ro1MonsterHp=true`). Every client monster whose name has Egg or Pupa was checked: the Thief Bug Egg (83 against 48), the Eggyra, the story dungeon's Ant Egg (5300036, 830) and the level 50 Peco Peco Egg are not below RO1 and are not listed. An RO1 reference, not client evidence
+(**inferred**).
+

@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "about": "RO1 reference, NOT client evidence (inferred). The client makes some Ragnarok Online 1 cocoons and eggs die in one hit: the Pupa (NPCConfig 5000035, level 4) has 4 HP (AttriMonsterConfig 110004 gives 40 and the NPC's own _kAttriScale [[101, 1000]] cuts it to 10%), the Ant Egg of the fields (5000085) 92 and the Peco Peco Egg (5000033) 45, while in RO1 they are 427, 420 and 420 HP (far above their neighbours). With the switch Ro3Emu:Ro1MonsterHp on, the monsters below get the HP listed here instead of the client's. The RO1 number is used as it is because the client's beginner monsters already sit on the RO1 scale once _kAttriScale is applied, as the server does (Fabre 63 HP against RO1's 63, Lunatic 58 against 60, Drops 40 against 55, Poring 32 to 65 against 50). Checked on every monster of the client whose name has Egg or Pupa: the Thief Bug Egg (83 against 48), the Eggyra, the story dungeon's Ant Egg (5300036, 830) and the level 50 Peco Peco Egg are not below RO1 and are not listed. Source (rAthena master, fetched 2026-10-29): pre-renewal monster database https://raw.githubusercontent.com/rathena/rathena/master/db/pre-re/mob_db.yml",
+  "monsters": [
+    {
+      "npc": 5000035,
+      "name": "Pupa",
+      "ro1Id": 1008,
+      "ro1Name": "Pupa",
+      "ro1Hp": 427,
+      "hp": 427,
+      "why": "RO1 Pupa Lv 2, Hp 427 (rAthena pre-re mob_db id 1008), used as it is (the client's beginner monsters are on the RO1 scale); the client's own value is 4"
+    },
+    {
+      "npc": 5000033,
+      "name": "Peco Peco Egg",
+      "ro1Id": 1047,
+      "ro1Name": "Peco Peco Egg",
+      "ro1Hp": 420,
+      "hp": 420,
+      "why": "RO1 Peco Peco Egg Lv 3, Hp 420 (rAthena pre-re mob_db id 1047), used as it is; the client's own value is 45"
+    },
+    {
+      "npc": 5000085,
+      "name": "Ant Egg",
+      "ro1Id": 1097,
+      "ro1Name": "Ant Egg",
+      "ro1Hp": 420,
+      "hp": 420,
+      "why": "RO1 Ant Egg Lv 4, Hp 420 (rAthena pre-re mob_db id 1097), used as it is; the client's own value is 92 (920 cut to 10% by _kAttriScale)"
+    }
+  ]
+}

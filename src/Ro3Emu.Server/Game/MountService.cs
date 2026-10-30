@@ -30,6 +30,13 @@ public sealed class MountService : IGameTicker
     private readonly WardrobeService _wardrobe;
     private TimeSpan _lastTick;
     private const string ExpiryKey = "mount-expiry";
+    private const int SystemSlot = 1;
+
+    /// <summary>
+    /// How long a cast waits after its rider got off (inferred): the client has no duration for the dismount, which is a
+    /// Unity animation and the RideMountFxPath effect (LC_MountComponent.GetDown), not a config row.
+    /// </summary>
+    public const int DismountMs = 500;
 
     /// <summary>5012 plus durable claim/preview/quest state not carried by that dataset (inferred storage layout).</summary>
     public sealed class SavedState
@@ -42,9 +49,10 @@ public sealed class MountService : IGameTicker
 
     public MountService(GameData data, CharacterService character, RoleStore roles, FunctionService functions,
         World world, GameLoop loop, SessionRegistry sessions, SceneService scenes, Deadlines deadlines, TimeProvider clock,
-        WardrobeService wardrobe)
+        WardrobeService wardrobe, CombatService combat)
     {
         this._wardrobe = wardrobe;
+        combat.BeforeCast = DismountForCastAsync;
         this._data = data; this._character = character; this._roles = roles; this._functions = functions;
         this._world = world; this._loop = loop; this._sessions = sessions; this._deadlines = deadlines; this._clock = clock;
         character.ExtraAttributes.Add(Attributes);
@@ -240,6 +248,25 @@ public sealed class MountService : IGameTicker
             await CommitAsync(s, next, state);
         }
         await s.SendGameAsync(Ride, new PlayerRiderMountResp { Result = error, Tp = tp });
+    }
+
+    /// <summary>
+    /// CombatService.BeforeCast: a rider casts or attacks, so it gets off a system mount first, without refusing the cast.
+    /// The client never sends the dismount itself (only an interaction skill does, UI_Sys_MainRoleSkillWidgetCtrl.lua:481-488)
+    /// and holds a skill while its unit rides a system mount until the ride ends (LC_State_Unit_Skill.lua:51-71), so the
+    /// ride ends here, before the cast's timeline and hit. A battle mount is ridden into the fight, and a flying rider
+    /// keeps its mount (inferred). The caller holds the character lock.
+    /// </summary>
+    /// <returns>The milliseconds the cast waits for the dismount to play, zero when nobody got off.</returns>
+    private async Task<int> DismountForCastAsync(GameSession s)
+    {
+        long id = s.Mounts == null ? 0 : Rider(s);
+        if (id == 0 || Slot(id) != SystemSlot || s.WorldState.Flying) return 0;
+        var next = s.Mounts!.Clone();
+        if (next.MountIds.TryGetValue(SystemSlot, out var choice)) choice.IsRiding = false;
+        var state = CopyState(s); state.QuestMount = 0;
+        await CommitAsync(s, next, state);
+        return DismountMs;
     }
 
     private SavedState CopyState(GameSession s) => JsonSerializer.Deserialize<SavedState>(Encode(s))!;
