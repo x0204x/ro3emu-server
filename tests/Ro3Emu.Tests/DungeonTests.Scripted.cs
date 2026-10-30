@@ -243,6 +243,30 @@ public sealed partial class DungeonTests
         Assert.DoesNotContain(Service<World>().AllUnits(), u => u.InstanceId == instance);
     }
 
+    // Issue #181: a player inside the vortex's region 20 before the client's auto interaction came had step 2 done, the
+    // vortex gone and the interaction refused (801), so the client never jumped. Only the interaction ends the step now.
+    [ClientDataFact]
+    public async Task OnlyTheVortexInteractionEndsTheJumpStepAndALateOneIsNotRefused()
+    {
+        const long scene = 1000201;
+        await using var alice = await InWorld("Alice");
+        await Gm(alice, "!quest accept 10104290");
+        Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
+        await Load(alice, scene);
+        await Stage(alice, 1, quest: 1);
+        var map = Service<WorldData>().Map(scene)!;
+        await WalkInto(alice, map.Regions[25]);
+        await Stage(alice, 2, quest: 2);
+        var vortex = Assert.Single(await ActorsIn(alice, 1, a => a.NpcId == 5300030));
+
+        await WalkInto(alice, map.Regions[20]); // in the vortex: the step waits for its interaction
+        Assert.Equal(1, await Service<GameLoop>().InvokeAsync(() => Task.FromResult(Session(alice).DungeonAttempt!.Wave)));
+        Assert.Equal(0, await Interact(alice, vortex, 5300030));
+        await Stage(alice, 3, quest: 3);
+        // A second (late) auto interaction on the vortex the step took away is answered, not refused with 801.
+        Assert.Equal(0, await Interact(alice, vortex, 5300030));
+    }
+
     private static readonly int[] RideWaypoints = [0, 4, 8, 13];
 
     private async Task SeatedOnTheDeniroAsync(BotClient alice, DungeonService.SceneActorUnit actor, int interaction, bool exitByButton)

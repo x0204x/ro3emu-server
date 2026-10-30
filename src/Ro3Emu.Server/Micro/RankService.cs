@@ -116,6 +116,10 @@ public sealed class RankService(GameData data, AccountStore accounts, GuildServi
     public async Task<int> RankOfAsync(int boardId, long id) =>
         (await BoardsAsync()).Boards.TryGetValue(boardId, out var board) && board.RankOf.TryGetValue(id, out int rank) ? rank : 0;
 
+    /// <summary>The first <paramref name="count"/> rows of a board (role or guild ids with their score), best first.</summary>
+    public async Task<IReadOnlyList<(long Id, long Score)>> TopAsync(int boardId, int count) =>
+        (await BoardsAsync()).Boards.TryGetValue(boardId, out var board) ? [.. board.Rows.Take(count).Select(r => (r.Id, r.Score))] : [];
+
     /// <summary>Drops the cached boards so the next request recomputes them (tests, GM tools).</summary>
     internal void Invalidate()
     {

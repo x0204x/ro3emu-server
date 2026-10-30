@@ -14,6 +14,7 @@ address (local play), and to every interface otherwise (`ServerOptions.ListenAdd
 | Micro gate (20000) | Phonest frames | the client's login services (role list, friends, mail, ranks...) |
 | Game gate (33100) | Phonest frames | the game itself |
 | Voice (off; `Ro3Emu:Voice:Port`) | the voice relay's own frames | team voice |
+| Web panel (5381; `Ro3Emu:Panel`) | plain HTTP (Kestrel), its own pages and `/api/` only | players and admins in a browser; see [web panel](../guide/panel.md) for its sessions, CSRF, headers and the https proxy setup |
 
 ### HTTP endpoints
 
@@ -36,8 +37,9 @@ A reverse proxy on the same machine makes every request arrive from loopback. Do
   set. Behind a reverse proxy every player shares the proxy's address, so raise the limit there.
 - `/sdk/login` returns a token. The client presents it to `LoginService.verifySdk` on the micro gate, which binds
   the account to that connection.
-- A banned account cannot sign in. The admin panel writes the `account_ban` table and the server reads it on every
-  password, token and gate-bind check; a ban is refused like a wrong credential. See [account bans](account-bans.md).
+- A banned account cannot sign in. The web panel bans through the server, which closes the account's game session at
+  once; the server reads the `account_ban` table on every password, token and gate-bind check, and a ban is refused
+  like a wrong credential. See [account bans](account-bans.md).
 - The client sends the password over the HTTP port. That is plain HTTP unless the client was patched with an
   `https://` server address and a TLS-terminating proxy stands in front of the server. Tell players not to reuse a
   password they use elsewhere.

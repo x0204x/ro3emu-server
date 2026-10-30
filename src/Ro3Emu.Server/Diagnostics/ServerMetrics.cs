@@ -231,6 +231,19 @@ public sealed class ServerMetrics : IDisposable
         };
     }
 
+    /// <summary>The few numbers of <see cref="Snapshot"/> an operator watches (the web panel's dashboard).</summary>
+    internal MetricsHeadline Headline()
+    {
+        var e = Current;
+        double elapsed = Stopwatch.GetElapsedTime(e.StartedAt).TotalSeconds;
+        var tick = e.TickDurationMs.Snapshot();
+        using var process = Process.GetCurrentProcess();
+        return new MetricsHeadline(((GameLoopPhase)Volatile.Read(ref _loopPhase)).ToString(), tick, tick.Count / Math.Max(elapsed, .001),
+            Volatile.Read(ref e.Overruns), Volatile.Read(ref e.QueueLengthCurrent), _connections.Count, process.WorkingSet64,
+            (process.TotalProcessorTime - e.Cpu).TotalSeconds, GC.CollectionCount(2) - e.Gen2, Volatile.Read(ref e.Exceptions),
+            Volatile.Read(ref e.ErrorLogs), Volatile.Read(ref e.Commits));
+    }
+
     internal sealed class Epoch
     {
         public readonly string Id = Guid.NewGuid().ToString("N");
@@ -360,3 +373,7 @@ public sealed class MetricsLoggerProvider(ServerMetrics metrics) : ILoggerProvid
         }
     }
 }
+
+/// <summary>See <see cref="ServerMetrics.Headline"/>; counters are the current epoch's (since start or the last reset).</summary>
+internal sealed record MetricsHeadline(string Phase, HistogramSnapshot Tick, double TicksPerSecond, long Overruns, int QueueLength,
+    int Connections, long WorkingSetBytes, double CpuSeconds, int Gen2Collections, long Exceptions, long ErrorLogs, long Commits);

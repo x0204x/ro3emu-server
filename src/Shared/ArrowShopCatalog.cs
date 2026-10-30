@@ -3,9 +3,10 @@ using System.Collections.Generic;
 
 namespace Ro3Emu.Shared;
 
-/// <summary>使用者指定的本地補售政策（inferred），不是原服售價；閃電箭尚未確認，不加入別名。</summary>
+/// <summary>歷史自訂補售資料，已由 v1.0.24 原生無限箭矢取代；不再啟用或向玩家收費。</summary>
 public static class ArrowShopCatalog
 {
+    public static bool Enabled => false;
     public const int Version = 1;
     // 原件 ResourceObtainInfoConfig[1014]：type1／Shop102／Class10202／Function70104。
     public const int ShopConfigId = 9910200, ShopId = 102, ClassId = 10202, ShopType = 1, FunctionId = 70104;

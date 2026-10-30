@@ -1,0 +1,11 @@
+{
+  "m_kWorldMonsterSpawnGroups": {
+    "1": {
+      "Id": 1, "m_bUseMaxMinRefreshId": true, "genNumberRandomRange": { "x": 4, "y": 4 }, "reSpawnTime": { "x": 30, "y": 30 },
+      "m_kMonsterRefreshLimitDatas": [ { "m_kConfigId": 16320002, "m_iLimitCount_min": 2, "m_iLimitCount_max": 4 } ]
+    }
+  },
+  "m_kWorldMonsterSpawnPoints": {
+    "1": { "Id": 1, "monsterGroupId": 1, "position": { "x": 10, "y": 0, "z": 10 }, "direction": 0, "m_kConfigIds": [ 0 ] }
+  }
+}

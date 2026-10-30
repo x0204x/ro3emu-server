@@ -6,7 +6,7 @@ using Ro3Emu.DataExport;
 namespace Ro3Emu.Setup.Tests;
 
 /// <summary>只使用自造 bytes 與純 .NET 檔案雜湊；不啟動 Setup、遊戲或原生 Lua。</summary>
-public sealed class PreparedGameDataTests : IDisposable
+public sealed partial class PreparedGameDataTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "ro3emu-prepared-" + Guid.NewGuid().ToString("N"));
     private string Data => Path.Combine(_root, "data");

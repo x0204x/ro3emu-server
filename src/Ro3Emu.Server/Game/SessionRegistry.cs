@@ -10,7 +10,7 @@ public sealed class SessionRegistry(ILogger<SessionRegistry> log, Ownership.Owne
     Ownership.RoleHandover? handover = null)
 {
     /// <summary>Phonest DisconnectClientReason BE_KICKED; the client then calls onKick and shows its dialog.</summary>
-    private const int ReasonKicked = 21;
+    internal const int ReasonKicked = 21;
 
     private readonly object _sync = new();
     private readonly Dictionary<string, GameSession> _byAccount = new(StringComparer.Ordinal);

@@ -120,6 +120,7 @@ public sealed partial class DungeonService
         foreach (var gone in shown)
         {
             a.SceneActors.Remove(gone);
+            a.RetiredActors.Add(gone.Uid);
             await _instances.RemovePropAsync(a.Room, gone);
         }
         foreach (var (unit, spec) in kept) await SetActorBuffsAsync(unit, spec.Buffs);
@@ -180,6 +181,13 @@ public sealed partial class DungeonService
         var actor = a?.SceneActors.FirstOrDefault(u => u.Uid == req.NpcUid);
         var cannon = a == null ? null : Step(a)?.Cannon;
         bool entersCannon = actor != null && cannon != null && req.InteractionId == cannon.Interaction;
+        if (actor == null && a != null && a.RetiredActors.Contains(req.NpcUid))
+        {
+            // The step it served already ended (the vortex of 1000201 by its region before the client's auto
+            // interaction arrived): echo it as done, so the client shows no "NPC not found"; it counts for nothing.
+            await s.SendGameAsync(SceneService.NpcInteraction, new NpcInteractionRsp { Result = 0, Req = req });
+            return true;
+        }
         int code = actor == null ? ErrorCodes.NpcMissing
             : req.SceneConfigId != 0 && req.SceneConfigId != s.SceneEntry ? ErrorCodes.NpcParameter
             : !_catalog.Interactions(actor.NpcId).Contains(req.InteractionId) ? ErrorCodes.NpcParameter

@@ -17,6 +17,8 @@ public readonly partial record struct MapConfig(JsonElement Row)
     [ConfigField("_iRoleCntLimit")] public partial long RoleCntLimit { get; }
     [ConfigField("_iSceneType")] public partial long SceneType { get; }
     [ConfigField("_kAdventureGroupWhitelist")] public partial long[] AdventureGroupWhitelist { get; }
+    /// <summary>The map window's pictures; the first is the map's outline ("sc_prontera_001_pathfind.png").</summary>
+    [ConfigField("_kBgImage")] public partial string[] BgImage { get; }
     [ConfigField("_kGuildWhitelist")] public partial long[] GuildWhitelist { get; }
     [ConfigField("_kItemRevive")] public partial JsonElement? ItemRevive { get; }
     [ConfigField("_kLimitItem")] public partial string LimitItem { get; }

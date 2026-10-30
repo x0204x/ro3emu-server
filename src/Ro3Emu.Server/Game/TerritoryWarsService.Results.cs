@@ -132,7 +132,8 @@ public sealed partial class TerritoryWarsService
         foreach (var p in r.Players.Values.Where(p => p.Loaded))
             foreach (var handler in BattleSettled) handler(p.Id, r.Round);
         // The battle's war machines end with it, outside the territory gate (their owners' slots are the guild's).
-        if (_battles.GetValueOrDefault(key) is { } room) _loop.PostLegacy(() => EndWarMachinesAsync(room.Room));
+        if (_battles.GetValueOrDefault(key) is { } room)
+            _loop.PostLegacy(async () => { await EndPlatformsAsync(room); await EndWarMachinesAsync(room.Room); });
         await PublishAsync();
     }
     private void AddRankAward(List<Grant> grants, string table, int rank, GameSession s)

@@ -45,6 +45,9 @@ public sealed partial class TerritoryWarsService
         public int Assists { get; set; }
         /// <summary>Siege: an attacker's damage to the castle's objects (AttackCityValue, TerritoryWarsService.SiegeObjects.cs).</summary>
         public long CityDamage { get; set; }
+        /// <summary>Siege: a defender's damage to the attackers' ram and ladders (DefenseValue,
+        /// TerritoryWarsService.SiegeUnits.cs).</summary>
+        public long DefenseValue { get; set; }
         /// <summary>Damage dealt to and kills of the other side's war machines (TerritoryWarsService.MachineDamage.cs).</summary>
         public long MachineDamage { get; set; }
         public int MachineKills { get; set; }
@@ -85,6 +88,9 @@ public sealed partial class TerritoryWarsService
         internal CommandBoard Command { get; } = new();
         internal HashSet<long> CapturedActors { get; } = new();
         internal Dictionary<int, ScenePointUnit> ScenePointActors { get; } = new();
+        /// <summary>The SummonPlatforms' rings and the vehicles they raised, by platform point (TerritoryWarsService.SummonPlatforms.cs).</summary>
+        internal Dictionary<int, PlatformRing> PlatformRings { get; } = [];
+        internal Dictionary<int, VehicleUnit> PlatformVehicles { get; } = [];
         internal bool Spawning;
     }
     private sealed class QueueEntry
@@ -617,6 +623,7 @@ public sealed partial class TerritoryWarsService
             { if (!s.SceneLoading && s.TerritoryBattle == b && !Member(s, b)) await _instances.LeaveAsync(s); });
             await SpawnObjectivesAsync(b);
             await SpawnScenePointsAsync(b);
+            await PlatformClockAsync(b, elapsed);
             foreach (var p in r.Points.Values.Where(p => !p.Crystal && _clock.Now >= p.GuardUntil))
             {
                 var groups = b.Room.ActiveMembers.Select(m => m.Session).Where(s => !s.Dead && Member(s, b)

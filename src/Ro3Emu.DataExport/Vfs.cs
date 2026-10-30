@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Globalization;
 using System.Text;
 
 namespace Ro3Emu.DataExport;
@@ -16,6 +17,8 @@ public sealed class Vfs : IDisposable
     private readonly Dictionary<ulong, List<Entry>> _bundles = new();
     private readonly Dictionary<ulong, List<Entry>> _bytes = new();
     private readonly Dictionary<string, Container> _containers = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Extract may run on several threads (the icon export): the container cache and FilesRead are shared.</summary>
+    private readonly Lock _gate = new();
 
     /// <summary>The container and bundle files read so far (to copy only what an export needs).</summary>
     public HashSet<string> FilesRead { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -47,17 +50,15 @@ public sealed class Vfs : IDisposable
     /// <summary>The asset's bytes, or null when the VFS has no asset of that name.</summary>
     public byte[]? Extract(string name)
     {
-        ulong h = LowerHash(name);
-        if (!_bytes.TryGetValue(h, out var list) && !_bundles.TryGetValue(h, out list)) return null;
-        var e = list[0];
+        if (Locate(name) is not var (e, bundle)) return null;
         if (e.FileHash == e.VfsHash)
         {
             // vfsget.js: a two-digit folder from the zero-padded hash, the file name from the unpadded one.
-            var file = Path.Combine(_dir, e.FileHash.ToString("x16")[..2], e.FileHash.ToString("x") + ".bundle");
-            FilesRead.Add(file);
+            var file = Path.Combine(_dir, LooseFile(e));
+            lock (_gate) FilesRead.Add(file);
             return File.ReadAllBytes(file);
         }
-        var container = ContainerFor(Path.Combine(_dir, (e.VfsHash ^ e.Dyn).ToString("x") + ".bytes"));
+        var container = ContainerFor(Path.Combine(_dir, ContainerFile(e, bundle)));
         if (!container.Index.TryGetValue(e.FileHash, out var at)) return null;
         var data = new byte[at.Length];
         RandomAccess.Read(container.Handle, data, at.Offset);
@@ -65,15 +66,26 @@ public sealed class Vfs : IDisposable
     }
 
     /// <summary>The VFS file (bundle or container) that holds the asset, relative to the VFS folder, or null.</summary>
-    public string? SourceFile(string name)
+    public string? SourceFile(string name) =>
+        Locate(name) is var (e, bundle) ? e.FileHash == e.VfsHash ? LooseFile(e) : ContainerFile(e, bundle) : null;
+
+    /// <summary>The asset's own file hash (changes with its content), or null when the VFS has no asset of that name.</summary>
+    public ulong? FileHash(string name) => Locate(name)?.Entry.FileHash;
+
+    /// <summary>A "bytes" asset first, as the game's loader asks for one, else a Unity bundle.</summary>
+    private (Entry Entry, bool Bundle)? Locate(string name)
     {
         ulong h = LowerHash(name);
-        if (!_bytes.TryGetValue(h, out var list) && !_bundles.TryGetValue(h, out list)) return null;
-        var e = list[0];
-        return e.FileHash == e.VfsHash
-            ? e.FileHash.ToString("x16")[..2] + "/" + e.FileHash.ToString("x") + ".bundle"
-            : (e.VfsHash ^ e.Dyn).ToString("x") + ".bytes";
+        if (_bytes.TryGetValue(h, out var list)) return (list[0], false);
+        if (_bundles.TryGetValue(h, out list)) return (list[0], true);
+        return null;
     }
+
+    private static string LooseFile(Entry e) => e.FileHash.ToString("x16", CultureInfo.InvariantCulture)[..2] + "/" + e.FileHash.ToString("x", CultureInfo.InvariantCulture) + ".bundle";
+
+    /// <summary>A packed entry's container: bytes assets in &lt;hash ^ dyn&gt;.bytes, bundles in &lt;hash ^ dyn&gt;.bundle
+    /// (tools/Loc/bundle.js).</summary>
+    private static string ContainerFile(Entry e, bool bundle) => (e.VfsHash ^ e.Dyn).ToString("x", CultureInfo.InvariantCulture) + (bundle ? ".bundle" : ".bytes");
 
     public void Dispose()
     {
@@ -83,7 +95,11 @@ public sealed class Vfs : IDisposable
 
     private Container ContainerFor(string file)
     {
-        if (_containers.TryGetValue(file, out var cached)) return cached;
+        lock (_gate) return _containers.TryGetValue(file, out var cached) ? cached : LoadContainer(file);
+    }
+
+    private Container LoadContainer(string file)
+    {
         FilesRead.Add(file);
         var handle = File.OpenHandle(file);
         var header = new byte[24];

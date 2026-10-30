@@ -227,6 +227,9 @@ public sealed class GuildCampfireService : IGameTicker
 
     private long StartTime()
     {
+        // Testing AlwaysOpen (TEST AID, not original): the 25 minutes run from the start of the repeating occurrence.
+        if (_schedule.TestingOpens(116) && _schedule.CurrentOrNext(116) is { } test
+            && test.Contains(_time.GetUtcNow().ToUnixTimeSeconds())) return test.Start;
         var local = _clock.LocalNow;
         var start = local.Date.AddHours(20);
         return new DateTimeOffset(start, _clock.LocalTimeZone.GetUtcOffset(start)).ToUnixTimeSeconds();

@@ -12,21 +12,28 @@ namespace Ro3Emu.Setup;
 /// </summary>
 internal sealed class ServerProcess : IDisposable
 {
-    /// <summary>The server's TCP ports. <paramref name="Voice"/> 0 = the party voice relay is off (the default).</summary>
-    public sealed record Ports(int Http = 5380, int MicroGate = 20000, int GameGate = 33100, int Voice = 0)
+    /// <summary>
+    /// The server's TCP ports. <paramref name="Voice"/> 0 = the party voice relay is off (the default);
+    /// <paramref name="Panel"/> 0 = the web panel is off (docs/guide/panel.md).
+    /// </summary>
+    public sealed record Ports(int Http = 5380, int MicroGate = 20000, int GameGate = 33100, int Voice = 0, int Panel = 5381)
     {
-        /// <summary>Every port the server listens on, voice only when it is on.</summary>
-        public IEnumerable<int> All() => Voice > 0 ? [Http, MicroGate, GameGate, Voice] : [Http, MicroGate, GameGate];
+        /// <summary>The ports players' games connect to, voice only when it is on.</summary>
+        public IEnumerable<int> Game() => Voice > 0 ? [Http, MicroGate, GameGate, Voice] : [Http, MicroGate, GameGate];
+
+        /// <summary>Every port the server listens on: the game's and the web panel's when it is on.</summary>
+        public IEnumerable<int> All() => Panel > 0 ? [.. Game(), Panel] : Game();
     }
 
-    /// <summary>"5380, 20000 and 33100" (with the voice port when it is on): what a host opens or forwards.</summary>
+    /// <summary>"5380, 20000 and 33100" (with the voice port when it is on): what a host opens or forwards for games.</summary>
     public static string PortList(Ports ports)
     {
-        var all = ports.All().Select(p => p.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList();
+        var all = ports.Game().Select(p => p.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList();
         return string.Join(", ", all[..^1]) + " and " + all[^1];
     }
 
-    /// <summary>The server's own arguments: data folder and ports (the voice relay only when a voice port is set).</summary>
+    /// <summary>The server's own arguments: data folder and ports (the voice relay only when a voice port is set, the
+    /// web panel off when its port is 0).</summary>
     public static List<string> ServerArgs(string dataDir, Ports ports)
     {
         var args = new List<string>
@@ -38,6 +45,7 @@ internal sealed class ServerProcess : IDisposable
             $"--Ro3Emu:GameGatePort={ports.GameGate}",
         };
         if (ports.Voice > 0) args.Add($"--Ro3Emu:Voice:Port={ports.Voice}");
+        args.Add(ports.Panel > 0 ? $"--Ro3Emu:Panel:Port={ports.Panel}" : "--Ro3Emu:Panel:Enabled=false");
         return args;
     }
 

@@ -1,4 +1,8 @@
+using System.Text.Json;
+using Romsg;
+using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Game;
 using Ro3Emu.Shared;
 
 namespace Ro3Emu.Tests;
@@ -6,65 +10,65 @@ namespace Ro3Emu.Tests;
 public sealed partial class ArrowShopTests
 {
     [Fact]
-    public async Task OriginalSameIdAndItemUsesOriginalPriceWithoutChangingOriginalData()
+    public async Task OrdinaryOfferKeepsItsOriginalPriceAndPersistsAcrossRestart()
     {
-        NativeCommodity(First.CommodityId, First.ItemId, ArrowShopCatalog.ClassId);
+        NativeShop(OtherShop, OtherClass, OtherShop);
+        NativeCommodity(OriginalCommodity, OrdinaryItem, OtherClass);
         await Start();
-        await using var bot = await Host.InWorldAsync("ArrowOriginal");
-        var s = Session(bot); await Fund(s); await Ready(s); long before = Balance(s);
-        string row = Service<GameData>().Row("ShopCommodityConfig", First.CommodityId)!.Value.GetRawText();
-        var reply = await Buy(bot, First.CommodityId);
-        Assert.Equal((0, 7, 1), (reply.Result, reply.Price, reply.BuyTimes));
-        Assert.Equal(before - 7, Balance(s)); Assert.Equal(1, Count(s, First.ItemId));
-        Assert.Equal(row, Service<GameData>().Row("ShopCommodityConfig", First.CommodityId)!.Value.GetRawText());
-        Assert.Null(Service<GameData>().Row("ShopConfig", ArrowShopCatalog.ShopConfigId));
-    }
-
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task ExistingOfferSuppressesSupplementOnlyInItsOwnZenyClass(bool sameClass)
-    {
-        int classId = sameClass ? ArrowShopCatalog.ClassId : OtherClass;
-        NativeShop(OtherShop, classId, sameClass ? ArrowShopCatalog.ShopId : OtherShop);
-        NativeCommodity(OriginalCommodity, First.ItemId, classId);
-        await Start();
-        await using var bot = await Host.InWorldAsync("ArrowCanonical");
-        var s = Session(bot); await Fund(s); await Ready(s); long before = Balance(s);
-        var supplement = await Buy(bot, First.CommodityId);
-        Assert.Equal(sameClass ? Ro3Emu.Server.Game.ErrorCodes.ShopNoConfig : 0, supplement.Result);
-        Assert.Equal(before - (sameClass ? 0 : 100), Balance(s));
-        Assert.Equal(sameClass ? 0 : 1, Count(s, First.ItemId));
-        var official = await Buy(bot, OriginalCommodity);
-        Assert.Equal((0, 7), (official.Result, official.Price));
-        Assert.Equal(sameClass ? 1 : 2, Count(s, First.ItemId));
-    }
-
-    [Theory]
-    [InlineData("commodity-item")]
-    [InlineData("commodity-class")]
-    [InlineData("shop-id")]
-    [InlineData("shop-class")]
-    [InlineData("wrong-item-type")]
-    public async Task IdentityCollisionOrWrongItemTypeRefusesWithoutChargeOrStateMutation(string collision)
-    {
-        switch (collision)
+        long role, before;
+        await using (var bot = await Host.InWorldAsync("OrdinaryOriginal"))
         {
-            case "commodity-item": NativeCommodity(First.CommodityId, 1000000, ArrowShopCatalog.ClassId); break;
-            case "commodity-class": NativeCommodity(First.CommodityId, First.ItemId, OtherClass); break;
-            case "shop-id": NativeShop(ArrowShopCatalog.ShopConfigId, OtherClass, OtherShop); break;
-            case "shop-class": NativeShop(OtherShop, ArrowShopCatalog.ClassId, OtherShop); break;
-            case "wrong-item-type":
-                Row(_fixture, "ItemConfig", First.ItemId,
-                new { _iID = First.ItemId, _iType = 2, _iSubType = 205, _iBagTab = 1, _iStackLimit = 7 }); break;
-            default: throw new ArgumentException("未知的碰撞測試");
+            var session = Session(bot); role = session.Role!.Id; await Fund(session); before = Balance(session);
+            string original = Service<GameData>().Row("ShopCommodityConfig", OriginalCommodity)!.Value.GetRawText();
+            var reply = await Buy(bot, OriginalCommodity, 2);
+            Assert.Equal((0, 7, 2), (reply.Result, reply.Price, reply.BuyTimes));
+            Assert.Equal(before - 14, Balance(session));
+            Assert.Equal(2, Count(session, OrdinaryItem));
+            Assert.Equal(original, Service<GameData>().Row("ShopCommodityConfig", OriginalCommodity)!.Value.GetRawText());
+            Assert.Null(Service<GameData>().Row("ShopConfig", ArrowShopCatalog.ShopConfigId));
+            await bot.SendGameAsync(ShopService.CommodityCollect, new CommodityCollectReq
+            { CommodityId = OriginalCommodity, OpType = CollectOperateType.Add });
+            Assert.Equal(0, CommodityCollectResp.Parser.ParseFrom(
+                (await bot.Inbox.WaitAsync(packet => packet.IsGame(ShopService.CommodityCollect), Wait)).Body).Result);
         }
+        await Host.RestartAsync();
+        await using var again = await Host.InWorldAsync("OrdinaryOriginal", create: false);
+        var restored = Session(again);
+        Assert.Equal(before - 14, Balance(restored));
+        Assert.Equal(2, Count(restored, OrdinaryItem));
+        Assert.Equal(2, SavedShop(role).Bought[OriginalCommodity].Count);
+        Assert.Contains(OriginalCommodity, restored.Shop!.Favorites);
+    }
+
+    [Fact]
+    public async Task RetiredPurchaseHistoryStaysStoredButOnlyCurrentCatalogueIsSentToClient()
+    {
+        NativeShop(OtherShop, OtherClass, OtherShop);
+        NativeCommodity(OriginalCommodity, OrdinaryItem, OtherClass);
         await Start();
-        await using var bot = await Host.InWorldAsync("ArrowCollision");
-        var s = Session(bot); await Fund(s); await Ready(s); long before = Balance(s);
-        Assert.Equal(Ro3Emu.Server.Game.ErrorCodes.ShopNoConfig, (await Buy(bot, First.CommodityId)).Result);
-        Assert.Equal(before, Balance(s)); Assert.Equal(0, Count(s, First.ItemId));
-        Assert.False(s.Shop!.Bought.ContainsKey(First.CommodityId));
-        Assert.DoesNotContain(First.CommodityId, s.Shop.Favorites);
+        long role;
+        await using (var bot = await Host.InWorldAsync("LegacyArrow"))
+        {
+            role = Session(bot).Role!.Id;
+            var history = new ShopService.ShopState();
+            history.Bought[First.CommodityId] = new ShopService.Counter { Count = 2 };
+            history.Bought[OriginalCommodity] = new ShopService.Counter { Count = 3 };
+            history.Favorites.UnionWith([First.CommodityId, OriginalCommodity]);
+            await Service<GameLoop>().InvokeAsync(() =>
+            {
+                Service<RoleStore>().SaveShop(role, JsonSerializer.SerializeToUtf8Bytes(history));
+                return Task.CompletedTask;
+            });
+        }
+        await Host.RestartAsync();
+        await using var again = await Host.InWorldAsync("LegacyArrow", create: false);
+        var wire = DBShopInfoIncrement.Parser.ParseFrom(
+            (await again.Inbox.WaitAsync(packet => packet.IsGame(ShopService.ShopSync), Wait)).Body);
+        Assert.DoesNotContain(First.CommodityId, wire.CommodityBuyTimes.Keys);
+        Assert.DoesNotContain(First.CommodityId, wire.CollectCommodities.Keys);
+        Assert.Contains(OriginalCommodity, wire.CommodityBuyTimes.Keys);
+        Assert.Contains(OriginalCommodity, wire.CollectCommodities.Keys);
+        Assert.Equal(2, SavedShop(role).Bought[First.CommodityId].Count);
+        Assert.Contains(First.CommodityId, SavedShop(role).Favorites);
     }
 }

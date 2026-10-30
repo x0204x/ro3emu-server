@@ -6,8 +6,9 @@ namespace Ro3Emu.Server.Accounts;
 /// Account bans (docs/systems/account-bans.md). Every way a credential becomes an account goes through this store:
 /// SignInAsync (password), VerifiedAccountAsync (password, without registration), the SDK ticket and the engine sign
 /// (ResolveToken), and UnlessBannedAsync for credentials held elsewhere (the gate auth of PhonestGate.bind). Each one
-/// reads account_ban fresh, since the admin panel writes it from another process, and answers a banned account as it
-/// answers a wrong credential (inferred: the client has no ban message we know). The log says "banned".
+/// reads account_ban fresh, since an external tool may write it from another process (the web panel bans through
+/// AccountBanWritePlan), and answers a banned account as it answers a wrong credential (inferred: the client has no
+/// ban message we know). The log says "banned".
 /// </summary>
 public sealed partial class AccountStore
 {

@@ -9,7 +9,8 @@ same for joining, and both take any RO3Emu.exe option. On Linux, `scripts/server
 The same steps by hand:
 
 ```bash
-# game data from your client into data/ (config, scene editor, skills, nav, message table, English texts)
+# game data from your client into data/ (config, scene editor, skills, nav, message table, English texts, and the
+# web panel's pictures in data/icons; --no-icons skips them)
 dotnet run --project src/Ro3Emu.Setup -c Release -- export C:\Games\ROO_PC data
 # the server: HTTP 5380, micro gate 20000, game gate 33100, all on loopback; data/ holds its keys and database
 dotnet run --project src/Ro3Emu.Server -c Release

@@ -93,8 +93,10 @@ public sealed partial class ShopService(GameData data, CharacterService characte
     {
         var info = new DBShopInfo { ShoppingCartProtocolVersion = 0 }; // 0: the client keeps its own appearance cart
         foreach (var (id, counter) in session.Shop!.Bought)
-            if (Current(session, id, counter) is var n and > 0) info.CommodityBuyTimes[id] = n;
-        foreach (var id in session.Shop.Favorites) info.CollectCommodities[id] = true; // removed favourites are deleted keys
+            if (FindCommodity(id) != null && Current(session, id, counter) is var n and > 0) info.CommodityBuyTimes[id] = n;
+        // 已退役的補售商品保留資料庫歷史，但不把現行客戶端無法解析的 ID 送回收藏頁。
+        foreach (var id in session.Shop.Favorites)
+            if (FindCommodity(id) != null) info.CollectCommodities[id] = true;
         return CharacterService.SyncAsync(session, ShopSync, info);
     }
 

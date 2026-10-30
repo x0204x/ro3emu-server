@@ -14,11 +14,19 @@ namespace Ro3Emu.Server.Game;
 /// PronteraDefenseIntensityConfig offsets are measured from that opening (inferred: measuring from season
 /// start would place two configured rounds before the activity opens). Round/map/point/monster config owns
 /// the entities, CombatService owns kills, and 82976 only accepts server-checked item 600 or guild stations.
+/// The invaders march on the city's heart and fight the defenders on the way (<see cref="SpawnAsync"/>); City Defense
+/// falls each minute by the invasion intensity and kills restore it (<see cref="DamageDefensesAsync"/>).
 /// </summary>
 public sealed class PronteraDefenseService : IGameTicker
 {
     public const int ActivityId = 118, TimeLimitId = 1012, SupplyItem = 600;
     private const int UnlockLevel = 99;
+    /// <summary>(inferred) City Defense lost each minute = the current intensity / this (see DamageDefensesAsync).</summary>
+    internal const long ErosionDivisor = 100;
+    /// <summary>(inferred) An invader stops within this many metres of its own spot at the city's heart.</summary>
+    internal const float HeartRadius = 2f;
+    /// <summary>(inferred) The invaders' spots spread this far around the heart, so a wave does not stand in one cell.</summary>
+    internal const float HeartSpread = 4f;
     private readonly GameData _data;
     private readonly ActivityClock _clock;
     private readonly RoleStore _roles;
@@ -34,6 +42,9 @@ public sealed class PronteraDefenseService : IGameTicker
     private readonly GameLoop _loop;
     private readonly ILogger<PronteraDefenseService> _log;
     private readonly Dictionary<long, MonsterUnit> _actors = new();
+    /// <summary>City Defense a kill of each live invader restores (its difficulty's _iKillPoint).</summary>
+    private readonly Dictionary<long, long> _restore = [];
+    private readonly Dictionary<int, MonsterTemplate> _invaders = [];
     private readonly HashSet<(int Round, int Point, int Wave)> _spawned = new();
     private readonly Dictionary<long, long> _defensePoints = new();
     private readonly Dictionary<long, long> _station = new();
@@ -55,13 +66,15 @@ public sealed class PronteraDefenseService : IGameTicker
 
     public PronteraDefenseService(GameData data, ActivityClock clock, RoleStore roles, AccountStore accounts,
         GuildStore guilds, CharacterService character, AwardService awards, FunctionService functions, MonsterService monsters, WorldData worldData, World world,
-        CombatService combat, SessionRegistry sessions, GameLoop loop, ILogger<PronteraDefenseService> log)
+        CombatService combat, SessionRegistry sessions, GameLoop loop, GmCommands gm, ILogger<PronteraDefenseService> log)
     {
         this._data = data; this._clock = clock; this._roles = roles; this._accounts = accounts; this._guilds = guilds;
         this._character = character; this._awards = awards; this._functions = functions; this._monsters = monsters; this._worldData = worldData; this._world = world;
         this._sessions = sessions; this._loop = loop; this._log = log;
         LoadWorld();
         combat.Killed.Add(OnKilledAsync);
+        gm.Register("defense", "round <1-4> | end | status (Battle for Prontera test aid: TimeLimit 1012 opens so that round n starts now, "
+            + "or back to the real schedule; status lists City Defense and the invaders)", GmAsync);
     }
 
     public async Task LoginAsync(GameSession session)
@@ -217,11 +230,12 @@ public sealed class PronteraDefenseService : IGameTicker
             {
                 foreach (var actor in _actors.Values.ToArray())
                 { actor.Dead = true; actor.Target = null; await _world.RemoveUnitAsync(actor); }
-                _actors.Clear(); _spawned.Clear(); _activeRound = round;
+                _actors.Clear(); _restore.Clear(); _spawned.Clear(); _activeRound = round;
+                _lastDamageMinute = now / 60; // the first loss comes a full minute into the round
             }
             if (round != 0 && RoundWindow(round) is { } w)
             {
-                await DamageDefensesAsync(now, opening);
+                await DamageDefensesAsync(now, round, opening);
                 foreach (var point in _data.Table("PronteraDefensePointConfig").Values)
                 {
                     int pointId = (int)GameData.Int(point, "_iId");
@@ -269,24 +283,28 @@ public sealed class PronteraDefenseService : IGameTicker
                 $"{open}:{map.ToString(System.Globalization.CultureInfo.InvariantCulture)}"))];
     }
 
-    private async Task DamageDefensesAsync(long now, long opening)
+    /// <summary>
+    /// UITipsConfig 70015, the help of the in-city defense bar (UI_Sys_Season_DefenceWarProgressWidget), text 10960000247:
+    /// "City Defense decreases every minute based on the intensity of the monster invasion. Defeat monsters to restore
+    /// City Defense. If City Defense falls to @{1}, the city will be overrun." (@{1} = "0"). Each minute every map of the
+    /// live round (DBPronteraDefenseRoundInfo.mapIds, the maps the client shows as under attack) loses the current
+    /// intensity (PronteraDefenseIntensityConfig _kIntensity, 80000-140000, shown divided by 10000) / ErosionDivisor;
+    /// a kill restores its difficulty's _iKillPoint (<see cref="RestoreAsync"/>). The divisor is inferred: with it one
+    /// minute at the opening intensity costs 800, exactly one difficulty-1 kill (PronteraDefenseDifficultyConfig 1), and
+    /// an undefended Prontera loses 30 800 of its 100 000 in a round, so it falls in the fourth.
+    /// </summary>
+    private async Task DamageDefensesAsync(long now, int round, long opening)
     {
         long minute = now / 60;
         if (minute == _lastDamageMinute) return;
+        long loss = IntensityAt(now) / ErosionDivisor;
         var changed = new Dictionary<long, long>();
-        // (inferred) Living invaders erode one point per second between server ticks. The exported configs give
-        // maximum defense points and monster waves, but no server damage formula; a 60-point/minute unit rate
-        // lets players protect a map by killing real spawned actors before the next minute boundary.
-        foreach (var group in _actors.Values.Where(m => !m.Dead).GroupBy(m => m.SceneEntry))
+        foreach (var city in PronteraDefenseMapConfig.All(_data))
         {
-            long map = group.Key;
-            long max = _data.Table("PronteraDefenseMapConfig").Values
-                .Where(r => GameData.Int(r, "_iMapId") == map).Select(r => GameData.Int(r, "_iDefensePoint")).FirstOrDefault();
-            if (max <= 0) continue;
-            long previous = _defensePoints.GetValueOrDefault(map, max);
-            long next = Math.Max(0, previous - group.LongCount() * 60);
-            if (next == previous) continue;
-            changed[map] = next;
+            if (city.MapId <= 0 || city.DefensePoint <= 0 || !resultMap(round, city.MapId)) continue;
+            long previous = _defensePoints.GetValueOrDefault(city.MapId, city.DefensePoint);
+            long next = Math.Max(0, previous - loss);
+            if (next != previous) changed[city.MapId] = next;
         }
         if (changed.Count == 0) { _lastDamageMinute = minute; return; }
         var tx = _accounts.NewTransaction();
@@ -299,11 +317,60 @@ public sealed class PronteraDefenseService : IGameTicker
         await NotifyAllAsync();
     }
 
+    /// <summary>
+    /// A kill restores City Defense up to the map's maximum (UITipsConfig 70015 above); how much is its difficulty's
+    /// PronteraDefenseDifficultyConfig _iKillPoint (800/5000/20000/60000, inferred reading of the column). A city at 0
+    /// has fallen ("overrun") and stays fallen for the event (inferred).
+    /// </summary>
+    private async Task RestoreAsync(long map, long points)
+    {
+        long max = PronteraDefenseMapConfig.All(_data).Where(c => c.MapId == map).Select(c => c.DefensePoint).FirstOrDefault();
+        long previous = _defensePoints.GetValueOrDefault(map, max);
+        if (points <= 0 || max <= 0 || previous <= 0 || previous >= max) return;
+        long next = Math.Min(max, previous + points);
+        var tx = _accounts.NewTransaction();
+        tx.Add(new PronteraDefensePointPlan(Opening(), map, next));
+        await tx.CommitAsync(_accounts, "prontera-defense/restore", _ => _defensePoints[map] = next);
+        await NotifyAllAsync();
+    }
+
+    /// <summary>
+    /// One invader. What it does is not in the client data: PronteraDefenseMonsterConfig/PointConfig/RoundConfig only
+    /// say who appears where and when, and the main invaders' AI (AIConfig 20200006: no roaming, 5 m view, a 9990 m
+    /// leash and hatred that never fades) leaves the moving to the server. The broadcasts of the event (ChatConfig
+    /// 12009-12038) tell the story the point schedule follows: the enemy gathers south, breaks in at the South Gate
+    /// (point 837 at 30 s), presses on the Inn and Library and the flanks (851/852/853/854) and closes on "the heart of
+    /// Prontera" (855/856/858-861 from 1440 s, Osiris at 858 at 1560 s). Inferred from that: every invader walks from
+    /// its point to the city's heart, the map's default born point (Prontera: 156,182, the central plaza beside the
+    /// scene editor's defense group 832 at 156,203), attacks the players it meets on the way (aggressive while it
+    /// invades) and holds the heart. NPCs without a monster template (the rift 21001068, NPCType 2) do not appear.
+    /// </summary>
     private async Task SpawnAsync(long map, int selector, MapPoint point)
     {
-        int npc = _data.Row("PronteraDefenseMonsterConfig", selector) is { } row ? (int)GameData.Int(row, "_iNpcId") : 0;
-        if (npc <= 0) return;
-        if (await _monsters.SpawnSingleAsync(map, npc, point) is { } unit) _actors[unit.Uid] = unit;
+        if (PronteraDefenseMonsterConfig.Get(_data, selector) is not { } config || config.NpcId <= 0
+            || Invader((int)config.NpcId) is not { } template) return;
+        if (await _monsters.SpawnSingleAsync(map, template.NpcId, point, customTemplate: template) is not { } unit) return;
+        _actors[unit.Uid] = unit;
+        _restore[unit.Uid] = PronteraDefenseDifficultyConfig.Get(_data, config.Difficulty)?.KillPoint ?? 0;
+        if (Heart(map) is { } heart) unit.March = new MonsterMarch(heart.X, heart.Z, HeartRadius) { LeashX = unit.X, LeashZ = unit.Z };
+    }
+
+    /// <summary>The live round's invaders (read on the game loop).</summary>
+    internal IEnumerable<MonsterUnit> Invaders => _actors.Values;
+
+    private MonsterTemplate? Invader(int npc)
+    {
+        if (_invaders.TryGetValue(npc, out var cached)) return cached;
+        if (_monsters.Template(npc) is not { } template) return null;
+        return _invaders[npc] = template with { Aggressive = true };
+    }
+
+    /// <summary>The invader's own spot at the city's heart: the default born point, spread a little, on walkable ground.</summary>
+    private MapPoint? Heart(long map)
+    {
+        if (_worldData.Map(map) is not { Born: { } born } world) return null;
+        double angle = Random.Shared.NextDouble() * Math.PI * 2, radius = Random.Shared.NextDouble() * HeartSpread;
+        return world.Standable(born with { X = born.X + (float)(Math.Cos(angle) * radius), Z = born.Z + (float)(Math.Sin(angle) * radius) });
     }
 
     private async Task OnKilledAsync(GameSession killer, MonsterUnit monster)
@@ -317,7 +384,7 @@ public sealed class PronteraDefenseService : IGameTicker
         long? epoch = owner?.LifecycleEpoch;
         using var scope = _loop.Owners is { } owners
             ? await owners.EnterAsync("defense/kill contribution", [
-                Ownership.ReservationKey.Entity("prontera_event", Opening().ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                EventKey(), PointKey(monster.SceneEntry),
                 Ownership.ReservationKey.Entity("prontera_actor", monster.Uid.ToString(System.Globalization.CultureInfo.InvariantCulture)),
                 Ownership.ReservationKey.Role(role.Id)]) : null;
         if (!ReferenceEquals(killer.Role, role) || !ReferenceEquals(killer.Defense, state)
@@ -334,6 +401,7 @@ public sealed class PronteraDefenseService : IGameTicker
         await _roles.CommitAsync(tx, "prontera-defense/kill", _ =>
         { killer.Defense = next; _actors.Remove(monster.Uid); });
         await NotifyAsync(killer);
+        if (_restore.Remove(monster.Uid, out long restore)) await RestoreAsync(monster.SceneEntry, restore);
     }
 
     /// <summary>C/D 15: the role's own round settlement entities, reserved up front by the role select (the season
@@ -451,6 +519,67 @@ public sealed class PronteraDefenseService : IGameTicker
         }
         return next;
     }
+
+    /// <summary>
+    /// !defense (test aid): a stand-in window for TimeLimit 1012 (ActivityClock.TestWindows) placed so that round n of
+    /// PronteraDefenseIntensityConfig starts now; "end" returns to the real schedule. The event's state is keyed by the
+    /// window's opening, so either one starts from that opening's own City Defense and stations.
+    /// </summary>
+    private async Task GmAsync(GameSession s, string[] args)
+    {
+        long now = _clock.UtcNow.ToUnixTimeSeconds();
+        string reply;
+        using (var scope = _loop.Owners is { } owners ? await owners.EnterAsync("defense/gm", [EventKey()]) : null)
+        {
+            if (args is ["round", var text] && int.TryParse(text, out int round)
+                && PronteraDefenseIntensityConfig.Get(_data, round) is { Time: [var from, _, ..] })
+            {
+                long length = _clock.TryWindow(TimeLimitId, out var start, out var end) && end > start
+                    ? (long)(end - start).TotalSeconds : 1814400;
+                long open = now - from;
+                _clock.TestWindows[TimeLimitId] = new ActivityClock.Window("Start", open, open + length);
+                reply = $"Battle for Prontera test window: round {round} started now (opening {open}).";
+            }
+            else if (args is ["end"])
+            {
+                _clock.TestWindows.TryRemove(TimeLimitId, out _);
+                reply = "Battle for Prontera test window removed; real schedule restored.";
+            }
+            else if (args is [] or ["status"]) reply = Status(now);
+            else throw new ArgumentException("Use !defense round <1-4> | end | status");
+            if (args is not ([] or ["status"]))
+            {
+                _defensePoints.Clear();
+                _station.Clear();
+                LoadWorld();
+                _lastSecond = -1; // the next tick takes the new window up, also within the same second
+                _activeRound = -1; // and starts its round afresh: the old invaders go, the waves come again
+            }
+        }
+        if (args is not ([] or ["status"])) await NotifyAllAsync();
+        await GmCommands.ReplyAsync(s, reply);
+    }
+
+    private string Status(long now)
+    {
+        int round = RoundAt(now);
+        var culture = System.Globalization.CultureInfo.InvariantCulture;
+        var text = new System.Text.StringBuilder(string.Create(culture, $"Round {round}, intensity {IntensityAt(now)}."));
+        foreach (var city in PronteraDefenseMapConfig.All(_data).Where(c => resultMap(round, c.MapId)))
+        {
+            var here = _actors.Values.Where(a => !a.Dead && a.SceneEntry == city.MapId).ToArray();
+            text.Append(culture, $" Map {city.MapId}: defense {_defensePoints.GetValueOrDefault(city.MapId, city.DefensePoint)}/{city.DefensePoint}, ")
+                .Append(culture, $"{here.Length} invaders ({here.Count(a => a.March is { Arrived: true })} at the heart, {here.Count(a => a.Target != null)} fighting).");
+        }
+        return text.ToString();
+    }
+
+    private Ownership.ReservationKey EventKey() =>
+        Ownership.ReservationKey.Entity("prontera_event", Opening().ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+    /// <summary>A map's City Defense row, which PronteraDefensePointPlan writes (the erosion and a kill's restore).</summary>
+    private Ownership.ReservationKey PointKey(long map) => Ownership.ReservationKey.Entity("prontera_point",
+        string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{Opening()}:{map}"));
 
     private void LoadWorld()
     {

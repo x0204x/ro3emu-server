@@ -24,6 +24,7 @@
         "Step 1 completes in region 25 (the corridor where guide 24 ends): region 25 is regionType 1, not one of the explicit server regions.",
         "Bobo (5300027) stands at point 26 (the anchor of patrol 26, which runs into the vortex) during step 1 and is gone in step 2; the run into the vortex itself is not animated.",
         "The jump is a teleport to point 21 at the top of the passage; the original fall/slide (and its camera) is not reproduced.",
+        "Region 20 does not end step 2: a player inside it before the auto interaction came had the step done, the vortex gone and the interaction refused (801), so the client never jumped and stayed above the abyss (#181).",
         "The exploding ant eggs are not reproduced: their creation trigger is not in the client data.",
         "The original continued seamlessly into 1000301 (DungeonConfig 1000301 _iSameDupLoadingType 2 from 1000201); here the player leaves and enters 1000301 from the quest tracker (action 3000)."
       ],
@@ -45,8 +46,7 @@
             { "npc": 5300030, "point": 20, "why": "the vortex: empty model with the auto interaction 'Jump into the Cave', at region 20's centre" }
           ],
           "complete": [
-            { "interaction": 5300030, "why": "the client sends it when the player walks into the vortex's interaction range" },
-            { "region": 20, "why": "the vortex's own server region (regionType 2), where guide point 38 ends" }
+            { "interaction": 5300030, "why": "the client sends it when the player walks into the vortex's interaction range; only its success plays the jump (skill 5362001) in the client, so region 20 (the vortex's 5 m server region, reached first) must not end the step: issue #181" }
           ],
           "after": { "teleport": 21, "why": "the passage beneath the vortex: point 21 lies on the walkable ramp near its top" }
         },

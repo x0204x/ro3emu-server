@@ -9,8 +9,8 @@ using Ro3Emu.Server.Economy;
 namespace Ro3Emu.Server.Accounts;
 
 /// <summary>
-/// Accounts and login tokens in SQLite. An unknown identity is registered on its first login (research server,
-/// no sign-up page).
+/// Accounts and login tokens in SQLite. An unknown identity is registered on its first login (research server), or on
+/// the web panel's sign-up page through the same code (<see cref="RegisterAsync"/>).
 /// </summary>
 public sealed partial class AccountStore : IDisposable
 {
@@ -513,13 +513,11 @@ public sealed partial class AccountStore : IDisposable
     {
         var existing = await ReadAsync<AccountCredentials?>(new AccountCredentialsRead(name)).ConfigureAwait(false);
         if (existing != null) return await Check(existing).ConfigureAwait(false);
-        // A ban outlives its account (deleting an account keeps its ban row), so a banned name is refused before it is
-        // registered again.
-        if (await UnlessBannedForRegistrationAsync(name).ConfigureAwait(false) == null) return new(LoginResult.Banned, name);
-        byte[] salt = RandomNumberGenerator.GetBytes(16);
-        byte[] hash = await Task.Run(() => AccountHash.Hash(password, salt)).ConfigureAwait(false);
-        if (await WriteAsync<bool>(new AccountRegisterPlan(name, hash, salt, DateTime.UtcNow.ToString("O"))).ConfigureAwait(false))
-            return new(LoginResult.Registered, name);
+        switch (await TryRegisterAsync(name, password).ConfigureAwait(false))
+        {
+            case Registration.Banned: return new(LoginResult.Banned, name);
+            case Registration.Created: return new(LoginResult.Registered, name);
+        }
         // A concurrent registration won the unique-name constraint; compare against its committed credentials.
         existing = await ReadAsync<AccountCredentials?>(new AccountCredentialsRead(name)).ConfigureAwait(false)
             ?? throw new InvalidOperationException("Account registration collision did not leave a visible account.");
@@ -530,6 +528,39 @@ public sealed partial class AccountStore : IDisposable
     }
 
     public readonly record struct SignIn(LoginResult Result, string Account);
+
+    public enum Registration { Created, Taken, Banned }
+
+    /// <summary>
+    /// Creates the account the game's first login would create for this name and password (the panel's sign-up):
+    /// the same row, the same hash, the same ban check. Taken when the name exists in any letter case.
+    /// </summary>
+    public async Task<Registration> RegisterAsync(string name, string password) =>
+        await ReadAsync<AccountCredentials?>(new AccountCredentialsRead(name)).ConfigureAwait(false) != null
+            ? Registration.Taken : await TryRegisterAsync(name, password).ConfigureAwait(false);
+
+    private async Task<Registration> TryRegisterAsync(string name, string password)
+    {
+        // A ban outlives its account (deleting an account keeps its ban row), so a banned name is refused before it is
+        // registered again.
+        if (await UnlessBannedForRegistrationAsync(name).ConfigureAwait(false) == null) return Registration.Banned;
+        byte[] salt = RandomNumberGenerator.GetBytes(16);
+        byte[] hash = await Task.Run(() => AccountHash.Hash(password, salt)).ConfigureAwait(false);
+        return await WriteAsync<bool>(new AccountRegisterPlan(name, hash, salt, DateTime.UtcNow.ToString("O"))).ConfigureAwait(false)
+            ? Registration.Created : Registration.Taken;
+    }
+
+    /// <summary>
+    /// Sets <paramref name="replacement"/> as the password once <paramref name="current"/> matched (a banned account cannot),
+    /// and drops the account's login tokens, so a client still holding one signs in again with the new password.
+    /// </summary>
+    public async Task<bool> ChangePasswordAsync(string name, string current, string replacement)
+    {
+        if (await VerifiedAccountAsync(name, current).ConfigureAwait(false) is not { } account) return false;
+        byte[] salt = RandomNumberGenerator.GetBytes(16);
+        byte[] hash = await Task.Run(() => AccountHash.Hash(replacement, salt)).ConfigureAwait(false);
+        return await WriteAsync<bool>(new AccountPasswordPlan(account, hash, salt)).ConfigureAwait(false);
+    }
     private static Task<bool> MatchesAsync(string password, AccountCredentials existing)
         => Task.Run(() => CryptographicOperations.FixedTimeEquals(existing.Hash, AccountHash.Hash(password, existing.Salt)));
 

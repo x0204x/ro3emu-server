@@ -9,7 +9,7 @@ using Ro3Emu.Server.Net;
 namespace Ro3Emu.Server;
 
 /// <summary>Builds the whole emulator (HTTP + both gates); used by Program and by end-to-end tests.</summary>
-public static class ServerHost
+public static partial class ServerHost
 {
     public static WebApplication Create(string[] args, Action<ServerOptions>? configure = null, TimeProvider? clock = null)
     {
@@ -33,7 +33,10 @@ public static class ServerHost
         builder.Services.AddSingleton(_ => RealmLock.Acquire(options.DataDir));
         builder.Services.AddSingleton(Options.Create(options));
         builder.Services.AddSingleton(clock ?? TimeProvider.System);
-        builder.WebHost.UseUrls($"http://{options.ListenAddress()}:{options.HttpPort}"); // loopback for local play and tests
+        // Loopback for local play and tests; the web panel (docs/guide/panel.md) on its own port, routed by PanelSite.Map.
+        builder.WebHost.UseUrls(options.Panel.Enabled
+            ? [$"http://{options.ListenAddress()}:{options.HttpPort}", PanelUrl(options)]
+            : [$"http://{options.ListenAddress()}:{options.HttpPort}"]);
         // Kestrel stops first and waits for every HTTP connection (a half-sent request holds it for the 30 s header timeout),
         // and the gates, loop and database stop only after it. The reaper aborts what is left a moment after stop begins.
         var httpConnections = new HttpConnectionReaper();
@@ -72,6 +75,7 @@ public static class ServerHost
         builder.Services.AddSingleton<TaskService>();
         builder.Services.AddSingleton<AwardService>();
         builder.Services.AddSingleton<DailyActivityService>();
+        builder.Services.AddSingleton<TestingSwitches>();
         builder.Services.AddSingleton<ActivityClock>();
         builder.Services.AddSingleton<NewActivityService>();
         builder.Services.AddSingleton<TimedEventService>();
@@ -222,6 +226,11 @@ public static class ServerHost
         builder.Services.AddHostedService<ReconnectShutdownService>();
 
         builder.Services.AddSingleton<CredentialLimiter>();
+        builder.Services.AddSingleton(options.Panel);
+        builder.Services.AddSingleton<PanelBackend>();
+        builder.Services.AddSingleton<Ro3Emu.Panel.IPanelBackend>(sp => sp.GetRequiredService<PanelBackend>());
+        builder.Services.AddSingleton<Ro3Emu.Panel.IPanelAdminTools, PanelAdminTools>();
+        builder.Services.AddSingleton<Ro3Emu.Panel.PanelSite>();
         builder.Services.AddSingleton<GiftCodeLimiter>();
         builder.Services.AddSingleton<GiftCodeService>();
 
@@ -232,6 +241,8 @@ public static class ServerHost
             .Configure(session => app.Services.GetRequiredService<RoleSessionService>().CleanupRoleAsync(session),
                 session => app.Services.GetRequiredService<RoleSessionService>().CleanupReservation(session));
         app.Services.GetRequiredService<Diagnostics.ServerMetrics>().Owners = app.Services.GetRequiredService<Game.Ownership.OwnerRegistry>();
+        // First: the panel's port serves only the panel, without the server's request log and endpoints.
+        if (options.Panel.Enabled) Ro3Emu.Panel.PanelSite.Map(app, options.Panel.Port);
         // Mount energy meters (EnergyConfig._iBelongMount): BuffService cannot take MountService (MountService -> SceneService -> BuffService).
         app.Services.GetRequiredService<MountService>().Changed.Add(app.Services.GetRequiredService<BuffService>().MountsChangedAsync);
         app.Use(async (context, next) =>
@@ -455,8 +466,15 @@ public static class ServerHost
         app.Services.GetRequiredService<StealthEffects>(); // hiding and detection attributes, reveals, Ruwach
         // Create the key before the first client connects, so ClientPatch can read the public half.
         app.Services.GetRequiredService<GateCrypto>();
+        if (options.Panel.Enabled)
+        {
+            app.Services.GetRequiredService<Ro3Emu.Panel.PanelSite>(); // built now, after every hook above
+            string panelUrl = PanelUrl(options);
+            LogPanel(app.Logger, panelUrl);
+        }
         app.Logger.LogInformation("Data dir {DataDir}", options.DataDir);
         LogGmPolicy(app.Logger, options, builder.Environment.EnvironmentName);
+        LogTesting(app.Logger, options.Testing);
         // D1 inventory across many short-lived servers (a whole test suite): each appends its loop waits on stop.
         if (Environment.GetEnvironmentVariable("RO3EMU_LOOPWAIT_DUMP") is { Length: > 0 } dump)
             app.Lifetime.ApplicationStopped.Register(() => Diagnostics.LoopWaitDump.Append(dump, app.Services.GetRequiredService<AccountStore>().AccessMetrics));
@@ -480,6 +498,21 @@ public static class ServerHost
         if (!Path.IsPathRooted(options.DataDir)) options.DataDir = Path.GetFullPath(Path.Combine(RepositoryRoot(), options.DataDir));
         return options;
     }
+
+    /// <summary>The panel's listen URL: its own bind address, else the server's; a port the server already uses is refused.</summary>
+    private static string PanelUrl(ServerOptions options)
+    {
+        var panel = options.Panel;
+        if (panel.Port is <= 0 or > 65535 || panel.Port == options.HttpPort || panel.Port == options.MicroGatePort
+            || panel.Port == options.GameGatePort || panel.Port == options.Voice.Port)
+            throw new InvalidOperationException($"Ro3Emu:Panel:Port {panel.Port} must be a free port of its own (docs/guide/panel.md).");
+        var address = panel.BindAddress is { Length: > 0 } bind ? System.Net.IPAddress.Parse(bind) : options.ListenAddress();
+        string host = address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? $"[{address}]" : address.ToString();
+        return $"http://{host}:{panel.Port}";
+    }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Web panel on {Url}")]
+    private static partial void LogPanel(ILogger logger, string url);
 
     /// <summary>ASPNETCORE_ENVIRONMENT, DOTNET_ENVIRONMENT or --environment set to Production (not the host default).</summary>
     internal static bool ExplicitProduction(IConfiguration configuration) =>
@@ -507,6 +540,23 @@ public static class ServerHost
         else
             logger.LogInformation("GM: every account (Ro3Emu:GmAccounts is empty; local or test server)");
     }
+
+    /// <summary>Ro3Emu:Testing switches are test aids, never the original game: say so loudly while one is on.</summary>
+    private static void LogTesting(ILogger logger, TestingOptions testing)
+    {
+        if (testing.AlwaysOpen) LogAlwaysOpen(logger);
+        if (testing.UnlimitedRewards) LogUnlimitedRewards(logger);
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "!!! Ro3Emu:Testing:AlwaysOpen is ON: every To-Do activity is open at " +
+        "any hour, its occurrence repeating all day. TEST AID, not original behaviour; turn it off for a real realm " +
+        "(docs/guide/hosting.md).")]
+    private static partial void LogAlwaysOpen(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "!!! Ro3Emu:Testing:UnlimitedRewards is ON: dungeon, MVP, Commendation " +
+        "Vault and Dodo's Request reward counts never run out. TEST AID, not original behaviour; turn it off for a real realm " +
+        "(docs/guide/hosting.md).")]
+    private static partial void LogUnlimitedRewards(ILogger logger);
 
     private static string RepositoryRoot()
     {

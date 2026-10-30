@@ -201,25 +201,27 @@ public sealed class GameData(IOptions<ServerOptions> options, ILogger<GameData> 
         return texts.TryGetValue(id, out var text) ? text : Text(id);
     }
 
-    /// <summary>Text of a field holding [textId, ...].</summary>
     /// <summary>
     /// A localized text field [textId, param1, param2, ...]: the text with @{n} replaced by the n-th parameter, as the
     /// client's GetWordNew does (NPCConfig 7010001 _kName [10470000361, "1"] is "Lv. 1 Ore Vein").
     /// </summary>
     public string TextOf(JsonElement row, string field)
-        => TextOf(row, field, Text);
+        => row.TryGetProperty(field, out var value) ? TextOf(value) : "";
+
+    /// <summary>A localized raw field [textId, parameters...], as a config view reads it.</summary>
+    public string TextOf(JsonElement? value) => TextOf(value, Text);
 
     /// <summary>Source-language text of a localized field for a client-visible wire string.</summary>
     public string ClientTextOf(JsonElement row, string field)
-        => TextOf(row, field, ClientText);
+        => row.TryGetProperty(field, out var value) ? TextOf(value, ClientText) : "";
 
     /// <summary>Source-language text of a typed localized field [textId, numeric parameters...].</summary>
     public string ClientTextOf(IReadOnlyList<long> values)
         => TextOf(values, ClientText);
 
-    private static string TextOf(JsonElement row, string field, Func<long, string> resolve)
+    private static string TextOf(JsonElement? value, Func<long, string> resolve)
     {
-        if (!row.TryGetProperty(field, out var v) || v.ValueKind != JsonValueKind.Array || v.GetArrayLength() == 0 || !v[0].TryGetInt64(out var id))
+        if (value is not { ValueKind: JsonValueKind.Array } v || v.GetArrayLength() == 0 || !v[0].TryGetInt64(out var id))
             return "";
         string text = resolve(id);
         for (int i = 1; i < v.GetArrayLength(); i++)

@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- The game data export from the player's own client (LuaPayload and VFS), with no Java, Node.js or decompiler:
-       Lua chunks are decoded and run in a Lua 5.4 VM (KeraLua), the VFS is read directly. Used by RO3Emu.exe
+       Lua chunks are decoded and run in a Lua 5.4 VM (KeraLua), the VFS is read directly, and the
+       panel's icons are decoded from the client's Unity bundles (AssetsTools.NET, AssetRipper.TextureDecoder). Used by RO3Emu.exe
        (src/Ro3Emu.Setup) and the developer tools (tools/LuaDecode, tools/ConfigExport). -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -9,6 +10,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="AssetRipper.TextureDecoder" />
+    <PackageReference Include="AssetsTools.NET" />
     <PackageReference Include="KeraLua" />
     <InternalsVisibleTo Include="Ro3Emu.Setup.Tests" />
   </ItemGroup>

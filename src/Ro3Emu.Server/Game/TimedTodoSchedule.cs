@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 
 namespace Ro3Emu.Server.Game;
 
@@ -9,7 +10,7 @@ namespace Ro3Emu.Server.Game;
 /// admission and the outer 5004 startTime/endTime; activity owners retain gameplay and named phase state.
 /// Civil timezone follows ActivityClock (inferred realm timezone, matching the client's os.date('*t')).
 /// </summary>
-public sealed class TimedTodoSchedule(GameData data, ActivityClock clock, TimeProvider time)
+public sealed class TimedTodoSchedule(GameData data, ActivityClock clock, TimeProvider time, TestingSwitches? testing = null)
 {
     /// <summary>GM test aid only, process-local. Production scheduling never populates this map.</summary>
     internal Dictionary<int, Occurrence> TestWindows { get; } = new();
@@ -17,6 +18,9 @@ public sealed class TimedTodoSchedule(GameData data, ActivityClock clock, TimePr
     {
         public bool Contains(long seconds) => Start <= seconds && seconds < End;
     }
+
+    /// <summary>Testing AlwaysOpen holds row <paramref name="id"/>'s occurrences (TestingSwitches.Opens).</summary>
+    public bool TestingOpens(int id) => testing?.Opens(id) == true;
 
     public bool IsOpen(int id) => CurrentOrNext(id) is { } window && window.Contains(clock.UtcNow.ToUnixTimeSeconds());
 
@@ -29,6 +33,7 @@ public sealed class TimedTodoSchedule(GameData data, ActivityClock clock, TimePr
     {
         if (TestWindows.TryGetValue(id, out var test)) return test;
         long at = timestamp ?? clock.UtcNow.ToUnixTimeSeconds(), opened = clock.ServerOpen;
+        if (testing?.Opens(id) == true && AlwaysOpenOccurrence(id, at) is { } always) return always;
         // Everything else the answer reads: the zone of the civil-day math and the schedule tables (fixed in production).
         var inputs = (clock.LocalTimeZone, data.Table("TimeLimitConfig").Count, data.Table("DailyActivityConfig").Count,
             data.Table("DailyActivityCustomConfig").Count);
@@ -43,6 +48,26 @@ public sealed class TimedTodoSchedule(GameData data, ActivityClock clock, TimePr
     }
 
     private readonly System.Collections.Concurrent.ConcurrentDictionary<int, (long Opened, (TimeZoneInfo, int, int, int) Inputs, long At, Occurrence Answer)> _answers = new();
+
+    /// <summary>
+    /// Testing AlwaysOpen (TEST AID, not original): the occurrence that holds <paramref name="at"/> (or the next one) in a
+    /// day of back-to-back occurrences. A row with a control id runs its phases (ActivityClock repeats them); any other
+    /// row repeats its own _kTime length, a whole-day row (500/500) taking each part of the day whole. The weekday,
+    /// the custom weeks and the _iTimeLimitId bounds are not consulted. Null without a schedule (no row, no _kTime).
+    /// </summary>
+    private Occurrence? AlwaysOpenOccurrence(int id, long at)
+    {
+        if (DailyActivityConfig.Get(data, id) is not { } row) return null;
+        if (row.TimeCtrlId > 0) // one occurrence a run of phases; runs that touch stay apart (their cycles differ)
+            return clock.Segments(row.TimeCtrlId, at).GroupBy(w => w.Cycle)
+                .Select(run => new Occurrence(run.Min(w => w.Start), run.Max(w => w.End)))
+                .OrderBy(w => w.Start).FirstOrDefault(w => w.End > at);
+        if (row.Time is not [var from, var until, ..]) return null;
+        long begin = from / 100 * 60 + from % 100, finish = until / 100 * 60 + until % 100;
+        if (finish <= begin) finish += 24 * 60; // as At: an end not after the start is on the next day (500/500: a whole day)
+        var slot = TestingSwitches.Slots(at, (finish - begin) * 60, fullOnly: false, time.LocalTimeZone).FirstOrDefault();
+        return slot.End > at ? new Occurrence(slot.Start, slot.End) : null;
+    }
 
     private Occurrence? Compute(int id, long now)
     {

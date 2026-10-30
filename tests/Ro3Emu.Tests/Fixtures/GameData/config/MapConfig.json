@@ -1,3 +1,4 @@
 {
-  "10111": { "_iID": 10111, "_kResSceneEditorName": "synthetic_town" }
+  "10111": { "_iID": 10111, "_kResSceneEditorName": "synthetic_town" },
+  "10112": { "_iID": 10112, "_iName": [ 990000040 ], "_kResSceneEditorName": "synthetic_field", "_kBgImage": [ "sc_synthetic_field_pathfind.png" ] }
 }

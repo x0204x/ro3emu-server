@@ -60,3 +60,7 @@ dotnet test tests/Ro3Emu.Tests --filter "FullyQualifiedName~Skill"
 ```
 
 These tests do not cover native client visual behavior.
+
+## Arrows
+
+An archer (a career in `PublicParamConfig.ArrowsCanUseJob`, 3100-3400) picks any arrow of `ArrowsItemId` with 31324 without owning it: the client's arrow bar (`UI_Sys_Main_UnlimitedWidget`) lists them with count -1, endless, and the client data has no shop, drop or craft for them. The answer carries count -1 for them. Any other ammunition (the Steel Arrow 1002011) or any other career still needs a stack in the bag. The equipped arrow's element (`ArrowsIdAttr`, `_kParam1`) is what the skills with `_iAffectByArrow` use; nothing uses arrows up.

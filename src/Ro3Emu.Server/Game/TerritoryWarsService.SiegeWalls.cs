@@ -20,8 +20,6 @@ public sealed partial class TerritoryWarsService
     private static readonly long[] SiegeGateWalls = [72, 74];
     /// <summary>71 "空气墙_进攻方阻挡" and 264/265 "空气墙-进攻方营地墙": the attackers' camp.</summary>
     private static readonly long[] SiegeCampWalls = [71, 264, 265];
-    /// <summary>65 "空气墙_左中" and 19 "空气墙_右中": the city wall at the two ladder ends (points 18 and 30).</summary>
-    private static readonly long[] SiegeLadderWalls = [65, 19];
     /// <summary>
     /// Group 77 "拒马&amp;相应空气墙" (barricades and their air walls): each Obstacle's spawn point and its wall, paired by name
     /// ("刷怪点-拒马-中路-1" / "空气墙-拒马-中路-1" and so on) and position (the barricade stands inside its wall).
@@ -42,15 +40,17 @@ public sealed partial class TerritoryWarsService
 
     /// <summary>
     /// The walls standing in the run (inferred: the client has no script that switches them): the gate's while it stands,
-    /// the attackers' camp in Prepare, the city wall at the ladder ends (the ladders are not spawned), each barricade's
-    /// and each fortress's while its object stands. The other walls of the scene (29/31/61/66 along the city wall, mostly
-    /// on unwalkable cells, and 32/33/67/68 beside the ladder lanes) stay off.
+    /// the attackers' camp in Prepare, the city wall at each ladder end until a ladder stands there and then the ladder
+    /// lane's rails instead (TerritoryWarsService.SiegeUnits.cs), each barricade's and each fortress's while its object
+    /// stands. The other walls of the scene (29/31/61/66 along the city wall, mostly on unwalkable cells) stay off.
     /// </summary>
     private static IEnumerable<long> SiegeActiveWalls(SiegeRunState r)
     {
         if (r.Stage == SiegePrepareStage) foreach (long wall in SiegeCampWalls) yield return wall;
         if (!r.Destroyed.Contains(SiegeGatePoint)) foreach (long wall in SiegeGateWalls) yield return wall;
-        foreach (long wall in SiegeLadderWalls) yield return wall;
+        foreach (var ladder in SiegeLadders)
+            if (!r.PlacedLadders.Contains(ladder.Point)) yield return ladder.Wall;
+            else foreach (long wall in ladder.Lane) yield return wall;
         foreach (var (point, wall) in SiegeBarricadeWalls)
             if (!r.Destroyed.Contains(point)) yield return wall;
         foreach (var (point, walls) in SiegeFortressWalls)

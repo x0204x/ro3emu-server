@@ -177,6 +177,7 @@ public sealed class RoleSystems(Maps.World world, ChatService chat, CharacterSer
     {
         await world.MoveAsync(session, walk);
         await territory.VehicleMovedAsync(session, walk); // a driver's walk is its vehicle's
+        await territory.PlatformMovedAsync(session); // a SummonPlatform activator who walks off
         await gathering.PlayerMovedAsync(session);
         combat.PlayerMoved(session);
         await emoji.PlayerMovedAsync(session);

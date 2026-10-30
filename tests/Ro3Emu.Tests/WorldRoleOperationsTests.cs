@@ -285,6 +285,9 @@ public sealed class WorldRoleOperationsTests : IAsyncLifetime
             Assert.Equal(50, saved.SetData.Condition);
             Assert.Equal([1000000, 0, 0], saved.SetData.ItemEntrys);
 
+            // Not an archer (PublicParamConfig ArrowsCanUseJob): even the endless Fire Arrow must be owned.
+            await alice.SendGameAsync(CharacterService.ArrowSwitch, new ItemArrowSwitchReq { ItemId = 1002012 });
+            Assert.Equal(ErrorCodes.ItemMissing, (await Next(alice, CharacterService.ArrowSwitch, ItemArrowSwitchResp.Parser)).Result);
             await alice.SendGameAsync(CharacterService.ArrowSwitch, new ItemArrowSwitchReq { ItemId = 1002011 });
             Assert.Equal(ErrorCodes.ItemMissing, (await Next(alice, CharacterService.ArrowSwitch, ItemArrowSwitchResp.Parser)).Result);
             await Gm("alice", "!item 1002011 10");

@@ -8,7 +8,8 @@ namespace Ro3Emu.DataExport;
 /// Everything the server reads from the client, exported in one go from a client folder into a data folder:
 /// config/ (DataConfig, ComplexConfig, Localization_en, Localization_zh_CN and Localization_zh_TW tables), sceneeditor/, skills/, nav/, msgtable.tsv, plus
 /// loc_en.tsv (the English map for the client, see <see cref="LocMapBuilder"/>) and export.json (what was exported
-/// from which client). Nothing in the client folder is written.
+/// from which client). Then the web panel's pictures go into icons/ (<see cref="IconExport"/>), outside the swap: they
+/// are updated in place, file by file, and the server runs without them. Nothing in the client folder is written.
 /// - **Complete or flagged:** a table that fails to export is an error unless it is a known non-table module
 ///   (<see cref="ExpectedTableFailures"/>); any other failure is listed in the stamp and makes the export incomplete,
 ///   so <see cref="UpToDate"/> says no and the next start exports again (the player sees the warning).
@@ -43,14 +44,17 @@ public static class GameDataExport
         public Action<string>? Log { get; init; }
         /// <summary>(stage, done, total) for a progress bar; total 0 = no count.</summary>
         public Action<string, int, int>? Progress { get; init; }
+        /// <summary>Also decode the web panel's pictures into icons/ (RO3Emu --no-icons turns it off).</summary>
+        public bool Icons { get; init; } = true;
         /// <summary>Tests: called at each step of the swap ("aside:&lt;name&gt;", "in:&lt;name&gt;"); throwing fails it there.</summary>
         internal Action<string>? SwapStepForTest { get; init; }
     }
 
     /// <param name="FailedTables">Tables that could not be exported (beyond <see cref="ExpectedTableFailures"/>); not
     /// empty = the export is incomplete and the server may miss content.</param>
+    /// <param name="Icons">The panel's pictures; null when they were not exported.</param>
     public sealed record Result(int ConfigTables, int SceneEditor, int Skills, int NavFiles, int Messages, int LocEntries,
-        string Fingerprint, IReadOnlyCollection<string> ClientFilesRead, IReadOnlyList<string> FailedTables);
+        string Fingerprint, IReadOnlyCollection<string> ClientFilesRead, IReadOnlyList<string> FailedTables, IconExport.Result? Icons = null);
 
     public static string LuaPayloadDir(string clientDir) => Path.Combine(clientDir, "ro3_Data", "StreamingAssets", "Recovery", "LuaPayload");
 
@@ -167,29 +171,38 @@ public static class GameDataExport
     private static int CountFiles(string dir) => Directory.Exists(dir) ? Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories).Count() : -1;
 
     /// <summary>
-    /// The VFS files that hold the walk maps, relative to the client folder with '/' separators. Needs only the Lua
-    /// payload and the VFS index to answer, so a server host can download just what an export reads
-    /// (RO3Emu install --server-files).
+    /// The VFS files an export reads: the walk maps, and with <paramref name="icons"/> the panel's pictures, relative to
+    /// the client folder with '/' separators. Needs only the Lua payload and the VFS index to answer, so a server host can
+    /// download just what an export reads (RO3Emu install --server-files). A picture cut from a sprite atlas names its
+    /// atlas only once its own bundle is there: asking again after that download adds the atlases.
     /// </summary>
-    public static List<string> NavSourceFiles(string clientDir)
+    public static List<string> ServerSourceFiles(string clientDir, bool icons = true)
     {
-        var work = Directory.CreateTempSubdirectory("ro3emu-navsources-");
+        var work = Directory.CreateTempSubdirectory("ro3emu-sources-");
         try
         {
             var payload = LuaPayloadDir(clientDir);
             var mapResource = Path.Combine(payload, "Config", "DataConfig", "MapResource.lua.bytes");
             if (!File.Exists(mapResource)) throw new ExportException("The game scripts have no MapResource table.");
-            // Only the one table is needed, but its module may require others: decode the whole tree (a few seconds).
+            // Only a few tables are needed, but their modules may require others: decode the whole tree (a few seconds).
             var luac = Path.Combine(work.FullName, "luac");
             LuaChunkDecoder.DecodeTree(payload, luac);
-            using var exporter = new LuaConfigExporter(luac);
-            if (!exporter.TryExport(Path.Combine(luac, "Config", "DataConfig", "MapResource.luac"), out var json, out var message))
-                throw new ExportException("The MapResource table could not be read: " + message);
-            var jsonPath = Path.Combine(work.FullName, "MapResource.json");
-            File.WriteAllText(jsonPath, json);
-            using var vfs = new Vfs(VfsDir(clientDir));
-            return NavExporter.NavNames(jsonPath).Select(n => vfs.SourceFile(NavExporter.FileName(n))).OfType<string>()
-                .Select(f => "ro3_Data/StreamingAssets/VFS/" + f).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.Ordinal).ToList();
+            string[] tables = icons ? ["MapResource", .. IconExport.Tables] : ["MapResource"];
+            using (var exporter = new LuaConfigExporter(luac))
+            {
+                foreach (var table in tables)
+                {
+                    if (exporter.TryExport(Path.Combine(luac, "Config", "DataConfig", table + ".luac"), out var json, out var message))
+                        File.WriteAllText(Path.Combine(work.FullName, table + ".json"), json);
+                    else if (table == "MapResource") throw new ExportException("The MapResource table could not be read: " + message);
+                }
+            }
+            List<string> files;
+            using (var vfs = new Vfs(VfsDir(clientDir)))
+                files = [.. NavExporter.NavNames(Path.Combine(work.FullName, "MapResource.json")).Select(n => vfs.SourceFile(NavExporter.FileName(n)))
+                    .OfType<string>().Select(f => "ro3_Data/StreamingAssets/VFS/" + f)];
+            if (icons) files.AddRange(IconExport.SourceFiles(clientDir, IconExport.Requests(work.FullName)));
+            return [.. files.Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.Ordinal)];
         }
         finally { work.Delete(recursive: true); }
     }
@@ -288,7 +301,36 @@ public static class GameDataExport
 
         var read = new SortedSet<string>(StringComparer.OrdinalIgnoreCase) { LuaPayloadDir(clientDir) };
         foreach (var f in filesRead) read.Add(f);
-        return new Result(config.Ok, scene.Ok, skills.Ok, nav.Extracted, messages, loc.Count, fingerprint, read, failedTables);
+        var icons = options.Icons ? ExportIcons(clientDir, dataDir, options, read) : null;
+        return new Result(config.Ok, scene.Ok, skills.Ok, nav.Extracted, messages, loc.Count, fingerprint, read, failedTables, icons);
+    }
+
+    /// <summary>True when the data folder has the panel's pictures (an export made with them).</summary>
+    public static bool HasIcons(string dataDir) => File.Exists(Path.Combine(dataDir, IconExport.Folder, "index.json"));
+
+    /// <summary>
+    /// The web panel's pictures alone, from the tables already in <paramref name="dataDir"/>/config: what changed in
+    /// the client since the last time (or everything, the first time). A failure is logged and returns null: the
+    /// server and the panel work without pictures.
+    /// </summary>
+    public static IconExport.Result? ExportIcons(string clientDir, string dataDir, Options? options = null, ISet<string>? filesRead = null)
+    {
+        options ??= new Options();
+        try
+        {
+            options.Progress?.Invoke("Exporting the panel's pictures", 0, 0);
+            using var vfs = new Vfs(VfsDir(clientDir));
+            var requests = IconExport.Requests(Path.Combine(dataDir, "config"));
+            var result = IconExport.Export(vfs, requests, Path.Combine(dataDir, IconExport.Folder),
+                (done, total) => options.Progress?.Invoke("Exporting the panel's pictures", done, total), options.Log);
+            if (filesRead != null) foreach (var f in vfs.FilesRead) filesRead.Add(f);
+            return result;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            options.Log?.Invoke("icons: not exported: " + e.Message);
+            return null;
+        }
     }
 
     /// <summary>

@@ -102,33 +102,47 @@ internal static partial class Flows
     }
 
     /// <summary>Exports the game data when it is missing, from another client version, or asked for.</summary>
-    public static void EnsureGameData(string client, bool force) =>
-        EnsureGameData(client, force, SetupHome.DataDir, (source, target) => { RunExport(source, target); });
+    /// <param name="icons">The web panel's pictures too (--no-icons turns them off); an export made without them gets
+    /// them on the next start that asks.</param>
+    public static void EnsureGameData(string client, bool force, bool icons = true) =>
+        EnsureGameData(client, force, SetupHome.DataDir, (source, target) => { RunExport(source, target, icons); },
+            icons ? ExportMissingIcons : null);
 
-    // 測試可注入匯出邊界，使用相同產品分派而不載入原生 Lua。
-    internal static void EnsureGameData(string client, bool force, string dataDir, Action<string, string> export)
+    // 兩個匯出邊界可分別注入；測試不載入原生 Lua，也不讀取原版圖片。
+    internal static void EnsureGameData(string client, bool force, string dataDir, Action<string, string> export,
+        Action<string, string>? exportIcons = null)
     {
         Ui.Step("Game data");
         if (PreparedGameData.UseIfPresent(dataDir, client, force))
         {
             Ui.Ok("已核對匯入資料與原始客戶端來源，沿用此資料，不執行原生匯出。");
-            return;
         }
-        if (!force && GameDataExport.UpToDate(dataDir, client))
+        else if (!force && GameDataExport.UpToDate(dataDir, client))
         {
             var stamp = GameDataExport.ReadStamp(dataDir)!;
             Ui.Ok($"ready (exported {stamp.ExportedUtc.ToLocalTime():yyyy-MM-dd HH:mm})");
+        }
+        else
+        {
+            Ui.Info("Exporting the game data from your game folder (first run or game update, about a minute).");
+            export(client, dataDir);
             return;
         }
-        Ui.Info("Exporting the game data from your game folder (first run or game update, about a minute).");
-        export(client, dataDir);
+        // 圖示不屬於已驗證的核心資料集合；只能在資料 gate 通過後獨立補齊。
+        if (exportIcons != null && !GameDataExport.HasIcons(dataDir)) exportIcons(client, dataDir);
     }
 
-    private static GameDataExport.Result RunExport(string client, string dataDir)
+    private static void ExportMissingIcons(string client, string dataDir)
     {
-        var watch = Stopwatch.StartNew();
+        var result = GameDataExport.ExportIcons(client, dataDir, ExportOptions(icons: true));
+        Ui.EndProgress();
+        ReportIcons(result);
+    }
+
+    private static GameDataExport.Options ExportOptions(bool icons)
+    {
         var last = Stopwatch.StartNew();
-        var result = GameDataExport.Run(client, dataDir, new GameDataExport.Options
+        return new GameDataExport.Options
         {
             Translations = Translations(),
             TranslationQueue = SetupHome.RepositoryRoot() is { } repo ? Path.Combine(repo, "re", "loc", "translation_queue.tsv") : null,
@@ -139,10 +153,24 @@ internal static partial class Flows
                 last.Restart();
                 Ui.Progress(stage, done, total, total > 0 ? $"{stage}: {done * 100 / total}%" : stage + "...");
             },
-        });
+            Icons = icons,
+        };
+    }
+
+    private static void ReportIcons(IconExport.Result? icons)
+    {
+        if (icons == null) Ui.Warn("The web panel's pictures could not be exported (see the log); the panel shows letters instead.");
+        else Ui.Ok($"web panel pictures: {icons.Written} new, {icons.Unchanged} unchanged ({Ui.Size(icons.Bytes)})");
+    }
+
+    private static GameDataExport.Result RunExport(string client, string dataDir, bool icons)
+    {
+        var watch = Stopwatch.StartNew();
+        var result = GameDataExport.Run(client, dataDir, ExportOptions(icons));
         Ui.EndProgress();
         Ui.Ok($"exported in {Ui.Duration(watch.Elapsed)}: {result.ConfigTables} tables, {result.SceneEditor} maps, {result.Skills} skills, " +
               $"{result.NavFiles} walk maps, {result.Messages} messages, {result.LocEntries} English texts");
+        if (icons) ReportIcons(result.Icons);
         if (result.FailedTables.Count > 0)
             Ui.Warn($"{result.FailedTables.Count} game table(s) could not be exported ({string.Join(", ", result.FailedTables.Take(5))}" +
                 (result.FailedTables.Count > 5 ? ", ..." : "") + "). The server may miss some content; RO3Emu will try again next start. " +
@@ -169,7 +197,7 @@ internal static partial class Flows
         Ui.Step("Checking the game");
         CheckClient(client, needExport: true);
         Ui.Ok("this game version works with RO3Emu");
-        EnsureGameData(client, options.Reexport);
+        EnsureGameData(client, options.Reexport, !options.NoIcons);
 
         var gms = options.GmAccounts.ToList();
         if (host && gms.Count == 0 && Ui.Interactive)
@@ -189,6 +217,8 @@ internal static partial class Flows
                 Ui.Info($"Windows may ask whether Ro3Emu.Server may use the network: allow it.");
                 Ui.Info($"For players outside your network, forward TCP ports {ServerProcess.PortList(local.Ports)} on your router");
                 Ui.Info("to this PC and start with --public <your public IP>.");
+                if (local.Ports.Panel > 0)
+                    Ui.Info($"Web panel for players and admins: http://{local.PublicHost}:{local.Ports.Panel} (docs/guide/panel.md).");
             }
             if (server != null) Program.OnClose = () => server.Stop(TimeSpan.FromSeconds(4));
             return await PlayAndWaitAsync(client, server, options.NoLaunch);
@@ -245,7 +275,7 @@ internal static partial class Flows
         {
             if (ServerProcess.BusyPort(ports) is { } busy)
                 throw new SetupException($"Port {busy} is already used by another program, so the server cannot start.",
-                    "Close the other program (or another RO3Emu window), or start with other ports, for example --http-port 5381 --micro-port 20001 --game-port 33101.");
+                    "Close the other program (or another RO3Emu window), or start with other ports, for example --http-port 5390 --micro-port 20001 --game-port 33102 --panel-port 5391 (or --no-panel).");
             server = ServerProcess.Start(serverExe, SetupHome.DataDir, ports, args, env);
             var watch = Stopwatch.StartNew();
             bool ready = await server.WaitReadyAsync(TimeSpan.FromMinutes(5),
@@ -477,7 +507,7 @@ internal static partial class Flows
             throw new SetupException($"'{client}' is not a complete game folder: {string.Join(", ", missing)} missing.",
                 "Copy the whole game folder (at least ro3_Data/StreamingAssets) and give the folder that contains ro3_Data.");
         Ui.Step($"Exporting the game data from {client} to {data}");
-        var result = RunExport(client, data);
+        var result = RunExport(client, data, !options.NoIcons);
         if (options.ListInputs)
             foreach (var f in result.ClientFilesRead) Console.WriteLine("input " + f);
         return 0;

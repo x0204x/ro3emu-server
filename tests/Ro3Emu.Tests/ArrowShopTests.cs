@@ -8,7 +8,7 @@ using Ro3Emu.Shared;
 
 namespace Ro3Emu.Tests;
 
-/// <summary>全自造配置驗證自訂補售、真購買／切箭封包與交易；不是原服販售價或原生玩家驗收。</summary>
+/// <summary>自造配置驗證舊補售已退役，且一般商城的原價、交易及持久化仍正常。</summary>
 public sealed partial class ArrowShopTests : IAsyncLifetime
 {
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(15);
@@ -28,87 +28,61 @@ public sealed partial class ArrowShopTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task FiveElementalArrowPurchasesUse100ZenyAndSwitchFavouriteCountersPersistAfterRestart()
+    public async Task RetiredArrowOffersCannotChargeOrCreatePurchaseState()
     {
         await Start();
-        long role, opening;
-        await using (var bot = await Host.InWorldAsync("ArrowBatch"))
-        {
-            var s = Session(bot); role = s.Role!.Id; await Fund(s); opening = Balance(s);
-            Assert.Equal(ErrorCodes.ShopClosed, (await Buy(bot, First.CommodityId)).Result);
-            Assert.Equal(opening, Balance(s)); Assert.DoesNotContain(s.Items, i => ArrowIds.Contains(i.Entry));
-            await Ready(s);
-            var batch = new BatchBuyCommodityReq();
-            foreach (var offer in ArrowShopCatalog.Offers)
-                batch.Items.Add(new BatchBuyCommodityItem { CommodityId = offer.CommodityId, Count = 2, Price = 1 });
-            await bot.SendGameAsync(ShopService.BatchBuyCommodity, batch);
-            var reply = BatchBuyCommodityResp.Parser.ParseFrom((await bot.Inbox.WaitAsync(p => p.IsGame(ShopService.BatchBuyCommodity), Wait)).Body);
-            Assert.Equal(0, reply.Result); Assert.Equal(5, reply.Results.Count);
-            Assert.All(reply.Results, item => Assert.Equal((0, 100, 2), (item.Result, item.Price, item.BuyTimes)));
-            Assert.Equal(opening - 1000, Balance(s));
-            foreach (var offer in ArrowShopCatalog.Offers)
-            {
-                Assert.Equal(2, Count(s, offer.ItemId));
-                await bot.SendGameAsync(CharacterService.ArrowSwitch, new ItemArrowSwitchReq { ItemId = offer.ItemId });
-                var selected = ItemArrowSwitchResp.Parser.ParseFrom((await bot.Inbox.WaitAsync(p => p.IsGame(CharacterService.ArrowSwitch), Wait)).Body);
-                Assert.Equal((0, offer.ItemId, 2), (selected.Result, selected.ItemId, selected.ItemCount));
-            }
-            await bot.SendGameAsync(ShopService.CommodityCollect, new CommodityCollectReq
-            { CommodityId = First.CommodityId, OpType = CollectOperateType.Add });
-            Assert.Equal(0, CommodityCollectResp.Parser.ParseFrom((await bot.Inbox.WaitAsync(p => p.IsGame(ShopService.CommodityCollect), Wait)).Body).Result);
-            Assert.Contains(First.CommodityId, SavedShop(role).Favorites);
-        }
-        await Host.RestartAsync();
-        await using var again = await Host.InWorldAsync("ArrowBatch", create: false);
-        var reloaded = Session(again);
-        Assert.Equal(opening - 1000, Balance(reloaded));
-        Assert.Equal(ArrowShopCatalog.Offers[^1].ItemId, reloaded.BagState.Info.CurrentArrowID);
-        Assert.Contains(First.CommodityId, reloaded.Shop!.Favorites);
+        await using var bot = await Host.InWorldAsync("RetiredArrows");
+        var session = Session(bot); await Fund(session); await Ready(session);
+        long before = Balance(session);
         foreach (var offer in ArrowShopCatalog.Offers)
-        { Assert.Equal(2, Count(reloaded, offer.ItemId)); Assert.Equal(2, SavedShop(role).Bought[offer.CommodityId].Count); }
-        var sync = DBShopInfoIncrement.Parser.ParseFrom((await again.Inbox.WaitAsync(p => p.IsGame(ShopService.ShopSync), Wait)).Body);
-        Assert.All(ArrowShopCatalog.Offers, offer => Assert.Equal(2, sync.CommodityBuyTimes[offer.CommodityId].All));
+            Assert.Equal(ErrorCodes.ShopNoConfig, (await Buy(bot, offer.CommodityId, 2)).Result);
+        Assert.Equal(before, Balance(session));
+        Assert.DoesNotContain(session.Items, item => ArrowIds.Contains(item.Entry));
+        Assert.Empty(session.Shop!.Bought);
+        Assert.Empty(session.Shop.Favorites);
+        Assert.Equal(before, Service<RoleStore>().LoadProgress(session.Role!.Id).Currency[ArrowShopCatalog.CurrencyId]);
     }
 
     [Fact]
-    public async Task FailedArrowPurchaseRollsBackPaymentGoodsAndCounterThenRetryCommits()
+    public async Task OrdinaryCataloguePurchaseFailureKeepsPaymentGoodsAndCountersThenRetryCommits()
     {
+        NativeShop(OtherShop, OtherClass, OtherShop);
+        NativeCommodity(OriginalCommodity, OrdinaryItem, OtherClass);
         await Start();
-        await using var bot = await Host.InWorldAsync("ArrowRollback");
-        var s = Session(bot); long role = s.Role!.Id; await Fund(s); await Ready(s);
-        Assert.Equal(0, (await Buy(bot, First.CommodityId, 3)).Result);
-        long before = Balance(s);
+        await using var bot = await Host.InWorldAsync("OrdinaryRollback");
+        var session = Session(bot); long role = session.Role!.Id; await Fund(session);
+        Assert.Equal(0, (await Buy(bot, OriginalCommodity, 3)).Result);
+        long before = Balance(session);
         FixtureSql.Execute(Service<AccountStore>(), """
-            CREATE TRIGGER arrow_shop_fail BEFORE UPDATE OF shop ON role
-            BEGIN SELECT RAISE(ABORT, '自造箭矢購買交易故障'); END
+            CREATE TRIGGER ordinary_shop_fail BEFORE UPDATE OF shop ON role
+            BEGIN SELECT RAISE(ABORT, '自造一般商城交易故障'); END
             """);
         try
         {
-            await Assert.ThrowsAsync<SqliteException>(() => Service<GameLoop>().InvokeAsync(() => Service<ShopService>().BuyAsync(s,
-                new BuyCommodityReq { CommodityId = First.CommodityId, Count = 2, Price = 1 })));
+            await Assert.ThrowsAsync<SqliteException>(() => Service<GameLoop>().InvokeAsync(() => Service<ShopService>().BuyAsync(session,
+                new BuyCommodityReq { CommodityId = OriginalCommodity, Count = 2, Price = 1 })));
         }
-        finally { FixtureSql.Execute(Service<AccountStore>(), "DROP TRIGGER arrow_shop_fail"); }
-        Assert.Equal(before, Balance(s)); Assert.Equal(3, Count(s, First.ItemId));
-        Assert.Equal(3, SavedShop(role).Bought[First.CommodityId].Count);
-        Assert.Equal(3, s.Shop!.Bought[First.CommodityId].Count);
+        finally { FixtureSql.Execute(Service<AccountStore>(), "DROP TRIGGER ordinary_shop_fail"); }
+        Assert.Equal(before, Balance(session));
+        Assert.Equal(3, Count(session, OrdinaryItem));
+        Assert.Equal(3, SavedShop(role).Bought[OriginalCommodity].Count);
         Assert.Equal(before, Service<RoleStore>().LoadProgress(role).Currency[ArrowShopCatalog.CurrencyId]);
-        var retry = await Buy(bot, First.CommodityId, 2);
-        Assert.Equal((0, 100, 5), (retry.Result, retry.Price, retry.BuyTimes));
-        Assert.Equal(before - 200, Balance(s)); Assert.Equal(5, Count(s, First.ItemId));
-        Assert.Equal(5, SavedShop(role).Bought[First.CommodityId].Count);
+        var retry = await Buy(bot, OriginalCommodity, 2);
+        Assert.Equal((0, 7, 5), (retry.Result, retry.Price, retry.BuyTimes));
+        Assert.Equal(before - 14, Balance(session));
+        Assert.Equal(5, Count(session, OrdinaryItem));
     }
 
-    private Task Start() => StartCore();
-    private async Task StartCore() => _host = await SyntheticHost.StartAsync(o => o.GameDataDir = _fixture);
-    private Task Fund(GameSession s) => Service<GameLoop>().InvokeAsync(() => Service<CharacterService>().GrantAsync(s, [(ArrowShopCatalog.CurrencyId, 5000)]));
-    private Task Ready(GameSession s) => Service<GameLoop>().InvokeAsync(async () => { await Service<CharacterService>().SetLevelAsync(s, 3, null); });
-    private long Balance(GameSession s) => Service<CharacterService>().CountOf(s, ArrowShopCatalog.CurrencyId);
-    private static long Count(GameSession s, int item) => s.Items.Where(i => i.Entry == item).Sum(i => (long)i.Stack);
+    private async Task Start() => _host = await SyntheticHost.StartAsync(o => o.GameDataDir = _fixture);
+    private Task Fund(GameSession session) => Service<GameLoop>().InvokeAsync(() => Service<CharacterService>().GrantAsync(session, [(ArrowShopCatalog.CurrencyId, 5000)]));
+    private Task Ready(GameSession session) => Service<GameLoop>().InvokeAsync(async () => { await Service<CharacterService>().SetLevelAsync(session, 3, null); });
+    private long Balance(GameSession session) => Service<CharacterService>().CountOf(session, ArrowShopCatalog.CurrencyId);
+    private static long Count(GameSession session, int item) => session.Items.Where(i => i.Entry == item).Sum(i => (long)i.Stack);
     private static int[] ArrowIds => ArrowShopCatalog.Offers.Select(offer => offer.ItemId).ToArray();
     private ShopService.ShopState SavedShop(long role) => JsonSerializer.Deserialize<ShopService.ShopState>(Service<RoleStore>().LoadShop(role)!)!;
     private static async Task<BuyCommodityResp> Buy(BotClient bot, int id, int count = 1)
     {
         await bot.SendGameAsync(ShopService.BuyCommodity, new BuyCommodityReq { CommodityId = id, Count = count, Price = 1 });
-        return BuyCommodityResp.Parser.ParseFrom((await bot.Inbox.WaitAsync(p => p.IsGame(ShopService.BuyCommodity), Wait)).Body);
+        return BuyCommodityResp.Parser.ParseFrom((await bot.Inbox.WaitAsync(packet => packet.IsGame(ShopService.BuyCommodity), Wait)).Body);
     }
 }

@@ -85,7 +85,7 @@ public sealed partial class GenreService(
         if (selected.TryGetValue(Attr, out int attr) && (code = character.StageStatPlan(next.Attrs, next.Progress, attr)) != 0) return code;
         if (selected.TryGetValue(Skill, out int skill) && (skill != next.Skills.CurrentPlanIndex || replaced?.Contains(Skill) == true)
             && (code = skills.StageSkillPlan(s, next.Skills, next.Progress, skill)) != 0) return code;
-        if (selected.TryGetValue(Equip, out int equip) && (code = character.StageEquipmentPlan(next.Equipment, next.Items, equip, replaced?.Contains(Equip) == true)) != 0) return code;
+        if (selected.TryGetValue(Equip, out int equip) && (code = character.StageEquipmentPlan(next.Equipment, next.Items, equip, next.Progress, replaced?.Contains(Equip) == true)) != 0) return code;
         if (selected.TryGetValue(Card, out int card) && (code = cards.StageGenrePlan(s, next.Cards, next.Items, card, replaced?.Contains(Card) == true)) != 0) return code;
         if (selected.TryGetValue(Totem, out int totem) && (totem != next.Totems.CurrentPlan || replaced?.Contains(Totem) == true))
         {

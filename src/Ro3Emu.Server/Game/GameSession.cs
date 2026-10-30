@@ -28,6 +28,9 @@ public sealed class GameSession(PhonestChannel channel, TrafficLog traffic, Skil
     /// without NPCs, since the client's socket resync waits for one (spec §1.6.5).</summary>
     internal bool ReconnectAoiPending { get; set; }
 
+    /// <summary>While the web panel's GM console runs a command for this session (loop-owned), the GM replies sent to it.</summary>
+    internal List<string>? GmReplies { get; set; }
+
     /// <summary>Closes the connection for a recovery relogin; unlike a network drop it never waits for a reconnect.</summary>
     internal void AbortForRecovery()
     {

@@ -19,6 +19,9 @@ public readonly partial record struct JobConfig(JsonElement Row)
     [ConfigField("_iSecondaryRoots")] public partial long SecondaryRoots { get; }
     [ConfigField("_iTotem")] public partial long Totem { get; }
     [ConfigField("_kAttri")] public partial long[][] Attri { get; }
+    /// <summary>The class emblem the client's lists show (a sprite name, "icon_job_knight.png").</summary>
+    [ConfigField("_kIcon")] public partial string Icon { get; }
     [ConfigField("_kSkillNormalID")] public partial long[] SkillNormalId { get; }
     [ConfigField("_kSkillReplace")] public partial long[][] SkillReplace { get; }
+    [ConfigField("_kWeaponForm")] public partial long[] WeaponForm { get; }
 }

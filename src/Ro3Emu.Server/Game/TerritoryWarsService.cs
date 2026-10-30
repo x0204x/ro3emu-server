@@ -194,6 +194,8 @@ public sealed partial class TerritoryWarsService : IGameTicker
         scene.Leaving.Add(CannonLeavingAsync);
         scene.Leaving.Add(VehicleLeavingAsync);
         scene.WalkBlocked = SiegeWalkBlocked;
+        scene.WalkBridged = SiegeWalkBridged;
+        monsters.Spares = SiegeSpares;
         combat.Killed.Add(KilledAsync);
         combat.Killed.Add(SiegeKilledAsync);
         combat.Killed.Add(WorldKilledAsync);
@@ -203,6 +205,9 @@ public sealed partial class TerritoryWarsService : IGameTicker
         combat.PlayerDied.Add(WorldDiedAsync);
         combat.PlayerDied.Add(CannonDiedAsync);
         combat.PlayerDied.Add(VehicleDiedAsync);
+        combat.PlayerDied.Add(PlatformLeavingAsync);
+        scene.Leaving.Add(PlatformLeavingAsync);
+        world.PlayerEntered.Add(PlatformActivatorSeenAsync);
         combat.GrantedSkill.Add(SeatSkill);
         combat.AfterLethalPublication.Add(MachineDestroyedAsync);
         combat.Killed.Add(MachineKilledAsync);

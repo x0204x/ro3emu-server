@@ -1,0 +1,42 @@
+/* The admin tools' own pieces, on the tokens of app.css: checkboxes, the reward editor, the confirmation box and the
+   GM console. */
+.check{display:flex;align-items:center;gap:var(--s2);margin-bottom:var(--s4);font-size:var(--t-md);cursor:pointer}
+.check input{width:16px;height:16px;margin:0;accent-color:var(--ink)}
+.tools-gap{margin:var(--s2) 0 var(--s3)}
+.tools-gap-top{margin-top:var(--gutter)}
+.grid.tools-tight{gap:0 var(--s4)}
+.grid.tools-tight>[class*="span-"]{grid-column:span 6}
+textarea.input.mono{font-family:var(--mono);font-size:var(--t-sm)}
+
+.reward-list{display:grid;gap:var(--s2)}
+.reward-row{display:grid;grid-template-columns:auto auto minmax(0,1fr) 112px 32px;align-items:center;gap:var(--s2);
+  padding:var(--s1) var(--s1) var(--s1) var(--s3);border:1px solid var(--line);border-radius:var(--r2);background:var(--surface-sub)}
+.reward-row .input{height:32px}
+.reward-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.reward-search{position:relative;margin-top:var(--s2)}
+.reward-search svg{position:absolute;left:var(--s3);top:50%;transform:translateY(-50%);color:var(--muted)}
+.reward-search .input{padding-left:36px;height:36px}
+.reward-results{display:flex;flex-direction:column;max-height:240px;overflow:auto;margin-top:var(--s1);
+  border:1px solid var(--line-soft);border-radius:var(--r2)}
+.reward-results:empty{display:none}
+.reward-hit{display:flex;align-items:center;gap:var(--s2);width:100%;padding:var(--s2) var(--s3);border-radius:var(--r1);text-align:left;font-size:var(--t-md)}
+.reward-hit:hover,.reward-hit:focus-visible{background:var(--hover)}
+
+.confirm{margin-bottom:var(--s4);padding:var(--s3);border:1px solid rgba(180,40,63,.3);border-radius:var(--r2);background:var(--red-bg)}
+.confirm p{display:flex;gap:var(--s2);align-items:flex-start;margin-bottom:var(--s3);color:var(--ink);font-size:var(--t-md)}
+.confirm p svg{margin-top:3px;color:var(--red-ink)}
+
+.console{height:320px;overflow:auto;margin-bottom:var(--s3);padding:var(--s3);border:1px solid var(--line);border-radius:var(--r2);
+  background:var(--surface-sub);font-size:var(--t-sm)}
+.console-entry+.console-entry{margin-top:var(--s3);padding-top:var(--s3);border-top:1px solid var(--line-soft)}
+.console-cmd{color:var(--blue-ink);font-weight:700}
+.console-reply{margin-top:var(--s1);font-family:var(--mono);white-space:pre-wrap;overflow-wrap:anywhere}
+.console-reply.error{color:var(--red-ink)}
+.console-input{display:flex;gap:var(--s2)}
+.console-input .input{flex:1;min-width:0}
+
+@media (max-width:600px){
+  .grid.tools-tight>[class*="span-"]{grid-column:span 12}
+  .reward-row{grid-template-columns:auto auto minmax(0,1fr) 88px 32px}
+  .console{height:260px}
+}

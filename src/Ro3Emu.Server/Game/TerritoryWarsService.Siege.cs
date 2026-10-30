@@ -180,8 +180,8 @@ public sealed partial class TerritoryWarsService
     public async Task<string> SiegeGmAsync(string[] args)
     {
         bool seed = args.Length == 4 && args[0].Equals("seed", StringComparison.OrdinalIgnoreCase);
-        if (!seed && (args.Length != 1 || args[0].ToLowerInvariant() is not ("open" or "close" or "state")))
-            throw new ArgumentException("open|close|state|seed <city> <attackGuild> <defenseGuild>");
+        if (!seed && (args.Length != 1 || args[0].ToLowerInvariant() is not ("open" or "close" or "state" or "prepare" or "objects")))
+            throw new ArgumentException("open|close|state|prepare|objects|seed <city> <attackGuild> <defenseGuild>");
         long[] gmGuilds = seed ? [long.Parse(args[2]), long.Parse(args[3])] : [];
         using var reservation = await EnterGateAsync("territory/siege gm", additionalGuilds: gmGuilds,
             includeParticipants: true);
@@ -222,6 +222,28 @@ public sealed partial class TerritoryWarsService
                     foreach (var key in state.SiegeRuns.Where(x => !x.Value.Settled).Select(x => x.Key).ToArray())
                         await SiegeSettleAsync(key, state.SiegeRuns[key].Defense);
                     break;
+                case "prepare":
+                    // Test aid (not original): the running sieges' Prepare ends now, so the Gate stage starts at once.
+                    foreach (var run in state.SiegeRuns.Values.Where(r => !r.Settled && r.Stage == SiegePrepareStage))
+                        run.PrepareEnd = Math.Max(run.Start, _clock.Now);
+                    await SaveAsync(state);
+                    foreach (var battle in _siegeBattles.Values.Where(b => !b.Room.Closed).ToList())
+                    {
+                        await SiegeAdvanceStageAsync(battle);
+                        await SiegeUnitsClockAsync(battle);
+                    }
+                    break;
+                case "objects":
+                    // Test aid: the castle units of the open siege rooms one can hit, for the GM panel's entity ops (uids);
+                    // the archers as a count.
+                    return string.Join("; ", _siegeBattles.Values.Where(b => !b.Room.Closed).Select(b =>
+                        $"room {b.Room.Id} stage {b.State.Stage}, archers {b.Objects.Values.Count(o => o.Template.NpcId == SiegeArcherNpc && !o.Dead)}: "
+                        + string.Join(", ", b.Objects.Where(o => o.Value.Template.NpcId != SiegeArcherNpc
+                            && Data.Config.NPCConfig.Get(_data, o.Value.Template.NpcId) is { NoSelected: 0 }).OrderBy(o => o.Key).Select(o =>
+                            $"{o.Key}={o.Value.Template.NpcId}#{o.Value.Uid} {(o.Value.Dead ? "dead" : $"{o.Value.Hp}/{o.Value.Template.MaxHp}")}"
+                            + (o.Value.March is { } m ? m.Arrived ? " arrived" : m.Halted ? " held" : " marching" : "")))
+                        + (b.State.Refresh.Count > 0 ? "; back: " + string.Join(", ", b.State.Refresh.Select(p =>
+                            $"{p.Key} in {Math.Max(0, p.Value[1] - _clock.Now * 1000) / 1000}s")) : "")));
             }
             await PublishSiegeIfChangedAsync();
             var window = SiegeWindow();

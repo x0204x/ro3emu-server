@@ -47,6 +47,8 @@ public readonly partial record struct SkillConfig(JsonElement Row)
     [ConfigField("_iMaxLevel")] public partial long MaxLevel { get; }
     [ConfigField("_iMode")] public partial long Mode { get; }
     [ConfigField("_iName")] public partial long[] Name { get; }
+    /// <summary>The skill's icon (a sprite name, "icon_skill_swordman_bash.png").</summary>
+    [ConfigField("_kIcon")] public partial string Icon { get; }
     [ConfigField("_iPassBlock")] public partial long PassBlock { get; }
     [ConfigField("_iPubCD")] public partial long[] PubCD { get; }
     [ConfigField("_iPubCDGroup")] public partial long[] PubCDGroup { get; }

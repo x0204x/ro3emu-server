@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The web control panel (docs/guide/panel.md): a player portal and an admin area served by the server process on
+       its own port. Only the web side lives here; the server implements IPanelBackend over its own stores and loop. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Ro3Emu.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The site, embedded: no loose files next to the server binary. The fonts are the launcher's own (OFL). -->
+    <EmbeddedResource Include="www\**\*" LogicalName="www/%(RecursiveDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\Ro3Emu.Launcher\ui\assets\fonts\*.woff2" LogicalName="www/fonts/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\Ro3Emu.Launcher\ui\assets\fonts\*-OFL.txt" LogicalName="www/fonts/%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>

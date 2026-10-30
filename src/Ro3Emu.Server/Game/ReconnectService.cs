@@ -189,6 +189,17 @@ public sealed class ReconnectService
         }
     }
 
+    /// <summary>
+    /// Ends the session at once (the panel's ban): a role waiting in its reconnect grace is logged out, a connected
+    /// client gets BE_KICKED and its role is logged out without a grace, and the ticket is revoked so no reconnect
+    /// brings it back.
+    /// </summary>
+    internal void KickNow(GameSession session)
+    {
+        if (_bySession.TryGetValue(session, out var ticket) && ticket.GraceUntil != null) Expire(ticket, "kicked");
+        else Kick(session, SessionRegistry.ReasonKicked);
+    }
+
     private void Kick(GameSession session, int reason)
     {
         Revoke(session);

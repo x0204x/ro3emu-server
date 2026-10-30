@@ -17,6 +17,11 @@ public sealed partial class TerritoryWarsService
     /// <summary>LC_DunGeon_VarDefine.lua:330-440: 512 CSiegeTopBarTimestamp (the top bar's Prepare countdown, epoch ms) and
     /// 542 CSiegeStageCountdown [end epoch ms, ms added] (the other stages' countdown and its "+N S").</summary>
     private const int TopBarTimestampVar = 512, StageCountdownVar = 542;
+    /// <summary>LC_DunGeon_VarDefine.lua 511 CSiegeTopBarState (a number). Its only reader is
+    /// UI_Sys_Dungeon_Main_GoWidgetCtrl: a defender sees the "go" button while it is 0, which walks them
+    /// (CrossMapAutoFindPath) to the points of DungeonLua_2230101 UIModule_DefFrontPointIdList "0" (304-307 on the city
+    /// wall at the ladder lanes), a list keyed by the stage. (inferred) The state is the stage: 0 in Prepare.</summary>
+    private const int TopBarStateVar = 511;
     /// <summary>LC_DunGeon_VarDefine.lua 513 CSiegeGateNpcUid, a number (DungeonVariableConfig swaps the names of 513 and
     /// 514; the client decodes by VarDefine).</summary>
     private const int GateNpcUidVar = 513;
@@ -26,10 +31,16 @@ public sealed partial class TerritoryWarsService
 
     private static long SiegeStageStart(SiegeRunState r) => r.Stage == SiegePrepareStage ? r.Start : r.StageStart;
 
-    /// <summary>(inferred) A stage's countdown ends at its maxTime or the siege's own end, whichever comes first; only the
-    /// siege's end (AttackCityEndTime 60 min) settles it.</summary>
-    private static long SiegeStageEnd(SiegeRunState r) =>
-        Math.Min(SiegeStageStart(r) + SiegeStageMaxSeconds[Math.Clamp(r.Stage, 0, SiegeCrystalStage)], r.End);
+    /// <summary>Prepare's end: its maxTime after the siege's start, or earlier by the test aid (!siege prepare).</summary>
+    private static long SiegePrepareEnd(SiegeRunState r) =>
+        r.PrepareEnd > 0 ? Math.Min(r.PrepareEnd, r.Start + SiegeStageMaxSeconds[SiegePrepareStage])
+            : r.Start + SiegeStageMaxSeconds[SiegePrepareStage];
+
+    /// <summary>(inferred) A stage's countdown ends at its maxTime, plus what the kills added to it
+    /// (TerritoryWarsService.SiegeUnits.cs), or at the siege's own end, whichever comes first; only the siege's end
+    /// (AttackCityEndTime 60 min) settles it.</summary>
+    private static long SiegeStageEnd(SiegeRunState r) => r.Stage == SiegePrepareStage ? SiegePrepareEnd(r)
+        : Math.Min(SiegeStageStart(r) + SiegeStageMaxSeconds[Math.Clamp(r.Stage, 0, SiegeCrystalStage)] + r.StageAdded, r.End);
 
     /// <summary>
     /// The stage the castle allows next: Gate once Prepare's 300 s passed, Stronghold once the gate at 36 fell, Crystal
@@ -38,7 +49,7 @@ public sealed partial class TerritoryWarsService
     /// </summary>
     private int SiegeNextStage(SiegeRunState r) => r.Stage switch
     {
-        SiegePrepareStage when _clock.Now >= r.Start + SiegeStageMaxSeconds[SiegePrepareStage] => SiegeGateStage,
+        SiegePrepareStage when _clock.Now >= SiegePrepareEnd(r) => SiegeGateStage,
         SiegeGateStage when r.Destroyed.Contains(SiegeGatePoint) => SiegeStrongholdStage,
         SiegeStrongholdStage when SiegeInnerTowers.All(r.Destroyed.Contains) => SiegeCrystalStage,
         _ => r.Stage,
@@ -53,8 +64,9 @@ public sealed partial class TerritoryWarsService
         int from = r.Stage;
         for (int next = SiegeNextStage(r); next != r.Stage; next = SiegeNextStage(r))
         {
-            r.StageStart = r.Stage == SiegePrepareStage ? r.Start + SiegeStageMaxSeconds[SiegePrepareStage] : _clock.Now;
+            r.StageStart = r.Stage == SiegePrepareStage ? SiegePrepareEnd(r) : _clock.Now;
             r.Stage = next;
+            r.StageAdded = r.LastAdded = 0;
         }
         if (r.Stage == from) return;
         await SaveAsync(state);
@@ -95,15 +107,17 @@ public sealed partial class TerritoryWarsService
     }
 
     /// <summary>The siege's dungeon vars in 30401: the standing air walls (133, TerritoryWarsService.SiegeWalls.cs), the
-    /// stage's countdown (512 in Prepare, 542 [end, 0] after it; no kill adds time here) and 513 the City Gate's uid while
-    /// it is in the room.</summary>
+    /// top bar's state (511, the stage), the stage's countdown (512 in Prepare, 542 [end, the last kill's addition in ms]
+    /// after it: the top bar plays "+N S" when the end moves with an addition) and 513 the City Gate's uid while it is in
+    /// the room.</summary>
     private static IEnumerable<DungeonVar> SiegeVars(SiegeRun battle)
     {
         var r = battle.State;
         yield return SiegeWallVar(r);
+        yield return new DungeonVar { VarId = TopBarStateVar, Vi64 = { r.Stage } };
         long end = SiegeStageEnd(r) * 1000;
         if (r.Stage == SiegePrepareStage) yield return new DungeonVar { VarId = TopBarTimestampVar, Vi64 = { end } };
-        else yield return new DungeonVar { VarId = StageCountdownVar, Vi64 = { end, 0 } };
+        else yield return new DungeonVar { VarId = StageCountdownVar, Vi64 = { end, r.LastAdded } };
         if (battle.Objects.GetValueOrDefault(SiegeGatePoint) is { } gate)
             yield return new DungeonVar { VarId = GateNpcUidVar, Vi64 = { gate.Uid } };
     }

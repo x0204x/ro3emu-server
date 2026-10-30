@@ -9,6 +9,8 @@ public static partial class EconomySnapshotReader
         ["account"] = "name password_hash salt created_utc",
         ["auth_token"] = "token kind account expires_utc",
         ["account_ban"] = "account reason banned_utc until_utc banned_by",
+        ["admin_audit"] = "id utc admin action target detail",
+        ["panel_news"] = "id title body tag published_utc author pinned",
         ["role_lifecycle"] = "role_id epoch deleted",
         ["owner_revision"] = "kind id part revision",
         ["owner_operation_receipt"] = "operation_id family result",

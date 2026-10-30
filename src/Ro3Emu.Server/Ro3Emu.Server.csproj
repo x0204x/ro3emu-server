@@ -45,6 +45,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Ro3Emu.Panel\Ro3Emu.Panel.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Typed views of the client's config tables, generated at compile time from Data/Config. -->
     <ProjectReference Include="..\Ro3Emu.Server.Generators\Ro3Emu.Server.Generators.csproj"
                       OutputItemType="Analyzer" ReferenceOutputAssembly="false" />

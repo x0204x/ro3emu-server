@@ -58,6 +58,33 @@ internal sealed class AccountRegisterPlan : DbPlan
     }
 }
 
+/// <summary>A new password hash and salt for one account (its stored name); the account's login tokens go with the old
+/// password. False when no such account exists.</summary>
+internal sealed class AccountPasswordPlan : DbPlan
+{
+    private readonly string _name;
+    private readonly byte[] _hash, _salt;
+    internal AccountPasswordPlan(string name, byte[] hash, byte[] salt)
+    {
+        _name = name;
+        _hash = (byte[])hash.Clone(); _salt = (byte[])salt.Clone();
+    }
+    internal override int Bytes => 256 + Encoding.UTF8.GetByteCount(_name) + _hash.Length + _salt.Length;
+    internal override string Label => "account/password";
+    internal override object Execute(SqliteConnection db, SqliteTransaction tx)
+    {
+        using var update = DbSql.Command(db, tx, "UPDATE account SET password_hash=$hash, salt=$salt WHERE name=$name");
+        update.Parameters.AddWithValue("$name", _name);
+        update.Parameters.AddWithValue("$hash", _hash);
+        update.Parameters.AddWithValue("$salt", _salt);
+        if (update.ExecuteNonQuery() != 1) return false;
+        using var tokens = DbSql.Command(db, tx, "DELETE FROM auth_token WHERE account=$name");
+        tokens.Parameters.AddWithValue("$name", _name);
+        tokens.ExecuteNonQuery();
+        return true;
+    }
+}
+
 internal sealed class AccountTokenPlan(string kind, string account, string token, long now, long expires) : DbPlan
 {
     internal override int Bytes => 192 + Encoding.UTF8.GetByteCount(account) + token.Length;

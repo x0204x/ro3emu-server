@@ -4,7 +4,7 @@ using Ro3Emu.Shared;
 
 namespace Ro3Emu.ClientHooks
 {
-    /// <summary>只補缺列；原件或上游已提供的同分類商品永遠優先。</summary>
+    /// <summary>歷史補售計畫；官方無限箭矢啟用後不再產生商店或商品。</summary>
     internal static class ArrowShopPlan
     {
         internal readonly struct Shop
@@ -23,6 +23,7 @@ namespace Ro3Emu.ClientHooks
 
         internal static bool NeedsShop(IReadOnlyList<Shop> existing)
         {
+            if (!ArrowShopCatalog.Enabled) return false;
             bool found = false;
             foreach (var row in existing)
             {
@@ -38,6 +39,7 @@ namespace Ro3Emu.ClientHooks
 
         internal static IReadOnlyList<ArrowShopOffer> MissingOffers(IReadOnlyList<Commodity> existing)
         {
+            if (!ArrowShopCatalog.Enabled) return Array.Empty<ArrowShopOffer>();
             var missing = new List<ArrowShopOffer>();
             foreach (var offer in ArrowShopCatalog.Offers)
             {

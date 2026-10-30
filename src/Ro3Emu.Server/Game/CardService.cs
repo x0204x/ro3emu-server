@@ -149,7 +149,7 @@ public sealed partial class CardService
         int error = card == null ? ErrorCodes.ItemMissing
             : !_character.IsCard(card.Entry) ? ErrorCodes.Parameter // (inferred) no card-specific type error.
             : AddressError(grid, socket) is var address and not 0 ? address
-            : !GridsFor(Part(card.Entry)).Contains(grid) ? ErrorCodes.EquipSlot // (inferred) grid incompatibility.
+            : !CardFitsGrid(session, card.Entry, grid) ? ErrorCodes.EquipSlot // (inferred) grid incompatibility.
             : SocketError(session, grid, socket) is var sealedSocket and not 0 ? sealedSocket
             : InsertRuleError(card.Entry, SocketedExcept(session.Items, (grid, socket)));
         _log.LogInformation("{Name} inserts card {Card} into {Grid}/{Socket}: {Result}", session.Role!.Name, card?.Entry, grid, socket, error);
@@ -217,11 +217,11 @@ public sealed partial class CardService
         var src = ValidSocket(srcGrid, req.SrcEquipSlot) ? Socketed(session, srcGrid, req.SrcEquipSlot) : null;
         var dst = ValidSocket(dstGrid, req.DestEquipSlot) ? Socketed(session, dstGrid, req.DestEquipSlot) : null;
         int error = src == null ? AddressError(srcGrid, req.SrcEquipSlot) is var e and not 0 ? e : ErrorCodes.SlotEmpty
-            : !GridsFor(Part(src.Entry)).Contains(dstGrid) ? ErrorCodes.EquipSlot // (inferred)
+            : !CardFitsGrid(session, src.Entry, dstGrid) ? ErrorCodes.EquipSlot // (inferred)
             : SocketError(session, dstGrid, req.DestEquipSlot) is var d and not 0 ? d
-            : dst != null && !GridsFor(Part(dst.Entry)).Contains(srcGrid) ? ErrorCodes.EquipSlot // (inferred)
-                                                                                                 // The client sends 31408 without CheckCardInsert: a move or swap keeps the socketed set. (inferred) The
-                                                                                                 // server still holds each moved card to the insert rules against the cards it stays beside.
+            : dst != null && !CardFitsGrid(session, dst.Entry, srcGrid) ? ErrorCodes.EquipSlot // (inferred)
+                                                                                               // The client sends 31408 without CheckCardInsert: a move or swap keeps the socketed set. (inferred) The
+                                                                                               // server still holds each moved card to the insert rules against the cards it stays beside.
             : InsertRuleError(src.Entry, SocketedExcept(session.Items, (srcGrid, req.SrcEquipSlot), (dstGrid, req.DestEquipSlot))
                 .Concat(dst == null ? [] : [dst.Entry])) is var srcRule and not 0 ? srcRule
             : dst != null ? InsertRuleError(dst.Entry, SocketedExcept(session.Items, (srcGrid, req.SrcEquipSlot), (dstGrid, req.DestEquipSlot))
@@ -281,6 +281,9 @@ public sealed partial class CardService
 
     private long Part(int entry) => _data.Row("ItemConfig", entry) is { } row ? GameData.Int(row, "_iCardPart") : 0;
 
+    private bool CardFitsGrid(GameSession session, int entry, int grid) =>
+        GridsFor(Part(entry)).Contains(grid) || Part(entry) == 1 && _character.IsDualWieldOffHand(session, grid);
+
     private static InvItem CloneOne(InvItem stack)
     {
         var one = stack.Clone();
@@ -311,7 +314,7 @@ public sealed partial class CardService
                 .Where(x => x.Choice.ItemId > 0).OrderBy(x => x.Grid).ThenBy(x => x.Socket).ToList();
             foreach (var (grid, socket, choice) in desired)
             {
-                if (SocketError(session, grid, socket) != 0 || !GridsFor(Part((int)choice.ItemId)).Contains(grid))
+                if (SocketError(session, grid, socket) != 0 || !CardFitsGrid(session, (int)choice.ItemId, grid))
                     return ErrorCodes.EquipSlot;
             }
             if (!replaceCurrent || index != plans.CurrentPlan) CaptureActive(session, plans);
@@ -361,7 +364,7 @@ public sealed partial class CardService
             var desired = target.CardInfo.SelectMany(g => g.Value.CardSlotInfo.Select(s => (Grid: g.Key, Socket: s.Key, Choice: s.Value)))
                 .Where(x => x.Choice.ItemId > 0).OrderBy(x => x.Grid).ThenBy(x => x.Socket).ToList();
             // Validate all selected sockets before moving any card. Missing copies simply leave that slot empty (inferred).
-            if (desired.Any(x => SocketError(session, x.Grid, x.Socket) != 0 || !GridsFor(Part((int)x.Choice.ItemId)).Contains(x.Grid))) error = ErrorCodes.EquipSlot;
+            if (desired.Any(x => SocketError(session, x.Grid, x.Socket) != 0 || !CardFitsGrid(session, (int)x.Choice.ItemId, x.Grid))) error = ErrorCodes.EquipSlot;
             if (error == 0)
             {
                 var staged = session.Items.Select(i => i.Clone()).ToList();

@@ -38,6 +38,17 @@ public sealed partial class TerritoryWarsService
         /// <summary>The stage (0 Prepare to 3 Crystal) and when it began, epoch s (TerritoryWarsService.SiegeStages.cs).</summary>
         public int Stage { get; set; }
         public long StageStart { get; set; }
+        /// <summary>Seconds the kills added to the running stage's countdown, and the last addition in ms (var 542,
+        /// TerritoryWarsService.SiegeUnits.cs).</summary>
+        public long StageAdded { get; set; }
+        public long LastAdded { get; set; }
+        /// <summary>Test aid (!siege prepare): Prepare ends at this epoch second instead of 300 s after the start; 0 none.</summary>
+        public long PrepareEnd { get; set; }
+        /// <summary>The ladders and the ram waiting to come back, by point: [death, return] epoch ms (30401
+        /// npcRefreshModuleData, TerritoryWarsService.SiegeUnits.cs).</summary>
+        public Dictionary<int, long[]> Refresh { get; set; } = [];
+        /// <summary>The ladders standing against the city wall, by their spawn point.</summary>
+        public List<int> PlacedLadders { get; set; } = [];
         public long SettledAt { get; set; }
         public bool Settled { get; set; }
         public long Winner { get; set; }
@@ -160,10 +171,12 @@ public sealed partial class TerritoryWarsService
         {
             await SiegeSpawnCrystalAsync(battle);
             bool spawned = await SiegeSpawnObjectsAsync(battle);
+            await SiegeSpawnVehiclesAsync(battle);
             await SiegeSpawnBagsAsync(battle);
             await SiegeGateRulesAsync(battle);
             await SiegePublishObjectsAsync(battle);
-            // A member loaded before the castle stood learns the gate's uid (var 513).
+            // A member loaded before the castle stood learns the gate's uid (var 513); a ladder or the ram that came
+            // back leaves the refresh countdowns (npcRefreshModuleData).
             if (spawned) await SiegeBroadcastBaseAsync(battle);
         }
         finally { battle.Spawning = false; }
@@ -226,6 +239,7 @@ public sealed partial class TerritoryWarsService
             ChangeType = (DungeonBaseInfoNotify.Types.eChangeType)2
         };
         info.Vars.Add(SiegeVars(battle));
+        info.NpcRefreshModuleData = SiegeRefreshData(r);
         return info;
     }
 
@@ -301,8 +315,12 @@ public sealed partial class TerritoryWarsService
             p.Damage += Math.Max(0, amount);
             if (SiegeObjectPoint(battle, m) is int point)
             {
-                // (inferred) AttackCityValue: what the attackers' blows took from the castle, the crystal included.
-                if (p.Guild == battle.State.Attack) p.CityDamage += Math.Max(0, amount);
+                // (inferred) AttackCityValue: what the attackers' blows took from the castle, the crystal included;
+                // DefenseValue: what the defenders' took from the attackers' ram and ladders (camp 1 castle units).
+                // The war machines count as MachineryDamage instead (TerritoryWarsService.MachineDamage.cs).
+                if (MachineCamp(m) == null && p.Guild == battle.State.Attack) p.CityDamage += Math.Max(0, amount);
+                else if (MachineCamp(m) == null && p.Guild == battle.State.Defense
+                    && Data.Config.NPCConfig.Get(_data, m.Template.NpcId) is { Camp: 1 }) p.DefenseValue += Math.Max(0, amount);
                 if (m == battle.Crystal) battle.State.CrystalHp = m.Hp;
                 else if (!battle.State.Destroyed.Contains(point)) battle.State.ObjectHp[point] = m.Hp;
             }
@@ -402,6 +420,7 @@ public sealed partial class TerritoryWarsService
                     await SiegeObjectsClockAsync(battle);
                     await SiegeAdvanceStageAsync(battle);
                     await SiegeSpawnAsync(battle);
+                    await SiegeUnitsClockAsync(battle);
                 }
             }
         }
@@ -559,7 +578,7 @@ public sealed partial class TerritoryWarsService
             role.ExtraData[1021001] = new ExtraValueData { LongValue = p.CityDamage }; // AttackCityValue (inferred formula)
             role.ExtraData[1021002] = new ExtraValueData { LongValue = p.MachineKills }; // DestroyMachinery
             role.ExtraData[1021003] = new ExtraValueData { LongValue = p.MachineDamage }; // MachineryDamage
-            role.ExtraData[1021004] = new ExtraValueData(); // DefenseValue (no supported formula)
+            role.ExtraData[1021004] = new ExtraValueData { LongValue = p.DefenseValue }; // DefenseValue (inferred formula)
             role.ExtraData[1021006] = new ExtraValueData(); // TitleHistoryList
             role.ExtraData[1021007] = new ExtraValueData { LongValue = p.Score }; // CurrentScore
             role.ExtraData[1021008] = new ExtraValueData(); // TitleRank

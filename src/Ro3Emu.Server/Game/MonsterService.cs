@@ -106,17 +106,28 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         return t;
     }
 
+    /// <summary>
+    /// A monster's attributes by AttributeConfig id (101 HP, 103 PATK, ...): its AttriMonsterConfig row (_iAttribute,
+    /// else _iAttributeVariated * 1000 + level), each value scaled by the NPC's _kAttriScale per 10000. The web panel's
+    /// monster database shows the same numbers.
+    /// </summary>
+    internal static Dictionary<long, double> TemplateAttributes(GameData data, JsonElement npc, int level)
+    {
+        long attrId = GameData.Int(npc, "_iAttribute");
+        if (attrId == 0) attrId = GameData.Int(npc, "_iAttributeVariated") * 1000 + level;
+        var attr = new Dictionary<long, double>();
+        if (data.Row("AttriMonsterConfig", attrId) is { } am)
+            foreach (var (id, v) in GameData.Pairs(am, "_kAttri")) attr[id] = v;
+        foreach (var (id, scale) in GameData.Pairs(npc, "_kAttriScale"))
+            if (attr.ContainsKey(id)) attr[id] = attr[id] * scale / 10000;
+        return attr;
+    }
+
     private MonsterTemplate? Build(int npcId, bool machine)
     {
         if (_data.Row("NPCConfig", npcId) is not { } npc || !machine && GameData.Int(npc, "_iNPCType") != 1) return null;
         int level = (int)GameData.Int(npc, "_iLevel");
-        long attrId = GameData.Int(npc, "_iAttribute");
-        if (attrId == 0) attrId = GameData.Int(npc, "_iAttributeVariated") * 1000 + level;
-        var attr = new Dictionary<long, double>();
-        if (_data.Row("AttriMonsterConfig", attrId) is { } am)
-            foreach (var (id, v) in GameData.Pairs(am, "_kAttri")) attr[id] = v;
-        foreach (var (id, scale) in GameData.Pairs(npc, "_kAttriScale"))
-            if (attr.ContainsKey(id)) attr[id] = attr[id] * scale / 10000;
+        var attr = TemplateAttributes(_data, npc, level);
         long A(long id) => (long)Math.Round(attr.GetValueOrDefault(id));
 
         int ai = (int)GameData.Int(npc, "_iAI");
@@ -329,13 +340,14 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
     /// A monster outside the map's spawn groups (field MVPs): no group respawn, the caller decides when it comes back.
     /// </summary>
     public async Task<MonsterUnit?> SpawnSingleAsync(long scene, int npcId, MapPoint at, long instanceId = 0,
-        int hpRatio = 10000, int damageRatio = 10000, MonsterTemplate? customTemplate = null)
+        int hpRatio = 10000, int damageRatio = 10000, MonsterTemplate? customTemplate = null, bool grounded = true)
         => await SpawnSingleAsync(instanceId == 0 ? RuntimeMapKey.Public(scene) : RuntimeMapKey.Private(scene, instanceId),
-            npcId, at, hpRatio, damageRatio, customTemplate);
+            npcId, at, hpRatio, damageRatio, customTemplate, grounded);
 
-    /// <summary>Spawn an independent actor on an explicit public line/private room/event runtime.</summary>
+    /// <summary>Spawn an independent actor on an explicit public line/private room/event runtime; <paramref name="grounded"/>
+    /// false keeps the given height (NpcLevelPointRespawnConfig _iNotGroundBorn).</summary>
     public async Task<MonsterUnit?> SpawnSingleAsync(RuntimeMapKey runtime, int npcId, MapPoint at,
-        int hpRatio = 10000, int damageRatio = 10000, MonsterTemplate? customTemplate = null)
+        int hpRatio = 10000, int damageRatio = 10000, MonsterTemplate? customTemplate = null, bool grounded = true)
     {
         if ((customTemplate ?? Template(npcId)) is not { } template || template.NpcId != npcId
             || _worldData.Map(runtime.SceneEntry) is not { } map
@@ -354,7 +366,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
                 + (template.MaxHp % 10000 * hpRatio + 5000) / 10000);
             template = template with { MaxHp = hp };
             var point = new SpawnPoint(-1, at.X, at.Y, at.Z, at.Face, npcId);
-            var pos = map.Grounded(at);
+            var pos = grounded ? map.Grounded(at) : at;
             var monster = new MonsterUnit
             {
                 Uid = UidBase | ++_serial, SceneEntry = runtime.SceneEntry, RuntimeMap = runtime,
@@ -392,7 +404,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         float best = float.MaxValue;
         foreach (var p in m.Viewers)
         {
-            if (p.Role == null || p.Dead || TargetVisible?.Invoke(m, p) == false) continue;
+            if (p.Role == null || p.Dead || TargetVisible?.Invoke(m, p) == false || Spares?.Invoke(m, p) == true) continue;
             float d = Distance(m, p);
             if (d <= m.Template.ViewRange && d < best) { best = d; near = p; }
         }
@@ -400,6 +412,10 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
     }
 
     internal Func<MonsterUnit, GameSession, bool>? TargetVisible { get; set; }
+
+    /// <summary>Set by a gameplay: a player the monster never takes as its target (the siege castle spares its own
+    /// camp, TerritoryWarsService.SiegeUnits).</summary>
+    internal Func<MonsterUnit, GameSession, bool>? Spares { get; set; }
 
     internal Func<WorldUnit, int, bool>? Forbidden { get; set; }
 
@@ -440,7 +456,8 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
             if (now >= m.EndMs)
             {
                 m.Moving = false;
-                if (m.Target == null) SendStop(m, now);
+                // A marching monster's next leg starts below in this tick: no stop in between.
+                if (m.Target == null && m.March is not { Arrived: false }) SendStop(m, now);
             }
         }
         if (m.PetTarget != null)
@@ -462,6 +479,11 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
                 Engage(m, near);
                 return;
             }
+        }
+        if (m.March is { } march)
+        {
+            March(m, map, march, now); // MonsterService.March
+            return;
         }
         if (m.Returning && !m.Moving)
         {
@@ -530,7 +552,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
     private void Engage(MonsterUnit m, GameSession target, bool called)
     {
         if (m.Dead || m.StaysOutOfBattle || m.WorldScene != target.WorldScene || TargetVisible?.Invoke(m, target) == false
-            || m.Template.SpeedCm == 0 && m.Template.AttackRange <= 0) return;
+            || Spares?.Invoke(m, target) == true || m.Template.SpeedCm == 0 && m.Template.AttackRange <= 0) return;
         bool entering = m.Target == null;
         if (entering) m.NextSwingMs = NowMs + 300;
         SetTarget(m, target);
@@ -563,6 +585,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         var previous = monster.Target;
         if (ReferenceEquals(previous, target)) return;
         monster.Target = target;
+        if (previous == null && target != null) LeaveRoute(monster); // MonsterService.March
         ReleaseSurroundSlot(monster);
         foreach (var handler in TargetChanged) _loop.TrackRuntimeDetached("monster target change", () => handler(monster, previous, target));
     }
@@ -571,7 +594,11 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
     public void Engage(MonsterUnit m, TowerPetUnit target)
     {
         if (m.Dead || m.Hp <= 0 || target.Dead || target.Hp <= 0 || m.InstanceId == 0 || m.WorldScene != target.WorldScene) return;
-        if (m.PetTarget == null) m.NextSwingMs = NowMs + 300;
+        if (m.PetTarget == null)
+        {
+            m.NextSwingMs = NowMs + 300;
+            if (m.Target == null) LeaveRoute(m); // MonsterService.March
+        }
         m.PetTarget = target;
         m.Returning = false;
     }
@@ -580,7 +607,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
     {
         var target = m.PetTarget!;
         if (target.Dead || target.Hp <= 0 || target.Owner.SceneLoading || target.WorldScene != m.WorldScene
-            || Distance(m.Home.X, m.Home.Z, target.X, target.Z) > m.Template.LeashDistance)
+            || Distance(LeashX(m), LeashZ(m), target.X, target.Z) > m.Template.LeashDistance)
         {
             m.PetTarget = null;
             if (m.Target == null) Disengage(m, map);
@@ -625,7 +652,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
     {
         var target = m.Target!;
         bool lost = target.Role == null || target.Dead || target.SceneLoading || TargetVisible?.Invoke(m, target) == false || target.WorldScene != m.WorldScene
-                    || Distance(m.Home.X, m.Home.Z, target.Position.X, target.Position.Z) > m.Template.LeashDistance;
+                    || Distance(LeashX(m), LeashZ(m), target.Position.X, target.Position.Z) > m.Template.LeashDistance;
         if (lost)
         {
             Disengage(m, map);
@@ -682,6 +709,14 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         EndBossSkills(m, interrupt: true);
         SetTarget(m, null);
         m.PetTarget = null;
+        if (m.March is { } march)
+        {
+            // Back on its way from where the fight ended, not home, and to the goal again if the fight drew it off.
+            march.Route.Clear();
+            march.Arrived = false;
+            march.Failures = 0;
+            return;
+        }
         m.Returning = true;
         if (m.Template.SpeedCm > 0) WalkTo(m, map, m.Home.X, m.Home.Z, 2f); // buff 901501: +100 % MSPD on the way back
     }

@@ -1,8 +1,9 @@
 # Gift codes
 
 Players redeem a gift code on the client's **Redemption Code** screen (Settings, `SystemSettingConfig` 103001). An
-operator creates the codes with an admin panel that writes to the server's database. The server reads them, checks
-them, and sends the items to the player's mailbox once.
+operator creates the codes on the server's [web panel](../guide/panel.md) (Gift codes), which writes them through the
+server's writer with an audit row, or with an external tool that writes the server's database. The server reads them,
+checks them, and sends the items to the player's mailbox once.
 
 ## Client contract (from the client)
 
@@ -66,7 +67,8 @@ the default 30 days for raw mail with an attachment.
 
 The server creates both tables (`GiftCodeSchemaPlan`).
 
-**The panel writes only `gift_code`.** The server reads it fresh on every redemption and never writes it.
+**The panel writes only `gift_code`.** The server reads it fresh on every redemption. Its own web panel writes it
+through the server (`GiftCodeCreatePlan`, `GiftCodeDisablePlan`); an external tool may write it directly.
 
 | column | type | meaning |
 |---|---|---|

@@ -6,6 +6,8 @@ namespace Ro3Emu.Server.Data.Config;
 [ConfigTable("LC_ConditionList")]
 public readonly partial record struct LCConditionList(JsonElement Row)
 {
+    /// <summary>enum_NodeType of the node (LC_ConditionDefine): 1 AND, 2 OR of its sub conditions, 3 one condition.</summary>
+    [ConfigField("m_eType", Optional = true)] public partial long Type { get; }
     [ConfigField("m_kSubConditionList", Optional = true)] public partial JsonElement? SubConditionList { get; }
     [ConfigField("m_bInverse", Optional = true)] public partial bool Inverse { get; }
     [ConfigField("m_kData", Optional = true)] public partial long[] Data { get; }

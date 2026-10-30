@@ -348,13 +348,14 @@ Code: `TerritoryWarsService.SiegeObjects.cs`.
   their NPCConfig rows: the City Gate 4900005 at 36 (the gateway, "城门刷新点") and 214 (the attackers' camp gate,
   "进攻方城门"), the Bow Guardians 4901012 at 38-40 and the Knight Guardians 4901011 at 41-43, the ten Obstacles 4900022
   (barricades: 321, 80, 81, 83, 90, 93, 97, 101, 103, 107), the revive point 4900010, the building markers 4903002 (254,
-  255, 256, 273, 274, 299, 308) and the revive markers 4901021 (attackers: 267, and 268 under the wall once the gate
-  fell, inferred) / 4901022 (defenders: 270, 271).
-  The crystal 4900009 at 44 keeps its own spawn. A destroyed object stays destroyed for the rest of the siege, also in a
-  room opened again for it, and a damaged one keeps its HP (`SiegeRunState.Destroyed`, `ObjectHp`).
-- **Not yet spawned:** the ladders 4900000/4900012 (46, 47, 20) and the ram 4900002 (34, 48: its end point 35 is in front
-  of the gate) need their route AI and `UIModule_NpcRefreshDuration` respawns; the 38 archers 4901001, the guide arrows
-  4903001, the fixed vehicles 4901004-4901009 and the invisible markers 4900017 are separate features.
+  255, 256, 273, 274, 299, 308), the revive markers 4901021 (attackers: 267, and 268 under the wall once the gate
+  fell, inferred) / 4901022 (defenders: 270, 271), the ladders 4900012 (46) and 4900000 (47), the Battering Ram 4900002
+  (48), the 38 archers 4901001 and the guide arrows 4903001 (below: "Ladders, the ram and the archers", "Guide arrows").
+  The fixed vehicles 4901004-4901009 stand as vehicles ("Fixed vehicles"). The crystal 4900009 at 44 keeps its own
+  spawn. A destroyed object stays destroyed for the rest of the siege, also in a room opened again for it (the ladders
+  and the ram come back), and a damaged one keeps its HP (`SiegeRunState.Destroyed`, `ObjectHp`).
+- **Not spawned:** the invisible markers 4900017 (camp 0, points 247, 265, 275, 277, 292, buff 901301): nothing in the
+  client reads them.
 - `DungeonLua_2230101.lua` `UIModule_NpcData` (not exported, kept as code): 36 CityGate, 38-40 OuterTower, 41-43
   InnerTower, 44 Crystal, 46/47 Ladder, 48 Car, 286 Revive (`enum_SiegeObjectType`, `Lua_GameDefine.lua:14875`).
 - **30115.** The siege UI knows an object only through `GlobalObjectDataNotify` (`TerritoryWarsService.SiegeGlobalData.cs`):
@@ -390,8 +391,12 @@ Code: `TerritoryWarsService.SiegeStages.cs`.
   `eChangeType_Change` (the client handles both types alike). The client pushes the stage's chat itself when the stage
   changes (`UIModule_StageSwitchChatIdMap`: 4110141-4110146, "Phase I Destroy the Outer Gate" / "Defend the Gate" and on).
 - The top bar's countdown is var 512 `CSiegeTopBarTimestamp` (epoch ms) in Prepare and var 542 `CSiegeStageCountdown`
-  [end ms, ms added] after it (`UI_Sys_Siege_TopBarWidgetCtrl._refreshStage`). Nothing adds time yet (`UIModule_KillAddTimeList`
-  "0": [120, 300] is not applied).
+  [end ms, ms added] after it (`UI_Sys_Siege_TopBarWidgetCtrl._refreshStage`: when the end moves and the second value is
+  above 0 it shows the old end, then plays "+N S"). A guardian's fall adds time (see "Kill time").
+- Var 511 `CSiegeTopBarState` (a number) goes out with the stage. Its only reader, `UI_Sys_Dungeon_Main_GoWidgetCtrl`,
+  shows a defender a "go" button while it is 0; the button walks them (`CrossMapAutoFindPath`) in turn to the points of
+  `UIModule_DefFrontPointIdList` "0" (304-307, on the city wall at the ladder lanes). Vars 514
+  `CSiegeTopBarNpcUuidList` and 515 `CSiegeTopBarCountdownUIWord` have no reader in the client and are not sent.
 - Dungeon task 4900000 "Reach Dungeon Stage 1" is met when the Gate stage starts.
 
 **Inferred:**
@@ -402,6 +407,8 @@ Code: `TerritoryWarsService.SiegeStages.cs`.
   `AttackCityEndTime`) settles the battle for the defenders: whether a Gate stage that runs out (30 min in) already
   ends the siege is not known (`DungeonResultModule` has a type 4 time-out result without a stage).
 - The crystal can be hit in the Crystal stage only.
+- The state of var 511 is the stage: the go button's point list is keyed "0" like the other stage-keyed lists of the
+  dungeon script, and sending the defenders to the wall's ladder lanes is what Prepare is for.
 
 ### Gates
 
@@ -420,8 +427,9 @@ Code: `TerritoryWarsService.SiegeStages.cs`.
   in front of the gate) and attacking players.
 - The attackers' camp gate at 214 leaves the field when Prepare ends, with the camp's air walls; it is not spawned
   again in a later room.
-- AttackCityValue (statistics 1021001): an attacker's damage to the castle's objects, the crystal included.
-  DefenseValue (1021004) stays 0.
+- AttackCityValue (statistics 1021001): an attacker's damage to the castle's objects, the crystal included, not to the
+  war machines (those count as MachineryDamage). DefenseValue (1021004), its mirror: a defender's damage to the
+  attackers' ram and ladders (the camp 1 castle units). The client only displays the two values.
 
 ### Air walls
 
@@ -437,15 +445,17 @@ Code: `TerritoryWarsService.SiegeWalls.cs`, `Data/Config/SceneEditorAirWalls.cs`
   one is reported or refused by `ServerOptions.WalkCheck` (`SceneService.WalkBlocked`).
 - Walls of the scene: 72 "空气墙_城门阻挡(内)" and 74 "(外)" at the gateway (x 597-600, z 136-165); 71 "进攻方阻挡" and
   264/265 "进攻方营地墙" around the attackers' camp; the ten barricade walls of group 77 "拒马&相应空气墙" (322, 117,
-  231-235, 243, 245, 247), each paired by name and position with an Obstacle's spawn point; 65/19 at the two ladder ends;
-  the fortress walls 221, 224, 225, 236-241 behind the Knight Guardians; 29/31/61/66 along the city wall and 32/33/67/68
-  beside the ladder lanes.
+  231-235, 243, 245, 247), each paired by name and position with an Obstacle's spawn point; 65 "空气墙_左中" and 19
+  "空气墙_右中" on the city wall at the two ladder ends; the fortress walls 221, 224, 225, 236-241 behind the Knight
+  Guardians; 29/31/61/66 along the city wall; 67/68 "空气墙_左车" and 32/33 "空气墙_右车", the rails of the two ladder
+  lanes (x 597-626, either side of z 91-94 and z 205-208).
 
 **Inferred** (no client script switches the walls; the original's are server side):
-- Standing walls: the camp's (71, 264, 265) in Prepare; the gate's (72, 74) until the gate at 36 falls; 65/19 always
-  (the ladders are not spawned); a barricade's wall until it falls; fortress 4/5/6's walls (221/240/241, 224/238/239,
-  225/236/237) until the Knight Guardian of the same number (41/42/43) falls, as `DestoryModelPerformParams` breaks
-  the bastion with it. The walls 29/31/61/66 (mostly on unwalkable cells) and 32/33/67/68 stay off.
+- Standing walls: the camp's (71, 264, 265) in Prepare; the gate's (72, 74) until the gate at 36 falls; 65 and 19 until
+  a ladder stands against the wall there, then the rails of its lane (67/68, 32/33) instead, and back when it falls; a
+  barricade's wall until it falls; fortress 4/5/6's walls (221/240/241, 224/238/239, 225/236/237) until the Knight
+  Guardian of the same number (41/42/43) falls, as `DestoryModelPerformParams` breaks the bastion with it. The walls
+  29/31/61/66 (mostly on unwalkable cells) stay off.
 - A wall whose footprint holds the walker's or caster's own cell never blocks, nor, for a skill, one holding the
   target's: the gate and the barricades stand inside their own walls.
 - The navigation grid still stops skills at the castle's solid parts, with the crystal's own blocked cell allowed as
@@ -462,9 +472,101 @@ Code: `TerritoryWarsService.SiegeTags.cs` (a `CombatService.DamageAdjusters` ent
 
 **Inferred:**
 - Both rows read [attacker tag, target tag, change / 10 000]: a cannon shot on a tag 3003 NPC deals a tenth, and an
-  archer's hit on a ladder half (that one has no effect yet: no monster fights a monster here).
+  archer's shot on a ladder half (the archers shoot the ladders, "Ladders, the ram and the archers").
 - A player's cast carries the tags of the cannons whose `GVGCannonConfig._iSkillID` it is and of its bullet NPC
   (`SkillConfig._kLogicData[2]`); every other skill, the war vehicles' seat skills included, carries none.
+
+### Ladders, the ram and the archers
+
+Code: `TerritoryWarsService.SiegeUnits.cs`, `MonsterService.March.cs` (the route), `CombatService.UnitStrikes.cs` (a
+monster's blow on a monster).
+
+- **The units.** NpcLevelPointRespawnConfig places the Siege Ladders 4900012 (idle AI `GVG_S0_LeftLadder`) at 46 "云梯1"
+  and 4900000 (`GVG_S0_Ladder`) at 20 and 47 "云梯2", the Battering Ram 4900002 (`GVG_S0_SiegeTrain`) at 34 "冲车出生点"
+  and 48 "冲车", and the archers 4901001 (`_iAISpecial` `GVG_S0_Archer`, AIConfig 4900003) at the 38 points of group 248
+  "刷守卫" (76-124: ten on the outer city wall at the ladder lanes, the rest on the inner walls). The ladders and the ram
+  are camp 1 (the attackers'), `_iNPCType` 1, level 59, AIConfig 4900000 / 4900002 (`_iCanInBattle` 0), speed 300 / 100
+  cm/s, `_iNeedNotifyGlobalData` 1, tags [3005, 3003] / [3003]; no skill, no interaction. The archers are camp 2, speed
+  0, AIConfig 4900003 (view and attack distance 45 m, `_iCanInBattle` 1), normal attack 4905101 (`GVG_S0_GuardianAttack`,
+  50 m, 5 s cooldown), tag 3004, `_iNeedNotifyGlobalData` 0 (no 30115 entry).
+- **The UI.** `UIModule_NpcData` follows 46/47 (Ladder) and 48 (Car); `UIModule_DispAtkNpcPointIdList` /
+  `DispDefNpcPointIdList` list them for each camp. `UIModule_NpcRefreshDuration` gives 46/47 [70000, 75000] and 48
+  [20000, 60000] ms (every other point [0]). A dead object whose point has a 30401 `npcRefreshModuleData` entry
+  (`npcRefreshTime`: point, `refreshStartTime`, `refreshEndTime` in epoch ms; `LC_SceneCom_UIModule_Siege` replaces its
+  map with every such message) is shown counting down (`LC_SiegeHelper`, `enum_SiegeObjectUIType.Common_Countdown`)
+  instead of destroyed. The server sends the module in every siege 30401.
+- **The ladders' ends.** 18 "云梯2-终点" (613, 93) and 30 "云梯1-终点" (613, 207) at the city wall; the editor's names cross
+  1 and 2, the positions pair 46 with 18 and 47 with 30. The wall there is 65 / 19, each between the rails of its lane
+  (67/68, 32/33). The navigation grid has the wall's top at 29 m (x 597 and in) and the ground at 14 m (x 603 and out)
+  with no walkable cells between.
+- **The ram's end.** 35 "冲车-终点" (610, 150), 10.4 m before the gate at 36. The ram carries born buff 4900301
+  (`fx_gvg_rangecircle_green`, zoom 480 000), the circle the guardians carry at zoom 225 000 for the 15 m of their scan
+  skill 4904001. Its `_kAttriScale` raises its PATK and MATK ninetyfold (210 240 at level 59) though it has no skill.
+- **Archers and ladders.** `GuardAttackOtherReduceDamage` [3004, 3005, -5000] halves an archer's damage on a ladder.
+
+**Inferred** (the AI scripts run on the original server; the client holds none of them):
+- Only one unit per spot: the rows at 20 and 34 stand on 47's and 48's spots; the UI follows 47 and 48.
+- Everything waits out Prepare at its point. From the Gate stage on, the ladders walk to their ends along the
+  navigation grid (`NavGrid.FindPath`, the Battle for Prontera's march). A ladder at its end stands against the wall: the
+  wall's air wall (65 / 19) goes and its lane's rails (67/68, 32/33) come (var 133), and a siege member's walk that
+  starts or ends in the lane's box is not held to the grid (`SceneService.WalkBridged`; the ladder carries the climb).
+- The ram moves while an attacker stands within its circle (32 m: 15 m x 480 000 / 225 000) and waits otherwise, as a
+  pushed ram. At its end it strikes the gate once per AIConfig 4900002 `_iAttackTickTime` (1 s) for its ATK (a monster's
+  blow without a skill row), while the gate stands without Battle Start Protection. Its reach is the two models'
+  `_iPrefabRadius` (1000 + 500 cm). Nobody is credited with its damage (no AttackCityValue).
+- The defenders break the ladders and the ram (camp 1 castle units, as the attackers break the camp 2 ones). A dead
+  ladder comes back at its point after a time drawn between the two of `UIModule_NpcRefreshDuration`, and so does the ram
+  while the gate stands (afterwards it has nothing to strike). A ladder that falls takes its lane with it.
+- The archers shoot the attackers they see (aggressive, their view and attack distance being 45 m, and they cannot
+  move), never the defenders (`MonsterService.Spares`: a castle unit takes only the other camp's siege members), and let
+  go of a target out of their reach. An archer that holds no player shoots a ladder within its reach. A dead archer does
+  not come back (`UIModule_NpcRefreshDuration` names none of their points).
+
+### Kill time
+
+- `UIModule_KillAddTimeList` "0": [120, 300]. The top bar's info tips (`_onInfoClick`, outside Prepare) show its two
+  values as UIWords 61140 "Defeat the Archer Guardian +${1} sec." and 61141 "Defeat the Knight Guardian +${1} sec.":
+  a Bow Guardian 4901012 (38-40, OuterTower) adds 120 s, a Knight Guardian 4901011 (41-43, InnerTower) 300 s.
+
+**Inferred:** the seconds go to the countdown running after the kill (var 542 and `stageModuleData.stageEndTime`; the
+last Knight Guardian's to the Crystal stage it opens), 542's second value being the addition in ms for "+N S". The
+countdown still ends at the siege's end at the latest; an addition that moves nothing is not shown. A new stage starts
+its own countdown without them.
+
+### Guide arrows
+
+- NpcLevelPointRespawnConfig places 4903001 (UnitConfig "引导箭头NPC", the guide arrow NPC; camp 4, `_iNoSelected` 1,
+  `_iNeedNotifyGlobalData` 1) at 215-220, 223, 226, 227, 229, 230, 16 and 272, all `_iNotGroundBorn` 1: the unit keeps
+  the scene editor's height (`InstanceService.SpawnAsync` `grounded: false`). No point is created by the client
+  (`isCreateOnSceneInit` false), so the server spawns them. They lead from the defenders' born point along the road to
+  the gate and stand in the attackers' camp (215). Nobody can select or hit them.
+
+**Inferred:** 16 and 272 are no spawn points (their `m_kAllPoints` entries sit at the origin), so those two rows are left
+out; the arrows stand the whole siege.
+
+### Fixed vehicles
+
+Code: `TerritoryWarsService.SiegeVehicles.cs`.
+
+- NpcLevelPointRespawnConfig places the Steel, Mithril and Adamantine Madogears 4901004-4901006 (camp 1) at 301, 251, 250
+  and 4901007-4901009 (camp 2) at 253, 302, 303: `_iNPCType` 2 sub 103 (Vehicle), VehicleConfig 2, interactions 4900022
+  (seat) and 4900025 (exit), the warehouse Madogears' units 4900401-4900403, `_iNeedNotifyGlobalData` 1. They stand from
+  the start as vehicles (`TerritoryWarsService.WarVehicles.cs`), owned by nobody, of their camp and its guild; their
+  camp's members with the Vehicle permission board them as a vehicle from the war bag (same conditions); the other camp
+  destroys them.
+
+**Inferred:** a destroyed one stays destroyed for the siege (no refresh duration names their points) and a damaged one
+keeps its HP; they leave at the settlement with the other machines.
+
+The territory battle 3030101's vehicles 4900402 at its SummonPlatform points 49/57/83 are raised by activating the
+platform: "Summon platforms" (below, under "Stronghold gameplay points").
+
+### Test aids (not original)
+
+- `!siege prepare`: the running sieges' Prepare ends now; the Gate stage starts at once (the ladders and the ram set off).
+- `!siege objects`: the castle units one can hit in the open siege rooms (`point=npc#uid hp/max`, `marching`, `held`,
+  `arrived`), the living archers as a count and the ladders and ram waiting to come back. The uids serve the GM panel's
+  entity ops (`GmChangeHp`, `GmKillEntity`).
 
 ### Bag NPCs
 
@@ -516,18 +618,85 @@ Implemented (`TerritoryWarsService.ScenePoints.cs`):
 - Proven: revival points are neither monster spawn points nor air walls of the client scene, so the big map takes their position and Self/Enemy/Neutral owner only from the 30115 `GlobalObjectData` whose `dungeonPointId` is the point (`UI_Sys_TerritoryWarsDungeon_MapContainerWidgetCtrl.lua:440-520`, `GetRevivalPointData`). An entry with `hp <= 0` is dropped (`LC_SceneCom_GlobalObjMgr.lua:82-88`).
 - Inferred: one 4905010 marker per point at the scene-editor point (`m_kAllPoints` of `sc_gvg_lingtuzhan_001_1_dg01`). Evidence: the npc column of `UIModule_NpcData`, UnitConfig 4905010 "据点战-交互点" (stronghold battle interaction point), NPCConfig subtype 250 MutiInteractMainNpc with `_iNeedNotifyGlobalData 1`. Markers are non-combat room props; their 30115 entry carries the point's owner as `belongGuild`.
 - Inferred: every point starts `ready`, `readyTime 0`, owner 0. The client shows `ready` and an `unReady` point without `readyTime` alike. Point state is persisted in the battle record.
-- Test aid, not original: `!twpoint <point> unready|ready|complete [readySeconds] [owner|self]` changes a point of the caller's battle so the client display can be checked. No original rule that changes a point is known, so nothing else calls it.
+- Test aid, not original: `!twpoint <point> unready|ready|complete [readySeconds] [owner|self]` changes a point of the caller's battle so the client display can be checked. The SummonPlatforms change their own points ("Summon platforms"); no rule is known for the others.
 
 What the client and config show about each object, and what is unknown (a decision or a capture is needed for each):
 
 | Type | Evidence | Unknown |
 |---|---|---|
-| SteleBarrier 34/59/74 | NpcLevelPointRespawnConfig 4905003-4905005 place 4905012 "Barrier Stele" (destructible: HP bar, `_kAttriScale` 101 x1.7) at these points. Scene groups 38/39/40 "结界-交互组" hold the point plus three sub points (35-37, 60-62, 75-77). Sub NPCs 4905011/4905014 (MutiInteractSubNpc, NPCInteractConfig 4905011/4905012, conditions 7000031/7000032, NPC conditions 490021/490022 on condition var 9012) exist without a placement row. ChatConfig 4111007 "Stronghold barrier activated. The stronghold will be locked in 5 minutes", 4111008 barrier destroyed, 4111025 stone monument activated, 4111026 defensive stone monument destroyed. The map hides the icon until the point is owned and shows `Preparing` neutral (`MapWidgetCtrl:150-230`). | Who may activate it and how (where sub NPCs stand, what var 9012 is), the 5-minute lock's effect on the flag, stele HP regeneration/respawn, the 30129 state after destruction. |
+| SteleBarrier 34/59/74 | NpcLevelPointRespawnConfig 4905003-4905005 place 4905012 "Barrier Stele" (destructible: HP bar, `_kAttriScale` 101 x1.7) at these points. Scene groups 38/39/40 "结界-交互组" hold the point plus three sub points (35-37, 60-62, 75-77). Sub NPCs 4905011/4905014 (MutiInteractSubNpc, NPCInteractConfig 4905011/4905012, conditions 7000031/7000032, NPC conditions 490021/490022 on `CheckSameAtkGuild` 9012, the rings of "Summon platforms") exist without a placement row. ChatConfig 4111007 "Stronghold barrier activated. The stronghold will be locked in 5 minutes", 4111008 barrier destroyed, 4111025 stone monument activated, 4111026 defensive stone monument destroyed. The map hides the icon until the point is owned and shows `Preparing` neutral (`MapWidgetCtrl:150-230`). | Who may activate it (the platforms' ring rules are inferred; the stele has three ring points), the 5-minute lock's effect on the flag, stele HP regeneration/respawn, the 30129 state after destruction. |
 | DivinityStatue 41 | Groups 45 "神像-攻击-交互组1" (points 41-44) and 47 "神像-防御-交互组1" (78-80, not in UIModule_NpcData). ChatConfig 4111012 "Statue Ready!", 4111017 statue activated. No NPC or spawn row. | Its effect, cooldown (`readyTime`), who may use it. |
-| SummonPlatform 49/57/83 | NpcLevelPointRespawnConfig 4905008-4905010 place vehicle 4900402 (subtype 103, NPCType 2, interact 4900022/4900025). Groups 48/53 "载具-交互组", 82 "载具-防守方" (defenders). ChatConfig 4111013-4111015 southern/eastern/base vehicle point ready, 4111018-4111020 activated. | These fixed vehicles are not spawned (the warehouse vehicles of 32281 are, "War machines in territory battles"); ready timers and sides. |
+| SummonPlatform 49/57/83 | Built: "Summon platforms" below (rings 4905011/4905014, status 22, vehicle 4900402, ChatConfig 4111013-4111020). | The recharge time, the progress numbers and who may use the defenders' platform are inferred there. |
 | BossPlatform 51 | NpcLevelPointRespawnConfig 4905011 places 4905053 "Vanguard" (Pioneer subtype 213, AI 20000011, skills 4905002-4905004). Group 54 "先锋-交互组1". ChatConfig 4111016 altar ready, 4111021 "a Behemoth is advancing toward the stronghold", 4111027 behemoth fallen. | Activation condition, route, timer. |
 | AirWallGate 63/66 | Client air walls 63/66 in groups 65/68 "门-1/门-2" with spawn points 64/67, where NpcLevelPointRespawnConfig 4905001/4905002 place Knight Guardian 4905051 (camp 2). ChatConfig 4111022/4111023 east/west gate breached. | Whether the guardian's death opens the gate; the server loads no air walls (`m_kAirWalls`) at all. |
 | RevivalPoint 55/56/81/85/86 | `m_kResurrectionPointList`; NpcLevelPointRespawnConfig 4905006/4905007 place Bow Guardian 4905052 at 55/56. ChatConfig 4111024 "A Revive Point has changed hands!". The generic per-player revive list is CustomData 11 `Dungeon_Player_RevivePoint_ListLong` (`LC_CustomDataHandler_Revive.lua`, `LC_DunGeon_Helper.SetRevivePointList`). | The capture rule and initial owners. Today every territory participant revives at `MapWorld.Revive`, the first resurrection point (55), regardless of owner; restricting revival to owned points (and the default point otherwise) needs that rule. |
 
-The guardians, stele, vehicles and vanguard of NpcLevelPointRespawnConfig are not spawned: their placement is configured, but when they appear and what their deaths change is not, and spawning hostile camp-2 guardians without those rules would add fights with no consequence. The command skills of `DungeonLua_3030101` `CommandModule` and its two-stage `DungeonStageModule` (45 min / battle) are outside this change.
+The guardians, stele and vanguard of NpcLevelPointRespawnConfig are not spawned (the vehicles are, by their platforms): their placement is configured, but when they appear and what their deaths change is not, and spawning hostile camp-2 guardians without those rules would add fights with no consequence. The command skills of `DungeonLua_3030101` `CommandModule` and its two-stage `DungeonStageModule` (45 min / battle) are outside this change.
 
+### Summon platforms
+
+Code: `TerritoryWarsService.SummonPlatforms.cs`.
+
+Evidence:
+
+- The three SummonPlatform points (49 south, 57 east, 83 base) each have a scene group of two points at one position:
+  48 [49, 50] and 53 [57, 58] "载具-交互组" (vehicle interaction group), 82 [83, 84] "载具-防守方" (vehicle, defending
+  side). The stele's groups hold the point and three ring points (35-37) the same way.
+- The MutiInteractSubNpc rows 4905011 and 4905014 (`_iNPCSubType` 251, UnitConfig 35004 "跳舞位置圈", a ring to stand in,
+  `_iInteractDistance` 3) carry NPCInteractConfig 4905011 / 4905012: button 13060000006 "Activate", `_iStatusID` 22.
+  GameplayStatusConfig 22 is "领土战-多人交互-仅单阵营可交互" (territory war multi-person interaction, one side only),
+  `_iStatusType` 18 = enum_InteractState TerritoryWarsInteract = `InteractInfo.EState` MultiPersonProgress
+  (`LC_GamePlayStatusMgr.TerritoryWarsInteract`, `LC_State_Unit_Interact._startTerritoryWarsInteract`: the player is
+  linked to `activeObjId`). Row 23 is the same for all sides.
+- Conditions: the interaction's 7000031 / 7000032 are "in no gameplay status" (`CheckInteractState` 12001 with 0,
+  inverted). The ring's 490021 is `CheckSameAtkGuild` 9012 with 0 OR its inverse (always true: any guild may start);
+  490022 is 9012 with 1: the ring's custom data 104 BelongGuild must be the player's guild, else UIWords 61612 "Another
+  faction is currently using this." (`LC_InteractCondition.CheckSameAtkGuild`). `m_eType` 1/2/3 are AND/OR/DATA
+  (`LC_ConditionDefine.enum_NodeType`).
+- Custom data 10000 InteractionProgress ("the multi-person interaction's total progress"), 10001
+  InteractionCurrentProgress ("current progress") and 10002 InteractionRate ("one interactor's speed, points per
+  second"; DirtyDataConfig comments) give the unit `LC_PerformGfx_StrongholdProgress`, which opens
+  `UI_Sys_TerritoryWars_NewProgressWidget` over it while 10001 is above 0, coloured by the unit's guild.
+- NpcLevelPointRespawnConfig 4905008-4905010 put the Mithril Madogear 4900402 at 49, 57 and 83: the warehouse Madogear
+  (VehicleConfig 2, seat 4900022 with condition 4900005 = not seated + the Vehicle permission, NPC condition 7100011 =
+  a free seat on a vehicle that is not an enemy + `CheckCamp`; exit 4900025). Its NPCConfig camp 4 is the warehouse
+  Madogears' too (4900401-4900403): the server gives a vehicle its side.
+- ChatConfig 4111013/4111014/4111015 "Southern / Eastern / Base vehicle point ready!" and 4111018/4111019/4111020 "The
+  southern / eastern / Base vehicle has been activated!!!". The map shows a point `ready` as Available, `unReady` with
+  `readyTime` as Preparing with a countdown and `complete` as Unavailable, in its owner's colour (`LC_DAL_TerritoryWars`
+  3225-3260, `UI_Sys_TerritoryWars_MapWidgetCtrl`).
+
+Implemented:
+
+- A ready platform has its ring at the group's other point (50, 58, 84): 4905011 on 49 and 57, 4905014 on 83.
+- "Activate" (32700) by a battle member within 3 m (+1), on a ready platform, in no other state (riding, a cannon, a
+  ring), under both conditions, answers 0 and puts the player into MultiPersonProgress (32702: status 22, the
+  interaction, the ring as `activeObjId`; also shown to new viewers). The ring then carries the guild in 104 and its
+  entity `guildId`; another guild is refused (806) while it does. A walk that moves the player, death, leaving the
+  scene or the battle, or standing more than 4 m from the ring ends it (Idle, `interrupt`).
+- Each second of the battle clock the ring fills by min(activators x `GVGFieldOccupySpeed` 1, `GVGFieldOccupyMaxSpeed`
+  3) up to `GVGFieldOccupyAmount` 30 (31018 with 104 and 10000-10002). Full: the activators go Idle, the ring leaves,
+  4900402 stands at the platform point for the guild (camp 1, owner 0, `guildId` and 104 BelongGuild: a war vehicle as
+  in "War machines in territory battles"), 30129 shows the point `complete` with the guild as owner and the battle gets
+  4111018-4111020.
+- The guild's members with the Vehicle permission board it (the seat's conditions; the client's `CheckCamp` compares
+  EntityCamp 1 = 1, its free-seat check the guild); other guilds cannot, and damage and destroy it.
+- Once the vehicle is gone (destroyed, or its room gone) the point is `unReady` with `readyTime` now + 120 s, owner 0;
+  at `readyTime` it is `ready` again, 4111013-4111015 go out and a new ring stands.
+- The settlement takes the rings and their activators away; the vehicles leave with the other machines.
+
+**Inferred:**
+
+- The rings' placement (no row places 4905011/4905014) and which ring stands where: the open one on the two attack
+  platforms, the guild one on the defenders' platform 83, whose BelongGuild is the guild holding the stronghold's flag
+  (the battle's point 0), so only that guild may activate it (nobody while no one holds it); a change of holder ends
+  that ring's activation.
+- One guild at a time on an open ring, refused with 806 (status 22's name; its condition 490021 lets anyone start).
+- The numbers: the GVG field occupation's amount 30, speed 1 per activator and cap 3 (the territory flag fields use
+  them already); a ring nobody stands in starts over; the 120 s recharge after the vehicle is gone; the vehicle stands
+  at the platform point, not the ring point (both are one position).
+- South / east / base: 49 lies south (z 227), 57 east (x 726), 83 is the defenders' group by the stronghold.
+- Walking ends an activation as it ends a gathering: status 22's exit events (2008, 2009, 2026, 2028) are server
+  events the client does not name.
+- The vehicle's 30115 entry (NPCConfig `_iNeedNotifyGlobalData` 1) is not sent: the territory map reads the platforms
+  from 30129.

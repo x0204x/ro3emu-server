@@ -90,6 +90,8 @@ original-server encounter parity:
 8. Reward balances are keyed by group, boss-family tuple and difficulty. Refresh type 1 is daily; type 2 is weekly
    using `[weekday,hour]`, local server time (the shipped `[1,5]` means Monday 05:00). A new balance gets one configured
    increment, and later periods accumulate increments up to the configured cap. No allowance is spent on entry.
+   Not original: `Ro3Emu:Testing:UnlimitedRewards` (a test realm switch, [activities](activities.md#test-realm-switches-ro3emutesting))
+   pays every won clear without checking or spending the balance, and 5062 shows nothing used.
 9. A first personal clear grants the same configured personal reward without spending a recurring balance. The
    independent first-pass state changes directly to Finish=2 after automatic settlement; no separate bonus is invented.
 10. Normal spends its own extra balance first, then an unlocked same-type Hard balance, paying the selected Normal

@@ -455,7 +455,7 @@ public sealed partial class WorldData(IOptions<ServerOptions> options, GameData 
         return groups;
     }
 
-    private static List<SpawnGroup> LoadSpawnGroups(JsonElement se)
+    internal static List<SpawnGroup> LoadSpawnGroups(JsonElement se)
     {
         var points = new Dictionary<int, List<SpawnPoint>>();
         if (se.TryGetProperty("m_kWorldMonsterSpawnPoints", out var ps) && ps.ValueKind == JsonValueKind.Object)

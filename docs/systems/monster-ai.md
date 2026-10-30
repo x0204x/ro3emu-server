@@ -89,3 +89,32 @@ by default: the client cuts their HP on purpose (`_kAttriScale`), so a 1:1 serve
 RO1 feel (`Ro3Emu__Ro1MonsterHp=true`). Every client monster whose name has Egg or Pupa was checked: the Thief Bug Egg (83 against 48), the Eggyra, the story dungeon's Ant Egg (5300036, 830) and the level 50 Peco Peco Egg are not below RO1 and are not listed. An RO1 reference, not client evidence
 (**inferred**).
 
+## Field EXP rates (`Ro3Emu:FieldExpRates`)
+
+A kill pays what the client's drop tables say: the monster's `_iDrop` and `_iNormalDrop` chains give item 100 (Base EXP), scaled
+by `LvExpCorrectionConfig` for the level gap between killer and monster (`RewardService.ResolveKill`). The client has no EXP value
+per monster, and the original's own rate is not in its data. An operator who finds levelling too slow can scale it by the killer's
+base level; the list is empty by default, so nothing changes unless it is set (**inferred**: the original had no such knob):
+
+```json
+{
+  "Ro3Emu": {
+    "FieldExpRates": [
+      { "MinLevel": 20, "MaxLevel": 40, "Percent": 300 }
+    ]
+  }
+}
+```
+
+The first rule whose range holds the killer's base level scales that kill's Base EXP (and the Job EXP, which equals it) after the
+level-gap correction and the team bonus; 100 leaves it as it is. It applies only to open-field monsters (`NPCConfig._iWildMonsters`
+1), not to monsters without that flag (the story dungeons' ones, for example), and to both ordinary and Bonus Time kills. A rule with an empty range or a percent outside 1 to
+10000 is ignored, and a kill that pays EXP never pays less than 1. The `BaseExpAddConfig` catch-up is applied after it, as before.
+`Ro3Emu__FieldExpRates__0__MinLevel=20` and its siblings set a rule through the environment.
+
+A GM changes the rules in force without a restart, in any chat channel or through the loopback `/ro3emu/gm` that the control panel
+uses: `!fieldexp` shows them, `!fieldexp set <minLevel> <maxLevel> <percent> [<minLevel> <maxLevel> <percent> ...]` replaces
+them (one group of three numbers a rule; a group that is not usable refuses the whole line and answers with the usage),
+`!fieldexp clear` leaves none (the client's rates) and `!fieldexp reset` brings back the configured ones. The change lives in
+memory: the configuration is not written, so the next start uses `Ro3Emu:FieldExpRates` again. Like every GM command it follows
+`GmAccounts` (docs/guide/gm-access.md); the loopback endpoint answers to anyone on the host when that list is empty.

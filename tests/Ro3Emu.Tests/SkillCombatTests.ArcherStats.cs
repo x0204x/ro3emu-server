@@ -76,11 +76,11 @@ public sealed partial class SkillCombatTests
             new EquipItemOprReq { Opr = 0, Pos = (EquipGridType)1, ItemGUID = bow });
         Assert.Equal(0, (await Next(bot, CharacterService.EquipItemOpr, EquipItemOprResp.Parser)).Result);
 
-        await Gm(account, $"!item {FireArrow} 10");
+        // An archer picks any ArrowsItemId arrow without owning it: the client lists them with count -1 (#198).
         await bot.SendGameAsync(CharacterService.ArrowSwitch, new ItemArrowSwitchReq { ItemId = FireArrow });
         var arrow = await Next(bot, CharacterService.ArrowSwitch, ItemArrowSwitchResp.Parser);
         Assert.Equal(0, arrow.Result);
-        Assert.Equal(10, arrow.ItemCount);
+        Assert.Equal(-1, arrow.ItemCount);
     }
 
     private static async Task<(SkillFixTimeBulletNotify Bullet, SkillHitInfo Hit)> CastDoubleStrafeAsync(

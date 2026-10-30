@@ -21,6 +21,8 @@ namespace Ro3Emu.ClientHooks
 
         internal static void Install(object env, LA_LuaManager manager, Obf_R.Obf_ff global)
         {
+            // 歷史相容入口保留，但官方 v1.0.24 的無限箭矢不需要付費補售。
+            if (!ArrowShopCatalog.Enabled) return;
             if (env == null || global == null || Installations.TryGetValue(env, out _)) return;
             try
             {

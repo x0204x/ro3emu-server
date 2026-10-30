@@ -14,7 +14,7 @@ public sealed partial class CharacterService
     private const int EquipmentPlanNameLimit = 8;
 
     /// <summary>Stage 31413's validated grid move for a Genre composite; caller persists all owners together.</summary>
-    internal int StageEquipmentPlan(DBEquipInfo state, List<InvItem> stagedItems, int index, bool replaceCurrent = false)
+    internal int StageEquipmentPlan(DBEquipInfo state, List<InvItem> stagedItems, int index, RoleProgress progress, bool replaceCurrent = false)
     {
         if (!state.EquipPlans.TryGetValue(index, out var target)) return ErrorCodes.Parameter;
         if (index == state.CurrentEquipPlan && !replaceCurrent) return 0;
@@ -25,7 +25,7 @@ public sealed partial class CharacterService
             if (item == null) return ErrorCodes.ItemMissing;
             if (!IsEquipment(item.Entry)) return ErrorCodes.NotEquipment;
             if (item.Grid < 0 || item.Pack != 2 || item.Stack != 1) return ErrorCodes.EquipNotInBag;
-            if (!GridsFor(PartOf(item.Entry)).Contains(grid) || !incoming.TryAdd(guid, (item, grid))) return ErrorCodes.EquipSlot;
+            if (!GridsFor(item.Entry, progress).Contains(grid) || !incoming.TryAdd(guid, (item, grid))) return ErrorCodes.EquipSlot;
         }
         if (incoming.Values.Any(i => i.Grid == 1 && PartOf(i.Item.Entry) == 1) && incoming.Values.Any(i => i.Grid == 2))
             return ErrorCodes.EquipSlot;
@@ -110,7 +110,7 @@ public sealed partial class CharacterService
                 if (item == null) { result = ErrorCodes.ItemMissing; break; }
                 if (!IsEquipment(item.Entry)) { result = ErrorCodes.NotEquipment; break; }
                 if (item.Grid < 0 || item.Pack != 2 || item.Stack != 1) { result = ErrorCodes.EquipNotInBag; break; }
-                if (!GridsFor(PartOf(item.Entry)).Contains(grid) || !incoming.TryAdd(guid, (item, grid)))
+                if (!GridsFor(item.Entry, session.Progress!).Contains(grid) || !incoming.TryAdd(guid, (item, grid)))
                 { result = ErrorCodes.EquipSlot; break; }
             }
             if (incoming.Values.Any(i => i.Grid == 1 && PartOf(i.Item.Entry) == 1) && incoming.Values.Any(i => i.Grid == 2))

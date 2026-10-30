@@ -90,6 +90,9 @@ public class MonsterUnit : WorldUnit
     /// <summary>Live boss skill cooldowns for 31125/31127, keyed by actual cast row.</summary>
     public Dictionary<int, long> BossSkillCds { get; } = new();
 
+    /// <summary>A destination it walks to between fights instead of roaming at home (MonsterService.March); null: none.</summary>
+    public MonsterMarch? March { get; set; }
+
     /// <summary>Status bits (property 2701); bit 15 = fighting.</summary>
     public long StatusBits { get; set; }
 
@@ -165,6 +168,27 @@ public class MonsterUnit : WorldUnit
         EntityCamp = CampOverride ?? Template.Camp,
         ElementType = Template.Element,
     };
+}
+
+/// <summary>
+/// A scripted walk of one monster to a goal (the Battle for Prontera invaders): the route legs still ahead, whether it
+/// arrived, and where it left the route for its current fight (the centre of its leash while it fights).
+/// </summary>
+public sealed class MonsterMarch(float goalX, float goalZ, float arriveRadius)
+{
+    public float GoalX { get; } = goalX;
+    public float GoalZ { get; } = goalZ;
+    public float ArriveRadius { get; } = arriveRadius;
+    public bool Arrived { get; set; }
+    /// <summary>Route points still to walk, nearest first; empty: planned again from where the monster stands.</summary>
+    public List<(float X, float Y, float Z)> Route { get; } = [];
+    public float LeashX { get; set; }
+    public float LeashZ { get; set; }
+    /// <summary>Plans in a row that found no way on; past a few the monster stays where it is.</summary>
+    public int Failures { get; set; }
+    /// <summary>Held where it stands until released (the siege's battering ram without an escort,
+    /// TerritoryWarsService.SiegeUnits).</summary>
+    public bool Halted { get; set; }
 }
 
 /// <summary>Runs a monster's AI each map tick (MonsterService).</summary>

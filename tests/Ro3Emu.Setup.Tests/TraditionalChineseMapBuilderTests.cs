@@ -44,9 +44,9 @@ public sealed class TraditionalChineseMapBuilderTests : IDisposable
     [Fact]
     public void TreasureTrackerLabelsAreIncludedInThePackagedTraditionalOverrides()
     {
-        string simplified = Table("cn", new() { [1] = "示例項目" });
-        string english = Table("en", new() { [1] = "Example item" });
-        string traditional = Table("tw", new() { [1] = "範例項目" });
+        string simplified = Table("cn", new() { [1] = "示例項目", [10160000000] = "交易所", [31002] = "下一阶" });
+        string english = Table("en", new() { [1] = "Example item", [10160000000] = "Trade", [31002] = "Next stage" });
+        string traditional = Table("tw", new() { [1] = "範例項目", [10160000000] = "交易所", [31002] = "下一階" });
         using var stream = typeof(ClientPatcher).Assembly.GetManifestResourceStream("localization/zh_tw_overrides.tsv")
             ?? throw new InvalidDataException("缺少隨附的台灣用語覆寫。");
         using var reader = new StreamReader(stream);

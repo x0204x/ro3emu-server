@@ -82,6 +82,22 @@ public class SetupTests
     }
 
     [Fact]
+    public void ThePanelPortReachesTheServerAndNoPanelTurnsItOff()
+    {
+        Assert.Equal(5381, Options.Parse(["start"]).Ports.Panel);
+        Assert.Contains("--Ro3Emu:Panel:Port=5391", ServerProcess.ServerArgs("data", Options.Parse(["start", "--panel-port", "5391"]).Ports));
+        var off = Options.Parse(["host", "--no-panel"]).Ports;
+        Assert.Contains("--Ro3Emu:Panel:Enabled=false", ServerProcess.ServerArgs("data", off));
+        Assert.DoesNotContain(5381, off.All());
+        Assert.Contains(5381, new ServerProcess.Ports().All());
+        Assert.Throws<SetupException>(() => Options.Parse(["start", "--panel-port", "0"]));
+        // Players forward only the game's ports; the panel is the host's choice (docs/guide/panel.md).
+        Assert.Equal("5380, 20000 and 33100", ServerProcess.PortList(new ServerProcess.Ports()));
+        Assert.Equal(5391, new OptionsWithClient(Options.Parse(["install", "--panel-port", "5391"]), @"C:\RO3\ROO_PC").Value.Ports.Panel);
+        Assert.Equal(0, new OptionsWithClient(Options.Parse(["install", "--no-panel"]), @"C:\RO3\ROO_PC").Value.Ports.Panel);
+    }
+
+    [Fact]
     public void AnInstallGoesOnToPlayWithTheSameVoicePort()
     {
         var after = new OptionsWithClient(Options.Parse(["install", "--voice-port", "33101"]), @"C:\RO3\ROO_PC").Value;

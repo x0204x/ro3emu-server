@@ -411,11 +411,11 @@ public sealed class InstanceService
 
     /// <summary>One no-respawn monster tracked for settlement and final room cleanup.</summary>
     public Task<MonsterUnit?> SpawnAsync(Room room, int npcId, MapPoint point,
-        int hpRatio = 10000, int damageRatio = 10000, MonsterTemplate? customTemplate = null)
-        => _loop.TrackAsync("room spawn", () => SpawnCoreAsync(room, npcId, point, hpRatio, damageRatio, customTemplate));
+        int hpRatio = 10000, int damageRatio = 10000, MonsterTemplate? customTemplate = null, bool grounded = true)
+        => _loop.TrackAsync("room spawn", () => SpawnCoreAsync(room, npcId, point, hpRatio, damageRatio, customTemplate, grounded));
 
     private async Task<MonsterUnit?> SpawnCoreAsync(Room room, int npcId, MapPoint point,
-        int hpRatio, int damageRatio, MonsterTemplate? customTemplate)
+        int hpRatio, int damageRatio, MonsterTemplate? customTemplate, bool grounded)
     {
         int generation;
         lock (room.Gate)
@@ -426,7 +426,8 @@ public sealed class InstanceService
         }
         try
         {
-            var actor = await _monsters.SpawnSingleAsync(room.SceneEntry, npcId, point, room.Id, hpRatio, damageRatio, customTemplate);
+            var actor = await _monsters.SpawnSingleAsync(room.SceneEntry, npcId, point, room.Id, hpRatio, damageRatio, customTemplate,
+                grounded);
             if (actor == null) return null;
             bool keep;
             lock (room.Gate)

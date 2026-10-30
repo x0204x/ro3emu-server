@@ -54,8 +54,6 @@ public sealed partial class SiegeTests
         Assert.Equal((map.Points[286].X, map.Points[286].Z), (run.Objects[286].X, run.Objects[286].Z));
         Assert.Equal((4901021, 4901022, 4901022), (Npc(267), Npc(270), Npc(271)));
         Assert.DoesNotContain(269, run.Objects.Keys); // the contested point starts with the defenders
-        Assert.DoesNotContain(46, run.Objects.Keys); // ladders, the ram and the archers are not spawned
-        Assert.DoesNotContain(34, run.Objects.Keys);
 
         // Camp 2 objects for the attackers only; the camp 4 revive point and the unselectable markers for nobody.
         var wars = Service<TerritoryWarsService>();
@@ -155,8 +153,10 @@ public sealed partial class SiegeTests
         // The crystal waits for "3": the gate and the three Knight Guardians first.
         Assert.False(wars.CanHitObjective(Session(attack), run.Crystal!));
         await BreakToTheCrystal(run);
-        var crystal = await Next(attack, 30401, DungeonBaseInfoNotify.Parser, i => i.StageModuleData.Stage == 3);
-        Assert.Equal(Math.Min(_siege.Start + 300 + 3000, _siege.End) * 1000, crystal.StageModuleData.StageEndTime);
+        // The last Knight Guardian's fall adds its 300 s (UIModule_KillAddTimeList) to the stage it opened.
+        var crystal = await Next(attack, 30401, DungeonBaseInfoNotify.Parser,
+            i => i.StageModuleData.Stage == 3 && i.Vars.Any(v => v.VarId == 542 && v.Vi64[1] > 0));
+        Assert.Equal(Math.Min(_siege.Start + 300 + 3000 + 300, _siege.End) * 1000, crystal.StageModuleData.StageEndTime);
         Assert.True(wars.CanHitObjective(Session(attack), run.Crystal!));
         Assert.False(wars.CanHitObjective(Session(defense), run.Crystal!));
     }

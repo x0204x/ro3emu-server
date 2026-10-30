@@ -8,5 +8,10 @@
   "1004000": { "_iID": 1004000, "_iType": 2, "_iBagTab": 1, "_iStackLimit": 50, "_iTrade": 1 },
   "1200000": { "_iID": 1200000, "_iType": 2, "_iBagTab": 1, "_iStackLimit": 50, "_iTrade": 1 },
   "2010121": { "_iID": 2010121, "_iType": 5, "_iBagTab": 2, "_iStackLimit": 1, "_iTrade": 1 },
-  "2550120": { "_iID": 2550120, "_iType": 5, "_iBagTab": 2, "_iStackLimit": 1, "_iTrade": 1 }
+  "2550120": { "_iID": 2550120, "_iType": 5, "_iBagTab": 2, "_iStackLimit": 1, "_iTrade": 1 },
+  "3990001": { "_iID": 3990001, "_iType": 9, "_iSubType": 900, "_iBagTab": 1, "_iStackLimit": 999, "_iTrade": 1, "_iQuality": 2, "_iLevelNeed": 1, "_iName": [ 990000001 ], "_iDescription": [ 990000002, "5" ], "_kIcon": "item_3990001.png", "_kPic": "item_null_01.png" },
+  "3990002": { "_iID": 3990002, "_iType": 5, "_iSubType": 2, "_iBagTab": 2, "_iStackLimit": 1, "_iTrade": 0, "_iQuality": 4, "_iLevelNeed": 30, "_iEquipId": 3990002, "_iName": [ 990000003 ], "_iDescription": [ 990000004 ], "_kIcon": "item_3990002.png", "_kPic": "card_3990002.png" },
+  "3990003": { "_iID": 3990003, "_iType": 9, "_iSubType": 900, "_iBagTab": 1, "_iStackLimit": 999, "_iTrade": 1, "_iQuality": 2, "_iLevelNeed": 1, "_iSort": 7, "_iName": [ 990000001 ], "_iDescription": [ 990000002, "5" ], "_kIcon": "item_3990001.png" },
+  "3990005": { "_iID": 3990005, "_iType": 5, "_iSubType": 2, "_iBagTab": 2, "_iStackLimit": 1, "_iTrade": 0, "_iQuality": 5, "_iLevelNeed": 40, "_iEquipId": 3990002, "_iName": [ 990000003 ], "_iDescription": [ 990000004 ], "_kIcon": "item_3990005.png" },
+  "3990004": { "_iID": 3990004, "_iType": 9, "_iSubType": 900, "_iBagTab": 1, "_iStackLimit": 999, "_iTrade": 1, "_iQuality": 1, "_iLevelNeed": 1, "_iName": [ 990000005 ] }
 }

@@ -149,6 +149,43 @@ public sealed class CharacterTests : IAsyncLifetime
     }
 
     [ClientDataFact]
+    public async Task OnlyACareerWithTheDoubleHandFormWieldsAOneHandedWeaponInEachHand()
+    {
+        await using var alice = await InWorld("Alice");
+        var bag = await Next(alice, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser);
+        long mainHand = bag.PackInfo[2].All.Items.Values.Single(i => i.ItemEntry == Dagger).ItemGuid;
+        await Gm("alice", $"!item {Dagger}");
+        var added = await Next(alice, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser, m => m.GuidToNew.Count > 0);
+        long offHand = added.PackInfo[2].Inc.Items.Values.Single().All.ItemGuid;
+        async Task Equip(long guid, int grid)
+        {
+            await alice.SendGameAsync(CharacterService.EquipItemOpr, new EquipItemOprReq { Opr = 0, Pos = (EquipGridType)grid, ItemGUID = guid });
+            await Next(alice, CharacterService.EquipSync, DBEquipInfoIncrement.Parser, m => !m.SyncAllMark);
+            Assert.Equal(0, (await Next(alice, CharacterService.EquipItemOpr, EquipItemOprResp.Parser)).Result);
+        }
+        Task<(int Main, int Off)> Grids() => _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+        {
+            var s = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
+            return Task.FromResult((s.Items.Single(i => i.Guid == mainHand).Grid, s.Items.Single(i => i.Guid == offHand).Grid));
+        });
+
+        // A career whose JobConfig _kWeaponForm has SingleHand (1): the second dagger takes grid 1 and swaps the first out.
+        await Equip(mainHand, 1);
+        await Equip(offHand, 2);
+        Assert.Equal((0, 1), await Grids());
+
+        // Assassin 5200, _kWeaponForm [2,3] (TwoHand, DoubleHand): the client's TwoHandAndDoubleHand puts it in the off hand.
+        await Gm("alice", "!job 5200");
+        await Next(alice, CharacterService.RoleBaseInfoSync, RoleBaseInfoIncrement.Parser, m => m.Career == 5200);
+        await Equip(mainHand, 1);
+        await alice.SendGameAsync(CharacterService.EquipItemOpr, new EquipItemOprReq { Opr = 0, Pos = (EquipGridType)2, ItemGUID = offHand });
+        var equipped = await Next(alice, CharacterService.EquipSync, DBEquipInfoIncrement.Parser, m => !m.SyncAllMark);
+        Assert.Equal(offHand, equipped.EquipPlans[0].Inc.ItemsEquipGrid[2].All);
+        Assert.Equal(0, (await Next(alice, CharacterService.EquipItemOpr, EquipItemOprResp.Parser)).Result);
+        Assert.Equal((1, 2), await Grids());
+    }
+
+    [ClientDataFact]
     public async Task EquipmentAndLevelSurviveRelog()
     {
         long dagger;

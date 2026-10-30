@@ -121,7 +121,8 @@ public sealed partial class TimedBattleService
                 response.ItemInfo.Add(new HiddenTreasureGainItemInfo
                 {
                     ItemId = item, MaxGainCount = RiftRestrictMax(restrict),
-                    CurGainCount = state.OnePieceWeek == week ? state.OnePieceWeekItems.GetValueOrDefault(item) : 0
+                    CurGainCount = state.OnePieceWeek == week && !_testing.UnlimitedRewards // Testing: never spent
+                        ? state.OnePieceWeekItems.GetValueOrDefault(item) : 0
                 });
         }
         if (open)
@@ -172,7 +173,8 @@ public sealed partial class TimedBattleService
         long max = RiftRestrictMax(RiftExtraRestrict);
         if (session.TimedBattle is not { } state || max <= 0) return null;
         long day = RiftDay();
-        long used = state.OnePieceExtraDay == day ? state.OnePieceExtraUsed : 0;
+        // Testing UnlimitedRewards (TEST AID, not original): the count is never spent, so it shows full.
+        long used = state.OnePieceExtraDay == day && !_testing.UnlimitedRewards ? state.OnePieceExtraUsed : 0;
         return new RestrictInfo
         {
             Id = RiftExtraRestrict, Count = Math.Max(0, max - used), LimitCount = max,
@@ -199,6 +201,8 @@ public sealed partial class TimedBattleService
 
     private (long Start, long End) TreasureWindow()
     {
+        // Testing AlwaysOpen (TEST AID, not original): the rounds run through the repeating occurrence.
+        if (_schedule.TestingOpens(200) && _schedule.CurrentOrNext(200) is { } test) return (test.Start, test.End);
         var now = TimeZoneInfo.ConvertTime(_time.GetUtcNow(), _time.LocalTimeZone);
         var row = _data.Row("DailyActivityConfig", 200);
         if (row is not { } r || !r.TryGetProperty("_kTime", out var limits)
@@ -598,19 +602,21 @@ public sealed partial class TimedBattleService
         var reward = StarRow(a.Stone.Star) ?? throw new AwardResolutionException($"OnePiece star {a.Stone.Star} has no row.");
         var baseGrants = _awards.Resolve(member, GameData.Int(reward, "_iAward"), 101).Grants.ToArray();
         var extraGrants = new List<AwardGrant>();
-        if (next.OnePieceExtraUsed < RiftRestrictMax(RiftExtraRestrict))
+        // Testing UnlimitedRewards (TEST AID, not original): neither the daily count nor the weekly caps are checked or spent.
+        bool unlimited = _testing.UnlimitedRewards;
+        if (unlimited || next.OnePieceExtraUsed < RiftRestrictMax(RiftExtraRestrict))
         {
             foreach (var item in RestrictedExtra(GameData.Int(reward, "_iExtraAward")))
             {
                 var scaled = _awards.ScaleRewardGrants([item.Grant]).SingleOrDefault();
                 if (scaled == null) continue;
                 int prior = next.OnePieceWeekItems.GetValueOrDefault(scaled.Entry);
-                int count = item.Cap is { } cap ? Math.Min(scaled.Count, Math.Max(0, cap - prior)) : scaled.Count;
+                int count = item.Cap is { } cap && !unlimited ? Math.Min(scaled.Count, Math.Max(0, cap - prior)) : scaled.Count;
                 if (count <= 0) continue;
                 extraGrants.Add(scaled with { Count = count });
-                next.OnePieceWeekItems[scaled.Entry] = prior + count;
+                if (!unlimited) next.OnePieceWeekItems[scaled.Entry] = prior + count;
             }
-            if (extraGrants.Count > 0) next.OnePieceExtraUsed++;
+            if (extraGrants.Count > 0 && !unlimited) next.OnePieceExtraUsed++;
         }
         var grants = baseGrants.Concat(extraGrants).ToArray();
         // A zero configured rate still settles the valid reward source and its one-time state with no goods.

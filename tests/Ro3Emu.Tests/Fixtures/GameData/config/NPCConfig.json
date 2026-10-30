@@ -1,3 +1,8 @@
 {
-  "16320001": { "_iID": 16320001, "_iNPCType": 1, "_iLevel": 50, "_iAttribute": 900001, "_iCamp": 2, "_iSpeed": 0 }
+  "16320001": { "_iID": 16320001, "_iNPCType": 1, "_iLevel": 50, "_iAttribute": 900001, "_iCamp": 2, "_iSpeed": 0 },
+  "16320002": { "_iID": 16320002, "_iNPCType": 1, "_iNPCSubType": 3, "_iLevel": 12, "_iAttribute": 900002, "_kAttriScale": [ [ 101, 15000 ] ], "_iElement": 4, "_iRace": 1, "_iSize": 2, "_iCamp": 2, "_iSpeed": 300, "_kName": [ 990000020 ], "_iDrop": 9303, "_kHeadIcon": "headicon_monster_synthetic.png" },
+  "16320005": { "_iID": 16320005, "_iNPCType": 1, "_iNPCSubType": 3, "_iLevel": 20, "_iAttribute": 900002, "_kAttriScale": [ [ 101, 15000 ] ], "_iElement": 4, "_iRace": 1, "_iSize": 1, "_iCamp": 2, "_iSpeed": 300, "_kName": [ 990000020 ], "_kHeadIcon": "headicon_monster_synthetic.png" },
+  "16320006": { "_iID": 16320006, "_iNPCType": 1, "_iLevel": 1, "_iAttribute": 900002, "_kAttriScale": [ [ 101, 1000000 ] ], "_iCamp": 2, "_iSpeed": 300, "_kName": [ 990000022 ] },
+  "16320004": { "_iID": 16320004, "_iNPCType": 1, "_iNPCSubType": 3, "_iLevel": 12, "_iAttribute": 900002, "_kAttriScale": [ [ 101, 15000 ] ], "_iElement": 4, "_iRace": 1, "_iSize": 2, "_iCamp": 2, "_iSpeed": 300, "_kName": [ 990000020 ], "_kHeadIcon": "headicon_monster_synthetic.png" },
+  "16320003": { "_iID": 16320003, "_iNPCType": 1, "_iNPCSubType": 4, "_iLevel": 35, "_iAttribute": 900002, "_iElement": 7, "_iRace": 8, "_iSize": 2, "_iCamp": 2, "_iSpeed": 300, "_kName": [ 990000021 ] }
 }

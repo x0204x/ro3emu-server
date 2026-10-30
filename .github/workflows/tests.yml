@@ -19,8 +19,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Players run the server on Windows, hosts mostly on Linux.
-        os: [ubuntu-latest, windows-latest]
+        # Players run the server on Windows, hosts mostly on Linux. A pull request runs Linux only (the Windows runner is
+        # the slow one); main runs both after the merge, so a Windows-only failure shows there.
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest", "windows-latest"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     env:

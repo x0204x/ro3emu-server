@@ -6,6 +6,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Unity bundles and their textures, for the panel's icons from the player's client (MIT both). -->
+    <PackageVersion Include="AssetRipper.TextureDecoder" Version="2.6.3" />
+    <PackageVersion Include="AssetsTools.NET" Version="3.0.5" />
     <PackageVersion Include="Google.Protobuf" Version="3.36.2" />
     <PackageVersion Include="Grpc.Tools" Version="2.85.0" />
     <PackageVersion Include="KeraLua" Version="1.4.11" />

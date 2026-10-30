@@ -54,6 +54,45 @@ Activity 119 admits maps 2100009/2100010 (practice) and 2100011 (challenge). The
 
 Keeping the configured recovery-buff dummy alive, preventing retaliation, and computing DPS as authoritative total damage divided by the full configured duration are **(inferred)**. Practice attributes cannot modify the challenge template. Reset cancels an attempt without qualifying it. The best score and `TrainingAimAwardConfig` claims persist; class eligibility follows the client `Lua_CFG_JobConfig.GetRootJob` parent walk to the child of novice1000. Duplicate claims and insufficient DPS are refused. Reconnect follows the existing private-room return policy and retains best score/claimed awards.
 
+## Test realm switches (`Ro3Emu:Testing`)
+
+**Not original behaviour.** Two switches for test realms, off by default so the server stays 1:1 (`TestingOptions`,
+`Game/TestingSwitches.cs`). The server logs a warning at startup while one is on. A GM changes them in memory until the
+next start: `!testing` shows them, `!testing alwaysopen on|off`, `!testing unlimited on|off`, `!testing reset` (the
+configured values). After a change every online role gets its To-Do rows (5004) and dungeon reward counts (5062) again,
+so the client shows it without a relog.
+
+Where the To-Do (function 25) is gated:
+
+| Gate | Source | Owner |
+| --- | --- | --- |
+| A row's occurrence: weekday `_kDay`, `_kTime` HHMM, the first weeks' `DailyActivityCustomConfig`, `_iTimeLimitId` bounds, `_iTimeCtrlId` phases | `DailyActivityConfig`, `TimeLimitConfig` | `TimedTodoSchedule.CurrentOrNext` / `IsOpen` |
+| What the client shows: open, upcoming or ended | 5004 `startTime`/`endTime` (`LC_DailyActivityHelper.GetActivityOpenByServer`, `GetTimeStateByDailyActivityData`) | `DailyActivityService.ProjectWindows` from the same schedule |
+| Admission and running occurrences | Survivor Battle / Dragon Coffin Island (`TimedBattleService.Admission`, 114/126), Commendation Vault and Rift Crisis (200, `TreasureWindow`), bonfire (116, `GuildCampfireService`), Ilmata (125, `GuildChallengeService`), Wedding Crashers (3400), Hunting Challenge (3303, phases 1074), Festival Invitation (3301, phases 1083), Mock Battle (3304, phases 1084), Limited-Time task progress (`DailyActivityService.ParticipationOpen`) | each service, through `TimedTodoSchedule` or `ActivityClock.Segments` |
+| Reward allowances | `TenGameplayRefreshTimeConfig` (Realm of the Gods, Phantom Realm), MVP daily counters (43011), `RestrictConfig` 1020 and `AwardRestricConfig` weekly caps (Commendation Vault), Dodo's Request `remainRingCount` | `DungeonService`, `MvpService`, `TimedBattleService.OnePiece`, `DailyActivityService` |
+| Calendars of their own | Guild League (`GuildLeagueCalendar`), Territory Wars stages (`TerritoryWarsClock`), Royal City War (115) | not switched; GM `!league`, `!twpoint`, `!siege open` |
+
+`AlwaysOpen`: `TimedTodoSchedule` gives every To-Do row but the Guild League and Territory Wars ones (with their auction
+checks) an occurrence that holds the present. The test day has two parts, 00:00-05:00 and 05:00-23:59:59, each inside one
+civil date and one game day as `GetActivityOpenByServer` needs. A row repeats its own `_kTime` length back to back from
+the start of each part (a whole-day 500/500 row takes each part whole; the last occurrence of a part is cut at its end). A
+row with `_iTimeCtrlId` runs its phases: `ActivityClock.Segments` repeats the first gap-free run of that id's rows back to
+back, with their state names and lengths (1083 Candidate 1 min, Ready 4 min, Answer 25 min; 1074 the four hunt phases;
+1079 one 30 min Start; 1084 Matching 5 min then Battling 10 min), and a run is never cut, so a part can end with a gap.
+Each occurrence is a new one for its owner (a new Festival round, wedding run, hunt, Ilmata cycle). The bonfire's 25
+minutes and the Rift rounds run from the occurrence's start instead of 20:00 and 10:00. A GM test window (`!dracula open`,
+`!guildchallenge open`, `!guildhunt open`, `!defense round`) still wins over the switch. The client's calendar tab
+(`GetTodayCalendarWindow`) reads the times from its own config, so it keeps showing the original hours.
+
+`UnlimitedRewards`: a won Realm of the Gods / Phantom Realm clear pays its personal award without checking or spending the
+balance (5062 `useNumber` shows 0); MVP awards ignore and do not count the daily First/Last/Team/Join caps (and nobody's
+team score decays for being capped); the Commendation Vault pays its extra award past the daily count and the weekly item
+caps without spending them; Dodo's Request keeps `remainRingCount` 1, so a new chain can be accepted after the last one ends.
+
+Not covered: the To-Do's own completion counts (`_iCount`, the liveness points), the Guild Caravan's five daily rounds,
+AFK time, Life Skill energy, shop purchase limits, function unlocks by level or server day (`OpenContent` handles those),
+and the Guild League / Territory Wars / Royal City War calendars.
+
 ## Detailed policies and evidence
 
 The remaining inferred choices are enumerated in [adventures](activities-adventures.md), [Battle Pass/month card](activities-battlepass-monthcard.md), [timed events](activities-timed-events.md), [campfire](activities-guild-campfire.md), and [lottery](activities-lottery.md). The search census and precise scope are recorded in [activities-evidence.md](../research/activities-evidence.md). These documents describe implemented emulator behavior; they do not claim measured original-server parity.

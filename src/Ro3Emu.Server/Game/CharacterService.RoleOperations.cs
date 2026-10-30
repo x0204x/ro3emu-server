@@ -240,7 +240,7 @@ public sealed partial class CharacterService
         int count = session.Items.Where(i => i.Grid == 0 && i.Entry == req.ItemId).Sum(i => i.Stack);
         int result = req.ItemId <= 0 ? ErrorCodes.Parameter
             : data.Row("ItemConfig", req.ItemId) is not { } row || GameData.Int(row, "_iType") != 2 || GameData.Int(row, "_iSubType") != 207
-                ? ErrorCodes.ItemNoConfig : count == 0 ? ErrorCodes.ItemMissing : 0;
+                ? ErrorCodes.ItemNoConfig : count == 0 && !UnlimitedArrow(session, req.ItemId) ? ErrorCodes.ItemMissing : 0;
         if (result == 0)
         {
             var next = session.BagState.Info.Clone();
@@ -249,10 +249,21 @@ public sealed partial class CharacterService
         }
         // _processChangeArrowId writes the echoed id/count without inspecting result.
         int echoed = result == 0 ? req.ItemId : (int)session.BagState.Info.CurrentArrowID;
-        int echoedCount = session.Items.Where(i => i.Grid == 0 && i.Entry == echoed).Sum(i => i.Stack);
+        int echoedCount = UnlimitedArrow(session, echoed) ? -1 : session.Items.Where(i => i.Grid == 0 && i.Entry == echoed).Sum(i => i.Stack);
         await session.SendGameAsync(ArrowSwitch, new ItemArrowSwitchResp { Result = result, ItemId = echoed, ItemCount = echoedCount });
         if (result == 0) await SyncItemsAsync(session);
     }
+
+    /// <summary>
+    /// The arrows an archer picks without owning them (issue #198): UI_Sys_Main_UnlimitedWidget lists every
+    /// PublicParamConfig ArrowsItemId with count -1 for the careers in ArrowsCanUseJob, so they are endless and never
+    /// bought; the client data has no shop, drop or craft for them and the server never uses one up.
+    /// </summary>
+    private bool UnlimitedArrow(GameSession session, long item) =>
+        data.Table("PublicParamConfig").TryGetValue("ArrowsItemId", out var ids) && ids.ValueKind == System.Text.Json.JsonValueKind.Array
+        && ids.EnumerateArray().Any(v => GameData.Number(v) == item)
+        && data.Table("PublicParamConfig").TryGetValue("ArrowsCanUseJob", out var jobs) && jobs.ValueKind == System.Text.Json.JsonValueKind.Array
+        && jobs.EnumerateArray().Any(v => GameData.Number(v) == session.Progress?.Career);
 
     /// <summary>31335 moves owned GUID/count batches between normal tabs and Merchant cart pack 100.</summary>
     public async Task CareerSpecialTransferAsync(GameSession session, CareerSpecialTransferItemsReq req)

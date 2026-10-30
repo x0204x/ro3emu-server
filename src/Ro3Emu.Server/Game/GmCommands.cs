@@ -72,19 +72,27 @@ public sealed partial class GmCommands(IOptions<ServerOptions> options, GameData
             services.GetRequiredService<GameLoop>().TrackRuntimeDetached("GM", () => RunAsync(session, line, loopbackTool));
             return Task.CompletedTask;
         }
-        return RunAdmittedAsync(session, line, loopbackTool);
+        return RunAdmittedAsync(session, line, loopbackTool, panelAdmin: false);
     }
 
-    private Task RunAdmittedAsync(GameSession session, string line, bool loopbackTool)
+    /// <summary>
+    /// The web panel's GM console (docs/guide/panel.md): an admin the panel signed in (an account of GmAccounts) runs
+    /// <paramref name="line"/> for <paramref name="session"/>, which may be any player's, so the session's own account
+    /// is not checked. Call it on the loop.
+    /// </summary>
+    internal Task RunForPanelAdminAsync(GameSession session, string line) =>
+        RunAdmittedAsync(session, line, loopbackTool: false, panelAdmin: true);
+
+    private Task RunAdmittedAsync(GameSession session, string line, bool loopbackTool, bool panelAdmin)
         => session.Owners is { } owners
             ? IsEventOwnerCommand(line)
-                ? owners.RunEconomicRequestAsync(session, () => RunCoreAsync(session, line, loopbackTool))
-                : owners.RunSessionAsync("GM", [Ownership.ReservationKey.Realm], session, () => RunCoreAsync(session, line, loopbackTool))
-            : RunCoreAsync(session, line, loopbackTool);
+                ? owners.RunEconomicRequestAsync(session, () => RunCoreAsync(session, line, loopbackTool, panelAdmin))
+                : owners.RunSessionAsync("GM", [Ownership.ReservationKey.Realm], session, () => RunCoreAsync(session, line, loopbackTool, panelAdmin))
+            : RunCoreAsync(session, line, loopbackTool, panelAdmin);
 
-    private async Task RunCoreAsync(GameSession session, string line, bool loopbackTool)
+    private async Task RunCoreAsync(GameSession session, string line, bool loopbackTool, bool panelAdmin)
     {
-        if (!Allowed(options.Value, session.Account, loopbackTool))
+        if (!panelAdmin && !Allowed(options.Value, session.Account, loopbackTool))
         {
             await ReplyAsync(session, "GM commands are not enabled for this account.");
             return;
@@ -226,8 +234,11 @@ public sealed partial class GmCommands(IOptions<ServerOptions> options, GameData
         }
     }
 
-    public static Task ReplyAsync(GameSession session, string text) =>
-        session.SendGameAsync(BroadcastNotify, new BroadCastNotify { Content = text });
+    public static Task ReplyAsync(GameSession session, string text)
+    {
+        session.GmReplies?.Add(text);
+        return session.SendGameAsync(BroadcastNotify, new BroadCastNotify { Content = text });
+    }
 
     private Dictionary<string, (string Usage, Command Run)> Commands() => _commands ??= new()
     {
@@ -286,6 +297,20 @@ public sealed partial class GmCommands(IOptions<ServerOptions> options, GameData
         ["job"] = ("<jobId>", (s, a) => Op(s, OpSetJob, a)),
         ["clearbag"] = ("", (s, a) => Op(s, OpClearPack, a)),
         ["client"] = ("find <name> | skilltrace on|off|status", ClientDiagnostics),
+        ["fieldexp"] = ("[set <minLevel> <maxLevel> <percent> [...] | clear | reset] (in memory, until the next start)", async (s, a) =>
+        {
+            // FieldExpRates (inferred): the operator's rate for open-field kills, changed here without a restart.
+            var rewards = services.GetRequiredService<RewardService>();
+            string sub = a.Length == 0 ? "" : a[0].ToLowerInvariant();
+            if (sub == "set") rewards.SetFieldExpRules(FieldExpRates.Parse(a[1..]));
+            else if (sub == "clear") rewards.SetFieldExpRules([]);
+            else if (sub == "reset") rewards.ResetFieldExpRules();
+            else if (a.Length != 0) throw new ArgumentException("set | clear | reset");
+            await ReplyAsync(s, "Field EXP rates: " + FieldExpRates.Describe(rewards.FieldExpRules));
+        }
+        ),
+        // Ro3Emu:Testing (TEST AIDS, not original): To-Do activities open at any hour, rewards that never run out.
+        ["testing"] = ("[alwaysopen on|off | unlimited on|off | reset] (test aids, in memory until the next start)", TestingAsync),
         ["speed"] = ("<speed, 0 = normal>", async (s, a) => await ReplyAsync(s, await character.SetSpeedAsync(s, L(a[0])))),
         ["quest"] = ("[accept|finish|done <taskId> | reset]", async (s, a) => await ReplyAsync(s, a.Length == 0
             ? "Quests: " + tasks.Describe(s)
@@ -320,7 +345,7 @@ public sealed partial class GmCommands(IOptions<ServerOptions> options, GameData
                 : await seasons.SetPlayBookAsync(I(a[0])));
         }
         ),
-        ["siege"] = ("open|close|state|seed <city> <attackGuild> <defenseGuild> (test aid)", async (s, a) =>
+        ["siege"] = ("open|close|state|prepare|objects|seed <city> <attackGuild> <defenseGuild> (test aid)", async (s, a) =>
             await ReplyAsync(s, await services.GetRequiredService<TerritoryWarsService>().SiegeGmAsync(a))),
         ["twpoint"] = ("<point> unready|ready|complete [readySeconds] [owner|self] (test aid: 30129 stronghold gameplay point)", async (s, a) =>
             await ReplyAsync(s, await services.GetRequiredService<TerritoryWarsService>().ScenePointGmAsync(s, a))),

@@ -76,6 +76,7 @@ public sealed partial class MvpService : IGameTicker
     }
 
     private readonly GameData _data;
+    private readonly TestingSwitches _testing;
     private readonly AccountStore _accounts;
     private readonly MonsterService _monsters;
     private readonly WorldData _worldData;
@@ -132,8 +133,10 @@ public sealed partial class MvpService : IGameTicker
 
     public MvpService(GameData data, AccountStore accounts, MonsterService monsters, WorldData worldData, CharacterService character,
         RewardService rewards, TaskService tasks, TeamService teams, CombatService combat, BuffService buffs, SessionRegistry sessions,
-        World world, GameLoop loop, SceneService scene, PublicLineManager lines, ILogger<MvpService> log)
+        World world, GameLoop loop, SceneService scene, PublicLineManager lines, ILogger<MvpService> log,
+        TestingSwitches testing)
     {
+        this._testing = testing;
         this._buffs = buffs;
         this._data = data;
         this._accounts = accounts;
@@ -198,6 +201,8 @@ public sealed partial class MvpService : IGameTicker
             builder.Add(new MvpWritePlan(role, CounterRow(info)));
             await builder.CommitAsync(_accounts, "mvp/daily-counter-reset");
         }
+        // Testing UnlimitedRewards (TEST AID, not original): nothing is counted, so nothing shows as used.
+        if (_testing.UnlimitedRewards) info = new MVPPlayerInfo { PlayerId = role, LastTime = info.LastTime };
         await s.SendGameAsync(AwardNum, new MVPAwardNumRsp { Result = 0, Info = info });
     }
 
@@ -638,8 +643,10 @@ public sealed partial class MvpService : IGameTicker
         foreach (long player in online.Keys)
             counters[player] = (await LoadCountersAsync(player)).Info;
         // Counts before this kill decide the decay; offline participants have no loaded counters (inferred: not capped).
+        // Testing UnlimitedRewards (TEST AID, not original): no count is checked or spent, so nobody is capped.
+        bool unlimited = _testing.UnlimitedRewards;
         var teamsRanked = RankTeams(st.Stats.Select(kv => (kv.Key, kv.Value.TeamId, kv.Value.Leader, scores.GetValueOrDefault(kv.Key))),
-            id => counters.TryGetValue(id, out var c) && (c.TeamNum >= TeamCap || c.JoinNum >= JoinCap), capped => DecayPercent(_data, capped));
+            id => !unlimited && counters.TryGetValue(id, out var c) && (c.TeamNum >= TeamCap || c.JoinNum >= JoinCap), capped => DecayPercent(_data, capped));
 
         void Give(long player, MVP_AWARD_TYPE tp, long awardId)
         {
@@ -654,13 +661,16 @@ public sealed partial class MvpService : IGameTicker
                 _ => 0,
             };
             int cap = tp switch { MVP_AWARD_TYPE.First => FirstCap, MVP_AWARD_TYPE.End => EndCap, MVP_AWARD_TYPE.Team => TeamCap, MVP_AWARD_TYPE.Join => JoinCap, _ => int.MaxValue };
-            if (current >= cap) return; // 26051 "Today's Reward Count has been exhausted"
-            switch (tp)
+            if (current >= cap && !unlimited) return; // 26051 "Today's Reward Count has been exhausted"
+            if (!unlimited)
             {
-                case MVP_AWARD_TYPE.First: counter.FirstNum++; break;
-                case MVP_AWARD_TYPE.End: counter.EndNum++; break;
-                case MVP_AWARD_TYPE.Team: counter.TeamNum++; break;
-                case MVP_AWARD_TYPE.Join: counter.JoinNum++; break;
+                switch (tp)
+                {
+                    case MVP_AWARD_TYPE.First: counter.FirstNum++; break;
+                    case MVP_AWARD_TYPE.End: counter.EndNum++; break;
+                    case MVP_AWARD_TYPE.Team: counter.TeamNum++; break;
+                    case MVP_AWARD_TYPE.Join: counter.JoinNum++; break;
+                }
             }
             foreach (var (entry, count) in _rewards.RollAward(awardId, s))
                 awards.GetValueOrDefault(player)?.Add(new MVPPlayerAwardItem { ItemId = entry, Count = count, Tp = tp });

@@ -49,6 +49,10 @@ Open TCP `5380`, `20000` and `33100`, and the voice port if you turn voice on wi
 **Good to know**
 - **GM commands** (`!help` in chat) are on for every account when you play on your own PC. A hosted server gives them
   only to the accounts you name with `--gm` ([GM access](gm-access.md)).
+- **Web panel:** a website for your players (account, characters, who's online, rankings) and for you (accounts,
+  bans, server numbers) on port `5381`. Open that port too, or put it behind https ([web panel](panel.md)). Admins are
+  the accounts you name with `--gm`. `--panel-port <n>` moves it, `--no-panel` turns it off (RO3Emu.exe and
+  `server.sh`).
 - **Bug reports from players:** the Feedback button in the game menu or `/bug <text>` in chat ([feedback](feedback.md)), optionally posted to a Discord channel.
 - **Monsters that attack on sight as in RO1** (on by default, as a trial): set `Ro3Emu__Ro1AggressiveMonsters=false` (or
   `"Ro1AggressiveMonsters": false` under `Ro3Emu` in `appsettings.json`) to turn it off. The field monsters whose Ragnarok Online 1
@@ -63,6 +67,16 @@ Open TCP `5380`, `20000` and `33100`, and the voice port if you turn voice on wi
   (`Ro3Emu__ReceiptRetention__Days`, `__BatchSize`, `__IntervalMinutes`; `Days` 0 keeps them whole). The space freed
   is reused, so the file stops growing; to shrink it on disk, stop the server and run `VACUUM` on `data/ro3emu.db`
   once (`sqlite3 data/ro3emu.db "VACUUM"`).
+- **Test realm switches** (not the original game, off by default): `Ro3Emu__Testing__AlwaysOpen=true` opens every
+  To-Do activity at any hour of any weekday (Survivor Battle, Dragon Coffin Island, Ilmata, the bonfire, Festival
+  Invitation, Wedding Crashers, Hunting Challenge, Mock Battle, the Commendation Vault...), each repeating back to back
+  with its own length. `Ro3Emu__Testing__UnlimitedRewards=true` lets the weekly and daily reward counts never run out:
+  Realm of the Gods and Phantom Realm rewards, MVP rewards, the Commendation Vault's extra awards and Dodo's Request.
+  (`"Testing": { "AlwaysOpen": true }` under `Ro3Emu` in `appsettings.json` does the same.) The server warns at startup
+  while one is on. A GM turns them on or off without a restart: `!testing alwaysopen on|off`, `!testing unlimited
+  on|off`, `!testing reset`, `!testing` to show them; that change lasts until the next start. The Guild League and the
+  Territory Wars keep their calendars (`!league`, `!siege open`, `!twpoint`). Details:
+  [activities](../systems/activities.md#test-realm-switches-ro3emutesting).
 - **One session per account:** a second login takes over from the first. The client runs one instance per PC;
   `Ro3Emu.BotCli` can stand in for extra players when you test alone.
 

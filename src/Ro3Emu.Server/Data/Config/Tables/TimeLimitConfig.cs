@@ -10,6 +10,7 @@ public readonly partial record struct TimeLimitConfig(JsonElement Row)
     [ConfigField("_iMonthRefreshCount")] public partial long MonthRefreshCount { get; }
     [ConfigField("_iTimeLimitId")] public partial long TimeLimitId { get; }
     [ConfigField("_iWeekRefreshCount")] public partial long WeekRefreshCount { get; }
+    [ConfigField("_iWeekEnd")] public partial long WeekEnd { get; }
     [ConfigField("_iWeekStart")] public partial long WeekStart { get; }
     [ConfigField("_strStateName")] public partial string TrStateName { get; }
 }

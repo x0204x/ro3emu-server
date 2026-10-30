@@ -134,7 +134,9 @@ public sealed partial class DungeonService
                     var old = next.Records.GetValueOrDefault(key);
                     var allowance = SpendableAllowance(next, s, multi, a.Plan.RewardMark);
                     bool first = old?.Passed != true;
-                    if (first || allowance.Remaining > 0)
+                    // Testing UnlimitedRewards (TEST AID, not original): the allowance is neither checked nor spent.
+                    bool unlimited = _testing.UnlimitedRewards;
+                    if (first || allowance.Remaining > 0 || unlimited)
                     {
                         goods = (Award(GameData.Int(boss, "_iPersonAward"), s)
                             ?? throw new InvalidOperationException("Missing dungeon award config"))
@@ -142,7 +144,7 @@ public sealed partial class DungeonService
                                 GameData.Int(_data.Row("ItemConfig", g.Entry)!.Value, "_iType") == 1
                                     ? EconomyAssetKind.Currency : EconomyAssetKind.Item)).ToList();
                         auctionEligible = true;
-                        if (!first) allowance.Remaining--;
+                        if (!first && !unlimited) allowance.Remaining--;
                     }
                     newRecord = old == null || old.FastestMs == 0 || duration < old.FastestMs;
                     next.Records[key] = new Record { Passed = true, FastestMs = newRecord ? duration : old!.FastestMs };

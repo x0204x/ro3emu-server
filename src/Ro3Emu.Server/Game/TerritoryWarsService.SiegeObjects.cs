@@ -6,10 +6,13 @@ namespace Ro3Emu.Server.Game;
 /// <summary>
 /// The castle of the siege (docs/systems/territory-wars.md "Siege castle"): the NPCs NpcLevelPointRespawnConfig places on
 /// dungeon 2230101 (_iMapid is the DungeonConfig id, _iRespawnpointid a point of its scene editor
-/// sc_gvg_gongchengzhan_001_dg01). The gates, guardians, barricades, the revive point and the markers that keep the
-/// castle's buildings standing are spawned with the siege room as monsters of their NPCConfig rows (_iNPCType 1); the
-/// crystal (point 44) keeps its own spawn (TerritoryWarsService.SiegeBattle.cs). A destroyed object stays destroyed
-/// for the rest of the siege, also in a room opened again for it; a damaged one keeps its HP.
+/// sc_gvg_gongchengzhan_001_dg01). The gates, guardians, barricades, archers, the revive point, the guide arrows, the
+/// attackers' ladders and ram and the markers that keep the castle's buildings standing are spawned with the siege room
+/// as monsters of their NPCConfig rows (_iNPCType 1); the fixed war vehicles as vehicles
+/// (TerritoryWarsService.SiegeVehicles.cs); the crystal (point 44) keeps its own spawn
+/// (TerritoryWarsService.SiegeBattle.cs). A destroyed object stays destroyed for the rest of the siege, also in a room
+/// opened again for it, except the ladders and the ram, which come back (TerritoryWarsService.SiegeUnits.cs); a damaged
+/// one keeps its HP.
 /// </summary>
 public sealed partial class TerritoryWarsService
 {
@@ -31,14 +34,17 @@ public sealed partial class TerritoryWarsService
     };
 
     /// <summary>
-    /// The NpcLevelPointRespawnConfig NPCs of 2230101 spawned with the room: City Gate 4900005 (points 36 and 214), Knight
-    /// Guardian 4901011 (InnerTower 41-43), Bow Guardian 4901012 (OuterTower 38-40), Obstacle 4900022 (the ten barricades),
-    /// the building markers 4903002 (UnitConfig 4900011, at the DestoryModelPerformParams points of the workshops and
-    /// arrow towers), the revive point 4900010 and the revive markers 4901021 (attackers) / 4901022 (defenders). Not yet:
-    /// the ladders 4900000/4900012 and the ram 4900002 (they need their route AI), the archers 4901001, the guide arrows
-    /// 4903001, the fixed vehicles 4901004-4901009 and the invisible markers 4900017.
+    /// The NpcLevelPointRespawnConfig NPCs of 2230101 spawned with the room as monsters: City Gate 4900005 (points 36 and
+    /// 214), Knight Guardian 4901011 (InnerTower 41-43), Bow Guardian 4901012 (OuterTower 38-40), Obstacle 4900022 (the
+    /// ten barricades), the building markers 4903002 (UnitConfig 4900011, at the DestoryModelPerformParams points of the
+    /// workshops and arrow towers), the revive point 4900010, the revive markers 4901021 (attackers) / 4901022
+    /// (defenders), the ladders 4900012 (46) and 4900000 (47), the Battering Ram 4900002 (48), the 38 archers 4901001
+    /// (group 248 "刷守卫") and the guide arrows 4903001 (UnitConfig "引导箭头NPC"). The fixed vehicles 4901004-4901009
+    /// are vehicles (TerritoryWarsService.SiegeVehicles.cs). Not spawned: the invisible markers 4900017 (camp 0, a buff
+    /// 901301 and nothing that reads them).
     /// </summary>
-    private static readonly HashSet<long> SiegeSpawnedNpcs = [4900005, 4901011, 4901012, 4900022, 4903002, 4900010, 4901021, 4901022];
+    private static readonly HashSet<long> SiegeSpawnedNpcs = [4900005, 4901011, 4901012, 4900022, 4903002, 4900010, 4901021, 4901022,
+        SiegeLeftLadderNpc, SiegeLadderNpc, SiegeRamNpc, SiegeArcherNpc, SiegeGuideArrowNpc];
 
     /// <summary>The City Gates: 36 "城门刷新点" in the castle's gateway, 214 "进攻方城门" the attackers' camp gate.</summary>
     private const int SiegeGatePoint = 36, SiegeCampGatePoint = 214;
@@ -52,30 +58,41 @@ public sealed partial class TerritoryWarsService
     private const int SiegeWallRevive = 268;
 
     /// <summary>Whether a castle object stands in the run's stage: the camp gate in Prepare only (TerritoryWarsService.SiegeStages.cs
-    /// SiegeGateRulesAsync), the attackers' wall revive marker from the inner city on.</summary>
-    private static bool SiegePointStands(SiegeRunState r, int point) => point switch
+    /// SiegeGateRulesAsync), the attackers' wall revive marker from the inner city on, a ladder or the ram once its
+    /// refresh time is over (TerritoryWarsService.SiegeUnits.cs).</summary>
+    private bool SiegePointStands(SiegeRunState r, int point) => point switch
     {
         SiegeCampGatePoint => r.Stage == SiegePrepareStage,
         SiegeWallRevive => r.Stage >= SiegeStrongholdStage,
-        _ => true,
+        _ => !r.Refresh.TryGetValue(point, out long[]? refresh) || refresh is not [_, var back] || _clock.Now * 1000 >= back,
     };
 
     /// <summary>A unit carrying Battle Start Protection takes no damage.</summary>
     private bool SiegeProtected(MonsterUnit m) => _buffs.UnitBuffs(m).Any(b => b.ConfigId == BattleStartProtection);
 
-    /// <summary>(point, npc) of every spawned castle object, in point order; read once.</summary>
-    private (int Point, int Npc)[]? _siegeObjectRows;
+    /// <summary>(point, npc, grounded) of every spawned castle object, in point order; read once.</summary>
+    private (int Point, int Npc, bool Grounded)[]? _siegeObjectRows;
 
     /// <summary>
-    /// NpcLevelPointRespawnConfig rows of _iMapid 2230101 with a spawned NPC. Row 4900016 places the revive point 4900010 at
-    /// 45, which is a group id and no point of the scene; UIModule_NpcData puts that NPC at point 286 (inferred: 286 is
-    /// meant).
+    /// NpcLevelPointRespawnConfig rows of _iMapid 2230101 with a spawned NPC; _iNotGroundBorn 1 (the guide arrows) keeps
+    /// the editor's height. Row 4900016 places the revive point 4900010 at 45, which is a group id and no point of the
+    /// scene; UIModule_NpcData puts that NPC at point 286 (inferred: 286 is meant). (inferred) Left out: the rows at a
+    /// point the scene editor leaves at the origin (two guide arrows at 16 and 272: m_kAllPoints entries at 0,0,0 and no
+    /// spawn point), and the second ladder at 20 and the second ram at 34, which stand on the very spots of 47 and 48, the
+    /// points UIModule_NpcData follows.
     /// </summary>
-    private (int Point, int Npc)[] SiegeObjectRows() => _siegeObjectRows ??= [.. NpcLevelPointRespawnConfig.All(_data)
-        .Where(r => r.Mapid == SiegeScene && SiegeSpawnedNpcs.Contains(r.Npcid))
-        .Select(r => ((int)(r.Npcid == SiegeReviveNpc && r.Respawnpointid == SiegeReviveRowPoint ? SiegeRevivePoint
-            : r.Respawnpointid), (int)r.Npcid))
-        .Where(r => r.Item1 != SiegeContestedAttackerRevive).OrderBy(r => r.Item1)];
+    private (int Point, int Npc, bool Grounded)[] SiegeObjectRows()
+    {
+        if (_siegeObjectRows != null) return _siegeObjectRows;
+        var map = _maps.Map(SiegeScene) ?? throw new InvalidOperationException("Siege scene 2230101 is absent");
+        return _siegeObjectRows = [.. NpcLevelPointRespawnConfig.All(_data)
+            .Where(r => r.Mapid == SiegeScene && SiegeSpawnedNpcs.Contains(r.Npcid))
+            .Select(r => ((int)(r.Npcid == SiegeReviveNpc && r.Respawnpointid == SiegeReviveRowPoint ? SiegeRevivePoint
+                : r.Respawnpointid), (int)r.Npcid, r.NotGroundBorn == 0))
+            .Where(r => r.Item1 != SiegeContestedAttackerRevive && !SiegeDuplicatePoints.Contains(r.Item1)
+                && !(map.Points.TryGetValue(r.Item1, out var at) && at.X == 0 && at.Y == 0 && at.Z == 0))
+            .OrderBy(r => r.Item1)];
+    }
 
     /// <summary>The point a castle object of the run stands on, or null for any other unit.</summary>
     private static int? SiegeObjectPoint(SiegeRun battle, MonsterUnit m)
@@ -93,19 +110,23 @@ public sealed partial class TerritoryWarsService
     {
         if (battle.Room.Closed || battle.State.Settled) return false;
         var map = _maps.Map(SiegeScene) ?? throw new InvalidOperationException("Siege scene 2230101 is absent");
-        bool spawned = false;
-        foreach (var (point, npc) in SiegeObjectRows())
+        bool spawned = false, refreshed = false;
+        foreach (var (point, npc, grounded) in SiegeObjectRows())
         {
             if (battle.Objects.ContainsKey(point) || battle.State.Destroyed.Contains(point)
                 || !SiegePointStands(battle.State, point)) continue;
             if (!map.Points.TryGetValue(point, out var at))
                 throw new InvalidOperationException($"Siege object point {point} is absent from scene 2230101");
-            if (await _instances.SpawnAsync(battle.Room, npc, map.Grounded(at)) is not { } actor) break; // the room closed
+            if (await _instances.SpawnAsync(battle.Room, npc, at, customTemplate: SiegeTemplate(npc), grounded: grounded)
+                is not { } actor) break; // the room closed
             if (battle.State.ObjectHp.TryGetValue(point, out long hp) && hp > 0) actor.Hp = Math.Min(actor.Hp, hp);
             SiegeHoldsDamage(actor);
             battle.Objects[point] = actor;
+            // A ladder or the ram back from its refresh, or set off again from its start in a reopened room.
+            refreshed |= battle.State.Refresh.Remove(point) | battle.State.PlacedLadders.Remove(point);
             spawned = true;
         }
+        if (refreshed) await SaveAsync(state);
         return spawned;
     }
 
@@ -146,27 +167,53 @@ public sealed partial class TerritoryWarsService
         finally { stagedTerritoryState.Dispose(); _gate.Release(); reservation?.Dispose(); }
     }
 
-    /// <summary>A castle object died (CombatService.Killed, or found dead by the siege clock): it stays destroyed.</summary>
+    /// <summary>
+    /// A castle object died (CombatService.Killed, or found dead by the siege clock): it stays destroyed, or a ladder or
+    /// the ram waits for its refresh and leaves the room's objects once its death went out (30115 hp 0). A guardian's
+    /// death adds time to the stage's countdown (TerritoryWarsService.SiegeUnits.cs).
+    /// </summary>
     private async Task SiegeObjectDestroyedAsync(SiegeRun battle, int point)
     {
-        if (battle.State.Destroyed.Contains(point)) return;
-        int stage = battle.State.Stage;
-        var walls = SiegeActiveWalls(battle.State).ToHashSet();
-        battle.State.Destroyed.Add(point);
-        battle.State.ObjectHp.Remove(point);
+        var r = battle.State;
+        if (r.Destroyed.Contains(point) || r.Refresh.ContainsKey(point)) return;
+        int stage = r.Stage;
+        var walls = SiegeActiveWalls(r).ToHashSet();
+        bool refresh = SiegeRefreshes(r, point);
+        if (refresh) r.Refresh[point] = SiegeRefreshWindow(point);
+        else r.Destroyed.Add(point);
+        r.PlacedLadders.Remove(point);
+        r.ObjectHp.Remove(point);
         await SaveAsync(state);
         await SiegePublishObjectsAsync(battle);
+        if (refresh)
+        {
+            battle.Objects.Remove(point);
+            battle.SentHp.Remove(point);
+        }
         await SiegeAdvanceStageAsync(battle);
-        // A barricade or a fortress opens its walls without a new stage (var 133).
-        if (battle.State.Stage == stage && !walls.SetEquals(SiegeActiveWalls(battle.State))) await SiegeBroadcastBaseAsync(battle);
+        bool added = SiegeKillAddsTime(r, point);
+        if (added) await SaveAsync(state);
+        // A barricade, a fortress or a ladder changes the walls without a new stage (var 133), a guardian's kill the
+        // countdown (542) and a refresh the countdowns of the ladders and the ram (npcRefreshModuleData).
+        if (r.Stage != stage && !added) return;
+        if (added || refresh || !walls.SetEquals(SiegeActiveWalls(r))) await SiegeBroadcastBaseAsync(battle);
     }
 
-    /// <summary>The siege clock: castle objects that died without a kill callback (their killer left meanwhile), then
-    /// the HP changes of the last second (30115).</summary>
+    /// <summary>The siege clock: castle objects that died without a kill callback (their killer left meanwhile), the HP
+    /// they lost to anything but a player's blow (the ram, the archers; a player's is recorded with it), then the HP
+    /// changes of the last second (30115).</summary>
     private async Task SiegeObjectsClockAsync(SiegeRun battle)
     {
         foreach (var (point, unit) in battle.Objects.ToArray())
-            if (unit.Dead && point != SiegeCrystalPoint) await SiegeObjectDestroyedAsync(battle, point);
+        {
+            if (point == SiegeCrystalPoint) continue;
+            if (unit.Dead) await SiegeObjectDestroyedAsync(battle, point);
+            else if (unit.Hp < unit.Template.MaxHp && battle.State.ObjectHp.GetValueOrDefault(point) != unit.Hp)
+            {
+                battle.State.ObjectHp[point] = unit.Hp;
+                _siegeDirty = true;
+            }
+        }
         await SiegePublishObjectsAsync(battle);
     }
 }

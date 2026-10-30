@@ -547,6 +547,49 @@ public sealed class DailyTests : IAsyncLifetime
         Assert.Equal(0, await State(s => s.Tasks!.CompleteTaskNum.GetValueOrDefault(500080)));
     }
 
+    /// <summary>
+    /// Daily Quest Compensation Mail (PublicParamConfig.DailyTaskCompensationMail 1058): a To-Do box the ending day reached
+    /// but did not claim is reissued by mail at the reset, once, with what its claim pays (DailyActivityService.Compensation).
+    /// </summary>
+    [ClientDataFact]
+    public async Task ResetMailsTheReachedUnclaimedToDoBoxesOnce()
+    {
+        await using var bot = await InWorld("Alice");
+        await Gm("alice", "!quest done 10105090");
+        await Gm("alice", "!lvl 34"); // pool 80002 / group 3502's level-34 EXP row is 127716
+        await Gm("alice", "!quest done 500080");
+        await Gm("alice", "!quest done 500070");
+        Assert.Equal(40, await State(s => s.Progress!.Currency.GetValueOrDefault(5)));
+        await bot.SendGameAsync(DailyActivityService.StageGain, new StageRewardGainReq { StageId = 7001 });
+        Assert.Equal(0, (await Next(bot, DailyActivityService.StageGain, StageRewardGainResp.Parser)).Result);
+        long role = await State(s => s.Role!.Id);
+        var roles = _app.Services.GetRequiredService<RoleStore>();
+        MailService.Mailbox Mailbox() => roles.LoadMailbox(role) is { Length: > 0 } blob
+            ? JsonSerializer.Deserialize<MailService.Mailbox>(blob) ?? new() : new();
+        // Each reset starts from a different past day: a reset's ledger source is its (previous, new) epoch pair.
+        async Task ResetAsync(int days) => await OwnedFixtureAsync(role, "daily reset fixture", async s =>
+        {
+            s.Daily!.DailyEpoch -= 86400 * days;
+            roles.SaveDaily(s.Role!.Id, JsonSerializer.SerializeToUtf8Bytes(s.Daily));
+            await _app.Services.GetRequiredService<DailyActivityService>().ReconcileAsync(s);
+        });
+
+        await ResetAsync(1);
+        var letter = Assert.Single(Mailbox().Letters, l => l.TemplateId == 1058);
+        // Box 7002 (40 liveness) only: 7001 was claimed, 7003 needs 60.
+        Assert.Contains(letter.Attachments, a => a.Entry == 100 && a.Count == 127716);
+        Assert.Contains(letter.Attachments, a => a.Entry == 407 && a.Count == 200);
+        Assert.Contains(letter.Attachments, a => a.Entry == 1200701 && a.Count == 1);
+        Assert.Empty(await State(s => s.Daily!.Compensation));
+        Assert.Empty(JsonSerializer.Deserialize<DailyActivityService.DailyState>(roles.LoadDaily(role)!)!.Compensation);
+
+        await ResetAsync(2); // a day without liveness owes nothing
+        Assert.Single(Mailbox().Letters, l => l.TemplateId == 1058);
+        await bot.DisposeAsync();
+        await using var again = await InWorld("Alice", create: false);
+        Assert.Single(Mailbox().Letters, l => l.TemplateId == 1058);
+    }
+
     [ClientDataFact]
     public async Task DailyResetLedgerFailureRollsBackWholePeriodAndHeldRetryOwnsOneSource()
     {

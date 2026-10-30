@@ -241,4 +241,99 @@ public sealed class NavGrid
 
     private static bool SamePosition(PathPoint p, float x, float z) =>
         MathF.Abs(p.X - x) < 0.001f && MathF.Abs(p.Z - z) < 0.001f;
+
+    /// <summary>
+    /// A walkable route from a to b: A* over the 1 m cells (8 neighbours, no corner cutting, heights followed as
+    /// <see cref="CanWalk"/> does), pulled into straight legs of at most <paramref name="maxLeg"/> m that
+    /// <see cref="CanWalk"/> accepts from the end of the leg before (the first from a itself). The points to walk to in
+    /// order, the last one b; null when b is not reached within <paramref name="maxNodes"/> expanded cells. A leg is
+    /// checked between exactly the points it is walked between: <see cref="CanWalk"/> samples a line every half metre,
+    /// so a part of a checked line that grazes a wall can fail where the whole passed. The client data has no route for
+    /// server-driven units, so a monster sent across a map takes the shortest one (inferred).
+    /// </summary>
+    public List<(float X, float Y, float Z)>? FindPath(float ax, float ay, float az, float bx, float bz,
+        float maxLeg = float.MaxValue, int maxNodes = 60000)
+    {
+        int sx = (int)MathF.Floor(ax), sz = (int)MathF.Floor(az), gx = (int)MathF.Floor(bx), gz = (int)MathF.Floor(bz);
+        if (!Inside(sx, sz) || !Inside(gx, gz) || WalkHeight(bx, bz, ay) is not { } by) return null;
+        if (Within(ax, az, bx, bz, maxLeg) && CanWalk(ax, ay, az, bx, bz)) return [(bx, by, bz)];
+        int start = sz * Width + sx, goal = gz * Width + gx;
+        var parent = new Dictionary<int, int> { [start] = -1 };
+        var cost = new Dictionary<int, float> { [start] = 0 };
+        var height = new Dictionary<int, float> { [start] = ay };
+        var closed = new HashSet<int>();
+        var open = new PriorityQueue<int, float>();
+        float Heuristic(int x, int z)
+        {
+            int dx = Math.Abs(x - gx), dz = Math.Abs(z - gz);
+            return Math.Max(dx, dz) + 0.41421357f * Math.Min(dx, dz);
+        }
+        bool Step(int x, int z, float y, out float h)
+        {
+            h = 0;
+            if (!Inside(x, z) || WalkHeight(x + 0.5f, z + 0.5f, y) is not { } found || MathF.Abs(found - y) > WalkHeightTolerance) return false;
+            h = found;
+            return true;
+        }
+        open.Enqueue(start, Heuristic(sx, sz));
+        while (open.TryDequeue(out int cell, out _))
+        {
+            if (!closed.Add(cell)) continue;
+            if (cell == goal) return Pull(ax, ay, az, (bx, by, bz), cell, parent, height, maxLeg);
+            if (closed.Count > maxNodes) return null;
+            int cx = cell % Width, cz = cell / Width;
+            float g = cost[cell], y = height[cell];
+            for (int dx = -1; dx <= 1; dx++)
+                for (int dz = -1; dz <= 1; dz++)
+                {
+                    if (dx == 0 && dz == 0) continue;
+                    bool diagonal = dx != 0 && dz != 0;
+                    if (diagonal && (!Step(cx + dx, cz, y, out _) || !Step(cx, cz + dz, y, out _))) continue;
+                    if (!Step(cx + dx, cz + dz, y, out float ny)) continue;
+                    int next = (cz + dz) * Width + cx + dx;
+                    float ng = g + (diagonal ? 1.41421357f : 1f);
+                    if (closed.Contains(next) || cost.TryGetValue(next, out float old) && old <= ng) continue;
+                    cost[next] = ng;
+                    parent[next] = cell;
+                    height[next] = ny;
+                    open.Enqueue(next, ng + Heuristic(cx + dx, cz + dz));
+                }
+        }
+        return null;
+    }
+
+    private bool Inside(int x, int z) => x >= 0 && z >= 0 && x < Width && z < Height;
+
+    private static bool Within(float ax, float az, float bx, float bz, float distance) =>
+        (bx - ax) * (bx - ax) + (bz - az) * (bz - az) <= distance * distance;
+
+    /// <summary>
+    /// The cell chain back to the start as cell centres, then each leg stretched to the farthest one in a straight walk.
+    /// A start whose straight line to the next cell grazes a wall goes through its own cell's centre first.
+    /// </summary>
+    private List<(float X, float Y, float Z)> Pull(float ax, float ay, float az, (float X, float Y, float Z) end, int goal,
+        Dictionary<int, int> parent, Dictionary<int, float> height, float maxLeg)
+    {
+        var cells = new List<(float X, float Y, float Z)> { end };
+        for (int cell = parent[goal]; cell >= 0 && parent[cell] >= 0; cell = parent[cell])
+            cells.Add((cell % Width + 0.5f, height[cell], cell / Width + 0.5f));
+        cells.Reverse();
+        var legs = new List<(float X, float Y, float Z)>();
+        var from = (X: ax, Y: ay, Z: az);
+        if (!CanWalk(ax, ay, az, cells[0].X, cells[0].Z))
+        {
+            from = (MathF.Floor(ax) + 0.5f, ay, MathF.Floor(az) + 0.5f);
+            legs.Add(from);
+        }
+        for (int i = 0; i < cells.Count;)
+        {
+            int j = i;
+            while (j + 1 < cells.Count && Within(from.X, from.Z, cells[j + 1].X, cells[j + 1].Z, maxLeg)
+                && CanWalk(from.X, from.Y, from.Z, cells[j + 1].X, cells[j + 1].Z)) j++;
+            legs.Add(cells[j]);
+            from = cells[j];
+            i = j + 1;
+        }
+        return legs;
+    }
 }

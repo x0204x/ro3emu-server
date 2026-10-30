@@ -264,7 +264,7 @@ public sealed partial class GenreService
             next.Equipment.EquipPlans[index] = concrete.EquipPlan.Clone();
             foreach (int slot in next.Equipment.EquipPlans[index].ItemsEquipGrid.Where(kv => kv.Value == 0).Select(kv => kv.Key).ToArray())
                 next.Equipment.EquipPlans[index].ItemsEquipGrid.Remove(slot);
-            if ((code = character.StageEquipmentPlan(next.Equipment, next.Items, index)) != 0) return code;
+            if ((code = character.StageEquipmentPlan(next.Equipment, next.Items, index, next.Progress)) != 0) return code;
         }
         if (concrete.CardPlan != null)
         {
