@@ -1,5 +1,6 @@
 using Romsg;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Maps;
 using Ro3Emu.Server.Economy;
 
@@ -28,7 +29,8 @@ public sealed partial class NewActivityService
     /// <summary>
     /// ItemConfig 1112001/1112002 action 304, called with ActivityGate and CharacterService's item-use lock held.
     /// LC_DAL_SeasonTreasure consumes 5064.pointId and LC_System_SeasonTreasure starts the hunt.
-    /// The point selection among configured candidates is (inferred).
+    /// LC_System_SeasonTreasure.StartHunt/_doStartHunt 只在同圖啟動，GetAreaCenter 也只查目前地圖。
+    /// 在目前公開地圖的有效點中選取，無點時以 178 拒絕且保留道具；選點與拒絕碼為 (inferred)。
     /// </summary>
     private async Task<int> StartTreasureMapAsync(GameSession session, ItemUseReq req,
         Action<Ro3Emu.Server.Accounts.Persistence.RoleItemPlanBuilder> persistCooldown, Action publishCooldown)
@@ -41,18 +43,18 @@ public sealed partial class NewActivityService
         var cursor = session.ActivityRuntime.AdventureTreasure;
         if ((cursor.PointId != 0 && Now < cursor.Began + 10800) || cursor.PendingMonsterAward != 0)
             return ErrorCodes.TaskExists;
-        var points = _data.Table("TreasureHuntMapPointConfig").Values
-            .Where(r => GameData.Int(r, "_iId") > 0 && _scene.TreasurePoint(GameData.Int(r, "_iId")) != null
-                && (item.Entry == 1112002 ? GameData.Int(r, "_iId") >= 2000 : GameData.Int(r, "_iId") < 2000))
-            .OrderBy(r => GameData.Int(r, "_iId")).ToArray();
+        if (session.RuntimeMap.Kind != RuntimeMapKind.PublicLine) return ErrorCodes.ItemUseAreaForbidden;
+        var local = TreasureHuntMapPointConfig.All(_data)
+            .Where(p => p.Id > 0 && p.MapId == session.SceneEntry
+                && (item.Entry == 1112002 ? p.Id >= 2000 : p.Id < 2000)).ToArray();
+        if (local.Length == 0) return ErrorCodes.ItemUseAreaForbidden;
+        var points = local.Where(p => _scene.TreasurePoint(p.Id) != null).OrderBy(p => p.Id).ToArray();
         if (points.Length == 0) return ErrorCodes.FeatureUnavailable;
-        var local = points.Where(r => GameData.Int(r, "_iMapId") == session.SceneEntry).ToArray();
-        var pool = local.Length > 0 ? local : points;
-        var chosen = pool[Random.Shared.Next(pool.Length)];
+        var chosen = points[Random.Shared.Next(points.Length)];
         var runtime = CloneRuntime(session);
         runtime.AdventureTreasure = new AdventureTreasureCursor
         {
-            PointId = GameData.Int(chosen, "_iId"), GroupId = 1, ItemId = item.Entry, Began = Now,
+            PointId = chosen.Id, GroupId = 1, ItemId = item.Entry, Began = Now,
         };
         // Use the canonical bag transaction and the selected GUID; publish the hunt and cooldown
         // together before any StateChanged observer can see the consumed map.

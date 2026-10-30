@@ -29,9 +29,10 @@ public sealed partial class SceneService
     /// <summary>On scene load or map use, make this player's active hunt target visible as a real NPC entity.</summary>
     internal async Task SpawnTreasureNpcAsync(GameSession session)
     {
-        if (session.Role == null || session.SceneLoading) return;
+        // (inferred) 配置點都在公開野外，尋寶投影不得進入同圖的副本或活動房間。
+        if (session.Role == null || session.SceneLoading || session.RuntimeMap.Kind != RuntimeMapKind.PublicLine) return;
         var hunt = session.ActivityRuntime.AdventureTreasure;
-        if (hunt.PointId == 0 || hunt.Began + 10800 <= DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+        if (hunt.PointId == 0 || hunt.Began + 10800 <= clock.GetUtcNow().ToUnixTimeSeconds()
             || TreasurePoint(hunt.PointId) is not { } target || target.Scene != session.SceneEntry
             || data.Row("NPCConfig", TreasureNpcId) is not { } npcRow) return;
         var npc = new WorldNpc(TreasureUid(session), target.Scene, WorldNpcKind.Npc, TreasureNpcId,
@@ -50,7 +51,10 @@ public sealed partial class SceneService
     }
 
     internal Task<MonsterUnit?> SpawnTreasureMonsterAsync(GameSession session, int npcId, MapPoint at) =>
-        monsters.SpawnSingleAsync(session.SceneEntry, npcId, at);
+        // 沿用挖掘者的公開分線；只傳配置地圖 ID 會把所有怪物放到第 1 線。
+        session.RuntimeMap.Kind == RuntimeMapKind.PublicLine
+            ? monsters.SpawnSingleAsync(session.RuntimeMap, npcId, at)
+            : Task.FromResult<MonsterUnit?>(null);
 
     internal Task RemoveTreasureMonsterAsync(MonsterUnit monster) => world.RemoveUnitAsync(monster);
 
@@ -61,7 +65,8 @@ public sealed partial class SceneService
     {
         if (session.Role == null || req.InteractionId != TreasureInteraction || req.NpcUid != TreasureUid(session)) return false;
         var hunt = session.ActivityRuntime.AdventureTreasure;
-        int result = hunt.PointId == 0 || TreasurePoint(hunt.PointId) is not { } target
+        int result = hunt.PointId == 0 || session.RuntimeMap.Kind != RuntimeMapKind.PublicLine
+            || TreasurePoint(hunt.PointId) is not { } target
             ? ErrorCodes.NpcMissing
             : session.SceneLoading || target.Scene != session.SceneEntry ? ErrorCodes.SwitchingScenes
             : MonsterService.Distance(session.Position.X, session.Position.Z, target.Position.X, target.Position.Z) > 4f + InteractSlack

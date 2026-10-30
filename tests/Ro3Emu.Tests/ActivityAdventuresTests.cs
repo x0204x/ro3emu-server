@@ -9,11 +9,13 @@ using Ro3Emu.Server;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Game;
 using Ro3Emu.Server.Game.Ownership;
+using Ro3Emu.Server.Data.Config;
+using Ro3Emu.Server.Maps;
 
 namespace Ro3Emu.Tests;
 
 /// <summary>Real game-gate NewActivity adventure requests, persistence and replay boundaries.</summary>
-public sealed class ActivityAdventuresTests : IAsyncLifetime
+public sealed partial class ActivityAdventuresTests : IAsyncLifetime
 {
     private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-adventure-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);
@@ -657,6 +659,114 @@ public sealed class ActivityAdventuresTests : IAsyncLifetime
         });
         Assert.NotEqual(0, (await Next(alice, SceneService.NpcInteraction, NpcInteractionRsp.Parser,
             i => i.Result != 0)).Result);
+    }
+
+    [ClientDataFact]
+    public async Task TreasureMonsterStaysOnTheDiggersPublicLine()
+    {
+        var window = _app.Services.GetRequiredService<ActivityClock>()
+            .Segments(1017, _clock.GetUtcNow().ToUnixTimeSeconds()).Single();
+        _clock.Set(window.Start + 60);
+        await using var alice = await InWorld("Alice");
+        await using var bob = await InWorld("Bob");
+        var sessions = _app.Services.GetRequiredService<SessionRegistry>();
+        var digger = sessions.All().Single(s => s.Role?.Name == "Alice");
+        var bystander = sessions.All().Single(s => s.Role?.Name == "Bob");
+        var scene = _app.Services.GetRequiredService<SceneService>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
+        await Gm("alice", "!lvl 99");
+        await Gm("alice", "!item 1112001 1");
+        await loop.InvokeAsync(async () => Assert.True(await scene.EnterSceneAsync(digger, digger.SceneEntry, createLine: true)));
+        var change = await Next(alice, MsgId.SwitchSceneLine, SwitchSceneLineResp.Parser);
+        Assert.Equal(2, change.Linenum);
+        await alice.SendGameAsync(MsgId.SceneLoaded, new SceneLoadedReq { SceneId = change.SceneEntry });
+        Assert.Equal(0, (await Next(alice, MsgId.SceneLoaded, SceneLoadedResp.Parser)).Result);
+        await Next(alice, MsgId.EntitySelf, EntitySelf.Parser);
+        // 只保留一筆原有的怪物結果，讓真正挖掘流程確定走出生怪分支；不寫入客戶端資料。
+        await loop.InvokeAsync(() =>
+        {
+            var table = (IDictionary<string, JsonElement>)_app.Services.GetRequiredService<Ro3Emu.Server.Data.GameData>()
+                .Table("TreasureHuntResultRateConfig");
+            var outcome = table.Single(p => new TreasureHuntResultRateConfig(p.Value) is var row
+                && row.Type == 4 && row.GroupId.Contains(1) && row.GroupProbability > 0);
+            foreach (string key in table.Keys.Where(k => k != outcome.Key).ToArray()) table.Remove(key);
+            return Task.CompletedTask;
+        });
+        long guid = digger.Items.Single(i => i.Entry == 1112001).Guid;
+        await alice.SendGameAsync(CharacterService.ItemUse, new ItemUseReq { ItemGuid = guid, ItemCount = 1 });
+        Assert.Equal(0, (await Next(alice, CharacterService.ItemUse, ItemUseResp.Parser)).Result);
+        var cursor = await Next(alice, 5064, DBTreasureInfoIncrement.Parser, i => i.PointId > 0);
+        ulong treasureUid = (ulong)(SceneService.TreasureUidPrefix | digger.Role!.Id);
+        await Next(alice, GameAoiSink.SyncAoiView, AoIViewChangeData.Parser,
+            view => view.Bases.Any(actor => actor.Uuid == treasureUid));
+        var point = scene.TreasurePoint(cursor.PointId);
+        Assert.NotNull(point);
+        var target = point.Value;
+        Assert.Equal(digger.SceneEntry, target.Scene);
+        string jump = $"!jump {target.Position.X.ToString(CultureInfo.InvariantCulture)} {target.Position.Z.ToString(CultureInfo.InvariantCulture)}";
+        await Gm("alice", jump);
+        await Gm("bob", jump);
+        await alice.SendGameAsync(SceneService.NpcInteraction, new NpcInteractionReq
+        {
+            NpcUid = SceneService.TreasureUidPrefix | digger.Role!.Id, InteractionId = 4,
+        });
+        Assert.Equal(0, (await Next(alice, SceneService.NpcInteraction, NpcInteractionRsp.Parser)).Result);
+        Assert.Equal(ETreasureEventNum.Monster, (await Next(alice, 83251, TreasureEventNotify.Parser)).Type);
+        await loop.InvokeAsync(() =>
+        {
+            var monster = Assert.Single(_app.Services.GetRequiredService<World>().AllUnits().OfType<MonsterUnit>(),
+                m => m.Uid == digger.ActivityRuntime.AdventureTreasure.PendingMonsterUid);
+            Assert.Equal(RuntimeMapKey.Public(digger.SceneEntry, 2), monster.RuntimeMap);
+            Assert.Contains(monster, digger.VisibleUnits);
+            Assert.DoesNotContain(monster, bystander.VisibleUnits);
+            Assert.Equal(1, bystander.LineNumber);
+            return Task.CompletedTask;
+        });
+    }
+
+    [ClientDataFact]
+    public async Task TreasureTargetDoesNotEnterAPrivateCopyOfItsFieldMap()
+    {
+        var window = _app.Services.GetRequiredService<ActivityClock>()
+            .Segments(1017, _clock.GetUtcNow().ToUnixTimeSeconds()).Single();
+        _clock.Set(window.Start + 60);
+        await using var alice = await InWorld("Alice");
+        await Gm("alice", "!lvl 99");
+        await Gm("alice", "!item 1112001 1");
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Name == "Alice");
+        var scene = _app.Services.GetRequiredService<SceneService>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
+        var world = _app.Services.GetRequiredService<World>();
+        long guid = session.Items.Single(i => i.Entry == 1112001).Guid;
+        await alice.SendGameAsync(CharacterService.ItemUse, new ItemUseReq { ItemGuid = guid, ItemCount = 1 });
+        Assert.Equal(0, (await Next(alice, CharacterService.ItemUse, ItemUseResp.Parser)).Result);
+        var cursor = await Next(alice, 5064, DBTreasureInfoIncrement.Parser, i => i.PointId > 0);
+        ulong treasureUid = (ulong)(SceneService.TreasureUidPrefix | session.Role!.Id);
+        await Next(alice, GameAoiSink.SyncAoiView, AoIViewChangeData.Parser,
+            view => view.Bases.Any(actor => actor.Uuid == treasureUid));
+        var point = scene.TreasurePoint(cursor.PointId);
+        Assert.NotNull(point);
+        int validNpc = world.AllUnits().OfType<MonsterUnit>().First().Template.NpcId;
+        int beforeRoom = alice.Inbox.Snapshot().Count;
+        await loop.InvokeAsync(async () => Assert.True(await scene.EnterSceneAsync(session, point.Value.Scene,
+            at: point.Value.Position, instanceId: 9_700_001)));
+        await Next(alice, MsgId.SwitchSceneLine, SwitchSceneLineResp.Parser);
+        await alice.SendGameAsync(MsgId.SceneLoaded, new SceneLoadedReq { SceneId = point.Value.Scene });
+        Assert.Equal(0, (await Next(alice, MsgId.SceneLoaded, SceneLoadedResp.Parser)).Result);
+        await Next(alice, MsgId.EntitySelf, EntitySelf.Parser);
+        await alice.SendGameAsync(SceneService.NpcInteraction, new NpcInteractionReq
+        {
+            NpcUid = (long)treasureUid, InteractionId = 4,
+        });
+        Assert.Equal(ErrorCodes.NpcMissing, (await Next(alice, SceneService.NpcInteraction, NpcInteractionRsp.Parser)).Result);
+        await loop.InvokeAsync(async () =>
+        {
+            Assert.Equal(RuntimeMapKind.PrivateInstance, session.RuntimeMap.Kind);
+            Assert.Null(await scene.SpawnTreasureMonsterAsync(session, validNpc, point.Value.Position));
+            Assert.Equal(cursor.PointId, session.ActivityRuntime.AdventureTreasure.PointId);
+        });
+        Assert.DoesNotContain(alice.Inbox.Snapshot().Skip(beforeRoom), packet => packet.IsGame(GameAoiSink.SyncAoiView)
+            && AoIViewChangeData.Parser.ParseFrom(packet.Body).Bases.Any(actor => actor.Uuid == treasureUid));
     }
 
     [ClientDataFact]
