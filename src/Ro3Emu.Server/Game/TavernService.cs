@@ -144,7 +144,13 @@ public sealed partial class TavernService : IGameTicker
 
     public async Task LeaveAsync(GameSession s)
     {
-        if (s.Role == null || s.Tavern == null) { _detaching.Remove(s); return; }
+        // 沒有酒館租約時不介入其他每日活動的結算；AFK 待領債務仍可依原流程登出保存。
+        if (s.Role == null || s.Tavern == null || !ValidLease(s))
+        {
+            _detaching.Remove(s);
+            _transportGaps.Remove(s);
+            return;
+        }
         using var scope = await EnterScopeAsync(s, room: true);
         await _daily.ReconcileAsync(s);
         await _gate.WaitAsync();

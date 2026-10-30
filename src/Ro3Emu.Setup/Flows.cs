@@ -102,17 +102,26 @@ internal static class Flows
     }
 
     /// <summary>Exports the game data when it is missing, from another client version, or asked for.</summary>
-    public static void EnsureGameData(string client, bool force)
+    public static void EnsureGameData(string client, bool force) =>
+        EnsureGameData(client, force, SetupHome.DataDir, (source, target) => { RunExport(source, target); });
+
+    // 測試可注入匯出邊界，使用相同產品分派而不載入原生 Lua。
+    internal static void EnsureGameData(string client, bool force, string dataDir, Action<string, string> export)
     {
         Ui.Step("Game data");
-        if (!force && GameDataExport.UpToDate(SetupHome.DataDir, client))
+        if (PreparedGameData.UseIfPresent(dataDir, client, force))
         {
-            var stamp = GameDataExport.ReadStamp(SetupHome.DataDir)!;
+            Ui.Ok("已核對匯入資料與原始客戶端來源，沿用此資料，不執行原生匯出。");
+            return;
+        }
+        if (!force && GameDataExport.UpToDate(dataDir, client))
+        {
+            var stamp = GameDataExport.ReadStamp(dataDir)!;
             Ui.Ok($"ready (exported {stamp.ExportedUtc.ToLocalTime():yyyy-MM-dd HH:mm})");
             return;
         }
         Ui.Info("Exporting the game data from your game folder (first run or game update, about a minute).");
-        RunExport(client, SetupHome.DataDir);
+        export(client, dataDir);
     }
 
     private static GameDataExport.Result RunExport(string client, string dataDir)

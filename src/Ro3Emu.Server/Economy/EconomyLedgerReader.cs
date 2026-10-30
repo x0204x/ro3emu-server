@@ -211,7 +211,7 @@ public static class EconomyLedgerReader
                             if (economic)
                             {
                                 (beforeProgressRevision, afterProgressRevision) = ValidateRevisions(row.GetString(12), row.GetString(13),
-                                    row.GetInt64(6), commandKind, typedChildren);
+                                    row.GetInt64(6), commandKind, typedChildren, (byte[])row.GetValue(10));
                                 var parsed = ValidateIntentPayload((byte[])row.GetValue(15), row.GetString(9),
                                     op, row.GetString(5), row.GetInt64(6), commandKind, row.GetString(8), source,
                                     row.GetInt64(14), (byte[])row.GetValue(10));
@@ -889,8 +889,25 @@ public static class EconomyLedgerReader
         return (transfer, changes, realizations, childRoleWrites);
     }
 
+    // 每個可選控制 blob 各有一個成功 child；舊版未含 TavernHash 的收據仍保留原相容性。
+    private static void ValidateDailyResetChildren(IReadOnlyDictionary<string, long> parts,
+        object?[] children, byte[] outcome)
+    {
+        EconomyTransactionPlan.ValidateChildReceipts(children, -1, "cd13e/daily-reset");
+        bool tavern = parts.ContainsKey("tavern");
+        int expected = 1 + (parts.ContainsKey("wild_afk") ? 1 : 0) + (tavern ? 1 : 0);
+        if (children.Length != expected)
+            throw new InvalidDataException("Daily reset child/revision shape is incomplete.");
+        using var document = JsonDocument.Parse(outcome);
+        bool hasHash = document.RootElement.TryGetProperty("TavernHash", out var hash);
+        if (tavern ? !hasHash || hash.ValueKind != JsonValueKind.String ||
+                hash.GetString() is not { Length: 64 } value || !ValidFingerprint(value)
+            : hasHash && hash.ValueKind != JsonValueKind.Null)
+            throw new InvalidDataException("Daily reset Tavern hash/revision shape is incomplete.");
+    }
+
     private static (long? BeforeProgress, long? AfterProgress) ValidateRevisions(string beforeJson, string afterJson, long actorRole,
-        string commandKind, object?[] childReceipts)
+        string commandKind, object?[] childReceipts, byte[] outcome)
     {
         using var before = JsonDocument.Parse(beforeJson);
         using var after = JsonDocument.Parse(afterJson);
@@ -945,7 +962,7 @@ public static class EconomyLedgerReader
         string[] allowed = commandKind switch
         {
             "monster-kill" => ["inventory", "progress", "library", "task_followup", "tower", "tasks", "wild_afk", "area_concur"],
-            "cd13e/daily-reset" => [.. required, "wild_afk"],
+            "cd13e/daily-reset" => [.. required, "wild_afk", "tavern"],
             "gather-yield" => [.. required, "library", "task_followup"],
             "dungeon-reward" => [.. required, "auction_order", "library", "task_followup"],
             "cd13e/tower-milestone" or "cd13e/quest-award" or "cd13e/achievement-award" or "cd13e/advguild-award" or "cd13e/monsterhunt-award" or "cd13e/guild-award" or "cd13e/growthclass-award" or "cd13e/library-award" or "cd13e/firstheart-award" or "cd13e/daily-stage" or
@@ -954,10 +971,8 @@ public static class EconomyLedgerReader
             _ => required
         };
         bool library = bParts.ContainsKey("library"), followup = bParts.ContainsKey("task_followup");
-        if (commandKind == "cd13e/daily-reset" &&
-            (childReceipts.Length != (bParts.ContainsKey("wild_afk") ? 2 : 1) ||
-             bParts.ContainsKey("wild_afk") != (childReceipts.Length == 2)))
-            throw new InvalidDataException("Daily reset child/revision shape is incomplete.");
+        if (commandKind == "cd13e/daily-reset")
+            ValidateDailyResetChildren(bParts, childReceipts, outcome);
         int expectedChildren = commandKind switch
         {
             "gather-yield" => 5 + (library ? 1 : 0) + (followup ? 1 : 0),
