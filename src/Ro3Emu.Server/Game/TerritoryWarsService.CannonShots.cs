@@ -110,12 +110,13 @@ public sealed partial class TerritoryWarsService
     /// <summary>
     /// The bullet lands: it leaves the room and the cannon skill hits around the point (inferred: within SkillConfig
     /// _kLogicData[4] cm, as the original's GVG_S0_CannonFire script is server side) the monsters and the hostile players
-    /// of the siege room, through the ordinary extra-cast paths.
+    /// of the battle room (the other camp in a siege, other guilds in a territory battle), through the ordinary extra-cast
+    /// paths. Nothing is hit once the shooter's battle is over.
     /// </summary>
     private async Task ExplodeAsync(GameSession s, InstanceService.Room room, CannonBullet bullet, SkillConfig skill, Vec3 landing)
     {
         await _instances.RemovePropAsync(room, bullet);
-        if (room.Closed || s.Role == null || s.SiegeBattle?.Room != room) return;
+        if (room.Closed || s.Role == null || WarRoomOf(s)?.Room != room) return;
         float radius = (skill.LogicData is [_, _, _, _, var cm, ..] && cm > 0 ? cm : 500) / 100f;
         var monsters = _combat.MonstersNear(s, landing, radius);
         if (monsters.Count > 0) await _combat.CastExtraAsync(s, skill.Row, monsters);

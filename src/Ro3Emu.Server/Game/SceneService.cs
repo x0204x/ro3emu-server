@@ -475,8 +475,12 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
         await world.MoveAsync(s, new WalkReq { Pos = pos, Face = at.Face, BStop = true, SpeedRate = 1 }, forceTeleport: true);
     }
 
+    /// <summary>Set by TerritoryWarsService: whether a walk from a point to another crosses an air wall its dungeon has
+    /// switched on (dungeon var 133); the nav grid does not hold them.</summary>
+    public Func<GameSession, Vec3, Vec3, bool>? WalkBlocked { get; set; }
+
     /// <summary>
-    /// Checks a client walk against the nav grid and the speed attribute. ServerOptions.WalkCheck:
+    /// Checks a client walk against the nav grid, the air walls and the speed attribute. ServerOptions.WalkCheck:
     /// "off", "log" (default: report only) or "enforce" (snap the client back to the last good position).
     /// </summary>
     public async Task<bool> AcceptWalkAsync(GameSession s, WalkReq walk)
@@ -491,6 +495,7 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
         string? problem = !nav.IsWalkable(walk.Pos.X, walk.Pos.Y, walk.Pos.Z) ? "unwalkable cell"
             : dist > maxDist ? $"too fast ({dist:F1} m in {seconds:F2} s, max {maxDist:F1})"
             : !nav.CanWalk(from.X, from.Y, from.Z, walk.Pos.X, walk.Pos.Z) ? "path crosses unwalkable cells"
+            : WalkBlocked?.Invoke(s, from, walk.Pos) == true ? "path crosses an air wall"
             : null;
         if (problem == null)
         {

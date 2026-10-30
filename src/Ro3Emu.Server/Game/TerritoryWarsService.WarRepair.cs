@@ -34,6 +34,7 @@ public sealed partial class TerritoryWarsService
         public required int EntityType { get; init; }
         public required long Owner { get; init; }
         public required long Camp { get; init; }
+        public required long Guild { get; init; }
         public required float Radius { get; init; }
         public required long BornMs { get; init; }
         public required long EndMs { get; init; }
@@ -41,22 +42,22 @@ public sealed partial class TerritoryWarsService
         public override EntityBase Entity() => new()
         {
             Uuid = (ulong)Uid, EntityTemplateID = (ulong)NpcId, EntityType = EntityType, Owner = Owner, AiMasterEntityId = (ulong)Owner,
-            EntityCamp = Camp, State = EntityState.Alive, BornTimeMs = BornMs, Face = Face, NotifyType = EntityBase.Types.NotifyType.All,
+            EntityCamp = Camp, GuildId = Guild, State = EntityState.Alive, BornTimeMs = BornMs, Face = Face, NotifyType = EntityBase.Types.NotifyType.All,
             MovementInfo = new MovementInfo { Pos = Pos, Face = Face, ServerTime = MonsterService.NowMs, MoveType = MovementType.MoveTypeNone },
         };
     }
 
-    /// <summary>GuildService.WarMachines: the zone of a repair item stands at the member's feet in the siege.</summary>
+    /// <summary>GuildService.WarMachines: the zone of a repair item stands at the member's feet in their battle.</summary>
     private async Task<bool> RaiseRepairZoneAsync(GameSession user, int item, long skill)
     {
-        if (user.SiegeBattle is not { } battle || user.Role is not { } role || battle.Room.Closed
+        if (WarRoomOf(user) is not { } battle || user.Role is not { } role || battle.Room.Closed
             || NPCConfig.Get(_data, RepairZoneNpc) is not { } npc || SkillConfig.Get(_data, skill) is not { } row) return false;
         long now = MonsterService.NowMs;
         var zone = new RepairZoneUnit
         {
             Uid = RepairZoneUidBase | Interlocked.Increment(ref _repairSerial), SceneEntry = user.SceneEntry, InstanceId = battle.Room.Id,
             X = user.Position.X, Y = user.Position.Y, Z = user.Position.Z, Face = user.Face, NpcId = RepairZoneNpc,
-            EntityType = (int)npc.NPCType, Owner = role.Id, Camp = CampOf(user), Radius = Math.Max(1, row.DistanceMax) / 100f,
+            EntityType = (int)npc.NPCType, Owner = role.Id, Camp = CampOf(user), Guild = battle.Guild, Radius = Math.Max(1, row.DistanceMax) / 100f,
             BornMs = now, EndMs = now + RepairSeconds(item) * 1000L,
         };
         if (!await _instances.AddPropAsync(battle.Room, zone)) return false;
@@ -73,13 +74,14 @@ public sealed partial class TerritoryWarsService
     private void ScheduleRepair(InstanceService.Room room, RepairZoneUnit zone) =>
         _loop.ScheduleLegacy(TimeSpan.FromMilliseconds(RepairTickMs), () => RepairTickAsync(room, zone));
 
-    /// <summary>One second of the zone: the vehicles of its camp inside heal, the others lose its buff; at its end it leaves.</summary>
+    /// <summary>One second of the zone: the vehicles of its side inside heal (its camp and guild: in a siege a camp is one
+    /// guild, in a territory battle every camp is 1), the others lose its buff; at its end it leaves.</summary>
     private async Task RepairTickAsync(InstanceService.Room room, RepairZoneUnit zone)
     {
         bool live = !room.Closed && !zone.Removed && MonsterService.NowMs < zone.EndMs;
         foreach (var (vehicle, _) in _vehicles.Values.Where(v => v.Room == room).ToList())
         {
-            bool inside = live && !vehicle.Dead && !vehicle.Removed && vehicle.Camp == zone.Camp
+            bool inside = live && !vehicle.Dead && !vehicle.Removed && vehicle.Camp == zone.Camp && vehicle.Guild == zone.Guild
                 && MonsterService.Distance(vehicle.X, vehicle.Z, zone.X, zone.Z) <= zone.Radius;
             if (inside) await RepairAsync(vehicle, zone);
             else if (_repairing.TryGetValue(vehicle, out var by) && by == zone) await EndRepairAsync(vehicle);

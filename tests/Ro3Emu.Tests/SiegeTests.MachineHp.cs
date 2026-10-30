@@ -41,6 +41,8 @@ public sealed partial class SiegeTests
         Assert.True(max > 0);
         Assert.Equal(max, Property(tank, 2000));
         var unit = Machine(tank.Uuid);
+        // A hit neither locks it nor leaves it to heal to full when the fight moves away (MonsterService returning home).
+        Assert.True(unit.KeepsDamage && unit.StaysOutOfBattle);
         Assert.Equal(0, await Interact(attack, tank.Uuid, 4900022));
 
         // Only the other camp may hit it.
@@ -97,6 +99,7 @@ public sealed partial class SiegeTests
             n => n.Uid == builder && n.DataInfo.EType == InteractInfo.Types.EState.Gvgcannon);
 
         var unit = Machine(cannon.Uuid);
+        Assert.True(unit.KeepsDamage && unit.StaysOutOfBattle);
         var pos = cannon.MovementInfo.Pos;
         await OnLoop(async () =>
         {
@@ -109,5 +112,12 @@ public sealed partial class SiegeTests
             n => n.Uid == builder && n.DataInfo.EType == InteractInfo.Types.EState.Idle);
         await Next(attack, GameAoiSink.SyncAoiView, AoIViewChangeData.Parser, v => v.LeaveAoi.Contains(cannon.Uuid));
         Assert.Equal(ErrorCodes.NpcMissing, await Interact(attack, cannon.Uuid, 4900005)); // the wreck is gone
+
+        // The siege record counts the destroyed machine and the damage dealt to it (DestroyMachinery, MachineryDamage).
+        await defense.SendGameAsync(30117, new GetDungeonStatisticsInDungeonReq());
+        var report = await Next(defense, 30117, GetDungeonStatisticsInDungeonResp.Parser);
+        var record = report.DungeonStatistics.SceneStatistics.Values.Single().RoleStatistics[Session(defense).Role!.Id].ExtraData;
+        Assert.Equal(1, record[1021002].LongValue);
+        Assert.True(record[1021003].LongValue > 0);
     }
 }

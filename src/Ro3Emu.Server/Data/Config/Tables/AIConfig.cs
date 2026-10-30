@@ -10,6 +10,7 @@ public readonly partial record struct AIConfig(JsonElement Row)
     [ConfigField("_iBattleCallDistance")] public partial long BattleCallDistance { get; }
     [ConfigField("_iBattleCallResponse")] public partial long BattleCallResponse { get; }
     [ConfigField("_iBattleCallType")] public partial long BattleCallType { get; }
+    [ConfigField("_iCanInBattle")] public partial long CanInBattle { get; }
     [ConfigField("_iChaseDistance")] public partial long ChaseDistance { get; }
     [ConfigField("_iID")] public partial long Id { get; }
     [ConfigField("_iIsSurround")] public partial long IsSurround { get; }

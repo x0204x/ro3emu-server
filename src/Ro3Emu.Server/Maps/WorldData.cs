@@ -79,6 +79,8 @@ public sealed class MapWorld
     public IReadOnlyList<SpawnGroup> SpawnGroups { get; init; } = [];
     public IReadOnlyList<GatheringSpawnPoint> GatheringPoints { get; init; } = [];
     public IReadOnlyDictionary<long, MapRegion> Regions { get; init; } = new Dictionary<long, MapRegion>();
+    /// <summary>The scene editor's air walls (SceneEditorAirWalls), off until a dungeon switches them on (var 133).</summary>
+    public IReadOnlyDictionary<long, SceneAirWall> AirWalls { get; init; } = new Dictionary<long, SceneAirWall>();
     /// <summary>The scene editor's guide routes (SceneEditorGuides), drawn when a scene sets dungeon var 10021.</summary>
     public IReadOnlyList<long> GuideRoutes { get; init; } = [];
     /// <summary>The points of each guide route, id -> (x, y, z) list (a scripted ride walks one).</summary>
@@ -381,6 +383,7 @@ public sealed partial class WorldData(IOptions<ServerOptions> options, GameData 
             SceneEntry = sceneEntry, Born = born, Revive = revive, Npcs = npcs, Points = points, Nav = map.Nav, SpawnGroups = spawnGroups,
             GatheringPoints = LoadGatheringPoints(se, sceneEntry), DungeonGroups = LoadDungeonGroups(se), Regions = LoadRegions(se),
             GuideRoutes = SceneEditorGuides.RouteIds(se), GuidePaths = SceneEditorGuides.Paths(se),
+            AirWalls = SceneEditorAirWalls.Read(se),
             MaxAuthoredAirWallLevel = airWalls.MaxLevel, AuthoredAirWallCells = airWalls.Cells,
             HasUntrackedUnitAirWall = NpcLevelPointRespawnConfig.All(data)
                 .Any(row => row.Mapid == sceneEntry && NPCConfig.Get(data, row.Npcid) is { NPCSubType: SubTypeUnitAirWall })

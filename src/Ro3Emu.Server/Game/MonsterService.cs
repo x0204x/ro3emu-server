@@ -466,7 +466,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         if (m.Returning && !m.Moving)
         {
             m.Returning = false;
-            if (m.Hp < m.Template.MaxHp)
+            if (m.Hp < m.Template.MaxHp && !m.KeepsDamage)
             {
                 m.Hp = m.Template.MaxHp;
                 SendHealth(m);
@@ -529,7 +529,8 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
 
     private void Engage(MonsterUnit m, GameSession target, bool called)
     {
-        if (m.Dead || m.WorldScene != target.WorldScene || TargetVisible?.Invoke(m, target) == false || m.Template.SpeedCm == 0 && m.Template.AttackRange <= 0) return;
+        if (m.Dead || m.StaysOutOfBattle || m.WorldScene != target.WorldScene || TargetVisible?.Invoke(m, target) == false
+            || m.Template.SpeedCm == 0 && m.Template.AttackRange <= 0) return;
         bool entering = m.Target == null;
         if (entering) m.NextSwingMs = NowMs + 300;
         SetTarget(m, target);

@@ -31,6 +31,13 @@ public sealed partial class TerritoryWarsService
         public byte[] AttackSnapshot { get; set; } = [];
         public byte[] DefenseSnapshot { get; set; } = [];
         public long CrystalHp { get; set; }
+        /// <summary>The castle objects' HP below their maximum and the destroyed ones, by scene point
+        /// (TerritoryWarsService.SiegeObjects.cs).</summary>
+        public Dictionary<int, long> ObjectHp { get; set; } = [];
+        public List<int> Destroyed { get; set; } = [];
+        /// <summary>The stage (0 Prepare to 3 Crystal) and when it began, epoch s (TerritoryWarsService.SiegeStages.cs).</summary>
+        public int Stage { get; set; }
+        public long StageStart { get; set; }
         public long SettledAt { get; set; }
         public bool Settled { get; set; }
         public long Winner { get; set; }
@@ -49,6 +56,12 @@ public sealed partial class TerritoryWarsService
             : owner.state.Epoch == Epoch && owner.state.SiegeRuns.TryGetValue(Key, out var current) ? current
               : throw new InvalidOperationException("Territory siege has no active or retiring epoch state.");
         public MonsterUnit? Crystal { get; set; }
+        /// <summary>The castle objects of this room by scene point, the crystal included (dead ones stay listed).</summary>
+        internal Dictionary<int, MonsterUnit> Objects { get; } = [];
+        /// <summary>The HP of each object last sent in 30115 (TerritoryWarsService.SiegeGlobalData.cs).</summary>
+        internal Dictionary<int, long> SentHp { get; } = [];
+        /// <summary>The two bag NPCs by uid (TerritoryWarsService.SiegeBags.cs).</summary>
+        internal Dictionary<long, SiegeBagUnit> Bags { get; } = [];
         internal CommandBoard Command { get; } = new();
         public bool Spawning { get; set; }
         /// <summary>For assists: each victim's recent hitters and when (TerritoryWarsService.QuestTargets.cs).</summary>
@@ -131,29 +144,45 @@ public sealed partial class TerritoryWarsService
             if (!entered)
             { s.EventFaction = 0; if (added) { record.Players.Remove(s.Role.Id); await SaveAsync(state); } return true; }
             s.SiegeBattle = battle;
-            await SiegeSpawnCrystalAsync(battle);
+            await SiegeAdvanceStageAsync(battle);
+            await SiegeSpawnAsync(battle);
         }
         finally { stagedTerritoryState.Dispose(); _gate.Release(); reservation?.Dispose(); }
         return true;
     }
 
-    private async Task SiegeSpawnCrystalAsync(SiegeRun battle)
+    /// <summary>The crystal and the castle objects the room lacks (TerritoryWarsService.SiegeObjects.cs).</summary>
+    private async Task SiegeSpawnAsync(SiegeRun battle)
     {
-        if (battle.Spawning || battle.Room.Closed || battle.State.Settled || battle.Crystal is { Dead: false }) return;
+        if (battle.Spawning || battle.Room.Closed || battle.State.Settled) return;
         battle.Spawning = true;
         try
         {
-            var map = _maps.Map(SiegeScene);
-            if (map == null || !map.Points.TryGetValue(SiegeCrystalPoint, out var point))
-                throw new InvalidOperationException("Siege crystal point 44 is absent from scene 2230101");
-            var actor = await _instances.SpawnAsync(battle.Room, SiegeCrystal, map.Grounded(point));
-            if (actor == null) throw new InvalidOperationException("Configured Siege crystal 4900009 could not spawn");
-            if (battle.State.CrystalHp > 0) actor.Hp = Math.Min(actor.Hp, battle.State.CrystalHp);
-            battle.State.CrystalHp = actor.Hp;
-            battle.Crystal = actor;
-            await SaveAsync(state);
+            await SiegeSpawnCrystalAsync(battle);
+            bool spawned = await SiegeSpawnObjectsAsync(battle);
+            await SiegeSpawnBagsAsync(battle);
+            await SiegeGateRulesAsync(battle);
+            await SiegePublishObjectsAsync(battle);
+            // A member loaded before the castle stood learns the gate's uid (var 513).
+            if (spawned) await SiegeBroadcastBaseAsync(battle);
         }
         finally { battle.Spawning = false; }
+    }
+
+    private async Task SiegeSpawnCrystalAsync(SiegeRun battle)
+    {
+        if (battle.Crystal is { Dead: false }) return;
+        var map = _maps.Map(SiegeScene);
+        if (map == null || !map.Points.TryGetValue(SiegeCrystalPoint, out var point))
+            throw new InvalidOperationException("Siege crystal point 44 is absent from scene 2230101");
+        var actor = await _instances.SpawnAsync(battle.Room, SiegeCrystal, map.Grounded(point));
+        if (actor == null) throw new InvalidOperationException("Configured Siege crystal 4900009 could not spawn");
+        if (battle.State.CrystalHp > 0) actor.Hp = Math.Min(actor.Hp, battle.State.CrystalHp);
+        SiegeHoldsDamage(actor);
+        battle.State.CrystalHp = actor.Hp;
+        battle.Crystal = actor;
+        battle.Objects[SiegeCrystalPoint] = actor;
+        await SaveAsync(state);
     }
 
     private async Task SiegeLoadedAsync(GameSession s)
@@ -163,6 +192,7 @@ public sealed partial class TerritoryWarsService
         var p = battle.State.Players[s.Role!.Id];
         p.Loaded = true; await SaveAsync(state);
         await Send(s, 30401, SiegeBaseInfo(battle));
+        await SendSiegeObjectsAsync(s, battle);
         SiegeTrack(battle, [p.Id]);
         await SendCommandBoardAsync(s);
         // DungeonLua_2230101: point 73 defender, point 75 attacker.
@@ -174,10 +204,10 @@ public sealed partial class TerritoryWarsService
     private DungeonBaseInfoNotify SiegeBaseInfo(SiegeRun battle)
     {
         var r = battle.State;
-        return new DungeonBaseInfoNotify
+        var info = new DungeonBaseInfoNotify
         {
             DungeonEntry = SiegeScene, DungeonId = battle.Room.Id,
-            Stage = r.Settled ? 3 : 2, Level = 99,
+            Stage = r.Stage, Level = 99,
             InitData = new DungeonInitData
             {
                 SiegeInitData = new SiegeInitData
@@ -189,12 +219,14 @@ public sealed partial class TerritoryWarsService
             },
             StageModuleData = new DungeonStageModuleData
             {
-                MapState = r.Settled ? 3 : 2, Stage = r.Settled ? 3 : 2,
-                StageStartTime = r.Start * 1000, StageEndTime = r.End * 1000,
+                MapState = r.Settled ? 3 : 2, Stage = r.Stage,
+                StageStartTime = SiegeStageStart(r) * 1000, StageEndTime = SiegeStageEnd(r) * 1000,
                 MapStateStartTime = r.Start * 1000, MapStateEndTime = r.End * 1000
             },
             ChangeType = (DungeonBaseInfoNotify.Types.eChangeType)2
         };
+        info.Vars.Add(SiegeVars(battle));
+        return info;
     }
 
     private Task SiegeLeavingAsync(GameSession s)
@@ -208,20 +240,25 @@ public sealed partial class TerritoryWarsService
         && ReferenceEquals(b.SiegeBattle, battle) && SiegeActive(battle) && SiegeMember(a, battle)
         && SiegeMember(b, battle) && OwnId(a) != OwnId(b);
 
+    /// <summary>The crystal falls to the attackers in the Crystal stage only (inferred: the stage is named after it and comes
+    /// after the inner city's guardians, TerritoryWarsService.SiegeStages.cs).</summary>
     private bool SiegeCanHit(GameSession s, MonsterUnit m, SiegeRun battle)
         => MachineCamp(m) is { } camp ? MachineHittable(s, battle, camp)
-            : m != battle.Crystal || SiegeActive(battle) && SiegeMember(s, battle) && OwnId(s) == battle.State.Attack;
+            : m == battle.Crystal ? SiegeActive(battle) && SiegeMember(s, battle) && OwnId(s) == battle.State.Attack
+                && battle.State.Stage == SiegeCrystalStage
+            : SiegeObjectPoint(battle, m) is null || SiegeObjectHittable(s, battle, m);
 
     /// <summary>
-    /// CombatService.SkillLineBlocked: (inferred) inside a siege room the castle stops skills along the navigation grid,
-    /// standing in for the siege's air walls (sc_gvg_gongchengzhan_001 m_kAirWalls, gridLevel 1-5), which the original
-    /// switches on through dungeon variable 133 CAirWallList from scripts the client does not have. Elsewhere nothing
-    /// stops a skill, as in the client.
+    /// CombatService.SkillLineBlocked: inside a siege room a skill does not pass a standing air wall (var 133,
+    /// TerritoryWarsService.SiegeWalls.cs), and (inferred) the castle's solid parts stop it along the navigation grid.
+    /// Elsewhere nothing stops a skill, as in the client.
     /// </summary>
     private bool SiegeSkillLineBlocked(GameSession s, MonsterUnit? m, Vec3 origin, Vec3 target)
     {
-        if (s.SiegeBattle is null || s.SceneEntry != SiegeScene || _maps.Map(SiegeScene)?.Nav is not { } nav
-            || nav.CanWalk(origin.X, origin.Y, origin.Z, target.X, target.Z)) return false;
+        if (s.SiegeBattle is not { } battle || battle.Room.Closed || s.SceneEntry != SiegeScene
+            || _maps.Map(SiegeScene) is not { } map) return false;
+        if (SiegeWallCrossed(battle.State, map, origin, target, skill: true)) return true;
+        if (map.Nav is not { } nav || nav.CanWalk(origin.X, origin.Y, origin.Z, target.X, target.Z)) return false;
         return m == null || !SiegeCrystalBlockedEndpointAllowed(s, m, origin, target);
     }
 
@@ -260,8 +297,15 @@ public sealed partial class TerritoryWarsService
         try
         {
             if (!ReferenceEquals(s.SiegeBattle, battle) || !SiegeActive(battle) || !SiegeMember(s, battle)) return;
-            battle.State.Players[s.Role.Id].Damage += Math.Max(0, amount);
-            if (m == battle.Crystal) battle.State.CrystalHp = m.Hp;
+            var p = battle.State.Players[s.Role.Id];
+            p.Damage += Math.Max(0, amount);
+            if (SiegeObjectPoint(battle, m) is int point)
+            {
+                // (inferred) AttackCityValue: what the attackers' blows took from the castle, the crystal included.
+                if (p.Guild == battle.State.Attack) p.CityDamage += Math.Max(0, amount);
+                if (m == battle.Crystal) battle.State.CrystalHp = m.Hp;
+                else if (!battle.State.Destroyed.Contains(point)) battle.State.ObjectHp[point] = m.Hp;
+            }
             await SaveAsync(state);
         }
         finally { stagedTerritoryState.Dispose(); _gate.Release(); reservation?.Dispose(); }
@@ -308,6 +352,12 @@ public sealed partial class TerritoryWarsService
 
     private async Task SiegeKilledAsync(GameSession s, MonsterUnit m)
     {
+        if (s.SiegeBattle is { } siege && m != siege.Crystal && SiegeObjectPoint(siege, m) is int point
+            && m.InstanceId == siege.Room.Id)
+        {
+            await SiegeObjectKilledAsync(s, siege, point);
+            return;
+        }
         if (s.SiegeBattle is not { } battle || m != battle.Crystal || !SiegeActive(battle) || !SiegeMember(s, battle)) return;
         var role = s.Role;
         var attachment = s.Attachment;
@@ -347,7 +397,12 @@ public sealed partial class TerritoryWarsService
                 if (current.Settled && _clock.Now >= current.SettledAt + 30)
                     await RoleFanout.EachAsync(battle.Room.ActiveMembers.Select(m => m.Session), async s =>
                     { if (s.SiegeBattle == battle && !s.SceneLoading) await _instances.LeaveAsync(s); });
-                else if (!current.Settled) await SiegeSpawnCrystalAsync(battle);
+                else if (!current.Settled)
+                {
+                    await SiegeObjectsClockAsync(battle);
+                    await SiegeAdvanceStageAsync(battle);
+                    await SiegeSpawnAsync(battle);
+                }
             }
         }
         if (_siegeDirty) { await SaveAsync(state); _siegeDirty = false; }
@@ -501,9 +556,9 @@ public sealed partial class TerritoryWarsService
             role.ExtraData[1001003] = new ExtraValueData { LongValue = p.Healed }; // heal
             role.ExtraData[1001004] = new ExtraValueData { LongValue = p.Kills }; // KillPlayer
             role.ExtraData[1001005] = new ExtraValueData { LongValue = p.Assists }; // AssistKill
-            role.ExtraData[1021001] = new ExtraValueData(); // AttackCityValue (no supported formula)
-            role.ExtraData[1021002] = new ExtraValueData(); // DestroyMachinery (not implemented)
-            role.ExtraData[1021003] = new ExtraValueData(); // MachineryDamage (not implemented)
+            role.ExtraData[1021001] = new ExtraValueData { LongValue = p.CityDamage }; // AttackCityValue (inferred formula)
+            role.ExtraData[1021002] = new ExtraValueData { LongValue = p.MachineKills }; // DestroyMachinery
+            role.ExtraData[1021003] = new ExtraValueData { LongValue = p.MachineDamage }; // MachineryDamage
             role.ExtraData[1021004] = new ExtraValueData(); // DefenseValue (no supported formula)
             role.ExtraData[1021006] = new ExtraValueData(); // TitleHistoryList
             role.ExtraData[1021007] = new ExtraValueData { LongValue = p.Score }; // CurrentScore

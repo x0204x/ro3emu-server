@@ -114,6 +114,7 @@ public sealed partial class SiegeTests
             v => v.Bases.Any(b => b.EntityTemplateID == 4900013));
         var cannon = view.Bases.Single(b => b.EntityTemplateID == 4900013);
         Assert.Equal((2, builder, 1L), (cannon.EntityType, cannon.Owner, cannon.EntityCamp));
+        Assert.Equal(me.Role.Name, cannon.Name); // the nameplate reads "<builder>'s <cannon>" (UIWords 61000)
         Assert.Contains(cannon.BuffData.AddBuffs, b => b.ConfigId == 4909901);
         await Next(attack, WorldInteractionService.Change, InteractChangeNtf.Parser,
             n => n.Uid == builder && n.DataInfo.EType == InteractInfo.Types.EState.Idle);
@@ -133,6 +134,64 @@ public sealed partial class SiegeTests
         Assert.Contains(cannon.Uuid, gone.LeaveAoi);
         Assert.NotEqual((long)cannon.Uuid, (await Next(attack, GuildService.ToolPermission, GuildWartimeToolRolePermissionNtf.Parser,
             n => n.RoleUsingToolId != 0 && n.RoleUsingToolId != (long)cannon.Uuid)).RoleUsingToolId);
+    }
+
+    private static async Task<GuildWartimeToolBelongOperRsp> Assign(BotClient bot, WartimeToolType type, int slot, long role)
+    {
+        await bot.SendGameAsync(GuildService.ToolAssign, new GuildWartimeToolBelongOperReq { ToolType = type, BagIndex = slot, RoleGuildId = role });
+        return await Next(bot, GuildService.ToolAssign, GuildWartimeToolBelongOperRsp.Parser);
+    }
+
+    [ClientDataFact]
+    public async Task RevokingTheFirearmPermissionTakesTheCannonAwayAndNoVehiclePageShowsIt()
+    {
+        var (attack, defense, ga) = await SiegeWithFirearm("R");
+        await using var _ = attack;
+        await using var __ = defense;
+        await Enter(attack, 1); await Enter(defense, 2);
+        var me = Session(attack);
+        long builder = me.Role!.Id;
+        var at = me.Position.Clone();
+        Assert.Equal(0, (await Prepay(attack, 1006001)).Result);
+        Assert.Equal(0, (await Build(attack, at.X, at.Y, at.Z)).Result);
+        var cannon = (await Next(attack, GameAoiSink.SyncAoiView, AoIViewChangeData.Parser,
+            v => v.Bases.Any(b => b.EntityTemplateID == 4900013))).Bases.Single(b => b.EntityTemplateID == 4900013);
+        await Next(attack, GuildService.ToolPermission, GuildWartimeToolRolePermissionNtf.Parser, n => n.RoleUsingToolId == (long)cannon.Uuid);
+        await Next(attack, WorldInteractionService.Change, InteractChangeNtf.Parser,
+            n => n.Uid == builder && n.DataInfo.EType == InteractInfo.Types.EState.Idle); // the build is over
+        Assert.Equal(0, await Interact(attack, cannon.Uuid, 4900005));
+        await Next(attack, WorldInteractionService.Change, InteractChangeNtf.Parser,
+            n => n.Uid == builder && n.DataInfo.EType == InteractInfo.Types.EState.Gvgcannon);
+        Assert.Equal(0, (await Prepay(attack, 1006002)).Result); // a reserved one too
+        Assert.Equal(1006002, Service<GuildStore>().Get(ga)!.WartimePrepay[builder]);
+
+        // The slot is cleared while its holder mans the cannon: they get off, the cannon goes, the reservation comes back
+        // and nothing shows the cannon any more (32285 None, 32286 the empty slot).
+        Assert.Equal(0, (await Assign(attack, WartimeToolType.Firearm, 1, 0)).Result);
+        await Next(attack, WorldInteractionService.Change, InteractChangeNtf.Parser,
+            n => n.Uid == builder && n.DataInfo.EType == InteractInfo.Types.EState.Idle);
+        await Next(attack, GameAoiSink.SyncAoiView, AoIViewChangeData.Parser, v => v.LeaveAoi.Contains(cannon.Uuid));
+        await Next(attack, GuildService.ToolChange, GuildWartimeToolBelongInfoChangeNtf.Parser,
+            n => n.InfoList.Any(i => i is { ToolType: WartimeToolType.Firearm, BagIndex: 1 } && i.ToolBelongInfo.RoleGuildId == 0
+                && i.ToolBelongInfo.RoleUsingToolId == 0));
+        await Next(attack, GuildService.ToolPermission, GuildWartimeToolRolePermissionNtf.Parser,
+            n => n.ToolType == WartimeToolType.None && n.RoleUsingToolId == 0);
+        Assert.Empty(Service<GuildStore>().Get(ga)!.WartimePrepay);
+        Assert.Equal(50, Service<GuildStore>().Get(ga)!.WartimeItems[1006002]); // the reservation came back
+        Assert.Equal(49, Service<GuildStore>().Get(ga)!.WartimeItems[1006001]); // the destroyed cannon did not
+        Assert.False(Service<GuildService>().WarMachines!.Standing((long)cannon.Uuid));
+
+        // Given a Vehicle slot afterwards, the member uses nothing there.
+        Assert.Equal(0, (await Assign(attack, WartimeToolType.Vehicle, 1, builder)).Result);
+        var change = await Next(attack, GuildService.ToolChange, GuildWartimeToolBelongInfoChangeNtf.Parser,
+            n => n.InfoList.Any(i => i.ToolType == WartimeToolType.Vehicle && i.ToolBelongInfo.RoleGuildId == builder));
+        Assert.All(change.InfoList, i => Assert.Equal(0, i.ToolBelongInfo.RoleUsingToolId));
+        var mine = await Next(attack, GuildService.ToolPermission, GuildWartimeToolRolePermissionNtf.Parser,
+            n => n.ToolType == WartimeToolType.Vehicle);
+        Assert.Equal(0, mine.RoleUsingToolId);
+        await attack.SendGameAsync(GuildService.ToolList, new GetGuildWartimeToolBelongListReq());
+        var list = await Next(attack, GuildService.ToolList, GetGuildWartimeToolBelongListRsp.Parser);
+        Assert.All(list.ItemPermissionAllData.SelectMany(p => p.InfoList), i => Assert.Equal(0, i.RoleUsingToolId));
     }
 
     private static async Task<int> Interact(BotClient bot, ulong npc, int interaction)

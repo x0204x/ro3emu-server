@@ -74,6 +74,10 @@ public class MonsterUnit : WorldUnit
     public long NextSwingMs { get; set; }
     public long NextChaseMs { get; set; }
     public bool Returning { get; set; }
+    /// <summary>Back home it keeps its damage instead of healing to full (the siege castle, TerritoryWarsService.SiegeObjects).</summary>
+    public bool KeepsDamage { get; set; }
+    /// <summary>It never takes a target, so it neither locks nor chases anybody (the siege castle's AIConfig _iCanInBattle 0).</summary>
+    public bool StaysOutOfBattle { get; set; }
     public long LastCombatMs { get; set; }
     /// <summary>Boss special-skill scheduler state, created when the boss first engages (MonsterService.BossSkills).</summary>
     public BossSkillRuntime? BossSkills { get; set; }

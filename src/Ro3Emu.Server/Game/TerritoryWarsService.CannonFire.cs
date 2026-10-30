@@ -80,7 +80,7 @@ public sealed partial class TerritoryWarsService
     /// </summary>
     private int CanEnterCannon(GameSession s, CannonUnit unit, InstanceService.Room room, NpcInteractionReq req)
     {
-        if (s.Role == null || s.Dead || s.SceneLoading || s.SiegeBattle?.Room != room || unit.Removed || room.Closed)
+        if (s.Role == null || s.Dead || s.SceneLoading || WarRoomOf(s)?.Room != room || unit.Removed || room.Closed)
             return ErrorCodes.NpcMissing;
         if (NPCConfig.Get(_data, unit.NpcId) is not { } npc || !npc.InteractId.Contains(req.InteractionId))
             return ErrorCodes.NpcParameter;
@@ -108,9 +108,9 @@ public sealed partial class TerritoryWarsService
         bool? yes = type switch
         {
             // LC_CommonCondition.CheckBuilder and CheckCamp ignore their argument: the unit's Owner is the player, and
-            // the unit and the player share a camp.
+            // the unit and the player share a camp (inferred: a guild in a territory battle, where every camp is 1).
             CheckBuilder => unit.Builder == s.Role!.Id,
-            CheckCamp => unit.Camp == CampOf(s),
+            CheckCamp => OwnSide(s, unit.Camp, unit.Guild),
             // (inferred) 12001 with argument 0: the player is in any gameplay status (here: operating a cannon).
             InStatus => _operators.ContainsKey(s),
             _ => null,

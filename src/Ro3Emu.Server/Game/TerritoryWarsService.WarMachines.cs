@@ -8,8 +8,9 @@ using Ro3Emu.Server.Maps;
 namespace Ro3Emu.Server.Game;
 
 /// <summary>
-/// The siege side of the war machines (GuildService.Wartime keeps the warehouse, the reservations and who operates
-/// what): where a member may reserve and build them, and the cannons standing in a siege.
+/// The battle side of the war machines (GuildService.Wartime keeps the warehouse, the reservations and who operates
+/// what): where a member may reserve and build them, and the cannons standing in a siege or a type-18 territory battle
+/// (TerritoryWarsService.WarRooms).
 /// </summary>
 public sealed partial class TerritoryWarsService
 {
@@ -21,33 +22,27 @@ public sealed partial class TerritoryWarsService
 
     /// <summary>
     /// GuildService.WarSideOf: 1 for the attackers, 2 for the defenders of the running siege the role is loaded into and
-    /// fights for, else 0. Read outside the territory gate: the siege record only changes its settled flag and end, and
-    /// a retired epoch reads as no siege.
+    /// fights for, 3 in an active type-18 territory battle (<see cref="WarRoomOf"/>), else 0.
     /// </summary>
-    private int WarSide(GameSession s)
-    {
-        if (s.SiegeBattle is not { } battle || battle.Room.Closed) return 0;
-        try
-        {
-            if (!SiegeActive(battle) || !SiegeMember(s, battle)) return 0;
-            return battle.State.Players[s.Role!.Id].Guild == battle.State.Attack ? 1 : 2;
-        }
-        catch (InvalidOperationException) { return 0; }
-        catch (KeyNotFoundException) { return 0; }
-    }
+    private int WarSide(GameSession s) => WarRoomOf(s)?.Side ?? 0;
 
     /// <summary>
     /// A built cannon: NPCConfig _iNPCType 2 (sub type 102), so the client creates it as an NPC and keeps it in its
     /// GVGCannon group (LC_GVGBuildCannon keeps new blueprints out of its _iExclusiveRadius). Its entity names the
     /// builder as <c>owner</c> and carries the builder's camp: interaction 4900005 checks both (LC_CommonCondition
     /// CheckBuilder, the head info Owner, and CheckCamp, EntityCamp). NPCConfig _kBornEventBuff are its standing buffs. It is
-    /// a monster unit for the combat (MonsterService.MachineTemplate): the other camp damages and destroys it.
+    /// a monster unit for the combat (MonsterService.MachineTemplate): the other side damages and destroys it. (inferred)
+    /// It also carries the builder's guild (guildId and BelongGuild), which tells the sides apart in a territory battle.
     /// </summary>
     internal sealed class CannonUnit : MonsterUnit
     {
         public required int NpcId { get; init; }
         public required long Builder { get; init; }
         public required long Camp { get; init; }
+        public required long Guild { get; init; }
+        /// <summary>The builder's name: the client titles a GVGCANNON (NPCConfig _iNPCSubType 102) with a name
+        /// "${1}'s ${2}" (LC_Unit_NPC.GetUnitName, UIWords 61000: this name, then the NPC's _kName), as its own
+        /// blueprint does with the local player's (LC_GVGBuildCannon).</summary>
         public required string Name { get; init; }
         /// <summary>Its GVGCannonConfig row.</summary>
         public required long ConfigId { get; init; }
@@ -73,11 +68,12 @@ public sealed partial class TerritoryWarsService
             AddMachineHealth(entity, this);
             if (Buffs.Count > 0) entity.BuffData = new AoIBuffInfo { AddBuffs = { Buffs.Select(b => b.Clone()) } };
             entity.CustomDatas.Add(CannonLong(BulletRestNum, Bullets));
+            AddMachineGuild(entity, Guild);
             return entity;
         }
     }
 
-    /// <summary>GuildService.WarMachines for the siege.</summary>
+    /// <summary>GuildService.WarMachines for the siege and the type-18 territory battles.</summary>
     private sealed class MachineSite(TerritoryWarsService owner) : GuildService.IWarMachineSite
     {
         /// <summary>
@@ -88,7 +84,7 @@ public sealed partial class TerritoryWarsService
         /// </summary>
         public int CheckPlace(GameSession builder, JsonElement cannon, Vec3 pos)
         {
-            if (builder.SiegeBattle is not { } battle) return ErrorCodes.GuildCannonPlace;
+            if (owner.WarRoomOf(builder) is not { } battle) return ErrorCodes.GuildCannonPlace;
             float reach = new GVGCannonConfig(cannon).BuildRadius / 100f + 3f;
             if (MonsterService.Distance(builder.Position.X, builder.Position.Z, pos.X, pos.Z) > reach)
                 return ErrorCodes.GuildCannonPlace;
@@ -114,7 +110,7 @@ public sealed partial class TerritoryWarsService
 
         public async Task<long> RaiseAsync(GameSession builder, JsonElement cannon, Vec3 pos, float face)
         {
-            if (builder.SiegeBattle is not { } battle || builder.Role is not { } role) return 0;
+            if (owner.WarRoomOf(builder) is not { } battle || builder.Role is not { } role) return 0;
             int npcId = (int)new GVGCannonConfig(cannon).NpcId;
             if (owner._data.Row("NPCConfig", npcId) is not { } npc || owner._monsters.MachineTemplate(npcId) is not { } template) return 0;
             var at = owner._maps.Map(builder.SceneEntry) is { } map ? map.Grounded(new MapPoint(pos.X, pos.Y, pos.Z, face))
@@ -125,9 +121,12 @@ public sealed partial class TerritoryWarsService
             {
                 Uid = CannonUidBase | Interlocked.Increment(ref owner._cannonSerial), SceneEntry = builder.SceneEntry,
                 InstanceId = battle.Room.Id, X = at.X, Y = at.Y, Z = at.Z, Face = face, NpcId = npcId, Builder = role.Id,
-                Camp = camp, CampOverride = (int)camp, Name = new NPCConfig(npc).Name is [var nameId, ..] ? owner._data.Text(nameId) : "",
+                Camp = camp, CampOverride = (int)camp, Guild = battle.Guild, Name = role.Name,
                 Template = template, Group = group, Home = home, Hp = template.MaxHp, BornTimeMs = MonsterService.NowMs,
                 ConfigId = new GVGCannonConfig(cannon).Id, Bullets = new GVGCannonConfig(cannon).BulletNumLimit,
+                // Its HP is only its own: no lock on whoever hits it, no heal to full when the fight moves away; the repair
+                // zone mends it (TerritoryWarsService.WarRepair.cs).
+                KeepsDamage = true, StaysOutOfBattle = true,
             };
             foreach (long[] entry in new NPCConfig(npc).BornEventBuff)
                 if (entry is [var buff, ..] && buff > 0 && owner._data.Row("BuffConfig", buff) != null)

@@ -26,8 +26,9 @@ public sealed partial class GuildService
 
     /// <summary>
     /// Set by TerritoryWarsService: the side (1 attack, 2 defense) the role fights for in an active siege it is loaded
-    /// into, else 0. Machines are reserved and built only there (inferred: the battle bag that offers them is the
-    /// siege's, LC_WartimeItemHelper.TryBuildCannon).
+    /// into, 3 in an active territory battle of DungeonConfig _iGamePlayType 18, else 0. Machines are reserved and built
+    /// only there (inferred: the battle bag that offers them, LC_WartimeItemHelper.TryBuildCannon, opens from the
+    /// Instrument button of the siege's and the type-18 territory battle's button widgets).
     /// </summary>
     public Func<GameSession, int>? WarSideOf { get; set; }
 
@@ -74,14 +75,43 @@ public sealed partial class GuildService
     /// <summary>Each member's standing cannon (the roleUsingToolId of its slot); runtime only, cannons end with the
     /// siege.</summary>
     private readonly ConcurrentDictionary<long, long> _cannonOf = new();
-    /// <summary>Builds in progress: role to the build's token.</summary>
-    private readonly ConcurrentDictionary<long, long> _building = new();
+    /// <summary>Builds in progress: role to the build's token and the cannon item it used up.</summary>
+    private readonly ConcurrentDictionary<long, (long Token, int Item)> _building = new();
     private long _buildSerial;
 
-    /// <summary>The machine a member uses now (the roleUsingToolId of its slot): its standing cannon or vehicle, or 0.</summary>
-    private long MachineOf(long role) =>
-        _cannonOf.TryGetValue(role, out long uid) && WarMachines?.Standing(uid) == true ? uid
-        : _vehicleOf.TryGetValue(role, out long vehicle) && WarMachines?.Standing(vehicle) == true ? vehicle : 0;
+    /// <summary>The machine a member uses now with the machine type of its slot (the roleUsingToolId of that slot): its
+    /// standing cannon on the Firearm page, its standing vehicle on the Vehicle page, else 0.</summary>
+    private long MachineOf(long role, WartimeToolType type) => type switch
+    {
+        WartimeToolType.Firearm => _cannonOf.TryGetValue(role, out long cannon) && WarMachines?.Standing(cannon) == true ? cannon : 0,
+        WartimeToolType.Vehicle => _vehicleOf.TryGetValue(role, out long vehicle) && WarMachines?.Standing(vehicle) == true ? vehicle : 0,
+        _ => 0,
+    };
+
+    /// <summary>
+    /// A member lost the slot they held (32282 cleared it or gave it to another member, or they left the guild): the war
+    /// machine is taken from them. The Tactics panel asks first when the slot's holder has a machine (LC_SiegeHelper
+    /// SendModifyPermissionReq, UIWords 61027 "Revoke Access", 61028 "This Member is currently using a war machine. Revoke
+    /// their access?"). (inferred) Taking it destroys it as building another does (UIWords 61001): whoever is on it gets
+    /// off first and nothing goes back to the warehouse. A machine left standing without a holder would stay the former
+    /// operator's (interaction 4900005 checks CheckBuilder against the entity's owner, not the permission) or nobody's,
+    /// and the client has no state for a machine without a slot. A reserved machine and a cannon still being built go
+    /// back to the warehouse, as when the builder dies. Returns whether the warehouse changed (the caller saves it).
+    /// </summary>
+    private async Task<bool> TakeMachinesAsync(GuildStore.State g, long role)
+    {
+        bool stock = ReturnPrepay(g, role);
+        var site = WarMachines;
+        if (_building.TryRemove(role, out var build))
+        {
+            g.WartimeItems[build.Item] = g.WartimeItems.GetValueOrDefault(build.Item) + 1;
+            stock = true;
+            if (site != null && Online(role) is { } builder) await site.BuildStateAsync(builder, null);
+        }
+        if (_cannonOf.TryRemove(role, out long cannon) && site != null) await site.RemoveAsync(cannon);
+        if (_vehicleOf.TryRemove(role, out long vehicle) && site != null) await site.RemoveAsync(vehicle);
+        return stock;
+    }
     private const int MachineRight = 13;
 
     /// <summary>(inferred) Operator slots per machine type: no config row sets them, and the panel shows as many as it
@@ -261,7 +291,7 @@ public sealed partial class GuildService
         await s.SendGameAsync(BuildCannon, new GuildAttackCityBuildResp { Item = new GuildWartimeItem { ItemId = item, ItemCount = 1 } });
         var row = cannon!.Value;
         long token = Interlocked.Increment(ref _buildSerial);
-        _building[role] = token;
+        _building[role] = (token, item);
         long buildMs = Math.Max(0, new GVGCannonConfig(row).BuildTime);
         await site!.BuildStateAsync(s, new BuildCannonState
         {
@@ -281,7 +311,7 @@ public sealed partial class GuildService
     /// </summary>
     private async Task FinishCannonAsync(GameSession s, long guild, long role, long token, JsonElement row, Vec3 pos, float face)
     {
-        if (!_building.TryGetValue(role, out long current) || current != token) return;
+        if (!_building.TryGetValue(role, out var current) || current.Token != token) return;
         _building.TryRemove(role, out _);
         var site = WarMachines!;
         bool here = s.Role?.Id == role && !s.Dead && WarSideOf?.Invoke(s) > 0;
@@ -294,6 +324,12 @@ public sealed partial class GuildService
             {
                 if (uid != 0) await site.RemoveAsync(uid);
                 return;
+            }
+            if (uid != 0 && ToolOf(g, role) != WartimeToolType.Firearm)
+            {
+                // The Firearm permission was revoked while the cannon was raised: as a build cut short.
+                await site.RemoveAsync(uid);
+                uid = 0;
             }
             if (uid == 0)
             {
@@ -333,7 +369,7 @@ public sealed partial class GuildService
             for (int index = 1; index <= SlotCount(type); index++)
             {
                 long holder = Holder(g, type, index);
-                page.InfoList.Add(new GuildWartimeToolBelongInfo { RoleGuildId = holder, RoleUsingToolId = MachineOf(holder) });
+                page.InfoList.Add(new GuildWartimeToolBelongInfo { RoleGuildId = holder, RoleUsingToolId = MachineOf(holder, type) });
             }
             rsp.ItemPermissionAllData.Add(page);
         }
@@ -346,7 +382,7 @@ public sealed partial class GuildService
         await s.SendGameAsync(WartimeStore, StoreOf(g));
         if (s.Role != null && ToolOf(g, s.Role.Id) is var type && type != WartimeToolType.None)
             await s.SendGameAsync(ToolPermission,
-                new GuildWartimeToolRolePermissionNtf { ToolType = type, RoleUsingToolId = MachineOf(s.Role.Id) });
+                new GuildWartimeToolRolePermissionNtf { ToolType = type, RoleUsingToolId = MachineOf(s.Role.Id, type) });
     }
 
     /// <summary>A former member: an empty warehouse and no permission (the battle bag empties).</summary>
@@ -369,6 +405,8 @@ public sealed partial class GuildService
     /// <summary>
     /// 32282: put a member in a slot or clear it (roleGuildId 0). dungeonId is the siege's (enum_DungeonIdMap) and does not
     /// change the guild-wide slots (inferred). The client offers only members without a slot; anyone else is 82 (inferred).
+    /// The member who held the slot loses their machine (<see cref="TakeMachinesAsync"/>), so 32285/32286 show nothing in
+    /// use and no later page shows it under another machine type.
     /// </summary>
     private async Task ToolAssignCoreAsync(GameSession s, GuildWartimeToolBelongOperReq req)
     {
@@ -389,11 +427,13 @@ public sealed partial class GuildService
         }
         if (!g!.WartimeSlots.TryGetValue((int)req.ToolType, out var slots)) g.WartimeSlots[(int)req.ToolType] = slots = [];
         if (target == 0) slots.Remove(req.BagIndex); else slots[req.BagIndex] = target;
+        bool stock = before != 0 && await TakeMachinesAsync(g, before);
         await SaveGuildAsync(g);
         await s.SendGameAsync(ToolAssign, rsp);
         await PushToolChangesAsync(g, [(req.ToolType, req.BagIndex)]);
         await PushToolPermissionAsync(g, before);
         await PushToolPermissionAsync(g, target);
+        if (stock) await PushStoreAsync(g);
     }
 
     /// <summary>32283: swap two slots of one type (dragging a name onto another slot); an empty slot moves the name.</summary>
@@ -451,7 +491,7 @@ public sealed partial class GuildService
             ToolType = c.Type, BagIndex = c.Index,
             ToolBelongInfo = new GuildWartimeToolBelongInfo
             {
-                RoleGuildId = Holder(g, c.Type, c.Index), RoleUsingToolId = MachineOf(Holder(g, c.Type, c.Index)),
+                RoleGuildId = Holder(g, c.Type, c.Index), RoleUsingToolId = MachineOf(Holder(g, c.Type, c.Index), c.Type),
             },
         }));
         foreach (var m in g.Members.Values)
@@ -462,7 +502,8 @@ public sealed partial class GuildService
     private async Task PushToolPermissionAsync(GuildStore.State g, long role)
     {
         if (role == 0 || Online(role) is not { } peer) return;
+        var type = ToolOf(g, role);
         await peer.SendGameAsync(ToolPermission,
-            new GuildWartimeToolRolePermissionNtf { ToolType = ToolOf(g, role), RoleUsingToolId = MachineOf(role) });
+            new GuildWartimeToolRolePermissionNtf { ToolType = type, RoleUsingToolId = MachineOf(role, type) });
     }
 }

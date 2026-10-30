@@ -5,8 +5,9 @@ namespace Ro3Emu.Server.Game;
 
 /// <summary>
 /// The war machines in combat (docs/systems/territory-wars.md "Machine HP and destruction"). A cannon or a vehicle is an
-/// NPC with an HP bar (properties 101 and 2000, its MonsterService.MachineTemplate), so the other camp's attacks, skills
-/// and cannon shots damage it through the monster pipeline and it dies as a monster does. A destroyed machine puts
+/// NPC with an HP bar (properties 101 and 2000, its MonsterService.MachineTemplate), so the other side's attacks, skills
+/// and cannon shots damage it through the monster pipeline and it dies as a monster does (the other camp in a siege, the
+/// other guilds in a territory battle: TerritoryWarsService.CanHitObjective). A destroyed machine puts
 /// whoever is on it back on foot, its owner's Tactics slot shows nothing in use any more (32285, 32286) and its wreck
 /// leaves after NPCConfig _iBodyRemainTime.
 /// </summary>
@@ -64,4 +65,86 @@ public sealed partial class TerritoryWarsService
     /// <summary>The wreck stays for NPCConfig _iBodyRemainTime (MonsterTemplate.BodyRemainMs) and leaves the room.</summary>
     private void RemoveWreck(InstanceService.Room room, MonsterUnit unit) =>
         _loop.ScheduleLegacy(TimeSpan.FromMilliseconds(unit.Template.BodyRemainMs + 200), () => _instances.RemovePropAsync(room, unit));
+
+    /// <summary>
+    /// (inferred) The battle of <paramref name="room"/> settled: its standing cannons and vehicles leave with whoever is on
+    /// them, and their owners' slots show nothing in use (32285, 32286), as when they are destroyed. The machines only
+    /// serve the battle; the client's machine UI (the battle bag, the Instrument button) belongs to its dungeon's widgets.
+    /// </summary>
+    private async Task EndWarMachinesAsync(InstanceService.Room room)
+    {
+        foreach (var (uid, cannon) in _cannons.Where(p => p.Value.Room == room).ToList())
+        {
+            if (!_cannons.TryRemove(uid, out _)) continue;
+            await EjectCannonOperatorAsync(cannon.Unit);
+            await _instances.RemovePropAsync(room, cannon.Unit);
+            await _guilds.MachineGoneAsync(cannon.Unit.Builder, uid);
+        }
+        foreach (var (uid, vehicle) in _vehicles.Where(p => p.Value.Room == room).ToList())
+        {
+            if (!_vehicles.TryRemove(uid, out _)) continue;
+            foreach (var rider in vehicle.Unit.Seats.OfType<GameSession>().ToList()) await GetOffAsync(rider, interrupt: true);
+            await EndRepairAsync(vehicle.Unit);
+            await _instances.RemovePropAsync(room, vehicle.Unit);
+            await _guilds.MachineGoneAsync(vehicle.Unit.Owner, uid);
+        }
+    }
+
+    /// <summary>SiegeSettled, per loaded participant: the settled siege's machines end once (the first call finds them).</summary>
+    private void SiegeMachinesSettled(long role, long score, bool won)
+    {
+        if (_sessions.All().FirstOrDefault(s => s.Role?.Id == role)?.SiegeBattle is { } battle)
+            _loop.PostLegacy(() => EndWarMachinesAsync(battle.Room));
+    }
+
+    /// <summary>The record of the member fighting in the battle of <paramref name="m"/>'s room, or null.</summary>
+    private Participant? MachineFighter(GameSession s, MonsterUnit m)
+    {
+        try
+        {
+            if (s.Role == null) return null;
+            if (s.SiegeBattle is { } siege && m.InstanceId == siege.Room.Id && SiegeActive(siege) && SiegeMember(s, siege))
+                return siege.State.Players[s.Role.Id];
+            if (s.TerritoryBattle is { } battle && m.InstanceId == battle.Room.Id && Active(battle) && Member(s, battle))
+                return battle.State.Players[s.Role.Id];
+        }
+        catch (InvalidOperationException) { }
+        catch (KeyNotFoundException) { }
+        return null;
+    }
+
+    /// <summary>
+    /// CombatService.EventDamageRecorded: damage to a war machine counts as the hitter's MachineryDamage (statistics
+    /// 1021003) besides their damage. (inferred) All damage dealt to the other side's cannons and vehicles, as the
+    /// counter's name says; the client only displays it.
+    /// </summary>
+    private async Task MachineDamageRecordedAsync(GameSession s, MonsterUnit m, long amount)
+    {
+        if (amount <= 0 || MachineGuild(m) == null || MachineFighter(s, m) == null) return;
+        using var reservation = await EnterGateAsync("territory/machine damage", s);
+        using var stagedTerritoryState = StageState();
+        try
+        {
+            if (MachineFighter(s, m) is not { } p) return;
+            p.MachineDamage += amount;
+            await SaveAsync(state);
+        }
+        finally { stagedTerritoryState.Dispose(); _gate.Release(); reservation?.Dispose(); }
+    }
+
+    /// <summary>CombatService.Killed: a destroyed war machine counts as its last hitter's DestroyMachinery (statistics
+    /// 1021002; inferred: the last hit, as the battle's other kill counters).</summary>
+    private async Task MachineKilledAsync(GameSession s, MonsterUnit m)
+    {
+        if (MachineGuild(m) == null || MachineFighter(s, m) == null) return;
+        using var reservation = await EnterGateAsync("territory/machine kill", s);
+        using var stagedTerritoryState = StageState();
+        try
+        {
+            if (MachineFighter(s, m) is not { } p) return;
+            p.MachineKills++;
+            await SaveAsync(state);
+        }
+        finally { stagedTerritoryState.Dispose(); _gate.Release(); reservation?.Dispose(); }
+    }
 }

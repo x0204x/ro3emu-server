@@ -6,16 +6,16 @@ namespace Ro3Emu.Server.Game;
 /// <item>106609: the guild's season points, every round's battle scores summed (inferred: the client shows only one
 /// round's sum, TerritoryWarsGuildData.guildScore).</item>
 /// <item>The siege's dungeon tasks (TaskConfig 4900000, 4900020-4900024, _iDungeonID 2230101): 200000 "Reach Dungeon Stage
-/// ${1}" is met on loading in (the siege has no preparation stage here, its 30401 is the fight at once), 210003 "${1}
-/// Assists" reads the participant's assists and 200001 "Rating: ${1}" its personal score (one point per player kill and
-/// for the crystal, inferred in SiegeBattle).</item>
+/// ${1}" (${1} = 1) is met once the siege leaves its Prepare stage 0 for the Gate stage 1 (TerritoryWarsService.SiegeStages.cs),
+/// 210003 "${1} Assists" reads the participant's assists and 200001 "Rating: ${1}" its personal score (one point per
+/// player kill and for the crystal, inferred in SiegeBattle).</item>
 /// <item>(inferred) A siege assist is a hit on the victim by another participant within the Battle Merit assist window
 /// (<see cref="GloryAssistWindowMs"/>, the world's rule) before the killing blow; the hits are kept in memory only.</item>
 /// </list>
 /// </summary>
 public sealed partial class TerritoryWarsService
 {
-    /// <summary>The siege's tracker step once loaded: its stage 200000 is passed.</summary>
+    /// <summary>The siege's tracker step from the Gate stage on: its stage 200000 is passed (0 in Prepare).</summary>
     private const int SiegeFightStep = 1;
     private const int RatingTarget = 200001, AssistsTarget = 210003;
 
@@ -49,7 +49,8 @@ public sealed partial class TerritoryWarsService
 
     private void SiegeTrack(SiegeRun battle, IEnumerable<long> roles)
     {
+        int step = battle.State.Stage >= SiegeGateStage ? SiegeFightStep : 0;
         foreach (var member in battle.Room.ActiveMembers.Where(m => m.Session.Role is { } role && roles.Contains(role.Id)))
-            foreach (var handler in SiegeTracked) handler(member.Session, SiegeScene, battle.Room.Id, SiegeFightStep);
+            foreach (var handler in SiegeTracked) handler(member.Session, SiegeScene, battle.Room.Id, step);
     }
 }

@@ -29,6 +29,7 @@ public sealed class EventQuestTargetTests : IAsyncLifetime
         private long _seconds = start;
         public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds(Interlocked.Read(ref _seconds));
         public override TimeZoneInfo LocalTimeZone => Zone;
+        public void Set(long value) => Interlocked.Exchange(ref _seconds, value);
     }
 
     public EventQuestTargetTests() => _clock = new(_siege.Start + 25);
@@ -169,7 +170,10 @@ public sealed class EventQuestTargetTests : IAsyncLifetime
         await Enter(attack, 1); await Enter(helper, 1); await Enter(defense, 2);
         var wars = Service<TerritoryWarsService>();
         GameSession a = Session(attack), h = Session(helper), d = Session(defense);
-        await Shows(h, 4900020, 0); // loaded: the siege has no preparation stage, so the assists step shows
+        await Shows(h, 4900000, 0); // loaded in Prepare: "Reach Dungeon Stage 1" waits for the Gate stage
+        _clock.Set(_siege.Start + 300);
+        await OnLoop(wars.ReconcileAsync);
+        await Shows(h, 4900020, 0); // the Gate stage passed it: the assists step shows
         await OnLoop(async () =>
         {
             foreach (var handler in Service<CombatService>().PvpDealtAsync) await handler(h, d, 10, false);

@@ -15,7 +15,9 @@ public sealed partial class TerritoryWarsService
     /// <summary>UnitConfig 4905010 "据点战-交互点" (stronghold battle interaction point): NPCConfig MutiInteractMainNpc
     /// (_iNPCSubType 250), unselectable, no name or HP bar, _iNeedNotifyGlobalData 1.</summary>
     private const int ScenePointNpc = 4905010;
-    private const long ScenePointUidBase = 1L << 53;
+    /// <summary>Marker uids: below 2^53, so a double holds them exactly (the client's interaction manager passes uuids
+    /// through a double array, TerritoryWarsService.SiegeBags.cs SiegeBagUidBase), and above the tower pets' range.</summary>
+    private const long ScenePointUidBase = 1L << 52;
     private long _scenePointSerial;
 
     /// <summary>

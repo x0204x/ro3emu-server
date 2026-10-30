@@ -707,7 +707,7 @@ public sealed partial class GuildService(GameData data, GuildStore store, RoleSt
             g.Members.Remove(member.RoleId);
             bool elite = DropElite(g, member.RoleId);
             var machines = DropWartime(g, member.RoleId);
-            bool returned = ReturnPrepay(g, member.RoleId);
+            bool returned = await TakeMachinesAsync(g, member.RoleId);
             var impeach = DropImpeacher(g, [member]);
             if (g.Members.Count == 0) await DeleteGuildAsync(g, [member.RoleId]);
             else
@@ -798,6 +798,13 @@ public sealed partial class GuildService(GameData data, GuildStore store, RoleSt
             }
         if (code == 0 && g != null && eliteDropped) await PushElitesAsync(g, LeagueElites(g).Values.ToHashSet());
         if (code == 0 && g != null) await PushToolChangesAsync(g, machines);
+        if (code == 0 && g != null)
+        {
+            // Their war machines go only once the kick is committed.
+            bool restocked = false;
+            foreach (var m in removed) restocked |= await TakeMachinesAsync(g, m.RoleId);
+            if (restocked) { await SaveGuildAsync(g); returned = true; }
+        }
         if (code == 0 && g != null && returned) await PushStoreAsync(g);
         if (impeach != null) await impeach();
         await s.SendGameAsync(Kick, resp);

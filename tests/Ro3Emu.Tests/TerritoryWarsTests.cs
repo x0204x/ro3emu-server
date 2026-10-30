@@ -14,7 +14,7 @@ using Ro3Emu.Server.Maps;
 
 namespace Ro3Emu.Tests;
 
-public sealed class TerritoryWarsTests : IAsyncLifetime
+public sealed partial class TerritoryWarsTests : IAsyncLifetime
 {
     private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-territory-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(12);
@@ -286,6 +286,8 @@ public sealed class TerritoryWarsTests : IAsyncLifetime
         Assert.All(markers, m =>
         {
             Assert.True(m.Value.Hp > 0); // hp 0 would make the client drop the entry.
+            // The client passes uuids through doubles (LC_InteractManager): the uid must survive one unchanged.
+            Assert.True(m.Value.GlobalObjId < 1L << 53 && (long)(double)m.Value.GlobalObjId == m.Value.GlobalObjId);
             Assert.Equal(0, m.Value.BelongGuild);
             Assert.Equal(editor.Points[m.Key].X, m.Value.Pos.X); Assert.Equal(editor.Points[m.Key].Z, m.Value.Pos.Z);
         });

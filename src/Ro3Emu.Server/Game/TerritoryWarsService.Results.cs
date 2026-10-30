@@ -22,7 +22,20 @@ public sealed partial class TerritoryWarsService
                     Id = p.Id, Area = 1, Name = p.Name, Job = p.Job, GuildId = p.Guild,
                     RewardData = new StatisticsAwardCheckData { PlayerLevel = p.Level, Job = p.Job }
                 },
-                TotalDamage = p.Damage, TotalBeDamage = p.Taken, TotalCure = p.Healed, Totalscore = p.Score
+                TotalDamage = p.Damage, TotalBeDamage = p.Taken, TotalCure = p.Healed, Totalscore = p.Score,
+                // EStatisticsModuleEnum keys the personal record reads
+                // (UI_Sys_TerritoryWars_PushUp_Achievements_ListWidgetCtrl, UI_Sys_TerritoryWarsReportListWidgetCtrl).
+                ExtraData =
+                {
+                    [1001001] = new ExtraValueData { LongValue = p.Damage }, // Damage
+                    [1001002] = new ExtraValueData { LongValue = p.Taken }, // TakeDamage
+                    [1001003] = new ExtraValueData { LongValue = p.Healed }, // heal
+                    [1001004] = new ExtraValueData { LongValue = p.Kills }, // KillPlayer
+                    [1001005] = new ExtraValueData { LongValue = p.Assists }, // AssistKill
+                    [1021002] = new ExtraValueData { LongValue = p.MachineKills }, // DestroyMachinery
+                    [1021003] = new ExtraValueData { LongValue = p.MachineDamage }, // MachineryDamage
+                    [1031001] = new ExtraValueData { LongValue = p.Score }, // TerritoryWarPersonIntegral (inferred: the score)
+                },
             };
         foreach (long guild in r.Guilds)
             if (_guildStore.Get(guild) is { } g)
@@ -118,6 +131,8 @@ public sealed partial class TerritoryWarsService
         });
         foreach (var p in r.Players.Values.Where(p => p.Loaded))
             foreach (var handler in BattleSettled) handler(p.Id, r.Round);
+        // The battle's war machines end with it, outside the territory gate (their owners' slots are the guild's).
+        if (_battles.GetValueOrDefault(key) is { } room) _loop.PostLegacy(() => EndWarMachinesAsync(room.Room));
         await PublishAsync();
     }
     private void AddRankAward(List<Grant> grants, string table, int rank, GameSession s)

@@ -27,6 +27,7 @@ public readonly partial record struct NPCConfig(JsonElement Row)
     [ConfigField("_iLevel")] public partial long Level { get; }
     [ConfigField("_iNPCSubType")] public partial long NPCSubType { get; }
     [ConfigField("_iNPCType")] public partial long NPCType { get; }
+    [ConfigField("_iNeedNotifyGlobalData")] public partial long NeedNotifyGlobalData { get; }
     [ConfigField("_iNoSelected")] public partial long NoSelected { get; }
     [ConfigField("_iNormalDrop")] public partial long[] NormalDrop { get; }
     [ConfigField("_iRace")] public partial long Race { get; }
@@ -39,6 +40,7 @@ public readonly partial record struct NPCConfig(JsonElement Row)
     [ConfigField("_kMultiverseArray")] public partial long[] MultiverseArray { get; }
     [ConfigField("_kName")] public partial long[] Name { get; }
     [ConfigField("_kNpcShowCondition")] public partial long NpcShowCondition { get; }
+    [ConfigField("_kNpcTag")] public partial long[] NpcTag { get; }
     [ConfigField("_kRespawnSkill")] public partial long RespawnSkill { get; }
     [ConfigField("_kSkills")] public partial long[] Skills { get; }
 }

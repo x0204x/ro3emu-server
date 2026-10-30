@@ -324,8 +324,11 @@ public sealed partial class SiegeTests : IAsyncLifetime
             await Next(defense, MsgId.EntitySelf, EntitySelf.Parser);
             // CombatService's action tail uses MonsterService.NowMs (real time), not this test's window clock.
             await Task.Delay(1200);
-            _clock.Set(_siege.Start + 60);
+            // The crystal falls in the Crystal stage: after Prepare, the gate and the inner city's three guardians.
+            _clock.Set(_siege.Start + 301);
             await OnLoop(Service<TerritoryWarsService>().ReconcileAsync);
+            Assert.False(Service<TerritoryWarsService>().CanHitObjective(Session(attack), run.Crystal!));
+            await BreakToTheCrystal(run);
             var point = Service<WorldData>().Map(2230101)!.Points[44];
             await OnLoop(async () =>
             {
