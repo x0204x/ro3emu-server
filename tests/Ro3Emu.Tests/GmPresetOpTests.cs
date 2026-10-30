@@ -75,10 +75,11 @@ public sealed class GmPresetOpTests : IAsyncLifetime
         Assert.True(s.GmAllFunctionsOpen);
         Assert.Equal([29, 29, 1, 1, 1, 1], s.Progress.Stats); // JobProfessPointConfig 101029
         Assert.Equal(10, s.Progress.Skills.GetValueOrDefault(11001)); // 1100110 in JobProfessSkillConfig 101240
-        // The bar: 1100110 1100210 1100405 1109901 1100505, then the normal attack 1001001 as the Swordman's own (11000).
+        // G的JobAttackConfig以目前武器選1001001（群組10010）；預設列不能改用舊的職業普攻11000。
         Assert.Contains("Skill bar: 6 skills.", reply);
         var bar = s.SkillPlans!.SkillAssignPlans[s.SkillPlans.CurrentPlanIndex].ManualLoadSkill;
-        Assert.Equal([11001, 11002, 11004, 11099, 11005, 11000], bar.Select(b => b.SkillId));
+        Assert.Equal(1001001, _app.Services.GetRequiredService<SkillService>().NormalAttack(s));
+        Assert.Equal([11001, 11002, 11004, 11099, 11005, 10010], bar.Select(b => b.SkillId));
         Assert.Contains(s.Items, i => i.Entry == 90000722 && i.Grid > 0);
         var plan = s.SeasonTalent!.Plan[s.SeasonTalent.CurPlanId];
         Assert.Equal(3, plan.TalentNodes[10101001].CurrentLevel); // SeasonTalentConfig _iMaxLevel 3

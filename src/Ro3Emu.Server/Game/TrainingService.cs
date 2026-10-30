@@ -301,24 +301,29 @@ public sealed class TrainingService : IGameTicker
         {
             if (!a.Challenge || !a.Running || Now < a.End || !_attempts.TryGetValue(s, out var active)
                 || active != a || s.InstanceId != a.Room.Id) return;
-            long dps = a.Damage / Math.Max(1, Duration);
-            using var held = await CharacterService.Lock(s);
-            if (!a.Running || Now < a.End || !_attempts.TryGetValue(s, out var current)
-                || current != a || s.InstanceId != a.Room.Id) return;
-            var next = s.Training!.Clone(); next.MaxDps = Math.Max(next.MaxDps, dps);
-            var taskPlan = _tasks.StageTrainingChallenge(s, $"{a.Room.Id}/{a.End}");
-            var builder = _roles.NewTransaction();
-            builder.RoleBlob(s.Role!.Id, "training", next.ToByteArray());
-            taskPlan?.Persist(builder);
-            await _roles.CommitAsync(builder, "training/result", _ =>
-            { s.Training = next; taskPlan?.Apply(); a.Running = false; });
-            await s.SendGameAsync(DungeonService.Result, new DungeonResNotify
+            bool hasTaskProgress;
+            using (await CharacterService.Lock(s))
             {
-                DungeonEntry = a.Room.SceneEntry,
-                Res = (DungeonRes)1, Data = new() { TrainingGroundData = new() { MaxDps = dps, SumDamage = a.Damage } }
-            });
-            await CharacterService.SyncAsync(s, Sync, next.Clone()); await SnapshotAsync(s, a);
-            if (taskPlan != null) await _tasks.SettleOwnerProgressCoreAsync(s);
+                if (!a.Running || Now < a.End || !_attempts.TryGetValue(s, out var current)
+                    || current != a || s.InstanceId != a.Room.Id) return;
+                long dps = a.Damage / Math.Max(1, Duration);
+                var next = s.Training!.Clone(); next.MaxDps = Math.Max(next.MaxDps, dps);
+                var taskPlan = _tasks.StageTrainingChallenge(s, $"{a.Room.Id}/{a.End}");
+                var builder = _roles.NewTransaction();
+                builder.RoleBlob(s.Role!.Id, "training", next.ToByteArray());
+                taskPlan?.Persist(builder);
+                await _roles.CommitAsync(builder, "training/result", _ =>
+                { s.Training = next; taskPlan?.Apply(); a.Running = false; });
+                hasTaskProgress = taskPlan != null;
+                await s.SendGameAsync(DungeonService.Result, new DungeonResNotify
+                {
+                    DungeonEntry = a.Room.SceneEntry,
+                    Res = (DungeonRes)1, Data = new() { TrainingGroundData = new() { MaxDps = dps, SumDamage = a.Damage } }
+                });
+                await CharacterService.SyncAsync(s, Sync, next.Clone()); await SnapshotAsync(s, a);
+            }
+            // 任務交付會再取得角色狀態鎖，先釋放結果交易的鎖，避免同一角色自我等待。
+            if (hasTaskProgress) await _tasks.RefreshAsync(s);
         }
         finally { a.Settling = false; }
     }

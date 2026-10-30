@@ -190,20 +190,29 @@ public sealed class MonsterHuntQuestTargetTests
             new { _iID = MonsterHuntService.Function, _kOpenCondition = 0 });
         Add(root, "AreaConcurConfig", Area, new { _iID = Area, _iCondition = 0 });
         foreach (int map in new[] { MapA, MapB })
-            Add(root, "AreaConcurMapConfig", map, new { _iID = map, _iArea = Area, _iMap = SyntheticData.Town,
-                _iMapRequest = MapNeed, _iMapLimit = MapNeed, _iMapAward = Group });
+            Add(root, "AreaConcurMapConfig", map, new
+            {
+                _iID = map, _iArea = Area, _iMap = SyntheticData.Town,
+                _iMapRequest = MapNeed, _iMapLimit = MapNeed, _iMapAward = Group
+            });
         Add(root, "MultiverseGroupConfig", Group, new { _iID = Group, _itype = 0, _iValue_default = Award });
         Add(root, "AwardConfig", Award, new[] { new { _iID = Award, _kAward = new[] { new[] { 1, Reward, 0 } } } });
-        Add(root, "TaskConfig", TaskService.FirstTask, new { _iTaskID = TaskService.FirstTask, _iTaskType = 1,
-            _kAcceptTask = new[] { 1 }, _kDeliverTask = new[] { 3 }, _kProgressTarget = new[] { new[] { 101002, 99 } } });
+        Add(root, "TaskConfig", TaskService.FirstTask, new
+        {
+            _iTaskID = TaskService.FirstTask, _iTaskType = 1,
+            _kAcceptTask = new[] { 1 }, _kDeliverTask = new[] { 3 }, _kProgressTarget = new[] { new[] { 101002, 99 } }
+        });
         AddQuest(root, CountQuest, [318001, 2]);
         AddQuest(root, SpecificQuest, [318003, MapB]);
         return root;
     }
 
     private static void AddQuest(string root, int id, int[] target) => Add(root, "TaskConfig", id,
-        new { _iTaskID = id, _iTaskType = 2, _kAcceptTask = new[] { 1 }, _kDeliverTask = new[] { 3 },
-            _kProgressTarget = new[] { target } });
+        new
+        {
+            _iTaskID = id, _iTaskType = 2, _kAcceptTask = new[] { 1 }, _kDeliverTask = new[] { 3 },
+            _kProgressTarget = new[] { target }
+        });
 
     private static void Add(string root, string table, long key, object row)
     {

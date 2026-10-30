@@ -74,7 +74,8 @@ public sealed partial class SkillService
         foreach (long id in rows.Take(BarSlots))
         {
             var skill = SkillConfig.Get(_data, id);
-            int group = skill is not { } s ? 0 : s.IsNormalAtk == 1 ? CareerNormalGroup(p.Career) : (int)s.SkillId;
+            // 與一般快捷列共用武器／坐騎普攻解析，包含 IsNormalAtk=0 的弓箭手普攻。
+            int group = skill is not { } s ? 0 : s.IsNormalAttack(_data) ? CurrentNormalGroup(session) : (int)s.SkillId;
             int learned = group > 0 ? Level(p, group) : 0;
             bool fits = learned > 0 && IsActive(group) && selected.ManualLoadSkill.All(load => load.SkillId != group);
             if (!fits && id != 0) empty.Add(id);
