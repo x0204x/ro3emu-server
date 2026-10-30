@@ -83,7 +83,10 @@ public static partial class EconomySnapshotReader
     // 副本任務旁表：來源、角色、房間、場景與版本識別，以及原任務實例、目標與所需次數。
     // 這些欄位只恢復進度，不持有獎勵；物品與貨幣仍由副本／任務原獎勵收據入帳。
     // 將兩個快照 DTO 納入固定格式雜湊，之後新增欄位仍需重新檢視分類。
-    public const string ExpectedFormatManifestHash = "FD48F195063F796A5772E200CFDF9F17EC222C2CA55D203A66E2058A3DFF2F1A";
+    // 酒館 role.tavern 只保存每日期間、有效停留毫秒、游標與房間租約；tavern.state
+    // 只保存房間識別、管理者、成員、分類與時間。逐欄審查均不持有資產或待領獎勵，
+    // 實際獎勵仍由原任務交易入帳；兩個 DTO 圖均納入格式雜湊，新增欄位仍會攔下。
+    public const string ExpectedFormatManifestHash = "56A51B9E51A937F6F3A911E160A4E3EE85B29C709179E0FF8847598CD5D81DEF";
     public static string FormatManifestHash => State.FormatManifestHash;
 
     private sealed partial class State
@@ -152,6 +155,8 @@ public static partial class EconomySnapshotReader
             Message(Romsg.DBDailyActivityInfo.Descriptor);
             entries.Add("activity_eve_global:romsg.DBSeasonEveInfo");
             Message(Romsg.DBSeasonEveInfo.Descriptor);
+            entries.Add("tavern:Ro3Emu.Server.Game.TavernService.WorldState");
+            TypeShape(typeof(Ro3Emu.Server.Game.TavernService.WorldState));
             entries.Add("festival_round:Ro3Emu.Server.Game.FestivalService.Round");
             TypeShape(typeof(Ro3Emu.Server.Game.FestivalService.Round));
             entries.Add("server_state/season_history:Ro3Emu.Server.Game.SeasonService.Season");

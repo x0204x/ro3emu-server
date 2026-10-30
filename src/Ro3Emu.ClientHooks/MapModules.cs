@@ -14,10 +14,9 @@ namespace Ro3Emu.ClientHooks
     /// a bare require (LC_Scene_Sync.lua:2427-2447). The client's Lua only comes from the recovery manifest
     /// (StreamingAssets/Recovery/recovery-compatibility-manifest.json, signed): LA_LuaLoader.Obf_HD cuts the module name to
     /// its last path part and RecoveryLuaSourceResolver.TryResolve refuses any name the manifest does not list
-    /// ("reconstructed_module_not_admitted"). The manifest admits 189 Config/Map modules, but MapResource names 39 more
-    /// (Dracula's Lair sc_pm_gef_dun02_001, the territory maps sc_gvg_lingtuzhan_001_1..36, the race maps
-    /// sc_pm_saima_001/002). For those the require raises inside SceneLoadManager's load callback, the scene never
-    /// finishes (loading screen at 85%) and the gate drops the connection.
+    /// ("reconstructed_module_not_admitted")。目前客戶端仍未提供領土戰 36 張地圖與兩張賽馬地圖；
+    /// 這些 require 會在 SceneLoadManager callback 內失敗，使載入停住後斷線。
+    /// Genesis 2026.10.29.1 已正式提供 sc_pm_gef_dun02_001；不得先用補件遮蔽原件。
     /// </para>
     /// <para>
     /// The values are the original modules, not guesses: the game's own chunks are still in the VFS under the module name
@@ -51,8 +50,6 @@ namespace Ro3Emu.ClientHooks
 
         internal static readonly MapModule[] Modules =
         {
-            new MapModule("sc_pm_gef_dun02_001", 194929945,
-                "1024 1024  0.009372071 0 0 0 0 0.009372071 0 0 0 0 -0.01019472 0 0 0 -0.3913753 1  130 80 130  0.7071068 0 0 0.7071068  106.7 1"),
             new MapModule("sc_pm_saima_001", 1378433040,
                 "1024 1024  0.004446025 0 0 0 0 0.004446025 0 0 0 0 -0.008364351 0 0 0 -0.2965581 1  230 0 199  0.7071068 0 0 0.7071068  224.92 1"),
             new MapModule("sc_pm_saima_002", 1378433039,

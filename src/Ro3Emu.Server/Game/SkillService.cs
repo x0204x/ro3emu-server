@@ -493,6 +493,8 @@ public sealed partial class SkillService
         foreach (var (_, skill) in selected.SkillQueue.OrderBy(kv => kv.Key))
             if (skill.SkillId > 0 && RealId(skill.SkillId, skill.SkillLevel) is var id and > 0)
             { state.SkillWheel.SkillQueue = new SkillWheelSlot { SkillConfigId = id, Enable = true }; break; }
+        ProjectQueueCarrier(session, state.SkillWheel);
+        ProjectQueueCatalogue(session, state);
         if (PetWheel?.Invoke(session) is { } pet)
             state.SkillWheel.WhellSkills[(int)SkillWheelSlotType.SkillWheelPet] = pet;
         state.OriginSkillWheel = state.SkillWheel.Clone();

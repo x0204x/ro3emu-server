@@ -15,6 +15,7 @@ public readonly partial record struct JobConfig(JsonElement Row)
     [ConfigField("_iName")] public partial long[] Name { get; }
     [ConfigField("_iNotTransformJob")] public partial long NotTransformJob { get; }
     [ConfigField("_iParentId")] public partial long ParentId { get; }
+    [ConfigField("_iQueueSkillId")] public partial long QueueSkillId { get; }
     [ConfigField("_iSecondaryRoots")] public partial long SecondaryRoots { get; }
     [ConfigField("_iTotem")] public partial long Totem { get; }
     [ConfigField("_kAttri")] public partial long[][] Attri { get; }

@@ -3,6 +3,7 @@ using Google.Protobuf;
 using Romsg;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Maps;
 
 namespace Ro3Emu.Server.Game;
@@ -585,8 +586,8 @@ public sealed partial class TaskService
             return ErrorCodes.TaskRequirements;
         foreach (var target in def.Targets.Where(t => t[0] == TSubmit))
         {
-            if (!Supported(target) || target[2] > int.MaxValue) return ErrorCodes.TaskRequirements;
-            costs.Add(((int)target[1], (int)target[2]));
+            if (!Supported(target) || !TaskSubmitTarget.TryRead(target, out var submit)) return ErrorCodes.TaskRequirements;
+            costs.Add((submit.Item, submit.Count));
         }
         var expectedTasks = daily == null && preparedTasks == null ? null : session.Tasks.ToByteArray();
         AwardPlan? deliveredPlan = null;

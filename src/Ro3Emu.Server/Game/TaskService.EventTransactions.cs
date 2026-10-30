@@ -22,7 +22,7 @@ public sealed partial class TaskService
     private CharacterService.FirstCardSightPlan? StageEventTarget(GameSession session, string source, Func<long[], bool> matches)
         => StageEventTarget(session, source, target => matches(target) ? 1 : 0);
 
-    private CharacterService.FirstCardSightPlan? StageEventTarget(GameSession session, string source, Func<long[], long> amount)
+    private CharacterService.FirstCardSightPlan? StageEventTarget(GameSession session, string source, Func<long[], long> amount, Func<TaskDef, bool>? filter = null)
     {
         if (session.Tasks == null || session.Progress == null) return null;
         session.Owners?.Current?.AssertRole(session.Role!.Id);
@@ -30,7 +30,7 @@ public sealed partial class TaskService
         bool changed = false;
         foreach (var info in next.Infos.Values.Where(i => i.Status == Running))
         {
-            if (!Defs().TryGetValue(info.TaskId, out var def)) continue;
+            if (!Defs().TryGetValue(info.TaskId, out var def) || filter != null && !filter(def)) continue;
             for (int index = 0; index < def.Targets.Length && index < info.CompleteNum.Count; index++)
             {
                 var target = def.Targets[index];

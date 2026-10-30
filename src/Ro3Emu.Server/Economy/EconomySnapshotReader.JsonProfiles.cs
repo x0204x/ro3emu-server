@@ -11,7 +11,7 @@ public static partial class EconomySnapshotReader
     // inventory above still requires an explicit entry for every role column, so a new blob cannot pass by default.
     private static readonly Dictionary<string, string> JsonRoleTypes = new(StringComparer.Ordinal)
     {
-        ["task_runtime"] = "TaskRuntimeState", ["shop"] = "ShopService+ShopState",
+        ["tavern"] = "TavernService+Meter", ["task_runtime"] = "TaskRuntimeState", ["shop"] = "ShopService+ShopState",
         ["guild_challenge"] = "GuildChallengeService+PersonalState", ["daily"] = "DailyActivityService+DailyState",
         ["activity_runtime"] = "ActivityRuntimeState", ["timed_activity"] = "PronteraDefenseService+State",
         ["timed_battle"] = "TimedBattleService+State", ["lottery"] = "LotteryService+LotterySave",

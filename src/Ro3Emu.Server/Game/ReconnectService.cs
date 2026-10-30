@@ -97,6 +97,10 @@ public sealed class ReconnectService
     public long GracesEntered { get; private set; }
     public long GracesExpired { get; private set; }
 
+    // 僅通知遊戲迴圈已觀察的傳輸時點；不改票證、寬限或交接政策。
+    internal Action<GameSession, long>? TransportDisconnected { get; set; }
+    internal Action<GameSession, long>? TransportRestored { get; set; }
+
     internal ReconnectTicket? TicketOf(GameSession session) => _bySession.GetValueOrDefault(session);
     internal void ResetRefusalsForTest() => _refusals.Clear();
 
@@ -210,8 +214,9 @@ public sealed class ReconnectService
     /// reconnect keeps its world membership, dungeon, team and guild state for the grace period; returns false when
     /// the caller must run today's immediate handover.
     /// </summary>
-    internal bool TryEnterGrace(GameSession session)
+    internal bool TryEnterGrace(GameSession session, long? observedDisconnectedAtMs = null)
     {
+        TransportDisconnected?.Invoke(session, observedDisconnectedAtMs ?? _clock.GetUtcNow().ToUnixTimeMilliseconds());
         if (!_bySession.TryGetValue(session, out var ticket)) return false;
         bool eligible = !_closed && _loop.Phase == GameLoopPhase.Accepting && _options.ReconnectGraceSeconds > 0
             && ticket.ClientReady && !session.ReconnectBlocked && !session.SceneRecoveryRequired
@@ -322,6 +327,7 @@ public sealed class ReconnectService
         ticket.LostAt = 0;
         ticket.GraceUntil = null;
         session.TransportLost = false;
+        TransportRestored?.Invoke(session, _clock.GetUtcNow().ToUnixTimeMilliseconds());
         // The client destroyed every unit: what it was sent no longer counts (spec §4.4).
         session.SentPropertyIds.Clear();
         ticket.Auth = RandomNumberGenerator.GetBytes(16);

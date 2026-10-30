@@ -187,14 +187,23 @@ public sealed class ParticipationTargetTests : IAsyncLifetime
         await bot.DisposeAsync();
     }
 
-    /// <summary>The guild To-Do tasks' stand-in target 106010 (TaskService.GuildEvents.cs): taking part completes them;
-    /// the Tavern quest that owns the target stays unsupported.</summary>
+    /// <summary>公會待辦共用目標 106010；參與事件只完成對應公會任務，不增加由酒館房間計時的任務進度。</summary>
     [ClientDataFact]
     public async Task GuildEventToDoTasksCompleteOnTakingPart()
     {
         var bot = await InWorld();
         var tasks = Service<TaskService>();
-        Assert.False(tasks.TargetsSupported(2000)); // Daily Tavern Quest, [106010,1200]
+        Assert.True(tasks.TargetsSupported(2000)); // 酒館每日任務 [106010,1200] 已有獨立房間 owner。
+        await Accept(2000); // 僅準備 Running 任務；下面由真正的公會事件 producer 推進公會任務。
+        var tavernBefore = await Read(() => Session.Tasks!.Infos[2000].Clone());
+        int tavernDeliveries = await Read(() => Session.Tasks!.CompleteTaskNum.GetValueOrDefault(2000));
+        Assert.Equal(TaskState.Running, tavernBefore.Status);
+        Assert.Equal(0, await Read(() => Session.Tavern!.RoomId));
+        async Task TavernUnchanged()
+        {
+            Assert.Equal(tavernBefore, await Read(() => Session.Tasks!.Infos[2000].Clone()));
+            Assert.Equal(tavernDeliveries, await Read(() => Session.Tasks!.CompleteTaskNum.GetValueOrDefault(2000)));
+        }
         foreach (long task in new long[] { 1602050, 1602060, 1602070, 1603011, 1603012, 1603013, 1603014 })
             Assert.True(tasks.TargetsSupported(task), $"task {task}");
         await Accept(1602060); // Stronghold War
@@ -202,12 +211,15 @@ public sealed class ParticipationTargetTests : IAsyncLifetime
         await Accept(1602050); // Escort
         await Read(() => { tasks.OnTerritoryBattleSettled(Session.Role!.Id, 1); return 0; });
         await Done(1602060);
+        await TavernUnchanged();
         await At(1602070, 0);
         await Read(() => { tasks.OnTerritoryBattleSettled(Session.Role!.Id, 2); return 0; });
         await Done(1602070);
+        await TavernUnchanged();
         await At(1602050, 0);
         await Read(() => { tasks.OnGuildEventJoined(Session, TaskService.GuildEvent.Escort); return 0; });
         await Done(1602050);
+        await TavernUnchanged();
         await bot.DisposeAsync();
     }
 

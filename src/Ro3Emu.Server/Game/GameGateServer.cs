@@ -14,7 +14,7 @@ namespace Ro3Emu.Server.Game;
 public sealed class GameGateServer(
     IOptions<ServerOptions> options, GateCrypto crypto, AccountStore accounts, GameMessageHandler messages, RoleSessionService roleSessions, TrafficLog traffic,
     SkillTraceTelemetryService skillTrace,
-    SessionRegistry sessions, GameLoop loop, ReconnectService reconnects, ILogger<GameGateServer> log, Diagnostics.ServerMetrics metrics)
+    SessionRegistry sessions, GameLoop loop, ReconnectService reconnects, TimeProvider clock, ILogger<GameGateServer> log, Diagnostics.ServerMetrics metrics)
     : GateListener(options.Value.ListenAddress(), options.Value.GameGatePort, log, metrics)
 {
     // client -> gate
@@ -185,6 +185,8 @@ public sealed class GameGateServer(
 
     protected override async ValueTask OnDisconnectedAsync(PhonestChannel channel)
     {
+        // EOF／socket 錯誤首次進入此入口即記時，避免遊戲迴圈清理排隊期間算入酒館停留。
+        long observedDisconnectedAtMs = clock.GetUtcNow().ToUnixTimeMilliseconds();
         if (channel.Session is GameSession session)
         {
             await loop.InvokeCleanupAsync(CurrentServeCompletion
@@ -192,7 +194,7 @@ public sealed class GameGateServer(
             {
                 // Swapped out by a reconnect (the half-open old socket): the session lives on the newer one.
                 if (!ReferenceEquals(session.Channel, channel)) return;
-                if (reconnects.TryEnterGrace(session)) return;
+                if (reconnects.TryEnterGrace(session, observedDisconnectedAtMs)) return;
                 try { await roleSessions.OnDisconnectedAsync(session); }
                 finally { sessions.Unregister(session); }
             });

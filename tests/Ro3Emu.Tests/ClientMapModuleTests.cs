@@ -43,7 +43,7 @@ public sealed class ClientMapModuleTests
         var missing = Scenes().Where(s => s.Resource.Length > 0 && !shipped.Contains(s.Resource) && !hooks.Contains(s.Resource))
             .Select(s => s.Row + " -> " + s.Resource).ToList();
         Assert.True(missing.Count == 0, "map modules neither shipped nor in MapModules: " + string.Join(", ", missing));
-        Assert.Contains("sc_pm_gef_dun02_001", hooks);
+        Assert.True(shipped.Contains("sc_pm_gef_dun02_001") || hooks.Contains("sc_pm_gef_dun02_001"));
     }
 
     [ClientLuaFact]

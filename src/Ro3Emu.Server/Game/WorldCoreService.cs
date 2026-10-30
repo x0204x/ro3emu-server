@@ -55,6 +55,8 @@ public sealed partial class WorldCoreService : IGameTicker
     public const uint FreeFall = 31087, FixLand = 31088, TeleportObject = 31089, PerformanceWatch = 31090, StuckEscape = 31136;
     public const uint TeamTargets = 30111;
 
+    internal Func<GameSession, Task> SyncTavernAsync { get; set; } = s => CharacterService.SyncAsync(s, 5043, new DBBarRoomInfo());
+
     private readonly World _world;
     private readonly WorldData _worldData;
     private readonly GameData _data;
@@ -142,7 +144,7 @@ public sealed partial class WorldCoreService : IGameTicker
         // DBQuestionnaireData holds operator surveys (no client table), 5043 DBBarRoomInfo is the Tavern room (none yet).
         await CharacterService.SyncAsync(s, WizardSync, new DBWizardInfo());
         await CharacterService.SyncAsync(s, QuestionnaireSync, new DBQuestionnaireData());
-        await CharacterService.SyncAsync(s, BarRoomSync, new DBBarRoomInfo());
+        await SyncTavernAsync(s);
     }
 
     private const uint BarRoomSync = 5043, QuestionnaireSync = 5052, WizardSync = 5060;

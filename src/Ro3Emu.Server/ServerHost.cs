@@ -89,6 +89,7 @@ public static class ServerHost
         builder.Services.AddSingleton<GuildChallengeService>();
         builder.Services.AddSingleton<DraculaWeddingService>();
         builder.Services.AddSingleton<WildAfkService>();
+        builder.Services.AddSingleton<TavernService>();
         builder.Services.AddSingleton<LifeJobService>();
         builder.Services.AddSingleton<GatheringService>();
         builder.Services.AddSingleton<GuideService>();
@@ -185,6 +186,7 @@ public static class ServerHost
         builder.Services.AddSingleton<RoleSessionService>();
         // Message modules in this order: it is the order of their interceptors (World before Economy before Character).
         builder.Services.AddSingleton<Game.Messaging.IMessageModule, CoreMessages>();
+        builder.Services.AddSingleton<Game.Messaging.IMessageModule, TavernMessages>();
         builder.Services.AddSingleton<Game.Messaging.IMessageModule, WorldMessages>();
         builder.Services.AddSingleton<Game.Messaging.IMessageModule, EconomyMessages>();
         builder.Services.AddSingleton<Game.Messaging.IMessageModule, CharacterMessages>();
@@ -538,6 +540,7 @@ internal sealed class GameLoopTickers(IServiceProvider services) : IHostedServic
         Add<StealthEffects>();
         Add<PassiveSkills>();
         Add<TeamService>();
+        Add<TavernService>();
         Add<DailyActivityService>();
         Add<TimedEventService>();
         Add<PronteraDefenseService>();

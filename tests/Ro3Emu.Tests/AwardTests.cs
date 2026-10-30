@@ -141,16 +141,20 @@ public sealed class AwardTests : IAsyncLifetime
     [ClientDataFact]
     public void FixedPlaybookEmptyAndUnresolvedPolicies()
     {
-        var awards = new AwardService(_app.Services.GetRequiredService<GameData>());
+        var data = _app.Services.GetRequiredService<GameData>();
+        var awards = new AwardService(data);
         var defaultPlan = awards.Resolve(null!, 1001);
         Assert.Equal(1001001, defaultPlan.AwardId);
         Assert.Equal(new AwardGrant(1, 5000), Assert.Single(defaultPlan.Grants));
         Assert.Equal(defaultPlan.Grants.ToArray(), awards.Resolve(null!, 1001, 103).Grants.ToArray()); // explicit zero falls back
         Assert.Equal(new AwardGrant(1250900, 10), Assert.Single(awards.Resolve(null!, 4).Grants)); // preview says 30
         Assert.Equal(new AwardGrant(2, 200000, 1), Assert.Single(awards.Resolve(null!, 31116).Grants));
-        var restoredTask = awards.Resolve(null!, 920160);
-        Assert.Equal(920160, restoredTask.AwardId);
-        Assert.Equal(new AwardGrant(920132, 2000, 1), Assert.Single(restoredTask.Grants));
+        // 新版已移除這個群組；任務仍透過既有 ResolveTask 的直接 Award fallback 發獎。
+        if (Ro3Emu.Server.Data.Config.MultiverseGroupConfig.Get(data, 920160) == null)
+            Assert.Throws<AwardResolutionException>(() => awards.Resolve(null!, 920160));
+        var taskPlan = awards.ResolveTask(null!, 920160, null);
+        Assert.Equal(920160, taskPlan.AwardId);
+        Assert.Equal(new AwardGrant(920132, 2000, 1), Assert.Single(taskPlan.Grants));
         Assert.Empty(awards.Resolve(null!, 31104).Grants); // novice trial's separate TaskConfig EXP remains
         Assert.Equal(new[] { new AwardGrant(102, 100), new AwardGrant(2, 2500) },
             awards.Resolve(null!, 2131).Grants.ToArray()); // declared but empty drop pool keeps its fixed grants

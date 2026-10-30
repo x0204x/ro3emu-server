@@ -126,27 +126,24 @@ public sealed class ConnectQuestTests : IAsyncLifetime
         await using var bob = await InWorld("Bob");
         // 1902000 [106014,1] "Auto-battle in a party for @{1} minutes".
         await QuestProbe.AtAsync(_app, "alice", 1902000, 0);
-        Task Consumed(long seconds) => Service<GameLoop>().InvokeAsync(() =>
-            Service<TaskService>().OnBonusTimeConsumedAsync(Session("alice"), seconds));
-        Task BobRuns(bool running) => Service<GameLoop>().InvokeAsync(() =>
+        // 此例測任務計時事件，不測 AFK 開放條件；旗標與事件放在同一 turn，
+        // 避免跨 turn 的測試旗標被正式 AFK reconcile 清除而產生競賽。
+        Task Consumed(long seconds, bool bobRunning) => Service<GameLoop>().InvokeAsync(() =>
         {
             var info = Session("bob").WildAfk!.Info;
-            info.IsHighMagnification = running;
+            info.IsHighMagnification = bobRunning;
             info.IsSuspended = false;
-            return Task.CompletedTask;
+            return Service<TaskService>().OnBonusTimeConsumedAsync(Session("alice"), seconds);
         });
 
-        await BobRuns(true);
-        await Consumed(120); // not in a party yet
+        await Consumed(120, true); // not in a party yet
         await Party(alice, bob);
-        await BobRuns(false);
-        await Consumed(120); // Bob's Bonus Time is off
+        await Consumed(120, false); // Bob's Bonus Time is off
         Assert.Equal(0, (await QuestProbe.ReadAsync(_app, "alice", 1902000))!.CompleteNum[0]);
 
-        await BobRuns(true);
-        await Consumed(45);
+        await Consumed(45, true);
         Assert.Equal(0, (await QuestProbe.ReadAsync(_app, "alice", 1902000))!.CompleteNum[0]);
-        await Consumed(15); // the first whole minute together
+        await Consumed(15, true); // the first whole minute together
         await QuestProbe.WaitAsync(_app, "alice", 1902000, i => i.Status == TaskState.Delivery, "delivered");
     }
 

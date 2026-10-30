@@ -5,6 +5,7 @@ using Romsg;
 using Ro3Emu.Server.Accounts.Persistence;
 using Ro3Emu.Server.Game.Ownership;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Maps;
 
 namespace Ro3Emu.Server.Game;
@@ -14,7 +15,7 @@ public sealed partial class TaskService
     // the client, ordered by usage where an authoritative owner exists in this server.
     private const int TMapKill = 103043, TUse = 103042, TEquipment = 302002, TGuide = 106003,
         TCardStars = 103044, TCardQuality = 103007, TCraft = 103024, TMvpOnce = 103022,
-        TResonance = 103023, TTotalRefine = 103033, TSubmit = 103051, TRefineSlots = 302001,
+        TResonance = 103023, TTotalRefine = 103033, TSubmit = TaskSubmitTarget.Condition, TRefineSlots = 302001,
         TTreasure = 314001, TSlotRefine = 103021, TCraftQuality = 103006, TCollect = 103050,
         TEquipmentQuality = 106002, TStrength = 103004, TRefineCount = 103005, TMvp = 103011,
         TSkillRank = 311001, TCargo = 103053, TPydDownload = 106701, TAfkSeconds = 106901, TRestrictUse = 106906,
@@ -154,9 +155,8 @@ public sealed partial class TaskService
     /// <summary>106610: this season's Battle Merit points of a loaded role, -1 before it loads (TerritoryWarsService.GloryPoints).</summary>
     public Func<GameSession, long>? BattleMeritPoints { get; set; }
 
-    // 106010 BarroomToDayActTime [n] "Today's active time in the Tavern" is the Tavern quest's target (TaskConfig 2000,
-    // type 9, [106010,1200]); the guild To-Do tasks reuse it as a stand-in, [106010,5] (TaskService.GuildEvents). Only
-    // those are supported: this server has no Tavern, so the Tavern quest stays without a producer.
+    // 106010 為酒館每日任務 2000 的 1200 秒門檻；公會及幽暗目標重用此代碼，
+    // TavernService 僅能對指定酒館任務 staging，不得污染其他事件 owner。
     private const int TBarroomActTime = 106010;
 
     private readonly ConditionalWeakTable<MonsterUnit, HashSet<long>> _participants = new();
@@ -218,9 +218,8 @@ public sealed partial class TaskService
         if (Required(null, t) <= 0) return false;
         return t[0] switch
         {
-            // Mode 1 is the connected chapter's inventory turn-in (inferred). Mode 0's resource rules are
-            // unresolved; keep it pending, including the formerly false-completing two-slot task 201120.
-            TSubmit => t[3] == 1 && ItemExists(t[1]),
+            // p4 的用途未知；0／1 沿用相同庫存交付規則為 (inferred)，門檻永遠取 p3。
+            TSubmit => TaskSubmitTarget.TryRead(t, out var submit) && ItemExists(submit.Item),
             TOnePieceCount => _data.Row("DailyActivityConfig", t[1]) != null && ItemExists(t[2])
                 && _data.Row("RestrictConfig", t[3]) != null,
             TUse or TCollect => ItemExists(t[1]),
@@ -253,7 +252,7 @@ public sealed partial class TaskService
 
     /// <summary>Every target of the quest has a supported reader and a positive R (a quest without one never ends).</summary>
     internal bool TargetsSupported(long taskId) => Defs().TryGetValue(taskId, out var def) && def.Targets.Length > 0
-        && def.Targets.All(t => Supported(t) && Required(null, t) > 0 && (t[0] != TBarroomActTime || GuildEventTask(def.Id)));
+        && def.Targets.All(t => Supported(t) && Required(null, t) > 0 && (t[0] != TBarroomActTime || GuildEventTask(def.Id) || def.Id == Data.Config.PublicParamConfig.BarroomTaskId(_data)));
 
     private bool ItemExists(long id) => id > 0 && id <= int.MaxValue && _data.Row("ItemConfig", id) != null;
 

@@ -15,13 +15,13 @@ public static partial class EconomySnapshotReader
         "auction_prebuy", "auction_bonus", "auction_run", "auction_source", "guild", "guild_market",
         "guild_caravan_member", "guild_caravan_version", "guild_campfire", "guild_recovery", "territory_wars",
         "territory_wars_seasons", "territory_escort", "festival_reward", "guild_challenge_clear",
-        "dungeon_reward_obligation"];
+        "dungeon_reward_obligation", "tavern"];
 
     // Every persisted role BLOB must be classified. Presence of a new BLOB column is never silently ignored.
     private static readonly Dictionary<string, BlobFormat> RoleBlobs = new(StringComparer.Ordinal)
     {
         ["settings"] = BlobFormat.Protobuf, ["skill_plans"] = BlobFormat.Protobuf,
-        ["tasks"] = BlobFormat.Protobuf, ["task_runtime"] = BlobFormat.Json,
+        ["tavern"] = BlobFormat.Json, ["tasks"] = BlobFormat.Protobuf, ["task_runtime"] = BlobFormat.Json,
         ["task_followup"] = BlobFormat.StringSet,
         ["guides"] = BlobFormat.Protobuf, ["emoji_play"] = BlobFormat.Protobuf,
         ["achievements"] = BlobFormat.Protobuf, ["achievement_runtime"] = BlobFormat.Json,
@@ -119,6 +119,7 @@ public static partial class EconomySnapshotReader
         state.ReadAuctions();
         state.ReadGuilds();
         state.ReadTerritory();
+        state.ReadTavern();
         state.ReadObligations();
         var progressRevisions = ReadProgressRevisions(db, tx, state.Tables, state.Issues);
         tx.Commit();
@@ -202,6 +203,7 @@ public static partial class EconomySnapshotReader
         state.ReadAuctions();
         state.ReadGuilds();
         state.ReadTerritory();
+        state.ReadTavern();
         state.ReadObligations();
         return (state.Holdings, state.Issues);
     }

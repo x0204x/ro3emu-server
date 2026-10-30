@@ -6,6 +6,10 @@
     <ServerGarbageCollection>false</ServerGarbageCollection>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
     <TargetFramework>net10.0</TargetFramework>
+    <!-- 泛型 DTO 的 FullName 會帶入組件版本，經濟格式清單也會雜湊此名稱。
+         固定相容性識別，避免發行升版誤判持久化格式改變；File／InformationalVersion 仍依發行版本。 -->
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>$(Version)</FileVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>

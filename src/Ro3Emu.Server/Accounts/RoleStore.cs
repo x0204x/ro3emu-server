@@ -240,6 +240,9 @@ public sealed class RoleStore(AccountStore accounts)
     public void SaveTimedBattle(long id, byte[] state, RoleItemPlanBuilder? transaction = null) => SaveBlob(id, "timed_battle", state, transaction);
     public void SaveTimedActivity(long id, byte[] state, RoleItemPlanBuilder? transaction = null) => SaveBlob(id, "timed_activity", state, transaction);
 
+    public byte[]? LoadTavern(long id) => LoadBlob(id, "tavern");
+    public void SaveTavern(long id, byte[] state) => SaveBlob(id, "tavern", state);
+
     public byte[]? LoadWildAfk(long id) => LoadBlob(id, "wild_afk");
     public void SaveWildAfk(long id, byte[] state) => SaveBlob(id, "wild_afk", state);
 
@@ -249,23 +252,23 @@ public sealed class RoleStore(AccountStore accounts)
     /// <summary>The daily period reset: daily rows, quests, liveness currency and (when given) the AFK allowance of
     /// the new day are one transaction, so no crash can leave a restored AFK bank beside an unreset day or the reverse.</summary>
     public void SaveDailyReset(long id, byte[] daily, byte[] tasks, string currency, RoleProgress progress,
-        EconomyMutation economy, byte[]? wildAfk = null)
+        EconomyMutation economy, byte[]? wildAfk = null, byte[]? tavern = null)
     {
-        var builder = DailyResetBuilder(id, daily, tasks, currency, progress, economy, wildAfk);
+        var builder = DailyResetBuilder(id, daily, tasks, currency, progress, economy, wildAfk, tavern);
         Commit(builder, "role/daily-reset");
         progress.SourceRevision = builder.CommittedVector(id, RevisionStore.Progress);
     }
 
     internal async Task SaveDailyResetAsync(long id, byte[] daily, byte[] tasks, string currency,
-        RoleProgress progress, EconomyMutation economy, byte[]? wildAfk = null)
+        RoleProgress progress, EconomyMutation economy, byte[]? wildAfk = null, byte[]? tavern = null)
     {
-        var builder = DailyResetBuilder(id, daily, tasks, currency, progress, economy, wildAfk);
+        var builder = DailyResetBuilder(id, daily, tasks, currency, progress, economy, wildAfk, tavern);
         await CommitAsync(builder, "role/daily-reset", _ =>
             progress.SourceRevision = builder.CommittedVector(id, RevisionStore.Progress));
     }
 
     private RoleItemPlanBuilder DailyResetBuilder(long id, byte[] daily, byte[] tasks, string currency,
-        RoleProgress progress, EconomyMutation economy, byte[]? wildAfk)
+        RoleProgress progress, EconomyMutation economy, byte[]? wildAfk, byte[]? tavern)
     {
         if (economy.CommandKind != "cd13e/daily-reset" || economy.ActorRoleId != id)
             throw new ArgumentException("Daily reset needs its own economic source.", nameof(economy));
@@ -273,6 +276,7 @@ public sealed class RoleStore(AccountStore accounts)
         builder.BindProgressSource(id, progress);
         builder.Add(new RoleDailyResetPlan(id, daily, tasks, currency));
         if (wildAfk is not null) builder.RoleBlob(id, "wild_afk", wildAfk);
+        if (tavern is not null) builder.RoleBlob(id, "tavern", tavern);
         builder.WithEconomy(economy);
         return builder;
     }

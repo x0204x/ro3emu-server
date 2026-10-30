@@ -191,12 +191,14 @@ internal sealed class EconomyTransactionPlan(RoleItemPlan child, EconomyMutation
             mutation.Costs.Any(x => x.Asset != new EconomyAsset(EconomyAssetKind.Currency, 5)) ||
             mutation.Costs.Count > 1 || child.Guards.Count != 0 ||
             child.Parts is not [RoleDailyResetPlan] and not
-                [RoleDailyResetPlan, RoleBlobWritePlan { Column: "wild_afk" }] ||
+                [RoleDailyResetPlan, RoleBlobWritePlan { Column: "wild_afk" }] and not
+                [RoleDailyResetPlan, RoleBlobWritePlan { Column: "tavern" }] and not
+                [RoleDailyResetPlan, RoleBlobWritePlan { Column: "wild_afk" }, RoleBlobWritePlan { Column: "tavern" }] ||
             RolePins.Count != 1 || RolePins[0] != mutation.ActorRoleId ||
             RoleWrites.Any(x => x.RoleId != mutation.ActorRoleId ||
-                x.Part is not (RevisionStore.Progress or "daily" or "tasks" or "wild_afk")) ||
+                x.Part is not (RevisionStore.Progress or "daily" or "tasks" or "wild_afk" or "tavern")) ||
             EntityWrites.Count != 0 || EntityDeltaWrites.Count != 0)
-            throw new InvalidOperationException("Daily reset needs one typed daily/tasks/currency child and optional AFK rollover.");
+            throw new InvalidOperationException("Daily reset needs one typed daily/tasks/currency child and optional AFK/tavern rollover.");
     }
 
     private void ValidateOwnedExchangeShape()
@@ -581,7 +583,9 @@ internal sealed class EconomyTransactionPlan(RoleItemPlan child, EconomyMutation
     {
         if (commandKind == "cd13e/daily-reset")
         {
-            if (expectedIds != -1 || values is not [true] and not [true, 1])
+            // 主重置回傳 true；AFK 與酒館各自選用的角色 blob 必須各回傳一筆寫入，
+            // 三者同交易時也要精確驗證，不能只接受尚未加入酒館前的兩個結果。
+            if (expectedIds != -1 || values is not [true] and not [true, 1] and not [true, 1, 1])
                 throw new InvalidDataException("Daily reset typed child result is invalid.");
             return;
         }

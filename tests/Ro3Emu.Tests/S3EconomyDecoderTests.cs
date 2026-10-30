@@ -58,6 +58,7 @@ public sealed class S3EconomyDecoderTests
                 CREATE TABLE guild_caravan_version(guild_id INTEGER PRIMARY KEY);
                 CREATE TABLE guild_campfire(guild_id INTEGER PRIMARY KEY,state BLOB);
                 CREATE TABLE guild_challenge(guild_id INTEGER PRIMARY KEY,state BLOB);
+                CREATE TABLE tavern(id INTEGER PRIMARY KEY CHECK(id=1),state BLOB NOT NULL);
                 CREATE TABLE territory_wars(id INTEGER PRIMARY KEY,state BLOB);
                 CREATE TABLE territory_wars_seasons(epoch TEXT PRIMARY KEY,state BLOB);
                 CREATE TABLE territory_escort(id INTEGER PRIMARY KEY,state BLOB);
@@ -68,7 +69,7 @@ public sealed class S3EconomyDecoderTests
                 CREATE TABLE server_state(key TEXT PRIMARY KEY,value TEXT NOT NULL);
                 """);
             // Hand-authored E00 role blob inventory, based on CoreSchemaPlans rather than reader reflection.
-            foreach (string column in ("settings skill_plans tasks task_runtime task_followup guides emoji_play achievements achievement_runtime adventure_group library card_plans shop trade_info stalls_info " +
+            foreach (string column in ("settings skill_plans tasks task_runtime task_followup tavern guides emoji_play achievements achievement_runtime adventure_group library card_plans shop trade_info stalls_info " +
                 "auction guild_info guild_challenge pet_books daily new_activities activity_runtime timed_activity timed_battle " +
                 "training lottery tower wild_afk dungeons territory_escort lifejob life_restrict life_runtime season_talent " +
                 "season_page season_page_meta season_refine equip_levels equip_plans auto_decompose bag_state stat_plans " +

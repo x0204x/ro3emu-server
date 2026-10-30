@@ -10,6 +10,15 @@ public static class PublicParamConfig
     private const string TableName = "PublicParamConfig";
     private const int PartySlots = 5;
 
+    // G PublicParam 的原名保留大小寫；缺資料時僅採原件已證實的預設值。
+    public static int BarroomTaskId(GameData data) => Scalar(data, "BarroomTaskID", 2000);
+    public static int BarRoomNameLen(GameData data) => Scalar(data, "BarRoomNameLen", 18);
+    public static int BarroomPersonNum(GameData data) => Scalar(data, "BarroomPersonNum", 1000);
+    public static int BarRoomSetInfoCd(GameData data) => Scalar(data, "BarRoomSetInfoCd", 5);
+    public static int TransferRoomCd(GameData data) => Scalar(data, "BarRoomTransferRoomCd", 30);
+    private static int Scalar(GameData data, string key, int fallback) =>
+        data.Table(TableName).TryGetValue(key, out var value) && value.TryGetInt32(out int n) && n > 0 ? n : fallback;
+
     /// <summary>LC_TaskHelper.GetQuestBranchId 使用的主線分支 ID；保留上游的順序、數值轉換與非正值排除規則。</summary>
     public static long[] GuideMainQuestBranchChoice(GameData data) =>
         data.Table(TableName).TryGetValue(nameof(GuideMainQuestBranchChoice), out var value)

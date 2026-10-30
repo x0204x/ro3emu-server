@@ -29,6 +29,7 @@ internal static class DatabaseSchema
         new TerritorySchemaPlan(RealmStateKind.TerritoryWars),
         new TerritorySchemaPlan(RealmStateKind.TerritoryEscort),
         new TerritorySchemaPlan(RealmStateKind.GuildLeague),
+        new TerritorySchemaPlan(RealmStateKind.Tavern),
         new TimedBattleSchemaPlan(),
         new CasualBattleSchemaPlan(),
         new PartyExperienceSchemaPlan(),

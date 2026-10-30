@@ -45,6 +45,9 @@ public sealed partial class DailyActivityService : IGameTicker
 
     /// <summary>Elapsed-time owners settle the ending period under TaskLock before daily quests/currency reset.</summary>
     public Func<GameSession, long, Task<bool>>? BeforeReset { get; set; }
+    internal Func<GameSession, long, Task<bool>>? BeforeTavernReset { get; set; }
+    internal Func<GameSession, long, (byte[] Bytes, Action Committed)?>? PlanTavernRollover { get; set; }
+    internal long TavernBoundary => Boundary(_clock.GetLocalNow().DateTime);
 
     public sealed class DailyState
     {
@@ -111,7 +114,11 @@ public sealed partial class DailyActivityService : IGameTicker
         bool resetDaily = state.DailyEpoch != 0 && state.DailyEpoch < daily;
         bool resetWeekly = state.WeeklyEpoch != 0 && state.WeeklyEpoch < weekly;
         // A completed AFK objective whose award was held must settle in its own period, also after reconnect.
-        if (resetDaily && WildAfkService.PendingDailyAward(session.WildAfk, state, taskInfo, rows))
+        if (resetDaily && (WildAfkService.PendingDailyAward(session.WildAfk, state, taskInfo, rows)
+            || TavernService.PendingDailyAward(session.Tavern, state, taskInfo, rows,
+                Data.Config.PublicParamConfig.BarroomTaskId(_data),
+                Data.Config.TaskConfig.Get(_data, Data.Config.PublicParamConfig.BarroomTaskId(_data)) is { } tavernTask
+                    && tavernTask.ProgressTarget is [[106010, > 0]] ? tavernTask.ProgressTarget[0][1] : 0)))
         {
             session.Daily = state;
             session.DailyRows = rows;
@@ -153,6 +160,7 @@ public sealed partial class DailyActivityService : IGameTicker
         long livenessSink = resetDaily ? currency.GetValueOrDefault(Liveness) : 0;
         if (resetDaily) currency[Liveness] = 0;
         var afk = resetDaily && PlanAfkRollover is { } plan ? plan(session) : null;
+        var tavern = resetDaily && PlanTavernRollover is { } tavernPlan ? tavernPlan(session, daily) : null;
         byte[] dailyBytes = JsonSerializer.SerializeToUtf8Bytes(state), taskBytes = taskInfo.ToByteArray();
         byte[] outcome = JsonSerializer.SerializeToUtf8Bytes(new
         {
@@ -160,7 +168,8 @@ public sealed partial class DailyActivityService : IGameTicker
             PreviousWeeklyEpoch = previousWeeklyEpoch, WeeklyEpoch = weekly,
             DailyHash = Convert.ToHexString(SHA256.HashData(dailyBytes)),
             TasksHash = Convert.ToHexString(SHA256.HashData(taskBytes)),
-            AfkHash = afk is { } prepared ? Convert.ToHexString(SHA256.HashData(prepared.Bytes)) : null
+            AfkHash = afk is { } prepared ? Convert.ToHexString(SHA256.HashData(prepared.Bytes)) : null,
+            TavernHash = tavern is { } roomTime ? Convert.ToHexString(SHA256.HashData(roomTime.Bytes)) : null
         });
         var economy = new EconomyMutation(Guid.NewGuid().ToString("N"), session.Account!, session.Role!.Id,
             "cd13e/daily-reset", Convert.ToHexString(SHA256.HashData(outcome)),
@@ -173,10 +182,10 @@ public sealed partial class DailyActivityService : IGameTicker
         {
             if (synchronous)
                 _roles.SaveDailyReset(session.Role.Id, dailyBytes, taskBytes, currencyBytes, session.Progress,
-                    economy, afk?.Bytes);
+                    economy, afk?.Bytes, tavern?.Bytes);
             else
                 await _roles.SaveDailyResetAsync(session.Role.Id, dailyBytes, taskBytes, currencyBytes,
-                    session.Progress, economy, afk?.Bytes);
+                    session.Progress, economy, afk?.Bytes, tavern?.Bytes);
         }
         catch
         {
@@ -184,6 +193,7 @@ public sealed partial class DailyActivityService : IGameTicker
             throw;
         }
         afk?.Committed();
+        tavern?.Committed();
         if (resetDaily) session.Progress.Currency[Liveness] = 0;
         session.Daily = state;
         session.DailyRows = rows;
@@ -489,6 +499,9 @@ public sealed partial class DailyActivityService : IGameTicker
         if (session.Daily.DailyEpoch < Boundary(now) && BeforeReset is { } settle)
             if (!await settle(session, Boundary(now)))
                 throw new InvalidOperationException("AFK daily award is pending; retry settlement before resetting its period.");
+        if (session.Daily.DailyEpoch < Boundary(now) && BeforeTavernReset is { } tavern
+            && !await tavern(session, Boundary(now)))
+            throw new InvalidOperationException("Tavern daily award remains pending.");
         bool wasReady = session.DailyReady;
         session.DailyReady = false;
         try

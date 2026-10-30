@@ -292,7 +292,7 @@ public sealed class NameService(RoleStore roles) : IMicroService
 /// PartyService: only the party search directory; membership is romsg 42000-42052 on the game gate.
 /// Empty lists keep the "Search Party" panel open without "not implemented" errors.
 /// </summary>
-public sealed class PartyService(TeamService teams, FriendStore friends, SessionRegistry sessions, RoleStore roles, GameLoop loop) : IMicroService
+public sealed class PartyService(TeamService teams, FriendStore friends, SessionRegistry sessions, RoleStore roles, GameLoop loop, TavernService tavern) : IMicroService
 {
     public string Name => "PartyService";
 
@@ -303,7 +303,8 @@ public sealed class PartyService(TeamService teams, FriendStore friends, Session
         return await loop.InvokeAsync(async () => method switch
         {
             "getPartysSummary" => Summary(args),
-            "getSubPartysCountByType" => new Dictionary<string, object?> { ["Ret"] = MicroServiceRouter.Ret(true), ["GroupCount"] = teams.TargetCounts(Arg(args, 1) ?? "") },
+            "getSubPartysCountByType" => Number(Arg(args, 2)) == 4 ? tavern.DirectoryCounts(Arg(args, 1) ?? "")
+                : new Dictionary<string, object?> { ["Ret"] = MicroServiceRouter.Ret(true), ["GroupCount"] = teams.TargetCounts(Arg(args, 1) ?? "") },
             "getParty" => GetParty(args),
             "getPartysByIDs" => await GetGroupsAsync(session, args),
             _ => null,
@@ -313,6 +314,7 @@ public sealed class PartyService(TeamService teams, FriendStore friends, Session
     private object Summary(object? args)
     {
         var list = args as object?[] ?? [];
+        if (list.Length > 0 && Number(list[0]) == 4) return tavern.Directory(args);
         long target = 0, playBook = 0;
         int map = 0;
         string area = "";

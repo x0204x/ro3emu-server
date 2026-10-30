@@ -171,11 +171,16 @@ public sealed partial class ChatService
         }
     }
 
+    internal void LeaveTavernChannel(GameSession session, string group) => Leave(session, group);
+
     private const int RecentLines = 20;
     private static bool GuildChannel(string group) => group.StartsWith("2_", StringComparison.Ordinal);
 
+    public Func<GameSession, string, bool>? TavernAllowed { get; set; }
+
     private bool GuildAllowed(GameSession session, string group)
     {
+        if (TavernAllowed is { } room && !room(session, group)) return false;
         if (group.StartsWith("5_", StringComparison.Ordinal))
             return long.TryParse(group.AsSpan(2), out long groupId) && groupId > 0 && group == $"5_{groupId}"
                 && session.Role != null && _friends.Group(groupId.ToString()) is { } chatGroup

@@ -60,7 +60,7 @@ public sealed class GameSession(PhonestChannel channel, TrafficLog traffic, Skil
         GuildOnlinePublished = false;
         Progress = null;
         Daily = null; DailyRows = null; DailyReady = false;
-        WildAfk = null; Guild = null; Tasks = null;
+        WildAfk = null; Tavern = null; Guild = null; Tasks = null;
         Achievements = null; AchievementRuntime = null; AdventureGroupRole = null;
         Library = null; CardLibraryReadyAttachment = null; GrowthClass = null;
         NewActivities = null; ActivitiesReady = false;
@@ -438,6 +438,7 @@ public sealed class GameSession(PhonestChannel channel, TrafficLog traffic, Skil
 
     /// <summary>5035 field Bonus Time, daily consumption and drop history; transient activity never survives logout.</summary>
     public WildAfkService.State? WildAfk { get; set; }
+    public TavernService.Meter? Tavern { get; set; }
 
     /// <summary>Property list (AoIProperty idx, value) for ENTITYSELF / AOI bases, kept current by CharacterService.Refresh.</summary>
     public (long Id, long Value)[] EntityProperties { get; set; } = [];

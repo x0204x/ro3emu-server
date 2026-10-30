@@ -67,6 +67,8 @@ internal sealed class RoleSchemaPlan : DbPlan
         SchemaSql.AddColumn(db, tx, "role", "task_runtime", "BLOB");
         // Natural card-unlock sources awaiting mandatory task settlement after the library commit.
         SchemaSql.AddColumn(db, tx, "role", "task_followup", "BLOB");
+        // 純房間租約與已結算秒數；實際獎勵仍由既有tasks/daily ledger持有。
+        SchemaSql.AddColumn(db, tx, "role", "tavern", "BLOB");
         // Serialized romsg.DBGuideInfo (finished tutorial guides, AUTO_SYNC 5055).
         SchemaSql.AddColumn(db, tx, "role", "guides", "BLOB");
         // Serialized romsg.DBEmojiPlayInfo (emote favourites, unlocks, idle emote; AUTO_SYNC 5006).
