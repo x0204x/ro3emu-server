@@ -28,9 +28,10 @@ public sealed partial class SkillCombatTests
         {
             target.Hp = 1_000_000_000;
             // 本案例驗證技能扣費；自然回 SP 每五秒依角色相位執行，可能恰在詠唱期間插入。
-            // 將測試角色保持戰鬥狀態，排除這項與冷卻重按無關的背景補 SP。
-            player.StatusBits |= 1L << 15; // CombatService.FightBit：eObjectStateBattling
-            player.LastCombatMs = MonsterService.NowMs;
+            // 此案例只驗證冷卻扣費，將這個角色的兩項回魔來源明確歸零。
+            // 戰鬥中仍會自然回 SP，不能再以戰鬥旗標假設背景回復已停用。
+            Character.DynamicProperties.Add(session => ReferenceEquals(session, player)
+                ? [(AttributeId.ReSp, 0L), (AttributeId.PerReSp, 0L)] : []);
             return Task.CompletedTask;
         });
         long beforeSp = await Loop.InvokeAsync(() => Task.FromResult(Character.Stats(player)[AttributeId.Sp]));

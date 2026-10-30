@@ -82,7 +82,7 @@ public sealed partial class ShopService(GameData data, CharacterService characte
         // Preserve that purchase history in cycle 1; a later cycle naturally resets its seasonal allowance.
         bool migrated = false;
         foreach (var (id, counter) in session.Shop.Bought)
-            if (counter.Period == "" && _data.Row("ShopCommodityConfig", id) is { } row && Family(row) == 5)
+            if (counter.Period == "" && FindCommodity(id) is { } row && Family(row) == 5)
             { counter.Period = "S1"; migrated = true; }
         if (migrated) Save(session);
         await SyncAsync(session);
@@ -131,7 +131,7 @@ public sealed partial class ShopService(GameData data, CharacterService characte
     private async Task<(int Result, int Price, int BuyTimes)> BuyOneAsync(GameSession session, int commodityId, int count, int quote)
     {
         using var guard = await CharacterService.Lock(session);
-        var row = _data.Row("ShopCommodityConfig", commodityId);
+        var row = FindCommodity(commodityId);
         Fail? error = row is not { } c ? new(ErrorCodes.ShopNoConfig, "unknown commodity")
             : count < 1 ? new(ErrorCodes.Parameter, "bad count")
             : Unavailable(session, c);
@@ -221,8 +221,7 @@ public sealed partial class ShopService(GameData data, CharacterService characte
         int unit, int payment, int entry, int perUnit, int priorCount, Counter next)
     {
         long classId = GameData.Int(row, "_iClassID");
-        var shop = _data.Table("ShopConfig").Values.FirstOrDefault(s => GameData.Int(s, "_iClassID") == classId);
-        if (shop.ValueKind != JsonValueKind.Object || GameData.Int(shop, "_iShopType") != 3) return null;
+        if (FindShop(classId) is not { } shop || GameData.Int(shop, "_iShopType") != 3) return null;
         EconomyAsset Asset(int id) => new(GameData.Int(_data.Row("ItemConfig", id)!.Value, "_iType") == 1
             ? EconomyAssetKind.Currency : EconomyAssetKind.Item, id);
         string operation = Guid.NewGuid().ToString("N");
@@ -250,8 +249,7 @@ public sealed partial class ShopService(GameData data, CharacterService characte
         if (session.SeasonState is { } state && state.SeasonId != _seasons.SeasonId)
             return new(ErrorCodes.ShopClosed, "season changed; login required");
         long classId = GameData.Int(commodity, "_iClassID");
-        var shop = _data.Table("ShopConfig").Values.FirstOrDefault(s => GameData.Int(s, "_iClassID") == classId);
-        if (shop.ValueKind != JsonValueKind.Object) return new(ErrorCodes.ShopMissing, "no shop");
+        if (FindShop(classId) is not { } shop) return new(ErrorCodes.ShopMissing, "no shop");
         if (GameData.Int(shop, "_iFunctionId") is var function and > 0 && !_functions.IsOpen(session, function)) return new(ErrorCodes.ShopClosed, $"function {function} closed");
         foreach (var gate in new[] { "_iIsBuy", "_iIsLock" })
             if (GameData.Int(commodity, gate) is var cond and > 0 && !_functions.ConditionMet(session, cond)) return new(ErrorCodes.PurchaseRequirements, $"{gate} {cond}");
@@ -367,7 +365,7 @@ public sealed partial class ShopService(GameData data, CharacterService characte
 
     private int Current(GameSession session, int commodityId, Counter? counter) =>
         counter == null ? 0
-        : _data.Row("ShopCommodityConfig", commodityId) is { } row && counter.Period != Period(Family(row), session) ? 0
+        : FindCommodity(commodityId) is { } row && counter.Period != Period(Family(row), session) ? 0
         : counter.Count;
 
     // ---- favourites ----
@@ -377,7 +375,7 @@ public sealed partial class ShopService(GameData data, CharacterService characte
     {
         using var guard = await CharacterService.Lock(session);
         session.Owners!.Current!.BindPresentation(session);
-        int code = _data.Row("ShopCommodityConfig", req.CommodityId) == null ? ErrorCodes.ShopNoConfig
+        int code = FindCommodity(req.CommodityId) == null ? ErrorCodes.ShopNoConfig
             : req.OpType is CollectOperateType.Add or CollectOperateType.Remove ? 0 : ErrorCodes.Parameter;
         bool ok = code == 0;
         if (ok)

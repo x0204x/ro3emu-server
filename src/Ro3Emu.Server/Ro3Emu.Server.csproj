@@ -40,6 +40,8 @@
     <Compile Include="..\Ro3Emu.ClientHooks\SkillTraceProtocol.cs" Link="Game\SkillTraceProtocol.cs" />
     <!-- Emulator-only game message ids: one collision-checked source shared with the patched client. -->
     <Compile Include="..\Ro3Emu.ClientHooks\PrivateMessageIds.cs" Link="Game\PrivateMessageIds.cs" />
+    <!-- 箭矢本地補售目錄與玩家端共用，避免商品身分與自訂售價分歧。 -->
+    <Compile Include="..\Shared\ArrowShopCatalog.cs" Link="Shared\ArrowShopCatalog.cs" />
   </ItemGroup>
 
   <ItemGroup>

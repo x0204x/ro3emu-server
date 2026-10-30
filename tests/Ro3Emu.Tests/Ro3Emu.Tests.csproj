@@ -27,6 +27,7 @@
     <Compile Include="..\..\src\Ro3Emu.ClientHooks\TitleModalGeometry.cs" Link="ClientHooks\TitleModalGeometry.cs" />
     <Compile Include="..\..\src\Ro3Emu.ClientHooks\ClientLabelText.cs" Link="ClientHooks\ClientLabelText.cs" />
     <Compile Include="..\..\src\Ro3Emu.ClientHooks\SeasonCuisineVisibility.cs" Link="ClientHooks\SeasonCuisineVisibility.cs" />
+    <Compile Include="..\..\src\Ro3Emu.ClientHooks\ArrowShopPlan.cs" Link="ClientHooks\ArrowShopPlan.cs" />
   </ItemGroup>
 
   <ItemGroup>

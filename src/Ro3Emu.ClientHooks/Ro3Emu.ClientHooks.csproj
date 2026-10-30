@@ -28,6 +28,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\Shared\ArrowShopCatalog.cs" Link="Shared\ArrowShopCatalog.cs" />
     <Reference Include="mscorlib"><HintPath>$(ClientManaged)\mscorlib.dll</HintPath><Private>false</Private></Reference>
     <!-- Older clients ship a netstandard facade; the 20 Oct 2026 client does not (its mscorlib carries the types). -->
     <Reference Include="netstandard" Condition="Exists('$(ClientManaged)\netstandard.dll')"><HintPath>$(ClientManaged)\netstandard.dll</HintPath><Private>false</Private></Reference>

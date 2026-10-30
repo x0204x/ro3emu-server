@@ -214,6 +214,77 @@ public sealed class DailyTests : IAsyncLifetime
     }
 
     [ClientDataFact]
+    public async Task TodoEntryRequiresDeliveredQuestAndReadyDailySnapshots()
+    {
+        await using var bot = await InWorld("Alice");
+        var initial = await Next(bot, FunctionService.FunctionOpenSync, FunctionOpenInfoIncrement.Parser,
+            message => message.SyncAllMark);
+        Assert.False(initial.FunctionOpenInfos.ContainsKey(25));
+        var functions = _app.Services.GetRequiredService<FunctionService>();
+        await State(session =>
+        {
+            // 原生 FunctionConfig[25] → 條件 2000022 → [4004,10105090]。
+            // 此例只驗入口資格，不以自造任務狀態宣稱實際主線交付已通過。
+            var savedTasks = session.Tasks;
+            bool savedReady = session.DailyReady;
+            try
+            {
+                session.Tasks = new DBTaskInfo();
+                var task = new TaskInfo { TaskId = 10105090, Status = TaskState.Running };
+                session.Tasks.Infos[task.TaskId] = task;
+                Assert.False(functions.Build(session).FunctionOpenInfos.ContainsKey(25));
+                task.Status = TaskState.Finish;
+                Assert.False(functions.Build(session).FunctionOpenInfos.ContainsKey(25));
+                task.Status = TaskState.Delivery;
+                session.DailyReady = false;
+                Assert.False(functions.Build(session).FunctionOpenInfos.ContainsKey(25));
+                session.DailyReady = true;
+                Assert.True(functions.Build(session).FunctionOpenInfos[25]);
+                session.Tasks.Infos.Clear();
+                session.Tasks.CompleteTaskNum[10105090] = 1;
+                Assert.True(functions.Build(session).FunctionOpenInfos[25]);
+                return true;
+            }
+            finally { session.Tasks = savedTasks; session.DailyReady = savedReady; }
+        });
+    }
+
+    [ClientDataFact]
+    public async Task TodoReconnectPublishesDailySnapshotsBeforeUnlockedEntry()
+    {
+        await using var bot = await InWorld("Alice");
+        var roles = _app.Services.GetRequiredService<RoleStore>();
+        // 只建立「先前已交付」的儲存資料；驗證重登同步順序，不代替玩家主線驗收。
+        await State(session =>
+        {
+            session.Tasks!.CompleteTaskNum[10105090] = 1;
+            roles.SaveTasks(session.Role!.Id, session.Tasks.ToByteArray());
+            return true;
+        });
+        await bot.DisposeAsync();
+        await using var again = await InWorld("Alice", create: false);
+        static bool FullSnapshot(BotEvent message) => message.MsgId switch
+        {
+            DailyActivityService.ActivitySync when message.IsGame(DailyActivityService.ActivitySync) =>
+                DBDailyActivityInfoIncrement.Parser.ParseFrom(message.Body).SyncAllMark,
+            DailyActivityService.StageSync when message.IsGame(DailyActivityService.StageSync) =>
+                DBStageRewardInfoIncrement.Parser.ParseFrom(message.Body).SyncAllMark,
+            FunctionService.FunctionOpenSync when message.IsGame(FunctionService.FunctionOpenSync) =>
+                FunctionOpenInfoIncrement.Parser.ParseFrom(message.Body).SyncAllMark,
+            _ => false,
+        };
+        var daily = await again.Inbox.WaitAsync(FullSnapshot, Wait);
+        var claims = await again.Inbox.WaitAsync(FullSnapshot, Wait);
+        var unlocked = await again.Inbox.WaitAsync(FullSnapshot, Wait);
+        Assert.Equal(DailyActivityService.ActivitySync, daily.MsgId);
+        Assert.Equal(DailyActivityService.StageSync, claims.MsgId);
+        Assert.Equal(FunctionService.FunctionOpenSync, unlocked.MsgId);
+        Assert.NotEmpty(DBDailyActivityInfoIncrement.Parser.ParseFrom(daily.Body).ActivityData);
+        Assert.Empty(DBStageRewardInfoIncrement.Parser.ParseFrom(claims.Body).AllStageRewardsFinished.All.Value);
+        Assert.True(FunctionOpenInfoIncrement.Parser.ParseFrom(unlocked.Body).FunctionOpenInfos[25].All);
+    }
+
+    [ClientDataFact]
     public async Task FreshLoginSendsRowsAndRealEmptyClaimsWithoutFakeStage()
     {
         await using var bot = await InWorld("Alice");

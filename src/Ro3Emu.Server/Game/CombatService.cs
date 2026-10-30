@@ -1103,12 +1103,27 @@ public sealed partial class CombatService : IGameTicker
         }
     }
 
-    /// <summary>HP/SP regeneration every 5 s out of combat: FinalReHp = ReHP + MaxHP × per_rehp (117/118, inferred).</summary>
+    /// <summary>LC_DAL_PlayerInfo.TryGetAttrValue：FinalReHp／Sp = ReHP／SP + MaxHP／SP × PreReHP／SP。
+    /// 整數入帳對齊原生顯示向上取整是本地政策（inferred）；原服權威入帳取整仍未確認。</summary>
     internal static (long Hp, long Sp) Regeneration(StatSheet stats) =>
-        (stats[107] + stats[101] * stats.Data.GetValueOrDefault(1071) / 10000,
-            stats[108] + stats[102] * stats.Data.GetValueOrDefault(1081) / 10000);
+        (RegenerationAmount(stats[AttributeId.ReHp], stats[AttributeId.MaxHp], stats[AttributeId.PerReHp]),
+            RegenerationAmount(stats[AttributeId.ReSp], stats[AttributeId.MaxSp], stats[AttributeId.PerReSp]));
 
-    private async Task RegenAsync(GameSession s, Func<bool> current)
+    private static long RegenerationAmount(long flat, long maximum, long percent)
+    {
+        Int128 numerator = (Int128)flat * 10000 + (Int128)Math.Max(0, maximum) * percent;
+        if (numerator <= 0) return 0;
+        Int128 amount = (numerator + 9999) / 10000;
+        return amount <= 0 ? 0 : amount >= long.MaxValue ? long.MaxValue : (long)amount;
+    }
+
+    internal static long RegeneratedValue(long current, long maximum, long amount)
+    {
+        long cap = Math.Max(0, maximum), before = Math.Clamp(current, 0, cap);
+        return amount <= 0 ? before : amount >= cap - before ? cap : before + amount;
+    }
+
+    internal async Task RegenAsync(GameSession s, Func<bool> current)
     {
         if (!current() || s.Role == null || s.Progress == null) return;
         IDisposable held;
@@ -1116,12 +1131,16 @@ public sealed partial class CombatService : IGameTicker
         catch (OperationCanceledException) when (!current()) { return; }
         using (held)
         {
-            if (!current() || s.Role == null || s.Progress == null || s.Dead || (s.StatusBits & FightBit) != 0) return;
+            if (!current() || s.Role == null || s.Progress == null || s.Dead) return;
             if (s.CurrentHp == null && s.CurrentSp == null) return; // unset = full (CharacterService.Stats): nothing to restore
             var st = _character.Stats(s);
-            if (st[2000] >= st[101] && st[2001] >= st[102]) return;
+            if (st[AttributeId.Hp] >= st[AttributeId.MaxHp] && st[AttributeId.Sp] >= st[AttributeId.MaxSp]) return;
             var (rehp, resp) = Regeneration(st);
-            await _character.SetHpSpAsync(s, st[2000] + Math.Max(1, rehp), st[2001] + Math.Max(1, resp));
+            // 戰鬥中SP仍每五秒恢復是本地政策（inferred）；HP保留原有脫戰限制。
+            long hp = RegeneratedValue(st[AttributeId.Hp], st[AttributeId.MaxHp], (s.StatusBits & FightBit) == 0 ? rehp : 0);
+            long sp = RegeneratedValue(st[AttributeId.Sp], st[AttributeId.MaxSp], resp);
+            if (hp == st[AttributeId.Hp] && sp == st[AttributeId.Sp]) return;
+            await _character.SetHpSpAsync(s, hp, sp);
         }
     }
 

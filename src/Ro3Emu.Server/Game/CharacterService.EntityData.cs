@@ -88,7 +88,7 @@ public sealed partial class CharacterService
             foreach (var buff in session.Buffs.Where(buff => includeBuff?.Invoke(buff) != false))
                 foreach (var (id, v) in buff.Changes) Add(id, v);
         }
-        else AddOwnAttributes(session, p, Add, includeBuff);
+        else AddOwnAttributes(session, p, Add, raw, includeBuff);
         if (!raw.ContainsKey(Speed)) raw[Speed] = RoleSessionService.DefaultSpeed;
         raw[Speed] += session.SpeedBonus;
         if (!raw.ContainsKey(BaseAspd)) raw[BaseAspd] = 100;
@@ -111,7 +111,7 @@ public sealed partial class CharacterService
 
     /// <summary>The character's own raw contributions (gear, cards, talents, buffs, level and job rows, conversions).</summary>
     private void AddOwnAttributes(GameSession session, RoleProgress p, Action<long, double> Add,
-        Func<ActiveBuff, bool>? includeBuff)
+        IReadOnlyDictionary<int, double> raw, Func<ActiveBuff, bool>? includeBuff)
     {
         var baseStats = new double[6];
         for (int i = 0; i < 6; i++) baseStats[i] = p.Stats[i];
@@ -195,12 +195,25 @@ public sealed partial class CharacterService
         if (BaseRow(p.Career, p.Level) is { } flat)
             foreach (var (id, v) in GameData.Pairs(flat, "_kAttri")) Add(id, v);
         foreach (var (id, v) in data.JobAttributes(p.Career)) Add(id, v);
+        // 推定整合：G 的 _refreshFinalLocalVal 依同一套群組公式預覽六項素質的轉換。
+        // 先納入所有來源（含 buff 百分比與職業／等級），避免面板素質提高卻未影響衍生屬性。
+        // 只重算六項群組，不重算全部屬性；原服伺服器聚合順序尚未取得執行證據。
+        var effectivePrimary = EffectivePrimaryAttributes(raw);
         bool ranged = data.Row("JobConfig", p.Career) is { } job && GameData.Int(job, "_iDistanceType") == 2;
         for (int stat = 1; stat <= 6; stat++)
         {
             if (data.Row("AttributeConversionConfig", stat) is not { } conversion) continue;
-            foreach (var (id, perPoint) in GameData.Pairs(conversion, ranged ? "_kAttribute2" : "_kAttribute1")) Add(id, perPoint * baseStats[stat - 1]);
+            foreach (var (id, perPoint) in GameData.Pairs(conversion, ranged ? "_kAttribute2" : "_kAttribute1")) Add(id, perPoint * effectivePrimary[stat]);
         }
+    }
+
+    private StatSheet EffectivePrimaryAttributes(IReadOnlyDictionary<int, double> raw)
+    {
+        var primary = new Dictionary<int, double>();
+        foreach (var (id, value) in raw)
+            if (id is >= 1 and <= 6 || Data.Config.AttributeConfig.Get(data, id)?.PreAttri is >= 1 and <= 6)
+                primary[id] = value;
+        return StatCalculator.Compute(primary, data);
     }
 
     /// <summary>The self property list: the fixed set plus every member attribute the sheet carries (1031 ...).</summary>

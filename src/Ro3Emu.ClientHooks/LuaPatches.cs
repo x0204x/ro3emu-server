@@ -100,6 +100,7 @@ namespace Ro3Emu.ClientHooks
                 PassChallenges.Install(global);
                 TitleButton.Install(manager, global);
                 SeasonCuisine.Install(manager, global);
+                ArrowShop.Install(env, manager, global);
                 ServerDayGates.Install(global, functionHelper, Module(manager, global, "lc_conditiondefine"),
                     global.Obf_RuA<Obf_R.Obf_ff>("LC_SeasonHelper") ?? Module(manager, global, "lc_seasonhelper"),
                     global.Obf_RuA<Obf_R.Obf_ff>("LC_SeasonExplorationHelper") ?? Module(manager, global, "lc_seasonexplorationhelper"));
