@@ -12,10 +12,11 @@ try {
     # Include ordinary untracked project inputs as well as tracked files.  A new
     # hook source must change the stamp before it is staged; otherwise -Check
     # could incorrectly bless DLLs that were built without that source file.
-    # git ls-files merges cache and worktree entries in Git's canonical path
-    # order, so the stamp is stable before and after a new input is staged.
-    $files = @(git ls-files --cached --others --exclude-standard -- src/Ro3Emu.ClientHooks src/Ro3Emu.Loc |
+    # Git 會把未追蹤檔與索引檔分段輸出，不能假定合併後已有固定順序。
+    # 用 Ordinal 排序，避免同一份來源只因 git add 就改變預建 DLL 的來源戳記。
+    [string[]]$files = @(git ls-files --cached --others --exclude-standard -- src/Ro3Emu.ClientHooks src/Ro3Emu.Loc |
         Where-Object { $_ -notmatch '/(bin|obj)/' })
+    [Array]::Sort($files, [StringComparer]::Ordinal)
     if ($files.Count -eq 0) {
         throw 'No Ro3Emu.ClientHooks/Ro3Emu.Loc source inputs were found.'
     }
