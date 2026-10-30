@@ -13,7 +13,7 @@
 <p align="center">
   <a href="https://github.com/aethai/ro3emu-server/releases/latest"><img src="https://img.shields.io/github/v/release/aethai/ro3emu-server?label=latest&color=d8b46a&labelColor=1b2740" alt="Latest release"></a>
   <a href="https://github.com/aethai/ro3emu-server/actions/workflows/tests.yml"><img src="https://img.shields.io/github/actions/workflow/status/aethai/ro3emu-server/tests.yml?branch=main&label=tests&labelColor=1b2740" alt="Tests"></a>
-  <img src="https://img.shields.io/badge/client-Genesis%202026.10.29.1-3fb950?labelColor=1b2740" alt="Works with the Genesis client 2026.10.29.1">
+  <img src="https://img.shields.io/badge/client-Genesis%202026.10.30.1-3fb950?labelColor=1b2740" alt="Works with the Genesis client 2026.10.30.1">
   <img src="https://img.shields.io/badge/license-GPL--3.0-8b949e?labelColor=1b2740" alt="GPL-3.0">
   <a href="https://discord.gg/vVkcvMFKy3"><img src="https://img.shields.io/badge/discord-join-5865f2?logo=discord&logoColor=white&labelColor=1b2740" alt="Join the Discord"></a>
 </p>
