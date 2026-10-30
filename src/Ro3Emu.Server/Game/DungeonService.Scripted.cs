@@ -319,6 +319,14 @@ public sealed partial class DungeonService
         Active(s) is { } a && Step(a) != null ? StepEventAsync(a, s, [(Kind.Plot, plotId)]) : Task.CompletedTask;
 
     /// <summary>
+    /// G 飛船結局以 action 601 的 84011 回報完成；action 150 的 84012 是另一種事件。
+    /// 即使 84012 偽帶結局 story ID，也不能把船舵 QTE 提前當成已播完。
+    /// 其他重建場景保留原有事件相容路徑。
+    /// </summary>
+    public Task PlotTriggeredAsync(GameSession s, long plotId) =>
+        Active(s)?.Plan.SceneEntry == AirshipScene ? Task.CompletedTask : PlotEndedAsync(s, plotId);
+
+    /// <summary>
     /// GM test aid !actors [npcId]: the current step, what completes it, and its scene actors with their interactions,
     /// reach (NPCConfig _iInteractDistance) and buffs; with an NPC id, a jump 1 m beside that actor; "walk x z" arrives
     /// as a walk report would; "use" completes the step server-side (TEST AID). The client offers an interaction only

@@ -27,6 +27,7 @@ public sealed partial class DungeonTests
         await using var alice = await InWorld("Alice");
         await Gm(alice, "!lvl 99"); // a scene with a fight
         if (scene == 1022001) await Gm(alice, "!quest accept 10102200"); // Payon Forest's condition [1101, 10102200]
+        if (scene == 1000501) await Gm(alice, "!quest accept 10103210"); // LAB 準備飛船來源任務。
         Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
         long instance = await Load(alice, scene);
         var plan = Session(alice).DungeonAttempt!.Plan;
@@ -139,6 +140,7 @@ public sealed partial class DungeonTests
         await Gm(alice, "!actors use"); // outside a scene: refused, nothing happens
         // Payon Forest's DungeonConfig condition 1000000 is [1101, 10102200]: its story task is running.
         if (scene == 1022001) await Gm(alice, "!quest accept 10102200");
+        if (scene == 1000501) await Gm(alice, "!quest accept 10103210"); // LAB 準備飛船來源任務。
         Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
         long instance = await Load(alice, scene);
         var plan = Session(alice).DungeonAttempt!.Plan;

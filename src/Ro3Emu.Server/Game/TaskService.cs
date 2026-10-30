@@ -86,6 +86,7 @@ public sealed partial class TaskService
         this._mounts = mounts;
         this._scene = scene;
         this._clock = clock;
+        scene.ValidateCustomJump = ValidateTaskDeliveryJump;
         combat.Killed.Add(OnKillAsync);
         combat.Dealt.Add((s, m, damage) => { if (damage > 0 && s.Role != null) _participants.GetOrCreateValue(m).Add(s.Role.Id); });
         character.JobChanged.Add(s => { QueueRefresh(s); return Task.CompletedTask; });
@@ -566,7 +567,8 @@ public sealed partial class TaskService
     }
 
     /// <summary>Rewards first (the delivery events open UI that reads them), then status 4 and completeTaskNum.</summary>
-    private async Task<int> DeliverCoreAsync(GameSession session, Ownership.OwnerContext context, long id)
+    private async Task<int> DeliverCoreAsync(GameSession session, Ownership.OwnerContext context, long id,
+        DBTaskInfo? preparedTasks = null)
     {
         context.AssertRole(session.Role!.Id);
         // Daily owns reissuing a Running instance even after a previous completion; history is not that instance's status.
@@ -574,6 +576,9 @@ public sealed partial class TaskService
         var daily = PrepareDailyDelivery?.Invoke(session, id);
         if (IsDelivered(session, id) && daily?.MirrorChanged != true) return ErrorCodes.TaskStatus;
         var def = Defs()[id];
+        // 最後一個目標可與發獎同筆提交；只接收同一任務實例的 detached 快照，不先改記憶體。
+        if (preparedTasks != null && (daily != null || !ValidPreparedDelivery(session, def, preparedTasks)))
+            return ErrorCodes.TaskRequirements;
         if (!TryDeliveryActions(session, context, def, out var costs, out bool cutScene, out int? questMount, out var guildActivities))
             return ErrorCodes.TaskRequirements;
         foreach (var target in def.Targets.Where(t => t[0] == TSubmit))
@@ -581,10 +586,10 @@ public sealed partial class TaskService
             if (!Supported(target) || target[2] > int.MaxValue) return ErrorCodes.TaskRequirements;
             costs.Add(((int)target[1], (int)target[2]));
         }
-        var expectedTasks = daily == null ? null : session.Tasks.ToByteArray();
+        var expectedTasks = daily == null && preparedTasks == null ? null : session.Tasks.ToByteArray();
         AwardPlan? deliveredPlan = null;
         var attachment = session.Attachment;
-        var next = session.Tasks.Clone();
+        var next = (preparedTasks ?? session.Tasks).Clone();
         if (!next.Infos.ContainsKey(id)) next.Infos[id] = NewInfo(id, Running);
         next.Infos[id].Status = Delivered;
         next.CompleteTaskNum[id] = next.CompleteTaskNum.GetValueOrDefault(id) + 1;
@@ -604,7 +609,7 @@ public sealed partial class TaskService
                 committed: questMount is { } appliedRide ? () => _mounts.ApplyQuestRideCore(session, context, appliedRide) : null,
                 ownedAward: new CharacterService.OwnedAwardSource("cd13e/quest-award", awardSource,
                     new { Version = 1, Task = id, Count = next.CompleteTaskNum[id], plan.AwardId })))
-                return daily == null ? ErrorCodes.ItemsShort : ErrorCodes.Unknown;
+                return daily == null && preparedTasks == null ? ErrorCodes.ItemsShort : ErrorCodes.Unknown;
             session.TaskRuntime = runtime;
             deliveredPlan = plan;
             if (questMount is { } selectedRide && attachment?.Cancelled != true && ReferenceEquals(session.Attachment, attachment))
@@ -615,7 +620,7 @@ public sealed partial class TaskService
             LogHeldOnce(session, id, "reward held: " + e.Message);
             return ErrorCodes.TaskRequirements;
         }
-        catch (Exception e) when (daily != null || _roles.HasTaskFollowup(session.Role!.Id))
+        catch (Exception e) when (daily != null || preparedTasks != null || _roles.HasTaskFollowup(session.Role!.Id))
         {
             _log.LogError(e, "Task {Task} transaction failed for {Role}", id, session.Role?.Id);
             return ErrorCodes.Unknown;

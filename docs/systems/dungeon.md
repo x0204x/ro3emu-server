@@ -142,6 +142,7 @@ Reconstructed story encounters (`ReconstructedDungeons`, switch `Ro3Emu:Reconstr
   client; without it a cleared plane left the player in an empty copy of the field (seen on Southern Payon 1021301,
   whose story continues on the field: 10102110 is delivered to NPC 400037 on map 10213). A failed run stays, so the
   client's DungeonReset can retry it.
+- 虎王 `1022001` 的 G 設定亦符合單人 Plane 條件；依上游優先原則使用同一退場流程，移除本地重複的三秒特例。
 - Guide arrows: a solo story scene whose scene editor file has guide routes (`m_kGuidePoints`, e.g. the Culvert
   plane's 19 and 21, the Geffen field plane's 17) sets dungeon var 10021 `PGuideWayList` to their ids in 30401
   (`LC_DunGeon_VarDefine.lua:736-741`, processed by `LC_SceneCom_GuideGfx`, which draws each route as the guide arrow

@@ -60,6 +60,8 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
     { AfterLoaded.Add(handler); _ownedAfterLoaded.Add(handler); }
     public Func<GameSession, WorldNpc, NpcInteractionReq, int>? ValidateInteraction { get; set; }
     public Func<GameSession, WorldNpc, NpcInteractionReq, Task>? ApplyInteraction { get; set; }
+    /// <summary>依自訂傳送的來源類型核對任務等條件；目的地仍由 WorldData 解析。</summary>
+    public Func<GameSession, ClientCustomJumpMapReq, int>? ValidateCustomJump { get; set; }
     /// <summary>Optional source-bound work begins only when capacity is granted for the actual handoff.</summary>
     public sealed record TransferStart(Func<GameSession, bool> Begin, Action<GameSession> Cancel,
         Func<GameSession, bool>? Valid = null);
@@ -419,8 +421,10 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
     {
         var map = data.Row("MapConfig", req.SceneId) != null ? worldData.Map(req.SceneId) : null;
         var point = map?.Points.GetValueOrDefault(req.PointId);
-        await s.SendGameAsync(CustomJumpMap, new ClientCustomJumpMapResp { Result = point != null ? 0 : map == null ? ErrorCodes.SceneMissing : ErrorCodes.Parameter });
-        if (point is { } p) await EnterSceneAsync(s, req.SceneId, p);
+        int code = point == null ? map == null ? ErrorCodes.SceneMissing : ErrorCodes.Parameter
+            : ValidateCustomJump?.Invoke(s, req) ?? 0;
+        await s.SendGameAsync(CustomJumpMap, new ClientCustomJumpMapResp { Result = code });
+        if (code == 0 && point is { } p) await EnterSceneAsync(s, req.SceneId, p);
     }
 
     /// <summary>30016: destination resolved and authorized by the active task, without a 30131 acknowledgement.</summary>

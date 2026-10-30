@@ -45,6 +45,7 @@ public sealed partial class DungeonTests
         const long scene = 1000501;
         await using var alice = await InWorld("Alice");
         await Gm(alice, "!lvl 99");
+        await Gm(alice, "!quest accept 10103210"); // LAB 準備正式登船任務；本案驗砲台協定。
         Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
         long instance = await Load(alice, scene);
         await Stage(alice, 1, quest: 1);

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using Romsg;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 
 namespace Ro3Emu.Server.Game;
 
@@ -27,9 +28,6 @@ public sealed partial class TeamService(SessionRegistry sessions, CharacterServi
 
     /// <summary>PublicParamConfig.TeamInviteLastTime (s): the client drops an invite after this too.</summary>
     private static readonly TimeSpan InviteLife = TimeSpan.FromSeconds(30);
-
-    /// <summary>PublicParamConfig.TeamExpBuffNum (‱) by the number of members on the same map.</summary>
-    private static readonly int[] ExpBuff = [10000, 12500, 15000, 17500, 20000];
 
     private const int MaxHp = 101, MaxSp = 102;
 
@@ -65,6 +63,7 @@ public sealed partial class TeamService(SessionRegistry sessions, CharacterServi
     private readonly RoleStore _roles = roles;
     private readonly FriendStore _friends = friends;
     private readonly GameData _data = data;
+    private readonly int[] _experienceBonus = PublicParamConfig.TeamExpBuffNum(data);
     private readonly SeasonService _seasons = seasons;
     private readonly IOptions<ServerOptions> _options = options;
     private readonly ILogger<TeamService> _log = log;
@@ -103,9 +102,10 @@ public sealed partial class TeamService(SessionRegistry sessions, CharacterServi
         return result;
     }
 
-    /// <summary>Party EXP pool multiplier (‱ of TeamExpBuffNum) for the server's eligible field recipients.</summary>
+    /// <summary>讀取 G TeamExpBuffNum；套用於合格野外隊員的 EXP 池仍是 (inferred) 政策。</summary>
     public int ExpBonus(GameSession killer) =>
-        ExpBuff[Math.Clamp(ExperienceRecipients(killer).Count, 1, ExpBuff.Length) - 1];
+        _experienceBonus.Length == 0 ? 10000
+            : _experienceBonus[Math.Clamp(ExperienceRecipients(killer).Count, 1, _experienceBonus.Length) - 1];
 
     /// <summary>The current Asia client projects TeamTypeForty member indices into fixed slots 1-5, 6-10, ... .</summary>
     internal static (int Start, int Count) ExpGroupRange(TeamType type, IReadOnlyList<long> members, long member)

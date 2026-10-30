@@ -212,8 +212,8 @@ public sealed partial class CombatService
     /// zero or shorter than that action. Different rows keep their configured cancellation behavior; normal attacks
     /// keep their separate swing/jitter rule.
     /// </summary>
-    private static bool RepeatsActiveSkill(ActiveSkillCast active, JsonElement row, CastSkillReq req) =>
-        req.SkillId == active.Request.SkillId && new SkillConfig(row).IsNormalAtk != 1;
+    private bool RepeatsActiveSkill(ActiveSkillCast active, JsonElement row, CastSkillReq req) =>
+        req.SkillId == active.Request.SkillId && !new SkillConfig(row).IsNormalAttack(_data);
 
     /// <summary>
     /// A normal attack (_bCancelCast 1) may cut a skill's action short, but not the swing before it at the same target:

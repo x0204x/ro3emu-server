@@ -231,7 +231,7 @@ public sealed class CoreMessages(RoleSessionService roleSessions, ChatService ch
         // PlotActingTrigger (LC_TaskHelper.PlotActingTriggerReq, 84012). Both are fire-and-forget: no client code
         // waits on their NullArg response type, so neither is answered.
         routes.Map(DungeonService.PlotSceneEvent, "tasks", async (session, msgId, body) =>
-            await dungeons.PlotEndedAsync(session, PlotActingTriggerReq.Parser.ParseFrom(body.Span).PlotId));
+            await dungeons.PlotTriggeredAsync(session, PlotActingTriggerReq.Parser.ParseFrom(body.Span).PlotId));
         routes.Map(SceneService.DialogueActionTrigger, "handler", async (session, msgId, body) =>
         {
         });

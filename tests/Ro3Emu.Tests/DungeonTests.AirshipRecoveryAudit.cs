@@ -94,10 +94,12 @@ public sealed partial class DungeonTests
         await using (var alice = await InWorld("Alice"))
         {
             await Gm(alice, "!lvl 99");
-            if (replaceOriginal) await Gm(alice, $"!quest accept {task}");
+            await Gm(alice, $"!quest accept {task}"); // 入場時仍須有正式來源任務。
             role = (long)alice.Self!.Uuid;
             Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
             long instance = await Load(alice, scene);
+            // LAB 故障前置：保留原有「凍結時沒有任務」案例，不以放寬入場門檻達成。
+            if (!replaceOriginal) await Gm(alice, $"!quest drop {task}");
             await ClearReconstructedStoryRun(alice, instance);
             await Story(alice, 130161);
             var accounts = Service<AccountStore>();

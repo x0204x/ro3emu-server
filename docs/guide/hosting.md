@@ -85,4 +85,3 @@ RO3Emu.exe join 203.0.113.10 --purchase-url https://example.com/donate
 `start` and `host` take the option too. Only an `http` or `https` address is accepted. The patcher writes it into the
 client hooks it installs; the redirect sits on `UnityEngine.Application.OpenURL`, the call every one of those buttons
 ends in (`OpenUrlPatch`, `Ro3Emu.ClientHooks.UrlRewrite`).
-

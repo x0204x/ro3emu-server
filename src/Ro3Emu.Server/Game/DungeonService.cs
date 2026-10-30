@@ -33,6 +33,7 @@ public sealed partial class DungeonService
     internal Func<GameSession, DungeonRewardObligation, DungeonTaskClear>? CaptureTaskClear { get; set; }
     internal Func<GameSession, DungeonTaskClear, Task>? ApplyTaskClear { get; set; }
     internal Func<GameSession, Task>? ResumeTaskClearFollowup { get; set; }
+    internal Func<GameSession, long, bool>? StoryEntryAllowed { get; set; }
     /// <summary>After <see cref="Completed"/> for a TenGameplay run: the boss (TenGameplayBossConfig._iBoss) and the
     /// run's settled participants (quest target 106602).</summary>
     public List<Func<GameSession, long, IReadOnlyCollection<GameSession>, Task>> MultiBossCleared { get; } = new();
@@ -212,6 +213,9 @@ public sealed partial class DungeonService
         if (s.SceneLoading) return ErrorCodes.SwitchingScenes;
         if (s.Dead) return ErrorCodes.FeatureUnavailable;
         if (s.InstanceId != 0 && !(continuation && s.DungeonAttempt is { Settled: true })) return ErrorCodes.DungeonBusy;
+        // G 的飛船入口來自任務接受動作 3000；來源門檻為 (inferred)，不另造 initData/taskId。
+        if (plan.SceneEntry == AirshipScene && StoryEntryAllowed?.Invoke(s, plan.SceneEntry) != true)
+            return ErrorCodes.TaskRequirements;
         if (!_functions.ConditionMet(s, GameData.Int(plan.Config, "_iDungoenLockCondition"))
             || !_functions.ConditionMet(s, GameData.Int(plan.Config, "_iDungeonConditionConfig"))) return ErrorCodes.FeatureUnavailable;
         if (GameData.Int(plan.Config, "_iGamePlayType") == 24 && !JourneyCanEnter(s, plan.SceneEntry))
@@ -983,10 +987,7 @@ public sealed partial class DungeonService
                     if (committed && goods.Count > 0) await _character.ItemsChangedAsync(s, stats: false);
                     await s.SendGameAsync(Result, result);
                     if (success) await HideGuideWaysAsync(s, a);
-                    // 虎王保留已提交任務後的既有退場；其他單人 plane 採上游延遲返回。
-                    if (success && a.Plan.SceneEntry == TigerKingSceneEntry && a.Plan.Multi == null)
-                        ScheduleTigerKingReturn(a, s, roleId);
-                    else if (success && LeavesAfterClear(a)) ScheduleLeaveAfterClear(s, a);
+                    if (success && LeavesAfterClear(a)) ScheduleLeaveAfterClear(s, a);
                     if (success && a.Plan.Multi != null)
                     {
                         var award = new SyncMultiDungeonAwardNotify

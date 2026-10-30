@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Romsg;
 using Ro3Emu.Server.Game;
 
@@ -49,9 +50,18 @@ public sealed partial class SkillCombatTests
     {
         await using var archer = await InWorld("Archer");
         await Gm("archer", "!job 3100");
+        // JobAttackConfig[3100] 對無武器選 1000001；1300001 是裝備 subtype 11 弓時的普攻。
+        await Gm("archer", $"!item {ArcherBow}");
+        var granted = await Next(archer, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser,
+            m => m.PackInfo.GetValueOrDefault(2)?.Inc?.Items.Values.Any(i => i.All?.ItemEntry == ArcherBow) == true);
+        long bow = granted.PackInfo[2].Inc.Items.Values.Single(i => i.All?.ItemEntry == ArcherBow).All.ItemGuid;
+        await archer.SendGameAsync(CharacterService.EquipItemOpr,
+            new EquipItemOprReq { Opr = 0, Pos = (EquipGridType)1, ItemGUID = bow });
+        Assert.Equal(0, (await Next(archer, CharacterService.EquipItemOpr, EquipItemOprResp.Parser)).Result);
         var target = await Target("archer", stationary: true);
         await Loop.InvokeAsync(() => { target.Hp = 1_000_000; return Task.CompletedTask; });
         var session = Session("archer");
+        Assert.Equal(ArcherAttack, _app.Services.GetRequiredService<SkillService>().NormalAttack(session));
 
         await archer.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = ArcherAttack, TargetId = target.Uid });
         Assert.Equal(0, (await Next(archer, CombatService.UseSkill, CastSkillRsp.Parser)).Result);

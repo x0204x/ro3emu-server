@@ -536,21 +536,6 @@ public sealed partial class TaskService
         await SettleAsync(session);
     }
 
-    /// <summary>
-    /// 83651 carries no task, attempt id, or proof. Accept a local clear only for running 10103150 on its tracked
-    /// map, one of three persisted slots (inferred). Network replay within those three cannot be distinguished
-    /// from another local clear; completion/reward beyond three is rejected, including after reconnect.
-    /// </summary>
-    public async Task GoodsStackAsync(GameSession session)
-    {
-        using var gate = await LockTasksAsync(session);
-        if (BeforeProgress is { } before) await before(session);
-        bool ok = session.Tasks?.Infos.TryGetValue(10103150, out var info) == true && info.Status == Running
-            && ContextMapMatches(session, Defs()[10103150]) && Defs()[10103150].Targets.Any(t => t is [TCargo, > 0]);
-        if (ok) await ProgressCoreAsync(session, TCargo, _ => 1, d => d.Id == 10103150);
-        await session.SendGameAsync(GoodsStack, new TaskGoodsStackResp { Result = ok ? 0 : ErrorCodes.TaskRequirements });
-    }
-
     private static bool ContextMapMatches(GameSession s, TaskDef def)
     {
         var maps = def.Track.Where(a => a.Length >= 3 && a[0] is "142" or "143")
