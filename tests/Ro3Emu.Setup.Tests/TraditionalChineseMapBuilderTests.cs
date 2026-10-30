@@ -23,6 +23,25 @@ public sealed class TraditionalChineseMapBuilderTests : IDisposable
     }
 
     [Fact]
+    public void InsertKeyKeepsItsNameWithoutChangingCardActionSids()
+    {
+        string simplified = Table("cn", new() { [1] = "插卡", [2] = "鑲嵌" });
+        string english = Table("en", new() { [1] = "Insert", [2] = "Insert" });
+        string traditional = Table("tw", new() { [1] = "插卡", [2] = "鑲嵌" });
+        using var stream = typeof(ClientPatcher).Assembly.GetManifestResourceStream("localization/zh_tw_overrides.tsv")
+            ?? throw new InvalidDataException("缺少隨附的台灣用語覆寫。");
+        using var reader = new StreamReader(stream);
+        string keyOverride = reader.ReadToEnd().Split('\n')
+            .Single(line => line.StartsWith("text\tInsert\t", StringComparison.Ordinal));
+        string pack = Path.Combine(_root, "pack");
+        TraditionalChineseMapBuilder.Build(simplified, english, traditional, pack, [keyOverride]);
+        Assert.Contains("\nInsert\tInsert\n", File.ReadAllText(Path.Combine(pack, TraditionalChineseMapBuilder.TextFile)));
+        string sids = File.ReadAllText(Path.Combine(pack, TraditionalChineseMapBuilder.SidFile));
+        Assert.Contains("\n1\t插卡\n", sids);
+        Assert.Contains("\n2\t鑲嵌\n", sids);
+    }
+
+    [Fact]
     public void RejectsUnsafeFormatPairAndPreservesEscapedData()
     {
         string simplified = Table("cn", new() { [1] = "\u57ce\u5e02 ${1}", [2] = "\t說明\n第\\二行" });

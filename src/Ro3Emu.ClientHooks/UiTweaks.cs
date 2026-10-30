@@ -42,6 +42,7 @@ namespace Ro3Emu.ClientHooks
                     if (window != null && Done.Add(window.GetInstanceID())) WidenStallName(window.transform);
                 }
                 if (Done.Count > 64) Done.Clear();
+                NativeVersionLabel.Tick();
                 QuitButton.Tick();
                 LuaPatches.Tick();
                 PassChallenges.Tick();

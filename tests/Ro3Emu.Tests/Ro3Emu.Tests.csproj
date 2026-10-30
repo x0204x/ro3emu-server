@@ -26,6 +26,7 @@
     <Compile Include="..\..\src\Ro3Emu.ClientHooks\VoiceOffHint.cs" Link="ClientHooks\VoiceOffHint.cs" />
     <Compile Include="..\..\src\Ro3Emu.ClientHooks\TitleModalGeometry.cs" Link="ClientHooks\TitleModalGeometry.cs" />
     <Compile Include="..\..\src\Ro3Emu.ClientHooks\ClientLabelText.cs" Link="ClientHooks\ClientLabelText.cs" />
+    <Compile Include="..\..\src\Ro3Emu.ClientHooks\SeasonCuisineVisibility.cs" Link="ClientHooks\SeasonCuisineVisibility.cs" />
   </ItemGroup>
 
   <ItemGroup>

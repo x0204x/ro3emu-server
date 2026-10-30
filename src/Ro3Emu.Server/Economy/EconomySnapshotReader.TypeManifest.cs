@@ -86,7 +86,8 @@ public static partial class EconomySnapshotReader
     // 酒館 role.tavern 只保存每日期間、有效停留毫秒、游標與房間租約；tavern.state
     // 只保存房間識別、管理者、成員、分類與時間。逐欄審查均不持有資產或待領獎勵，
     // 實際獎勵仍由原任務交易入帳；兩個 DTO 圖均納入格式雜湊，新增欄位仍會攔下。
-    public const string ExpectedFormatManifestHash = "56A51B9E51A937F6F3A911E160A4E3EE85B29C709179E0FF8847598CD5D81DEF";
+    // LifeJob.RuntimeState.FoodSeasonId 是料理所屬賽季身分，不是資產或待領獎勵；舊檔缺欄時沿用 0 的相容綁定。
+    public const string ExpectedFormatManifestHash = "0347C4E808B919D71B177DB604EBEECD57B6E41002975505AC4D34A92F4A80A3";
     public static string FormatManifestHash => State.FormatManifestHash;
 
     private sealed partial class State

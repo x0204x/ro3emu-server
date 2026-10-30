@@ -40,6 +40,8 @@ public sealed partial class LifeJobService
         public long EnergySpent { get; set; }
         public long PotionDay { get; set; }
         public int FoodBook { get; set; }
+        // 舊存檔缺值為 0：首次綁定當季時保留已食用次數，不推測舊賽季身分。
+        public long FoodSeasonId { get; set; }
     }
 
     public LifeJobService(GameData data, CharacterService character, FunctionService functions, SeasonService seasons,
@@ -69,7 +71,8 @@ public sealed partial class LifeJobService
         { Id = VigorId, Count = Param("VitalityInitCount", 500), LimitCount = RestrictMax(VigorId), LastRecoverTime = NowSeconds };
         if (!restriction.RestrictCount.ContainsKey(VigorUsesId)) restriction.RestrictCount[VigorUsesId] = new RestrictInfo
         { Id = VigorUsesId, Count = RestrictMax(VigorUsesId), LimitCount = RestrictMax(VigorUsesId) };
-        Reconcile(life, restriction, runtime);
+        // RoleSystems 此時尚未載入本次登入的 SeasonState，明確使用全域新賽季。
+        Reconcile(life, restriction, runtime, _seasons.SeasonId, _seasons.PlayBook);
         EnsureJobRows(life);
         NormalizeTitles(life);
         UnlockEarnedCollections(s, life);
@@ -119,9 +122,21 @@ public sealed partial class LifeJobService
         ? (long)(GameData.Number(v) ?? fallback) : fallback;
     private long RestrictMax(int id) => _data.Row("RestrictConfig", id) is { } r ? GameData.Int(r, "_iMaxRestrictNum") : 0;
     private static RuntimeState Copy(RuntimeState r) => new()
-    { EnergyDay = r.EnergyDay, EnergySpent = r.EnergySpent, PotionDay = r.PotionDay, FoodBook = r.FoodBook };
+    {
+        EnergyDay = r.EnergyDay, EnergySpent = r.EnergySpent, PotionDay = r.PotionDay,
+        FoodBook = r.FoodBook, FoodSeasonId = r.FoodSeasonId
+    };
 
-    private void Reconcile(DBLifeJobInfo life, DBRestrictInfo restrict, RuntimeState runtime)
+    private (long Season, int Book) FoodIdentity(GameSession s) => s.SeasonState is { } captured
+        ? (captured.SeasonId, (int)captured.PlayBookId) : (_seasons.SeasonId, _seasons.PlayBook);
+
+    private void Reconcile(GameSession s, DBLifeJobInfo life, DBRestrictInfo restrict, RuntimeState runtime)
+    {
+        var identity = FoodIdentity(s);
+        Reconcile(life, restrict, runtime, identity.Season, identity.Book);
+    }
+
+    private void Reconcile(DBLifeJobInfo life, DBRestrictInfo restrict, RuntimeState runtime, long season, int book)
     {
         if (runtime.EnergyDay != Today) { runtime.EnergyDay = Today; runtime.EnergySpent = 0; }
         if (runtime.PotionDay != Today)
@@ -130,13 +145,15 @@ public sealed partial class LifeJobService
             if (restrict.RestrictCount.TryGetValue(VigorUsesId, out var uses))
             { uses.Count = RestrictMax(VigorUsesId); uses.LastRecoverTime = NowSeconds; }
         }
-        if (runtime.FoodBook != 0 && runtime.FoodBook != _seasons.PlayBook)
+        if (runtime.FoodBook != 0 && runtime.FoodBook != book
+            || runtime.FoodSeasonId != 0 && runtime.FoodSeasonId != season)
         {
             life.MagicFoodTimes.Clear();
-            // Localization_en[110112]: life titles and their skills reset when the season changes.
+            // Localization_en[110112]：換季重置生活職業頭銜與技能；同 PlayBook 的新賽季也適用。
             foreach (var job in life.LifeJobInfoMap.Values.Where(j => j.JobLevel > 0)) job.TitleInfo = new LifeJobTitleInfo { JobLevel = 1 };
         }
-        runtime.FoodBook = _seasons.PlayBook;
+        runtime.FoodBook = book;
+        runtime.FoodSeasonId = season;
     }
 
     /// <summary>Restrictions another service keeps (the Rift's RestrictConfig 1020): shown in the same 5018 map, never
@@ -174,8 +191,9 @@ public sealed partial class LifeJobService
         if (full.LifeJobUnLockDrop.Count == 0) full.LifeJobUnLockDrop[0] = new() { Del = true };
     }
 
-    private bool Current(JsonElement row) => Numbers(row, "_kMultiverseArray") is var books
-        && (books.Length == 0 || books.Contains(0) || books.Contains(_seasons.PlayBook));
+    private bool Current(JsonElement row) => CurrentForBook(row, _seasons.PlayBook);
+    private static bool CurrentForBook(JsonElement row, int book) => Numbers(row, "_kMultiverseArray") is var books
+        && (books.Length == 0 || books.Contains(0) || books.Contains(book));
     private static long[] Numbers(JsonElement row, string field) => row.TryGetProperty(field, out var a) && a.ValueKind == JsonValueKind.Array
         ? a.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).ToArray() : [];
     private static List<(int Entry, long Count)> Costs(JsonElement row, string field, int count = 1) =>
@@ -411,10 +429,10 @@ public sealed partial class LifeJobService
                 next.GeneralCollectionTimesByMap[sceneEntry] = map = new GeneralCollectionTimesByMap();
             map.Times[pointId] = checked(map.Times.GetValueOrDefault(pointId) + 1);
         }
-        SpendEnergy(next, restrict, runtime, RollFreeVigor(s, row, false) ? 0 : VigorCost(s, row, false));
+        SpendEnergy(s, next, restrict, runtime, RollFreeVigor(s, row, false) ? 0 : VigorCost(s, row, false));
         RecoverZeroVigor(s, restrict);
         AddExp(s, next, GameData.Int(row, "_iJobId"), OperationExp(s, row, false));
-        Reconcile(next, restrict, runtime);
+        Reconcile(s, next, restrict, runtime);
         NormalizeTitles(next);
         restrict.RestrictCount[VigorId].LimitCount = VigorLimit(s, next);
         return (0, new GatherResolution
@@ -508,7 +526,7 @@ public sealed partial class LifeJobService
                         var operationCosts = Costs(row, "_kcost");
                         ApplySkillRewards(s, next, row, true, output, operationCosts);
                         actualCosts.AddRange(operationCosts);
-                        SpendEnergy(next, restrict, runtime, RollFreeVigor(s, row, true) ? 0 : VigorCost(s, row, true));
+                        SpendEnergy(s, next, restrict, runtime, RollFreeVigor(s, row, true) ? 0 : VigorCost(s, row, true));
                         RecoverZeroVigor(s, restrict);
                         grants.AddRange(output);
                         if (!outcomes.TryGetValue(tuple.Type, out var list)) outcomes[tuple.Type] = list = [];
@@ -565,9 +583,9 @@ public sealed partial class LifeJobService
         throw new AwardResolutionException("LifeFormula output weights overflow");
     }
 
-    private void SpendEnergy(DBLifeJobInfo next, DBRestrictInfo restrict, RuntimeState runtime, long amount)
+    private void SpendEnergy(GameSession s, DBLifeJobInfo next, DBRestrictInfo restrict, RuntimeState runtime, long amount)
     {
-        Reconcile(next, restrict, runtime);
+        Reconcile(s, next, restrict, runtime);
         var energy = restrict.RestrictCount[VigorId];
         energy.Count -= amount; energy.HistoryUseCount = checked(energy.HistoryUseCount + amount);
         runtime.EnergySpent = checked(runtime.EnergySpent + amount);
@@ -605,7 +623,7 @@ public sealed partial class LifeJobService
         if (grants.Any(g => g.ExpireTimeStamp != 0)) throw new AwardResolutionException("Life award requires expiring grant support");
         if (rewardSettlement == null)
         {
-            Reconcile(life, restrict, runtime);
+            Reconcile(s, life, restrict, runtime);
             NormalizeTitles(life);
             restrict.RestrictCount[VigorId].LimitCount = VigorLimit(s, life);
         }

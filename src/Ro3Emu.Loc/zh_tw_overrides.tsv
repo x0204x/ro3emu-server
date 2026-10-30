@@ -1,6 +1,8 @@
 # scope	key	value；Taiwan 用語。SID 用於保留同字異義的介面語意。
 text	Backpack	背包
 text	Skills	技能
+# 鍵盤名稱保留英文；插卡等操作仍依自己的 SID 使用原生繁中。
+text	Insert	Insert
 text	Trade	交易所
 text	Title	頭銜
 text	Coming Soon	敬請期待
