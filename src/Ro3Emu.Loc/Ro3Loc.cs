@@ -446,8 +446,11 @@ namespace Ro3Emu.Loc
                     last = tokens[i].Index + tokens[i].Length;
                 }
                 pattern.Append(Regex.Escape(zh.Substring(last))).Append('$');
-                return new Template { Pattern = new Regex(pattern.ToString(), RegexOptions.Singleline | RegexOptions.CultureInvariant),
-                    Prefix = zh.Substring(0, tokens[0].Index), Suffix = zh.Substring(last), _zhTokens = names, _en = en };
+                return new Template
+                {
+                    Pattern = new Regex(pattern.ToString(), RegexOptions.Singleline | RegexOptions.CultureInvariant),
+                    Prefix = zh.Substring(0, tokens[0].Index), Suffix = zh.Substring(last), _zhTokens = names, _en = en
+                };
             }
 
             public string Apply(Match m)
