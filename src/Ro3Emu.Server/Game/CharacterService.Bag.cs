@@ -43,17 +43,21 @@ public sealed partial class CharacterService
     }
 
     /// <summary>31323: uses one item from a stack (the client plays the item's own effect list).</summary>
-    public Task UseItemAsync(GameSession session, ItemUseReq req) => UseItemCoreAsync(session, req, reply: true);
+    public async Task UseItemAsync(GameSession session, ItemUseReq req)
+    {
+        var outcome = await UseItemCoreAsync(session, req, reply: true);
+        if (outcome.AfterReply != null) await outcome.AfterReply();
+    }
 
     /// <summary>BuffService supplies live item-use restrictions to every use path, including shortcuts.</summary>
     public Func<GameSession, bool>? IsItemUseForbidden { get; set; }
 
-    private async Task<int> UseItemCoreAsync(GameSession session, ItemUseReq req, bool reply)
+    private async Task<ItemUseOutcome> UseItemCoreAsync(GameSession session, ItemUseReq req, bool reply)
     {
         if (session.Role == null)
         {
             if (reply) await session.SendGameAsync(ItemUse, new ItemUseResp { Result = ErrorCodes.FeatureUnavailable, ItemGuid = req.ItemGuid });
-            return ErrorCodes.FeatureUnavailable;
+            return new(ErrorCodes.FeatureUnavailable);
         }
         using var ownerScope = await EnterItemUseAsync(session, req);
         using var activityGate = await LockTreasureUseAsync(session, req);
@@ -75,13 +79,21 @@ public sealed partial class CharacterService
             : item.BindExpire > 0 && item.BindExpire <= DateTimeOffset.UtcNow.ToUnixTimeSeconds() ? ErrorCodes.ItemMissing
             : session.Dead ? ErrorCodes.UseWhileDead
             : IsItemUseForbidden?.Invoke(session) == true ? ErrorCodes.ItemUseForbidden
-            : session.ItemCds.GetValueOrDefault(item.Entry) > now || group > 0 && session.ItemGroupCds.GetValueOrDefault(group) > now ? ErrItemInCd
             : 0;
+        if (result == 0 && IsTreasureMapUse(row!.Value) && ItemRuleError(session, row.Value, item!.Entry, count) == 0
+            && ResumeTreasureMap?.Invoke(session, req) is { } resume)
+        {
+            // G LC_DAL_Item._processItemUse 在 ItemId=0 時跳過 CD 與效果；只回覆恢復，不假稱再用一張。
+            if (reply) await session.SendGameAsync(ItemUse, new ItemUseResp { ItemGuid = req.ItemGuid });
+            return new(0, resume);
+        }
+        if (result == 0 && (session.ItemCds.GetValueOrDefault(item!.Entry) > now
+            || group > 0 && session.ItemGroupCds.GetValueOrDefault(group) > now)) result = ErrItemInCd;
         if (result == 0) result = ItemRuleError(session, row!.Value, item!.Entry, count);
         if (result != 0)
         {
             if (reply) await session.SendGameAsync(ItemUse, new ItemUseResp { Result = result, ItemGuid = req.ItemGuid });
-            return result;
+            return new(result);
         }
         int entry = item!.Entry;
         // Cooldowns: ItemConfig._iCD for the item, _kCDGroup [group, shareMs] for its group; absolute end times.
@@ -107,6 +119,7 @@ public sealed partial class CharacterService
             if (shareCd > 0) session.ItemGroupCds[group] = shareCd;
         }
         int? specialized = null;
+        Func<Task>? treasureNotice = null;
         if (SpecialItemUse.Count > 0 || LifeItemUse != null)
         {
             var lifeUse = new LifeItemExchangeScope(session, PersistCooldown, PublishCooldown);
@@ -125,13 +138,17 @@ public sealed partial class CharacterService
             finally { lifeUse.Active = false; LifeItemExchange.Value = previous; }
         }
         if (specialized == null && IsTreasureMapUse(row.Value))
-            specialized = StartTreasureMap == null ? ErrorCodes.FeatureUnavailable
+        {
+            var treasure = StartTreasureMap == null ? new ItemUseOutcome(ErrorCodes.FeatureUnavailable)
                 : await StartTreasureMap(session, req, PersistCooldown, PublishCooldown);
+            specialized = treasure.Result;
+            treasureNotice = treasure.AfterReply;
+        }
         result = specialized ?? (CanApplyUseEffects(row.Value) ? WingError(session, row.Value, req) : ErrorCodes.FeatureUnavailable);
         if (result != 0)
         {
             if (reply) await session.SendGameAsync(ItemUse, new ItemUseResp { Result = result, ItemGuid = req.ItemGuid });
-            return result;
+            return new(result);
         }
         if (specialized == null)
         {
@@ -156,7 +173,7 @@ public sealed partial class CharacterService
         else await AfterItemActionAsync(session);
         foreach (var handler in ItemUsed) handler(session, entry, count);
         foreach (var handler in StateChanged) handler(session);
-        return 0;
+        return new(0, treasureNotice);
     }
 
     private const int ErrItemInCd = 161;

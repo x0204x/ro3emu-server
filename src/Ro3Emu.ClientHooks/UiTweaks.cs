@@ -45,6 +45,7 @@ namespace Ro3Emu.ClientHooks
                 NativeVersionLabel.Tick();
                 QuitButton.Tick();
                 LuaPatches.Tick();
+                TreasureHuntTracker.Tick();
                 PassChallenges.Tick();
                 PassButton.Tick();
                 TitleButton.Tick();

@@ -26,30 +26,32 @@ public sealed partial class ActivityRuntimeState
 
 public sealed partial class NewActivityService
 {
+    private const uint TreasureSync = 5064;
+
     /// <summary>
     /// ItemConfig 1112001/1112002 action 304, called with ActivityGate and CharacterService's item-use lock held.
     /// LC_DAL_SeasonTreasure consumes 5064.pointId and LC_System_SeasonTreasure starts the hunt.
     /// LC_System_SeasonTreasure.StartHunt/_doStartHunt 只在同圖啟動，GetAreaCenter 也只查目前地圖。
     /// 在目前公開地圖的有效點中選取，無點時以 178 拒絕且保留道具；選點與拒絕碼為 (inferred)。
     /// </summary>
-    private async Task<int> StartTreasureMapAsync(GameSession session, ItemUseReq req,
+    private async Task<CharacterService.ItemUseOutcome> StartTreasureMapAsync(GameSession session, ItemUseReq req,
         Action<Ro3Emu.Server.Accounts.Persistence.RoleItemPlanBuilder> persistCooldown, Action publishCooldown)
     {
-        if (ActivityError(session, 106, 6) is var error and not 0) return error;
-        if (req.ItemCount != 1) return ErrorCodes.Parameter;
+        if (ActivityError(session, 106, 6) is var error and not 0) return new(error);
+        if (req.ItemCount != 1) return new(ErrorCodes.Parameter);
         var item = session.Items.FirstOrDefault(i => i.Guid == req.ItemGuid && i.Grid == 0);
         if (item == null || item.Entry is not (1112001 or 1112002) || item.Stack < 1 || item.IsLocked)
-            return ErrorCodes.ItemMissing;
+            return new(ErrorCodes.ItemMissing);
         var cursor = session.ActivityRuntime.AdventureTreasure;
         if ((cursor.PointId != 0 && Now < cursor.Began + 10800) || cursor.PendingMonsterAward != 0)
-            return ErrorCodes.TaskExists;
-        if (session.RuntimeMap.Kind != RuntimeMapKind.PublicLine) return ErrorCodes.ItemUseAreaForbidden;
+            return new(ErrorCodes.ItemUseForbidden); // 恢復分支以外的防線，不使用需要任務名稱的 101 模板。
+        if (session.RuntimeMap.Kind != RuntimeMapKind.PublicLine) return new(ErrorCodes.ItemUseAreaForbidden);
         var local = TreasureHuntMapPointConfig.All(_data)
             .Where(p => p.Id > 0 && p.MapId == session.SceneEntry
                 && (item.Entry == 1112002 ? p.Id >= 2000 : p.Id < 2000)).ToArray();
-        if (local.Length == 0) return ErrorCodes.ItemUseAreaForbidden;
+        if (local.Length == 0) return new(ErrorCodes.ItemUseAreaForbidden);
         var points = local.Where(p => _scene.TreasurePoint(p.Id) != null).OrderBy(p => p.Id).ToArray();
-        if (points.Length == 0) return ErrorCodes.FeatureUnavailable;
+        if (points.Length == 0) return new(ErrorCodes.FeatureUnavailable);
         var chosen = points[Random.Shared.Next(points.Length)];
         var runtime = CloneRuntime(session);
         runtime.AdventureTreasure = new AdventureTreasureCursor
@@ -69,11 +71,51 @@ public sealed partial class NewActivityService
                     [(item.Entry, 1L)], [], new { ItemGuid = item.Guid, Hunt = runtime.AdventureTreasure }));
             },
             committed: () => { session.ActivityRuntime = runtime; publishCooldown(); });
-        if (consumed == null) return ErrorCodes.ItemsShort;
-        await SyncAsync(session);
-        await _scene.SpawnTreasureNpcAsync(session);
-        return 0;
+        return consumed == null ? new(ErrorCodes.ItemsShort) : new(0, TreasureProjectionAfterReply(session, runtime.AdventureTreasure));
     }
+
+    private Func<Task>? PlanTreasureMapResume(GameSession session, ItemUseReq req)
+    {
+        if (req.ItemCount != 1 || session.SceneLoading || session.RuntimeMap.Kind != RuntimeMapKind.PublicLine
+            || ActivityError(session, 106, 6) != 0) return null;
+        var item = session.Items.FirstOrDefault(i => i.Guid == req.ItemGuid && i.Grid == 0);
+        if (item == null || item.Entry is not (1112001 or 1112002) || item.Stack < 1 || item.IsLocked) return null;
+        var cursor = session.ActivityRuntime.AdventureTreasure;
+        return cursor.PendingMonsterAward != 0 || cursor.PointId != 0 && Now < cursor.Began + 10800
+            ? TreasureProjectionAfterReply(session, cursor) : null;
+    }
+
+    /// <summary>同一 point 的 FULL 會重跑 G 的 _processPoint；保留原始期限／目標，不寫 DB 或延長尋寶。</summary>
+    private Func<Task> TreasureProjectionAfterReply(GameSession session, AdventureTreasureCursor cursor)
+    {
+        var lease = _deadlines.Capture(session);
+        long roleId = session.Role!.Id;
+        var identity = TreasureIdentity(cursor);
+        return async () =>
+        {
+            if (!_deadlines.IsCurrent(session, lease)) return;
+            using var scope = session.Owners is { } owners
+                ? await owners.EnterWithGateAsync("treasure projection", session.ActivityGate,
+                    [Ownership.ReservationKey.Role(roleId)]) : null;
+            if (scope == null) await session.ActivityGate.WaitAsync();
+            try
+            {
+                var current = session.ActivityRuntime.AdventureTreasure;
+                if (!_deadlines.IsCurrent(session, lease) || session.SceneLoading
+                    || session.RuntimeMap.Kind != RuntimeMapKind.PublicLine || TreasureIdentity(current) != identity
+                    || current.PointId != 0 && Now >= current.Began + 10800) return;
+                session.Synced.Remove(TreasureSync);
+                await CharacterService.SyncAsync(session, TreasureSync, new DBTreasureInfo
+                { PointId = current.PointId, GroupId = current.GroupId, ItemId = current.ItemId, EventId = current.EventId });
+                if (_deadlines.IsCurrent(session, lease)) await _scene.SpawnTreasureNpcAsync(session);
+            }
+            finally { session.ActivityGate.Release(); }
+        };
+    }
+
+    private static (long, long, long, long, long, long, long, int) TreasureIdentity(AdventureTreasureCursor cursor) =>
+        (cursor.PointId, cursor.GroupId, cursor.ItemId, cursor.EventId, cursor.Began,
+            cursor.PendingMonsterUid, cursor.PendingMonsterAward, cursor.PendingMonsterId);
 
     private async Task SyncTreasureAsync(GameSession session, DeadlineLease lease)
     {
@@ -93,7 +135,7 @@ public sealed partial class NewActivityService
             await _scene.RemoveTreasureNpcAsync(session);
             if (!_deadlines.IsCurrent(session, lease)) return;
         }
-        await CharacterService.SyncAsync(session, 5064, new DBTreasureInfo
+        await CharacterService.SyncAsync(session, TreasureSync, new DBTreasureInfo
         {
             PointId = c.PointId, GroupId = c.GroupId, ItemId = c.ItemId, EventId = c.EventId,
         });

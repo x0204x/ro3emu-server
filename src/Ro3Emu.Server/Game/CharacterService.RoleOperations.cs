@@ -357,7 +357,13 @@ public sealed partial class CharacterService
         int result = req.SlotIndex is < 0 or >= ShortcutSlotLimit ? ErrorCodes.Parameter : 0;
         long guid = session.BagState.Info.ShortcutBarInfos.FirstOrDefault(i => i.SlotIndex == req.SlotIndex)?.ItemGuid ?? 0;
         if (result == 0 && guid == 0) result = ErrorCodes.ItemMissing;
-        if (result == 0) result = await UseItemCoreAsync(session, new ItemUseReq { ItemGuid = guid, ItemCount = 1 }, reply: false);
+        ItemUseOutcome? outcome = null;
+        if (result == 0)
+        {
+            outcome = await UseItemCoreAsync(session, new ItemUseReq { ItemGuid = guid, ItemCount = 1 }, reply: false);
+            result = outcome.Result;
+        }
         await session.SendGameAsync(ShortcutBarUse, new ShortcutBarUseRes { Result = result, SlotIndex = req.SlotIndex });
+        if (outcome?.AfterReply != null) await outcome.AfterReply();
     }
 }

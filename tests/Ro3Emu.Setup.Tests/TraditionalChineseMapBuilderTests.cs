@@ -42,6 +42,23 @@ public sealed class TraditionalChineseMapBuilderTests : IDisposable
     }
 
     [Fact]
+    public void TreasureTrackerLabelsAreIncludedInThePackagedTraditionalOverrides()
+    {
+        string simplified = Table("cn", new() { [1] = "示例項目" });
+        string english = Table("en", new() { [1] = "Example item" });
+        string traditional = Table("tw", new() { [1] = "範例項目" });
+        using var stream = typeof(ClientPatcher).Assembly.GetManifestResourceStream("localization/zh_tw_overrides.tsv")
+            ?? throw new InvalidDataException("缺少隨附的台灣用語覆寫。");
+        using var reader = new StreamReader(stream);
+        string pack = Path.Combine(_root, "pack");
+        TraditionalChineseMapBuilder.Build(simplified, english, traditional, pack, [reader.ReadToEnd()]);
+        string text = File.ReadAllText(Path.Combine(pack, TraditionalChineseMapBuilder.TextFile));
+        Assert.Contains("\nTreasure hunt\t藏寶圖尋寶\n", text);
+        Assert.Contains("\nClick to resume treasure hunting\t點擊恢復尋寶導引\n", text);
+        Assert.Contains("\nGo to this map to resume treasure hunting\t前往此地圖後繼續尋寶\n", text);
+    }
+
+    [Fact]
     public void RejectsUnsafeFormatPairAndPreservesEscapedData()
     {
         string simplified = Table("cn", new() { [1] = "\u57ce\u5e02 ${1}", [2] = "\t說明\n第\\二行" });

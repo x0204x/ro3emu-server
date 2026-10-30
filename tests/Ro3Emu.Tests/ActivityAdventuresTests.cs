@@ -846,10 +846,14 @@ public sealed partial class ActivityAdventuresTests : IAsyncLifetime
             Assert.Equal(cooldown.ItemCd, DBItemsInfo.Parser.ParseFrom(roles.LoadBagState(session.Role!.Id)!).ItemCds.Data[1112001]);
             var runtime = System.Text.Json.JsonSerializer.Deserialize<ActivityRuntimeState>(roles.LoadActivityRuntime(session.Role.Id)!)!;
             Assert.Equal(session.ActivityRuntime.AdventureTreasure.PointId, runtime.AdventureTreasure.PointId);
+            var started = await Next(alice, 5064, DBTreasureInfoIncrement.Parser, i => i.PointId > 0);
 
             await alice.SendGameAsync(CharacterService.ShortcutBarUse, new ShortcutBarUseReq { SlotIndex = 0 });
-            Assert.Equal(161, (await Next(alice, CharacterService.ShortcutBarUse, ShortcutBarUseRes.Parser)).Result);
+            Assert.Equal(0, (await Next(alice, CharacterService.ShortcutBarUse, ShortcutBarUseRes.Parser)).Result);
+            await Next(alice, 5064, DBTreasureInfoIncrement.Parser, i => i.SyncAllMark && i.PointId == started.PointId);
             Assert.Equal(1, session.Items.Single(i => i.Guid == guid).Stack);
+            Assert.Equal(cooldown.ItemCd, session.ItemCds[1112001]);
+            Assert.Equal(directReplies, alice.Inbox.Snapshot().Count(p => p.IsGame(CharacterService.ItemUse)));
         }
         finally
         {

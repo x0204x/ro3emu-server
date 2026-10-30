@@ -70,6 +70,7 @@ public sealed partial class NewActivityService
         dungeons.CanStageJourneyVictory = session => ActivityError(session, 112, 15) == 0;
         InitializeAdventureServices(accounts, items);
         character.StartTreasureMap = StartTreasureMapAsync;
+        character.ResumeTreasureMap = PlanTreasureMapResume;
         combat.Killed.Add(OnTreasureMonsterKilledAsync);
         scene.TreasureComplete = CompleteTreasureHuntAsync;
         scene.Loaded.Add(OnTreasureSceneLoadedAsync);
