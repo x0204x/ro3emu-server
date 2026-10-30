@@ -10,7 +10,7 @@
     <AssemblyName>RO3Launcher</AssemblyName>
     <RootNamespace>Ro3Emu.Launcher</RootNamespace>
     <!-- 玩家自動更新只接受更高版本，避免同版號的新檔案被略過。 -->
-    <Version>2.0.11</Version>
+    <Version>2.0.12</Version>
     <Title>Ragnarok 3 Launcher</Title>
     <AssemblyTitle>Ragnarok 3 Launcher</AssemblyTitle>
     <Description>Ragnarok 3 Launcher</Description>

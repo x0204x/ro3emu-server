@@ -20,6 +20,15 @@ public sealed class GameData(IOptions<ServerOptions> options, ILogger<GameData> 
     private volatile Dictionary<long, string>? _texts;
     private volatile Dictionary<long, string>? _clientTexts;
     private volatile FrozenDictionary<string, Dictionary<string, JsonElement>>? _frozen;
+    private readonly string[] _clientTextTables = ClientTextTables(options.Value.ClientTextLanguage);
+
+    private static string[] ClientTextTables(string language) => language switch
+    {
+        "zh_TW" => ["Localization_zh_TW", "Localization_zh_CN"],
+        "zh_CN" => ["Localization_zh_CN"],
+        "en" => [],
+        _ => throw new ArgumentException("ClientTextLanguage 僅支援 zh_TW、zh_CN 或 en。", nameof(language)),
+    };
 
     private string Root => options.Value.GameDataDir ?? options.Value.DataDir;
 
@@ -173,12 +182,17 @@ public sealed class GameData(IOptions<ServerOptions> options, ILogger<GameData> 
                 if (texts == null)
                 {
                     texts = new();
-                    foreach (string table in new[] { "Localization_zh_TW", "Localization_zh_CN" })
+                    foreach (string table in _clientTextTables)
                     {
                         foreach (var (_, row) in Table(table))
                         {
                             var localized = new Config.LocalizationEn(row);
-                            texts.TryAdd(localized.Id, localized.Des);
+                            // G Language.lua 的 fallback：空白、純 SID 與 None 不是可用的譯文。
+                            string value = localized.Des;
+                            if (!string.IsNullOrWhiteSpace(value) && value != "None" &&
+                                value != localized.Id.ToString(System.Globalization.CultureInfo.InvariantCulture) &&
+                                !value.StartsWith("Not Find Key", StringComparison.Ordinal))
+                                texts.TryAdd(localized.Id, value);
                         }
                     }
                     _clientTexts = texts;

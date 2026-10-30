@@ -37,6 +37,8 @@ public sealed class LocMapTests : IDisposable
         var lines = File.ReadAllLines(map);
         Assert.StartsWith(ClientPatcher.GeneratedLocHeader, lines[0]); // PatchClient replaces only a map it generated
         Assert.Contains("利刃重击\tBlade Smash", lines); // SkillConfig 1509901 _iName 10110201064
+        foreach (string name in new[] { TraditionalChineseMapBuilder.TextFile, TraditionalChineseMapBuilder.SidFile })
+            Assert.Equal(TraditionalChineseMapBuilder.Header, File.ReadLines(Path.Combine(_dir, "data", name)).First());
         Assert.False(Directory.Exists(Path.Combine(_dir, "data", ".locmap")));
     }
 }

@@ -42,10 +42,13 @@ namespace Ro3Emu.Server.Game;
 /// CheckTerritoryWarzoneTaskPointDes): the faction sub-tasks (type 25) name their points, "Collect Magic Crystals +@{1}
 /// Points" (_iName [text, "1"]); each delivered sub-task adds them (inferred: no other point table is exported).</item>
 /// </list>
-/// No producer: 103012 CheckMINIJoinCnt (no MINI event in this client), 103017 CheckOnHookAward (43405 refuses, no offline
-/// reward formula), 103018 CheckGuildPrayJoinCnt (only GUILD_PRAY_SHOW exists), 101008 CheckGetPetFloorAward (the tower
-/// sweep pays nothing). 103048 GetOnePieceNpcCount needs none: its quest 1400010 is built by the client itself from
-/// HiddenTreasureMapInfo (LC_TaskHelper._getOtherClientTask), which TimedBattleService sends.
+/// 仍無可證的已提交事件來源：103012／103017／103018 對應的三筆成長任務文字標為預留。
+/// actual G 的 CheckMINIJoinCnt／CheckGuildPrayJoinCnt 只找到條件名稱註冊；MINI 小地圖分類不等於參加事件，
+/// Valhalla 的祈禱也不是公會祈禱。43405 有離線領獎請求，但客戶端沒有證明發獎公式或結算來源，故仍拒絕。
+/// 101008 不能以普通通關或首通領獎代替：掃蕩入口為 32804，PetFloorConfig 的每日獎勵目前全為零。
+/// 103048 則不需要一般任務 owner：1400010 由 LC_TaskHelper._getOtherClientTask 依 HiddenTreasureMapInfo
+/// 在客戶端建立，TimedBattleService 已提供該同步；不可為降低缺口數而另建可領獎的伺服器任務。
+/// 詳見 docs/research/remaining-quest-targets-evidence.md；未找到的來源是有界靜態調查結果，不宣稱原服不存在。
 /// </summary>
 public sealed partial class TaskService
 {

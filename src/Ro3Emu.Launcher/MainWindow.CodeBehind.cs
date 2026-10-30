@@ -25,6 +25,9 @@ public partial class MainWindow : Window
     readonly ObservableCollection<NoticeCard> _notices = new();
     readonly List<BannerCard> _banners = new();
     readonly List<UIElement> _particles = new();
+    readonly LauncherVisualState _visualState = new();
+    readonly LauncherImageCache<BitmapImage> _bannerImages = new(3);
+    readonly Dictionary<string, BitmapImage> _localImages = new(StringComparer.Ordinal);
     string _phase = "checking";
     string _launcherVersion = "";
     string? _installedVersion;
@@ -50,9 +53,12 @@ public partial class MainWindow : Window
         ConfigureExternalLink(FacebookLink, config.FacebookUrl, "Facebook");
         ConfigureExternalLink(YoutubeLink, config.YoutubeUrl, "YouTube");
         _controller = new LauncherController(config, exePath, Post, PickFolder,
-            () => WindowState = WindowState.Minimized,
+            CloseAfterSuccessfulLaunch,
             RestoreAndActivate);
         SourceInitialized += (_, _) => RoundCorners();
+        Activated += (_, _) => RefreshMotion();
+        Deactivated += (_, _) => RefreshMotion();
+        IsVisibleChanged += (_, _) => RefreshMotion();
         Loaded += async (_, _) =>
         {
             ((Storyboard)Resources["EntranceStoryboard"]).Begin(this);
@@ -62,8 +68,7 @@ public partial class MainWindow : Window
         };
         Closing += (_, _) =>
         {
-            _bannerTimer?.Stop();
-            _noticesClock?.Controller?.Stop();
+            SetMotionEnabled(false);
             _controller.Dispose();
         };
     }
@@ -131,6 +136,7 @@ public partial class MainWindow : Window
         ProgressDetails.Visibility = _busy ? Visibility.Visible : Visibility.Collapsed;
         RenderPhase();
         RenderVersions();
+        RefreshMotion();
     }
 
     void ApplyProgress(JsonElement root)
@@ -221,7 +227,7 @@ public partial class MainWindow : Window
             "maintenance" => ("維護中", false),
             "repair" => ("修復遊戲", true),
             "ready" => ("開始遊戲", true),
-            "running" when _activeGames == 1 => ("啟動第二個遊戲", true),
+            "running" when _activeGames < GameProcessState.Capacity && _installedVersion is not null => ($"啟動第 {_activeGames + 1} 個遊戲", true),
             "running" => ($"遊戲執行中（{_activeGames}/{GameProcessState.Capacity}）", false),
             "offline" => ("重新連線", true),
             "error" => ("再試一次", true),
@@ -243,9 +249,8 @@ public partial class MainWindow : Window
         bool primaryHasIcon = _phase is "install" or "update" or "repair" or "ready" or "running";
         PrimaryButtonIcon.Visibility = primaryHasIcon ? Visibility.Visible : Visibility.Collapsed;
         PrimaryButtonIcon.Margin = primaryHasIcon ? new Thickness(0, 0, 18, 0) : new Thickness(0);
-        PrimaryButtonIcon.Source = new BitmapImage(new Uri(
-            _phase is "ready" or "running" or "launching" ? "/Assets/ui/steps/step03.png" : "/Assets/ui/icons/download.png",
-            UriKind.Relative));
+        PrimaryButtonIcon.Source = LocalImage(
+            _phase is "ready" or "running" or "launching" ? "/Assets/ui/steps/step03.png" : "/Assets/ui/icons/download.png");
         PrimaryButton.IsEnabled = enabled;
         RepairButtonText.Text = "修復遊戲";
         RepairButton.IsEnabled = !_busy && _activeGames == 0 && _installedVersion is not null
@@ -376,7 +381,7 @@ public partial class MainWindow : Window
         bool visible = _banners.Count > 0;
         BannerHost.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
         if (!visible) return;
-        BannerImage.Source = new BitmapImage(_banners[_bannerIndex].Image);
+        BannerImage.Source = _bannerImages.GetOrCreate(_banners[_bannerIndex].Image, uri => new BitmapImage(uri));
         BannerLinkButton.Visibility = string.IsNullOrWhiteSpace(_banners[_bannerIndex].Link) ? Visibility.Collapsed : Visibility.Visible;
         BannerPrev.Visibility = BannerNext.Visibility = _banners.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
         BannerBullets.Children.Clear();
@@ -405,7 +410,7 @@ public partial class MainWindow : Window
     void ApplyBannerAutoplay()
     {
         _bannerTimer ??= CreateBannerTimer();
-        if (_banners.Count > 1 && MotionCheckBox.IsChecked == true) _bannerTimer.Start();
+        if (_banners.Count > 1 && _visualState.IsRunning) _bannerTimer.Start();
         else _bannerTimer.Stop();
     }
 
@@ -433,24 +438,46 @@ public partial class MainWindow : Window
         if (IsLoaded) SetMotionEnabled(MotionCheckBox.IsChecked == true);
     }
 
+    void RefreshMotion()
+    {
+        if (IsLoaded) SetMotionEnabled(MotionCheckBox.IsChecked == true);
+    }
+
     void SetMotionEnabled(bool enabled)
     {
+        MotionTransition transition = _visualState.Update(enabled, IsLoaded, IsVisible, IsActive,
+            WindowState == WindowState.Minimized, Pages.SelectedIndex == 0, _activeGames);
+        if (transition == MotionTransition.None) return;
+        enabled = transition == MotionTransition.Start;
         PoringTranslate.BeginAnimation(TranslateTransform.XProperty, null);
         PoringTranslate.BeginAnimation(TranslateTransform.YProperty, null);
-        foreach (UIElement particle in _particles) ParticleLayer.Children.Remove(particle);
+        foreach (UIElement particle in _particles)
+        {
+            // 移除時同時解除每個時鐘，不能只讓粒子離開視覺樹後繼續計算。
+            particle.BeginAnimation(OpacityProperty, null);
+            if (particle.RenderTransform is TransformGroup transforms)
+                foreach (Transform transform in transforms.Children)
+                    if (transform is TranslateTransform translate)
+                    {
+                        translate.BeginAnimation(TranslateTransform.XProperty, null);
+                        translate.BeginAnimation(TranslateTransform.YProperty, null);
+                    }
+                    else if (transform is RotateTransform rotate) rotate.BeginAnimation(RotateTransform.AngleProperty, null);
+            ParticleLayer.Children.Remove(particle);
+        }
         _particles.Clear();
         PoringTranslate.X = PoringTranslate.Y = 0;
         if (enabled)
         {
             var ease = new SineEase { EasingMode = EasingMode.EaseInOut };
-            PoringTranslate.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, -14, TimeSpan.FromSeconds(2.9))
+            PoringTranslate.BeginAnimation(TranslateTransform.YProperty, Decorative(new DoubleAnimation(0, -14, TimeSpan.FromSeconds(2.9))
             {
                 RepeatBehavior = RepeatBehavior.Forever, AutoReverse = true, EasingFunction = ease,
-            });
-            PoringTranslate.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(-12, 12, TimeSpan.FromSeconds(6.4))
+            }));
+            PoringTranslate.BeginAnimation(TranslateTransform.XProperty, Decorative(new DoubleAnimation(-12, 12, TimeSpan.FromSeconds(6.4))
             {
                 RepeatBehavior = RepeatBehavior.Forever, AutoReverse = true, EasingFunction = ease,
-            });
+            }));
             CreateAmbientParticles();
         }
         ApplyNoticesMotion();
@@ -467,7 +494,7 @@ public partial class MainWindow : Window
             bool rotates = source.StartsWith("leaf", StringComparison.Ordinal) || source.StartsWith("petal", StringComparison.Ordinal);
             var image = new Image
             {
-                Source = new BitmapImage(new Uri($"/Assets/ui/particles/{source}", UriKind.Relative)),
+                Source = LocalImage($"/Assets/ui/particles/{source}"),
                 Width = 14 + random.NextDouble() * 18,
                 Opacity = 0,
                 RenderTransformOrigin = new Point(0.5, 0.5),
@@ -481,16 +508,16 @@ public partial class MainWindow : Window
             image.RenderTransform = new TransformGroup { Children = { rotate, translate } };
             double seconds = 8 + random.NextDouble() * 8;
             TimeSpan begin = TimeSpan.FromSeconds(random.NextDouble() * seconds);
-            translate.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, -(170 + random.NextDouble() * 170), TimeSpan.FromSeconds(seconds))
+            translate.BeginAnimation(TranslateTransform.YProperty, Decorative(new DoubleAnimation(0, -(170 + random.NextDouble() * 170), TimeSpan.FromSeconds(seconds))
             {
                 RepeatBehavior = RepeatBehavior.Forever, BeginTime = begin,
-            });
-            translate.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(-10 + random.NextDouble() * 5, 5 + random.NextDouble() * 8,
+            }));
+            translate.BeginAnimation(TranslateTransform.XProperty, Decorative(new DoubleAnimation(-10 + random.NextDouble() * 5, 5 + random.NextDouble() * 8,
                 TimeSpan.FromSeconds(2.8 + random.NextDouble() * 2.6))
             {
                 RepeatBehavior = RepeatBehavior.Forever, AutoReverse = true,
                 EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
-            });
+            }));
             var opacity = new DoubleAnimationUsingKeyFrames
             {
                 Duration = TimeSpan.FromSeconds(seconds), RepeatBehavior = RepeatBehavior.Forever, BeginTime = begin,
@@ -498,25 +525,26 @@ public partial class MainWindow : Window
             opacity.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromPercent(0)));
             opacity.KeyFrames.Add(new LinearDoubleKeyFrame(0.55 + random.NextDouble() * 0.3, KeyTime.FromPercent(0.25)));
             opacity.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromPercent(1)));
-            image.BeginAnimation(OpacityProperty, opacity);
+            image.BeginAnimation(OpacityProperty, Decorative(opacity));
             if (rotates)
             {
                 rotate.BeginAnimation(RotateTransform.AngleProperty,
-                    new DoubleAnimation(0, random.Next(2) == 0 ? 360 : -360, TimeSpan.FromSeconds(9 + random.NextDouble() * 9))
+                    Decorative(new DoubleAnimation(0, random.Next(2) == 0 ? 360 : -360, TimeSpan.FromSeconds(9 + random.NextDouble() * 9))
                     {
                         RepeatBehavior = RepeatBehavior.Forever,
-                    });
+                    }));
             }
         }
     }
 
     void ApplyNoticesMotion()
     {
+        _noticesClock?.Controller?.Remove();
         NoticesScrollTranslate.ApplyAnimationClock(TranslateTransform.YProperty, null);
         _noticesClock = null;
         NoticesScrollTranslate.Y = 0;
         NoticesCopyB.Visibility = Visibility.Collapsed;
-        if (MotionCheckBox.IsChecked != true) return;
+        if (!_visualState.IsRunning) return;
         NoticesCopyA.UpdateLayout();
         double contentHeight = NoticesCopyA.ActualHeight;
         double viewportHeight = NoticesViewport.ActualHeight;
@@ -526,12 +554,27 @@ public partial class MainWindow : Window
         {
             RepeatBehavior = RepeatBehavior.Forever,
         };
-        _noticesClock = animation.CreateClock();
+        _noticesClock = Decorative(animation).CreateClock();
         NoticesScrollTranslate.ApplyAnimationClock(TranslateTransform.YProperty, _noticesClock);
     }
 
     void OnNoticesMouseEnter(object sender, MouseEventArgs e) => _noticesClock?.Controller?.Pause();
     void OnNoticesMouseLeave(object sender, MouseEventArgs e) => _noticesClock?.Controller?.Resume();
+
+    static T Decorative<T>(T animation) where T : Timeline
+    {
+        Timeline.SetDesiredFrameRate(animation, 20);
+        return animation;
+    }
+
+    BitmapImage LocalImage(string path)
+    {
+        if (_localImages.TryGetValue(path, out BitmapImage? image)) return image;
+        image = new BitmapImage(new Uri(path, UriKind.Relative));
+        if (image.CanFreeze) image.Freeze();
+        _localImages.Add(path, image);
+        return image;
+    }
 
     void ConfigureExternalLink(FrameworkElement element, string? url, string label)
     {
@@ -619,6 +662,7 @@ public partial class MainWindow : Window
     {
         if (Pages is null || sender is not FrameworkElement { Tag: string index } || !int.TryParse(index, out int page)) return;
         Pages.SelectedIndex = page;
+        RefreshMotion();
     }
     void OnMinimize(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
     void OnMaximize(object sender, RoutedEventArgs e) => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
@@ -628,6 +672,7 @@ public partial class MainWindow : Window
         bool maximized = WindowState == WindowState.Maximized;
         MaximizeButton.Content = maximized ? "\uE923" : "\uE922";
         System.Windows.Automation.AutomationProperties.SetName(MaximizeButton, maximized ? "還原" : "最大化");
+        RefreshMotion();
     }
     void OnClose(object sender, RoutedEventArgs e) => Close();
     void OnDragWindow(object sender, MouseButtonEventArgs e) { if (e.LeftButton == MouseButtonState.Pressed) DragMove(); }
@@ -643,6 +688,12 @@ public partial class MainWindow : Window
         if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         Activate();
         Focus();
+    }
+
+    void CloseAfterSuccessfulLaunch()
+    {
+        if (Dispatcher.CheckAccess()) Close();
+        else _ = Dispatcher.InvokeAsync(Close);
     }
 
     string? PickFolder(string title)

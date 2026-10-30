@@ -1,0 +1,23 @@
+# scope	key	value；Taiwan 用語。SID 用於保留同字異義的介面語意。
+text	Backpack	背包
+text	Skills	技能
+text	Trade	交易所
+text	Title	頭銜
+text	Coming Soon	敬請期待
+text	Beginner	初心
+text	Shop	商城
+text	Bundle	禮包
+text	Auto	自動
+text	MAX	最大
+text	Max	最大
+text	NEW	新
+text	HOT	熱門
+text	PATRON	贊助會員
+text	BOSS	首領
+text	FIRE	開火
+text	CHAPTER I	第一章
+text	CHAPTER II	第二章
+text	CHAPTER III	第三章
+text	CHAPTER IV	第四章
+sid	10160000000	交易所
+sid	31002	下一階

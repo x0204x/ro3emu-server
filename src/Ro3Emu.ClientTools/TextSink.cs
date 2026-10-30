@@ -100,6 +100,7 @@ internal static class TextSink
     /// </summary>
     public static string PatchLanguageGet(ModuleDefinition module, string locDll)
     {
+        NativeLanguageReader(module);
         using var loc = AssemblyDefinition.ReadAssembly(locDll, new ReaderParameters { InMemory = true });
         var sid = module.ImportReference(loc.MainModule.GetType("Ro3Emu.Loc.Ro3Loc").Methods.Single(m => m.Name == "Sid"));
         var get = module.GetType("LanguageMain")?.Methods
@@ -116,6 +117,24 @@ internal static class TextSink
                 if (i.Operand == ret) i.Operand = load;
         }
         return $"text sink: LanguageMain.Get(sid) x{returns.Count} -> Ro3Loc.Sid";
+    }
+
+    /// <summary>G 140083 的 GetCurrentLanguage（Lua_UT_Helper 3798）；只讀取，絕不呼叫 SetCurrentLanguage。</summary>
+    internal static void NativeLanguageReader(ModuleDefinition module)
+    {
+        var language = module.GetType("LanguageMain") ?? throw new InvalidOperationException("LanguageMain not found");
+        var getter = language.Methods.SingleOrDefault(m => m.Name == "Obf_cO" && m.IsStatic &&
+            m.Parameters.Count == 0 && m.ReturnType.FullName == "System.String");
+        if (getter is not { HasBody: true } ||
+            !getter.Body.Instructions.Any(i => i.Operand is MethodReference m &&
+                m.DeclaringType.FullName == "HappyEngine.AppConst" && m.Name == "get_DefaultLanguage"))
+            throw new InvalidOperationException("native GetCurrentLanguage contract differs from verified Genesis client");
+        if (language.Methods.Any(m => m.Name == "Ro3Emu_GetNativeLanguage"))
+            throw new InvalidOperationException("native language shim already exists; restore the original first");
+        var shim = new MethodDefinition("Ro3Emu_GetNativeLanguage", MethodAttributes.Public | MethodAttributes.Static, module.TypeSystem.String);
+        shim.Body.Instructions.Add(Instruction.Create(OpCodes.Call, getter));
+        shim.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+        language.Methods.Add(shim);
     }
 
     private static MethodDefinition Method(AssemblyDefinition loc, string name) =>

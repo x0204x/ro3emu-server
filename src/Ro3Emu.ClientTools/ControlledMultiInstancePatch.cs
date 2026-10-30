@@ -4,7 +4,7 @@ using Mono.Cecil.Cil;
 namespace Ro3Emu.ClientTools;
 
 /// <summary>
-/// Replaces the Recovery client's scene-zero single-instance call with RO3Emu's two-slot guard. The launcher proof
+/// Replaces the Recovery client's scene-zero single-instance call with RO3Emu's four-slot guard. The launcher proof
 /// call immediately after it is a required part of the recognised startup shape and is never removed or replaced.
 /// </summary>
 public static class ControlledMultiInstancePatch
@@ -40,7 +40,7 @@ public static class ControlledMultiInstancePatch
         if (original.Count == 1) original[0].Operand = hook;
         else patched[0].Operand = hook; // normalise the assembly reference and validate the shipped hooks method
 
-        return "StartupWithHybridCLR.Awake single-instance guard -> controlled two-client slots; LauncherProofGuard kept";
+        return "StartupWithHybridCLR.Awake single-instance guard -> controlled four-client slots; LauncherProofGuard kept";
     }
 
     private static IEnumerable<Instruction> Calls(MethodDefinition method, string declaringType) =>

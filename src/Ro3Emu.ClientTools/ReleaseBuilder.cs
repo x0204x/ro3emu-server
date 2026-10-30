@@ -14,10 +14,11 @@ public static class ReleaseBuilder
     private const string ManagedPrefix = "ro3_Data/Managed/";
 
     public static async Task<int> PublishAsync(string clientDir, string serverUrl, string pem, string repoDir, string version, string channel, int compression,
-        string? localizationMap = null, bool skillTrace = false, RepositorySigningOptions? signing = null)
+        string? localizationMap = null, bool skillTrace = false, RepositorySigningOptions? signing = null, string? traditionalChinesePack = null)
     {
         clientDir = Path.GetFullPath(clientDir);
         var baseline = VerifiedBaseline.Read(clientDir);
+        var traditional = ReleaseFileSources.TraditionalChinesePack(clientDir, traditionalChinesePack);
         Console.WriteLine($"baseline: {baseline.Count} files");
 
         // Stage ro3.exe + Managed + the pristine originals, then patch the staging copy only.
@@ -62,6 +63,7 @@ public static class ReleaseBuilder
                 files.Add(new(relative, Path.Combine(stagedManaged, extra!)));
         }
         if (ReleaseFileSources.LocalizationMap(clientDir, localizationMap) is { } localization) files.Add(localization);
+        files.AddRange(traditional);
         if (ReleaseFileSources.SkillTraceMarker(staging, skillTrace) is { } marker) files.Add(marker);
         Console.WriteLine($"publishing {files.Count} files as {channel}/{version} into {repoDir}");
 

@@ -17,7 +17,7 @@ public sealed class LauncherController : IDisposable
     readonly string _exePath;
     readonly Action<object> _post;
     readonly Func<string, string?> _pickFolder;
-    readonly Action _minimize;
+    readonly Action _closeAfterLaunch;
     readonly Action _restore;
     readonly UserSettings _settings;
     readonly RepositoryClient _repo;
@@ -37,7 +37,7 @@ public sealed class LauncherController : IDisposable
     UpdateStage? _loggedStage;
     DateTimeOffset _lastProgressLog;
 
-    public LauncherController(LauncherConfig config, string exePath, Action<object> post, Func<string, string?> pickFolder, Action minimize, Action restore)
+    public LauncherController(LauncherConfig config, string exePath, Action<object> post, Func<string, string?> pickFolder, Action closeAfterLaunch, Action restore)
     {
         _config = config;
         _exePath = exePath;
@@ -46,7 +46,7 @@ public sealed class LauncherController : IDisposable
             : UserSettings.Load(config.ResolveSettingsFile(Path.GetDirectoryName(exePath)!));
         _post = post;
         _pickFolder = pickFolder;
-        _minimize = minimize;
+        _closeAfterLaunch = closeAfterLaunch;
         _restore = restore;
         _repo = new RepositoryClient(new Uri(config.Repository), config.RepositoryTrust);
         string executableDirectory = Path.GetDirectoryName(exePath)!;
@@ -125,8 +125,10 @@ public sealed class LauncherController : IDisposable
     async Task CheckAsync()
     {
         if (_launching) return;
+        if (!RefreshGameProcesses()) return;
         if (_games.State.AnyRunning)
         {
+            LoadRunningInstallation();
             PostRunningState("遊戲執行期間不會檢查或套用更新。");
             return;
         }
@@ -186,6 +188,7 @@ public sealed class LauncherController : IDisposable
     async Task UpdateAsync(bool verifyAll)
     {
         if (_launching) return;
+        if (!RefreshGameProcesses()) return;
         if (_games.State.AnyRunning)
         {
             PostRunningState("請先關閉所有遊戲，再執行更新或修復。");
@@ -252,35 +255,46 @@ public sealed class LauncherController : IDisposable
 
     async Task PlayAsync()
     {
+        if (!RefreshGameProcesses()) return;
         GameProcessState before = _games.State;
-        if (!before.CanStartAnother || _launching) return;
+        if (_launching) return;
+        if (!before.CanStartAnother)
+        {
+            PostRunningState($"最多可同時執行 {GameProcessState.Capacity} 個遊戲，請先關閉其中一個。");
+            return;
+        }
         LaunchInfo? launch = _installed?.Launch;
         _launching = true;
-        PostState("launching", before.AnyRunning ? "正在啟動第二個遊戲…" : null);
+        PostState("launching", before.AnyRunning ? $"正在啟動第 {before.ActiveCount + 1} 個遊戲…" : null);
         try
         {
             if (launch is null) throw new PatcherException("No packaged client is installed.");
             var started = await GameStarter.StartAsync(_layout.GameDirectory, launch);
+            if (_life.IsCancellationRequested)
+            {
+                started.Process?.Dispose();
+                return;
+            }
             if (started.Process is { } game)
             {
                 if (!_games.TryAdd(game.Id, game))
                 {
-                    try { if (!game.HasExited) game.Kill(entireProcessTree: true); } catch (Exception) { }
                     game.Dispose();
-                    throw new InvalidOperationException("No game process slot was available after launch.");
+                    throw new InvalidOperationException("遊戲名額已變更，請重新確認正在執行的遊戲數量。");
                 }
                 Log($"Game running: pid={game.Id}");
                 PostRunningState();
-                _minimize();
                 _ = ObserveGameAsync(game);
+                // 啟動證明已交付且遊戲通過早退檢查後才關閉；取消監看不會結束遊戲。
+                _closeAfterLaunch();
             }
-            else if (_games.State.AnyRunning) PostRunningState($"第二個遊戲未能啟動：{started.Failure}。");
+            else if (_games.State.AnyRunning) PostRunningState($"額外的遊戲未能啟動：{started.Failure}。");
             else PostState("repair", $"遊戲未能啟動：{started.Failure}。");
         }
         catch (Exception e)
         {
             Log("Game launch failed", e);
-            if (_games.State.AnyRunning) PostRunningState($"第二個遊戲啟動失敗：{e.Message}");
+            if (_games.State.AnyRunning) PostRunningState($"額外的遊戲啟動失敗：{e.Message}");
             else PostState("error", $"啟動失敗：{e.Message}");
         }
         finally { _launching = false; }
@@ -341,8 +355,48 @@ public sealed class LauncherController : IDisposable
         PostState("running", message ?? $"目前有 {count} 個遊戲正在執行。");
     }
 
+    bool RefreshGameProcesses()
+    {
+        GameProcessDiscovery.Scan scan = GameProcessDiscovery.Find(Path.Combine(_layout.GameDirectory, "ro3.exe"));
+        foreach (Process game in scan.Games)
+        {
+            if (_games.TryAdd(game.Id, game))
+            {
+                Log($"Existing game observed: pid={game.Id}");
+                _ = ObserveGameAsync(game);
+            }
+            else game.Dispose();
+        }
+        if (scan.Games.Count > GameProcessState.Capacity)
+        {
+            PostState("error", $"偵測到超過 {GameProcessState.Capacity} 個遊戲；請先關閉多餘的遊戲，再重新檢查。");
+            return false;
+        }
+        if (!scan.Incomplete) return true;
+        PostState("error", "無法確認部分遊戲程序的執行檔位置；為避免誤更新或超過開啟上限，請以相同權限重新開啟登入器。");
+        return false;
+    }
+
+    void LoadRunningInstallation()
+    {
+        try
+        {
+            // LoadState 會復原未完成的檔案交易；遊戲執行中只讀原紀錄，不能觸發任何檔案替換。
+            LocalState? installed = LocalState.Load(Path.Combine(_layout.MetaDirectory, "state.json"));
+            OfflineInstallValidation validation = new Updater(_layout, _repo).ValidateOfflineInstall(installed, _config.Channel);
+            _installed = validation.CanLaunch ? installed : null;
+            if (!validation.CanLaunch) Log("Running installation cannot start another game: " + validation.Reason);
+        }
+        catch (Exception e) when (e is PatcherException or IOException or JsonException or UnauthorizedAccessException or ArgumentException)
+        {
+            _installed = null;
+            Log("Running installation validation failed", e);
+        }
+    }
+
     async Task ChangeDirectoryAsync()
     {
+        if (!RefreshGameProcesses()) return;
         if (_work != null || _launching || !_games.State.CanChangeInstallation)
         {
             if (_games.State.AnyRunning) PostRunningState("請先關閉所有遊戲，再更換遊戲資料夾。");

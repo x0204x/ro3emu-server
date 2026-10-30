@@ -165,8 +165,14 @@ than 99%, and the current relative file name is shown while assembling.
 
 `launcher.log` is kept beside `RO3Launcher.exe` (rotated to `launcher.log.old` at 2 MB). It records phase changes,
 bounded progress samples, the selected client directory, exceptions and the exact game PID/exit code. Ask a player
-for this file when an update or launch appears stuck; it contains no account password. While that PID is alive the
-Start button is disabled, and it returns to Ready after a normal game exit.
+for this file when an update or launch appears stuck; it contains no account password.
+
+遊戲成功通過啟動證明與早退檢查後，登入器會自動關閉，避免背景 UI 持續占用資源；遊戲會繼續執行。
+啟動失敗時保留登入器並顯示原因。再次開啟登入器，會先依選定客戶端的執行檔完整路徑辨識既有遊戲；
+最多同時四開，第四個啟動後仍會關閉登入器，第五個會被阻擋。遊戲執行期間不會更新、修復或切換安裝目錄。
+若無法讀取同名程序的執行檔位置，登入器會停止這些操作並提示使用相同權限重開，避免誤判。
+尚未啟動遊戲時，裝飾動畫只在前景首頁播放；失焦、最小化或切換分頁會停止，恢復時沿用原動態效果設定。
+裝飾動畫限制為每秒 20 格，輪播圖片快取最多保留三張，不影響更新驗證或玩家在遊戲內選擇的語系。
 
 ## Development
 

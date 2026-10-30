@@ -24,6 +24,8 @@
   <ItemGroup>
     <!-- Pure launcher slot logic is source-linked so these tests stay platform-neutral. -->
     <Compile Include="..\..\src\Ro3Emu.Launcher\GameProcessTracker.cs" Link="Launcher\GameProcessTracker.cs" />
+    <Compile Include="..\..\src\Ro3Emu.Launcher\GameProcessDiscovery.cs" Link="Launcher\GameProcessDiscovery.cs" />
+    <Compile Include="..\..\src\Ro3Emu.Launcher\LauncherVisualState.cs" Link="Launcher\LauncherVisualState.cs" />
   </ItemGroup>
 
 </Project>

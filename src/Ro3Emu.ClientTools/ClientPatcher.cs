@@ -8,7 +8,7 @@ namespace Ro3Emu.ClientTools;
 ///   SDK login URL and server list URL (Happyengine.Network Obf_dI + callers, Assembly-CSharp MetaSDKUtil);
 ///   GMT origin (Assembly-CSharp GMT.GMTManager, Lua GMTUrl()) and the gift card POST guard (Obf_dI);
 ///   gate RSA public key (Phonest.Common Utils.GenEncryptKeyFromToken);
-///   replaces the scene-zero one-client guard with RO3Emu's controlled two-client guard;
+///   replaces the scene-zero one-client guard with RO3Emu's controlled four-client guard;
 ///   and makes internal the private members the client's own code uses where they are not visible (AccessFixPatch).
 /// Originals are copied once to &lt;client&gt;\ro3emu-backup and every patch starts from them, so it is repeatable.
 /// New DLLs are staged, checked and journalled before any replaces its Managed copy (<see cref="ReplaceManaged"/>), so
@@ -355,6 +355,8 @@ public static class ClientPatcher
                 try { VoiceStubPatch.Patch(assembly.MainModule, File.Exists(hooksDll) ? hooksDll : null); }
                 catch (InvalidOperationException e) { problems.Add(e.Message); }
                 try { VoiceEnablePatch.Patch(assembly.MainModule); }
+                catch (InvalidOperationException e) { problems.Add(e.Message); }
+                try { TextSink.NativeLanguageReader(assembly.MainModule); }
                 catch (InvalidOperationException e) { problems.Add(e.Message); }
             }
             if (file == "Happyengine.Network.dll")

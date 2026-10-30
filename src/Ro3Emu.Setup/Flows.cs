@@ -9,7 +9,7 @@ using Ro3Emu.DataExport;
 namespace Ro3Emu.Setup;
 
 /// <summary>The player-facing modes: play locally, host, join, restore, check, export, diagnostics.</summary>
-internal static class Flows
+internal static partial class Flows
 {
     internal static string? HooksDll => ClientDll("Ro3Emu.ClientHooks");
     internal static string? LocDll => ClientDll("Ro3Emu.Loc");
@@ -365,9 +365,11 @@ internal static class Flows
         return game;
     }
 
-    /// <summary>Patches the client for the server and writes the English text map next to it.</summary>
+    /// <summary>所有入口先準備玩家自身的語系配對，再修補 DLL；不覆寫玩家自訂檔案。</summary>
     internal static void PatchClient(string client, string serverUrl, string pem, string? purchaseUrl)
     {
+        EnsureLocMap(client);
+        CopyLocalizationMaps(PlayerLocalizationDir, client);
         Ui.Step("Patching the game for this server");
         try { Quiet(() => { ClientPatcher.Patch(client, serverUrl, pem, HooksDll, LocDll, purchaseUrl); return 0; }); }
         catch (UnauthorizedAccessException e)
@@ -378,17 +380,6 @@ internal static class Flows
         catch (IOException e) when (e.HResult is unchecked((int)0x80070020) or unchecked((int)0x80070021))
         {
             throw new SetupException("A game file is in use: " + e.Message, "Close the game, then run RO3Emu.exe again.");
-        }
-        var map = Path.Combine(SetupHome.DataDir, "loc_en.tsv");
-        if (File.Exists(map))
-        {
-            var target = Path.Combine(client, "ro3emu", "loc_en.tsv");
-            bool ours = !File.Exists(target) || File.ReadLines(target).FirstOrDefault()?.StartsWith(ClientPatcher.GeneratedLocHeader, StringComparison.Ordinal) == true;
-            if (ours)
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-                File.Copy(map, target, overwrite: true);
-            }
         }
         Ui.Ok($"the game now connects to {serverUrl} (RO3Emu.exe restore undoes this)");
         Ui.Warn("Do not use the Genesis launcher to repair this game folder while playing on RO3Emu: it undoes the patch.");
@@ -442,32 +433,7 @@ internal static class Flows
                 "Check the address with the server owner, and that the server is running with TCP ports 5380, 20000 and 33100 open to you.");
         }
         Ui.Ok("the server answers");
-        EnsureLocMap(client);
         PatchClient(client, serverUrl, pem, purchaseUrl);
-    }
-
-    /// <summary>
-    /// Joining runs no export, so data/loc_en.tsv (which <see cref="PatchClient"/> copies next to the game) did not exist
-    /// and the client had no English map: every string the client draws in Chinese stayed Chinese. Build the map alone
-    /// from the player's own client when it is missing or older than the client's Localization chunks.
-    /// </summary>
-    internal static void EnsureLocMap(string client)
-    {
-        var map = Path.Combine(SetupHome.DataDir, "loc_en.tsv");
-        var sources = GameDataExport.LocSourceFiles(client);
-        if (File.Exists(map) && sources.All(s => File.Exists(s) && File.GetLastWriteTimeUtc(s) <= File.GetLastWriteTimeUtc(map))) return;
-        Ui.Step("English texts");
-        try
-        {
-            int entries = GameDataExport.WriteLocMap(client, map, new GameDataExport.Options { Translations = Translations(), Log = SetupLog.Write });
-            Ui.Ok($"{entries} English texts made from your game files");
-        }
-        catch (Exception e) when (e is ExportException or IOException or UnauthorizedAccessException or InvalidOperationException)
-        {
-            // English text is a comfort, not a requirement: joining still works with the client's own texts.
-            SetupLog.Write("English text map not built: " + e);
-            Ui.Warn("The English texts could not be made from your game files; some texts may stay in Chinese. " + e.Message);
-        }
     }
 
     /// <summary>"host", "host:port", "[v6]:port" or "http(s)://host[:port]" as a base URL; the port is 5380 unless written.</summary>

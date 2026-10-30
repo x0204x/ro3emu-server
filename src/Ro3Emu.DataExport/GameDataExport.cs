@@ -36,6 +36,8 @@ public static class GameDataExport
     {
         /// <summary>Our translations (src/Ro3Emu.Loc/translations/*.tsv contents, in order); none skips them.</summary>
         public IReadOnlyList<string> Translations { get; init; } = [];
+        /// <summary>本程式自有繁中覆寫；有效的玩家原生繁中 SID 優先。</summary>
+        public IReadOnlyList<string> TraditionalChineseOverrides { get; init; } = [];
         /// <summary>Developers: re/loc/translation_queue.tsv, applied first as build_locmap.js does.</summary>
         public string? TranslationQueue { get; init; }
         public Action<string>? Log { get; init; }
@@ -380,14 +382,14 @@ public static class GameDataExport
         else File.Move(from, to);
     }
 
-    /// <summary>The client's two Localization chunks, the only input of the English map.</summary>
+    /// <summary>玩家自身的三語來源；繁中與 SID 配對檔不可借用其他客戶端世代。</summary>
     public static string[] LocSourceFiles(string clientDir) =>
-        new[] { "Localization_zh_CN", "Localization_en" }.Select(n => Path.Combine(LuaPayloadDir(clientDir), n + ".lua.bytes")).ToArray();
+        new[] { "Localization_zh_CN", "Localization_en", "Localization_zh_TW" }
+            .Select(n => Path.Combine(LuaPayloadDir(clientDir), n + ".lua.bytes")).ToArray();
 
     /// <summary>
-    /// The English map alone, without the rest of the export: what a player who joins someone else's server needs.
-    /// Decodes only the two Localization chunks of <paramref name="clientDir"/>, so it takes seconds, and writes
-    /// <paramref name="path"/> exactly as <see cref="Run"/> writes data/loc_en.tsv. Returns the entry count.
+    /// 不重建伺服器資料，只從玩家的三語來源產生英文及繁中配對檔。
+    /// <paramref name="path"/> 仍是英文檔，回傳值仍為英文筆數，維持既有呼叫契約。
     /// </summary>
     public static int WriteLocMap(string clientDir, string path, Options? options = null)
     {
@@ -395,8 +397,8 @@ public static class GameDataExport
         var sources = LocSourceFiles(clientDir);
         if (sources.FirstOrDefault(s => !File.Exists(s)) is { } absent)
             throw new ExportException("The game folder is incomplete: " + Path.GetRelativePath(clientDir, absent) + " is missing.");
-        var work = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path))!, ".locmap");
-        if (Directory.Exists(work)) Directory.Delete(work, recursive: true);
+        string directory = Path.GetDirectoryName(Path.GetFullPath(path))!;
+        var work = Path.Combine(directory, ".locmap-" + Guid.NewGuid().ToString("N"));
         try
         {
             var luac = Path.Combine(work, "luac");
@@ -410,21 +412,66 @@ public static class GameDataExport
             var tables = Path.Combine(work, "tables");
             var errors = new List<string>();
             using (var exporter = new LuaConfigExporter(luac))
-                exporter.ExportDirs(tables, ["Localization_zh_CN.luac", "Localization_en.luac"], errors.Add);
+                exporter.ExportDirs(tables, ["Localization_zh_CN.luac", "Localization_en.luac", "Localization_zh_TW.luac"], errors.Add);
             foreach (var e in errors) options.Log?.Invoke("  " + e);
             var zh = Path.Combine(tables, "Localization_zh_CN.json");
             var en = Path.Combine(tables, "Localization_en.json");
-            if (!File.Exists(zh) || !File.Exists(en)) throw new ExportException("The game's text tables could not be read: " + string.Join("; ", errors));
+            var tw = Path.Combine(tables, "Localization_zh_TW.json");
+            if (!File.Exists(zh) || !File.Exists(en) || !File.Exists(tw))
+                throw new ExportException("The game's three text tables could not be read: " + string.Join("; ", errors));
             var staged = Path.Combine(work, "loc_en.tsv");
-            int count = BuildLocMap(zh, en, staged, options).Count;
-            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+            int count = WriteLocMapsFromTables(zh, en, tw, staged, options);
+            Directory.CreateDirectory(directory);
             File.Move(staged, path, overwrite: true);
+            foreach (string name in new[] { TraditionalChineseMapBuilder.TextFile, TraditionalChineseMapBuilder.SidFile })
+                File.Move(Path.Combine(work, name), Path.Combine(directory, name), overwrite: true);
             return count;
         }
         finally
         {
             if (Directory.Exists(work)) Directory.Delete(work, recursive: true);
         }
+    }
+
+    /// <summary>與原生解碼後相同的純 JSON 分派；供自造資料測試，不啟動 Lua VM。</summary>
+    internal static int WriteLocMapsFromTables(string zh, string en, string tw, string englishPath, Options options)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(englishPath))!);
+        int count = BuildLocMap(zh, en, englishPath, options).Count;
+        TraditionalChineseMapBuilder.Build(zh, en, tw, Path.GetDirectoryName(Path.GetFullPath(englishPath))!,
+            NativeFirstTraditionalOverrides(zh, en, tw, options));
+        return count;
+    }
+
+    private static IReadOnlyList<string> NativeFirstTraditionalOverrides(string zh, string en, string tw, Options options)
+    {
+        using var simplified = JsonDocument.Parse(File.ReadAllBytes(zh));
+        using var english = JsonDocument.Parse(File.ReadAllBytes(en));
+        using var native = JsonDocument.Parse(File.ReadAllBytes(tw));
+        var known = simplified.RootElement.EnumerateObject().Select(p => p.Name)
+            .Concat(english.RootElement.EnumerateObject().Select(p => p.Name)).ToHashSet(StringComparer.Ordinal);
+        var result = new List<string>();
+        foreach (string source in options.TraditionalChineseOverrides)
+        {
+            var accepted = new List<string>();
+            foreach (string raw in source.TrimStart('\uFEFF').Split('\n'))
+            {
+                string line = raw.TrimEnd('\r');
+                string[] cells = line.Split('\t');
+                if (cells is ["sid", var id, _])
+                {
+                    // 自有覆寫只補本世代缺字，不取代有效的原生 SID，也不把別世代 SID 植入玩家檔案。
+                    if (!known.Contains(id)) continue;
+                    if (native.RootElement.TryGetProperty(id, out var row) && row.TryGetProperty("_kDes", out var text)
+                        && text.ValueKind == JsonValueKind.String && text.GetString() is { } value
+                        && !string.IsNullOrWhiteSpace(value) && value != id && value != "None"
+                        && !value.StartsWith("Not Find Key", StringComparison.Ordinal)) continue;
+                }
+                accepted.Add(line);
+            }
+            result.Add(string.Join('\n', accepted));
+        }
+        return result;
     }
 
     private static LocMapBuilder BuildLocMap(string zhJson, string enJson, string outPath, Options options)

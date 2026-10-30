@@ -27,16 +27,19 @@ public sealed class GameProcessTrackerTests
     }
 
     [Fact]
-    public void SecondGame_FillsCapacityAndThirdIsRefused()
+    public void FourthGame_FillsCapacityAndFifthIsRefused()
     {
         var tracker = new GameProcessTracker<object>();
 
         Assert.True(tracker.TryAdd(101, new object()));
         Assert.True(tracker.TryAdd(202, new object()));
+        Assert.True(tracker.TryAdd(303, new object()));
+        Assert.True(tracker.TryAdd(404, new object()));
 
         Assert.Equal(GameProcessState.Capacity, tracker.State.ActiveCount);
         Assert.False(tracker.State.CanStartAnother);
-        Assert.False(tracker.TryAdd(303, new object()));
+        Assert.Equal(4, GameProcessState.Capacity);
+        Assert.False(tracker.TryAdd(505, new object()));
     }
 
     [Fact]

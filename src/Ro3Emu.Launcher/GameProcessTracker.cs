@@ -3,15 +3,14 @@ namespace Ro3Emu.Launcher;
 /// <summary>Pure process-slot state shared by the controller and source-linked unit tests.</summary>
 internal readonly record struct GameProcessState(int ActiveCount)
 {
-    public const int Capacity = 2;
+    public const int Capacity = 4;
     public bool AnyRunning => ActiveCount > 0;
     public bool CanStartAnother => ActiveCount < Capacity;
     public bool CanChangeInstallation => ActiveCount == 0;
 }
 
 /// <summary>
-/// Tracks at most two independently observed game instances. The expected instance check prevents a late observer
-/// from removing a different process after Windows has reused the same PID.
+/// 追蹤至多四個遊戲程序；比對原物件，避免延遲的結束通知誤刪已重用 PID 的另一個程序。
 /// </summary>
 internal sealed class GameProcessTracker<T> where T : class
 {

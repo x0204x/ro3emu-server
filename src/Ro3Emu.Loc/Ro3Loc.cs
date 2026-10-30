@@ -8,11 +8,11 @@ using System.Text.RegularExpressions;
 namespace Ro3Emu.Loc
 {
     /// <summary>
-    /// Chinese -> English at the point text is drawn. Cecil puts a call to <see cref="Map"/>
-    /// in front of TMP_Text.text / SetText, TextMeshPro(UGUI).Awake and HUDTextHelper.SetWordCell, so baked prefab text,
-    /// Lua literals, raw config strings and C# strings all pass through here.
+    /// 依玩家原生語系補足畫面文字。Cecil 在 TMP、HUD 及 LanguageMain 的文字出口呼叫本類別；
+    /// 繁中使用配對的 loc_zh_TW.tsv／loc_zh_TW.sids.tsv，英文沿用 loc_en.tsv，其他語系保留原文。
+    /// 本類別只讀取目前語系，不修改選語設定；原生有效 SID 譯文優先。
     /// <list type="bullet">
-    /// <item>fast path: a string without a CJK character is returned as is;</item>
+    /// <item>英文模式略過無中文字串；繁中模式也涵蓋 prefab 內的英文標籤；</item>
     /// <item>exact map, then a normalized retry (trim, zero-width spaces, \r\n);</item>
     /// <item>rich text and multi-line text: each tag-free / line segment is mapped on its own;</item>
     /// <item>templates: keys with %d / %s / {0} / ${1} / @{1} match runtime-built strings;</item>
@@ -31,6 +31,58 @@ namespace Ro3Emu.Loc
         private static readonly HashSet<string> Misses = new HashSet<string>(StringComparer.Ordinal);
         private static string _dir;
         private static bool _failed;
+        private static bool _traditionalChinese;
+        private static Dictionary<long, string> _traditionalSids;
+        private static string _nativeLanguage;
+        private static Func<string> _nativeReader;
+        private static int _lastNativeProbe;
+        private static bool _nativeProbed;
+
+        /// <summary>由 patcher 的窄介面讀取原生語系；不寫 PlayerPrefs，不另選語言。</summary>
+        private static void SyncNativeLanguage()
+        {
+            try
+            {
+                if (_nativeReader == null)
+                {
+                    int now = Environment.TickCount;
+                    if (_nativeProbed && unchecked(now - _lastNativeProbe) < 1000) return;
+                    _nativeProbed = true;
+                    _lastNativeProbe = now;
+                    foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                    {
+                        var type = assembly.GetType("LanguageMain", false);
+                        var method = type?.GetMethod("Ro3Emu_GetNativeLanguage", BindingFlags.Public | BindingFlags.Static);
+                        if (method == null || method.ReturnType != typeof(string) || method.GetParameters().Length != 0) continue;
+                        _nativeReader = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), method);
+                        break;
+                    }
+                }
+                if (_nativeReader != null) UseNativeLanguage(_nativeReader());
+            }
+            catch { /* 讀不到原生設定時保留原文，不能把未知語系強制英文化。 */ }
+        }
+
+        /// <summary>由原生選語入口通知；不變更玩家設定，僅清除舊語系的補譯快取。</summary>
+        public static void UseNativeLanguage(string language)
+        {
+            string normalized = (language ?? "").Replace('-', '_').ToLowerInvariant();
+            if (normalized == "chinesetraditional" || normalized == "traditionalchinese") normalized = "zh_tw";
+            else if (normalized == "chinesesimplified" || normalized == "simplifiedchinese") normalized = "zh_cn";
+            else if (normalized == "english") normalized = "en";
+            lock (Gate)
+            {
+                if (_nativeLanguage == normalized) return;
+                _nativeLanguage = normalized;
+                _map = null;
+                _templates = null;
+                _sids = null;
+                _traditionalSids = null;
+                _failed = false;
+                Derived.Clear();
+                Misses.Clear();
+            }
+        }
         private const int MaxCached = 50000;
 
         /// <summary>Hook 0 = TMP setter, 1 = TMP Awake, 2 = HUD; only used to tag misses.</summary>
@@ -47,14 +99,18 @@ namespace Ro3Emu.Loc
         /// </summary>
         public static string Sid(string value, long sid)
         {
+            SyncNativeLanguage();
             if (SidOverrides.Count != 0 && SidOverrides.TryGetValue(sid, out var corrected)) return corrected;
-            if (!string.IsNullOrEmpty(value) && value != "None" && !value.StartsWith("Not Find Key", StringComparison.Ordinal)) return value;
             try
             {
                 string zh = null;
                 lock (Gate)
                 {
                     if (_map == null) Load();
+                    // 原生有效譯文優先；只補原生缺列，避免客戶端更新後被舊外掛文字覆蓋。
+                    if (!string.IsNullOrEmpty(value) && value != "None" && !value.StartsWith("Not Find Key", StringComparison.Ordinal))
+                        if (value != sid.ToString()) return value;
+                    if (_traditionalChinese && _traditionalSids.TryGetValue(sid, out var traditional)) return traditional;
                     if (_sids != null) _sids.TryGetValue(sid, out zh);
                 }
                 if (zh != null) return MapFrom(zh, 0);
@@ -124,15 +180,26 @@ namespace Ro3Emu.Loc
         private static string MapFrom(string text, int hook)
         {
             if (text == null || text.Length == 0) return text;
-            if (EnglishOverrides.Count != 0 && EnglishOverrides.TryGetValue(text, out var replaced)) return replaced;
-            if (!HasCjk(text)) return text;
+            SyncNativeLanguage();
             try
             {
                 lock (Gate)
                 {
                     if (_map == null) Load();
+                    // 原生其他語系保持原樣；尚未取得原生選語時也不強制英文化。
+                    if (_nativeLanguage != "en" && _nativeLanguage != "zh_tw") return text;
+                    if (_traditionalChinese && _map.Count == 0) return text;
+                    if (!_traditionalChinese && EnglishOverrides.Count != 0 && EnglishOverrides.TryGetValue(text, out var replaced)) return replaced;
+                    // 繁中模式也須處理純英文；舊快路徑會直接略過 Backpack／Skills。
+                    if (!_traditionalChinese && !HasCjk(text)) return text;
                     if (_failed) return text;
                     if (_map.TryGetValue(text, out var en)) return en;
+                    if (_traditionalChinese)
+                    {
+                        bool hasLetter = false;
+                        foreach (char c in text) if (char.IsLetter(c)) { hasLetter = true; break; }
+                        if (!hasLetter) return text;
+                    }
                     if (Derived.TryGetValue(text, out en)) return en ?? text;
                     if (Misses.Contains(text)) return text;
                     en = Resolve(text);
@@ -186,7 +253,7 @@ namespace Ro3Emu.Loc
                 int end = i + 1;
                 while (end < text.Length && (IsCjk(text[end]) || (text[end] == '·' || text[end] == '・') && end + 1 < text.Length && IsCjk(text[end + 1]))) end++;
                 if (i == 0 && end == text.Length) return null; // the whole string: the exact lookup already missed it
-                if (!_map.TryGetValue(text.Substring(i, end - i), out var en) || HasCjk(en)) return null;
+                if (!_map.TryGetValue(text.Substring(i, end - i), out var en) || !_traditionalChinese && HasCjk(en)) return null;
                 if (sb == null) sb = new StringBuilder(text.Length * 2);
                 sb.Append(text, copied, i - copied).Append(en);
                 copied = i = end;
@@ -222,11 +289,12 @@ namespace Ro3Emu.Loc
                 int end = i;
                 while (end < text.Length && text[end] != '<' && text[end] != '\n' && text[end] != '\r') end++;
                 string run = text.Substring(i, end - i);
-                if (HasCjk(run))
+                if (_traditionalChinese || HasCjk(run))
                 {
                     string core = run.Trim();
                     string en = null;
                     if (!_map.TryGetValue(core, out en)) en = MatchTemplate(core) ?? CjkRuns(core);
+                    if (en == null && _traditionalChinese) { sb.Append(run); i = end; continue; }
                     if (en == null) return null;
                     int lead = run.IndexOf(core, StringComparison.Ordinal);
                     sb.Append(run, 0, lead).Append(en).Append(run, lead + core.Length, run.Length - lead - core.Length);
@@ -242,10 +310,11 @@ namespace Ro3Emu.Loc
         {
             foreach (var t in _templates)
             {
+                if (!text.StartsWith(t.Prefix, StringComparison.Ordinal) || !text.EndsWith(t.Suffix, StringComparison.Ordinal)) continue;
                 var m = t.Pattern.Match(text);
                 if (!m.Success) continue;
                 string en = t.Apply(m);
-                if (en != text && !HasCjk(en)) return en;
+                if (en != text && (_traditionalChinese || !HasCjk(en))) return en;
             }
             return null;
         }
@@ -257,13 +326,26 @@ namespace Ro3Emu.Loc
             try
             {
                 _dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory ?? ".", "ro3emu");
-                using (var stream = typeof(Ro3Loc).Assembly.GetManifestResourceStream("loc_en.tsv"))
-                    if (stream != null) Read(new StreamReader(stream, Encoding.UTF8));
+                string traditional = Path.Combine(_dir, "loc_zh_TW.tsv");
+                string traditionalSids = Path.Combine(_dir, "loc_zh_TW.sids.tsv");
+                _traditionalChinese = _nativeLanguage == "zh_tw";
+                _traditionalSids = new Dictionary<long, string>();
+                if (_traditionalChinese)
+                {
+                    if (File.Exists(traditional) && File.Exists(traditionalSids))
+                    {
+                        Read(new StreamReader(traditional, Encoding.UTF8));
+                        ReadSids(new StreamReader(traditionalSids, Encoding.UTF8), _traditionalSids);
+                    }
+                }
+                else
+                    using (var stream = typeof(Ro3Loc).Assembly.GetManifestResourceStream("loc_en.tsv"))
+                        if (stream != null) Read(new StreamReader(stream, Encoding.UTF8));
                 _sids = new Dictionary<long, string>();
                 using (var stream = typeof(Ro3Loc).Assembly.GetManifestResourceStream("loc_sids.tsv"))
-                    if (stream != null) ReadSids(new StreamReader(stream, Encoding.UTF8));
+                    if (stream != null) ReadSids(new StreamReader(stream, Encoding.UTF8), _sids);
                 string overrides = Path.Combine(_dir, "loc_en.tsv");
-                if (File.Exists(overrides)) Read(new StreamReader(overrides, Encoding.UTF8));
+                if (!_traditionalChinese && File.Exists(overrides)) Read(new StreamReader(overrides, Encoding.UTF8));
             }
             catch
             {
@@ -291,7 +373,7 @@ namespace Ro3Emu.Loc
             }
         }
 
-        private static void ReadSids(TextReader reader)
+        private static void ReadSids(TextReader reader, Dictionary<long, string> target)
         {
             using (reader)
             {
@@ -300,7 +382,7 @@ namespace Ro3Emu.Loc
                 {
                     int tab = line.IndexOf('\t');
                     if (tab <= 0 || line[0] == '#' || !long.TryParse(line.Substring(0, tab), out long sid)) continue;
-                    _sids[sid] = Unescape(line.Substring(tab + 1));
+                    target[sid] = Unescape(line.Substring(tab + 1));
                 }
             }
         }
@@ -328,7 +410,7 @@ namespace Ro3Emu.Loc
             {
                 Directory.CreateDirectory(_dir);
                 string escaped = text.Replace("\\", "\\\\").Replace("\t", "\\t").Replace("\r", "\\r").Replace("\n", "\\n");
-                File.AppendAllText(Path.Combine(_dir, "loc_misses.tsv"), escaped + "\t" + (hook == 0 ? "set" : hook == 1 ? "awake" : "hud") + "\n", Encoding.UTF8);
+                File.AppendAllText(Path.Combine(_dir, _traditionalChinese ? "loc_zh_TW_misses.tsv" : "loc_misses.tsv"), escaped + "\t" + (hook == 0 ? "set" : hook == 1 ? "awake" : "hud") + "\n", Encoding.UTF8);
             }
             catch
             {
@@ -341,14 +423,18 @@ namespace Ro3Emu.Loc
         {
             private static readonly Regex Token = new Regex(@"%(?:\d+\$)?[-+ 0#]*\d*(?:\.\d+)?[sdfiuxX]|\{\d+\}|[$@]\{\d+\}", RegexOptions.CultureInvariant);
             public Regex Pattern;
+            public string Prefix, Suffix;
             private string[] _zhTokens;
             private string _en;
 
             public static Template TryCreate(string zh, string en)
             {
                 var tokens = Token.Matches(zh);
-                // Only keys with Chinese around the tokens: "{0}" alone would match every string.
-                if (tokens.Count == 0 || !HasCjk(Token.Replace(zh, ""))) return null;
+                // 不接受只有變數或標籤的通配模板；繁中也接受有實際英文詞的格式。
+                string literal = Regex.Replace(Token.Replace(zh, ""), "<[^>]*>", "");
+                bool hasLetter = false;
+                foreach (char c in literal) if (char.IsLetter(c)) { hasLetter = true; break; }
+                if (tokens.Count == 0 || !HasCjk(literal) && (!_traditionalChinese || !hasLetter)) return null;
                 var pattern = new StringBuilder("^");
                 var names = new string[tokens.Count];
                 int last = 0;
@@ -360,7 +446,8 @@ namespace Ro3Emu.Loc
                     last = tokens[i].Index + tokens[i].Length;
                 }
                 pattern.Append(Regex.Escape(zh.Substring(last))).Append('$');
-                return new Template { Pattern = new Regex(pattern.ToString(), RegexOptions.Singleline | RegexOptions.CultureInvariant), _zhTokens = names, _en = en };
+                return new Template { Pattern = new Regex(pattern.ToString(), RegexOptions.Singleline | RegexOptions.CultureInvariant),
+                    Prefix = zh.Substring(0, tokens[0].Index), Suffix = zh.Substring(last), _zhTokens = names, _en = en };
             }
 
             public string Apply(Match m)

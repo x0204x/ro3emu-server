@@ -14,8 +14,9 @@ namespace Ro3Emu.Server.Game;
 /// meaning is ProgressConfig's text):</para>
 /// <para>- 106012 [n, npc] "Required MVP not defeated together": one per committed MVP kill settlement (MvpService) of
 ///   MVPConfig._iNPCID npc in which another member of the role's party also took part (inferred: "together" = a
-///   fellow party member among the participants). Its npcs 9300201 (1901180/1901190, an OnHookDungeonConfig boss)
-///   have no server here.</para>
+///   fellow party member among the participants). 1901180／1901190 的 9300201 只在 OnHookDungeonConfig._kDungeonBuff
+///   找到配置引用，沒有本地已提交的玩法 producer；該引用不證明世界 MVP 的生成或結算。不得用 GM 生成怪物、
+///   野外組隊秒數或一般 MVP 死亡充當這兩個事件。原服離線冒險的權威規則仍未知。</para>
 /// <para>- 106013 [n] "Not enough joint Battle Royale participation": one per settled Kafra Survivor match
 ///   (TimedBattleService) that another member of the role's party played too (inferred).</para>
 /// <para>- 106014 [n] "Have not idled together for ${1} minutes" (1902000 "Auto-battle in a party for @{1} minutes",

@@ -2,6 +2,9 @@ namespace Ro3Emu.Server;
 
 public sealed class ServerOptions
 {
+    /// <summary>伺服器送出的可見名稱；客戶端選單仍採玩家原生選語。zh_TW、zh_CN 或 en。</summary>
+    public string ClientTextLanguage { get; set; } = "zh_TW";
+
     /// <summary>Address the client is told to connect to (server list gate addresses). Must be an IP literal.</summary>
     public string PublicHost { get; set; } = "127.0.0.1";
 

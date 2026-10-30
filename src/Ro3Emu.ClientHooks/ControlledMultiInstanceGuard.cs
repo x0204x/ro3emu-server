@@ -4,13 +4,13 @@ using System.Runtime.InteropServices;
 namespace Ro3Emu.ClientHooks;
 
 /// <summary>
-/// The RO3Emu client allows two local game processes for multiplayer testing. Each process owns one global slot for
-/// its whole lifetime; a third process is rejected with the publisher client's single-instance exit code (73).
+/// 每台電腦最多四個 RO3Emu 客戶端。各程序持有一個全域名額直到結束；第五個以代碼 73 拒絕。
+/// 保留既有第一、第二個鎖名稱，讓更新前後的客戶端仍會共用已占用名額。
 /// </summary>
 public static class ControlledMultiInstanceGuard
 {
-    private const string FirstSlot = "Global\\RO3.GameClient.Ro3Emu.ControlledSlot.1.v1";
-    private const string SecondSlot = "Global\\RO3.GameClient.Ro3Emu.ControlledSlot.2.v1";
+    public const int MaximumClients = 4;
+    private const string SlotPrefix = "Global\\RO3.GameClient.Ro3Emu.ControlledSlot.";
     private const string SecurityDescriptor = "D:(A;;0x00100001;;;AU)(A;;GA;;;SY)S:(ML;;NW;;;LW)";
     private const uint SynchronizeAndModify = 0x00100001;
     private const uint WaitObject = 0;
@@ -47,25 +47,19 @@ public static class ControlledMultiInstanceGuard
         {
             if (_ownedSlot != IntPtr.Zero) return;
 
-            var first = TryAcquire(FirstSlot, out var firstHandle, out int firstError);
-            if (first == AcquireResult.Acquired)
+            int error = 0;
+            for (int slot = 1; slot <= MaximumClients; slot++)
             {
-                _ownedSlot = firstHandle;
-                return;
+                var result = TryAcquire(SlotPrefix + slot + ".v1", out var handle, out int nativeError);
+                if (result == AcquireResult.Acquired)
+                {
+                    _ownedSlot = handle;
+                    return;
+                }
+                if (result == AcquireResult.Failed && error == 0) error = nativeError == 0 ? -1 : nativeError;
             }
-
-            var second = TryAcquire(SecondSlot, out var secondHandle, out int secondError);
-            if (second == AcquireResult.Acquired)
-            {
-                _ownedSlot = secondHandle;
-                return;
-            }
-
-            if (first == AcquireResult.Occupied && second == AcquireResult.Occupied)
-                Reject(TooManyClientsExitCode, "RO3Emu already has two game clients running.");
-
-            int error = first == AcquireResult.Failed ? firstError : secondError;
-            Reject(LockFailureExitCode, "RO3Emu could not verify its two-client slots (Windows error " + error + ").");
+            if (error == 0) Reject(TooManyClientsExitCode, "RO3Emu 已達四開上限，請先關閉一個遊戲視窗。");
+            else Reject(LockFailureExitCode, "RO3Emu 無法確認四開名額（Windows 錯誤 " + error + "）。");
         }
     }
 

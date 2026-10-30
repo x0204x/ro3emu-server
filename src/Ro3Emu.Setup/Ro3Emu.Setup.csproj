@@ -40,6 +40,8 @@
        player's machine with the client's own English tables into <client>\ro3emu\loc_en.tsv. -->
   <ItemGroup>
     <EmbeddedResource Include="..\Ro3Emu.Loc\translations\*.tsv" LogicalName="translations/%(Filename)%(Extension)" />
+    <!-- 只攜帶本程式自有的台灣用語覆寫；玩家原生三語內容由其自身客戶端產生。 -->
+    <EmbeddedResource Include="..\Ro3Emu.Loc\zh_tw_overrides.tsv" LogicalName="localization/zh_tw_overrides.tsv" />
   </ItemGroup>
 
   <ItemGroup>

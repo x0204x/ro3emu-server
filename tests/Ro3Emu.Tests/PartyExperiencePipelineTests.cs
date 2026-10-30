@@ -15,7 +15,7 @@ namespace Ro3Emu.Tests;
 /// 並非原服分配公式或遠距資格的驗收證據。本案直接呼叫正式 RewardService，
 /// 未模擬玩家施放技能或命中封包。
 /// </summary>
-public sealed class PartyExperiencePipelineTests
+public sealed partial class PartyExperiencePipelineTests
 {
     private const int Npc = 990301, Multiverse = 990302, NpcDrop = 990303, Pool = 990304, Curve = 3007;
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(15);
