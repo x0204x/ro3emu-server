@@ -35,7 +35,8 @@ public sealed partial class CombatService
             bool Current() => ReferenceEquals(p.Role, targetRole) && p.WorldScene == scene && p.SceneGeneration == generation
                 && ReferenceEquals(p.Attachment, lease) && lease?.Cancelled != true;
             var stats = _character.Stats(p);
-            var defender = new Fighter(0, 0, 0, 0, p.Progress.Level, 1) { Def = stats[105], Mdef = stats[106], Flee = stats[110], ResCri = stats[112] };
+            var defender = new Fighter(0, 0, 0, 0, p.Progress.Level, 1)
+            { Def = stats[105], Mdef = stats[106], Flee = stats[110], ResCri = stats[112], FixedDamage = (p.GmCombat & GmCombatSwitches.FixedDamage) != 0 };
             var (damage, result) = Damage(attacker, defender, row);
             damage = ScaleMonsterDamage(damage, caster.DamageRatio);
             damage = MonsterBuffDamage(caster, row, damage);

@@ -192,15 +192,8 @@ public sealed partial class MonsterService
                 }
             case "cast":
                 {
-                    if (NearestBoss(s) is not { Template.Skills: { } book } boss) return "No boss with special skills near you.";
-                    int id = int.Parse(args[1], CultureInfo.InvariantCulture);
-                    int index = Array.FindIndex(book.Skills, k => k.Id == id);
-                    if (index < 0) return $"Skill {id} is not in {NpcName(boss.Template.NpcId)}'s set.";
-                    if (boss.Target != s) Engage(boss, s);
-                    var rt = boss.BossSkills ??= new BossSkillRuntime(book);
-                    rt.Engaged = true;
-                    StartBossSkill(boss, s, null, rt, index, NowMs);
-                    return $"{NpcName(boss.Template.NpcId)} casts {_data.TextOf(book.Skills[index].Row, "_iName")} ({id}).";
+                    if (NearestBoss(s) is not { } boss) return "No boss with special skills near you.";
+                    return GmCastBossSkill(boss, s, int.Parse(args[1], CultureInfo.InvariantCulture));
                 }
             case "kill":
                 {
@@ -210,6 +203,19 @@ public sealed partial class MonsterService
                 }
             default: throw new ArgumentException("op");
         }
+    }
+
+    /// <summary>The boss casts one skill of its set at the player (!boss cast, GmTargetCastSkill), engaging her.</summary>
+    internal string GmCastBossSkill(MonsterUnit boss, GameSession s, int id)
+    {
+        if (boss.Template.Skills is not { } book) return $"{NpcName(boss.Template.NpcId)} has no special skills in its data.";
+        int index = Array.FindIndex(book.Skills, k => k.Id == id);
+        if (index < 0) return $"Skill {id} is not in {NpcName(boss.Template.NpcId)}'s set.";
+        if (boss.Target != s) Engage(boss, s);
+        var rt = boss.BossSkills ??= new BossSkillRuntime(book);
+        rt.Engaged = true;
+        StartBossSkill(boss, s, null, rt, index, NowMs);
+        return $"{NpcName(boss.Template.NpcId)} casts {_data.TextOf(book.Skills[index].Row, "_iName")} ({id}).";
     }
 
     private MonsterUnit? NearestBoss(GameSession s, bool anyMonster = false)
@@ -225,7 +231,7 @@ public sealed partial class MonsterService
         return best;
     }
 
-    private string NpcName(int npc) => _data.Row("NPCConfig", npc) is { } row ? _data.TextOf(row, "_kName") : npc.ToString(CultureInfo.InvariantCulture);
+    internal string NpcName(int npc) => _data.Row("NPCConfig", npc) is { } row ? _data.TextOf(row, "_kName") : npc.ToString(CultureInfo.InvariantCulture);
 
     private string Describe(int npc, BossSkillBook? book, MonsterUnit? live, long now)
     {

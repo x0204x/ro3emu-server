@@ -106,7 +106,7 @@ internal static class ClientLocator
     }
 
     /// <summary>
-    /// The game's release: the newer of the one recorded by the publisher's launcher (.ro3-update/installed-release.txt)
+    /// The game's release: the newer of the one recorded by the Genesis launcher (.ro3-update/installed-release.txt)
     /// and the one RO3Emu's own install/update recorded last (settings), or null. RO3Emu does not write the launcher's
     /// file, so after <c>RO3Emu.exe update</c> only its own record is current.
     /// </summary>

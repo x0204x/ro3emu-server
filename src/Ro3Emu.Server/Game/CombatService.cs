@@ -612,7 +612,8 @@ public sealed partial class CombatService : IGameTicker
             if (MonsterService.Distance(m, p) > m.Template.AttackRange + 2f || !_buffs.CanSeePosition(m, p.Position)) return; // stepped away
             var stats = _character.Stats(p);
             var attacker = MonsterFighter(m);
-            var defender = new Fighter(0, 0, 0, 0, p.Progress!.Level, 1) { Def = stats[105], Mdef = stats[106], Flee = stats[110], ResCri = stats[112] };
+            var defender = new Fighter(0, 0, 0, 0, p.Progress!.Level, 1)
+            { Def = stats[105], Mdef = stats[106], Flee = stats[110], ResCri = stats[112], FixedDamage = (p.GmCombat & GmCombatSwitches.FixedDamage) != 0 };
             var row = _data.Row("SkillConfig", m.Template.NormalSkill);
             var (damage, result) = row is { } r ? Damage(attacker, defender, r) : (Math.Max(1, m.Template.Atk), DamageHitResult.Normal);
             damage = ScaleMonsterDamage(damage, m.DamageRatio);
@@ -660,7 +661,9 @@ public sealed partial class CombatService : IGameTicker
         if (target.Dead || targetRole == null || !ReferenceEquals(target.Role, targetRole) || target.SceneLoading
             || valid?.Invoke() == false) return null;
         // A missed/fully absorbed hit must not spend a finite Safety Wall charge.
-        if (damage > 0 && (_buffs.HasForbidden(target, ForbiddenState.Damage) || await GroundProtectsAsync(target, row))) damage = 0;
+        // GmUnlimit's invincibility (inferred): the hit lands as 0, like a Safety Wall.
+        if (damage > 0 && ((target.GmCombat & GmCombatSwitches.Unlimited) != 0 || _buffs.HasForbidden(target, ForbiddenState.Damage)
+            || await GroundProtectsAsync(target, row))) damage = 0;
         if (row is { } incomingSkill) damage = GuardianNormalAttackResistance(target, incomingSkill, damage);
         // (inferred) Support damage reductions precede the finite shield and lethal-hit handling.
         damage = ApplyPetSupportResistance(damage, target.Buffs.Where(b => b.ExpireMs > Now
@@ -697,6 +700,8 @@ public sealed partial class CombatService : IGameTicker
         public long Mdef { get; init; }
         public long Flee { get; init; }
         public long ResCri { get; init; }
+        /// <summary>A GM with GmDamageFix on: hits it deals or takes skip the DamageFloat roll.</summary>
+        public bool FixedDamage { get; init; }
     }
 
     private (long Damage, DamageHitResult Result) Damage(Fighter a, Fighter b, JsonElement skill, int branch = 0,
@@ -704,7 +709,7 @@ public sealed partial class CombatService : IGameTicker
     {
         if (!NeverMisses(skill) && Rolls.Hit() >= HitRate(a, b, skill)) return (0, DamageHitResult.Miss);
         double dmg = BaseDamage(a, b, skill, branch, out bool magic);
-        dmg *= 0.97 + Rolls.DamageFloat() * 0.06; // DamageFloat [9700, 10300]
+        if (!a.FixedDamage && !b.FixedDamage) dmg *= 0.97 + Rolls.DamageFloat() * 0.06; // DamageFloat [9700, 10300]
         var result = DamageHitResult.Normal;
         // (inferred) Miguel's guardian crit bonus (bonusCrit/forceCrit) also lets a magic hit crit; nothing else changes.
         if (forceCrit || (!magic || bonusCrit > 0) && Rolls.Crit() < CritRate(a, b, skill) + bonusCrit)
@@ -861,6 +866,31 @@ public sealed partial class CombatService : IGameTicker
         }
         finally { if (hp == 0) ReleaseDeathPublication(p); }
         return effective;
+    }
+
+    /// <summary>
+    /// GmKillEntity and a GmChangeHp that takes the last HP: HP 0 and the ordinary death, past shields, lethal
+    /// prevention and GmUnlimit (inferred: a GM kill is meant to land).
+    /// </summary>
+    internal async Task KillPlayerAsync(GameSession p)
+    {
+        using (await CharacterService.Lock(p))
+        {
+            if (p.Dead || p.Role == null || p.SceneLoading) return;
+            p.CurrentHp = 0;
+            lock (_reviveClaims)
+            {
+                p.ReviveDeathSource = RewardSourceId.ProcessRun + "/" + Guid.NewGuid().ToString("N");
+                p.Dead = true;
+                _deathPublications.Add(p);
+            }
+        }
+        try
+        {
+            await _character.SetHpSpAsync(p, null, null);
+            await PlayerDiesAsync(p);
+        }
+        finally { ReleaseDeathPublication(p); }
     }
 
     private static EntityBase LifeState(GameSession p) => new()

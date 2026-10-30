@@ -58,7 +58,7 @@ public static class ClientPatcher
 
     /// <summary>
     /// The patched DLLs' SHA-256 as last written, one "file\thash" per line in the backup folder. A Managed DLL that
-    /// matches neither this nor its backup was replaced by someone else: a game update (the publisher's launcher or
+    /// matches neither this nor its backup was replaced by someone else: a game update (the Genesis launcher or
     /// RO3Emu.exe update), so it is the new original and becomes the backup, unless it could be our own output
     /// (<see cref="ReplaceManaged"/>).
     /// </summary>
@@ -172,7 +172,7 @@ public static class ClientPatcher
             {
                 if (IsOurOutput(current, unfinished, file))
                     throw new InvalidOperationException($"{file} in Managed may be RO3Emu's patched output and there is no original in {backup}; "
-                        + "repair the client with the publisher's launcher, then patch again");
+                        + "repair the client with the Genesis launcher, then patch again");
                 CopyAtomically(current, saved);
                 Console.WriteLine($"backed up {file}");
             }

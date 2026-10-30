@@ -26,6 +26,9 @@ public sealed partial class BuffService
             foreach (var handler in UnitChanged) await handler(unit);
     }
 
+    /// <summary>A unit's live buffs (GmShowBuff).</summary>
+    internal IReadOnlyList<ActiveBuff> UnitBuffs(WorldUnit unit) => _unitBuffs.TryGetValue(unit.Uid, out var list) ? list : [];
+
     /// <summary>Remove every live buff of one BuffConfig id from a unit.</summary>
     public async Task RemoveUnitConfigAsync(WorldUnit unit, int configId)
     {

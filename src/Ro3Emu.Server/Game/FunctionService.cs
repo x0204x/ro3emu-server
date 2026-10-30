@@ -62,6 +62,7 @@ public sealed class FunctionService
     /// <summary>A FunctionConfig row's open condition holds (a function without a row is not gated).</summary>
     public bool IsOpen(GameSession session, long functionId)
     {
+        if (session.GmAllFunctionsOpen) return true; // GM panel openallfunc (GmCommands.Presets)
         // Function 1003 has parent 10 and delivered-task gate 10103160.
         // TaskService's no-quest fallback is permissive, so this feature specifically fails closed.
         if (functionId == 1003 && (session.Tasks == null

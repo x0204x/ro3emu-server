@@ -11,4 +11,5 @@ public readonly partial record struct AttributeConfig(JsonElement Row)
     [ConfigField("_iID")] public partial long Id { get; }
     [ConfigField("_iPower")] public partial double Power { get; }
     [ConfigField("_iPreAttri")] public partial long PreAttri { get; }
+    [ConfigField("_kVariable")] public partial string Variable { get; }
 }

@@ -1,9 +1,9 @@
 # Launcher and client distribution
 
-Players can get one file, `RO3Launcher.exe` (`src/Ro3Emu.Launcher`, pure .NET 10 WPF, self-contained). It
-installs the RO3 client patched for your server, keeps it updated, updates itself and starts `ro3.exe` with the launch
-proof. The official RO3 launchers cannot be reused for this: they pin the publisher's manifest signing key and update
-hosts in the exe, update themselves, and their Repair restores the original DLLs.
+玩家取得單一 `RO3Launcher.exe`（`src/Ro3Emu.Launcher`，純 .NET 10 WPF、自含執行環境），
+即可安裝已設定為連線至此伺服器的 RO3 客戶端、更新遊戲與啟動器，並以啟動證明開啟 `ro3.exe`。
+Genesis 啟動器的執行檔固定了 Genesis 的 manifest 簽章金鑰與更新來源，且會自行更新；
+執行其修復功能時會還原原始 DLL，因此本專案使用獨立啟動器發送自有簽章更新。
 
 This page explains how to host your own patch repository and publish to it.
 
@@ -91,7 +91,7 @@ an HTTPS-to-HTTP redirect. Banner links open only when their HTTPS host is expli
 
 ## Releasing
 
-All commands below use placeholders: `<client dir>` is a clean official RO3 PC install (the folder with `ro3.exe`),
+All commands below use placeholders: `<client dir>` is a clean Genesis RO3 PC install (the folder with `ro3.exe`),
 `<repo dir>` is your local copy of the repository folder, `<server url>` is your game server (for example
 `http://127.0.0.1:5380` for a local test) and `<channel>` is the channel name.
 
@@ -104,7 +104,7 @@ or gate key changes:
 Ro3Emu.ClientTools release <client dir> <server url> <gate_rsa_public.pem> <repo dir> <version> <channel> 9 --loc-map <loc_en.tsv> [--skill-trace]
 ```
 
-The published file set is exactly the official install (`.ro3-update/verified-baseline.txt`). The patched DLLs are
+The published file set is exactly the Genesis install (`.ro3-update/verified-baseline.txt`). The patched DLLs are
 rebuilt from the originals in `ro3emu-backup` inside a staging copy, so the source client itself may already be
 patched for another server. The optional `--loc-map` file is published as `ro3emu/loc_en.tsv`; without that option,
 the tool uses `<client dir>/ro3emu/loc_en.tsv` when it exists. This lets a clean official client stay untouched while

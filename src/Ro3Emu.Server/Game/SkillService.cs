@@ -12,7 +12,7 @@ namespace Ro3Emu.Server.Game;
 /// job rank, the normal attack and the skill bar), learning (31151) and the bar (31153). Skill ids are group ids
 /// (SkillConfig._iSkillID) here; casts use the row id of a level (group*100 + level, see RealId).
 /// </summary>
-public sealed class SkillService
+public sealed partial class SkillService
 {
     public const uint SkillDataSync = 5025;
     public const uint PlanUpdate = 31151;
@@ -723,6 +723,51 @@ public sealed class SkillService
 
     /// <summary>Skills were learned (quests: 104012 CheckCostJobPoint).</summary>
     public List<Func<GameSession, Task>> Learned { get; } = new();
+
+    /// <summary>
+    /// GM panel 110 GmCurAllSkillLevUpMax (GMConfig 3007: 1 learns every skill of the current job and stage at its
+    /// max level, 0 clears them) on the active plan. (inferred) The grant costs no skill points: the plan shows none
+    /// left. Groups are added in tree order while the plan's prerequisites still hold, so of an exclusive pair
+    /// (_kPreSkillRequired level -1) the first stays and a base skill gives way to its advanced form in the tree.
+    /// </summary>
+    internal async Task<string> GmLearnAllAsync(GameSession session, bool learn)
+    {
+        int learned;
+        {
+            using var held = await CharacterService.Lock(session);
+            var plans = Build(session);
+            var selected = plans.SkillAssignPlans[plans.CurrentPlanIndex];
+            var progress = CharacterService.GenreCloneProgress(session.Progress!);
+            progress.Skills.Clear();
+            if (learn)
+            {
+                var tree = Tree(progress.Career).Select(t => t.Group).ToList();
+                var pending = tree.Where(g => MaxLevel(g) > Initial(progress, g) && RealId(g, MaxLevel(g)) > 0
+                    && !(UpgradeGroups().TryGetValue(g, out int advanced) && tree.Contains(advanced))).ToList();
+                // A prerequisite later in the tree is met on a later pass.
+                for (bool added = true; added;)
+                {
+                    added = false;
+                    foreach (int group in pending.ToArray())
+                    {
+                        progress.Skills[group] = MaxLevel(group);
+                        if (PrerequisitesMet(progress)) { pending.Remove(group); added = true; }
+                        else progress.Skills.Remove(group);
+                    }
+                }
+            }
+            foreach (int group in plans.SkillList)
+                selected.SkillAssigns[group] = new SkillData { SkillId = group, SkillLevel = Level(progress, group) };
+            selected.SkillPoints.Clear();
+            foreach (var (rank, points) in SkillPoints(progress)) selected.SkillPoints[rank] = Math.Max(0, points);
+            PruneLoads(selected, progress);
+            await CommitAsync(session, plans, progress, "cd13c/skill-gm");
+            await SyncAsync(session);
+            learned = progress.Skills.Count;
+        }
+        await OnActivePlanChangedAsync(session);
+        return learn ? $"{learned} skills learned at their max level (no skill points charged)." : "Skills cleared to their free levels.";
+    }
 
     /// <summary>Skill points spent on the current tree (learned levels above the free initial ones).</summary>
     public int SpentPoints(RoleProgress p) => p.Skills.Sum(kv => Math.Max(0, kv.Value - Initial(p, kv.Key)));

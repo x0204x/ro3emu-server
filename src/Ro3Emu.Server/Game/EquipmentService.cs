@@ -194,6 +194,28 @@ public sealed partial class EquipmentService
         await _character.EquipLevelsChangedAsync(session, persist: false);
     }
 
+    /// <summary>
+    /// GM panel 4 GmOpStrengthen / 5 GmOpRefine: the grids' strengthen or refine level set outright, with no materials,
+    /// chance or luck, then 5007 and properties as after a paid upgrade. (inferred) No 31404/31405 reply: the panel
+    /// asked nothing of the upgrade widget; a set refine level clears the grid's luck as a success does.
+    /// </summary>
+    internal async Task<string?> GmSetLevelAsync(GameSession session, IReadOnlyList<int> grids, int level, bool refine)
+    {
+        using var gate = await CharacterService.Lock(session);
+        foreach (int grid in grids)
+            if (level < 0 || level > 0 && (refine ? _character.RefineRow(grid, level) : _character.StrengthenRow(grid, level)) == null)
+                return null;
+        var next = CopyLevels(session.EquipLevels);
+        foreach (int grid in grids)
+        {
+            (refine ? next.Refine : next.Strength)[grid] = level;
+            if (refine) next.Luck.Remove(grid);
+        }
+        session.EquipLevels = next;
+        await _character.EquipLevelsChangedAsync(session);
+        return $"{(refine ? "Refine" : "Strengthen")} +{level} on grids {string.Join(',', grids)}.";
+    }
+
     private static EquipLevels CopyLevels(EquipLevels source) => new()
     {
         Strength = new(source.Strength), Refine = new(source.Refine), Luck = new(source.Luck),

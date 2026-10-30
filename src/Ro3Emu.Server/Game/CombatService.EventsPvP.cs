@@ -156,9 +156,13 @@ public sealed partial class CombatService
     {
         var attack = _character.Stats(source); var defend = _character.Stats(target);
         var a = new Fighter(attack[AttributeId.Atk], attack[AttributeId.Matk], attack[AttributeId.Hit], attack[AttributeId.Cri],
-            source.Progress!.Level, AttackElement(source, row));
+            source.Progress!.Level, AttackElement(source, row))
+        { FixedDamage = (source.GmCombat & GmCombatSwitches.FixedDamage) != 0 };
         var b = new Fighter(0, 0, 0, 0, target.Progress!.Level, 1)
-        { Def = defend[AttributeId.Def], Mdef = defend[AttributeId.Mdef], Flee = defend[AttributeId.Flee], ResCri = defend[AttributeId.ResCri] };
+        {
+            Def = defend[AttributeId.Def], Mdef = defend[AttributeId.Mdef], Flee = defend[AttributeId.Flee], ResCri = defend[AttributeId.ResCri],
+            FixedDamage = (target.GmCombat & GmCombatSwitches.FixedDamage) != 0,
+        };
         var (damage, result) = Damage(a, b, row, bonusCrit: GuardianPetRules.CriticalChance(row),
             forceCrit: GuardianPetRules.CriticalAtHp(row, defend[AttributeId.Hp], defend[AttributeId.MaxHp]));
         damage = GuardianPetRules.DirectDamage(row, damage);

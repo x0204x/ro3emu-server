@@ -74,8 +74,8 @@ Open TCP `5380`, `20000` and `33100`, and the voice port if you turn voice on wi
 
 ## Purchase links
 
-The game's recharge, shop top-up and monthly-card buttons open the publisher's payment page. RO3Emu never sends a
-player there: a payment made there reaches the publisher, not your server. Without any option the buttons open
+The game's recharge, shop top-up and monthly-card buttons open Genesis' payment page. RO3Emu never sends a
+player there: a payment made there reaches Genesis, not your server. Without any option the buttons open
 nothing. To send players to your own page (donations, a store), give its address every time you patch the game:
 
 ```

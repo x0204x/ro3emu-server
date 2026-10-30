@@ -4,7 +4,7 @@ namespace Ro3Emu.ClientTools;
 
 /// <summary>
 /// Publishes a client patched for one server into a launcher repository (src/Ro3Emu.Launcher installs from it).
-/// The file set is exactly the official install: the RO3 launcher's verified baseline
+/// The file set is exactly the Genesis install: the RO3 launcher's verified baseline
 /// (<c>.ro3-update/verified-baseline.txt</c>, size + path per file). The DLLs this tool patches are rebuilt from the
 /// originals in <c>ro3emu-backup</c> inside a staging copy of <c>ro3_Data/Managed</c>, so the source client may itself be
 /// patched for another server. Logs, caches and our own folders are never published.
@@ -54,7 +54,7 @@ public static class ReleaseBuilder
             files.Add(new(relative, source));
         }
         if (mismatched.Count > 0)
-            throw new InvalidOperationException($"{mismatched.Count} files differ from the official install, e.g. {string.Join("; ", mismatched.Take(5))}");
+            throw new InvalidOperationException($"{mismatched.Count} files differ from the Genesis install, e.g. {string.Join("; ", mismatched.Take(5))}");
         foreach (var extra in Directory.GetFiles(stagedManaged).Select(Path.GetFileName))
         {
             string relative = ManagedPrefix + extra;

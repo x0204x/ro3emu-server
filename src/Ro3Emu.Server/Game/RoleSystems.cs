@@ -215,6 +215,7 @@ public sealed class RoleSystems(Maps.World world, ChatService chat, CharacterSer
         await step("festival", () => festival.LeaveRoleAsync(session));
         await step("dungeon match", () => dungeonMatches.LeaveRoleAsync(session));
         session.DungeonSoloMatch = false;
+        session.GmAllFunctionsOpen = false;
         await step("timed battle", () => timedBattles.LeaveRoleAsync(session));
         session.EventFaction = 0;
         await step("instance", () => instances.AbandonAsync(session));

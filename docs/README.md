@@ -10,6 +10,7 @@
 ## Guides: running a server
 
 - [GM access](guide/gm-access.md): who may use GM commands (`Ro3Emu:GmAccounts`)
+- [GM panel](guide/gm-panel.md): what each button of the client's GM panel does
 - [Open content](guide/open-content.md): every feature the client can show is playable (`Ro3Emu:OpenContent`)
 - [Bug reports](guide/feedback.md): the in-game Feedback button and `/bug`, and how to read the reports
 - [Launcher and patch repository](guide/launcher.md): hosting the client for your players

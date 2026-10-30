@@ -91,13 +91,13 @@ public sealed class ReleaseManifest
         }
         ReleaseManifest parsed;
         try { parsed = JsonSerializer.Deserialize<ReleaseManifest>(manifest) ?? throw new JsonException("empty"); }
-        catch (JsonException e) { throw new InstallException("The publisher's release manifest could not be read: " + e.Message, "Update RO3Emu."); }
+        catch (JsonException e) { throw new InstallException("Genesis' release manifest could not be read: " + e.Message, "Update RO3Emu."); }
         if (parsed.ProtocolName != Protocol || parsed.SchemaVersion != 2)
             throw new InstallException($"The publisher changed its release format ({parsed.ProtocolName} {parsed.SchemaVersion}).", "Update RO3Emu.");
         if (parsed.Signing.KeyId != config.KeyId || parsed.Signing.Algorithm != Algorithm)
             throw new InstallException($"The manifest names another signing key ({parsed.Signing.KeyId}).", "Update RO3Emu.");
         if (parsed.Release.ExpiresUtc is { } expires && expires < (nowUtc ?? DateTime.UtcNow))
-            throw new InstallException($"The publisher's release information expired on {expires:yyyy-MM-dd}.", "Try again later; the publisher renews it with each release.");
+            throw new InstallException($"Genesis' release information expired on {expires:yyyy-MM-dd}.", "Try again later; the publisher renews it with each release.");
         foreach (var path in parsed.TargetFiles.Select(t => t.Path).Concat(parsed.Operations.Select(o => o.Path)))
             if (!SafePath(path)) throw new InstallException($"The manifest names an unsafe path ({path}).", "Do not use this download source.");
         return parsed;

@@ -72,8 +72,8 @@ public sealed class ClientInstaller(PublisherConfig config, HttpClient http, str
             }
         }
         if (last is InstallException install) throw install;
-        throw new InstallException("The publisher's download servers could not be reached.",
-            "Check the internet connection and try again. Some internet providers block the publisher's mirror: connecting through "
+        throw new InstallException("Genesis' download servers could not be reached.",
+            "Check the internet connection and try again. Some internet providers block Genesis' mirror: connecting through "
             + "Cloudflare WARP (or another VPN) helps, or install the game with the Genesis launcher and pick its folder instead. "
             + "If the servers moved, a newer RO3Emu (or RO3Emu.download.json) has the new addresses.");
     }
@@ -123,7 +123,7 @@ public sealed class ClientInstaller(PublisherConfig config, HttpClient http, str
         foreach (var t in missing.OrderBy(t => sources.TryGetValue((t.Path, t.Sha256), out var s) ? s.Count : 0).ThenBy(t => t.Path, StringComparer.Ordinal))
         {
             if (!sources.TryGetValue((t.Path, t.Sha256), out var candidates) || candidates.Count == 0)
-                throw new InstallException($"The publisher's release has no package for {t.Path}.", "Try again later.");
+                throw new InstallException($"Genesis' release has no package for {t.Path}.", "Try again later.");
             var package = candidates.FirstOrDefault(c => chosen.ContainsKey(c.Id)) ?? candidates[0];
             chosen.TryAdd(package.Id, package);
             needs.Add(new Need(t, package));

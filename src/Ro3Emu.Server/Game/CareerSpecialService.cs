@@ -18,7 +18,7 @@ namespace Ro3Emu.Server.Game;
 /// mount through EntityBase.curRider (a CartRemouldTable id is a Battle mount, LC_MountHelper.GetMountType).
 /// Server behaviour the client does not show (refusal codes, repair, the battle slot) is marked inferred where it is.
 /// </summary>
-public sealed class CareerSpecialService
+public sealed partial class CareerSpecialService
 {
     public const uint Sync = 5002, Lease = 32721, CancelLease = 32722;
     // ErrorCodeConfig 1101-1111, the special Job item family.

@@ -93,7 +93,8 @@ public sealed partial class CombatService
             if (own is { } ownError && ownError != 0) error = ownError;
             else if (own == null && !granted
                 && (owned != null ? !owned.Skills.Contains(req.SkillId)
-                    : !Learned(s, row!.Value) && !GrantedSkill.Exists(grant => grant(s, req.SkillId))))
+                    : !Learned(s, row!.Value) && s.GmCastSkill != request.SkillId
+                        && !GrantedSkill.Exists(grant => grant(s, req.SkillId))))
                 error = ErrorCodes.SkillNotLearned;
             else if (!SkillModeAllowed(s, row!.Value)) error = ErrorCodes.SkillRequirements;
             else if (GameData.Int(row!.Value, "_iBasicType") != 1) error = ErrorCodes.SkillPassive;
@@ -119,10 +120,12 @@ public sealed partial class CombatService
                 if (error != 0 && SkillTargetErrorOverrides.Any(allow => allow(s, req, error))) error = 0;
             }
         }
-        var costs = row is { } value ? ResolveCosts(s, value) : new CastCosts();
+        // GmUnlimit's "no consumption" (inferred): no HP, SP, item, buff pile or energy cost.
+        bool unlimited = (s.GmCombat & GmCombatSwitches.Unlimited) != 0;
+        var costs = row is { } value && !unlimited ? ResolveCosts(s, value) : new CastCosts();
         long errorParam = 0;
         if (error == 0) (error, errorParam) = ValidateCosts(s, costs);
-        if (error == 0 && !_buffs.CanSpendEnergy(s, row!.Value)) error = ErrorCodes.SkillEnergyShort;
+        if (error == 0 && !unlimited && !_buffs.CanSpendEnergy(s, row!.Value)) error = ErrorCodes.SkillEnergyShort;
         if (error != 0)
         {
             await RefuseCastAsync(s, req, error, errorParam);
@@ -144,7 +147,7 @@ public sealed partial class CombatService
         await CancelCastAsync(s, SkillInterruptedInfo.Types.SkillInterruptType.Skill);
         _eventAttacks.Remove(s);
         await PayCostsAsync(s, costs);
-        await _buffs.SpendEnergyAsync(s, row!.Value);
+        if (!unlimited) await _buffs.SpendEnergyAsync(s, row!.Value);
         await s.SendGameAsync(UseSkill, new CastSkillRsp { SessionId = id, IsAutoCast = req.IsAutoCast });
         var target = FindMonster(s.WorldScene, req.TargetId);
         var playerTarget = EventTarget(s, req.TargetId);
@@ -422,6 +425,7 @@ public sealed partial class CombatService
 
     private async Task StartCooldownAsync(GameSession s, JsonElement row, int? askedMode = null)
     {
+        if ((s.GmCombat & GmCombatSwitches.NoCooldown) != 0) return; // GmNoCD / GmUnlimit 1: no skill cooldown starts
         int group = (int)GameData.Int(row, "_iSkillID"), mode = (int)GameData.Int(row, "_iMode");
         long now = Now, cd = GameData.Int(row, "_iCD");
         var notice = new SkillCdNotify { Uuid = s.Role!.Id };

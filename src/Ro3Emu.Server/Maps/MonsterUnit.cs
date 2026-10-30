@@ -32,7 +32,8 @@ public sealed record MonsterTemplate(
 /// machines derive from it (TerritoryWarsService.CannonUnit, VehicleUnit): they take damage and die as monsters do.</summary>
 public class MonsterUnit : WorldUnit
 {
-    public required MonsterTemplate Template { get; init; }
+    /// <summary>此執行個體的能力模板；GmSetEntityAttr僅替換本體的副本，保留場景可見性設定。</summary>
+    public required MonsterTemplate Template { get; set; }
     internal override bool VisibleAcrossScene => Template.VisibleAcrossScene;
     /// <summary>Instance-specific final outgoing damage rate; 10000 leaves field and dungeon monsters unchanged.</summary>
     public int DamageRatio { get; init; } = 10000;

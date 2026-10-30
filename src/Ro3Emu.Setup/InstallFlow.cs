@@ -78,7 +78,7 @@ internal static class InstallFlow
         http.DefaultRequestHeaders.UserAgent.ParseAdd($"RO3Emu/{typeof(InstallFlow).Assembly.GetName().Version}");
         var installer = new ClientInstaller(config, http, SetupHome.DownloadDir) { Log = SetupLog.Write };
 
-        Ui.Step("Asking the official servers for the current release");
+        Ui.Step("Asking Genesis' update servers for the current release");
         ClientInstaller.Manifests manifests;
         using (var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3)))
             manifests = await installer.FetchAsync(cts.Token);
