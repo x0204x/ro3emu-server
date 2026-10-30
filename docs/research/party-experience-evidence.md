@@ -56,3 +56,32 @@ G 原始 `LvExpCorrectionConfig` 有等級差係數，但未找到其在原服�
 本輪 target-free Managed metadata/CIL 精確名稱搜尋未找到這些 Lua 名稱的直接 bridge；
 `HappyEngineClient` 亦不是已確認的 Assembly-CSharp 宣告型別，該 Managed bridge 保留 UNKNOWN，
 不以未命中名稱宣稱程式不存在或公式已完整逆向。
+
+## 收件人快照與倍率一致性
+
+擊殺在等待角色預約之前會先記錄候選收件人；取得預約後，實際份額只給原候選中仍合格的角色。
+倍率也必須取自這份已鎖名單，不能再按即時名冊重算。否則等待期間另一位隊員回到同一分線，
+雖不在本次預約與義務中，卻可能增加全隊倍率，造成倍率用四人、分母用三人的不一致。
+`RewardService` 現在將已鎖 `eligible.Length` 對應的配置倍率傳給掉落解析，Base／Job 倍率、
+取整、義務及收據欄位均維持；新合格者從下一次擊殺才加入。這是本地結算一致性修正，
+**不是由 G 客戶端證明了原服分母公式**。
+
+`PartyExperiencePipelineTests.Snapshot` 以四個自造角色及真正角色預約控制等待：第四人先不同線，
+擊殺候選三人被擋在另一收件人的 owner；第四人回線後才放行。自造三人倍率只應產生
+11 EXP 池分為 4／4／3，新合格者本次為 0；同來源重送不追補，下一隻才按四人處理。
+等待訊號限制在該擊殺自己的 GameLoop capability，避免被背景計時工作誤觸。
+
+新的 G 靜態對照也確認 `TeamBuffNum` 是 UI 文案 SID 陣列（24117–24121），
+`UI_Sys_PlayerTeamWidgetCtrl._updateTeamMemberCount` 與 `UI_Sys_TeamWidgetCtrl._updateTeamMemberCount`
+用名冊數量顯示文字，沒有消費 `TeamExpBuffNum` 的算式。`LC_TeamHelper.GetMemberCount`
+是 `table.count(GetAllMemberInfo())`。這仍不能證明原服按名冊全員、在線或同場景合格數計算倍率。
+
+本輪組隊、配置與任務流程共 31 項 LAB 測試通過，收據欄位與角色快照相容性另有 7 項通過。
+另在自製 Server DLL 的隔離副本中，只把已傳入的快照倍率改回 `_teams.ExpBonus(player)`，
+同一測試確實得到 5／4／4／0 並失敗；修正版得到 4／4／3／0 且通過。
+這是單一路徑還原的對照，並非整個歷史版本重新建置，也沒有修改 G 原件或正式服務。
+
+G 的 `AttributeConfig` 另有 `monsterExpAddonPercent`、`gamePlayerExpAddonPercent` 與
+`allExpAddonPercent`；4006 可經角色同步投影到 `DynamicAttribute.ExpAddPercent`。
+本輪沒有閉合組隊配置到這些屬性的 producer，不能據此另加一次經驗倍率。
+`BuffConfig._kBuffAttributeList` 中的同號分類也不能當作 `_kChangeAttri` 的經驗屬性。

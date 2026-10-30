@@ -103,9 +103,12 @@ public sealed partial class TeamService(SessionRegistry sessions, CharacterServi
     }
 
     /// <summary>讀取 G TeamExpBuffNum；套用於合格野外隊員的 EXP 池仍是 (inferred) 政策。</summary>
-    public int ExpBonus(GameSession killer) =>
+    public int ExpBonus(GameSession killer) => ExperienceBonusForCount(ExperienceRecipients(killer).Count);
+
+    /// <summary>倍率與分帳必須使用同一份已預約收件人快照；等待期間新合格者不追補本次擊殺。</summary>
+    internal int ExperienceBonusForCount(int recipients) =>
         _experienceBonus.Length == 0 ? 10000
-            : _experienceBonus[Math.Clamp(ExperienceRecipients(killer).Count, 1, _experienceBonus.Length) - 1];
+            : _experienceBonus[Math.Clamp(recipients, 1, _experienceBonus.Length) - 1];
 
     /// <summary>The current Asia client projects TeamTypeForty member indices into fixed slots 1-5, 6-10, ... .</summary>
     internal static (int Start, int Count) ExpGroupRange(TeamType type, IReadOnlyList<long> members, long member)

@@ -130,7 +130,7 @@ public sealed class RewardService : IGameTicker
                             ReferenceEquals(candidate.Attachment, candidate.Session.Attachment) && eligibleNow.Contains(candidate.Session))
                         .Select(candidate => candidate.Session!).ToArray();
                     if (!eligible.Contains(player, ReferenceEqualityComparer.Instance)) eligible = [player];
-                    var (items, baseExp, jobExp) = ResolveKill(player, monster, bonus);
+                    var (items, baseExp, jobExp) = ResolveKill(player, monster, bonus, _teams.ExperienceBonusForCount(eligible.Length));
                     items = items.Select(item =>
                         {
                             if (_data.Row("ItemConfig", item.Entry) is { } row && new ItemConfig(row).Type == 1)
@@ -276,7 +276,7 @@ public sealed class RewardService : IGameTicker
 
     public void Tick(GameTime _) => _partyExperience.Tick();
 
-    private (List<(int Entry, int Count)> Items, long BaseExp, long JobExp) ResolveKill(GameSession player, MonsterUnit monster, bool bonus)
+    private (List<(int Entry, int Count)> Items, long BaseExp, long JobExp) ResolveKill(GameSession player, MonsterUnit monster, bool bonus, int partyExpBonus)
     {
         if (ResolveKillForTest != null) return ResolveKillForTest(player, monster);
         // Team-boss personal awards have their own durable dungeon obligation; ordinary loot stays empty.
@@ -309,7 +309,7 @@ public sealed class RewardService : IGameTicker
         {
             long gap = player.Progress!.Level - monster.Template.Level;
             baseExp = baseExp * Correction((int)Math.Clamp(gap, -200, 200)) / 10000;
-            baseExp = Math.Max(1, baseExp * _teams.ExpBonus(player) / 10000);
+            baseExp = Math.Max(1, baseExp * partyExpBonus / 10000);
         }
         // BaseExpAddConfig catch-up below the server level raises Base EXP only (CharacterService.LevelRules).
         return (items, _character.WithPursueBonus(player.Progress!.Level, baseExp), baseExp);

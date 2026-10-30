@@ -26,6 +26,10 @@
 
 `Lua_CFG_DungeonQuestConfig.GetQuestInfo`（100–165）以 `DungeonQuestConfig._iDungeonID/_iQuestID` 建索引；`_getQuestInfoByID` 將 `_kQuestGoal` 的參數索引加1後交給畫面。這些是另一套目錄及副本變數 consumer，沒有證據把它們等同舊 TaskConfig type25 的接受與交付。不得因畫面名稱相同就把舊六筆目標接到新副本目標計數。
 
+再次追查入口時，actual 原件仍有另一條舊任務畫面鏈：`Lua_GameDefine.enum_TaskType.TerritoryWarsSubTask = 25`；`UI_Sys_Main_TeamUp_FactionTaskWidgetCtrl._refreshSubTaskList` 從 `AllTaskInfo.TaskInfos` 篩選此類型，交給 `UI_Sys_Main_TeamUp_FactionTaskListWidgetCtrl` 顯示；`LC_TerritoryWarsHelper.GetTerritoryWarsTaskProgress` 也直接讀該任務的 `completeNum[1]`。因此不能把「另一套 DungeonQuest 不能代替」寫成「type25 沒有 consumer」。這條顯示鏈需要伺服器先送入任務，尚不能證明其接受、重置、採集或擊殺結算時點。
+
+六個 type25 設定列的接取模式是 `[0]`（`TaskReciveType_Other`），沒有前置任務；三個預留 type6 與本地 Rift type14 的接取模式皆為空。既有一般 31202 只接受 Npc／UI 模式，不能靠傳入這些 ID 啟用玩法。Rift 的鏈則已閉合：83350 `HiddenTreasureMapInfoNotify` → `LC_DAL_OnePiece._processTreasureMapInfo` → `bIsOpen/iNpcCount/iEndTime` → `LC_TaskHelper._getOtherClientTask` 本地建立1400010；不應另建一般可領獎任務。
+
 ## 兩個尚無本地 producer 的 Connect 事件
 
 1901180／1901190 的目標形式皆可解析，指向9300201。`OnHookDungeonConfig` 只在 `_kDungeonBuff` 中引用該 NPC；第一列的 `_iDungeon` 是2100004，本輪 MapConfig／DungeonConfig 及 Lua module inventory 都沒有相應地圖／副本定義。`LC_DAL_OnHook` 的冒險 UI 及43405請求仍存在，因此不能把缺少本地地圖推成原服功能已移除。
