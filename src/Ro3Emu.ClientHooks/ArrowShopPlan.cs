@@ -39,7 +39,7 @@ namespace Ro3Emu.ClientHooks
 
         internal static IReadOnlyList<ArrowShopOffer> MissingOffers(IReadOnlyList<Commodity> existing)
         {
-            if (!ArrowShopCatalog.Enabled) return Array.Empty<ArrowShopOffer>();
+            if (!ArrowShopCatalog.Enabled) return [];
             var missing = new List<ArrowShopOffer>();
             foreach (var offer in ArrowShopCatalog.Offers)
             {

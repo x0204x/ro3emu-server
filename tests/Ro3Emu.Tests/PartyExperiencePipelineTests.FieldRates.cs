@@ -44,8 +44,8 @@ public sealed partial class PartyExperiencePipelineTests
 
             // 全為自造配置：7 * 17000 / 10000 先成 11，再乘野外 300% 成 33。
             // Base 乘 2、Job 乘 3 後分三席；這只驗本地交易契約，不證原服組隊公式。
-            Assert.Equal(new long[] { 22, 22, 22 }, ids.Select((id, i) => RateProgress(host, id).Base - before[i].Base));
-            Assert.Equal(new long[] { 33, 33, 33 }, ids.Select((id, i) => RateProgress(host, id).Job - before[i].Job));
+            Assert.Equal([22L, 22L, 22L], ids.Select((id, i) => RateProgress(host, id).Base - before[i].Base));
+            Assert.Equal([33L, 33L, 33L], ids.Select((id, i) => RateProgress(host, id).Job - before[i].Job));
             string source = Assert.IsType<RewardSourceId>(monster.RewardSource).Key;
             var obligations = Obligations(host, source);
             Assert.Equal(2, obligations.Count);
@@ -62,7 +62,7 @@ public sealed partial class PartyExperiencePipelineTests
                 await reward.KilledAsync(killer, monster);
             });
             Assert.Equal(settled, ids.Select(id => RateProgress(host, id)).ToArray());
-            Assert.Equal(obligations.ToArray(), Obligations(host, source).ToArray());
+            Assert.Equal(obligations, Obligations(host, source));
         }
         finally { SqliteConnection.ClearAllPools(); Directory.Delete(fixture, true); }
     }

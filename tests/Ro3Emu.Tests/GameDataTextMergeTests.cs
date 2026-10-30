@@ -23,7 +23,7 @@ public sealed class GameDataTextMergeTests
         Assert.Equal("Invented English probe", data.TextOf(row, "name"));
         Assert.Equal("Invented English probe", data.TextOf(row.GetProperty("name")));
         Assert.Equal("自造繁中 probe", data.ClientTextOf(row, "name"));
-        Assert.Equal("自造繁中 7", data.ClientTextOf(new long[] { textId, 7 }));
+        Assert.Equal("自造繁中 7", data.ClientTextOf([textId, 7]));
         Assert.Equal("", data.TextOf((JsonElement?)null));
         Assert.Equal("", data.TextOf(row, "missing"));
         Assert.Equal("", data.ClientTextOf(row, "missing"));
