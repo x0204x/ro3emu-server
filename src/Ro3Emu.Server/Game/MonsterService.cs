@@ -827,6 +827,9 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         EndBossSkills(m, interrupt: true);
         SetTarget(m, null);
         m.PetTarget = null;
+        // G：LC_Movement_MoveSyncWalk._doStart 啟動定時平滑路徑；MoveSyncNone._doStart 校正位置。
+        // (inferred) 先等 AOI 移動送出並明確停在最後權威座標，再發布死亡，避免依賴客戶端狀態切換取消路徑。
+        await _world.MoveUnitAsync(m, Stop(m, NowMs));
         await _world.ToUnitViewersAsync(m, CombatService.AoiAttrChange, Hp(m));
         await _world.ToUnitViewersAsync(m, CombatService.EntityBaseChange, m.StateChange());
         if (m.RuntimeMap.Kind != RuntimeMapKind.PublicLine)

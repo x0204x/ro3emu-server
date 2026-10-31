@@ -164,6 +164,10 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
         try
         {
             if (unit.Removed) return;
+            // AOI 發布可能等待進場同步，此時戰鬥已將怪物 HP 歸零。
+            // 不可再送出先前的追擊；死亡時明確校正位置的靜止封包仍須放行。
+            if (unit is MonsterUnit monster && (monster.Dead || monster.Hp <= 0)
+                && movement.MovementInfo?.MoveType == MovementType.MoveTypeWalk) return;
             Map(unit.WorldScene).Moved(unit);
             List<GameSession> candidates;
             lock (_sync) candidates = UnitCandidatesLocked(unit).Concat(unit.Viewers).Distinct().ToList();

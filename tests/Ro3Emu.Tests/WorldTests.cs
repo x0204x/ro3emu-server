@@ -55,6 +55,49 @@ public class WorldTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task MonsterWalkWaitingForAoiPublicationCannotResumeAfterLethalDamage(bool deathPublished)
+    {
+        var player = Player("A", 100, 100);
+        await _world.JoinAsync(player);
+        var point = new SpawnPoint(-1, 105, 0, 100, 0, 1);
+        var monster = new MonsterUnit
+        {
+            Uid = 7, SceneEntry = 10111, X = point.X, Z = point.Z, Hp = 10,
+            Home = point, Group = new SpawnGroup(-1, false, 1, 0, [], [point]),
+            Template = new(1, 1, 10, 0, 1, 0, 0, 0, 1, 0, 0, 300, 1, 1, 1, 2,
+                false, 0, 8000, 5, 18, 0, 1000, 0.2f, 2000, 1, 1000),
+        };
+        await _world.AddUnitAsync(monster);
+        _sink.Events.Clear();
+        await monster.PresentationGate.WaitAsync();
+        Task movement;
+        try
+        {
+            movement = _world.MoveUnitAsync(monster, new MovementChangeNtf
+            {
+                Uid = monster.Uid,
+                MovementInfo = new MovementInfo { Pos = monster.Pos, MoveType = MovementType.MoveTypeWalk, MoveDuration = 4000 },
+            });
+            Assert.False(movement.IsCompleted);
+            monster.Hp = 0;
+            monster.Dead = deathPublished;
+        }
+        finally { monster.PresentationGate.Release(); }
+        await movement.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Empty(_sink.Events);
+        // 明確的靜止校正仍可送出，而且屍體只離場一次。
+        await _world.MoveUnitAsync(monster, new MovementChangeNtf
+        {
+            Uid = monster.Uid, MovementInfo = new MovementInfo { Pos = monster.Pos, MoveType = MovementType.MoveTypeNone },
+        });
+        await _world.RemoveUnitAsync(monster);
+        await _world.RemoveUnitAsync(monster);
+        Assert.Equal(new[] { "A unit~7", "A units +[] -[7]" }, _sink.Events);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task SuspendedUnitEnteredCallbackDoesNotBlockPlayerLeave(bool moving)
     {
         var player = Player("A", moving ? 300 : 100, 100);
