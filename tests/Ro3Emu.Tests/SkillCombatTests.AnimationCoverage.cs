@@ -54,7 +54,7 @@ public sealed partial class SkillCombatTests
             if (selectedBullet > 0)
             {
                 int travelMs = Assert.IsType<int>(bulletTravel!.Invoke(combat,
-                    [selectedBullet, new Vec3(), new Vec3 { X = 4 }]));
+                    [selectedBullet, new Vec3(), new Vec3 { X = 4 }, false]));
                 Assert.True(travelMs >= 0, $"show {scriptShow}: negative Bullet travel {travelMs}");
             }
         }
