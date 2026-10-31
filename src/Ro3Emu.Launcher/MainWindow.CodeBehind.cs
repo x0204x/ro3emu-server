@@ -34,6 +34,7 @@ public partial class MainWindow : Window
     string? _remoteVersion;
     int _activeGames;
     bool _busy;
+    bool _verifying;
     int _bannerIndex;
     DispatcherTimer? _bannerTimer;
     AnimationClock? _noticesClock;
@@ -114,6 +115,12 @@ public partial class MainWindow : Window
     {
         _phase = String(root, "phase");
         _busy = _phase == "updating";
+        _verifying = false;
+        UpdateProgress.IsIndeterminate = _busy;
+        UpdateProgress.Value = 0;
+        ProgressPercentText.Text = "準備中…";
+        TransferText.Text = "";
+        FileProgressText.Text = "";
         if (root.TryGetProperty("installed", out JsonElement installed))
             _installedVersion = installed.ValueKind == JsonValueKind.String ? installed.GetString() : null;
         if (root.TryGetProperty("remote", out JsonElement remote))
@@ -122,6 +129,7 @@ public partial class MainWindow : Window
             _activeGames = Math.Clamp(count, 0, GameProcessState.Capacity);
         string? detail = NullableString(root, "message");
         PackageText.Text = detail ?? DefaultMessage(_phase);
+        PackageText.ToolTip = PackageText.Text;
         DetailText.Text = _phase == "error" ? detail ?? "發生未預期的錯誤。" : "";
         bool failed = _phase == "error";
         ErrorGlyph.Visibility = failed ? Visibility.Visible : Visibility.Collapsed;
@@ -142,25 +150,26 @@ public partial class MainWindow : Window
     void ApplyProgress(JsonElement root)
     {
         _busy = true;
+        _phase = "updating";
         string stage = String(root, "stage");
         long done = Long(root, "done");
         long total = Long(root, "total");
         string file = String(root, "file");
         double rate = Double(root, "rate");
         double eta = Double(root, "eta");
-        double rawPercent = total > 0 ? Math.Clamp(done * 100d / total, 0, 100) : 0;
-        // A full download or assembly byte count is not the end of the update: the last
-        // chunk may still be getting decompressed, hashed and committed.  Reserve 100%
-        // for the updater's final committing report so the UI never claims completion early.
-        bool completed = stage.Equals("committing", StringComparison.OrdinalIgnoreCase)
-            && total > 0 && done >= total;
-        double percent = completed ? 100 : Math.Min(99, Math.Floor(rawPercent));
+        var progress = LauncherProgressState.Create(stage, done, total, Long(root, "filesDone"), Long(root, "filesTotal"));
+        _verifying = progress.IsVerification;
         UpdateProgress.Visibility = Visibility.Visible;
         ProgressDetails.Visibility = Visibility.Visible;
-        UpdateProgress.Value = percent;
-        ProgressPercentText.Text = percent.ToString("0", CultureInfo.InvariantCulture) + "%";
-        PackageText.Text = string.IsNullOrWhiteSpace(file) ? StageName(stage)
-            : $"{StageName(stage)} · {System.IO.Path.GetFileName(file)}";
+        UpdateProgress.IsIndeterminate = !progress.Percent.HasValue;
+        UpdateProgress.Value = progress.Percent ?? 0;
+        ProgressPercentText.Text = progress.Percent.HasValue
+            ? progress.Percent.Value.ToString("0.#", CultureInfo.InvariantCulture) + "%" : "處理中…";
+        PackageText.Text = string.IsNullOrWhiteSpace(file) ? progress.Label
+            : $"{progress.Label}\n{System.IO.Path.GetFileName(file)}";
+        PackageText.ToolTip = string.IsNullOrWhiteSpace(file) ? progress.Label : $"{progress.Label}\n{file}";
+        FileProgressText.Text = progress.Files;
+        FileProgressText.Visibility = Visibility.Visible;
         TransferText.Text = total > 0
             ? $"{Size(done)} / {Size(total)}" + (rate > 0 ? $"  ·  {Size((long)rate)}/s  ·  剩餘 {Eta(eta)}" : "")
             : "";
@@ -259,6 +268,7 @@ public partial class MainWindow : Window
         {
             "ready" or "running" or "launching" => 3,
             "repair" => 2,
+            "updating" when _verifying => 2,
             _ => 1,
         };
         StepInstall.Opacity = step >= 1 ? 1 : 0.45;
@@ -289,16 +299,6 @@ public partial class MainWindow : Window
         "launching" => "正在啟動遊戲…",
         "running" => "遊戲目前正在執行。",
         _ => "發生未預期的錯誤。",
-    };
-
-    static string StageName(string stage) => stage switch
-    {
-        "scanning" => "檢查檔案",
-        "downloading" => "下載中",
-        "assembling" => "解壓、組裝與驗證檔案",
-        "verifying" => "驗證中",
-        "committing" => "套用更新",
-        _ => "處理中",
     };
 
     static string Size(long bytes)
@@ -636,6 +636,26 @@ public partial class MainWindow : Window
             case "progress":
                 Post(new { type = "state", phase = "updating", installed = "140079", remote = "140080", message = "正在下載更新內容…" });
                 Post(new { type = "progress", stage = "downloading", done = 734003200L, total = 1073741824L, rate = 16777216d, eta = 20d });
+                break;
+            case "checking":
+                Post(new { type = "state", phase = "updating", installed = "140083", remote = "140083" });
+                Post(new { type = "progress", stage = "checking", done = 0L, total = 0L });
+                break;
+            case "verifying":
+                Post(new { type = "state", phase = "updating", installed = "140083", remote = "140083" });
+                Post(new
+                {
+                    type = "progress", stage = "scanning", done = 12_158_844_239L, total = 24_317_688_478L,
+                    filesDone = 12345, filesTotal = 37827, file = "ROO_PC/RO_Data/very-long-synthetic-client-asset-name.bundle",
+                });
+                break;
+            case "inspecting":
+                Post(new { type = "state", phase = "updating", installed = "140083", remote = "140083" });
+                Post(new { type = "progress", stage = "inspecting", done = 0L, total = 0L, filesDone = 15000, filesTotal = 30000 });
+                break;
+            case "verified-step":
+                Post(new { type = "state", phase = "updating", installed = "140083", remote = "140083" });
+                Post(new { type = "progress", stage = "scanning", done = 100L, total = 100L, filesDone = 10, filesTotal = 10 });
                 break;
             case "settings":
                 Post(new { type = "state", phase = "ready", installed = "140080", remote = "140080", message = (string?)null });

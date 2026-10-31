@@ -8,18 +8,19 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using System.Xml.Linq;
 using Ro3Emu.Launcher;
 
 internal static class Program
 {
-    static readonly string[] Fixtures = ["home", "progress", "queue", "maintenance", "failure-help-open", "offline-unmanaged", "settings"];
+    static readonly string[] Fixtures = ["home", "progress", "checking", "verifying", "inspecting", "verified-step", "queue", "maintenance", "failure-help-open", "offline-unmanaged", "settings"];
     static readonly (int Dpi, double Scale)[] Dpis = [(96, 1d), (120, 1.25d), (144, 1.5d)];
     static readonly (int Width, int Height, string Name)[] Sizes = [(1200, 800, "standard"), (1080, 720, "minimum")];
     static readonly string[] ControlNames =
     [
         "LeftPanel", "BannerHost", "NoticesViewport", "BottomPanel", "ActionsPanel",
         "StepInstall", "StepVerify", "StepReady", "UpdateProgress", "PackageText",
-        "ProgressDetails", "DetailText", "QueueStatusText", "PrimaryButton", "RetryButton",
+        "ProgressDetails", "ProgressPercentText", "TransferText", "FileProgressText", "DetailText", "QueueStatusText", "PrimaryButton", "RetryButton",
         "RepairButton", "RepairButtonText", "ErrorHelpOverlay", "MotionCheckBox",
     ];
 
@@ -31,8 +32,13 @@ internal static class Program
             : Path.Combine("TestResults", "LauncherVisualMatrix", DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)));
         Directory.CreateDirectory(outputRoot);
 
-        var app = new App { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        app.InitializeComponent();
+        // 僅載入視覺資源，避免 WPF pump 觸發產品 App.OnStartup 的正式啟動流程。
+        var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+        var resources = XDocument.Load(Path.Combine(AppContext.BaseDirectory, "LauncherApp.xaml"))
+            .Root?.Element(xaml + "Application.Resources")?.Elements().Single()
+            ?? throw new InvalidOperationException("找不到登入器視覺資源。");
+        app.Resources = (ResourceDictionary)System.Windows.Markup.XamlReader.Parse(resources.ToString());
         var captures = new List<CaptureRecord>();
         var failures = new List<string>();
         var calibrations = Dpis.Select(dpi => Calibrate(dpi.Dpi, dpi.Scale)).ToArray();
@@ -235,6 +241,23 @@ internal static class Program
         switch (fixture)
         {
             case "progress": Need(Visible("UpdateProgress") && Visible("ProgressDetails"), "進度列或進度細節未顯示"); break;
+            case "checking":
+                Need(root.FindName("UpdateProgress") is ProgressBar { IsIndeterminate: true }, "未知總量應顯示持續運作的進度列");
+                Need(root.FindName("ProgressPercentText") is TextBlock { Text: "處理中…" }, "未知總量不得顯示假的 0%");
+                Need(Enabled("PrimaryButton"), "核對期間應可暫停");
+                break;
+            case "verifying":
+            case "inspecting":
+                Need(root.FindName("UpdateProgress") is ProgressBar { IsIndeterminate: false, Value: 50 }, "核對進度未顯示實際的 50%");
+                Need(root.FindName("ProgressPercentText") is TextBlock { Text: "50%" }, "核對百分比不正確");
+                Need(root.FindName("FileProgressText") is TextBlock count && count.Text.Contains(" / ", StringComparison.Ordinal), "缺少已核對／總檔案數");
+                Need(root.FindName("PrimaryButtonText") is TextBlock { Text: "暫停作業" }, "核對時未顯示暫停作業");
+                break;
+            case "verified-step":
+                Need(root.FindName("ProgressPercentText") is TextBlock { Text: "100%" }, "核對完成步驟應顯示 100%");
+                Need(root.FindName("PrimaryButtonText") is TextBlock { Text: "暫停作業" }, "步驟完成但契約未放行前，不可顯示開始遊戲");
+                Need(!Enabled("RepairButton"), "核對契約期間不可插入修復");
+                break;
             case "queue":
             case "maintenance": Need(Visible("PrimaryButton") && !Enabled("PrimaryButton"), "主要按鈕應顯示但停用"); break;
             case "failure-help-open": Need(Visible("RetryButton") && !Visible("PrimaryButton") && Visible("ErrorHelpOverlay"), "錯誤復原畫面狀態不一致"); break;

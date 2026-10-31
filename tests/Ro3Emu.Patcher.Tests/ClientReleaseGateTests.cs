@@ -342,6 +342,36 @@ public sealed class ClientReleaseGateTests : IDisposable
     }
 
     [Fact]
+    public async Task SynchronousContractWorkNeverBlocksTheCallingThread()
+    {
+        var release = await PublishAsync();
+        using var repository = new RepositoryClient(new Uri("http://repo.test/"), Trust, new FileRepoHandler(Repo));
+        var updater = new Updater(new InstallLayout(Game), repository);
+        using var entered = new ManualResetEventSlim();
+        using var resume = new ManualResetEventSlim();
+        using var returned = new ManualResetEventSlim();
+        var sync = new ClientReleaseSynchronizer(updater, repository, _ =>
+        {
+            entered.Set();
+            if (!resume.Wait(TimeSpan.FromSeconds(10), CancellationToken.None)) throw new TimeoutException("Test did not release contract work");
+            return Task.FromResult(Requirement(release.Channel));
+        });
+        var operation = Task.Run(() =>
+        {
+            Task<ClientReleaseReady> pending = sync.EnsureReadyAsync("stable", false, () => true, null, CancellationToken.None);
+            returned.Set();
+            return pending;
+        });
+        try
+        {
+            Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
+            Assert.True(returned.Wait(TimeSpan.FromSeconds(2)), "The caller must regain control while verification is still running");
+        }
+        finally { resume.Set(); }
+        Assert.True((await operation).Updated);
+    }
+
+    [Fact]
     public async Task RequirementReaderUsesOnlyTheConfiguredServerAndNoCache()
     {
         var release = await PublishAsync();

@@ -13,14 +13,18 @@ public sealed class ThrottledProgress(Action<UpdateProgress> show) : IProgress<U
     readonly Stopwatch _clock = Stopwatch.StartNew();
     long _lastShown = long.MinValue;
     UpdateStage? _stage;
+    bool _completed;
 
     public void Report(UpdateProgress value)
     {
         lock (_gate)
         {
             long now = _clock.ElapsedMilliseconds;
-            if (_stage == value.Stage && now - _lastShown < 150) return;
+            bool complete = value.FilesTotal > 0 ? value.FilesDone >= value.FilesTotal
+                : value.BytesTotal > 0 && value.BytesDone >= value.BytesTotal;
+            if (_stage == value.Stage && now - _lastShown < 150 && (!complete || _completed)) return;
             _stage = value.Stage;
+            _completed = complete;
             _lastShown = now;
             // Updater workers report in parallel.  Keep the callback inside the gate so
             // stateful consumers (speed sampling, logging and UI posting) see one ordered

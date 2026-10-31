@@ -212,6 +212,7 @@ public sealed partial class LauncherController : IDisposable
             _post(new
             {
                 type = "progress",
+                filesDone = p.FilesDone, filesTotal = p.FilesTotal,
                 stage = p.Stage.ToString().ToLowerInvariant(),
                 done = p.BytesDone,
                 total = p.BytesTotal,

@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Ro3Emu.Launcher\Ro3Emu.Launcher.csproj" />
+    <None Include="..\..\src\Ro3Emu.Launcher\App.xaml" Link="LauncherApp.xaml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

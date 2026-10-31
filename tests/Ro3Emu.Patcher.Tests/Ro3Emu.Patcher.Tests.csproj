@@ -26,6 +26,7 @@
     <Compile Include="..\..\src\Ro3Emu.Launcher\GameProcessTracker.cs" Link="Launcher\GameProcessTracker.cs" />
     <Compile Include="..\..\src\Ro3Emu.Launcher\GameProcessDiscovery.cs" Link="Launcher\GameProcessDiscovery.cs" />
     <Compile Include="..\..\src\Ro3Emu.Launcher\LauncherVisualState.cs" Link="Launcher\LauncherVisualState.cs" />
+    <Compile Include="..\..\src\Ro3Emu.Launcher\ThrottledProgress.cs" Link="Launcher\ThrottledProgress.cs" />
   </ItemGroup>
 
 </Project>

@@ -228,17 +228,36 @@
                              Background="#D8C6A4" BorderBrush="#9D7546" BorderThickness="1" Value="0" Visibility="Collapsed">
                   <ProgressBar.Template><ControlTemplate TargetType="ProgressBar">
                     <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="10" ClipToBounds="True">
-                      <Grid x:Name="PART_Track"><Border x:Name="PART_Indicator" Background="{TemplateBinding Foreground}" HorizontalAlignment="Left" CornerRadius="9" /></Grid>
+                      <Grid x:Name="PART_Track">
+                        <Border x:Name="PART_Indicator" Background="{TemplateBinding Foreground}" HorizontalAlignment="Left" CornerRadius="9" />
+                        <Border x:Name="WaitingIndicator" Background="{TemplateBinding Foreground}" CornerRadius="9" Visibility="Collapsed" Opacity="0.25" />
+                      </Grid>
                     </Border>
+                    <ControlTemplate.Triggers>
+                      <Trigger Property="IsIndeterminate" Value="True">
+                        <Setter TargetName="PART_Indicator" Property="Visibility" Value="Collapsed" />
+                        <Setter TargetName="WaitingIndicator" Property="Visibility" Value="Visible" />
+                        <Trigger.EnterActions>
+                          <BeginStoryboard x:Name="WaitingAnimation"><Storyboard>
+                            <DoubleAnimation Storyboard.TargetName="WaitingIndicator" Storyboard.TargetProperty="Opacity"
+                                             From="0.2" To="0.65" Duration="0:0:0.8" AutoReverse="True" RepeatBehavior="Forever" />
+                          </Storyboard></BeginStoryboard>
+                        </Trigger.EnterActions>
+                        <Trigger.ExitActions><RemoveStoryboard BeginStoryboardName="WaitingAnimation" /></Trigger.ExitActions>
+                      </Trigger>
+                    </ControlTemplate.Triggers>
                   </ControlTemplate></ProgressBar.Template>
                 </ProgressBar>
                 <Grid Grid.Row="2" Margin="0,7,0,0">
                   <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="250" /><ColumnDefinition /></Grid.ColumnDefinitions>
-                  <TextBlock x:Name="PackageText" Style="{StaticResource BodyText}" FontSize="15.5" VerticalAlignment="Center" Text="正在檢查更新…" />
+                  <TextBlock x:Name="PackageText" Style="{StaticResource BodyText}" FontSize="15.5" VerticalAlignment="Center"
+                             TextTrimming="CharacterEllipsis" MaxHeight="48" Text="正在檢查更新…" />
                   <StackPanel x:Name="ProgressDetails" Grid.Column="1" HorizontalAlignment="Center" Visibility="Collapsed">
-                    <TextBlock x:Name="ProgressPercentText" Style="{StaticResource DisplayTitle}" FontSize="19" HorizontalAlignment="Center" Text="0%" />
+                    <TextBlock x:Name="ProgressPercentText" Style="{StaticResource DisplayTitle}" FontSize="19" HorizontalAlignment="Center" Text="準備中…" />
                     <TextBlock x:Name="TransferText" Style="{StaticResource BodyText}" FontSize="15.5" Foreground="{StaticResource MutedInkBrush}" HorizontalAlignment="Center" />
                   </StackPanel>
+                  <TextBlock x:Name="FileProgressText" Grid.Column="2" Style="{StaticResource BodyText}" FontSize="15.5"
+                             HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{StaticResource MutedInkBrush}" />
                   <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                     <TextBlock x:Name="ErrorGlyph" Text="⚠" FontSize="15" Margin="0,0,7,0" Foreground="{StaticResource AmberBrush}" Visibility="Collapsed" />
                     <TextBlock x:Name="DetailText" Style="{StaticResource BodyText}" FontSize="15.5" MaxWidth="300" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />

@@ -178,17 +178,23 @@ public static class Hashing
 
     public static string Sha256File(string path, Action<long>? onBytes = null, CancellationToken ct = default)
     {
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 20, FileOptions.SequentialScan);
+        ct.ThrowIfCancellationRequested();
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1, FileOptions.SequentialScan);
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        byte[] buffer = new byte[1 << 20];
-        int read;
-        while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
+        byte[] buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(1 << 20);
+        try
         {
+            int read;
+            while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                ct.ThrowIfCancellationRequested();
+                hash.AppendData(buffer, 0, read);
+                onBytes?.Invoke(read);
+            }
             ct.ThrowIfCancellationRequested();
-            hash.AppendData(buffer, 0, read);
-            onBytes?.Invoke(read);
+            return Convert.ToHexStringLower(hash.GetHashAndReset());
         }
-        return Convert.ToHexStringLower(hash.GetHashAndReset());
+        finally { System.Buffers.ArrayPool<byte>.Shared.Return(buffer); }
     }
 }
 

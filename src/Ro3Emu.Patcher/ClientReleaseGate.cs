@@ -39,10 +39,17 @@ public sealed record ClientReleaseReady(ClientReleaseRequirement Required, Chann
 public sealed class ClientReleaseSynchronizer(Updater updater, RepositoryClient repository,
     Func<CancellationToken, Task<ClientReleaseRequirement>> requiredClient, Action<ChannelInfo>? acceptSequence = null)
 {
-    public async Task<ClientReleaseReady> EnsureReadyAsync(string channelName, bool gamesRunning,
+    // 清單解壓、安裝紀錄、掃描與 SHA-256 都含同步工作，整段離開呼叫端的 UI 執行緒。
+    // 回呼會在背景執行；需要視窗狀態的呼叫端必須自行派送。
+    public Task<ClientReleaseReady> EnsureReadyAsync(string channelName, bool gamesRunning,
+        Func<bool> canChangeInstallation, IProgress<UpdateProgress>? progress, CancellationToken ct)
+        => Task.Run(() => EnsureReadyCoreAsync(channelName, gamesRunning, canChangeInstallation, progress, ct), ct);
+
+    async Task<ClientReleaseReady> EnsureReadyCoreAsync(string channelName, bool gamesRunning,
         Func<bool> canChangeInstallation, IProgress<UpdateProgress>? progress, CancellationToken ct)
     {
         if (!repository.RequiresSignedChannel) throw new PatcherException("正式模式必須使用已簽署的客戶端更新通道。");
+        progress?.Report(new UpdateProgress(UpdateStage.Checking, 0, 0));
         var (required, channel, manifest) = await ReadTargetAsync(channelName, ct);
         acceptSequence?.Invoke(channel);
         LocalState? state = updater.ReadStateOnly();
@@ -67,6 +74,7 @@ public sealed class ClientReleaseSynchronizer(Updater updater, RepositoryClient 
         if (!filesVerified || !ClientReleaseGate.MatchesInstalled(state, channel, manifest))
             throw new PatcherException("客戶端仍有檔案未通過 SHA-256 驗證，已停止啟動。");
         // 大型下載或掃描期間正式機可能換版；不使用掃描開始時的舊契約直接開啟遊戲。
+        progress?.Report(new UpdateProgress(UpdateStage.Checking, 0, 0));
         var current = await ReadTargetAsync(channelName, ct);
         acceptSequence?.Invoke(current.Channel);
         if (current.Required with { Sequence = required.Sequence } != required)

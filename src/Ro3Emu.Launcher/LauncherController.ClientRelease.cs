@@ -26,7 +26,7 @@ public sealed partial class LauncherController
             bool running = _games.State.AnyRunning;
             var progress = StrictProgress();
             ClientReleaseReady ready = await sync.EnsureReadyAsync(_config.Channel, running,
-                () => RefreshGameProcesses() && _games.State.CanChangeInstallation, progress, ct);
+                () => CanChangeStrictInstallation(ct), progress, ct);
             _channel = ready.Channel;
             _installed = ready.Installed;
             if (!_games.State.AnyRunning && await RestartStrictLauncherAsync(ct)) return false;
@@ -57,14 +57,25 @@ public sealed partial class LauncherController
         var meter = new SpeedMeter();
         return new ThrottledProgress(progress =>
         {
+            if (_life.IsCancellationRequested) return;
             var (rate, eta) = progress.Stage == UpdateStage.Downloading
                 ? meter.Sample(progress.BytesDone, progress.BytesTotal) : (0, 0);
             _post(new
             {
                 type = "progress", stage = progress.Stage.ToString().ToLowerInvariant(),
                 done = progress.BytesDone, total = progress.BytesTotal, file = progress.File, rate, eta,
+                filesDone = progress.FilesDone, filesTotal = progress.FilesTotal,
             });
         });
+    }
+
+    bool CanChangeStrictInstallation(CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var dispatcher = System.Windows.Application.Current.Dispatcher;
+        if (dispatcher.HasShutdownStarted) return false;
+        return dispatcher.Invoke(() => !ct.IsCancellationRequested
+            && RefreshGameProcesses() && _games.State.CanChangeInstallation);
     }
 
     async Task<bool> RestartStrictLauncherAsync(CancellationToken ct)

@@ -158,6 +158,14 @@ for a private tailnet with a signed Channel; an Internet-facing repository must 
 
 ## Player diagnostics
 
+正式機契約核對、清單解壓、檔案盤點與 SHA-256 掃描都在背景執行，不占用 WPF 視窗執行緒。
+核對畫面顯示目前步驟的百分比、已處理／總檔案數、資料量與目前檔案；大型檔案讀取中也持續更新。
+尚未取得總量時顯示「處理中…」與不定進度列，不用固定 0% 冒充進度。
+百分比代表目前步驟已處理的比例；缺檔或長度錯誤也會計入已處理範圍，但仍列為待修復。
+完成一次掃描不代表可啟動：完整 SHA-256、簽署清單及掃描後再次核對正式機契約全部通過後才會就緒。
+核對期間仍可操作視窗或按「暫停作業」。進度回報節流，階段切換與完成回報不會被略過；
+雜湊讀取共用緩衝區，避免大量小檔案反覆配置大型物件。
+
 The download percentage covers compressed repository chunks. After it completes, the launcher changes to
 **Decompress, assemble and verify files** while it builds and hashes the full installed client; this second phase can
 write substantially more data than the download size. A phase that has not actually finished is displayed at no more

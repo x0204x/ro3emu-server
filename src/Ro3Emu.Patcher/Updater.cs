@@ -3,9 +3,10 @@ using System.Text.Json;
 
 namespace Ro3Emu.Patcher;
 
-public enum UpdateStage { Scanning, Downloading, Assembling, Verifying, Committing }
+public enum UpdateStage { Scanning, Downloading, Assembling, Verifying, Committing, Checking, Inspecting, Indexing }
 
-public readonly record struct UpdateProgress(UpdateStage Stage, long BytesDone, long BytesTotal, string? File = null);
+public readonly record struct UpdateProgress(UpdateStage Stage, long BytesDone, long BytesTotal, string? File = null,
+    int FilesDone = 0, int FilesTotal = 0);
 
 public sealed record UpdateCheck(ChannelInfo Channel, LocalState? Installed, bool GamePresent)
 {
@@ -65,25 +66,31 @@ public sealed class Updater(InstallLayout layout, RepositoryClient repository)
     {
         var changed = new List<string>();
         long total = manifest.Files.Sum(file => file.Size), done = 0;
-        progress?.Report(new UpdateProgress(UpdateStage.Verifying, 0, total));
+        int filesDone = 0, filesTotal = manifest.Files.Count;
+        progress?.Report(new UpdateProgress(UpdateStage.Verifying, 0, total, FilesTotal: filesTotal));
         foreach (var file in manifest.Files)
         {
             ct.ThrowIfCancellationRequested();
             if (!Manifest.IsSha256Hex(file.Sha256)) throw new PatcherException("客戶端清單缺少有效的檔案 SHA-256。");
             string path = _layout.Resolve(file.Path);
             var info = new FileInfo(path);
-            if (!info.Exists || info.Length != file.Size) changed.Add(file.Path);
+            if (!info.Exists || info.Length != file.Size)
+            {
+                changed.Add(file.Path);
+                done += file.Size;
+            }
             else
             {
                 string hash = Hashing.Sha256File(path, bytes =>
                 {
                     done += bytes;
-                    progress?.Report(new UpdateProgress(UpdateStage.Verifying, done, total, file.Path));
+                    progress?.Report(new UpdateProgress(UpdateStage.Verifying, done, total, file.Path, filesDone, filesTotal));
                 }, ct);
                 if (!string.Equals(hash, file.Sha256, StringComparison.Ordinal)) changed.Add(file.Path);
             }
+            progress?.Report(new UpdateProgress(UpdateStage.Verifying, done, total, file.Path, ++filesDone, filesTotal));
         }
-        progress?.Report(new UpdateProgress(UpdateStage.Verifying, total, total));
+        ct.ThrowIfCancellationRequested();
         return new InstallVerification(changed);
     }, ct);
 
@@ -177,8 +184,11 @@ public sealed class Updater(InstallLayout layout, RepositoryClient repository)
         var verified = new Dictionary<string, InstalledFile>(StringComparer.OrdinalIgnoreCase);
         long scanTotal = 0;
         var toHash = new List<FilePlan>();
+        int inspected = 0;
         foreach (var plan in plans)
         {
+            ct.ThrowIfCancellationRequested();
+            progress?.Report(new UpdateProgress(UpdateStage.Inspecting, 0, 0, plan.File.Path, inspected++, plans.Count));
             var info = new FileInfo(plan.LocalPath);
             if (!info.Exists)
             {
@@ -218,16 +228,18 @@ public sealed class Updater(InstallLayout layout, RepositoryClient repository)
                 plan.OldLayoutUnknown = true;
             }
         }
+        progress?.Report(new UpdateProgress(UpdateStage.Inspecting, 0, 0, FilesDone: inspected, FilesTotal: plans.Count));
 
         long scanned = 0;
-        progress?.Report(new UpdateProgress(UpdateStage.Scanning, 0, scanTotal));
+        int hashed = 0;
+        progress?.Report(new UpdateProgress(UpdateStage.Scanning, 0, scanTotal, FilesTotal: toHash.Count));
         foreach (var plan in toHash)
         {
             var info = new FileInfo(plan.LocalPath);
             string hash = Hashing.Sha256File(plan.LocalPath, n =>
             {
                 scanned += n;
-                progress?.Report(new UpdateProgress(UpdateStage.Scanning, scanned, scanTotal, plan.File.Path));
+                progress?.Report(new UpdateProgress(UpdateStage.Scanning, scanned, scanTotal, plan.File.Path, hashed, toHash.Count));
             }, ct);
             if (string.Equals(hash, plan.File.Sha256, StringComparison.OrdinalIgnoreCase))
             {
@@ -238,17 +250,20 @@ public sealed class Updater(InstallLayout layout, RepositoryClient repository)
                 plan.Changed = true;
                 plan.OldLayoutUnknown = true;
             }
+            progress?.Report(new UpdateProgress(UpdateStage.Scanning, scanned, scanTotal, plan.File.Path, ++hashed, toHash.Count));
         }
 
         var changed = plans.Where(p => p.Changed).ToList();
 
         // 2. Index the bytes already on disk that a changed file can reuse.
+        progress?.Report(new UpdateProgress(UpdateStage.Indexing, 0, 0));
         var local = new Dictionary<string, ChunkSource>(StringComparer.OrdinalIgnoreCase);
         void AddLayout(string path, IEnumerable<ChunkRef> chunks)
         {
             long offset = 0;
             foreach (var chunk in chunks)
             {
+                ct.ThrowIfCancellationRequested();
                 local.TryAdd(chunk.Hash, new ChunkSource(path, offset, chunk.Size));
                 offset += chunk.Size;
             }
@@ -264,6 +279,8 @@ public sealed class Updater(InstallLayout layout, RepositoryClient repository)
         }
         var unknown = changed.Where(p => p.OldLayoutUnknown && File.Exists(p.LocalPath)).ToList();
         long chunkTotal = unknown.Sum(p => new FileInfo(p.LocalPath).Length), chunked = 0;
+        int indexed = 0;
+        progress?.Report(new UpdateProgress(UpdateStage.Indexing, 0, chunkTotal, FilesTotal: unknown.Count));
         foreach (var plan in unknown)
         {
             using var stream = new FileStream(plan.LocalPath, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 20, FileOptions.SequentialScan);
@@ -277,8 +294,9 @@ public sealed class Updater(InstallLayout layout, RepositoryClient repository)
                     local.TryAdd(hash, new ChunkSource(plan.LocalPath, offset, chunk.Length));
                 }
                 chunked += chunk.Length;
-                progress?.Report(new UpdateProgress(UpdateStage.Scanning, chunked, chunkTotal, plan.File.Path));
+                progress?.Report(new UpdateProgress(UpdateStage.Indexing, chunked, chunkTotal, plan.File.Path, indexed, unknown.Count));
             }
+            progress?.Report(new UpdateProgress(UpdateStage.Indexing, chunked, chunkTotal, plan.File.Path, ++indexed, unknown.Count));
         }
 
         // 3. Download what is neither on disk nor in the cache of an earlier, interrupted attempt.
