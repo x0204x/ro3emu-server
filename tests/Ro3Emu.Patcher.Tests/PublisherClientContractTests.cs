@@ -28,12 +28,12 @@ public sealed class PublisherClientContractTests : IDisposable
 
     private Task<PublishResult> Publish(string version, long official = 7, string server = "1.0.24", bool verify = false,
         LauncherRelease? launcher = null) => Publisher.PublishAsync(new PublishOptions
-    {
-        Files = [new("Game.exe", Source)], RepoDirectory = Repo, Channel = "stable", Version = version, LaunchExe = "Game.exe",
-        BaseClient = Identity(official), ServerVersion = server, PatchSha256 = new string('c', 64), Signing = Signing,
-        Workers = 1, CompressionLevel = 1,
-        VerifyExistingChannel = verify, Launcher = launcher,
-    });
+        {
+            Files = [new("Game.exe", Source)], RepoDirectory = Repo, Channel = "stable", Version = version, LaunchExe = "Game.exe",
+            BaseClient = Identity(official), ServerVersion = server, PatchSha256 = new string('c', 64), Signing = Signing,
+            Workers = 1, CompressionLevel = 1,
+            VerifyExistingChannel = verify, Launcher = launcher,
+        });
 
     [Fact]
     public async Task PublishesACompleteRequirementAndRejectsATamperedSidecar()
