@@ -634,6 +634,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
             }
             if (now >= m.NextSwingMs && AttackPet != null)
             {
+                PrepareStoryNormalAttack(m);
                 m.NextSwingMs = now + m.Template.SwingIntervalMs;
                 m.Face = Angle(m.X, m.Z, target.X, target.Z);
                 _loop.TrackRuntimeDetached("monster pet attack", () => AttackPet(m, target));
@@ -698,6 +699,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         }
         if (now >= m.NextSwingMs && Attack != null)
         {
+            PrepareStoryNormalAttack(m);
             m.NextSwingMs = now + m.Template.SwingIntervalMs;
             m.Face = Angle(m.X, m.Z, target.Position.X, target.Position.Z);
             _loop.TrackRuntimeDetached("monster attack", () => Attack(m, target));

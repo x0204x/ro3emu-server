@@ -11,7 +11,7 @@ public sealed partial class DungeonTests
 
     private static CastSkillReq CannonShot(DungeonService.SceneActorUnit cannon, EntityBase ship) => new()
     {
-        SkillId = 5353001, OpUnitId = cannon.Uid, TargetId = (long)ship.Uuid,
+        SkillId = 5353001, OpUnitId = cannon.Uid, TargetsId = { (long)ship.Uuid },
         TargetPos = ship.MovementInfo.Pos.Clone(),
     };
 
@@ -20,16 +20,16 @@ public sealed partial class DungeonTests
     public async Task AirshipCannonMountDoesNotFireAndRepeatedShotsNeedRealHits()
     {
         await using var alice = await InWorld("Alice");
+        AirshipStoryTestPace();
         await Gm(alice, "!lvl 99");
         await Gm(alice, "!quest accept 10103210"); // LAB 準備入場任務；不代表已走完前置主線。
         Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = AirshipCombatScene }));
         long instance = await Load(alice, AirshipCombatScene);
         await Stage(alice, 1, quest: 1);
-        await Gm(alice, "!actors use"); // 開場四段泡泡的既有測試另行逐一驗證。
         await Stage(alice, 2, quest: 2);
         var cannon = (await ActorsIn(alice, 3, actor => actor.NpcId == 5300022))[0];
-        var ships = (await WaveIn(instance, 2)).OrderBy(ship => ship.Template.NpcId).ToArray();
-        var clientShips = await ClientAirships(alice);
+        var ships = (await WaveIn(instance, 3)).OrderBy(ship => ship.Template.NpcId).ToArray();
+        var clientShips = await ClientAirships(alice, expected: 3);
         Assert.Equal(ships.Select(ship => (ulong)ship.Uid), clientShips.Select(ship => ship.Uuid));
         var hpBefore = await Service<GameLoop>().InvokeAsync(() => Task.FromResult(ships.Select(ship => ship.Hp).ToArray()));
 
@@ -37,6 +37,9 @@ public sealed partial class DungeonTests
         Assert.Equal(0, await Interact(alice, cannon, 5300006));
         await Next(alice, WorldInteractionService.Change, InteractChangeNtf.Parser,
             n => n.Uid == Session(alice).Role!.Id && n.DataInfo.EType == InteractInfo.Types.EState.UpperCannon);
+        await Next(alice, WorldInteractionService.Change, InteractChangeNtf.Parser,
+            n => n.Uid == cannon.Uid && n.DataInfo.EType == InteractInfo.Types.EState.UpperCannon
+                && n.DataInfo.InteractConfigId == 0 && n.DataInfo.UpperCannonInfo.CannonGuId == cannon.Uid);
         Assert.Equal(ErrorCodes.NpcParameter, await Interact(alice, cannon, 5300006));
         await alice.SendGameAsync(WorldInteractionService.Action, new UseInteractActionReq { ButtonId = 27 });
         Assert.Equal(ErrorCodes.NpcParameter,
@@ -68,6 +71,14 @@ public sealed partial class DungeonTests
         await PrepareShip(ships[0]);
         await alice.SendGameAsync(CombatService.UseSkill, CannonShot(cannon, clientShips[0]));
         Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
+        var cannonTimeline = await Next(alice, CombatService.UseInSkillHigh, UseInSkillInfo.Parser,
+            use => use.SkillID == 5353001 && use.TargetId == ships[0].Uid);
+        Assert.Equal(Session(alice).Role!.Id, cannonTimeline.SrcID);
+        var cannonProjectile = await Next(alice, CombatService.SkillBulletHigh, SkillFixTimeBulletNotify.Parser,
+            bullet => bullet.SkillConfigId == 5353001 && bullet.EffectId == 6120105);
+        Assert.Equal(Session(alice).Role!.Id, cannonProjectile.SourceId);
+        Assert.Equal(0, cannonProjectile.TargetId); // wire展示彈道不鎖單位，實際傷害仍繫結授權目標。
+        Assert.True(cannonProjectile.FixedTime > 0);
         await alice.SendGameAsync(CombatService.UseSkill, CannonShot(cannon, clientShips[1]));
         Assert.NotEqual(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
         Assert.Contains((await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser,
@@ -87,6 +98,21 @@ public sealed partial class DungeonTests
         Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
         Assert.Contains((await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser,
             hit => hit.SkillId == 5353001)).Dsts, dst => dst.DstID == ships[1].Uid && dst.IsDead);
+        await OnLoop(() =>
+        {
+            Assert.Equal(1, Session(alice).DungeonAttempt!.Wave); // 兩艘死亡不能當作三艘完成。
+            return Task.CompletedTask;
+        });
+        await Task.Delay(600);
+        await PrepareShip(ships[2]);
+        await alice.SendGameAsync(CombatService.UseSkill, CannonShot(cannon, clientShips[2]));
+        Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
+        Assert.Contains((await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser,
+            hit => hit.SkillId == 5353001)).Dsts, dst => dst.DstID == ships[2].Uid && dst.IsDead);
+        await Next(alice, WorldInteractionService.Change, InteractChangeNtf.Parser,
+            n => n.Uid == cannon.Uid && n.DataInfo.EType == InteractInfo.Types.EState.Idle);
+        await Next(alice, WorldInteractionService.Change, InteractChangeNtf.Parser,
+            n => n.Uid == Session(alice).Role!.Id && n.DataInfo.EType == InteractInfo.Types.EState.Idle);
         await Stage(alice, 3, quest: 3);
         await OnLoop(() =>
         {
@@ -103,6 +129,7 @@ public sealed partial class DungeonTests
     [ClientDataFact]
     public async Task AirshipCannonOccupancyIsReleasedWhenItsUserDisconnects()
     {
+        AirshipStoryTestPace();
         long role, previousInstance;
         DungeonService.Attempt previous;
         DungeonService.SceneActorUnit oldCannon;
@@ -114,7 +141,6 @@ public sealed partial class DungeonTests
             Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = AirshipCombatScene }));
             previousInstance = await Load(alice, AirshipCombatScene);
             await Stage(alice, 1, quest: 1);
-            await Gm(alice, "!actors use");
             await Stage(alice, 2, quest: 2);
             oldCannon = (await ActorsIn(alice, 3, actor => actor.NpcId == 5300022))[0];
             previous = Assert.IsType<DungeonService.Attempt>(Session(alice).DungeonAttempt);
@@ -139,7 +165,6 @@ public sealed partial class DungeonTests
         long currentInstance = await Load(relog, AirshipCombatScene);
         Assert.NotEqual(previousInstance, currentInstance);
         await Stage(relog, 1, quest: 1);
-        await Gm(relog, "!actors use");
         await Stage(relog, 2, quest: 2);
         var newCannon = (await ActorsIn(relog, 3, actor => actor.NpcId == 5300022))[0];
         await Beside(relog, newCannon.X, newCannon.Y, newCannon.Z);
@@ -155,67 +180,47 @@ public sealed partial class DungeonTests
         });
     }
 
-    /// <summary>三波登船、首領與五處戰後調查只由各自目前階段的真實事件推進。</summary>
+    /// <summary>四戰士與五弓箭手分批；原服巡視不必完成五次泡泡，QTE 仍不能跨階段。</summary>
     [ClientDataFact]
     public async Task AirshipDeckWavesBossAndInvestigationRejectCrossStageEvents()
     {
         await using var alice = await InWorld("Alice");
+        AirshipStoryTestPace();
         await Gm(alice, "!lvl 99");
         await Gm(alice, "!quest accept 10103210"); // LAB 準備入場任務；戰鬥仍由正式協定推進。
         Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = AirshipCombatScene }));
         long instance = await Load(alice, AirshipCombatScene);
         await Stage(alice, 1, quest: 1);
-        await Gm(alice, "!actors use");
         await Stage(alice, 2, quest: 2);
-        foreach (var ship in await WaveIn(instance, 2)) await Kill(alice, ship);
+        foreach (var ship in await WaveIn(instance, 3)) await Kill(alice, ship);
 
-        for (int stage = 3; stage <= 5; stage++)
+        foreach (var (stage, count) in new[] { (3, 4), (4, 5) })
         {
             await Stage(alice, stage, quest: 3);
-            var wave = await WaveIn(instance, 3);
-            Assert.Equal(3, wave.Count);
+            var wave = await WaveIn(instance, count);
+            Assert.Equal(count, wave.Count);
             await PlotEnd(alice, 130162); // 船舵結局只屬最後階段。
             await Task.Delay(100);
             Assert.Equal(stage - 1, Assert.IsType<DungeonService.Attempt>(Session(alice).DungeonAttempt).Wave);
-            foreach (var boarder in wave.Take(2))
+            foreach (var boarder in wave.Take(count - 1))
             {
                 await Kill(alice, boarder);
                 Assert.Equal(stage - 1, Assert.IsType<DungeonService.Attempt>(Session(alice).DungeonAttempt).Wave);
             }
-            await Kill(alice, wave[2]);
+            await Kill(alice, wave[count - 1]);
         }
-        await Stage(alice, 6, quest: 4);
+        await Stage(alice, 5, quest: 4);
         await PlotEnd(alice, 130163);
         await Task.Delay(100);
-        Assert.Equal(5, Assert.IsType<DungeonService.Attempt>(Session(alice).DungeonAttempt).Wave);
+        Assert.Equal(4, Assert.IsType<DungeonService.Attempt>(Session(alice).DungeonAttempt).Wave);
         await Kill(alice, await BossIn(instance, 5300018));
 
-        await Stage(alice, 7, quest: 5);
-        var actors = await ActorsIn(alice, 5);
-        var catalog = Service<DungeonCatalog>();
+        await Stage(alice, 6, quest: 5);
         await PlotEnd(alice, 130162);
         await Task.Delay(100);
-        Assert.Equal(6, Assert.IsType<DungeonService.Attempt>(Session(alice).DungeonAttempt).Wave);
-        var interactions = new[] { 5300048, 5300049, 5300050, 5300051, 5300052 };
-        for (int i = 0; i < interactions.Length; i++)
-        {
-            int interaction = interactions[i];
-            var actor = actors.Single(candidate => catalog.Interactions(candidate.NpcId).Contains(interaction));
-            await Beside(alice, actor.X, actor.Y, actor.Z);
-            Assert.Equal(0, await Interact(alice, actor, interaction));
-            if (i == 0)
-            {
-                Assert.Equal(0, await Interact(alice, actor, interaction)); // 同一泡泡重送不能湊成第二處。
-                Assert.Single(Assert.IsType<DungeonService.Attempt>(Session(alice).DungeonAttempt).StepSeen);
-            }
-            if (i < interactions.Length - 1)
-            {
-                var attempt = Assert.IsType<DungeonService.Attempt>(Session(alice).DungeonAttempt);
-                Assert.Equal(6, attempt.Wave);
-                Assert.Equal(i + 1, attempt.StepSeen.Count);
-            }
-        }
-        await Stage(alice, 8, quest: 6);
+        Assert.Equal(5, Assert.IsType<DungeonService.Attempt>(Session(alice).DungeonAttempt).Wave);
+        // 不發出任何泡泡互動，計時仍必須到達船長階段。
+        await Stage(alice, 7, quest: 6);
         Assert.False(Assert.IsType<DungeonService.Attempt>(Session(alice).DungeonAttempt).Settled); // 還需船長對話與 QTE 結局。
     }
 }

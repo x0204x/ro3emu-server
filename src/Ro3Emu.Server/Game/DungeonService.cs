@@ -34,6 +34,7 @@ public sealed partial class DungeonService
     internal Func<GameSession, DungeonTaskClear, Task>? ApplyTaskClear { get; set; }
     internal Func<GameSession, Task>? ResumeTaskClearFollowup { get; set; }
     internal Func<GameSession, long, bool>? StoryEntryAllowed { get; set; }
+    internal Func<GameSession, long, bool>? StoryContinuationAllowed { get; set; }
     /// <summary>After <see cref="Completed"/> for a TenGameplay run: the boss (TenGameplayBossConfig._iBoss) and the
     /// run's settled participants (quest target 106602).</summary>
     public List<Func<GameSession, long, IReadOnlyCollection<GameSession>, Task>> MultiBossCleared { get; } = new();
@@ -100,12 +101,18 @@ public sealed partial class DungeonService
         this._scenes = scene;
         this._world = world;
         this._vehicles = vehicles;
+        vehicles.SceneActorSeatEnded = AntStorySeatEndedAsync;
         gm.Register("actors", "[npcId | walk <x> <z> | use] (scripted scene test aid: the step's scene actors, jump beside one, arrive at x z as a walk would, or complete the step server-side)", ActorsGmAsync);
         teams.MultiDungeonInfo = TeamDungeonInfo;
         combat.DamageAdjusters.Add((s, m, _, _, damage) => BondDamage(s, m, damage, incoming: false));
         combat.IncomingDamageAdjusters.Add((m, s, _, damage) => Task.FromResult(BondDamage(s, m, damage, incoming: true)));
         scene.Loaded.Add(LoadedAsync);
         scene.Leaving.Add(AbandonAsync);
+        scene.StoryMovementSpeed = AntStoryMovementSpeed;
+        combat.StoryBossCastStarted += AirshipBossCastStartedAsync;
+        combat.PositionOnlyCasts.Add(AirshipCannonPositionOnlyCast);
+        combat.HighLevelCasts.Add((s, cast) => s.SceneEntry == AirshipScene && cast.Request.SkillId == 5353001);
+        combat.ProjectileCasts.Add(AirshipCannonProjectile);
         combat.Killed.Add(KilledAsync);
         combat.BeforeKilled.Insert(0, FreezeTerminalKillAsync);
         combat.PlayerDied.Add(PlayerDiedAsync);
@@ -489,6 +496,7 @@ public sealed partial class DungeonService
             snapshot.StageModuleData.MapStateEndTime = a.StartMs + _options.RaidPreparationSeconds * 1000L;
             snapshot.StageModuleData.StageEndTime = snapshot.StageModuleData.MapStateEndTime;
         }
+        ApplyAirshipStoryVars(a, snapshot.Vars);
         return snapshot;
     }
 
@@ -615,6 +623,7 @@ public sealed partial class DungeonService
         if (QuestList(a) is { } quests) change.Vars.Add(quests);
         if (GoalParams(a) is { } goal) change.Vars.Add(goal);
         if (a.GuildChallenge is { } challenge) change.Vars.Add(challenge.Vars());
+        ApplyAirshipStoryVars(a, change.Vars);
         await BroadcastAsync(a, Event, change);
         // Seen live: the task widget takes its vars from 30401 only, not from this event; a later wave whose
         // quest is known republishes the state so the tracker moves on (the first one follows StartAsync's).
@@ -654,7 +663,9 @@ public sealed partial class DungeonService
                     LeashDistance = Math.Max(template.LeashDistance, EggThiefWaveLeash),
                 };
             }
-            var monster = await _instances.SpawnAsync(a.Room, spawn.NpcId, spawn.Point, customTemplate: waveTemplate);
+            var monster = await _instances.SpawnAsync(a.Room, spawn.NpcId,
+                AirshipStorySpawnPoint(a, spawn.NpcId, spawn.Point, a.Spawned - a.WaveBase),
+                customTemplate: waveTemplate, grounded: AirshipStorySpawnGrounded(a));
             if (a.Settled || a.Room.Closed)
             {
                 a.Spawning = false;
@@ -700,6 +711,7 @@ public sealed partial class DungeonService
     {
         if (a.Settled || a.Preparing || a.Spawning || a.Precounted.Count != 0 || a.Killed.Count != a.Spawned || a.Advancing) return;
         if (Step(a) != null && !a.StepDone) return;
+        await AirshipStoryWaveClearedAsync(a);
         // A scripted step's hold: what it showed (a bubble being read, an enemy falling) is not cut by the next step or the
         // result. Only once per step, and not past the run's time limit.
         if (Step(a) is { HoldAfterMs: > 0 } step && !a.StepHoldOver && _loop.Now - a.StartedAt < TimeSpan.FromMilliseconds(a.Plan.DurationMs))
@@ -893,6 +905,8 @@ public sealed partial class DungeonService
         if (_pending.TryGetValue(s, out var p)) await CancelAsync(p, ErrorCodes.MemberLeft, s.Role?.Id ?? 0);
         if (s.DungeonAttempt is not { } a) return;
         await ExitCannonAsync(a, s, interrupt: true);
+        await LeaveAntStoryAsync(s);
+        if (Present(a).Length <= 1) await StopAirshipStoryAsync(a);
         s.DungeonAttempt = null; s.Attack = null;
         if (a.Dracula is { } dracula) await dracula.Owner.LeftAsync(a, s);
         await ClearBondsAsync(s, a);
@@ -917,6 +931,8 @@ public sealed partial class DungeonService
     {
         if (a.Settled || a.Room.Closed) return;
         await ExitAllCannonsAsync(a, interrupt: true);
+        await EndAntStoryAsync(a);
+        await StopAirshipStoryAsync(a);
         if (a.GuildChallenge is { } challenge)
         {
             a.Settled = true;
@@ -1027,9 +1043,16 @@ public sealed partial class DungeonService
                 try
                 {
                     if (committed && goods.Count > 0) await _character.ItemsChangedAsync(s, stats: false);
-                    await s.SendGameAsync(Result, result);
+                    if (success && CapturedStoryScene(a.Plan.SceneEntry))
+                        await s.SendGameAsync(ResultNotify, CapturedStoryResult(a, success));
+                    else await s.SendGameAsync(Result, result);
                     if (success) await HideGuideWaysAsync(s, a);
-                    if (success && LeavesAfterClear(a)) ScheduleLeaveAfterClear(s, a);
+                    if (success && CapturedStoryScene(a.Plan.SceneEntry))
+                    {
+                        await CompleteAntStoryAsync(a);
+                        ScheduleCapturedStoryReturn(s, a);
+                    }
+                    else if (success && LeavesAfterClear(a)) ScheduleLeaveAfterClear(s, a);
                     if (success && a.Plan.Multi != null)
                     {
                         var award = new SyncMultiDungeonAwardNotify

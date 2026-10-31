@@ -25,7 +25,7 @@ public sealed partial class CombatService
 
     internal async Task CompanionAttackAsync(CompanionUnit companion, MonsterUnit target, CompanionUnit.Skill skill)
     {
-        if (!Reaches(companion, target, skill, 1f) || SkillConfig.Get(_data, skill.Id) is not { } config) return;
+        if (!skill.CanDamageEnemy || !Reaches(companion, target, skill, 1f) || SkillConfig.Get(_data, skill.Id) is not { } config) return;
         long castId = ++_sessionIds;
         await _world.ToUnitViewersAsync(companion, UseInSkill, new UseInSkillInfo
         {
@@ -37,7 +37,7 @@ public sealed partial class CombatService
     }
 
     private static bool Reaches(CompanionUnit companion, MonsterUnit target, CompanionUnit.Skill skill, float slack) =>
-        !companion.Dead && companion.Hp > 0 && !companion.Removed && !target.Dead && target.Hp > 0
+        skill.CanDamageEnemy && !companion.Dead && companion.Hp > 0 && !companion.Removed && !target.Dead && !target.Removed && target.Hp > 0
         && target.InstanceId == companion.InstanceId && target.WorldScene == companion.WorldScene
         && MonsterService.Distance(companion.X, companion.Z, target.X, target.Z) <= skill.Range + slack;
 
@@ -101,20 +101,21 @@ public sealed partial class CombatService
 
     private async Task MonsterAttackCompanionAsync(MonsterUnit monster, CompanionUnit companion)
     {
-        if (companion.Dead || companion.Hp <= 0 || monster.Dead || monster.Hp <= 0) return;
+        var attack = monster.Template;
+        if (companion.Removed || companion.Dead || companion.Hp <= 0 || monster.Removed || monster.Dead || monster.Hp <= 0) return;
         long castId = ++_sessionIds;
-        await _world.ToUnitViewersAsync(monster, UseInSkill, new UseInSkillInfo
+        await SendMonsterTimelineAsync(monster, new UseInSkillInfo
         {
-            SrcID = monster.Uid, SkillID = monster.Template.NormalSkill, TargetId = companion.Uid, TargetPos = companion.Pos,
-            Face = monster.Face, SessionId = castId, SkillMs = monster.Template.SkillMs, StartTime = Now, PlayAct = true,
+            SrcID = monster.Uid, SkillID = attack.NormalSkill, TargetId = companion.Uid, TargetPos = companion.Pos,
+            Face = monster.Face, SessionId = castId, SkillMs = attack.SkillMs, StartTime = Now, PlayAct = true,
         });
-        ScheduleRuntime(monster.WorldScene, TimeSpan.FromSeconds(monster.Template.HitPointSeconds), async () =>
+        ScheduleRuntime(monster.WorldScene, TimeSpan.FromSeconds(attack.HitPointSeconds), async () =>
         {
-            if (companion.Dead || companion.Hp <= 0 || companion.Removed || monster.Dead || monster.Hp <= 0
+            if (companion.Removed || companion.Dead || companion.Hp <= 0 || monster.Removed || monster.Dead || monster.Hp <= 0
                 || monster.WorldScene != companion.WorldScene
-                || MonsterService.Distance(monster.X, monster.Z, companion.X, companion.Z) > monster.Template.AttackRange + 2f) return;
-            await DamageCompanionAsync(monster, companion, SkillConfig.Get(_data, monster.Template.NormalSkill)?.Row,
-                monster.Template.NormalSkill, castId, DefaultHitEffect);
+                || MonsterService.Distance(monster.X, monster.Z, companion.X, companion.Z) > attack.AttackRange + 2f) return;
+            await DamageCompanionAsync(monster, companion, SkillConfig.Get(_data, attack.NormalSkill)?.Row,
+                attack.NormalSkill, castId, DefaultHitEffect);
         });
     }
 
@@ -146,25 +147,27 @@ public sealed partial class CombatService
     }
 
     /// <summary>
-    /// A companion's expected damage per second against a monster, standing in reach: its rotation (CompanionUnit.Pick,
-    /// NextAttackMs) over a long window, each cast's expected damage from the same formula as its hits. The reconstructed
-    /// story bosses fought beside companions are tuned with it (DungeonTests.StoryBossTuning).
+    /// 測試輔助的現況DPS估算：依Tick同一個Pick／NextAttackMs輪替，僅計可對敵技能。
+    /// 此值不是原服傷害、分帳或難度證據，不可據此重調本輪已確認故事隊形的首領數值。
     /// </summary>
     internal double CompanionDps(CompanionUnit.Kit kit, MonsterTemplate target)
     {
+        if (!kit.Skills.Any(skill => skill.CanDamageEnemy)) return 0;
         var attacker = CompanionFighter(kit.Template);
         var defender = new Fighter(0, 0, target.Flee, 0, target.Level, target.Element) { Def = target.Def, Mdef = target.Mdef, Flee = target.Flee };
         var ready = new Dictionary<int, long>();
         double total = 0;
+        int lastSkill = 0;
         for (long now = 0; now < CompanionDpsWindowMs;)
         {
-            if (CompanionUnit.Pick(kit, ready, now, 0) is not { } skill)
+            if (CompanionUnit.Pick(kit, ready, now, 0, lastSkill) is not { } skill)
             {
                 now = ready.Values.Where(v => v > now).DefaultIfEmpty(now + 1).Min();
                 continue;
             }
             if (SkillConfig.Get(_data, skill.Id) is { } row) total += ExpectedDamage(attacker, defender, row.Row);
             ready[skill.Id] = now + skill.CooldownMs;
+            lastSkill = skill.Id;
             now = CompanionUnit.NextAttackMs(kit, skill, now);
         }
         return total * 1000.0 / CompanionDpsWindowMs;

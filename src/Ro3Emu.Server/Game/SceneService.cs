@@ -482,6 +482,8 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
     /// <summary>Set by TerritoryWarsService: whether a walk crosses something the nav grid does not hold that carries it
     /// over blocked cells (a siege ladder against the city wall); such a walk is not held to the grid.</summary>
     public Func<GameSession, Vec3, Vec3, bool>? WalkBridged { get; set; }
+    /// <summary>已驗證劇情移動狀態的速度；仍接受原有導航及阻擋檢查。</summary>
+    internal Func<GameSession, double?>? StoryMovementSpeed { get; set; }
 
     /// <summary>
     /// Checks a client walk against the nav grid, the air walls and the speed attribute. ServerOptions.WalkCheck:
@@ -495,7 +497,8 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
         var from = s.Position;
         float dx = walk.Pos.X - from.X, dz = walk.Pos.Z - from.Z, dist = MathF.Sqrt(dx * dx + dz * dz);
         double seconds = Math.Clamp((now - s.LastWalkUtc).TotalSeconds, 0.05, 5);
-        float maxDist = (float)(s.Speed / 100.0 * seconds * 1.5) + 1.5f;
+        double speed = StoryMovementSpeed?.Invoke(s) ?? s.Speed / 100.0;
+        float maxDist = (float)(speed * seconds * 1.5) + 1.5f;
         bool bridged = WalkBridged?.Invoke(s, from, walk.Pos) == true;
         string? problem = !bridged && !nav.IsWalkable(walk.Pos.X, walk.Pos.Y, walk.Pos.Z) ? "unwalkable cell"
             : dist > maxDist ? $"too fast ({dist:F1} m in {seconds:F2} s, max {maxDist:F1})"

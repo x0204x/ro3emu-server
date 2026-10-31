@@ -32,27 +32,13 @@ public sealed partial class DungeonTests
         Assert.Equal(new long[] { 2, 130163 }, qte.GetProperty("_kFailureEvent").EnumerateArray().Select(x => x.GetInt64()));
 
         await using var alice = await InWorld("Alice");
+        AirshipStoryTestPace();
         await Gm(alice, "!lvl 99");
         await Gm(alice, "!quest accept 10103210"); // LAB 前置；正式登船鏈另有專項驗證。
         Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
         long instance = await Load(alice, scene);
-        await Stage(alice, 1, quest: 1);
-        await Gm(alice, "!actors use"); // four opening bubbles; covered directly by ScriptedClient tests
-
-        await Stage(alice, 2, quest: 2);
-        foreach (var ship in await WaveIn(instance, 2)) await Kill(alice, ship);
-        for (int wave = 3; wave <= 5; wave++)
-        {
-            await Stage(alice, wave, quest: 3);
-            foreach (var boarder in await WaveIn(instance, 3)) await Kill(alice, boarder);
-        }
-        await Stage(alice, 6, quest: 4);
-        await Kill(alice, await BossIn(instance, 5300018));
-        await Stage(alice, 7, quest: 5);
-        await Gm(alice, "!actors use"); // five postbattle bubbles
-
-        await Stage(alice, 8, quest: 6);
-        var captain = Assert.Single(await ActorsIn(alice, 1));
+        await AirshipStoryThroughCrew(alice, instance);
+        var captain = Assert.Single(await ActorsIn(alice, 1, actor => actor.NpcId == 5300038));
         Assert.Equal(5300038, captain.NpcId);
         await Beside(alice, captain.X, captain.Y, captain.Z);
         Assert.Equal(0, await Interact(alice, captain, 5300035)); // dialogue 530003802
@@ -60,12 +46,12 @@ public sealed partial class DungeonTests
         await Story(alice, 130161);
         await PlotEnd(alice, 130161);
         await Task.Delay(100);
-        Assert.Equal(7, Session(alice).DungeonAttempt!.Wave); // first video only opens the QTE
+        Assert.Equal(6, Session(alice).DungeonAttempt!.Wave); // 第一段影片只開 QTE。
         Assert.False(Session(alice).DungeonAttempt!.Settled);
 
         // The client starts this story from QTEEventConfig's success/failure event.
         // Its action 601 sends 84011 only after the branch video ends.
         await PlotEnd(alice, ending);
-        Assert.Equal((DungeonRes)1, (await Next(alice, DungeonService.Result, DungeonResNotify.Parser)).Res);
+        await AirshipStorySuccess(alice);
     }
 }

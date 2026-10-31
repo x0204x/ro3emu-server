@@ -7,7 +7,8 @@ using Ro3Emu.Server.Maps;
 namespace Ro3Emu.Server.Game;
 
 /// <summary>
-/// A scripted ride (ScriptedStep.RideAfter): the actor a player used to complete a step walks a guide route of the scene
+/// 尚未取得原服證據的通用重建載乘（ScriptedStep.RideAfter）；蟻穴已觀察流程由AntStory處理，不走本推測路徑。
+/// The actor a player used to complete a step walks a guide route of the scene
 /// editor (m_kGuidePoints) and the participants move with it, before the step's teleport and the next step. The client
 /// has no ride rule: the route and the scene's camera animation are data without a trigger, and the original's server
 /// script is not shipped. So (inferred) the carrier walks at its own UnitConfig._fSpeed, both it and the players are
@@ -18,17 +19,18 @@ public sealed partial class DungeonService
 {
     private const int RideTickMs = 100;
 
-    /// <summary>How long the Deniro keeps a rider seated on the first, failing ride before it puts them down (inferred: the
-    /// ride's skill 5362501 lasts 1 ms and nothing in the client says; the quest after it says the first ride fails).</summary>
+    /// <summary>其他尚未取得實包的重建載乘暫用下車時間（inferred）；蟻穴Deniro不適用。</summary>
     private const int SeatedRideMs = 2000;
 
     /// <summary>
-    /// An actor interaction that seats its user (NPCInteractConfig _iStatusID of a vehicle status, the Deniro's 5300005)
+    /// An actor interaction that seats its user (NPCInteractConfig _iStatusID of a vehicle status)
     /// puts the player in the actor's seat, the client's own gameplay state; the actor puts them down after
     /// <see cref="SeatedRideMs"/>, or when they leave the scene, or at once through the client's exit button.
     /// </summary>
     private async Task SeatRiderAsync(Attempt a, GameSession s, SceneActorUnit actor, int interaction)
     {
+        // 蟻穴原服實包已確認第一次不登車、第二次持續載乘，不套用舊的2秒推測。
+        if (await TrySeatAntRiderAsync(a, s, actor, interaction)) return;
         // Only the interaction the current step waits on seats anyone: the client may send any of an actor's interactions.
         if (!_vehicles.IsRide(interaction) || !StepWaitsOn(a, interaction)) return;
         long token = await _vehicles.SeatOnSceneActorAsync(s, actor.Uid, actor.NpcId, interaction);

@@ -35,6 +35,7 @@ public sealed class BossSkill
     /// <summary>Hit moments after the cast starts (the show's m_kAtkPoints on the cast timeline).</summary>
     public int[] HitMs { get; init; } = [];
     public bool HighLevel { get; init; }
+    public bool TargetsSelf { get; init; }
     public bool Damages { get; init; }
     /// <summary>Damage or a hostile _kBuff2: the hit selects players; a skill with neither only buffs the boss.</summary>
     public bool HitsPlayers { get; init; }
@@ -223,6 +224,7 @@ public sealed class BossSkillSets(GameData data, BossSkillOptions options)
         }
         if (ai.StartsWith("MainStory_", StringComparison.OrdinalIgnoreCase))
         {
+            rows.AddRange(StoryBossSkillRules.AdditionalCandidates(data, npcId));
             string boss = ai["MainStory_".Length..];
             string prefix = ("MainStory_" + StoryAliases.GetValueOrDefault(boss, boss)).ToLowerInvariant();
             foreach (var (logic, ids) in ByLogicPrefix())
@@ -300,7 +302,7 @@ public sealed class BossSkillSets(GameData data, BossSkillOptions options)
             }
             bool isOnce = GameData.Int(row, "_iCD") >= OnceCooldownMs;
             if (isOnce) from = Math.Min(1, phases - 1);
-            skills.Add(Build((int)id, row, logic, placeholder, from, to, isOnce));
+            skills.Add(Build(npcId, (int)id, row, logic, placeholder, from, to, isOnce));
         }
         var thresholds = options.PhaseHpPercents.Select(p => Math.Clamp(p, 1, 99) * 100).OrderDescending().Take(phases - 1).ToArray();
         return new BossSkillBook { Family = family, Skills = skills.ToArray(), Phases = phases, PhaseHpBp = thresholds };
@@ -344,7 +346,7 @@ public sealed class BossSkillSets(GameData data, BossSkillOptions options)
     private int SummonNpc(JsonElement row) => Summoned(row) is var npc and > 0
         && data.Row("NPCConfig", (long)npc) is { } npcRow && GameData.Int(npcRow, "_iNPCType") == 1 ? (int)npc : 0;
 
-    private BossSkill Build(int id, JsonElement row, string logic, bool placeholder, int from, int to, bool once)
+    private BossSkill Build(int npcId, int id, JsonElement row, string logic, bool placeholder, int from, int to, bool once)
     {
         int cd = (int)GameData.Int(row, "_iCD");
         if (placeholder) cd = Math.Max(cd, options.PlaceholderCooldownMs);
@@ -367,6 +369,11 @@ public sealed class BossSkillSets(GameData data, BossSkillOptions options)
             1 => area ? BossSkillArea.AroundTarget : BossSkillArea.Target,
             _ => area || release is 0 or 2 && GameData.Int(row, "_iTargetMax") > 1 ? BossSkillArea.AroundSelf : BossSkillArea.Target,
         };
+        bool self = StoryBossSkillRules.TargetsSelf(npcId, id);
+        if (self) shape = BossSkillArea.AroundSelf;
+        if (npcId == StoryBossSkillRules.Peco && id == StoryBossSkillRules.PecoAreaSkill
+            && StoryWarningData.Find(data, StoryBossSkillRules.PecoWarning) is { Radius: > 0 } warning)
+            radius = warning.Radius;
         // Rect: _kRange [length, width] (Stone Glyph Slash [2300,700], Devouring Tongue [1500,600]); a missing width is 3 m.
         float width = shape == BossSkillArea.Rect ? range.Length > 1 && range[1] >= 100 ? (float)range[1] / 100 : 3f : 0;
         float angle = shape == BossSkillArea.Fan ? range.Length > 1 && range[1] > 0 ? (float)range[1] : 120f : 0;
@@ -390,7 +397,9 @@ public sealed class BossSkillSets(GameData data, BossSkillOptions options)
             FromPhase = from, ToPhase = to, Once = once,
             Area = shape, Radius = radius, Width = width, AngleDeg = angle, Reach = reach,
             MaxTargets = (int)Math.Max(1, GameData.Int(row, "_iTargetMax")),
-            HitMs = HitMoments(template, chant, action), HighLevel = GameData.Int(row, "_iSkillEffectLevel") > 0,
+            // 兩筆任務技能只有演出／狀態證據；不能把 70% 動作時間或警示結束冒充命中時點。
+            HitMs = StoryBossSkillRules.HasUnknownImpact(npcId, id) ? [] : HitMoments(template, chant, action),
+            HighLevel = GameData.Int(row, "_iSkillEffectLevel") > 0, TargetsSelf = self,
             Damages = damages, HitsPlayers = damages || hostile.Length > 0,
             SelfBuffs = Tuples(row, "_kBuff1").Where(b => b.Length >= 3 && b[0] > 0).Concat(beneficial)
                 .Select(b => ((int)b[0], (int)b[1], (int)b[2])).ToArray(),

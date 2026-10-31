@@ -149,7 +149,8 @@ public sealed partial class MonsterService
         m.NextSpecialMs = 0;
         rt.CastSerial++; // the cast's scheduled hits see a newer serial and do nothing
         bool inFlight = interrupt && rt.ActiveSession != 0 && rt.ActiveEndMs > NowMs;
-        return BossSkillsEnded is { } ended && (inFlight || rt.Summons.Count > 0) ? ended(m, rt, inFlight) : null;
+        return BossSkillsEnded is { } ended && (inFlight || rt.Summons.Count > 0 || rt.Grounds.Count > 0
+            || StoryBossSkillRules.IsObservedStoryBoss(m.InstanceId, m.Template.NpcId)) ? ended(m, rt, inFlight) : null;
     }
 
     // ---- GM (!boss) ----

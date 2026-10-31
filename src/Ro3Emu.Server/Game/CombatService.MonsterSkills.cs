@@ -19,7 +19,7 @@ public sealed partial class CombatService
     internal async Task<int> MonsterSkillHitAsync(MonsterUnit caster, JsonElement row, IEnumerable<GameSession> targets, long sourceId,
         long session = 0, int damagePercent = 100, bool bossDebuffsOnly = false)
     {
-        if (caster.Dead || caster.Hp <= 0 || _buffs.UnitForbidden(caster, ForbiddenState.CastSkill)) return 0;
+        if (caster.Dead || caster.Removed || caster.Hp <= 0 || _buffs.UnitForbidden(caster, ForbiddenState.CastSkill)) return 0;
         int skillId = (int)GameData.Int(row, "_iID");
         if (session <= 0) session = ++_sessionIds;
         int show = HitEffect(GameData.Int(row, "_iScriptShow"));
@@ -32,7 +32,8 @@ public sealed partial class CombatService
             if (targetRole == null || p.Dead || p.SceneLoading || p.Progress == null || p.WorldScene != caster.WorldScene) continue;
             long scene = p.WorldScene, generation = p.SceneGeneration;
             var lease = p.Attachment;
-            bool Current() => ReferenceEquals(p.Role, targetRole) && p.WorldScene == scene && p.SceneGeneration == generation
+            bool Current() => !caster.Dead && !caster.Removed && caster.Hp > 0 && caster.WorldScene == scene
+                && ReferenceEquals(p.Role, targetRole) && p.WorldScene == scene && p.SceneGeneration == generation
                 && ReferenceEquals(p.Attachment, lease) && lease?.Cancelled != true;
             var stats = _character.Stats(p);
             var defender = new Fighter(0, 0, 0, 0, p.Progress.Level, 1)

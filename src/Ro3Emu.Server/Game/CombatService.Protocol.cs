@@ -173,7 +173,10 @@ public sealed partial class CombatService
     {
         if (monster.Dead || info.SrcID != monster.Uid || info.SessionId <= 0
             || _data.Row("SkillConfig", info.SkillID) == null) return Task.CompletedTask;
-        info.PlayAct = true;
+        bool observedExtra = StoryBossSkillRules.UsesExtra(monster.InstanceId, monster.Template.NpcId, info.SkillID);
+        highLevel |= StoryBossSkillRules.UsesHighLevel(monster.InstanceId, monster.Template.NpcId);
+        extra |= observedExtra;
+        if (!observedExtra) info.PlayAct = true;
         uint route = extra ? highLevel ? ExtraUseInSkillHigh : ExtraUseInSkill : highLevel ? UseInSkillHigh : UseInSkill;
         return _world.ToUnitViewersAsync(monster, route, info);
     }

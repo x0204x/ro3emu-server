@@ -29,7 +29,7 @@ public sealed partial class CombatService
     }
 
     private bool BossCastCurrent(MonsterUnit boss, long serial) =>
-        !boss.Dead && boss.Hp > 0 && !_buffs.UnitForbidden(boss, ForbiddenState.CastSkill)
+        !boss.Dead && !boss.Removed && boss.Hp > 0 && !_buffs.UnitForbidden(boss, ForbiddenState.CastSkill)
             && boss.BossSkills is { } rt && rt.CastSerial == serial;
 
     private async Task CastBossSkillAsync(MonsterUnit boss, GameSession? player, TowerPetUnit? pet, BossSkill skill, long serial)
@@ -53,8 +53,10 @@ public sealed partial class CombatService
         float face = hasTarget ? MonsterService.Angle(boss.X, boss.Z, targetPos.X, targetPos.Z) : boss.Face;
         boss.Face = face;
         var origin = boss.Pos;
+        bool targetsSelf = skill.TargetsSelf && StoryBossSkillRules.IsObservedStoryBoss(boss.InstanceId, boss.Template.NpcId);
+        if (targetsSelf) targetPos = origin;
         var center = skill.Area == BossSkillArea.AroundTarget && hasTarget ? targetPos : origin;
-        long targetId = !hasTarget || skill.Area is not (BossSkillArea.Target or BossSkillArea.AroundTarget) ? 0
+        long targetId = targetsSelf ? boss.Uid : !hasTarget || skill.Area is not (BossSkillArea.Target or BossSkillArea.AroundTarget) ? 0
             : role?.Id ?? pet!.Uid;
         await SendMonsterTimelineAsync(boss, new UseInSkillInfo
         {
@@ -63,6 +65,7 @@ public sealed partial class CombatService
         }, highLevel: skill.HighLevel);
         if (!skill.Once && skill.CdMs > 0) await BossCooldownStartedAsync(boss, skill.Id, now + skill.CdMs);
         await FightingAsync(boss);
+        await StoryBossSkillStartedAsync(boss, skill, serial, origin);
         int show = HitEffect(GameData.Int(skill.Row, "_iScriptShow"));
         for (int i = 0; i < skill.HitMs.Length; i++)
         {
@@ -130,6 +133,7 @@ public sealed partial class CombatService
         }
         if (victims.Count > 0)
             await MonsterSkillHitAsync(boss, skill.Row, victims, boss.Uid, session, skill.Damages ? options.DamagePercent : 0, bossDebuffsOnly: true);
+        await StoryBossImpactCompletedAsync(boss, skill, serial, first);
         if (skill.PushEffect > 0)
             foreach (var victim in victims)
             {
@@ -271,6 +275,7 @@ public sealed partial class CombatService
     /// <summary>The boss's specials ended: interrupt the cast in flight (31103, its warnings cleared) and despawn its summons.</summary>
     private async Task EndBossSkillsAsync(MonsterUnit boss, BossSkillRuntime rt, bool interrupt)
     {
+        await EndStoryBossStateAsync(boss);
         if (interrupt && rt.ActiveSession != 0)
             await _world.ToUnitViewersAsync(boss, SkillEnd, new SkillEndNotify
             {

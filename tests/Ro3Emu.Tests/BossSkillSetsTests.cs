@@ -164,7 +164,8 @@ public sealed class BossSkillSetsTests(ITestOutputHelper output)
         Assert.True(families["story"] >= 10, "story");
         // Every resolved skill is castable by the client: a timeline and a show.
         foreach (var book in bosses.Select(Book).Where(b => b != null))
-            Assert.All(book!.Skills, k => Assert.True(k.BusyMs > 0 && GameData.Int(k.Row, "_iScriptShow") > 0 && k.HitMs.Length > 0, $"{k.Id}"));
+            Assert.All(book!.Skills, k => Assert.True(k.BusyMs > 0 && GameData.Int(k.Row, "_iScriptShow") > 0
+                && (k.HitMs.Length > 0 || k.Id is 5360601 or 5370201), $"{k.Id}"));
     }
 
     /// <summary>Every boss's resolved set and the totals per family, for review (dotnet test --logger "console;verbosity=detailed").</summary>

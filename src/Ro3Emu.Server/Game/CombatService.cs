@@ -270,6 +270,10 @@ public sealed partial class CombatService : IGameTicker
     internal List<Func<GameSession, CastSkillReq, bool>> SkillGrants { get; } = [];
     /// <summary>Feature-scoped exceptions to a generic target gate; all unlisted target errors remain closed.</summary>
     internal List<Func<GameSession, CastSkillReq, int, bool>> SkillTargetErrorOverrides { get; } = [];
+    internal List<Func<GameSession, ActiveSkillCast, bool>> PositionOnlyCasts { get; } = [];
+    internal List<Func<GameSession, ActiveSkillCast, bool>> HighLevelCasts { get; } = [];
+    /// <summary>場景專用彈道；只決定呈現，命中仍使用已接受的施放目標。</summary>
+    internal List<Func<GameSession, ActiveSkillCast, CastProjectile?>> ProjectileCasts { get; } = [];
     /// <summary>
     /// A skill a feature owns outright (the war commander's): null for any other skill, else 0 to cast it or the refusal.
     /// Such a cast skips the job-tree check and the SkillConfig cooldowns; <see cref="OwnSkillCast"/> runs in their place
@@ -388,7 +392,7 @@ public sealed partial class CombatService : IGameTicker
     /// </summary>
     private static int PresentationSplit(JsonElement row) => HitSplit(row);
 
-    private int BulletTravelMs(int effectId, Vec3 origin, Vec3 target)
+    private int BulletTravelMs(int effectId, Vec3 origin, Vec3 target, bool fixedPosition = false)
     {
         if (!_data.SkillTemplateTable("Lua_Config_EffectData").TryGetValue(effectId.ToString(), out var effect)
             || new SkillEffectData(effect).Damage?.Bullet is not { } bullet) return 0;
@@ -400,7 +404,10 @@ public sealed partial class CombatService : IGameTicker
             double unitsPerSecond = bullet.Speed;
             duration = unitsPerSecond > 0 ? Math.Max(1, Distance(origin, target) / unitsPerSecond * 1000) : 0;
         }
-        return duration > 0 ? (int)Math.Clamp(Math.Round(duration), 1, 5000) : 0;
+        // 原服飛船 18 發座標彈道皆為水平距離／配置速度的毫秒值，向下取整。
+        // 射程已在施放時驗證；不把這類合法遠距彈道截短成一般彈道的五秒上限。
+        return duration > 0 ? (int)Math.Clamp(fixedPosition ? Math.Floor(duration) : Math.Round(duration),
+            1, fixedPosition ? int.MaxValue : 5000) : 0;
     }
     /// <summary>
     /// SkillHitInfo.split: how many damage words the client shows for one hit. SkillConfig._kShowDmg holds one count
@@ -535,22 +542,23 @@ public sealed partial class CombatService : IGameTicker
 
     private async Task MonsterAttackPetAsync(MonsterUnit monster, TowerPetUnit pet)
     {
-        if (pet.Dead || pet.Hp <= 0 || monster.Dead || monster.Hp <= 0
+        var attack = monster.Template;
+        if (pet.Removed || pet.Dead || pet.Hp <= 0 || monster.Removed || monster.Dead || monster.Hp <= 0
             || pet.Owner.TowerAttempt is not { Loaded: true, Settled: false } attempt
             || !attempt.Pets.Contains(pet)) return;
         long castId = ++_sessionIds;
         var use = new UseInSkillInfo
         {
-            SrcID = monster.Uid, SkillID = monster.Template.NormalSkill, TargetId = pet.Uid, TargetPos = pet.Pos,
-            Face = monster.Face, SessionId = castId, SkillMs = monster.Template.SkillMs, StartTime = Now, PlayAct = true,
+            SrcID = monster.Uid, SkillID = attack.NormalSkill, TargetId = pet.Uid, TargetPos = pet.Pos,
+            Face = monster.Face, SessionId = castId, SkillMs = attack.SkillMs, StartTime = Now, PlayAct = true,
         };
-        await _world.ToUnitViewersAsync(monster, UseInSkill, use);
-        ScheduleRuntime(monster.WorldScene, TimeSpan.FromSeconds(monster.Template.HitPointSeconds), async () =>
+        await SendMonsterTimelineAsync(monster, use);
+        ScheduleRuntime(monster.WorldScene, TimeSpan.FromSeconds(attack.HitPointSeconds), async () =>
         {
-            if (pet.Dead || pet.Hp <= 0 || monster.Dead || monster.Hp <= 0 || monster.WorldScene != pet.WorldScene
+            if (pet.Removed || pet.Dead || pet.Hp <= 0 || monster.Removed || monster.Dead || monster.Hp <= 0 || monster.WorldScene != pet.WorldScene
                 || pet.Owner.TowerAttempt is not { Loaded: true, Settled: false } current || !current.Pets.Contains(pet)
-                || MonsterService.Distance(monster.X, monster.Z, pet.X, pet.Z) > monster.Template.AttackRange + 2f) return;
-            await DamageTowerPetAsync(monster, pet, _data.Row("SkillConfig", monster.Template.NormalSkill), monster.Template.NormalSkill, castId, 1000002);
+                || MonsterService.Distance(monster.X, monster.Z, pet.X, pet.Z) > attack.AttackRange + 2f) return;
+            await DamageTowerPetAsync(monster, pet, _data.Row("SkillConfig", attack.NormalSkill), attack.NormalSkill, castId, 1000002);
         });
     }
 
@@ -593,7 +601,8 @@ public sealed partial class CombatService : IGameTicker
 
     private async Task MonsterAttackAsync(MonsterUnit m, GameSession p)
     {
-        if (m.Dead || m.Hp <= 0 || _buffs.UnitForbidden(m, ForbiddenState.NormalAttack) || Stealthed(p) || !_buffs.CanSeePosition(m, p.Position)) return;
+        var attack = m.Template;
+        if (m.Removed || m.Dead || m.Hp <= 0 || _buffs.UnitForbidden(m, ForbiddenState.NormalAttack) || Stealthed(p) || !_buffs.CanSeePosition(m, p.Position)) return;
         var targetRole = p.Role;
         if (targetRole == null) return;
         long targetScene = p.WorldScene;
@@ -602,33 +611,33 @@ public sealed partial class CombatService : IGameTicker
         long session = ++_sessionIds;
         var use = new UseInSkillInfo
         {
-            SrcID = m.Uid, SkillID = m.Template.NormalSkill, TargetId = p.Role!.Id, TargetPos = p.Position.Clone(), Face = m.Face,
-            SessionId = session, ChantMs = 0, SkillMs = m.Template.SkillMs, StartTime = Now, PlayAct = true,
+            SrcID = m.Uid, SkillID = attack.NormalSkill, TargetId = p.Role!.Id, TargetPos = p.Position.Clone(), Face = m.Face,
+            SessionId = session, ChantMs = 0, SkillMs = attack.SkillMs, StartTime = Now, PlayAct = true,
         };
         // Like a player's cast: a row with an _iSkillEffectLevel takes the HIGH_LEVEL route (the Phantom Realm and
         // Valhalla Maya swings 4340001/5920101 have level 1). A normal attack never starts a boss-panel cooldown
         // (31125 is for the boss's skills).
-        await SendMonsterTimelineAsync(m, use, highLevel: _data.Row("SkillConfig", m.Template.NormalSkill) is { } swingRow
+        await SendMonsterTimelineAsync(m, use, highLevel: _data.Row("SkillConfig", attack.NormalSkill) is { } swingRow
             && GameData.Int(swingRow, "_iSkillEffectLevel") > 0);
-        ScheduleRuntime(m.WorldScene, TimeSpan.FromSeconds(m.Template.HitPointSeconds), async () =>
+        ScheduleRuntime(m.WorldScene, TimeSpan.FromSeconds(attack.HitPointSeconds), async () =>
         {
-            if (m.Dead || m.Hp <= 0 || _buffs.UnitForbidden(m, ForbiddenState.NormalAttack) || Stealthed(p) || p.Dead || p.Role == null || p.SceneLoading || p.WorldScene != m.WorldScene) return;
+            if (m.Removed || m.Dead || m.Hp <= 0 || _buffs.UnitForbidden(m, ForbiddenState.NormalAttack) || Stealthed(p) || p.Dead || p.Role == null || p.SceneLoading || p.WorldScene != m.WorldScene) return;
             if (!ReferenceEquals(p.Role, targetRole) || p.WorldScene != targetScene
                 || p.SceneGeneration != targetGeneration || !ReferenceEquals(p.Attachment, targetLease)
                 || targetLease?.Cancelled == true) return;
-            if (MonsterService.Distance(m, p) > m.Template.AttackRange + 2f || !_buffs.CanSeePosition(m, p.Position)) return; // stepped away
+            if (MonsterService.Distance(m, p) > attack.AttackRange + 2f || !_buffs.CanSeePosition(m, p.Position)) return; // stepped away
             var stats = _character.Stats(p);
             var attacker = MonsterFighter(m);
             var defender = new Fighter(0, 0, 0, 0, p.Progress!.Level, 1)
             { Def = stats[105], Mdef = stats[106], Flee = stats[110], ResCri = stats[112], FixedDamage = (p.GmCombat & GmCombatSwitches.FixedDamage) != 0 };
-            var row = _data.Row("SkillConfig", m.Template.NormalSkill);
+            var row = _data.Row("SkillConfig", attack.NormalSkill);
             var (damage, result) = row is { } r ? Damage(attacker, defender, r) : (Math.Max(1, m.Template.Atk), DamageHitResult.Normal);
             damage = ScaleMonsterDamage(damage, m.DamageRatio);
             damage = MonsterBuffDamage(m, row, damage);
             foreach (var adjust in MonsterDamageAdjusters) damage = adjust(m, damage, true);
             if (damage > 0) foreach (var modifier in IncomingDamageAdjusters) damage = Math.Max(0, await modifier(m, p, result, damage));
             var committed = await CommitPlayerDamageAsync(p, damage, row,
-                () => !m.Dead && m.Hp > 0 && ReferenceEquals(p.Role, targetRole)
+                () => !m.Removed && !m.Dead && m.Hp > 0 && ReferenceEquals(p.Role, targetRole)
                     && p.WorldScene == targetScene && m.WorldScene == targetScene
                     && p.SceneGeneration == targetGeneration && ReferenceEquals(p.Attachment, targetLease)
                     && targetLease?.Cancelled != true,
@@ -640,7 +649,7 @@ public sealed partial class CombatService : IGameTicker
                 foreach (var handler in Taken) handler(m, p, damage, hp == 0);
                 var hit = new SkillHitInfo
                 {
-                    SrcID = m.Uid, SkillId = m.Template.NormalSkill, ShowPoint = 1000002, SessionId = session, SrcElement = m.Template.Element,
+                    SrcID = m.Uid, SkillId = attack.NormalSkill, ShowPoint = 1000002, SessionId = session, SrcElement = m.Template.Element,
                     Dsts = { new DamageInfo { DstID = p.Role.Id, Damage = damage, SheildDamage = shieldDamage, HitResult = result, DstElement = 1, IsDead = hp == 0 } },
                 };
                 await _world.ToUnitViewersAsync(m, SkillHit, hit);

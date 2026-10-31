@@ -13,4 +13,5 @@ public readonly partial record struct VehicleSeatConfig(JsonElement Row)
     [ConfigField("_kGameplayBtnId")] public partial long[] GameplayBtnId { get; }
     [ConfigField("_kMainSkills")] public partial long[] MainSkills { get; }
     [ConfigField("_kSkills")] public partial long[] Skills { get; }
+    [ConfigField("_kOffset")] public partial long[] Offset { get; }
 }

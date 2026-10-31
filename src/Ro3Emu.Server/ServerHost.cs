@@ -422,6 +422,7 @@ public static partial class ServerHost
         questDungeons.ApplyTaskClear = questTasks.ApplyDungeonClearAsync;
         questDungeons.ResumeTaskClearFollowup = questTasks.ResumeDungeonClearFollowupAsync;
         questDungeons.StoryEntryAllowed = questTasks.StoryDungeonEntryAllowed;
+        questDungeons.StoryContinuationAllowed = questTasks.StoryDungeonContinuationAllowed;
         app.Services.GetRequiredService<TotemService>().Combined.Add(questTasks.OnTotemCombined); // target 315004
         // Participation and state targets (TaskService.ParticipationTargets.cs).
         app.Services.GetRequiredService<DungeonService>().MultiBossCleared.Add(questTasks.OnTenBossClearedAsync); // 106602

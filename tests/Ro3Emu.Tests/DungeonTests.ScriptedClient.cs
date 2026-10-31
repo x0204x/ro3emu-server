@@ -32,6 +32,15 @@ public sealed partial class DungeonTests
         Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
         long instance = await Load(alice, scene);
         var plan = Session(alice).DungeonAttempt!.Plan;
+        if (scene == 1000501)
+        {
+            await AirshipStoryThroughCrew(alice, instance);
+            await AirshipLifecycleCaptainOption(alice);
+            await PlotEnd(alice, 130162);
+            await AirshipStorySuccess(alice);
+            return;
+        }
+
         var catalog = Service<DungeonCatalog>();
         var map = Service<WorldData>().Map(scene)!;
         for (int wave = 0; wave < plan.Waves.Count; wave++)
@@ -40,6 +49,8 @@ public sealed partial class DungeonTests
             await Stage(alice, wave + 1, quest: step.Quest);
             await ActorsWhen(alice, shown => shown.Count == step.Actors.Count && step.Actors.All(spec => shown.Any(u =>
                 u.NpcId == spec.NpcId && u.Point == spec.Point && u.Buffs.Select(b => b.ConfigId).Order().SequenceEqual(spec.Buffs.Order()))));
+            // 最後一段以region31完成，但5300005登車仍是必要前提；不可用GM到點冒充已騎乘。
+            if (scene == 1000301 && wave == 4) await BoardAntDeniroForRegionAsync(alice);
             // A step's fight first: its monsters, killed.
             if (plan.Waves[wave].Spawns.Count > 0)
                 foreach (var monster in await WaveIn(instance, plan.Waves[wave].Spawns.Count)) await Kill(alice, monster);
@@ -115,7 +126,7 @@ public sealed partial class DungeonTests
                 await PlotEnd(alice, outro.Complete[0].Id);
             }
         }
-        Assert.Equal((DungeonRes)1, (await Next(alice, DungeonService.Result, DungeonResNotify.Parser)).Res);
+        await AssertDungeonSuccessAsync(alice);
     }
 
     [Fact]
@@ -136,6 +147,7 @@ public sealed partial class DungeonTests
     [MemberData(nameof(ScriptedScenes))]
     public async Task TheUseTestAidFinishesAScriptedSceneServerSide(long scene)
     {
+        if (scene == 1000501) AirshipStoryTestPace(); // GM捷徑仍須等開砲時間軸；不能用舊四泡泡／五泡泡假設。
         await using var alice = await InWorld("Alice");
         await Gm(alice, "!lvl 99"); // a scene with a fight
         await Gm(alice, "!actors use"); // outside a scene: refused, nothing happens
@@ -159,7 +171,7 @@ public sealed partial class DungeonTests
                 if (step.Outro != null) await Gm(alice, "!actors use");
             }
         }
-        Assert.Equal((DungeonRes)1, (await Next(alice, DungeonService.Result, DungeonResNotify.Parser)).Res);
+        await AssertDungeonSuccessAsync(alice);
     }
 
     private sealed record ClientUnit(EntityBase Entity, IReadOnlySet<long> BuffGroups);

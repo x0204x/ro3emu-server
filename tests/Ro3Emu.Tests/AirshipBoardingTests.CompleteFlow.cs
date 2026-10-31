@@ -12,6 +12,7 @@ public sealed partial class AirshipBoardingTests
     public async Task OneRoleCompletesCargoCannonFlightAndCampThroughTheQuestAndSceneProtocols()
     {
         SureHitRolls.Install(_app); // LAB 固定命中；不把隨機閃避當成流程失敗。
+        Service<Microsoft.Extensions.Options.IOptions<Ro3Emu.Server.ServerOptions>>().Value.ScriptedScenePacePercent = 10;
         await using var bot = await InWorld();
         long role = (long)bot.Self!.Uuid;
         await Dock(bot); // 僅以 GM 準備等級及貨物起點；往後不接受或完成任何後續任務。
@@ -21,25 +22,23 @@ public sealed partial class AirshipBoardingTests
         await Barrier(bot);
         Assert.Equal(TaskState.Running, await Read(s => s.Tasks!.Infos[10103210].Status));
         long instance = await CompleteFlowBoard(bot);
-        await CompleteFlowInteractions(bot, 4);
         await CompleteFlowStage(bot, 2, 2);
         await CompleteFlowCannon(bot, instance);
-        for (int stage = 3; stage <= 5; stage++)
+        foreach (var (stage, count) in new[] { (3, 4), (4, 5) })
         {
             await CompleteFlowStage(bot, stage, 3);
-            foreach (var enemy in await CompleteFlowWave(instance, 3)) await CompleteFlowKill(bot, enemy);
+            foreach (var enemy in await CompleteFlowWave(instance, count)) await CompleteFlowKill(bot, enemy);
         }
-        await CompleteFlowStage(bot, 6, 4);
+        await CompleteFlowStage(bot, 5, 4);
         var boss = Assert.Single(await CompleteFlowWave(instance, 1));
         Assert.Equal(5300018, boss.Template.NpcId);
         await CompleteFlowKill(bot, boss);
-        await CompleteFlowStage(bot, 7, 5);
-        await CompleteFlowInteractions(bot, 5);
-        await CompleteFlowStage(bot, 8, 6);
+        await CompleteFlowStage(bot, 6, 5);
+        await CompleteFlowStage(bot, 7, 6); // 戰後時間軸自行進行，不要求五次泡泡。
         await CompleteFlowCaptain(bot);
         await bot.SendGameAsync(TaskService.ExitCutSceneState, new ExitCutSceneStateReq());
         await PlotEnd(bot, 130162); // G 本地 QTE 成功影片的既有 601 結束包，沒有另造 QTE 請求。
-        Assert.Equal(DungeonRes.Success, (await Next(bot, DungeonService.Result, DungeonResNotify.Parser)).Res);
+        Assert.Equal(1, (await Next(bot, DungeonService.ResultNotify, DungeonResultNotify.Parser)).ResultInfo.WinCamp);
         await Barrier(bot);
         await CompleteFlowLand(bot);
         await CompleteFlowCampDialogue(bot);
@@ -49,7 +48,7 @@ public sealed partial class AirshipBoardingTests
             Assert.Equal(1, AwardSources(role, task));
         Assert.Equal(TaskState.Running, await Read(s => s.Tasks!.Infos[10104020].Status));
         Assert.Equal(0, AwardSources(role, 10104020));
-        Assert.Single(bot.Inbox.Snapshot(), packet => packet.IsGame(DungeonService.Result));
+        Assert.Single(bot.Inbox.Snapshot(), packet => packet.IsGame(DungeonService.ResultNotify));
     }
 
     private async Task<long> CompleteFlowBoard(BotClient bot)
@@ -68,24 +67,6 @@ public sealed partial class AirshipBoardingTests
     private static Task<DungeonBaseInfoNotify> CompleteFlowStage(BotClient bot, int stage, int quest) =>
         Next(bot, DungeonService.BaseInfo, DungeonBaseInfoNotify.Parser,
             info => info.Stage == stage && info.Vars.Any(value => value.VarId == 10001 && value.Vi64.LastOrDefault() == quest));
-
-    private async Task CompleteFlowInteractions(BotClient bot, int expected)
-    {
-        var triggers = await Read(s => s.DungeonAttempt!.Plan.Waves[s.DungeonAttempt.Wave].Step!.Complete.ToArray());
-        Assert.Equal(expected, triggers.Length);
-        var catalog = Service<DungeonCatalog>();
-        foreach (var trigger in triggers)
-        {
-            Assert.True(trigger.Kind is ReconstructedDungeons.TriggerKind.Interaction or ReconstructedDungeons.TriggerKind.Message);
-            var (actor, interaction) = await Read(s => s.DungeonAttempt!.SceneActors
-                .SelectMany(unit => catalog.Interactions(unit.NpcId)
-                    .Where(id => trigger.Kind == ReconstructedDungeons.TriggerKind.Interaction
-                        ? id == trigger.Id : catalog.DungeonMessage(id) == trigger.Id)
-                    .Select(id => (unit, id))).First());
-            await CompleteFlowBeside(actor.X, actor.Y, actor.Z);
-            Assert.Equal(0, await CompleteFlowInteract(bot, actor, checked((int)interaction)));
-        }
-    }
 
     private static async Task<int> CompleteFlowInteract(BotClient bot, DungeonService.SceneActorUnit actor, int interaction)
     {
@@ -115,9 +96,9 @@ public sealed partial class AirshipBoardingTests
     {
         long role = Session.Role!.Id;
         var cannon = await Read(s => s.DungeonAttempt!.SceneActors.First(actor => actor.NpcId == 5300022));
-        var ships = await CompleteFlowWave(instance, 2);
+        var ships = await CompleteFlowWave(instance, 3);
         var visible = await CompleteFlowVisibleShips(bot);
-        Assert.Equal(new ulong[] { 5300015, 5300053 }, visible.Select(ship => ship.EntityTemplateID));
+        Assert.Equal(new ulong[] { 5300015, 5300053, 5300053 }, visible.Select(ship => ship.EntityTemplateID));
         var hp = await Read(_ => ships.Select(ship => ship.Hp).ToArray());
         await CompleteFlowBeside(cannon.X, cannon.Y, cannon.Z);
         await CompleteFlowMount(bot, cannon);
@@ -127,12 +108,19 @@ public sealed partial class AirshipBoardingTests
         Assert.Equal(0, (await Next(bot, WorldInteractionService.Action, UseInteractActionRes.Parser)).Result);
         await Next(bot, WorldInteractionService.Change, InteractChangeNtf.Parser,
             change => change.Uid == role && change.DataInfo.EType == InteractInfo.Types.EState.Idle);
+        await Next(bot, WorldInteractionService.Change, InteractChangeNtf.Parser,
+            change => change.Uid == cannon.Uid && change.DataInfo.EType == InteractInfo.Types.EState.Idle);
         Assert.Empty(await Read(s => s.DungeonAttempt!.CannonUsers.ToArray()));
         await Task.Delay(600); // G 5353001 的動作／CD 500 ms；退出後先等原施放結束。
         await CompleteFlowMount(bot, cannon);
         await CompleteFlowShot(bot, cannon, visible[1], ships.Single(ship => ship.Uid == (long)visible[1].Uuid));
+        Assert.Equal(1, await Read(s => s.DungeonAttempt!.Wave)); // 尚有第三艘，不能提早換階段。
+        await Task.Delay(600);
+        await CompleteFlowShot(bot, cannon, visible[2], ships.Single(ship => ship.Uid == (long)visible[2].Uuid));
         await Next(bot, WorldInteractionService.Change, InteractChangeNtf.Parser,
             change => change.Uid == role && change.DataInfo.EType == InteractInfo.Types.EState.Idle && change.Interrupt);
+        await Next(bot, WorldInteractionService.Change, InteractChangeNtf.Parser,
+            change => change.Uid == cannon.Uid && change.DataInfo.EType == InteractInfo.Types.EState.Idle && change.Interrupt);
         Assert.Empty(await Read(s => s.DungeonAttempt!.CannonUsers.ToArray())); // 換階段也必須解除砲位。
     }
 
@@ -142,6 +130,10 @@ public sealed partial class AirshipBoardingTests
         var mounted = await Next(bot, WorldInteractionService.Change, InteractChangeNtf.Parser,
             change => change.Uid == Session.Role!.Id && change.DataInfo.EType == InteractInfo.Types.EState.UpperCannon);
         Assert.Equal(cannon.Uid, mounted.DataInfo.UpperCannonInfo.CannonGuId);
+        var cannonMounted = await Next(bot, WorldInteractionService.Change, InteractChangeNtf.Parser,
+            change => change.Uid == cannon.Uid && change.DataInfo.EType == InteractInfo.Types.EState.UpperCannon);
+        Assert.Equal(cannon.Uid, cannonMounted.DataInfo.UpperCannonInfo.CannonGuId);
+        Assert.Equal(0, cannonMounted.DataInfo.InteractConfigId);
     }
 
     private async Task CompleteFlowShot(BotClient bot, DungeonService.SceneActorUnit cannon, EntityBase visible, MonsterUnit ship)
@@ -153,8 +145,18 @@ public sealed partial class AirshipBoardingTests
             return Task.CompletedTask;
         });
         await bot.SendGameAsync(CombatService.UseSkill, new CastSkillReq
-        { SkillId = 5353001, OpUnitId = cannon.Uid, TargetId = (long)visible.Uuid, TargetPos = visible.MovementInfo.Pos.Clone() });
-        Assert.Equal(0, (await Next(bot, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
+        { SkillId = 5353001, OpUnitId = cannon.Uid, TargetsId = { (long)visible.Uuid }, TargetPos = visible.MovementInfo.Pos.Clone() });
+        var accepted = await Next(bot, CombatService.UseSkill, CastSkillRsp.Parser);
+        Assert.Equal(0, accepted.Result);
+        var timeline = await Next(bot, CombatService.UseInSkillHigh, UseInSkillInfo.Parser,
+            use => use.SkillID == 5353001 && use.SessionId == accepted.SessionId);
+        Assert.Equal(Session.Role!.Id, timeline.SrcID);
+        Assert.Equal(ship.Uid, timeline.TargetId);
+        var projectile = await Next(bot, CombatService.SkillBulletHigh, SkillFixTimeBulletNotify.Parser,
+            bullet => bullet.SkillConfigId == 5353001 && bullet.EffectId == 6120105);
+        Assert.Equal(Session.Role!.Id, projectile.SourceId);
+        Assert.Equal(0, projectile.TargetId);
+        Assert.True(projectile.FixedTime > 0);
         await Next(bot, CombatService.SkillHit, SkillHitInfo.Parser,
             hit => hit.SkillId == 5353001 && hit.Dsts.Any(target => target.DstID == ship.Uid && target.IsDead));
     }
@@ -173,10 +175,10 @@ public sealed partial class AirshipBoardingTests
             }
             var ships = visible.Values.Where(actor => actor.EntityTemplateID is 5300015 or 5300053)
                 .OrderBy(actor => actor.EntityTemplateID).ToArray();
-            if (ships.Length == 2) return ships;
+            if (ships.Length == 3) return ships;
             await Task.Delay(20);
         }
-        throw new TimeoutException("客戶端未透過 31037 收到兩艘敵艦。");
+        throw new TimeoutException("客戶端未透過 31037 收到三艘敵艦。");
     }
 
     private async Task CompleteFlowKill(BotClient bot, MonsterUnit enemy)
@@ -197,7 +199,7 @@ public sealed partial class AirshipBoardingTests
 
     private async Task CompleteFlowCaptain(BotClient bot)
     {
-        var captain = await Read(s => Assert.Single(s.DungeonAttempt!.SceneActors));
+        var captain = await Read(s => Assert.Single(s.DungeonAttempt!.SceneActors, actor => actor.NpcId == 5300038));
         Assert.Equal(5300038, captain.NpcId);
         await CompleteFlowBeside(captain.X, captain.Y, captain.Z);
         Assert.Equal(0, await CompleteFlowInteract(bot, captain, 5300035)); // 正式船長對話。
@@ -211,6 +213,12 @@ public sealed partial class AirshipBoardingTests
 
     private async Task CompleteFlowLand(BotClient bot)
     {
+        await Next(bot, MsgId.SwitchSceneLine, SwitchSceneLineResp.Parser, message => message.SceneEntry == 10101);
+        await bot.SendGameAsync(MsgId.SceneLoaded, new SceneLoadedReq { SceneId = 10101 });
+        Assert.Equal(0, (await Next(bot, MsgId.SceneLoaded, SceneLoadedResp.Parser, message => message.SceneId == 10101)).Result);
+        await Next(bot, MsgId.EntitySelf, EntitySelf.Parser);
+        Assert.True(await Read(s => s.SceneEntry == 10101 && s.InstanceId == 0 && !s.SceneLoading));
+        // 原服先自動回港，再使用已交付任務的30131進入墜落營地。
         var request = new ClientCustomJumpMapReq
         { SceneId = 10514, PointId = 1040401, CustomType = EClientCustomJumpMapType.TaskDelivery, TypeParam1 = 10103210 };
         await bot.SendGameAsync(SceneService.CustomJumpMap, request);

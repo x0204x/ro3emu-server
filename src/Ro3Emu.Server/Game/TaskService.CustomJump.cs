@@ -9,6 +9,11 @@ public sealed partial class TaskService
     private const long JumpMapAreaAction = 141;
     private const long EnterStoryDungeonAction = 3000;
 
+    internal bool StoryDungeonContinuationAllowed(GameSession session, long scene) =>
+        session.Tasks?.Infos.Values.Any(info => (info.Status is Running or Finished)
+            && !IsDelivered(session, info.TaskId) && Defs().TryGetValue(info.TaskId, out var def)
+            && def.Targets.Any(target => target is [TDungeonPass, var dungeon, > 0] && dungeon == scene)) == true;
+
     /// <summary>
     /// G 10103210 接受動作 3000 只在客戶端送場景 ID；由既有任務目標與動作資料綁定來源。
     /// 此門檻是 (inferred) 的服務端相容性查核，不表示取得原服 admission 實作。

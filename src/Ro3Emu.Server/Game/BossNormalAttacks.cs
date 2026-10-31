@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 
 namespace Ro3Emu.Server.Game;
 
@@ -105,6 +106,14 @@ public sealed class BossNormalAttacks(GameData data)
         if (data.Row("NPCConfig", npcId) is not { } npc) return 0;
         long skill = Resolve(npcId, npc);
         return skill != 0 && data.Row("SkillConfig", skill) != null ? skill : 0;
+    }
+
+    /// <summary>任務收錄證實的同名普攻都保留；未證實的首領維持原有解析。</summary>
+    internal long[] VariantsFor(int npcId)
+    {
+        var observed = StoryBossSkillRules.ObservedNormalIds(npcId);
+        if (observed.Length == 0) return For(npcId) is > 0 and var single ? [single] : [];
+        return observed.Where(id => SkillConfig.Get(data, id) is { } row && IsNamedSwing(row.Row)).ToArray();
     }
 
     /// <summary>A SkillConfig row whose script logic is named as a normal attack (inferred from the name).</summary>

@@ -59,6 +59,7 @@ public sealed partial class DungeonTests
     public async Task AirshipAbandonOrDeadlineEndingRaceCannotBeTurnedIntoSuccess(string interruption)
     {
         await using var alice = await InWorld("Alice");
+        AirshipStoryTestPace();
         long outside = Session(alice).SceneEntry;
         await AirshipLifecycleAtCaptain(alice);
         await AirshipLifecycleCaptainOption(alice);
@@ -121,8 +122,8 @@ public sealed partial class DungeonTests
         Assert.Equal(0, AirshipQuestSourceCount(role, LifecycleClearTask));
         Assert.DoesNotContain(Service<DungeonObligationStore>().Pending(role), obligation => obligation.Success);
         // 失敗可能有自己配置的結果／獎勵；只禁止被翻成Success，不猜所有失敗獎勵皆為零。
-        Assert.DoesNotContain(bot.Inbox.Snapshot(), packet => packet.IsGame(DungeonService.Result)
-            && DungeonResNotify.Parser.ParseFrom(packet.Body).Res == DungeonRes.Success);
+        Assert.DoesNotContain(bot.Inbox.Snapshot(), packet => packet.IsGame(DungeonService.ResultNotify)
+            && DungeonResultNotify.Parser.ParseFrom(packet.Body).ResultInfo?.WinCamp == 1);
     }
 
     private static async Task AirshipInterruptedLoadOutside(BotClient bot, long outside)

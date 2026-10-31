@@ -7,6 +7,8 @@ using Ro3Emu.Server.Game.Ownership;
 
 namespace Ro3Emu.Server.Game;
 
+internal readonly record struct CastProjectile(int EffectId, bool PositionTarget);
+
 /// <summary>A single accepted cast, bound to its role, scene and generation (LC_Scene_Sync._skillEndNotify).</summary>
 public sealed class ActiveSkillCast
 {
@@ -29,6 +31,10 @@ public sealed class ActiveSkillCast
     public bool Resolved { get; set; }
     /// <summary>此施放已排程來源目標的彈道；命中通知不得為同一目標再送一次。</summary>
     internal bool HasTimedBullet { get; set; }
+    /// <summary>已由場景權威允許的空瞄；保留施放與消耗，不在命中時重新搜尋附近單位。</summary>
+    internal bool PositionOnly { get; set; }
+    /// <summary>場景砲彈在施放動作結束後獨立飛行，仍綁定角色、連線與原場景。</summary>
+    internal bool IndependentProjectile { get; set; }
     public SkillObject? Operator { get; init; }
     /// <summary>Extra effects remain bound to their equipped source after asynchronous publication.</summary>
     internal Func<bool>? SourceEligible { get; init; }
@@ -516,6 +522,8 @@ public sealed partial class CombatService
             Attachment = s.Attachment, Request = req, Row = row, Origin = origin, StartedWalking = actor == null && s.Walking, WalkFromUtc = s.LastWalkUtc,
             StartMs = Now + leadMs, ChantMs = ChantMs(s, row), ActionMs = SkillMs(s, row), Operator = actor,
         };
+        action.PositionOnly = PositionOnlyCasts.Any(rule => rule(s, action));
+        bool highLevel = skill.SkillEffectLevel > 0 || HighLevelCasts.Any(rule => rule(s, action));
         s.SkillCast = action;
         s.WorldState.ResurrectionCastId = Script(row) == "Resurrection" ? id : 0;
         s.Face = face;
@@ -524,32 +532,35 @@ public sealed partial class CombatService
         {
             SrcID = action.SourceId, SkillID = req.SkillId, TargetId = req.TargetId, TargetPos = req.TargetPos ?? origin,
             Face = face, SessionId = id, ChantMs = action.ChantMs, SkillMs = action.ActionMs, StartTime = action.StartMs, PlayAct = true,
-        }, highLevel: skill.SkillEffectLevel > 0, extra: actor != null || req.IsExtraSkill);
+        }, highLevel: highLevel, extra: actor != null || req.IsExtraSkill);
         if (leadMs <= 0) await Timeline();
         else ScheduleRuntime(action.WorldScene, TimeSpan.FromMilliseconds(leadMs), () => Live(s, action) ? Timeline() : Task.CompletedTask);
         var template = _data.SkillTemplate(skill.ScriptShow);
         var points = template is { } t ? Numbers(t, "m_kAtkPoints") : [];
         double point = points.FirstOrDefault(0.2);
         int at = Script(row) == "Resurrection" ? action.ChantMs : ImpactOffset(template, point, action.ChantMs, action.ActionMs);
-        int bulletEffect = actor == null && req.TargetId != 0 && !HasClientBulletPoints(template)
-            ? BulletEffect(skill.ScriptShow) : 0;
+        var projectile = ProjectileCasts.Select(rule => rule(s, action)).FirstOrDefault(value => value.HasValue);
+        int bulletEffect = projectile?.EffectId ?? (actor == null && req.TargetId != 0 && !HasClientBulletPoints(template)
+            ? BulletEffect(skill.ScriptShow) : 0);
         var bulletTarget = req.TargetPos ?? target?.Pos ?? origin;
-        int bulletTravel = bulletEffect > 0 ? BulletTravelMs(bulletEffect, origin, bulletTarget) : 0;
+        int bulletTravel = bulletEffect > 0 ? BulletTravelMs(bulletEffect, origin, bulletTarget,
+            fixedPosition: projectile is { PositionTarget: true }) : 0;
         if (bulletTravel > 0)
         {
             action.HasTimedBullet = true;
+            action.IndependentProjectile = projectile is { PositionTarget: true };
             ScheduleRuntime(action.WorldScene, TimeSpan.FromMilliseconds(leadMs + at), async () =>
             {
                 if (!Live(s, action)) return;
                 await SendSkillBulletAsync(s, new SkillFixTimeBulletNotify
                 {
-                    SourceId = action.OwnerId, TargetId = req.TargetId, EffectId = bulletEffect,
+                    SourceId = action.OwnerId, TargetId = projectile is { PositionTarget: true } ? 0 : req.TargetId, EffectId = bulletEffect,
                     FixedTime = bulletTravel, Split = PresentationSplit(row), TargetPosition = bulletTarget.Clone(),
                     SkillConfigId = req.SkillId, MasterId = action.OwnerId, SourcePosition = action.Origin.Clone(),
                     // LC_Bullet_Helper subtracts elapsed server time from the authored projectile duration. Preserve
                     // the scheduled onset rather than hiding a late scheduler callback behind its execution time.
                     StartTimestampMs = action.StartMs + at,
-                }, highLevel: skill.SkillEffectLevel > 0);
+                }, highLevel: highLevel);
             });
         }
         int resolveAt = at + bulletTravel;
@@ -559,7 +570,9 @@ public sealed partial class CombatService
             action.Resolved = true;
             await ResolveCastAsync(s, action);
         });
-        ScheduleRuntime(action.WorldScene, TimeSpan.FromMilliseconds(leadMs + Math.Max(resolveAt, action.ChantMs + action.ActionMs) + 1), () =>
+        int releaseAt = action.IndependentProjectile ? action.ChantMs + action.ActionMs
+            : Math.Max(resolveAt, action.ChantMs + action.ActionMs);
+        ScheduleRuntime(action.WorldScene, TimeSpan.FromMilliseconds(leadMs + releaseAt + 1), () =>
         {
             if (ReferenceEquals(s.SkillCast, action)) s.SkillCast = null;
             return Task.CompletedTask;
@@ -582,8 +595,11 @@ public sealed partial class CombatService
         return (int)Math.Max(0, Math.Round(ms));
     }
 
-    private static bool Live(GameSession s, ActiveSkillCast action) => !action.Cancelled && ReferenceEquals(s.SkillCast, action)
-        && !s.Dead && !s.SceneLoading && s.Role?.Id == action.OwnerId && s.WorldScene == action.WorldScene
+    private static bool ReleasedProjectile(ActiveSkillCast action) => action.IndependentProjectile
+        && Now >= action.StartMs + action.ChantMs + action.ActionMs;
+
+    private static bool Live(GameSession s, ActiveSkillCast action) => CurrentCastMap(s, action)
+        && (ReferenceEquals(s.SkillCast, action) || ReleasedProjectile(action))
         && (action.Operator == null || !action.Operator.Removing && action.Operator.ExpiresMs > Now);
 
     private int SkillMs(GameSession s, JsonElement row)
@@ -612,6 +628,7 @@ public sealed partial class CombatService
     {
         s.WorldState.ResurrectionCastId = 0;
         if (s.SkillCast is not { } action) return;
+        if (ReleasedProjectile(action)) { s.SkillCast = null; return; }
         action.Cancelled = true;
         s.SkillCast = null;
         await ToPlayerAndViewersAsync(s, SkillEnd, new SkillEndNotify

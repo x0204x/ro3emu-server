@@ -20,6 +20,7 @@ public sealed partial class DungeonTests
         long role;
         await using (var alice = await InWorld("Alice"))
         {
+            AirshipStoryTestPace();
             await Gm(alice, "!lvl 99");
             await Gm(alice, $"!quest accept {task}");
             role = (long)alice.Self!.Uuid;
@@ -28,7 +29,6 @@ public sealed partial class DungeonTests
             Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
             long instance = await Load(alice, scene);
             await ClearReconstructedStoryRun(alice, instance);
-            await Story(alice, 130161);
 
             // 鎖定真正進入交付交易的時點，不能在凍結義務剛出現時就撤掉故障。
             var accounts = Service<AccountStore>();
@@ -53,7 +53,7 @@ public sealed partial class DungeonTests
                 }
                 else Assert.Empty(Service<DungeonObligationStore>().Pending(role));
                 Assert.False(TaskService.IsDelivered(session, task));
-                Assert.DoesNotContain(alice.Inbox.Snapshot(), packet => packet.IsGame(DungeonService.Result));
+                Assert.DoesNotContain(alice.Inbox.Snapshot(), packet => packet.IsGame(DungeonService.ResultNotify));
             }
             finally { accounts.BeforeOwnedCommitForTest = null; accounts.BeforeOwnedApplyForTest = null; }
             if (boundary == "economy/cd13e/quest-award" && !afterCommit)
@@ -93,6 +93,7 @@ public sealed partial class DungeonTests
         long role;
         await using (var alice = await InWorld("Alice"))
         {
+            AirshipStoryTestPace();
             await Gm(alice, "!lvl 99");
             await Gm(alice, $"!quest accept {task}"); // 入場時仍須有正式來源任務。
             role = (long)alice.Self!.Uuid;
@@ -101,7 +102,6 @@ public sealed partial class DungeonTests
             // LAB 故障前置：保留原有「凍結時沒有任務」案例，不以放寬入場門檻達成。
             if (!replaceOriginal) await Gm(alice, $"!quest drop {task}");
             await ClearReconstructedStoryRun(alice, instance);
-            await Story(alice, 130161);
             var accounts = Service<AccountStore>();
             var deliveryAttempted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             accounts.BeforeOwnedCommitForTest = label =>

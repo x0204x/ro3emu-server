@@ -21,6 +21,8 @@ public readonly record struct SkillBulletData(JsonElement Row)
 
 public readonly record struct SkillTimelineData(JsonElement Row)
 {
+    public double[] AttackPoints => ConfigValue.Numbers(Row, "m_kAtkPoints");
+
     public bool HasClientPoints => ConfigValue.Raw(Row, "m_kClientPoints") is { } points && points.ValueKind switch
     {
         JsonValueKind.Array => points.GetArrayLength() > 0,

@@ -16,8 +16,9 @@ public sealed partial class DungeonTests
     private const long LifecycleClearTask = 10103210, LifecycleBridgeTask = 10103220, LifecycleCampTask = 10104010;
     private const long LifecycleNextTask = 10104020, LifecycleOpening = 130161, LifecycleSuccess = 130162, LifecycleFailure = 130163;
     private const int LifecycleCaptain = 5300038, LifecycleCaptainTalk = 5300035, LifecycleCaptainOption = 5300039;
+    private readonly Dictionary<BotClient, long> _airshipStoryReturnScenes = new();
 
-    // 前七步是受控 LAB 前置；本案從最後船長的正式對話選項起驗協定，不冒充整段實機操作。
+    // 前六步是受控 LAB 前置；保留實際計時閘，本案從船長正式對話選項起驗協定。
     [ClientDataTheory]
     [InlineData(LifecycleSuccess, LifecycleFailure)]
     [InlineData(LifecycleFailure, LifecycleSuccess)]
@@ -37,7 +38,7 @@ public sealed partial class DungeonTests
         await AirshipLifecycleJumpRefused(alice, AirshipLifecycleJump());
 
         await PlotEnd(alice, ending);
-        Assert.Equal(DungeonRes.Success, (await Next(alice, DungeonService.Result, DungeonResNotify.Parser)).Res);
+        await AirshipStorySuccess(alice);
         await AirshipLifecyclePublishedTasks(alice);
         await AirshipLifecycleInvalidDeliveredJumps(alice);
         await AirshipLifecycleLand(alice);
@@ -48,7 +49,7 @@ public sealed partial class DungeonTests
         await PlotEnd(alice, other);
         await PlotEnd(alice, ending);
         await alice.HeartbeatAsync();
-        Assert.Single(alice.Inbox.Snapshot(), e => e.IsGame(DungeonService.Result));
+        Assert.Single(alice.Inbox.Snapshot(), e => e.IsGame(DungeonService.ResultNotify));
         Assert.Equal(1, AirshipQuestSourceCount((long)alice.Self!.Uuid, LifecycleClearTask));
         Assert.Equal(1, AirshipQuestSourceCount((long)alice.Self.Uuid, LifecycleBridgeTask));
         Assert.Equal(1, AirshipQuestSourceCount((long)alice.Self.Uuid, LifecycleCampTask));
@@ -79,13 +80,13 @@ public sealed partial class DungeonTests
         Assert.Same(attempt, Session(alice).DungeonAttempt);
         await AirshipLifecycleNotSettled(alice, outro: true);
         await PlotEnd(alice, ending);
-        await Next(alice, DungeonService.Result, DungeonResNotify.Parser, r => r.Res == DungeonRes.Success);
+        await AirshipStorySuccess(alice);
         await AirshipLifecyclePublishedTasks(alice);
         await AirshipLifecycleLand(alice);
         await PlotEnd(alice, LifecycleSuccess);
         await PlotEnd(alice, LifecycleFailure);
         await alice.HeartbeatAsync();
-        Assert.Single(alice.Inbox.Snapshot(), e => e.IsGame(DungeonService.Result));
+        Assert.Single(alice.Inbox.Snapshot(), e => e.IsGame(DungeonService.ResultNotify));
         AssertAirshipTaskRecovered(alice, (long)alice.Self!.Uuid);
     }
 
@@ -135,26 +136,35 @@ public sealed partial class DungeonTests
 
     private async Task AirshipLifecycleAtCaptain(BotClient bot)
     {
+        AirshipStoryTestPace();
         await Gm(bot, "!lvl 99");
         await Gm(bot, $"!quest accept {LifecycleClearTask}");
         Assert.Equal(0, await Enter(bot, new EnterDungeonReq { SceneEntry = LifecycleAirship }));
         long instance = await Load(bot, LifecycleAirship);
-        var waves = Session(bot).DungeonAttempt!.Plan.Waves;
-        Assert.Equal(8, waves.Count);
-        for (int index = 0; index < waves.Count - 1; index++)
+        await AirshipStoryThroughCrew(bot, instance);
+    }
+
+    private void AirshipStoryTestPace() =>
+        Service<Microsoft.Extensions.Options.IOptions<ServerOptions>>().Value.ScriptedScenePacePercent = 10;
+
+    /// <summary>保留計時閘；殺敵仍走戰鬥管線，不靠 GM 把泡泡當成全數完成。</summary>
+    private async Task AirshipStoryThroughCrew(BotClient bot, long instance)
+    {
+        AirshipStoryTestPace();
+        var attempt = Session(bot).DungeonAttempt!;
+        _airshipStoryReturnScenes[bot] = attempt.Room.Participants.Single(m => ReferenceEquals(m.Session, Session(bot))).ReturnScene;
+        Assert.Equal(7, attempt.Plan.Waves.Count);
+        await Stage(bot, 1, quest: 1);
+        await Stage(bot, 2, quest: 2); // 開場39.5秒後才開砲；測試縮短至10%。
+        foreach (var ship in await WaveIn(instance, 3)) await Kill(bot, ship);
+        foreach (var (stage, count) in new[] { (3, 4), (4, 5), (5, 1) })
         {
-            var wave = waves[index];
-            if (wave.Step is { } step)
-            {
-                await Stage(bot, index + 1, step.Quest);
-                await ActorsIn(bot, step.Actors.Count);
-            }
-            if (wave.Spawns.Count > 0)
-                foreach (var monster in await WaveIn(instance, wave.Spawns.Count)) await Kill(bot, monster);
-            if (wave.Step?.Complete.Count > 0) await Gm(bot, "!actors use");
+            await Stage(bot, stage, quest: stage == 5 ? 4 : 3);
+            foreach (var monster in await WaveIn(instance, count)) await Kill(bot, monster);
         }
-        await Stage(bot, 8, quest: 6);
-        var actor = Assert.Single(await ActorsIn(bot, 1));
+        await Stage(bot, 6, quest: 5);
+        await Stage(bot, 7, quest: 6); // 不要求任何戰後泡泡，等時間軸自己推進。
+        var actor = Assert.Single(await ActorsIn(bot, 1, actor => actor.NpcId == LifecycleCaptain));
         Assert.Equal(LifecycleCaptain, actor.NpcId);
         var visible = await Next(bot, GameAoiSink.SyncAoiView, AoIViewChangeData.Parser,
             v => v.Bases.Any(b => b.EntityTemplateID == LifecycleCaptain));
@@ -171,7 +181,7 @@ public sealed partial class DungeonTests
             .Where(row => row.TryGetProperty("_iEXECAction", out _)).ToArray();
         Assert.Contains(options, row => row.GetProperty("_iEXECAction").EnumerateArray().Any(a =>
             a.GetArrayLength() == 3 && a[0].GetString() == "211" && a[1].GetString() == "5300038" && a[2].GetString() == "5300039"));
-        var captain = Assert.Single(await ActorsIn(bot, 1));
+        var captain = Assert.Single(await ActorsIn(bot, 1, actor => actor.NpcId == LifecycleCaptain));
         Assert.Equal(0, await Interact(bot, captain, LifecycleCaptainTalk));
         Assert.Equal(0, await Interact(bot, captain, LifecycleCaptainOption));
         await Story(bot, LifecycleOpening);
@@ -189,9 +199,12 @@ public sealed partial class DungeonTests
             Assert.Equal(0, session.Tasks!.CompleteTaskNum.GetValueOrDefault(LifecycleClearTask));
             return Task.CompletedTask;
         });
-        Assert.DoesNotContain(bot.Inbox.Snapshot(), e => e.IsGame(DungeonService.Result));
+        Assert.DoesNotContain(bot.Inbox.Snapshot(), e => e.IsGame(DungeonService.ResultNotify));
         Assert.Equal(0, AirshipQuestSourceCount((long)bot.Self!.Uuid, LifecycleClearTask));
     }
+
+    private static Task<DungeonResultNotify> AirshipStorySuccess(BotClient bot) =>
+        Next(bot, DungeonService.ResultNotify, DungeonResultNotify.Parser, r => r.ResultInfo?.WinCamp == 1);
 
     private static ClientCustomJumpMapReq AirshipLifecycleJump() => new()
     {
@@ -220,6 +233,12 @@ public sealed partial class DungeonTests
 
     private async Task AirshipLifecycleLand(BotClient bot)
     {
+        var session = Session(bot);
+        if (session.SceneEntry != LifecycleCamp && (session.InstanceId != 0 || session.SceneLoading))
+        {
+            long port = _airshipStoryReturnScenes.GetValueOrDefault(bot, RoleStore.SpawnSceneEntry);
+            await AirshipInterruptedLoadOutside(bot, port); // 30132 後先完成自動回港，才送任務指定的第二段跳圖。
+        }
         await bot.SendGameAsync(SceneService.CustomJumpMap, AirshipLifecycleJump());
         Assert.Equal(0, (await Next(bot, SceneService.CustomJumpMap, ClientCustomJumpMapResp.Parser)).Result);
         await Next(bot, MsgId.SwitchSceneLine, SwitchSceneLineResp.Parser, r => r.SceneEntry == LifecycleCamp);

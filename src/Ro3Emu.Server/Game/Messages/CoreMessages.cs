@@ -67,6 +67,7 @@ public sealed class CoreMessages(RoleSessionService roleSessions, ChatService ch
         });
         routes.Map(WorldCoreService.TeleportObject, "handler", async (session, msgId, body) =>
         {
+            if (await dungeons.TrySyncAntActorPositionAsync(session, ClientTeleportObject.Parser.ParseFrom(body.Span))) return;
             // In the reverse dungeon (SceneService.MovesOnSurface) the client reports where it shows an NPC before every
             // interaction it sends (LC_DAL_Interact.SyncNpcPos: only for units in m_bReverseMode, then 32700), and waits
             // for no answer: accepted without a reply, as an error tip would show on every press. Elsewhere it is not sent.

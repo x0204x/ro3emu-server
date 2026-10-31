@@ -45,6 +45,7 @@ public sealed partial class DungeonService
         public MonsterTemplate? Template { get; init; }
         public long BornMs { get; init; }
         public List<BuffInfo> Buffs { get; } = new();
+        public InteractInfo? StoryInteraction { get; set; }
 
         public override EntityBase Entity()
         {
@@ -67,6 +68,7 @@ public sealed partial class DungeonService
                              (102, t.MaxSp), (2001, t.MaxSp) })
                     entity.Property.Add(new AoIProperty { Idx = idx, Data = value, BaseData = value });
             if (Buffs.Count > 0) entity.BuffData = new AoIBuffInfo { AddBuffs = { Buffs.Select(b => b.Clone()) } };
+            if (StoryInteraction != null) entity.InteractInfo = StoryInteraction.Clone();
             return entity;
         }
     }
@@ -83,14 +85,16 @@ public sealed partial class DungeonService
         a.StepHeld = a.StepHoldOver = false;
         // A fight-only step has no client event to wait for: its kills complete it.
         a.StepDone = step.Complete.Count == 0;
-        await SyncSceneActorsAsync(a, step.Actors);
+        await SyncSceneActorsAsync(a, AirshipStoryActors(a, step));
         await SyncCompanionsAsync(a, step.Companions);
         a.StepGeneration++;
+        await BeginAntStoryStepAsync(a);
         if (step.Seek is { } seek) StartSeek(a, seek);
         if (step.Shelter is { } shelter) StartShelter(a, shelter);
         if (step.React is { } react) StartReaction(a, react);
         if (step.Story != 0 && !a.Settled && !a.Room.Closed)
             await BroadcastStoryAsync(a, step.Story);
+        await BeginAirshipStoryStepAsync(a);
     }
 
     /// <summary>Once, in a var-change event: the client calls PlayCutSceneStory on every push of this var.</summary>
@@ -196,11 +200,13 @@ public sealed partial class DungeonService
         if (code == 0 && entersCannon
             && (a!.CannonUsers.ContainsKey(s) || a.CannonOccupants.ContainsKey(actor!.Uid)))
             code = ErrorCodes.NpcParameter;
+        if (code == 0) code = AirshipStoryInteractionError(a!, actor!, req.InteractionId);
         _log.LogInformation("{Name} interacts {Interaction} with scene actor {Npc} {Uid} (scene {Scene}, config scene {ConfigScene}, "
             + "distance {Distance:0.0} m): {Result}", s.Role?.Name, req.InteractionId, actor?.NpcId, req.NpcUid, s.SceneEntry,
             req.SceneConfigId, actor == null ? -1 : MonsterService.Distance(s.Position.X, s.Position.Z, actor.X, actor.Z), code);
         await s.SendGameAsync(SceneService.NpcInteraction, new NpcInteractionRsp { Result = code, Req = req });
         if (code != 0) return true;
+        if (await TryAirshipStoryInteractionAsync(a!, s, actor!, req.InteractionId)) return true;
         // Dracula's Lair: a bush search may find the key; its finder is the rescuer, the only one the cage opens for.
         if (a!.Dracula is { } dracula) await dracula.Owner.InteractedAsync(a, s, actor!.NpcId);
         if (entersCannon)
@@ -228,7 +234,8 @@ public sealed partial class DungeonService
             || !a.CannonUsers.TryGetValue(s, out var actor) || req.SkillId != cannon.FireSkill
             || req.OpUnitId != 0 && req.OpUnitId != s.Role?.Id && req.OpUnitId != actor.Uid)
             return false;
-        if (req.TargetId == 0) return true; // TPS aiming may supply a position instead of a locked target.
+        if (!BindAirshipCannonTarget(a, s, step, req)) return false;
+        if (req.TargetId == 0) return true; // 已通過有界的空瞄檢查。
         return a.Room.Monsters.Any(m => m.Uid == req.TargetId && !m.Dead && m.Hp > 0
             && step.Fight.Any(spawn => spawn.NpcId == m.Template.NpcId));
     }
@@ -239,12 +246,14 @@ public sealed partial class DungeonService
     /// after the mounted cannon grant has already bound the request to a living authored enemy ship.
     /// </summary>
     private bool CannonTargetErrorAllowed(GameSession s, CastSkillReq req, int error) =>
-        (error is ErrorCodes.SkillHeight or ErrorCodes.SkillBlocked) && CannonSkillGranted(s, req);
+        (error is ErrorCodes.SkillHeight or ErrorCodes.SkillBlocked) && CannonSkillGranted(s, req)
+        || error == ErrorCodes.SkillTargetInvalid && AirshipCannonEmptyAimAllowed(s, req);
 
     private async Task NotifyCannonAsync(GameSession s, SceneActorUnit actor,
         ReconstructedDungeons.Cannon cannon, bool interrupt)
     {
         if (s.Role == null || s.SceneLoading) return;
+        if (s.DungeonAttempt is { } a && await TryNotifyAirshipCannonEndpointsAsync(a, s, actor, mounted: true, interrupt)) return;
         var message = new InteractChangeNtf
         {
             Uid = s.Role.Id, Interrupt = interrupt,
@@ -263,6 +272,7 @@ public sealed partial class DungeonService
     {
         if (!a.CannonUsers.Remove(s, out var actor)) return;
         a.CannonOccupants.Remove(actor.Uid);
+        if (await TryNotifyAirshipCannonEndpointsAsync(a, s, actor, mounted: false, interrupt)) return;
         if (s.Role == null || s.SceneLoading) return;
         var message = new InteractChangeNtf
         {
@@ -356,7 +366,8 @@ public sealed partial class DungeonService
             _log.LogWarning("GM test aid: {Role} completes scripted scene {Scene} step {Step} with {Kind} {Id}",
                 s.Role?.Id, used.Plan.SceneEntry, used.Wave + 1, t.Kind, t.Id);
             // An "all" step takes every one of its events.
-            await StepEventAsync(used, s, current.All ? [.. current.Complete.Select(c => (c.Kind, c.Id))] : [(t.Kind, t.Id)]);
+            await StepEventAsync(used, s, current.All ? [.. current.Complete.Select(c => (c.Kind, c.Id))] : [(t.Kind, t.Id)],
+                airshipInternal: true); // 明示 GM 測試捷徑，玩家封包仍不可偽造計時事件。
             await GmCommands.ReplyAsync(s, $"TEST AID: step {used.Wave + 1} '{current.Stage}' completed with {t.Kind} {t.Id}.");
             return;
         }
@@ -399,6 +410,7 @@ public sealed partial class DungeonService
     /// <summary>A participant's accepted walk: server regions and points of the current step.</summary>
     public async Task PlayerMovedAsync(GameSession s)
     {
+        await AntStoryPlayerMovedAsync(s);
         if (s.DungeonAttempt == null || Active(s) is not { } a || Step(a) is not { } step || a.StepDone) return;
         if (step.Seek != null) return; // a hiding place counts when the seeker looks (DungeonService.HideAndSeek)
         foreach (var t in step.Complete)
@@ -410,15 +422,16 @@ public sealed partial class DungeonService
                     && MonsterService.Distance(s.Position.X, s.Position.Z, p.X, p.Z) <= t.Radius,
                 _ => false,
             };
-            if (inside) { await StepEventAsync(a, s, [(t.Kind, t.Id)]); return; }
+            if (inside && (t.Kind != Kind.Region || AntStoryRegionAllowed(s, t.Id)))
+            { await StepEventAsync(a, s, [(t.Kind, t.Id)]); return; }
         }
     }
 
     /// <param name="used">The scene actor the player interacted with, which a reaction's effect is placed by.</param>
     private async Task StepEventAsync(Attempt a, GameSession s, IReadOnlyList<(Kind Kind, long Id)> events,
-        SceneActorUnit? used = null)
+        SceneActorUnit? used = null, bool airshipInternal = false)
     {
-        if (a.Settled || a.Room.Closed || a.Spawning || a.StepDone || Step(a) is not { } step) return;
+        if (a.Settled || a.Room.Closed || a.Spawning || a.StepDone || !AirshipStoryStepEventAllowed(a, airshipInternal) || Step(a) is not { } step) return;
         bool Matches(ReconstructedDungeons.StepTrigger t) => events.Any(e => e.Kind == t.Kind && e.Id == t.Id);
         var expected = a.StepOutroPending ? step.Outro?.Complete ?? [] : step.Complete;
         if (!expected.Any(Matches))
@@ -449,6 +462,7 @@ public sealed partial class DungeonService
             return;
         }
         a.StepOutroPending = false;
+        await TigerBlackScreenAsync(a);
         a.StepDone = true;
         _log.LogInformation("Scripted scene {Scene} step {Step} '{Stage}' completed by {Role} ({Events})",
             a.Plan.SceneEntry, a.Wave + 1, step.Stage, s.Role?.Id, string.Join(", ", events));

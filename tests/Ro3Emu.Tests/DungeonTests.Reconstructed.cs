@@ -91,7 +91,7 @@ public sealed partial class DungeonTests
         for (int wave = 0; wave < plan.Waves.Count; wave++)
             foreach (var actor in await WaveIn(instance, plan.Waves[wave].Spawns.Count)) await Kill(alice, actor);
         using var left = alice.Inbox.Expect(e => e.IsGame(DungeonService.Leave));
-        Assert.Equal((DungeonRes)1, (await Next(alice, DungeonService.Result, DungeonResNotify.Parser)).Res);
+        await AssertDungeonSuccessAsync(alice);
         Assert.Equal(instance, Session(alice).InstanceId); // the result first, the return a moment later
         var leave = await left.WaitAsync(TimeSpan.FromSeconds(DungeonService.PlaneExitSeconds + 10));
         Assert.Equal(0, LeaveDungeonRsp.Parser.ParseFrom(leave.Body).Result);
@@ -118,7 +118,7 @@ public sealed partial class DungeonTests
         var plan = Session(alice).DungeonAttempt!.Plan;
         for (int wave = 0; wave < plan.Waves.Count; wave++)
             foreach (var actor in await WaveIn(instance, plan.Waves[wave].Spawns.Count)) await Kill(alice, actor);
-        Assert.Equal((DungeonRes)1, (await Next(alice, DungeonService.Result, DungeonResNotify.Parser)).Res);
+        await AssertDungeonSuccessAsync(alice);
         var cleared = DungeonEventNotify.Parser.ParseFrom((await hidden.WaitAsync(TimeSpan.FromSeconds(10))).Body);
         Assert.Empty(cleared.Vars.Single(v => v.VarId == DungeonService.GuideWayVar).Vi64);
     }
@@ -186,7 +186,7 @@ public sealed partial class DungeonTests
         long instance = await Load(alice, 1051001);
         Assert.Equal(TaskState.Running, State()); // entering is not a pass
         foreach (var actor in await WaveIn(instance, 1)) await Kill(alice, actor);
-        Assert.Equal((DungeonRes)1, (await Next(alice, DungeonService.Result, DungeonResNotify.Parser)).Res);
+        await AssertDungeonSuccessAsync(alice);
         for (int i = 0; i < 100 && State() == TaskState.Running && !TaskService.IsDelivered(Session(alice), 10103120); i++)
             await Task.Delay(20);
         Assert.True(State() is TaskState.Finish || TaskService.IsDelivered(Session(alice), 10103120), $"quest state {State()}");
@@ -210,7 +210,7 @@ public sealed partial class DungeonTests
         Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
         long instance = await Load(alice, scene);
         await ClearReconstructedStoryRun(alice, instance);
-        Assert.Equal((DungeonRes)1, (await Next(alice, DungeonService.Result, DungeonResNotify.Parser)).Res);
+        await AssertDungeonSuccessAsync(alice);
         Assert.Equal(scene, await completed.Task.WaitAsync(Wait));
         await StoryMovesOn(alice, task, next);
     }
@@ -230,7 +230,7 @@ public sealed partial class DungeonTests
         Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = dungeon }));
         long instance = await Load(alice, dungeon);
         await ClearReconstructedStoryRun(alice, instance);
-        Assert.Equal((DungeonRes)1, (await Next(alice, DungeonService.Result, DungeonResNotify.Parser)).Res);
+        await AssertDungeonSuccessAsync(alice);
         await StoryMovesOn(alice, clearTask, peltTask);
 
         // The pelt is not the private-dungeon Eddga corpse. TaskConfig tracks a client-side
@@ -240,7 +240,7 @@ public sealed partial class DungeonTests
         Assert.Contains(interaction, npc.GetProperty("_iInteractID").EnumerateArray()
             .Select(e => (int)(GameData.Number(e) ?? 0)));
 
-        // (inferred) Tiger King returns after the committed clear and 30403, without a player 30402.
+        // 原服虎王在持久化成功及30132後自動返回，不需玩家30402。
         var returned = await Next(alice, MsgId.SwitchSceneLine, SwitchSceneLineResp.Parser,
             sw => sw.SceneEntry == field);
         Assert.Equal(field, returned.SceneEntry);
@@ -254,9 +254,22 @@ public sealed partial class DungeonTests
         await StoryMovesOn(alice, peltTask, nextTask);
     }
 
+    private async Task AssertDungeonSuccessAsync(BotClient bot)
+    {
+        if (DungeonService.CapturedStoryScene(Session(bot).DungeonAttempt!.Plan.SceneEntry))
+            Assert.Equal(1, (await Next(bot, DungeonService.ResultNotify, DungeonResultNotify.Parser)).ResultInfo.WinCamp);
+        else Assert.Equal((DungeonRes)1, (await Next(bot, DungeonService.Result, DungeonResNotify.Parser)).Res);
+    }
+
     private async Task ClearReconstructedStoryRun(BotClient bot, long instance)
     {
         var plan = Session(bot).DungeonAttempt!.Plan;
+        if (plan.SceneEntry == 1000501)
+        {
+            await AirshipStoryThroughCrew(bot, instance);
+            await AirshipLifecycleCaptainOption(bot);
+            return;
+        }
         for (int wave = 0; wave < plan.Waves.Count; wave++)
         {
             var step = plan.Waves[wave].Step;

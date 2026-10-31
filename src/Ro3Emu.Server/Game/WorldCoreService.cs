@@ -98,6 +98,7 @@ public sealed partial class WorldCoreService : IGameTicker
         monsters.TargetChanged.Add(TargetChangedAsync);
         combat.ReviveOffer = OfferReviveAsync;
         combat.ReviveCheck = dungeons.ExternalReviveError;
+        dungeons.SetAntCustomAsync = SetCustomAsync;
         combat.ReviveItemSkill = ReviveItemSkillAsync;
         character.WingJump = WingJumpAsync;
         character.RegisterItemAction(TaskJumpMapAction, UseQuestWingAsync);

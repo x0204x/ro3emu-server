@@ -19,26 +19,27 @@ public sealed partial class CombatService
     /// </summary>
     internal async Task<bool> MonsterStrikeAsync(MonsterUnit source, MonsterUnit target, float reach, Func<long, long> adjust)
     {
+        var attack = source.Template;
         if (!Strikes(source, target, reach)) return false;
         long castId = ++_sessionIds;
         source.Face = MonsterService.Angle(source.X, source.Z, target.X, target.Z);
-        if (SkillConfig.Get(_data, source.Template.NormalSkill) is not { } skill)
+        if (SkillConfig.Get(_data, attack.NormalSkill) is not { } skill)
         {
             await StrikeAsync(source, target, null, castId, adjust);
             return true;
         }
-        await _world.ToUnitViewersAsync(source, UseInSkill, new UseInSkillInfo
+        await SendMonsterTimelineAsync(source, new UseInSkillInfo
         {
-            SrcID = source.Uid, SkillID = source.Template.NormalSkill, TargetId = target.Uid, TargetPos = target.Pos,
-            Face = source.Face, SessionId = castId, SkillMs = source.Template.SkillMs, StartTime = Now,
+            SrcID = source.Uid, SkillID = attack.NormalSkill, TargetId = target.Uid, TargetPos = target.Pos,
+            Face = source.Face, SessionId = castId, SkillMs = attack.SkillMs, StartTime = Now,
         });
-        ScheduleRuntime(source.WorldScene, TimeSpan.FromSeconds(source.Template.HitPointSeconds), () =>
+        ScheduleRuntime(source.WorldScene, TimeSpan.FromSeconds(attack.HitPointSeconds), () =>
             Strikes(source, target, reach + 2f) ? StrikeAsync(source, target, skill, castId, adjust) : Task.CompletedTask);
         return true;
     }
 
     private static bool Strikes(MonsterUnit source, MonsterUnit target, float reach) =>
-        !source.Dead && source.Hp > 0 && !target.Dead && target.Hp > 0 && source.InstanceId == target.InstanceId
+        !source.Removed && !target.Removed && !source.Dead && source.Hp > 0 && !target.Dead && target.Hp > 0 && source.InstanceId == target.InstanceId
         && source.WorldScene == target.WorldScene
         && MonsterService.Distance(source.X, source.Z, target.X, target.Z) <= reach;
 
@@ -51,7 +52,7 @@ public sealed partial class CombatService
         bool lethal = target.Hp == 0;
         var hit = new SkillHitInfo
         {
-            SrcID = source.Uid, SkillId = source.Template.NormalSkill,
+            SrcID = source.Uid, SkillId = (int)(skill?.Id ?? 0),
             ShowPoint = skill is { } shown ? HitEffect(shown.ScriptShow) : DefaultHitEffect, SessionId = castId,
             SrcElement = source.Template.Element,
             Dsts = { new DamageInfo { DstID = target.Uid, Damage = damage, HitResult = result, DstElement = target.Template.Element,

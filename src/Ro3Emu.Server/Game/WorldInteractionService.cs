@@ -28,6 +28,7 @@ public sealed class WorldInteractionService
     private readonly GameData _data;
     private readonly World _world;
     private readonly WorldData _worldData;
+    internal Func<GameSession, long, long, Task>? SceneActorSeatEnded { get; set; }
 
     public WorldInteractionService(GameData data, World world, WorldData worldData, SceneService scene)
     {
@@ -141,6 +142,7 @@ public sealed class WorldInteractionService
     {
         if (!_active.Remove(s, out var state)) return;
         if (state.SeatIndex >= 0) _seats.Remove((s.WorldScene, state.Npc.Uid, state.SeatIndex));
+        if (state.Scripted && SceneActorSeatEnded != null) await SceneActorSeatEnded(s, state.Token, state.Npc.Uid);
         if (s.Role == null || s.SceneLoading) return;
         var message = new InteractChangeNtf
         {
@@ -153,11 +155,11 @@ public sealed class WorldInteractionService
 
     private Task LeaveAsync(GameSession s) => ExitAsync(s, true);
     /// <summary>Disconnect and account-mode cleanup when SceneService.Leaving is not invoked.</summary>
-    public Task DisconnectAsync(GameSession s)
+    public async Task DisconnectAsync(GameSession s)
     {
-        if (_active.Remove(s, out var state) && state.SeatIndex >= 0)
-            _seats.Remove((s.WorldScene, state.Npc.Uid, state.SeatIndex));
-        return Task.CompletedTask;
+        if (!_active.Remove(s, out var state)) return;
+        if (state.SeatIndex >= 0) _seats.Remove((s.WorldScene, state.Npc.Uid, state.SeatIndex));
+        if (state.Scripted && SceneActorSeatEnded != null) await SceneActorSeatEnded(s, state.Token, state.Npc.Uid);
     }
     private async Task PlayerEnteredAsync(GameSession viewer, GameSession subject)
     {
@@ -248,7 +250,8 @@ public sealed class WorldInteractionService
     /// (the dungeon: the current step waits on it), so the predicates of <see cref="ValidateInteraction"/> are not asked
     /// again. Returns the seat's token, 0 when the player is in a state already, the NPC is no vehicle or the seat is taken.
     /// </summary>
-    public async Task<long> SeatOnSceneActorAsync(GameSession s, long actorUid, int npcId, int interactionId)
+    public async Task<long> SeatOnSceneActorAsync(GameSession s, long actorUid, int npcId, int interactionId,
+        Func<Task>? beforeNotify = null, bool send3C = true)
     {
         if (!InWorld(s) || _active.ContainsKey(s) || !IsRide(interactionId)
             || NPCInteractConfig.Get(_data, interactionId) is not { } interaction) return 0;
@@ -257,9 +260,23 @@ public sealed class WorldInteractionService
         int[] seats = VehicleSeats(state);
         if (seat < 0 || seat >= seats.Length || _data.Row("VehicleSeatConfig", seats[seat]) == null || !SeatFree(s, actorUid, seat)) return 0;
         _active[s] = state;
-        _seats[(s.WorldScene, actorUid, seat)] = s;
-        await NotifyAsync(s, state, false);
-        await Send3CAsync(s, state);
+        var seatKey = (s.WorldScene, actorUid, seat);
+        _seats[seatKey] = s;
+        try
+        {
+            if (beforeNotify != null) await beforeNotify();
+            await NotifyAsync(s, state, false);
+            if (send3C) await Send3CAsync(s, state);
+        }
+        catch
+        {
+            if (_active.TryGetValue(s, out var current) && current.Token == state.Token)
+            {
+                _active.Remove(s);
+                if (_seats.TryGetValue(seatKey, out var rider) && ReferenceEquals(rider, s)) _seats.Remove(seatKey);
+            }
+            throw;
+        }
         return state.Token;
     }
 
@@ -272,4 +289,6 @@ public sealed class WorldInteractionService
 
     /// <summary>Whether the player is seated on a scripted dungeon's scene actor.</summary>
     internal bool IsSeatedOnSceneActor(GameSession s) => _active.TryGetValue(s, out var state) && state.Scripted;
+    internal bool IsSeatedOnSceneActor(GameSession s, long token, long actorUid) =>
+        _active.TryGetValue(s, out var state) && state.Scripted && state.Token == token && state.Npc.Uid == actorUid;
 }

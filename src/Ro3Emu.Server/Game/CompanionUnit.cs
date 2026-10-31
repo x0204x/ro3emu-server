@@ -40,17 +40,25 @@ internal sealed class CompanionUnit(CompanionUnit.Kit kit, World world, CombatSe
     private const int WalkResendMs = 200;
 
     /// <summary>A skill of NPCConfig _kSkills: SkillConfig _iCD, _iActionTime and _iDistanceMax (metres).</summary>
-    internal sealed record Skill(int Id, int CooldownMs, int ActionMs, float Range);
+    internal sealed record Skill(int Id, int CooldownMs, int ActionMs, float Range)
+    {
+        // 只影響原服已觀察的故事支援技；不可將治癒／祝福硬套一般對敵傷害公式。
+        public bool CanDamageEnemy { get; init; } = true;
+    }
 
     /// <summary>What the client data says about a companion: its template, skills, walking speed (cm/s) and AI parameters
     /// (view range and chase distance in metres).</summary>
     internal sealed record Kit(int NpcId, MonsterTemplate Template, IReadOnlyList<Skill> Skills, int SpeedCm, int SearchMs,
-        int AttackTickMs, float ViewRange, float ChaseDistance);
+        int AttackTickMs, float ViewRange, float ChaseDistance)
+    {
+        public bool RotateAttackSkills { get; init; }
+    }
 
     private readonly Dictionary<int, long> _readyMs = [];
     private long _nextAttackMs, _nextSearchMs, _nextWalkMs;
     private MonsterUnit? _target;
     private bool _moving;
+    private int _lastAttackSkillId;
 
     public Kit Spec { get; } = kit;
     public int NpcId => Spec.NpcId;
@@ -67,27 +75,62 @@ internal sealed class CompanionUnit(CompanionUnit.Kit kit, World world, CombatSe
     /// <summary>Called once when it falls; its owner removes it.</summary>
     public required Func<CompanionUnit, Task> Fell { get; init; }
 
-    /// <summary>The companion kit of an NPC, or null when the row cannot be one: not a monster-type NPC of the player's camp
-    /// with a monster template, its own skills (each a SkillConfig row) and an AIConfig row with _iStayInPlace 1.</summary>
+    /// <summary>玩家陣營monster-type NPC同伴。優先用本身_kSkills；空表只接受實包繫結且AISpecial吻合的12名故事NPC。</summary>
     public static Kit? Build(GameData data, MonsterService monsters, int npcId)
     {
-        if (NPCConfig.Get(data, npcId) is not { NPCType: MonsterNpcType } npc || npc.Skills.Length == 0
+        if (NPCConfig.Get(data, npcId) is not { NPCType: MonsterNpcType } npc
             || monsters.Template(npcId) is not { Camp: PlayerCamp } template
             || AIConfig.Get(data, npc.Ai) is not { StayInPlace: StaysInPlace } ai) return null;
+        long[] ids = npc.Skills;
+        bool captured = ids.Length == 0;
+        if (captured) ids = CapturedStorySkills(npcId, npc);
+        if (ids.Length == 0) return null;
         var skills = new List<Skill>();
-        foreach (long id in npc.Skills)
+        foreach (long id in ids)
         {
             if (SkillConfig.Get(data, id) is not { } row) return null;
-            skills.Add(new Skill((int)id, (int)Math.Max(0, row.Cd), (int)Math.Max(MinActionMs, row.ActionTime), row.DistanceMax / 100f));
+            skills.Add(new Skill((int)id, (int)Math.Max(0, row.Cd), (int)Math.Max(MinActionMs, row.ActionTime), row.DistanceMax / 100f)
+            {
+                CanDamageEnemy = !captured || CapturedEnemyAttack(npcId, row),
+            });
         }
         return new Kit(npcId, template, skills, (int)Math.Max(0, npc.Speed), (int)Math.Max(1, ai.SearchTime),
-            (int)Math.Max(0, ai.AttackTickTime), ai.ViewRange / 100f, ai.ChaseDistance / 100f);
+            (int)Math.Max(0, ai.AttackTickTime), ai.ViewRange / 100f, ai.ChaseDistance / 100f)
+        { RotateAttackSkills = captured };
     }
 
-    /// <summary>(inferred) The first listed skill whose cooldown is ready at <paramref name="now"/> and whose reach holds a
-    /// target <paramref name="distance"/> metres away.</summary>
-    public static Skill? Pick(Kit kit, IReadOnlyDictionary<int, long> readyMs, long now, float distance) =>
-        kit.Skills.FirstOrDefault(s => now >= readyMs.GetValueOrDefault(s.Id) && distance <= s.Range);
+    /// <summary>虎王原服2026-10-31 seq35075–39192繫結的12名冒險者；不是世界NPC的通用技能推測。</summary>
+    private static long[] CapturedStorySkills(int npcId, NPCConfig npc) => npc.Ai != 5300006 ? [] : (npcId, npc.AISpecial) switch
+    {
+        (5300007, "MainStory_ZhanShi") or (5300073, "MainStory_ZhanShi2") => [5330101, 5330201, 5330301, 5330401],
+        (5300008, "MainStory_FaShi") or (5300074, "MainStory_FaShi2") => [5330901, 5331001, 5331101, 5331201],
+        (5300009, "MainStory_MuShi") or (5300075, "MainStory_MuShi2") => [5330501, 5330601, 5330701, 5330801, 5331301],
+        (5300070, "MainStory_LieRen") or (5300076, "MainStory_LieRen2") => [5331501, 5331601, 5331701],
+        (5300071, "MainStory_DaoZei") or (5300077, "MainStory_DaoZei2") => [1511601, 5332301, 5332401, 5332501],
+        (5300072, "MainStory_ShangRen") or (5300078, "MainStory_ShangRen2") => [5331901, 5332001, 5332101],
+        _ => [],
+    };
+
+    // 牧師本次只對友方／自己施放；其他人僅開放已觀察對敵且配置有正傷害係數的技能。
+    // 支援技的選人、buff及治癒路由尚未還原（UNKNOWN），不可先變成敵方傷害。
+    private static bool CapturedEnemyAttack(int npcId, SkillConfig skill) => npcId is not (5300009 or 5300075)
+        && skill.DmgType > 0 && (skill.DamageParam1.Any(v => v > 0) || skill.DamageParam2.Any(v => v > 0));
+
+    /// <summary>(inferred) 依既有順序或故事輪替，挑選冷卻已好且可對敵、距離可達的技能。</summary>
+    public static Skill? Pick(Kit kit, IReadOnlyDictionary<int, long> readyMs, long now, float distance, int afterSkill = 0)
+    {
+        int start = 0;
+        // (inferred) 原服各AI技能優先序未知，暫輪替可用攻擊，避免CD0永遠壓住其餘已知技能。
+        if (kit.RotateAttackSkills)
+            for (int i = 0; i < kit.Skills.Count; i++)
+                if (kit.Skills[i].Id == afterSkill) { start = i + 1; break; }
+        for (int i = 0; i < kit.Skills.Count; i++)
+        {
+            var skill = kit.Skills[(start + i) % kit.Skills.Count];
+            if (skill.CanDamageEnemy && now >= readyMs.GetValueOrDefault(skill.Id) && distance <= skill.Range) return skill;
+        }
+        return null;
+    }
 
     /// <summary>(inferred) The next cast may start after this one's action and the AI's attack tick.</summary>
     public static long NextAttackMs(Kit kit, Skill skill, long now) => now + Math.Max(skill.ActionMs, kit.AttackTickMs);
@@ -109,7 +152,7 @@ internal sealed class CompanionUnit(CompanionUnit.Kit kit, World world, CombatSe
             return;
         }
         float distance = MonsterService.Distance(X, Z, target.X, target.Z);
-        if (Pick(Spec, _readyMs, now, distance) is not { } skill)
+        if (Pick(Spec, _readyMs, now, distance, _lastAttackSkillId) is not { } skill)
         {
             Approach(map, time, now, target, distance);
             return;
@@ -117,6 +160,7 @@ internal sealed class CompanionUnit(CompanionUnit.Kit kit, World world, CombatSe
         StopMoving(now);
         // Reserved here, on the loop: the cast itself runs detached.
         _readyMs[skill.Id] = now + skill.CooldownMs;
+        _lastAttackSkillId = skill.Id;
         _nextAttackMs = NextAttackMs(Spec, skill, now);
         Face = MonsterService.Angle(X, Z, target.X, target.Z);
         world.TrackDetached("companion attack", () => combat.CompanionAttackAsync(this, target, skill));
@@ -128,7 +172,7 @@ internal sealed class CompanionUnit(CompanionUnit.Kit kit, World world, CombatSe
     {
         float reach = 0;
         foreach (var s in Spec.Skills)
-            if (now >= _readyMs.GetValueOrDefault(s.Id)) reach = Math.Max(reach, s.Range);
+            if (s.CanDamageEnemy && now >= _readyMs.GetValueOrDefault(s.Id)) reach = Math.Max(reach, s.Range);
         if (reach <= 0) StopMoving(now);
         else WalkToward(map, time, now, target.X, target.Z, distance - reach * ApproachShare);
     }

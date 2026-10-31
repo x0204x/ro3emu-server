@@ -143,7 +143,6 @@ public sealed partial class DungeonService
         await SaveAsync(s, state);
     }
 
-    // LC_AssetDatasetDefine routes 30123 to Dragon Island and 30132 to Dragon Island/LeisureForty.
-    // Those modes are not ordinary boss dungeons. Their pushes are intentionally not produced here.
+    // 原服實包已證實部分任務副本也使用 30132，適用名單集中於 StoryResults。
     // 30126's task-score alias and server scoring formula remain unverified.
 }

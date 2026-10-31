@@ -356,7 +356,8 @@ public sealed class DungeonCatalog(GameData data, WorldData worldData, MonsterSe
                 bool known = t.Kind switch
                 {
                     ReconstructedDungeons.TriggerKind.Interaction => step.Actors.Any(a => Interactions(a.NpcId).Contains(t.Id)),
-                    ReconstructedDungeons.TriggerKind.Message => step.Actors.Any(a => Interactions(a.NpcId).Any(i => DungeonMessage(i) == t.Id)),
+                    ReconstructedDungeons.TriggerKind.Message => step.Actors.Any(a => Interactions(a.NpcId).Any(i => DungeonMessage(i) == t.Id))
+                        || DungeonService.IsAirshipStoryTimedTrigger(scene.Scene, step, t),
                     ReconstructedDungeons.TriggerKind.Region => map.Regions.ContainsKey(t.Id),
                     ReconstructedDungeons.TriggerKind.Point => map.Points.ContainsKey(t.Id) && t.Radius > 0,
                     ReconstructedDungeons.TriggerKind.Plot => data.Row("PlotInterpretation", t.Id) != null,

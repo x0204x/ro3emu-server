@@ -41,7 +41,7 @@ public sealed partial class CombatService
     private async Task ResolveCastAsync(GameSession s, ActiveSkillCast action)
     {
         var row = action.Row;
-        if (!CurrentCastMap(s, action)) return;
+        if (!CurrentCastMap(s, action) || action.PositionOnly) return;
         foreach (var handler in CastLanded)
         {
             await handler(s, row);

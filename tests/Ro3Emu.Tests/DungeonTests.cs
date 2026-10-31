@@ -479,7 +479,7 @@ public sealed partial class DungeonTests : IAsyncLifetime
         await OnLoop(() => Service<SceneService>().TeleportInMapAsync(Session(alice),
             new MapPoint(boss.X + 1, boss.Y, boss.Z, boss.Face)));
         await Kill(alice, boss);
-        Assert.Equal((DungeonRes)1, (await Next(alice, DungeonService.Result, DungeonResNotify.Parser)).Res);
+        await AssertDungeonSuccessAsync(alice);
         await alice.SendGameAsync(DungeonService.Leave, new LeaveDungeonReq());
         Assert.Equal(0, (await Next(alice, DungeonService.Leave, LeaveDungeonRsp.Parser)).Result);
 

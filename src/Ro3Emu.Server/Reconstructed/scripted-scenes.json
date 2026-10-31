@@ -18,43 +18,60 @@
         "Editor sc_plot_yhcx_001_dg01: guide point 24 runs from the born point to (98.8, 82.3) at the corridor, guide point 38 from there to (99.2, 99.8) beside region 20; region 20 is a 5 m circle (regionType 2) at (100.5, 102.3), region 22 a 30 x 5 m rectangle (regionType 2, triggerType 1) at the bottom of the passage (z 624.9), region 25 the 40 x 10 m corridor in front of the vortex.",
         "NPC 5300030 is the empty model 70010 with interaction 5300030: AutoInteractWhenInRange, interaction skill 5362001 'Jump into the Cave'.",
         "Nav sc_plot_yhcx_001: the passage is one continuous walkable ramp from z 238 (y 253) to z 622 (y 31); point 21 (100.0, 235.9, 267.5) lies on it near its top; point 27 'final drop position' is below it, off the nav.",
-        "Points 29-33 are client-only Ant Eggs (monsterType 1, clientMonsterConfigKey MainStoryAntEggExploseParam, npc 5300036, not created on scene init)."
+        "Points 29-33 are client-only Ant Eggs (monsterType 1, clientMonsterConfigKey MainStoryAntEggExploseParam, npc 5300036, not created on scene init).",
+        "2026-10-31原服seq123971：31018下滑狀態1、速度[600,3000]、視角3、攝影機71；本人31082進入region22後，先任務交付與30132，再PerformUnitMove至編輯器點27，隨後70010自動轉1000301。"
       ],
       "guessed": [
-        "Step 1 completes in region 25 (the corridor where guide 24 ends): region 25 is regionType 1, not one of the explicit server regions.",
-        "Bobo (5300027) stands at point 26 (the anchor of patrol 26, which runs into the vortex) during step 1 and is gone in step 2; the run into the vortex itself is not animated.",
-        "The jump is a teleport to point 21 at the top of the passage; the original fall/slide (and its camera) is not reproduced.",
-        "Region 20 does not end step 2: a player inside it before the auto interaction came had the step done, the vortex gone and the interaction refused (801), so the client never jumped and stayed above the abyss (#181).",
-        "The exploding ant eggs are not reproduced: their creation trigger is not in the client data.",
-        "The original continued seamlessly into 1000301 (DungeonConfig 1000301 _iSameDupLoadingType 2 from 1000201); here the player leaves and enters 1000301 from the quest tracker (action 3000)."
+        "波波跑入漩渦的巡邏動畫及蟻卵建立來源尚待還原。",
+        "本輪擷取確認540000x下滑及攝影機71；終點region22不得依Fish停在621公尺處任意擴張。"
       ],
       "steps": [
         {
           "quest": 1,
           "stage": "Explore ahead: head deeper into Maya's lair",
           "actors": [
-            { "npc": 5300027, "point": 26, "why": "Bobo (NPCConfig 5300027, no interaction) at patrol 26's point beside the vortex; quest 2 says he was sucked into it" }
+            {
+              "npc": 5300027,
+              "point": 26,
+              "why": "Bobo (NPCConfig 5300027, no interaction) at patrol 26's point beside the vortex; quest 2 says he was sucked into it"
+            }
           ],
           "complete": [
-            { "region": 25, "why": "guide point 24 ends in this corridor in front of the vortex" }
+            {
+              "region": 25,
+              "why": "guide point 24 ends in this corridor in front of the vortex"
+            }
           ]
         },
         {
           "quest": 2,
           "stage": "Bobo was sucked into the vortex: jump into the vortex",
           "actors": [
-            { "npc": 5300030, "point": 20, "why": "the vortex: empty model with the auto interaction 'Jump into the Cave', at region 20's centre" }
+            {
+              "npc": 5300030,
+              "point": 20,
+              "why": "the vortex: empty model with the auto interaction 'Jump into the Cave', at region 20's centre"
+            }
           ],
           "complete": [
-            { "interaction": 5300030, "why": "the client sends it when the player walks into the vortex's interaction range; only its success plays the jump (skill 5362001) in the client, so region 20 (the vortex's 5 m server region, reached first) must not end the step: issue #181" }
+            {
+              "interaction": 5300030,
+              "why": "the client sends it when the player walks into the vortex's interaction range; only its success plays the jump (skill 5362001) in the client, so region 20 (the vortex's 5 m server region, reached first) must not end the step: issue #181"
+            }
           ],
-          "after": { "teleport": 21, "why": "the passage beneath the vortex: point 21 lies on the walkable ramp near its top" }
+          "after": {
+            "teleport": 21,
+            "why": "the passage beneath the vortex: point 21 lies on the walkable ramp near its top"
+          }
         },
         {
           "quest": 3,
           "stage": "The passage beneath the vortex: reach the end of the passage",
           "complete": [
-            { "region": 22, "why": "the server region (regionType 2, triggerType 1) at the bottom of the ramp" }
+            {
+              "region": 22,
+              "why": "the server region (regionType 2, triggerType 1) at the bottom of the ramp"
+            }
           ]
         }
       ]
@@ -66,73 +83,145 @@
         "DungeonQuestConfig 5300011-5300015: 1 Help Bobo up, 2 Ride the Deniro, 3 Collect the fluorescent substance, 4 Feed the Deniro, 5 Ride the Deniro to the depths of the Ant Hell.",
         "Editor sc_plot_yhcx_002_dg01 labels: point 23 'Bobo position', 29 'soldier ant (Deniro) position', 27 'fluorescent substance position'; guide points 26 'rescue Bobo', 33 'interact with the ant', 34 'collect the fluorescent substance', 35 'ride the soldier ant', 36 'riding' (down the ramp to region 31 'end region').",
         "Bobo 5300041 has interaction 5300028 (skill 5362101 'Rescue Bobo', message 5300028, NPC condition buff 53014). Deniro 5300005 has 5300005 (skill 'Ride', vehicle status 3, message 5300005, buff 53654), 5300009 (skill 'Feed', message 5300009, buff 53653) and 5300008 (skill 'Ride', message 5300008, buff 53651). NPC 5300055 (collect-light model 100144) has 5300010 (skill 'Collect', message 5300010, buff 53652).",
-        "Each interaction is gated by its own buff (BuffConfig 5301401, 5365401, 5365201, 5365301, 5365101), so exactly one of them is open at a time: the step order is the quest order."
+        "Each interaction is gated by its own buff (BuffConfig 5301401, 5365401, 5365201, 5365301, 5365101), so exactly one of them is open at a time: the step order is the quest order.",
+        "2026-10-31本次原服擷取seq124289-124724：5300028、5300008、5300010、5300009、5300005；最後Vehicle+BeCarriedMove，穿越region31後30132並自動轉1000401。",
+        "同次seq124308為ActiveCameraTimeline(mianstorybingyicamera.prefab,9000)，seq124317/124355以1100指示Deniro至87/252/325及69/251/292；玩家31089回報後31081同步NPC。"
       ],
       "guessed": [
-        "Bobo stays where he was helped up for the rest of the scene; patrol 28 (his short walk) is not animated.",
-        "Step 2 seats the player on the Deniro (NPCInteractConfig 5300005, vehicle status 3, VehicleSeatConfig 5300005) and the Deniro puts them down 2 s later or when the exit button (action 5004) asks: the quest that follows ('Find a way to earn Deniro's Faith') says the first ride fails, but nothing says how long the rider stays on.",
-        "Collecting the fluorescent substance grants no item: no item is named by the client data.",
-        "The ride to the depths walks guide 36 (down the ramp through regions 38, 37 and 31): the Deniro goes along its 14 points at its UnitConfig speed (5.25 m/s) and the player is moved with it in 100 ms forced-position steps, ending at region 31's centre. The client has no ride rule: the speed, the missing mount and the camera prefab mianstorybingyicamera (not played) are guesses.",
-        "Step 5's second Ride (5300008, no gameplay status) does not seat the player on the Deniro: the player slides beside it."
+        "波波獲救後的短巡邏動畫尚待還原。",
+        "採集未觀察到額外道具發放；不可自行新增物品獎勵。",
+        "Deniro移動封包的約1.4秒預測視窗公式仍UNKNOWN；不得拿guide36伺服器強制傳送替代原服騎乘。"
       ],
       "steps": [
         {
           "quest": 1,
           "stage": "Find Bobo: help Bobo up",
           "actors": [
-            { "npc": 5300041, "point": 23, "buffs": [5301401], "why": "Bobo at 'Bobo position'; buff group 53014 opens 'Rescue Bobo' (5300028)" },
-            { "npc": 5300005, "point": 29, "why": "the Deniro at 'soldier ant position', not yet interactable" }
+            {
+              "npc": 5300041,
+              "point": 23,
+              "buffs": [
+                5301401
+              ],
+              "why": "Bobo at 'Bobo position'; buff group 53014 opens 'Rescue Bobo' (5300028)"
+            },
+            {
+              "npc": 5300005,
+              "point": 29,
+              "why": "the Deniro at 'soldier ant position', not yet interactable"
+            }
           ],
           "complete": [
-            { "message": 5300028, "why": "interaction 5300028 'Rescue Bobo' sends dungeon message 5300028" }
+            {
+              "message": 5300028,
+              "why": "interaction 5300028 'Rescue Bobo' sends dungeon message 5300028"
+            }
           ]
         },
         {
           "quest": 2,
           "stage": "Try to ride the Deniro",
           "actors": [
-            { "npc": 5300041, "point": 23, "why": "Bobo, helped up" },
-            { "npc": 5300005, "point": 29, "buffs": [5365401], "why": "buff group 53654 opens 'Ride' (5300005)" }
+            {
+              "npc": 5300041,
+              "point": 23,
+              "why": "Bobo, helped up"
+            },
+            {
+              "npc": 5300005,
+              "point": 29,
+              "buffs": [
+                5365101
+              ],
+              "why": "原服本次32700先以5300008嘗試騎乘；53651群組只開啟此互動"
+            }
           ],
           "complete": [
-            { "message": 5300005, "why": "interaction 5300005 'Ride' sends dungeon message 5300005" }
+            {
+              "message": 5300008,
+              "why": "原服首次失敗騎乘為5300008，並未進入Vehicle狀態"
+            }
           ]
         },
         {
           "quest": 3,
           "stage": "Earn the Deniro's faith: collect the fluorescent substance",
           "actors": [
-            { "npc": 5300041, "point": 23, "why": "Bobo" },
-            { "npc": 5300005, "point": 29, "why": "the Deniro" },
-            { "npc": 5300055, "point": 27, "buffs": [5365201], "why": "the fluorescent substance (collect-light model) at its labelled point; buff group 53652 opens 'Collect' (5300010)" }
+            {
+              "npc": 5300041,
+              "point": 23,
+              "why": "Bobo"
+            },
+            {
+              "npc": 5300005,
+              "point": 29,
+              "why": "the Deniro"
+            },
+            {
+              "npc": 5300055,
+              "point": 27,
+              "buffs": [
+                5365201
+              ],
+              "why": "the fluorescent substance (collect-light model) at its labelled point; buff group 53652 opens 'Collect' (5300010)"
+            }
           ],
           "complete": [
-            { "message": 5300010, "why": "interaction 5300010 'Collect' sends dungeon message 5300010" }
+            {
+              "message": 5300010,
+              "why": "interaction 5300010 'Collect' sends dungeon message 5300010"
+            }
           ]
         },
         {
           "quest": 4,
           "stage": "Feed the Deniro",
           "actors": [
-            { "npc": 5300041, "point": 23, "why": "Bobo" },
-            { "npc": 5300005, "point": 29, "buffs": [5365301], "why": "buff group 53653 opens 'Feed' (5300009)" }
+            {
+              "npc": 5300041,
+              "point": 23,
+              "why": "Bobo"
+            },
+            {
+              "npc": 5300005,
+              "point": 29,
+              "buffs": [
+                5365301
+              ],
+              "why": "buff group 53653 opens 'Feed' (5300009)"
+            }
           ],
           "complete": [
-            { "message": 5300009, "why": "interaction 5300009 'Feed' sends dungeon message 5300009" }
+            {
+              "message": 5300009,
+              "why": "interaction 5300009 'Feed' sends dungeon message 5300009"
+            }
           ]
         },
         {
           "quest": 5,
           "stage": "Ride the Deniro to the depths of the Ant Hell",
           "actors": [
-            { "npc": 5300041, "point": 23, "why": "Bobo" },
-            { "npc": 5300005, "point": 29, "buffs": [5365101], "why": "buff group 53651 opens the second 'Ride' (5300008)" }
+            {
+              "npc": 5300041,
+              "point": 23,
+              "why": "Bobo"
+            },
+            {
+              "npc": 5300005,
+              "point": 29,
+              "buffs": [
+                5365401
+              ],
+              "why": "原服第二次5300005才進入Vehicle狀態，直到抵達尾端"
+            }
           ],
           "complete": [
-            { "message": 5300008, "why": "interaction 5300008 'Ride' sends dungeon message 5300008" },
-            { "region": 31, "why": "the 'end region' (regionType 2) where the riding guide 36 ends" }
-          ],
-          "after": { "ride": 36, "teleport": 31, "why": "the Deniro carries the player down guide 36 (the riding route) at its own walking speed, then the player stands at the end region" }
+            {
+              "region": 31,
+              "why": "原服騎乘者自行移動，進入原region31後結算；需由AntStoryRegionAllowed確認仍在本次載乘"
+            }
+          ]
         }
       ]
     },
@@ -193,42 +282,118 @@
       ]
     },
     "1000501": {
-      "name": "Airship: the chitchat, the boarding, the Evil Boss and the captain",
+      "name": "飛船：三艘敵艦、登船敵人、邪惡首領與船舵 QTE",
       "confidence": "medium",
-      "evidence": ["DungeonQuestConfig 5300021-5300026: 1 'Aboard the Airship' 'Have a Chitchat with them.'; 2 'Use the ship's cannons to attack the enemy vessels.'; 3 'The enemy has boarded the ship!' 'Eliminate all enemies.'; 4 'Defeat the Evil Boss'; 5 'The Battle temporarily subsides' 'Take a look around'; 6 \"Check the Captain's injuries\" 'Talk to the captain', its _kAction [142, 1000501, 55, 9, 530003802] (the captain's point and dialogue).", "Editor sc_plot_airship_001_pl01: group 53 holds 54 波波NPC (Bobo), 55 船长NPC (captain), 56 晤勒 (Wule), 57 保亚 (Boya), 58 团长 (chief); 40/42/43 火炮 (cannons); 24 and 61 敌方飞空艇 (enemy airships); 44-47 冲锋怪 (chargers), 48-52 弓箭 (archers).", "NPCConfig 5300031 Bobo, 5300032 Captain, 5300033 Wule, 5300034 Boya, 5300035 Eden Group Chief (born buff 5364501); interactions 5300031-5300034: mode 2 (AutoInteractWhenInRange), gated by 7100026-7100029 [1004, 53645] (group of 5364501), each a 4001 bubble (530003101/530003201/530003301/530003401).", "NPCConfig 5300061-5300065 (Bobo, Captain, Wule, Boya, Eden Group Chief): interactions 5300048-5300052, mode 2 without a gate, bubbles 530003901, 530004001, 530004201, 530004101, 530004301 (after the battle).", "NPCConfig 5300038 Captain: interaction 5300035 (dialogue 530003802 'Are you badly hurt?'), whose option 'Can I really do it?' runs [211, 5300038, 5300039] TriggerNpcInteract; interaction 5300039 (mode 4) sends dungeon message 5300039.", "NPCConfig 5300022 Cannon (type 2/101, camp 1) with interaction 5300006 'Board the Cannon' (skill 5365001 'Use the Turret', script beginnerGetOncannon, _kDamageParam1 100000), gated by 7100018: not CheckInteractState 0, i.e. shown while nobody occupies the cannon; GameplayStatusConfig 12 新手教程上炮 (tutorial cannon, UpperCannon) has no abilities. Fire 5353001 ('Fire - Rapid', script beginnercannon) is GameplayStatusButtonConfig 27.", "NPCConfig 5300015 Enemy Airship and 5300053 Small Enemy Airship: camp 2, level 20, AI 5300005, born state buffs; editor points 24 and 61 are 敌方飞空艇1/2 (enemy airship 1/2), 100 m off the deck."],
-      "guessed": ["Stage 1 'Have a Chitchat with them' needs all four gated bubbles (Bobo, Captain, Wule, Boya); the chief has no interaction.", "Stage 5 'Take a look around' needs all five post-battle bubbles.", "每步的 after.hold 為上游推定節奏；泡泡、敵船下沉及船長對話的精確時間尚無原服執行證據。", "The nine boarders come in three groups of three (as before)."],
+      "evidence": [
+        "DungeonQuestConfig 5300021-5300026: 1 'Aboard the Airship' 'Have a Chitchat with them.'; 2 'Use the ship's cannons to attack the enemy vessels.'; 3 'The enemy has boarded the ship!' 'Eliminate all enemies.'; 4 'Defeat the Evil Boss'; 5 'The Battle temporarily subsides' 'Take a look around'; 6 \"Check the Captain's injuries\" 'Talk to the captain', its _kAction [142, 1000501, 55, 9, 530003802] (the captain's point and dialogue).",
+        "Editor sc_plot_airship_001_pl01: group 53 holds 54 波波NPC (Bobo), 55 船长NPC (captain), 56 晤勒 (Wule), 57 保亚 (Boya), 58 团长 (chief); 40/42/43 火炮 (cannons); 24 and 61 敌方飞空艇 (enemy airships); 44-47 冲锋怪 (chargers), 48-52 弓箭 (archers).",
+        "NPCConfig 5300031 Bobo, 5300032 Captain, 5300033 Wule, 5300034 Boya, 5300035 Eden Group Chief (born buff 5364501); interactions 5300031-5300034: mode 2 (AutoInteractWhenInRange), gated by 7100026-7100029 [1004, 53645] (group of 5364501), each a 4001 bubble (530003101/530003201/530003301/530003401).",
+        "NPCConfig 5300061-5300065 (Bobo, Captain, Wule, Boya, Eden Group Chief): interactions 5300048-5300052, mode 2 without a gate, bubbles 530003901, 530004001, 530004201, 530004101, 530004301 (after the battle).",
+        "NPCConfig 5300038 Captain: interaction 5300035 (dialogue 530003802 'Are you badly hurt?'), whose option 'Can I really do it?' runs [211, 5300038, 5300039] TriggerNpcInteract; interaction 5300039 (mode 4) sends dungeon message 5300039.",
+        "NPCConfig 5300022 Cannon (type 2/101, camp 1) with interaction 5300006 'Board the Cannon' (skill 5365001 'Use the Turret', script beginnerGetOncannon, _kDamageParam1 100000), gated by 7100018: not CheckInteractState 0, i.e. shown while nobody occupies the cannon; GameplayStatusConfig 12 新手教程上炮 (tutorial cannon, UpperCannon) has no abilities. Fire 5353001 ('Fire - Rapid', script beginnercannon) is GameplayStatusButtonConfig 27.",
+        "NPCConfig 5300015 Enemy Airship and 5300053 Small Enemy Airship: camp 2, level 20, AI 5300005, born state buffs; editor points 24 and 61 are 敌方飞空艇1/2 (enemy airship 1/2), 100 m off the deck.",
+        "2026-10-31 原服單次正常路徑：50693/50809 兩段 ActiveCameraTimeline 與 Shouting；僅一次 5300031 互動仍可進行。",
+        "50761 AOI 建立 5300015×1、5300053×2；51290 四戰士，51718 五弓箭手。三艦實際出生 XYZ 由 AirshipStorySpawnPoint 對齊，不重疊第三艘。",
+        "50905/50906 及 51247/51248：砲台與操作者都同步 32702 UpperCannon/Idle。",
+        "54385–54560：戰後 Shouting 約 15.5 秒，約 8.2 秒出現船員；本次未見強制五筆戰後泡泡。",
+        "54601 船長 5300039 合法互動後，54604 ClearAllShouts，54667/54668 Shouting，54702 才開片130161；54818 130162 結束才結算。"
+      ],
+      "guessed": [
+        "單次實錄的相對毫秒節奏四捨五入為 INFERRED_SCHEDULE，並非已取得原服場景伺服器腳本。",
+        "開場與巡視的 message5300541/5300566 只作本地內部計時標記；AirshipStoryStepEventAllowed 拒絕玩家偽造，沒有新增 wire OPCODE。",
+        "敵艦巡航路線仍 UNKNOWN；本次只對齊原服三個出生點，不宣稱靜態點就是完整航線。",
+        "手動退砲、重連、動畫跳過、QTE失敗、多成員與重送仍待LAB及玩家驗收；不改既有獎勵交易。"
+      ],
       "steps": [
         {
           "quest": 1,
-          "stage": "Aboard the Airship: chitchat",
-          "after": { "hold": 13000, "why": "inferred: the longest chitchat bubble (4 lines, 12 to 22 words each at BubblePerWordTime 2: about 6 to 13 s) is still being read when the fourth completes the step, and the crew leaves with it" },
-          "all": true,
+          "stage": "登上飛船：開場鏡頭與喊話",
           "actors": [
-            { "npc": 5300031, "point": 54, "buffs": [5364501], "why": "Bobo at 波波NPC; group 53645 opens his bubble" },
-            { "npc": 5300032, "point": 55, "buffs": [5364501], "why": "the captain at 船长NPC" },
-            { "npc": 5300033, "point": 56, "buffs": [5364501], "why": "Wule at 晤勒" },
-            { "npc": 5300034, "point": 57, "buffs": [5364501], "why": "Boya at 保亚" },
-            { "npc": 5300035, "point": 58, "why": "the Eden Group Chief at 团长" }
+            {
+              "npc": 5300031,
+              "point": 54,
+              "buffs": [
+                5364501
+              ],
+              "why": "Bobo at 波波NPC; group 53645 opens his bubble"
+            },
+            {
+              "npc": 5300032,
+              "point": 55,
+              "buffs": [
+                5364501
+              ],
+              "why": "the captain at 船长NPC"
+            },
+            {
+              "npc": 5300033,
+              "point": 56,
+              "buffs": [
+                5364501
+              ],
+              "why": "Wule at 晤勒"
+            },
+            {
+              "npc": 5300034,
+              "point": 57,
+              "buffs": [
+                5364501
+              ],
+              "why": "Boya at 保亚"
+            },
+            {
+              "npc": 5300035,
+              "point": 58,
+              "why": "the Eden Group Chief at 团长"
+            }
           ],
           "complete": [
-            { "interaction": 5300031, "why": "Bobo's bubble" },
-            { "interaction": 5300032, "why": "the captain's bubble" },
-            { "interaction": 5300033, "why": "Wule's bubble" },
-            { "interaction": 5300034, "why": "Boya's bubble" }
+            {
+              "message": 5300541,
+              "why": "本地計時標記：開場約14秒，由AirshipStory helper獨占發出，不是船員互動門檻"
+            }
           ]
         },
         {
           "quest": 2,
-          "stage": "Encounter the Evil Boss: attack the enemy ships with the cannons",
-          "after": { "hold": 2000, "why": "inferred: the last enemy ship goes down before the boarders appear" },
+          "stage": "遭遇邪惡首領：砲擊三艘敵方艦船",
+          "after": {
+            "hold": 10500,
+            "why": "由原服最後敵船死亡至四戰士建立約10.8秒，取10.5秒的推定節奏；其間播放喊話"
+          },
           "actors": [
-            { "npc": 5300022, "point": 40, "why": "the Cannon at 火炮1" },
-            { "npc": 5300022, "point": 42, "why": "the Cannon at 火炮2" },
-            { "npc": 5300022, "point": 43, "why": "the Cannon at 火炮3" }
+            {
+              "npc": 5300022,
+              "point": 40,
+              "why": "the Cannon at 火炮1"
+            },
+            {
+              "npc": 5300022,
+              "point": 42,
+              "why": "the Cannon at 火炮2"
+            },
+            {
+              "npc": 5300022,
+              "point": 43,
+              "why": "the Cannon at 火炮3"
+            }
           ],
           "fight": [
-            { "point": 24, "npc": 5300015, "why": "the Enemy Airship at 敌方飞空艇1" },
-            { "point": 61, "npc": 5300053, "why": "the Small Enemy Airship at 敌方飞空艇2" }
+            {
+              "point": 24,
+              "npc": 5300015,
+              "why": "the Enemy Airship at 敌方飞空艇1"
+            },
+            {
+              "point": 61,
+              "npc": 5300053,
+              "why": "the Small Enemy Airship at 敌方飞空艇2"
+            },
+            {
+              "point": 61,
+              "npc": 5300053,
+              "why": "原服50761第三艘；實際位置由AirshipStorySpawnPoint依波內序號覆寫"
+            }
           ],
           "cannon": {
             "interaction": 5300006,
@@ -241,77 +406,156 @@
         },
         {
           "quest": 3,
-          "stage": "The enemy has boarded the ship: eliminate all enemies (1/3)",
-          "after": { "hold": 2000, "why": "inferred: a beat between boarding groups, so the defeated ones fall before the next arrive" },
+          "stage": "敵人登船：四名戰士",
           "fight": [
-            { "point": 44, "npc": 5300042, "why": "label 冲锋怪-1 'charging monster'; the client has exactly four story 'Evil Warrior' templates 5300042-45 for the four charge points" },
-            { "point": 45, "npc": 5300043, "why": "冲锋怪-2" },
-            { "point": 48, "npc": 5300046, "why": "label 弓箭-1 'archer'; exactly five story 'Evil Archer' templates 5300046-50 for the five archer points" }
+            {
+              "point": 44,
+              "npc": 5300042,
+              "why": "原服51290同一批建立四名戰士；編輯點對應"
+            },
+            {
+              "point": 45,
+              "npc": 5300043,
+              "why": "原服51290同一批建立四名戰士；編輯點對應"
+            },
+            {
+              "point": 46,
+              "npc": 5300044,
+              "why": "原服51290同一批建立四名戰士；編輯點對應"
+            },
+            {
+              "point": 47,
+              "npc": 5300045,
+              "why": "原服51290同一批建立四名戰士；編輯點對應"
+            }
           ]
         },
         {
           "quest": 3,
-          "stage": "The enemy has boarded the ship: eliminate all enemies (2/3)",
-          "after": { "hold": 2000, "why": "inferred: a beat between boarding groups" },
+          "stage": "敵人登船：五名弓箭手",
           "fight": [
-            { "point": 46, "npc": 5300044, "why": "冲锋怪-3" },
-            { "point": 49, "npc": 5300047, "why": "弓箭-2" },
-            { "point": 50, "npc": 5300048, "why": "弓箭-3" }
-          ]
-        },
-        {
-          "quest": 3,
-          "stage": "The enemy has boarded the ship: eliminate all enemies (3/3)",
-          "after": { "hold": 2000, "why": "inferred: a beat before the Evil Boss" },
-          "fight": [
-            { "point": 47, "npc": 5300045, "why": "冲锋怪-4" },
-            { "point": 51, "npc": 5300049, "why": "弓箭-4" },
-            { "point": 52, "npc": 5300050, "why": "弓箭-5" }
+            {
+              "point": 48,
+              "npc": 5300046,
+              "why": "原服51718同一批建立五名弓箭手；跨兩批追蹤累計9"
+            },
+            {
+              "point": 49,
+              "npc": 5300047,
+              "why": "原服51718同一批建立五名弓箭手；跨兩批追蹤累計9"
+            },
+            {
+              "point": 50,
+              "npc": 5300048,
+              "why": "原服51718同一批建立五名弓箭手；跨兩批追蹤累計9"
+            },
+            {
+              "point": 51,
+              "npc": 5300049,
+              "why": "原服51718同一批建立五名弓箭手；跨兩批追蹤累計9"
+            },
+            {
+              "point": 52,
+              "npc": 5300050,
+              "why": "原服51718同一批建立五名弓箭手；跨兩批追蹤累計9"
+            }
           ]
         },
         {
           "quest": 4,
-          "stage": "Defeat the Evil Boss",
-          "after": { "hold": 3000, "why": "inferred: the Evil Boss falls before the crew comes out" },
+          "stage": "擊敗邪惡首領",
           "fight": [
-            { "point": 22, "npc": 5300018, "why": "stage 4 'Defeat the Evil Boss'; story template 5300018 'Evil Boss' (L25) at the first generic spawn point" }
+            {
+              "point": 22,
+              "npc": 5300018,
+              "why": "stage 4 'Defeat the Evil Boss'; story template 5300018 'Evil Boss' (L25) at the first generic spawn point"
+            }
           ]
         },
         {
           "quest": 5,
-          "stage": "The Battle temporarily subsides: take a look around",
-          "after": { "hold": 1000, "why": "inferred: the fifth short bubble (0.3 to 0.8 s) is read before the captain steps forward" },
-          "all": true,
+          "stage": "戰鬥暫歇：巡視船上",
           "actors": [
-            { "npc": 5300061, "point": 54, "why": "Bobo" },
-            { "npc": 5300062, "point": 55, "why": "the captain" },
-            { "npc": 5300063, "point": 56, "why": "Wule" },
-            { "npc": 5300064, "point": 57, "why": "Boya" },
-            { "npc": 5300065, "point": 58, "why": "the Eden Group Chief" }
+            {
+              "npc": 5300031,
+              "point": 54,
+              "why": "戰後原服54514範本；位置沿用具名編輯點"
+            },
+            {
+              "npc": 5300038,
+              "point": 55,
+              "why": "戰後原服54514範本；位置沿用具名編輯點"
+            },
+            {
+              "npc": 5300033,
+              "point": 56,
+              "why": "戰後原服54514範本；位置沿用具名編輯點"
+            },
+            {
+              "npc": 5300034,
+              "point": 57,
+              "why": "戰後原服54514範本；位置沿用具名編輯點"
+            },
+            {
+              "npc": 5300035,
+              "point": 58,
+              "why": "戰後原服54514範本；位置沿用具名編輯點"
+            }
           ],
           "complete": [
-            { "interaction": 5300048, "why": "a post-battle bubble" },
-            { "interaction": 5300049, "why": "a post-battle bubble" },
-            { "interaction": 5300050, "why": "a post-battle bubble" },
-            { "interaction": 5300051, "why": "a post-battle bubble" },
-            { "interaction": 5300052, "why": "a post-battle bubble" }
+            {
+              "message": 5300566,
+              "why": "本地計時標記：約15.5秒巡視喊話完成；不要求五次泡泡"
+            }
           ]
         },
         {
           "quest": 6,
-          "stage": "Check the Captain's injuries: talk to the captain",
-          "after": { "hold": 4500, "why": "inferred: the captain's closing line 530003804 (22 words, about 4 s) is spoken before the result" },
+          "stage": "查看船長傷勢並操作船舵",
           "actors": [
-            { "npc": 5300038, "point": 55, "why": "the injured captain at 船长NPC (the quest's action names point 55 and dialogue 530003802)" }
+            {
+              "npc": 5300031,
+              "point": 54,
+              "why": "戰後原服54514範本；位置沿用具名編輯點"
+            },
+            {
+              "npc": 5300038,
+              "point": 55,
+              "why": "戰後原服54514範本；位置沿用具名編輯點"
+            },
+            {
+              "npc": 5300033,
+              "point": 56,
+              "why": "戰後原服54514範本；位置沿用具名編輯點"
+            },
+            {
+              "npc": 5300034,
+              "point": 57,
+              "why": "戰後原服54514範本；位置沿用具名編輯點"
+            },
+            {
+              "npc": 5300035,
+              "point": 58,
+              "why": "戰後原服54514範本；位置沿用具名編輯點"
+            }
           ],
           "complete": [
-            { "message": 5300039, "why": "the dialogue option 'Can I really do it?' triggers interaction 5300039, which sends dungeon message 5300039" }
+            {
+              "message": 5300039,
+              "why": "合法船長選項後約12秒由helper進入outro；禁止直接送訊息跳過對話"
+            }
           ],
           "outro": {
             "story": 130161,
             "complete": [
-              { "plot": 130162, "why": "QTE 6 success locally starts story 130162; its action 601 sends PlotActingEnd" },
-              { "plot": 130163, "why": "QTE 6 failure locally starts story 130163; its action 601 sends PlotActingEnd" }
+              {
+                "plot": 130162,
+                "why": "QTE 6 success locally starts story 130162; its action 601 sends PlotActingEnd"
+              },
+              {
+                "plot": 130163,
+                "why": "QTE 6 failure locally starts story 130163; its action 601 sends PlotActingEnd"
+              }
             ]
           }
         }
@@ -408,31 +652,142 @@
     },
     "1022001": {
       "name": "Payon Forest: Eddga, Boya and Wule",
-      "confidence": "low",
-      "evidence": ["DungeonQuestConfig 5300000-5300001: 1 'Encounter Eddga' [5,0,1] 'Cover Boya and Wule'; 2 'Work Together' [5,0,1] 'Join the Adventurers and defeat Eddga'. Task 10102200 'A Dangerous Battle' ('Defeat Eddga') enters it by its accept action 3000.", "Editor sc_pay_fild10_001_pl01: 20 boss位置 (boss position, NpcLevelPointRespawnConfig: 5300001 Eddga), 21 唔勒 (Wule), 23 保亚 (Boya), 22 对峙点 (standoff point) between them and the boss; groups 24 and 40 each hold six adventurer points by class: 战 warrior, 猎 hunter, 奶 priest, 商 merchant, 刺 assassin, 法 mage.", "NPCConfig 5300086 Wule and 5300087 Boya: camp 1 (the player's side), AI 5300007, own skills (MainStory_WuLe ...): the story companions; 5300080/5300081, the same pair in camp 3, are the hostile versions.", "AIConfig 5300007: _iSearchTime 100, _iStayInPlace 1, _iViewRange 10000, _iAttackTickTime 1000. SkillConfig 5353901/5353601 (Wule) and 5354001/5353701 (Boya): cooldowns 15000/2000 ms, reach 600/400 and 600/350 cm."],
-      "guessed": ["'Cover Boya and Wule' completes on reaching the standoff point 22 (within 3 m), stepping between them and Eddga, who waits at his point meanwhile.", "Boya and Wule are companions while Eddga fights (CompanionUnit): each attacks the nearest monster within _iViewRange with the first listed ready skill that reaches it, walks toward it (31081, NPCConfig _iSpeed) when none does, never farther than AIConfig _iChaseDistance from its point, and walks back to its point with no target (AIConfig 5300007 _iStayInPlace 1 read as 'goes back to its point', not 'never moves'); Eddga answers the one that hit him once no player holds him (a player comes first: an aggressive monster keeps scanning for players while it answers a companion, and one that cannot move stops answering a companion out of its reach); a boss area skill that hits tower pets hits a companion inside it too; a kill of theirs is credited to the first present, loaded participant who is alive, else the first present, loaded one; one that falls does not come back. In the first step they are plain actors, shown but not fighting.", "The adventurers of groups 24 and 40 are not shown: no client NPC is bound to their class points ('Join the Adventurers' is the fight with Eddga)."],
+      "confidence": "runtime-capture-with-inferred-scheduling",
+      "evidence": [
+        "DungeonQuestConfig 5300000-5300001: 1 'Encounter Eddga' [5,0,1] 'Cover Boya and Wule'; 2 'Work Together' [5,0,1] 'Join the Adventurers and defeat Eddga'. Task 10102200 'A Dangerous Battle' ('Defeat Eddga') enters it by its accept action 3000.",
+        "Editor sc_pay_fild10_001_pl01: 20 boss位置 (boss position, NpcLevelPointRespawnConfig: 5300001 Eddga), 21 唔勒 (Wule), 23 保亚 (Boya), 22 对峙点 (standoff point) between them and the boss; groups 24 and 40 each hold six adventurer points by class: 战 warrior, 猎 hunter, 奶 priest, 商 merchant, 刺 assassin, 法 mage.",
+        "NPCConfig 5300086 Wule and 5300087 Boya: camp 1 (the player's side), AI 5300007, own skills (MainStory_WuLe ...): the story companions; 5300080/5300081, the same pair in camp 3, are the hostile versions.",
+        "AIConfig 5300007: _iSearchTime 100, _iStayInPlace 1, _iViewRange 10000, _iAttackTickTime 1000. SkillConfig 5353901/5353601 (Wule) and 5354001/5353701 (Boya): cooldowns 15000/2000 ms, reach 600/400 and 600/350 cm.",
+        "2026-10-31 原服錄製 seq35120、35356、35441、35575：開場5300080/81 camp3；12名camp1冒險者之NPC與editor34-39、41-46座標逐一相符。"
+      ],
+      "guessed": [
+        "首段仍以既有對峙點觸發；黑幕1000ms後轉戰鬥。12名冒險者共同進場與通用同伴AI是相容性排程，原服三批進場及完整AI優先序仍未還原。"
+      ],
       "steps": [
         {
           "quest": 1,
           "stage": "Encounter Eddga: cover Boya and Wule",
           "actors": [
-            { "npc": 5300086, "point": 21, "why": "Wule at 唔勒" },
-            { "npc": 5300087, "point": 23, "why": "Boya at 保亚" },
-            { "npc": 5300001, "point": 20, "why": "Eddga at boss位置, not yet fighting" }
+            {
+              "npc": 5300081,
+              "point": 21,
+              "why": "Wule at 唔勒"
+            },
+            {
+              "npc": 5300080,
+              "point": 23,
+              "why": "Boya at 保亚"
+            },
+            {
+              "npc": 5300001,
+              "point": 20,
+              "why": "Eddga at boss位置, not yet fighting"
+            }
           ],
           "complete": [
-            { "point": 22, "radius": 3, "why": "the standoff point between the pair and Eddga (inferred)" }
-          ]
+            {
+              "point": 22,
+              "radius": 3,
+              "why": "the standoff point between the pair and Eddga (inferred)"
+            }
+          ],
+          "after": {
+            "hold": 1000
+          }
         },
         {
           "quest": 2,
           "stage": "Work Together: defeat Eddga",
           "actors": [
-            { "npc": 5300086, "point": 21, "companion": true, "why": "Wule fights beside the player: camp 1, his own _kSkills" },
-            { "npc": 5300087, "point": 23, "companion": true, "why": "Boya fights beside the player: camp 1, her own _kSkills" }
+            {
+              "npc": 5300081,
+              "point": 21,
+              "why": "Wule at 唔勒"
+            },
+            {
+              "npc": 5300080,
+              "point": 23,
+              "why": "Boya at 保亚"
+            },
+            {
+              "npc": 5300007,
+              "point": 34,
+              "companion": true,
+              "why": "原服AOI與場景編輯點一致；具實際技能事件"
+            },
+            {
+              "npc": 5300009,
+              "point": 35,
+              "companion": true,
+              "why": "原服AOI與場景編輯點一致；具實際技能事件"
+            },
+            {
+              "npc": 5300008,
+              "point": 36,
+              "companion": true,
+              "why": "原服AOI與場景編輯點一致；具實際技能事件"
+            },
+            {
+              "npc": 5300070,
+              "point": 37,
+              "companion": true,
+              "why": "原服AOI與場景編輯點一致；具實際技能事件"
+            },
+            {
+              "npc": 5300071,
+              "point": 38,
+              "companion": true,
+              "why": "原服AOI與場景編輯點一致；具實際技能事件"
+            },
+            {
+              "npc": 5300072,
+              "point": 39,
+              "companion": true,
+              "why": "原服AOI與場景編輯點一致；具實際技能事件"
+            },
+            {
+              "npc": 5300073,
+              "point": 41,
+              "companion": true,
+              "why": "原服AOI與場景編輯點一致；具實際技能事件"
+            },
+            {
+              "npc": 5300074,
+              "point": 42,
+              "companion": true,
+              "why": "原服AOI與場景編輯點一致；具實際技能事件"
+            },
+            {
+              "npc": 5300075,
+              "point": 43,
+              "companion": true,
+              "why": "原服AOI與場景編輯點一致；具實際技能事件"
+            },
+            {
+              "npc": 5300076,
+              "point": 44,
+              "companion": true,
+              "why": "原服AOI與場景編輯點一致；具實際技能事件"
+            },
+            {
+              "npc": 5300077,
+              "point": 45,
+              "companion": true,
+              "why": "原服AOI與場景編輯點一致；具實際技能事件"
+            },
+            {
+              "npc": 5300078,
+              "point": 46,
+              "companion": true,
+              "why": "原服AOI與場景編輯點一致；具實際技能事件"
+            }
           ],
           "fight": [
-            { "point": 20, "npc": 5300001, "why": "NpcLevelPointRespawnConfig binds the boss point to the story Eddga 5300001" }
+            {
+              "point": 20,
+              "npc": 5300001,
+              "why": "NpcLevelPointRespawnConfig binds the boss point to the story Eddga 5300001"
+            }
           ]
         }
       ]

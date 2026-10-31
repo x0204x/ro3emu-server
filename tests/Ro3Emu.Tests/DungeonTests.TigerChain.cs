@@ -35,7 +35,7 @@ public sealed partial class DungeonTests
         Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = dungeon }));
         long instance = await Load(alice, dungeon);
         await ClearReconstructedStoryRun(alice, instance);
-        Assert.Equal((DungeonRes)1, (await Next(alice, DungeonService.Result, DungeonResNotify.Parser)).Res);
+        Assert.Equal(1, (await Next(alice, DungeonService.ResultNotify, DungeonResultNotify.Parser)).ResultInfo.WinCamp);
         await StoryMovesOn(alice, clear, pelt);
 
         // 副本通關後先回公共斐揚森林，虎皮互動與後續對話皆在該地圖。
