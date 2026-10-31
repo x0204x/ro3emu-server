@@ -3,6 +3,8 @@
   // (docs/guide/launcher.md); a launcher.json beside the exe overrides the built-in one.
   "repository": "http://localhost:8790/",
   "channel": "test",
+  // 未簽署的本機 LAB 必須明確關閉正式機契約；正式設定預設要求完整契約。
+  "requireServerClientRelease": false,
   // The game server's HTTP base; the launcher pings it for the online pill.
   "server": "http://127.0.0.1:5380",
   "serverName": "Ragnarok 3",

@@ -21,6 +21,7 @@ public sealed class LauncherConfig
     [JsonPropertyName("uiFixture")] public string? UiFixture { get; set; }
     [JsonPropertyName("requireHttpsRepository")] public bool RequireHttpsRepository { get; set; }
     [JsonPropertyName("requireSignedChannel")] public bool RequireSignedChannel { get; set; }
+    [JsonPropertyName("requireServerClientRelease")] public bool RequireServerClientRelease { get; set; } = true;
     [JsonPropertyName("trustedPublisherKeys")] public Dictionary<string, string> TrustedPublisherKeys { get; set; } = new();
     [JsonPropertyName("settingsFile")] public string? SettingsFile { get; set; }
     [JsonPropertyName("clientDirectory")] public string? ClientDirectory { get; set; } = ".";

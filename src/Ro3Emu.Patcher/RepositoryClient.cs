@@ -47,6 +47,8 @@ public sealed class RepositoryClient : IDisposable
 
     public Uri BaseUri => _http.BaseAddress!;
 
+    public bool RequiresSignedChannel => _trust.RequireSignedChannel;
+
     public async Task<ChannelInfo> GetChannelAsync(string channel, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(channel) || channel.Any(ch => !(char.IsAsciiLetterOrDigit(ch) || ch == '-')))

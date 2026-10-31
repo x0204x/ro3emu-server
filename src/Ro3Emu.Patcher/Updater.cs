@@ -18,6 +18,12 @@ public sealed record UpdateSummary(string Version, int ChangedFiles, int Deleted
 /// <summary>Whether a previously managed install is safe to start while the repository is unavailable.</summary>
 public sealed record OfflineInstallValidation(bool CanLaunch, string Reason, IReadOnlyList<string> ChangedFiles);
 
+/// <summary>依已驗簽清單讀取實體檔案內容；本機 state 與 mtime 不能取代此結果。</summary>
+public sealed record InstallVerification(IReadOnlyList<string> ChangedFiles)
+{
+    public bool Matches => ChangedFiles.Count == 0;
+}
+
 /// <summary>
 /// Brings a game directory to a release: scan → plan → download missing chunks → assemble changed files into
 /// staging → verify → commit through a journal. Originals are untouched until every new file is complete and
@@ -33,6 +39,9 @@ public sealed class Updater(InstallLayout layout, RepositoryClient repository)
 
     public int DownloadConcurrency { get; set; } = 8;
 
+    /// <summary>正式登入器在恢復交易與提交前重查程序；下載途中開啟遊戲時不得替換檔案。</summary>
+    public Func<bool>? CanChangeInstallation { get; set; }
+
     string StatePath => Path.Combine(_metaDir, "state.json");
     string NextStatePath => Path.Combine(_metaDir, "state.next.json");
     string ManifestPath => Path.Combine(_metaDir, "installed.json.zst");
@@ -45,6 +54,38 @@ public sealed class Updater(InstallLayout layout, RepositoryClient repository)
         RecoverInterruptedCommit();
         return LocalState.Load(StatePath);
     }
+
+    /// <summary>遊戲執行中只讀紀錄，絕不重播會替換檔案的 journal。</summary>
+    public LocalState? ReadStateOnly() => LocalState.Load(StatePath);
+
+    public bool HasPendingCommit => File.Exists(JournalPath);
+
+    public Task<InstallVerification> VerifyInstalledAsync(Manifest manifest, IProgress<UpdateProgress>? progress,
+        CancellationToken ct) => Task.Run(() =>
+    {
+        var changed = new List<string>();
+        long total = manifest.Files.Sum(file => file.Size), done = 0;
+        progress?.Report(new UpdateProgress(UpdateStage.Verifying, 0, total));
+        foreach (var file in manifest.Files)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!Manifest.IsSha256Hex(file.Sha256)) throw new PatcherException("客戶端清單缺少有效的檔案 SHA-256。");
+            string path = _layout.Resolve(file.Path);
+            var info = new FileInfo(path);
+            if (!info.Exists || info.Length != file.Size) changed.Add(file.Path);
+            else
+            {
+                string hash = Hashing.Sha256File(path, bytes =>
+                {
+                    done += bytes;
+                    progress?.Report(new UpdateProgress(UpdateStage.Verifying, done, total, file.Path));
+                }, ct);
+                if (!string.Equals(hash, file.Sha256, StringComparison.Ordinal)) changed.Add(file.Path);
+            }
+        }
+        progress?.Report(new UpdateProgress(UpdateStage.Verifying, total, total));
+        return new InstallVerification(changed);
+    }, ct);
 
     public async Task<UpdateCheck> CheckAsync(string channel, CancellationToken ct)
     {
@@ -114,6 +155,8 @@ public sealed class Updater(InstallLayout layout, RepositoryClient repository)
 
     public async Task<UpdateSummary> UpdateAsync(ChannelInfo channel, bool verifyAll, IProgress<UpdateProgress>? progress, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
+        CheckInstallationAccess();
         RecoverInterruptedCommit();
         Directory.CreateDirectory(_metaDir);
         var (manifest, manifestRaw) = await _repo.GetManifestAsync(channel, ct);
@@ -341,6 +384,8 @@ public sealed class Updater(InstallLayout layout, RepositoryClient repository)
         }
 
         // 5. Commit.
+        ct.ThrowIfCancellationRequested();
+        CheckInstallationAccess();
         progress?.Report(new UpdateProgress(UpdateStage.Committing, 0, 1));
         var newState = new LocalState
         {
@@ -348,6 +393,9 @@ public sealed class Updater(InstallLayout layout, RepositoryClient repository)
             Channel = channel.Channel,
             ManifestSha256 = channel.ManifestSha256,
             Launch = manifest.Launch,
+            BaseClient = manifest.BaseClient,
+            ServerVersion = manifest.ServerVersion,
+            PatchSha256 = manifest.PatchSha256,
         };
         foreach (var plan in plans)
         {
@@ -372,6 +420,12 @@ public sealed class Updater(InstallLayout layout, RepositoryClient repository)
 
         progress?.Report(new UpdateProgress(UpdateStage.Committing, 1, 1));
         return new UpdateSummary(manifest.Version, journal.Moves.Count, journal.Deletes.Count, downloaded, reusedBytes);
+    }
+
+    void CheckInstallationAccess()
+    {
+        if (CanChangeInstallation?.Invoke() == false)
+            throw new PatcherException("偵測到遊戲正在執行，已停止替換客戶端檔案；請先關閉所有遊戲。");
     }
 
     string CachePath(string hash) => Path.Combine(CacheDir, hash);

@@ -11,7 +11,7 @@ namespace Ro3Emu.Launcher;
 /// <see cref="Updater"/>, updates the launcher itself, pings the game server and starts ro3.exe.
 /// Messages to the page: state, progress, server, settings, news (see ui/app.js).
 /// </summary>
-public sealed class LauncherController : IDisposable
+public sealed partial class LauncherController : IDisposable
 {
     readonly LauncherConfig _config;
     readonly string _exePath;
@@ -72,6 +72,7 @@ public sealed class LauncherController : IDisposable
                 break;
             case "primary":
                 if (_work != null || _launching) return;
+                if (_config.RequireServerClientRelease) { await PlayAsync(); return; }
                 if (_games.State.AnyRunning)
                 {
                     if (_games.State.CanStartAnother) await PlayAsync();
@@ -124,6 +125,7 @@ public sealed class LauncherController : IDisposable
 
     async Task CheckAsync()
     {
+        if (_config.RequireServerClientRelease) { await EnsureStrictReadyAsync(); return; }
         if (_launching) return;
         if (!RefreshGameProcesses()) return;
         if (_games.State.AnyRunning)
@@ -187,6 +189,7 @@ public sealed class LauncherController : IDisposable
 
     async Task UpdateAsync(bool verifyAll)
     {
+        if (_config.RequireServerClientRelease) { await EnsureStrictReadyAsync(); return; }
         if (_launching) return;
         if (!RefreshGameProcesses()) return;
         if (_games.State.AnyRunning)
@@ -255,6 +258,7 @@ public sealed class LauncherController : IDisposable
 
     async Task PlayAsync()
     {
+        if (_config.RequireServerClientRelease && !await EnsureStrictReadyAsync(launching: true)) return;
         if (!RefreshGameProcesses()) return;
         GameProcessState before = _games.State;
         if (_launching) return;
@@ -269,7 +273,8 @@ public sealed class LauncherController : IDisposable
         try
         {
             if (launch is null) throw new PatcherException("No packaged client is installed.");
-            var started = await GameStarter.StartAsync(_layout.GameDirectory, launch);
+            var started = await GameStarter.StartAsync(_layout.GameDirectory, launch,
+                _config.RequireServerClientRelease ? _verifiedGenesisSequence : null);
             if (_life.IsCancellationRequested)
             {
                 started.Process?.Dispose();
@@ -318,6 +323,12 @@ public sealed class LauncherController : IDisposable
                     : $"一個遊戲意外結束（代碼 {exitCode}），另一個仍在執行。");
             else
             {
+                if (_config.RequireServerClientRelease)
+                {
+                    await CheckAsync();
+                    _restore();
+                    return;
+                }
                 if (exitCode == 0)
                     PostState("ready", "遊戲已關閉，可以再次啟動。");
                 else

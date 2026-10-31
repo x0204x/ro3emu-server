@@ -19,6 +19,7 @@ public static partial class ServerHost
             ContentRootPath = AppContext.BaseDirectory,
         });
         var options = Resolve(builder.Configuration, configure);
+        var clientRequirement = ClientReleaseGate.Read(options);
         // Fail fast, before any service is built, if an offline restore of this data dir did not finish (C/D 19).
         DatabaseRestore.ThrowIfUnfinished(options.DataDir);
         // Stage G: the default host on Windows also writes Warning and above to the Windows Event Log, synchronously on
@@ -271,6 +272,8 @@ public static partial class ServerHost
             }
         });
         SdkEndpoints.Map(app);
+        app.MapGet(Ro3Emu.ClientRelease.ClientReleaseRequirement.Endpoint, () => clientRequirement is null
+            ? Results.NotFound() : Results.Json(clientRequirement));
         GiftCodeEndpoints.Map(app);
         Diagnostics.MetricsEndpoints.Map(app);
         // Run a GM command as an online player (loopback only): POST /ro3emu/gm?account=tester body "!warp 10111 150 190".

@@ -68,6 +68,7 @@ internal static class SetupHome
 /// <summary>What RO3Emu remembers between runs.</summary>
 internal sealed class Settings
 {
+    public ClientSyncOptions ClientSync { get; set; } = new();
     public string? ClientDir { get; set; }
 
     /// <summary>The highest publisher release installed into each folder: an older signed manifest is refused (no downgrade).</summary>

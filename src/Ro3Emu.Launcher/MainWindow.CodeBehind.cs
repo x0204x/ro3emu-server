@@ -222,7 +222,7 @@ public partial class MainWindow : Window
             "checking" => ("檢查中…", false),
             "install" => ("安裝遊戲", true),
             "update" => ("更新遊戲", true),
-            "updating" => ("暫停下載", true),
+            "updating" => ("暫停作業", true),
             "queued" => ("排隊中…", false),
             "maintenance" => ("維護中", false),
             "repair" => ("修復遊戲", true),

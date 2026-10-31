@@ -2,6 +2,8 @@ namespace Ro3Emu.Server;
 
 public sealed class ServerOptions
 {
+    /// <summary>玩家套件契約；既有獨立伺服器預設維持未啟用。</summary>
+    public ClientReleaseOptions ClientRelease { get; set; } = new();
     /// <summary>伺服器送出的可見名稱；客戶端選單仍採玩家原生選語。zh_TW、zh_CN 或 en。</summary>
     public string ClientTextLanguage { get; set; } = "zh_TW";
 

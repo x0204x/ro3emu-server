@@ -6,6 +6,7 @@
     <Project Path="src/Ro3Emu.ClientHooks/Ro3Emu.ClientHooks.csproj" />
   <Project Path="src/Ro3Emu.Loc/Ro3Emu.Loc.csproj" />
     <Project Path="src/Ro3Emu.ClientTools/Ro3Emu.ClientTools.csproj" />
+    <Project Path="src/Ro3Emu.ClientRelease/Ro3Emu.ClientRelease.csproj" />
     <Project Path="src/Ro3Emu.DataExport/Ro3Emu.DataExport.csproj" />
     <Project Path="src/Ro3Emu.Launcher/Ro3Emu.Launcher.csproj" />
     <Project Path="src/Ro3Emu.Panel/Ro3Emu.Panel.csproj" />

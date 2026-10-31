@@ -19,6 +19,8 @@
   <ItemGroup>
     <PackageReference Include="Mono.Cecil" />
     <ProjectReference Include="..\Ro3Emu.DataExport\Ro3Emu.DataExport.csproj" />
+    <ProjectReference Include="..\Ro3Emu.Patcher\Ro3Emu.Patcher.csproj" />
+    <ProjectReference Include="..\Ro3Emu.ClientRelease\Ro3Emu.ClientRelease.csproj" />
   </ItemGroup>
 
   <!-- The client patcher is shared with Ro3Emu.ClientTools (the developers' command line tool). -->
@@ -34,6 +36,8 @@
     <Compile Include="..\Ro3Emu.ClientTools\OpenUrlPatch.cs" Link="Client\OpenUrlPatch.cs" />
     <Compile Include="..\Ro3Emu.ClientTools\Launcher.cs" Link="Client\Launcher.cs" />
     <Compile Include="..\Ro3Emu.ClientTools\VerifiedBaseline.cs" Link="Client\VerifiedBaseline.cs" />
+    <Compile Include="..\Ro3Emu.ClientTools\ReleaseBuilder.cs" Link="Client\ReleaseBuilder.cs" />
+    <Compile Include="..\Ro3Emu.ClientTools\ReleaseFileSources.cs" Link="Client\ReleaseFileSources.cs" />
   </ItemGroup>
 
   <!-- Our English translations (public sources, no client text beyond the strings they translate); merged on the

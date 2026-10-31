@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Ro3Emu.ClientRelease;
 
 namespace Ro3Emu.Patcher;
 
@@ -15,6 +16,9 @@ public sealed class InstalledFile
 public sealed class LocalState
 {
     [JsonPropertyName("version")] public string Version { get; set; } = "";
+    [JsonPropertyName("baseClient")] public GenesisIdentity? BaseClient { get; set; }
+    [JsonPropertyName("serverVersion")] public string? ServerVersion { get; set; }
+    [JsonPropertyName("patchSha256")] public string? PatchSha256 { get; set; }
     [JsonPropertyName("channel")] public string Channel { get; set; } = "";
     [JsonPropertyName("manifestSha256")] public string ManifestSha256 { get; set; } = "";
     [JsonPropertyName("launch")] public LaunchInfo Launch { get; set; } = new();

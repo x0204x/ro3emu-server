@@ -1,0 +1,11 @@
+{
+  "ClientDir": "D:\\RO3-Client-Contract-LAB\\client",
+  "ClientSync": {
+    "Enabled": true,
+    "ReleaseSpecPath": "client-compatibility.v1.0.24.json",
+    "RepoDirectory": "player-repository",
+    "Channel": "stable",
+    "SigningKeyPath": "private/update-signing.pem",
+    "KeyId": "ro3-lab-publisher"
+  }
+}

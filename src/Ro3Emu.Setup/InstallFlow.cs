@@ -76,7 +76,8 @@ internal static class InstallFlow
     /// Brings <paramref name="folder"/> to the publisher's current release (only the files that differ). Ctrl+C in the
     /// console, or <paramref name="stop"/> from the launcher, pauses it; the next run continues where it stopped.
     /// </summary>
-    public static async Task InstallAsync(string folder, Options options, Func<string, bool>? only = null, CancellationToken stop = default)
+    public static async Task InstallAsync(string folder, Options options, Func<string, bool>? only = null, CancellationToken stop = default,
+        ClientCompatibilitySpec? required = null)
     {
         var config = PublisherConfig.Load(SetupHome.AppDir);
         using var http = new HttpClient(new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, ConnectTimeout = TimeSpan.FromSeconds(20) })
@@ -88,9 +89,14 @@ internal static class InstallFlow
 
         Ui.Step("Asking Genesis' update servers for the current release");
         ClientInstaller.Manifests manifests;
-        using (var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3)))
+        using (var cts = CancellationTokenSource.CreateLinkedTokenSource(stop))
+        {
+            cts.CancelAfter(TimeSpan.FromMinutes(3));
             manifests = await installer.FetchAsync(cts.Token);
+        }
         var release = manifests.Full.Release;
+        // 必須在 MakePlan／寫 baseline／下載或更新任何客戶端檔案之前核對配對版本。
+        required?.ValidateOffered(release.Sequence, release.Id, release.TargetBuild.Id);
         Ui.Ok($"{release.Id} (release {release.Sequence}), signature checked ({config.KeyId})");
 
         var settings = Settings.Load();
@@ -116,7 +122,8 @@ internal static class InstallFlow
 
         CheckSpace(folder, plan);
         Ui.Info($"Download: {Ui.Size(plan.DownloadBytes)} in {plan.Packages.Count} package(s) from {manifests.Origin}");
-        if (!Ui.Confirm("Download now?")) throw new SetupException("Download cancelled.", "Run the same command again when you are ready.");
+        // ClientSync 是明確啟用的自動同步政策；只在已簽配對通過後下載，不再另問一次。
+        if (required is null && !Ui.Confirm("Download now?")) throw new SetupException("Download cancelled.", "Run the same command again when you are ready.");
 
         Ui.Step("Downloading the game");
         using var cancel = CancellationTokenSource.CreateLinkedTokenSource(stop);

@@ -46,6 +46,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Ro3Emu.Panel\Ro3Emu.Panel.csproj" />
+    <ProjectReference Include="..\Ro3Emu.ClientRelease\Ro3Emu.ClientRelease.csproj" />
   </ItemGroup>
 
   <ItemGroup>

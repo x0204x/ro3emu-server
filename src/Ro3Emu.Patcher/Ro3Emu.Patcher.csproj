@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <PackageReference Include="ZstdSharp.Port" />
+    <ProjectReference Include="..\Ro3Emu.ClientRelease\Ro3Emu.ClientRelease.csproj" />
   </ItemGroup>
 
 </Project>

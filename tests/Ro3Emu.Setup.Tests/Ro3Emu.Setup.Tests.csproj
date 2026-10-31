@@ -26,7 +26,6 @@
 
   <ItemGroup>
     <!-- Pure source-resolution helper: test the ClientTools production source without loading its Unity client references. -->
-    <Compile Include="..\..\src\Ro3Emu.ClientTools\ReleaseFileSources.cs" Link="ClientTools\ReleaseFileSources.cs" />
     <Compile Include="..\..\src\Ro3Emu.ClientHooks\NativeVersionText.cs" Link="ClientHooks\NativeVersionText.cs" />
   </ItemGroup>
 

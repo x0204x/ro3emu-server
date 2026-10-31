@@ -9,7 +9,7 @@ if (args.Length < 2)
           patch   <client dir> <server url> [gate_rsa_public.pem] [Ro3Emu.ClientHooks.dll] [--verbose]
           restore <client dir>                  put the original DLLs back
           launch  <client dir> [ro3.exe args...]
-          release <client dir> <server url> <gate_rsa_public.pem> <repo dir> <version> [channel] [zstd level] [--loc-map <file>] [--locale-pack <folder>] [--skill-trace]
+          release <client dir> <server url> <gate_rsa_public.pem> <repo dir> <version> [channel] [zstd level] --server-version <RO3Emu version> [--loc-map <file>] [--locale-pack <folder>] [--skill-trace]
                                                 publish the client patched for that server for Ro3Emu.Launcher
           release-launcher <repo dir> <channel> <RO3Launcher.exe> <version> [--signing-key <private.pem> --key-id <id>]
           scan    <client dir> <text>...        list string literals in the client DLLs
@@ -31,12 +31,19 @@ try
     string? traditionalChinesePack = null;
     string? repositorySigningKey = null;
     string? repositoryKeyId = null;
+    string? serverVersion = null;
     bool skillTrace = false;
     if (args[0] is "release" or "release-launcher")
     {
         var filtered = new List<string>();
         for (int i = 0; i < args.Length; i++)
         {
+            if (args[i] == "--server-version")
+            {
+                if (++i >= args.Length) throw new ArgumentException("--server-version 必須指定配對的RO3Emu版本。");
+                serverVersion = args[i];
+                continue;
+            }
             if (args[i] == "--locale-pack")
             {
                 if (++i >= args.Length) throw new ArgumentException("--locale-pack needs <folder>");
@@ -90,8 +97,9 @@ try
             return 0;
         case "release":
             if (args.Length < 6) throw new ArgumentException("release needs <client dir> <server url> <pem> <repo dir> <version>");
+            if (string.IsNullOrWhiteSpace(serverVersion)) throw new ArgumentException("發布必須提供 --server-version <配對的RO3Emu版本>。");
             return await ReleaseBuilder.PublishAsync(args[1], args[2].TrimEnd('/'), File.ReadAllText(args[3]), args[4], args[5],
-                args.Length > 6 ? args[6] : "test", args.Length > 7 ? int.Parse(args[7]) : 9, locMap, skillTrace, repositorySigning, traditionalChinesePack);
+                args.Length > 6 ? args[6] : "test", args.Length > 7 ? int.Parse(args[7]) : 9, locMap, skillTrace, repositorySigning, traditionalChinesePack, serverVersion);
         case "release-launcher":
             if (args.Length < 5) throw new ArgumentException("release-launcher needs <repo dir> <channel> <RO3Launcher.exe> <version>");
             var withLauncher = await Ro3Emu.Patcher.Publisher.PublishLauncherAsync(args[1], args[2], args[3], args[4], repositorySigning);

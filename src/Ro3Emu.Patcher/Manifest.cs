@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Ro3Emu.ClientRelease;
 
 namespace Ro3Emu.Patcher;
 
@@ -45,6 +46,9 @@ public sealed class Manifest
 
     [JsonPropertyName("format")] public int Format { get; set; } = CurrentFormat;
     [JsonPropertyName("version")] public string Version { get; set; } = "";
+    [JsonPropertyName("baseClient")] public GenesisIdentity? BaseClient { get; set; }
+    [JsonPropertyName("serverVersion")] public string? ServerVersion { get; set; }
+    [JsonPropertyName("patchSha256")] public string? PatchSha256 { get; set; }
     [JsonPropertyName("created")] public DateTimeOffset Created { get; set; }
     [JsonPropertyName("launch")] public LaunchInfo Launch { get; set; } = new();
     [JsonPropertyName("chunking")] public ChunkingInfo Chunking { get; set; } = ChunkingInfo.From(ChunkingParameters.Default);
@@ -70,6 +74,7 @@ public sealed class Manifest
         {
             throw new InvalidDataException($"Unsupported manifest format {manifest.Format}; update the launcher.");
         }
+        ClientMetadata.Validate(manifest.BaseClient, manifest.ServerVersion, manifest.PatchSha256);
         PathRules.ValidateRelative(manifest.Launch.Exe);
         foreach (var file in manifest.Files)
         {
@@ -110,12 +115,47 @@ public sealed class ChannelInfo
     [JsonPropertyName("channel")] public string Channel { get; set; } = "";
     [JsonPropertyName("sequence")] public long Sequence { get; set; }
     [JsonPropertyName("version")] public string Version { get; set; } = "";
+    [JsonPropertyName("baseClient")] public GenesisIdentity? BaseClient { get; set; }
+    [JsonPropertyName("serverVersion")] public string? ServerVersion { get; set; }
+    [JsonPropertyName("patchSha256")] public string? PatchSha256 { get; set; }
     [JsonPropertyName("manifest")] public string Manifest { get; set; } = "";
     [JsonPropertyName("manifestSha256")] public string ManifestSha256 { get; set; } = "";
     [JsonPropertyName("published")] public DateTimeOffset Published { get; set; }
     [JsonPropertyName("expires")] public DateTimeOffset? Expires { get; set; }
     [JsonPropertyName("launcher")] public LauncherRelease? Launcher { get; set; }
     [JsonPropertyName("news")] public ChannelAsset? News { get; set; }
+}
+
+/// <summary>可選的舊包相容欄位；帶入時必須整組完整，且兩份已驗清單相同。</summary>
+public static class ClientMetadata
+{
+    public static void Validate(GenesisIdentity? baseClient, string? serverVersion, string? patchSha256)
+    {
+        if (baseClient is null && serverVersion is null && patchSha256 is null) return;
+        if (baseClient is null || !ClientReleaseRequirement.IsText(serverVersion) || !ClientReleaseRequirement.IsHash(patchSha256))
+            throw new InvalidDataException("客戶端來源、伺服器版本及修補指紋必須一起提供。");
+        baseClient.Validate();
+    }
+
+    public static void EnsureMatches(Manifest manifest, ChannelInfo channel)
+    {
+        Validate(manifest.BaseClient, manifest.ServerVersion, manifest.PatchSha256);
+        Validate(channel.BaseClient, channel.ServerVersion, channel.PatchSha256);
+        if (manifest.Version != channel.Version || manifest.BaseClient != channel.BaseClient
+            || manifest.ServerVersion != channel.ServerVersion || manifest.PatchSha256 != channel.PatchSha256)
+            throw new InvalidDataException("通道與 manifest 的版本或客戶端來源契約不一致。");
+    }
+
+    public static ClientReleaseRequirement ToRequirement(ChannelInfo channel)
+    {
+        var value = new ClientReleaseRequirement
+        {
+            BaseClient = channel.BaseClient, ServerVersion = channel.ServerVersion ?? "", PatchSha256 = channel.PatchSha256 ?? "",
+            Channel = channel.Channel, Sequence = channel.Sequence, Version = channel.Version, ManifestSha256 = channel.ManifestSha256,
+        };
+        value.Validate();
+        return value;
+    }
 }
 
 public static class Json

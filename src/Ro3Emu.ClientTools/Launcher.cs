@@ -13,9 +13,9 @@ namespace Ro3Emu.ClientTools;
 /// </summary>
 public static class Launcher
 {
-    public static int Launch(string clientDir, string[] gameArgs)
+    public static int Launch(string clientDir, string[] gameArgs, long? verifiedGenesisSequence = null)
     {
-        using var game = Start(clientDir, gameArgs);
+        using var game = Start(clientDir, gameArgs, verifiedGenesisSequence);
         if (game.HasExited)
         {
             Console.WriteLine($"ro3.exe exited early with code {game.ExitCode}" + (game.ExitCode == 70 ? " (launcher proof rejected)" : ""));
@@ -25,7 +25,7 @@ public static class Launcher
     }
 
     /// <summary>Starts the game and hands it the proof; returns once it has read it (or after it exited early).</summary>
-    public static Process Start(string clientDir, string[] gameArgs)
+    public static Process Start(string clientDir, string[] gameArgs, long? verifiedGenesisSequence = null)
     {
         var exe = Path.Combine(clientDir, "ro3.exe");
         if (!File.Exists(exe)) throw new FileNotFoundException("ro3.exe not found", exe);
@@ -37,6 +37,12 @@ public static class Launcher
             WorkingDirectory = clientDir,
         };
         foreach (var a in gameArgs) start.ArgumentList.Add(a);
+        start.Environment.Remove("RO3EMU_VERIFIED_GENESIS_SEQUENCE");
+        if (verifiedGenesisSequence is { } sequence)
+        {
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sequence);
+            start.Environment["RO3EMU_VERIFIED_GENESIS_SEQUENCE"] = sequence.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
         start.Environment["RO3_LAUNCH_PIPE_HANDLE"] = pipe.GetClientHandleAsString();
 
         var game = Process.Start(start) ?? throw new InvalidOperationException("ro3.exe did not start");

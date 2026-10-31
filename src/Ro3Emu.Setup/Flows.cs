@@ -193,11 +193,24 @@ internal static partial class Flows
     public static async Task<int> PlayLocalAsync(Options options, bool host)
     {
         Ui.Title(host ? "RO3Emu - host a Ragnarok 3 server" : "RO3Emu - Ragnarok 3 on your own server");
-        var client = await ResolveClientAsync(options, offerInstall: true);
-        Ui.Step("Checking the game");
-        CheckClient(client, needExport: true);
-        Ui.Ok("this game version works with RO3Emu");
-        EnsureGameData(client, options.Reexport, !options.NoIcons);
+        var localSettings = Settings.Load();
+        string client;
+        if (localSettings.ClientSync.Enabled)
+        {
+            // 冷安裝也必須先通過發行配對，不可先由 ResolveClientAsync 安裝未配對的 latest。
+            client = SelectPairedClient(options.ClientDir, localSettings.ClientDir);
+            localSettings.ClientDir = client;
+            localSettings.Save();
+        }
+        else client = await ResolveClientAsync(options, offerInstall: true);
+        if (!localSettings.ClientSync.Enabled)
+        {
+            Ui.Warn("尚未啟用 ClientSync 發行配對；沿用既有客戶端檢查模式。");
+            Ui.Step("Checking the game");
+            CheckClient(client, needExport: true);
+            Ui.Ok("this game version works with RO3Emu");
+            EnsureGameData(client, options.Reexport, !options.NoIcons);
+        }
 
         var gms = options.GmAccounts.ToList();
         if (host && gms.Count == 0 && Ui.Interactive)
@@ -221,7 +234,7 @@ internal static partial class Flows
                     Ui.Info($"Web panel for players and admins: http://{local.PublicHost}:{local.Ports.Panel} (docs/guide/panel.md).");
             }
             if (server != null) Program.OnClose = () => server.Stop(TimeSpan.FromSeconds(4));
-            return await PlayAndWaitAsync(client, server, options.NoLaunch);
+            return await PlayAndWaitAsync(client, server, options.NoLaunch, local.VerifiedGenesisSequence);
         }
         finally
         {
@@ -231,7 +244,8 @@ internal static partial class Flows
     }
 
     /// <summary>A started (or found) local server: the address the game connects to, and the process (null = one was already running).</summary>
-    internal sealed record LocalServer(ServerProcess? Process, string ServerUrl, string PublicHost, ServerProcess.Ports Ports);
+    internal sealed record LocalServer(ServerProcess? Process, string ServerUrl, string PublicHost, ServerProcess.Ports Ports,
+        long? VerifiedGenesisSequence = null);
 
     /// <summary>
     /// Starts the bundled server on this PC (or uses one already answering, for local play) and patches the game for
@@ -266,6 +280,30 @@ internal static partial class Flows
             args.Add("--Ro3Emu:PublicHost=127.0.0.1");
         }
 
+        var syncPolicy = Settings.Load().ClientSync;
+        Ro3Emu.ClientRelease.ClientReleaseRequirement? preparedRequirement = null;
+        if (syncPolicy.Enabled)
+        {
+            if (options is null) throw new SetupException("ClientSync 缺少啟動選項。", "請由 RO3Emu.exe start 或 host 啟動。");
+            if (ServerProcess.BusyPort(ports) is { } active)
+                throw new SetupException($"連接埠 {active} 已使用，未更新客戶端或切換發布。", "請先正常停止舊伺服器，再啟動同步流程。");
+            string pairedUrl = $"http://{(publicHost.Contains(':') ? "[" + publicHost + "]" : publicHost)}:{ports.Http}";
+            string version = FileVersionInfo.GetVersionInfo(serverExe).ProductVersion
+                ?? throw new InvalidDataException("無法讀取伺服器發行版本。");
+            try
+            {
+                preparedRequirement = await ClientSync.PrepareAsync(syncPolicy, version, client, pairedUrl, options,
+                    (folder, url, pem) => PatchClient(folder, url, pem!, purchaseUrl));
+            }
+            catch (Exception e) when (e is IOException or InvalidDataException or System.Security.Cryptography.CryptographicException)
+            {
+                throw new SetupException("客戶端同步未完成，已停止開服：" + e.Message,
+                    "請核對發行配對、官方來源、已整理資料及玩家更新簽署設定；修好後再啟動，不需刪除舊更新站或候選。");
+            }
+            args.Add("--Ro3Emu:ClientRelease:Required=true");
+            args.Add("--Ro3Emu:ClientRelease:RequirementPath=" + Path.Combine(Path.GetFullPath(syncPolicy.RepoDirectory!),
+                Ro3Emu.ClientRelease.ClientReleaseRequirement.FileName));
+        }
         Ui.Step("Starting the server");
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
         ServerProcess? server = null;
@@ -296,15 +334,26 @@ internal static partial class Flows
         try
         {
             var serverUrl = $"http://{(publicHost.Contains(':') ? "[" + publicHost + "]" : publicHost)}:{ports.Http}";
-            var pem = await http.GetStringAsync($"http://127.0.0.1:{ports.Http}/ro3emu/gate-key.pem");
-            PatchClient(client, serverUrl, pem, purchaseUrl);
-            return new LocalServer(server, serverUrl, publicHost, ports);
+            if (preparedRequirement is null)
+            {
+                var pem = await http.GetStringAsync($"http://127.0.0.1:{ports.Http}/ro3emu/gate-key.pem");
+                PatchClient(client, serverUrl, pem, purchaseUrl);
+            }
+            return new LocalServer(server, serverUrl, publicHost, ports, preparedRequirement?.BaseClient?.Sequence);
         }
         catch
         {
             StopServer(server);
             throw;
         }
+    }
+
+    internal static string SelectPairedClient(string? explicitPath, string? savedPath)
+    {
+        string? selected = explicitPath ?? savedPath;
+        if (string.IsNullOrWhiteSpace(selected)) throw new SetupException("ClientSync 尚未設定客戶端目錄，未下載或啟動服務。",
+            "請以 --client 明確指定獨立目錄；可使用尚未安裝遊戲的新目錄。");
+        return Path.GetFullPath(selected);
     }
 
     /// <summary>Optional login-screen labels passed through to the server's standard .NET configuration.</summary>
@@ -328,10 +377,10 @@ internal static partial class Flows
     }
 
     /// <summary>Starts the game (unless asked not to) and keeps the server up until the player is done.</summary>
-    private static async Task<int> PlayAndWaitAsync(string client, ServerProcess? server, bool noLaunch)
+    private static async Task<int> PlayAndWaitAsync(string client, ServerProcess? server, bool noLaunch, long? verifiedGenesisSequence = null)
     {
         Process? game = null;
-        if (!noLaunch) game = LaunchGame(client);
+        if (!noLaunch) game = LaunchGame(client, verifiedGenesisSequence);
         Ui.Step("Server running");
         Ui.Info("Keep this window open while you play.");
         if (Ui.Interactive) Ui.Info(noLaunch ? "Press Q to stop the server." : "Press Q to stop the server, or R to start the game again.");
@@ -368,7 +417,7 @@ internal static partial class Flows
                     if (key is ConsoleKey.Q or ConsoleKey.Escape) break;
                     if (key == ConsoleKey.R && !GameRunning())
                     {
-                        game = LaunchGame(client);
+                        game = LaunchGame(client, verifiedGenesisSequence);
                         gameAnnounced = false;
                     }
                 }
@@ -381,10 +430,10 @@ internal static partial class Flows
 
     private static bool GameRunning() => Process.GetProcessesByName("ro3").Any();
 
-    internal static Process LaunchGame(string client)
+    internal static Process LaunchGame(string client, long? verifiedGenesisSequence = null)
     {
         Ui.Step("Starting the game");
-        var game = Quiet(() => Launcher.Start(client, []));
+        var game = Quiet(() => Launcher.Start(client, [], verifiedGenesisSequence));
         if (game.HasExited)
         {
             int code = game.ExitCode;

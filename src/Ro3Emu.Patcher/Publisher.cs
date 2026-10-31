@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading.Channels;
+using Ro3Emu.ClientRelease;
 
 namespace Ro3Emu.Patcher;
 
@@ -19,14 +20,21 @@ public sealed class PublishOptions
     public int Workers { get; init; } = Environment.ProcessorCount;
     /// <summary>Write the manifest but leave the channel pointing at its previous release.</summary>
     public bool SkipChannel { get; init; }
+    /// <summary>嚴格遊戲發行先重新驗證既有通道簽章與相依檔案；一般入口維持既有行為。</summary>
+    public bool VerifyExistingChannel { get; init; }
     public LauncherRelease? Launcher { get; init; }
     public RepositorySigningOptions? Signing { get; init; }
+    public GenesisIdentity? BaseClient { get; init; }
+    public string? ServerVersion { get; init; }
+    public string? PatchSha256 { get; init; }
+    /// <summary>已驗來源的完整目的地集合與SHA；讀取時若變動，不可產生manifest或切換通道。</summary>
+    public IReadOnlyDictionary<string, string>? ExpectedSourceHashes { get; init; }
 }
 
 public sealed record PublishResult(Manifest Manifest, ChannelInfo Channel, int NewChunks, long NewStoredBytes, int ReusedChunks);
 
 /// <summary>Turns a set of files into a release: new chunks into chunks/, the manifest, then the channel pointer.</summary>
-public static class Publisher
+public static partial class Publisher
 {
     /// <summary>Every file under <paramref name="directory"/>, minus the excluded relative paths/prefixes.</summary>
     public static List<KeyValuePair<string, string>> CollectDirectory(string directory, string destinationPrefix, Func<string, bool> exclude)
@@ -49,6 +57,7 @@ public static class Publisher
 
     public static async Task<PublishResult> PublishAsync(PublishOptions options, IProgress<string>? log = null, CancellationToken ct = default)
     {
+        ClientMetadata.Validate(options.BaseClient, options.ServerVersion, options.PatchSha256);
         options.Chunking.Validate();
         if (!System.Text.RegularExpressions.Regex.IsMatch(options.Version, @"^[0-9A-Za-z][0-9A-Za-z._+-]*$"))
         {
@@ -60,9 +69,18 @@ public static class Publisher
         }
 
         string repo = Path.GetFullPath(options.RepoDirectory);
-        Directory.CreateDirectory(repo);
         // One publisher at a time: two writing the same chunks or channel race each other.
-        using var repoLock = AcquireLock(repo);
+        using var repoLock = AcquireRepositoryLock(repo);
+        Directory.CreateDirectory(repo);
+        if (options.VerifyExistingChannel && File.Exists(Path.Combine(repo, "channels", options.Channel + ".json")))
+        {
+            if (options.Signing is null)
+                throw new InvalidOperationException("嚴格發行必須提供簽署金鑰以重新驗證既有通道。");
+            if (!File.Exists(Path.Combine(repo, "channels", options.Channel + ".json.sig")))
+                throw new PatcherException("嚴格發行缺少既有通道簽章，不可當成未簽署通道繼續。");
+            var existing = await ReadChannelForPublishAsync(repo, options.Channel, options.Signing, ct);
+            await ValidateChannelReferencesAsync(repo, existing, ct);
+        }
         string manifestRelative = $"manifests/{options.Version}.json.zst";
         string manifestPath = Path.Combine(repo, manifestRelative);
         if (File.Exists(manifestPath))
@@ -75,6 +93,9 @@ public static class Publisher
         {
             throw new ArgumentException("Duplicate destination paths: " + string.Join(", ", duplicates));
         }
+        if (options.ExpectedSourceHashes is { } expected && (expected.Count != options.Files.Count
+            || !options.Files.Select(f => f.Key).ToHashSet(StringComparer.Ordinal).SetEquals(expected.Keys)))
+            throw new InvalidDataException("發布檔案集合與已驗來源集合不一致。");
         if (!options.Files.Any(f => string.Equals(f.Key, options.LaunchExe, StringComparison.OrdinalIgnoreCase)))
         {
             throw new ArgumentException($"The launch exe '{options.LaunchExe}' is not part of the release.");
@@ -83,6 +104,7 @@ public static class Publisher
         var manifest = new Manifest
         {
             Version = options.Version,
+            BaseClient = options.BaseClient, ServerVersion = options.ServerVersion, PatchSha256 = options.PatchSha256,
             Created = DateTimeOffset.UtcNow,
             Launch = new LaunchInfo { Exe = options.LaunchExe, Args = options.LaunchArgs },
             Chunking = ChunkingInfo.From(options.Chunking),
@@ -157,6 +179,8 @@ public static class Publisher
                     await queue.Writer.WriteAsync((hash, buffer, chunk.Length, chunkRef), ct);
                 }
                 file.Sha256 = Convert.ToHexStringLower(whole.GetHashAndReset());
+                if (options.ExpectedSourceHashes is { } hashes && (!hashes.TryGetValue(destination, out string? wanted) || wanted != file.Sha256))
+                    throw new InvalidDataException("發布期間來源SHA已變動：" + destination);
                 manifest.Files.Add(file);
             }
         }
@@ -184,6 +208,7 @@ public static class Publisher
             Channel = options.Channel,
             Sequence = await NextSequenceAsync(repo, options.Channel, ct),
             Version = options.Version,
+            BaseClient = options.BaseClient, ServerVersion = options.ServerVersion, PatchSha256 = options.PatchSha256,
             Manifest = manifestRelative,
             ManifestSha256 = Hashing.Sha256Hex(manifestBytes),
             Published = DateTimeOffset.UtcNow,
@@ -197,16 +222,37 @@ public static class Publisher
         return new PublishResult(manifest, channel, newChunks, newBytes, reused);
     }
 
-    static FileStream AcquireLock(string repo)
+    /// <summary>
+    /// 更新站之外的固定發行鎖；持有期間可搬移整個更新站，其他發行者仍受同一把鎖約束。
+    /// 呼叫端必須在建立更新站或讀取待切換快照之前取得鎖，並持有到切換完成。
+    /// 鎖檔保留，僅由 Dispose 釋放 handle，避免刪除重建讓不同程序鎖到不同檔案。
+    /// </summary>
+    public static FileStream AcquireRepositoryLock(string repoDirectory)
     {
+        string repo = Path.TrimEndingDirectorySeparator(Path.GetFullPath(repoDirectory));
+        string? parent = Path.GetDirectoryName(repo);
+        if (parent is null || string.IsNullOrEmpty(Path.GetFileName(repo)))
+            throw new InvalidDataException("更新站不可使用檔案系統根目錄。");
+        string lockPath = repo + ".publisher.lock";
+        RejectRepositoryReparse(repo);
+        RejectRepositoryReparse(lockPath);
+        Directory.CreateDirectory(parent);
+        RejectRepositoryReparse(parent);
         try
         {
-            return new FileStream(Path.Combine(repo, ".publish.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.DeleteOnClose);
+            return new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1);
         }
         catch (IOException e)
         {
-            throw new InvalidOperationException("Another publish is running on this repository.", e);
+            throw new InvalidOperationException("無法取得更新站發行鎖；可能已有其他發布或快照切換正在執行。", e);
         }
+    }
+
+    private static void RejectRepositoryReparse(string path)
+    {
+        for (string? current = path; current is not null; current = Path.GetDirectoryName(current))
+            if ((File.Exists(current) || Directory.Exists(current)) && (File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("更新站發行鎖不允許連結或重新解析點：" + current);
     }
 
     /// <summary>Chunks are content-addressed: if the file appeared meanwhile it has the same bytes.</summary>
@@ -227,15 +273,16 @@ public static class Publisher
         RepositorySigningOptions? signing = null, CancellationToken ct = default)
     {
         string repo = Path.GetFullPath(repoDirectory);
-        using var repoLock = AcquireLock(repo);
+        using var repoLock = AcquireRepositoryLock(repo);
         string manifestRelative = $"manifests/{version}.json.zst";
         byte[] bytes = await File.ReadAllBytesAsync(Path.Combine(repo, manifestRelative), ct);
-        Manifest.FromCompressedBytes(bytes);
+        var manifest = Manifest.FromCompressedBytes(bytes);
         var channel = new ChannelInfo
         {
             Channel = channelName,
             Sequence = await NextSequenceAsync(repo, channelName, ct),
             Version = version,
+            BaseClient = manifest.BaseClient, ServerVersion = manifest.ServerVersion, PatchSha256 = manifest.PatchSha256,
             Manifest = manifestRelative,
             ManifestSha256 = Hashing.Sha256Hex(bytes),
             Published = DateTimeOffset.UtcNow,
@@ -255,7 +302,7 @@ public static class Publisher
             throw new ArgumentException($"Launcher version must look like 1.2.3, got '{version}'.");
         }
         string repo = Path.GetFullPath(repoDirectory);
-        using var repoLock = AcquireLock(repo);
+        using var repoLock = AcquireRepositoryLock(repo);
         string channelPath = Path.Combine(repo, "channels", channelName + ".json");
         if (!File.Exists(channelPath))
         {
@@ -291,7 +338,7 @@ public static class Publisher
         RepositorySigningOptions? signing = null, CancellationToken ct = default)
     {
         string repo = Path.GetFullPath(repoDirectory);
-        using var repoLock = AcquireLock(repo);
+        using var repoLock = AcquireRepositoryLock(repo);
         byte[] news = await File.ReadAllBytesAsync(newsPath, ct);
         try { using var _ = JsonDocument.Parse(news); }
         catch (JsonException e) { throw new InvalidDataException("News content is not valid JSON.", e); }
@@ -321,7 +368,7 @@ public static class Publisher
         RepositorySigningOptions signing, CancellationToken ct = default)
     {
         string repo = Path.GetFullPath(repoDirectory);
-        using var repoLock = AcquireLock(repo);
+        using var repoLock = AcquireRepositoryLock(repo);
         string path = Path.Combine(repo, "channels", channelName + ".json");
         if (!File.Exists(path))
         {
@@ -357,6 +404,8 @@ public static class Publisher
 
     static async Task WriteChannelAsync(string repo, ChannelInfo channel, RepositorySigningOptions? signing, CancellationToken ct)
     {
+        await ValidateChannelReferencesAsync(repo, channel, ct);
+        PrepareRequirementIdentity(repo, channel);
         string path = Path.Combine(repo, "channels", channel.Channel + ".json");
         if (File.Exists(path))
         {
@@ -392,6 +441,7 @@ public static class Publisher
             File.Move(temp, path, overwrite: true);
             if (File.Exists(signaturePath)) File.Delete(signaturePath);
         }
+        WriteClientRequirement(repo, channel);
     }
 
     static async Task<ChannelInfo> ReadChannelForPublishAsync(string repo, string channelName,
@@ -421,6 +471,8 @@ public static class Publisher
     static async Task ValidateChannelReferencesAsync(string repo, ChannelInfo channel, CancellationToken ct)
     {
         await ValidateReferenceAsync(repo, channel.Manifest, channel.ManifestSha256, "manifest", ct);
+        var manifest = Manifest.FromCompressedBytes(await File.ReadAllBytesAsync(PathRules.ToLocal(repo, channel.Manifest), ct));
+        ClientMetadata.EnsureMatches(manifest, channel);
         if (channel.Launcher is { } launcher)
             await ValidateReferenceAsync(repo, launcher.Url, launcher.Sha256, "launcher", ct);
         if (channel.News is { } news)

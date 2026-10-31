@@ -26,7 +26,8 @@ namespace Ro3Emu.ClientHooks
                 if (_label == null || _owner == null || !_owner.activeInHierarchy) return;
                 if (_resourceVersion == null) FindResourceGetter();
                 string resource = _resourceVersion == null ? null : _resourceVersion();
-                string text = NativeVersionText.Compose(Application.version, resource, _label.text);
+                string text = NativeVersionText.Compose(Application.version, resource, _label.text,
+                    Environment.GetEnvironmentVariable("RO3EMU_VERIFIED_GENESIS_SEQUENCE"));
                 if (string.IsNullOrEmpty(resource)) return; // 缺原生來源時保留原樣，不能造版本。
                 if (_label.text != text) _label.text = text;
                 if (!_label.enabled) _label.enabled = true;
