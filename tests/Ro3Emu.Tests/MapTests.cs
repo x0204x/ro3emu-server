@@ -433,6 +433,9 @@ public sealed partial class MapTests : IAsyncLifetime
             await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(async () =>
             {
                 var player = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
+                // 弱化前先停止召喚觀察階段的自動連打，並取消已排程的命中，避免等待 GM 回覆時搶先擊殺。
+                CombatTestFixture.ReadyNormalAttack(_app.Services.GetRequiredService<GameLoop>(), player);
+                if (player.SkillCast is { } previousCast) previousCast.Cancelled = true;
                 var boss = _app.Services.GetRequiredService<World>().Map(player.WorldScene).Units.OfType<MonsterUnit>()
                     .Single(m => m.Uid == (long)angeling.Uuid);
                 Assert.False(player.Dead);
