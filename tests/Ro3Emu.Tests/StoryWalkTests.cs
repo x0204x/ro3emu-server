@@ -4,6 +4,7 @@ using System.Text.Json;
 using Google.Protobuf;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Romsg;
 using Ro3Emu.Bot;
 using Ro3Emu.Server;
@@ -69,6 +70,10 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
     private Dictionary<long, JsonElement> _tasks = null!;
     private BotClient _bot = null!;
     private readonly List<Row> _rows = new();
+    private readonly StoryWalkDiagnostics _diagnostics = new();
+    private long _currentTask;
+    private string _currentTargets = "";
+    private List<string> _currentDetail = [];
 
     /// <summary>
     /// Blockers that stay open on purpose, with the reason (content the client does not ship, or a client-side matter).
@@ -99,7 +104,9 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
             o.HttpPort = httpPort;
             o.MicroGatePort = microPort;
             o.GameGatePort = gamePort;
+            o.ScriptedScenePacePercent = 10; // 測試縮時；不代表原生動畫／玩家操作時間驗收。
         });
+        _app.Services.GetRequiredService<ILoggerFactory>().AddProvider(_diagnostics);
         await _app.StartAsync();
         _http = $"http://127.0.0.1:{httpPort}";
         using var doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(_gameData, "config", "TaskConfig.json")));
@@ -160,6 +167,14 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
     [StoryWalkFact, Trait("Category", "StoryWalk")]
     public async Task TheMainStoryCanBeWalkedToItsLastReachableTask()
     {
+        Exception? failure = null;
+        try { await WalkMainStoryAsync(); }
+        catch (Exception e) { failure = e; throw; }
+        finally { WriteDiagnosticReport(failure); }
+    }
+
+    private async Task WalkMainStoryAsync()
+    {
         var chain = MainChain();
         int maxLevel = Service<CharacterService>().MaxLevel;
         // The chain ends in a task nobody can finish (e.g. 10108262 "reach Lv. 999"): accepting it is the end.
@@ -177,6 +192,8 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
             long task = chain[index];
             var detail = new List<string>();
             string targets = string.Join(" ", Targets(task).Select(t => "[" + string.Join(',', t) + "]"));
+            _currentTask = task; _currentTargets = targets; _currentDetail = detail;
+            output.WriteLine($"{DateTime.UtcNow:o} TASK START {task} {targets}");
             await EnsureAliveAsync();
             if (!Active(task) && !Delivered(task))
             {
@@ -215,7 +232,7 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
             if (moved)
             {
                 await StoryJumpAsync(task, detail);
-                _rows.Add(new Row(task, Name(task), targets, detail.Any(d => d.StartsWith("GM", StringComparison.Ordinal)) ? "ok (GM aid)" : "ok", string.Join("; ", detail)));
+                RecordRow(new Row(task, Name(task), targets, detail.Any(d => d.StartsWith("GM", StringComparison.Ordinal)) ? "ok (GM aid)" : "ok", string.Join("; ", detail)));
                 continue;
             }
             detail.Add($"server state {Describe(task)}");
@@ -234,7 +251,7 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
                 });
                 if (!await WaitDeliveredAsync(task, TimeSpan.FromSeconds(3)))
                 {
-                    _rows.Add(new Row(task, Name(task), targets, "ABORT", "could not even be forced"));
+                    RecordRow(new Row(task, Name(task), targets, "ABORT", "could not even be forced"));
                     break;
                 }
             }
@@ -258,7 +275,7 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
     private void Block(long task, string targets, string why, List<string> detail)
     {
         string known = KnownOpen.TryGetValue(task, out var reason) ? $" [known open: {reason}]" : "";
-        _rows.Add(new Row(task, Name(task), targets, "BLOCKED: " + why + known, string.Join("; ", detail)));
+        RecordRow(new Row(task, Name(task), targets, "BLOCKED: " + why + known, string.Join("; ", detail)));
         detail.Clear();
     }
 
@@ -280,6 +297,58 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
     }
 
     private sealed class WalkBlocked(string message) : Exception(message);
+
+    private void RecordRow(Row row)
+    {
+        _rows.Add(row);
+        output.WriteLine($"{DateTime.UtcNow:o} TASK ROW {row.Task} {row.Result} {row.Detail}");
+    }
+
+    /// <summary>致命傳輸錯誤也保留進度及server原因；只記測試診斷，不改任務規則或KnownOpen。</summary>
+    private void WriteDiagnosticReport(Exception? failure)
+    {
+        try
+        {
+            var text = new StringBuilder();
+            text.AppendLine($"UTC {DateTime.UtcNow:o}; current task {_currentTask}; targets {_currentTargets}");
+            text.AppendLine("Current detail: " + string.Join("; ", _currentDetail));
+            text.AppendLine("Fatal: " + (failure?.ToString() ?? "none"));
+            foreach (var row in _rows) text.AppendLine($"TASK {row.Task} {row.Result}: {row.Detail}");
+            if (_bot != null)
+                text.AppendLine("Last inbound metadata: " + string.Join("; ", _bot.Inbox.Snapshot().TakeLast(30)
+                    .Select(e => $"{e.Kind}/{e.MsgId}/{e.Name}")));
+            text.AppendLine("Server diagnostics (bounded; no raw packet/auth data):");
+            foreach (string line in _diagnostics.Lines) text.AppendLine(line);
+            string folder = Environment.GetEnvironmentVariable("RO3EMU_STORYWALK_DIAGNOSTIC_DIR")
+                ?? Path.Combine(AppContext.BaseDirectory, "storywalk-diagnostics");
+            Directory.CreateDirectory(folder);
+            File.WriteAllText(Path.Combine(folder, "storywalk-diagnostic-" + DateTime.UtcNow.ToString("yyyyMMddTHHmmssfff") + ".log"), text.ToString());
+            output.WriteLine(text.ToString());
+        }
+        catch (Exception e) { output.WriteLine("Diagnostic report failed: " + e); }
+    }
+
+    private sealed class StoryWalkDiagnostics : ILoggerProvider
+    {
+        private readonly System.Collections.Concurrent.ConcurrentQueue<string> _lines = new();
+        public string[] Lines => _lines.ToArray();
+        public ILogger CreateLogger(string categoryName) => new Writer(this, categoryName);
+        public void Dispose() { }
+        private sealed class Writer(StoryWalkDiagnostics owner, string category) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(LogLevel level) => level != LogLevel.None
+                && (level >= LogLevel.Warning || level >= LogLevel.Information && category.EndsWith("GateServer", StringComparison.Ordinal));
+            public void Log<TState>(LogLevel level, EventId id, TState state, Exception? error, Func<TState, Exception?, string> formatter)
+            {
+                if (!IsEnabled(level)) return;
+                string message = formatter(state, error) + (error == null ? "" : " | " + error);
+                if (message.Length > 16384) message = message[..16384];
+                owner._lines.Enqueue($"{DateTime.UtcNow:o} {level} {category}: {message}");
+                while (owner._lines.Count > 512) owner._lines.TryDequeue(out _);
+            }
+        }
+    }
 
     /// <summary>Does, target by target, what a player does for this task.</summary>
     private async Task DoTaskAsync(long task, List<string> detail)
@@ -435,6 +504,13 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
         using var self = _bot.Inbox.Expect(e => e.IsGame(MsgId.EntitySelf));
         await _bot.SendGameAsync(MsgId.SceneLoaded, new SceneLoadedReq { SceneId = scene });
         await self.WaitAsync(Wait);
+        var deadline = DateTime.UtcNow + Wait;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (await OnLoop(s => s.SceneEntry == scene && !s.SceneLoading && s.Handoff == null)) return;
+            await Task.Delay(20);
+        }
+        throw new WalkBlocked($"scene {scene}: load acknowledgement did not finish the handoff");
     }
 
     private async Task GoToPointAsync(long map, long point, List<string> detail)
@@ -599,7 +675,7 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
     /// (LC_System_Task.OnEnterArea returns false for a server action, so the client reports 31209), an interaction
     /// whose after-action 3000 names it (the client then sends 30400). Without any of them the walk says so.
     /// </summary>
-    private async Task ClearDungeonAsync(long task, long scene, List<string> detail)
+    private async Task BeginStoryDungeonSceneAsync(long task, long scene, List<string> detail)
     {
         using var sw = _bot.Inbox.Expect(e => e.IsGame(MsgId.SwitchSceneLine) && SwitchSceneLineResp.Parser.ParseFrom(e.Body).SceneEntry == scene);
         using var refused = _bot.Inbox.Expect(e => e.IsGame(DungeonService.Enter) && EnterDungeonRsp.Parser.ParseFrom(e.Body).Result != 0);
@@ -634,8 +710,18 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
         var e = await entered;
         if (e.IsGame(DungeonService.Enter))
             throw new WalkBlocked($"dungeon {scene}: 30400 refused {EnterDungeonRsp.Parser.ParseFrom(e.Body).Result}");
-        using var result = _bot.Inbox.Expect(x => x.IsGame(DungeonService.Result));
-        await LoadSceneAsync(scene);
+    }
+
+    private async Task ClearDungeonAsync(long task, long scene, List<string> detail)
+    {
+        bool alreadyInside = await OnLoop(s => s.SceneEntry == scene && s.InstanceId > 0 && s.DungeonAttempt?.Plan.SceneEntry == scene);
+        if (!alreadyInside) await BeginStoryDungeonSceneAsync(task, scene, detail);
+        else detail.Add($"entry: reuse automatically entered dungeon {scene}");
+        using var result = _bot.Inbox.Expect(x => x.IsGame(DungeonService.Result)
+            || x.IsGame(DungeonService.ResultNotify) && DungeonResultNotify.Parser.ParseFrom(x.Body).ResultInfo.DungeonId == scene);
+        // 在任何擊殺／完成之前等候下一次70010，避免自動退場早於註冊awaiter。
+        using var back = _bot.Inbox.Expect(x => x.IsGame(MsgId.SwitchSceneLine));
+        if (!alreadyInside || await OnLoop(s => s.SceneLoading)) await LoadSceneAsync(scene);
         long instance = await OnLoop(s => s.InstanceId);
         int kills = 0, steps = 0;
         var until = DateTime.UtcNow + TimeSpan.FromSeconds(90);
@@ -648,6 +734,11 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
                     : (-1, null, false, false));
             if (step != null)
             {
+                if (step.Complete.Any(t => DungeonService.IsAirshipStoryTimedTrigger(scene, step, t)))
+                {
+                    await Task.Delay(100); // 內部計時階段由server推進，不偽造玩家事件。
+                    continue;
+                }
                 if (step.Seek != null)
                 {
                     if (await HideForSeekAsync(scene, wave, step, detail)) steps++;
@@ -705,12 +796,18 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
             else await Task.Delay(100);
         }
         if (!result.IsCompleted) throw new WalkBlocked($"dungeon {scene}: no result after {kills} kills, {steps} scripted steps");
-        var res = DungeonResNotify.Parser.ParseFrom((await result.WaitAsync(Wait)).Body);
-        detail.Add(steps > 0 ? $"dungeon {scene}: {steps} scripted steps, result {res.Res}" : $"dungeon {scene}: {kills} kills (fast), result {res.Res}");
+        var completed = await result.WaitAsync(Wait);
+        bool won = completed.IsGame(DungeonService.ResultNotify)
+            ? DungeonResultNotify.Parser.ParseFrom(completed.Body).ResultInfo.WinCamp == 1
+            : DungeonResNotify.Parser.ParseFrom(completed.Body).Res == DungeonRes.Success;
+        if (!won) throw new WalkBlocked($"dungeon {scene}: server reported a failed result");
+        detail.Add($"dungeon {scene}: {kills} kills, {steps} scripted steps, success opcode {completed.MsgId}");
         await EnsureAliveAsync();
-        using var back = _bot.Inbox.Expect(x => x.IsGame(MsgId.SwitchSceneLine));
-        await _bot.SendGameAsync(DungeonService.Leave, new LeaveDungeonReq());
-        await LoadSceneAsync(SwitchSceneLineResp.Parser.ParseFrom((await back.WaitAsync(Wait)).Body).SceneEntry);
+        if (!DungeonService.CapturedStoryScene(scene)) await _bot.SendGameAsync(DungeonService.Leave, new LeaveDungeonReq());
+        var switched = SwitchSceneLineResp.Parser.ParseFrom((await back.WaitAsync(Wait)).Body);
+        await LoadSceneAsync(switched.SceneEntry);
+        _where = switched.SceneEntry;
+        detail.Add($"dungeon {scene}: scene {switched.SceneEntry} load handshake completed");
     }
 
     /// <summary>
@@ -744,7 +841,10 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
                 SceneConfigId = scene,
             }, NpcInteractionRsp.Parser);
             if (entered.Result != 0)
+            {
+                if (scene == 1000501 && entered.Result == ErrorCodes.NpcParameter) return false; // 開場尚未開放上砲；外層仍有90秒期限。
                 throw new WalkBlocked($"dungeon {scene} step {wave + 1}: cannon {gun.Uid} refused {entered.Result}");
+            }
             detail.Add($"step {wave + 1}: 32700 interaction {cannon.Interaction} mounted cannon {gun.Uid}");
         }
 
@@ -777,6 +877,8 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
     {
         if (step.Complete.Count == 0)
             throw new WalkBlocked($"dungeon {scene} step {wave + 1}: no client event to play");
+        if (scene == 1000301 && wave == 4)
+            await PlayStepTriggerAsync(scene, wave, new(ReconstructedDungeons.TriggerKind.Interaction, 5300005), detail);
         foreach (var t in step.All ? step.Complete : step.Complete.Take(1))
             await PlayStepTriggerAsync(scene, wave, t, detail);
     }
@@ -796,8 +898,12 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
                     .Where(i => t.Kind == ReconstructedDungeons.TriggerKind.Interaction ? i == t.Id : catalog.DungeonMessage(i) == t.Id)
                     .Select(i => (a, i))).FirstOrDefault());
                 if (actor == null) throw new WalkBlocked($"dungeon {scene} step {wave + 1}: no scene actor offers {t.Kind} {t.Id}");
+                if (scene == 1000301 && actor.NpcId == 5300005) await SyncStoryDeniroAsync(actor, detail);
                 await Service<GameLoop>().InvokeAsync(() => Service<SceneService>().TeleportInMapAsync(Session(),
                     new MapPoint(actor.X + 1, actor.Y, actor.Z, actor.Face)));
+                if (scene == 1000501 && actor.NpcId == 5300038 && interaction == 5300039)
+                    await RequestAsync(SceneService.NpcInteraction, new NpcInteractionReq
+                    { NpcUid = actor.Uid, InteractionId = 5300035, SceneConfigId = scene }, NpcInteractionRsp.Parser);
                 var reply = await RequestAsync(SceneService.NpcInteraction, new NpcInteractionReq
                 { NpcUid = actor.Uid, InteractionId = (int)interaction, SceneConfigId = scene }, NpcInteractionRsp.Parser);
                 detail.Add($"step {wave + 1}: 32700 interaction {interaction} on {actor.NpcId}" + (reply.Result != 0 ? $" refused {reply.Result}" : ""));
@@ -812,6 +918,31 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
                 detail.Add($"step {wave + 1}: walked into {t.Kind.ToString().ToLowerInvariant()} {t.Id}");
                 break;
         }
+    }
+
+    private async Task SyncStoryDeniroAsync(DungeonService.SceneActorUnit actor, List<string> detail)
+    {
+        var deadline = DateTime.UtcNow + Wait;
+        while (DateTime.UtcNow < deadline)
+        {
+            var target = _bot.Inbox.Snapshot().Where(e => e.IsGame(DungeonService.Event))
+                .Select(e => DungeonEventNotify.Parser.ParseFrom(e.Body)).Where(e => e.DungeonEntry == 1000301)
+                .SelectMany(e => e.Vars).LastOrDefault(v => v.VarId == 1100);
+            if (target?.Vi64.Count == 4 && target.Vi64[0] == actor.Uid)
+            {
+                await _bot.SendGameAsync(WorldCoreService.TeleportObject, new ClientTeleportObject
+                { TargetUid = actor.Uid, TargetPos = new Vec3 { X = target.Vi64[1], Y = target.Vi64[2], Z = target.Vi64[3] } });
+                for (int i = 0; i < 100; i++)
+                {
+                    if (await OnLoop(_ => Math.Abs(actor.X - target.Vi64[1]) < .1f && Math.Abs(actor.Z - target.Vi64[3]) < .1f))
+                    { detail.Add("Deniro: client followed 1100 target and sent 31089"); return; }
+                    await Task.Delay(20);
+                }
+                throw new WalkBlocked("Deniro: current target position report was not accepted");
+            }
+            await Task.Delay(20);
+        }
+        throw new WalkBlocked("Deniro: no current client auto-path target arrived");
     }
 
     /// <summary>The hide-and-seek script reads the participant's position at each look; move to an unsearched client point.</summary>
