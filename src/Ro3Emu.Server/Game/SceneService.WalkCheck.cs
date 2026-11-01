@@ -64,7 +64,10 @@ public sealed partial class SceneService
         if (dist <= StandStill) return null;
         spend = dist;
         double speed = StoryWalkSpeed(s), available = s.WalkAllowance.Available(now, speed);
-        bool bridged = WalkBridged?.Invoke(s, from, to) == true;
+        // 螞蟻的有效座位沿模型表面移動，G 的 LC_UnitBase／LC_Movement_Base 使用 moveOnSurface；
+        // 已證實的 Deniro 上車點沒有地面導航格。僅有效劇情授權可略過地面格，距離預算及空氣牆仍檢查。
+        bool storySurface = MovesOnSurface(s.SceneEntry) && StoryMovementSpeed?.Invoke(s) is > 0;
+        bool bridged = storySurface || WalkBridged?.Invoke(s, from, to) == true;
         if (!bridged && worldData.Map(s.SceneEntry)?.Nav is { } nav && NavProblem(nav, from, to, available, ref spend) is { } blocked)
             return blocked;
         if (WalkBlocked?.Invoke(s, from, to) == true) return "path crosses an air wall";

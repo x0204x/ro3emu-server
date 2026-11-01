@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using Romsg;
 using Ro3Emu.Bot;
 using Ro3Emu.Server;
@@ -8,6 +9,56 @@ namespace Ro3Emu.Tests;
 
 public sealed partial class DungeonTests
 {
+    [ClientDataTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AntTraversalUsesSurfaceOrGroundNavigationWithEnforcedWalkChecks(bool slide)
+    {
+        await using var alice = await InWorld("Alice");
+        if (slide) await EnterAntSlideForTestAsync(alice);
+        else
+        {
+            var deniro = await PrepareAntDeniroAsync(alice, 4);
+            await BoardAntWithCarryAsync(alice, deniro);
+        }
+        var session = Session(alice);
+        await OnLoop(async () =>
+        {
+            Assert.Equal(slide ? 30d : 12d, Service<DungeonService>().AntStoryMovementSpeed(session));
+            var nav = Service<WorldData>().Map(session.SceneEntry)!.Nav!;
+            var from = session.Position;
+            var start = nav.NearestWalkable(from.X, from.Z, from.Y);
+            var target = new Vec3 { X = from.X + 0.5f, Y = from.Y, Z = from.Z };
+            if (slide)
+            {
+                Assert.NotNull(start);
+                target = new[] { (0.5f, 0f), (-0.5f, 0f), (0f, 0.5f), (0f, -0.5f) }
+                    .Select(d => new Vec3 { X = from.X + d.Item1, Y = from.Y, Z = from.Z + d.Item2 })
+                    .First(p => nav.CanWalk(from.X, start.Value.Y, from.Z, p.X, p.Z));
+            }
+            else Assert.Null(start); // 真實 Deniro 上車點屬模型表面，沒有地面導航格。
+            Service<IOptions<ServerOptions>>().Value.WalkCheck = "enforce";
+            long refused = Service<CheatMonitor>().LoggedCount(session.Account!, CheatMonitor.Walk);
+            Assert.True(await Service<SceneService>().AcceptWalkAsync(session, new WalkReq { Pos = target }));
+            Assert.Equal(refused, Service<CheatMonitor>().LoggedCount(session.Account!, CheatMonitor.Walk));
+            Assert.False(await Service<SceneService>().AcceptWalkAsync(session,
+                new WalkReq { Pos = new Vec3 { X = from.X + 1000, Y = from.Y, Z = from.Z } }));
+            Assert.Equal(refused + 1, Service<CheatMonitor>().LoggedCount(session.Account!, CheatMonitor.Walk));
+        });
+        if (!slide)
+        {
+            await alice.SendGameAsync(WorldInteractionService.Action, new UseInteractActionReq { ButtonId = 26 });
+            Assert.Equal(0, (await Next(alice, WorldInteractionService.Action, UseInteractActionRes.Parser)).Result);
+            await OnLoop(async () =>
+            {
+                Assert.Null(Service<DungeonService>().AntStoryMovementSpeed(session));
+                var at = session.Position;
+                Assert.False(await Service<SceneService>().AcceptWalkAsync(session,
+                    new WalkReq { Pos = new Vec3 { X = at.X + 0.5f, Y = at.Y, Z = at.Z } }));
+            });
+        }
+    }
+
     // 原服上車 124447–124457、下車 124701–124703 的協定順序；不是原生動畫驗收。
     [ClientDataFact]
     public async Task AntRideCarriesThePlayerBeforeVehicleStateAndPublishesTheCarrierAfterAcknowledgement()

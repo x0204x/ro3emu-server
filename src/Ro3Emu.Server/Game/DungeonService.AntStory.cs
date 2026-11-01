@@ -109,7 +109,7 @@ public sealed partial class DungeonService
     private static CustomData AntList(long id, params long[] values) => new()
     { Id = id, CustomParam = new CustomParam { Tp = CustomParam.Types.ParamType.ListLong, ListLongParam = { values } } };
 
-    /// <summary>只提高已授權 traversal 的速度上限；nav／airwall 仍由 SceneService 驗證。</summary>
+    /// <summary>提供仍有效的劇情移動速率；地面導航、表面座位例外、距離預算與空氣牆由 SceneService 分別驗證。</summary>
     internal double? AntStoryMovementSpeed(GameSession s) => _antTraversals.TryGetValue(s, out var state) && AntTraversalCurrent(s, state)
         ? state.Sliding ? AntSlideMetresPerSecond : AntSeatCurrent(s, state) ? AntRideMetresPerSecond : null
         : null;
