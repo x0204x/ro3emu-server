@@ -4,7 +4,7 @@
 registerAdminPage({ id: 'broadcasts', label: 'Broadcasts', icon: 'bell', path: '/admin/broadcasts', pattern: /^\/admin\/broadcasts$/, page: adminBroadcastsPage });
 
 async function adminBroadcastsPage() {
-  requireAdmin();
+  requireRole('gm');
   const { broadcasts } = await api('GET', '/api/admin/broadcasts');
   const confirmHost = h('div');
   const repeat = selectField('Repeat', 'every', [['0', 'Only now'], ['5', 'Every 5 minutes'], ['10', 'Every 10 minutes'], ['15', 'Every 15 minutes'],
@@ -20,7 +20,7 @@ async function adminBroadcastsPage() {
     const what = repeats > 0 ? `now and ${repeats} more time${repeats === 1 ? '' : 's'}, every ${every} min` : 'now';
     if (!await confirmBox(confirmHost, `Show "${values.text}" to every player in the game ${what}?`, 'Broadcast')) return;
     const result = await api('POST', '/api/admin/broadcasts', { text: values.text, everyMinutes: every, repeats });
-    toast(`Shown to ${num(result.reached)} player${result.reached === 1 ? '' : 's'}.`);
+    toast(`Shown to ${plural(result.reached, 'player')}.`);
     node.reset();
     route();
   });

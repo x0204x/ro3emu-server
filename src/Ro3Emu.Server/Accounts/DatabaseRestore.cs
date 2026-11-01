@@ -27,6 +27,39 @@ public static class DatabaseRestore
 
     public static string MarkerPath(string dataDir) => Path.Combine(dataDir, MarkerName);
 
+    /// <summary>
+    /// A restore the web panel asked for (docs/guide/panel.md): the backup's path, read by the next start, which restores
+    /// it before it opens the realm (<see cref="RunRequested"/>), and what that restore did.
+    /// </summary>
+    public const string RequestName = "restore-request.txt", ResultName = "restore-result.txt";
+
+    /// <summary>Asks the next start to restore <paramref name="backup"/> (written whole, then renamed into place).</summary>
+    public static void Request(string dataDir, string backup)
+    {
+        string request = Path.Combine(dataDir, RequestName);
+        File.WriteAllText(request + ".partial", Path.GetFullPath(backup));
+        File.Move(request + ".partial", request, overwrite: true);
+    }
+
+    /// <summary>
+    /// At start, before the host opens the realm: runs the restore a request names, as --restore-backup would, and
+    /// keeps its outcome in <see cref="ResultName"/>. The request is removed first, so a refused restore is not tried
+    /// again at every start; the realm then opens unchanged.
+    /// </summary>
+    public static void RunRequested(ServerOptions options, TextWriter output)
+    {
+        string request = Path.Combine(options.DataDir, RequestName);
+        if (!File.Exists(request)) return;
+        string backup = File.ReadAllText(request).Trim();
+        File.Delete(request);
+        using var said = new StringWriter();
+        int code = RunCli(backup, options, said);
+        string outcome = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture)
+            + (code == 0 ? " restored " : " not restored ") + Path.GetFileName(backup) + ". " + said.ToString().Trim();
+        File.WriteAllText(Path.Combine(options.DataDir, ResultName), outcome);
+        output.WriteLine(outcome);
+    }
+
     public static int RunCli(string backup, ServerOptions options, TextWriter output)
     {
         try

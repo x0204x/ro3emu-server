@@ -1,0 +1,62 @@
+/* Public profiles, guild pages, the territory map, the market and the admin's item tracking: only the pieces app.css and
+   database.css have no component for, built from their tokens. */
+
+/* a guild's badge: the design drawn over the frame (both from the operator's client); the initial on a tint without */
+.emblem{position:relative;display:inline-grid;place-items:center;width:28px;height:28px;flex:none}
+.emblem img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.emblem.lg{width:40px;height:40px}
+.emblem.xl{width:56px;height:56px}
+.emblem .glyph{width:100%;height:100%;background:var(--blue-bg);color:var(--blue-ink)}
+
+/* a guild's colour on the map and its legend */
+.swatch{display:inline-block;width:12px;height:12px;border-radius:3px;flex:none;border:1px solid var(--line)}
+.legend{display:grid;gap:var(--s2)}
+.legend li{display:flex;align-items:center;gap:var(--s2);min-width:0}
+.legend li .named{flex:1}
+.legend li .num{color:var(--muted);font-size:var(--t-sm)}
+
+/* the territory schematic */
+.territory-map{display:block;width:100%;height:auto;max-height:640px;margin:0 auto}
+.territory-map .edge{stroke:var(--line-strong);stroke-width:1.5}
+.territory-map .node{stroke:var(--ink);stroke-width:1.5}
+.territory-map .node.neutral{fill:var(--surface-sub);stroke:var(--line-strong)}
+.territory-map .label{font:700 13px/1 var(--body);fill:var(--ink);text-anchor:middle;text-transform:none;letter-spacing:0}
+.territory-map .label.small{font-size:11px;fill:var(--ink)}
+.territory-map .halo{fill:none;stroke:var(--red-ink);stroke-width:2;animation:siege-pulse 1.6s ease-out infinite;transform-box:fill-box;transform-origin:center}
+.territory-map a:hover .node,.territory-map a:focus-visible .node{stroke-width:3}
+@keyframes siege-pulse{from{opacity:.9;transform:scale(1)}to{opacity:0;transform:scale(1.6)}}
+.map-legend{display:flex;flex-wrap:wrap;gap:var(--s2) var(--s4);font-size:var(--t-xs);color:var(--muted)}
+.map-legend span{display:inline-flex;align-items:center;gap:var(--s1)}
+.ring{display:inline-block;width:12px;height:12px;border-radius:50%;border:2px solid var(--red-ink)}
+
+/* the price charts */
+.chart{display:block;width:100%;height:auto}
+.chart .grid-line{stroke:var(--line-soft);stroke-width:1}
+.chart .axis{font:500 11px/1 var(--body);fill:var(--muted)}
+.chart .band{fill:var(--blue-bg)}
+.chart .line{fill:none;stroke:var(--blue);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.chart .dot{fill:var(--surface);stroke:var(--blue);stroke-width:2}
+.chart .bar{fill:var(--line-strong)}
+
+/* the profile's achievement categories and rank list */
+.badges{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:var(--s2)}
+.badges li{display:flex;align-items:center;gap:var(--s2);padding:var(--s2);border:1px solid var(--line-soft);border-radius:var(--r2);min-width:0}
+.badges li div{min-width:0}
+.badges li b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card-body>.named+.badges{margin-top:var(--s4)}
+.private-note{display:flex;align-items:center;gap:var(--s3);padding:var(--s4);color:var(--muted)}
+.private-note svg{font-size:20px;color:var(--faint)}
+
+.kpis+.stack{margin-top:var(--gutter)}
+
+/* the holders of an item: instance guids in one small line */
+.guids{display:block;max-width:420px;overflow:hidden;text-overflow:ellipsis;font-size:var(--t-xs);color:var(--muted)}
+.flag{display:grid;gap:var(--s1);padding:var(--s3) var(--s4);border-bottom:1px solid var(--line-soft)}
+.flag:last-child{border-bottom:0}
+.flag p{font-size:var(--t-sm);color:var(--ink-2)}
+
+@media (max-width:600px){
+  .badges{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .guids{max-width:160px}
+}
+@media (prefers-reduced-motion:reduce){ .territory-map .halo{animation:none;opacity:.8} }

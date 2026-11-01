@@ -65,6 +65,8 @@ public sealed partial class NewActivityTests
         return sw.SceneID;
     }
 
+    private const long DummyChallengeQuest = 10200120;
+
     [ClientDataFact]
     public async Task TrainingMeasuresRealHitsAndRewardClaimsAreAtomicAndDurable()
     {
@@ -89,6 +91,9 @@ public sealed partial class NewActivityTests
         });
         await bot.SendGameAsync(84064, new TrainingUpdateWoodNpcAttrReq { Race = -1, Element = 4, BodyType = 1 });
         Assert.Equal(ErrorCodes.Parameter, (await Next(bot, 84064, TrainingUpdateWoodNpcAttrResp.Parser)).Result);
+        // Side quest 10200120 "Complete a Training Ground Dummy Challenge" [210006, 1]: practice does not count.
+        await QuestProbe.AcceptAsync(_app, _http, "training", DummyChallengeQuest);
+        Assert.Equal(0, (await QuestProbe.ReadAsync(_app, "training", DummyChallengeQuest))!.CompleteNum[0]);
         await bot.SendGameAsync(84061, new NullArg());
         Assert.Equal(0, (await Next(bot, 84061, TrainingChallengeModeResp.Parser)).Result);
         long challenge = await LoadPrivate(bot, 2100011);
@@ -116,6 +121,7 @@ public sealed partial class NewActivityTests
         Assert.True(result.Data.TrainingGroundData.SumDamage > 0);
         Assert.Equal(result.Data.TrainingGroundData.SumDamage / 60, result.Data.TrainingGroundData.MaxDps);
         Assert.False(actor.Dead);
+        Assert.Equal(1, (await QuestProbe.DoneAsync(_app, "training", DummyChallengeQuest)).CompleteNum[0]);
         // Seed the qualification threshold independently of hit strength; the RPC still validates and settles the claim.
         await OnLoop(() => { Session(bot).Training!.MaxDps = Math.Max(100, Session(bot).Training!.MaxDps); return Task.CompletedTask; });
         long moneyBefore = Session(bot).Progress!.Currency.GetValueOrDefault(1);

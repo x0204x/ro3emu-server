@@ -94,6 +94,14 @@ public sealed partial class TerritoryWarsTests : IAsyncLifetime
         var envelope = await b.Inbox.WaitAsync(e => e.IsGame(id) && (match == null || match(parser.ParseFrom(e.Body))), Wait);
         return parser.ParseFrom(envelope.Body);
     }
+    /// <summary>What the bot has received so far, to wait for a reply to what comes next and not an earlier copy.</summary>
+    private static HashSet<BotEvent> Seen(BotClient b) => new(b.Inbox.Snapshot(), ReferenceEqualityComparer.Instance);
+    private static async Task<T> NextAfter<T>(BotClient b, HashSet<BotEvent> seen, uint id, MessageParser<T> parser,
+        Func<T, bool>? match = null) where T : IMessage<T>
+    {
+        var envelope = await b.Inbox.WaitAsync(e => !seen.Contains(e) && e.IsGame(id) && (match == null || match(parser.ParseFrom(e.Body))), Wait);
+        return parser.ParseFrom(envelope.Body);
+    }
     private async Task<long> Guild(BotClient bot, string name, int members = 20)
     {
         await OnLoop(() => Service<CharacterService>().SetLevelAsync(Session(bot), 99, null));
@@ -255,18 +263,21 @@ public sealed partial class TerritoryWarsTests : IAsyncLifetime
         long[] expected = [34, 41, 49, 51, 55, 56, 57, 59, 63, 66, 74, 81, 83, 85, 86]; // DungeonLua_3030101 UIModule_NpcData
         async Task<(GlobalScenePointDataNotify Points, Dictionary<int, GlobalObjectData> Markers)> EnterStronghold()
         {
+            // Only this load's messages: a marker can reach a member twice (with its load and when it spawns), and an
+            // earlier load's unread copy (its old owner) must not stand in for this one.
+            var seen = Seen(bot);
             await bot.SendGameAsync(30400, new EnterDungeonReq { SceneEntry = 3030101 });
             Assert.Equal(0, (await Next(bot, 30400, EnterDungeonRsp.Parser)).Result);
             var sw = await Next(bot, MsgId.SwitchSceneLine, SwitchSceneLineResp.Parser, s => s.SceneEntry == 3030101);
             await bot.SendGameAsync(MsgId.SceneLoaded, new SceneLoadedReq { SceneId = sw.SceneEntry });
             await Next(bot, MsgId.SceneLoaded, SceneLoadedResp.Parser, s => s.SceneId == 3030101);
             await Next(bot, 30401, DungeonBaseInfoNotify.Parser, i => i.DungeonEntry == 3030101);
-            var points = await Next(bot, TerritoryWarsService.ScenePointNotify, GlobalScenePointDataNotify.Parser);
+            var points = await NextAfter(bot, seen, TerritoryWarsService.ScenePointNotify, GlobalScenePointDataNotify.Parser);
             // The markers reach a loaded member either with its load or right after they spawn.
             var markers = new Dictionary<int, GlobalObjectData>();
             while (markers.Count < expected.Length)
             {
-                var objects = await Next(bot, 30115, GlobalObjectDataNotify.Parser,
+                var objects = await NextAfter(bot, seen, 30115, GlobalObjectDataNotify.Parser,
                     n => n.GlobalDatas.Values.Any(d => d.ConfigId == 4905010 && !markers.ContainsKey(d.DungeonPointId)));
                 foreach (var d in objects.GlobalDatas.Values.Where(d => d.ConfigId == 4905010)) markers[d.DungeonPointId] = d;
             }
@@ -309,11 +320,14 @@ public sealed partial class TerritoryWarsTests : IAsyncLifetime
         Assert.Equal(EnumGlobalScenePoint.UnReady, barrier.Value.Status);
         Assert.Equal((1779362200L + 90) * 1000, barrier.Value.ReadyTime);
         Assert.Equal(guild, barrier.Value.BelongGuildId);
+        var beforeRevival = Seen(bot);
         await bot.SendChatAsync("4_1", 2, "!twpoint 55 ready 0 self", channelIndex: 4);
         await Next(bot, GmCommands.BroadcastNotify, BroadCastNotify.Parser);
         Assert.Equal(55, Assert.Single((await Next(bot, TerritoryWarsService.ScenePointNotify, GlobalScenePointDataNotify.Parser)).GlobalPoints).Key);
-        // Revival points read their owner from the marker's GlobalObjectData (GetRevivalPointData).
-        var revival = await Next(bot, 30115, GlobalObjectDataNotify.Parser, n => n.GlobalDatas.Values.Any(d => d.DungeonPointId == 55));
+        // Revival points read their owner from the marker's GlobalObjectData (GetRevivalPointData): the change's own
+        // 30115, not the load's second copy of the marker.
+        var revival = await NextAfter(bot, beforeRevival, 30115, GlobalObjectDataNotify.Parser,
+            n => n.GlobalDatas.Values.Any(d => d.DungeonPointId == 55));
         Assert.Equal(guild, revival.GlobalDatas.Values.Single(d => d.DungeonPointId == 55).BelongGuild);
         await bot.SendChatAsync("4_1", 2, "!twpoint 99 ready", channelIndex: 4);
         Assert.Contains("No gameplay point 99", (await Next(bot, GmCommands.BroadcastNotify, BroadCastNotify.Parser)).Content);

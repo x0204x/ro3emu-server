@@ -139,10 +139,10 @@ public sealed partial class DungeonTests
     [ClientDataFact]
     public async Task TheEggThiefPortalWaveKeepsPursuingFromOutsideTheFieldLeash()
     {
+        // The encounter's own monsters (NPCConfig 5001046-5001050, AI 20200004: 150 m chase) reach the player from every
+        // portal with their client templates; no scene-specific pace or leash.
         const long scene = 1021301;
         await using var alice = await InWorld("Alice");
-        var fieldTemplate = Assert.IsType<MonsterTemplate>(Service<MonsterService>().Template(5000035));
-        Assert.Equal(0, fieldTemplate.SpeedCm);
         Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
         long instance = await Load(alice, scene);
         var actors = await WaveIn(instance, 3);
@@ -166,11 +166,11 @@ public sealed partial class DungeonTests
                 Assert.True(actor.Moving, $"portal monster {actor.Template.NpcId} did not start pursuing");
                 float destination = MathF.Sqrt(MathF.Pow(actor.ToX - player.Position.X, 2) + MathF.Pow(actor.ToZ - player.Position.Z, 2));
                 Assert.True(destination < before, $"portal monster {actor.Template.NpcId} did not move toward the player");
+                var client = monsters.Template(actor.Template.NpcId)!;
+                Assert.Equal((client.SpeedCm, client.LeashDistance), (actor.Template.SpeedCm, actor.Template.LeashDistance));
             }
             return Task.CompletedTask;
         });
-        Assert.Same(fieldTemplate, Service<MonsterService>().Template(5000035));
-        Assert.Equal(0, fieldTemplate.SpeedCm); // the public-map template remains untouched
     }
 
     [ClientDataFact]
@@ -282,6 +282,29 @@ public sealed partial class DungeonTests
                 foreach (var monster in await WaveIn(instance, plan.Waves[wave].Spawns.Count)) await Kill(bot, monster);
             if (step?.Complete.Count > 0) await Gm(bot, "!actors use");
         }
+    }
+
+    [ClientDataFact]
+    public async Task TheEggThiefWavesPayTheQuestShirtAndThePoringCardTheCardGuideNeeds()
+    {
+        // Reported: "survive 3 waves" paid nothing, and the card guide 26 (after 10102110) found no card to insert.
+        // 10102100 [101018,1021301,1] pays _iAward 31210 (AwardConfig 10031210: Cotton Shirt 2550130); the wave Poring
+        // 5001049 drops NpcNormalDropConfig 100241949 -> DropPool 241949 -> DropGroup 144: Card: Poring 1420300,
+        // _iQuestLimit 10102100 (dialogue 1010211001: "you picked up a Card: Poring!").
+        const long scene = 1021301, quest = 10102100;
+        await using var alice = await InWorld("Alice");
+        await Gm(alice, "!lvl 16");
+        await Gm(alice, $"!quest accept {quest}");
+        Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
+        long instance = await Load(alice, scene);
+        var plan = Session(alice).DungeonAttempt!.Plan;
+        for (int wave = 0; wave < plan.Waves.Count; wave++)
+            foreach (var actor in await WaveIn(instance, plan.Waves[wave].Spawns.Count)) await Kill(alice, actor);
+        Assert.Equal((DungeonRes)1, (await Next(alice, DungeonService.Result, DungeonResNotify.Parser)).Res);
+        for (int i = 0; i < 100 && !TaskService.IsDelivered(Session(alice), quest); i++) await Task.Delay(20);
+        Assert.True(TaskService.IsDelivered(Session(alice), quest));
+        Assert.Equal(1, Items(alice, 2550130));
+        Assert.Equal(1, Items(alice, 1420300));
     }
 
     [ClientDataFact]

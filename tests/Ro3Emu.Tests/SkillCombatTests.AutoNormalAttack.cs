@@ -68,7 +68,7 @@ public sealed partial class SkillCombatTests
             .Select(o => new Vec3 { X = start.X + o.Item1, Y = start.Y, Z = start.Z + o.Item2 })
             .First(p => nav.IsWalkable(p.X, p.Y, p.Z) && nav.CanWalk(p.X, p.Y, p.Z, start.X, start.Z));
         await alice.SendGameAsync(MsgId.Walk, new WalkReq { Pos = away, Face = 180, BStop = true, SpeedRate = 1 });
-        await alice.SendGameAsync(MsgId.Walk, new WalkReq { Pos = away, Dir = 180, Face = 180, SpeedRate = 1 });
+        await alice.SendGameAsync(MsgId.Walk, new WalkReq { Pos = away, Dir = Toward(away, start), Face = Toward(away, start), SpeedRate = 1 });
         await Task.Delay(500);
         await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = target.Uid, ComboIndex = 1 });
         var accepted = await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser);

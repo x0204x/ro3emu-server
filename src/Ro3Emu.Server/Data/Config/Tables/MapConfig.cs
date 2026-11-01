@@ -25,4 +25,6 @@ public readonly partial record struct MapConfig(JsonElement Row)
     [ConfigField("_kPVPMod")] public partial long[][] PVPMod { get; }
     [ConfigField("_kResSceneEditorName")] public partial string ResSceneEditorName { get; }
     [ConfigField("_kRiderForbidden")] public partial long[] RiderForbidden { get; }
+    [ConfigField("_iCaveBelongsTo")] public partial long CaveBelongsTo { get; }
+    [ConfigField("_kCaveEntrance")] public partial long[] CaveEntrance { get; }
 }

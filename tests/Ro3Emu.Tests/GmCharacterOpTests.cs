@@ -151,8 +151,14 @@ public sealed class GmCharacterOpTests : IAsyncLifetime
         Assert.Contains("season start", await Op(alice, 63, "2026-10-29"));
         Assert.Contains("only through an account's own login", await Op(alice, 54, "x"));
         Assert.Contains("WalkCheck", await Op(alice, 186, "0"));
-        foreach (int tavern in new[] { 134, 136, 137, 138, 139, 140, 141 })
-            Assert.Contains("no tavern", await Op(alice, tavern, "1"));
+        // The Tavern ops (TavernTests covers them in a room).
+        Assert.Equal("No Tavern room is open.", await Op(alice, 134));
+        Assert.Equal("No Tavern room 1.", await Op(alice, 136, "1,500"));
+        Assert.Equal("No Tavern room 1.", await Op(alice, 137, "1,1,0"));
+        Assert.StartsWith("Tavern: Star Power 5 ", await Op(alice, 138, "5"));
+        Assert.StartsWith("Tavern quest completions +1", await Op(alice, 139, "1"));
+        Assert.Contains("active days 2", await Op(alice, 140, "2"));
+        Assert.Contains("today 60 s", await Op(alice, 141, "60"));
         Assert.Contains("own timeline", await Op(alice, 51, "123"));
         Assert.Contains("requested", await Op(alice, 51, "state"));
         Assert.Contains("Siege TEST AID", BroadCastNotify.Parser.ParseFrom((await alice.Inbox.WaitAsync(e => e.IsGame(GmCommands.BroadcastNotify), Wait)).Body).Content);

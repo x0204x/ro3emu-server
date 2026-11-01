@@ -19,7 +19,7 @@ public sealed class ClientReleaseGateTests : IDisposable
             File.WriteAllText(Path.Combine(_root, folder, "synthetic.json"), "{}");
         }
         File.WriteAllText(Path.Combine(_root, "config", "MapResource.json"), "{}");
-        foreach (string file in new[] { "msgtable.tsv", "loc_en.tsv", "export.json" })
+        foreach (string file in new[] { "msgtable.tsv", "loc_en.tsv", "client-scenes.json", "export.json" })
             File.WriteAllText(Path.Combine(_root, file), "{}");
     }
     private void Write(string? server = null, GenesisIdentity? data = null)
@@ -88,6 +88,20 @@ public sealed class ClientReleaseGateTests : IDisposable
     {
         WriteNative();
         Assert.Equal(_identity, ClientReleaseGate.Read(Options, "1.0.24")!.BaseClient);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void MissingOrChangedClientSceneListRefusesBeforeHostBuild(bool native, bool delete)
+    {
+        if (native) WriteNative(); else Write();
+        string path = Path.Combine(_root, "client-scenes.json");
+        if (delete) File.Delete(path);
+        else File.WriteAllText(path, "[]");
+        Assert.Throws<InvalidDataException>(() => ClientReleaseGate.Read(Options, "1.0.24"));
     }
 
     public void Dispose() => Directory.Delete(_root, true);

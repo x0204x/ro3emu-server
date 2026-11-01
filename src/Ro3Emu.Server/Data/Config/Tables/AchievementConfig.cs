@@ -12,4 +12,8 @@ public readonly partial record struct AchievementConfig(JsonElement Row)
     [ConfigField("_iPoint")] public partial long Point { get; }
     [ConfigField("_iType")] public partial long Type { get; }
     [ConfigField("_kProgressTarget")] public partial long[][] ProgressTarget { get; }
+    [ConfigField("_iName")] public partial JsonElement? Name { get; }
+    [ConfigField("_iDesc")] public partial JsonElement? Desc { get; }
+    /// <summary>Hidden until reached.</summary>
+    [ConfigField("_iIsHide")] public partial long IsHide { get; }
 }

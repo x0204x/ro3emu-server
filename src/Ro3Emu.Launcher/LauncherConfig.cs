@@ -17,6 +17,13 @@ public sealed class LauncherConfig
     [JsonPropertyName("discordUrl")] public string? DiscordUrl { get; set; }
     [JsonPropertyName("facebookUrl")] public string? FacebookUrl { get; set; }
     [JsonPropertyName("youtubeUrl")] public string? YoutubeUrl { get; set; }
+    /// <summary>選用的網頁面板網址；僅接受 HTTP(S)，未設定時不顯示入口，也不自行啟用面板。</summary>
+    [JsonPropertyName("panelUrl")] public string? PanelUrl { get; set; }
+
+    [JsonIgnore]
+    public string? ConfiguredPanelUrl => PanelUrl?.Trim() is { Length: > 0 } url
+        && Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" && uri.Host.Length > 0
+        ? url : null;
     [JsonPropertyName("allowedExternalHosts")] public string[] AllowedExternalHosts { get; set; } = [];
     [JsonPropertyName("uiFixture")] public string? UiFixture { get; set; }
     [JsonPropertyName("requireHttpsRepository")] public bool RequireHttpsRepository { get; set; }

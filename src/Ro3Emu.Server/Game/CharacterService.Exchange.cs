@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Google.Protobuf;
 using Romsg;
@@ -28,7 +29,9 @@ public sealed partial class CharacterService
                 goods: next > previous ? [(entry, checked((int)(next - previous)))] : []);
             await SyncItemsAsync(session);
             if (next != previous) foreach (var handler in StateChanged) handler(session);
-            return $"{data.ItemName(entry)}: {next}";
+            return previous > next
+                ? $"Removed {(previous - next).ToString("N0", CultureInfo.InvariantCulture)} {data.ItemName(entry)}; {next.ToString("N0", CultureInfo.InvariantCulture)} left."
+                : $"{data.ItemName(entry)}: {next}";
         }
         var staged = session.Items.Select(i => i.Clone()).ToList();
         int stacks = 0;
@@ -47,7 +50,7 @@ public sealed partial class CharacterService
             costs: consumed > 0 ? [(entry, consumed)] : []);
         await SyncItemsAsync(session);
         if (stacks > 0) foreach (var handler in StateChanged) handler(session);
-        return $"Removed {stacks} stack(s) of {data.ItemName(entry)}.";
+        return consumed > 0 ? $"Removed {consumed.ToString("N0", CultureInfo.InvariantCulture)} {data.ItemName(entry)}." : $"No {data.ItemName(entry)} to remove.";
     }
 
     /// <summary>Owned amount of a currency, or of an item in the bag (not worn or socketed).</summary>
@@ -339,6 +342,7 @@ public sealed partial class CharacterService
                 }
                 for (int i = 0; i < granted.Count; i++) granted[i] = mapped[granted[i]];
                 CopyProgress(p, stagedProgress);
+                if (baseExp > 0 || jobExp > 0) foreach (var credited in ExpCredited) credited(session, baseExp, jobExp);
                 if (rewardSettlement != null) rewardSettlement.Committed = true;
                 foreach (var item in granted) session.NewItems.Add(item.Guid);
                 cardSight?.Apply();

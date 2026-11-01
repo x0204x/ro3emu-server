@@ -119,6 +119,8 @@ internal sealed class ServerProcess : IDisposable
         // The bundled server is self-contained; never let a machine-wide .NET or a developer variable steer it.
         start.Environment.Remove("DOTNET_ROOT");
         start.Environment["DOTNET_gcServer"] = "0";
+        // Tells the server's update manager that this program, not a process manager, runs it (Updates.UpdateHosting).
+        start.Environment["RO3EMU_STARTER"] = "RO3Emu";
         SetupLog.Write($"server: {exe} {string.Join(' ', start.ArgumentList)}");
 
         var process = new Process { StartInfo = start, EnableRaisingEvents = true };

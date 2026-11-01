@@ -132,7 +132,7 @@ public static class GameDataExport
         string? Quick = null, Dictionary<string, int>? Files = null, string[]? FailedTables = null);
 
     /// <summary>The single files an export writes besides <see cref="Folders"/>.</summary>
-    public static readonly string[] TopFiles = ["msgtable.tsv", "loc_en.tsv"];
+    public static readonly string[] TopFiles = ["msgtable.tsv", "loc_en.tsv", ClientScenes.FileName];
 
     /// <summary>Client script folders (and files) whose modules become exported tables: a chunk among them that does not
     /// decode is a missing table.</summary>
@@ -268,6 +268,8 @@ public static class GameDataExport
         using (var vfs = new Vfs(VfsDir(clientDir)))
         {
             nav = NavExporter.Export(mapResource, VfsDir(clientDir), Path.Combine(staged, "nav"), (d, t) => options.Progress?.Invoke("Exporting the walk maps", d, t), vfs);
+            var scenesMissing = ClientScenes.Write(mapResource, vfs, Path.Combine(staged, ClientScenes.FileName));
+            log($"scenes: {scenesMissing.Count} not in the client {string.Join(" ", scenesMissing)}");
             filesRead = vfs.FilesRead;
         }
         log($"nav: {nav.Names} names, extracted {nav.Extracted}, missing {nav.Missing.Count} {string.Join(" ", nav.Missing)}");

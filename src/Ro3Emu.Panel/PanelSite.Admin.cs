@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 namespace Ro3Emu.Panel;
 
 /// <summary>
-/// The admin area, for the accounts listed in Ro3Emu:GmAccounts only: the dashboard, accounts, bans and the audit log.
+/// The admin area's moderation part, for every staff role: the dashboard, accounts, bans and the audit log.
 /// Every change is recorded in the audit log by the server, in the transaction that makes it.
 /// </summary>
 public sealed partial class PanelSite
@@ -18,12 +18,12 @@ public sealed partial class PanelSite
 
     private IEnumerable<Route> AdminRoutes() =>
     [
-        Get("/api/admin/dashboard", Access.Admin, async _ => Reply.Ok(await _backend.DashboardAsync())),
-        Get("/api/admin/accounts", Access.Admin, FindAccountsAsync),
-        Get("/api/admin/accounts/{}", Access.Admin, AdminAccountAsync),
-        Post("/api/admin/accounts/{}/ban", Access.Admin, BanAsync),
-        Post("/api/admin/accounts/{}/unban", Access.Admin, UnbanAsync),
-        Get("/api/admin/audit", Access.Admin, async call => Reply.Ok(await _backend.AuditAsync(call.Page(), PageSize))),
+        Get("/api/admin/dashboard", Access.Moderator, async _ => Reply.Ok(await _backend.DashboardAsync())),
+        Get("/api/admin/accounts", Access.Moderator, FindAccountsAsync),
+        Get("/api/admin/accounts/{}", Access.Moderator, AdminAccountAsync),
+        Post("/api/admin/accounts/{}/ban", Access.Moderator, BanAsync),
+        Post("/api/admin/accounts/{}/unban", Access.Moderator, UnbanAsync),
+        Get("/api/admin/audit", Access.Moderator, async call => Reply.Ok(await _backend.AuditAsync(call.Page(), PageSize))),
     ];
 
     private async Task<Reply> FindAccountsAsync(Call call)
@@ -35,7 +35,7 @@ public sealed partial class PanelSite
 
     private async Task<Reply> AdminAccountAsync(Call call) =>
         await _backend.AccountAsync(call.Args[0]) is { } account
-            ? Reply.Ok(new { account, admin = _backend.IsAdmin(account.Name) })
+            ? Reply.Ok(new { account, admin = _ops.RoleOf(account.Name) != PanelRole.None, role = PanelRoles.Key(_ops.RoleOf(account.Name)) })
             : Reply.Error(StatusCodes.Status404NotFound, "There is no such account.");
 
     private async Task<Reply> BanAsync(Call call)

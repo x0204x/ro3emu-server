@@ -123,7 +123,7 @@ public sealed partial class DailyActivityService : IGameTicker
         bool resetWeekly = state.WeeklyEpoch != 0 && state.WeeklyEpoch < weekly;
         // A completed AFK objective whose award was held must settle in its own period, also after reconnect.
         if (resetDaily && (WildAfkService.PendingDailyAward(session.WildAfk, state, taskInfo, rows)
-            || TavernService.PendingDailyAward(session.Tavern, state, taskInfo, rows,
+            || LegacyTavernService.PendingDailyAward(session.LegacyTavern, state, taskInfo, rows,
                 Data.Config.PublicParamConfig.BarroomTaskId(_data),
                 Data.Config.TaskConfig.Get(_data, Data.Config.PublicParamConfig.BarroomTaskId(_data)) is { } tavernTask
                     && tavernTask.ProgressTarget is [[106010, > 0]] ? tavernTask.ProgressTarget[0][1] : 0)))

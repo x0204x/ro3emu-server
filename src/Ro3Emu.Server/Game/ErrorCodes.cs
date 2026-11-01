@@ -250,19 +250,33 @@ public static class ErrorCodes
     public const int GuildFundsShort = 484, GuildContributeShort = 10040, GuildBuildBusy = 485, GuildHallLow = 486, GuildBuildMax = 487;
     // Guild voice channels (ErrorCodeConfig 97001-97032, Localization_en): not in a guild, invalid channel, on the
     // channel's block list, already / not in the channel, not leader nor GuildVoice right, the leader cannot be kicked,
-    // not blocked; invite target outside the guild, on cooldown, declined, offline, already seated or handling another
-    // invite; Order mode: no mic in Free mode, managers need not apply, already may speak, already / not applied, not
-    // Order mode, reason too long; already in another channel, the leader's mic stays, cannot kick yourself.
+    // not blocked; Order mode: no mic in Free mode, managers need not apply, already may speak,
+    // already / not applied, not Order mode, reason too long; already in another channel, the leader's mic stays,
+    // cannot kick yourself. Invites: the target is not in the guild, its invite cooldown runs, it declines invites
+    // for now, it is offline, it already sits in a channel.
     public const int GuildVoiceNotInGuild = 97001, GuildVoiceBadChannel = 97002, GuildVoiceBlocked = 97003;
     public const int GuildVoiceAlreadyInChannel = 97004, GuildVoiceNotInChannel = 97005, GuildVoiceNoPermission = 97006;
     public const int GuildVoiceCannotKickLeader = 97007, GuildVoiceNotBlocked = 97008;
-    public const int GuildVoiceTargetNotInGuild = 97011;
+    public const int GuildVoiceTargetNotInGuild = 97011, GuildVoiceInviteCooldown = 97025, GuildVoiceInviteDeclined = 97026;
+    public const int GuildVoiceTargetOffline = 97027, GuildVoiceTargetInChannel = 97028;
     public const int GuildVoiceFreeMode = 97016, GuildVoiceManagerNeedsNoApply = 97017, GuildVoiceAlreadyCanSpeak = 97018;
     public const int GuildVoiceAlreadyApplied = 97019, GuildVoiceNotApplied = 97020, GuildVoiceNotOrderMode = 97021;
-    public const int GuildVoiceReasonTooLong = 97024, GuildVoiceInviteCooldown = 97025, GuildVoiceInviteDeclined = 97026;
-    public const int GuildVoiceTargetOffline = 97027, GuildVoiceTargetAlreadyInChannel = 97028;
-    public const int GuildVoiceInAnotherChannel = 97029, GuildVoiceLeaderCannotMute = 97030, GuildVoiceInvitePending = 97031;
+    public const int GuildVoiceReasonTooLong = 97024, GuildVoiceInAnotherChannel = 97029, GuildVoiceLeaderCannotMute = 97030;
     public const int GuildVoiceCannotKickSelf = 97032;
+    // Tavern (ErrorCodeConfig 2551-2580, Localization_en 10630000750-779). Which refusal picks which code is (inferred)
+    // from the texts: room gone / not found, on the Blocks list, no permission, recipient left, data error, transfer to
+    // a blocked player, the player is muted, mic queue full, already / must be in the queue, the owner keeps the mic,
+    // recipient offline, other server, not blocked, no request needed, already / not applied, not muted, already in
+    // the room, room full, too quick, gift to yourself, transfer cooldown, name too long / invalid, not in a room,
+    // invalid topic / language.
+    public const int TavernCleared = 2551, TavernNotFound = 2552, TavernBlocked = 2553, TavernNoPermission = 2554;
+    public const int TavernRecipientLeft = 2555, TavernDataError = 2556, TavernTransferBlocked = 2557, TavernMuted = 2558;
+    public const int TavernMicFull = 2559, TavernAlreadyOnMic = 2560, TavernOwnerKeepsMic = 2561, TavernNotOnMic = 2562;
+    public const int TavernRecipientOffline = 2563, TavernOtherServer = 2564, TavernNotBlocked = 2566;
+    public const int TavernNoApplyNeeded = 2567, TavernAlreadyApplied = 2568, TavernNotApplied = 2569, TavernNotMuted = 2570;
+    public const int TavernAlreadyIn = 2571, TavernFull = 2572, TavernTooQuick = 2573, TavernGiftSelf = 2574;
+    public const int TavernTransferCooldown = 2575, TavernNameTooLong = 2576, TavernNameInvalid = 2577;
+    public const int TavernNotInRoom = 2578, TavernBadType = 2579, TavernBadLanguage = 2580;
     // Guild Caravan: ErrorCodeConfig 489-504; exact RPC-to-code selection is (inferred).
     public const int CaravanLoaded = 489, CaravanExpired = 490, CaravanOrderExpired = 491;
     public const int CaravanNotAsking = 492, CaravanCannotAsk = 493, CaravanRequestMissing = 494;

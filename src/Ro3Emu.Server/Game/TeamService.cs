@@ -29,6 +29,9 @@ public sealed partial class TeamService(SessionRegistry sessions, CharacterServi
     /// <summary>PublicParamConfig.TeamInviteLastTime (s): the client drops an invite after this too.</summary>
     private static readonly TimeSpan InviteLife = TimeSpan.FromSeconds(30);
 
+    /// <summary>PublicParamConfig.TeamExpBuffNum (‱) by the number of members on the same map.</summary>
+    internal static readonly int[] ExpBuff = [10000, 12500, 15000, 17500, 20000];
+
     private const int MaxHp = 101, MaxSp = 102;
 
     private sealed class Team
@@ -130,6 +133,13 @@ public sealed partial class TeamService(SessionRegistry sessions, CharacterServi
     {
         foreach (var handler in RosterChanged) await handler(roles);
     }
+
+    /// <summary>
+    /// ChatService.TeamChannelAllowed: a party's channel is its members'; an id that is no party (a Survivor team, whose ids are
+    /// small, while party ids start at 2^24) stays open.
+    /// </summary>
+    public bool ChannelAllowed(GameSession s, long teamId) =>
+        !_teams.ContainsKey(teamId) || s.Role is { } role && TeamOf(role.Id).TeamId == teamId;
 
     /// <summary>The party a role is in: (team id, leader), or (0, the role itself) when solo.</summary>
     public (long TeamId, long Leader) TeamOf(long role) =>

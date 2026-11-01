@@ -15,19 +15,20 @@ async function itemsPage() {
     ? table([
       { label: 'Item', grow: true, value: i => [itemName(i.id, i.name, i.quality, false, i.icon), variantsChip(i.variants)] },
       { label: 'ID', num: true, opt: true, value: i => mono(String(i.id)) },
-      { label: 'Type', value: i => [i.typeName, i.subType && h('span', { class: 'muted' }, ' · ' + i.subType)] },
+      { label: 'Type', shrink: true, value: i => [i.typeName, i.subType && h('span', { class: 'muted' }, ' · ' + i.subType)] },
       { label: 'Quality', opt: true, value: i => chip('q' + i.quality, i.qualityName) },
       { label: 'Level', num: true, value: i => i.level > 0 || i.maxLevel > 0 ? range(i.level, i.maxLevel) : h('span', { class: 'muted' }, '-') },
     ], result.items, { onrow: i => navigate('/items/' + i.id) })
     : emptyState('search', 'No item matches', 'Try part of the name, or fewer filters.');
-  return [pageHead({ crumbs: [{ href: '/', label: 'Home' }, { label: 'Items' }], title: 'Items',
+  return [pageHead({ crumbs: dbCrumbs({ label: 'Items' }), title: 'Items',
     subtitle: 'Every item in the game, from the server\'s own data.', actions: densityToggle() }),
   h('section', { class: 'card' }, h('div', { class: 'card-head' }, filters), rows,
     h('div', { class: 'card-foot' }, listPager(result, p => listHref('/items', { ...query, page: p }), 'item')))];
 }
 
 async function itemPage(id) {
-  const item = await api('GET', '/api/items/' + encodeURIComponent(id));
+  const [item, crafting] = await Promise.all([api('GET', '/api/items/' + encodeURIComponent(id)),
+    api('GET', '/api/items/' + encodeURIComponent(id) + '/crafting').catch(() => ({ from: [], into: [] }))]);
   const i = item.item;
   const several = item.variants.length > 1;
   const variantOf = id => item.variants.find(v => v.id === id);
@@ -64,7 +65,7 @@ async function itemPage(id) {
     : null;
   const picture = item.picture ? h('img', { class: 'picture', src: item.picture, alt: i.name, loading: 'lazy' }) : null;
   if (picture) picture.addEventListener('error', () => picture.closest('.card')?.remove(), { once: true });
-  return [pageHead({ crumbs: [{ href: '/', label: 'Home' }, { href: '/items', label: 'Items' }, { label: i.name }],
+  return [pageHead({ crumbs: dbCrumbs({ href: '/items', label: 'Items' }, { label: i.name }),
     title: i.name, art: thumb(i.icon, i.name, 'q' + i.quality, 'xl'), after: [chip('q' + i.quality, i.qualityName), chip('plain', i.typeName)],
     subtitle: variantLine(item.ids),
     meta: [['ID', mono(String(i.id))], ['Type', [i.typeName, i.subType ? ' · ' + i.subType : '']], ['Level', i.level > 0 ? num(i.level) : 'Any']] }),
@@ -73,7 +74,8 @@ async function itemPage(id) {
       card('Description', null, body(h('p', { class: 'desc' }, item.description || 'The game gives no description.'))),
       variants && card('Items of this name', null, variants, 'Drops and shops below are those of every item of this name.'),
       card('Dropped by', null, dropped, item.droppedBy.length ? 'Chance per kill that at least one drops; a player\'s level and class limits are not counted.' : null),
-      shops && card('Sold in shops', null, shops)),
+      shops && card('Sold in shops', null, shops),
+      recipeCards(crafting, i.id)),
     h('div', { class: 'span-4 stack' },
       picture && card(null, null, body(picture)),
       card('Item', null, body(facts([

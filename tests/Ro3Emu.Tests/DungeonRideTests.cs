@@ -36,6 +36,18 @@ public class DungeonRideTests
         Assert.Equal((3f, 10f, 10f), (at.X, at.Y, at.Z));
     }
 
+    [Theory]
+    [InlineData(-1f, 0.5f, new[] { 0f })]      // the first tick starts at the start
+    [InlineData(-1f, 11f, new[] { 0f, 5f })]   // a tick that comes late passes the corner first
+    [InlineData(0.5f, 4f, new float[0])]       // still on the first leg
+    [InlineData(4f, 9f, new[] { 5f })]
+    [InlineData(5f, 9f, new float[0])]         // the corner itself was the last tick's place
+    public void ALateTickStillPassesTheCornersItWalked(float from, float to, float[] corners)
+    {
+        var passed = DungeonService.RideCorners(Route, from, to).Select(c => (c.X, c.Y, c.Z)).ToArray();
+        Assert.Equal(corners.Select(m => DungeonService.RideAt(Route, m) is var a ? (a.X, a.Y, a.Z) : default), passed);
+    }
+
     [Fact]
     public void TheHeadingFollowsTheLegItIsOn()
     {

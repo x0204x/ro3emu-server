@@ -109,7 +109,7 @@ dotnet_diagnostic.CA1832.severity = suggestion
 dotnet_diagnostic.CA1836.severity = suggestion
 # 4: prefer Dictionary.Contains methods
 dotnet_diagnostic.CA1841.severity = suggestion
-# 377: use LoggerMessage delegates
+# 376: use LoggerMessage delegates
 dotnet_diagnostic.CA1848.severity = suggestion
 # 5: prefer TryGetValue
 dotnet_diagnostic.CA1854.severity = suggestion

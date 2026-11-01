@@ -211,13 +211,20 @@ public sealed class TowerTests : IAsyncLifetime
     {
         // PowerSuppressConfig: a power under 80% of floor 1's 6000 puts 5000001 (215/216 -10%) on its monsters.
         await using var alice = await InWorld("Alice");
-        await Eligible(alice, level: 33);
-        await OnLoop(async () =>
+        await Eligible(alice, level: 33); // floor 1's _iLevelLimit; at 99 the base power alone (12000) is past 110%
+        // The floor reads the published power (PowerService.Current), which follows the level-up within the service's
+        // 1 s throttle: wait for it, or a quiet run enters with level 1's power and a loaded one with level 33's.
+        var power = Service<PowerService>();
+        long published = 0;
+        for (var until = DateTime.UtcNow + Wait; ; await Task.Delay(50))
         {
-            var session = Session(alice);
-            using var held = await CharacterService.Lock(session);
-            await Service<PowerService>().PublishAsync(session, always: true);
-        });
+            var (level, now, computed) = await Service<GameLoop>().InvokeAsync(() => Task.FromResult((Session(alice).Progress!.Level,
+                PowerService.Total(PowerService.Current(Session(alice))), PowerService.Total(power.Compute(Session(alice)).Total))));
+            published = now;
+            if (level == 33 && now == computed) break;
+            Assert.True(DateTime.UtcNow < until, $"power {computed} never published (still {now})");
+        }
+        Assert.InRange(published, 1, 6000 * 80 / 100 - 1);
         var entered = await EnterFloor(alice, 1);
         Assert.Equal(2, entered.Monsters.Length);
         Assert.All(entered.Monsters, m => Assert.Equal(1200, m.Property.Single(p => p.Idx == 101).Data));
@@ -516,8 +523,19 @@ public sealed class TowerTests : IAsyncLifetime
         await alice.SendGameAsync(MsgId.Walk, new WalkReq { Pos = position, BStop = true, SpeedRate = 1 });
         await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = final.Uid });
         await staged.Task.WaitAsync(Wait);
-        await Task.Delay(200); // Let the refused write return before stopping automatic repeat casts.
-        await OnLoop(() => { Session(alice).Attack = null; return Task.CompletedTask; });
+        // Stop the automatic repeat casts (and the swing in flight), then wait until the refused write has given the
+        // staged lethal hit's 1 HP back (CombatService.RestoreUnpublishedLethalHit); a fixed 200 ms ran out under load.
+        await OnLoop(() =>
+        {
+            Session(alice).Attack = null;
+            if (Session(alice).SkillCast is { } swing) swing.Cancelled = true;
+            return Task.CompletedTask;
+        });
+        for (var until = DateTime.UtcNow + Wait; ; await Task.Delay(20))
+        {
+            if (await Service<GameLoop>().InvokeAsync(() => Task.FromResult(final.Hp == 1 || final.Dead))) break;
+            Assert.True(DateTime.UtcNow < until, "the refused kill never restored the monster's HP");
+        }
         hooks.Remove(stageNotice);
         Assert.False(final.Dead);
         Assert.Equal(1, final.Hp);

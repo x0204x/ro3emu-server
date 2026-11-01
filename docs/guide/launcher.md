@@ -51,6 +51,8 @@ local repository.
   "registerUrl": "https://account.example.com/register",
   "websiteUrl": "https://www.example.com/",
   "discordUrl": "https://discord.gg/example",
+  // 選用：伺服器對外公布的網頁面板；未設定就不顯示入口。
+  "panelUrl": "https://panel.example.com/",
   "allowedExternalHosts": [ "www.example.com", "discord.gg" ],
   "requireHttpsRepository": true,
   "requireSignedChannel": true,
@@ -67,6 +69,13 @@ For an isolated Tailscale/LAN lab, both trust flags may be `false`. A public pla
 a signed channel. `clientDirectory` defaults to `.` so a packaged launcher installs and starts `ro3.exe` beside
 `RO3Launcher.exe`. Players can still choose another folder in Settings; their saved choice wins. A split layout can
 opt in explicitly: `G:\RO3 test\RO3Emu\RO3Launcher.exe` plus `G:\RO3 test\Client\ro3.exe` uses `../Client`.
+
+`panelUrl` 對應上游 v1.0.25 的網頁面板入口，接受完整的 HTTP 或 HTTPS 網址。
+設定有效網址後，WPF 上方導覽列顯示「網頁面板」，點擊才以預設瀏覽器開啟。
+未設定或使用其他協定時不顯示；登入器不會探測玩家電腦、啟動本機伺服器或自行啟用面板。
+反向代理網址可配合伺服器的 `Ro3Emu:Panel:PublicUrl` 使用，兩邊應指向同一公開入口。
+面板網址只允許設定中的完整網址；其他公告連結仍套用原有 HTTPS 與主機允許清單。
+管理端也可明確執行 `RO3Emu.exe panel [address]`，查詢已啟動伺服器的面板並開啟瀏覽器。
 
 ## Publisher identity
 

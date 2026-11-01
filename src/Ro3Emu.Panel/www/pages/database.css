@@ -9,6 +9,12 @@
   --q5:#a55400; --q5-bg:#fff0d4;
   --q6:var(--red-ink); --q6-bg:var(--red-bg);
 }
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --q1:#b3b1d3; --q1-bg:rgba(236,235,255,.08); --q4:#c9a2ff; --q4-bg:rgba(170,110,255,.16); --q5:#ffb366; --q5-bg:rgba(255,150,50,.15);
+} }
+:root[data-theme="dark"]{
+  --q1:#b3b1d3; --q1-bg:rgba(236,235,255,.08); --q4:#c9a2ff; --q4-bg:rgba(170,110,255,.16); --q5:#ffb366; --q5-bg:rgba(255,150,50,.15);
+}
 
 /* pictures from the operator's own client (/img/), and the placeholder without one: the name's initial on a tint */
 .glyph{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:var(--r1);flex:none;

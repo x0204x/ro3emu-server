@@ -9,7 +9,7 @@ using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Game;
 namespace Ro3Emu.Tests;
 /// <summary>自造資料測真正建立／加入／計時／交付與持久化 owner；不呼叫 GM 完成或語音成功回呼。</summary>
-public sealed class TavernOwnerTests
+public sealed class LegacyTavernCompatibilityTests
 {
     private sealed class Clock(DateTimeOffset initial) : TimeProvider
     {
@@ -21,56 +21,44 @@ public sealed class TavernOwnerTests
     private static GameSession Session(SyntheticHost host, long id) => host.Service<SessionRegistry>().All().Single(s => s.Role?.Id == id);
     private static Task Loop(SyntheticHost host, Func<Task> action) => host.Service<GameLoop>().InvokeAsync(action);
     private static async Task Join(SyntheticHost host, GameSession session) =>
-        await Loop(host, () => host.Service<TavernService>().CreateAsync(session,
+        await Loop(host, () => host.Service<LegacyTavernService>().CreateAsync(session,
             new CreateBarRoomReq { BarRoomType = 1, LanguageType = 21, BarRoomName = "自造酒館" }));
 
     [Fact]
-    public async Task RoomLifecycleRequiresLeaseAndDirectoryCarriesRealSummaryBytes()
+    public async Task LegacyStayImportsOnceAndRetryNeverAddsTheSameSecondsTwice()
     {
         string fixture = Fixture();
         try
         {
             await using var host = await SyntheticHost.StartAsync(o => o.GameDataDir = fixture);
-            await using var alice = await host.InWorldAsync("TavernAlice");
-            await using var bob = await host.InWorldAsync("TavernBob");
-            var a = Session(host, (long)alice.Self!.Uuid); var b = Session(host, (long)bob.Self!.Uuid);
-            await Loop(host, () => host.Service<TavernService>().CreateAsync(a,
-                new CreateBarRoomReq { BarRoomType = 21, LanguageType = 1, BarRoomName = "錯置類型" }));
-            Assert.Equal(0, a.Tavern!.RoomId);
-            var rejected = CreateBarRoomResp.Parser.ParseFrom((await alice.Inbox.WaitAsync(e => e.IsGame(TavernService.Create), TimeSpan.FromSeconds(12))).Body);
-            Assert.Equal(ErrorCodes.FeatureUnavailable, rejected.Result);
-            await alice.SendGameAsync(TavernService.Create, new CreateBarRoomReq { BarRoomType = 1, LanguageType = 21, BarRoomName = "封包酒館" });
-            var create = CreateBarRoomResp.Parser.ParseFrom((await alice.Inbox.WaitAsync(e => e.IsGame(TavernService.Create), TimeSpan.FromSeconds(12))).Body);
-            Assert.Equal(0, create.Result); long room = create.Info.BarRoomSummary.BarRoomGuid; Assert.True(room > 0);
-            Assert.Equal(room, a.Tavern.RoomId);
-            await Join(host, a); Assert.Equal(room, a.Tavern.RoomId);
-            Assert.False(host.Service<TavernService>().RoomAllowed(b, room));
-            await bob.SendGameAsync(TavernService.Enter, new EnterBarRoomReq { BarRoomGuid = room });
-            var enter = EnterBarRoomResp.Parser.ParseFrom((await bob.Inbox.WaitAsync(e => e.IsGame(TavernService.Enter), TimeSpan.FromSeconds(12))).Body);
-            Assert.Equal(0, enter.Result); Assert.Equal(room, enter.Info.BarRoomSummary.BarRoomGuid);
-            await bob.SendGameAsync(TavernService.Get, new BarRoomGetReq());
-            var get = BarRoomGetResp.Parser.ParseFrom((await bob.Inbox.WaitAsync(e => e.IsGame(TavernService.Get), TimeSpan.FromSeconds(12))).Body);
-            Assert.Equal(0, get.Result); Assert.Equal(room, get.Info.BarRoomSummary.BarRoomGuid);
-            Assert.True(host.Service<TavernService>().RoomAllowed(b, room));
-            var party = host.App.Services.GetServices<IMicroService>().Single(service => service.Name == "PartyService");
-            var micro = new MicroSession(a.Channel, 999) { Account = a.Account };
-            var directory = Assert.IsType<Dictionary<string, object?>>(await party.InvokeAsync(micro, "getPartysSummary", new object?[] { 4, Array.Empty<object>(), Array.Empty<object>(), Array.Empty<object>(), 0, 20 }));
-            var counts = Assert.IsType<Dictionary<string, object?>>(await party.InvokeAsync(micro, "getSubPartysCountByType", new object?[] { a.Role!.Area.ToString(CultureInfo.InvariantCulture), 4 }));
-            var count = Assert.IsType<Dictionary<string, object?>>(Assert.Single(Assert.IsType<object[]>(counts["GroupCount"])));
-            Assert.Equal(1, count["SubType"]); Assert.Equal(1, count["Count"]);
-            var team = Assert.IsType<Dictionary<string, object?>>(await party.InvokeAsync(micro, "getPartysSummary", new object?[] { 1 }));
-            Assert.Empty(Assert.IsType<object[]>(team["SummaryList"]));
-            var row = Assert.IsType<Dictionary<string, object?>>(Assert.Single(Assert.IsType<object[]>(directory["SummaryList"])));
-            var summary = BarRoomSummary.Parser.ParseFrom(Assert.IsType<byte[]>(row["GameSummaryData"]));
-            Assert.Equal(room, summary.BarRoomGuid); Assert.Equal(2, summary.MemberList.Count);
-            Assert.Equal(1, summary.BarRoomType); Assert.Equal(21, summary.LanguageType);
-            await Loop(host, () => host.Service<TavernService>().ExitAsync(a, new ExitBarRoomReq { BarRoomGuid = room + 1 }));
-            Assert.True(host.Service<TavernService>().RoomAllowed(a, room));
-            await Loop(host, () => host.Service<TavernService>().ExitAsync(a, new ExitBarRoomReq { BarRoomGuid = room }));
-            Assert.False(host.Service<TavernService>().RoomAllowed(a, room));
-            await Loop(host, () => host.Service<TavernService>().ExitAsync(b, new ExitBarRoomReq { BarRoomGuid = room }));
-            var closed = (Dictionary<string, object?>)host.Service<TavernService>().Directory(new object?[] { 4 });
-            Assert.Empty(Assert.IsType<object[]>(closed["SummaryList"]));
+            await using var bot = await host.InWorldAsync("TavernMigration");
+            long role = (long)bot.Self!.Uuid;
+            var session = Session(host, role);
+            var roles = host.Service<RoleStore>();
+            var accounts = host.Service<AccountStore>();
+            var tavern = host.Service<TavernService>();
+            await Loop(host, async () =>
+            {
+                using var held = await CharacterService.Lock(session);
+                var legacy = new LegacyTavernService.Meter { DayEpoch = session.Daily!.DailyEpoch, ActiveMs = 600_000 };
+                var tx = roles.NewTransaction();
+                tx.RoleBlob(role, "tavern", JsonSerializer.SerializeToUtf8Bytes(legacy));
+                tx.RoleBlob(role, "barroom", []);
+                await roles.CommitAsync(tx, "test/legacy-import", _ => session.LegacyTavern = legacy);
+                tavern.Load(session);
+                Assert.Equal(600, session.Tavern!.TodaySeconds);
+                accounts.BeforeOwnedCommitForTest = label => label == "tavern/legacy-import"
+                    ? Task.FromException(new IOException("自造遷移提交故障")) : Task.CompletedTask;
+                try { await Assert.ThrowsAsync<IOException>(() => tavern.LoginAsync(session)); }
+                finally { accounts.BeforeOwnedCommitForTest = null; }
+                Assert.Empty(roles.LoadBarRoom(role)!);
+                await tavern.LoginAsync(session);
+                Assert.NotNull(session.LegacyTavern);
+                session.LegacyTavern.ActiveMs = 900_000;
+                tavern.Load(session);
+                Assert.Equal(600, session.Tavern!.TodaySeconds);
+                Assert.Equal(600, JsonSerializer.Deserialize<TavernService.RoleState>(roles.LoadBarRoom(role)!)!.TodaySeconds);
+            });
         }
         finally { Directory.Delete(fixture, true); }
     }
@@ -85,11 +73,11 @@ public sealed class TavernOwnerTests
             await using var bot = await host.InWorldAsync("TavernRoomRetry");
             var s = Session(host, (long)bot.Self!.Uuid); var accounts = host.Service<AccountStore>();
             accounts.BeforeOwnedCommitForTest = label => label == "tavern/join" ? Task.FromException(new IOException("自造房間提交故障")) : Task.CompletedTask;
-            try { await Assert.ThrowsAsync<IOException>(() => Join(host, s)); Assert.Equal(0, s.Tavern!.RoomId); }
+            try { await Assert.ThrowsAsync<IOException>(() => Join(host, s)); Assert.Equal(0, s.LegacyTavern!.RoomId); }
             finally { accounts.BeforeOwnedCommitForTest = null; }
-            await Join(host, s); long room = s.Tavern!.RoomId; Assert.True(room > 0);
-            await Join(host, s); Assert.Equal(room, s.Tavern.RoomId);
-            var directory = (Dictionary<string, object?>)host.Service<TavernService>().Directory(new object?[] { 4 });
+            await Join(host, s); long room = s.LegacyTavern!.RoomId; Assert.True(room > 0);
+            await Join(host, s); Assert.Equal(room, s.LegacyTavern.RoomId);
+            var directory = (Dictionary<string, object?>)host.Service<LegacyTavernService>().Directory(new object?[] { 4 });
             Assert.Single(Assert.IsType<object[]>(directory["SummaryList"]));
         }
         finally { Directory.Delete(fixture, true); }
@@ -105,23 +93,23 @@ public sealed class TavernOwnerTests
             await using var bot = await host.InWorldAsync("TavernRetry");
             long role = (long)bot.Self!.Uuid; var s = Session(host, role);
             Assert.Equal(TaskState.Running, s.Tasks!.Infos[2000].Status);
-            await Join(host, s); long start = s.Tavern!.AccountedAtMs;
+            await Join(host, s); long start = s.LegacyTavern!.AccountedAtMs;
             long beforeGoods = Goods(host, role);
             var accounts = host.Service<AccountStore>();
             accounts.BeforeOwnedCommitForTest = label => label == "tavern/time" ? Task.FromException(new IOException("自造酒館計時交易故障")) : Task.CompletedTask;
             try
             {
-                await Loop(host, async () => { clock.Advance(1200000); await Assert.ThrowsAsync<IOException>(() => host.Service<TavernService>().ReconcileAsync(s)); });
-                Assert.Equal(0, s.Tavern.ActiveMs); Assert.Equal(start, s.Tavern.AccountedAtMs);
+                await Loop(host, async () => { clock.Advance(1200000); await Assert.ThrowsAsync<IOException>(() => host.Service<LegacyTavernService>().ReconcileAsync(s)); });
+                Assert.Equal(0, s.LegacyTavern.ActiveMs); Assert.Equal(start, s.LegacyTavern.AccountedAtMs);
                 Assert.Equal(0, s.Tasks.CompleteTaskNum.GetValueOrDefault(2000)); Assert.Equal(beforeGoods, Goods(host, role));
             }
             finally { accounts.BeforeOwnedCommitForTest = null; }
-            await Loop(host, () => host.Service<TavernService>().ReconcileAsync(s));
-            Assert.Equal(1200000, s.Tavern.ActiveMs);
+            await Loop(host, () => host.Service<LegacyTavernService>().ReconcileAsync(s));
+            Assert.Equal(1200000, s.LegacyTavern.ActiveMs);
             Assert.Equal(1, s.Tasks.CompleteTaskNum[2000]);
             var persisted = DBTaskInfo.Parser.ParseFrom(host.Service<RoleStore>().LoadTasks(role)!);
             Assert.Equal(1, persisted.CompleteTaskNum[2000]); Assert.Equal(beforeGoods + 5, Goods(host, role));
-            await Loop(host, () => host.Service<TavernService>().ReconcileAsync(s));
+            await Loop(host, () => host.Service<LegacyTavernService>().ReconcileAsync(s));
             Assert.Equal(1, s.Tasks.CompleteTaskNum[2000]); Assert.Equal(beforeGoods + 5, Goods(host, role));
             await bot.DisposeAsync(); await host.RestartAsync();
             await using var again = await host.InWorldAsync("TavernRetry", create: false);
@@ -142,19 +130,19 @@ public sealed class TavernOwnerTests
             await using (var bot = await host.InWorldAsync("TavernDay"))
             {
                 role = (long)bot.Self!.Uuid; var s = Session(host, role); previousSession = s; await Join(host, s);
-                long oldDay = s.Tavern!.DayEpoch, room = s.Tavern.RoomId;
-                await Loop(host, async () => { clock.Advance(2000); await host.Service<TavernService>().ExitAsync(s, new ExitBarRoomReq { BarRoomGuid = room }); });
-                Assert.True(s.Tavern.DayEpoch > oldDay);
-                Assert.Equal(1000, s.Tavern.ActiveMs); Assert.Equal(0, s.Tavern.RoomId);
-                await Join(host, s); Assert.True(s.Tavern.RoomId > 0);
+                long oldDay = s.LegacyTavern!.DayEpoch, room = s.LegacyTavern.RoomId;
+                await Loop(host, async () => { clock.Advance(2000); await host.Service<LegacyTavernService>().ExitAsync(s, new ExitBarRoomReq { BarRoomGuid = room }); });
+                Assert.True(s.LegacyTavern.DayEpoch > oldDay);
+                Assert.Equal(1000, s.LegacyTavern.ActiveMs); Assert.Equal(0, s.LegacyTavern.RoomId);
+                await Join(host, s); Assert.True(s.LegacyTavern.RoomId > 0);
             }
             // Dispose 只代表客戶端 socket 關閉；先等伺服器觀察失聯，才推進自造時鐘。
             await ObservedLoss(host, previousSession);
             clock.Advance(600000); await host.RestartAsync();
             await using var again = await host.InWorldAsync("TavernDay", create: false);
             var loaded = Session(host, role);
-            Assert.Equal(0, loaded.Tavern!.RoomId); Assert.Empty(loaded.Tavern.Lease);
-            Assert.Equal(1000, loaded.Tavern.ActiveMs);
+            Assert.Equal(0, loaded.LegacyTavern!.RoomId); Assert.Empty(loaded.LegacyTavern.Lease);
+            Assert.Equal(1000, loaded.LegacyTavern.ActiveMs);
         }
         finally { Directory.Delete(fixture, true); }
     }
@@ -187,12 +175,12 @@ public sealed class TavernOwnerTests
             Assert.NotNull(session.Role); Assert.NotNull(host.Service<ReconnectService>().TicketOf(session)?.GraceUntil);
             clock.Advance(200000);
             Assert.Equal(Phonest.Proto.ConnectServerResp.Types.RespType.Reconnected, (await bot.ReconnectGameAsync()).Result);
-            clock.Advance(3000); await Loop(host, () => host.Service<TavernService>().ReconcileAsync(session));
-            Assert.Equal(6000, session.Tavern!.ActiveMs);
+            clock.Advance(3000); await Loop(host, () => host.Service<LegacyTavernService>().ReconcileAsync(session));
+            Assert.Equal(6000, session.LegacyTavern!.ActiveMs);
             await bot.DropGameAsync(BotDrop.Graceful); await ObservedLoss(host, session);
             clock.Advance(600000);
-            await Loop(host, () => host.Service<TavernService>().ReconcileAsync(session));
-            Assert.Equal(6000, session.Tavern.ActiveMs);
+            await Loop(host, () => host.Service<LegacyTavernService>().ReconcileAsync(session));
+            Assert.Equal(6000, session.LegacyTavern.ActiveMs);
             Assert.Equal(6, DBTaskInfo.Parser.ParseFrom(host.Service<RoleStore>().LoadTasks(session.Role!.Id)!).Infos[2000].CompleteNum[0]);
         }
         finally { Directory.Delete(fixture, true); }
@@ -214,8 +202,8 @@ public sealed class TavernOwnerTests
                 beforeGoods = Goods(host, role);
                 accounts.BeforeOwnedCommitForTest = label => label == "economy/cd13e/quest-award"
                     ? Task.FromException(new IOException("自造舊日獎勵交易故障")) : Task.CompletedTask;
-                await Loop(host, async () => { clock.Advance(1200000); await host.Service<TavernService>().ReconcileAsync(oldSession); });
-                Assert.Equal(1200000, oldSession.Tavern!.ActiveMs);
+                await Loop(host, async () => { clock.Advance(1200000); await host.Service<LegacyTavernService>().ReconcileAsync(oldSession); });
+                Assert.Equal(1200000, oldSession.LegacyTavern!.ActiveMs);
                 Assert.Equal(0, oldSession.Tasks!.CompleteTaskNum.GetValueOrDefault(2000));
                 Assert.Equal(beforeGoods, Goods(host, role));
                 // 真正 socket 離線且關閉寬限，等待完整交接後才移動日界；不手改任務完成值。
@@ -228,10 +216,10 @@ public sealed class TavernOwnerTests
             {
                 var current = Session(host, role);
                 Assert.Equal(beforeGoods + 5, Goods(host, role));
-                Assert.Equal(0, current.Tavern!.ActiveMs);
-                Assert.Equal(0, current.Tavern.RoomId);
+                Assert.Equal(0, current.LegacyTavern!.ActiveMs);
+                Assert.Equal(0, current.LegacyTavern.RoomId);
                 Assert.Equal(0, current.Tasks!.Infos[2000].CompleteNum[0]);
-                await Loop(host, () => host.Service<TavernService>().ReconcileAsync(current));
+                await Loop(host, () => host.Service<LegacyTavernService>().ReconcileAsync(current));
                 Assert.Equal(beforeGoods + 5, Goods(host, role));
             }
             await host.RestartAsync();
@@ -257,10 +245,10 @@ public sealed class TavernOwnerTests
                     ? Task.FromException(new IOException("自造酒館提交後套用故障")) : Task.CompletedTask;
                 try
                 {
-                    await Loop(host, async () => { clock.Advance(1200000); await Assert.ThrowsAsync<IOException>(() => host.Service<TavernService>().ReconcileAsync(session)); });
+                    await Loop(host, async () => { clock.Advance(1200000); await Assert.ThrowsAsync<IOException>(() => host.Service<LegacyTavernService>().ReconcileAsync(session)); });
                     Assert.Equal(Ro3Emu.Server.Game.Ownership.RoleOwnerState.RecoveryRequired, session.Owner!.State);
-                    Assert.Equal(0, session.Tavern!.ActiveMs);
-                    Assert.Equal(1200000, JsonSerializer.Deserialize<TavernService.Meter>(host.Service<RoleStore>().LoadTavern(role)!)!.ActiveMs);
+                    Assert.Equal(0, session.LegacyTavern!.ActiveMs);
+                    Assert.Equal(1200000, JsonSerializer.Deserialize<LegacyTavernService.Meter>(host.Service<RoleStore>().LoadTavern(role)!)!.ActiveMs);
                     Assert.Equal(1200, DBTaskInfo.Parser.ParseFrom(host.Service<RoleStore>().LoadTasks(role)!).Infos[2000].CompleteNum[0]);
                     Assert.Equal(beforeGoods, Goods(host, role));
                 }
@@ -270,7 +258,7 @@ public sealed class TavernOwnerTests
             await using var reloaded = await host.InWorldAsync("TavernApply", create: false);
             Assert.Equal(beforeGoods + 5, Goods(host, role));
             Assert.Equal(1, DBTaskInfo.Parser.ParseFrom(host.Service<RoleStore>().LoadTasks(role)!).CompleteTaskNum[2000]);
-            var current = Session(host, role); await Loop(host, () => host.Service<TavernService>().ReconcileAsync(current));
+            var current = Session(host, role); await Loop(host, () => host.Service<LegacyTavernService>().ReconcileAsync(current));
             Assert.Equal(beforeGoods + 5, Goods(host, role));
         }
         finally { Directory.Delete(fixture, true); }
@@ -291,8 +279,8 @@ public sealed class TavernOwnerTests
             clock.Advance(600000);
             await bot.EnterWorldAsync((await bot.CreateRoleAsync("TavernEmpty")).RoleBaseInfo.Id);
             var session = Session(host, (long)bot.Self!.Uuid); await Join(host, session);
-            await Loop(host, async () => { clock.Advance(1000); await host.Service<TavernService>().ReconcileAsync(session); });
-            Assert.Equal(1000, session.Tavern!.ActiveMs);
+            await Loop(host, async () => { clock.Advance(1000); await host.Service<LegacyTavernService>().ReconcileAsync(session); });
+            Assert.Equal(1000, session.LegacyTavern!.ActiveMs);
         }
         finally { Directory.Delete(fixture, true); }
     }

@@ -25,7 +25,7 @@ public readonly record struct VoiceMicOutcome(VoiceConnection[] Members, bool St
 /// helpers, which queue.
 /// </summary>
 public sealed class VoiceRooms(IOptions<ServerOptions> options, TeamService teams, GuildVoiceService guildVoice,
-    SessionRegistry sessions, ILogger<VoiceRooms> log) : IGameTicker
+    TavernService tavern, SessionRegistry sessions, ILogger<VoiceRooms> log) : IGameTicker
 {
     private static readonly TimeSpan SweepInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan VadSilence = TimeSpan.FromMilliseconds(300);
@@ -65,7 +65,8 @@ public sealed class VoiceRooms(IOptions<ServerOptions> options, TeamService team
             if (connection.RoomId == roomId && members != null && members.Contains(connection))
                 return new VoiceJoinOutcome(VoiceJoinCode.Ok, [], [], connection.MicOn, AlreadyIn: true);
             // A full room refuses before the connection leaves the room it is in.
-            if (members != null && members.Count >= options.Value.Voice.MaxRoomSize) return new VoiceJoinOutcome(VoiceJoinCode.Full, [], []);
+            int cap = new VoiceRoomKey(roomId).IsTavern ? options.Value.Voice.MaxTavernRoomSize : options.Value.Voice.MaxRoomSize;
+            if (members != null && members.Count >= cap) return new VoiceJoinOutcome(VoiceJoinCode.Full, [], []);
             var previousOthers = OthersLocked(connection);
             LeaveLocked(connection);
             if (members == null) _rooms[roomId] = members = new();
@@ -217,7 +218,7 @@ public sealed class VoiceRooms(IOptions<ServerOptions> options, TeamService team
         List<(VoiceConnection Connection, VoiceMicOutcome Mic)>? micChanged = null;
         List<(VoiceConnection Connection, long Room)>? silenced = null;
         long now = Environment.TickCount64;
-        // Asked before taking the lock: MicHeldOff reads TeamService and GuildVoiceService (its own lock), and nothing
+        // Asked before taking the lock: MicHeldOff reads TeamService, GuildVoiceService and TavernService (their own locks), and nothing
         // else may ever be locked while _sync is held.
         (VoiceConnection Connection, long Room)[] joined;
         lock (_sync) joined = _rooms.SelectMany(r => r.Value.Select(c => (c, r.Key))).ToArray();
@@ -246,15 +247,17 @@ public sealed class VoiceRooms(IOptions<ServerOptions> options, TeamService team
             foreach (var member in MembersOf(room)) member.SendVad(connection.RoleId, false);
     }
 
-    /// <summary>Whether <paramref name="role"/> may be in room <paramref name="key"/>: its party, or the guild voice
-    /// channel it sits in on the panel. Loop-owned reads (TeamService).</summary>
+    /// <summary>Whether <paramref name="role"/> may be in room <paramref name="key"/>: its party, the guild voice
+    /// channel it sits in on the panel, or the Tavern room it is a member of. Loop-owned reads (TeamService).</summary>
     public bool Belongs(long role, VoiceRoomKey key) => key.IsGuild
         ? guildVoice.IsSeated(role, key.GuildId, key.ChannelIndex)
+        : key.IsTavern ? tavern.IsMember(role, key.Value)
         : key.IsTeam && teams.TeamOf(role).TeamId == key.Value;
 
-    /// <summary>The mic the room may not hear: the party leader's forbidden-chat, or Order mode without a mic in a
-    /// guild channel.</summary>
-    public bool MicHeldOff(long role, long room) => room < 0 ? !guildVoice.MaySpeak(role) : teams.IsForbiddenChat(role);
+    /// <summary>The mic the room may not hear: the party leader's forbidden-chat, Order mode without a mic in a
+    /// guild channel, or a Tavern member the room's rules keep quiet (TavernService.MaySpeak).</summary>
+    public bool MicHeldOff(long role, long room) => room < 0 ? !guildVoice.MaySpeak(role)
+        : new VoiceRoomKey(room).IsTavern ? !tavern.MaySpeak(role, room) : teams.IsForbiddenChat(role);
 
     /// <summary>
     /// Re-validates every joined connection against SessionRegistry and <see cref="Belongs"/>: a session that is gone,

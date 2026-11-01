@@ -139,10 +139,18 @@ public sealed class PassPlayTests : IAsyncLifetime
         Assert.Fail("timed out: " + what);
     }
 
+    /// <summary>
+    /// The login's own pass event (NewActivityService.LoginAsync, detached) draws the day's challenges. Entering the
+    /// world does not wait for it: under load a test read no pass state yet, or no draw.
+    /// </summary>
+    private Task Drawn(BotClient bot) =>
+        Until(() => OnLoop(() => (Session(bot).ActivityRuntime?.PassPlay?.Day ?? 0) != 0), "the day's challenges drawn");
+
     [ClientDataFact]
     public async Task PremiumTrackIsFreeAndDailyActivityPaysPassExpAndProgress()
     {
         await using var alice = await InWorld("Alice");
+        await Drawn(alice);
         await Service<NewActivityService>().ReconcileAsync(Session(alice));
         var pass = await Pass(alice);
         Assert.True(pass.Premium); // no item 703 spent

@@ -165,6 +165,14 @@ internal static class Ui
         catch (Exception e) { SetupLog.Write("explorer: " + e.Message); }
     }
 
+    /// <summary>Opens an http(s) address in the default browser (Windows, when someone is there to see it).</summary>
+    public static void OpenUrl(string url)
+    {
+        if (!OperatingSystem.IsWindows() || !Interactive) return;
+        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })?.Dispose(); }
+        catch (Exception e) { SetupLog.Write("browser: " + e.Message); }
+    }
+
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern uint GetConsoleProcessList(uint[] processList, uint processCount);
 }

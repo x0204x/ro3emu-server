@@ -1,0 +1,126 @@
+/* The game database's other pages (pages/wiki.js and the pages it serves): only what app.css and database.css have no
+   component for, built from their tokens. */
+
+/* game texts: the values the game colours */
+.runs .hl{font-weight:700;color:var(--blue-ink)}
+.desc .runs{white-space:pre-line}
+
+/* an item and its count */
+.amounts{display:flex;flex-wrap:wrap;gap:var(--s1) var(--s2)}
+.amount{display:inline-flex;align-items:center;gap:var(--s1);max-width:100%;min-height:28px;padding:0 var(--s2) 0 2px;border-radius:var(--r1);
+  background:var(--surface-sub);border:1px solid var(--line-soft);font-size:var(--t-sm);font-weight:700}
+.amount .thumb,.amount .glyph{width:22px;height:22px;margin:0}
+.amount span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.amount .x{color:var(--ink);font-variant-numeric:tabular-nums}
+a.amount:hover{border-color:var(--line-strong)}
+.amount .chip{height:18px;margin-left:var(--s1)}
+.stat{display:inline-block;margin-right:var(--s3);white-space:nowrap}
+.stat b{font-variant-numeric:tabular-nums}
+
+/* the hub */
+.hub{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:var(--gutter)}
+.hub-tile{display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-rows:auto auto;gap:var(--s1) var(--s3);align-items:center;height:100%;
+  padding:var(--s4);transition:border-color .15s,box-shadow .15s}
+.hub-tile:hover,.hub-tile:focus-visible{border-color:var(--line-strong);box-shadow:var(--shadow-2)}
+.hub-icon{grid-row:span 2;display:grid;place-items:center;width:44px;height:44px;border-radius:var(--r2);background:var(--blue-bg);color:var(--blue-ink);font-size:22px}
+.hub-tile b{font-size:var(--t-lg)}
+
+/* elements */
+.el{display:inline-block;min-width:52px;padding:2px var(--s2);border-radius:var(--r1);font:700 var(--t-sm)/1.4 var(--body);text-align:center;
+  font-variant-numeric:tabular-nums}
+.el.even{color:var(--faint)}
+.el.up1{background:var(--amber-bg);color:var(--amber-ink)}
+.el.up2{background:var(--red-bg);color:var(--red-ink)}
+.el.down1{background:var(--blue-bg);color:var(--blue-ink)}
+.el.down2{background:var(--grey-bg);color:var(--muted)}
+.el-matrix th[scope="row"]{position:sticky;left:0;background:var(--surface-sub);font:700 var(--t-sm)/1 var(--body);text-transform:none;letter-spacing:0;color:var(--ink)}
+.el-matrix td{padding:0 var(--s2)}
+.el-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s1) var(--s4)}
+.el-list li{display:flex;align-items:center;justify-content:space-between;gap:var(--s2);padding:var(--s1) 0;border-bottom:1px solid var(--line-soft)}
+
+/* cards */
+.tiers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s3)}
+.tier{display:flex;flex-direction:column;gap:var(--s2);padding:var(--s3);border:1px solid var(--line-soft);border-radius:var(--r2);background:var(--surface-sub)}
+.tier-head,.tier-foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--s2);font-size:var(--t-sm)}
+.tier-foot{margin-top:auto;padding-top:var(--s2);border-top:1px solid var(--line-soft);color:var(--muted)}
+.stars{color:var(--amber-ink);letter-spacing:.08em;white-space:nowrap}
+.effects{display:grid;gap:var(--s1);font-size:var(--t-sm)}
+.effects li{padding-left:var(--s3);position:relative}
+.effects li::before{content:"";position:absolute;left:0;top:.6em;width:5px;height:5px;border-radius:50%;background:var(--faint)}
+.effects.flash li::before{background:var(--amber)}
+.card-rules{display:grid;gap:var(--s1)}
+.card-art{max-height:420px;width:auto}
+
+/* recipes */
+.recipes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--gutter);margin-top:var(--gutter)}
+.card-body>.recipes{margin-top:0}
+.recipe{display:flex;flex-direction:column;gap:var(--s2);padding:var(--s4)}
+.recipe-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:var(--s3)}
+.recipe-head b{display:block;font-size:var(--t-lg);overflow-wrap:anywhere}
+.recipe .label{margin-top:var(--s1)}
+.outputs{display:grid;gap:var(--s1)}
+.outputs li{display:flex;align-items:center;gap:var(--s2);min-width:0;padding:2px var(--s2);border-radius:var(--r1)}
+.outputs li>b{margin-left:auto;font-variant-numeric:tabular-nums}
+.outputs li.here{background:var(--blue-bg)}
+.recipe-facts{display:flex;flex-wrap:wrap;gap:var(--s1) var(--s4);margin-top:auto;padding-top:var(--s2);border-top:1px solid var(--line-soft);font-size:var(--t-sm)}
+.recipe-facts div{display:flex;gap:var(--s1)}
+.recipe-facts dt{color:var(--muted)}
+.recipe-facts dd{font-weight:700}
+
+/* classes and skill trees */
+.class-art{display:grid;place-items:center;padding:var(--s2);border-radius:var(--r1);background:var(--surface-sub)}
+.map-tiles.narrow{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
+.line{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2)}
+.line .sep{color:var(--faint)}
+.class-big{margin-top:var(--s4);max-height:240px;width:auto}
+.skill-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:var(--s2)}
+.skill-cell{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;padding:var(--s2) 2px;border:1px solid var(--line-soft);border-radius:var(--r2);
+  text-align:center;background:var(--surface)}
+a.skill-cell:hover,a.skill-cell:focus-visible{border-color:var(--line-strong);background:var(--hover)}
+.skill-cell.passive{background:var(--surface-sub)}
+.skill-cell.empty{border-style:dashed;background:none;min-height:96px}
+.skill-cell .n{width:100%;font-size:var(--t-xs);font-weight:700;line-height:1.25;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.skill-cell .lv{font-size:11px;color:var(--muted)}
+.reqs{display:inline-flex;flex-wrap:wrap;justify-content:flex-end;gap:var(--s1) var(--s3)}
+.reqs .excl span{color:var(--red-ink)}
+.skill-list{display:grid;gap:var(--s4)}
+.skill-list li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--s3);align-items:start}
+.skill-list .skill-name{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2);margin-bottom:var(--s1)}
+
+/* pets */
+.pet-art{background:var(--surface-sub)}
+.pet-art .thumb.fill{object-fit:cover}
+
+/* the calendar */
+.week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:var(--s2)}
+.day{min-width:0;padding:var(--s2);border:1px solid var(--line-soft);border-radius:var(--r2);background:var(--surface-sub)}
+.day.today{background:var(--blue-bg);border-color:var(--blue-line)}
+.day h3{margin-bottom:var(--s2);font:700 var(--t-sm)/1.3 var(--body)}
+.day ul{display:grid;gap:var(--s1)}
+.day li{display:grid;gap:0;font-size:var(--t-xs)}
+.day .t{color:var(--muted)}
+.day .n{font-weight:700;overflow-wrap:anywhere}
+.countdown{font-variant-numeric:tabular-nums}
+.glyph.event{background:var(--amber-bg);color:var(--amber-ink)}
+.hint.flush{display:flex;align-items:center;gap:var(--s2);margin:0}
+.fn{display:inline-flex;flex-wrap:wrap;gap:var(--s1)}
+
+@media (max-width:1080px){
+  .week{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
+@media (max-width:860px){
+  .recipes,.tiers{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:600px){
+  .week{grid-template-columns:minmax(0,1fr)}
+  .skill-grid{gap:var(--s1)}
+  .skill-cell{padding:var(--s1) 0}
+  .skill-cell .thumb.lg,.skill-cell .glyph.lg{width:32px;height:32px}
+  .skill-cell .n{display:none}
+  .skill-cell.empty{min-height:56px}
+  .el-list{grid-template-columns:minmax(0,1fr)}
+  .hub{grid-template-columns:minmax(0,1fr)}
+}
+
+/* the calendar's activity pictures are wide banners */
+.thumb.event{width:48px;height:28px;object-fit:cover}

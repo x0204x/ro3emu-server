@@ -74,7 +74,7 @@ internal static partial class Flows
                 "Start RO3Emu.exe with --client \"<folder with ro3.exe>\", or run RO3Emu.exe install to download the game.");
         Ui.Warn("No Ragnarok 3 game folder was found on this PC.");
         Ui.Info("[1] I have the game: pick its folder (the one with ro3.exe)");
-        if (offerInstall) Ui.Info("[2] Download the game from the official Genesis servers (about 24 GB)");
+        if (offerInstall) Ui.Info("[2] Download the game from Genesis' update servers (about 24 GB)");
         Ui.Info("[3] Quit");
         var answer = Ui.Ask("Your choice:", "1");
         if (answer == "2" && offerInstall)
@@ -570,6 +570,56 @@ internal static partial class Flows
         Ui.Reveal(zip);
         return 0;
     }
+
+    /// <summary>How long RO3Emu.exe panel and the launcher wait for a panel to answer.</summary>
+    internal static readonly TimeSpan PanelTimeout = TimeSpan.FromSeconds(3);
+
+    /// <summary>
+    /// RO3Emu.exe panel [address]: the web panel of the server on this PC (the ports given, as start uses them), or of
+    /// the server at the address, the same link as the launcher's Web panel entry. Printed, and opened in the browser.
+    /// </summary>
+    public static async Task<int> PanelAsync(Options options)
+    {
+        Ui.Title("RO3Emu - web panel");
+        string? url;
+        if (options.Positional.FirstOrDefault() is { } address)
+        {
+            var serverUrl = ServerUrl(address)
+                ?? throw new SetupException($"'{address}' is not a server address.", "Use the server's address, for example RO3Emu.exe panel 203.0.113.10");
+            var candidates = await PanelLink.JoinCandidatesAsync(serverUrl, PanelTimeout);
+            url = await PanelLink.FirstAnsweringAsync(candidates, PanelTimeout);
+            if (url == null)
+                return PanelMissing($"The server at {serverUrl} has not shared its web panel (nothing answers on {string.Join(" or ", candidates)}).",
+                    "Ask the server owner for the panel's address.");
+        }
+        else
+        {
+            url = LocalPanelUrl(options.Ports, host: false);
+            if (url == null) return PanelMissing("The web panel is off (--no-panel).", "Run RO3Emu.exe panel without --no-panel.");
+            using var http = new HttpClient { Timeout = PanelTimeout };
+            if (!await PanelLink.AnswersAsync(http, url))
+                return await ServerProcess.Answers(http, options.Ports.Http)
+                    ? PanelMissing($"Your server runs, but its web panel does not answer on {url}.",
+                        "Start the server without --no-panel (or Ro3Emu:Panel:Enabled=false), or give its --panel-port.")
+                    : PanelMissing($"No server runs on this PC (nothing answers on port {options.Ports.Http}).",
+                        "Start it with RO3Emu.exe start or the launcher's Play, then run RO3Emu.exe panel again. Another server: RO3Emu.exe panel <address>.");
+        }
+        Ui.Ok(url);
+        Ui.OpenUrl(url);
+        return 0;
+    }
+
+    private static int PanelMissing(string message, string fix)
+    {
+        Ui.Warn(message);
+        Ui.Info("What to do: " + fix);
+        return 1;
+    }
+
+    /// <summary>The web panel of the bundled server on this PC as RO3Emu starts it: its port, and the bind address from the server's own settings.</summary>
+    internal static string? LocalPanelUrl(ServerProcess.Ports ports, bool host) =>
+        PanelLink.Local(ports, PanelLink.BindAddress(ServerProcess.FindExecutable() is { } exe ? Path.GetDirectoryName(exe) : null,
+            host ? "Production" : "Development", Environment.GetEnvironmentVariable));
 
     /// <summary>This PC's LAN IPv4 address: an up interface with a gateway, not loopback or a virtual adapter.</summary>
     public static string? LanAddress()

@@ -168,6 +168,8 @@ internal sealed class RoleSchemaPlan : DbPlan
         SchemaSql.AddColumn(db, tx, "role", "emoji_info", "BLOB");
         // Serialized ShopService.GiftState (82335/82336 Fashion-commodity gift orders sent and received).
         SchemaSql.AddColumn(db, tx, "role", "gifts", "BLOB");
+        // JSON TavernService.RoleState (Star Power, active days and today's time in a Tavern room; AUTO_SYNC 5043).
+        SchemaSql.AddColumn(db, tx, "role", "barroom", "BLOB");
         // Unix seconds of a deletion; deleted roles are kept (items, progress) but no longer listed or selectable.
         SchemaSql.AddColumn(db, tx, "role", "deleted_time", "INTEGER NOT NULL DEFAULT 0");
         SchemaSql.Execute(db, tx, """

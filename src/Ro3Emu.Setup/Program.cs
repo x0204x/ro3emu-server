@@ -22,6 +22,8 @@ internal static class Program
                                --cluster-name <name>  name above the server list (default: RO3Emu)
                                --area-name <name>     name of the server inside the cluster (default: Prontera)
           join <address>     play on someone else's server: host, host:port or http://host:port
+          panel [address]    open the server's web panel in your browser (and print its address): the
+                             server on this PC (its --panel-port), or the server at the address
           install [folder]   download the game from Genesis' update servers (about 24 GB), every file
                              checked against Genesis' signature
           update [folder]    bring the game up to date from Genesis' update servers (only changed files)
@@ -94,6 +96,7 @@ internal static class Program
                 "start" => await Flows.PlayLocalAsync(options, host: false),
                 "host" => await Flows.PlayLocalAsync(options, host: true),
                 "join" => await Flows.JoinAsync(options),
+                "panel" => await Flows.PanelAsync(options),
                 "restore" => Flows.Restore(options),
                 "check" => Flows.Check(options),
                 "export" => Flows.Export(options),
@@ -162,7 +165,7 @@ internal sealed class Options
     public bool NoIcons { get; private set; }
     public ServerProcess.Ports Ports { get; private set; } = new();
 
-    private static readonly HashSet<string> Commands = ["start", "host", "join", "restore", "check", "export", "install", "update", "diag", "help"];
+    private static readonly HashSet<string> Commands = ["start", "host", "join", "panel", "restore", "check", "export", "install", "update", "diag", "help"];
 
     public static Options Parse(string[] args)
     {

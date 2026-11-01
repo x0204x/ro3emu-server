@@ -22,6 +22,7 @@ public sealed class NativeClientDataTests : IDisposable
         File.WriteAllText(Path.Combine(_root, "config", "MapResource.json"), "{}");
         File.WriteAllText(Path.Combine(_root, "msgtable.tsv"), "synthetic");
         File.WriteAllText(Path.Combine(_root, "loc_en.tsv"), "synthetic");
+        File.WriteAllText(Path.Combine(_root, "client-scenes.json"), "{\"Missing\":[]}");
         File.WriteAllText(Path.Combine(_root, "config", "test.json"), "{}");
         WriteExport();
     }

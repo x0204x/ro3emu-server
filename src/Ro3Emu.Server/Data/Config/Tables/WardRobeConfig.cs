@@ -16,4 +16,5 @@ public readonly partial record struct WardRobeConfig(JsonElement Row)
     [ConfigField("_iSystemID")] public partial long SystemId { get; }
     [ConfigField("_iType")] public partial long Type { get; }
     [ConfigField("_kMaterial")] public partial long[][] Material { get; }
+    [ConfigField("_kIconB")] public partial string IconB { get; }
 }

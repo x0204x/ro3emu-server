@@ -12,8 +12,8 @@ namespace Ro3Emu.Panel;
 /// <summary>
 /// The web control panel (docs/guide/panel.md): the static site and its JSON API, on the panel's own port. Requests
 /// that arrive on that port never reach the server's other endpoints, and the server's endpoints are not served here.
-/// Public pages, a player area behind a login with the game account, and an admin area for the accounts listed in
-/// Ro3Emu:GmAccounts. Every change goes through <see cref="IPanelBackend"/>.
+/// Public pages, a player area behind a login with the game account, and an admin area for the staff roles
+/// (Moderator, GM, Admin: <see cref="IPanelOperations.RoleOf"/>). Every change goes through <see cref="IPanelBackend"/>.
 /// </summary>
 public sealed partial class PanelSite
 {
@@ -22,7 +22,8 @@ public sealed partial class PanelSite
     private const int MaxBody = 16 * 1024;
     /// <summary>The site's own pages: the first path segment of every route app.js draws.</summary>
     private static readonly HashSet<string> Pages = new(StringComparer.Ordinal)
-    { "", "online", "rankings", "news", "login", "register", "account", "admin", "items", "monsters", "maps", "characters" };
+    { "", "online", "rankings", "news", "login", "register", "account", "admin", "items", "monsters", "maps", "characters",
+        "database", "cards", "crafting", "classes", "skills", "pets", "mounts", "shops", "elements", "events", "mvps", "profiles", "guilds", "territory", "market" };
 
     /// <summary>
     /// No inline script or style anywhere, so the policy allows only the site's own files. frame-ancestors and the
@@ -36,23 +37,32 @@ public sealed partial class PanelSite
     private readonly PanelOptions _options;
     private readonly IPanelBackend _backend;
     private readonly IPanelAdminTools _tools;
+    private readonly IPanelOperations _ops;
+    private readonly IPanelUpdates _updates;
     private readonly TimeProvider _clock;
     private readonly ILogger<PanelSite> _log;
     private readonly PanelSessions _sessions;
+    private readonly PanelSignUps _signUps;
     private readonly PanelAssets _assets = new();
     private readonly IPAddress[] _proxies;
     private readonly Route[] _routes;
 
-    public PanelSite(PanelOptions options, IPanelBackend backend, IPanelAdminTools tools, TimeProvider clock, ILogger<PanelSite> log)
+    public PanelSite(PanelOptions options, IPanelBackend backend, IPanelAdminTools tools, IPanelOperations ops, IPanelUpdates updates,
+        TimeProvider clock, ILogger<PanelSite> log)
     {
         _options = options;
         _backend = backend;
         _tools = tools;
+        _ops = ops;
+        _updates = updates;
         _clock = clock;
         _log = log;
         _sessions = new PanelSessions(clock, TimeSpan.FromHours(Math.Max(1, options.SessionHours)));
+        _signUps = new PanelSignUps(options, clock);
         _proxies = [.. options.TrustedProxies.Select(IPAddress.Parse).Select(Normalize)];
-        _routes = [.. PublicRoutes(), .. PlayerRoutes(), .. AdminRoutes(), .. ToolRoutes(), .. DatabaseRoutes(), .. CharacterRoutes()];
+        _routes = [.. PublicRoutes(), .. PlayerRoutes(), .. AdminRoutes(), .. ToolRoutes(), .. DatabaseRoutes(), .. CharacterRoutes(),
+            .. SecurityRoutes(), .. StaffRoutes(), .. ReportRoutes(), .. CharacterActionRoutes(), .. ServerRoutes(), .. UpdateRoutes(), .. PlayerPageRoutes(), .. WikiRoutes(),
+            .. SuspicionRoutes()];
     }
 
     /// <summary>
@@ -131,7 +141,7 @@ public sealed partial class PanelSite
     private const string ImagePrefix = "/img/";
 
     /// <summary>The picture folders the data export writes (DataExport IconExport) and the names it gives the files.</summary>
-    [GeneratedRegex(@"^/img/(items|monsters|classes|maps|skills)/[A-Za-z0-9_\-]+\.png$")]
+    [GeneratedRegex(@"^/img/(items|monsters|classes|maps|skills|pets|npcs|mounts|events|guilds|titles|achievements)/[A-Za-z0-9_\-]+\.png$")]
     private static partial Regex ImagePath();
 
     /// <summary>
@@ -165,7 +175,9 @@ public sealed partial class PanelSite
 
     // ---------------------------------------------------------------- the API
 
-    private enum Access { Public, Player, Admin }
+    /// <summary>Who may call a route: anyone, a signed-in player, or a staff role and the roles above it. Admin is the
+    /// Admin role only.</summary>
+    private enum Access { Public, Player, Moderator, Gm, Admin }
 
     /// <summary>One API route; a "{}" segment matches any one segment and is handed to the handler.</summary>
     private sealed record Route(string Method, string[] Segments, Access Access, Func<Call, Task<Reply>> Handler);
@@ -175,14 +187,18 @@ public sealed partial class PanelSite
     {
         public static Reply Ok(object body) => new(StatusCodes.Status200OK, body);
         public static Reply Error(int status, string message) => new(status, new { error = message });
+        /// <summary>The handler wrote the response itself (a file download).</summary>
+        public static Reply Sent => new(0, null);
     }
 
-    /// <summary>A request on its way through the API: the signed-in account, if any, and the route's arguments.</summary>
-    private sealed class Call(HttpContext context, string? account, bool admin, string? sessionId, string[] args, IPAddress? client)
+    /// <summary>A request on its way through the API: the signed-in account, if any, its staff role and the route's arguments.</summary>
+    private sealed class Call(HttpContext context, string? account, PanelRole role, string? sessionId, string[] args, IPAddress? client)
     {
         public HttpContext Context { get; } = context;
         public string? Account { get; } = account;
-        public bool Admin { get; } = admin;
+        public PanelRole Role { get; } = role;
+        /// <summary>Any staff role: what the admin area shows read-only (an account behind a character, every sheet).</summary>
+        public bool Admin => Role != PanelRole.None;
         public string? SessionId { get; } = sessionId;
         public string[] Args { get; } = args;
         public IPAddress? Client { get; } = client;
@@ -222,6 +238,7 @@ public sealed partial class PanelSite
                 reply = Reply.Error(StatusCodes.Status500InternalServerError, "The server could not finish this request.");
             }
         }
+        if (reply.Status == 0) return;
         response.StatusCode = reply.Status;
         if (reply.Body != null) await response.WriteAsJsonAsync(reply.Body, reply.Body.GetType(), Json, context.RequestAborted);
     }
@@ -240,9 +257,9 @@ public sealed partial class PanelSite
             account = null;
         }
         if (account == null) sessionId = null;
-        bool admin = account != null && _backend.IsAdmin(account);
+        var role = account == null ? PanelRole.None : await StaffRoleAsync(account);
         if (route.Access != Access.Public && account == null) return Reply.Error(StatusCodes.Status401Unauthorized, "Please log in.");
-        if (route.Access == Access.Admin && !admin) return Reply.Error(StatusCodes.Status403Forbidden, "Only an admin can open this page.");
+        if (Needed(route.Access) is { } needed && role < needed) return Reply.Error(StatusCodes.Status403Forbidden, Refusal(needed));
         if (route.Method == "POST")
         {
             if (!SameOrigin(context.Request) || !PanelSessions.Matches(context.Request.Headers[CsrfHeader], ExpectedCsrf(context, sessionId)))
@@ -250,7 +267,7 @@ public sealed partial class PanelSite
             if (!_backend.Accepting) return Reply.Error(StatusCodes.Status503ServiceUnavailable, "The server is stopping.");
         }
         string[] args = [.. route.Segments.Zip(segments).Where(p => p.First == "{}").Select(p => Uri.UnescapeDataString(p.Second))];
-        return await route.Handler(new Call(context, account, admin, sessionId, args, ClientAddress(context)));
+        return await route.Handler(new Call(context, account, role, sessionId, args, ClientAddress(context)));
     }
 
     /// <summary>The token a POST must carry: bound to the session cookie, or to the visitor cookie before a login.</summary>

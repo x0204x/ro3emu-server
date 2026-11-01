@@ -126,8 +126,10 @@ public sealed class BotInbox
                     _consumed.Add(hit);
                     return hit;
                 }
+                // Checked under the same lock as the scan: a connection's end adds its Disconnect event and then fails,
+                // so a failure seen here comes after any event it was meant to deliver.
+                if (_failure != null) throw new InvalidOperationException("bot connection failed", _failure);
             }
-            if (_failure != null) throw new InvalidOperationException("bot connection failed", _failure);
             var left = deadline - DateTime.UtcNow;
             if (left <= TimeSpan.Zero || !await _signal.WaitAsync(left)) throw new TimeoutException("bot: expected server message did not arrive");
         }

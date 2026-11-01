@@ -6,6 +6,7 @@ using Romsg;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Accounts.Persistence;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 
 namespace Ro3Emu.Server.Game;
 
@@ -337,7 +338,7 @@ public sealed partial class PetService
 
     /// <summary>
     /// 33311: owned, unique pets; stale source rejected; destination occupant swaps into source, or returns to roster.
-    /// Slot limits enforce both PublicParam levels and PetSetLimitConfig conditions (inferred conservative intersection).
+    /// Slot limits are the pet window's: PetSetLimitConfig conditions (SlotOpen).
     /// </summary>
     public async Task LineupAsync(GameSession s, PetStateUpdateReq req)
     {
@@ -371,14 +372,21 @@ public sealed partial class PetService
 
     private static MapField<int, int> Slots(DBPetSetUpPlan plan, int source) => source == 1 ? plan.SetUpPets : plan.SupportPets;
 
-    private bool SlotOpen(GameSession s, int source, int slot)
-    {
-        int[] levels = source == 1 ? [33, 33, 45, 50] : [40, 55, 60, 65, 70]; // PublicParamConfig Pet*FieldUnlockLv.
-        return slot >= 1 && slot <= levels.Length && s.Progress!.Level >= levels[slot - 1]
-            && _data.Row("PetSetLimitConfig", slot) is { } row
-            && GameData.Int(row, source == 1 ? "_iCondition1" : "_iCondition2") is var condition and > 0
-            && _functions.ConditionMet(s, condition);
-    }
+    /// <summary>
+    /// A lineup (source 1) or support (source 2) slot is open as the pet window shows and fills it: slots 1 to
+    /// PublicParamConfig.PetFightFieldNum / PetAssistFieldNum, each open once its PetSetLimitConfig row's _iCondition1 /
+    /// _iCondition2 holds, 0 being none (LC_System_Pet._updateLineUpSlotRedDot through Lua_CFG_PetSetLimitConfig
+    /// GetSetUpCondition / GetSupportCondition; UI_Sys_Pet_LineUpWidgetCtrl._onSetUpDrop / _onSupportDrop refuse a drop on
+    /// a closed slot with the same check, and the locked slot names the condition: "Base Level reaches 47" is support
+    /// slot 3's 77200002). Slot indices are 1-based (PutOnPet sends the widget's index). PublicParamConfig's
+    /// PetFightFieldUnlockLv / PetAssistFieldUnlockLv disagree with the conditions (support 40/55/60/65/70 against
+    /// 39/42/47/50/55): only an uncalled LC_PetHelper.GetUnlockedSetUpCount and the unused UI_Sys_Pet_LineUp_AvatarWidget
+    /// read them, and requiring them as well refused support slot 2 below level 55 ("Invalid support slot").
+    /// </summary>
+    private bool SlotOpen(GameSession s, int source, int slot) =>
+        slot >= 1 && slot <= (source == 1 ? PetParam("PetFightFieldNum", 4) : PetParam("PetAssistFieldNum", 5))
+        && PetSetLimitConfig.Get(_data, slot) is { } limit
+        && _functions.ConditionMet(s, source == 1 ? limit.Condition1 : limit.Condition2);
 
     public async Task SwitchAsync(GameSession s, PetSwitchPlanReq req)
     {

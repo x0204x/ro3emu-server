@@ -40,7 +40,7 @@ public sealed partial class CharacterService(RoleStore roles, ItemStore itemStor
 
     private const int ItemTypeCurrency = 1;
     private const int ItemTypeEquip = 5;
-    private const int ZenyId = 1;
+    internal const int ZenyId = 1;
     private const int BaseExpItem = 100;
     private const int JobExpItem = 101;
 
@@ -68,7 +68,11 @@ public sealed partial class CharacterService(RoleStore roles, ItemStore itemStor
     private static readonly int[] AoiProperties = [MaxHp, Hp, MaxSp, Sp, Speed, Lv, 2003];
 
     /// <summary>What a new character finds in the bag: Beginner Potions, a Novice Dagger, a Cotton Shirt, some Zeny.</summary>
-    private static readonly (int Entry, int Count)[] StarterKit = [(1000000, 20), (2010121, 1), (2550120, 1), (ZenyId, 1000)];
+    internal static readonly (int Entry, int Count)[] StarterKit = [(1000000, 20), (2010121, 1), (2550120, 1), (ZenyId, 1000)];
+
+    /// <summary>The ledger receipt of a starter kit (CharacterFamilyEconomy: its goods are StarterGrant sources). A
+    /// character with the kit and no such receipt got it before the kit was recorded (PanelBackend's duplication check).</summary>
+    internal const string StarterKitEconomyKind = "cd13a/character-starter-kit";
 
     // ---- helpers ----
 

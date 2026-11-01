@@ -13,4 +13,7 @@ public readonly partial record struct PetBaseConfig(JsonElement Row)
     [ConfigField("_iQuality")] public partial long Quality { get; }
     [ConfigField("_kDecompose")] public partial long[] Decompose { get; }
     [ConfigField("_kMultiverseArray")] public partial JsonElement? MultiverseArray { get; }
+    [ConfigField("_iName")] public partial long[] Name { get; }
+    [ConfigField("_kHeadPic")] public partial string HeadPic { get; }
+    [ConfigField("_kEncyclopediaPic")] public partial string EncyclopediaPic { get; }
 }

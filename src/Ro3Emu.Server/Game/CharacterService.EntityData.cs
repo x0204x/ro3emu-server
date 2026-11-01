@@ -95,6 +95,7 @@ public sealed partial class CharacterService
 
         var sheet = EquipmentStunts.ApplyConversions(session, raw, data);
         if (matchAttributes == null) sheet = EmblemService.ApplyResonanceConversions(session, raw, sheet, data);
+        sheet = ApplySpeedOverflow(raw, sheet);
         long maxHp = sheet[MaxHp], maxSp = sheet[MaxSp];
         sheet[Hp] = Math.Clamp(session.CurrentHp ?? maxHp, 0, maxHp);
         sheet[Sp] = Math.Clamp(session.CurrentSp ?? maxSp, 0, maxSp);
@@ -107,6 +108,33 @@ public sealed partial class CharacterService
             }
         sheet[Lv] = p.Level;
         return sheet;
+    }
+
+    /// <summary>
+    /// Speed past its cap turns into damage: ASPD (115) above FinalAtkSpdThdAndCastSpdThd[0] (500) adds Physical ATK%
+    /// (OverflowAtkSpd2PhysDmgR [115, 1, 1034, 10, 2000]) and cast speed (116) above [1] (400) adds Magic ATK%
+    /// (OverflowCastSpd2MagicDmgR [116, 1, 1044, 10, 2000]): every step of excess gives perStep, up to the cap. The
+    /// client's own tooltips say so (AttributeConfig 115/116 _kTips: "Every 1 excess ASPD is converted to 0.1% Physical
+    /// ATK (Max: 20%)") and its panel shows the excess (LC_PlayerInfoHelper._doFormulaOverThreshold).
+    /// </summary>
+    internal StatSheet ApplySpeedOverflow(Dictionary<int, double> raw, StatSheet sheet)
+    {
+        var parameters = data.Table("PublicParamConfig");
+        if (!parameters.TryGetValue("FinalAtkSpdThdAndCastSpdThd", out var limits) || limits.ValueKind != JsonValueKind.Array
+            || limits.GetArrayLength() < 2) return sheet;
+        bool changed = false;
+        foreach (var (key, index) in new[] { ("OverflowAtkSpd2PhysDmgR", 0), ("OverflowCastSpd2MagicDmgR", 1) })
+        {
+            if (!parameters.TryGetValue(key, out var rule) || rule.ValueKind != JsonValueKind.Array || rule.GetArrayLength() < 5
+                || GameData.Number(limits[index]) is not { } threshold) continue;
+            var r = rule.EnumerateArray().Select(v => GameData.Number(v) ?? 0).ToArray();
+            (int source, double step, int target, double perStep, double cap) = ((int)r[0], r[1], (int)r[2], r[3], r[4]);
+            double excess = sheet[source] - threshold;
+            if (excess <= 0 || step <= 0) continue;
+            raw[target] = raw.GetValueOrDefault(target) + Math.Min(Math.Floor(excess / step) * perStep, cap);
+            changed = true;
+        }
+        return changed ? StatCalculator.Compute(raw, data) : sheet;
     }
 
     /// <summary>The character's own raw contributions (gear, cards, talents, buffs, level and job rows, conversions).</summary>

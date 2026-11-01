@@ -22,4 +22,8 @@ public readonly partial record struct DailyActivityConfig(JsonElement Row)
     [ConfigField("_kMultiverseArray")] public partial long[] MultiverseArray { get; }
     [ConfigField("_kTaskProgress")] public partial long[] TaskProgress { get; }
     [ConfigField("_kTime")] public partial long[] Time { get; }
+    [ConfigField("_iName")] public partial JsonElement? Name { get; }
+    [ConfigField("_kIcon")] public partial string[] Icon { get; }
+    [ConfigField("_iTimeDescribe")] public partial JsonElement? TimeDescribe { get; }
+    [ConfigField("_iIsHide")] public partial long IsHide { get; }
 }

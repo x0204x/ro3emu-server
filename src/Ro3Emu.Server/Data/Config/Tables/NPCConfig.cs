@@ -47,4 +47,6 @@ public readonly partial record struct NPCConfig(JsonElement Row)
     [ConfigField("_kNpcTag")] public partial long[] NpcTag { get; }
     [ConfigField("_kRespawnSkill")] public partial long RespawnSkill { get; }
     [ConfigField("_kSkills")] public partial long[] Skills { get; }
+    [ConfigField("_kTitle")] public partial JsonElement? Title { get; }
+    [ConfigField("_kShowIcon")] public partial string ShowIcon { get; }
 }

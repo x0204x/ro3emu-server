@@ -69,6 +69,9 @@ public sealed class Vfs : IDisposable
     public string? SourceFile(string name) =>
         Locate(name) is var (e, bundle) ? e.FileHash == e.VfsHash ? LooseFile(e) : ContainerFile(e, bundle) : null;
 
+    /// <summary>Whether the VFS index has an asset of that name.</summary>
+    public bool Has(string name) => Locate(name) != null;
+
     /// <summary>The asset's own file hash (changes with its content), or null when the VFS has no asset of that name.</summary>
     public ulong? FileHash(string name) => Locate(name)?.Entry.FileHash;
 

@@ -1,0 +1,93 @@
+/* Staff roles, account security, the report inbox, character actions and server control (with its updates), on the tokens
+   of app.css. */
+
+/* chips: report statuses, staff roles and the audit actions these pages add */
+.chip.new,.chip.role-moderator,.chip.report{background:var(--blue-bg);color:var(--blue-ink)}
+.chip.in-progress,.chip.role-gm,.chip.schedule,.chip.update,.chip.char-teleport,.chip.char-rename,.chip.char-item{background:var(--amber-bg);color:var(--amber-ink)}
+.chip.done,.chip.char-restore,.chip.backup{background:var(--green-bg);color:var(--green-ink)}
+.chip.wont-fix{background:var(--grey-bg);color:var(--muted)}
+.chip.char-kick,.chip.panel-logout,.chip.\32 fa-reset{background:var(--red-bg);color:var(--red-ink)}
+.chip.role,.chip.role-admin{background:var(--ink);color:var(--on-ink)}
+
+/* a notice above a page's cards: an action the account must take, or a state the server is in */
+.notice{display:flex;align-items:flex-start;gap:var(--s3);margin-bottom:var(--gutter);padding:var(--s3) var(--s4);
+  border:1px solid var(--amber-line);border-radius:var(--r3);background:var(--amber-bg);color:var(--ink);font-size:var(--t-md)}
+.notice svg{margin-top:3px;font-size:16px;color:var(--amber-ink)}
+.notice.danger{border-color:var(--red-line);background:var(--red-bg)}
+.notice.danger svg{color:var(--red-ink)}
+.notice b{display:block}
+.notice .actions{margin-left:auto;align-self:center}
+
+/* two-factor setup: the secret in groups, recovery codes in a grid */
+.secret{display:block;margin-bottom:var(--s4);padding:var(--s3);border:1px dashed var(--line-strong);border-radius:var(--r2);background:var(--surface-sub);
+  font:700 var(--t-lg)/1.4 var(--mono);letter-spacing:.06em;text-align:center;overflow-wrap:anywhere;user-select:all}
+.codes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s2);margin-bottom:var(--s4)}
+.codes span{padding:var(--s2);border:1px solid var(--line);border-radius:var(--r2);background:var(--surface-sub);
+  font:500 var(--t-md)/1 var(--mono);text-align:center;user-select:all}
+.qr{display:block;width:200px;max-width:100%;height:auto;margin:0 auto var(--s4);border:1px solid var(--line);border-radius:var(--r2)}
+.qr-light{fill:var(--qr-light)}
+.qr-dark{fill:var(--qr-dark)}
+.code-input{font-family:var(--mono);font-size:var(--t-xl);letter-spacing:.3em;text-align:center}
+.steps{display:grid;gap:var(--s2);margin-bottom:var(--s4);padding-left:var(--s5);list-style:decimal;font-size:var(--t-md)}
+
+/* a report: the player's words and the server's log lines */
+.quote{padding:var(--s3) var(--s4);border-left:3px solid var(--blue);border-radius:0 var(--r2) var(--r2) 0;background:var(--surface-sub);
+  white-space:pre-wrap;overflow-wrap:anywhere}
+.log{max-height:320px;overflow:auto;padding:var(--s3);border:1px solid var(--line);border-radius:var(--r2);background:var(--surface-sub);
+  font:400 var(--t-xs)/1.6 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere}
+.notes{display:grid;gap:var(--s3);margin-bottom:var(--s4)}
+.notes li{padding-bottom:var(--s3);border-bottom:1px solid var(--line-soft)}
+.notes li:last-child{border-bottom:0;padding-bottom:0}
+.notes .m{display:flex;flex-wrap:wrap;gap:var(--s2);margin-bottom:var(--s1);font-size:var(--t-sm);color:var(--muted)}
+.notes p{white-space:pre-wrap;overflow-wrap:anywhere}
+.clip{display:block;max-width:520px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* action forms side by side in a card */
+.action+.action{margin-top:var(--s4);padding-top:var(--s4);border-top:1px solid var(--line-soft)}
+.action h3{margin-bottom:var(--s1);font:700 var(--t-md)/20px var(--body)}
+.action .hint{margin-bottom:var(--s3)}
+.inline{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--s2);align-items:end}
+.inline .field{margin-bottom:0}
+.pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 var(--s3)}
+/* a planned stop's live countdown, large (its span is the database pages' .countdown, which stays small there) */
+.planned-countdown{margin-bottom:var(--s3);font:700 var(--t-xl)/1.2 var(--body);font-variant-numeric:tabular-nums}
+.planned-countdown .countdown{font:inherit}
+
+@media (max-width:600px){
+  .codes{grid-template-columns:minmax(0,1fr)}
+  .inline{grid-template-columns:minmax(0,1fr)}
+  .notice{flex-wrap:wrap}
+  .notice .actions{margin-left:0}
+  .clip{max-width:200px}
+}
+.loading-sm{display:grid;place-items:center;padding:var(--s5)}
+.confirm-slot:has(.confirm){padding:var(--s4) var(--s4) 0}
+/* a confirmation under the buttons that asked for it */
+.confirm-after:has(.confirm){margin-top:var(--s3)}
+.confirm-after .confirm{margin-bottom:0}
+.data select.input{width:auto;height:32px;min-width:120px}
+.row.nowrap{flex-wrap:nowrap;justify-content:flex-end}
+/* a long technical name in a table (a backup's file) breaks anywhere rather than being cut */
+.data .break{display:block;white-space:normal;overflow-wrap:anywhere}
+@media (max-width:600px){.row.nowrap{flex-wrap:wrap}}
+/* the Updates section of Server control (pages/admin-updates.js) */
+.section-title{margin:var(--s6) 0 var(--s3);font:700 var(--t-lg)/1.3 var(--body)}
+.update-mode{display:flex;flex-wrap:wrap;align-items:flex-start;gap:var(--s2)}
+.update-mode p{flex:1 1 220px;font-size:var(--t-sm);color:var(--muted)}
+.update-progress{display:block;width:100%;height:8px;border:0;border-radius:var(--r1);background:var(--tint-2);overflow:hidden;
+  appearance:none;-webkit-appearance:none}
+.update-progress::-webkit-progress-bar{background:var(--tint-2)}
+.update-progress::-webkit-progress-value{background:var(--blue)}
+.update-progress::-moz-progress-bar{background:var(--blue)}
+.releases{display:grid;gap:var(--s3)}
+.release{padding-bottom:var(--s3);border-bottom:1px solid var(--line-soft)}
+.release:last-child{padding-bottom:0;border-bottom:0}
+.release-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--s2)}
+.release-title{min-width:0;overflow-wrap:anywhere}
+.release-notes{margin-top:var(--s2)}
+.release-notes summary{cursor:pointer;font-size:var(--t-sm);font-weight:700;color:var(--blue-ink)}
+.release-text{max-height:360px;overflow:auto;margin-top:var(--s2);padding:var(--s3);border:1px solid var(--line);border-radius:var(--r2);
+  background:var(--surface-sub);font-size:var(--t-sm);white-space:pre-wrap;overflow-wrap:anywhere}
+
+/* suspicious activity: an account's refusals by kind under the row's detail */
+.counts{flex-wrap:wrap;gap:var(--s1);margin-top:var(--s1)}

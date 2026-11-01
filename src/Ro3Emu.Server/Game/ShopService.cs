@@ -38,7 +38,9 @@ public sealed partial class ShopService(GameData data, CharacterService characte
     private readonly MailService _mail = mail;
     private readonly ILogger<ShopService> _log = log;
     private TimeSpan _lastTick;
-    private DateTime _gameDay;
+    /// <summary>The game day the online roles were last synced for. Taken when the server starts: taken by the first
+    /// throttled tick instead (a second into the loop), it missed a rollover that came before it.</summary>
+    private DateTime _gameDay = DailyActivityService.GameDay(clock.GetLocalNow().DateTime);
     private long Now => _clock.GetUtcNow().ToUnixTimeSeconds();
 
     /// <summary>
@@ -51,9 +53,7 @@ public sealed partial class ShopService(GameData data, CharacterService characte
         _lastTick = time.Now;
         var day = DailyActivityService.GameDay(_clock.GetLocalNow().DateTime);
         if (day == _gameDay) return;
-        bool first = _gameDay == default;
         _gameDay = day;
-        if (first) return;
         foreach (var session in _sessions.All())
             if (session.Role != null && session.Shop is { Bought.Count: > 0 })
                 _loop.PostOwned(session, () => session.Shop != null && session.Role != null ? SyncAsync(session) : Task.CompletedTask);

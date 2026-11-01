@@ -8,7 +8,7 @@ public sealed record DataFileRecord(long Length, string Sha256);
 public static class GameDataIntegrity
 {
     private static readonly string[] Folders = ["config", "sceneeditor", "skills", "nav"];
-    private static readonly string[] TopFiles = ["msgtable.tsv", "loc_en.tsv", "export.json"];
+    private static readonly string[] TopFiles = ["msgtable.tsv", "loc_en.tsv", "client-scenes.json", "export.json"];
 
     public static SortedDictionary<string, DataFileRecord> Capture(string root)
     {

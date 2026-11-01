@@ -36,6 +36,9 @@ public sealed class ItemBoxService : IGameTicker
     {
         this._character = character; this._awards = awards; this._seasons = seasons; this._sessions = sessions;
         this._loop = loop; this._clock = clock; this._log = log;
+        // Taken when the server starts: taken by the first throttled tick instead (a second into the loop), it missed
+        // a rollover that came before it.
+        _gameDay = DailyActivityService.GameDay(clock.GetLocalNow().DateTime);
         character.UseClock = clock;
         character.SpecialItemUse.Add(TryOpenAsync);
     }
@@ -47,9 +50,7 @@ public sealed class ItemBoxService : IGameTicker
         _lastTick = time.Now;
         var day = DailyActivityService.GameDay(_clock.GetLocalNow().DateTime);
         if (day == _gameDay) return;
-        bool first = _gameDay == default;
         _gameDay = day;
-        if (first) return;
         foreach (var session in _sessions.All())
             if (session.Role != null && _character.HasUseTimes(session))
                 _loop.PostOwned(session, () => session.Role != null ? _character.SyncUseTimesAsync(session) : Task.CompletedTask);

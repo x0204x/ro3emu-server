@@ -28,6 +28,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
         this._reconstructed = reconstructed;
         _bossOptions = options?.Value.BossSkills ?? new BossSkillOptions();
         _ro1Aggressive = Ro1Aggressive(options?.Value); // MonsterService.Ro1Aggression
+        _ro1MaxLevelGap = options?.Value.Ro1AggressiveMaxLevelGap ?? 0;
         _spawnLimits = (options?.Value.SpawnLimits ?? []).Where(r => r.Npc > 0 && r.Max >= 0)
             .GroupBy(r => (r.Scene, r.Npc)).ToDictionary(g => g.Key, g => g.Last().Max);
         _ro1Hp = Ro1Hp(options?.Value); // MonsterService.Ro1Hp
@@ -471,7 +472,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
             return;
         }
         if (_companionTargets.Count > 0 && FightsCompanion(m, map, now)) return; // MonsterService.Companions
-        if (m.Template.Aggressive && m.Viewers.Count > 0 && !m.Returning)
+        if (m.Viewers.Count > 0 && !m.Returning && AttacksOnSight(m))
         {
             var near = NearestTarget(m);
             if (near != null)

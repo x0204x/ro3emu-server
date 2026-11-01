@@ -14,7 +14,8 @@ namespace Ro3Emu.Server.Game;
 public sealed class GameGateServer(
     IOptions<ServerOptions> options, GateCrypto crypto, AccountStore accounts, GameMessageHandler messages, RoleSessionService roleSessions, TrafficLog traffic,
     SkillTraceTelemetryService skillTrace,
-    SessionRegistry sessions, GameLoop loop, ReconnectService reconnects, TimeProvider clock, ILogger<GameGateServer> log, Diagnostics.ServerMetrics metrics)
+    SessionRegistry sessions, GameLoop loop, ReconnectService reconnects, TimeProvider clock, ILogger<GameGateServer> log, Diagnostics.ServerMetrics metrics,
+    MaintenanceMode maintenance)
     : GateListener(options.Value.ListenAddress(), options.Value.GameGatePort, log, metrics)
 {
     // client -> gate
@@ -115,6 +116,12 @@ public sealed class GameGateServer(
         if (account == null || (type == ConnectServerReq.Types.ReqType.SwitchToAccount && account != session.Account))
         {
             await session.Channel.SendAsync(ConnectResponse, new ConnectServerResp { Type = ConnectServerResp.Types.RespType.ConnectRefused });
+            return;
+        }
+        // Maintenance (the panel's): only staff get in; the client shows its maintenance notice (MaintenanceMode).
+        if (type == ConnectServerReq.Types.ReqType.NewConnection && maintenance.Refuses(account))
+        {
+            await session.Channel.SendAsync(ConnectResponse, new ConnectServerResp { Type = ConnectServerResp.Types.RespType.ClusterShutdown });
             return;
         }
         // Another account on this connection is refused while a role of the first one is in the world.

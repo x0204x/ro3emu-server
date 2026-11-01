@@ -11,4 +11,7 @@ public readonly partial record struct NewActivityConfig(JsonElement Row)
     [ConfigField("_kMultiverseArray")] public partial long[] MultiverseArray { get; }
     [ConfigField("_kOpenCondition")] public partial long OpenCondition { get; }
     [ConfigField("_kTaskRenew")] public partial long[][] TaskRenew { get; }
+    [ConfigField("_iName")] public partial JsonElement? Name { get; }
+    [ConfigField("_kIcon")] public partial string[] Icon { get; }
+    [ConfigField("_iTimeLimitId")] public partial long TimeLimitId { get; }
 }

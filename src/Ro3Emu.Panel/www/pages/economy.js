@@ -3,7 +3,7 @@
 'use strict';
 
 async function adminEconomy() {
-  requireAdmin();
+  requireRole('gm');
   const query = queryOf();
   const page = Number(query.page) || 1;
   const result = await api('GET', '/api/admin/economy' + listHref('', { ...query, page }));

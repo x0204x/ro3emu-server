@@ -18,7 +18,7 @@ public sealed partial class StallsService
     public const uint Sync = 5058, Start = 33401, Put = 33403, Remove = 33404, Update = 33405, Buy = 33406,
         End = 33407, Info = 33408, View = 33409, Rename = 33410, Change = 33411, BuyerChange = 33413,
         Leave = 33414, Prices = 33415, Settlement = 33416, Top = 33417, Share = 33418;
-    private const string Kind = "stall";
+    internal const string Kind = "stall";
     private readonly MarketStore _market;
     private readonly GameData _data;
     private readonly CharacterService _character;

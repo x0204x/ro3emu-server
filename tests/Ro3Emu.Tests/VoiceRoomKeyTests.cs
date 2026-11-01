@@ -4,8 +4,8 @@ namespace Ro3Emu.Tests;
 
 /// <summary>
 /// The relay's room keys (src/Ro3Emu.Server/Voice/VoiceRoomKey.cs): a party is its team id as the client sends it,
-/// a guild voice channel is "2_&lt;guildId&gt;_&lt;index&gt;" (LC_VoiceHelper.GetGuildVoiceChannelId); the two never share
-/// a key.
+/// a guild voice channel is "2_&lt;guildId&gt;_&lt;index&gt;" (LC_VoiceHelper.GetGuildVoiceChannelId), a Tavern room its guid
+/// from VoiceRoomKey.TavernBase up (LC_BarRoomTalk); the kinds never share a key.
 /// </summary>
 public sealed class VoiceRoomKeyTests
 {
@@ -16,6 +16,19 @@ public sealed class VoiceRoomKeyTests
         Assert.True(key.IsTeam);
         Assert.False(key.IsGuild);
         Assert.Equal(16777217, key.Value);
+    }
+
+    [Fact]
+    public void ATavernRoomIsItsGuidAboveEveryTeamId()
+    {
+        long guid = VoiceRoomKey.TavernBase + 7;
+        Assert.True(VoiceRoomKey.TryParse(guid.ToString(System.Globalization.CultureInfo.InvariantCulture), out var key));
+        Assert.True(key.IsTavern);
+        Assert.False(key.IsTeam);
+        Assert.False(key.IsGuild);
+        Assert.True(VoiceRoomKey.TryParse((VoiceRoomKey.TavernBase - 1).ToString(System.Globalization.CultureInfo.InvariantCulture), out var team));
+        Assert.True(team.IsTeam);
+        Assert.False(team.IsTavern);
     }
 
     [Theory]
@@ -56,7 +69,7 @@ public sealed class VoiceRoomKeyTests
     [InlineData("2_1_-1")]
     [InlineData("2_1_64")]     // past the channel range
     [InlineData("2_1_0_0")]
-    [InlineData("3_1_0")]      // another talk type (tavern rooms are not served)
+    [InlineData("3_1_0")]      // another talk type's shape
     [InlineData("2_x_0")]
     [InlineData("2_99999999999999999999_0")]
     public void AnythingElseIsNoRoom(string channel) => Assert.False(VoiceRoomKey.TryParse(channel, out _));

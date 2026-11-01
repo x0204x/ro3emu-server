@@ -73,6 +73,38 @@ public sealed class NavGrid
     }
 
     /// <summary>
+    /// The point itself on its walkable layer nearest to <paramref name="yHint"/>, else the centre of the nearest walkable cell
+    /// at most <paramref name="cells"/> cells away (any height), else null. A client standing at the edge of a wall can report a
+    /// position in a cell the 1 m grid marks blocked, and its y need not match the layer (inferred).
+    /// </summary>
+    public (float X, float Y, float Z)? NearestWalkable(float x, float z, float yHint, int cells = 1)
+    {
+        if (WalkHeight(x, z, yHint) is { } own) return (x, own, z);
+        int cx = (int)MathF.Floor(x), cz = (int)MathF.Floor(z);
+        (float X, float Y, float Z)? best = null;
+        float bestDistance = float.MaxValue;
+        for (int dx = -cells; dx <= cells; dx++)
+            for (int dz = -cells; dz <= cells; dz++)
+            {
+                float px = cx + dx + 0.5f, pz = cz + dz + 0.5f, d = (px - x) * (px - x) + (pz - z) * (pz - z);
+                if (d < bestDistance && WalkHeight(px, pz, yHint) is { } h) { best = (px, h, pz); bestDistance = d; }
+            }
+        return best;
+    }
+
+    /// <summary>Length of a route <see cref="FindPath"/> returns, from a along its legs.</summary>
+    public static float RouteLength(float ax, float az, IReadOnlyList<(float X, float Y, float Z)> route)
+    {
+        float length = 0, x = ax, z = az;
+        foreach (var p in route)
+        {
+            length += MathF.Sqrt((p.X - x) * (p.X - x) + (p.Z - z) * (p.Z - z));
+            (x, z) = (p.X, p.Z);
+        }
+        return length;
+    }
+
+    /// <summary>
     /// Whether the straight 2D segment from a to b crosses only walkable cells (sampled every half metre, heights
     /// followed cell by cell like the client's direct-walk check).
     /// </summary>

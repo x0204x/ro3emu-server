@@ -10,4 +10,6 @@ public readonly partial record struct AchievementLevel(JsonElement Row)
     [ConfigField("_iID")] public partial long Id { get; }
     [ConfigField("_iLevel")] public partial long Level { get; }
     [ConfigField("_iPoint")] public partial long Point { get; }
+    [ConfigField("_iName")] public partial JsonElement? Name { get; }
+    [ConfigField("_kIcon")] public partial string Icon { get; }
 }

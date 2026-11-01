@@ -64,6 +64,10 @@ public sealed partial class TaskService
     public void OnTreasureDug(GameSession s) =>
         _loop.PostOwned(s, () => ProgressAsync(s, TTreasureDig, t => t.Length == 2 ? 1 : 0), "quest treasure dig");
 
+    /// <summary>210006: one committed Training Ground Dummy Challenge result.</summary>
+    public void OnDummyChallengeSettled(GameSession s) =>
+        _loop.PostOwned(s, () => ProgressAsync(s, TDummyChallenge, t => t.Length == 2 ? 1 : 0), "quest dummy challenge");
+
     /// <summary>103014: present at a settled Ilmata (Guild Challenge) stage attempt.</summary>
     public void OnGveJoined(GameSession s) =>
         _loop.PostOwned(s, () => ProgressAsync(s, TGveJoin, t => t.Length == 2 ? 1 : 0), "quest gve");

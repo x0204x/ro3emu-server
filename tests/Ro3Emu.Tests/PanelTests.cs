@@ -143,11 +143,11 @@ public sealed class PanelTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task WithAnEmptyGmListNobodyIsAdminAndLoginsAreThrottled()
+    public async Task AnEmptyGmListFollowsTheGamesGmRuleAndLoginsAreThrottled()
     {
         var (host, panel) = await StartAsync(o =>
         {
-            o.GmOpenWhenEmpty = true; // GM for everyone in game; the panel still has no admin
+            o.GmOpenWhenEmpty = true; // GM for everyone in game, so an Admin of the panel too
             o.LoginLimitIncludesLoopback = true;
             o.LoginAttemptsPerMinute = 3;
         });
@@ -155,14 +155,26 @@ public sealed class PanelTests : IAsyncLifetime
         Assert.Equal(0, await SdkLoginAsync(host, "panel-anyone", "pw-game"));
         using var browser = new PanelBrowser(panel);
         var login = await browser.LoginAsync("panel-anyone", "pw-game");
-        Assert.False((await login.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("admin").GetBoolean());
-        Assert.Equal(HttpStatusCode.Forbidden, (await browser.Http.GetAsync("/api/admin/dashboard")).StatusCode);
+        Assert.True((await login.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("admin").GetBoolean());
+        Assert.Equal(HttpStatusCode.OK, (await browser.Http.GetAsync("/api/admin/dashboard")).StatusCode);
 
         // The server's credential budget (CredentialLimiter), shared with the game's login: the third check of the
         // minute is the last, then 429 before any hashing.
         Assert.Equal(HttpStatusCode.Unauthorized, (await browser.LoginAsync("panel-anyone", "wrong")).StatusCode);
         Assert.Equal(HttpStatusCode.TooManyRequests, (await browser.LoginAsync("panel-anyone", "pw-game")).StatusCode);
-        Assert.Equal(HttpStatusCode.TooManyRequests, (await browser.RegisterAsync("panel-another", "secret-1")).StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await browser.RegisterAsync("panel_another", "secret-1")).StatusCode);
+    }
+
+    [Fact]
+    public async Task WithAnEmptyGmListAndGmClosedNobodyIsAdmin()
+    {
+        var (host, panel) = await StartAsync(o => o.GmOpenWhenEmpty = false); // a Production server without a GM list
+        await using var _ = host;
+        Assert.Equal(0, await SdkLoginAsync(host, "panel-closed", "pw-game"));
+        using var browser = new PanelBrowser(panel);
+        var login = await browser.LoginAsync("panel-closed", "pw-game");
+        Assert.False((await login.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("admin").GetBoolean());
+        Assert.Equal(HttpStatusCode.Forbidden, (await browser.Http.GetAsync("/api/admin/dashboard")).StatusCode);
     }
 
     [Fact]
@@ -207,21 +219,29 @@ public sealed class PanelTests : IAsyncLifetime
     {
         using var browser = new PanelBrowser(_panel);
         Assert.Equal(HttpStatusCode.BadRequest, (await browser.RegisterAsync("   ", "secret-1")).StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, (await browser.RegisterAsync("panel-new", "short")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await browser.RegisterAsync("panel_new", "short")).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await browser.RegisterAsync("panel\u0001new", "secret-1")).StatusCode);
-        var created = await browser.RegisterAsync("  panel-new  ", "secret-1");
+        // The panel's own name rule (the game has none): 4 to 24 ASCII letters, digits and underscores.
+        foreach (string bad in new[] { "p", "pan", "panel-new", "panel new", "p\u00e4nel_new", new string('p', 25) })
+            Assert.Equal(HttpStatusCode.BadRequest, (await browser.RegisterAsync(bad, "secret-1")).StatusCode);
+        Assert.Null(Ro3Emu.Panel.PanelSite.NameProblem("Abc_1"));
+        Assert.Null(Ro3Emu.Panel.PanelSite.NameProblem(new string('p', 24)));
+        var created = await browser.RegisterAsync("  panel_new  ", "secret-1");
         Assert.Equal(HttpStatusCode.OK, created.StatusCode);
-        Assert.Equal("panel-new", (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("account").GetString());
-        Assert.Equal("panel-new", (await browser.GetJsonAsync("/api/account")).GetProperty("name").GetString());
+        Assert.Equal("panel_new", (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("account").GetString());
+        Assert.Equal("panel_new", (await browser.GetJsonAsync("/api/account")).GetProperty("name").GetString());
 
         // The same record as a first login in the game: the game signs in with it, and no second account appears.
-        Assert.Equal(0, await SdkLoginAsync(_host, "panel-new", "secret-1"));
-        Assert.Equal(401, await SdkLoginAsync(_host, "panel-new", "other-pw"));
+        Assert.Equal(0, await SdkLoginAsync(_host, "panel_new", "secret-1"));
+        Assert.Equal(401, await SdkLoginAsync(_host, "panel_new", "other-pw"));
         using var other = new PanelBrowser(_panel);
-        Assert.Equal(HttpStatusCode.Conflict, (await other.RegisterAsync("PANEL-NEW", "secret-2")).StatusCode);
-        Assert.Equal(0, await SdkLoginAsync(_host, "panel-game-first", "pw-game"));
-        Assert.Equal(HttpStatusCode.Conflict, (await other.RegisterAsync("panel-game-first", "secret-2")).StatusCode);
-        Assert.Equal("panel-new", await _host.Service<AccountStore>().VerifiedAccountAsync("Panel-New", "secret-1"));
+        Assert.Equal(HttpStatusCode.Conflict, (await other.RegisterAsync("PANEL_NEW", "secret-2")).StatusCode);
+        Assert.Equal(0, await SdkLoginAsync(_host, "panel_game_first", "pw-game"));
+        Assert.Equal(HttpStatusCode.Conflict, (await other.RegisterAsync("panel_game_first", "secret-2")).StatusCode);
+        Assert.Equal("panel_new", await _host.Service<AccountStore>().VerifiedAccountAsync("Panel_New", "secret-1"));
+        // A name the game made outside the sign-up rule still logs in here.
+        Assert.Equal(0, await SdkLoginAsync(_host, "p-1", "pw-game"));
+        Assert.Equal(HttpStatusCode.OK, (await other.LoginAsync("p-1", "pw-game")).StatusCode);
     }
 
     [Fact]
@@ -231,8 +251,46 @@ public sealed class PanelTests : IAsyncLifetime
         await using var _ = host;
         using var browser = new PanelBrowser(panel);
         Assert.False((await browser.SessionAsync()).GetProperty("registration").GetBoolean());
-        Assert.Equal(HttpStatusCode.Forbidden, (await browser.RegisterAsync("panel-closed", "secret-1")).StatusCode);
-        Assert.Null(await host.Service<AccountStore>().VerifiedAccountAsync("panel-closed", "secret-1"));
+        Assert.Equal(HttpStatusCode.Forbidden, (await browser.RegisterAsync("panel_closed", "secret-1")).StatusCode);
+        Assert.Null(await host.Service<AccountStore>().VerifiedAccountAsync("panel_closed", "secret-1"));
+    }
+
+    [Fact]
+    public async Task WithRefuseUnknownAccountsOnlyTheSignUpCreatesAccounts()
+    {
+        var (host, panel) = await StartAsync(o => o.RefuseUnknownAccounts = true);
+        await using var _ = host;
+        // The client words only code 401 ("Incorrect Username or Password"), so an unknown name answers like a wrong
+        // password, and nothing is written.
+        Assert.Equal(401, await SdkLoginAsync(host, "panel_unknown", "secret-1"));
+        Assert.Null(await host.Service<AccountStore>().VerifiedAccountAsync("panel_unknown", "secret-1"));
+        using var browser = new PanelBrowser(panel);
+        Assert.Equal(HttpStatusCode.OK, (await browser.RegisterAsync("panel_unknown", "secret-1")).StatusCode);
+        Assert.Equal(0, await SdkLoginAsync(host, "Panel_Unknown", "secret-1"));
+        Assert.Equal(401, await SdkLoginAsync(host, "panel_unknown", "other-pw"));
+    }
+
+    [Fact]
+    public async Task SignUpsPerAddressCountCreatedAccountsByTheForwardedClient()
+    {
+        var (host, panel) = await StartAsync(o =>
+        {
+            o.Panel.TrustedProxies = ["127.0.0.1"];
+            o.Panel.SignUpsPerAddressPerDay = 2;
+        });
+        await using var _ = host;
+        using var first = new PanelBrowser(panel);
+        first.Http.DefaultRequestHeaders.Add("X-Forwarded-For", "203.0.113.5");
+        Assert.Equal(HttpStatusCode.OK, (await first.RegisterAsync("panel_limit_a", "secret-1")).StatusCode);
+        // A taken name creates nothing, so it gives its slot back.
+        Assert.Equal(HttpStatusCode.Conflict, (await first.RegisterAsync("panel_limit_a", "secret-1")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await first.RegisterAsync("panel_limit_b", "secret-1")).StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await first.RegisterAsync("panel_limit_c", "secret-1")).StatusCode);
+        Assert.Null(await host.Service<AccountStore>().VerifiedAccountAsync("panel_limit_c", "secret-1"));
+
+        using var second = new PanelBrowser(panel);
+        second.Http.DefaultRequestHeaders.Add("X-Forwarded-For", "203.0.113.6");
+        Assert.Equal(HttpStatusCode.OK, (await second.RegisterAsync("panel_limit_c", "secret-1")).StatusCode);
     }
 
     [Fact]

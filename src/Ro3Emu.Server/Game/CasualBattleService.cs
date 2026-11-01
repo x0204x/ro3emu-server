@@ -36,16 +36,16 @@ namespace Ro3Emu.Server.Game;
 /// match ends at BattleMaxTime or when a camp reaches the 4500 bar; the higher camp score wins, a tie has no winner; a
 /// personal score of at least 25 (DungeonAwardModule ScoreCondition [2,3,25]) earns DropPool 85201, the winners also
 /// 85202 (the losers' 85203 is not in DropPoolConfig); assists are the hits on the victim in its last 10 s.
-/// Not built: the arena's monsters and boss (their spawn script is not in the client) and the pre-start notices
-/// 5711/5712. Each camp gets the 40-player Virtual team roster (30441, TeamRoster), its leadership transfer (30451,
-/// TransferAsync), a member's own follow toggle (30448, FollowAsync), a squad's own position swap (30450,
-/// SwapPositionAsync), a squad's own flag (30442/30443, SetFlagAsync) and a squad's own rally (30444-30447,
-/// RallyAsync/RallyReplyAsync). A settled match's result is also kept in
-/// the role's ordinary 30128 history (DungeonService.StoreExternalResultAsync), the same as a boss dungeon's clear,
-/// for every player still online at settlement; one offline then is still paid at login (TryPayAsync's own retry)
-/// but gets no history entry, since nothing here revisits a login after the fact to write one.
+/// The arena's monsters, supplies, objectives, notices and death fight are in CasualBattleService.Arena.cs. Each camp
+/// gets the 40-player Virtual team roster (30441, TeamRoster), its leadership transfer (30451, TransferAsync), a
+/// member's own follow toggle (30448, FollowAsync), a squad's own position swap (30450, SwapPositionAsync), a squad's
+/// own flag (30442/30443, SetFlagAsync) and a squad's own rally (30444-30447, RallyAsync/RallyReplyAsync). A settled
+/// match's result is also kept in the role's ordinary 30128 history (DungeonService.StoreExternalResultAsync), the
+/// same as a boss dungeon's clear, for every player still online at settlement; one offline then is still paid at
+/// login (TryPayAsync's own retry) but gets no history entry, since nothing here revisits a login after the fact to
+/// write one.
 /// </summary>
-public sealed class CasualBattleService : IGameTicker
+public sealed partial class CasualBattleService : IGameTicker
 {
     public const uint Sync = 5070, ResultNotify = 30132, SetFlag = 30442, FlagNotify = 30443, Rally = 30444,
         RallyNotify = 30445, RallyReply = 30446, RallyReplyNotify = 30447, Follow = 30448, FollowNotify = 30449,
@@ -76,6 +76,9 @@ public sealed class CasualBattleService : IGameTicker
     private readonly RoleStore _roles;
     private readonly AccountStore _accounts;
     private readonly DungeonService _dungeons;
+    private readonly BuffService _buffs;
+    private readonly MonsterService _monsters;
+    private readonly World _world;
     private readonly ILogger<CasualBattleService> _log;
 
     private sealed record Group(GameSession[] Members, long Window);
@@ -88,6 +91,12 @@ public sealed class CasualBattleService : IGameTicker
         public required int Career;
         public required int Camp;
         public long Score, Kills, Assists, Damage, Taken, Healing, Deaths;
+        /// <summary>Kills since the last death (the 41007 streak).</summary>
+        public int Streak;
+        /// <summary>The battlefield skill held from a supply box, 0 none.</summary>
+        public int Battlefield;
+        /// <summary>The second the revive countdown ends.</summary>
+        public long DeadUntil;
         public bool Left;
         /// <summary>Who hit this player when, for assists.</summary>
         public readonly Dictionary<GameSession, long> HitBy = new();
@@ -124,6 +133,7 @@ public sealed class CasualBattleService : IGameTicker
         /// <summary>A squad's own most recent Rally caller (30444/30445 DUNGEON_TEAM_RALLY), by squad index; absent
         /// means that squad has no rally for a 30446/30447 DUNGEON_TEAM_RALLY_REPLY to answer.</summary>
         public readonly Dictionary<int, long> Rally = [];
+        public readonly Arena Arena = new();
         public long Deadline => Open + BattleSeconds;
     }
 
@@ -140,12 +150,13 @@ public sealed class CasualBattleService : IGameTicker
         TeamService teams, SessionRegistry sessions, InstanceService instances, SceneService scene, WorldData worldData,
         CharacterService character, RewardService rewards, TimedBattleService timedBattles, PraiseService praise,
         CombatService combat, DungeonService dungeons, GameLoop loop, GmCommands gm, RoleStore roles, AccountStore accounts,
-        ILogger<CasualBattleService> log)
+        BuffService buffs, MonsterService monsters, World world, ILogger<CasualBattleService> log)
     {
         this._data = data; this._activityClock = activityClock; this._time = time; this._functions = functions; this._teams = teams;
         this._sessions = sessions; this._instances = instances; this._scene = scene; this._worldData = worldData;
         this._character = character; this._rewards = rewards; this._timedBattles = timedBattles; this._praise = praise;
         this._loop = loop; this._roles = roles; this._accounts = accounts; this._dungeons = dungeons; this._log = log;
+        this._buffs = buffs; this._monsters = monsters; this._world = world;
         _obligations = new RoleObligations<CasualBattleObligationRow>("Mock Battle payout", accounts, loop, time, Online,
             s => s.TimedBattle != null && s.Progress != null, PayAsync, ObligationRetry.TickWithBackoff, log);
         scene.Loaded.Add(LoadedAsync);
@@ -153,7 +164,9 @@ public sealed class CasualBattleService : IGameTicker
         combat.PvpDealt.Add(Dealt);
         combat.Healed.Add((s, n) => { if (Live(s) is { } m) m.Players[s].Healing += n; });
         dungeons.CurrentStatisticsOwner = s => Live(s) is { } m ? Statistics(m) : null;
-        gm.Register("casual", "open|close|start (Mock Battle test aid: sign-ups outside the window, start the battle now)", GmAsync);
+        HookArena(combat);
+        gm.Register("casual", "open|close|start|at <s> (Mock Battle test aid: sign-ups outside the window, start the battle now"
+            + " (alone while open), jump the own match to <s> seconds after its start)", GmAsync);
     }
 
     private long Now => _time.GetUtcNow().ToUnixTimeSeconds();
@@ -213,6 +226,7 @@ public sealed class CasualBattleService : IGameTicker
         else if (_queue.Count > 0 && !OpenForTest && Window("Matching") == null && Window("Battling") == null) _queue.Clear();
         foreach (var match in _matches.ToArray())
             _loop.PostLegacy(() => AdvanceAsync(match), "casual battle timeline");
+        Announce();
         _obligations.Tick();
     }
 
@@ -228,7 +242,8 @@ public sealed class CasualBattleService : IGameTicker
             camps[camp].AddRange(group.Members);
             _queue.Remove(group);
         }
-        if (camps[1].Count == 0 || camps[2].Count == 0)
+        // TEST AID: while "!casual open" is on, one camp alone may start (its arena has the monsters).
+        if (camps[1].Count + camps[2].Count == 0 || !OpenForTest && (camps[1].Count == 0 || camps[2].Count == 0))
         {
             // One camp only: nobody to fight; the groups wait for the next window (inferred).
             foreach (var camp in camps.Values.Where(c => c.Count > 0)) _queue.Add(new Group(camp.ToArray(), -1));
@@ -285,6 +300,7 @@ public sealed class CasualBattleService : IGameTicker
         var prepare = new DungeonVar { VarId = PrepareVar };
         prepare.Vi64.Add(prepareEnd * 1000); // a countdown timestamp in ms (DungeonCountDownTimeStamp)
         info.Vars.Add(prepare);
+        info.Vars.Add(ObjectiveVar(match));
         return info;
     }
 
@@ -312,6 +328,7 @@ public sealed class CasualBattleService : IGameTicker
         _active.Remove(s);
         int camp = match.Players[s].Camp;
         match.Players[s].Left = true;
+        if (match.Players[s].Battlefield != 0) _loop.PostLegacy(() => SpendAsync(s, match.Players[s]), "casual battle skill");
         s.EventFaction = 0;
         // A camp with nobody left loses (inferred).
         if (match.Stage > 0 && match.Players.Values.Where(p => !p.Left).Select(p => p.Camp).Distinct().Count() < 2)
@@ -601,6 +618,8 @@ public sealed class CasualBattleService : IGameTicker
             if (helper != killer && Now - at <= 10 && m.Players.TryGetValue(helper, out var assist) && assist.Camp == me.Camp)
             { assist.Assists++; Score(m, helper, AssistPersonal); }
         dead.HitBy.Clear();
+        dead.Streak = 0;
+        await StreakAsync(m, killer);
         await BroadcastAsync(m);
         if (m.CampScore.Values.Any(score => score >= ScoreBar)) RequestSettle(m);
     }
@@ -610,9 +629,10 @@ public sealed class CasualBattleService : IGameTicker
         if (_data.Row("BattleEventPointConfig", row) is not { } config || !config.TryGetProperty("_kScore", out var pairs)
             || pairs.ValueKind != JsonValueKind.Array) return;
         var values = pairs.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).ToArray();
+        long factor = m.Stage == 2 ? 2 : 1; // the death fight's double points (DungeonQuestConfig 16300105)
         for (int i = 0; i + 1 < values.Length; i += 2)
-            if (values[i] == 4) m.CampScore[m.Players[player].Camp] += values[i + 1];
-            else if (values[i] == 2) m.Players[player].Score += values[i + 1];
+            if (values[i] == 4) m.CampScore[m.Players[player].Camp] += values[i + 1] * factor;
+            else if (values[i] == 2) m.Players[player].Score += values[i + 1] * factor;
     }
 
     private async Task AdvanceAsync(Match match)
@@ -625,6 +645,7 @@ public sealed class CasualBattleService : IGameTicker
         if (Now >= match.Deadline) { await SettleAsync(match); return; }
         if (match.Loaded.Count == 0 && elapsed >= 60) { await SettleAsync(match); return; } // nobody arrived
         if (stage != match.Stage) { match.Stage = stage; await BroadcastAsync(match); }
+        await ArenaTickAsync(match);
     }
 
     private DungeonStatisticsInfoWithDungeon Statistics(Match m)
@@ -698,6 +719,7 @@ public sealed class CasualBattleService : IGameTicker
         {
             _active.Remove(p.Session);
             p.Session.EventFaction = 0;
+            if (p.Battlefield != 0) _loop.PostLegacy(() => SpendAsync(p.Session, p), "casual battle skill");
             bool won = winCamp != 0 && p.Camp == winCamp;
             var payout = new Payout
             {
@@ -747,6 +769,7 @@ public sealed class CasualBattleService : IGameTicker
         {
             match.Announced = true;
             await BroadcastAsync(match);
+            await ClosingAsync(match);
             _loop.ScheduleLegacy(TimeSpan.FromSeconds(ExitSeconds), async () =>
             {
                 foreach (var p in match.Players.Values)
@@ -852,7 +875,10 @@ public sealed class CasualBattleService : IGameTicker
             case "open": OpenForTest = true; await GmCommands.ReplyAsync(s, "Mock Battle sign-ups open (test aid)."); break;
             case "close": OpenForTest = false; await GmCommands.ReplyAsync(s, "Mock Battle back on its schedule."); break;
             case "start": await FormAsync(); await GmCommands.ReplyAsync(s, $"Mock Battle started, {_matches.Count} match(es) running (test aid)."); break;
-            default: throw new ArgumentException("open|close|start");
+            case "at" when _active.TryGetValue(s, out var mine) && long.TryParse(args.ElementAtOrDefault(1), out long at):
+                mine.Open = Now - Math.Clamp(at, 0, BattleSeconds - 1);
+                await GmCommands.ReplyAsync(s, $"Mock Battle at {at} s (test aid)."); break;
+            default: throw new ArgumentException("open|close|start|at <seconds>");
         }
     }
 }

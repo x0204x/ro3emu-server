@@ -137,6 +137,68 @@ public sealed class SkillGrowthTests : IAsyncLifetime
         Assert.Equal(10000, saved.SkillAssignPlans.All.Value[0].ManualLoadSkill[2].SkillId);
     }
 
+    // The PC skill tree shows a Swordman's attack in the Novice page's first cell as JobAttackConfig's 1001001 (group 10010),
+    // the one place to drag it back from after taking it off the bar, and the cell drags only at a level above 0 in the
+    // plan. A role saved before that group was sent gets it on login.
+    [ClientDataFact]
+    public async Task ARemovedNormalAttackComesBackFromTheSkillTreeCell()
+    {
+        const int Attack = 11000, Cell = 10010, SwordSmash = 11099;
+        long roleId;
+        async Task<int> Load(BotClient bot, SkillLoadOperation op, int socket, int group)
+        {
+            await bot.SendGameAsync(SkillService.SkillLoad, new SkillLoadReq
+            {
+                OpType = op, IsManual = true, SocketNum = socket, Info = new SkillData { SkillId = group, SkillLevel = 1 }
+            });
+            return (await Next(bot, SkillService.SkillLoad, SkillLoadResp.Parser)).Result;
+        }
+        await using (var sword = await InWorld("Sword"))
+        {
+            roleId = (long)sword.Self!.Uuid;
+            await Next(sword, SkillService.SkillDataSync, DBSkillDataIncrement.Parser);
+            await Gm("sword", "!job 1100");
+            await sword.SendGameAsync(1023, new PlayerAssetReq { AssetType = { 5 } });
+            var swordman = await Next(sword, SkillService.SkillDataSync, DBSkillDataIncrement.Parser,
+                m => m.SyncAllMark && m.CurrentAtkSkillId == 1100001);
+            Assert.Contains(Cell, swordman.SkillList.All.Value);
+            Assert.Equal(1, swordman.SkillAssignPlans.All.Value[0].SkillAssigns[Cell].SkillLevel);
+            Assert.Equal(1100001, swordman.SkillWheel.All.WhellSkills[1].SkillConfigId);
+
+            Assert.Equal(0, await Load(sword, SkillLoadOperation.SkillLoadOpLoad, 1, SwordSmash));
+            Assert.Equal(0, await Load(sword, SkillLoadOperation.SkillLoadOpUnload, 0, Attack));
+        }
+
+        // A role saved without the cell's group (before this fix) is repaired on login.
+        var roles = _app.Services.GetRequiredService<RoleStore>();
+        var old = DBSkillData.Parser.ParseFrom(roles.LoadSkillPlans(roleId)!);
+        Assert.DoesNotContain(old.SkillAssignPlans[0].ManualLoadSkill, load => load.SkillId == Attack);
+        old.SkillList.Remove(Cell);
+        foreach (var plan in old.SkillAssignPlans) plan.SkillAssigns.Remove(Cell);
+        Assert.Equal(1, FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(),
+            "UPDATE role SET skill_plans = $plans WHERE id = $id", ("$plans", old.ToByteArray()), ("$id", roleId)));
+
+        await using (var again = await InWorld("Sword", create: false))
+        {
+            var removed = await Next(again, SkillService.SkillDataSync, DBSkillDataIncrement.Parser);
+            Assert.DoesNotContain(removed.SkillWheel.All.WhellSkills.Values, slot => slot.SkillConfigId == 1100001);
+            Assert.Contains(Cell, removed.SkillList.All.Value);
+            Assert.All(removed.SkillAssignPlans.All.Value, plan => Assert.Equal(1, plan.SkillAssigns[Cell].SkillLevel));
+            // Dragged from the cell, it shows as the career's own attack; moving it keeps one copy on the bar.
+            Assert.Equal(0, await Load(again, SkillLoadOperation.SkillLoadOpLoad, 0, Cell));
+            Assert.Equal(0, await Load(again, SkillLoadOperation.SkillLoadOpLoad, 2, Attack));
+        }
+        await using var last = await InWorld("Sword", create: false);
+        var restored = await Next(last, SkillService.SkillDataSync, DBSkillDataIncrement.Parser);
+        Assert.Equal(1100001, restored.SkillWheel.All.WhellSkills[3].SkillConfigId);
+        Assert.Single(restored.SkillWheel.All.WhellSkills.Values, slot => slot.SkillConfigId == 1100001);
+        // The client names the slot by the row it shows (11000), not the cell's stored 10010.
+        Assert.Equal(0, await Load(last, SkillLoadOperation.SkillLoadOpLoad, 0, Cell));
+        Assert.Equal(0, await Load(last, SkillLoadOperation.SkillLoadOpUnload, 0, Attack));
+        Assert.DoesNotContain(DBSkillData.Parser.ParseFrom(roles.LoadSkillPlans(roleId)!).SkillAssignPlans[0].ManualLoadSkill,
+            load => load.SkillId is Attack or Cell);
+    }
+
     [ClientDataFact]
     public async Task AllocationAndDependentRefundAreAtomic()
     {

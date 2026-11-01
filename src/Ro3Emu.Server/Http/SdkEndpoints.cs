@@ -10,7 +10,7 @@ namespace Ro3Emu.Server.Http;
 /// RecoveryOfficialSdkLoginResponse{code, data{token}}) and the server list (Lua LC_LoginManager).
 /// ClientPatch points both client URLs here.
 /// </summary>
-public static class SdkEndpoints
+public static partial class SdkEndpoints
 {
     public const string LoginPath = "/sdk/login";
 
@@ -29,7 +29,8 @@ public static class SdkEndpoints
     {
         app.MapGet(GateKeyPath, (Net.GateCrypto crypto) => Results.Text(crypto.PublicKeyPem, "application/x-pem-file"));
 
-        app.MapPost(LoginPath, async (HttpRequest request, CredentialLimiter limiter, AccountStore accounts, ILogger<AccountStore> log) =>
+        app.MapPost(LoginPath, async (HttpRequest request, CredentialLimiter limiter, AccountStore accounts, Ro3Emu.Panel.IPanelOperations panel,
+            IOptions<ServerOptions> options, ILogger<AccountStore> log) =>
         {
             string traceId = request.HttpContext.TraceIdentifier;
             log.LogInformation("SDK login request {TraceId}: ContentType={ContentType}, ContentLength={ContentLength}, HasFormContentType={HasFormContentType}",
@@ -63,13 +64,21 @@ public static class SdkEndpoints
                     traceId, identity.Length != 0, credential.Length != 0, !string.IsNullOrWhiteSpace(form["channel_id"].ToString()));
                 return Results.Json(new { code = 401, message = "missing credentials" });
             }
-            var (result, account) = await accounts.SignInAsync(identity, credential);
-            log.LogInformation("SDK login {TraceId}: {Result}", traceId, result);
-            // (inferred) 尚未找到客戶端的封鎖專用代碼，因此與密碼錯誤使用相同回應。
-            if (result is AccountStore.LoginResult.BadPassword or AccountStore.LoginResult.Banned)
+            var (result, account) = await accounts.SignInAsync(identity, credential, register: !options.Value.RefuseUnknownAccounts);
+            if (result == AccountStore.LoginResult.Unknown)
+                log.LogInformation("SDK login {TraceId}: Unknown", traceId);
+            else
+                log.LogInformation("SDK login {TraceId}: {Result}", traceId, result);
+            // A banned account answers like a wrong password (inferred: the client has no ban code we know). So does a
+            // name without an account when the game may not create it: code 401 is the only refusal the client words
+            // (MetaSDKUtil maps it to 10630000002, UI_Sys_LoginWidgetBaseCtrl._loginCallBack shows UIWords 15012
+            // "Incorrect Username or Password"); any other code shows 15023 "Unknown error occurred during login".
+            if (result is AccountStore.LoginResult.BadPassword or AccountStore.LoginResult.Banned or AccountStore.LoginResult.Unknown)
             {
                 return Results.Json(new { code = 401 });
             }
+            // The account's login history on the web panel (the address only where the operator keeps addresses).
+            await panel.RecordLoginAsync(account, "game", request.HttpContext.Connection.RemoteIpAddress);
             return Results.Json(new { code = 0, data = new { token = await accounts.IssueSdkTokenAsync(account) } });
         });
 
@@ -111,6 +120,9 @@ public static class SdkEndpoints
             return Results.Text(RecoveryJsonPrefix + JsonSerializer.Serialize(body), "text/plain");
         });
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "SDK login {Identity}: refused, no such account (Ro3Emu:RefuseUnknownAccounts: accounts come from the panel's sign-up)")]
+    private static partial void LogUnknownRefused(ILogger logger, string identity);
 
     /// <summary>
     /// The gates the client should dial: the IP address it reached this server list on, so a host started with its LAN

@@ -46,7 +46,9 @@ public sealed partial class PreparedGameDataTests : IDisposable
     public void CorrectImportUsesTheProductGateWithoutAnyNativeExporter()
     {
         var manifest = Prepare();
-        Assert.Equal(1, manifest.Format); Assert.Equal(7, manifest.Files.Count);
+        Assert.Equal(1, manifest.Format);
+        Assert.Equal(GameDataExport.Folders.Length + GameDataExport.TopFiles.Length + 1, manifest.Files.Count);
+        Assert.Contains(ClientScenes.FileName, manifest.Files.Keys);
         Assert.Equal(17, manifest.Client.Sequence);
         int exports = 0; var before = Snapshot();
         Flows.EnsureGameData(Client, false, Data, (_, _) => { exports++; throw new InvalidOperationException("不應執行匯出"); });
@@ -143,14 +145,49 @@ public sealed partial class PreparedGameDataTests : IDisposable
     [Fact]
     public void NoMarkerKeepsTheOriginalCompleteNativeStampPath()
     {
+        WriteNativeStamp();
+        int exports = 0;
+        Flows.EnsureGameData(Client, false, Data, (_, _) => exports++);
+        Assert.Equal(0, exports);
+    }
+
+    [Fact]
+    public void NativeExportWithoutTheSceneListIsRefreshedOnce()
+    {
+        WriteNativeStamp();
+        File.Delete(Path.Combine(Data, ClientScenes.FileName));
+        int exports = 0;
+        void Export(string source, string target)
+        {
+            Assert.Equal(Client, source); Assert.Equal(Data, target);
+            exports++;
+            Write(Data, ClientScenes.FileName, "{\"Missing\":[]}");
+        }
+        Flows.EnsureGameData(Client, false, Data, Export);
+        Flows.EnsureGameData(Client, false, Data, Export);
+        Assert.Equal(1, exports);
+    }
+
+    [Fact]
+    public void OlderCuratedImportWithoutSceneListFailsWithoutOverwritingItsData()
+    {
+        var manifest = Prepare();
+        manifest.Files.Remove(ClientScenes.FileName);
+        File.Delete(Path.Combine(Data, ClientScenes.FileName));
+        Save(manifest);
+        var before = Snapshot(); int exports = 0;
+        Assert.Throws<SetupException>(() => Flows.EnsureGameData(Client, false, Data, (_, _) => exports++));
+        Assert.Equal(0, exports);
+        Assert.Equal(before.OrderBy(p => p.Key), Snapshot().OrderBy(p => p.Key));
+    }
+
+    private void WriteNativeStamp()
+    {
         var counts = GameDataExport.Folders.ToDictionary(folder => folder,
             folder => Directory.EnumerateFiles(Path.Combine(Data, folder), "*", SearchOption.AllDirectories).Count());
         var stamp = new GameDataExport.Stamp(GameDataExport.FormatVersion, GameDataExport.Fingerprint(Client), Client,
             DateTime.UtcNow, 100, 1, 1, GameDataExport.QuickFingerprint(Client), counts, []);
         File.WriteAllText(Path.Combine(Data, "export.json"), JsonSerializer.Serialize(stamp));
-        int exports = 0;
-        Flows.EnsureGameData(Client, false, Data, (_, _) => exports++);
-        Assert.Equal(0, exports);
     }
     public void Dispose() => Directory.Delete(_root, recursive: true);
 }

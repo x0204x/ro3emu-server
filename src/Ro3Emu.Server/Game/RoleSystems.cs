@@ -8,7 +8,7 @@ namespace Ro3Emu.Server.Game;
 /// selection check), when it moves and when it leaves. RoleSessionService runs the selection around these; the order
 /// here is the client's, see the comments on each step.
 /// </summary>
-public sealed class RoleSystems(Maps.World world, ChatService chat, CharacterService character, RewardService rewards, SkillService skills, FunctionService functions, CombatService combat, BuffService buffs, SceneService scene, TaskService tasks, DailyActivityService daily, GuideService guides, EmojiService emoji, PersonalService personal, SocialOutfitService socialOutfit, AchievementService achievements, Micro.FriendService friends, MvpService mvps, CardService cards, ShopService shops, EmblemService emblems, SeasonService seasons, SeasonPageService seasonPage, SeasonRefineService seasonRefine, SeasonTalentService talents, PetService pets, TowerService tower, ValhallaService valhalla, FlyingDragonService dragon, MonsterHuntService monsterHunt, GrowthClassService growthClass, ParagonService paragon, TitleService titles, FirstHeartService firstHeart, MailService mail, AuctionService auctions, GuildService guilds, GuildVoiceService guildVoice, AdventureGroupService adventureGroups, GuildCaravanService caravan, GuildChallengeService guildChallenge, DungeonService dungeons, DungeonMatchService dungeonMatches, InstanceService instances, TradeService trade, StallsService stalls, LifeJobService life, GatheringService gathering, WildAfkService afk, WorldCoreService worldCore, WorldInteractionService interaction, NewActivityService activities, TimedEventService timedEvents, PronteraDefenseService defense, TimedBattleService timedBattles, CasualBattleService casual, FestivalService festival, TrainingService training, LotteryService lottery, MountService mounts, CareerSpecialService careerSpecial, WardrobeService wardrobe, TotemService totems, GenreService genre, PowerService power, TerritoryWarsService territory, TerritoryEscortService escort, Persistence.SettingsPersistence settings, TavernService tavern, ILogger<RoleSystems> log)
+public sealed class RoleSystems(Maps.World world, ChatService chat, CharacterService character, RewardService rewards, SkillService skills, FunctionService functions, CombatService combat, BuffService buffs, SceneService scene, TaskService tasks, DailyActivityService daily, GuideService guides, EmojiService emoji, PersonalService personal, SocialOutfitService socialOutfit, AchievementService achievements, Micro.FriendService friends, MvpService mvps, CardService cards, ShopService shops, EmblemService emblems, SeasonService seasons, SeasonPageService seasonPage, SeasonRefineService seasonRefine, SeasonTalentService talents, PetService pets, TowerService tower, ValhallaService valhalla, FlyingDragonService dragon, MonsterHuntService monsterHunt, GrowthClassService growthClass, ParagonService paragon, TitleService titles, FirstHeartService firstHeart, MailService mail, AuctionService auctions, GuildService guilds, GuildVoiceService guildVoice, AdventureGroupService adventureGroups, GuildCaravanService caravan, GuildChallengeService guildChallenge, DungeonService dungeons, DungeonMatchService dungeonMatches, InstanceService instances, TradeService trade, StallsService stalls, LifeJobService life, GatheringService gathering, WildAfkService afk, WorldCoreService worldCore, WorldInteractionService interaction, NewActivityService activities, TimedEventService timedEvents, PronteraDefenseService defense, TimedBattleService timedBattles, CasualBattleService casual, FestivalService festival, TrainingService training, LotteryService lottery, MountService mounts, CareerSpecialService careerSpecial, WardrobeService wardrobe, TotemService totems, GenreService genre, PowerService power, TerritoryWarsService territory, TerritoryEscortService escort, Persistence.SettingsPersistence settings, TavernService tavern, LegacyTavernService legacyTavern, ILogger<RoleSystems> log)
 {
     internal async Task LoadAsync(GameSession session)
     {
@@ -30,11 +30,12 @@ public sealed class RoleSystems(Maps.World world, ChatService chat, CharacterSer
         session.NewActivities = null;
         session.DailyReady = false;
         afk.Load(session);
-        tavern.Load(session);
+        legacyTavern.Load(session);
         daily.Load(session);
         await emblems.LoadAsync(session);
         talents.Load(session);
         seasonRefine.Load(session);
+        tavern.Load(session); // before the login's quest settlement: today's Tavern stay (106010)
         power.Prime(session); // the login 5066 carries the computed power (pets join at the login publish)
         character.Refresh(session); // first entity/stats use this role's saved active talent plan
     }
@@ -159,11 +160,13 @@ public sealed class RoleSystems(Maps.World world, ChatService chat, CharacterSer
         checkpoint();
         await worldCore.LoginAsync(session);
         checkpoint();
+        await tavern.LoginAsync(session); // 5043: a role still in a room (a relog) rejoins its chat and voice
+        checkpoint();
     }
 
     /// <summary>The keys the login steps write besides the role, its account and lifecycle.</summary>
     internal async Task<Ownership.ReservationKey[]> LoginKeysAsync(long roleId) =>
-        [.. TavernService.SharedKeys(), .. defense.LoginKeys(roleId), .. activities.LoginKeys(roleId), .. territory.LoginKeys(),
+        [.. LegacyTavernService.SharedKeys(), .. defense.LoginKeys(roleId), .. activities.LoginKeys(roleId), .. territory.LoginKeys(),
          .. caravan.LoginKeys(roleId), .. guildChallenge.LoginKeys(roleId),
          .. await mvps.LoginKeysAsync(roleId), .. await dungeons.LoginKeysAsync(roleId),
          .. await casual.LoginKeysAsync(roleId), .. await timedBattles.LoginKeysAsync(roleId),
@@ -171,12 +174,13 @@ public sealed class RoleSystems(Maps.World world, ChatService chat, CharacterSer
 
     /// <summary>The shared keys the leave steps write: the own guild (offline publication) and the timed battle.</summary>
     internal Ownership.ReservationKey[] LeaveKeys(GameSession session) =>
-        [.. guilds.OwnGuildKeys(session), .. timedBattles.CleanupKeys(session), .. TavernService.SharedKeys()];
+        [.. guilds.OwnGuildKeys(session), .. timedBattles.CleanupKeys(session), .. LegacyTavernService.SharedKeys()];
 
     internal async Task MovedAsync(GameSession session, WalkReq walk)
     {
         await world.MoveAsync(session, walk);
         await territory.VehicleMovedAsync(session, walk); // a driver's walk is its vehicle's
+        await casual.MadogearMovedAsync(session, walk); // and a Mock Battle Madogear's
         await territory.PlatformMovedAsync(session); // a SummonPlatform activator who walks off
         await gathering.PlayerMovedAsync(session);
         combat.PlayerMoved(session);
@@ -202,7 +206,7 @@ public sealed class RoleSystems(Maps.World world, ChatService chat, CharacterSer
         await step("settings", () => { settings.Flush(session); return Task.CompletedTask; });
         await step("territory", () => territory.DisconnectAsync(session));
         var afkState = session.WildAfk;
-        await step("tavern", () => tavern.LeaveAsync(session));
+        await step("tavern", () => legacyTavern.LeaveAsync(session));
         await step("afk", () => afk.LeaveAsync(session));
         // AFK.Leave detaches its session state. A held old-day award still needs the old
         // daily/task rows on the next login, so the ordinary daily reset must wait for it.
@@ -223,6 +227,7 @@ public sealed class RoleSystems(Maps.World world, ChatService chat, CharacterSer
         session.EventFaction = 0;
         await step("instance", () => instances.AbandonAsync(session));
         await step("world", () => world.LeaveAsync(session));
+        await step("tavern", () => tavern.LeaveRoleAsync(session));
         await step("chat", () => { chat.OnRoleLeft(session); return Task.CompletedTask; });
         await step("world core", () => { worldCore.Disconnected(session); return Task.CompletedTask; });
     }

@@ -15,6 +15,9 @@ public sealed partial class TerritoryWarsService
     /// <summary>(inferred) CameraFollowBullet: the camera distance (cm) and the bullet's screen offsets.</summary>
     private const long FollowDistanceCm = 1000;
 
+    /// <summary>(inferred) Metres a shot may land beyond GVGCannonConfig _fIndicatorRadius: the spread and the muzzle offset.</summary>
+    private const double CannonReachSlack = 15;
+
     /// <summary>
     /// The skill must be the cannon's (_iSkillID), the volley 1.._iSingleShotNum bullets. A volley costs one of the cannon's
     /// _iBulletNumLimit (SkillConfig _kCost [6, 4900014, 1]) and starts the skill's _iCD (inferred: _iReloadTime is not
@@ -59,6 +62,15 @@ public sealed partial class TerritoryWarsService
         double speed = param.Speed / 100.0, gravity = Math.Max(0, param.Gravity / 100.0);
         var velocity = new Vec3 { X = (float)(dir.X / length * speed), Y = (float)(dir.Y / length * speed), Z = (float)(dir.Z / length * speed) };
         double flight = FlightSeconds(unit, start, velocity, gravity);
+        // The client sends the speed and gravity it computed for the aimed point (LC_GVGFireCannon), any of them: a shot is
+        // refused where it lands beyond the aim indicator's reach, plus CannonReachSlack m for the spread (inferred).
+        double landX = start.X + velocity.X * flight - unit.X, landZ = start.Z + velocity.Z * flight - unit.Z;
+        double lands = Math.Sqrt(landX * landX + landZ * landZ);
+        if (cfg.IndicatorRadius > 0 && lands > cfg.IndicatorRadius / 100 + CannonReachSlack)
+        {
+            _scene.Cheats.Refused(s, CheatMonitor.Cannon, $"shot lands {lands:F0} m out, aim reach {cfg.IndicatorRadius / 100:F0} m");
+            return null;
+        }
         var bullet = new CannonBullet
         {
             Uid = CannonUidBase | BulletUidFlag | Interlocked.Increment(ref _bulletSerial), SceneEntry = unit.SceneEntry,

@@ -50,6 +50,7 @@ function variantLine(ids) {
 /** A chance per kill, 0 to 1, as a percentage with as many decimals as a rare drop needs. */
 function percent(chance) {
   const p = chance * 100;
+  if (!(p > 0)) return '0%';
   if (p >= 99.995) return '100%';
   if (p >= 10) return p.toFixed(1).replace(/\.0$/, '') + '%';
   if (p >= 0.01) return p.toFixed(2).replace(/\.?0+$/, '') + '%';

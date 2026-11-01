@@ -82,6 +82,21 @@ public sealed partial class TerritoryWarsService
         return camp == (int)EPvpRoleCampNum.Free || camp == (int)EPvpRoleCampNum.Guild && ag != 0;
     }
 
+    /// <summary>The role's territory camp (EPvpRoleCampNum), Peace before its territory state is loaded.</summary>
+    public int WorldCampOf(GameSession s) => s.TerritoryWars?.Camp ?? (int)EPvpRoleCampNum.Peace;
+
+    /// <summary>The killer defeated a player of another guild in the territory world (the Faction Quest's 101023
+    /// "Defeat players from other guilds"): a WorldHostile pair, both in a guild (inferred).</summary>
+    public bool WorldRivals(GameSession killer, GameSession victim) => WorldHostile(killer, victim)
+        && OwnId(killer) is var own and > 0 && OwnId(victim) is var other and > 0 && own != other;
+
+    /// <summary>The role's camp is set or loaded (TaskService: the Faction Quest's sub-task tier). Listeners post.</summary>
+    public List<Action<GameSession>> CampChanged { get; } = [];
+
+    /// <summary>A Crystalline Ore cluster (4910101-4910103) was collected and committed (TaskService: 107102).
+    /// Listeners post their work: the character lock and the territory gate are held.</summary>
+    public List<Action<GameSession>> CrystalCollected { get; } = [];
+
     /// <summary>Scene-editor supply groups use NPCType 2, so MonsterService's NPCType 1 spawner cannot represent them.</summary>
     // Persisted territory pickups/drops have only a config scene; the shared event runs on public line 1.
     private bool WorldScene(GameSession s) => s.Role != null && !s.SceneLoading && s.InstanceId == 0 && s.LineNumber == 1
@@ -397,6 +412,7 @@ public sealed partial class TerritoryWarsService
                     _loop.ScheduleRuntime(TimeSpan.FromSeconds(unit.RespawnSeconds), () => RespawnWorldPickupAsync(unit, generation));
                 }
                 await _character.ItemsChangedAsync(s, false);
+                if (unit.DropId == 0) foreach (var handler in CrystalCollected) handler(s);
                 return 0;
             }
             finally { _worldGate.Release(); }

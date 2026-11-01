@@ -35,7 +35,9 @@ show is playable from day one, without season or server-day gates ([details](gui
 - trade center, stalls, auctions (guild, world, event), mail
 - NPC, point and guild shops, battle pass
 - friends and gifts, parties and raids, chat channels and horns
-- party voice chat through the server (off by default, see below)
+- party and guild voice chat through the server (off by default, see below)
+- the Tavern: voice and text rooms with mic seats, drink gifts and a daily quest
+  ([details](systems/tavern.md))
 - adventure groups
 
 **Guilds**
@@ -43,7 +45,9 @@ show is playable from day one, without season or server-day gates ([details](gui
 - bonfire party, caravan, black market, Ilmata challenge
 - group mail, call to arms, impeachment, merging two guilds
 - Guild League with elite rosters and capture rings
-- Territory Wars and the castle siege
+- Territory Wars and the castle siege: commander tools, Battle Merit, the war warehouse,
+  cannons and vehicles, gates and stages, rams, ladders, archers, summon platforms
+- the territory world's daily Faction Quest
 
 **Instances and activities**
 - story dungeons and scripted story scenes (reconstructed)
@@ -62,13 +66,14 @@ show is playable from day one, without season or server-day gates ([details](gui
 **Not yet**
 - **Boss script mechanics:** the special skills are in, but mechanics that lived only in the original server's scripts
   (bubbles, bells, rhythm stages) are plain area attacks.
-- **Mock Battle extras:** the arena's monsters.
-- **War of Emperium extras:** commander tools, siege weapons and vehicles.
 - **Smaller missing pieces:** some stages of the story dungeons
   that are still simplified.
-- **Tavern and guild voice:** only party voice is implemented.
 
-**Voice.** Party voice goes through a relay in the server instead of the publisher's Tencent GME, and the patched
-client records and plays it through Windows' own winmm. It is off by default: `Voice:Port` turns it on. The voice
-stream is encrypted (AES-CTR with an HMAC-SHA256 tag per frame) with a fresh key per session that travels inside the
-one-time ticket over the encrypted game gate, so the relay serves off loopback too.
+**Web panel.** Built into the server ([guide](guide/panel.md)): a player portal with rankings, who's online, news,
+sign-up and a game wiki (items, monsters, maps, with the pictures exported from your own client), and admin tools
+(accounts and bans, character sheets, mail with rewards, gift codes, GM console, broadcasts, economy log).
+
+**Voice.** Party, guild and Tavern voice go through a relay in the server instead of the publisher's Tencent GME, and
+the patched client records and plays it through Windows' own winmm. It is off by default: `Voice:Port` turns it
+on. The voice stream is encrypted (AES-CTR with an HMAC-SHA256 tag per frame) with a fresh key per session that
+travels inside the one-time ticket over the encrypted game gate, so the relay serves off loopback too.

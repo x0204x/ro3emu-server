@@ -80,8 +80,12 @@ public sealed partial class SkillCombatTests
         var anchor = kind == "pull-enemy" ? await Target("alice", stationary: true, npcId: 5000002, immobile: true) : null;
         await Loop.InvokeAsync(() =>
         {
+            // Hit, a dummy would also engage and walk after Alice on the next AI tick: a pull that leaves it 3 m away
+            // (to the point, to the enemy) is followed by a chase that moved it off its EndPos before a loaded test
+            // read it. The dummies only take the displacement.
+            target.StaysOutOfBattle = true;
             target.X = start.X + ux * stand; target.Z = start.Z + uz * stand; target.Hp = 1000000;
-            if (anchor != null) { anchor.X = start.X + ux * aim; anchor.Z = start.Z + uz * aim; anchor.Hp = 1000000; }
+            if (anchor != null) { anchor.StaysOutOfBattle = true; anchor.X = start.X + ux * aim; anchor.Z = start.Z + uz * aim; anchor.Hp = 1000000; }
             // The map's own monsters stay out of the area: the skill takes the nearest targets.
             foreach (var other in _app.Services.GetRequiredService<World>().Map(session.WorldScene).Units.OfType<MonsterUnit>())
                 if (other != target && other != anchor) { other.X += 200; other.Z += 200; }

@@ -14,4 +14,9 @@ public readonly partial record struct TitleConfig(JsonElement Row)
     [ConfigField("_iPower")] public partial long Power { get; }
     [ConfigField("_iPowerAdd")] public partial long PowerAdd { get; }
     [ConfigField("_kAttr")] public partial long[][] Attr { get; }
+    [ConfigField("_iTitleName", Optional = true)] public partial JsonElement? TitleName { get; }
+    /// <summary>The rank's small emblem, a sprite name.</summary>
+    [ConfigField("_kTitleIcon02", Optional = true)] public partial string SmallIcon { get; }
+    /// <summary>The rank's level as the title shows it.</summary>
+    [ConfigField("_kTitleLev", Optional = true)] public partial long TitleLev { get; }
 }

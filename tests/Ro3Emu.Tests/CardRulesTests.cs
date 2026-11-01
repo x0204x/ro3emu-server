@@ -181,6 +181,31 @@ public sealed class CardRulesTests : IAsyncLifetime
     }
 
     [ClientDataFact]
+    public async Task CostumeSocketsOpenAtTheirConditionAndTakeTheirCardParts()
+    {
+        // EquipGridConfig _iID 8/9/10 (Head/Face/Mouth, category 3) open socket 1 by 4000007/8/9 = base level 20;
+        // card parts 7/8/9 (HeadAccessory/FaceAccessory/MouthAccessory) go there.
+        const int head = 1420700, face = 1430800, mouth = 1430900; // Card: Willow, Sketch Card: Orc Hero / Moonlight Flower
+        await using var alice = await InWorld("Alice");
+        var session = Session("Alice");
+        await Gm("alice", $"!item {head} 1");
+        await Gm("alice", $"!item {face} 1");
+        await Gm("alice", $"!item {mouth} 1");
+        long Guid(int entry) => session.Items.Single(i => i.Entry == entry && i.Grid == 0).Guid;
+
+        Assert.Equal(ErrorCodes.SlotSealed, await Insert(alice, 8, 1, Guid(head)));
+        await Gm("alice", "!lvl 20");
+        Assert.Equal(ErrorCodes.EquipSlot, await Insert(alice, 9, 1, Guid(head))); // a head card does not fit the face grid
+        Assert.Equal(ErrorCodes.SlotSealed, await Insert(alice, 8, 2, Guid(head))); // _kSocketOpen2 0: never
+        Assert.Equal(0, await Insert(alice, 8, 1, Guid(head)));
+        Assert.Equal(0, await Insert(alice, 9, 1, Guid(face)));
+        Assert.Equal(0, await Insert(alice, 10, 1, Guid(mouth)));
+        Assert.Equal(head, session.Items.Single(i => i.Grid == CharacterService.CardGrid(8, 1)).Entry);
+        Assert.Equal(face, session.Items.Single(i => i.Grid == CharacterService.CardGrid(9, 1)).Entry);
+        Assert.Equal(mouth, session.Items.Single(i => i.Grid == CharacterService.CardGrid(10, 1)).Entry);
+    }
+
+    [ClientDataFact]
     public async Task SocketedCardAppliesFlashAttributesAndItsAttributeConversion()
     {
         const int card = 1450101; // _kSkillAttribute 11000062 [8, 109, 1, 1304, 1, 650]; Flash 11001201

@@ -53,6 +53,8 @@ public partial class MainWindow : Window
         ConfigureExternalLink(DiscordLink, config.DiscordUrl, "Discord");
         ConfigureExternalLink(FacebookLink, config.FacebookUrl, "Facebook");
         ConfigureExternalLink(YoutubeLink, config.YoutubeUrl, "YouTube");
+        PanelButton.Visibility = config.ConfiguredPanelUrl != null ? Visibility.Visible : Visibility.Collapsed;
+        PanelButton.ToolTip = "開啟伺服器設定的網頁面板";
         _controller = new LauncherController(config, exePath, Post, PickFolder,
             CloseAfterSuccessfulLaunch,
             RestoreAndActivate);
@@ -347,6 +349,7 @@ public partial class MainWindow : Window
     }
 
     void OnWebsiteLink(object sender, MouseButtonEventArgs e) => OpenExternal(_config.WebsiteUrl);
+    void OnPanel(object sender, RoutedEventArgs e) => OpenExternal(_config.ConfiguredPanelUrl);
     void OnDiscordLink(object sender, MouseButtonEventArgs e) => OpenExternal(_config.DiscordUrl);
     void OnFacebookLink(object sender, MouseButtonEventArgs e) => OpenExternal(_config.FacebookUrl);
     void OnYoutubeLink(object sender, MouseButtonEventArgs e) => OpenExternal(_config.YoutubeUrl);
@@ -591,7 +594,12 @@ public partial class MainWindow : Window
 
     bool IsAllowedExternal(string? url)
     {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) || uri.Scheme != Uri.UriSchemeHttps) return false;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri)) return false;
+        // 面板沿用上游的明確 HTTP(S) 設定；只有完全相同的網址可用 HTTP，公告連結仍限 HTTPS。
+        if (_config.ConfiguredPanelUrl is { } panel && Uri.TryCreate(panel, UriKind.Absolute, out Uri? panelUri)
+            && Uri.Compare(uri, panelUri, UriComponents.AbsoluteUri, UriFormat.SafeUnescaped, StringComparison.OrdinalIgnoreCase) == 0)
+            return true;
+        if (uri.Scheme != Uri.UriSchemeHttps) return false;
         string[] configured = [_config.RegisterUrl ?? "", _config.WebsiteUrl ?? "", _config.DiscordUrl ?? "", _config.FacebookUrl ?? "", _config.YoutubeUrl ?? ""];
         if (configured.Any(value => Uri.TryCreate(value, UriKind.Absolute, out Uri? known) &&
                                     Uri.Compare(uri, known, UriComponents.AbsoluteUri, UriFormat.SafeUnescaped, StringComparison.OrdinalIgnoreCase) == 0))

@@ -22,10 +22,14 @@ public class IconExportTests
                 """);
             File.WriteAllText(Path.Combine(dir.FullName, "JobConfig.json"), """{"1000":{"_kIcon":"icon_job_novice.png","_kBigIcon":"iconbig_job_novice.png"}}""");
             File.WriteAllText(Path.Combine(dir.FullName, "MapConfig.json"), """{"7":{"_kBgImage":["sc_a_pathfind.png","sc_a_deco.png"]},"8":{"_kBgImage":[]}}""");
+            File.WriteAllText(Path.Combine(dir.FullName, "GuildIconConfig.json"), """{"100101":{"_kBigIcon":"guild_frame_a.png"},"200101":{"_kBigIcon":"guild_design_b.png"}}""");
+            File.WriteAllText(Path.Combine(dir.FullName, "TitleConfig.json"), """[{"_iID":1,"_kTitleIcon02":"title_small_1.png"}]""");
+            File.WriteAllText(Path.Combine(dir.FullName, "AchievementLevel.json"), """{"1":{"_kIcon":"achievement_level_0.png"}}""");
 
             var requests = IconExport.Requests(dir.FullName);
-            Assert.Equal(["items/item_1.png", "items/card_2.png", "monsters/headicon_monster_a.png", "classes/icon_job_novice.png",
-                "classes/iconbig_job_novice.png", "maps/sc_a_pathfind.png"], requests.Select(r => r.Path));
+            Assert.Equal(["items/item_1.png", "items/card_2.png", "monsters/headicon_monster_a.png", "npcs/headicon_npc_b.png", "classes/icon_job_novice.png",
+                "classes/iconbig_job_novice.png", "maps/sc_a_pathfind.png", "guilds/guild_frame_a.png", "guilds/guild_design_b.png", "titles/title_small_1.png",
+                "achievements/achievement_level_0.png"], requests.Select(r => r.Path));
             Assert.Equal(512, requests.Single(r => r.Kind == "maps").MaxSide);
             Assert.Equal(400, requests.Single(r => r.File == "card_2.png").MaxSide);
         }

@@ -105,12 +105,17 @@ public sealed partial class SkillCombatTests
         await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 2302201, Face = 0 });
         Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
         await Next(alice, BuffService.BuffUpdate, BuffUpdateNotify.Parser, n => n.Buffs.Any(b => b.ConfigId == 2302201));
-        Assert.True(MonsterService.Distance(before.X, before.Z, source.Position.X, source.Position.Z) > 0);
-        Assert.NotEqual(0UL, (ulong)source.StatusBits & 2UL);
+        // BuffService.AddAsync sends 31104 before it recomputes the status bits: wait for the 31048 that carries them.
+        await Next(alice, CombatService.AoiAttrChange, AOIAttrChange.Parser,
+            n => n.EntityUuid == (ulong)source.Role!.Id && (n.StateInfo?.Data?.Values.FirstOrDefault() & 2UL) is > 0);
+        var (moved, status) = await Loop.InvokeAsync(() => Task.FromResult(
+            (MonsterService.Distance(before.X, before.Z, source.Position.X, source.Position.Z), (ulong)source.StatusBits)));
+        Assert.True(moved > 0);
+        Assert.NotEqual(0UL, status & 2UL);
         var enemy = await Target("alice", stationary: true);
         await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = enemy.Uid });
         Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
         await Next(alice, BuffService.BuffRemove, BuffRemoveNotify.Parser, n => n.UnitId == source.Role!.Id);
-        Assert.DoesNotContain(source.Buffs, b => b.ConfigId == 2302201);
+        await Loop.InvokeAsync(() => { Assert.DoesNotContain(source.Buffs, b => b.ConfigId == 2302201); return Task.CompletedTask; });
     }
 }

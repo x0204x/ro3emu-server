@@ -449,17 +449,19 @@ public sealed class RewardService : IGameTicker
     /// Every _iDropPoolN of a row; each pool slot [group, chance per million, rolls, picks] is rolled "rolls" times
     /// independently (MVP first-strike pool 21001 = [2020, 100%, 30, 1] = 30 x 1000 Minted Coin).
     /// </summary>
-    /// <summary>A kill's pools: <paramref name="monsterLevel"/> is the slain monster's level (DropAttenuationConfig).</summary>
+    /// <summary>A kill's pools: <paramref name="monsterLevel"/> is the slain monster's level (DropAttenuationConfig); a
+    /// DropGroupConfig row with an _iQuestLimit drops only while the killer has that quest under way.</summary>
     private void RollPools(JsonElement row, GameSession player, List<(int, int)> drops, int monsterLevel)
     {
-        foreach (long poolId in DropPools(row)) RollPool(poolId, player.Progress!, drops, null, monsterLevel);
+        foreach (long poolId in DropPools(row))
+            RollPool(poolId, player.Progress!, drops, null, monsterLevel, quest => TaskService.IsActive(player, quest));
     }
 
     private void RollPool(long poolId, GameSession player, List<(int, int)> drops, List<(int Entry, int Count, int Bind)>? bound = null)
         => RollPool(poolId, player.Progress!, drops, bound);
 
     private void RollPool(long poolId, RoleProgress progress, List<(int, int)> drops, List<(int Entry, int Count, int Bind)>? bound = null,
-        int monsterLevel = DropAttenuation.NoMonster)
+        int monsterLevel = DropAttenuation.NoMonster, Func<long, bool>? questActive = null)
     {
         if (_data.Row("DropPoolConfig", poolId) is not { } pool) return;
         foreach (var (group, chance, rolls, picks) in PoolSlots(pool))
@@ -467,7 +469,7 @@ public sealed class RewardService : IGameTicker
             for (int r = 0; r < rolls; r++)
             {
                 if (_random.NextDouble() * 1_000_000 >= chance) continue;
-                for (int i = 0; i < picks; i++) PickFromGroup(group, progress, drops, bound, monsterLevel);
+                for (int i = 0; i < picks; i++) PickFromGroup(group, progress, drops, bound, monsterLevel, questActive);
             }
         }
     }
@@ -570,8 +572,13 @@ public sealed class RewardService : IGameTicker
     private void PickFromGroup(long group, GameSession player, List<(int, int)> drops, List<(int Entry, int Count, int Bind)>? bound = null)
         => PickFromGroup(group, player.Progress!, drops, bound);
 
+    /// <summary>
+    /// One weighted pick. A row with _iQuestLimit is a quest drop (DropGroupConfig 144: Card: Poring, _iQuestLimit 10102100,
+    /// the quest the dropping Egg Thief wave plays): it is a candidate only when <paramref name="questActive"/> says the
+    /// quest is accepted and not yet delivered (inferred); without one (awards, AFK stages) it never is.
+    /// </summary>
     internal void PickFromGroup(long group, RoleProgress progress, List<(int, int)> drops, List<(int Entry, int Count, int Bind)>? bound = null,
-        int monsterLevel = DropAttenuation.NoMonster)
+        int monsterLevel = DropAttenuation.NoMonster, Func<long, bool>? questActive = null)
     {
         var rows = DropGroupConfig.Get(_data, group);
         if (rows.Count == 0) return;
@@ -587,7 +594,8 @@ public sealed class RewardService : IGameTicker
         }
         var candidates = rows.Where(r =>
         {
-            if (Weight(r) <= 0 || r.QuestLimit != 0 || r.Activityid != 0) return false;
+            if (Weight(r) <= 0 || r.Activityid != 0) return false;
+            if (r.QuestLimit is var quest and not 0 && questActive?.Invoke(quest) != true) return false;
             long min = r.MinLevelLimit, max = r.MaxLevelLimit;
             if (p.Level < min || max > 0 && p.Level > max) return false;
             return r.JobLimit.Length == 0 || r.JobLimit.Contains(p.Career);

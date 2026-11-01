@@ -259,7 +259,7 @@ public sealed partial class PanelBackend
         /// slot [group, chance per million, rolls, picks], each DropGroupConfig row weighted among its group's
         /// candidates), the whole list itself happening at <paramref name="listChance"/>.
         /// </summary>
-        private List<PanelMonsterDrop> PoolDrops(IEnumerable<(long Pool, IReadOnlyList<long> Maps)> pools, string kind, double listChance)
+        public List<PanelMonsterDrop> PoolDrops(IEnumerable<(long Pool, IReadOnlyList<long> Maps)> pools, string kind, double listChance)
         {
             var data = _backend.Tables;
             var merged = new Dictionary<(long Item, string Maps), (double Miss, int Min, int Max, IReadOnlyList<long> Maps)>();

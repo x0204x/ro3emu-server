@@ -6,7 +6,7 @@ registerAdminPage({ id: 'news', label: 'News editor', icon: 'pen', path: '/admin
 const newsTags = [['news', 'News'], ['event', 'Event'], ['maintenance', 'Maintenance'], ['patch', 'Patch']];
 
 async function adminNewsPage() {
-  requireAdmin();
+  requireRole('gm');
   const { news } = await api('GET', '/api/admin/news');
   const editorHost = h('div');
   const edit = item => {

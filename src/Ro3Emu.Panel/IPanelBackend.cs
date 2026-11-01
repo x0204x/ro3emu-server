@@ -37,7 +37,7 @@ public partial interface IPanelBackend
     /// <summary>True while the account (its stored name) has an active ban.</summary>
     Task<bool> IsBannedAsync(string account);
 
-    /// <summary>The account may use the admin area (listed in Ro3Emu:GmAccounts).</summary>
+    /// <summary>The account has a staff role (IPanelOperations.RoleOf): it may open the admin area.</summary>
     bool IsAdmin(string account);
 
     /// <summary>Players in the world now; read from the server's census, no work for the game loop.</summary>
@@ -117,7 +117,11 @@ public sealed record PanelAccountPage(IReadOnlyList<PanelAccountSummary> Account
 /// <param name="Kicked">Game sessions of the account that were closed.</param>
 public sealed record PanelBanOutcome(bool Found, int Kicked);
 
-public sealed record PanelAuditEntry(long Id, DateTimeOffset Utc, string Admin, string Action, string Target, string Detail);
+public sealed record PanelAuditEntry(long Id, DateTimeOffset Utc, string Admin, string Action, string Target, string Detail)
+{
+    /// <summary>What the row's target is, for the audit log's link to it.</summary>
+    public PanelAuditTarget Subject => PanelAuditTarget.Of(Action, Target, Detail);
+}
 
 public sealed record PanelAuditPage(IReadOnlyList<PanelAuditEntry> Entries, int Total, int Page, int PageSize);
 

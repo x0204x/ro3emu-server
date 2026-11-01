@@ -22,7 +22,7 @@ textarea.input.mono{font-family:var(--mono);font-size:var(--t-sm)}
 .reward-hit{display:flex;align-items:center;gap:var(--s2);width:100%;padding:var(--s2) var(--s3);border-radius:var(--r1);text-align:left;font-size:var(--t-md)}
 .reward-hit:hover,.reward-hit:focus-visible{background:var(--hover)}
 
-.confirm{margin-bottom:var(--s4);padding:var(--s3);border:1px solid rgba(180,40,63,.3);border-radius:var(--r2);background:var(--red-bg)}
+.confirm{margin-bottom:var(--s4);padding:var(--s3);border:1px solid var(--red-line);border-radius:var(--r2);background:var(--red-bg)}
 .confirm p{display:flex;gap:var(--s2);align-items:flex-start;margin-bottom:var(--s3);color:var(--ink);font-size:var(--t-md)}
 .confirm p svg{margin-top:3px;color:var(--red-ink)}
 

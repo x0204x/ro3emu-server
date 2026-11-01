@@ -162,8 +162,8 @@
     },
     "1021301": {
       "name": "Southern Payon (portal waves)",
-      "confidence": "low",
-      "skipped": "The arrow points (箭头) are guides. Which monsters each original wave held is unknown; the waves use the base map pay_fild03's monsters, strongest last.",
+      "confidence": "medium",
+      "skipped": "The arrow points (箭头) are guides. The client keeps this encounter's own monsters: NPCConfig 5001046 Poring, 5001047 Fabre, 5001048 Boa, 5001049 Poring and 5001050 Willow (levels 15-18, AI 20200004: 100 m view, 150 m chase, no roaming, as a wave sent at the player), placed nowhere else. Which wave held which, and how many, is unknown (inferred): one per portal, the snakes of the delivery dialogue (1010211001) in the middle, the stronger Willows last.",
       "waves": [
         {
           "stage": "Wave 1",
@@ -171,17 +171,17 @@
           "spawns": [
             {
               "point": 25,
-              "npc": 5000035,
-              "why": "stage 'Defeat three waves of attacking monsters' at 传送门1-3 'portal'; Pupa, the base map's most common monster"
+              "npc": 5001046,
+              "why": "stage 'Defeat three waves of attacking monsters' at 传送门1-3 'portal'; the encounter's Poring"
             },
             {
               "point": 26,
-              "npc": 5000035,
-              "why": "portal 2"
+              "npc": 5001047,
+              "why": "portal 2; the encounter's Fabre"
             },
             {
               "point": 27,
-              "npc": 5000035,
+              "npc": 5001046,
               "why": "portal 3"
             }
           ]
@@ -192,17 +192,17 @@
           "spawns": [
             {
               "point": 25,
-              "npc": 5000028,
-              "why": "Boa, the base map's second monster"
+              "npc": 5001048,
+              "why": "the encounter's Boa; dialogue 1010211001: 'those snakes surrounded us'"
             },
             {
               "point": 26,
-              "npc": 5000028,
+              "npc": 5001048,
               "why": "portal 2"
             },
             {
               "point": 27,
-              "npc": 5000028,
+              "npc": 5001048,
               "why": "portal 3"
             }
           ]
@@ -213,17 +213,17 @@
           "spawns": [
             {
               "point": 25,
-              "npc": 5000007,
-              "why": "Willow, the base map's third monster"
+              "npc": 5001050,
+              "why": "the encounter's Willow (level 18), strongest last"
             },
             {
               "point": 26,
-              "npc": 5000007,
-              "why": "portal 2"
+              "npc": 5001049,
+              "why": "the Poring whose _iNormalDrop 241949 drops Card: Poring 1420300 (DropGroupConfig 144, _iQuestLimit 10102100); dialogue 1010211001: 'you picked up a Card: Poring!', and the card guide 26 follows the next quest"
             },
             {
               "point": 27,
-              "npc": 5000007,
+              "npc": 5001050,
               "why": "portal 3"
             }
           ]

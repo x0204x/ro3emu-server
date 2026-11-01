@@ -13,4 +13,5 @@ public readonly partial record struct SpecialEffectConfig(JsonElement Row)
     [ConfigField("_kDescData")] public partial string[] DescData { get; }
     [ConfigField("_kOtherDesc")] public partial long[] OtherDesc { get; }
     [ConfigField("_kSpecialEffect")] public partial long[][] SpecialEffect { get; }
+    [ConfigField("_iEffectDesc")] public partial JsonElement? EffectDesc { get; }
 }

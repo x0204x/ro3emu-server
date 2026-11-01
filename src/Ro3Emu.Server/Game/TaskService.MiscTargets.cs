@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Romsg;
 using Ro3Emu.Server.Data.Config;
 
@@ -40,7 +41,8 @@ namespace Ro3Emu.Server.Game;
 /// (TimedBattleService OnePiece settlement), as 103049.</item>
 /// <item>101022 CheckTerritoryWarzoneTaskPoint [points] (1101000 "Faction Quest", R = p2,
 /// CheckTerritoryWarzoneTaskPointDes): the faction sub-tasks (type 25) name their points, "Collect Magic Crystals +@{1}
-/// Points" (_iName [text, "1"]); each delivered sub-task adds them (inferred: no other point table is exported).</item>
+/// Points" (_iName [text, "1"]); each delivered sub-task adds them (inferred: no other point table is exported). The
+/// quest, its sub-tasks 107102 / 101023 and the day are in TaskService.FactionQuest.cs.</item>
 /// </list>
 /// 仍無可證的已提交事件來源：103012／103017／103018 對應的三筆成長任務文字標為預留。
 /// actual G 的 CheckMINIJoinCnt／CheckGuildPrayJoinCnt 只找到條件名稱註冊；MINI 小地圖分類不等於參加事件，
@@ -54,14 +56,12 @@ public sealed partial class TaskService
 {
     private const int TTitle = 103001, TTradeJoin = 103002, TGuildAuctionJoin = 103003, TBonfireJoin = 103013,
         TLeagueJoinCount = 103015, TOnHookTime = 103016, TChatNum = 103020, TNowMount = 101021, TMapAwards = 318001,
-        TAreaAwards = 318002, TMapAward = 318003, TWaitSeconds = 309001, TBranchChosen = 103052, TVaultJoin = 106907,
-        TFactionPoints = 101022;
+        TAreaAwards = 318002, TMapAward = 318003, TWaitSeconds = 309001, TBranchChosen = 103052, TVaultJoin = 106907;
 
-    private const int SeasonTaskType = 12, FactionSubTaskType = 25;
+    private const int SeasonTaskType = 12;
 
     private Dictionary<long[], long>? _waitTargets;
     private readonly HashSet<GameSession> _waitQueued = [];
-    private Dictionary<long, long>? _factionPoints;
     private Dictionary<int, long[]>? _eventTasks;
     private ExploreNodeConfig[]? _exploreNodes;
     private Dictionary<long, MultiverseSettlementTask>? _settlementTasks;
@@ -70,8 +70,9 @@ public sealed partial class TaskService
     {
         [TMapAward, _] => 1,
         [TTitle or TTradeJoin or TGuildAuctionJoin or TBonfireJoin or TLeagueJoinCount or TOnHookTime or TMapAwards
-            or TAreaAwards or TWaitSeconds or TBranchChosen or TVaultJoin or TFactionPoints, var n] => n,
+            or TAreaAwards or TWaitSeconds or TBranchChosen or TVaultJoin or TFactionPoints or TRivalKill, var n] => n,
         [TNowMount, var n, _] => n,
+        [TFactionCrystal, _, var n] => n, // TaskService.FactionQuest.cs
         [TChatNum, _, var n] => n,
         _ => -1,
     };
@@ -154,26 +155,6 @@ public sealed partial class TaskService
     /// <summary>106907, staged with the Rift Crisis reward (TaskService.EventTransactions.cs).</summary>
     private static bool VaultTarget(long[] t) => t is [TVaultJoin, _];
 
-    /// <summary>101022: a delivered faction sub-task adds its points to the running faction quest (QuestDelivered, inside
-    /// the quest lock; the settlement that delivered it saves and sends the change).</summary>
-    private void AddFactionPoints(GameSession s, long taskId, AwardPlan _)
-    {
-        if (s.Tasks == null || !FactionPoints().TryGetValue(taskId, out long points)) return;
-        foreach (var info in s.Tasks.Infos.Values.Where(i => i.Status == Running))
-        {
-            var def = Defs()[info.TaskId];
-            for (int i = 0; i < def.Targets.Length && i < info.CompleteNum.Count; i++)
-                if (def.Targets[i] is [TFactionPoints, var required] && required > 0)
-                    info.CompleteNum[i] = Math.Min(required, Math.Max(0, info.CompleteNum[i]) + points);
-        }
-    }
-
-    /// <summary>Type 25 task → the points its _iName names ([text, "points"]).</summary>
-    private Dictionary<long, long> FactionPoints() => _factionPoints ??= TaskConfig.All(_data)
-        .Where(r => r.TaskType == FactionSubTaskType)
-        .Select(r => (r.TaskId, Points: r.NameIntegerArgument))
-        .Where(r => r.Points > 0).ToDictionary(r => r.TaskId, r => r.Points);
-
     // ---- acceptance ----
 
     /// <summary>An accepted 103052 quest offers the branch choice (unless one was made).</summary>
@@ -218,7 +199,8 @@ public sealed partial class TaskService
     }
 
     /// <summary>The quests the server offers outside the pre-task graph; returns how many were accepted.</summary>
-    private int AcceptMiscTasks(GameSession session) => AcceptExploreTasks(session) + AcceptSettlementTask(session);
+    private int AcceptMiscTasks(GameSession session) =>
+        AcceptExploreTasks(session) + AcceptSettlementTask(session) + AcceptFactionTasks(session);
 
     /// <summary>
     /// World Exploration (activity 111, type 21 quests): when a node's notes are all filled, the client shows the node's

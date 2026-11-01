@@ -44,6 +44,8 @@ public sealed class TrainingService : IGameTicker
         public long Damage;
         public bool Settling;
     }
+    /// <summary>After a challenge's result is committed (quest target 210006, TaskService.OnDummyChallengeSettled).</summary>
+    public List<Action<GameSession>> ChallengeSettled { get; } = [];
     private long Now => _clock.UtcNow.ToUnixTimeMilliseconds();
     private int Duration => _data.Table("PublicParamConfig").TryGetValue("TrainingChallengeTimeLimit", out var v)
         ? checked((int)(GameData.Number(v) ?? 60)) : 60;

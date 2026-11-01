@@ -38,6 +38,46 @@ public class DataExportTests
     }
 
     [Fact]
+    public void ClientScenesListsTheMapsWhoseUnitySceneTheVfsLacks()
+    {
+        var dir = Directory.CreateTempSubdirectory("ro3emu-scenes-");
+        try
+        {
+            // An asset index with one bundle entry (27 bytes: asset hash, load type, dyn id, file hash, VFS hash) and no bytes entries.
+            var meta = new byte[4 + 27 + 4];
+            BitConverter.TryWriteBytes(meta.AsSpan(0), 1u);
+            BitConverter.TryWriteBytes(meta.AsSpan(4), Vfs.LowerHash("SC_Town.unity"));
+            File.WriteAllBytes(Path.Combine(dir.FullName, "assetmeta.data"), meta);
+            var json = Path.Combine(dir.FullName, "MapResource.json");
+            File.WriteAllText(json, """{"1":{"_kResource":"sc_town"},"2":{"_kResource":"sc_field"},"3":{"_kResource":"sc_field"},"4":{"_kResource":""},"5":{}}""");
+            using var vfs = new Vfs(dir.FullName);
+            var file = Path.Combine(dir.FullName, ClientScenes.FileName);
+
+            Assert.Equal(["sc_field"], ClientScenes.Write(json, vfs, file));
+            using var written = System.Text.Json.JsonDocument.Parse(File.ReadAllText(file));
+            Assert.Equal(["sc_field"], written.RootElement.GetProperty("Missing").EnumerateArray().Select(e => e.GetString()));
+        }
+        finally { dir.Delete(true); }
+    }
+
+    /// <summary>The installed client against the exported MapResource table: Glast Heim and the five eastern towns have
+    /// walk maps but no Unity scene (issue: a GM warp to Glast Heim left the character on "Failed to load the area").</summary>
+    [ClientWithDataFact]
+    public void TheInstalledClientHasNoSceneForGlastHeim()
+    {
+        using var vfs = new Vfs(GameDataExport.VfsDir(RealClientExportTests.Client));
+
+        var missing = ClientScenes.Missing(ClientWithDataFactAttribute.MapResource!, vfs);
+
+        Assert.Contains("sc_glast_01_001", missing); // MapConfig 10700 Glast Heim the Ancient City
+        Assert.Contains("sc_gl_prison_001", missing); // 10791, one of its nine floors
+        Assert.Contains("sc_amatsu_001", missing); // 10601
+        Assert.DoesNotContain("sc_prontera_001", missing);
+        Assert.DoesNotContain("sc_gef_dun02_001", missing); // Geffen Tower 3, a floor that loads
+        Assert.True(vfs.Has("sc_glast_01_001_dynamicmapdata.bytes")); // its walk map is there, so the server ran the map
+    }
+
+    [Fact]
     public void LocMapTakesTheClientsMostFrequentEnglishThenOurTranslations()
     {
         var dir = Directory.CreateTempSubdirectory("ro3emu-loc-");
@@ -76,5 +116,26 @@ public class DataExportTests
             Assert.Empty(ClientPatcher.UnresolvedReferences(own, Path.GetDirectoryName(typeof(object).Assembly.Location)!));
         }
         finally { alone.Delete(true); }
+    }
+}
+
+/// <summary>Runs where the RO3 client is installed and this checkout has data/config exported from it.</summary>
+public sealed class ClientWithDataFactAttribute : FactAttribute
+{
+    public static string? MapResource { get; } = FindMapResource();
+
+    public ClientWithDataFactAttribute()
+    {
+        if (GameDataExport.Missing(RealClientExportTests.Client).Count > 0) Skip = "the RO3 client is not installed (set RO3_CLIENT_DIR)";
+        else if (MapResource == null) Skip = "needs data/config/MapResource.json exported from the client";
+    }
+
+    private static string? FindMapResource()
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
+            if (File.Exists(Path.Combine(dir.FullName, "Ro3Emu.slnx")))
+                return File.Exists(Path.Combine(dir.FullName, "data", "config", "MapResource.json"))
+                    ? Path.Combine(dir.FullName, "data", "config", "MapResource.json") : null;
+        return null;
     }
 }

@@ -22,7 +22,7 @@ function equipmentTable(equipment) {
 
 function bagCards(bags) {
   if (!bags.length) return card('Bags', null, emptyState('box', 'The bags are empty', null));
-  return bags.map(bag => card(bag.name, h('span', { class: 'muted' }, num(bag.items.length) + (bag.items.length === 1 ? ' stack' : ' stacks')),
+  return bags.map(bag => card(bag.name, h('span', { class: 'muted' }, plural(bag.items.length, 'stack')),
     table([
       { label: 'Item', grow: true, value: heldName },
       { label: 'ID', num: true, opt: true, value: i => mono(String(i.itemId)) },
@@ -50,7 +50,8 @@ async function characterPage(id) {
     subtitle: c.live ? 'As it is in the game now.' : 'As the server last saved it.',
     meta: [['ID', mono(String(c.id))], admin && ['Account', link('/admin/accounts/' + encodeURIComponent(c.account), { class: 'text-link' }, c.account)],
       ['Map', mapName(c.mapId, c.map, c.mapImage)], ['Position', mono(`${c.x}, ${c.y}, ${c.z}`)]].filter(Boolean),
-    actions: admin ? link('/characters/' + c.id + '/mail', { class: 'btn secondary sm' }, icon('mail'), 'Mailbox') : null }),
+    actions: admin ? [mayUse('gm') && link('/admin/characters/' + c.id, { class: 'btn secondary sm' }, icon('shield'), 'GM actions'),
+      link('/characters/' + c.id + '/mail', { class: 'btn secondary sm' }, icon('mail'), 'Mailbox')].filter(Boolean) : null }),
   h('section', { class: 'kpis', 'aria-label': 'Key figures' },
     kpi('Base level', 'trophy', num(c.level), null, num(c.exp) + ' EXP into the level'),
     kpi('Job level', 'sparkle', num(c.jobLevel), null, num(c.jobExp) + ' job EXP into the level'),
@@ -87,7 +88,7 @@ async function characterMailPage(id) {
     pageHead({ crumbs: [{ href: '/admin', label: 'Admin' }, { href: '/characters/' + box.characterId, label: box.character }, { label: 'Mailbox' }],
       title: 'Mailbox of ' + box.character, subtitle: 'Read only, newest first. The server keeps a letter until the game removes it.' }),
     letters,
-    pages > 1 && h('div', { class: 'card-foot plain' }, h('span', null, mono(num(box.total)), ' letters · page ', mono(String(page)), ' of ', mono(String(pages))),
+    pages > 1 && h('div', { class: 'card-foot plain' }, h('span', null, mono(num(box.total)), box.total === 1 ? ' letter · page ' : ' letters · page ', mono(String(page)), ' of ', mono(String(pages))),
       h('div', { class: 'actions' },
         page > 1 ? link(`/characters/${box.characterId}/mail?page=${page - 1}`, { class: 'btn secondary sm' }, icon('back'), 'Newer') : null,
         page < pages ? link(`/characters/${box.characterId}/mail?page=${page + 1}`, { class: 'btn secondary sm' }, 'Older', icon('arrow')) : null)));

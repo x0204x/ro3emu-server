@@ -67,6 +67,9 @@ The context comes from an in-memory ring of the last 4096 log lines (`Diagnostic
 
 ## Reading reports (operator)
 
+On the web panel: **Admin → Reports** ([web panel](panel.md#report-inbox)) lists them with a status (new, in progress,
+done, won't fix), an assignee and notes, for every staff role.
+
 Loopback only, on the server machine:
 
 ```bash

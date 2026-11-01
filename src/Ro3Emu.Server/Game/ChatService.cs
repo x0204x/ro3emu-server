@@ -27,13 +27,17 @@ public sealed partial class ChatService
     private readonly GameData _data;
     private readonly SessionRegistry _sessions;
     private readonly IOptions<ServerOptions> _options;
+    private readonly ChatFloodGuard _flood;
     private readonly ILogger<ChatService> _log;
+    private readonly CheatMonitor _cheats;
 
     public ChatService(GmCommands gm, FeedbackService feedback, GuildStore guilds, FriendStore friends, CharacterService character,
-        GameData data, SessionRegistry sessions, IOptions<ServerOptions> options, ILogger<ChatService> log)
+        GameData data, SessionRegistry sessions, IOptions<ServerOptions> options, ChatFloodGuard flood, ILogger<ChatService> log,
+        CheatMonitor cheats)
     {
+        this._cheats = cheats;
         this._gm = gm; this._feedback = feedback; this._guilds = guilds; this._friends = friends; this._character = character; this._data = data;
-        this._sessions = sessions; this._options = options; this._log = log;
+        this._sessions = sessions; this._options = options; this._flood = flood; this._log = log;
         character.RegisterItemAction(SoundTransmissionAction, UseHornAsync, takesParam: true);
     }
 
@@ -152,7 +156,8 @@ public sealed partial class ChatService
     {
         if (!GuildAllowed(session, req.GroupId))
         {
-            await session.SendGameAsync(JoinChannel, new JoinChatChannelRsp { Result = ErrorCodes.NotInGuild, Req = req });
+            int refusal = req.GroupId.StartsWith(TavernPrefix, StringComparison.Ordinal) ? ErrorCodes.TavernNotInRoom : ErrorCodes.NotInGuild;
+            await session.SendGameAsync(JoinChannel, new JoinChatChannelRsp { Result = refusal, Req = req });
             return;
         }
         bool newlyJoined = Join(session, req.GroupId);
@@ -180,18 +185,75 @@ public sealed partial class ChatService
 
     private bool GuildAllowed(GameSession session, string group)
     {
-        if (TavernAllowed is { } room && !room(session, group)) return false;
+        if (group.StartsWith(TavernPrefix, StringComparison.Ordinal))
+            return long.TryParse(group.AsSpan(TavernPrefix.Length), out long room) && room > 0 && group == TavernPrefix + room
+                && session.Role != null && TavernMember?.Invoke(session.Role.Id, room) == true;
         if (group.StartsWith("5_", StringComparison.Ordinal))
             return long.TryParse(group.AsSpan(2), out long groupId) && groupId > 0 && group == $"5_{groupId}"
                 && session.Role != null && _friends.Group(groupId.ToString()) is { } chatGroup
                 && chatGroup.Members.Any(m => m.Role == session.Role.Id);
+        if (TeamChannelId(group) is { } teamId) return session.Role != null && TeamChannelAllowed?.Invoke(session, teamId) != false;
         if (!GuildChannel(group)) return true;
         // Canonical spelling is required so leaving 2_<id> always removes the exact joined group.
         return long.TryParse(group.AsSpan(2), out long guildId) && guildId > 0
             && group == $"2_{guildId}" && session.Role != null && _guilds.ForRole(session.Role.Id)?.Id == guildId;
     }
 
+    /// <summary>
+    /// Why a chat line is refused before it is looked at, or null: longer than AntiCheatOptions.ChatMaxLength (its text or
+    /// extra parameter), or over the session's AntiCheatOptions.ChatLines budget (a GM's commands excepted). The client's own
+    /// input field is far shorter and nobody types that fast (inferred). It is the hard per-session cap, checked first and
+    /// counted by CheatMonitor; a line it refuses never reaches the operator's flood policy (FloodRefusedAsync, Ro3Emu:ChatFlood,
+    /// with its mute), which is stricter when on and so decides first for ordinary spam.
+    /// </summary>
+    private string? ChatRefusal(GameSession sender, SendTextChatMessageRequest req)
+    {
+        var limits = _options.Value.AntiCheat;
+        if (req.Content.Length > limits.ChatMaxLength || req.ExtraParam.Length > limits.ChatMaxLength * 8)
+            return $"line of {req.Content.Length} characters (extra {req.ExtraParam.Length}) to {req.ReceiveId}";
+        if (_gm.IsCommand(req.Content) && _gm.Allowed(sender)) return null; // a GM's command lines are not chat
+        sender.ChatLines ??= RateBucket.Parse(limits.ChatLines) ?? new RateBucket(1, 10);
+        return sender.ChatLines.TryTake(Environment.TickCount64) ? null : $"line to {req.ReceiveId} over the chat rate";
+    }
+
+    /// <summary>
+    /// Set by TeamService: whether the session may use team channel <c>3_&lt;teamId&gt;</c> (LC_ChatHelper builds it from the
+    /// prefix, "3_" and the party's or the Survivor team's id). Unset, every team channel is open as before.
+    /// </summary>
+    public Func<GameSession, long, bool>? TeamChannelAllowed { get; set; }
+
+    private static long? TeamChannelId(string group)
+    {
+        string rest = group.StartsWith("@TGS#_3_", StringComparison.Ordinal) ? group[8..]
+            : group.StartsWith("3_", StringComparison.Ordinal) ? group[2..] : "";
+        return long.TryParse(rest, NumberStyles.None, CultureInfo.InvariantCulture, out long id) && id.ToString(CultureInfo.InvariantCulture) == rest
+            ? id : null;
+    }
+
     public void GuildMembershipChanged(GameSession session, long formerGuildId) => Leave(session, $"2_{formerGuildId}");
+
+    /// <summary>A Tavern room's chat is public channel 10, group "10_&lt;guid&gt;" (LC_ChatHelper, ChatChannelType
+    /// EChannelBarRoom); only the room's members may join it or write there (TavernService).</summary>
+    public const string TavernPrefix = "10_";
+
+    /// <summary>Whether role may use Tavern room guid's channel; set by TavernService.</summary>
+    public Func<long, long, bool>? TavernMember { get; set; }
+
+    /// <summary>A member left (or was removed from) a Tavern room: its subscription goes before the next line.</summary>
+    public void TavernLeft(GameSession session, long room) => Leave(session, TavernPrefix + room);
+
+    /// <summary>A Tavern room closed: its channel and the lines kept for late joiners go with it.</summary>
+    public void TavernClosed(long room)
+    {
+        string group = TavernPrefix + room;
+        lock (_sync)
+        {
+            _recent.Remove((group, 0));
+            if (_groups.Remove(group, out var members))
+                foreach (var member in members) member.ChatGroups.Remove(group);
+        }
+    }
+
     /// <summary>Friend group removal revokes an already joined IM channel before the next message.</summary>
     public void FriendMembershipChanged(GameSession session, string formerGroupId) => Leave(session, $"5_{formerGroupId}");
     private readonly Dictionary<(string Group, long Runtime), Queue<TextChatMessage>> _recent = new();
@@ -282,6 +344,12 @@ public sealed partial class ChatService
 
     private async Task SendTextAsync(GameSession sender, SendTextChatMessageRequest req)
     {
+        if (ChatRefusal(sender, req) is { } refusal)
+        {
+            _cheats.Refused(sender, CheatMonitor.Chat, refusal);
+            await DownAsync(sender, Cmd.SendText, new SendTextChatMessageResponse { ChatResult = false });
+            return;
+        }
         if (!GuildAllowed(sender, req.ReceiveId))
         {
             await DownAsync(sender, Cmd.SendText, new SendTextChatMessageResponse { ChatResult = false });
@@ -320,6 +388,8 @@ public sealed partial class ChatService
             return;
         }
 
+        if (await FloodRefusedAsync(sender, req)) return;
+
         List<GameSession> recipients;
         bool local = req.ChatType != ChatTypePrivate && MapChannel(req.ReceiveId);
         long runtime = sender.WorldScene, generation = sender.SceneGeneration;
@@ -352,6 +422,8 @@ public sealed partial class ChatService
             }
             recipients = recipients.Where(p => GuildAllowed(p, req.ReceiveId)).ToList();
         }
+        if (req.ChatType != ChatTypePrivate && TeamChannelId(req.ReceiveId) != null)
+            recipients = [.. recipients.Where(p => p == sender || GuildAllowed(p, req.ReceiveId))];
         if (req.ChatType != ChatTypePrivate) Remember(message, sender);
         _log.LogInformation("Chat {Name} -> {Target} ({Count} recipient(s)): {Text}", sender.Role.Name, req.ReceiveId, recipients.Count, req.Content);
 

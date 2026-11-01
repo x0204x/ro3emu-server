@@ -60,6 +60,8 @@ public static partial class EconomySnapshotReader
     // Item actions: role.social_outfit is DBSocialOutfit (chat cosmetics unlocked by 349 items, with unlock and expiry
     // times, and the worn choices) and role.emoji_info is DBEmojiInfo (chat emoticon ids unlocked by 212 items). Unlocks,
     // no balance and no asset: the item is spent by the cd13a/character-item-action receipt that writes them.
+    // Tavern: role.barroom is TavernService.RoleState (Star Power received from Tavern gifts, its week, active days and
+    // today's time in a room): counters, no balance and no asset; the gift drink is spent by the event/tavern-gift receipt.
     // Power: role.emblems EmblemState.Power (PowerService.Record) holds the role's last published power total and its
     // best total (maxHistoryPower), as normal/season parts. Rating counters, no balance and no asset: they only gate
     // Become Stronger stage claims (whose goods come with their own daily-stage receipt) and rank the Hero Registry.
@@ -91,7 +93,9 @@ public static partial class EconomySnapshotReader
     // 這是待寄義務而非第二份持有資產；只由 1058 郵件的 mail/deliver 收據入帳，
     // daily-compensation delivery key 同時保證只寄一次並移除已結束日。
     // v1.0.24 的每日補寄義務，加上本地尋寶、任務通關及組隊義務的合併型別圖。
-    public const string ExpectedFormatManifestHash = "4811D883EAC9D87A69B784A6205C4197A3CB19F946644EE5BDA3EC887D46074C";
+    // v1.0.25 陣營任務日界／點數為控制計數，barroom 的飲料待領仍由事件收據發放。
+    // 舊酒館型別移至相容層，保留原持久化欄位及每日結算收據。
+    public const string ExpectedFormatManifestHash = "6872BB12527F2628E574BE0267C4151953AC56D2F4AB6FA0B42B05F381D84259";
     public static string FormatManifestHash => State.FormatManifestHash;
 
     private sealed partial class State
@@ -160,8 +164,8 @@ public static partial class EconomySnapshotReader
             Message(Romsg.DBDailyActivityInfo.Descriptor);
             entries.Add("activity_eve_global:romsg.DBSeasonEveInfo");
             Message(Romsg.DBSeasonEveInfo.Descriptor);
-            entries.Add("tavern:Ro3Emu.Server.Game.TavernService.WorldState");
-            TypeShape(typeof(Ro3Emu.Server.Game.TavernService.WorldState));
+            entries.Add("tavern:Ro3Emu.Server.Game.LegacyTavernService.WorldState");
+            TypeShape(typeof(Ro3Emu.Server.Game.LegacyTavernService.WorldState));
             entries.Add("festival_round:Ro3Emu.Server.Game.FestivalService.Round");
             TypeShape(typeof(Ro3Emu.Server.Game.FestivalService.Round));
             entries.Add("server_state/season_history:Ro3Emu.Server.Game.SeasonService.Season");

@@ -988,8 +988,20 @@ public sealed class GuildCaravanTests : IAsyncLifetime
             await Show(alice);
             long bobId = (long)bob.Self!.Uuid;
             var recipient = Session(bob);
-            await recipient.StateLock.WaitAsync();
+            var caravan = _app.Services.GetRequiredService<GuildCaravanService>();
+            var atDelivery = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var deliver = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            // Take Bob's StateLock only once the help has committed and comes to deliver. Held from the start, the naked
+            // lock also parked Bob's own role-timer work (a power refresh, a quest refresh) that holds his role key while
+            // it waits for that lock, and the help's commit, which needs the key, never ran: no pending award.
+            caravan.BeforeCharacterAdmissionForTest = origin =>
+            {
+                if (origin != "guild-caravan/recipient-delivery") return Task.CompletedTask;
+                atDelivery.TrySetResult();
+                return deliver.Task;
+            };
             Task? help = null;
+            bool locked = false;
             try
             {
                 var helper = Session(alice);
@@ -997,17 +1009,17 @@ public sealed class GuildCaravanTests : IAsyncLifetime
                 await loop.InvokeAsync(() =>
                 {
                     help = loop.TrackAsync("test committed help before recipient detach", () =>
-                        _app.Services.GetRequiredService<GuildCaravanService>().HelpOtherAsync(helper,
+                        caravan.HelpOtherAsync(helper,
                             new GuildCatShopItemHelpOtherReq
                             { PlayerID = bobId, SkuIndex = request.Index, DayVersion = show.DayVersion }));
                     return Task.CompletedTask;
                 });
-                // The full D suite leaves roughly two thousand integration hosts for the GC to retire.
-                // Keep this observation bounded by the class wait instead of assuming the loop commits in 2 s.
-                long pendingDeadline = Environment.TickCount64 + (long)Wait.TotalMilliseconds;
-                while (PendingCount(bobId) == 0 && Environment.TickCount64 < pendingDeadline)
-                    await Task.Delay(20);
+                await atDelivery.Task.WaitAsync(Wait);
                 Assert.Equal(1, PendingCount(bobId));
+                await recipient.StateLock.WaitAsync();
+                locked = true;
+                caravan.BeforeCharacterAdmissionForTest = null;
+                deliver.TrySetResult(); // the delivery now waits for Bob's StateLock
                 Assert.False(help!.IsCompleted);
                 var attachment = recipient.Attachment;
                 await bob.DisposeAsync();
@@ -1018,7 +1030,12 @@ public sealed class GuildCaravanTests : IAsyncLifetime
                 for (int i = 0; i < 250 && attachment is { Cancelled: false }; i++) await Task.Delay(20);
                 Assert.True(attachment is null or { Cancelled: true }, "the server never noticed Bob's disconnect");
             }
-            finally { recipient.StateLock.Release(); }
+            finally
+            {
+                caravan.BeforeCharacterAdmissionForTest = null;
+                deliver.TrySetResult();
+                if (locked) recipient.StateLock.Release();
+            }
             await help!.WaitAsync(Wait);
             Assert.Equal(0, (await Next(alice, GuildCaravanService.HelpOther, GuildCatShopItemHelpOtherResp.Parser)).Result);
             var pending = Pending(bobId);

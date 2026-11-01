@@ -6,6 +6,8 @@ namespace Ro3Emu.Server.Data.Config;
 [ConfigTable("BattleEventPointConfig")]
 public readonly partial record struct BattleEventPointConfig(JsonElement Row)
 {
+    /// <summary>The ChatConfig notice of the event (41007 a streak: 5700).</summary>
+    [ConfigField("_iChatId")] public partial long ChatId { get; }
     [ConfigField("_iID")] public partial long Id { get; }
     [ConfigField("_iName")] public partial long[] Name { get; }
     [ConfigField("_iType")] public partial long Type { get; }

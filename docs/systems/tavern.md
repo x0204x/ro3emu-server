@@ -1,87 +1,126 @@
-# 酒館房間與每日任務
+# Tavern: 82481-82514, 5043 and the PartyService room list
 
-酒館由 `TavernService` 管理房間、角色租約及有效停留時間；任務接受、完成、經驗與物品獎勵仍由 `DailyActivityService`、`TaskService` 與既有經濟交易處理。客戶端契約與推定政策見 [來源證據](../research/tavern-evidence.md)。
+The Tavern (FunctionConfig 2410, level 36, opened from the chat side button) is a lobby of voice and text rooms. A
+player browses rooms by topic and language, creates one, joins, chats in it, asks for one of the mic seats, and gives
+drinks to other members. The owner runs the room. A daily quest pays for 20 minutes spent in any room, and two
+achievement lines count those days and the Star Power received.
 
-## 支援範圍
+The client keeps no room state of its own (`LC_BarRoomHelper`): every reply that carries a room (`BarRoomTotalDetail`)
+replaces what it shows, and every 82506 push makes an open Tavern window ask 82508 for the whole room again. The client's
+offline mock (`Lua_BarRoom_Mock.lua`) is switched off in this build and its shapes are older than the proto, so the
+handlers in `LC_DAL_BarRoom` / `LC_BarRoomHelper` are the reference.
 
-| OPCODE | 請求／同步 | 目前行為 |
-| --- | --- | --- |
-| 82481 | `CreateBarRoomReq` | 驗證房型、語言、房名與功能資格，建立房間並加入 |
-| 82482 | `EnterBarRoomReq` | 驗證房間、區域、容量及目前租約，加入房間 |
-| 82483 | `ExitBarRoomReq` | 結算有效時間後退出；不能退出別人的房間 |
-| 82508 | `BarRoomGetReq` | 回傳目前租約所屬房間的 `BarRoomTotalDetail` |
-| 5043 | `DBBarRoomInfo` | 同步房間、已結算時間與當日交付狀態 |
-| 82506 | `BarRoomInfoUpdateNotify` | 通知仍在房間內的成員重新取得明細 |
+## Server (`TavernService`)
 
-`PartyService` 的 `partyType=4` 提供酒館目錄。`getPartysSummary` 回傳 `SummaryList[].GameSummaryData`，內容為 `BarRoomSummary` protobuf bytes；其他 party type 保留原有組隊分派。`getSubPartysCountByType` 依區域統計房型數量。
+### Rooms
 
-`GroupCount` 的內部形狀採既有 PartyService 的 `{SubType, Count}` 陣列，屬 **推定（inferred）**。原件酒館 helper 只證實接收並保存 `GroupCount`，尚無原服封包證明該陣列形狀。合成測試只能確認目前服務輸出契約，不能將它升格為原服相符證據。
+- A room lives in memory: guid, owner, topic, language, name, members (join time, area), the speaking mode and its
+  list, mic requests, the mute and Blocks lists, heat and tags. It closes when its last member leaves.
+- Guids start at `VoiceRoomKey.TavernBase` (2^40). The client joins the room's voice as the guid in decimal, the same
+  shape as a party's team id, so the two ranges must never meet.
+- 82481 create: name (trimmed, 1-18 characters, `BarRoomNameLen`), topic (`BarroomTypeConfig._iType` 0) and language
+  (`_iType` 1). Refusals 2576 / 2577 / 2579 / 2580, and 28 while the function is closed. The creator owns the room.
+- 82482 enter: 2552 room gone, 2571 already in it, 2553 on its Blocks list, 2572 at `BarroomPersonNum` (1000).
+  The others get 82507 UserEnter (their client asks for the room and shows the welcome line).
+- 82483 exit, 82508 get (2578 when the caller is in no room: `OnPartyGetClient` cannot take an empty room).
+- An owner who leaves hands the room to the first seated speaker who is online, else the longest-present online member.
+- 5043 `DBBarRoomInfo.barRoomId` is the room the role is in: the client joins its chat and voice from it after a login.
 
-以下 18 個請求回傳對應 protobuf response，`Result=FeatureUnavailable`：
+### The room list
 
-| OPCODE | 請求名稱 |
-| --- | --- |
-| 82484 | `InviteEnterBarRoomReq` |
-| 82486 | `ResponseInviteEnterBarRoomReq` |
-| 82487 | `ApplyOpenMicReq` |
-| 82488 | `DownMicReq` |
-| 82489 | `TransferOwnerReq` |
-| 82490 | `ModifyControlMicTypeReq` |
-| 82491 | `PresentGiftReq` |
-| 82492 | `OwnerHandleOpenMicReq` |
-| 82493 | `SetMicOrderReq` |
-| 82494 | `SetBarRoomInfoReq` |
-| 82498 | `ForbiddenUserReq` |
-| 82499 | `CanecelForbiddenUserReq`（原件拼字） |
-| 82500 | `KickUserReq` |
-| 82501 | `CancelKickUserReq` |
-| 82504 | `ShutUpAllReq` |
-| 82505 | `CancelShutUpAllReq` |
-| 82513 | `SetGmBarRoomInfoReq` |
-| 82514 | `MuteBarRoomPlayerReq` |
+`LC_BarRoomServer.PartyQuerySummaryRequest` calls the micro-service `PartyService.getPartysSummary` with party type 4
+(a msgpack array: type, string conditions, int conditions, sort conditions, start, size, direct query). The reply's
+`SummaryList[].GameSummaryData` is `BarRoomSummary` bytes. Discover adds two int conditions, `BaroomCreateTime`
+(created in the last `BarroomFindBarRoom[0]` = 1800 s) and `BaroomHeadCount` (2-30 members). The client filters by
+topic, language and name and sorts the list itself. `getSubPartysCountByType` for type 4 answers rooms per topic.
 
-房間建立成功不代表語音 SDK 加入成功；伺服器不偽造語音成功、送禮、人氣或麥克風狀態。82485、82507 是原件通知契約，目前沒有提供相應邀請或語音功能。
+### Seats and the owner's tools
 
-## 設定與資格
+| Id | What |
+|---|---|
+| 82490 | Speaking mode and its list: Free (anyone), Manual (the seat list), Order (the speech order). At most `BarroomSpeakNum` (10, 2559); a muted member cannot be listed (2558). The reply echoes the list as kept. |
+| 82493 | The list alone (no client code sends it). |
+| 82487 | A member asks for a seat with a reason. 2567 in Free mode or for the owner, 2560 already listed, 2558 muted, 2568 already asking. |
+| 82492 | The owner agrees or declines (2569 no request, 2559 seats full). The applicant gets the same reply ("The host has Agreed / Declined"). |
+| 82488 | A member leaves its seat (2561 the owner keeps the mic, 2562 no seat). |
+| 82498 / 82499 | Mute a member for `BarroomForbiddentime` (24 h) / lift it (2558 already muted, 2570 not muted). The muted member gets the reply too ("The host has muted you."). |
+| 82500 / 82501 | Remove a member onto the room's Blocks list / take it off (2566). The removed client gets 5043 with no room and an 82506 push. |
+| 82504 / 82505 | Close / reopen every other mic (`isCloseMic`). |
+| 82489 | Hand the room over (2557 blocked, 2558 muted, 2578 not in the room), once per `BarRoomTransferRoomCd` (30 s, 2575). |
+| 82494 | Rename, change topic or language, once per `BarRoomSetInfoCd` (5 s, 2573). |
+| 82514 | The owner's client asks to mute or unmute a member's own mic: the member gets 77003 `MutePlayerInChannel`. |
+| 82484 / 82485 / 82486 | Invite: the server fills the inviter's name, job and level in 82485. Accepting enters the room; the invitee's reply carries its own id as `inviterGuid` (the client then opens the window), the inviter gets a copy with the invitee's id ("${1} has accepted / declined your invitation"). |
 
-`BarroomTypeConfig._iType=0` 是房型，`_iType=1` 是語言，建立時不能互換。房名上限讀 `PublicParamConfig.BarRoomNameLen`，容量讀 `BarroomPersonNum`。推薦搜尋的 `BarroomFindBarRoom` 人數範圍不等於房間容量。
+Every change answers its caller and pushes 82506 to the other online members. The client posts the gift, transfer
+and close-mic lines into the room chat itself.
 
-酒館功能為 2410，原件條件 2000174 要求 Base 等級 36。每日活動 2000 的任務接受動作為 `31,1,2000`；`BarroomTaskID` 指定任務 2000，目標為 `[106010,1200]`，達標後自動交付。獎勵及 Base／Job 經驗沿現行任務與獎勵設定解析，不由酒館另行發放。106010 也被其他任務使用，酒館秒數只允許更新設定指定的酒館任務。
+### Chat and voice
 
-## 時間、斷線與跨日
+- The room's chat is public channel 10, IM group `10_<guid>` (`LC_ChatHelper`). `ChatService` lets only the room's
+  members join it or write there, and drops a closed room's channel and kept lines.
+- The voice relay serves the room as its guid (`VoiceRoomKey.IsTavern`). Only members may join (`TavernService.IsMember`);
+  `TavernService.MaySpeak` decides whose mic the room hears: the owner always, nobody else while all mics are closed
+  or while muted, anyone in Free mode, only listed members in Manual and Order mode. `Voice:MaxTavernRoomSize` (200)
+  bounds the listeners of one room. The client's voice hook holds one room at a time, so entering a Tavern room's
+  voice leaves the party or guild room.
 
-有效時間必須有已提交房間成員資格、同一角色附著租約及仍有效的房間。僅一般在線時間不算酒館時間。毫秒保留至下一次結算，任務只增加跨過的整秒，當日時間以任務門檻為上限。
+### Gifts, heat and tags
 
-GameGate 在首次進入 socket 斷線處理時記下 UTC 毫秒，再由遊戲迴圈通知酒館；成功重連時記錄恢復時點。酒館只記錄暫存的失聯區段，下一次角色 owner 交易才扣除離線時間。重複失聯通知保留第一個起點，多次重連保留各段缺口；提交成功後才清除已結算區段。這保留斷線前尚未提交的連線秒數，同時排除 reconnect grace 與交接等待時間。重連票證、有效期與原有寬限政策不變。
+- 82491 gives `giftNum` of a drink (`ItemConfig` type 2 / subtype 213) to a member. Use effect 110 `GainBarroomHot`
+  times the count goes to the room's heat (the reply's `hotAdd`), 111 `GainStar` to the receiver's Star Power
+  (`userBarRoomHot`). Refusals: 2574 yourself, 2555 the receiver left, 2563 offline, 2564 other server, 154 short.
+- The drinks are spent under an `event/tavern-gift` receipt; the Star Power is credited in the receiver's own commit.
 
-每日切換先結算舊日有效時間並交付欠獎，再將每日資料、任務及酒館計時狀態一起重設。退出與斷線清理也先走此流程，避免新日時間灌入舊日。已達標但獎勵交易失敗時，登入重設必須保留舊日資料，待自然任務結算成功後才換日。
+| Drink | Heat | Star Power |
+|---|---|---|
+| Hot Cocoa 1200801 | 1 | 1 |
+| Gingerbread 1200802 | 10 | 5 |
+| Craft Brew 1200803 | 60 | 35 |
+| Grape Wine 1200804 | 400 | 300 |
 
-原服對靜默停留、語音參與及每日時區的精確規則仍為 `UNKNOWN`。目前採有效房間停留與既有伺服器每日日界，屬 **推定（inferred）**；日光節約時間造成的長短日仍需另外核對。
+### A role's counters (role blob `barroom`)
 
-## 持久化與一次性獎勵
+`TavernService.RoleState`, sent as 5043: Star Power in total and this week (`popularity`, `weekPopularity`), active
+days (`actDays`), today's seconds in a room (`inBarRoomTime`, `isToDayActComplete`). Time counts every second a member
+is online in a room and is written every minute, and at once when the day's 1200 s are reached.
 
-`role.tavern` 保存每日期間、有效毫秒、已結算游標及房間租約；realm `tavern.state` 保存房間與成員控制資料。兩者都沒有貨幣、道具或待領獎勵，經濟讀取器以嚴格 JSON 與欄位清單分類。
+### Quest and achievements
 
-房間異動同時取得角色與酒館 realm owner。計時以同一交易保存 meter、任務進度與必要後續來源，提交 callback 才更新記憶體。獎勵只走既有任務交付帳本；提交前故障可重試，提交後套用故障進入角色復原流程，再登入依持久化狀態續做。
+- Quest 2000 "Daily Tavern Quests" (`_iTaskType` 9, `BarroomTaskID`): `[106010, 1200]`, today's seconds in a room
+  (`TaskService.TavernTasks`). Its award 8000 (MultiverseGroupConfig) is AwardConfig 1008000, three Hot Cocoa.
+- 102100500-502 "A Nose for Wine": `[106007, 2000, n]`, deliveries of quest 2000 (1 / 7 / 30).
+- 102100600-602 "A Drink for a Story": `[106008, n]`, Star Power received (1000 / 5000 / 10000).
 
-重送建立／加入不重複建立成員資格。房間身分先由共用配置器提交，因此房間提交失敗可能留下號碼間隙；重試不發布重複房間。房主離開時以加入時間、角色 ID 轉移給剩餘成員，空房關閉，屬 **推定（inferred）**。冷啟動不恢復活躍連線租約，重新登入清除舊租約，不補算離線或停機時間。
+### GM
 
-## 驗證範圍
+The GM panel's Tavern ops (GMConfig 1024-1029): 134 print, 136 room heat / heat gain / extra head count, 137 a tag on a
+room, 138 Star Power, 139 quest completions (106007), 140 active days, 141 today's seconds. `!tavern` lists the rooms.
 
-以下為已通過的合成／靜態資料驗證範圍，不能替代真實客戶端驗收：
+## Inferred
 
-| 測試 | 驗證類型 |
-| --- | --- |
-| `TavernTests.MeterUsesOnlyEligiblePositiveIntervalsAndCapsOnce` | 自造時間、上限與原物件不變 |
-| `TavernTests.FractionalIntervalsRetainTheirRemainderWithoutDuplicateCredit` | 毫秒餘數與重送 |
-| `TavernTests.SavedOldDayAwardRemainsPendingUntilActualDelivery` | 舊日期間保留條件 |
-| `TavernOwnerTests.RoomLifecycleRequiresLeaseAndDirectoryCarriesRealSummaryBytes` | Bot 原始 OPCODE、protobuf 回應、Micro 分派與權限 |
-| `TavernOwnerTests.RoomCommitFailureLeavesNoPublishedRoomAndRetryCreatesOne` | 提交前故障、重送與單一房間 |
-| `TavernOwnerTests.TimeCommitFailureRetriesWithoutChangingMemoryOrPayingTwice` | 計時故障、實物獎勵入帳與重啟 |
-| `TavernOwnerTests.ExitAcrossDailyBoundarySplitsTimeAndRestartCannotResumeOldLease` | 跨日退出、冷啟動及離線時間 |
-| `TavernOwnerTests.HeldOldDayAwardSettlesOnNextDayLoginExactlyOnce` | 欠獎、跨日登入與一次性入帳 |
-| `TavernOwnerTests.TimeCommitAppliedFailureRequiresRecoveryAndRestartSettlesOnlyOnce` | 提交後套用故障與復原 |
-| `TavernOwnerTests.BeginWithoutRoleDoesNotKeepAStaleTavernCutoffAfterLogin` | 空角色交接與 session 重用 |
-| `TavernClientDataTests.ActualCategoriesAndTaskThresholdRemainDistinct` | 客戶端設定分類與門檻 |
+- **Rooms are online state.** The list only ever shows live rooms. A room closes when its last member leaves, and
+  nothing survives a restart.
+- **Offline members.** A member whose session is gone keeps its place for 5 minutes (a relog brings it back through
+  5043), then leaves. Error 2563 "recipient offline" shows the original kept offline members in rooms.
+- **Next owner.** The first seated speaker who is online, else the longest-present online member.
+- **Heat and tags.** Heat only grows while the room exists. Every `BarroomHeatTagsTime` (5 min) `historyHot` keeps the
+  heat and its gain over the window, Spark (the heat icon) goes to the `BarroomHeatTagsNum` (2) rooms that gained at
+  least `BarroomHeatTagsMiniIncrease` (50), and Boom (cheers) to the `BarroomHotTagsNum` (4) hottest rooms, both until
+  the next window. RedBag and Activity come only from GM op 137 and last a day. Past the page size, the list orders
+  rooms by `BarroomSortParam` [6000, 4000] on heat and head count.
+- **Mute and Blocks values.** `forbiddenSpeaker` holds the mute's end, `blackList` the removal time, unix seconds; a
+  removal lasts as long as the room.
+- **Active day.** A day whose stay reaches the quest's 1200 s counts in `actDays`; the Tavern day starts at 05:00.
+- **The quest** delivers itself when complete (no claim button, no `_kDeliverTask`) and is offered again every day.
+- **Gift drinks.** The tables give only Hot Cocoa a source (the quest). Every active day also brings one higher drink:
+  Grape Wine every 7th active day, Craft Brew every 3rd, Gingerbread otherwise (`Ro3Emu:TavernDayDrinks`, on by
+  default; off leaves only the quest's Hot Cocoa).
+- **Not checked:** a pending invitation (anybody may enter a room anyway) and room names against a word list.
 
-`ReconnectGraceExcludesEveryGapButKeepsUncommittedConnectedSeconds` 已通過完整 gate-auth、多次真實 socket 掉線／重連與寬限期間計時的合成驗證。玩家端房間介面、目錄人數、語音及原服封包比對為 `NOT_RUN`。
+## 本地既存資料相容
+
+v1.0.25 採用上游完整酒館實作、`barroom` 角色狀態、房間管理／語音／送禮及任務流程。
+原有 `tavern` 角色欄位與世界狀態仍保留，避免舊存檔、每日結算收據與經濟快照失去可讀性。
+`LegacyTavernService` 僅負責既有秒數與跨日待領相容，未註冊玩家封包或定時器；玩家不會同時操作兩套酒館。
+首次新版登入只將當日已提交秒數轉入 `barroom`，不恢復舊房間租約，不補算離線時間，也不補發新版額外飲料。
+一旦 `barroom` 寫入，後續登入以新版資料為準；提交失敗時保留可重試狀態。

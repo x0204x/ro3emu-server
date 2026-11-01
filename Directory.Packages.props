@@ -19,6 +19,8 @@
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.14" />
     <PackageVersion Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
     <PackageVersion Include="Mono.Cecil" Version="0.11.6" />
+    <!-- The QR code of the panel's two-factor setup (MIT, no dependencies). -->
+    <PackageVersion Include="Net.Codecrete.QrCodeGenerator" Version="3.2.1" />
     <PackageVersion Include="SharpZipLib" Version="1.4.2" />
     <PackageVersion Include="ZstdSharp.Port" Version="0.8.8" />
   </ItemGroup>

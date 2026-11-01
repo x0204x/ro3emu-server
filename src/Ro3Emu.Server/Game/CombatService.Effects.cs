@@ -160,9 +160,13 @@ public sealed partial class CombatService
             else
             {
                 float radius = field?.Radius ?? (float)(Numbers(row, "_kRange").FirstOrDefault(0) / 100);
+                // As SelectEnemies: an area released around the caster (_iRelease 0, 2-6) is centred on it, not on the point
+                // the client sent, which nothing checks for those releases.
+                var around = field != null || new SkillConfig(row).Release is SkillRelease.DragRect or SkillRelease.DragCircle
+                    ? center : action.Origin;
                 allies.AddRange(_world.PlayersIn(s.WorldScene).Where(p => !p.Dead && Relation(row, true, p == s)
-                    && (p == s || radius > 0 && Distance(p.Position, center) <= radius))
-                    .OrderBy(p => Distance(p.Position, center)).Take((int)Math.Max(1, GameData.Int(row, "_iTargetMax"))));
+                    && (p == s || radius > 0 && Distance(p.Position, around) <= radius))
+                    .OrderBy(p => Distance(p.Position, around)).Take((int)Math.Max(1, new SkillConfig(row).TargetMax)));
                 if (allies.Count == 0 && Relation(row, true, true)) allies.Add(s);
             }
         }

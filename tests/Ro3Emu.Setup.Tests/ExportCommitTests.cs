@@ -204,7 +204,7 @@ public sealed class ExportCommitTests : IDisposable
 /// <summary>The whole export from the installed client (about a minute): complete, and up to date afterwards.</summary>
 public sealed class RealClientExportTests
 {
-    private static readonly string Client = Environment.GetEnvironmentVariable("RO3_CLIENT_DIR") is { Length: > 0 } dir ? dir : @"D:\RO3\ROO_PC";
+    internal static readonly string Client = Environment.GetEnvironmentVariable("RO3_CLIENT_DIR") is { Length: > 0 } dir ? dir : @"D:\RO3\ROO_PC";
 
     public sealed class ClientFactAttribute : FactAttribute
     {
@@ -222,6 +222,7 @@ public sealed class RealClientExportTests
         {
             var result = GameDataExport.Run(Client, data);
             Assert.Empty(result.FailedTables); // Lua_DBManager is code, the one module that never exports
+            Assert.Contains("sc_glast_01_001", File.ReadAllText(Path.Combine(data, ClientScenes.FileName)));
             Assert.True(GameDataExport.UpToDate(data, Client));
             Assert.Empty(GameDataExport.ReadStamp(data)!.FailedTables!);
             Assert.False(Directory.Exists(Path.Combine(data, ".export")));

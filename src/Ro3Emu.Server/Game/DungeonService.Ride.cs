@@ -43,7 +43,11 @@ public sealed partial class DungeonService
             || t.Kind == Kind.Message && _catalog.DungeonMessage(interaction) == t.Id);
 
     private sealed record Ride(IReadOnlyList<(float X, float Y, float Z)> Path, SceneActorUnit Carrier, float Length,
-        int Generation, long StartMs, double DurationMs);
+        int Generation, long StartMs, double DurationMs)
+    {
+        /// <summary>Metres along the route the last tick moved the riders to; -1 before the first tick.</summary>
+        public float Walked { get; set; } = -1;
+    }
 
     /// <summary>The carrier's walking speed in metres per second: UnitConfig._fSpeed (cm/s) of its NPC's _iUnitID, 0 if none.</summary>
     private float RideSpeed(SceneActorUnit carrier) =>
@@ -94,11 +98,34 @@ public sealed partial class DungeonService
     [LoggerMessage(Level = LogLevel.Warning, Message = "Scripted scene {Scene} ride: moving unit {Npc} failed")]
     private partial void LogRideMoveFailed(Exception e, long scene, int npc);
 
+    /// <summary>The route's points past <paramref name="from"/> and before <paramref name="to"/> metres, in route order.</summary>
+    internal static IEnumerable<(float X, float Y, float Z, float Face)> RideCorners(IReadOnlyList<(float X, float Y, float Z)> path,
+        float from, float to)
+    {
+        float reached = 0;
+        for (int i = 0; i < path.Count; i++)
+        {
+            if (i > 0) reached += MonsterService.Distance(path[i - 1].X, path[i - 1].Z, path[i].X, path[i].Z);
+            if (reached > from && reached < to) yield return RideAt(path, reached);
+        }
+    }
+
     private async Task RideTickAsync(Attempt a, Ride ride, Func<Task> arrived)
     {
         if (a.Settled || a.Room.Closed || a.StepGeneration != ride.Generation) return;
         double done = Math.Min(1.0, (MonsterService.NowMs - ride.StartMs) / Math.Max(1.0, ride.DurationMs));
-        var at = RideAt(ride.Path, (float)(done * ride.Length));
+        float walked = (float)(done * ride.Length);
+        // The position follows the wall clock, so a late tick (a loaded loop) jumps ahead: the riders still pass every
+        // point of the route walked since the last tick instead of being moved straight across its corners.
+        foreach (var corner in RideCorners(ride.Path, ride.Walked, walked)) await MoveRidersAsync(a, ride, corner);
+        ride.Walked = walked;
+        await MoveRidersAsync(a, ride, RideAt(ride.Path, walked));
+        if (done >= 1) await arrived();
+        else _loop.ScheduleLegacy(Paced(RideTickMs), () => RideTickAsync(a, ride, arrived), "dungeon ride");
+    }
+
+    private async Task MoveRidersAsync(Attempt a, Ride ride, (float X, float Y, float Z, float Face) at)
+    {
         // A move that fails for one unit must not strand the step: the ride goes on and arrives.
         try
         {
@@ -115,7 +142,5 @@ public sealed partial class DungeonService
             try { await _scenes.TeleportInMapAsync(member, new MapPoint(at.X, at.Y, at.Z, at.Face)); }
             catch (Exception e) { LogRideMoveFailed(e, a.Plan.SceneEntry, 0); }
         }
-        if (done >= 1) await arrived();
-        else _loop.ScheduleLegacy(Paced(RideTickMs), () => RideTickAsync(a, ride, arrived), "dungeon ride");
     }
 }

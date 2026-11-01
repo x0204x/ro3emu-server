@@ -6,7 +6,7 @@ registerAdminPage({ id: 'gift-codes', label: 'Gift codes', icon: 'gift', path: '
 const giftStates = { active: 'active', scheduled: 'info', expired: '', 'used up': '', disabled: 'banned' };
 
 async function adminGiftCodesPage() {
-  requireAdmin();
+  requireRole('gm');
   const { codes } = await api('GET', '/api/admin/gift-codes');
   let mode = 'type';
   const typed = areaField('Codes, one per line', 'codes', '', { rows: '3', spellcheck: 'false', autocapitalize: 'characters' });
@@ -38,7 +38,7 @@ async function adminGiftCodesPage() {
     });
     created.replaceChildren(h('div', { class: 'field' }, h('span', { class: 'label' }, `Created ${result.created.length}`),
       h('textarea', { class: 'input mono', rows: String(Math.min(8, result.created.length)), readonly: true, 'aria-label': 'Created codes' }, result.created.join('\n'))));
-    toast(`${result.created.length} code${result.created.length === 1 ? '' : 's'} created.`);
+    toast(`${plural(result.created.length, 'code')} created.`);
     node.reset();
     rewards.reset();
     await refresh();

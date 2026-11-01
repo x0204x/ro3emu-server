@@ -129,6 +129,16 @@ public sealed partial class MapTests
                 Assert.Equal(0, MergedKillReceiptCount("monster-kill"));
                 Assert.DoesNotContain(alice.Inbox.Snapshot(), e => e.IsGame(CombatService.SkillHit)
                     && SkillHitInfo.Parser.ParseFrom(e.Body).Dsts.Any(d => d.DstID == uid && d.IsDead));
+                // The basic attack goes on swinging at the boss the refusal left at 1 HP: under load its next swing began
+                // between SwingWait and the retry below (3005 SkillBusy). Stop it while the refusal still holds, so the
+                // retry is this test's own cast.
+                await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+                {
+                    var player = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == alice.Account && s.Role != null);
+                    player.Attack = null;
+                    if (player.SkillCast is { } cast) cast.Cancelled = true;
+                    return Task.CompletedTask;
+                });
                 accounts.BeforeOwnedCommitForTest = null;
                 await SwingWait.UntilDoneAsync(_app.Services.GetRequiredService<GameLoop>(), _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == alice.Account && s.Role != null), uid);
                 await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = uid });

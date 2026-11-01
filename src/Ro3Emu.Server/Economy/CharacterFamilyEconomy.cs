@@ -45,6 +45,8 @@ internal static class CharacterFamilyEconomy
         "cd13a/character-box" => (EconomyReason.ItemUse, EconomyReason.ItemBoxGoods),
         "cd13a/character-gm-grant" or "cd13a/character-gm-remove" or "cd13a/character-gm-clear" =>
             (EconomyReason.GmRemove, EconomyReason.GmGrant),
+        // A new character's kit at its first login (CharacterService.FinishLoadAsync): goods only.
+        "cd13a/character-starter-kit" => (EconomyReason.ItemUse, EconomyReason.StarterGrant),
         _ => kind[6..].Split('-')[0] switch
         {
             "equipment" => (EconomyReason.EquipmentCost, EconomyReason.CraftOutput),

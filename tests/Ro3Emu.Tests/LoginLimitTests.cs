@@ -8,6 +8,16 @@ namespace Ro3Emu.Tests;
 /// <summary>Credential checks over HTTP have a per-address budget (each one is a PBKDF2 hash and may register).</summary>
 public sealed class LoginLimitTests
 {
+    /// <summary>
+    /// The budget is a fixed window per wall-clock minute (CredentialLimiter): on the system clock the attempts of a
+    /// loaded run, each a PBKDF2 hash, could straddle a minute boundary and start a fresh budget mid-test.
+    /// </summary>
+    private sealed class FrozenClock : TimeProvider
+    {
+        private readonly DateTimeOffset _now = new(2026, 10, 15, 12, 0, 30, TimeSpan.Zero);
+        public override DateTimeOffset GetUtcNow() => _now;
+    }
+
     private static async Task<List<HttpStatusCode>> Logins(bool limitLoopback, int attempts)
     {
         var dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-loginlimit-" + Guid.NewGuid().ToString("N"));
@@ -19,7 +29,7 @@ public sealed class LoginLimitTests
             o.HttpPort = httpPort; o.MicroGatePort = microPort; o.GameGatePort = gamePort;
             o.LoginAttemptsPerMinute = 3;
             o.LoginLimitIncludesLoopback = limitLoopback;
-        });
+        }, new FrozenClock());
         await app.StartAsync();
         try
         {

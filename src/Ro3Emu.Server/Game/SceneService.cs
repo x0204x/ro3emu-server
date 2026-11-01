@@ -10,7 +10,7 @@ namespace Ro3Emu.Server.Game;
 /// destroys all units on a map change). Also NPC interaction (32700: portals, Kafras, dialogs), 30012 / 30131 jumps and
 /// the walk check against the client's nav grid.
 /// </summary>
-public sealed partial class SceneService(IOptions<ServerOptions> options, World world, WorldData worldData, MonsterService monsters, BuffService buffs, Data.GameData data, ILogger<SceneService> log, PublicLineManager lines, TimeProvider clock)
+public sealed partial class SceneService(IOptions<ServerOptions> options, World world, WorldData worldData, MonsterService monsters, BuffService buffs, Data.GameData data, ILogger<SceneService> log, PublicLineManager lines, TimeProvider clock, CheatMonitor cheats)
 {
     public const uint NpcInteraction = 32700;
     public const uint SceneTeleport = 30012;
@@ -101,6 +101,8 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
         if (map == null && data.Table("MapConfig").Count > 0) return false;
         // Dungeon admission belongs to 30400 / 32801; a generic teleport must not create a public dungeon.
         if (data.Row("DungeonConfig", scene) != null && instanceId == 0) return false;
+        // (inferred) A scene the client has no Unity scene for never loads: its loading screen retries forever.
+        if (map != null && !worldData.ClientHasScene(scene)) return false;
         if (s.SceneRecoveryRequired || s.Handoff is { Completing: false }) return false;
         if (s.Handoff is { Completing: true } completing && completing.Destination.SceneEntry == scene)
         {
@@ -197,6 +199,19 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
             finally { RequireReconnect(s, handoff); }
             throw;
         }
+    }
+
+    /// <summary>
+    /// Why a plain map change (warp, login) cannot place a player on <paramref name="scene"/>, or null when it can:
+    /// the same rules <see cref="EnterSceneAsync"/> applies before it sends 70010.
+    /// </summary>
+    public string? Unplaceable(long scene)
+    {
+        if (worldData.Map(scene) == null) return data.Table("MapConfig").Count > 0 ? "there is no such scene" : null;
+        if (data.Row("DungeonConfig", scene) != null) return "it is a dungeon scene, entered only through its dungeon";
+        if (!worldData.ClientHasScene(scene))
+            return "the game client has no scene for it (its map files are not in this client), so the client would never finish loading";
+        return null;
     }
 
     /// <summary>A server-chosen position for a login: the saved one when it is walkable, else the map's born point.</summary>
@@ -411,7 +426,8 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
             RequireReconnect(s, pending); // failed load has no nonce: do not arm an ambiguous same-map retry
             return;
         }
-        bool ok = data.Row("MapConfig", req.TargetMapId) != null && worldData.Map(req.TargetMapId) != null;
+        bool ok = data.Row("MapConfig", req.TargetMapId) != null && worldData.Map(req.TargetMapId) != null
+            && worldData.ClientHasScene(req.TargetMapId);
         await s.SendGameAsync(SceneTeleport, new SceneTeleportRsp { Result = ok ? 0 : ErrorCodes.SceneMissing });
         if (ok) await EnterSceneAsync(s, req.TargetMapId);
     }
@@ -482,44 +498,6 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
     /// <summary>Set by TerritoryWarsService: whether a walk crosses something the nav grid does not hold that carries it
     /// over blocked cells (a siege ladder against the city wall); such a walk is not held to the grid.</summary>
     public Func<GameSession, Vec3, Vec3, bool>? WalkBridged { get; set; }
-    /// <summary>已驗證劇情移動狀態的速度；仍接受原有導航及阻擋檢查。</summary>
+    /// <summary>劇情騎乘的移動速率仍接受新版距離預算、導航與阻擋判定。</summary>
     internal Func<GameSession, double?>? StoryMovementSpeed { get; set; }
-
-    /// <summary>
-    /// Checks a client walk against the nav grid, the air walls and the speed attribute. ServerOptions.WalkCheck:
-    /// "off", "log" (default: report only) or "enforce" (snap the client back to the last good position).
-    /// </summary>
-    public async Task<bool> AcceptWalkAsync(GameSession s, WalkReq walk)
-    {
-        var mode = options.Value.WalkCheck;
-        if (mode == "off" || worldData.Map(s.SceneEntry)?.Nav is not { } nav) return true;
-        var now = DateTime.UtcNow;
-        var from = s.Position;
-        float dx = walk.Pos.X - from.X, dz = walk.Pos.Z - from.Z, dist = MathF.Sqrt(dx * dx + dz * dz);
-        double seconds = Math.Clamp((now - s.LastWalkUtc).TotalSeconds, 0.05, 5);
-        double speed = StoryMovementSpeed?.Invoke(s) ?? s.Speed / 100.0;
-        float maxDist = (float)(speed * seconds * 1.5) + 1.5f;
-        bool bridged = WalkBridged?.Invoke(s, from, walk.Pos) == true;
-        string? problem = !bridged && !nav.IsWalkable(walk.Pos.X, walk.Pos.Y, walk.Pos.Z) ? "unwalkable cell"
-            : dist > maxDist ? $"too fast ({dist:F1} m in {seconds:F2} s, max {maxDist:F1})"
-            : !bridged && !nav.CanWalk(from.X, from.Y, from.Z, walk.Pos.X, walk.Pos.Z) ? "path crosses unwalkable cells"
-            : WalkBlocked?.Invoke(s, from, walk.Pos) == true ? "path crosses an air wall"
-            : null;
-        if (problem == null)
-        {
-            s.LastWalkUtc = now;
-            return true;
-        }
-        // A client off the grid repeats on every walk: the first and every hundredth refusal per session are enough.
-        if (++s.WalkCheckWarnings % 100 == 1)
-            log.LogWarning("Walk check {Name} scene {Scene} {FromX:F1},{FromZ:F1} -> {X:F1},{Y:F1},{Z:F1}: {Problem} ({Count} so far)",
-                s.Role?.Name, s.SceneEntry, from.X, from.Z, walk.Pos.X, walk.Pos.Y, walk.Pos.Z, problem, s.WalkCheckWarnings);
-        if (mode != "enforce")
-        {
-            s.LastWalkUtc = now;
-            return true;
-        }
-        await TeleportInMapAsync(s, new MapPoint(from.X, from.Y, from.Z, s.Face));
-        return false;
-    }
 }

@@ -46,6 +46,31 @@ public sealed partial class SkillCombatTests
     }
 
     [ClientDataFact]
+    public async Task ClicksAlternatingBetweenTwoTargetsDoNotSwingFaster()
+    {
+        // A modified client restarted the swing with every click by alternating its target: hits at click speed. A turn
+        // to another target is taken, but its swing starts when the one in flight ends (CombatService.SwingTurnLeft).
+        await using var alice = await InWorld("Alice");
+        var a = await Target("alice", stationary: true);
+        var b = await Target("alice", stationary: true);
+        await Loop.InvokeAsync(() => { a.Hp = b.Hp = 1_000_000_000; return Task.CompletedTask; });
+        long self = await Loop.InvokeAsync(() => Task.FromResult(Session("alice").Role!.Id));
+        await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = NoviceAttack, TargetId = a.Uid });
+        Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
+        int action = await Loop.InvokeAsync(() => Task.FromResult(Session("alice").SkillCast!.ActionMs));
+        var started = DateTime.UtcNow;
+        for (int click = 1; DateTime.UtcNow - started < TimeSpan.FromSeconds(3); click++)
+        {
+            await Task.Delay(100);
+            await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = NoviceAttack, TargetId = click % 2 == 0 ? a.Uid : b.Uid });
+        }
+        await Task.Delay(action + 500);
+        int hits = alice.Inbox.Snapshot().Count(e => e.IsGame(CombatService.SkillHit) && SkillHitInfo.Parser.ParseFrom(e.Body).SrcID == self);
+        // At most one swing per action time over the 3 s and the wait after them, the first one included.
+        Assert.InRange(hits, 0, (int)Math.Ceiling((3000.0 + action + 500) / action) + 1);
+    }
+
+    [ClientDataFact]
     public async Task AnArcherNormalAttackWaitsForTheSwingBeforeIt()
     {
         await using var archer = await InWorld("Archer");

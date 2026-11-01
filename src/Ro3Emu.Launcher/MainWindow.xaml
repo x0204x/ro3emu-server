@@ -65,6 +65,7 @@
                 <RadioButton x:Name="HomeTab" Style="{StaticResource NavTab}" GroupName="Nav" Content="首頁" IsChecked="True" Checked="OnNavigationChanged" Tag="0" />
                 <RadioButton x:Name="NewsTab" Style="{StaticResource NavTab}" GroupName="Nav" Content="新聞" Checked="OnNavigationChanged" Tag="1" />
                 <Button Style="{StaticResource NavLink}" Content="註冊" Click="OnRegister" />
+                <Button x:Name="PanelButton" Style="{StaticResource NavLink}" Content="網頁面板" Click="OnPanel" Visibility="Collapsed" />
                 <RadioButton x:Name="SettingsTab" Style="{StaticResource NavTab}" GroupName="Nav" Content="設定" Checked="OnNavigationChanged" Tag="2" />
                 <TextBlock Text="✦" FontSize="13" Foreground="{StaticResource GoldBrush}" VerticalAlignment="Center" Margin="6,0,0,0" />
               </StackPanel>

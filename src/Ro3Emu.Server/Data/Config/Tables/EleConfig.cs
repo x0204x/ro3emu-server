@@ -16,4 +16,5 @@ public readonly partial record struct EleConfig(JsonElement Row)
     [ConfigField("_iUndead")] public partial long Undead { get; }
     [ConfigField("_iWater")] public partial long Water { get; }
     [ConfigField("_iWind")] public partial long Wind { get; }
+    [ConfigField("_iID")] public partial long Id { get; }
 }

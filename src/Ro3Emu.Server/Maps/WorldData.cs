@@ -238,6 +238,8 @@ public sealed partial class WorldData(IOptions<ServerOptions> options, GameData 
     // The sole G UnitAirWallConfig row corresponds to NPCConfig subtype 18. G's enum_NpcSubType
     // does not name 18, so this table correlation is inferred until the injected table is exported.
     private const int SubTypeUnitAirWall = 18;
+    /// <summary>Written by the data export next to config/ (Ro3Emu.DataExport.ClientScenes.FileName).</summary>
+    public const string ClientSceneList = "client-scenes.json";
 
     private readonly Dictionary<long, MapWorld?> _maps = new();
     private readonly object _sync = new();
@@ -298,6 +300,50 @@ public sealed partial class WorldData(IOptions<ServerOptions> options, GameData 
                     Dir("sceneeditor"));
             }
             return _kafraDestinations.Contains(sceneEntry);
+        }
+    }
+
+    private HashSet<string>? _clientMissingScenes;
+
+    /// <summary>
+    /// Whether the game client can show this scene: the export's client-scenes.json lists the MapResource scenes
+    /// (_kResource) the client has no Unity scene for (Ro3Emu.DataExport.ClientScenes; Glast Heim and five eastern towns
+    /// in the October 2026 client). A client sent there retries "Failed to load the area" forever. Without the list (data
+    /// exported before it) every scene counts as shown, as before.
+    /// </summary>
+    public bool ClientHasScene(long sceneEntry)
+    {
+        var missing = ClientMissingScenes();
+        if (missing.Count == 0) return true;
+        long resource = MapConfig.Get(data, sceneEntry)?.MapResourceId ?? DungeonConfig.Get(data, sceneEntry)?.MapResourceId ?? 0;
+        return MapResource.Get(data, resource)?.Resource is not { Length: > 0 } name || !missing.Contains(name);
+    }
+
+    /// <summary>Tests on the real data: the list an export would have written.</summary>
+    internal void UseClientSceneListForTest(IEnumerable<string> missing)
+    {
+        lock (_sync) _clientMissingScenes = new HashSet<string>(missing, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No {File} in the game data: a warp to a map the game client cannot show is not refused; export the game data again")]
+    private static partial void LogNoClientSceneList(ILogger logger, string file);
+
+    private HashSet<string> ClientMissingScenes()
+    {
+        lock (_sync)
+        {
+            if (_clientMissingScenes != null) return _clientMissingScenes;
+            _clientMissingScenes = new(StringComparer.OrdinalIgnoreCase);
+            if (DataFiles.Find(options.Value.GameDataDir ?? options.Value.DataDir, ClientSceneList) is not { } path)
+            {
+                LogNoClientSceneList(log, ClientSceneList);
+                return _clientMissingScenes;
+            }
+            using var doc = JsonDocument.Parse(File.ReadAllBytes(path));
+            if (doc.RootElement.TryGetProperty("Missing", out var list) && list.ValueKind == JsonValueKind.Array)
+                foreach (var name in list.EnumerateArray().Where(n => n.ValueKind == JsonValueKind.String))
+                    _clientMissingScenes.Add(name.GetString()!);
+            return _clientMissingScenes;
         }
     }
 

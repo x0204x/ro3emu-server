@@ -9,8 +9,8 @@ public static partial class EconomySnapshotReader
         internal void ReadTavern() => ScanJsonEvidence("tavern", "id", "state", (key, state) =>
         {
             // 全欄位均為房間／成員／租約控制資料，不含貨幣、道具、待領獎勵。
-            try { _ = state.Deserialize<TavernService.WorldState>(StrictJson) ?? throw new JsonException("酒館狀態不可為 null。"); }
-            catch (JsonException e) when (OnlyUnmappedMembers(state, typeof(TavernService.WorldState)))
+            try { _ = state.Deserialize<LegacyTavernService.WorldState>(StrictJson) ?? throw new JsonException("酒館狀態不可為 null。"); }
+            catch (JsonException e) when (OnlyUnmappedMembers(state, typeof(LegacyTavernService.WorldState)))
             { throw new UnknownPersistedFieldException(e.Message); }
         });
     }

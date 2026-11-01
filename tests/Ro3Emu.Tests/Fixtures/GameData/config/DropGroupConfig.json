@@ -3,5 +3,6 @@
   "9602": [
     { "_iID": 9602, "_iWeights": 1, "_kDropItem": 3990002, "_iMinNumber": 1, "_iMaxNumber": 1, "_iQuestLimit": 0, "_iActivityid": 0 },
     { "_iID": 9602, "_iWeights": 3, "_kDropItem": 3990001, "_iMinNumber": 2, "_iMaxNumber": 2, "_iQuestLimit": 0, "_iActivityid": 0 }
-  ]
+  ],
+  "9603": [ { "_iID": 9603, "_iWeights": 1, "_kDropItem": 3990002, "_iMinNumber": 1, "_iMaxNumber": 1, "_iQuestLimit": 9900001, "_iActivityid": 0 } ]
 }

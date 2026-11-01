@@ -21,14 +21,14 @@ async function monstersPage() {
       { label: 'Monster', grow: true, value: m => [monsterName(m.id, m.name, m.rank, m.icon), variantsChip(m.variants)] },
       { label: 'ID', num: true, opt: true, value: m => mono(String(m.id)) },
       { label: 'Level', num: true, value: m => range(m.level, m.maxLevel) },
-      { label: 'HP', num: true, value: m => range(m.hp, m.maxHp) },
+      { label: 'HP', num: true, shrink: true, value: m => range(m.hp, m.maxHp) },
       { label: 'Element', opt: true, value: m => m.elementName || '-' },
       { label: 'Race', opt: true, value: m => m.race || '-' },
       { label: 'Size', opt: true, value: m => m.size || '-' },
       { label: 'Rank', opt: true, value: m => rankChip(m.rank) || h('span', { class: 'muted' }, 'Normal') },
     ], result.monsters, { onrow: m => navigate('/monsters/' + m.id) })
     : emptyState('search', 'No monster matches', 'Try part of the name, or fewer filters.');
-  return [pageHead({ crumbs: [{ href: '/', label: 'Home' }, { label: 'Monsters' }], title: 'Monsters',
+  return [pageHead({ crumbs: dbCrumbs({ label: 'Monsters' }), title: 'Monsters',
     subtitle: 'Every monster in the game, with the HP and drops the server uses.', actions: densityToggle() }),
   h('section', { class: 'card' }, h('div', { class: 'card-head' }, filters), rows,
     h('div', { class: 'card-foot' }, listPager(result, p => listHref('/monsters', { ...query, page: p }), 'monster')))];
@@ -70,7 +70,7 @@ function dropsCard(detail, m, rewards) {
 /** The monsters of this name: one row each, with where it spawns. */
 function variantsCard(detail, m) {
   if (detail.variants.length <= 1) return null;
-  return card('Monsters of this name', h('span', { class: 'muted' }, num(detail.variants.length) + ' variants'), table([
+  return card('Monsters of this name', h('span', { class: 'muted' }, plural(detail.variants.length, 'variant')), table([
     { label: 'ID', value: v => v.id === m.id || v.ids.includes(m.id) ? h('span', { class: 'mono strong' }, String(v.id)) : link('/monsters/' + v.id, { class: 'text-link mono' }, String(v.id)) },
     { label: 'Level', num: true, value: v => num(v.level) },
     { label: 'HP', num: true, value: v => num(v.hp) },
@@ -81,7 +81,8 @@ function variantsCard(detail, m) {
 }
 
 async function monsterPage(id) {
-  const detail = await api('GET', '/api/monsters/' + encodeURIComponent(id));
+  const [detail, combat] = await Promise.all([api('GET', '/api/monsters/' + encodeURIComponent(id)),
+    api('GET', '/api/monsters/' + encodeURIComponent(id) + '/combat').catch(() => null)]);
   const m = detail.monster;
   const stat = name => detail.stats.find(s => s.name === name)?.value ?? '-';
   const rewards = detail.drops.filter(d => d.kind);
@@ -103,7 +104,7 @@ async function monsterPage(id) {
     ], detail.spawns, { short: true, onrow: s => navigate('/maps/' + s.mapId) })
     : emptyState('home', 'No field spawn', 'It appears in dungeons, events or story scenes.');
   const portrait = m.icon ? h('div', { class: 'portrait' }, thumb(m.icon, m.name, m.rank !== 'normal' ? m.rank : '', 'xxl')) : null;
-  return [pageHead({ crumbs: [{ href: '/', label: 'Home' }, { href: '/monsters', label: 'Monsters' }, { label: m.name }],
+  return [pageHead({ crumbs: dbCrumbs({ href: '/monsters', label: 'Monsters' }, { label: m.name }),
     title: m.name, art: thumb(m.icon, m.name, m.rank !== 'normal' ? m.rank : '', 'xl'),
     after: [rankChip(m.rank), m.elementName && chip('plain', m.elementName)], subtitle: variantLine(detail.ids),
     meta: [['ID', mono(String(m.id))], ['Race', m.race || '-'], ['Size', m.size || '-']] }),
@@ -120,6 +121,7 @@ async function monsterPage(id) {
       dropsCard(detail, m, rewards),
       card('Where it spawns', null, spawns)),
     h('div', { class: 'span-4 stack' },
+      combat && expCard(combat), combat && elementCard(combat),
       card('Monster', null, body(portrait, facts([['Element', m.elementName || '-'], ['Race', m.race || '-'], ['Size', m.size || '-'],
         ['Rank', rankNames[m.rank]]]))),
       card('Stats', null, body(facts([...detail.stats.map(s => [s.name, h('span', { class: 'num' }, s.value)]),
@@ -128,3 +130,22 @@ async function monsterPage(id) {
 
 routes.push([/^\/monsters$/, monstersPage, 'monsters'], [/^\/monsters\/(\d+)$/, monsterPage, 'monsters']);
 titles.monsters = 'Monsters';
+
+/** Base EXP per kill as the server pays it (pages/wiki.js has the scaling rules). */
+function expCard(combat) {
+  if (!combat.exp.length) return card('EXP per kill', null, emptyState('trophy', 'Its kill pays no EXP', null));
+  const levels = r => r.minPlayerLevel || r.maxPlayerLevel ? `${r.minPlayerLevel}-${r.maxPlayerLevel}` : 'Any';
+  return card('EXP per kill', link('/elements', { class: 'more' }, 'Scaling', icon('arrow')), table([
+    { label: 'When', grow: true, value: r => [r.kind, r.maps.length ? h('span', { class: 'sub' }, 'Only on ' + r.maps.join(', ')) : null] },
+    { label: 'Base EXP', num: true, value: r => h('span', { class: 'strong' }, countRange(r.min, r.max)) },
+    { label: 'Your level', num: true, value: levels },
+  ], combat.exp, { short: true }), 'Job EXP is the same. A level gap to the monster and the party size scale both.');
+}
+
+/** The damage it takes from each attacking element (EleConfig). */
+function elementCard(combat) {
+  if (!combat.taken.length) return null;
+  return card('Element damage', link('/elements', { class: 'more' }, 'Table', icon('arrow')),
+    body(h('ul', { class: 'el-list' }, combat.taken.map(e => h('li', null, h('span', null, e.name), elementCell(e.percent))))),
+    'The change in damage it takes from an attack of each element.');
+}

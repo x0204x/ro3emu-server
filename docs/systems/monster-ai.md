@@ -89,6 +89,12 @@ by default: the client cuts their HP on purpose (`_kAttriScale`), so a 1:1 serve
 RO1 feel (`Ro3Emu__Ro1MonsterHp=true`). Every client monster whose name has Egg or Pupa was checked: the Thief Bug Egg (83 against 48), the Eggyra, the story dungeon's Ant Egg (5300036, 830) and the level 50 Peco Peco Egg are not below RO1 and are not listed. An RO1 reference, not client evidence
 (**inferred**).
 
+## Quest drops
+
+A drop row with a `DropGroupConfig._iQuestLimit` is a quest drop: it is a candidate only while the killer has that quest accepted
+and not delivered (**inferred**), e.g. the Egg Thief wave's Card: Poring (group 144, quest 10102100); award and AFK rolls never
+give it (`RewardService.PickFromGroup`).
+
 ## Field EXP rates (`Ro3Emu:FieldExpRates`)
 
 A kill pays what the client's drop tables say: the monster's `_iDrop` and `_iNormalDrop` chains give item 100 (Base EXP), scaled

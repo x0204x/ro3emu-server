@@ -63,7 +63,7 @@ public sealed class GameSession(PhonestChannel channel, TrafficLog traffic, Skil
         GuildOnlinePublished = false;
         Progress = null;
         Daily = null; DailyRows = null; DailyReady = false;
-        WildAfk = null; Tavern = null; Guild = null; Tasks = null;
+        WildAfk = null; Tavern = null; LegacyTavern = null; Guild = null; Tasks = null;
         Achievements = null; AchievementRuntime = null; AdventureGroupRole = null;
         Library = null; CardLibraryReadyAttachment = null; GrowthClass = null;
         NewActivities = null; ActivitiesReady = false;
@@ -142,6 +142,8 @@ public sealed class GameSession(PhonestChannel channel, TrafficLog traffic, Skil
 
     /// <summary>Authoritative cast generation; delayed effects cannot outlive an interrupted/replaced cast.</summary>
     public ActiveSkillCast? SkillCast { get; set; }
+    /// <summary>The running Skill Bar Lineup (CombatService.StartLineup); pressing the Skill Bar again replaces it.</summary>
+    internal object? LineupRun { get; set; }
     public SemaphoreSlim SkillCastGate { get; } = new(1, 1);
     public List<SkillObject> SkillObjects { get; } = new();
     public Dictionary<(int Group, int Mode), long> SkillModeCds { get; } = new();
@@ -192,8 +194,20 @@ public sealed class GameSession(PhonestChannel channel, TrafficLog traffic, Skil
     /// <summary>Time of the last accepted walk (speed check).</summary>
     public DateTime LastWalkUtc { get; set; }
 
-    /// <summary>Walk check refusals of this session (logged sparsely).</summary>
-    internal int WalkCheckWarnings { get; set; }
+    /// <summary>The distance the walk check still lets this client report (SceneService.AcceptWalkAsync).</summary>
+    internal WalkAllowance WalkAllowance { get; } = new();
+
+    /// <summary>The game message budgets of this connection (GameMessageHandler.WithinRate).</summary>
+    internal SessionRates? MessageRates { get; set; }
+
+    /// <summary>The chat line budget of this connection (ChatService).</summary>
+    internal RateBucket? ChatLines { get; set; }
+
+    /// <summary>The same for flight moves (WorldCoreService.FlyMoveAsync), at the flight speed.</summary>
+    internal WalkAllowance FlightAllowance { get; } = new();
+
+    /// <summary>WalkReq.dir of the last accepted walk: degrees, 0 = +z, clockwise toward +x.</summary>
+    public float WalkDir { get; set; }
 
     /// <summary>The last accepted walk was a move, not a stop: the client is somewhere along it now.</summary>
     public bool Walking { get; set; }
@@ -253,6 +267,9 @@ public sealed class GameSession(PhonestChannel channel, TrafficLog traffic, Skil
 
     /// <summary>Chat emoticons unlocked by items (5041, role blob "emoji_info"); EmojiService.</summary>
     public Romsg.DBEmojiInfo? EmojiInfo { get; set; }
+
+    /// <summary>Tavern Star Power, active days and today's time in a room (5043, role blob "barroom"); TavernService.</summary>
+    public TavernService.RoleState? Tavern { get; set; }
 
     /// <summary>Profile card presets and 620 item unlocks (5016, role blob "personal"; other unlockInfos are derived); PersonalService.</summary>
     public Romsg.DBPersonalInfo? Personal { get; set; }
@@ -441,7 +458,7 @@ public sealed class GameSession(PhonestChannel channel, TrafficLog traffic, Skil
 
     /// <summary>5035 field Bonus Time, daily consumption and drop history; transient activity never survives logout.</summary>
     public WildAfkService.State? WildAfk { get; set; }
-    public TavernService.Meter? Tavern { get; set; }
+    public LegacyTavernService.Meter? LegacyTavern { get; set; }
 
     /// <summary>Property list (AoIProperty idx, value) for ENTITYSELF / AOI bases, kept current by CharacterService.Refresh.</summary>
     public (long Id, long Value)[] EntityProperties { get; set; } = [];

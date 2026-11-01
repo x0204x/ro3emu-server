@@ -55,12 +55,18 @@ public sealed partial class SiegeTests
         // Defend the Glory revives the fallen ally where it lies, with 70% HP.
         await ClearCommonCd(attack, ga);
         await OnLoop(() => { Session(ally).Dead = true; return Task.CompletedTask; });
+        int fallen = ally.Inbox.Snapshot().Count;
         await Cast(attack, TerritoryWarsService.DefendTheGlory);
         Assert.Equal(0, (await Next(attack, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
         await Next(ally, 30112, SyncClientPlayerReviveInfoNtf.Parser, n => !n.BDead);
         Assert.False(Session(ally).Dead);
         long maxHp = Service<CharacterService>().Stats(Session(ally))[101];
-        Assert.Equal(maxHp * 7000 / 10000, Session(ally).CurrentHp);
+        // The HP the revive set, as it published it (CombatService.PublishReviveAsync: 31048, then 30112), the first HP
+        // the fallen ally is sent: the 5 s regeneration may already have added to Session.CurrentHp by the time a loaded
+        // test reads it.
+        var published = ally.Inbox.Snapshot().Skip(fallen).Where(e => e.IsGame(CombatService.AoiAttrChange))
+            .Select(e => AOIAttrChange.Parser.ParseFrom(e.Body)).First(n => n.EntityUuid == (ulong)allyId && n.Property.Any(p => p.Idx == 2000));
+        Assert.Equal(maxHp * 7000 / 10000, published.Property.Single(p => p.Idx == 2000).Data);
 
         // Emergency Call: the side is invited, an ally far away accepts and lands at the commander.
         await ClearCommonCd(attack, ga);

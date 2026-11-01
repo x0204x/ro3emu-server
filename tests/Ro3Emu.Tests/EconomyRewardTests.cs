@@ -53,7 +53,8 @@ public sealed class EconomyRewardTests : IDisposable
     [Fact]
     public void ExpOnlyRewardCommitsZeroLegReceiptAndExactProgressChain()
     {
-        Assert.Equal(EconomySnapshotReader.ExpectedFormatManifestHash, EconomySnapshotReader.FormatManifestHash);
+        Assert.True(EconomySnapshotReader.ExpectedFormatManifestHash == EconomySnapshotReader.FormatManifestHash,
+            $"持久化型別圖有變更，需檢視後更新格式雜湊：{EconomySnapshotReader.FormatManifestHash}");
         var (operation, opening, closing) = CommitEmptyKill();
         var receipt = EconomyReceiptReader.Read(_accounts.DatabasePath, operation)!;
         var ledger = EconomyLedgerReader.Read(_accounts.DatabasePath, Catalog, "auto",

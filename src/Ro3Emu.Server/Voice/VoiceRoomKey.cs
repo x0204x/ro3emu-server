@@ -6,20 +6,26 @@ namespace Ro3Emu.Server.Voice;
 /// A relay room, keyed by one number: a party is its team id as the client sends it (team ids start at 1 &lt;&lt; 24, so
 /// always positive); a guild voice channel "2_&lt;guildId&gt;_&lt;index&gt;" (LC_VoiceHelper.GetGuildVoiceChannelId, 2 =
 /// enum_TalkType.Guild) is the negative -(guildId * <see cref="MaxGuildChannels"/> + index + 1), so the two kinds can
-/// never share a key. Tavern rooms (talk type 3) are not served.
+/// never share a key. A Tavern room (enum_TalkType.BarRoom) is joined as its room guid in decimal (LC_BarRoomTalk.JoinChannel
+/// -> LC_System_Talk.JoinChannel, tostring(guid)), the same shape as a party, so TavernService hands out guids from
+/// <see cref="TavernBase"/> up, a range team ids never reach.
 /// </summary>
 public readonly record struct VoiceRoomKey(long Value)
 {
     /// <summary>Room for 64 channels per guild; the game configures 3 (GuildSettingConfig.GuildVoiceChannelCount).</summary>
     public const int MaxGuildChannels = 64;
 
-    public bool IsTeam => Value > 0;
+    /// <summary>The lowest Tavern room guid (TavernService); everything below it that is positive is a team id.</summary>
+    public const long TavernBase = 1L << 40;
+
+    public bool IsTeam => Value > 0 && Value < TavernBase;
+    public bool IsTavern => Value >= TavernBase;
     public bool IsGuild => Value < 0;
 
-    /// <summary>The guild of a guild room (0 for a party).</summary>
+    /// <summary>The guild of a guild room (0 for a party or a Tavern room).</summary>
     public long GuildId => IsGuild ? (-Value - 1) / MaxGuildChannels : 0;
 
-    /// <summary>The 0-based panel channel of a guild room (0 for a party).</summary>
+    /// <summary>The 0-based panel channel of a guild room (0 for a party or a Tavern room).</summary>
     public int ChannelIndex => IsGuild ? (int)((-Value - 1) % MaxGuildChannels) : 0;
 
     public static VoiceRoomKey Guild(long guildId, int index) => new(-(guildId * MaxGuildChannels + index + 1));

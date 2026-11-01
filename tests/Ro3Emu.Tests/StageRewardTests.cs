@@ -23,6 +23,16 @@ public sealed class StageRewardTests : IAsyncLifetime
     private WebApplication _app = null!;
     private string _httpUrl = "";
 
+    /// <summary>
+    /// A fixed afternoon, far from the 05:00 game-day rollover. On the system clock a run that crossed it (22:00 in
+    /// Central Europe, for the suite's +08 host zone) moved the daily epoch the stage claims and their sources are keyed by.
+    /// </summary>
+    private sealed class FixedClock : TimeProvider
+    {
+        private readonly DateTimeOffset _now = new(2026, 10, 15, 6, 0, 0, TimeSpan.Zero);
+        public override DateTimeOffset GetUtcNow() => _now;
+    }
+
     public async Task InitializeAsync()
     {
         var (http, micro, game) = TestPorts.FreePorts();
@@ -30,7 +40,7 @@ public sealed class StageRewardTests : IAsyncLifetime
         {
             o.DataDir = _dataDir; o.GameDataDir = Path.Combine(ClientData.RepoRoot, "data");
             o.HttpPort = http; o.MicroGatePort = micro; o.GameGatePort = game;
-        });
+        }, new FixedClock());
         await _app.StartAsync();
         _httpUrl = $"http://127.0.0.1:{http}";
     }

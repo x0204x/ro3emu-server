@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Http;
 namespace Ro3Emu.Panel;
 
 /// <summary>
-/// The admin tools' API (admins only, audited by the server): mail, gift codes, the GM console, news and broadcasts.
+/// The admin tools' API (GMs and Admins, audited by the server): mail, gift codes, the GM console, news and broadcasts.
 /// The limits on lengths and counts below are the panel's own (inferred), sized for the client's text fields.
 /// </summary>
 public sealed partial class PanelSite
@@ -31,21 +31,21 @@ public sealed partial class PanelSite
 
     private IEnumerable<Route> ToolRoutes() =>
     [
-        Get("/api/admin/items", Access.Admin, call => Task.FromResult(Reply.Ok(new { items = _tools.FindItems(call.Query("q").Trim(), 20) }))),
-        Post("/api/admin/mail/recipients", Access.Admin, MailRecipientsAsync),
-        Post("/api/admin/mail", Access.Admin, SendMailAsync),
-        Get("/api/admin/gift-codes", Access.Admin, async _ => Reply.Ok(new { codes = await _tools.GiftCodesAsync() })),
-        Post("/api/admin/gift-codes", Access.Admin, CreateGiftCodesAsync),
-        Post("/api/admin/gift-codes/{}/disable", Access.Admin, call => SetGiftCodeAsync(call, disabled: true)),
-        Post("/api/admin/gift-codes/{}/enable", Access.Admin, call => SetGiftCodeAsync(call, disabled: false)),
-        Post("/api/admin/gm", Access.Admin, RunGmAsync),
-        Get("/api/admin/gm/history", Access.Admin, async call => Reply.Ok(await _tools.GmHistoryAsync(call.Signed, call.Page(), PageSize))),
-        Get("/api/admin/news", Access.Admin, async _ => Reply.Ok(new { news = await _tools.AllNewsAsync() })),
-        Post("/api/admin/news", Access.Admin, SaveNewsAsync),
-        Post("/api/admin/news/{}/delete", Access.Admin, DeleteNewsAsync),
-        Get("/api/admin/broadcasts", Access.Admin, _ => Task.FromResult(Reply.Ok(new { broadcasts = _tools.Broadcasts() }))),
-        Post("/api/admin/broadcasts", Access.Admin, BroadcastAsync),
-        Post("/api/admin/broadcasts/{}/cancel", Access.Admin, CancelBroadcastAsync),
+        Get("/api/admin/items", Access.Gm, call => Task.FromResult(Reply.Ok(new { items = _tools.FindItems(call.Query("q").Trim(), 20) }))),
+        Post("/api/admin/mail/recipients", Access.Gm, MailRecipientsAsync),
+        Post("/api/admin/mail", Access.Gm, SendMailAsync),
+        Get("/api/admin/gift-codes", Access.Gm, async _ => Reply.Ok(new { codes = await _tools.GiftCodesAsync() })),
+        Post("/api/admin/gift-codes", Access.Gm, CreateGiftCodesAsync),
+        Post("/api/admin/gift-codes/{}/disable", Access.Gm, call => SetGiftCodeAsync(call, disabled: true)),
+        Post("/api/admin/gift-codes/{}/enable", Access.Gm, call => SetGiftCodeAsync(call, disabled: false)),
+        Post("/api/admin/gm", Access.Gm, RunGmAsync),
+        Get("/api/admin/gm/history", Access.Gm, async call => Reply.Ok(await _tools.GmHistoryAsync(call.Signed, call.Page(), PageSize))),
+        Get("/api/admin/news", Access.Gm, async _ => Reply.Ok(new { news = await _tools.AllNewsAsync() })),
+        Post("/api/admin/news", Access.Gm, SaveNewsAsync),
+        Post("/api/admin/news/{}/delete", Access.Gm, DeleteNewsAsync),
+        Get("/api/admin/broadcasts", Access.Gm, _ => Task.FromResult(Reply.Ok(new { broadcasts = _tools.Broadcasts() }))),
+        Post("/api/admin/broadcasts", Access.Gm, BroadcastAsync),
+        Post("/api/admin/broadcasts/{}/cancel", Access.Gm, CancelBroadcastAsync),
     ];
 
     private static Reply Bad(string message) => Reply.Error(StatusCodes.Status400BadRequest, message);

@@ -112,6 +112,8 @@ if [ "$service" = 1 ]; then
     echo "ExecStart=$root/server/Ro3Emu.Server --Ro3Emu:PreloadGameData=true"
     for s in "${settings[@]}"; do echo "Environment=$s"; done
     echo 'Restart=always'
+    # A shutdown planned on the web panel exits 0 and stays down; its restart exits 75 and comes back.
+    echo 'RestartPreventExitStatus=0'
     echo
     echo '[Install]'
     echo 'WantedBy=multi-user.target'

@@ -198,7 +198,6 @@ public sealed class ParticipationTargetTests : IAsyncLifetime
         var tavernBefore = await Read(() => Session.Tasks!.Infos[2000].Clone());
         int tavernDeliveries = await Read(() => Session.Tasks!.CompleteTaskNum.GetValueOrDefault(2000));
         Assert.Equal(TaskState.Running, tavernBefore.Status);
-        Assert.Equal(0, await Read(() => Session.Tavern!.RoomId));
         async Task TavernUnchanged()
         {
             Assert.Equal(tavernBefore, await Read(() => Session.Tasks!.Infos[2000].Clone()));

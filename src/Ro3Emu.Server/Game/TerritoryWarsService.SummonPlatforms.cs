@@ -276,7 +276,7 @@ public sealed partial class TerritoryWarsService
         if (sub.Data is not [var type, var arg, ..]) return false;
         bool? yes = type switch
         {
-            InStatus when arg == 0 => _activators.ContainsKey(s) || _riders.ContainsKey(s) || _operators.ContainsKey(s),
+            InStatus when arg == 0 => _activators.ContainsKey(s) || VehicleRiders.Riding(s) || _operators.ContainsKey(s),
             SameAttackGuild when arg == 0 => ring.Guild == 0,
             SameAttackGuild when arg == 1 => ring.Guild == OwnId(s),
             _ => null,

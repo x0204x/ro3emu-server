@@ -112,9 +112,14 @@ Reconstructed story encounters (`ReconstructedDungeons`, switch `Ro3Emu:Reconstr
   and 4 developer test maps. The story scenes' combat templates (2000xxxx) exist only on the original server.
 - `src/Ro3Emu.Server/Reconstructed/dungeon-monsters.json` (embedded) rebuilds 10 of them as waves of client-known
   NPCConfig monsters at authored points, one wave per quest stage, each spawn with its reason (point label, quest
-  text, base map) and each dungeon with a confidence: 8 high, 5 medium, 2 low. Bosses use the client's story
+  text, base map) and each dungeon with a confidence: 6 high, 3 medium, 1 low. Bosses use the client's story
   templates (530xxxx: Golden Thief Bug, Baphomet, Pharaoh, Maya, the airship's Evil Warriors/Archers/Boss,
   Elusive Pecopeco); minions use the base map's field monsters. No elite stat scaling, phase or mechanic is invented.
+- Southern Payon's portal waves (1021301, quest 10102100) use the client's own encounter monsters instead: NPCConfig
+  5001046-5001050 (Poring, Fabre, Boa, Poring, Willow; levels 15-18, AI 20200004 with a 150 m chase, placed nowhere
+  else). The Poring 5001049 drops Card: Poring 1420300 (`_iNormalDrop` 241949, DropGroupConfig 144 `_iQuestLimit`
+  10102100), the card the delivery dialogue 1010211001 mentions and guide 26 (after 10102110) has the player insert
+  into the quest's Cotton Shirt. Which wave held which monster is **(inferred)**.
 - Story templates have no normal attack in the client (their server scripts chose skills); `monsterAttacks` names
   the monster whose normal attack each borrows (its field MVP, or a human warrior/archer for the airship crews).
   This also gives Payon Forest's story Eddga (5300001) an attack.

@@ -86,6 +86,15 @@ public sealed class OwnerRegistry
             owner.Revisions = new Dictionary<string, long>();
         }
     }
+    /// <summary>A deleted role came back (the web panel's restore, under its lifecycle reservation, with a new lifecycle
+    /// epoch): its owner of an earlier life, detached, is dropped, so the next use registers it from the database.</summary>
+    internal void RoleRestored(long roleId)
+    {
+        AssertLoop();
+        if (_rolesById.TryGetValue(roleId, out var owner) && owner.State is RoleOwnerState.Deleted or RoleOwnerState.Detached
+            && owner.Attachment == null && owner.Detaching == null)
+            _rolesById.Remove(roleId);
+    }
     internal void BindLegacySelection(GameSession session)
     {
         AssertLoop();

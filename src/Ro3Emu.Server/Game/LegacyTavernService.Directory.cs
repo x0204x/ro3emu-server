@@ -4,7 +4,7 @@ using Romsg;
 using Ro3Emu.Server.Micro;
 namespace Ro3Emu.Server.Game;
 
-public sealed partial class TavernService
+public sealed partial class LegacyTavernService
 {
     private static long Number(object? o) => long.TryParse(Convert.ToString(o, CultureInfo.InvariantCulture), out long n) ? n : 0;
     private static object? Field(IDictionary<object, object?> map, string key) => map.TryGetValue(key, out var value) ? value : null;

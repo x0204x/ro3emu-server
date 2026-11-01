@@ -13,11 +13,11 @@ public sealed class TavernClientDataTests
     {
         var data = new GameData(Options.Create(new ServerOptions { GameDataDir = Path.Combine(ClientData.RepoRoot, "data") }), NullLogger<GameData>.Instance);
         Assert.Equal(13, data.Table("BarroomTypeConfig").Count);
-        Assert.True(TavernService.ValidOption(data, 1, 0));
-        Assert.False(TavernService.ValidOption(data, 21, 0));
-        Assert.True(TavernService.ValidOption(data, 21, 1));
-        Assert.False(TavernService.ValidOption(data, 1, 1));
-        Assert.False(TavernService.ValidOption(data, 999, 1));
+        Assert.True(LegacyTavernService.ValidOption(data, 1, 0));
+        Assert.False(LegacyTavernService.ValidOption(data, 21, 0));
+        Assert.True(LegacyTavernService.ValidOption(data, 21, 1));
+        Assert.False(LegacyTavernService.ValidOption(data, 1, 1));
+        Assert.False(LegacyTavernService.ValidOption(data, 999, 1));
         Assert.Equal(2000, PublicParamConfig.BarroomTaskId(data));
         Assert.Equal(18, PublicParamConfig.BarRoomNameLen(data));
         Assert.Equal(1000, PublicParamConfig.BarroomPersonNum(data));

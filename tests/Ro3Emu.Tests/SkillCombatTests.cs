@@ -63,7 +63,17 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         while (dir != null && !File.Exists(Path.Combine(dir.FullName, "Ro3Emu.slnx"))) dir = dir.Parent;
         return dir?.FullName ?? throw new DirectoryNotFoundException();
     }
-    private Task Teach(string name, int group, int level = 1) => Loop.InvokeAsync(() => { Session(name).Progress!.Skills[group] = level; return Task.CompletedTask; });
+    /// <summary>
+    /// Learns the skill under the character's StateLock. A GM !lvl or !job leaves follow-up work (a quest reward, a
+    /// level-up award) that stages a copy of the progress under that lock and publishes it on commit: a skill written
+    /// beside it, without the lock, was dropped when a loaded run let that commit land after it (3002 SkillNotLearned).
+    /// </summary>
+    private Task Teach(string name, int group, int level = 1) => Loop.InvokeAsync(async () =>
+    {
+        var session = Session(name);
+        using var held = await CharacterService.Lock(session);
+        session.Progress!.Skills[group] = level;
+    });
     private Task<MonsterUnit> Target(string name, bool stationary = false, int npcId = 5000001, bool immobile = false) => Loop.InvokeAsync(async () =>
     {
         var s = Session(name);
@@ -621,9 +631,14 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         await Loop.InvokeAsync(() => { Assert.Equal(moved.EndPos, session.Position); return Task.CompletedTask; });
     }
 
+    /// <summary>WalkReq.dir from one point to another: degrees, 0 = +z, clockwise toward +x.</summary>
+    private static float Toward(Vec3 from, Vec3 to) =>
+        (float)((Math.Atan2(to.X - from.X, to.Z - from.Z) * 180 / Math.PI + 360) % 360);
+
     [ClientDataFact]
     public async Task ACasterStillWalkingIntoRangeIsAcceptedAndAStandingOneOutOfRangeIsNot()
     {
+        // The walk carries its direction (WalkReq.dir, what other clients are shown): the range slack lies along it.
         // In-game 11.10: the client sends the attack on reaching range and its stop 13 ms later; the server measured
         // from the last walk's start and refused 3024 on most approaches.
         await using var alice = await InWorld("Alice");
@@ -640,7 +655,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
 
         long speed = await Loop.InvokeAsync(() => Task.FromResult(Session("alice").Speed));
         Assert.True(speed >= 400, $"speed {speed}"); // 0.5 s below covers the 1.5 m beyond range at ≥ 4 m/s
-        await alice.SendGameAsync(MsgId.Walk, new WalkReq { Pos = away, Dir = 180, Face = 180, SpeedRate = 1 });
+        await alice.SendGameAsync(MsgId.Walk, new WalkReq { Pos = away, Dir = Toward(away, start), Face = Toward(away, start), SpeedRate = 1 });
         await Task.Delay(500);
         await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = target.Uid, ComboIndex = 1 });
         var accepted = await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser);
@@ -669,7 +684,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         // Walk until 2 m from the target: 7 m, longer than 0.75 s at this speed.
         int walkMs = (int)(7 / (speed / 100.0) * 1000);
         Assert.True(walkMs > 900, $"speed {speed}");
-        await alice.SendGameAsync(MsgId.Walk, new WalkReq { Pos = away, Dir = 180, Face = 180, SpeedRate = 1 });
+        await alice.SendGameAsync(MsgId.Walk, new WalkReq { Pos = away, Dir = Toward(away, start), Face = Toward(away, start), SpeedRate = 1 });
         await Task.Delay(walkMs);
         await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = target.Uid, ComboIndex = 1 });
         var accepted = await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser);

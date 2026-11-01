@@ -185,6 +185,25 @@ public sealed class CharacterTests : IAsyncLifetime
         Assert.Equal((1, 2), await Grids());
     }
 
+    // AttributeConfig 115/116 _kTips: "Every 1 excess ASPD is converted to 0.1% Physical ATK (Max: 20%)", the excess
+    // over FinalAtkSpdThdAndCastSpdThd [500, 400] (OverflowAtkSpd2PhysDmgR, OverflowCastSpd2MagicDmgR).
+    [ClientDataFact]
+    public void SpeedPastItsCapTurnsIntoAttack()
+    {
+        var character = _app.Services.GetRequiredService<CharacterService>();
+        var data = _app.Services.GetRequiredService<Ro3Emu.Server.Data.GameData>();
+        StatSheet With(double aspd, double cast)
+        {
+            var raw = new Dictionary<int, double> { [103] = 1000, [104] = 1000, [115] = aspd, [116] = cast };
+            return character.ApplySpeedOverflow(raw, StatCalculator.Compute(raw, data));
+        }
+        var under = With(500, 400);
+        Assert.Equal((1000L, 1000L), (under[103], under[104]));
+        var over = With(600, 450); // 100 excess ASPD: +10% PATK; 50 excess cast speed: +5% MATK
+        Assert.Equal((1100L, 1050L, 600L), (over[103], over[104], over[115]));
+        Assert.Equal(1200, With(900, 400)[103]); // 400 excess would be 40%: capped at 20%
+    }
+
     [ClientDataFact]
     public async Task EquipmentAndLevelSurviveRelog()
     {

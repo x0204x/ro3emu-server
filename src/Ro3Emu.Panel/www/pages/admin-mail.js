@@ -4,7 +4,7 @@
 registerAdminPage({ id: 'mail', label: 'Mail & rewards', icon: 'mail', path: '/admin/mail', pattern: /^\/admin\/mail$/, page: adminMailPage });
 
 async function adminMailPage() {
-  requireAdmin();
+  requireRole('gm');
   const kinds = [['character', 'One character'], ['account', "An account's characters"], ['everyone', 'Everyone']];
   let kind = 'character';
   const name = h('input', { class: 'input', id: 'f-target', name: 'target', spellcheck: 'false', autocapitalize: 'off', placeholder: 'Character name' });
@@ -24,8 +24,8 @@ async function adminMailPage() {
   const target = () => ({ kind, name: name.value.trim(), onlineOnly: online.querySelector('input').checked, minLevel: Number(minLevel.value) || 0 });
   const check = async () => {
     const r = await api('POST', '/api/admin/mail/recipients', { target: target() });
-    preview.replaceChildren(r.count === 0 ? 'Nobody matches.'
-      : [mono(num(r.count)), r.count === 1 ? ' character: ' : ' characters: ', r.sample.join(', '), r.count > r.sample.length ? ', ...' : '']);
+    preview.replaceChildren(...(r.count === 0 ? ['Nobody matches.']
+      : [mono(num(r.count)), r.count === 1 ? ' character: ' : ' characters: ', r.sample.join(', '), r.count > r.sample.length ? ', ...' : '']));
     return r.count;
   };
   const rewards = rewardEditor();
@@ -44,7 +44,7 @@ async function adminMailPage() {
         const payload = { target: target(), title: values.title, text: values.text, sender: values.sender, attachments: rewards.value() };
         if (kind !== 'character') {
           const count = await check();
-          if (count === 0 || !await confirmBox(confirmHost, `This mail goes to ${num(count)} characters. Send it?`, `Send to ${num(count)}`)) return;
+          if (count === 0 || !await confirmBox(confirmHost, `This mail goes to ${plural(count, 'character')}. Send it?`, `Send to ${num(count)}`)) return;
           Object.assign(payload, { confirm: true, expected: count });
         }
         const result = await api('POST', '/api/admin/mail', payload);

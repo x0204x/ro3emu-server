@@ -14,7 +14,7 @@ public sealed partial class PanelSite
     private IEnumerable<Route> CharacterRoutes() =>
     [
         Get("/api/characters/{}", Access.Player, CharacterAsync),
-        Get("/api/admin/characters/{}/mail", Access.Admin, CharacterMailAsync),
+        Get("/api/admin/characters/{}/mail", Access.Moderator, CharacterMailAsync),
     ];
 
     /// <summary>Someone else's character is "not found" to a player, the same answer as a missing one.</summary>

@@ -260,7 +260,7 @@ public sealed class VoiceRelayTests : IAsyncLifetime
         var notSeated = await carolVoice.WaitTypeAsync(VoiceDown.JoinResult, Wait);
         Assert.Equal(VoiceJoinCode.NotMember, notSeated.Payload[0]);
 
-        // Tavern rooms (talk type 3) are not served.
+        // No talk type sends this shape (a Tavern room is its guid in decimal: TavernTests).
         await carolVoice.JoinAsync("3_5_1");
         var unsupported = await carolVoice.WaitTypeAsync(VoiceDown.JoinResult, Wait);
         Assert.Equal(VoiceJoinCode.UnsupportedRoom, unsupported.Payload[0]);

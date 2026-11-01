@@ -13,4 +13,5 @@ public readonly partial record struct CardUpgradeConfig(JsonElement Row)
     [ConfigField("_iPower")] public partial long Power { get; }
     [ConfigField("_iQuality")] public partial long Quality { get; }
     [ConfigField("_iSeasonPower")] public partial long SeasonPower { get; }
+    [ConfigField("_iAttr")] public partial long[][] Attr { get; }
 }

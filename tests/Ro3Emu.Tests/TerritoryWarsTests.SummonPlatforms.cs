@@ -112,8 +112,9 @@ public sealed partial class TerritoryWarsTests
         await Next(a, WorldInteractionService.Change, InteractChangeNtf.Parser,
             n => n.Uid == activator && n.DataInfo.EType == InteractInfo.Types.EState.Idle);
 
-        // The platform recharges (inferred 120 s) and is announced ready again with a new ring.
-        await Step(1);
+        // The platform recharges (inferred 120 s) and is announced ready again with a new ring. Not a step forward: the
+        // service's own one-second tick may already have started the recharge at this clock second.
+        await Step(0);
         point = await Next(a, TerritoryWarsService.ScenePointNotify, GlobalScenePointDataNotify.Parser,
             n => n.GlobalPoints.TryGetValue(49, out var p) && p.Status == EnumGlobalScenePoint.UnReady);
         Assert.Equal((_clock.GetUtcNow().ToUnixTimeSeconds() + 120) * 1000, point.GlobalPoints[49].ReadyTime);

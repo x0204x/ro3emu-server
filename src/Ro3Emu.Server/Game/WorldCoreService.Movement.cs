@@ -56,19 +56,24 @@ public sealed partial class WorldCoreService
     private float FlightSpeed(GameSession s) => _data.Table("PublicParamConfig").TryGetValue("MountFlyMaxSpeed", out var value)
         ? Math.Max(1, (float)(GameData.Number(value) ?? s.Speed) / 100) : Math.Max(1, s.Speed / 100f);
 
-    /// <summary>31084: AStarAgentNew sends position plus a three-dimensional direction, not a ground yaw.</summary>
+    /// <summary>31084: AStarAgentNew sends position plus a three-dimensional direction, not a ground yaw. The distance is
+    /// held to the flight speed's budget (WalkAllowance, as walks are); a move beyond it is put back and counted.</summary>
     public async Task FlyMoveAsync(GameSession s, FlyMoveReq req)
     {
-        double seconds = Math.Clamp((Now - s.WorldState.LastFlyMs) / 1000.0, 0.05, 2);
         float speed = FlightSpeed(s);
         var map = _worldData.Map(s.SceneEntry);
         var grounded = Finite(req.Pos) && map != null ? map.Grounded(new MapPoint(req.Pos.X, req.Pos.Y, req.Pos.Z, req.Face)) : default;
         if (!s.WorldState.Flying || !CanFly(s) || !Finite(req.Pos) || !Finite(req.Dir) || !float.IsFinite(req.Face)
             || Distance(new Vec3(), req.Dir) > 2
             || map == null || !map.IsWalkable(grounded.X, grounded.Y, grounded.Z)
-            || req.Pos.Y < grounded.Y - 1 || req.Pos.Y > grounded.Y + 50
-            || Distance(s.Position, req.Pos) > speed * seconds * 1.5 + 1.5)
+            || req.Pos.Y < grounded.Y - 1 || req.Pos.Y > grounded.Y + 50)
         { await ErrorAsync(s, FlyMove, ErrorCodes.Parameter); await CorrectFlightAsync(s); return; }
+        float distance = Distance(s.Position, req.Pos);
+        if (!s.FlightAllowance.TrySpend(DateTime.UtcNow, speed, distance))
+        {
+            _scene.Cheats.Refused(s, CheatMonitor.Flight, $"scene {s.SceneEntry} {distance:F1} m beyond the flight budget at {speed:F1} m/s");
+            await ErrorAsync(s, FlyMove, ErrorCodes.Parameter); await CorrectFlightAsync(s); return;
+        }
         s.WorldState.LastFlyMs = Now;
         await MoveFlightAsync(s, req.Pos, req.Face, req.Dir, req.BStop, MovementTransitionType.MoveTransNormal);
     }

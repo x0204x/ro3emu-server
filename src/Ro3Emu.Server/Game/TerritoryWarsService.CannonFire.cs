@@ -22,7 +22,7 @@ public sealed partial class TerritoryWarsService
     /// <summary>DirtyDataConfig 4900014 GVGCannonBulletRestNum (Long, on the cannon: its skill cost [6, 4900014, 1]) and
     /// 4900006 CameraFollowBullet_ListLong (on the shooter, sync scope 0: bullet uid, camera distance cm, x, y).</summary>
     private const long BulletRestNum = 4900014, CameraFollowBullet = 4900006;
-    private const int QuitStatusAction = 5004, CannonStatusType = 2;
+    private const int CannonStatusType = 2;
     private const int FireButton = 2;
     /// <summary>LC_ConditionList sub-condition types of the enter condition (4900001): CheckBuilder, CheckCamp, and
     /// 12001 the gameplay status, inverted (not already in one).</summary>
@@ -166,9 +166,7 @@ public sealed partial class TerritoryWarsService
         return await FireCannonAsync(s, unit, cfg, req.CannonUseSkill);
     }
 
-    private bool QuitsStatus(GameplayStatusButtonConfig button) =>
-        button.Action is { } action && action.ToString().Contains(QuitStatusAction.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal)
-        && ActionConfig.Get(_data, QuitStatusAction) is { FunctionName: "QuitStatus" };
+    private bool QuitsStatus(GameplayStatusButtonConfig button) => VehicleSeats.QuitsStatus(_data, button);
 
     /// <summary>Leaves the cannon: Idle to the operator (unless it is gone) and the cannon free for its builder again.</summary>
     private async Task LeaveCannonAsync(GameSession s, bool interrupt)

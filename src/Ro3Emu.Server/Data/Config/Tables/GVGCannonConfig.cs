@@ -19,4 +19,6 @@ public readonly partial record struct GVGCannonConfig(JsonElement Row)
     [ConfigField("_iExitInteractID")] public partial long ExitInteractId { get; }
     [ConfigField("_kButtonActionIDs")] public partial long[] ButtonActionIds { get; }
     [ConfigField("_kFireOffset")] public partial long[] FireOffset { get; }
+    /// <summary>The aim indicator's farthest reach (cm): LC_GVGFireCannon aims within it.</summary>
+    [ConfigField("_fIndicatorRadius")] public partial double IndicatorRadius { get; }
 }

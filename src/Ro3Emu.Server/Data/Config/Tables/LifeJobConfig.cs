@@ -10,4 +10,6 @@ public readonly partial record struct LifeJobConfig(JsonElement Row)
     [ConfigField("_iCondition")] public partial long Condition { get; }
     [ConfigField("_iDescription")] public partial long[] Description { get; }
     [ConfigField("_iType")] public partial long Type { get; }
+    [ConfigField("_iID")] public partial long Id { get; }
+    [ConfigField("_iName")] public partial long[] Name { get; }
 }

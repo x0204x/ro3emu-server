@@ -9,7 +9,7 @@ namespace Ro3Emu.Server.Game;
 /// CLIENT_COMPLETE_GUIDE {guildId (sic)}; the server keeps the finished set in DBGuideInfo (AUTO_SYNC 5055), which the
 /// client reads at login so a finished guide does not run again. Without it every login replays the guides.
 /// </summary>
-public sealed class GuideService(RoleStore roles, ILogger<GuideService> log)
+public sealed class GuideService(RoleStore roles, Data.GameData data, ILogger<GuideService> log)
 {
     public const uint GuideInfoSync = 5055;
     public const uint UpdateGuide = 84000;
@@ -31,8 +31,9 @@ public sealed class GuideService(RoleStore roles, ILogger<GuideService> log)
     public async Task UpdateAsync(GameSession session, UpdateGuideReq req)
     {
         if (session.Guides == null) return;
-        foreach (var id in req.GuideIds) Finish(session, id);
-        foreach (var (id, value) in req.Records) session.Guides.GuideFinishRecord[id] = value;
+        foreach (var id in req.GuideIds.Take(MaxPerUpdate)) Finish(session, id);
+        foreach (var (id, value) in req.Records.Take(MaxPerUpdate))
+            if (Known(id)) session.Guides.GuideFinishRecord[id] = value;
         await SaveAndSyncAsync(session);
     }
 
@@ -43,9 +44,18 @@ public sealed class GuideService(RoleStore roles, ILogger<GuideService> log)
         await SaveAndSyncAsync(session);
     }
 
-    private static void Finish(GameSession session, long id)
+    /// <summary>
+    /// Ids the client can report: GuideConfig rows (any id when the table is absent). Whatever else a modified client sends
+    /// would be saved with the role and sent back at every login, so it is dropped, and one update is cut at
+    /// <see cref="MaxPerUpdate"/> entries (inferred; the client reports one guide or a handful).
+    /// </summary>
+    private bool Known(long id) => data.Table("GuideConfig").Count == 0 || data.Row("GuideConfig", id) != null;
+
+    private const int MaxPerUpdate = 256;
+
+    private void Finish(GameSession session, long id)
     {
-        if (id != Placeholder && !session.Guides!.FinishedGuideIds.Contains(id)) session.Guides.FinishedGuideIds.Add(id);
+        if (id != Placeholder && Known(id) && !session.Guides!.FinishedGuideIds.Contains(id)) session.Guides.FinishedGuideIds.Add(id);
     }
 
     private async Task SaveAndSyncAsync(GameSession session)

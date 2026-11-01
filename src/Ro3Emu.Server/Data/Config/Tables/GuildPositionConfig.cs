@@ -9,4 +9,6 @@ public readonly partial record struct GuildPositionConfig(JsonElement Row)
     [ConfigField("_iID")] public partial long Id { get; }
     [ConfigField("_iPositionNum")] public partial long PositionNum { get; }
     [ConfigField("_iType")] public partial long Type { get; }
+    [ConfigField("_iName")] public partial JsonElement? Name { get; }
+    [ConfigField("_iShowSort")] public partial long ShowSort { get; }
 }

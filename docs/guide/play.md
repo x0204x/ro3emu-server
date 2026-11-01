@@ -24,6 +24,7 @@ the current one); the 20 October release passes `RO3Emu.exe check` and the data 
 | `RO3Emu.exe` | play on your own server (same as `RO3Emu.exe start`) |
 | `RO3Emu.exe join <address>` | play on someone else's server (`host`, `host:port` or `http://host:port`) |
 | `RO3Emu.exe host` | 在本機啟動伺服器供朋友連線；每個 GM 帳號各指定一次，例如 `--gm you --gm friend`。登入畫面可另設標籤：`--cluster-name <name> --area-name <name>`。 |
+| `RO3Emu.exe panel [address]` | 顯示已啟動伺服器的[網頁面板](panel.md)網址，並於互動式 Windows 工作階段開啟瀏覽器；省略 address 時查詢本機。 |
 | `RO3Emu.exe install [folder]` / `update [folder]` | 從 Genesis 更新伺服器下載遊戲，並驗證每個檔案。 |
 | `RO3Emu.exe restore` | 還原修補，讓遊戲重新連線至 Genesis 伺服器。 |
 | `RO3Emu.exe check` | does this game version fit this RO3Emu? (changes nothing) |

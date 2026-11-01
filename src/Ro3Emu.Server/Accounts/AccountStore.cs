@@ -150,8 +150,9 @@ public sealed partial class AccountStore : IDisposable
         catch { db.Dispose(); throw; }
     }
 
-    /// <summary>Banned: the credential matched (or registered the name) but the account has an active ban.</summary>
-    public enum LoginResult { Ok, Registered, BadPassword, Banned }
+    /// <summary>Banned: the credential matched (or registered the name) but the account has an active ban. Unknown: no
+    /// account has the name and the sign-in was told not to register it (ServerOptions.RefuseUnknownAccounts).</summary>
+    public enum LoginResult { Ok, Registered, BadPassword, Banned, Unknown }
 
     private bool OnLoop => _loop?.IsOnLoop == true || _metrics != null && ReferenceEquals(ServerMetrics.LoopOwner, _metrics);
     private DbWriter Writer { get { lock (_runtimeGate) { ObjectDisposedException.ThrowIf(_disposed, this); return _writer.Value; } } }
@@ -499,20 +500,22 @@ public sealed partial class AccountStore : IDisposable
     /// Login or first-time registration. <see cref="SignIn.Account"/> is the account's stored name, which can differ
     /// from <paramref name="name"/> in letter case; tokens and sessions must carry it, never the typed spelling. The ban
     /// is checked only once the password matched, so a wrong password answers the same whether or not the account is
-    /// banned; a name that has no account but a ban row is refused before it is registered.
+    /// banned; a name that has no account but a ban row is refused before it is registered. With
+    /// <paramref name="register"/> false a name that has no account is answered Unknown and nothing is written.
     /// </summary>
-    public async Task<SignIn> SignInAsync(string name, string password)
+    public async Task<SignIn> SignInAsync(string name, string password, bool register = true)
     {
-        var signIn = await CheckOrRegisterAsync(name, password).ConfigureAwait(false);
-        if (signIn.Result is LoginResult.BadPassword or LoginResult.Banned) return signIn;
+        var signIn = await CheckOrRegisterAsync(name, password, register).ConfigureAwait(false);
+        if (signIn.Result is LoginResult.BadPassword or LoginResult.Banned or LoginResult.Unknown) return signIn;
         return await UnlessBannedAsync(signIn.Account, "sign-in").ConfigureAwait(false) == null
             ? signIn with { Result = LoginResult.Banned } : signIn;
     }
 
-    private async Task<SignIn> CheckOrRegisterAsync(string name, string password)
+    private async Task<SignIn> CheckOrRegisterAsync(string name, string password, bool register)
     {
         var existing = await ReadAsync<AccountCredentials?>(new AccountCredentialsRead(name)).ConfigureAwait(false);
         if (existing != null) return await Check(existing).ConfigureAwait(false);
+        if (!register) return new(LoginResult.Unknown, name);
         switch (await TryRegisterAsync(name, password).ConfigureAwait(false))
         {
             case Registration.Banned: return new(LoginResult.Banned, name);

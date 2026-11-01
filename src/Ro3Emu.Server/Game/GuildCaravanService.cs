@@ -16,7 +16,7 @@ namespace Ro3Emu.Server.Game;
 /// A role owns its order and five daily rounds; membership only authorizes help and receives configured guild funds.
 /// (inferred) Stable weighted order draw, 05:00 dayVersion, reward mail at rollover, and cross-guild help cleanup.
 /// </summary>
-public sealed class GuildCaravanService(GameData data, GuildStore guilds, AccountStore accounts, RoleStore roles,
+public sealed partial class GuildCaravanService(GameData data, GuildStore guilds, AccountStore accounts, RoleStore roles,
     CharacterService character, AwardService awards, MailService mail, GuildService guildService,
     TaskService tasks, SeasonService seasons, FunctionService functions, SessionRegistry sessions, TimeProvider clock, GameLoop loop,
     ILogger<GuildCaravanService> log) : IGameTicker

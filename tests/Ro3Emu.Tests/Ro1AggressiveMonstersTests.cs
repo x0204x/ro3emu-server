@@ -88,6 +88,68 @@ public sealed class Ro1AggressiveMonstersTests
         Assert.Null(await host.OnLoop(() => pirate.Target));
     }
 
+    [Fact]
+    public void AListedMonsterFarAboveItsMapsLowestMonsterIsGated()
+    {
+        // Invented ids. A pool: 1 (level 10, max 0: never spawned), 2 (20, x10), 3 (40, x10), 6 (40, x10, not gateable:
+        // the client's own aggressive AI or a boss), 7 (5, x1: under 10% of the population); a fixed group of 4 (30) and
+        // 5 (36) on one point each.
+        var monsters = new Dictionary<int, (int Level, bool Gated)>
+        {
+            [1] = (10, true), [2] = (20, false), [3] = (40, true), [4] = (30, true), [5] = (36, true), [6] = (40, false),
+            [7] = (5, false),
+        };
+        var pool = new SpawnGroup(1, true, 31, 5, [(1, 0, 0), (2, 10, 10), (3, 10, 10), (6, 10, 10), (7, 1, 1)], []);
+        var fixedGroup = new SpawnGroup(2, false, 2, 5, [], [new SpawnPoint(1, 0, 0, 0, 0, 4), new SpawnPoint(2, 0, 0, 0, 0, 5)]);
+        (int, bool)? Monster(int npc) => monsters.TryGetValue(npc, out var m) ? m : null;
+        // The lowest common level is 20 (7 is too rare to count): 3 (40) and 5 (36) are more than 15 above it; 4 (30) is
+        // not; 6 is never gated.
+        int[] gated = [3, 5], wider = [3];
+        Assert.Equal(gated, MonsterService.Ro1PassiveNpcs([pool, fixedGroup], Monster, 15).Order());
+        Assert.Equal(wider, MonsterService.Ro1PassiveNpcs([pool, fixedGroup], Monster, 16));
+        Assert.Empty(MonsterService.Ro1PassiveNpcs([], Monster, 15));
+        // With 7 common (x5 of 37), the lowest is 5: 4 (30) is gated as well.
+        var commonWeak = pool with { Limits = [(2, 10, 10), (3, 10, 10), (6, 10, 10), (7, 5, 5)] };
+        int[] all = [3, 4, 5];
+        Assert.Equal(all, MonsterService.Ro1PassiveNpcs([commonWeak, fixedGroup], Monster, 15).Order());
+    }
+
+    [ClientDataFact]
+    public async Task PayonForestKeepsItsFarStrongerListedMonstersPassive()
+    {
+        // sc_pay_fild10_001 pool 494: Horn 16, Boa 18, Elder Willow 34, Beetle King 55, Greatest General 55, Savage 59.
+        await using var host = await Host.StartAsync(ro1Aggressive: true);
+        var monsters = host.Service<MonsterService>();
+        Assert.True(monsters.Template(GreatestGeneral)!.Aggressive); // still on the list
+        int[] gated = [GreatestGeneral, ElderWillow];
+        Assert.Equal(gated, (await host.OnLoop(() => monsters.Ro1PassiveOn(PayonForest))).Order());
+        // Southeast Payon's lowest common monster is Caramel 25: Elder Willow (34) keeps the RO1 aggression there.
+        Assert.DoesNotContain(ElderWillow, await host.OnLoop(() => monsters.Ro1PassiveOn(SoutheastPayon)));
+        // Dungeons keep it whatever their levels: Payon Cave (MapConfig _iSceneType 1 but _iCaveBelongsTo 10201) spawns
+        // Zombies at 17 among Archer Skeletons at 45; Orc Cave is a Cave scene (6).
+        Assert.Empty(await host.OnLoop(() => monsters.Ro1PassiveOn(PayonCave)));
+        Assert.Empty(await host.OnLoop(() => monsters.Ro1PassiveOn(OrcCave)));
+
+        await using var alice = await host.InWorld("Alice");
+        await host.Warp(alice, PayonForest, 30.8f, 292f);
+        var s = await host.SessionOf(alice);
+        var general = await host.SpawnBeside(s, GreatestGeneral, 1.5f);
+        var pirate = await host.SpawnBeside(s, PirateSkeleton, -1.5f); // listed, but not one of this map's pools
+        await host.Until(() => ReferenceEquals(pirate.Target, s), "the Pirate Skeleton takes Alice");
+        await Task.Delay(GameLoop.TickInterval * 6);
+        Assert.Null(await host.OnLoop(() => general.Target));
+    }
+
+    [ClientDataFact]
+    public async Task AGapOfZeroLeavesEveryListedMonsterAggressive()
+    {
+        await using var host = await Host.StartAsync(ro1Aggressive: true, maxLevelGap: 0);
+        Assert.Empty(await host.OnLoop(() => host.Service<MonsterService>().Ro1PassiveOn(PayonForest)));
+    }
+
+    private const int GreatestGeneral = 5000070, ElderWillow = 5000087;
+    private const long PayonForest = 10220, SoutheastPayon = 10217, PayonCave = 10240, OrcCave = 10340;
+
     /// <summary>One server with the switch set: each test owns its host (several run in one process).</summary>
     private sealed class Host : IAsyncDisposable
     {
@@ -95,7 +157,7 @@ public sealed class Ro1AggressiveMonstersTests
         private WebApplication _app = null!;
         private string _http = "";
 
-        public static async Task<Host> StartAsync(bool ro1Aggressive)
+        public static async Task<Host> StartAsync(bool ro1Aggressive, int maxLevelGap = 15)
         {
             var host = new Host();
             var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
@@ -107,6 +169,7 @@ public sealed class Ro1AggressiveMonstersTests
                 o.MicroGatePort = microPort;
                 o.GameGatePort = gamePort;
                 o.Ro1AggressiveMonsters = ro1Aggressive;
+                o.Ro1AggressiveMaxLevelGap = maxLevelGap;
             });
             await host._app.StartAsync();
             host._http = $"http://127.0.0.1:{httpPort}";
@@ -128,6 +191,19 @@ public sealed class Ro1AggressiveMonstersTests
             // Sturdy enough to outlast the swings while the test watches.
             (await http.PostAsync($"{_http}/ro3emu/gm?account={name.ToLowerInvariant()}", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
             return bot;
+        }
+
+        /// <summary>A GM warp, then the client's 30005 scene-loaded report.</summary>
+        public async Task Warp(BotClient bot, long scene, float x, float z)
+        {
+            using var sw = bot.Inbox.Expect(e => e.IsGame(MsgId.SwitchSceneLine));
+            using var http = new HttpClient();
+            (await http.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}",
+                new StringContent(FormattableString.Invariant($"!warp {scene} {x:0.0} {z:0.0}")))).EnsureSuccessStatusCode();
+            long loaded = Romsg.SwitchSceneLineResp.Parser.ParseFrom((await sw.WaitAsync(Wait)).Body).SceneEntry;
+            using var self = bot.Inbox.Expect(e => e.IsGame(MsgId.EntitySelf));
+            await bot.SendGameAsync(MsgId.SceneLoaded, new Romsg.SceneLoadedReq { SceneId = loaded });
+            await self.WaitAsync(Wait);
         }
 
         public Task<GameSession> SessionOf(BotClient bot) =>

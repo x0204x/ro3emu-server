@@ -102,7 +102,7 @@ public abstract class GateListener(IPAddress address, int port, ILogger log, Dia
                     var task = Task.Run(() => ServeAsync(socket, ct, completion), CancellationToken.None);
                     _serves.Add(id, (socket, task));
                     if (remote != null) _perAddress[remote] = _perAddress.GetValueOrDefault(remote) + 1;
-                    _ = task.ContinueWith(_ =>
+                    var removed = task.ContinueWith(_ =>
                         {
                             lock (_servesGate)
                             {
@@ -111,6 +111,8 @@ public abstract class GateListener(IPAddress address, int port, ILogger log, Dia
                             }
                         },
                         CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                    // Stop drains the removal, not just the serve: the count it reports is then already down.
+                    if (_serves.ContainsKey(id)) _serves[id] = (socket, removed);
                 }
             }
         }

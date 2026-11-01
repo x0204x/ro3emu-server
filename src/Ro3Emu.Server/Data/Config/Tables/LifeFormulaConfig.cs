@@ -13,4 +13,11 @@ public readonly partial record struct LifeFormulaConfig(JsonElement Row)
     [ConfigField("_kMultiverseArray")] public partial long[] MultiverseArray { get; }
     [ConfigField("_kUnlockCost")] public partial long[][] UnlockCost { get; }
     [ConfigField("_kcost")] public partial long[][] Cost { get; }
+    [ConfigField("_iFormulaName")] public partial JsonElement? FormulaName { get; }
+    [ConfigField("_iDescription")] public partial JsonElement? Description { get; }
+    [ConfigField("_iVitalitycost")] public partial long VitalityCost { get; }
+    [ConfigField("_iTime")] public partial long Time { get; }
+    [ConfigField("_iEXPgained")] public partial long ExpGained { get; }
+    [ConfigField("_iQuality")] public partial long Quality { get; }
+    [ConfigField("_kFormulaIcon")] public partial string FormulaIcon { get; }
 }

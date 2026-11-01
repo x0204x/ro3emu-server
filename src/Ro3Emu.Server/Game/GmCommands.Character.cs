@@ -12,8 +12,8 @@ public sealed partial class GmCommands
     private const int OpStrengthen = 4, OpRefine = 5, OpResetAttrPnt = 9, OpDropPool = 26, OpGvgReset = 51, OpCreateMultiRole = 54,
         OpSetServerTime = 62, OpSetServerOpenDay = 63, OpDumpServerLevelInfo = 64, OpSendMailPerson = 70, OpSendMailSystemByCfgId = 71,
         OpSendMailSystemByCustom = 72, OpRevokeSystemMail = 73, OpShowLocation = 79, OpFlyToTarget = 83, OpDungeonCmd = 93, OpGuild = 94,
-        OpTask = 99, OpEnterDungeon = 108, OpAllSkillsMax = 110, OpPrintBarroom = 134, OpSetBarroomInfo = 136,
-        OpAddBarroomToDayStayTimes = 141, OpSetMoveVerify = 186, OpSetRoleAttr = 301;
+        OpTask = 99, OpEnterDungeon = 108, OpAllSkillsMax = 110, OpPrintBarroom = TavernService.GmPrint, OpSetBarroomInfo = TavernService.GmSetInfo,
+        OpAddBarroomToDayStayTimes = TavernService.GmAddStay, OpSetMoveVerify = 186, OpSetRoleAttr = 301;
 
     /// <summary>GmTask's state option (GMConfig 1021 _kOptionName): accept, abandon, reset, submit, complete, delete.</summary>
     private const int TaskAccept = 0, TaskAbandon = 1, TaskReset = 2, TaskSubmit = 3, TaskComplete = 4, TaskDelete = 5;
@@ -76,7 +76,7 @@ public sealed partial class GmCommands
             case OpSetMoveVerify:
                 return $"GM op {OpLabel(op)}: movement verification is the host's ServerOptions.WalkCheck ('{options.Value.WalkCheck}'), not a per-role switch.";
             case OpPrintBarroom or >= OpSetBarroomInfo and <= OpAddBarroomToDayStayTimes:
-                return $"GM op {OpLabel(op)}: the emulator has no tavern (Barroom) system.";
+                return await services.GetRequiredService<TavernService>().GmOpAsync(s, op, args);
             default:
                 return null;
         }

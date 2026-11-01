@@ -9,14 +9,12 @@ namespace Ro3Emu.Tests;
 /// <summary>
 /// Guild voice channels (83700-83723, LC_DAL_GuildVoice / LC_GuildVoiceServer): the channel list with its counts,
 /// join and leave, the 83709 state push the panel rebuilds itself from, Order mode (the mic on request), kicks with
-/// their block list, and leaving the channel when the guild or the game is left.
+/// their block list, invites with their cooldown and refusal, and leaving the channel when the guild or the game is left.
 /// </summary>
 public sealed class GuildVoiceTests : IAsyncLifetime
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "ro3emu-guildvoice-" + Guid.NewGuid().ToString("N"));
-    // The full client-data suite runs thousands of integration cases in one process; keep network waits bounded while
-    // allowing the disconnect owner callback to run under scheduler and GC pressure.
-    private static readonly TimeSpan Wait = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan Wait = TimeSpan.FromSeconds(8);
     private WebApplication _app = null!;
     private string _http = "";
 
@@ -375,5 +373,91 @@ public sealed class GuildVoiceTests : IAsyncLifetime
         await Update(alice, i => i.Members.Count == 1);
         var counts = await Ask(alice, GuildVoiceService.AllMemberCountMsg, new GuildVoiceChannelGetAllMemberCountReq(), GuildVoiceChannelGetAllMemberCountRsp.Parser);
         Assert.Equal(1, counts.ChannelCounts.Single(c => c.ChannelIndex == 0).MemberCount);
+    }
+
+    private static Task<GuildVoiceChannelInviteRsp> Invite(BotClient bot, int channel, params long[] targets) =>
+        Ask(bot, GuildVoiceService.InviteMsg, new GuildVoiceChannelInviteReq { ChannelIndex = channel, TargetPlayerIds = { targets } },
+            GuildVoiceChannelInviteRsp.Parser);
+
+    private static Task<GuildVoiceGetNotInCdPlayerResp> Invitable(BotClient bot) =>
+        Ask(bot, GuildVoiceService.NotInCooldownMsg, new GuildVoiceGetNotInCdPlayerReq(), GuildVoiceGetNotInCdPlayerResp.Parser);
+
+    [ClientDataFact]
+    public async Task AnInvitedMemberGetsTheTipAndJoinsFromIt()
+    {
+        var (alice, aliceId, bob, bobId, _) = await GuildOfTwo();
+        var (carol, carolId) = await InWorld("Carol");
+        await using var a = alice;
+        await using var b = bob;
+        await using var c = carol;
+
+        // The invite window lists the online members seated nowhere, never the asker.
+        var list = await Invitable(alice);
+        Assert.Equal(0, list.ErrorCode);
+        Assert.Equal([bobId], list.UserIds);
+        Assert.Equal(ErrorCodes.GuildVoiceNotInGuild, (await Invitable(carol)).ErrorCode);
+
+        // Inviting happens from inside the channel.
+        Assert.Equal(ErrorCodes.GuildVoiceNotInChannel, (await Invite(alice, 0, bobId)).ErrorCode);
+        Assert.Equal(0, (await Join(alice, 0)).ErrorCode);
+        var sent = await Invite(alice, 0, bobId);
+        Assert.Equal(0, sent.ErrorCode);
+        Assert.Equal((bobId, 0), (Assert.Single(sent.PlayersResult).PlayerId, sent.PlayersResult[0].ErrorCode));
+        var tip = await Next(bob, GuildVoiceService.InviteNotify, GuildVoiceChannelInviteNotify.Parser);
+        // timeoutSeconds is read as milliseconds; it is GuildSettingConfig.GuildVoiceChannelInviteCooldown.
+        Assert.Equal((0, aliceId, 15_000), (tip.ChannelIndex, tip.InviterPlayerId, tip.TimeoutSeconds));
+
+        // Bob is in his cooldown now: off the list, and with nobody invitable the reply names the first reason.
+        Assert.Empty((await Invitable(alice)).UserIds);
+        var again = await Invite(alice, 0, bobId, carolId);
+        Assert.Equal(ErrorCodes.GuildVoiceInviteCooldown, again.ErrorCode);
+        Assert.Equal([(bobId, ErrorCodes.GuildVoiceInviteCooldown), (carolId, ErrorCodes.GuildVoiceTargetNotInGuild)],
+            again.PlayersResult.Select(p => (p.PlayerId, p.ErrorCode)));
+        await Assert.ThrowsAsync<TimeoutException>(() => Next(bob, GuildVoiceService.InviteNotify, GuildVoiceChannelInviteNotify.Parser)
+            .WaitAsync(TimeSpan.FromSeconds(1)));
+
+        // Join on the tip seats him and answers with the channel, as a join does.
+        var joined = await Ask(bob, GuildVoiceService.InviteResponseMsg,
+            new GuildVoiceChannelInviteResponseReq { ChannelIndex = 0, IsAccept = true, InviteUserId = aliceId }, GuildVoiceChannelInviteResponseRsp.Parser);
+        Assert.Equal(0, joined.ErrorCode);
+        Assert.Equal([aliceId, bobId], joined.ChannelInfo.Members.Select(m => m.PlayerId));
+        await Update(alice, i => i.Members.Count == 2);
+        Assert.Equal(ErrorCodes.GuildVoiceTargetInChannel, (await Invite(alice, 0, bobId)).PlayersResult.Single().ErrorCode);
+    }
+
+    [ClientDataFact]
+    public async Task DecliningForTenMinutesKeepsTheInvitesAwayAndGetsNoReply()
+    {
+        var (alice, aliceId, bob, bobId, _) = await GuildOfTwo();
+        await using var a = alice;
+        await using var b = bob;
+        Assert.Equal(0, (await Join(alice, 0)).ErrorCode);
+        Assert.Equal(0, (await Invite(alice, 0, bobId)).ErrorCode);
+        await Next(bob, GuildVoiceService.InviteNotify, GuildVoiceChannelInviteNotify.Parser);
+
+        // A refusal has no reply: the client would join with the channelInfo of any errorCode 0.
+        using (var reply = bob.Inbox.Expect(e => e.IsGame(GuildVoiceService.InviteResponseMsg)))
+        {
+            await bob.SendGameAsync(GuildVoiceService.InviteResponseMsg,
+                new GuildVoiceChannelInviteResponseReq { ChannelIndex = 0, IsAccept = false, RejectAll = true, InviteUserId = aliceId });
+            await Assert.ThrowsAsync<TimeoutException>(() => reply.WaitAsync(TimeSpan.FromSeconds(1)));
+        }
+        Assert.Empty((await Invitable(alice)).UserIds);
+        Assert.Equal(ErrorCodes.GuildVoiceInviteDeclined, (await Invite(alice, 0, bobId)).ErrorCode);
+
+        // Joining by himself still works.
+        Assert.Equal(0, (await Join(bob, 0)).ErrorCode);
+    }
+
+    [ClientDataFact]
+    public async Task AnOfflineMemberCannotBeInvited()
+    {
+        var (alice, _, bob, bobId, _) = await GuildOfTwo();
+        await using var a = alice;
+        Assert.Equal(0, (await Join(alice, 0)).ErrorCode);
+        await bob.DisposeAsync();
+        var deadline = DateTime.UtcNow + Wait; // the session goes with the connection
+        while ((await Invitable(alice)).UserIds.Count > 0) { Assert.True(DateTime.UtcNow < deadline); await Task.Delay(100); }
+        Assert.Equal(ErrorCodes.GuildVoiceTargetOffline, (await Invite(alice, 0, bobId)).ErrorCode);
     }
 }

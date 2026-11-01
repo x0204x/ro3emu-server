@@ -75,7 +75,7 @@ public sealed partial class PanelToolsTests : IAsyncLifetime
     public async Task GiftCodesAreCreatedListedAndDisabledThroughTheServer()
     {
         using var admin = await AdminAsync();
-        var rewards = new[] { new { item = Item, count = 2 } };
+        var rewards = new[] { new { item = 3990001, count = 2 }, new { item = 1, count = 1500 } };
         Assert.Equal(HttpStatusCode.BadRequest, (await admin.PostAsync("/api/admin/gift-codes", new { codes = "BAD CODE!", rewards })).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await admin.PostAsync("/api/admin/gift-codes", new { codes = "PANEL-1", rewards = Array.Empty<object>() })).StatusCode);
         await OkAsync(admin.PostAsync("/api/admin/gift-codes", new { codes = "PANEL-1", rewards, maxUses = 10, perAccount = 1 }));
@@ -88,6 +88,10 @@ public sealed partial class PanelToolsTests : IAsyncLifetime
         var first = Assert.Single(codes, c => c.GetProperty("code").GetString() == "PANEL-1");
         Assert.Equal("active", first.GetProperty("state").GetString());
         Assert.Equal(0, first.GetProperty("uses").GetInt64());
+        // An item with its count, a currency (Zeny, item 1) as an amount.
+        string text = first.GetProperty("rewardText").GetString()!;
+        Assert.StartsWith("2x Synthetic Jellopy, 1,500 ", text);
+        Assert.DoesNotContain("1500x", text);
 
         await OkAsync(admin.PostAsync("/api/admin/gift-codes/PANEL-1/disable", new { }));
         Assert.True((await _host.Service<AccountStore>().ReadGiftCodeAsync("PANEL-1", "someone"))!.Disabled);

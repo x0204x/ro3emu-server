@@ -86,7 +86,7 @@ public sealed partial class MonsterService
     /// <summary>A player comes first: the aggressive scan Tick runs for an idle monster; one in sight becomes its target.</summary>
     private bool TakesPlayer(MonsterUnit m)
     {
-        if (!m.Template.Aggressive || m.Viewers.Count == 0 || m.Returning || NearestTarget(m) is not { } near) return false;
+        if (m.Viewers.Count == 0 || m.Returning || !AttacksOnSight(m) || NearestTarget(m) is not { } near) return false;
         Engage(m, near);
         return ReferenceEquals(m.Target, near);
     }

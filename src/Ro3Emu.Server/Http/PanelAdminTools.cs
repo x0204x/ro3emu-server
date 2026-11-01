@@ -6,6 +6,7 @@ using Ro3Emu.Server.Accounts.Persistence;
 using Ro3Emu.Server.Data;
 using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Game;
+using Romsg;
 
 namespace Ro3Emu.Server.Http;
 
@@ -36,8 +37,13 @@ public sealed partial class PanelAdminTools(AccountStore accounts, RoleStore rol
         var unknown = rewards.Where(r => ItemConfig.Get(data, r.Item) == null).Select(r => r.Item).Distinct().ToList();
         if (unknown.Count > 0)
             throw new PanelRefusalException("Not in the item table: " + string.Join(", ", unknown.Select(i => i.ToString(CultureInfo.InvariantCulture))) + ".");
-        return string.Join(", ", rewards.Select(r => string.Create(CultureInfo.InvariantCulture, $"{r.Count}x {data.ItemName(r.Item)} ({r.Item})")));
+        return string.Join(", ", rewards.Select(r => RewardLine(r) + string.Create(CultureInfo.InvariantCulture, $" ({r.Item})")));
     }
+
+    /// <summary>One reward as the panel shows it: an item "7x Red Potion", a currency "1,500 Zeny".</summary>
+    private string RewardLine(PanelMailAttachment r) => ItemConfig.Get(data, r.Item)?.Type == (long)ItemTypeEnum.ItemTypeCurrency
+        ? r.Count.ToString("N0", CultureInfo.InvariantCulture) + " " + data.ItemName(r.Item)
+        : string.Create(CultureInfo.InvariantCulture, $"{r.Count}x {data.ItemName(r.Item)}");
 
     // ---------------------------------------------------------------- mail
 
@@ -112,7 +118,7 @@ public sealed partial class PanelAdminTools(AccountStore accounts, RoleStore rol
         return [.. (await accounts.ReadAsync<List<GiftCodeRow>>(new GiftCodeListRead(500))).Select(row =>
         {
             var rewards = ParseRewards(row.Items);
-            string text = string.Join(", ", rewards.Select(r => string.Create(CultureInfo.InvariantCulture, $"{r.Count}x {data.ItemName(r.Item)}")));
+            string text = string.Join(", ", rewards.Select(RewardLine));
             string state = row.Disabled ? "disabled" : row.ExpiresUtc is { } e && now >= e ? "expired"
                 : row.StartsUtc is { } s && now < s ? "scheduled" : row.MaxUses > 0 && row.Uses >= row.MaxUses ? "used up" : "active";
             return new PanelGiftCode(row.Code, rewards, text, row.MaxUses, row.PerAccount, Time(row.StartsUtc), Time(row.ExpiresUtc),

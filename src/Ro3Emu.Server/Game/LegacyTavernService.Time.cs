@@ -4,7 +4,7 @@ using Ro3Emu.Server.Data.Config;
 
 namespace Ro3Emu.Server.Game;
 
-public sealed partial class TavernService
+public sealed partial class LegacyTavernService
 {
     // 非持久化的傳輸缺口，僅記錄事實；下一次角色 owner 交易才結算 meter。
     private sealed class TransportGap(long start) { public long Start { get; } = start; public long? End { get; set; } }
@@ -43,7 +43,7 @@ public sealed partial class TavernService
 
     private async Task AdvanceCoreAsync(GameSession s, long cutoff)
     {
-        if (s.Role == null || s.Tavern is not { } previous || !ValidLease(s)) return;
+        if (s.Role == null || s.LegacyTavern is not { } previous || !ValidLease(s)) return;
         if (_detaching.TryGetValue(s, out long detached)) cutoff = Math.Min(cutoff, detached);
         cutoff = Math.Min(cutoff, checked((previous.DayEpoch + 86400) * 1000));
         var next = Accrue(previous, cutoff, eligible: true, Goal, InactiveMs(s, previous.AccountedAtMs, cutoff));
@@ -56,7 +56,7 @@ public sealed partial class TavernService
         staged?.Persist(transaction);
         await _roles.CommitAsync(transaction, "tavern/time", _ =>
         {
-            s.Tavern = next; staged?.Apply();
+            s.LegacyTavern = next; staged?.Apply();
             if (_transportGaps.TryGetValue(s, out var gaps))
             {
                 gaps.RemoveAll(gap => gap.End is { } end && end <= next.AccountedAtMs);
@@ -67,14 +67,14 @@ public sealed partial class TavernService
 
     private async Task<bool> BeforeResetAsync(GameSession s, long boundary)
     {
-        if (s.Tavern is not { } meter) return true;
+        if (s.LegacyTavern is not { } meter) return true;
         // 每日結算已持有角色與 TaskLock；此處不反向取得房間鎖。
         await AdvanceCoreAsync(s, Math.Min(boundary * 1000, checked((meter.DayEpoch + 86400) * 1000)));
         if (PendingAward(s)) await _tasks.SettleOwnerProgressCoreAsync(s);
         return !PendingAward(s);
     }
 
-    private bool PendingAward(GameSession s) => PendingDailyAward(s.Tavern, s.Daily, s.Tasks, s.DailyRows,
+    private bool PendingAward(GameSession s) => PendingDailyAward(s.LegacyTavern, s.Daily, s.Tasks, s.DailyRows,
         PublicParamConfig.BarroomTaskId(_data), Goal);
 
     // 跨日登入時 TaskService 尚未載入；用持久化任務副本守住尚未成功交付的舊日債務。
@@ -99,10 +99,10 @@ public sealed partial class TavernService
 
     private (byte[] Bytes, Action Committed)? PlanRollover(GameSession s, long boundary)
     {
-        if (s.Tavern is not { } meter) return null;
+        if (s.LegacyTavern is not { } meter) return null;
         var next = Copy(meter);
         next.DayEpoch = boundary; next.ActiveMs = 0;
         next.AccountedAtMs = Math.Max(next.AccountedAtMs, boundary * 1000);
-        return (JsonSerializer.SerializeToUtf8Bytes(next), () => s.Tavern = next);
+        return (JsonSerializer.SerializeToUtf8Bytes(next), () => s.LegacyTavern = next);
     }
 }

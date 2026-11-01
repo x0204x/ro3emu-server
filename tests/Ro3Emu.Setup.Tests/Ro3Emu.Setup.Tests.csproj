@@ -27,6 +27,8 @@
   <ItemGroup>
     <!-- Pure source-resolution helper: test the ClientTools production source without loading its Unity client references. -->
     <Compile Include="..\..\src\Ro3Emu.ClientHooks\NativeVersionText.cs" Link="ClientHooks\NativeVersionText.cs" />
+    <!-- launcher.json parsing: the launcher is a WPF exe, its config class is plain .NET and is compiled in here. -->
+    <Compile Include="..\..\src\Ro3Emu.Launcher\LauncherConfig.cs" Link="Launcher\LauncherConfig.cs" />
   </ItemGroup>
 
 </Project>

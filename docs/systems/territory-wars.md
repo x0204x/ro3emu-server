@@ -101,6 +101,22 @@ Evidence for the rest: `LC_DAL_BattleGlory._updateRealLevel` shows `Lua_CFG_Batt
 
 **Inferred:** all the point rules (the client only displays results); an assist is a hit on the victim in the last 10 s; a death pays rather than costs (the record source enum names Kill, Assist and Death as ways points came); the state is the role's territory `RoleState.Glory`, per season. The board's tie-break and size; the champion also needing rank 9; mailing the standings when the Territory War season rolls over (`WorldState.GlorySettle` keeps the seasons still to pay, retried by the reconciliation); a target 106610 reading earned points rather than the spendable currency 15.
 
+## Faction Quest
+
+`TaskService.FactionQuest` (function 7202 `Function_TerritoryWarTask`, base level 99). The client only shows it: the HUD widget `UI_Sys_Main_TeamUp_FactionTask_NewWidget` reads quests 1101000 (`TerritoryWorldTaskID`) and 1101001 (`TerritoryWarDailyRewardTask`) from 5027, lists every type 25 sub-task by name under "Points you can earn today: x/y" (x/y = 1101000's `completeNum[1]` / 1000), then switches to the claim and to "Today's faction quest has been completed".
+
+| Rule | Value |
+|---|---|
+| Offer | 1101000 "Faction Quest" `[101022,1000]` once per game day (05:00) while 7202 is open; Auto delivery, then its Auto follow-up 1101001 "Claim": talk to Guild Services Staff 200053 (point 72 of 30307, dialogue 10000106), claimed from the UI for award 90404 (T4 Orange Equipment Slot Selection Chest) and 100 exp |
+| Sub-tasks | one of each kind at the tier of the territory camp (Peace 1, Free 2, Guild 3): crystals `[107102,3010,1]` +1/+2/+3, Orc Warrior 4940017 kills `[104002,4940017,1]` +5/+7/+10, players of other guilds `[101023,1]` +10/+15/+20 |
+| Crystal | a committed pickup of a Crystalline Ore cluster 4910101-4910103 in the territory world; a dropped 4910104 does not count |
+| Rival | a `WorldHostile` kill of a player of another guild, both in a guild |
+| Repeat | a sub-task is delivered at once, adds its points (from its `_iName` parameter) and is offered again |
+| Daily cap | `TerritoryWarzoneTaskPointsLimit` 3000 points counted per game day, past the 1000 included (`TaskRuntimeState.FactionPoints`); at the cap the sub-tasks are withdrawn |
+| New day | the faction tasks and the count start over |
+
+**Inferred:** the whole server side. The camp tier (the camps carry the world's rising risk, `TerritoryWorldDeathDropRate` [0, 0.2, 1], the tiers rising points); one sub-task per kind and its repetition; 107102's count being its last value, not the default formatter's 3010; the cap counting the exceed past 1000 (the server enum `TaskExceedKey_TerritoryWar`, `MG_DB.proto`); an unclaimed 1101001 lapsing with the day. `TerritoryWarzoneTaskGuildAward` 1021 names no award row in this client: a delivered 1101000 pays the member's guild the Guild Funds of the caravan's daily departure award (the smallest `GuildTransportTaskConfig` row's first group, 1000), credited like the caravan's funds in its own receipt (`GuildCaravanService.FactionAward`).
+
 ## War warehouse and machine permissions
 
 `GuildService.Wartime`, the guild's `guildWartimeInfo` (DBGuildData field 36): the warehouse view, the Tactics panel, reserving and building a cannon; firing, vehicles and machine HP follow below.
@@ -220,6 +236,8 @@ Code: `TerritoryWarsService.CannonFire.cs`, `TerritoryWarsService.CannonShots.cs
   never reads; see "Machine HP, destruction and repair" for why neither is applied.
 
 ### War vehicles (32281, 32700, 32708, 31074)
+
+The seats (boarding, getting off, seat changes, the driver's walk, the seat's buttons and skills) are `VehicleSeats`, which Mock Battle's Madogear shares; `TerritoryWarsService` keeps its vehicles, who may board them and their damage and repair.
 
 Code: `GuildService.WarVehicles.cs`, `TerritoryWarsService.WarVehicles.cs`.
 

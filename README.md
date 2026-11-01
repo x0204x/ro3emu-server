@@ -66,7 +66,7 @@ Hosting on Linux, a VPS or a home server? One script, nothing to install: see [h
 
 ## What works today
 
-<p align="center"><img src="docs/assets/progress.svg" alt="Progress: world, combat and bosses, story dungeons, character progress, guilds and Survivor Battle are done; War of Emperium is in progress; the Tavern, the remaining client tables and a many-player test are next" width="100%"></p>
+<p align="center"><img src="docs/assets/progress.svg" alt="Progress: world, combat and bosses, story dungeons, character progress, guilds, Survivor Battle, War of Emperium and the web panel are done; the Tavern, the remaining client tables and a many-player test are next" width="100%"></p>
 
 Everything the client can show is playable from day one, without season gates. The full list is in
 [What works](docs/features.md), and each release lists what is new in its [release notes](https://github.com/aethai/ro3emu-server/releases).
@@ -75,7 +75,19 @@ Everything the client can show is playable from day one, without season gates. T
 
 RO3Emu is built in the open. Thank you to everyone who sends fixes and reports bugs.
 
-<a href="https://github.com/aethai/ro3emu-server/graphs/contributors"><img src="https://contrib.rocks/image?repo=aethai/ro3emu-server" alt="Contributors"></a>
+<p>
+  <a href="https://github.com/aethai"><img src="https://github.com/aethai.png?size=96" width="48" height="48" alt="aethai"></a>
+  <a href="https://github.com/soyerno"><img src="https://github.com/soyerno.png?size=96" width="48" height="48" alt="soyerno"></a>
+  <a href="https://github.com/SoyErnoModo"><img src="https://github.com/SoyErnoModo.png?size=96" width="48" height="48" alt="SoyErnoModo"></a>
+  <a href="https://github.com/DiNaSoR"><img src="https://github.com/DiNaSoR.png?size=96" width="48" height="48" alt="DiNaSoR"></a>
+  <a href="https://github.com/hmwater10"><img src="https://github.com/hmwater10.png?size=96" width="48" height="48" alt="hmwater10"></a>
+  <a href="https://github.com/mikelancev2"><img src="https://github.com/mikelancev2.png?size=96" width="48" height="48" alt="mikelancev2"></a>
+  <a href="https://github.com/k3ldon"><img src="https://github.com/k3ldon.png?size=96" width="48" height="48" alt="k3ldon"></a>
+  <a href="https://github.com/pattytrickz"><img src="https://github.com/pattytrickz.png?size=96" width="48" height="48" alt="pattytrickz"></a>
+  <a href="https://github.com/JosueWu"><img src="https://github.com/JosueWu.png?size=96" width="48" height="48" alt="JosueWu"></a>
+</p>
+
+And to everyone who reported bugs and tested on their own servers. [All contributors](https://github.com/aethai/ro3emu-server/graphs/contributors)
 
 - **Found a bug?** [Open an issue](https://github.com/aethai/ro3emu-server/issues/new/choose), or use the Feedback button in the game menu on a hosted server.
 - **Questions, or hosting a server?** Ask on [Discord](https://discord.gg/vVkcvMFKy3).
@@ -83,7 +95,7 @@ RO3Emu is built in the open. Thank you to everyone who sends fixes and reports b
 
 **Community projects** (maintained outside this repository, by their authors):
 
-- [ro3-cpanel](https://github.com/soyerno/ro3-cpanel): a web control panel for server operators (accounts, characters, economy log, GM tools).
+- [ro3-cpanel](https://github.com/soyerno/ro3-cpanel): a standalone web control panel for server operators; many of its ideas went into the [panel built into RO3Emu](docs/guide/panel.md).
 - [ro3-emu-launcher](https://github.com/soyerno/ro3-emu-launcher): a desktop launcher with auto-patching, separate from `src/Ro3Emu.Launcher`.
 
 <details>

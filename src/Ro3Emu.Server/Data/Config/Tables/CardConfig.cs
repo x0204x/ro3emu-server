@@ -16,4 +16,6 @@ public readonly partial record struct CardConfig(JsonElement Row)
     [ConfigField("_kCost")] public partial long[][] Cost { get; }
     [ConfigField("_kFlashAttribute")] public partial long[] FlashAttribute { get; }
     [ConfigField("_kSkillAttribute")] public partial long[] SkillAttribute { get; }
+    [ConfigField("_iIsOpen")] public partial long IsOpen { get; }
+    [ConfigField("_iShowLibrary")] public partial long ShowLibrary { get; }
 }

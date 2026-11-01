@@ -19,7 +19,7 @@ public sealed partial class PanelSite
         Get("/api/monsters/{}", Access.Public, MonsterAsync),
         Get("/api/maps", Access.Public, async _ => Reply.Ok(new { maps = await _backend.MapsAsync() })),
         Get("/api/maps/{}", Access.Public, MapAsync),
-        Get("/api/admin/economy", Access.Admin, EconomyAsync),
+        Get("/api/admin/economy", Access.Gm, EconomyAsync),
     ];
 
     private static int Number(Call call, string key, int max) =>

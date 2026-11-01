@@ -1,3 +1,4 @@
+using System.Globalization;
 using Google.Protobuf;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Accounts.Persistence;
@@ -290,9 +291,10 @@ public sealed class NameService(RoleStore roles) : IMicroService
 
 /// <summary>
 /// PartyService: only the party search directory; membership is romsg 42000-42052 on the game gate.
-/// Empty lists keep the "Search Party" panel open without "not implemented" errors.
+/// Empty lists keep the "Search Party" panel open without "not implemented" errors. Party type 4 is the Tavern's room
+/// list (LC_BarRoomServer.PartyQuerySummaryRequest / PartyQueryGroupCountRequest, TavernService.Directory).
 /// </summary>
-public sealed class PartyService(TeamService teams, FriendStore friends, SessionRegistry sessions, RoleStore roles, GameLoop loop, TavernService tavern) : IMicroService
+public sealed class PartyService(TeamService teams, TavernService tavern, FriendStore friends, SessionRegistry sessions, RoleStore roles, GameLoop loop) : IMicroService
 {
     public string Name => "PartyService";
 
@@ -303,8 +305,11 @@ public sealed class PartyService(TeamService teams, FriendStore friends, Session
         return await loop.InvokeAsync(async () => method switch
         {
             "getPartysSummary" => Summary(args),
-            "getSubPartysCountByType" => Number(Arg(args, 2)) == 4 ? tavern.DirectoryCounts(Arg(args, 1) ?? "")
-                : new Dictionary<string, object?> { ["Ret"] = MicroServiceRouter.Ret(true), ["GroupCount"] = teams.TargetCounts(Arg(args, 1) ?? "") },
+            "getSubPartysCountByType" => new Dictionary<string, object?>
+            {
+                ["Ret"] = MicroServiceRouter.Ret(true),
+                ["GroupCount"] = Arg(args, 2) == TavernService.PartyType.ToString(CultureInfo.InvariantCulture) ? tavern.Counts() : teams.TargetCounts(Arg(args, 1) ?? ""),
+            },
             "getParty" => GetParty(args),
             "getPartysByIDs" => await GetGroupsAsync(session, args),
             _ => null,
@@ -314,7 +319,7 @@ public sealed class PartyService(TeamService teams, FriendStore friends, Session
     private object Summary(object? args)
     {
         var list = args as object?[] ?? [];
-        if (list.Length > 0 && Number(list[0]) == 4) return tavern.Directory(args);
+        if (list.Length > 0 && Number(list[0]) == TavernService.PartyType) return TavernSummary(list);
         long target = 0, playBook = 0;
         int map = 0;
         string area = "";
@@ -338,6 +343,22 @@ public sealed class PartyService(TeamService teams, FriendStore friends, Session
         {
             ["Ret"] = MicroServiceRouter.Ret(true),
             ["SummaryList"] = teams.Directory(target, area, playBook, map, offset, limit),
+        };
+    }
+
+    /// <summary>The Tavern's request: [4, {}, int conditions {Key, MinValue, MaxValue}, {}, start, size, directQuery].</summary>
+    private object TavernSummary(object?[] list)
+    {
+        List<(string Key, long Min, long Max)> conditions = [];
+        if (list.Length > 2 && list[2] is object?[] integers)
+            foreach (var value in integers.OfType<IDictionary<object, object?>>())
+                conditions.Add((Convert.ToString(Field(value, "Key"), CultureInfo.InvariantCulture) ?? "", Number(Field(value, "MinValue")), Number(Field(value, "MaxValue"))));
+        int offset = list.Length > 4 ? (int)Number(list[4]) : 0;
+        int limit = list.Length > 5 ? (int)Number(list[5]) : 100;
+        return new Dictionary<string, object?>
+        {
+            ["Ret"] = MicroServiceRouter.Ret(true),
+            ["SummaryList"] = tavern.Directory(conditions, offset, limit),
         };
     }
 

@@ -157,11 +157,12 @@ public sealed class AdventureGroupTests : IAsyncLifetime
     }
 
     /// <summary>A group written straight to the store (owners need not exist): list / limit fixtures.</summary>
-    private AdventureGroupStore.State Seed(string name, int status, long owner, int members = 1, int applications = 0)
+    private AdventureGroupStore.State Seed(string name, int status, long owner, int members = 1, int applications = 0,
+        long ageSeconds = 0)
     {
         var g = new AdventureGroupStore.State
         {
-            Name = name, Status = status, Owner = owner, CreateTime = _clock.GetUtcNow().ToUnixTimeSeconds(), Level = 1,
+            Name = name, Status = status, Owner = owner, CreateTime = _clock.GetUtcNow().ToUnixTimeSeconds() - ageSeconds, Level = 1,
             CreateType = status == AdventureGroupService.StatusHelper ? 1 : 2,
         };
         for (int i = 0; i < members; i++) g.Members[owner + i] = new AdventureGroupStore.Member { RoleId = owner + i, Name = $"{name}{i}" };
@@ -318,10 +319,9 @@ public sealed class AdventureGroupTests : IAsyncLifetime
         Assert.Equal(AdventureGroupService.ErrApplied, (await Helper(bob, OpeType.OpeHelperApply, b, helpers[0].Id)).Result);
         Assert.Equal(0, (await Helper(bob, OpeType.OpeHelperCancel, b, helpers[0].Id)).Result);
         Assert.Equal(0, (await Helper(bob, OpeType.OpeHelperApply, b, helpers[5].Id)).Result);
-        // An expired support post (AdventureGroupHelperCreateTimeLimit 12 h) refuses responses.
-        _clock.Advance(-13 * 3600);
-        var late = Seed("Late", AdventureGroupService.StatusHelper, 9_100_000);
-        _clock.Advance(13 * 3600);
+        // An expired support post (AdventureGroupHelperCreateTimeLimit 12 h) refuses responses. Seeded 13 h old: turning
+        // the running server's clock back for it let its tickers see the game day go back and forth meanwhile.
+        var late = Seed("Late", AdventureGroupService.StatusHelper, 9_100_000, ageSeconds: 13 * 3600);
         Assert.Equal(AdventureGroupService.ErrRecruitExpired, (await Helper(bob, OpeType.OpeHelperApply, b, late.Id)).Result);
 
         // Joining: a group's application list holds AdventureGroupNormalApplyLimit (20), a full group refuses.

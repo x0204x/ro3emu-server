@@ -39,7 +39,7 @@ GM changes made through the panel are meant for testing. Combat switches and att
 
 | Op | What it does |
 |---|---|
-| 31 GmJumpMap | Warp to a map, optionally to x, y. |
+| 31 GmJumpMap | Warp to a map, optionally to x, y (same as `!warp`). Refused, with the reason, for a dungeon scene (use 108) and for a map the game client has no scene for: the October 2026 client lacks Glast Heim (10700, 10740-10791) and Amatsu, Luoyang, Ayothaya, Dewata and Port Malaya (10601, 10603-10606), whose loading screen would retry forever. A character saved on such a map logs in at the spawn map. |
 | 79 GmShowLocation | Scene, map, line, position and facing. |
 | 83 GmFlyToTarget | Jump to a player, monster or NPC. |
 

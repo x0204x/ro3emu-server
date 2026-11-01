@@ -8,4 +8,5 @@ public readonly partial record struct FunctionConfig(JsonElement Row)
 {
     [ConfigField("_iID")] public partial long Id { get; }
     [ConfigField("_kOpenCondition")] public partial long OpenCondition { get; }
+    [ConfigField("_iName")] public partial JsonElement? Name { get; }
 }

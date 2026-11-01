@@ -13,10 +13,16 @@ using Ro3Emu.Bot;
 //   party                 create a party;  invite <roleId>  invite into it;  friend <roleId>  send a friend request
 //   approve <roleId>      as the party's leader, admit a player who asked to join (the client's Finder "Join")
 //   guildapply <guildId>  apply to a guild;  guildhelp <guildId>  respond to a guild being founded;  guildleave
+//   tavernnew <name>      open a Tavern room (prints its guid);  tavern <guid>  enter one;  tavernleave
+//   tavernmic [reason]    ask for a seat;  tavernaccept  accept the last Tavern invitation
+//   taverngift <roleId> <itemId> [count]   give a drink to a member (1200801-1200804)
+//   (the Tavern opens at level 36: "!lvl 36" on the bot's account first; chat in a room: say 10_<guid> <text>)
 //   quit
-// usage: Ro3Emu.BotCli voice-echo <server http base> <account> <password> [roleName] [--delay-ms 1000] [--data-dir <dir>] [--guild <guildId> [--channel 0] [--ask-mic]]
+// usage: Ro3Emu.BotCli voice-echo <server http base> <account> <password> [roleName] [--delay-ms 1000] [--data-dir <dir>] [--guild <guildId> [--channel 0] [--ask-mic]] [--tavern <guid>|new [--ask-mic]]
 //   --guild: instead of a party, apply to that guild, wait to be accepted, sit in its voice channel and echo there
 //   (when the server's voice relay is on); --ask-mic asks for the mic each time the channel turns to Order mode.
+//   --tavern: enter that Tavern room (or open a new one) and echo in its voice; --ask-mic asks for a seat whenever
+//   the room is in Manual or Order mode.
 //   waits for a party invite, accepts it and echoes the party's voice back (see BotVoiceEcho)
 if (args.Length > 0 && args[0] == "voice-echo")
 {
@@ -106,6 +112,31 @@ while ((line = Console.ReadLine()) != null)
             case "guildleave":
                 await bot.SendGameAsync(32234, new Romsg.GuildMemberLeaveReq());
                 break;
+            case "tavernnew":
+                Console.WriteLine($"Tavern room {await BotTavern.CreateAsync(bot, http, name.ToLowerInvariant(), p.Length > 1 ? string.Join(' ', p[1..]) : name, Console.WriteLine, CancellationToken.None)}");
+                break;
+            case "tavern":
+                await BotTavern.EnterAsync(bot, http, name.ToLowerInvariant(), long.Parse(p[1], CultureInfo.InvariantCulture), Console.WriteLine, CancellationToken.None);
+                break;
+            case "tavernleave":
+                await bot.SendGameAsync(Ro3Emu.Server.Game.TavernService.ExitMsg, new Romsg.ExitBarRoomReq());
+                break;
+            case "tavernmic":
+                await bot.SendGameAsync(Ro3Emu.Server.Game.TavernService.ApplyMicMsg, new Romsg.ApplyOpenMicReq { Reason = p.Length > 1 ? string.Join(' ', p[1..]) : "" });
+                break;
+            case "tavernaccept":
+                var invite = Romsg.InviteEnterBarRoomNotify.Parser.ParseFrom(bot.Inbox.Snapshot().Last(e => e.IsGame(Ro3Emu.Server.Game.TavernService.InviteNotify)).Body);
+                await bot.SendGameAsync(Ro3Emu.Server.Game.TavernService.InviteResponseMsg,
+                    new Romsg.ResponseInviteEnterBarRoomReq { BarRoomGuid = invite.BarRoomGuid, InviterGuid = invite.InviterGuid, IsAccept = true });
+                break;
+            case "taverngift":
+                var gift = line.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                await bot.SendGameAsync(Ro3Emu.Server.Game.TavernService.GiftMsg, new Romsg.PresentGiftReq
+                {
+                    TargetGuid = long.Parse(gift[1], CultureInfo.InvariantCulture), GiftId = int.Parse(gift[2], CultureInfo.InvariantCulture),
+                    GiftNum = gift.Length > 3 ? int.Parse(gift[3], CultureInfo.InvariantCulture) : 1,
+                });
+                break;
             case "quit":
                 return;
         }
@@ -151,6 +182,7 @@ static async Task<int> VoiceEchoAsync(string[] args)
     long guildId = 0;
     int channel = 0;
     bool askMic = false;
+    string? tavern = null;
     for (int i = 0; i < args.Length; i++)
     {
         if (args[i] == "--delay-ms" && i + 1 < args.Length) delayMs = int.Parse(args[++i], CultureInfo.InvariantCulture);
@@ -158,11 +190,12 @@ static async Task<int> VoiceEchoAsync(string[] args)
         else if (args[i] == "--guild" && i + 1 < args.Length) guildId = long.Parse(args[++i], CultureInfo.InvariantCulture);
         else if (args[i] == "--channel" && i + 1 < args.Length) channel = int.Parse(args[++i], CultureInfo.InvariantCulture);
         else if (args[i] == "--ask-mic") askMic = true;
+        else if (args[i] == "--tavern" && i + 1 < args.Length) tavern = args[++i];
         else positional.Add(args[i]);
     }
     if (positional.Count < 3 || delayMs < 0 || guildId < 0 || channel < 0)
     {
-        Console.WriteLine("usage: Ro3Emu.BotCli voice-echo <server http base> <account> <password> [roleName] [--delay-ms 1000] [--data-dir <dir>] [--guild <guildId> [--channel 0] [--ask-mic]]");
+        Console.WriteLine("usage: Ro3Emu.BotCli voice-echo <server http base> <account> <password> [roleName] [--delay-ms 1000] [--data-dir <dir>] [--guild <guildId> [--channel 0] [--ask-mic]] [--tavern <guid>|new [--ask-mic]]");
         return 2;
     }
     string http = positional[0], account = positional[1], password = positional[2];
@@ -199,6 +232,7 @@ static async Task<int> VoiceEchoAsync(string[] args)
 
     try
     {
+        if (tavern != null) return await TavernEchoAsync(bot, http, account, roleId, roleName, tavern, askMic, delayMs, Log, stop.Token);
         if (guildId > 0)
         {
             await BotGuildVoice.JoinGuildAsync(bot, http, account, guildId, Log, stop.Token);
@@ -255,6 +289,26 @@ static async Task<int> VoiceEchoAsync(string[] args)
         Log($"error: {e.Message}");
         return 1;
     }
+}
+
+// The Tavern variant of voice-echo: in the room while the echo runs on its voice (the room's guid in decimal).
+static async Task<int> TavernEchoAsync(BotClient bot, string http, string account, long roleId, string roleName, string tavern,
+    bool askMic, int delayMs, Action<string> log, CancellationToken stop)
+{
+    long room = tavern == "new"
+        ? await BotTavern.CreateAsync(bot, http, account, roleName + "'s room", log, stop)
+        : long.Parse(tavern, CultureInfo.InvariantCulture);
+    if (tavern != "new") await BotTavern.EnterAsync(bot, http, account, room, log, stop);
+    using var staying = CancellationTokenSource.CreateLinkedTokenSource(stop);
+    var stay = BotTavern.StayAsync(bot, roleId, room, askMic, log, staying.Token);
+    var echo = BotVoiceEcho.RunAsync(bot, roleId, room.ToString(CultureInfo.InvariantCulture), TimeSpan.FromMilliseconds(delayMs), log, staying.Token);
+    await Task.WhenAny(stay, echo);
+    staying.Cancel();
+    try { await Task.WhenAll(stay, echo); }
+    catch (OperationCanceledException) { }
+    catch (Exception e) { log($"tavern echo ended: {e.GetType().Name}: {e.Message}"); }
+    log("stopped");
+    return 0;
 }
 
 static string FindDataDir()

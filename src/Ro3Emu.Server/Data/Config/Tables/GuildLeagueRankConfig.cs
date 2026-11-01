@@ -11,4 +11,5 @@ public readonly partial record struct GuildLeagueRankConfig(JsonElement Row)
     [ConfigField("_iRank")] public partial long Rank { get; }
     [ConfigField("_kAuctionAwardList")] public partial long[][] AuctionAwardList { get; }
     [ConfigField("_kAuctionLoseAwardList")] public partial long[][] AuctionLoseAwardList { get; }
+    [ConfigField("_iName")] public partial JsonElement? Name { get; }
 }

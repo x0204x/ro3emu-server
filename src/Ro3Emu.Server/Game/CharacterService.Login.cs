@@ -74,6 +74,10 @@ public sealed partial class CharacterService
             var tx = roles.NewTransaction();
             int receipt = tx.ItemDelta(role.Id, before, session.Items);
             tx.Progress(role.Id, progress);
+            // The kit and its Zeny enter the economy ledger as starter grants (EconomyReason.StarterGrant), so the
+            // panel's duplication check sees where a new character's first items came from.
+            tx.WithEconomy(FamilyEconomy(session, StarterKitEconomyKind, [], StarterKit,
+                new { Operation = "starter-kit", Items = session.Items, Progress = progress }));
             var items = session.Items;
             await roles.CommitAsync(tx, "character/starter-kit", receipts =>
             {
