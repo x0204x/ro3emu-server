@@ -162,10 +162,10 @@ public sealed partial class CharacterService
         long baseExp = 0, long jobExp = 0, Action? committed = null,
         bool asyncCommit = false, Action? appliedBeforeNotify = null, RewardSettlement? rewardSettlement = null,
         Action<List<InvItem>>? stageItems = null, Action<List<InvItem>>? stageAfterGoods = null,
-        EconomyMutation? economy = null)
+        EconomyMutation? economy = null, DBRestrictInfo? prospectiveLifeRestriction = null)
         => await ExchangeOwnedCoreAsync(session, RequireOwnedRole(session), cost, goods, instances, popup, sync,
             persist, reservedGuid, attributedGoods, itemUpdate, boundGoods, exactGoods, currencyGoods, baseExp, jobExp, committed,
-            asyncCommit, appliedBeforeNotify, rewardSettlement, stageItems, stageAfterGoods, economy);
+            asyncCommit, appliedBeforeNotify, rewardSettlement, stageItems, stageAfterGoods, economy, prospectiveLifeRestriction);
 
     /// <summary>Checked owned Core for the complete payment, grant and optional caller plan.</summary>
     private async Task<List<InvItem>?> ExchangeOwnedCoreAsync(GameSession session, Ownership.OwnerContext context,
@@ -176,7 +176,8 @@ public sealed partial class CharacterService
         IReadOnlyList<(int Entry, int Count, int Bind)>? boundGoods,
         IReadOnlyList<InvItem>? exactGoods, IReadOnlyDictionary<int, long>? currencyGoods,
         long baseExp, long jobExp, Action? committed, bool asyncCommit, Action? appliedBeforeNotify, RewardSettlement? rewardSettlement,
-        Action<List<InvItem>>? stageItems, Action<List<InvItem>>? stageAfterGoods, EconomyMutation? economy)
+        Action<List<InvItem>>? stageItems, Action<List<InvItem>>? stageAfterGoods, EconomyMutation? economy,
+        DBRestrictInfo? prospectiveLifeRestriction)
     {
         context.AssertRole(session.Role!.Id);
         context.BindPresentation(session);
@@ -187,6 +188,8 @@ public sealed partial class CharacterService
         var nextProgress = CloneProgress(session.Progress!);
         if (baseExp > 0 || jobExp > 0) ApplyExp(nextProgress, baseExp, jobExp);
         var need = cost.GroupBy(c => c.Entry).Select(g => (Entry: g.Key, Count: g.Sum(c => c.Count))).ToList();
+        if (need.Any(c => c.Entry == 407 && c.Count > 0))
+            throw new InvalidOperationException("活力獎勵代號 407 不支援作為交易成本。");
         long Available(int entry) => CountOf(session, entry) -
             (session.Items.Any(i => i.Guid == reservedGuid && i.Grid == 0 && i.Entry == entry && !EmblemService.IsReserved(session, i) && !TotemService.IsReserved(session, i)) ? 1 : 0);
         if (need.Any(c => c.Count < 0 || Available(c.Entry) < c.Count)) return null;
@@ -234,6 +237,7 @@ public sealed partial class CharacterService
         RoleItemPlanBuilder builder;
         int itemReceipt;
         FirstCardSightPlan? cardSight;
+        LifeVigorRewardPlan? lifeVigor;
         DBEquipInfo? prunedPlans = null;
         session.Items = stagedItems;
         session.Progress = stagedProgress;
@@ -296,11 +300,13 @@ public sealed partial class CharacterService
                 if (!IsCurrency(entry)) postCommitHooks.Add((entry, count));
             }
             stageAfterGoods?.Invoke(stagedItems);
+            lifeVigor = StageVigorReward(session, beforeProgress, stagedProgress, prospectiveLifeRestriction);
             builder = roles.NewTransaction();
             itemReceipt = builder.ItemDelta(session.Role!.Id, beforeItems, stagedItems);
             builder.Progress(session.Role.Id, stagedProgress);
             persist?.Invoke(builder);
             lifeUse?.Persist(builder);
+            lifeVigor?.Persist(builder);
             cardSight = StageFirstCardSight?.Invoke(session, postCommitHooks.Select(g => g.Entry).ToList(),
                 rewardSettlement?.LibraryMonster ?? 0);
             cardSight?.Persist(builder);
@@ -315,6 +321,7 @@ public sealed partial class CharacterService
                     need, goods.Concat((boundGoods ?? []).Select(g => (g.Entry, g.Count)))
                         .Concat(rewardSettlement.AdditionalGoods).ToArray(),
                     baseExp, jobExp, decomposed));
+            if (lifeVigor != null) builder.WithVigorReward(lifeVigor.Evidence);
         }
         finally
         {
@@ -346,6 +353,7 @@ public sealed partial class CharacterService
                 if (rewardSettlement != null) rewardSettlement.Committed = true;
                 foreach (var item in granted) session.NewItems.Add(item.Guid);
                 cardSight?.Apply();
+                lifeVigor?.Apply();
                 if (prunedPlans != null) session.EquipmentPlans = prunedPlans;
                 if (lifeUse != null)
                 {
@@ -409,6 +417,7 @@ public sealed partial class CharacterService
         async Task PresentExchangeAsync()
         {
             if (attachment?.Cancelled == true || !ReferenceEquals(session.Attachment, attachment)) return;
+            if (lifeVigor != null) await lifeVigor.Sync();
             // A hook may persist auxiliary state on another connection. A hook failure cannot undo the committed grant.
             foreach (var (entry, count) in postCommitHooks)
                 foreach (var handler in ItemGained)

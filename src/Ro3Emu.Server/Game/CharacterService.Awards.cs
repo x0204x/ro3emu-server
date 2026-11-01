@@ -135,6 +135,8 @@ public sealed partial class CharacterService
         var oldItemGuids = session.Items.Select(i => i.Guid).ToHashSet();
         var items = session.Items.Select(i => i.Clone()).ToList();
         var expense = (costs ?? []).GroupBy(c => c.Entry).Select(g => (Entry: g.Key, Count: g.Sum(c => (long)c.Count))).ToList();
+        if (expense.Any(c => c.Entry == 407 && c.Count > 0))
+            throw new InvalidOperationException("活力獎勵代號 407 不支援作為獎勵交易成本。");
         foreach (var (entry, count) in expense)
         {
             if (count < 0 || data.Row("ItemConfig", entry) == null) throw new InvalidOperationException($"invalid award cost {entry} x{count}");
@@ -240,6 +242,7 @@ public sealed partial class CharacterService
         // TaskService can hold unsaved in-memory objective progress. Compare that snapshot above, then
         // use the persisted blob as the SQLite CAS baseline for this single award transaction.
         byte[]? persistedTasks = expectedTasks == null ? null : roles.LoadTasks(session.Role.Id);
+        var lifeVigor = StageVigorReward(session, old, staged);
         var cardSight = StageFirstCardSight?.Invoke(session, gained.Select(g => g.Entry).ToList(), 0);
         void PublishAward()
         {
@@ -253,19 +256,21 @@ public sealed partial class CharacterService
                 session.DailyRows = DBDailyActivityInfo.Parser.ParseFrom(nextDailyState.Rows);
             }
             cardSight?.Apply();
+            lifeVigor?.Apply();
             committed?.Invoke();
         }
         if (ownedAward != null)
         {
             if (familyEconomy != null) throw new InvalidOperationException("Award cannot carry two economy envelopes.");
             var economy = EconomyForOwnedAward(session, ownedAward, plan, old, staged, expense,
-                baseExp, jobExp, decomposed);
+                baseExp, jobExp, decomposed, lifeVigor?.Evidence);
             var builder = roles.NewTransaction();
             int itemReceipt = builder.ItemDelta(session.Role.Id, session.Items, items);
             builder.Add(new RoleAwardStatePlan(session.Role.Id, staged, deliveredTaskState, taskRuntimeState,
                 expectedDaily, nextDaily, persistedTasks, expectedTasks != null));
             persist?.Invoke(builder);
             cardSight?.Persist(builder);
+            lifeVigor?.Persist(builder);
             builder.WithEconomy(economy);
             try
             {
@@ -289,7 +294,8 @@ public sealed partial class CharacterService
             builder.Progress(session.Role.Id, staged);
             persist?.Invoke(builder);
             cardSight?.Persist(builder);
-            builder.WithEconomy(familyEconomy);
+            lifeVigor?.Persist(builder);
+            builder.WithEconomy(lifeVigor == null ? familyEconomy : familyEconomy.WithVigorEvidence(lifeVigor.Evidence));
             await roles.CommitAsync(builder, "cd13b/pet-lottery", receipts =>
             {
                 ItemSnapshotWritePlan.ApplyGuids(items, (long[])receipts[itemReceipt]!);
@@ -306,6 +312,8 @@ public sealed partial class CharacterService
                     {
                         persist?.Invoke(builder);
                         cardSight?.Persist(builder);
+                        lifeVigor?.Persist(builder);
+                        if (lifeVigor != null) builder.WithVigorReward(lifeVigor.Evidence);
                         escrowAward = builder.HasEscrowEconomy;
                     }, expectedDaily, nextDaily, persistedTasks, expectedTasks != null)) return false;
             }
@@ -330,6 +338,7 @@ public sealed partial class CharacterService
             }
         }
         if (attachment?.Cancelled == true || !ReferenceEquals(session.Attachment, attachment)) return true;
+        if (lifeVigor != null) await lifeVigor.Sync();
         if (ownedAward?.CommandKind is "cd13e/grant" or "cd13e/gm-grant")
             foreach (var item in received.Where(i => i.Guid > 0 && items.Contains(i))) session.NewItems.Add(item.Guid);
         else

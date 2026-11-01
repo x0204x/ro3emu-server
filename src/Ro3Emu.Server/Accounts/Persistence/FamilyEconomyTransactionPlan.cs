@@ -112,7 +112,12 @@ internal sealed class FamilyEconomyTransactionPlan(RoleItemPlan child, EconomyMu
         using (var meta = DbSql.Command(db, tx, "SELECT realm_id FROM economy_meta WHERE singleton=1"))
             realm = meta.ExecuteScalar() as string ?? throw new InvalidDataException("Missing economy realm.");
         var before = EconomyRoleAssetRead.Read(db, tx, mutation.ActorRoleId);
+        bool vigorConsumption = false;
+        var vigorBefore = EconomyVigorRewardValidation.ValidateBefore(db, tx, mutation.ActorRoleId,
+            mutation.VigorEvidence, vigorConsumption);
         var receipts = (object?[])child.Execute(db, tx);
+        EconomyVigorRewardValidation.ValidateAfter(db, tx, mutation.ActorRoleId, mutation.VigorEvidence,
+            vigorBefore, vigorConsumption);
         ValidateResults(receipts);
         var after = EconomyRoleAssetRead.Read(db, tx, mutation.ActorRoleId);
         var legs = BuildLegs(before, after);
@@ -198,8 +203,10 @@ internal sealed class FamilyEconomyTransactionPlan(RoleItemPlan child, EconomyMu
 
     private void ValidateShape()
     {
+        EconomyVigorRewardValidation.ValidateShape(child, mutation.ActorRoleId, mutation.VigorEvidence);
         if (!mutation.IsFamily) throw new InvalidOperationException("Unknown converted C/D command kind.");
         var allowedBlobs = AllowedBlobsForKind(mutation.CommandKind);
+        if (mutation.VigorEvidence != null) allowedBlobs = allowedBlobs.Append("life_restrict").ToHashSet(StringComparer.Ordinal);
         string[] genreParts = ["genre", "stat_plans", "skill_plans", "equip_plans", "card_plans",
             "totems", "emblems", "pets", "season_talent"];
         if (!mutation.IsFamily || child.Parts.Count is < 1 or > 32 ||

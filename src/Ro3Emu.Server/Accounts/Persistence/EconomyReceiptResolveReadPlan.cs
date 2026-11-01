@@ -48,7 +48,7 @@ internal sealed class EconomyReceiptResolveReadPlan(EconomyMutation mutation, in
                 results.Skip(1).Any(value => value is not int count || count != 1))
                 throw new InvalidDataException("Family typed child result shape is corrupt.");
         }
-        else EconomyTransactionPlan.ValidateChildReceipts(results, expectedItemIds, mutation.CommandKind);
+        else EconomyTransactionPlan.ValidateChildReceipts(results, expectedItemIds, mutation.CommandKind, mutation.VigorEvidence != null);
         row.Close();
         using var meta = DbSql.Command(db, tx, "SELECT realm_id FROM economy_meta WHERE singleton=1");
         if (meta.ExecuteScalar() is not string actualRealm || actualRealm != realm)

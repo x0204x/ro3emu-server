@@ -15,7 +15,8 @@ public sealed partial class CharacterService
     /// accompany the source claim in the same transaction as the detached bag and currency changes.</summary>
     private EconomyMutation RewardMutation(GameSession session, RewardSettlement settlement,
         RoleProgress before, RoleProgress after, IReadOnlyList<(int Entry, long Count)> costs,
-        IReadOnlyList<(int Entry, int Count)> goods, long baseExp, long jobExp, ItemAutoDecomposeTipsNtf conversion)
+        IReadOnlyList<(int Entry, int Count)> goods, long baseExp, long jobExp, ItemAutoDecomposeTipsNtf conversion,
+        EconomyVigorRewardEvidence? vigorEvidence = null)
     {
         EconomyAsset Asset(int entry) => new(IsCurrency(entry) ? EconomyAssetKind.Currency : EconomyAssetKind.Item, entry);
         EconomyQuantity[] Quantities(IEnumerable<(int Entry, long Count)> values) => values
@@ -33,9 +34,10 @@ public sealed partial class CharacterService
             before.JobLevel, before.JobExp, after.JobLevel, after.JobExp, baseExp, jobExp,
             baseCosts, jobCosts, checked(before.Exp + baseExp - baseCosts.Sum() - after.Exp),
             checked(before.JobExp + jobExp - jobCosts.Sum() - after.JobExp), original, inputs, outputs);
-        return new EconomyMutation(settlement.OperationId, session.Account!, session.Role!.Id, settlement.CommandKind,
+        var mutation = new EconomyMutation(settlement.OperationId, session.Account!, session.Role!.Id, settlement.CommandKind,
             JsonSerializer.Serialize(new { Version = 1, settlement.SourceKey, settlement.CommandKind }), settlement.SourceKey,
             settlement.EffectiveUtcMs, Quantities(costs), final,
             JsonSerializer.SerializeToUtf8Bytes(new { Version = 1, Result = 0, settlement.SourceKey, Reward = evidence }), evidence);
+        return vigorEvidence is null ? mutation : mutation.WithVigorEvidence(vigorEvidence);
     }
 }

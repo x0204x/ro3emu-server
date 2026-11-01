@@ -135,7 +135,7 @@ public sealed partial class CharacterService
             packInfo.PackCapacity = pack == 100 ? CareerPackCapacity(session) : PackCapacity(pack);
             info.PackInfo[pack] = packInfo;
         }
-        // Keep the core currencies plus liveness (5) even at zero, and project earned reward currencies such as 407.
+        // 保留核心貨幣與活躍度 5，即使餘額為零；407 新獎勵改入限制 1004，此處只保留待稽核舊值。
         foreach (var id in new[] { ZenyId, 2, 3, 5 }.Concat(p.Currency.Keys).Distinct().Order())
             info.Currency[id] = p.Currency.GetValueOrDefault(id);
         // Cards in equipment sockets: storagePack.cardInfo[grid].cardSlotInfo[socket]. Absent until the

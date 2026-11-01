@@ -122,7 +122,7 @@ public sealed class LifeJobTests : IAsyncLifetime
         Assert.Equal(_app.Services.GetRequiredService<Ro3Emu.Server.Data.GameData>().Table("LifeJobConfig").Count, life.LifeJobInfoMap.Count);
         Assert.All(life.LifeJobInfoMap.Values, v => { Assert.Equal(0, v.All.JobLevel); Assert.NotNull(v.All.TitleInfo); });
         var energy = await Next(b, LifeJobService.RestrictSync, DBRestrictInfoIncrement.Parser);
-        Assert.Equal(500, energy.RestrictCount[1004].All.Count); Assert.Equal(1000, energy.RestrictCount[1004].All.LimitCount);
+        Assert.Equal(500, energy.RestrictCount[1004].All.Count); Assert.Equal(5000, energy.RestrictCount[1004].All.LimitCount);
         var health = await Next(b, LifeJobService.HealthNotify, GetHealthCostNtf.Parser);
         Assert.Equal(20, health.CollectHealthCost[100100]); Assert.Equal(20, health.ForgeHealthCost[20001]);
         await b.SendGameAsync(LifeJobService.HealthOne, new GetHealthCostReq { Id = 20001, Type = 0 });

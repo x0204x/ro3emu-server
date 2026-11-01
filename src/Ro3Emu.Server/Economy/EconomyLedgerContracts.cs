@@ -44,12 +44,13 @@ public enum EconomyReason
     SeasonRefund = 204, SkillPlanCost = 205, SkillPlanRefund = 206,
     CastAdmissionCost = 207, CastAdmissionRefund = 208,
     // E03 escrow families.
-    MarketSlotUnlock = 301, StallOpenFee = 302, GuildMarketFee = 303
+    MarketSlotUnlock = 301, StallOpenFee = 302, GuildMarketFee = 303,
+    VigorRewardConversion = 304 // 郵件 407 附件轉入角色活力限制，須附同交易快照證據。
 }
 
 public static class EconomyReasonCatalog
 {
-    public const string Version = "economy-reasons-v15"; // each merge of a branch's reasons gets a new version
+    public const string Version = "economy-reasons-v16"; // 新增郵件活力附件轉換；既有編號不變。
 
     public static bool Allows(EconomyReason reason, EconomyLegKind kind) => reason switch
     {
@@ -79,7 +80,7 @@ public static class EconomyReasonCatalog
         EconomyReason.LifeCost or EconomyReason.SeasonCost or EconomyReason.SkillPlanCost or
         EconomyReason.CastAdmissionCost or EconomyReason.MarketSlotUnlock or
         EconomyReason.StallOpenFee or EconomyReason.GuildMarketFee or EconomyReason.ValhallaCost or
-        EconomyReason.ParagonCost => kind == EconomyLegKind.Sink,
+        EconomyReason.ParagonCost or EconomyReason.VigorRewardConversion => kind == EconomyLegKind.Sink,
         EconomyReason.MailDelivery or EconomyReason.MailClaim or EconomyReason.MailReturn or
         EconomyReason.TradeEscrow or EconomyReason.AuctionReserve or EconomyReason.AuctionRefund or
         EconomyReason.AuctionSettlement or EconomyReason.GuildResourceTransfer or EconomyReason.InventoryRelocation or

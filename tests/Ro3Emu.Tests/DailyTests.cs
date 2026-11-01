@@ -17,7 +17,7 @@ using Ro3Emu.LoadTest;
 namespace Ro3Emu.Tests;
 
 /// <summary>5004/5059/43504/31178 over the game gate.</summary>
-public sealed class DailyTests : IAsyncLifetime
+public sealed partial class DailyTests : IAsyncLifetime
 {
     private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-daily-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(8);
@@ -392,6 +392,7 @@ public sealed class DailyTests : IAsyncLifetime
 
         long coinsBefore = await State(s => s.Progress!.Currency.GetValueOrDefault(2));
         long chipsBefore = await State(s => s.Progress!.Currency.GetValueOrDefault(407));
+        long vigorBefore = await State(s => s.Restrictions!.RestrictCount[1004].Count);
         await bot.SendGameAsync(DailyActivityService.StageGain, new StageRewardGainReq { StageId = 7001 });
         var gain = await Next(bot, DailyActivityService.StageGain, StageRewardGainResp.Parser);
         Assert.Equal(0, gain.Result);
@@ -399,7 +400,8 @@ public sealed class DailyTests : IAsyncLifetime
         Assert.Contains(7001, await State(s => s.Daily!.Claims));
         Assert.Equal(20, await State(s => s.Progress!.Currency.GetValueOrDefault(5))); // threshold, not spend
         Assert.Equal(100, await State(s => s.Items.Where(i => i.Entry == 1250900 && i.BindType == 0).Sum(i => i.Stack)));
-        Assert.Equal(chipsBefore + 200, await State(s => s.Progress!.Currency.GetValueOrDefault(407)));
+        Assert.Equal(chipsBefore, await State(s => s.Progress!.Currency.GetValueOrDefault(407)));
+        Assert.Equal(vigorBefore + 200, await State(s => s.Restrictions!.RestrictCount[1004].Count));
         Assert.Equal(coinsBefore + 40000, await State(s => s.Progress!.Currency.GetValueOrDefault(2)));
 
         string stageSource = await State(s => $"daily-stage/{s.Role!.Id}/{s.Daily!.DailyEpoch}/7001");

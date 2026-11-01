@@ -19,7 +19,7 @@ public sealed record EconomyRewardEvidence(
     IReadOnlyList<EconomyQuantity>? ConvertedOutputs = null);
 
 /// <summary>Detached semantic intent for one admitted transaction. IDs are stable across internal retry.</summary>
-public sealed class EconomyMutation
+public sealed partial class EconomyMutation
 {
     // Stage G: one options instance; a new one per mutation rebuilt the JSON type metadata every time.
     private static readonly JsonSerializerOptions CanonicalJson =
@@ -98,6 +98,7 @@ public sealed class EconomyMutation
         if (RewardEvidence is not null) ValidateRewardEvidence(RewardEvidence, Goods);
         this.outcome = (byte[])(outcome ?? throw new ArgumentNullException(nameof(outcome))).Clone();
         if (this.outcome.Length > 16 * 1024) throw new ArgumentException("Resolved outcome exceeds E01 receipt limit.", nameof(outcome));
+        ValidateVigorResult(CommandKind, this.outcome, Costs, Goods, RewardEvidence);
         intentPayload = Canonical(legacy: false);
         if (intentPayload.Length > (IsFamily || IsProgression ? MaxFamilyIntentBytes : 64 * 1024))
             throw new ArgumentException("Canonical intent exceeds receipt limit.");

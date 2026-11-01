@@ -38,7 +38,7 @@ public sealed partial class CharacterService
 
     private EconomyMutation EconomyForOwnedAward(GameSession session, OwnedAwardSource source, AwardPlan plan,
         RoleProgress before, RoleProgress after, IReadOnlyList<(int Entry, long Count)> costs,
-        long baseExp, long jobExp, ItemAutoDecomposeTipsNtf conversion)
+        long baseExp, long jobExp, ItemAutoDecomposeTipsNtf conversion, EconomyVigorRewardEvidence? vigorEvidence = null)
     {
         if (source.CommandKind is not ("cd13e/quest-award" or "cd13e/achievement-award" or "cd13e/advguild-award" or "cd13e/monsterhunt-award" or "cd13e/guild-award" or "cd13e/growthclass-award" or "cd13e/library-award" or "cd13e/firstheart-award" or "cd13e/daily-stage" or
             "cd13e/journey-victory" or "cd13e/grant" or "cd13e/gm-grant"))
@@ -67,8 +67,9 @@ public sealed partial class CharacterService
         if (outcome.Length > 15 * 1024)
             outcome = JsonSerializer.SerializeToUtf8Bytes(new
             { Version = 1, Hash = Convert.ToHexString(SHA256.HashData(outcome)) });
-        return new EconomyMutation(Guid.NewGuid().ToString("N"), session.Account!, session.Role!.Id,
+        var mutation = new EconomyMutation(Guid.NewGuid().ToString("N"), session.Account!, session.Role!.Id,
             source.CommandKind, Convert.ToHexString(SHA256.HashData(outcome)), source.SourceKey,
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), Quantities(costs), goods, outcome, evidence);
+        return vigorEvidence is null ? mutation : mutation.WithVigorEvidence(vigorEvidence);
     }
 }

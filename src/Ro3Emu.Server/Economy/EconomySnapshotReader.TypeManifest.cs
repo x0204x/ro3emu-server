@@ -95,7 +95,9 @@ public static partial class EconomySnapshotReader
     // v1.0.24 的每日補寄義務，加上本地尋寶、任務通關及組隊義務的合併型別圖。
     // v1.0.25 陣營任務日界／點數為控制計數，barroom 的飲料待領仍由事件收據發放。
     // 舊酒館型別移至相容層，保留原持久化欄位及每日結算收據。
-    public const string ExpectedFormatManifestHash = "6872BB12527F2628E574BE0267C4151953AC56D2F4AB6FA0B42B05F381D84259";
+    // WildAfk.State.AllowanceEpoch 僅保存當天已補充額度的日期，避免重登重領；
+    // 不是第二份時間餘額或待領資產。移除此單一欄位的型別圖雜湊與原 pin 完全相符。
+    public const string ExpectedFormatManifestHash = "B4439997B02300182D824EB9455323709835D2AA885AC57BBDC1B746C3B79805";
     public static string FormatManifestHash => State.FormatManifestHash;
 
     private sealed partial class State

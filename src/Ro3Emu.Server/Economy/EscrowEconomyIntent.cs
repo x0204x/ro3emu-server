@@ -6,7 +6,7 @@ using System.Text.Json;
 namespace Ro3Emu.Server.Economy;
 
 /// <summary>E03: resolved external changes authorized by the command; transfers require no external leg.</summary>
-public sealed class EscrowEconomyIntent
+public sealed partial class EscrowEconomyIntent
 {
     private readonly List<EscrowExternalChange> changes = [];
     private readonly List<EscrowMailRealization> realizations = [];
@@ -113,6 +113,7 @@ public sealed class EscrowEconomyIntent
         copy.changes.AddRange(changes);
         copy.realizations.AddRange(realizations);
         copy.evidence.AddRange(evidence);
+        copy.VigorReward = VigorReward;
         if (deferred is not null)
             foreach (var change in deferred)
                 copy.Add(change.Asset, change.Quantity, change.Reason, change.Kind,
@@ -144,7 +145,7 @@ public sealed class EscrowEconomyIntent
     internal IReadOnlyList<EscrowMailRealization> Realizations => realizations;
     internal EscrowRolePart[][] ChildRoleWrites =>
         childRoleWrites ?? throw new InvalidOperationException("E03 child writes are not bound.");
-    internal byte[] Payload => Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new
+    internal byte[] Payload => VigorReward is not null ? VigorPayload : Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new
     {
         OperationId, CommandKind, ActorAccount, ActorRoleId, SourceKey, EffectiveUtcMs,
         TransferReason, Changes = changes, Realizations = realizations, Evidence = evidence,

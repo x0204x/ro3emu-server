@@ -206,7 +206,8 @@ public static class EconomyLedgerReader
                             {
                                 if (typedChildren.Length < 2 || typedChildren[0] is not long[] ids)
                                     throw new InvalidDataException("Economic typed child result shape is invalid.");
-                                EconomyTransactionPlan.ValidateChildReceipts(typedChildren, ids.Length, commandKind);
+                                EconomyTransactionPlan.ValidateChildReceipts(typedChildren, ids.Length, commandKind,
+                                    EconomyVigorRewardEvidence.Read((byte[])row.GetValue(10)) != null);
                             }
                             if (economic)
                             {
@@ -679,6 +680,8 @@ public static class EconomyLedgerReader
     private static bool EscrowReasonLocation(EconomyLeg leg) => leg.Reason switch
     {
         EconomyReason.MailExpiry => leg.Location.Compartment is EconomyCompartment.Mail or EconomyCompartment.LegacyMail,
+        EconomyReason.VigorRewardConversion => leg.Asset == new EconomyAsset(EconomyAssetKind.Currency, 407) &&
+            leg.Location.Compartment == EconomyCompartment.Mail && leg.Location.Owner.Kind == EconomyOwnerKind.Role,
         EconomyReason.SystemRetire or EconomyReason.SystemRestock =>
             leg.Location.Compartment == EconomyCompartment.Stall && leg.Location.Owner.Kind == EconomyOwnerKind.System,
         EconomyReason.GuildMarketCapDiscard =>
@@ -886,6 +889,8 @@ public static class EconomyLedgerReader
                         StringComparer.Ordinal.Compare(parts[i - 1].Part, current.Part) >= 0))
                     throw new InvalidDataException("Noncanonical E03 child role-write declaration.");
             }
+        EscrowEconomyIntent.ValidateVigorContract(command, role,
+            EconomyVigorRewardEvidence.Read(payload), changes, childRoleWrites);
         return (transfer, changes, realizations, childRoleWrites);
     }
 
@@ -918,6 +923,7 @@ public static class EconomyLedgerReader
             b.GetProperty("epoch").GetInt64() != a.GetProperty("epoch").GetInt64() ||
             b.GetProperty("deleted").GetBoolean() || a.GetProperty("deleted").GetBoolean())
             throw new InvalidDataException("Role lifecycle identity changed inside purchase receipt.");
+        var vigor = EconomyVigorRewardEvidence.Read(outcome);
         var bParts = b.GetProperty("parts").EnumerateObject().ToDictionary(x => x.Name, x => x.Value.GetInt64());
         var aParts = a.GetProperty("parts").EnumerateObject().ToDictionary(x => x.Name, x => x.Value.GetInt64());
         if (EconomyMutation.IsFamilyKind(commandKind) || EconomyMutation.IsProgressionKind(commandKind))
@@ -927,6 +933,9 @@ public static class EconomyLedgerReader
                 ? ProgressionEconomyTransactionPlan.AllowedBlobsForKind(commandKind)
                 : FamilyEconomyTransactionPlan.AllowedBlobsForKind(commandKind)).Append("inventory").Append("progress")
                 .ToHashSet(StringComparer.Ordinal);
+            if (vigor != null) familyParts.Add("life_restrict");
+            if (vigor != null && !bParts.ContainsKey("life_restrict"))
+                throw new InvalidDataException("活力獎勵收據缺少限制快照版本。");
             if (bParts.Count != childCount || !bParts.ContainsKey("inventory") || bParts.Keys.Except(familyParts).Any() ||
                 commandKind == "cd13b/genre-apply" &&
                     (childCount != 11 || bParts.Count != 11 ||
@@ -970,13 +979,18 @@ public static class EconomyLedgerReader
                 "cd13e/journey-victory" => [.. required, "daily", "library", "task_followup", "activity_runtime", "mounts"],
             _ => required
         };
+        if (vigor != null)
+        {
+            required = [.. required, "life_restrict"];
+            allowed = [.. allowed, "life_restrict"];
+        }
         bool library = bParts.ContainsKey("library"), followup = bParts.ContainsKey("task_followup");
         if (commandKind == "cd13e/daily-reset")
             ValidateDailyResetChildren(bParts, childReceipts, outcome);
         int expectedChildren = commandKind switch
         {
             "gather-yield" => 5 + (library ? 1 : 0) + (followup ? 1 : 0),
-            "dungeon-reward" => 4 + (bParts.ContainsKey("auction_order") ? 1 : 0) +
+            "dungeon-reward" => 4 + (vigor != null ? 1 : 0) + (bParts.ContainsKey("auction_order") ? 1 : 0) +
                 (library ? 1 : 0) + (followup ? 1 : 0),
             _ => childReceipts.Length
         };
@@ -1216,6 +1230,7 @@ public static class EconomyLedgerReader
         EconomyRewardEvidence? evidence = root.TryGetProperty("RewardEvidence", out var property) &&
             property.ValueKind != JsonValueKind.Null ? property.Deserialize<EconomyRewardEvidence>() : null;
         if (reward != (evidence is not null)) throw new InvalidDataException("Missing or unexpected reward evidence.");
+        EconomyMutation.ValidateVigorResult(command, outcome, costs, goods, evidence);
         if (earned && costs.Length != 0) throw new InvalidDataException("Earned obligation has unexpected cost.");
         if (command == "cd13e/daily-reset" &&
             (goods.Length != 0 || costs.Length > 1 ||

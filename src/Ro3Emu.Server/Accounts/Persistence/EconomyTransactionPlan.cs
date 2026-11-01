@@ -60,7 +60,7 @@ internal sealed class EconomyTransactionPlan(RoleItemPlan child, EconomyMutation
             if (row.GetInt32(8) < (mutation.RewardEvidence is null && mutation.CommandKind != "cd13e/daily-reset" ? 1 : 0))
                 throw new InvalidDataException("Committed economic receipt has an invalid leg count.");
             ValidateChildReceipts(original, child.Parts[0] is ItemDeltaWritePlan replayDelta
-                ? replayDelta.ExpectedReceiptCount : -1, mutation.CommandKind);
+                ? replayDelta.ExpectedReceiptCount : -1, mutation.CommandKind, mutation.VigorEvidence != null);
             string storedRealm = row.GetString(7);
             row.Close();
             using var meta = DbSql.Command(db, tx, "SELECT realm_id FROM economy_meta WHERE singleton=1");
@@ -98,9 +98,14 @@ internal sealed class EconomyTransactionPlan(RoleItemPlan child, EconomyMutation
         var before = EconomyRoleAssetRead.Read(db, tx, mutation.ActorRoleId);
         EconomyRoleProgress? beforeProgress = mutation.RewardEvidence is null
             ? null : EconomyRoleProgressRead.Read(db, tx, mutation.ActorRoleId);
+        bool vigorConsumption = mutation.CommandKind == "gather-yield";
+        var vigorBefore = EconomyVigorRewardValidation.ValidateBefore(db, tx, mutation.ActorRoleId,
+            mutation.VigorEvidence, vigorConsumption);
         var receipts = (object?[])child.Execute(db, tx);
+        EconomyVigorRewardValidation.ValidateAfter(db, tx, mutation.ActorRoleId, mutation.VigorEvidence,
+            vigorBefore, vigorConsumption);
         ValidateChildReceipts(receipts, child.Parts[0] is ItemDeltaWritePlan committedDelta
-            ? committedDelta.ExpectedReceiptCount : -1, mutation.CommandKind);
+            ? committedDelta.ExpectedReceiptCount : -1, mutation.CommandKind, mutation.VigorEvidence != null);
         var after = EconomyRoleAssetRead.Read(db, tx, mutation.ActorRoleId);
         if (child.Parts.Skip(2).OfType<DungeonObligationActivatePlan>().SingleOrDefault() is { } activation)
         {
@@ -166,6 +171,7 @@ internal sealed class EconomyTransactionPlan(RoleItemPlan child, EconomyMutation
 
     private void ValidateShape()
     {
+        EconomyVigorRewardValidation.ValidateShape(child, mutation.ActorRoleId, mutation.VigorEvidence);
         if (mutation.CommandKind == "cd13e/daily-reset") { ValidateDailyResetShape(); return; }
         if (EconomyMutation.IsOwnedExchangeCommand(mutation.CommandKind)) { ValidateOwnedExchangeShape(); return; }
         if (mutation.RewardEvidence is not null) { ValidateRewardShape(); return; }
@@ -220,6 +226,7 @@ internal sealed class EconomyTransactionPlan(RoleItemPlan child, EconomyMutation
             _ => throw new InvalidOperationException("Unrecognized owned economic command.")
         };
         string[] columns = [.. sourceColumns, "daily", "library", "task_followup", "mounts", "activity_runtime"];
+        if (mutation.VigorEvidence != null) columns = [.. columns, "life_restrict"];
         bool award = mutation.CommandKind is "cd13e/quest-award" or "cd13e/achievement-award" or "cd13e/advguild-award" or "cd13e/monsterhunt-award" or "cd13e/guild-award" or "cd13e/growthclass-award" or "cd13e/library-award" or "cd13e/firstheart-award" or "cd13e/daily-stage" or
             "cd13e/journey-victory" or "cd13e/grant" or "cd13e/gm-grant";
         if (child.Parts.Count < 2 || child.Parts[0] is not ItemDeltaWritePlan ||
@@ -237,17 +244,21 @@ internal sealed class EconomyTransactionPlan(RoleItemPlan child, EconomyMutation
 
     private void ValidateRewardShape()
     {
+        // 獎勵額外限制快照已由精準證據驗證；原來源的有序 grammar 維持原樣。
+        var parts = mutation.VigorEvidence != null && mutation.CommandKind != "gather-yield"
+            ? child.Parts.Where(p => p is not RoleBlobWritePlan { Column: "life_restrict" }).ToArray()
+            : child.Parts.ToArray();
         if ((mutation.CommandKind == "world-revive" && mutation.Goods.Count != 0) ||
             (mutation.CommandKind != "world-revive" && mutation.Costs.Count != 0))
             throw new InvalidOperationException("E04 reward command has unsupported costs or goods.");
-        var taskProgress = child.Parts.OfType<KillTaskProgressPlan>().SingleOrDefault();
+        var taskProgress = parts.OfType<KillTaskProgressPlan>().SingleOrDefault();
         var requiredRoles = new[] { mutation.ActorRoleId }
             .Concat(taskProgress?.CreditedRoles ?? []).Distinct().Order().ToArray();
-        if (!EconomyMutation.IsRewardCommand(mutation.CommandKind) || child.Parts.Count < 2 ||
-            child.Parts[0] is not ItemDeltaWritePlan || child.Parts[1] is not RoleProgressWritePlan ||
+        if (!EconomyMutation.IsRewardCommand(mutation.CommandKind) || parts.Length < 2 ||
+            parts[0] is not ItemDeltaWritePlan || parts[1] is not RoleProgressWritePlan ||
             !RolePins.Order().SequenceEqual(requiredRoles) ||
             (taskProgress != null && (mutation.CommandKind != "monster-kill" ||
-                child.Parts[^1] != taskProgress || taskProgress.SourceKey != mutation.SourceKey)) ||
+                parts[^1] != taskProgress || taskProgress.SourceKey != mutation.SourceKey)) ||
             RoleWrites.Any(x => x.RoleId != mutation.ActorRoleId &&
                 (taskProgress == null || !taskProgress.CreditedRoles.Contains(x.RoleId) ||
                     x.Part is not ("tasks" or "task_followup"))) ||
@@ -263,9 +274,9 @@ internal sealed class EconomyTransactionPlan(RoleItemPlan child, EconomyMutation
             "world-revive" => [],
             _ => throw new InvalidOperationException("Unknown E04 command.")
         };
-        var blobs = child.Parts.Skip(2).OfType<RoleBlobWritePlan>().ToArray();
+        var blobs = parts.Skip(2).OfType<RoleBlobWritePlan>().ToArray();
         string[] actualColumns = blobs.Select(x => x.Column).ToArray();
-        var extra = child.Parts.Skip(2).ToArray();
+        var extra = parts.Skip(2).ToArray();
         int cardSuffix = mutation.CommandKind is "gather-yield" or "dungeon-reward"
             ? extra is [.., RoleBlobWritePlan { Column: "library" }, RoleBlobWritePlan { Column: "task_followup" }] ? 2
                 : extra is [.., RoleBlobWritePlan { Column: "library" }] ? 1 : 0
@@ -284,6 +295,7 @@ internal sealed class EconomyTransactionPlan(RoleItemPlan child, EconomyMutation
             ? ["library", "task_followup", "tower", "tasks", "wild_afk", "area_concur"]
             : mutation.CommandKind is "gather-yield" or "dungeon-reward"
                 ? [.. requiredColumns, "library", "task_followup"] : requiredColumns;
+        if (mutation.VigorEvidence != null) allowedColumns = [.. allowedColumns, "life_restrict"];
         var activation = extra.OfType<DungeonObligationActivatePlan>().SingleOrDefault();
         var partyExperience = extra.OfType<RoleObligationCreatePlan<PartyExperienceObligationRow>>().SingleOrDefault();
         var ordinaryExtra = extra.Where(x => x is not DungeonObligationActivatePlan and not KillTaskProgressPlan &&
@@ -306,7 +318,7 @@ internal sealed class EconomyTransactionPlan(RoleItemPlan child, EconomyMutation
             }
             return index == ordinaryExtra.Length;
         }
-        var trailing = child.Parts.Skip(2 + actualColumns.Length).ToArray();
+        var trailing = parts.Skip(2 + actualColumns.Length).ToArray();
         bool sourceShape = mutation.CommandKind switch
         {
             "monster-kill" => (activation is null || extra[0] == activation &&
@@ -328,7 +340,7 @@ internal sealed class EconomyTransactionPlan(RoleItemPlan child, EconomyMutation
         if (!columnsValid ||
             child.Guards.Any(x => x is not RoleBlobGuardPlan guard || !allowedColumns.Contains(guard.Column)) ||
             (mutation.CommandKind is "tower-reward" or "world-revive") &&
-                child.Parts.Skip(2).Take(actualColumns.Length).Any(x => x is not RoleBlobWritePlan) ||
+                parts.Skip(2).Take(actualColumns.Length).Any(x => x is not RoleBlobWritePlan) ||
             !sourceShape ||
             EntityWrites.Any(x => !AllowedEntity(x)) || EntityDeltaWrites.Any(x => !AllowedEntity(x)) ||
             RoleWrites.Any(x => x.Part is not (RevisionStore.Inventory or RevisionStore.Progress) &&
@@ -579,7 +591,7 @@ internal sealed class EconomyTransactionPlan(RoleItemPlan child, EconomyMutation
         return result;
     }
 
-    internal static void ValidateChildReceipts(object?[] values, int expectedIds, string commandKind = "npc-shop-buy")
+    internal static void ValidateChildReceipts(object?[] values, int expectedIds, string commandKind = "npc-shop-buy", bool vigorReward = false)
     {
         if (commandKind == "cd13e/daily-reset")
         {
@@ -616,13 +628,14 @@ internal sealed class EconomyTransactionPlan(RoleItemPlan child, EconomyMutation
                 throw new InvalidDataException("Owned exchange source/blob child was not committed.");
             return;
         }
+        int extraVigor = vigorReward && commandKind != "gather-yield" ? 1 : 0;
         int expected = commandKind switch
         {
             "gather-yield" => sourceValues.Length is >= 5 and <= 7 ? sourceValues.Length : -1,
-            "dungeon-reward" => sourceValues.Length is >= 4 and <= 7 ? sourceValues.Length : -1,
-            "tower-reward" => 4,
-            "monster-kill" => sourceValues.Length is >= 2 and <= 8 ? sourceValues.Length : -1,
-            _ => 2
+            "dungeon-reward" => sourceValues.Length >= 4 + extraVigor && sourceValues.Length <= 7 + extraVigor ? sourceValues.Length : -1,
+            "tower-reward" => 4 + extraVigor,
+            "monster-kill" => sourceValues.Length >= 2 + extraVigor && sourceValues.Length <= 8 + extraVigor ? sourceValues.Length : -1,
+            _ => 2 + extraVigor
         };
         if (sourceValues.Length != expected) throw new InvalidDataException("Reward child result count is invalid.");
         if (commandKind == "dungeon-reward" && sourceValues[^1] is not 1 ||

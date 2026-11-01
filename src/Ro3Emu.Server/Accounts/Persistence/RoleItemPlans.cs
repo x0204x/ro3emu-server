@@ -291,6 +291,25 @@ public sealed class RoleItemPlanBuilder
         return this;
     }
 
+    /// <summary>將已合成的活力快照綁回原領獎來源，不新增通用貨幣或略過既有帳本。</summary>
+    public RoleItemPlanBuilder WithVigorReward(EconomyVigorRewardEvidence evidence)
+    {
+        if (_economy != null) _economy = _economy.WithVigorEvidence(evidence);
+        else if (_escrowEconomy != null) _escrowEconomy = _escrowEconomy.WithVigorEvidence(evidence);
+        else if (HasEconomy) throw new InvalidOperationException("此來源尚未支援活力獎勵轉換。");
+        else
+        {
+            var blob = _parts.OfType<RoleBlobWritePlan>().Single(p => p.Column == "life_restrict");
+            long role = blob.RoleWrites.Single().RoleId;
+            byte[] before = (_accounts ?? throw new InvalidOperationException("活力交易必須綁定角色資料庫。"))
+                .ReadSync<byte[]?>(new RoleBlobReadPlan(role, "life_restrict"))
+                ?? throw new InvalidOperationException("缺少活力交易前快照。");
+            Guard(new VigorRewardBoundaryPlan(role, evidence, false, before));
+            Add(new VigorRewardBoundaryPlan(role, evidence, true, before));
+        }
+        return this;
+    }
+
     /// <summary>Bind a copied E03 intent after all nested append/purge plans have staged their exact sinks.</summary>
     public RoleItemPlanBuilder WithEscrowEconomy(EscrowEconomyIntent intent)
     {
@@ -606,6 +625,7 @@ internal sealed class RoleBlobWritePlan : DbPlan
     private readonly string _column;
     private readonly byte[] _value;
     internal string Column => _column;
+    internal byte[] Value => (byte[])_value.Clone();
 
     internal RoleBlobWritePlan(long role, string column, byte[] value)
     {

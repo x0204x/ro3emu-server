@@ -55,8 +55,10 @@ internal sealed class EscrowEconomyTransactionPlan(RoleItemPlan child, EscrowEco
             realm = meta.ExecuteScalar() as string ?? throw new InvalidDataException("Missing E03 economy realm.");
         var scope = Scope(null);
         var before = EconomySnapshotReader.ReadEscrowScope(db, tx, scope, catalog);
+        var beforeVigor = EconomyVigorRewardValidation.ValidateBefore(db, tx, intent.ActorRoleId, intent.VigorReward);
         var receipts = (object?[])child.Execute(db, tx);
         EscrowEconomyReceiptCodec.Validate(child, receipts);
+        EconomyVigorRewardValidation.ValidateAfter(db, tx, intent.ActorRoleId, intent.VigorReward, beforeVigor);
         var expanded = Scope(receipts);
         var after = EconomySnapshotReader.ReadEscrowScope(db, tx, expanded, catalog);
         var legs = BuildLegs(before.Holdings, after.Holdings, after.InventoryBinds);
@@ -156,6 +158,9 @@ internal sealed class EscrowEconomyTransactionPlan(RoleItemPlan child, EscrowEco
 
     private void ValidateShape()
     {
+        EscrowEconomyIntent.ValidateVigorContract(intent.CommandKind, intent.ActorRoleId,
+            intent.VigorReward, intent.Changes, intent.ChildRoleWrites);
+        EconomyVigorRewardValidation.ValidateShape(child, intent.ActorRoleId, intent.VigorReward);
         if (child.Parts.Count is < 1 or > 16384 || child.Guards.Count > 16384 || intent.Payload.Length > 1024 * 1024)
             throw new InvalidOperationException("Invalid E03 typed child or intent bound.");
         if (intent.ChildRoleWrites.Length != child.Parts.Count ||
@@ -182,7 +187,8 @@ internal sealed class EscrowEconomyTransactionPlan(RoleItemPlan child, EscrowEco
                 throw new InvalidOperationException("Unclassified E03 typed child: " + name);
         }
         foreach (var blob in child.Parts.OfType<RoleBlobWritePlan>())
-            if (blob.Column is not ("mailbox" or "new_activities" or "activity_runtime" or
+            if (!(intent.VigorReward is not null && blob.Column == "life_restrict") &&
+                blob.Column is not ("mailbox" or "new_activities" or "activity_runtime" or
                 "tasks" or "task_runtime" or "task_followup" or "daily" or "library" or "bag_state" or
                 "trade_info" or "stalls_info" or "auction" or "guild_info" or
                 "season_page" or "season_page_meta" or "gifts"))
@@ -408,6 +414,8 @@ internal sealed class EscrowEconomyTransactionPlan(RoleItemPlan child, EscrowEco
                 return authorization.Reason switch
                 {
                     EconomyReason.MailExpiry => location.Compartment is EconomyCompartment.Mail or EconomyCompartment.LegacyMail,
+                    EconomyReason.VigorRewardConversion => location.Compartment == EconomyCompartment.Mail &&
+                        location.Owner.Kind == EconomyOwnerKind.Role,
                     EconomyReason.SystemRetire => location.Compartment == EconomyCompartment.Stall &&
                         location.Owner.Kind == EconomyOwnerKind.System,
                     EconomyReason.SystemRestock => location.Compartment == EconomyCompartment.Stall &&

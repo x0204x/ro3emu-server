@@ -14,7 +14,7 @@ Starting a forge presentation (33510) only reserves a recipe/scene/time ticket. 
 
 ## Source-backed behavior
 
-- `PublicParamConfig.LifeEnergy=1004`, `LifeEnergyItem=1291002`, `LifeEnergyLimitNum=1005`, `VitalityInitCount=500`, `VitalityExtraLimit=5000`. `RestrictConfig[1004]` has ordinary cap 1000 and recovery 0. Its balance is not item 5. Item 1291002 action `[315,1004,1000]` restores vigor with its use condition, extra cap and five-use restriction.
+- `PublicParamConfig.LifeEnergy=1004`, `LifeEnergyItem=1291002`, `LifeEnergyLimitNum=1005`, `VitalityInitCount=500`, `VitalityExtraLimit=5000`. `RestrictConfig[1004]` has ordinary cap 1000 and recovery 0. G 實包的 5018 上限為 5000，生活 UI 亦讀此限制；顯示／可用基底以 VitalityExtraLimit 為準，缺參數資料集才回退普通上限。Its balance is not item 5. Item 1291002 action `[315,1004,1000]` restores vigor with its use condition, extra cap and five-use restriction.
 - `TaskConfig[500070]` targets `[106906,1004,100]`; `DailyActivity[107]` is the Life Skills row. `TaskObjectives` consumes actual daily vigor spending. Existing task delivery grants the configured reward, including 20 units of item 5, once. Cost quotes, refused actions, and potion use do not advance this target.
 - `LifeJobConfig`, `LifeJobLevelConfig`, `LifeJobTitleConfig` and the resolved condition list own profession eligibility, switching costs, title costs, thresholds and base-level gates. Condition 11001 requires an active selected profession. Unselecting a profession retains its progress.
 - All 34 exported `LifeFormulaConfig` rows select job 2. The eight exported collection definitions select jobs 1/5. The implementation follows these rows without manufacturing cross-profession recipes. Formula 20001 consumes the configured ingredients and resolves multiverse group 112001; 112001 is not granted as an item.
@@ -32,7 +32,7 @@ Empty nested maps were checked against the actual decoder setup: `Network/NW_Gam
 The data and UI establish inputs and displayed effects; these policies complete the server behavior:
 
 - Fresh roles choose their professions; a newly chosen gathering job starts with its condition-zero collections and free condition-zero drops. Other unlocks remain explicit requests.
-- Daily vigor-use accounting and potion recovery use the existing To-Do 05:00 local-day boundary. Vigor itself has no timed refill because its configured recovery is zero. Consumable vigor can exceed the ordinary cap up to `VitalityExtraLimit`.
+- Daily vigor-use accounting and potion recovery use the existing To-Do 05:00 local-day boundary. Vigor itself has no timed refill because its configured recovery is zero. 寶箱與藥水活力依 `VitalityExtraLimit` 上限；既有職業加成仍保留原推定規則。
 - `_iNeedExp` is gathering EXP. The current level's threshold and condition control advancement; excess EXP is retained at a locked level. A production batch uses the single duration displayed by `UI_Sys_Life_ContentWidgetCtrl.lua:1592-1597`, not duration multiplied by quantity. The server bounds a batch to 1-1000 operations and expires an unused production ticket after 30 minutes.
 - Drop eligibility rolls independently in basis points. Formula outcome tuples use relative weights, then the existing reward graph. Skill offer weight is slot weight multiplied by `_iProbability`, without replacement. Runtime percentages use denominator 100000, matching values such as 5000 displayed as 5%; they do not use the offer probability.
 - Skill reductions stack, speed reduces the displayed duration, and one operation advances each applicable counter once. Gathering bonuses add individual main-product units, not another complete four-roll award pool. Variable Gathering uses a uniform configured main-quantity range. Skill 21 executes its configured multiverse group 1019 (Award 1001019 grants currency 2) even though the localized label describes a mystery box.
@@ -47,3 +47,16 @@ All five `LifeSkillConfig` ranks of talent type 35 refer to recipe 20054. That r
 ## Tests
 
 `LifeJobTests`, `LifeJobSkillTests`, `LifeJobOwnerEconomyTests` and `GatheringTests` cover the protocol, persistence, rollback and gathering paths. `LifeFoodSeasonTests` 另以自造資料驗證同 PlayBook 換季、舊存檔綁定與交易先提交後發布。The ordinary-client presentation, original-server random distribution and original-server refresh timings remain unverified.
+
+
+## 活躍度寶箱活力入帳
+
+G 目前原件的活躍度 20／40／60 寶箱固定給物品代號 407 各 200／200／600 點，80／100 寶箱不給活力；五個寶箱的掉落池亦不額外給 407。這是完成活動後領取的獎勵，沒有每日登入自動 1000 點的功能；本輪依使用者要求不新增自然補充。
+
+407 是獎勵顯示代號，生活 UI 與採集實際讀 5018 `RestrictInfo[1004]`。新的獎勵在 ApplyAward／Exchange 共用計畫中，與寶箱領取記錄、物品和其他貨幣同筆交易寫入 `life_restrict`，提交成功後才發布記憶體及 5018。滿 5000 時新增量為 0，來源仍只領一次；既有超過上限的數值不削減。
+
+既有錯存的 `Progress.Currency[407]` 保留，不推測來源、不自動轉存或清除；歷史領取是否需要補償仍須另行稽核。本次僅修正新的入帳。
+
+`DailyTests.VigorRewards` 覆蓋首次領取、同來源重送、批次去重、上限與既有超額、重登、5018 同步，以及資料庫拒絕時整筆回復。`LifeJobTests` 驗證新角色保留原始 500 點且上限顯示 5000。
+
+本輪亦檢查生活製造同筆消耗與活力獎勵的合成：獎勵計畫接收 caller 已扣成本的限制複本，不能重新取舊狀態蓋掉成本。407 未證實可當付款貨幣，因此成本要求明確拒絕，不使用淨差把付款還原。原本 1058 未領寶箱補償信也使用同一轉入機制；保留原來源與重領保護。

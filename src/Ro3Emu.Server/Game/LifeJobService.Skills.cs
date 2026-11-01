@@ -111,11 +111,11 @@ public sealed partial class LifeJobService
         return long.TryParse(description[index].ToString(), out long value) ? value : 0;
     }
 
-    /// <summary>Ordinary restriction cap plus selected title skills; threshold/title interpretation is inferred.</summary>
+    /// <summary>G 的 5018 基底上限為 VitalityExtraLimit；缺值資料集回退普通限制，職業加成維持既有推定。</summary>
     private long VigorLimit(GameSession s, DBLifeJobInfo? nextLife = null)
     {
         var life = nextLife ?? s.LifeJob;
-        long limit = RestrictMax(VigorId);
+        long limit = Param("VitalityExtraLimit", RestrictMax(VigorId));
         foreach (var skill in SelectedSkills(s, life))
         {
             if (skill.Type == 36) limit += skill.Value;

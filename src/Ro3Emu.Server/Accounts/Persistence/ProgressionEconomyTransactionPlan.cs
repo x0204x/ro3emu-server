@@ -108,7 +108,12 @@ internal sealed class ProgressionEconomyTransactionPlan(RoleItemPlan child, Econ
         using (var meta = DbSql.Command(db, tx, "SELECT realm_id FROM economy_meta WHERE singleton=1"))
             realm = meta.ExecuteScalar() as string ?? throw new InvalidDataException("Missing economy realm.");
         var before = ReadHoldings(db, tx);
+        bool vigorConsumption = mutation.CommandKind == "cd13c/life" || mutation.CommandKind.StartsWith("cd13c/life-", StringComparison.Ordinal);
+        var vigorBefore = EconomyVigorRewardValidation.ValidateBefore(db, tx, mutation.ActorRoleId,
+            mutation.VigorEvidence, vigorConsumption);
         var receipts = (object?[])child.Execute(db, tx);
+        EconomyVigorRewardValidation.ValidateAfter(db, tx, mutation.ActorRoleId, mutation.VigorEvidence,
+            vigorBefore, vigorConsumption);
         ValidateResults(receipts);
         var after = ReadHoldings(db, tx);
         var legs = BuildLegs(before, after);
@@ -194,10 +199,12 @@ internal sealed class ProgressionEconomyTransactionPlan(RoleItemPlan child, Econ
 
     private void ValidateShape()
     {
+        EconomyVigorRewardValidation.ValidateShape(child, mutation.ActorRoleId, mutation.VigorEvidence);
         if (!mutation.IsProgression) throw new InvalidOperationException("Unknown C/D 13c command kind.");
         if (mutation.PlanFingerprint != EventPlanFingerprint.Capture(child))
             throw new InvalidOperationException("Progression intent does not bind its detached plan.");
         var allowedBlobs = AllowedBlobsForKind(mutation.CommandKind);
+        if (mutation.VigorEvidence != null) allowedBlobs = allowedBlobs.Append("life_restrict").ToHashSet(StringComparer.Ordinal);
         if (!mutation.IsProgression || child.Parts.Count is < 1 or > 32 ||
             child.Parts[0] is not ItemDeltaWritePlan ||
             child.Parts.Skip(1).Any(part => part switch

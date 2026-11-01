@@ -50,6 +50,7 @@ public sealed partial class LifeJobService
         this._data = data; this._character = character; this._functions = functions; this._seasons = seasons;
         this._awards = awards; this._roles = roles; this._loop = loop; this._clock = clock; this._log = log;
         character.LifeItemUse = UseLifeItemAsync;
+        character.StageLifeVigorReward = StageVigorReward;
         character.ExtraAttributes.Add(FoodAttributes);
         character.ProgressHandlers.Add(OnLevelChangedAsync);
         scene.Leaving.Add(CancelAsync);
@@ -661,7 +662,7 @@ public sealed partial class LifeJobService
             {
                 s.LifeJob = life; s.Restrictions = restrict; s.LifeRuntime = runtime;
                 gatherCommitted?.Invoke();
-            }, asyncCommit: true);
+            }, asyncCommit: true, prospectiveLifeRestriction: restrict);
         if (received == null) return null;
         await _character.ItemsChangedAsync(s, stats: false);
         await SyncAsync(s);
