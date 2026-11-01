@@ -594,7 +594,7 @@ public sealed partial class MonsterService : MonsterBrain, IGameTicker
     /// <summary>A tower pet's attack can draw aggro without losing the player fallback (inferred).</summary>
     public void Engage(MonsterUnit m, TowerPetUnit target)
     {
-        if (m.Dead || m.Hp <= 0 || target.Dead || target.Hp <= 0 || m.InstanceId == 0 || m.WorldScene != target.WorldScene) return;
+        if (m.StaysOutOfBattle || m.Dead || m.Hp <= 0 || target.Dead || target.Hp <= 0 || m.InstanceId == 0 || m.WorldScene != target.WorldScene) return;
         if (m.PetTarget == null)
         {
             m.NextSwingMs = NowMs + 300;

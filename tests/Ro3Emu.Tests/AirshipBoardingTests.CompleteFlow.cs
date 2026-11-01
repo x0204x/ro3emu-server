@@ -32,6 +32,8 @@ public sealed partial class AirshipBoardingTests
         await CompleteFlowStage(bot, 5, 4);
         var boss = Assert.Single(await CompleteFlowWave(instance, 1));
         Assert.Equal(5300018, boss.Template.NpcId);
+        Assert.Equal(8142, boss.Template.MaxHp);
+        Assert.Equal(8142, boss.Hp);
         await CompleteFlowKill(bot, boss);
         await CompleteFlowStage(bot, 6, 5);
         await CompleteFlowStage(bot, 7, 6); // 戰後時間軸自行進行，不要求五次泡泡。
@@ -157,8 +159,16 @@ public sealed partial class AirshipBoardingTests
         Assert.Equal(Session.Role!.Id, projectile.SourceId);
         Assert.Equal(0, projectile.TargetId);
         Assert.True(projectile.FixedTime > 0);
-        await Next(bot, CombatService.SkillHit, SkillHitInfo.Parser,
-            hit => hit.SkillId == 5353001 && hit.Dsts.Any(target => target.DstID == ship.Uid && target.IsDead));
+        var impact = await Next(bot, CombatService.SkillEffect, SkillEffectDisplayNotify.Parser,
+            hit => hit.SkillId == 5353001 && hit.EffectId == 6032010 && hit.EffectType == 2
+                && hit.TargetPos != null && Math.Abs(hit.TargetPos.X - ship.X) < .01f
+                && Math.Abs(hit.TargetPos.Z - ship.Z) < .01f);
+        Assert.Equal(Session.Role!.Id, impact.MasterId);
+        await Next(bot, CombatService.EntityBaseChange, EntityBase.Parser,
+            entity => entity.Uuid == (ulong)ship.Uid && entity.State == EntityState.Dead);
+        Assert.True(await Read(_ => ship.Dead && ship.Hp == 0));
+        Assert.DoesNotContain(bot.Inbox.Snapshot(), packet => packet.IsGame(CombatService.SkillHit)
+            && SkillHitInfo.Parser.ParseFrom(packet.Body).Dsts.Any(hit => hit.DstID == ship.Uid));
     }
 
     private static async Task<EntityBase[]> CompleteFlowVisibleShips(BotClient bot)
@@ -167,14 +177,22 @@ public sealed partial class AirshipBoardingTests
         while (DateTime.UtcNow < deadline)
         {
             var visible = new Dictionary<ulong, EntityBase>();
-            foreach (var packet in bot.Inbox.Snapshot().Where(packet => packet.IsGame(GameAoiSink.SyncAoiView)))
+            foreach (var packet in bot.Inbox.Snapshot())
             {
-                var view = AoIViewChangeData.Parser.ParseFrom(packet.Body);
-                foreach (ulong gone in view.LeaveAoi) visible.Remove(gone);
-                foreach (var actor in view.Bases) visible[actor.Uuid] = actor;
+                if (packet.IsGame(GameAoiSink.SyncAoiView))
+                {
+                    var view = AoIViewChangeData.Parser.ParseFrom(packet.Body);
+                    foreach (ulong gone in view.LeaveAoi) visible.Remove(gone);
+                    foreach (var actor in view.Bases) visible[actor.Uuid] = actor;
+                }
+                else if (packet.IsGame(GameAoiSink.MovementChange))
+                {
+                    var moved = MovementChangeNtf.Parser.ParseFrom(packet.Body);
+                    if (visible.TryGetValue((ulong)moved.Uid, out var actor)) actor.MovementInfo = moved.MovementInfo.Clone();
+                }
             }
             var ships = visible.Values.Where(actor => actor.EntityTemplateID is 5300015 or 5300053)
-                .OrderBy(actor => actor.EntityTemplateID).ToArray();
+                .OrderBy(actor => actor.EntityTemplateID).ThenBy(actor => actor.Uuid).ToArray();
             if (ships.Length == 3) return ships;
             await Task.Delay(20);
         }

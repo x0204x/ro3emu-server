@@ -26,7 +26,7 @@ public sealed partial class MonsterService
     /// <summary>A companion's hit: the monster may answer it (see the type's summary).</summary>
     internal void Engage(MonsterUnit m, CompanionUnit companion)
     {
-        if (m.Dead || m.Hp <= 0 || companion.Dead || companion.Hp <= 0 || m.WorldScene != companion.WorldScene) return;
+        if (m.StaysOutOfBattle || m.Dead || m.Hp <= 0 || companion.Dead || companion.Hp <= 0 || m.WorldScene != companion.WorldScene) return;
         if (_companionTargets.TryGetValue(m, out var held) && !held.Dead) return;
         if (m.Target == null) m.NextSwingMs = NowMs + CompanionFirstSwingMs;
         _companionTargets[m] = companion;

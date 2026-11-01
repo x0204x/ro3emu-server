@@ -75,7 +75,7 @@ public sealed partial class DungeonTests
         // 凍結本輪之前已存在的重建補償；不是宣稱這些比例等於原服，也不以它們重調boss。
         AssertExistingStoryAttributes(5300001, 1170, 1500);
         AssertExistingStoryAttributes(5300006, 2420, 1035);
-        AssertExistingStoryAttributes(5300018, 2870, 1230);
+        AssertExistingStoryAttributes(5300018, 10000, 1230); // HP已有原服8142證據；本場景另採上取整。
         AssertExistingStoryAttributes(5300082, 5210, 2880);
     }
 

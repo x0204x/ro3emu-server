@@ -80,7 +80,7 @@ public sealed partial class DungeonTests
         long instance = await Load(alice, scene);
         await Stage(alice, 1, quest: 1);
         await Stage(alice, 2, quest: 2);
-        var cannons = await ActorsIn(alice, 3, a => a.NpcId == 5300022);
+        var cannons = await ActorsIn(alice, 1, a => a.NpcId == 5300022);
         var ships = await WaveIn(instance, 3);
         Assert.Equal([5300015, 5300053, 5300053], ships.Select(m => m.Template.NpcId).Order());
         var cannon = cannons[0];
@@ -93,8 +93,9 @@ public sealed partial class DungeonTests
                 mounted.DataInfo.UpperCannonInfo.CannonGuId));
         var clientShips = await ClientAirships(alice, expected: 3);
         Assert.Equal(new ulong[] { 5300015, 5300053, 5300053 }, clientShips.Select(ship => ship.EntityTemplateID));
-        Assert.All(clientShips, ship => Assert.True(MonsterService.Distance(ship.MovementInfo.Pos.X,
-            ship.MovementInfo.Pos.Z, Session(alice).Position.X, Session(alice).Position.Z) > World.ViewRadius));
+        // 原服接近路線會讓其中一艘停入一般視野；其餘遠艦仍須透過場景可見政策送達。
+        Assert.Contains(clientShips, ship => MonsterService.Distance(ship.MovementInfo.Pos.X,
+            ship.MovementInfo.Pos.Z, Session(alice).Position.X, Session(alice).Position.Z) > World.ViewRadius);
         // The HP fixture follows client-received identities; target discovery must work from the actual cannon.
         ships = clientShips.Select(ship => ships.Single(monster => monster.Uid == (long)ship.Uuid)).ToArray();
         Assert.DoesNotContain(alice.Inbox.Snapshot().Where(e => e.IsGame(CombatService.SkillHit))
@@ -123,8 +124,7 @@ public sealed partial class DungeonTests
         Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
         await alice.SendGameAsync(CombatService.UseSkill, Shot(cannon, clientShips[1]));
         Assert.NotEqual(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result); // 500 ms action/CD gate
-        var first = await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser, h => h.SkillId == 5353001);
-        Assert.Contains(first.Dsts, d => d.DstID == ships[0].Uid && d.IsDead);
+        await AirshipNativeImpactAsync(alice, ships[0]);
 
         await alice.SendGameAsync(WorldInteractionService.Action, new UseInteractActionReq { ButtonId = 28 });
         Assert.Equal(0, (await Next(alice, WorldInteractionService.Action, UseInteractActionRes.Parser)).Result);
@@ -140,15 +140,13 @@ public sealed partial class DungeonTests
         await PrepareLethalShot(ships[1]);
         await alice.SendGameAsync(CombatService.UseSkill, Shot(cannon, clientShips[1]));
         Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
-        var second = await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser, h => h.SkillId == 5353001);
-        Assert.Contains(second.Dsts, d => d.DstID == ships[1].Uid && d.IsDead);
+        await AirshipNativeImpactAsync(alice, ships[1]);
         Assert.False(ships[2].Dead); // 兩艘死亡不能提早換階段。
         Assert.Equal(1, Session(alice).DungeonAttempt!.Wave);
         await PrepareLethalShot(ships[2]);
         await alice.SendGameAsync(CombatService.UseSkill, Shot(cannon, clientShips[2]));
         Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
-        var third = await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser, h => h.SkillId == 5353001);
-        Assert.Contains(third.Dsts, d => d.DstID == ships[2].Uid && d.IsDead);
+        await AirshipNativeImpactAsync(alice, ships[2]);
         Assert.All(ships, m => Assert.True(m.Dead));
         await Stage(alice, 3, quest: 3); // the boarding
         await Next(alice, WorldInteractionService.Change, InteractChangeNtf.Parser,

@@ -261,9 +261,12 @@ public sealed partial class CombatService
             }
             if (hit.Dsts.Count > 0)
             {
+                var sourceViewers = CurrentCaster() ? _world.Viewers(s).Append(s) : Enumerable.Empty<GameSession>();
+                var hitViewers = processed.SelectMany(t => t.Viewers).Concat(sourceViewers).Distinct().ToArray();
+                bool customPresentation = await TryPresentCustomHitAsync(s, action, processed, hit, hitViewers);
                 foreach (var result in hit.Dsts)
                 {
-                    if (!CurrentCaster()) break;
+                    if (customPresentation || !CurrentCaster()) break;
                     await RecordDamageStatisticAsync(s, new DamageStatistics
                     {
                         DamageSourceId = hit.SrcID, DamageTargetId = result.DstID, DamageValue = result.Damage,
@@ -271,11 +274,12 @@ public sealed partial class CombatService
                     });
                 }
                 if (CurrentCaster() && hit.Dsts.Any(d => d.HitResult != DamageHitResult.Miss)) await _buffs.RecoverEnergyOnHitAsync(s, row);
-                var sourceViewers = CurrentCaster() ? _world.Viewers(s).Append(s) : Enumerable.Empty<GameSession>();
-                var hitViewers = processed.SelectMany(t => t.Viewers).Concat(sourceViewers).Distinct().ToArray();
-                await SendHitBulletsAsync(hitViewers, row, hit, castingRole.Id,
-                    action.HasTimedBullet ? action.Request.TargetId : 0);
-                foreach (var viewer in hitViewers) await viewer.SendGameAsync(SkillHit, hit);
+                if (!customPresentation)
+                {
+                    await SendHitBulletsAsync(hitViewers, row, hit, castingRole.Id,
+                        action.HasTimedBullet ? action.Request.TargetId : 0);
+                    foreach (var viewer in hitViewers) await viewer.SendGameAsync(SkillHit, hit);
+                }
                 if (CurrentCaster() && field?.Trap == true)
                     await ToPlayerAndViewersAsync(s, TrapDamage, new TrapDamageNtf { SkillConfigId = action.Request.SkillId, DamageValue = hit.Dsts.Sum(d => d.Damage), Pos = center.Clone() });
             }

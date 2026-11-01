@@ -31,9 +31,9 @@
       "why": "Pharaoh: solo tuning, see about"
     },
     "5300018": {
-      "hp": 2870,
+      "hp": 10000,
       "attack": 1230,
-      "why": "Evil Boss: solo tuning, see about"
+      "why": "原服52488/31037初始HP8142，取消舊28.7%單人HP縮放；本場景依表值上取整。attack1230仍為舊推定補償，原服公式UNKNOWN。"
     },
     "5300042": {
       "hp": 10000,

@@ -1,4 +1,5 @@
 using Romsg;
+using Ro3Emu.Server.Maps;
 using Ro3Emu.Server.Game;
 
 namespace Ro3Emu.Tests;
@@ -15,7 +16,8 @@ public sealed partial class DungeonTests
         await Gm(alice, "!quest accept 10103210");
         Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = LifecycleAirship }));
         long instance = await Load(alice, LifecycleAirship);
-        await Stage(alice, 1, quest: 1);
+        var opening = await Stage(alice, 1, quest: 1);
+        Assert.Equal([1L], Assert.Single(opening.Vars, v => v.VarId == 10001).Vi64);
         var bobo = Assert.Single(await ActorsIn(alice, 1, actor => actor.NpcId == 5300031));
         await Beside(alice, bobo.X, bobo.Y, bobo.Z);
         Assert.Equal(0, await Interact(alice, bobo, 5300031));
@@ -25,14 +27,19 @@ public sealed partial class DungeonTests
         await alice.HeartbeatAsync();
         Assert.Equal(0, Session(alice).DungeonAttempt!.Wave);
 
-        await Stage(alice, 2, quest: 1); // 三艦先出現，開砲前仍顯示前一項。
-        var cannon = (await ActorsIn(alice, 3, actor => actor.NpcId == 5300022))[0];
-        await Beside(alice, cannon.X, cannon.Y, cannon.Z);
-        Assert.Equal(ErrorCodes.NpcParameter, await Interact(alice, cannon, 5300006));
+        var approaching = await Stage(alice, 2, quest: 1); // 三艦先出現，開砲前仍顯示前一項。
+        Assert.Equal([1L], Assert.Single(approaching.Vars, v => v.VarId == 10001).Vi64);
+        Assert.Empty(await ActorsIn(alice, 0, actor => actor.NpcId == 5300022));
         var ships = await WaveIn(instance, 3);
         Assert.Equal(3, ships.Select(s => (s.Home.X, s.Home.Y, s.Home.Z)).Distinct().Count());
         Assert.All(ships, s => Assert.Equal(207.65002f, s.Home.Y, 2));
-        await Stage(alice, 2, quest: 2);
+        var ready = await Stage(alice, 2, quest: 2);
+        Assert.Equal([1L, 2L], Assert.Single(ready.Vars, v => v.VarId == 10001).Vi64);
+        Assert.Equal([0L, 3L], Assert.Single(ready.Vars, v => v.VarId == 10003).Vi64);
+        var cannon = Assert.Single(await ActorsIn(alice, 1, actor => actor.NpcId == 5300022));
+        Assert.Equal((241.56f, 228.65002f, 463.74f, 90f), (cannon.X, cannon.Y, cannon.Z, cannon.Face));
+        Assert.Equal(42, cannon.Point);
+        await Beside(alice, cannon.X, cannon.Y, cannon.Z);
         Assert.Equal(0, await Interact(alice, cannon, 5300006));
         await alice.HeartbeatAsync();
         var calls = AirshipClientCalls(alice);
@@ -100,7 +107,7 @@ public sealed partial class DungeonTests
         Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = LifecycleAirship }));
         long instance = await Load(alice, LifecycleAirship);
         await Stage(alice, 2, quest: 2);
-        var cannon = (await ActorsIn(alice, 3, actor => actor.NpcId == 5300022))[0];
+        var cannon = (await ActorsIn(alice, 1, actor => actor.NpcId == 5300022))[0];
         var ships = await WaveIn(instance, 3);
         await Beside(alice, cannon.X, cannon.Y, cannon.Z);
         Assert.Equal(0, await Interact(alice, cannon, 5300006));
@@ -150,6 +157,8 @@ public sealed partial class DungeonTests
         });
         Assert.DoesNotContain(alice.Inbox.Snapshot(), packet => packet.IsGame(CombatService.SkillHit)
             && SkillHitInfo.Parser.ParseFrom(packet.Body).SessionId == empty.SessionId);
+        Assert.DoesNotContain(alice.Inbox.Snapshot(), packet => packet.IsGame(CombatService.SkillEffect)
+            && SkillEffectDisplayNotify.Parser.ParseFrom(packet.Body) is { SkillId: 5353001, EffectId: 6032010 });
     }
 
     /// <summary>合法連發不能取消已離砲、仍在同場景／角色世代內飛行的前發。</summary>
@@ -163,7 +172,7 @@ public sealed partial class DungeonTests
         Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = LifecycleAirship }));
         long instance = await Load(alice, LifecycleAirship);
         await Stage(alice, 2, quest: 2);
-        var cannon = (await ActorsIn(alice, 3, actor => actor.NpcId == 5300022))[0];
+        var cannon = (await ActorsIn(alice, 1, actor => actor.NpcId == 5300022))[0];
         var ships = await WaveIn(instance, 3);
         var visible = (await ClientAirships(alice, expected: 3)).Take(2).ToArray();
         var targets = visible.Select(view => ships.Single(ship => ship.Uid == (long)view.Uuid)).ToArray();
@@ -187,8 +196,8 @@ public sealed partial class DungeonTests
             Assert.All(targets, ship => Assert.Equal(1, ship.Hp)); // 證明第二發已接受時前發還在飛。
             return Task.CompletedTask;
         });
-        await AirshipTpsLethalHit(alice, first.Accepted.SessionId, targets[0].Uid);
-        await AirshipTpsLethalHit(alice, second.Accepted.SessionId, targets[1].Uid);
+        await AirshipNativeImpactAsync(alice, targets[0]);
+        await AirshipNativeImpactAsync(alice, targets[1]);
         await OnLoop(() =>
         {
             Assert.All(targets, ship => Assert.True(ship.Dead));
@@ -210,10 +219,26 @@ public sealed partial class DungeonTests
         return (accepted, bullet);
     }
 
-    private static Task<SkillHitInfo> AirshipTpsLethalHit(Ro3Emu.Bot.BotClient bot, long cast, long target) =>
-        Next(bot, CombatService.SkillHit, SkillHitInfo.Parser,
-            hit => hit.SkillId == 5353001 && hit.SessionId == cast
-                && hit.Dsts.Any(dst => dst.DstID == target && dst.IsDead));
+    private async Task AirshipNativeImpactAsync(Ro3Emu.Bot.BotClient bot, MonsterUnit ship)
+    {
+        var effect = await Next(bot, CombatService.SkillEffect, SkillEffectDisplayNotify.Parser,
+            hit => hit.SkillId == 5353001 && hit.EffectId == 6032010 && hit.EffectType == 2
+                && hit.TargetPos != null && Math.Abs(hit.TargetPos.X - ship.X) < .01f
+                && Math.Abs(hit.TargetPos.Z - ship.Z) < .01f);
+        Assert.Equal(Session(bot).Role!.Id, effect.MasterId);
+        Assert.Equal(0, effect.SourceId);
+        Assert.Equal(0, effect.TargetId);
+        await Next(bot, CombatService.EntityBaseChange, EntityBase.Parser,
+            entity => entity.Uuid == (ulong)ship.Uid && entity.State == EntityState.Dead);
+        await OnLoop(() =>
+        {
+            Assert.True(ship.Dead);
+            Assert.Equal(0, ship.Hp);
+            return Task.CompletedTask;
+        });
+        Assert.DoesNotContain(bot.Inbox.Snapshot(), packet => packet.IsGame(CombatService.SkillHit)
+            && SkillHitInfo.Parser.ParseFrom(packet.Body).Dsts.Any(hit => hit.DstID == ship.Uid));
+    }
 
     private static DungeonEventNotify[] AirshipClientCalls(Ro3Emu.Bot.BotClient bot) =>
         bot.Inbox.Snapshot().Where(packet => packet.IsGame(DungeonService.Event))

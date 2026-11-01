@@ -7,7 +7,7 @@ using Ro3Emu.Server.Game.Ownership;
 
 namespace Ro3Emu.Server.Game;
 
-internal readonly record struct CastProjectile(int EffectId, bool PositionTarget);
+internal readonly record struct CastProjectile(int EffectId, bool PositionTarget, int CastEffectId = 0);
 
 /// <summary>A single accepted cast, bound to its role, scene and generation (LC_Scene_Sync._skillEndNotify).</summary>
 public sealed class ActiveSkillCast
@@ -661,6 +661,12 @@ public sealed partial class CombatService
             ScheduleRuntime(action.WorldScene, TimeSpan.FromMilliseconds(leadMs + at), async () =>
             {
                 if (!Live(s, action)) return;
+                if (projectile is { CastEffectId: > 0 } authored)
+                    await SendSkillEffectAsync(s, new SkillEffectDisplayNotify
+                    {
+                        SourceId = action.OwnerId, MasterId = action.OwnerId, SkillId = req.SkillId,
+                        EffectId = authored.CastEffectId, EffectType = 3,
+                    });
                 await SendSkillBulletAsync(s, new SkillFixTimeBulletNotify
                 {
                     SourceId = action.OwnerId, TargetId = projectile is { PositionTarget: true } ? 0 : req.TargetId, EffectId = bulletEffect,

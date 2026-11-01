@@ -27,8 +27,8 @@ public sealed partial class DungeonTests
         long instance = await Load(alice, AirshipCombatScene);
         await Stage(alice, 1, quest: 1);
         await Stage(alice, 2, quest: 2);
-        var cannon = (await ActorsIn(alice, 3, actor => actor.NpcId == 5300022))[0];
-        var ships = (await WaveIn(instance, 3)).OrderBy(ship => ship.Template.NpcId).ToArray();
+        var cannon = (await ActorsIn(alice, 1, actor => actor.NpcId == 5300022))[0];
+        var ships = (await WaveIn(instance, 3)).OrderBy(ship => ship.Template.NpcId).ThenBy(ship => ship.Uid).ToArray();
         var clientShips = await ClientAirships(alice, expected: 3);
         Assert.Equal(ships.Select(ship => (ulong)ship.Uid), clientShips.Select(ship => ship.Uuid));
         var hpBefore = await Service<GameLoop>().InvokeAsync(() => Task.FromResult(ships.Select(ship => ship.Hp).ToArray()));
@@ -81,8 +81,7 @@ public sealed partial class DungeonTests
         Assert.True(cannonProjectile.FixedTime > 0);
         await alice.SendGameAsync(CombatService.UseSkill, CannonShot(cannon, clientShips[1]));
         Assert.NotEqual(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
-        Assert.Contains((await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser,
-            hit => hit.SkillId == 5353001)).Dsts, dst => dst.DstID == ships[0].Uid && dst.IsDead);
+        await AirshipNativeImpactAsync(alice, ships[0]);
         await OnLoop(() =>
         {
             var attempt = Assert.IsType<DungeonService.Attempt>(Session(alice).DungeonAttempt);
@@ -96,8 +95,7 @@ public sealed partial class DungeonTests
         await PrepareShip(ships[1]);
         await alice.SendGameAsync(CombatService.UseSkill, CannonShot(cannon, clientShips[1]));
         Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
-        Assert.Contains((await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser,
-            hit => hit.SkillId == 5353001)).Dsts, dst => dst.DstID == ships[1].Uid && dst.IsDead);
+        await AirshipNativeImpactAsync(alice, ships[1]);
         await OnLoop(() =>
         {
             Assert.Equal(1, Session(alice).DungeonAttempt!.Wave); // 兩艘死亡不能當作三艘完成。
@@ -107,8 +105,7 @@ public sealed partial class DungeonTests
         await PrepareShip(ships[2]);
         await alice.SendGameAsync(CombatService.UseSkill, CannonShot(cannon, clientShips[2]));
         Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
-        Assert.Contains((await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser,
-            hit => hit.SkillId == 5353001)).Dsts, dst => dst.DstID == ships[2].Uid && dst.IsDead);
+        await AirshipNativeImpactAsync(alice, ships[2]);
         await Next(alice, WorldInteractionService.Change, InteractChangeNtf.Parser,
             n => n.Uid == cannon.Uid && n.DataInfo.EType == InteractInfo.Types.EState.Idle);
         await Next(alice, WorldInteractionService.Change, InteractChangeNtf.Parser,
@@ -142,7 +139,7 @@ public sealed partial class DungeonTests
             previousInstance = await Load(alice, AirshipCombatScene);
             await Stage(alice, 1, quest: 1);
             await Stage(alice, 2, quest: 2);
-            oldCannon = (await ActorsIn(alice, 3, actor => actor.NpcId == 5300022))[0];
+            oldCannon = (await ActorsIn(alice, 1, actor => actor.NpcId == 5300022))[0];
             previous = Assert.IsType<DungeonService.Attempt>(Session(alice).DungeonAttempt);
             await Beside(alice, oldCannon.X, oldCannon.Y, oldCannon.Z);
             Assert.Equal(0, await Interact(alice, oldCannon, 5300006));
@@ -166,7 +163,7 @@ public sealed partial class DungeonTests
         Assert.NotEqual(previousInstance, currentInstance);
         await Stage(relog, 1, quest: 1);
         await Stage(relog, 2, quest: 2);
-        var newCannon = (await ActorsIn(relog, 3, actor => actor.NpcId == 5300022))[0];
+        var newCannon = (await ActorsIn(relog, 1, actor => actor.NpcId == 5300022))[0];
         await Beside(relog, newCannon.X, newCannon.Y, newCannon.Z);
         Assert.NotEqual(0, await Interact(relog, oldCannon, 5300006));
         Assert.Equal(0, await Interact(relog, newCannon, 5300006));

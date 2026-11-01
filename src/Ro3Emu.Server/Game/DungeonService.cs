@@ -109,6 +109,7 @@ public sealed partial class DungeonService
         combat.PositionOnlyCasts.Add(AirshipCannonPositionOnlyCast);
         combat.HighLevelCasts.Add((s, cast) => s.SceneEntry == AirshipScene && cast.Request.SkillId == 5353001);
         combat.ProjectileCasts.Add(AirshipCannonProjectile);
+        combat.CustomHitPresentations.Add(PresentAirshipCannonHitAsync);
         combat.Killed.Add(KilledAsync);
         combat.BeforeKilled.Insert(0, FreezeTerminalKillAsync);
         combat.PlayerDied.Add(PlayerDiedAsync);
@@ -639,14 +640,7 @@ public sealed partial class DungeonService
         foreach (var spawn in a.Plan.Waves[a.Wave].Spawns)
         {
             if (a.Settled || a.Room.Closed) { a.Spawning = false; return; }
-            MonsterTemplate? waveTemplate = null;
-            if (a.Plan.SceneEntry == AirshipScene && Step(a)?.Cannon != null
-                && _monsters.Template(spawn.NpcId) is { } cannonTarget)
-            {
-                // G 的敵艦距離炮台超過 100 公尺，TPS 瞄準前必須先在客戶端建立敵艦單位。
-                // (inferred) 僅讓本房間的兩個設定目標超出一般 60 公尺視野後仍可見。
-                waveTemplate = cannonTarget with { VisibleAcrossScene = true };
-            }
+            var waveTemplate = AirshipWaveTemplate(a, spawn.NpcId);
             var monster = await _instances.SpawnAsync(a.Room, spawn.NpcId,
                 AirshipStorySpawnPoint(a, spawn.NpcId, spawn.Point, a.Spawned - a.WaveBase),
                 customTemplate: waveTemplate, grounded: AirshipStorySpawnGrounded(a));
@@ -658,6 +652,7 @@ public sealed partial class DungeonService
             }
             if (monster == null) { a.Spawning = false; await SettleAsync(a, false); return; }
             a.Spawned++;
+            if (StartAirshipShip(a, monster, a.Spawned - a.WaveBase - 1)) continue;
             // Multi-bosses retain their AI instead of being ordered to attack on scene load. In Culvert the
             // born point 15 is 15m from monster point 19; NPC 4300000/1 uses non-roaming AI 25000001 and
             // RaidFive_Boss00[easy], whose server script is absent. Waiting for a player hit/taunt is an

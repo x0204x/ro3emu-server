@@ -161,8 +161,8 @@ Reconstructed story encounters (`ReconstructedDungeons`, switch `Ro3Emu:Reconstr
   `soloTuning` scales each story template's HP and attack (basis points) so a Swordman at the boss level, every stat
   point spent STR:VIT 2:1, no equipment, normal attacks only, kills it in about 90 s and would fall in about 1.4 times
   that. `CombatService.Duel` computes both sides' expected damage per second from the same formula as a real hit
-  (its roll-free part was extracted, rolls unchanged). The airship's nine boarders come in three groups of three, their
-  attack at 20%. A boss whose scripted step shows companions falls to them and the player together: Payon Forest's
+  (its roll-free part was extracted, rolls unchanged). 飛船登船敵人依原服事件分為四名戰士及五名弓箭手，
+  共九名；既有單人數值調整不等於已核對原服完整戰鬥速度。A boss whose scripted step shows companions falls to them and the player together: Payon Forest's
   Eddga (HP 1170 basis points) counts Boya's and Wule's expected damage per second standing in reach
   (`CombatService.CompanionDps`, their rotation and the same formula as their hits), about a quarter of the total.
   `DungeonTests.StoryBossTuning` keeps every boss and a boarder group inside the band. Live: the tuned
@@ -177,7 +177,7 @@ Reconstructed scripted scenes (`Reconstructed/scripted-scenes.json`, same switch
   with `all` needs every listed event, not any one, and its tracker counter follows them. A Journey scene (gameplay
   type 24) with a scripted reconstruction plays it instead of its bare point respawns. A step's `strike` makes an
   actor's interaction cast a skill from the player at the nearest monster of the fight; with `shots`, that many strikes
-  defeat it whatever the damage (inferred, for the airship's cannons).
+  defeat it whatever the damage (inferred). 飛船炮台不使用這個固定次數捷徑；登砲、射擊與敵艦死亡分開驗證。
 - Moonlight Flower's hide-and-seek (3120802) is played as a game, inferred as a whole from its ChatConfig lines (a step
   `seek`, DungeonService.HideAndSeek): her three opening bubbles over her head, then rounds of a warning
   (5310005), the 5 s countdown tip (5310010) and a look. A player within 3 m of a group 27 point (the darkness that
@@ -202,15 +202,23 @@ Reconstructed scripted scenes (`Reconstructed/scripted-scenes.json`, same switch
   - Maya's nest (1000401): Maya, then 'Find the Professor' (within 10 m of the egg point), 'Free the Ant Egg' (5300056,
     interaction 5300021, message 5300022), 'Help the Professor Up' (5300026, message 5300023) and the chest (5300052,
     message 5300024), each interaction opened by buff group 53014.
-  - The airship (1000501): the chitchat with Bobo, the captain, Wule and Boya (their gated auto-range bubbles
-    5300031-5300034, all four), the boarding and the Evil Boss, the look around after the battle (five bubbles
-    5300048-5300052) and the talk with the injured captain (dialogue 530003802, whose option triggers interaction
-    5300039 and message 5300039). Stage 2 has three Cannons 5300022. 'Board the Cannon' (5300006) mounts the
-    UpperCannon status 12; status button 27 casts 5353001 at the enemy airships (5300015 at point 24, 5300053 at
-    point 61), and button 28 exits. The stage ends on the ships' actual deaths. After the captain's dialogue the server
-    pushes story 130161: video 30161 opens QTE 6. The client plays story 130162/video 30162 on success or
-    130163/video 30163 on failure; either ending's action 601 reports the plot end and clears the dungeon. The
-    exact shot count and the earlier stage pacing remain inferred; the three videos and QTE branch are client data.
+  - 飛空艇（1000501）：登船先播放船長、波波等旁白及兩段鏡頭，保留「飛空艇閒聊」目標。
+    三艘敵艦依原服31037／31081的出生、接近路段與停止點移動，保持飛船高度；受擊後不轉為一般追逐。
+    開場約39.5秒才更新火砲目標並生成一座NPC5300022，並非同時開放場景編輯器中的三個炮位。
+    32700／5300006登砲、32702同步玩家與炮台端點，狀態12為UpperCannon；按鈕27以31102／5353001射擊，
+    按鈕28以32703退出。原服18次接受射擊均依序有31106、31119（5353201/type3）及31108（6120105）；
+    命中再依序送31119的6120103/type4、6120103/type2、6032010/type2，使用相同撞擊點。
+    6032010對應原生pop-up特效，封包沒有九百萬傷害值；完整後端公式仍為UNKNOWN，不把畫面9M當真實扣血。
+    完整HP的擊沉速度尚未對齊，HP=1測試不能作為完整玩法驗收。
+    甲板炮擊另以31037建立5300037爆炸演員與5300057燃燒演員；前者施放5353101後短期移除，後者由
+    Unit5300018的fx_airship_boomloop_01.prefab呈現持續燃燒。它們不列入三艦或九名登船敵人的計數；
+    5365201危險區傷害的完整規則尚未還原。
+    三艦死亡後接四名戰士及五名弓箭手兩批敵人，任務欄累計九名，再進首領5300018。開場四處閒聊及戰後五處
+    調查不再全數必點；正式船長對話530003802／530003803的合法選項仍啟動5300039及後續墜船演出。
+    130161／影片30161開客戶端QTE6；成功130162／影片30162、失敗130163／影片30163，均須等各自601／84011
+    結束才能通關，第一段或一般84012不能提前完成。相對毫秒節奏由單次原服成功路徑近似；玩家端驗收NOT_RUN。
+    詳見[飛船事件證據](../research/airship-evidence.md)、[完整流程](../research/airship-full-flow-evidence.md)與
+    [結算恢復](../research/airship-recovery-evidence.md)。
   - Payon Forest (1022001): 'Cover Boya and Wule' (reach the standoff point 22 between them and Eddga), then Eddga
     with Boya and Wule (5300086/5300087) fighting beside the player as companions (below).
   - The Peco Peco nest (1051001): the Elusive Pecopeco with the Ancient Nest and Bragis shown.
@@ -262,10 +270,9 @@ Reconstructed scripted scenes (`Reconstructed/scripted-scenes.json`, same switch
   the original's server script is not shipped), so the speed, the step size and the missing mount are guesses and the
   camera animation (`mianstorybingyicamera`) is not played.
   A step may also hold (`after.hold`, ms, scaled by `ScriptedScenePacePercent`): once it is completed, the next step or the
-  result waits that long, so what the step showed is not cut. **(inferred)**: the original script is not shipped and the
-  client data has no duration for these, so the airship's holds are estimates (the chitchat's 13 s is the longest of its four
-  bubbles, 12 to 22 words each at `PublicParamConfig.BubblePerWordTime` 2; 2 s between boarding groups, 3 s after the Evil Boss,
-  4.5 s for the captain's closing line). When a scripted scene is settled its defeated enemies keep their bodies and go by their
+  result waits that long, so what the step showed is not cut. **(inferred)**: the original server script is not shipped.
+  飛船現以原服事件的相對時序重建開場、兩批登船敵人與戰後旁白，不再由泡泡字數猜13秒閒聊或套三批間隔；
+  毫秒排程仍是觀察近似，不是原服伺服器腳本。When a scripted scene is settled its defeated enemies keep their bodies and go by their
   own `_iBodyRemainTime` (Eddga's body stays where it fell); the living ones and the scene actors are cleared as before.
   An actor interaction whose `NPCInteractConfig._iStatusID` is a vehicle status (the Deniro's first Ride, 5300005)
   seats the player in the actor's seat through `WorldInteractionService` (32702, seat 32704; the client's exit button

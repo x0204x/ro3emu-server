@@ -25,6 +25,7 @@ public sealed partial class DungeonService
         public int SceneChat = 5300001;
         public bool CannonReady, CaptainStarted, Rolled, Stopped;
         public long RollSerial;
+        public readonly List<SceneActorUnit> DeckActors = new();
     }
 
     private AirshipStoryState AirshipState(Attempt a) => _airshipStories.GetValue(a, static _ => new AirshipStoryState());
@@ -35,9 +36,10 @@ public sealed partial class DungeonService
         && (step.Quest, trigger.Id) is (1, AirshipOpeningEnd) or (5, AirshipAftermathEnd);
 
     /// <summary>巡視開始後約八秒才重新出現船員；不要先送 AOI 再立即刪除。</summary>
-    private static IReadOnlyList<ReconstructedDungeons.SceneActor> AirshipStoryActors(
+    private IReadOnlyList<ReconstructedDungeons.SceneActor> AirshipStoryActors(
         Attempt a, ReconstructedDungeons.ScriptedStep step) =>
-        a.Plan.SceneEntry == AirshipScene && a.Wave == 5 ? [] : step.Actors;
+        a.Plan.SceneEntry == AirshipScene && (a.Wave == 5 || a.Wave == 1 && !AirshipState(a).CannonReady)
+            ? [] : step.Actors;
 
     private async Task BeginAirshipStoryStepAsync(Attempt a)
     {
@@ -49,6 +51,9 @@ public sealed partial class DungeonService
         switch (a.Wave)
         {
             case 0: await StartAirshipOpeningAsync(a, state); break;
+            case 1:
+                await AirshipDeckBlastAsync(a, state, new Vec3 { X = 236, Y = 228.65002f, Z = 467.79f }, leaveBurn: true);
+                break;
             case 2:
                 AirshipLater(a, state, 500, () => AirshipShoutsAsync(a, 5300558, 4380041), () => a.Wave == 2);
                 break;
@@ -69,12 +74,17 @@ public sealed partial class DungeonService
             await AirshipClientAsync(a, "ActiveCameraTimeline", Text("mainstoryfeikongtingcamera2.prefab"), Real(9500));
         }, () => a.Wave <= 1);
         AirshipLines(a, state, 24000, 4380037, 5300552);
+        AirshipLater(a, state, 28350,
+            () => AirshipDeckBlastAsync(a, state, new Vec3 { X = 236, Y = 228.65002f, Z = 467.79f }, leaveBurn: false),
+            () => a.Wave == 1);
         AirshipLines(a, state, 32000, 4380038, 5300553);
         AirshipLines(a, state, 36000, 4380039, 5300554);
         AirshipLater(a, state, 39500, async () =>
         {
             state.CannonReady = true;
             await BroadcastAsync(a, BaseInfo, Snapshot(a));
+            // G 50881 更新任務、50882 才出現中央砲台；不能在敵艦入場時先放出三座。
+            if (Step(a) is { } step) await SyncSceneActorsAsync(a, step.Actors);
         }, () => a.Wave == 1);
     }
 
@@ -176,7 +186,7 @@ public sealed partial class DungeonService
     private CastProjectile? AirshipCannonProjectile(GameSession member, ActiveSkillCast cast) =>
         member.SceneEntry == AirshipScene && cast.Request.SkillId == 5353001
         && Active(member) is { } attempt && attempt.CannonUsers.ContainsKey(member)
-            ? new CastProjectile(6120105, PositionTarget: true) : null;
+            ? new CastProjectile(6120105, PositionTarget: true, CastEffectId: 5353201) : null;
 
     /// <summary>合法泡泡只 ACK，不再要求四船員／五次戰後互動。船長選項只啟動一次收尾。</summary>
     private async Task<bool> TryAirshipStoryInteractionAsync(Attempt a, GameSession member,
@@ -190,6 +200,7 @@ public sealed partial class DungeonService
         if (state.CaptainStarted) return true;
         state.CaptainStarted = true;
         await AirshipClientAsync(a, "ClearAllShouts");
+        ScheduleAirshipCaptainBlasts(a, state);
         AirshipLines(a, state, 4600, 5300568, 4380045, wave: 6);
         AirshipLater(a, state, 12000, async () =>
         {
@@ -202,17 +213,8 @@ public sealed partial class DungeonService
     }
 
     /// <summary>三艘敵船的出生位置來自原服 AOI 50761；不是三次射擊或固定傷害規則。</summary>
-    private static MapPoint AirshipStorySpawnPoint(Attempt a, int npc, MapPoint fallback, int waveIndex)
-    {
-        if (a.Plan.SceneEntry != AirshipScene || a.Wave != 1) return fallback;
-        return (npc, waveIndex) switch
-        {
-            (5300015, 0) => new(346.8f, 207.65002f, 451.9f, fallback.Face),
-            (5300053, 1) => new(332.9f, 207.65002f, 530.8f, fallback.Face),
-            (5300053, 2) => new(333.6f, 207.65002f, 358.8f, fallback.Face),
-            _ => fallback,
-        };
-    }
+    private static MapPoint AirshipStorySpawnPoint(Attempt a, int npc, MapPoint fallback, int waveIndex) =>
+        AirshipRoute(a, npc, waveIndex)?.Born ?? fallback;
 
     private static bool AirshipStorySpawnGrounded(Attempt a) => a.Plan.SceneEntry != AirshipScene || a.Wave != 1;
 
@@ -309,6 +311,7 @@ public sealed partial class DungeonService
         if (a.Plan.SceneEntry != AirshipScene || !_airshipStories.TryGetValue(a, out var state)) return;
         state.Stopped = true;
         state.Generation++;
+        await ClearAirshipDeckAsync(a, state);
         await ResetAirshipRollAsync(a, state, 0);
     }
 

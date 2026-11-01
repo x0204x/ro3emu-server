@@ -135,6 +135,7 @@ public sealed partial class DungeonService
             if (a.Settled || a.Room.Closed) return;
             if (_catalog.ScenePoint(a.Plan.SceneEntry, spec.Point) is not { } at || _data.Row("NPCConfig", spec.NpcId) is not { } row)
                 continue; // the catalog validated both; a changed export only loses the actor
+            at = AirshipStoryActorPoint(a, spec, at);
             int type = (int)GameData.Int(row, "_iNPCType");
             var unit = new SceneActorUnit
             {
