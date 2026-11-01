@@ -40,6 +40,7 @@ public sealed partial class DungeonService
         public bool Sliding { get; set; }
         public SceneActorUnit? Carrier { get; set; }
         public long SeatToken { get; set; }
+        public bool CarryPublished { get; set; }
         public Dictionary<long, CustomData?> Previous { get; } = new();
         public Dictionary<long, CustomData> Applied { get; } = new();
     }
@@ -156,7 +157,8 @@ public sealed partial class DungeonService
         try
         {
             token = await _vehicles.SeatOnSceneActorAsync(s, actor.Uid, actor.NpcId, interaction,
-                beforeNotify: () => BoardAntRiderAsync(a, s, actor, state), send3C: false);
+                beforeNotify: () => BoardAntRiderAsync(a, s, actor, state), send3C: false,
+                carry: new AoICarry { Id = (ulong)actor.Uid, CarryOffset = AntSeatOffset() });
         }
         catch
         {
@@ -188,9 +190,9 @@ public sealed partial class DungeonService
         if (s.Role is not { } role || !AntTraversalCurrent(s, state)) return;
         await AntCarrierStateAsync(a, actor, active: true);
         if (!AntTraversalCurrent(s, state)) return;
-        var offset = VehicleSeatConfig.Get(_data, DeniroRide)?.Offset ?? [];
+        var offset = AntSeatOffset();
         var shown = actor.Pos.Clone();
-        if (offset.Length >= 3) { shown.X += offset[0] / 100f; shown.Y += offset[1] / 100f; shown.Z += offset[2] / 100f; }
+        shown.X += offset.X; shown.Y += offset.Y; shown.Z += offset.Z;
         var move = new MovementChangeNtf
         {
             Uid = role.Id, TransType = MovementTransitionType.MoveTransBeCarriedMove,
@@ -270,12 +272,14 @@ public sealed partial class DungeonService
 
     private async Task ClearAntSeatAsync(GameSession s, AntTraversal state)
     {
+        if (_antTraversals.TryGetValue(s, out var replacement) && !ReferenceEquals(replacement, state)) return;
         if (state.Carrier != null)
         {
             state.Carrier.StoryInteraction = new InteractInfo { EType = InteractInfo.Types.EState.Idle };
             if (!state.Attempt.Room.Closed)
                 try { await AntCarrierStateAsync(state.Attempt, state.Carrier, active: false); }
                 catch (Exception e) { LogAntCleanupFailed(e, state.Attempt.Plan.SceneEntry); }
+            await ClearAntCarrierPassengerAsync(state);
             if (state.SeatToken != 0)
                 try { await _vehicles.PutDownFromSceneActorAsync(s, state.SeatToken); }
                 catch (Exception e) { LogAntCleanupFailed(e, state.Attempt.Plan.SceneEntry); }

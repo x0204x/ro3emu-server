@@ -10,7 +10,7 @@ namespace Ro3Emu.Server.Game;
 /// NPC-owned gameplay states. NPCInteractConfig selects GameplayStatusConfig; VehicleConfig selects the
 /// VehicleSeatConfig rows. LC_GamePlayStatusMgr.lua:876-931 consumes 32702, and LC_VehicleServer.lua:143-167 sends 32708.
 /// </summary>
-public sealed class WorldInteractionService
+public sealed partial class WorldInteractionService
 {
     public const uint Change = 32702, Action = 32703, Change3C = 32704,
         SeatChange = 32708, VehicleSync = 31074;
@@ -21,7 +21,8 @@ public sealed class WorldInteractionService
         public static Anchor Of(WorldNpc npc) => new(npc.Uid, npc.SceneEntry, npc.NpcId);
     }
 
-    private sealed record Active(Anchor Npc, int InteractionId, int StatusId, int StatusType, int SeatIndex, bool Scripted = false, long Token = 0);
+    private sealed record Active(Anchor Npc, int InteractionId, int StatusId, int StatusType, int SeatIndex,
+        bool Scripted = false, long Token = 0, AoICarry? Carry = null);
     private long _seatToken;
     private readonly Dictionary<GameSession, Active> _active = new();
     private readonly Dictionary<(long Scene, long Npc, int Seat), GameSession> _seats = new();
@@ -128,6 +129,8 @@ public sealed class WorldInteractionService
 
     private async Task NotifyAsync(GameSession s, Active state, bool interrupt)
     {
+        // G 的 LC_GamePlayStatusMgr.EnterVehicle 需要先由 carry_info 建立乘客元件。
+        if (state.Carry != null) await NotifyCarryAsync(s, state.Carry);
         var info = new InteractInfo
         {
             EType = (InteractInfo.Types.EState)state.StatusType, StateId = state.StatusId,
@@ -144,6 +147,8 @@ public sealed class WorldInteractionService
         if (state.SeatIndex >= 0) _seats.Remove((s.WorldScene, state.Npc.Uid, state.SeatIndex));
         if (state.Scripted && SceneActorSeatEnded != null) await SceneActorSeatEnded(s, state.Token, state.Npc.Uid);
         if (s.Role == null || s.SceneLoading) return;
+        // 蟻穴原服順序：載具 Idle → 31044 解除掛載 → 玩家 Idle。
+        if (state.Carry != null) await NotifyCarryAsync(s, EmptyCarry());
         var message = new InteractChangeNtf
         {
             Uid = s.Role.Id,
@@ -160,10 +165,14 @@ public sealed class WorldInteractionService
         if (!_active.Remove(s, out var state)) return;
         if (state.SeatIndex >= 0) _seats.Remove((s.WorldScene, state.Npc.Uid, state.SeatIndex));
         if (state.Scripted && SceneActorSeatEnded != null) await SceneActorSeatEnded(s, state.Token, state.Npc.Uid);
+        if (state.Carry != null && s.Role != null) await NotifyCarryAsync(s, EmptyCarry(), includeSelf: false);
     }
     private async Task PlayerEnteredAsync(GameSession viewer, GameSession subject)
     {
         if (_active.TryGetValue(subject, out var state) && StillHere(subject, state))
+        {
+            // 新觀察者也必須先建立掛載；此重播依客戶端契約推導，原服錄製未涵蓋晚進 AOI。
+            if (state.Carry != null) await SendCarryAsync(viewer, subject, state.Carry);
             await viewer.SendGameAsync(Change, new InteractChangeNtf
             {
                 Uid = subject.Role!.Id,
@@ -173,6 +182,7 @@ public sealed class WorldInteractionService
                     StateId = state.StatusId, InteractConfigId = state.InteractionId, ActiveObjId = state.Npc.Uid
                 }
             });
+        }
     }
 
     /// <summary>32703: only a configured QuitStatus action is accepted; skill grants stay with combat.</summary>
@@ -251,12 +261,13 @@ public sealed class WorldInteractionService
     /// again. Returns the seat's token, 0 when the player is in a state already, the NPC is no vehicle or the seat is taken.
     /// </summary>
     public async Task<long> SeatOnSceneActorAsync(GameSession s, long actorUid, int npcId, int interactionId,
-        Func<Task>? beforeNotify = null, bool send3C = true)
+        Func<Task>? beforeNotify = null, bool send3C = true, AoICarry? carry = null)
     {
         if (!InWorld(s) || _active.ContainsKey(s) || !IsRide(interactionId)
             || NPCInteractConfig.Get(_data, interactionId) is not { } interaction) return 0;
         int statusId = (int)interaction.StatusId, seat = (int)interaction.StatusLocation - 1;
-        var state = new Active(new Anchor(actorUid, s.SceneEntry, npcId), interactionId, statusId, 3, seat, Scripted: true, Token: ++_seatToken);
+        var state = new Active(new Anchor(actorUid, s.SceneEntry, npcId), interactionId, statusId, 3, seat,
+            Scripted: true, Token: ++_seatToken, Carry: carry?.Clone());
         int[] seats = VehicleSeats(state);
         if (seat < 0 || seat >= seats.Length || _data.Row("VehicleSeatConfig", seats[seat]) == null || !SeatFree(s, actorUid, seat)) return 0;
         _active[s] = state;

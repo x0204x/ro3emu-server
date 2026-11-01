@@ -46,6 +46,7 @@ public sealed partial class DungeonService
         public long BornMs { get; init; }
         public List<BuffInfo> Buffs { get; } = new();
         public InteractInfo? StoryInteraction { get; set; }
+        public AoICarryInfo? StoryCarryInfo { get; set; }
 
         public override EntityBase Entity()
         {
@@ -69,6 +70,7 @@ public sealed partial class DungeonService
                     entity.Property.Add(new AoIProperty { Idx = idx, Data = value, BaseData = value });
             if (Buffs.Count > 0) entity.BuffData = new AoIBuffInfo { AddBuffs = { Buffs.Select(b => b.Clone()) } };
             if (StoryInteraction != null) entity.InteractInfo = StoryInteraction.Clone();
+            if (StoryCarryInfo != null) entity.CarryInfo = StoryCarryInfo.Clone();
             return entity;
         }
     }
@@ -204,7 +206,8 @@ public sealed partial class DungeonService
         _log.LogInformation("{Name} interacts {Interaction} with scene actor {Npc} {Uid} (scene {Scene}, config scene {ConfigScene}, "
             + "distance {Distance:0.0} m): {Result}", s.Role?.Name, req.InteractionId, actor?.NpcId, req.NpcUid, s.SceneEntry,
             req.SceneConfigId, actor == null ? -1 : MonsterService.Distance(s.Position.X, s.Position.Z, actor.X, actor.Z), code);
-        await s.SendGameAsync(SceneService.NpcInteraction, new NpcInteractionRsp { Result = code, Req = req });
+        bool replyAfterRide = code == 0 && a!.Plan.SceneEntry == AntDeniroScene && req.InteractionId == DeniroRide;
+        if (!replyAfterRide) await s.SendGameAsync(SceneService.NpcInteraction, new NpcInteractionRsp { Result = code, Req = req });
         if (code != 0) return true;
         if (await TryAirshipStoryInteractionAsync(a!, s, actor!, req.InteractionId)) return true;
         // Dracula's Lair: a bush search may find the key; its finder is the rescuer, the only one the cage opens for.
@@ -218,6 +221,12 @@ public sealed partial class DungeonService
         }
         await StrikeAsync(a!, s, actor!, req.InteractionId);
         await SeatRiderAsync(a!, s, actor!, (int)req.InteractionId);
+        if (replyAfterRide)
+        {
+            // 原服先完成角色掛載與 Vehicle 狀態，再回覆互動成功，最後同步載具乘客清單。
+            await s.SendGameAsync(SceneService.NpcInteraction, new NpcInteractionRsp { Req = req });
+            await NotifyAntCarrierBoardedAsync(a!, s, actor!);
+        }
         var events = new List<(Kind, long)> { (Kind.Interaction, req.InteractionId) };
         if (_catalog.DungeonMessage(req.InteractionId) is { } message) events.Add((Kind.Message, message));
         await StepEventAsync(a!, s, events, actor);
