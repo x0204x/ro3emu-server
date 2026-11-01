@@ -68,10 +68,10 @@ public sealed partial class CharacterService
     /// </summary>
     public StatSheet Stats(GameSession session) => Stats(session, null);
 
-    /// <summary>The player's own build plus live guardian modifiers used by player chant timing. Ordinary timed buffs
-    /// stay outside this guardian-specific path, matching the existing guardian reaction scope.</summary>
+    /// <summary>詠唱讀取角色的有效屬性；LC_DAL_PlayerInfo.GetRealPropertyValue(PreVarChant) 使用合計的
+    /// ChantSpeed／PreVarChant，不依增益來源區分。到期但尚未由下一次 tick 清除的增益不計入。</summary>
     internal StatSheet ChantStats(GameSession session) =>
-        Stats(session, static buff => buff.IsGuardianOwned && buff.ExpireMs > MonsterService.NowMs);
+        Stats(session, static buff => buff.ExpireMs > MonsterService.NowMs);
 
     private StatSheet Stats(GameSession session, Func<ActiveBuff, bool>? includeBuff)
     {
@@ -280,8 +280,9 @@ public sealed partial class CharacterService
     private const int AttrModTypeBase = 0;
 
     /// <param name="showChange">Base level up or committed stat points: the client floats the attribute changes.</param>
-    private async Task SendStatsAsync(GameSession session, bool showChange = false)
+    private async Task SendStatsAsync(GameSession session, bool showChange = false, int changeType = AttrModTypeBase)
     {
+        if (DeferStatPublication(session, showChange)) return;
         var oldIds = session.EntityProperties.Select(p => (int)p.Id).ToHashSet();
         Refresh(session);
         var stats = Stats(session);
@@ -293,7 +294,7 @@ public sealed partial class CharacterService
             session.SentPropertyIds.Add(id);
         }
         var change = new Romsg.OnePropertyChange { Property = all };
-        if (showChange) change.AttrModTypes.Add(AttrModTypeBase);
+        if (showChange) change.AttrModTypes.Add(changeType);
         await session.SendGameAsync(OnePropertyChange, change);
 
         var aoi = new AOIAttrChange { EntityUuid = (ulong)session.Role.Id };

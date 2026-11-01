@@ -87,6 +87,9 @@ public sealed partial class CombatService
 
     private Task PeriodicTickAsync(BuffService.PeriodicEffect effect, ActiveBuff buff)
     {
+        if (!_buffs.PeriodicCurrent(effect)) return Task.CompletedTask;
+        if (buff.ConfigId is >= 1432501 and <= 1432504)
+            return effect.Player is { } owner ? OffertoriumTickAsync(owner, buff, () => _buffs.PeriodicCurrent(effect)) : Task.CompletedTask;
         if (effect.Rule.Kind == BuffRuleTables.PeriodicKind.Heal)
             return effect.Player is { } healed ? PeriodicHealAsync(healed, effect, buff) : Task.CompletedTask;
         if (effect.Source is not { } source) return Task.CompletedTask;
@@ -108,13 +111,18 @@ public sealed partial class CombatService
     {
         var role = p.Role;
         if (role == null || role.Id != effect.TargetId || p.Dead || p.SceneLoading || p.Progress == null) return;
+        // 毒性防護15011只免疫中毒9030的傷害，不移除中毒，也不擴大為所有持續傷害免疫。
+        if (_data.Row("BuffConfig", buff.ConfigId) is { } poison && GameData.Int(poison, "_iBuffID") == 9030
+            && p.Buffs.Any(b => b.ExpireMs > Now && _data.Row("BuffConfig", b.ConfigId) is { } protection
+                && GameData.Int(protection, "_iBuffID") == 15011)) return;
         long scene = p.WorldScene, generation = p.SceneGeneration;
         var stats = _character.Stats(p);
         var defender = new Fighter(0, 0, 0, 0, p.Progress.Level, 1) { Def = stats[105], Mdef = stats[106] };
         var rule = effect.Rule;
         long damage = PeriodicAmount(attacker, defender, rule, buff.PileCount);
         var committed = await CommitPlayerDamageAsync(p, damage, rule.Row,
-            () => ReferenceEquals(p.Role, role) && p.WorldScene == scene && p.SceneGeneration == generation, sourceElement: rule.Element);
+            () => _buffs.PeriodicCurrent(effect) && ReferenceEquals(p.Role, role)
+                && p.WorldScene == scene && p.SceneGeneration == generation, sourceElement: rule.Element);
         if (committed == null) return;
         (damage, long hp, _, long shieldDamage) = committed.Value;
         try
@@ -148,11 +156,15 @@ public sealed partial class CombatService
             || m.Dead || m.Hp <= 0 || !CanHitMonster(s, m)) return;
         var attachment = s.Attachment;
         long generation = s.SceneGeneration, scene = s.WorldScene;
-        bool Current() => ReferenceEquals(s.Role, role) && ReferenceEquals(s.Attachment, attachment) && !s.SceneLoading
+        bool Current() => _buffs.PeriodicCurrent(effect) && ReferenceEquals(s.Role, role) && ReferenceEquals(s.Attachment, attachment) && !s.SceneLoading
             && s.SceneGeneration == generation && s.WorldScene == scene && _sessions.All().Contains(s);
         var rule = effect.Rule;
         var defender = MonsterFighter(m);
         long amount = PeriodicAmount(attacker, defender, rule, buff.PileCount);
+        long beforeShield = amount;
+        amount = await _buffs.AbsorbAsync(m, amount, rule.Row);
+        if (!Current() || m.Removed || m.Dead || m.Hp <= 0) return;
+        long shieldDamage = beforeShield - amount;
         long before = m.Hp;
         m.Hp = Math.Max(0, before - amount);
         bool lethal = m.Hp == 0; // reserved before the awaited settlement, like a skill hit
@@ -167,12 +179,13 @@ public sealed partial class CombatService
             var hit = new SkillHitInfo
             {
                 SrcID = role.Id, SessionId = ++_sessionIds, SrcElement = rule.Element,
-                Dsts = { new DamageInfo { DstID = m.Uid, Damage = amount, DstElement = m.Template.Element, IsDead = m.Hp == 0 } },
+                Dsts = { new DamageInfo { DstID = m.Uid, Damage = amount, SheildDamage = shieldDamage,
+                    DstElement = m.Template.Element, IsDead = m.Hp == 0 } },
             };
             foreach (var viewer in m.Viewers.Append(s).Distinct().ToArray()) await viewer.SendGameAsync(SkillHit, hit);
             await RecordDamageStatisticAsync(s, new Romsg.DamageStatistics
             {
-                DamageSourceId = role.Id, DamageTargetId = m.Uid, DamageValue = amount, BuffId = buff.ConfigId,
+                DamageSourceId = role.Id, DamageTargetId = m.Uid, DamageValue = amount, DamageBeShield = shieldDamage, BuffId = buff.ConfigId,
             });
             if (m.Hp == 0 && !m.DeathDurable) return; // another hit is still committing that death
             await _world.ToUnitViewersAsync(m, AoiAttrChange, MonsterService.Hp(m));
@@ -214,20 +227,25 @@ public sealed partial class CombatService
     {
         if (p.Role == null || p.Role.Id != effect.TargetId || p.Progress == null) return;
         using var held = await CharacterService.Lock(p);
-        if (p.Role == null || p.Role.Id != effect.TargetId || p.Dead || p.SceneLoading) return;
+        if (!_buffs.PeriodicCurrent(effect) || p.Role == null || p.Role.Id != effect.TargetId || p.Dead || p.SceneLoading) return;
         var rule = effect.Rule;
-        var stats = _character.Stats(p);
+        var stats = _character.HealingStats(p);
         long amount = rule.HealFlat + (rule.HealRatioBp != 0 && rule.HealAttr > 0 ? stats[rule.HealAttr] * rule.HealRatioBp / 10000 : 0);
         amount *= Math.Max(1, buff.PileCount);
-        var guardian = _buffs.GuardianAttributes(p);
-        amount = ModifiedHealing(guardian, guardian, amount);
+        // 治療輸出屬於施放者、受治療屬於承受者，不能把受治療者當作他人的來源。
+        // (inferred) 離線或不可識別來源只保留基礎回復及目標修正，不捏造已離線的來源屬性。
+        var source = _sessions.All().FirstOrDefault(s => s.Role?.Id == buff.SourceId && s.Progress != null);
+        amount = ModifiedHealing(source is null ? new StatSheet() : _character.HealingStats(source),
+            _character.HealingStats(p), amount);
         long actual = Math.Min(amount, Math.Max(0, stats[101] - stats[2000]));
         if (actual <= 0) return;
         await _character.SetHpSpAsync(p, stats[2000] + actual, null);
         await ToPlayerAndViewersAsync(p, SkillHit, new SkillHitInfo
         {
-            SrcID = p.Role.Id, SessionId = ++_sessionIds,
+            SrcID = source?.Role?.Id ?? p.Role.Id, SessionId = ++_sessionIds,
             Dsts = { new DamageInfo { DstID = p.Role.Id, Damage = actual, DamageType = DamageType.Heal, DstElement = 1 } },
         });
+        if (source != null)
+            foreach (var observer in HealingApplied) await observer(source, p, rule.Row, actual);
     }
 }

@@ -29,6 +29,20 @@ public sealed class ActiveSkillCast
     public required int ActionMs { get; init; }
     public bool Cancelled { get; set; }
     public bool Resolved { get; set; }
+    internal bool CompletionPublished { get; set; }
+    internal bool PassiveCastResolved { get; set; }
+    internal object? PassiveSourceEpoch { get; set; }
+    /// <summary>同一次原施放各段已發布的玩家命中；不改變既有 CastResolved 的怪物參數契約。</summary>
+    internal List<PublishedPlayerCastHit> PublishedPlayerHits { get; } = [];
+    internal int AuthoredStageIndex { get; set; } = -1;
+    internal int AuthoredStageCount { get; set; }
+    internal CombatService.AuthoredDamageStage AuthoredStage { get; set; }
+    internal bool AuthoredStagesFinished { get; set; }
+    internal HashSet<long> AuthoredStatusApplied { get; } = [];
+    internal HashSet<long>? AttackShieldTargets { get; set; }
+    internal int AttackShieldApplied { get; set; }
+    internal IReadOnlyList<MonsterUnit>? ReadingMonsters { get; set; }
+    internal IReadOnlyDictionary<GameSession, Func<bool>>? ReadingPlayers { get; set; }
     /// <summary>此施放已排程來源目標的彈道；命中通知不得為同一目標再送一次。</summary>
     internal bool HasTimedBullet { get; set; }
     /// <summary>已由場景權威允許的空瞄；保留施放與消耗，不在命中時重新搜尋附近單位。</summary>
@@ -107,9 +121,11 @@ public sealed partial class CombatService
                         && !GrantedSkill.Exists(grant => grant(s, req.SkillId))))
                 error = ErrorCodes.SkillNotLearned;
             else if (!SkillModeAllowed(s, row!.Value)) error = ErrorCodes.SkillRequirements;
+            else if (!KnownSkillConditionsMet(s, row.Value, owned,
+                request.OpUnitId == 0 || request.OpUnitId == s.Role?.Id)) error = ErrorCodes.SkillRequirements;
             else if (GameData.Int(row!.Value, "_iBasicType") != 1) error = ErrorCodes.SkillPassive;
-            else if (_buffs.HasForbidden(s, new SkillConfig(row.Value).IsNormalAttack(_data)
-                ? ForbiddenState.NormalAttack : ForbiddenState.CastSkill)) error = ErrorCodes.SkillBadState;
+            else if (_buffs.ActionBlocked(s, new SkillConfig(row.Value).IsNormalAttack(_data)
+                ? ForbiddenState.NormalAttack : ForbiddenState.CastSkill, (int)GameData.Int(row.Value, "_iSkillID"))) error = ErrorCodes.SkillBadState;
             else if (req.SkillId == PublicSkill("WorldTreeSkillId") && _buffs.HasForbidden(s, ForbiddenState.UseItem)) error = ErrorCodes.ItemUseForbidden;
             else if (req.SkillId == PublicSkill("WorldTreeSkillId") && !ItemAllowedInMap(s, (int)PublicSkill("WorldTreeItemId"))) error = ErrorCodes.ItemUseAreaForbidden;
             else if (req.IsExtraSkill && owned == null && GameData.Int(row.Value, "_iExtraType") == 0) error = ErrorCodes.SkillRequirements;
@@ -125,9 +141,13 @@ public sealed partial class CombatService
                     || SwingInFlight(active, row.Value, req))) error = ErrorCodes.SkillBusy;
             else
             {
-                error = ValidateTarget(s, row.Value, req, origin, owned == null ? WalkSlack(s) : 0,
-                    _data.Row("SkillConfig", request.SkillId) is { } askedRow ? Range(askedRow) : 0);
-                if (error != 0 && SkillTargetErrorOverrides.Any(allow => allow(s, req, error))) error = 0;
+                error = TargetAimErrors.Select(validate => validate(s, req)).FirstOrDefault(value => value != 0);
+                if (error == 0)
+                {
+                    error = ValidateTarget(s, row.Value, req, origin, owned == null ? WalkSlack(s) : 0,
+                        _data.Row("SkillConfig", request.SkillId) is { } askedRow ? Range(askedRow) : 0);
+                    if (error != 0 && SkillTargetErrorOverrides.Any(allow => allow(s, req, error))) error = 0;
+                }
             }
         }
         // GmUnlimit's "no consumption" (inferred): no HP, SP, item, buff pile or energy cost.
@@ -390,7 +410,7 @@ public sealed partial class CombatService
     {
         int release = (int)GameData.Int(row, "_iRelease");
         var monster = FindMonster(s.WorldScene, req.TargetId);
-        bool revive = Script(row) == "Resurrection";
+        bool revive = IsResurrectionRow(row);
         var player = req.TargetId == s.Role!.Id ? s : FindPlayer(s, req.TargetId, revive);
         var enemyPlayer = EventTarget(s, req.TargetId);
         Vec3 targetPosition;
@@ -402,7 +422,8 @@ public sealed partial class CombatService
                 && (!revive || !_buffs.HasForbidden(player, ForbiddenState.Revive))) targetPosition = player.Position;
             else if (req.TargetId == 0 && Relation(row, true, true)) { req.TargetId = s.Role.Id; targetPosition = s.Position; }
             else return ErrorCodes.SkillTargetInvalid;
-            req.TargetPos = targetPosition.Clone();
+            if (req.TargetPos is null || !PreserveTargetAim.Any(preserve => preserve(s, req)))
+                req.TargetPos = targetPosition.Clone();
             if (revive)
             {
                 if (player == s) return ErrorCodes.SkillTargetInvalid;
@@ -523,6 +544,7 @@ public sealed partial class CombatService
     /// <summary>Ends a skill group's running cooldowns now, each under the mode it was shown (a talent's reset).</summary>
     internal static async Task ResetCooldownAsync(GameSession s, int group)
     {
+        s.SkillPublicCds.Remove(group); // 完整重置（GM／既有天賦）同步清除公共下限；卡片另用 ResetOwnCooldownAsync。
         long now = Now;
         var notice = new SkillCdNotify { Uuid = s.Role!.Id };
         foreach (var (key, end) in s.SkillModeCds.Where(c => c.Key.Group == group && c.Value > now).ToArray())
@@ -546,6 +568,7 @@ public sealed partial class CombatService
         {
             if (duration <= 0) return;
             long end = now + duration;
+            s.SkillCooldownShownModes[(g, m)] = shownMode;
             s.SkillModeCds[(g, m)] = Math.Max(end, s.SkillModeCds.GetValueOrDefault((g, m)));
             if (shared) s.SkillCds[g] = Math.Max(end, s.SkillCds.GetValueOrDefault(g));
             end = Math.Max(s.SkillModeCds[(g, m)], s.SkillCds.GetValueOrDefault(g));
@@ -569,7 +592,11 @@ public sealed partial class CombatService
         {
             int sibling = (int)groups[i];
             if (_data.Row("SkillConfig", sibling) is { } siblingRow) sibling = (int)GameData.Int(siblingRow, "_iSkillID");
-            if (sibling > 0) Set(sibling, 0, (long)shared[i], true, 0);
+            if (sibling > 0)
+            {
+                s.SkillPublicCds[sibling] = Math.Max(s.SkillPublicCds.GetValueOrDefault(sibling), now + (long)shared[i]);
+                Set(sibling, 0, (long)shared[i], true, 0);
+            }
         }
         // LC_Scene_Sync overwrites a cache entry for every 31113 row. A short public cooldown must not replace
         // this cast's longer own cooldown (BackSlide), or an already running group/mode cooldown, in that cache.
@@ -589,6 +616,8 @@ public sealed partial class CombatService
         if (target != null && !CanHitMonster(s, target)) return;
         if (EffectiveSkillRow(s, skillId) is not { } row || !Learned(s, row) || !SkillModeAllowed(s, row)
             || _buffs.HasForbidden(s, ForbiddenState.NormalAttack) || s.SkillCast is { Cancelled: false }) return;
+        // 每次續擊仍須符合原 _iSkillCondition；已知條件失效後停止舊迴圈，不等待重新上騎而復活。
+        if (!KnownSkillConditionsMet(s, row, null, true)) { s.Attack = null; return; }
         var request = new CastSkillReq
         {
             SkillId = (int)GameData.Int(row, "_iID"), TargetId = target?.Uid ?? 0,
@@ -620,7 +649,8 @@ public sealed partial class CombatService
         var skill = new SkillConfig(row);
         var origin = actor?.Pos ?? s.Position.Clone();
         var target = FindMonster(s.WorldScene, req.TargetId);
-        float face = target != null ? MonsterService.Angle(origin.X, origin.Z, target.X, target.Z) : req.Face;
+        var aim = PreserveTargetAim.Any(preserve => preserve(s, req)) ? req.TargetPos : target?.Pos;
+        float face = aim != null ? MonsterService.Angle(origin.X, origin.Z, aim.X, aim.Z) : req.Face;
         var action = new ActiveSkillCast
         {
             Id = id, OwnerId = s.Role!.Id, WorldScene = s.WorldScene, SceneGeneration = s.SceneGeneration,
@@ -634,21 +664,27 @@ public sealed partial class CombatService
         // that walks on without reporting it cannot claim the distance afterwards (SceneService.AcceptWalkAsync).
         if (actor == null && new SkillConfig(row).Movement == 0)
             SceneService.HoldWalk(s, DateTime.UtcNow.AddMilliseconds(leadMs + action.ChantMs + action.ActionMs), s.Walking);
-        s.WorldState.ResurrectionCastId = Script(row) == "Resurrection" ? id : 0;
+        s.WorldState.ResurrectionCastId = IsResurrectionRow(row) ? id : 0;
         s.Face = face;
         req.Face = face;
-        Task Timeline() => SendCastTimelineAsync(s, new UseInSkillInfo
+        var projectile = ProjectileCasts.Select(rule => rule(s, action)).FirstOrDefault(value => value.HasValue);
+        async Task Timeline()
         {
-            SrcID = action.SourceId, SkillID = req.SkillId, TargetId = req.TargetId, TargetPos = req.TargetPos ?? origin,
-            Face = face, SessionId = id, ChantMs = action.ChantMs, SkillMs = action.ActionMs, StartTime = action.StartMs, PlayAct = true,
-        }, highLevel: highLevel, extra: actor != null || req.IsExtraSkill);
+            await SendCastTimelineAsync(s, new UseInSkillInfo
+            {
+                SrcID = action.SourceId, SkillID = req.SkillId, TargetId = projectile is { PositionTarget: true } ? 0 : req.TargetId,
+                TargetPos = req.TargetPos ?? origin,
+                Face = face, SessionId = id, ChantMs = action.ChantMs, SkillMs = action.ActionMs, StartTime = action.StartMs, PlayAct = true,
+            }, highLevel: highLevel, extra: actor != null || req.IsExtraSkill);
+            TraceImpact(action, "timeline-sent");
+        }
         if (leadMs <= 0) await Timeline();
-        else ScheduleRuntime(action.WorldScene, TimeSpan.FromMilliseconds(leadMs), () => Live(s, action) ? Timeline() : Task.CompletedTask);
+        else ScheduleCastDeadline(action, 0, () => Live(s, action) ? Timeline() : Task.CompletedTask);
+        await PrepareVolleyArrowsAsync(s, action);
         var template = _data.SkillTemplate(skill.ScriptShow);
         var points = template is { } t ? Numbers(t, "m_kAtkPoints") : [];
         double point = points.FirstOrDefault(0.2);
-        int at = Script(row) == "Resurrection" ? action.ChantMs : ImpactOffset(template, point, action.ChantMs, action.ActionMs);
-        var projectile = ProjectileCasts.Select(rule => rule(s, action)).FirstOrDefault(value => value.HasValue);
+        int at = IsResurrectionRow(row) ? action.ChantMs : ImpactOffset(template, point, action.ChantMs, action.ActionMs);
         int bulletEffect = projectile?.EffectId ?? (actor == null && req.TargetId != 0 && !HasClientBulletPoints(template)
             ? BulletEffect(skill.ScriptShow) : 0);
         var bulletTarget = req.TargetPos ?? target?.Pos ?? origin;
@@ -658,7 +694,7 @@ public sealed partial class CombatService
         {
             action.HasTimedBullet = true;
             action.IndependentProjectile = projectile is { PositionTarget: true };
-            ScheduleRuntime(action.WorldScene, TimeSpan.FromMilliseconds(leadMs + at), async () =>
+            ScheduleCastDeadline(action, at, async () =>
             {
                 if (!Live(s, action)) return;
                 if (projectile is { CastEffectId: > 0 } authored)
@@ -676,20 +712,27 @@ public sealed partial class CombatService
                     // the scheduled onset rather than hiding a late scheduler callback behind its execution time.
                     StartTimestampMs = action.StartMs + at,
                 }, highLevel: highLevel);
+                TraceImpact(action, "bullet-sent");
             });
         }
         int resolveAt = at + bulletTravel;
-        ScheduleRuntime(action.WorldScene, TimeSpan.FromMilliseconds(leadMs + resolveAt), async () =>
+        if (!TryScheduleAuthoredStages(s, action, template, () => Live(s, action), () =>
+        {
+            if (Now >= action.StartMs + action.ChantMs + action.ActionMs && ReferenceEquals(s.SkillCast, action))
+                s.SkillCast = null;
+            return Task.CompletedTask;
+        }, travelMs: bulletTravel)) ScheduleCastDeadline(action, resolveAt, async () =>
         {
             if (!Live(s, action)) return;
             action.Resolved = true;
+            TraceImpact(action, "resolve-entered");
             await ResolveCastAsync(s, action);
         });
         int releaseAt = action.IndependentProjectile ? action.ChantMs + action.ActionMs
             : Math.Max(resolveAt, action.ChantMs + action.ActionMs);
-        ScheduleRuntime(action.WorldScene, TimeSpan.FromMilliseconds(leadMs + releaseAt + 1), () =>
+        ScheduleCastDeadline(action, releaseAt + 1, () =>
         {
-            if (ReferenceEquals(s.SkillCast, action)) s.SkillCast = null;
+            if (ReferenceEquals(s.SkillCast, action) && (action.AuthoredStageCount == 0 || action.AuthoredStagesFinished)) s.SkillCast = null;
             return Task.CompletedTask;
         });
     }

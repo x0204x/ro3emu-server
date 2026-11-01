@@ -66,6 +66,7 @@ public sealed partial class SkillCombatTests
     {
         await using var alice = await InWorld("Alice");
         await Gm("alice", "!lvl 99"); await Gm("alice", "!job 1210"); await Teach("alice", 11409);
+        await EquipConditionFixtureAsync("alice", 2500120, 2);
         await ChooseProfessionTalent(alice, "alice", 10102106);
         var monster = await Target("alice", stationary: true);
         await Loop.InvokeAsync(() => { monster.Hp = 1_000_000; return Task.CompletedTask; });

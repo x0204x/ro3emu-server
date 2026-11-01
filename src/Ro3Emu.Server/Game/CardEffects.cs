@@ -10,7 +10,7 @@ namespace Ro3Emu.Server.Game;
 
 /// <summary>
 /// Socketed cards' Buff(2) special effects (CardConfig._kSkillAttribute -> SpecialEffectConfig._kSpecialEffect [2, buff],
-/// 304 of the 348 card operations; Attr(1) and Attr1CountAddAttr2(8) are EquipmentStunts'). Every referenced BuffConfig
+/// 304 of the 1,340 card operations; Attr(1) and Attr1CountAddAttr2(8) are EquipmentStunts'). Every referenced BuffConfig
 /// row is a zero-time passive (iPassiveBuff 1): like totem passives they are registered per source (the card GUID) for
 /// as long as the copy is socketed, which publishes their icons, applies their _kChangeAttri (Variable CT, 2024001..4)
 /// and arms BuffService's lethal-hit revive for groups 20520/20521 (2052001.., 2052101..). (inferred) Their
@@ -27,24 +27,38 @@ namespace Ro3Emu.Server.Game;
 /// - SP absorb 2050401: _kLogicData [chance bp, ...], desc[1]% of the damage as SP.
 /// - size: 20501 (2050101..) adds _kLogicData[0] bp of damage against Small/Medium/Large (NPCConfig._iSize 1..3)
 ///   monsters; 20500 (2050001..) adds _kLogicData[1] bp with a _kLogicData[0] bp chance.
-/// Not executed (no machinery or no data link): autocast skills (Bash, Jupitel Thunder, Divine Light), race-family
-/// damage (Orcs, Kobolds, ...: no monster family field), armor element changes, magic nullify/reflect, status
-/// immunities, Endure, cooldown reset, monster SP drain, Splash, Double Attack, detection, indestructible gear.
+/// - 物理命中觸發 Bash、Jupitel Thunder；普通攻擊觸發 Double Attack，依各星階機率及共用內置冷卻。
+/// 其他卡片行為分別在 Offence、Defence、Reflection、SkillEvents partial：依 NPC 標籤增傷、
+/// 普攻濺射、暴擊後增傷、鎧甲轉屬性、魔法無效、玩家單體反射、控制免疫、霸體、冷卻重置、
+/// 扣除目標 SP 與治療觸發。各模組註明從原表確認及伺服器端推定的範圍。
+/// 尚未補齊：怪物限定隱匿偵測的同步／選取流程；裝備破壞事件不存在，不能宣稱不壞卡已實際阻止破壞。
 /// Skill(3) grants (Heal, Disguise, Magnum Break, Envenom, Sight, Sightless Mind) go into RoleProgress.GrantedSkills.
 /// </summary>
-public sealed class CardEffects
+public sealed partial class CardEffects
 {
     private readonly GameData _data;
     private readonly CharacterService _character;
     private readonly BuffService _buffs;
     private readonly SkillService _skills;
+    private readonly CombatService _combat;
     private readonly ConditionalWeakTable<GameSession, Runtime> _runtime = new();
 
     private sealed class Runtime
     {
+        public long RoleId;
+        public object? Epoch;
         /// <summary>Last registered buff GUID per (card GUID, config), to carry BuffEffectCds over a re-registration.</summary>
         public readonly Dictionary<(long Source, int Config), long> Registered = new();
         public readonly Dictionary<long, long> Cooldowns = new(); // proc family (base buff group) -> ready at
+        public bool ResolvingAutocast;
+    }
+
+    // 選角會重建 SkillProtocol 並清技能 CD；卡片事件也隨同重建，切圖及保留工作階段的重連不清空。
+    private Runtime RuntimeFor(GameSession s)
+    {
+        if (!_runtime.TryGetValue(s, out var state) || state.RoleId != s.Role?.Id || !ReferenceEquals(state.Epoch, s.SkillProtocol))
+            _runtime.AddOrUpdate(s, state = new Runtime { RoleId = s.Role?.Id ?? 0, Epoch = s.SkillProtocol });
+        return state;
     }
 
     private sealed record Passive(InvItem Card, int Id, JsonElement Row);
@@ -62,10 +76,15 @@ public sealed class CardEffects
         this._skills = skills;
         this._character = character;
         this._buffs = buffs;
+        this._combat = combat;
         cards.SocketsChanged.Add(RefreshAsync);
         scenes.Loaded.Add(RefreshAsync);
         combat.DamageAdjusters.Add(AdjustDamage);
         combat.DealtAsync.Add(OnDealtAsync);
+        InitializeReflection();
+        InitializeOffence(cards, scenes);
+        InitializeSkillEvents();
+        InitializeDefence();
     }
 
     private IEnumerable<Passive> Passives(GameSession s)
@@ -87,7 +106,7 @@ public sealed class CardEffects
     {
         if (s.Role == null) return;
         var wanted = Passives(s).Select(p => (Source: p.Card.Guid, p.Id)).ToHashSet();
-        var state = _runtime.GetOrCreateValue(s);
+        var state = RuntimeFor(s);
         bool statsChanged = false;
         foreach (var stale in s.Buffs.Where(b => b.IsPassive && !b.IsTotemOwned && !wanted.Contains((b.SourceId, b.ConfigId))).ToArray())
         {
@@ -119,17 +138,23 @@ public sealed class CardEffects
     /// and cast; the highest level of a group counts.</summary>
     private async Task GrantSkillsAsync(GameSession s)
     {
-        if (s.Progress is not { } progress) return;
+        if (RefreshGrantedSkills(s, _data) && s.SkillPlans != null) await _skills.SyncAsync(s);
+    }
+
+    /// <summary>由目前卡槽重建暫時技能權限。登入讀取快捷列前也必須先執行，避免將合法卡片技能當成未學習而移除。</summary>
+    internal static bool RefreshGrantedSkills(GameSession s, GameData data)
+    {
+        if (s.Progress is not { } progress) return false;
         Dictionary<int, int> granted = [];
-        foreach (var (_, id) in EquipmentStunts.CardEffects(s, _data))
-            if (SpecialEffectConfig.Get(_data, id) is { } effect)
+        foreach (var (_, id) in EquipmentStunts.CardEffects(s, data))
+            if (SpecialEffectConfig.Get(data, id) is { } effect)
                 foreach (var op in effect.SpecialEffect)
-                    if (op is [SkillOp, var row] && SkillConfig.Get(_data, row) is { SkillId: > 0 } skill)
+                    if (op is [SkillOp, var row] && SkillConfig.Get(data, row) is { SkillId: > 0 } skill)
                         granted[(int)skill.SkillId] = Math.Max(granted.GetValueOrDefault((int)skill.SkillId), (int)skill.Level);
-        if (granted.Count == progress.GrantedSkills.Count && granted.All(g => progress.GrantedSkills.GetValueOrDefault(g.Key) == g.Value)) return;
+        if (granted.Count == progress.GrantedSkills.Count && granted.All(g => progress.GrantedSkills.GetValueOrDefault(g.Key) == g.Value)) return false;
         progress.GrantedSkills.Clear();
         foreach (var (group, level) in granted) progress.GrantedSkills[group] = level;
-        if (s.SkillPlans != null) await _skills.SyncAsync(s);
+        return true;
     }
 
     private static long[] Numbers(JsonElement row, string field) => row.TryGetProperty(field, out var list) && list.ValueKind == JsonValueKind.Array
@@ -153,7 +178,7 @@ public sealed class CardEffects
 
     private bool Ready(GameSession s, long family, long cooldownMs)
     {
-        var state = _runtime.GetOrCreateValue(s);
+        var state = RuntimeFor(s);
         long now = MonsterService.NowMs;
         lock (state)
         {
@@ -213,6 +238,7 @@ public sealed class CardEffects
             var stats = _character.Stats(s);
             await _character.SetHpSpAsync(s, null, stats[2001] + sp);
         }
+        await AutocastOnDamageAsync(s, target, skillRow, passives);
     }
 
     /// <summary>"Ignores monster Size. Damage against Small, Medium, and Large monsters +X%" (2050101..4 always,

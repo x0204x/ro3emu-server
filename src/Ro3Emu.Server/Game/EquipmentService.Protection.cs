@@ -97,7 +97,7 @@ public sealed partial class EquipmentService
             var selected = setting.OptionSetting.Where(g => g.Value.Options.Count > 0).ToList();
             if (selected.Count == 0) continue;
             if (selected.All(g => g.Value.Options.Any(o => Matches(item, row, (int)GameData.Int(_data.Row("DecomposeConditionConfig", g.Key)!.Value, "_iType"), o))))
-                return Returns(item);
+                return MerchantReturns(session, Returns(item));
         }
         return [];
     }

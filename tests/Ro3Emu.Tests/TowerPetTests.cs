@@ -13,7 +13,7 @@ using Ro3Emu.Server.Maps;
 namespace Ro3Emu.Tests;
 
 /// <summary>Wire formation, persisted 5065, type-7 allies, combat and death substitution.</summary>
-public sealed class TowerPetTests : IAsyncLifetime
+public sealed partial class TowerPetTests : IAsyncLifetime
 {
     private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-tower-pets-" + Guid.NewGuid().ToString("N"));
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(12);

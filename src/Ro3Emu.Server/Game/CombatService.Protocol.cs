@@ -24,6 +24,7 @@ public sealed partial class CombatService
         public Dictionary<int, int> TemporarySlotRows { get; } = new();
         public string ParameterSignature { get; set; } = "";
         public bool TrainingPaused { get; set; }
+        internal Func<bool>? NoteLeapReady { get; set; }
         public Dictionary<(long Target, bool White, int Tag), bool> SkillSelection { get; } = new();
     }
 
@@ -79,12 +80,13 @@ public sealed partial class CombatService
         var mods = SkillParameterRules.Active(session, _data);
         var update = new SkillBeAffectedParamExNotify { IsAll = true, Uuid = session.Role.Id };
         // Scope 0 names its group; a scope-1 tag selector reaches every learned skill whose row carries its tags.
-        var groups = new SortedSet<int>(mods.Where(m => m.Scope == 0).Select(m => m.Group));
-        if (mods.Any(m => m.Scope == 1))
-            foreach (int learned in session.Progress.Skills.Keys)
+        var groups = new SortedSet<int>(mods.Where(m => m.Scope == 0 && m.Group > 0).Select(m => m.Group));
+        if (mods.Any(m => m.Scope == 1 || SkillParameterRules.IsAllSkillModifier(m)))
+            foreach (int learned in session.Progress.Skills.Keys.Concat(session.Progress.GrantedSkills.Keys).Distinct())
                 if (_skills.Level(session.Progress, learned) is var at and > 0
                     && _data.Row("SkillConfig", _skills.RealId(learned, at)) is { } learnedRow
-                    && mods.Any(m => m.Scope == 1 && SkillParameterRules.Matches(m, learned, SkillParameterRules.CategoriesOf(_data, learnedRow))))
+                    && mods.Any(m => (m.Scope == 1 || SkillParameterRules.IsAllSkillModifier(m))
+                        && SkillParameterRules.Matches(m, learned, SkillParameterRules.CategoriesOf(_data, learnedRow))))
                     groups.Add(learned);
         foreach (var group in groups)
         {
@@ -97,10 +99,16 @@ public sealed partial class CombatService
             {
                 if (type == 15) groupInfo.AffectParam[type] = new BeAffectedValueEx { AffectValue = SkillParameterRules.Mode(group, tags, mods) };
                 else if (type == 44) groupInfo.AffectParam[type] = new BeAffectedValueEx { AffectValue = CanQueueSkill(session, group) ? 1 : 0 };
+                else if (type == 5 && CastingRangeParameter(baseRow, row, mods, group, tags) is { } distance)
+                    groupInfo.AffectParam[type] = new BeAffectedValueEx { AffectValue = distance };
+                else if (type == SkillParameterRules.SkillCostType && mods.Any(m => SkillParameterRules.IsCostModifier(m)
+                    && SkillParameterRules.Matches(m, group, tags)))
+                    groupInfo.AffectParam[type] = SkillMatrixParameter(row, "_kCost");
                 else if (SkillParameterRules.Field(type) is { } field)
                 {
                     var value = new BeAffectedValueEx();
-                    if (type is 29 or 30)
+                    if (SkillParameterRules.IsMatrix(type)) value = SkillMatrixParameter(row, field);
+                    else if (SkillParameterRules.IsVector(type))
                     {
                         if (row.TryGetProperty(field, out var array) && array.ValueKind == JsonValueKind.Array)
                             foreach (var v in array.EnumerateArray()) value.AffectValueList.Add((long)(GameData.Number(v) ?? 0));
@@ -121,6 +129,32 @@ public sealed partial class CombatService
             await session.SendGameAsync(SkillAffectedEx, update);
         }
         await RefreshTemporarySlotsAsync(session);
+    }
+
+    /// <summary>LC_DynamicParamMgr.ProcessDynamicSkillParam 的 type 35 二維成本表，與施放驗證讀取相同的有效列。</summary>
+    private static BeAffectedValueEx SkillMatrixParameter(JsonElement row, string field)
+    {
+        var result = new BeAffectedValueEx();
+        foreach (var tuple in Tuples(row, field))
+        {
+            var values = new BeAffectedValueList();
+            values.AffectValueList.Add(tuple.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)));
+            result.AffectValueListList.Add(values);
+        }
+        return result;
+    }
+
+    /// <summary>配對 Lua 的 type 5 直接覆蓋最終施放公尺值。兩個實際詞條都同時帶 type 26（公分）；
+    /// 只接受這種明確一對一配對，避免再加一次距離或把沒有證據的精度／選擇規則套入客戶端。</summary>
+    private static long? CastingRangeParameter(JsonElement original, JsonElement effective,
+        IReadOnlyList<SkillParameterRules.Modifier> modifiers, int group, int[] tags)
+    {
+        var paired = modifiers.Where(m => SkillParameterRules.Matches(m, group, tags)).ToArray();
+        if (!paired.Any(m => m.Type == 5) || paired.Where(m => m.Type == 5).Any(range =>
+            !paired.Any(distance => distance.Type == 26 && distance.Operation == range.Operation
+                && distance.Value == range.Value * 100))) return null;
+        long cm = GameData.Int(effective, "_iDistanceMax");
+        return cm >= 0 && cm % 100 == 0 && GameData.Int(original, "_iDistanceMax") % 100 == 0 ? cm / 100 : null;
     }
 
     private async Task RefreshTemporarySlotsAsync(GameSession session)
@@ -157,14 +191,14 @@ public sealed partial class CombatService
         && owner.SkillObjects.Any(o => o.Uid == uid && o.OwnerSession == owner && o.OwnerId == owner.Role.Id
             && o.WorldScene == owner.WorldScene && o.ExpiresMs > Now && !o.Removing);
 
-    public Task SendCastTimelineAsync(GameSession caster, UseInSkillInfo info, bool highLevel = false, bool extra = false)
+    public Task SendCastTimelineAsync(GameSession caster, UseInSkillInfo info, bool highLevel = false, bool extra = false, bool playAct = true)
     {
         bool ownedSource = extra && OwnsActiveSkillSource(caster, info.SrcID);
         if (caster.Role == null || (info.SrcID != caster.Role.Id && !ownedSource) || info.SessionId <= 0
             || _data.Row("SkillConfig", info.SkillID) == null) return Task.CompletedTask;
-        // LC_TimeLine_Object gates authored Animation events on playAct. Every accepted cast timeline is a real
-        // action; callers must not accidentally suppress the caster animation by leaving protobuf's bool default.
-        info.PlayAct = true;
+        // LC_TimeLine_Object gates authored Animation events on playAct. Ordinary casts default to a real action;
+        // Reading's separately owned copy explicitly suppresses only the caster animation, not its effect timeline.
+        info.PlayAct = playAct;
         uint route = extra ? highLevel ? ExtraUseInSkillHigh : ExtraUseInSkill : highLevel ? UseInSkillHigh : UseInSkill;
         return ToPlayerAndViewersAsync(caster, route, info);
     }

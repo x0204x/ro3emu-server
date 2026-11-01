@@ -326,7 +326,9 @@ public sealed partial class TalentProcs
         GameSession? source = null;
         foreach (var s in _sessions.All())
             if (s.Role?.Id == sourceId) { source = s; break; }
-        if (source == null || source.TalentBuffAttributes.Count == 0 && source.TalentProcBuffs.Count == 0) return pairs;
+        if (source == null) return pairs;
+        pairs = EmblemService.BuffAttributes(source, _data, row, pairs);
+        if (source.TalentBuffAttributes.Count == 0 && source.TalentProcBuffs.Count == 0) return pairs;
         long group = new BuffConfig(row).BuffId;
         List<(long Id, double Value)>? changed = null;
         foreach (var (buff, description) in source.TalentProcBuffs)
@@ -432,7 +434,7 @@ public sealed partial class TalentProcs
             }
             if (rule.Recast)
             {
-                await _combat.CastExtraAsync(s, action.Row, Targets(s, rule with { RowArea = true }, description, cast, target, processed));
+                await _combat.CastExtraAsync(s, action.Row, Targets(s, rule with { RowArea = true }, description, cast, target, processed), parametersApplied: true);
                 continue;
             }
             if (BuffConfig.Get(_data, buff)?.LogicData is not { } logic || rule.Logic >= logic.Length) continue;

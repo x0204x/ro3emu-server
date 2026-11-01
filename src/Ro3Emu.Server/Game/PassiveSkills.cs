@@ -16,7 +16,7 @@ namespace Ro3Emu.Server.Game;
 /// skill's damage in CombatService.Passives; the mount passives (Riding, Dragon Training, Wolf Taming, Wolf's Fang) are
 /// RidingEffects; Sight Sprout's detection is CombatService.Stealth.
 /// </summary>
-public sealed class PassiveSkills : IGameTicker
+public sealed partial class PassiveSkills : IGameTicker
 {
     private const int DoubleHolyLight = 14311, Judex = 14309, EnchantBlade = 11313, EnergyCoat = 12003,
         EmergencyTreatment = 16303, SoulDrain = 12209, PreyOnTheWeak = 15316, PrayerOfGratitude = 14306,
@@ -47,7 +47,6 @@ public sealed class PassiveSkills : IGameTicker
     private sealed class State
     {
         public readonly Dictionary<int, long> ReadyAt = [];
-        public long LastHitMs;
         public long NextAstralMs;
     }
 
@@ -56,7 +55,7 @@ public sealed class PassiveSkills : IGameTicker
     private TimeSpan _lastTick;
 
     public PassiveSkills(GameData data, CombatService combat, BuffService buffs, CharacterService character, SceneService scenes,
-        SkillService skills, GameLoop loop, SessionRegistry sessions, TeamService teams)
+        SkillService skills, GameLoop loop, SessionRegistry sessions, TeamService teams, EmblemService emblems)
     {
         _sessions = sessions;
         _teams = teams;
@@ -65,11 +64,26 @@ public sealed class PassiveSkills : IGameTicker
         _buffs = buffs;
         _character = character;
         _loop = loop;
+        combat.SameHealingParty = (source, target) => source.Role is { } a && target.Role is { } b
+            && teams.SameHealingParty(a.Id, b.Id);
         combat.CastResolved.Add(OnCastResolvedAsync);
         buffs.ControlResisted.Add(OnControlResistedAsync);
         combat.TakenAsync.Add(OnTakenAsync);
+        combat.PlayerTakenPublished.Add(VictimTakenAsync);
         combat.Killed.Add(OnKilledAsync);
+        combat.PlayerKilled.Add((source, _) => RestoreSoulDrainAsync(source));
         combat.DamageAdjusters.Add(PreyOnTheWeakDamage);
+        combat.PvpOutgoingDamageAdjusters.Add(PreyOnTheWeakPlayerDamage);
+        InitializeCompanionPassives(skills);
+        InitializeReactiveShield();
+        InitializeHundredSpears();
+        InitializeWindCutter(emblems);
+        InitializeAssassinResonance(emblems);
+        InitializeTimedResonance(emblems);
+        InitializePixelThrust(emblems);
+        InitializeNoteLeap(emblems, scenes);
+        emblems.EffectsChanged.Add(combat.ReconcileHighHealResonanceAsync);
+        character.JobChanged.Add(combat.ReconcileHighHealResonanceAsync);
         buffs.PassiveLethalSave = WoodSpiritsBlessingAsync;
         // It touches only the loaded session's own buffs, inside the scene load's scope: no hook scope of its own.
         scenes.AddOwnedAfterLoaded(StandingBuffsAsync);
@@ -100,35 +114,8 @@ public sealed class PassiveSkills : IGameTicker
         return true;
     }
 
-    private async Task OnCastResolvedAsync(GameSession s, ActiveSkillCast action, IReadOnlyList<MonsterUnit> processed, SkillHitInfo hit)
-    {
-        if (s.Role == null || processed.Count == 0) return;
-        var cast = new SkillConfig(action.Row);
-        var target = processed.FirstOrDefault(m => m.Uid == action.Request.TargetId) ?? processed[0];
-        // Double Holy Light: "[Judex] cast by you has a ${1}% Chance to deal one Extra instance of Neutral ranged magic damage
-        // ... and a ${1}% Chance to deal one Extra instance of Neutral ranged Physical damage ... (The two Chances are
-        // calculated independently.)" _kLogicData [chance, row, chance, row] in basis points.
-        if (cast.SkillId == Judex && Learned(s, DoubleHolyLight) is { Own: { LogicData: [var magicChance, var magic, var physicalChance, var physical, ..] } })
-            foreach (var (chance, id) in new[] { (magicChance, magic), (physicalChance, physical) })
-                if (target.Hp > 0 && Roll(10000) < chance && SkillConfig.Get(_data, id) is { } row)
-                    await _combat.CastExtraAsync(s, row.Row, [target]);
-        // Enchant Blade: "After dealing damage, increases your DEF by ${2}% for @{1} seconds." _kLogicData [the DEF buff,
-        // whose _iTime is those seconds].
-        if (hit.Dsts.Any(d => d.Damage > 0) && Learned(s, EnchantBlade) is { Own: { LogicData: [var defense, ..] } })
-            await _buffs.AddAsync(s, (int)defense, 0, s.Role.Id);
-        // Psychokinetic Astral Body: "If you already have ${4} [Psychokinetic Astral Bodies], hitting with Soul Expansion
-        // Launches all [Psychokinetic Astral Bodies]. Each Deals Ghost Ranged Magic DMG equal to MATK * ${5}% to the target
-        // enemy." Each casts the row the bodies' buff's _kLogicData[0] names (12345 Singularity of its level), in the
-        // caster's mode.
-        if (cast.SkillId == SoulExpansion && hit.Dsts.Any(d => d.Damage > 0) && AstralBodies(s) is { } bodies
-            && s.Buffs.FirstOrDefault(b => b.ConfigId == bodies.Buff && b.ExpireMs > MonsterService.NowMs) is { } live
-            && live.PileCount >= bodies.Launch && BuffConfig.Get(_data, bodies.Buff) is { LogicData: [var launch, ..] }
-            && (_combat.EffectiveSkillRow(s, (int)launch) ?? SkillConfig.Get(_data, launch)?.Row) is { } body)
-        {
-            await _buffs.RemoveAsync(s, live);
-            for (int i = 0; i < live.PileCount && target.Hp > 0; i++) await _combat.CastExtraAsync(s, body, [target]);
-        }
-    }
+    private Task OnCastResolvedAsync(GameSession s, ActiveSkillCast action, IReadOnlyList<MonsterUnit> processed, SkillHitInfo hit) =>
+        ResolveOwnCastPassivesAsync(s, action, processed, hit);
 
     private async Task OnControlResistedAsync(WorldUnit unit, long sourceId, JsonElement control)
     {
@@ -177,40 +164,8 @@ public sealed class PassiveSkills : IGameTicker
         }
     }
 
-    private async Task OnTakenAsync(MonsterUnit attacker, GameSession s, long damage)
-    {
-        if (damage <= 0 || s.Role == null || s.Dead) return;
-        _states.GetOrCreateValue(s).LastHitMs = MonsterService.NowMs;
-        // Energy Coat: "When you take damage, gain [Energy Coat] for ${1} sec., increasing your damage reduction by ${2}%.
-        // Cooldown: ${3} sec." _kLogicData [the reduction buff, ms, piles].
-        if (Learned(s, EnergyCoat) is { Skill: var coat, Own: { LogicData: [var buff, var ms, ..] } }
-            && Ready(s, EnergyCoat, (long)(Value(coat.DescData, 2) * 1000)))
-            await _buffs.AddAsync(s, (int)buff, (int)ms, s.Role.Id);
-        // Emergency Treatment: "When you take damage while your HP is below ${1}%, grants a shield equal to ${2}% of your HP
-        // and restores ${3}% of your Life. This effect can trigger up to @{1} times every ${4} sec." _kLogicData [the shield
-        // buff, the healing buff]; the runtime count is read as one.
-        if (Learned(s, EmergencyTreatment) is { Skill: var treatment, Own: { LogicData: [var shield, ..] } })
-        {
-            var stats = _character.Stats(s);
-            var desc = treatment.DescData;
-            if (stats[AttrHp] * 100 < stats[AttrMaxHp] * Value(desc, 0) && Ready(s, EmergencyTreatment, (long)(Value(desc, 3) * 1000)))
-            {
-                await _buffs.AddSupportAsync(s, (int)shield, 0, s.Role.Id, (long)(stats[AttrMaxHp] * Value(desc, 1) / 100));
-                await _character.SetHpSpAsync(s, Math.Min(stats[AttrMaxHp], stats[AttrHp] + (long)(stats[AttrMaxHp] * Value(desc, 2) / 100)), null);
-            }
-        }
-        // Prayer of Gratitude: "(Refreshes after taking no damage for ${5} sec.)"
-        if (Learned(s, PrayerOfGratitude) is { Skill: var prayer })
-        {
-            var role = s.Role;
-            long quiet = (long)(Value(prayer.DescData, 4) * 1000);
-            _loop.ScheduleRuntime(TimeSpan.FromMilliseconds(quiet + 50), async () =>
-            {
-                if (ReferenceEquals(s.Role, role) && !s.Dead && MonsterService.NowMs - _states.GetOrCreateValue(s).LastHitMs >= quiet)
-                    await PrayerShieldAsync(s);
-            });
-        }
-    }
+    private Task OnTakenAsync(MonsterUnit attacker, GameSession s, long damage) =>
+        VictimTakenAsync(s, damage, CaptureVictim(s));
 
     private async Task StandingBuffsAsync(GameSession s)
     {
@@ -248,24 +203,30 @@ public sealed class PassiveSkills : IGameTicker
     /// <summary>Prayer of Gratitude: "... plus a shield equal to Max Life * ${4}%." Its own row is "Gain a permanent
     /// damage-absorption shield."; it is renewed on a scene load and after the quiet time, and leaves with the passive
     /// (a career change).</summary>
-    private async Task PrayerShieldAsync(GameSession s)
+    private async Task PrayerShieldAsync(GameSession s, Func<bool>? current = null)
     {
-        if (s.Role == null || s.Dead) return;
+        current ??= CaptureVictim(s);
+        if (!current()) return;
         if (Learned(s, PrayerOfGratitude) is not { Skill: var prayer, Own: { } own })
         {
             foreach (var stale in s.Buffs.Where(b => BuffConfig.Get(_data, b.ConfigId)?.BuffId == PrayerOfGratitude).ToArray())
+            {
+                if (!current()) return;
                 await _buffs.RemoveAsync(s, stale);
+            }
             return;
         }
         long amount = (long)(_character.Stats(s)[AttrMaxHp] * Value(prayer.DescData, 3) / 100);
         if (s.Buffs.Any(b => b.ConfigId == own.Id && b.ShieldRemaining >= amount && b.ExpireMs > MonsterService.NowMs)) return;
-        await _buffs.AddSupportAsync(s, (int)own.Id, PermanentMs, s.Role.Id, amount);
+        await _buffs.AddSupportAsync(s, (int)own.Id, PermanentMs, s.Role!.Id, amount);
     }
 
     // Soul Drain: "Each Kill restores ${2}% of Max MP as MP."
-    private async Task OnKilledAsync(GameSession s, MonsterUnit monster)
+    private Task OnKilledAsync(GameSession s, MonsterUnit monster) => RestoreSoulDrainAsync(s);
+
+    private async Task RestoreSoulDrainAsync(GameSession s)
     {
-        if (s.Role == null || Learned(s, SoulDrain) is not { Skill: var drain }) return;
+        if (s.Role == null || s.Dead || Learned(s, SoulDrain) is not { Skill: var drain }) return;
         var stats = _character.Stats(s);
         long sp = Math.Min(stats[AttrMaxSp], stats[AttrSp] + (long)Math.Round(stats[AttrMaxSp] * Value(drain.DescData, 1) / 100));
         if (sp > stats[AttrSp]) await _character.SetHpSpAsync(s, null, sp);
@@ -275,6 +236,13 @@ public sealed class PassiveSkills : IGameTicker
     // any negative buff on the monster (BuffConfig._iType 2) (inferred).
     private long PreyOnTheWeakDamage(GameSession s, MonsterUnit target, System.Text.Json.JsonElement row, DamageHitResult result, long damage) =>
         _buffs.UnitHasDebuff(target) && Learned(s, PreyOnTheWeak) is { Skill: var prey }
+            ? (long)Math.Round(damage * (1 + Value(prey.DescData, 0) / 100)) : damage;
+
+    // 原15316描述「敵人」不限魔物；沿既有PvE的有效負面Buff判定與取整（inferred）。
+    private long PreyOnTheWeakPlayerDamage(GameSession source, GameSession target, JsonElement row,
+        DamageHitResult result, long damage) => damage > 0 && target.Buffs.Any(b =>
+            b.ExpireMs > MonsterService.NowMs && BuffConfig.Get(_data, b.ConfigId) is { Type: 2 })
+        && Learned(source, PreyOnTheWeak) is { Skill: var prey }
             ? (long)Math.Round(damage * (1 + Value(prey.DescData, 0) / 100)) : damage;
 
     /// <summary>

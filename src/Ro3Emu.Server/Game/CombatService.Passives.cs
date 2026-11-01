@@ -134,11 +134,14 @@ public sealed partial class CombatService
     /// below ${1}%, and changes the percentage damage multiplier increase to ${2}%": the third pair below its ${1}%. The
     /// target's Life is read before the hit (inferred).
     /// </summary>
-    private int SonicBlowBranch(GameSession s, MonsterUnit target, JsonElement row)
+    private int SonicBlowBranch(GameSession s, MonsterUnit target, JsonElement row) =>
+        SonicBlowBranch(s, target.Hp, target.Template.MaxHp, row);
+
+    private int SonicBlowBranch(GameSession s, long hp, long maxHp, JsonElement row)
     {
         var skill = new SkillConfig(row);
         if (skill.ScriptLogic != "SonicBlow" || skill.LogicData is not [_, _, var threshold, ..] || skill.DamageParam1.Length < 2) return 0;
-        double life = target.Hp * 10000.0 / Math.Max(1, target.Template.MaxHp);
+        double life = hp * 10000.0 / Math.Max(1, maxHp);
         if (skill.DamageParam1.Length > 2 && LearnedPassive(s, SupersonicBlow) is { DescData: [var below, ..] }
             && double.TryParse(below, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double percent)
             && life <= percent * 100) return 2;

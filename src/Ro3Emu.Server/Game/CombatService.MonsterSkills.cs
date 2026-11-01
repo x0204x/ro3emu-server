@@ -19,7 +19,7 @@ public sealed partial class CombatService
     internal async Task<int> MonsterSkillHitAsync(MonsterUnit caster, JsonElement row, IEnumerable<GameSession> targets, long sourceId,
         long session = 0, int damagePercent = 100, bool bossDebuffsOnly = false)
     {
-        if (caster.Dead || caster.Removed || caster.Hp <= 0 || _buffs.UnitForbidden(caster, ForbiddenState.CastSkill)) return 0;
+        if (caster.Dead || caster.Removed || caster.Hp <= 0 || _buffs.UnitActionBlocked(caster, ForbiddenState.CastSkill)) return 0;
         int skillId = (int)GameData.Int(row, "_iID");
         if (session <= 0) session = ++_sessionIds;
         int show = HitEffect(GameData.Int(row, "_iScriptShow"));
@@ -36,7 +36,7 @@ public sealed partial class CombatService
                 && ReferenceEquals(p.Role, targetRole) && p.WorldScene == scene && p.SceneGeneration == generation
                 && ReferenceEquals(p.Attachment, lease) && lease?.Cancelled != true;
             var stats = _character.Stats(p);
-            var defender = new Fighter(0, 0, 0, 0, p.Progress.Level, 1)
+            var defender = new Fighter(0, 0, 0, 0, p.Progress.Level, DefenceElement(p))
             { Def = stats[105], Mdef = stats[106], Flee = stats[110], ResCri = stats[112], FixedDamage = (p.GmCombat & GmCombatSwitches.FixedDamage) != 0 };
             var (damage, result) = Damage(attacker, defender, row);
             damage = ScaleMonsterDamage(damage, caster.DamageRatio);
@@ -44,9 +44,10 @@ public sealed partial class CombatService
             if (damagePercent != 100) damage = damagePercent <= 0 ? 0 : ScaleMonsterDamage(damage, damagePercent * 100);
             foreach (var adjust in MonsterDamageAdjusters) damage = adjust(caster, damage, true);
             if (damage > 0) foreach (var modifier in IncomingDamageAdjusters) damage = Math.Max(0, await modifier(caster, p, result, damage));
+            damage = AdjustIncomingSkillDamage(p, row, result, damage);
             var committed = await CommitPlayerDamageAsync(p, damage, row, Current, sourceElement: element);
             if (committed == null) continue;
-            (damage, long hp, _, long shieldDamage) = committed.Value;
+            (damage, long hp, long effective, long shieldDamage) = committed.Value;
             hits++;
             try
             {
@@ -55,12 +56,19 @@ public sealed partial class CombatService
                 {
                     SrcID = sourceId, SkillId = skillId, ShowPoint = show, SessionId = session, SrcElement = element,
                     Dsts = { new DamageInfo { DstID = targetRole.Id, Damage = damage, SheildDamage = shieldDamage, HitResult = result,
-                        DstElement = 1, IsDead = hp == 0 } },
+                        DstElement = DefenceElement(p), IsDead = hp == 0 } },
                 };
                 var hitViewers = _world.Viewers(p).Append(p).Distinct().ToArray();
                 await SendHitBulletsAsync(hitViewers, row, hit, caster.Uid);
                 foreach (var viewer in hitViewers) await viewer.SendGameAsync(SkillHit, hit);
                 await _character.SetHpSpAsync(p, null, null);
+                if (effective > 0 && hp > 0)
+                    foreach (var handler in MonsterAttackHitPublished)
+                    {
+                        if (!Current() || p.Dead) break;
+                        try { await handler(caster, p, row, effective, result); }
+                        catch (Exception ex) { _log.LogError(ex, "Monster skill follow-up failed after publication for {Target}", targetRole.Id); }
+                    }
                 foreach (var handler in TakenAsync) await handler(caster, p, damage);
                 await FightingAsync(p);
                 if (hp == 0)

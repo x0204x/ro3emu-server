@@ -105,8 +105,9 @@ public sealed partial class CharacterService(RoleStore roles, ItemStore itemStor
     /// <summary>After a committed inventory, equipment or stat change; listeners defer any grant work.</summary>
     public List<Action<GameSession>> StateChanged { get; } = new();
 
-    /// <summary>For CardService: item, stat and look updates after socket changes (caller holds the lock).</summary>
-    internal async Task ItemsChangedAsync(GameSession session, bool stats)
+    /// <summary>For CardService: item, stat and look updates after socket changes (caller holds the lock).
+    /// 卡片成功變更才要求原生屬性浮字；一般背包同步維持不提示。</summary>
+    internal async Task ItemsChangedAsync(GameSession session, bool stats, bool showStatChange = false)
     {
         var lifeUse = LifeItemExchange.Value;
         if (lifeUse is { Active: true, Committed: true, PendingStateChanged: { } pending }
@@ -116,7 +117,7 @@ public sealed partial class CharacterService(RoleStore roles, ItemStore itemStor
             foreach (var handler in pending) handler(session);
         }
         await SyncItemsAsync(session);
-        if (stats) await SendStatsAsync(session);
+        if (stats) await SendStatsAsync(session, showChange: showStatChange);
         foreach (var handler in StateChanged) handler(session);
     }
 

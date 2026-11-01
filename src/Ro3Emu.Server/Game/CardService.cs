@@ -174,14 +174,13 @@ public sealed partial class CardService
         finally { session.Items = original; }
         await CommitCardStateAsync(session, staged, plans, "cd13a/card-insert",
             new { Card = card!.Entry, grid, socket });
-        await _character.ItemsChangedAsync(session, stats: true);
+        await PublishCardChangeAsync(session, stats: true);
         await CharacterService.SyncAsync(session, StorageHoleSync, plans.Clone());
         var committed = session.Items.Single(i => i.Guid == inserted.Guid);
         await session.SendGameAsync(SlotInsert, new EquipmentCardInsertResp
         {
             Result = 0, EquipPos = req.EquipPos, CardGuid = committed.Guid, SlotIndex = socket, CardInfo = _character.ItemInfoOf(committed),
         });
-        await NotifySocketsChangedAsync(session);
     }
 
     /// <summary>31407: the card of (grid, socket) back to the bag.</summary>
@@ -206,11 +205,10 @@ public sealed partial class CardService
         finally { session.Items = original; }
         await CommitCardStateAsync(session, staged, plans, "cd13a/card-remove",
             new { Card = card.Entry, grid, socket });
-        await _character.ItemsChangedAsync(session, stats: true);
+        await PublishCardChangeAsync(session, stats: true);
         await CharacterService.SyncAsync(session, StorageHoleSync, plans.Clone());
         await session.SendGameAsync(SlotRemove, new EquipmentCardRemoveResp { Result = 0, EquipPos = req.EquipPos, SlotIndex = socket, CardGuid = back.Guid });
         _log.LogInformation("{Name} removes card {Card} from {Grid}/{Socket}", session.Role!.Name, guid, grid, socket);
-        await NotifySocketsChangedAsync(session);
     }
 
     /// <summary>31408: move a socketed card to another socket (swapping with the card there).</summary>
@@ -255,11 +253,10 @@ public sealed partial class CardService
                 new { Source = src!.Entry, Destination = dst?.Entry, srcGrid, req.SrcEquipSlot, dstGrid, req.DestEquipSlot });
             if (stagedDst != null) resp.SrcCardInfo = _character.ItemInfoOf(session.Items.Single(i => i.Guid == stagedDst.Guid));
             resp.DestCardInfo = _character.ItemInfoOf(session.Items.Single(i => i.Guid == stagedSrc.Guid));
-            await _character.ItemsChangedAsync(session, stats: true);
+            await PublishCardChangeAsync(session, stats: true);
             await CharacterService.SyncAsync(session, StorageHoleSync, plans.Clone());
         }
         await session.SendGameAsync(SlotTransfer, resp);
-        if (error == 0) await NotifySocketsChangedAsync(session);
     }
 
     /// <summary>The worn item of a grid left: its cards stay in the grid's sockets (they belong to the grid, spec §2.3).</summary>
@@ -400,12 +397,11 @@ public sealed partial class CardService
                 finally { session.Items = original; }
                 await CommitCardStateAsync(session, staged, plans, "cd13a/card-switch-plan",
                     new { CurrentPlan = req.TargetIndex });
-                await _character.ItemsChangedAsync(session, stats: true);
+                await PublishCardChangeAsync(session, stats: true);
                 await CharacterService.SyncAsync(session, StorageHoleSync, plans.Clone());
             }
         }
         await session.SendGameAsync(SwitchPlan, new CardSwitchPlanResp { Result = error, CurrentPlan = session.CardPlans!.CurrentPlan });
-        if (error == 0) await NotifySocketsChangedAsync(session);
     }
 
     private static bool Matches(InvItem item, DBSlotItemInfo choice) => item.Entry == choice.ItemId
@@ -561,7 +557,7 @@ public sealed partial class CardService
         if (error == 0 && card != null)
         {
             level++;
-            await _character.ItemsChangedAsync(session, stats: card.Grid < 0);
+            await PublishCardChangeAsync(session, stats: card.Grid < 0);
         }
         await session.SendGameAsync(LevelUp, new CardLevelUpResp { Result = error, SourceType = req.SourceType, Guid = req.Guid, SlotIndex = req.SlotIndex, GridType = req.GridType, NewLevel = level });
     }
@@ -644,10 +640,9 @@ public sealed partial class CardService
         if (error == 0 && card != null)
         {
             tier++;
-            await _character.ItemsChangedAsync(session, stats: card.Grid < 0);
+            await PublishCardChangeAsync(session, stats: card.Grid < 0);
             if (nextPlans != null) await CharacterService.SyncAsync(session, StorageHoleSync, nextPlans.Clone());
             if (nextLibrary != null) await CharacterService.SyncAsync(session, LibrarySync, session.Library!.Clone());
-            if (card.Grid < 0) await NotifySocketsChangedAsync(session);
         }
         if (!replyBeforeSync) await session.SendGameAsync(StarUp, response);
     }

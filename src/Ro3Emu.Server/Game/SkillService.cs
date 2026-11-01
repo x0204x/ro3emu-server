@@ -449,6 +449,8 @@ public sealed partial class SkillService
     public async Task LoadAsync(GameSession session)
     {
         using var held = await CharacterService.Lock(session);
+        // 卡片被動效果稍後才在場景載入時建立；技能權限必須先就緒，才能保留儲存的手動／自動快捷列。
+        CardEffects.RefreshGrantedSkills(session, _data);
         var saved = _roles.LoadSkillPlans(session.Role!.Id);
         var original = session.Progress!;
         var priorPlans = session.SkillPlans;

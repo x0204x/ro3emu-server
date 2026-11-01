@@ -270,6 +270,8 @@ public sealed partial class RoleSessionService(RoleStore roles, Data.GameData da
         session.SkillProtocol = new();
         session.SkillModeCds.Clear();
         session.SkillCds.Clear();
+        session.SkillPublicCds.Clear();
+        session.SkillCooldownShownModes.Clear();
         session.Buffs.Clear();
         session.BuffEffectCds.Clear();
         session.ImmuneDeathOffer = null;

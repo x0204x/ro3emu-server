@@ -145,6 +145,17 @@ public sealed partial class TeamService(SessionRegistry sessions, CharacterServi
     public (long TeamId, long Leader) TeamOf(long role) =>
         _byMember.TryGetValue(role, out var team) ? (team.Id, team.Leader) : (0, role);
 
+    /// <summary>療效的小隊判定只讀即時名冊；40人團隊按客戶端每5格分組，不沿用野外經驗資格或距離限制。</summary>
+    internal bool SameHealingParty(long source, long target)
+    {
+        if (!_byMember.TryGetValue(source, out var team) || !_byMember.TryGetValue(target, out var other)
+            || !ReferenceEquals(team, other)) return false;
+        var (start, count) = ExpGroupRange(team.Type, team.Members, source);
+        for (int index = start; index < start + count; index++)
+            if (team.Members[index] == target) return true;
+        return false;
+    }
+
     /// <summary>Authoritative roster, including offline members; dungeon admission must not silently omit them.</summary>
     public IReadOnlyList<long> MembersOf(long role) =>
         _byMember.TryGetValue(role, out var team) ? team.Members.ToArray() : [role];

@@ -48,6 +48,8 @@ public sealed partial class CombatService
         if (!CanPlayerHit(source, target) || !CanSee(source, target) || source.SkillCast is { Cancelled: false }
             || EffectiveSkillRow(source, skillId) is not { } row || !Learned(source, row)
             || !SkillModeAllowed(source, row) || _buffs.HasForbidden(source, ForbiddenState.NormalAttack)) return;
+        // 與對魔物續擊使用同一已知條件；在成本／動作前終止失去資格的 PvP 迴圈。
+        if (!KnownSkillConditionsMet(source, row, null, true)) { _eventAttacks.Remove(source); return; }
         var request = new CastSkillReq
         {
             SkillId = (int)Data.GameData.Int(row, "_iID"), TargetId = target.Role!.Id,
@@ -58,7 +60,8 @@ public sealed partial class CombatService
     }
     private async Task HitEventPlayersAsync(GameSession source, GameSession[] targets, JsonElement row,
         int skillId, int show, long session, Func<bool> currentSource, Action<long, long>? onHit = null, Vec3? center = null,
-        long scheduledBulletTarget = 0)
+        long scheduledBulletTarget = 0, Action<long, long, DamageHitResult>? onCommittedHit = null,
+        Action<GameSession, SkillHitInfo, long>? onPublishedHit = null)
     {
         if (FirstNumber(row, "_kDamageParam1") is not > 0 && FirstNumber(row, "_kDamageParam2") is not > 0) return;
         foreach (var target in targets)
@@ -69,12 +72,20 @@ public sealed partial class CombatService
             var attackerRole = source.Role!;
             var targetRole = target.Role!;
             long sceneId = source.WorldScene;
+            long sourceGeneration = source.SceneGeneration, targetGeneration = target.SceneGeneration;
+            var sourceAttachment = source.Attachment;
+            var targetAttachment = target.Attachment;
+            bool SameHitEpoch() => source.SceneGeneration == sourceGeneration && target.SceneGeneration == targetGeneration
+                && ReferenceEquals(source.Attachment, sourceAttachment) && sourceAttachment?.Cancelled != true
+                && ReferenceEquals(target.Attachment, targetAttachment) && targetAttachment?.Cancelled != true;
+            var victimCurrent = CaptureVictimHit(target);
             var (damage, result) = PlayerHitDamage(source, target, row);
             var committed = await CommitPlayerDamageAsync(target, damage, row,
                 () => currentSource() && CurrentPlayerHit(source, target, attackerRole, targetRole, sceneId)
-                    && CanPlayerHit(source, target));
+                    && CanPlayerHit(source, target), sourceElement: AttackElement(source, row));
             if (committed == null) continue;
             (damage, long hp, long effective, long shieldDamage) = committed.Value;
+            onCommittedHit?.Invoke(targetRole.Id, damage + shieldDamage, result);
             onHit?.Invoke(targetRole.Id, damage);
             if (effective > 0 && hp > 0) await _buffs.BreakHitControlsAsync(target);
             try
@@ -89,7 +100,7 @@ public sealed partial class CombatService
                     SrcID = attackerRole.Id, SkillId = skillId, ShowPoint = show, Split = HitSplit(row),
                     SessionId = session, SrcElement = AttackElement(source, row),
                     Dsts = { new DamageInfo { DstID = targetRole.Id, Damage = damage, SheildDamage = shieldDamage, HitResult = result,
-                    DstElement = 1, IsDead = hp == 0 } }
+                    DstElement = DefenceElement(target), IsDead = hp == 0 } }
                 };
                 var sourceViewers = CurrentPlayerHit(source, target, attackerRole, targetRole, sceneId)
                     ? _world.Viewers(source).Append(source) : Enumerable.Empty<GameSession>();
@@ -116,6 +127,22 @@ public sealed partial class CombatService
                         await handler(source, target);
                     }
                 }
+                if (effective > 0 && victimCurrent())
+                    foreach (var handler in PlayerTakenPublished)
+                    {
+                        if (!victimCurrent()) break;
+                        try { await handler(target, effective, victimCurrent); }
+                        catch (Exception ex) { _log.LogError(ex, "Victim reaction failed after publication for {Target}", targetRole.Id); }
+                    }
+                if (SameHitEpoch() && currentSource() && CurrentPlayerHit(source, target, attackerRole, targetRole, sceneId))
+                    onPublishedHit?.Invoke(target, hit, effective);
+                if (effective > 0)
+                    foreach (var handler in PvpSkillHitPublished)
+                    {
+                        if (!SameHitEpoch() || !CurrentPlayerHit(source, target, attackerRole, targetRole, sceneId)) break;
+                        try { await handler(source, target, row, effective, result); }
+                        catch (Exception ex) { _log.LogError(ex, "Player hit follow-up failed after publication for {Target}", targetRole.Id); }
+                    }
                 await GuardianPvpFollowUpsAsync(source, target, targetRole, row, effective, hp == 0,
                     () => currentSource() && CurrentPlayerHit(source, target, attackerRole, targetRole, sceneId));
             }
@@ -157,19 +184,25 @@ public sealed partial class CombatService
         var attack = _character.Stats(source); var defend = _character.Stats(target);
         var a = new Fighter(attack[AttributeId.Atk], attack[AttributeId.Matk], attack[AttributeId.Hit], attack[AttributeId.Cri],
             source.Progress!.Level, AttackElement(source, row))
-        { FixedDamage = (source.GmCombat & GmCombatSwitches.FixedDamage) != 0 };
-        var b = new Fighter(0, 0, 0, 0, target.Progress!.Level, 1)
+        { Attributes = attack, FixedDamage = (source.GmCombat & GmCombatSwitches.FixedDamage) != 0 };
+        var b = new Fighter(0, 0, 0, 0, target.Progress!.Level, DefenceElement(target))
         {
             Def = defend[AttributeId.Def], Mdef = defend[AttributeId.Mdef], Flee = defend[AttributeId.Flee], ResCri = defend[AttributeId.ResCri],
             FixedDamage = (target.GmCombat & GmCombatSwitches.FixedDamage) != 0,
         };
-        var (damage, result) = Damage(a, b, row, bonusCrit: GuardianPetRules.CriticalChance(row),
+        int branch = AuthoredSourceDamageBranch(source, row) ?? (Script(row) == "Soul_Strike" && b.Element == 10
+            || Script(row) is "Magnus_Exorcismus" or "Magnus_ExorcismusBD" && b.Element is 8 or 10 ? 1
+            : SonicBlowBranch(source, defend[AttributeId.Hp], defend[AttributeId.MaxHp], row));
+        var (damage, result) = Damage(a, b, row, branch, bonusCrit: GuardianPetRules.CriticalChance(row),
             forceCrit: GuardianPetRules.CriticalAtHp(row, defend[AttributeId.Hp], defend[AttributeId.MaxHp]));
         damage = GuardianPetRules.DirectDamage(row, damage);
         damage = GuardianOutgoingDamage(source, row, damage);
         damage = GuardianControlledDamage(source, GuardianControlTarget(target), damage);
         if (result != DamageHitResult.Miss) damage = ApplyPlayerRestraints(source, target, damage);
-        return row.TryGetProperty("_ro3GuardianFixedHit", out var fixedValue)
-            ? (fixedValue.GetInt64(), DamageHitResult.Normal) : (damage, result);
+        if (row.TryGetProperty("_ro3GuardianFixedHit", out var fixedValue))
+        { damage = fixedValue.GetInt64(); result = DamageHitResult.Normal; }
+        if (damage > 0)
+            foreach (var adjust in PvpOutgoingDamageAdjusters) damage = Math.Max(0, adjust(source, target, row, result, damage));
+        return (AdjustIncomingSkillDamage(target, row, result, damage), result);
     }
 }

@@ -72,7 +72,8 @@ public sealed partial class DungeonTests
         await alice.SendGameAsync(CombatService.UseSkill, CannonShot(cannon, clientShips[0]));
         Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
         var cannonTimeline = await Next(alice, CombatService.UseInSkillHigh, UseInSkillInfo.Parser,
-            use => use.SkillID == 5353001 && use.TargetId == ships[0].Uid);
+            use => use.SkillID == 5353001 && use.TargetPos.Equals(ships[0].Pos));
+        Assert.Equal(0, cannonTimeline.TargetId); // 原服31106座標瞄準，不傳單位UID讓客戶端改瞄根點。
         Assert.Equal(Session(alice).Role!.Id, cannonTimeline.SrcID);
         var cannonProjectile = await Next(alice, CombatService.SkillBulletHigh, SkillFixTimeBulletNotify.Parser,
             bullet => bullet.SkillConfigId == 5353001 && bullet.EffectId == 6120105);

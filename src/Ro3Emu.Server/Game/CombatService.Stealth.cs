@@ -1,4 +1,5 @@
 using System.Globalization;
+using Romsg;
 using Ro3Emu.Server.Data.Config;
 
 namespace Ro3Emu.Server.Game;
@@ -73,7 +74,22 @@ public sealed partial class CombatService
     internal bool Hostile(GameSession source, GameSession target) => CanPlayerHit(source, target);
 
     /// <summary>An extra hit of a SkillConfig row on one hostile player, through the ordinary player hit path.</summary>
-    internal Task CastExtraOnPlayerAsync(GameSession source, SkillConfig row, GameSession target) =>
-        HitEventPlayersAsync(source, [target], row.Row, (int)row.Id, (int)row.ScriptShow,
-            ++_sessionIds, () => source.Role != null && !source.Dead);
+    internal async Task CastExtraOnPlayerAsync(GameSession source, SkillConfig row, GameSession target,
+        bool applyHostileBuffs = false, Func<bool>? sourceEligible = null)
+    {
+        var capturedSource = CapturePlayerSkillTarget(source);
+        bool CurrentSource() => capturedSource() && (sourceEligible?.Invoke() ?? true);
+        var currentTarget = CapturePlayerSkillTarget(target);
+        if (!CurrentSource() || !currentTarget() || !CanPlayerHit(source, target)) return;
+        long sourceRole = source.Role!.Id;
+        var alreadySlowed = applyHostileBuffs ? GuardianPreviouslySlowed(row.Row, [], [target]) : [];
+        bool landed = false;
+        await HitEventPlayersAsync(source, [target], row.Row, (int)row.Id, (int)row.ScriptShow,
+            ++_sessionIds, CurrentSource,
+            onCommittedHit: (_, amount, result) => landed = amount > 0 && result != DamageHitResult.Miss);
+        // 反傷共鳴的真Buff2也必須走玩家狀態鏈；miss、全無效及舊世代不得補上狀態。
+        // 已被護盾吸收的有效命中可帶狀態，判準使用提交結果的HP傷害＋護盾傷害。
+        if (applyHostileBuffs && landed && CurrentSource() && currentTarget())
+            await HostilePlayerBuffsAsync(source, row.Row, [(target, currentTarget)], alreadySlowed, sourceRole, CurrentSource);
+    }
 }

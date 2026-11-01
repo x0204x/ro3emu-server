@@ -110,6 +110,11 @@ public sealed partial class DungeonService
         combat.HighLevelCasts.Add((s, cast) => s.SceneEntry == AirshipScene && cast.Request.SkillId == 5353001);
         combat.ProjectileCasts.Add(AirshipCannonProjectile);
         combat.CustomHitPresentations.Add(PresentAirshipCannonHitAsync);
+        combat.PreserveTargetAim.Add(PreserveAirshipCannonAim);
+        combat.TargetAimErrors.Add(AirshipCannonAimError);
+        combat.LockedTargetCasts.Add((s, cast) => cast.Request.TargetId != 0 && AcceptedAirshipCannonCast(s, cast));
+        combat.CastTargetAllowed.Add(AirshipCannonTargetAllowed);
+        combat.CastDamageOverrides.Add(AirshipCannonDamage);
         combat.Killed.Add(KilledAsync);
         combat.BeforeKilled.Insert(0, FreezeTerminalKillAsync);
         combat.PlayerDied.Add(PlayerDiedAsync);

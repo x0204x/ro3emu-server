@@ -1,3 +1,4 @@
+using Romsg;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Data;
 
@@ -17,6 +18,16 @@ public sealed partial class CardService
     }
 
     internal Task SocketsChangedAsync(GameSession session) => NotifySocketsChangedAsync(session);
+
+    /// <summary>只在卡片變更已提交後執行；保留 5009 的既有動畫順序，
+    /// 屬性則等被動增減完成後一次同步，讓客戶端比較真正的新舊總值。</summary>
+    private async Task PublishCardChangeAsync(GameSession session, bool stats)
+    {
+        // EAttrModCard 28，配對 PublicParamConfig.AttrChangeCoverdType 包含此來源（inferred）。
+        await using var batch = _character.BatchStatPublication(session, changeType: (int)EAttrModType.EattrModCard);
+        await _character.ItemsChangedAsync(session, stats, showStatChange: true);
+        if (stats) await NotifySocketsChangedAsync(session);
+    }
 
     /// <summary>
     /// LC_CardViewHelper.CheckCardInsert (lua:1010-1149) against the cards in every other socket of the active layout:

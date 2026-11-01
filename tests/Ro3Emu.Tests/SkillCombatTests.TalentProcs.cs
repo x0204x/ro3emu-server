@@ -43,6 +43,7 @@ public sealed partial class SkillCombatTests
     {
         await using var alice = await InWorld("Alice");
         await Gm("alice", "!lvl 99"); await Gm("alice", "!job 1200"); await Teach("alice", 11110);
+        await EquipConditionFixtureAsync("alice", 2050120);
         await ChooseProfessionTalent(alice, "alice", 10102114);
         var monster = await Target("alice", stationary: true);
         await Loop.InvokeAsync(() => { monster.Hp = 1_000_000; return Task.CompletedTask; });
@@ -105,6 +106,7 @@ public sealed partial class SkillCombatTests
     {
         await using var alice = await InWorld("Alice");
         await Gm("alice", "!lvl 99"); await Gm("alice", "!job 1200"); await Teach("alice", 11120);
+        await EquipConditionFixtureAsync("alice", 2050120);
         await ChooseProfessionTalent(alice, "alice", 10102102);
         _app.Services.GetRequiredService<TalentProcs>().Roll = _ => 0;
         var monster = await Target("alice", stationary: true);

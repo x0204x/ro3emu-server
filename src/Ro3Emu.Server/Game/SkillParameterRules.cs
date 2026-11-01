@@ -19,8 +19,11 @@ namespace Ro3Emu.Server.Game;
 /// (SkillBuff1) and 34 (SkillBuff2): [.., value, row, column] changes column `column` of the _kBuff1/_kBuff2 tuple at
 /// `row` (-1: every row), whose columns are [buff, chance, duration]. Hilt Binding's [16105, 33, add, 60000, 0, 2] is
 /// "increases the duration of Adrenaline Rush ... by ${3} sec." and Dark Stalker's [15229, 34, add, 2000, -1, 1] "The
-/// Stun and Blind Chance of [Meteor Assault] is increased by ${1}%" (inferred from those descriptions). Types 35-38
-/// (SkillCost, SkillRange, SkillDamageParamExtra, SkillStageStates) are skipped, as are 5/9/22/28/31/32/39; type 10
+/// Stun and Blind Chance of [Meteor Assault] is increased by ${1}%" (inferred from those descriptions). Type 35 supports
+/// the all-skill SP-cost pattern documented by <see cref="IsSpCostModifier"/> and explicit group/tag cost cells.
+/// Types 22/28/31/32/36/37 map to their authored scalar/vector/matrix fields; this does not implement an otherwise
+/// unknown skill script or extra-damage formula. Types 9/38/39 remain unsupported. Type 5 is the client casting-range
+/// presentation paired with type 26, not a second server-side distance addition; type 10
 /// is a CRIT chance (<see cref="CritChance"/>).
 /// Talent plans add the same tuples (SeasonTalentService.Effects).
 /// </summary>
@@ -32,6 +35,8 @@ internal static class SkillParameterRules
         int Scope = 0, int[]? Tags = null, bool AllTags = false, int Column = 0);
 
     private const int Buff1Type = 33, Buff2Type = 34;
+    internal const int SkillCostType = 35;
+    internal const int SkillRangeType = 36, SkillDamageParamExtraType = 37;
 
     private static readonly ConditionalWeakTable<GameData, Dictionary<int, Modifier[]>> Parsed = new();
     private static readonly ConditionalWeakTable<GameData, Dictionary<int, int[]>> Categories = new();
@@ -71,7 +76,7 @@ internal static class SkillParameterRules
         int index = item.GetArrayLength() > 5 && GameData.Number(item[5]) is { } n ? (int)n : 0;
         int column = item.GetArrayLength() > 6 && GameData.Number(item[6]) is { } c ? (int)c : 0;
         if (scope == 0)
-            return GameData.Number(item[1]) is { } group && group > 0
+            return GameData.Number(item[1]) is { } group && (group > 0 || group == -1 && type is 0 or SkillCostType)
                 ? new Modifier((int)group, (int)type, (int)op, (long)value, index, Column: column) : null;
         if (scope != 1) return null;
         string selector = item[1].ValueKind == JsonValueKind.String ? item[1].GetString()! : item[1].GetRawText();
@@ -109,6 +114,8 @@ internal static class SkillParameterRules
         // A cheap fingerprint of what Active depends on: which buffs, their piles and whether each is still live, the
         // talent modifiers and, when one needs a weapon, what the hands hold.
         long signature = 17;
+        var emblem = EmblemService.SkillEffects(session, data);
+        foreach (var modifier in emblem) signature = unchecked(signature * 31 + modifier.GetHashCode());
         foreach (var buff in session.Buffs)
             signature = unchecked(((signature * 31 + buff.Guid) * 31 + buff.ConfigId) * 31 + buff.PileCount * 2 + (buff.ExpireMs > now ? 1 : 0));
         var talents = session.TalentSkillModifiers;
@@ -130,6 +137,8 @@ internal static class SkillParameterRules
             var mods = BuffModifiers(data, buff.ConfigId);
             for (int i = 0; i < buff.PileCount; i++) result.AddRange(mods);
         }
+        // 共鳴的既有模式使用set，不把相同模式的暫時buff再加成不存在的mode2。
+        result.AddRange(emblem);
         cache.Signature = signature;
         cache.Data = data;
         cache.Modifiers = result;
@@ -154,7 +163,7 @@ internal static class SkillParameterRules
     /// <summary>Does the modifier reach a skill of this group whose row carries these tags.</summary>
     internal static bool Matches(Modifier mod, int group, int[] tags)
     {
-        if (mod.Scope == 0) return mod.Group == group;
+        if (mod.Scope == 0) return mod.Group == group || IsAllSkillModifier(mod);
         if (mod.Tags == null) return true;
         if (mod.AllTags)
         {
@@ -172,6 +181,25 @@ internal static class SkillParameterRules
         5 => (long)Math.Round(value * (1 + modifier.Value / 10000.0), MidpointRounding.AwayFromZero),
         _ => value,
     };
+
+    /// <summary>魔力減免的 1–10 級均為 [0,-1,35,5,-100*level,0,3]，描述為所有技能 SP 減少 1–10%。
+    /// （inferred）-1 的全技能選擇只開放這個已核對模式；不推廣到其他不明 selector／消耗類型。
+    /// LC_DynamicParamMgr 接收 type 35 的 affectValueListList，CheckSkillCost 使用整份替代成本表。</summary>
+    internal static bool IsSpCostModifier(Modifier mod) => mod.Scope == 0 && mod.Group == -1
+        && mod.Type == SkillCostType && mod.Operation == 5 && mod.Index == 0 && mod.Column == 3;
+
+    /// <summary>已指定技能或技能標籤的 type 35 修改原成本矩陣；全技能 wildcard 仍限已證實的 SP 模式。
+    /// 資料中的其餘 28 tuple 都指定第 3 欄，保留列選擇（-1 為全部列）及原成本類型，不推廣到識別欄位。</summary>
+    internal static bool IsCostModifier(Modifier mod) => mod.Type == SkillCostType && mod.Column == 3
+        && mod.Index >= -1 && mod.Operation is 1 or 2 or 5
+        && (IsSpCostModifier(mod) || mod.Scope == 1 || mod.Scope == 0 && mod.Group > 0);
+
+    /// <summary>全技能冷卻的同版詞條 16321001 為 [0,-1,0,5,-3000]；不開放其他未知 wildcard。</summary>
+    internal static bool IsAllSkillModifier(Modifier mod) => IsSpCostModifier(mod)
+        || mod.Scope == 0 && mod.Group == -1 && mod.Type == 0 && mod.Operation is 1 or 2 or 5;
+
+    internal static bool IsVector(int type) => type is 29 or 30 or 31 or 32 or SkillRangeType;
+    internal static bool IsMatrix(int type) => type is SkillCostType or SkillDamageParamExtraType;
 
     internal static int Mode(int group, int[] tags, IReadOnlyList<Modifier> modifiers)
     {
@@ -205,13 +233,19 @@ internal static class SkillParameterRules
     {
         0 => "_iCD",
         21 => "_iActionTime",
+        22 => "_iSkillCri",
         23 => "_iChantFix",
         24 => "_iChantVar",
         25 => "_iDistanceMin",
         26 => "_iDistanceMax",
         27 => "_iTargetMax",
+        28 => "_bMovement",
         29 => "_kDamageParam1",
         30 => "_kDamageParam2",
+        31 => "_kLogicData",
+        32 => "_kShowDmg",
+        SkillRangeType => "_kRange",
+        SkillDamageParamExtraType => "_kDamageParamExtra",
         _ => null,
     };
 
@@ -229,19 +263,29 @@ internal static class SkillParameterRules
     internal static JsonElement Effective(JsonElement row, IReadOnlyList<Modifier> modifiers, int[] tags)
     {
         int group = (int)GameData.Int(row, "_iSkillID");
-        var relevant = modifiers.Where(m => Matches(m, group, tags) && (Field(m.Type) != null || m.Type is Buff1Type or Buff2Type)
+        var relevant = modifiers.Where(m => Matches(m, group, tags) && (Field(m.Type) != null || m.Type is Buff1Type or Buff2Type || IsCostModifier(m))
             && m.Operation is 1 or 2 or 5).ToList();
         if (relevant.Count == 0) return row;
         var json = JsonNode.Parse(row.GetRawText())!.AsObject();
         foreach (var mod in relevant)
         {
-            if (mod.Type is Buff1Type or Buff2Type)
+            if (IsSpCostModifier(mod))
             {
-                ApplyToBuffTuples(json[mod.Type == Buff1Type ? "_kBuff1" : "_kBuff2"], mod);
+                ApplyToSpCost(json["_kCost"], mod);
+                continue;
+            }
+            if (IsCostModifier(mod))
+            {
+                ApplyToTuples(json["_kCost"], mod, nonnegative: true);
+                continue;
+            }
+            if (mod.Type is Buff1Type or Buff2Type or SkillDamageParamExtraType)
+            {
+                ApplyToTuples(json[mod.Type == Buff1Type ? "_kBuff1" : mod.Type == Buff2Type ? "_kBuff2" : "_kDamageParamExtra"], mod);
                 continue;
             }
             string field = Field(mod.Type)!;
-            if (mod.Type is 29 or 30)
+            if (IsVector(mod.Type))
             {
                 if (json[field] is not JsonArray arr) continue;
                 // Index -1 in exported damage modifiers targets the full vector (inferred).
@@ -262,16 +306,27 @@ internal static class SkillParameterRules
         return JsonSerializer.SerializeToElement(json);
     }
 
+    /// <summary>來源指定第 0 列第 3 欄；僅處理 Attr/SP，避免把 HP、道具或能量錯當成 SP。
+    /// 取整沿用既有 operation 5（inferred）。1232 是同一被動的屬性呈現，不能在扣款時再套一次。</summary>
+    private static void ApplyToSpCost(JsonNode? list, Modifier mod)
+    {
+        if (list is not JsonArray { Count: > 0 } rows || rows[0] is not JsonArray { Count: >= 4 } cost
+            || cost[0]?.ToString() != "1" || cost[1]?.ToString() != AttributeId.Sp.ToString(CultureInfo.InvariantCulture)
+            || !long.TryParse(cost[3]?.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out long value)) return;
+        cost[3] = Math.Max(0, Apply(value, mod));
+    }
+
     /// <summary>A type 33/34 tuple on a _kBuff1/_kBuff2 list: column <see cref="Modifier.Column"/> of the tuple at
     /// <see cref="Modifier.Index"/> (-1 every tuple).</summary>
-    private static void ApplyToBuffTuples(JsonNode? list, Modifier mod)
+    private static void ApplyToTuples(JsonNode? list, Modifier mod, bool nonnegative = false)
     {
         if (list is not JsonArray tuples) return;
         for (int i = 0; i < tuples.Count; i++)
         {
             if (mod.Index >= 0 && i != mod.Index || tuples[i] is not JsonArray tuple || mod.Column < 0 || mod.Column >= tuple.Count
                 || !long.TryParse(tuple[mod.Column]?.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out long old)) continue;
-            tuple[mod.Column] = Apply(old, mod);
+            long value = Apply(old, mod);
+            tuple[mod.Column] = nonnegative ? Math.Max(0, value) : value;
         }
     }
 }

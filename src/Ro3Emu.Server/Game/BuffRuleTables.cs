@@ -208,6 +208,9 @@ internal sealed partial class BuffRuleTables
     private PeriodicRule? PeriodicOf(JsonElement row)
     {
         int id = (int)GameData.Int(row, "_iID");
+        // Offertorium 的週期由來源光環選取小隊；不以一般「承受者屬性」公式計算。
+        if (id is >= 1432501 and <= 1432504)
+            return new PeriodicRule(id, PeriodicKind.Heal, 1000, false, 0, 0, 0, 0, 0, row);
         string formula = row.TryGetProperty("_kDamageFormulaExtra", out var f) && f.ValueKind == JsonValueKind.Array
             && f.GetArrayLength() > 0 && f[0].ValueKind == JsonValueKind.String ? f[0].GetString()! : "";
         var extra = row.TryGetProperty("_kDamageParamExtra", out var e) && e.ValueKind == JsonValueKind.Array

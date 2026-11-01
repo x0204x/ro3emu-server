@@ -51,12 +51,20 @@ public sealed partial class WorldCoreService
         state.ReviveExpiresMs = Now + 30000; // Inferred invitation timeout; wire uses absolute milliseconds.
         state.ReviveHpRate = 10000; state.ReviveSpRate = 10000;
         if (skill.TryGetProperty("_kDamageParamExtra", out var extra) && extra.ValueKind == JsonValueKind.Array)
-            foreach (var row in extra.EnumerateArray())
+        {
+            IEnumerable<JsonElement> ratios = extra.EnumerateArray();
+            // SpecialEffect16420012→Buff1422001：Base90以下復活恢復量增加10個百分點。
+            // AcolyteBD4前兩列是40～70%加成組，後兩列才是30～60%原值，不能依序覆蓋加成組。
+            if (skill.TryGetProperty("_kScriptLogic", out var logic) && logic.GetString() == "AcolyteBD4"
+                && extra.GetArrayLength() == 4)
+                ratios = ratios.Skip(target.Progress is { Level: <= 90 } ? 0 : 2).Take(2);
+            foreach (var row in ratios)
                 if (row.ValueKind == JsonValueKind.Array && row.GetArrayLength() >= 3 && GameData.Number(row[0]) == 2)
                 {
                     if (GameData.Number(row[2]) == 101) state.ReviveHpRate = (long)(GameData.Number(row[1]) ?? 0);
                     if (GameData.Number(row[2]) == 102) state.ReviveSpRate = (long)(GameData.Number(row[1]) ?? 0);
                 }
+        }
         await target.SendGameAsync(ReliveInvitation, new EntityReliveReceiveInviteNotify
         {
             SourceEntityID = source.Role.Id, TargetEntityID = target.Role!.Id,

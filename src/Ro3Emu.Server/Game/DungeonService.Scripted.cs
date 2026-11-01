@@ -47,6 +47,7 @@ public sealed partial class DungeonService
         public List<BuffInfo> Buffs { get; } = new();
         public InteractInfo? StoryInteraction { get; set; }
         public AoICarryInfo? StoryCarryInfo { get; set; }
+        public Action<EntityBase>? StoryEntityExtras { get; set; }
 
         public override EntityBase Entity()
         {
@@ -71,6 +72,7 @@ public sealed partial class DungeonService
             if (Buffs.Count > 0) entity.BuffData = new AoIBuffInfo { AddBuffs = { Buffs.Select(b => b.Clone()) } };
             if (StoryInteraction != null) entity.InteractInfo = StoryInteraction.Clone();
             if (StoryCarryInfo != null) entity.CarryInfo = StoryCarryInfo.Clone();
+            StoryEntityExtras?.Invoke(entity);
             return entity;
         }
     }

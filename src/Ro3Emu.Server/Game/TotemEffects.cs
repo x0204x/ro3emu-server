@@ -375,7 +375,8 @@ public sealed class TotemEffects : IGameTicker
             if (_character.Stats(s)[2000] * 100 <= _character.Stats(s)[101] * threshold)
                 extra += (long)Math.Floor(heal * (GameData.Number(logic[2]) ?? 0) / 10000d);
         }
-        return (long)Math.Floor((heal + extra) * HealingMultiplier(s));
+        // 207 已由 CombatService 的完整角色治療屬性套用一次，這裡只加圖騰專用觸發量。
+        return heal + extra;
     }
 
     private async Task<long> AdjustIncomingDamageAsync(MonsterUnit attacker, GameSession s, DamageHitResult result, long damage)

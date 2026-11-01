@@ -41,23 +41,21 @@ follow-up debuffs. Ordinary timed buffs can outlive unequipping; future windows 
 
 ## Scope against ordinary combat
 
-Guardians brought rules the shared combat code did not have. Each applies only when a guardian is involved, so
-ordinary skills, monsters and equipment behave as they did before. A buff placed by a guardian is marked guardian-owned
-(`BuffService.AddGuardianAsync`); only such a buff:
+寵物來源仍以 `IsGuardianOwned` 保留來源識別與專用被動；下列共用規則已不再限制寵物來源：
 
-- carries the further control states (knock-up, freeze, petrify, root, super armour, control and debuff immunity,
-  stealth's special status). Hiding itself is every source's (skill-protocol.md, "Hiding and detection"). Stun, sleep, silence and the other states ordinary buffs already showed are unchanged;
-- limits a blinded player's or monster's sight to the blind radius;
-- changes a monster's attack, defence, hit, crit, cast speed, movement speed and damage taken or dealt;
-- breaks on a hit (freeze, petrify, sleep);
-- feeds healing done/received, SP cost and the variable chant. A player's chant is otherwise the configured fixed
-  plus variable time, as before.
+- 標準擊飛、冰凍、石化、定身、霸體、控制與減益免疫。
+- 怪物攻防、命中、暴擊、施法速度、移動速度與傷害使用所有有效增益，移除後還原模板。
+- 冰凍、石化、睡眠在正值傷害後解除，後續狀態保留原施放者與來源類別。
+- 持有者免疫分類拒絕所有來源的對應減益，並保留元素控制的抵抗追擊通知。
+- 變動詠唱納入所有有效增益，排除到期但尚未清除的資料。
 
-Immunity from a holder buff's `_kBuffCategory` refuses an incoming buff only when either the incoming buff or the
-holder is a guardian's: an MVP's born control immunity stops guardian control, and ordinary buffs keep their old
-stacking. The pet support resistances of `ApplyPetSupportResistance` now apply to hits from tower pets and from
-guardians, and read physical/magic reduction and every element's resistance. The synthetic `GuardianPetTests`
-check both sides for control states, blind, monster speed, chant and immunity.
+怪物除了狀態與禁止行動遮罩，也同步 `ObjStagger`／`StaggerInfo`。配對客戶端
+`LC_UnitSpecialStatus.GetStaggerState` 使用 `1 << _iStaggerType`；
+`LC_State_Unit_Stagger.StateProcess` 會維持硬直，且 `LC_UnitBase` 將硬直排在技能之前。
+伺服器依此拒絕硬直中的施法（權威執行策略標為 inferred），不新增原 `_kForbidden` 沒有的禁止位元。
+
+失明半徑、治療修正與 SP 消耗的既有寵物專用聚合仍保留原邊界；不能因此宣稱普通技能與裝備的所有效果都已覆蓋。
+合成測試與真實資料測試分別驗證來源範圍、控制、怪物速度、詠唱及免疫；原生客戶端畫面仍需玩家驗收。
 
 ## Explicit inference boundary
 

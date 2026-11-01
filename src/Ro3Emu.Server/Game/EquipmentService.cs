@@ -367,7 +367,7 @@ public sealed partial class EquipmentService
             if (item.Grid != 0) { error = new(ErrorCodes.CannotDismantleEquipped, $"{guid} is worn or socketed"); break; }
             if (_data.Row("ItemConfig", item.Entry) is { } seasonRow && GameData.Int(seasonRow, "_iSeasonResetType") != 0)
             { error = new(ErrorCodes.FeatureUnavailable, $"{item.Entry} requires authoritative season state"); break; }
-            var returns = Returns(item);
+            var returns = MerchantReturns(session, Returns(item));
             if (returns.Count == 0) { error = new(ErrorCodes.Parameter, $"{item.Entry} has no returns"); break; }
             if (count < 1 || count > item.Stack) { error = new(count < 1 ? ErrorCodes.Parameter : ErrorCodes.ItemsShort, $"bad count {count}"); break; }
             instances[guid] = count;

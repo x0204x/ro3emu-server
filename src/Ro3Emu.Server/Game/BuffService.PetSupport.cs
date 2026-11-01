@@ -1,4 +1,6 @@
 using Romsg;
+using System.Text.Json;
+using Ro3Emu.Server.Data;
 using Ro3Emu.Server.Maps;
 
 namespace Ro3Emu.Server.Game;
@@ -12,8 +14,26 @@ public sealed partial class BuffService
 
     private IEnumerable<(int Id, long Value)> SupportShieldProperties(GameSession player)
     {
-        yield return (2003, LiveShield(player.Buffs));
+        foreach (var property in ShieldProperties(player.Buffs)) yield return (checked((int)property.Idx), property.Data);
     }
+
+    // 配對 Lua_GameDefine：2003 為總盾量，2006／2007／2008 分別為物理／魔法／通用護盾。
+    private static IEnumerable<AoIProperty> ShieldProperties(IEnumerable<ActiveBuff> buffs)
+    {
+        var live = buffs.Where(b => b.ExpireMs > MonsterService.NowMs && b.ShieldRemaining > 0).ToArray();
+        yield return new AoIProperty { Idx = 2003, Data = LiveShield(live) };
+        yield return new AoIProperty { Idx = 2006, Data = LiveShield(live.Where(b => b.ShieldDamageKind == 1)) };
+        yield return new AoIProperty { Idx = 2007, Data = LiveShield(live.Where(b => b.ShieldDamageKind == 2)) };
+        yield return new AoIProperty { Idx = 2008, Data = LiveShield(live.Where(b => b.ShieldDamageKind == 0)) };
+    }
+
+    private static bool ShieldAccepts(ActiveBuff buff, JsonElement? damageSkill) => buff.ShieldDamageKind == 0
+        || damageSkill is { } row && GameData.Int(row, "_iDmgType") == buff.ShieldDamageKind;
+
+    // Kyrie 的技能／增益說明均明列物理限定；_iDmgType=2 是盾量使用 MATK，不能當成吸收魔法。
+    private bool HolyLightBreaks(ActiveBuff buff, JsonElement? damageSkill) => damageSkill is { } row
+        && GameData.Int(row, "_iSkillID") == 14011
+        && _data.Row("BuffConfig", buff.ConfigId) is { } config && GameData.Int(config, "_iBuffID") == 14117;
 
     /// <summary>The currently unspent shield owned by timed player buffs.</summary>
     public long ShieldAmount(GameSession player) => LiveShield(player.Buffs);
@@ -21,17 +41,8 @@ public sealed partial class BuffService
     /// <summary>The currently unspent shield owned by timed unit buffs.</summary>
     public long ShieldAmount(WorldUnit unit) => _unitBuffs.TryGetValue(unit.Uid, out var buffs) ? LiveShield(buffs) : 0;
 
-    /// <summary>Active raw attribute contributions; the combat owner passes these through StatCalculator.</summary>
-    /// <summary>The attribute changes of a guardian's live buffs on the unit. (inferred scope) Only these alter a monster's
-    /// combat stats, damage and speed: ordinary unit buffs keep their previous, display-only behaviour.</summary>
-    internal IEnumerable<(long Id, double Value)> GuardianUnitAttributes(WorldUnit unit) =>
-        _unitBuffs.TryGetValue(unit.Uid, out var buffs)
-            ? buffs.Where(b => b.IsGuardianOwned && b.ExpireMs > MonsterService.NowMs)
-                .SelectMany(b => b.Changes.Select(change => (change.Attr, change.Value))).ToArray()
-            : [];
-
     /// <summary>A player's live guardian buffs alone, through the same attribute calculator. (inferred scope) Healing,
-    /// SP cost and chant modifiers read these, so equipment and ordinary buffs keep their previous effect.</summary>
+    /// SP cost modifiers read these, so equipment and ordinary buffs keep their previous effect.</summary>
     internal StatSheet GuardianAttributes(GameSession p)
     {
         var raw = new Dictionary<int, double>();
@@ -41,8 +52,8 @@ public sealed partial class BuffService
         return StatCalculator.Compute(raw, _data);
     }
 
-    internal bool HasGuardianUnitBuffs(WorldUnit unit) => _unitBuffs.TryGetValue(unit.Uid, out var buffs)
-        && buffs.Any(b => b.IsGuardianOwned && b.ExpireMs > MonsterService.NowMs);
+    internal bool HasUnitBuffs(WorldUnit unit) => _unitBuffs.TryGetValue(unit.Uid, out var buffs)
+        && buffs.Any(b => b.ExpireMs > MonsterService.NowMs);
 
     public IEnumerable<(long Id, double Value)> UnitAttributes(WorldUnit unit) =>
         _unitBuffs.TryGetValue(unit.Uid, out var buffs)
@@ -73,27 +84,37 @@ public sealed partial class BuffService
             if (entity.ObjForbid.Data.Values.Count == 0) entity.ObjForbid.Data.Values.Add(0);
             entity.ObjForbid.Data.Values[0] |= forbidden;
         }
+        ulong stagger = UnitStaggerMask(unit);
+        if (stagger != 0)
+        {
+            entity.ObjStagger ??= new AoiObjStaggerInfo();
+            entity.ObjStagger.StaggerMask |= stagger;
+        }
         var live = buffs.Where(b => b.ExpireMs > MonsterService.NowMs && (!b.IsPassive || b.ShowIcon)).ToArray();
         if (live.Length > 0)
         {
             entity.BuffData ??= new AoIBuffInfo();
             entity.BuffData.AddBuffs.Add(live.Select(Wire));
         }
-        long shield = ShieldAmount(unit);
-        var property = entity.Property.FirstOrDefault(p => p.Idx == 2003);
-        if (property != null) property.Data = shield;
-        else if (shield > 0) entity.Property.Add(new AoIProperty { Idx = 2003, Data = shield });
+        foreach (var value in ShieldProperties(buffs))
+        {
+            var property = entity.Property.FirstOrDefault(p => p.Idx == value.Idx);
+            if (property != null) property.Data = value.Data;
+            else entity.Property.Add(value);
+        }
     }
 
     /// <summary>Consume only live support shields before HP damage; nonpositive damage consumes nothing.</summary>
-    public async Task<long> AbsorbAsync(GameSession target, long damage)
+    public async Task<long> AbsorbAsync(GameSession target, long damage, JsonElement? damageSkill = null)
     {
         if (damage <= 0) return 0;
         if (target.Role == null) return damage;
         foreach (var expired in target.Buffs.Where(b => b.ShieldRemaining > 0 && b.ExpireMs <= MonsterService.NowMs).ToArray())
             await RemoveAsync(target, expired);
+        foreach (var broken in target.Buffs.Where(b => b.ShieldRemaining > 0 && HolyLightBreaks(b, damageSkill)).ToArray())
+            await RemoveAsync(target, broken);
         // (inferred) Older buffs absorb first. BuffConfig does not identify an order for independent shields.
-        foreach (var buff in target.Buffs.Where(b => b.ShieldRemaining > 0 && b.ExpireMs > MonsterService.NowMs)
+        foreach (var buff in target.Buffs.Where(b => b.ShieldRemaining > 0 && b.ExpireMs > MonsterService.NowMs && ShieldAccepts(b, damageSkill))
                      .OrderBy(b => b.Guid).ToArray())
         {
             long absorbed = Math.Min(damage, buff.ShieldRemaining);
@@ -110,14 +131,16 @@ public sealed partial class BuffService
     }
 
     /// <summary>Consume only live unit support shields; fully spent buffs are removed and published.</summary>
-    public async Task<long> AbsorbAsync(WorldUnit target, long damage)
+    public async Task<long> AbsorbAsync(WorldUnit target, long damage, JsonElement? damageSkill = null)
     {
         if (damage <= 0) return 0;
         if (!_unitBuffs.TryGetValue(target.Uid, out var buffs)) return damage;
         foreach (var expired in buffs.Where(b => b.ShieldRemaining > 0 && b.ExpireMs <= MonsterService.NowMs).ToArray())
             await RemoveUnitBuffAsync(target, expired);
+        foreach (var broken in buffs.Where(b => b.ShieldRemaining > 0 && HolyLightBreaks(b, damageSkill)).ToArray())
+            await RemoveUnitBuffAsync(target, broken);
         // (inferred) Older buffs absorb first, matching the player path.
-        foreach (var buff in buffs.Where(b => b.ShieldRemaining > 0 && b.ExpireMs > MonsterService.NowMs)
+        foreach (var buff in buffs.Where(b => b.ShieldRemaining > 0 && b.ExpireMs > MonsterService.NowMs && ShieldAccepts(b, damageSkill))
                      .OrderBy(b => b.Guid).ToArray())
         {
             long absorbed = Math.Min(damage, buff.ShieldRemaining);
@@ -129,7 +152,7 @@ public sealed partial class BuffService
                 await _world.ToUnitViewersAsync(target, AoiAttrChange, new AOIAttrChange
                 {
                     EntityUuid = (ulong)target.Uid,
-                    Property = { new AoIProperty { Idx = 2003, Data = ShieldAmount(target) } },
+                    Property = { ShieldProperties(buffs) },
                 });
             }
             if (damage == 0) break;
@@ -155,7 +178,7 @@ public sealed partial class BuffService
             EntityUuid = (ulong)unit.Uid, BuffInfo = new AoIBuffInfo { RemoveBuffs = { buff.Guid } },
         };
         if (buff.ShieldRemaining > 0)
-            changed.Property.Add(new AoIProperty { Idx = 2003, Data = ShieldAmount(unit) });
+            changed.Property.Add(ShieldProperties(buffs));
         await _world.ToUnitViewersAsync(unit, AoiAttrChange, changed);
         if (buff.Changes.Count > 0 || buff.StateOrdinal > 0)
             foreach (var handler in UnitChanged) await handler(unit);

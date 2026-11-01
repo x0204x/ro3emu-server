@@ -21,6 +21,9 @@ public sealed partial class CombatService
         Vec3 center = release is SkillRelease.Lock or SkillRelease.DragRect or SkillRelease.DragCircle ? requested : origin;
         float height = GameData.Int(row, "_iAreaHeightRange") / 100f;
         if (height > 0 && MathF.Abs(point.Y - center.Y) > height) return false;
+        if (VolleyArrowAreaContains(row, origin, face, point) is { } volley) return volley;
+        if (HighAltitudeBombingAreaContains(row, origin, face, point) is { } bombing) return bombing;
+        if (SpearAreaContains(row, origin, face, point) is { } spear) return spear;
         var range = Numbers(row, "_kRange");
         double radius = range.FirstOrDefault(300) / 100;
         var (forward, side) = FacingOffset(point.X - center.X, point.Z - center.Z, face);

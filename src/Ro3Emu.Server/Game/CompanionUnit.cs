@@ -52,6 +52,9 @@ internal sealed class CompanionUnit(CompanionUnit.Kit kit, World world, CombatSe
         int AttackTickMs, float ViewRange, float ChaseDistance)
     {
         public bool RotateAttackSkills { get; init; }
+        /// <summary>本次僅有施放封包、沒有可歸屬扣血的故事友軍；不套用推定傷害公式。</summary>
+        public bool StoryPresentationOnly { get; init; }
+        public int BirthAnimation { get; init; }
     }
 
     private readonly Dictionary<int, long> _readyMs = [];
@@ -70,6 +73,7 @@ internal sealed class CompanionUnit(CompanionUnit.Kit kit, World world, CombatSe
     public long Hp { get; set; } = kit.Template.MaxHp;
     public bool Dead { get; set; }
     public long BornMs { get; init; } = MonsterService.NowMs;
+    internal int PresentationAnimation { get; set; } = kit.BirthAnimation;
     /// <summary>The participant its hits and kills are credited to (null: the run is over).</summary>
     public required Func<GameSession?> Credit { get; init; }
     /// <summary>Called once when it falls; its owner removes it.</summary>
@@ -253,6 +257,8 @@ internal sealed class CompanionUnit(CompanionUnit.Kit kit, World world, CombatSe
                 Pos = Pos, Face = Face, ServerTime = MonsterService.NowMs, MoveType = MovementType.MoveTypeNone
             },
         };
+        if (PresentationAnimation != 0) entity.AnimationInfo[1] = PresentationAnimation;
+        if (Spec.StoryPresentationOnly) entity.Owner = Uid;
         // The head bar's attributes, as a monster-type scene actor carries them, with its current HP.
         foreach (var (idx, value) in new (int, long)[] { (AttributeId.MaxHp, t.MaxHp), (AttributeId.Hp, Hp), (Level, t.Level),
                      (AttributeId.Speed, Spec.SpeedCm), (MaxSp, t.MaxSp), (AttributeId.Sp, t.MaxSp) })

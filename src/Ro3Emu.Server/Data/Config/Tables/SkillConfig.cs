@@ -10,6 +10,7 @@ public readonly partial record struct SkillConfig(JsonElement Row)
     [ConfigField("_bMovement")] public partial long Movement { get; }
     [ConfigField("_iActionTime")] public partial long ActionTime { get; }
     [ConfigField("_iActionTimeInfluence")] public partial long ActionTimeInfluence { get; }
+    [ConfigField("_iAreaHeightRange")] public partial long AreaHeightRange { get; }
     [ConfigField("_iActivateCondition")] public partial long ActivateCondition { get; }
     [ConfigField("_iAffectByArrow")] public partial long AffectByArrow { get; }
     [ConfigField("_iBasicType")] public partial long BasicType { get; }
@@ -57,6 +58,7 @@ public readonly partial record struct SkillConfig(JsonElement Row)
     [ConfigField("_iRelease")] public partial long Release { get; }
     [ConfigField("_iScriptShow")] public partial long ScriptShow { get; }
     [ConfigField("_iSkillAdvanced")] public partial long SkillAdvanced { get; }
+    [ConfigField("_iSkillCondition")] public partial long SkillCondition { get; }
     [ConfigField("_iSkillCri")] public partial long SkillCri { get; }
     [ConfigField("_iSkillEffectLevel")] public partial long SkillEffectLevel { get; }
     [ConfigField("_iSkillHit")] public partial long SkillHit { get; }
@@ -69,6 +71,9 @@ public readonly partial record struct SkillConfig(JsonElement Row)
     [ConfigField("_kBuff1")] public partial long[][] Buff1 { get; }
     [ConfigField("_kBuff2")] public partial long[][] Buff2 { get; }
     [ConfigField("_kCost")] public partial long[][] Cost { get; }
+    [ConfigField("_kDamageFormulaExtra")] public partial string[] DamageFormulaExtra { get; }
+    [ConfigField("_kDamageParamExtra")] public partial long[][] DamageParamExtra { get; }
+    [ConfigField("_kDamageScript")] public partial string DamageScript { get; }
     [ConfigField("_kDamageParam1")] public partial long[] DamageParam1 { get; }
     [ConfigField("_kDamageParam2")] public partial long[] DamageParam2 { get; }
     [ConfigField("_kDescData")] public partial string[] DescData { get; }
@@ -100,6 +105,8 @@ public readonly partial record struct SkillConfig(JsonElement Row)
         node["_kBuff1"] = new System.Text.Json.Nodes.JsonArray();
         node["_kBuff2"] = new System.Text.Json.Nodes.JsonArray();
         node["_kShowDmg"] = new System.Text.Json.Nodes.JsonArray();
+        node["_kDamageFormulaExtra"] = new System.Text.Json.Nodes.JsonArray();
+        node["_kDamageParamExtra"] = new System.Text.Json.Nodes.JsonArray();
         return JsonSerializer.SerializeToElement(node);
     }
 

@@ -8,7 +8,8 @@ namespace Ro3Emu.Server.Game;
 /// <summary>A buff on a player: BuffConfig id, its attribute changes, when it ends (absolute server ms).</summary>
 public sealed record ActiveBuff(long Guid, int ConfigId, long ExpireMs, int DurationMs, IReadOnlyList<(long Attr, double Value)> Changes, long SourceId,
     int PileCount = 1, bool IsPassive = false, bool IsTotemOwned = false, int StateOrdinal = 0, bool ShowIcon = true,
-    long ShieldRemaining = 0, bool IsGuardianOwned = false, bool ShieldDebuffImmunity = false, int HpFloorBasisPoints = 0);
+    long ShieldRemaining = 0, bool IsGuardianOwned = false, bool ShieldDebuffImmunity = false, int HpFloorBasisPoints = 0,
+    int ShieldDamageKind = 0);
 
 /// <summary>
 /// Buff lifetime and control state. The explicit state map below is inferred from
@@ -66,24 +67,23 @@ public sealed partial class BuffService : IGameTicker
         StunGroup => 18, // Stun
         SleepGroup => 19, // Sleep
         SilenceGroup => 20, // Silence
+        KnockUpGroup => 3,
+        FreezeGroup => 11,
+        PetrifyGroup => 12,
+        RootGroup => 21,
+        SuperArmorGroup => 22,
+        ControlImmunityGroup => 23,
+        DebuffImmunityGroup => 24,
         12003 => 11,
         9034 => 25,
         49090 => 66, // Blessing of Light (4909001): SpecialStatusConfig 66 光明庇护, _kForbidden [10] (inferred pairing)
         _ => guardianOwned ? GuardianStateFor(buffGroup) : 0,
     };
 
-    /// <summary>Further named groups and their SpecialStatusConfig rows. (inferred scope) Only guardian-applied buffs
-    /// carry these states so far: the same groups from ordinary skills keep their previous, display-only behaviour
-    /// until each state is established and tested for every source.</summary>
+    /// <summary>寵物專用狀態；標準控制使用上方共用的 BuffConfig 群組／SpecialStatusConfig 對應。
+    /// 狀態配對仍是既有資料推定，不能將一般技能的同一冰凍／定身效果降為純顯示。</summary>
     private static int GuardianStateFor(int buffGroup) => buffGroup switch
     {
-        KnockUpGroup => 3, // Knock-Up -> FlyHit
-        FreezeGroup => 11, // Freeze
-        PetrifyGroup => 12, // Petrify
-        RootGroup => 21, // Root
-        SuperArmorGroup => 22, // Super Armor
-        ControlImmunityGroup => 23, // Control immunity
-        DebuffImmunityGroup => 24, // Debuff immunity
         GuardianGroup.ShinobiStealth => 2, // Stealth
         _ => 0,
     };
@@ -112,7 +112,7 @@ public sealed partial class BuffService : IGameTicker
         double attributeMultiplier = 1)
     {
         if (p.Role == null || _data.Row("BuffConfig", configId) is not { } row || GameData.Int(row, "_iBuffID") <= 0) return;
-        if (await RejectIncomingAsync(p, row, guardianOwned, sourceId)) return;
+        if (await RejectIncomingAsync(p, row, sourceId)) return;
         if (durationMs <= 0) durationMs = (int)GameData.Int(row, "_iTime");
         if (durationMs <= 0) durationMs = 60000;
         if (sourceId != p.Role.Id && !ApplyDecay(p.Role.Id, p.SceneEntry, configId, ref durationMs)) return;
@@ -124,7 +124,8 @@ public sealed partial class BuffService : IGameTicker
         int stackType = (int)GameData.Int(row, "_iStackType");
         int maxStack = (int)Math.Max(1, GameData.Int(row, "_iMaxStack"));
         // Inferred server policy from enum_BuffStackType: named layer types add a pile; others refresh.
-        int pile = explicitPileCount ?? (existing != null && stackType is 1 or 2 or 3 or 7
+        // 過期列可能尚未被ticker移除；可沿用替換通知，但不能延續已失效的層數。
+        int pile = explicitPileCount ?? (existing != null && existing.ExpireMs > now && stackType is 1 or 2 or 3 or 7
             ? Math.Min(maxStack, existing.PileCount + 1) : 1);
         IEnumerable<(long Id, double Value)> pairs = GameData.Pairs(row, "_kChangeAttri");
         if (SourceAttributes != null) pairs = SourceAttributes(sourceId, row, [.. pairs]);
@@ -132,10 +133,11 @@ public sealed partial class BuffService : IGameTicker
         var buff = new ActiveBuff(existing?.Guid ?? Interlocked.Increment(ref _guids), configId,
             now + durationMs, durationMs, changes, sourceId, pile, StateOrdinal: StateFor(group, guardianOwned),
             ShieldRemaining: Math.Max(0, shieldAmount), IsGuardianOwned: guardianOwned,
-            ShieldDebuffImmunity: shieldDebuffImmunity, HpFloorBasisPoints: hpFloorBasisPoints);
+            ShieldDebuffImmunity: shieldDebuffImmunity, HpFloorBasisPoints: hpFloorBasisPoints,
+            ShieldDamageKind: group == 14117 ? 1 : 0);
         if (existing != null) p.Buffs.Remove(existing);
         p.Buffs.Add(buff);
-        TrackPeriodic(p, null, buff);
+        TrackPeriodic(p, null, buff, existing != null && existing.ExpireMs <= now);
         TrackHalo(p, buff);
         _log.LogInformation("{Name} gets buff {Buff} x{Pile} for {Ms} ms", p.Role.Name, configId, pile, durationMs);
         var info = Wire(buff);
@@ -145,7 +147,7 @@ public sealed partial class BuffService : IGameTicker
             EntityUuid = (ulong)p.Role.Id, BuffInfo = new AoIBuffInfo { AddBuffs = { info } },
         });
         if (existing?.StateOrdinal != buff.StateOrdinal || buff.StateOrdinal != 0) await RefreshControlAsync(p);
-        if (guardianOwned && group == BlindGroup) await PublishBlindAsync(p);
+        if (group == BlindGroup) await PublishBlindAsync(p);
         if (buff.Changes.Count > 0 || existing?.Changes.Count > 0 || buff.ShieldRemaining > 0 || existing?.ShieldRemaining > 0)
             await _character.RefreshStatsAsync(p);
         foreach (var handler in Changed) await handler(p);
@@ -216,8 +218,7 @@ public sealed partial class BuffService : IGameTicker
         if (buff.Changes.Count > 0) await _character.RefreshStatsAsync(p);
     }
 
-    /// <summary>A guardian's buff on a unit: unlike ordinary unit buffs, it carries its control state and counts
-    /// toward the unit's combat attributes (<see cref="GuardianUnitAttributes"/>).</summary>
+    /// <summary>寵物來源標記保留供專用被動判定；怪物的標準控制與屬性變化不受來源種類限制。</summary>
     internal Task AddGuardianAsync(WorldUnit unit, int configId, int durationMs, long sourceId, double attributeMultiplier = 1) =>
         AddSupportAsync(unit, configId, durationMs, sourceId, attributeMultiplier: attributeMultiplier, guardianOwned: true);
 
@@ -231,16 +232,18 @@ public sealed partial class BuffService : IGameTicker
         double attributeMultiplier = 1, bool guardianOwned = false)
     {
         if (_data.Row("BuffConfig", configId) is not { } row || GameData.Int(row, "_iBuffID") <= 0) return;
-        if (_unitBuffs.TryGetValue(unit.Uid, out var live) && ImmuneTo(live, row, guardianOwned)) return;
+        _unitBuffs.TryGetValue(unit.Uid, out var live);
         if (live != null && sourceId != unit.Uid && UnitResistsControl(live, row))
         {
             foreach (var handler in ControlResisted) await handler(unit, sourceId, row);
             return;
         }
+        if (live != null && ImmuneTo(live, row)) return;
         if (durationMs <= 0) durationMs = (int)GameData.Int(row, "_iTime");
         if (durationMs <= 0) durationMs = 60000;
         if (sourceId != unit.Uid && !ApplyDecay(unit.Uid, unit.SceneEntry, configId, ref durationMs)) return;
         if (!_unitBuffs.TryGetValue(unit.Uid, out var list)) _unitBuffs[unit.Uid] = list = new();
+        long now = MonsterService.NowMs;
         int group = (int)GameData.Int(row, "_iBuffID");
         bool multiSource = GameData.Int(row, "_iMultiSource") != 0;
         var existing = list.FirstOrDefault(b => _data.Row("BuffConfig", b.ConfigId) is { } old
@@ -248,21 +251,21 @@ public sealed partial class BuffService : IGameTicker
         int stackType = (int)GameData.Int(row, "_iStackType");
         int maxStack = (int)Math.Max(1, GameData.Int(row, "_iMaxStack"));
         // (inferred) Match the player path: named layer types increase piles; other types refresh.
-        int pile = existing != null && stackType is 1 or 2 or 3 or 7
+        int pile = existing != null && existing.ExpireMs > now && stackType is 1 or 2 or 3 or 7
             ? Math.Min(maxStack, existing.PileCount + 1) : 1;
         var buff = new ActiveBuff(existing?.Guid ?? Interlocked.Increment(ref _guids), configId,
-            MonsterService.NowMs + durationMs, durationMs,
+            now + durationMs, durationMs,
             GameData.Pairs(row, "_kChangeAttri").Select(c => (c.Id, c.Value * pile * attributeMultiplier)).ToArray(), sourceId, pile,
             ShieldRemaining: Math.Max(0, shieldAmount), IsGuardianOwned: guardianOwned,
-            StateOrdinal: guardianOwned ? StateFor(group, true) : 0);
+            StateOrdinal: StateFor(group, guardianOwned), ShieldDamageKind: group == 14117 ? 1 : 0);
         if (existing != null) list.Remove(existing);
         list.Add(buff);
-        TrackPeriodic(null, unit, buff);
+        TrackPeriodic(null, unit, buff, existing != null && existing.ExpireMs <= now);
         var info = Wire(buff);
         await _world.ToUnitViewersAsync(unit, BuffUpdate, new BuffUpdateNotify { UnitId = unit.Uid, Buffs = { info } });
         var changed = new AOIAttrChange { EntityUuid = (ulong)unit.Uid, BuffInfo = new AoIBuffInfo { AddBuffs = { info } } };
         if (buff.ShieldRemaining > 0 || existing?.ShieldRemaining > 0)
-            changed.Property.Add(new AoIProperty { Idx = 2003, Data = ShieldAmount(unit) });
+            changed.Property.Add(ShieldProperties(list));
         await _world.ToUnitViewersAsync(unit, AoiAttrChange, changed);
         if (buff.Changes.Count > 0 || existing?.Changes.Count > 0 || buff.StateOrdinal > 0 || existing?.StateOrdinal > 0)
             foreach (var handler in UnitChanged) await handler(unit);
@@ -284,7 +287,7 @@ public sealed partial class BuffService : IGameTicker
             EntityUuid = (ulong)p.Role.Id, BuffInfo = new AoIBuffInfo { RemoveBuffs = { buff.Guid } },
         });
         if (buff.StateOrdinal != 0) await RefreshControlAsync(p);
-        if (buff.IsGuardianOwned && buff.ConfigId / 100 == BlindGroup) await PublishBlindAsync(p);
+        if (buff.ConfigId / 100 == BlindGroup) await PublishBlindAsync(p);
         if (buff.Changes.Count > 0 || buff.ShieldRemaining > 0) await _character.RefreshStatsAsync(p);
         foreach (var handler in Changed) await handler(p);
     }
@@ -492,13 +495,17 @@ public sealed partial class BuffService : IGameTicker
         SweepDecay(now);
         foreach (var s in _sessions.All())
         {
-            foreach (var b in s.Buffs.Where(b => b.ExpireMs <= now).ToList()) _loop.TrackLegacyDetached("buff expiration", () => RemoveAsync(s, b));
+            // 到期當次的週期工作可能等待HP鎖或逐一處理隊友；完成後才自然移除。
+            // 手動移除／驅散不走此延後，週期生命期檢查仍會立即中止未提交的效果。
+            foreach (var b in s.Buffs.Where(b => b.ExpireMs <= now
+                && !PeriodicBusy(b)).ToList())
+                _loop.TrackLegacyDetached("buff expiration", () => RemoveAsync(s, b));
             TickEnergy(s, now);
             TickImmuneDeath(s, now);
         }
         foreach (var (uid, list) in _unitBuffs.ToList())
         {
-            foreach (var buff in list.Where(b => b.ExpireMs <= now).ToList())
+            foreach (var buff in list.Where(b => b.ExpireMs <= now && !PeriodicBusy(b)).ToList())
             {
                 var unit = _world.AllUnits().FirstOrDefault(u => u.Uid == uid);
                 if (unit != null) _loop.TrackLegacyDetached("unit buff expiration", () => RemoveUnitBuffAsync(unit, buff));

@@ -29,3 +29,33 @@ This note covers `BuffService.cs`, its energy/death partials and `SkillBuffTests
 * The same roots searched for `WidgetConfig|WIDGET_UPDATE_NOTIFY|WIDGET_REMOVE_NOTIFY|WidgetUpdateNotify|WidgetRemoveNotify`: generated Lua config plus display helpers/Scene_Sync and proto carriers are positive; no scene/nav/loc/decomp producer appears. For `ImmuneDead|Death Immunity|lethal skill damage|ImmuneDeadConfirmTimeMs`, data/config has `Localization_en`, `PublicParamConfig`, `DirtyDataConfig`, `data/loc/loc_en.tsv` matches, the Lua revive/panel paths and protobuf messages match; the positive buff/skill rows above were found by resolving localization IDs from *all* BuffConfig/SkillConfig descriptions. For `WorldTree|World Tree|ITEM_WORLD_TREE_REVIVE_NTF`, config localization/public parameters, `LC_ReviveHelper`, `LC_DAL_Item` and proto match.
 
 Focused wire tests are in `SkillBuffTests.cs`: cast/add/nonempty AOI, foreign/protected/manual removal, overlapping 2702 masks, item-use refusal/recovery, Osiris offer/confirmation/CD, and energy initialize/charge.
+
+## 一般技能與寵物技能共用的狀態效果
+
+`BuffConfig._kChangeAttri` 的怪物屬性覆寫由所有有效來源共同提供，不再僅讀取 `IsGuardianOwned`。
+`MonsterStats`、命中計算、傷害減免與移動速度都讀取同一份有效狀態；移除或到期後回復模板，
+不修改共用的 `MonsterTemplate`。`IsGuardianOwned` 仍供寵物專屬反應使用，不會因一般技能產生後續狀態而改成寵物來源。
+
+已知群組對應的暈眩、睡眠、沉默、冰凍、石化、定身與免疫使用共用狀態路徑。
+行動限制讀取 `SpecialStatusConfig._kForbidden`，由伺服器實際拒絕移動、普攻或施法，並以 31048 同步遮罩。
+冰凍／石化／睡眠遇正 HP 傷害解除，前兩者以 `_kLogicData` 套用後續狀態；原有抵抗與遞減規則仍生效。
+怪物抵抗控制時先保留 `ControlResisted` 事件，避免元素控制的抵抗後追擊因共用免疫而消失。
+群組到特殊狀態的配對沿用既有資料推定，不代表已取得原服全部狀態程式。
+
+暴風雪 `1210801..1210810` 的每波倍率為 5.5% 至 10%、固定項為 67 至 130；
+Lv.3 為 MATK × 6.5% + 81，Lv.10 為 MATK × 10% + 130，之後仍需套防禦、元素等戰鬥規則。
+`_kBuff2` 指向減速 `1211101`（`1131=-2000`，3000 ms，每波刷新）及冰凍 `902001`
+（200/10000，1000 ms，受抵抗與免疫影響）。`_kLogicData` 的 1000 ms 間隔及 5000 ms 生命週期
+對應時間 0、1、2、3、4 秒的五波，不應把演出分段數 `_kShowDmg` 當成額外傷害波數。
+
+`SkillCombatTests.StormGust` 使用真資料及 TCP 施放，分別核對 Lv.3／Lv.10 的傷害、五波、半徑、
+五目標上限、199／200 的觸發邊界、實際速度與控制解除；
+`SkillCombatTests.OrdinaryControls` 核對非寵物來源的控制、免疫與受擊解除。
+這些是 LAB 協定測試；原生客戶端動畫、移動表現及全職業所有等級的玩家驗收仍須另外記錄。
+
+怪物硬直另由 `_iStaggerType` 同步 `StaggerInfo` 與初次可見的 `ObjStagger`。
+冰凍、石化、暈眩不一定含 `_kForbidden` 的施法位元；伺服器分開套用硬直優先於施法的判定，
+保持原始禁止行動遮罩不變。解除或到期必須同步零遮罩，避免客戶端永久停留在控制動作。
+
+`LC_Unit_Player.CanBlockSkill` 明確豁免群組 93010「解控」；控制施法驗證保留此例外，
+但不跳過學習、生命狀態、場景與冷卻檢查，也不宣稱已還原其未知玩法腳本。

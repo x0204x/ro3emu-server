@@ -40,25 +40,38 @@ public sealed partial class BuffService
 
     /// <summary>Register (or refresh the applier of) a buff that ticks. The first tick is one interval after landing,
     /// or at expiry for a buff shorter than that (a 200 ms potion buff heals once).</summary>
-    private void TrackPeriodic(GameSession? player, WorldUnit? unit, ActiveBuff buff)
+    private void TrackPeriodic(GameSession? player, WorldUnit? unit, ActiveBuff buff, bool restarted = false)
     {
         if (!Rules.Periodic.TryGetValue(buff.ConfigId, out var rule)) return;
         long scene = player?.WorldScene ?? unit!.WorldScene;
         var source = rule.Kind == BuffRuleTables.PeriodicKind.Damage ? ResolvePeriodicSource?.Invoke(buff.SourceId, scene) : null;
         if (_periodicByGuid.TryGetValue(buff.Guid, out var existing))
         {
-            if (source != null) existing.Source = source; // a refresh by another applier hurts with its numbers
-            return;
+            if (!restarted)
+            {
+                if (source != null) existing.Source = source; // a refresh by another applier hurts with its numbers
+                return;
+            }
+            // 同GUID已過期後重施是新的週期生命期；舊busy工作仍持有舊物件，不能借新Buff完成。
+            _periodic.Remove(existing);
+            _periodicByGuid.Remove(buff.Guid);
         }
         if (rule.Kind == BuffRuleTables.PeriodicKind.Damage && source == null) return; // nothing to scale (inferred)
         var effect = new PeriodicEffect
         {
             Rule = rule, Player = player, Unit = unit, TargetId = player?.Role?.Id ?? unit!.Uid, Guid = buff.Guid, Source = source,
-            NextMs = MonsterService.NowMs + Math.Min(rule.IntervalMs, Math.Max(0, buff.DurationMs)),
+            // 必須使用建立 Buff 的同一絕對起點；重新讀 Now 多出1ms，就會讓最後一跳落在 ExpireMs 之後。
+            NextMs = buff.ExpireMs - buff.DurationMs + Math.Min(rule.IntervalMs, Math.Max(0, buff.DurationMs)),
         };
         _periodic.Add(effect);
         _periodicByGuid[buff.Guid] = effect;
     }
+
+    internal bool PeriodicCurrent(PeriodicEffect effect) =>
+        _periodicByGuid.TryGetValue(effect.Guid, out var registered) && ReferenceEquals(effect, registered)
+        && LiveBuff(effect) != null;
+
+    private bool PeriodicBusy(ActiveBuff buff) => _periodicByGuid.TryGetValue(buff.Guid, out var effect) && effect.Busy;
 
     private ActiveBuff? LiveBuff(PeriodicEffect effect)
     {
@@ -73,7 +86,7 @@ public sealed partial class BuffService
         return null;
     }
 
-    private void TickPeriodic(long now)
+    internal void TickPeriodic(long now)
     {
         for (int i = _periodic.Count - 1; i >= 0; i--)
         {
@@ -94,7 +107,7 @@ public sealed partial class BuffService
             effect.Busy = true;
             _loop.TrackRuntimeDetached("periodic buff tick", async () =>
             {
-                try { await tick(effect, buff); }
+                try { if (PeriodicCurrent(effect)) await tick(effect, buff); }
                 finally { effect.Busy = false; }
             });
         }

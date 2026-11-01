@@ -46,6 +46,7 @@ public sealed partial class SkillCombatTests
     {
         await using var alice = await InWorld("Alice");
         await Gm("alice", "!lvl 99"); await Gm("alice", "!job 1410"); await Teach("alice", 11418); await Teach("alice", 11504);
+        await EquipConditionFixtureAsync("alice", 2500120, 2);
         await ChooseProfessionTalent(alice, "alice", 10104107);
         _app.Services.GetRequiredService<TalentProcs>().Roll = _ => 0;
         var a = Session("alice");

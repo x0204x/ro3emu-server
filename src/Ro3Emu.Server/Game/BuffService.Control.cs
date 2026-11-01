@@ -8,6 +8,7 @@ namespace Ro3Emu.Server.Game;
 public sealed partial class BuffService
 {
     private const int ControlBuffTag = 37, NegativeBuffType = 2;
+    internal const int ControlReleaseSkillGroup = 93010; // LC_Unit_Player.CanBlockSkill 明確排除「解控」。
     private const int ControlChargeGroup = 9101; // Chimera's three _kBuff1 entries; three applications, capped by BuffConfig._iMaxStack.
 
     // SpecialStatusConfig 22-24 (_kDesc): immunity is implemented through the holder buff's _kBuffCategory. Super Armor
@@ -15,9 +16,11 @@ public sealed partial class BuffService
     private const int DisplacementImmunityCategory = 19, ControlImmunityCategory = 20,
         DebuffImmunityCategory = 21, AllNegativeImmunityCategory = 22;
 
-    private async Task<bool> RejectIncomingAsync(GameSession player, JsonElement incoming, bool guardianOwned, long sourceId)
+    internal List<Func<GameSession, JsonElement, bool>> PlayerBuffImmunities { get; } = [];
+
+    private async Task<bool> RejectIncomingAsync(GameSession player, JsonElement incoming, long sourceId)
     {
-        if (ImmuneTo(player.Buffs, incoming, guardianOwned)) return true;
+        if (ImmuneTo(player.Buffs, incoming) || PlayerBuffImmunities.Any(reject => reject(player, incoming))) return true;
         if (GameData.Int(incoming, "_iType") != NegativeBuffType
             || !GuardianPetRules.Numbers(incoming, "_kBuffCategory").Contains(ControlBuffTag)) return false;
         var charge = player.Buffs.FirstOrDefault(b => b.IsGuardianOwned && b.ExpireMs > MonsterService.NowMs
@@ -33,10 +36,9 @@ public sealed partial class BuffService
     }
 
     /// <summary>Tag 37 identifies control effects and _iType 2 debuffs; the holder's categories decide immunity.
-    /// (inferred) Reject the incoming buff before decay, rather than merely hiding its icon. (inferred scope) Only where a
-    /// guardian is involved, as the incoming buff's source or as the immunity's holder buff: ordinary buffs meeting
-    /// ordinary immunity keep their previous behaviour until that is established and tested for every source.</summary>
-    private bool ImmuneTo(IEnumerable<ActiveBuff> active, JsonElement incoming, bool incomingGuardian)
+    /// (inferred) Reject the incoming buff before decay, rather than merely hiding its icon.
+    /// 免疫種類由持有狀態的分類決定，不能因施放者不是寵物而失效。</summary>
+    private bool ImmuneTo(IEnumerable<ActiveBuff> active, JsonElement incoming)
     {
         if (GameData.Int(incoming, "_iType") != NegativeBuffType) return false;
         long now = MonsterService.NowMs;
@@ -44,7 +46,7 @@ public sealed partial class BuffService
         bool control = GuardianPetRules.Numbers(incoming, "_kBuffCategory").Contains(ControlBuffTag);
         bool displacement = GameData.Int(incoming, "_iBuffID") is KnockBackGroup or KnockUpGroup;
         // Chimera's charge also carries control immunity (category 20), but it is spent per application instead.
-        return active.Any(b => b.ExpireMs > now && (incomingGuardian || b.IsGuardianOwned)
+        return active.Any(b => b.ExpireMs > now
             && _data.Row("BuffConfig", b.ConfigId) is { } row && GameData.Int(row, "_iBuffID") != ControlChargeGroup
             && GuardianPetRules.Numbers(row, "_kBuffCategory") is var held
             && (held.Contains(DebuffImmunityCategory) || held.Contains(AllNegativeImmunityCategory)
@@ -54,7 +56,7 @@ public sealed partial class BuffService
 
     /// <summary>A unit holding a control immunity (category 20: the MVPs' born buffs 900801/900901, 9032) resists a control
     /// (tag 37) from any source: Element Control's "When a Boss target resists your [Frozen], [Petrify], or [Stun]" says
-    /// bosses resist them. (inferred) Units only; a player's immunity keeps the guardian-only scope of ImmuneTo.</summary>
+    /// bosses resist them. 在通用免疫拒絕前保留此通知，讓元素控制的抵抗後追擊仍能觸發。</summary>
     private bool UnitResistsControl(IEnumerable<ActiveBuff> active, JsonElement incoming)
     {
         var control = new BuffConfig(incoming);
@@ -92,6 +94,29 @@ public sealed partial class BuffService
     internal ulong UnitStatus(WorldUnit unit) => !_unitBuffs.TryGetValue(unit.Uid, out var buffs) ? 0
         : buffs.Where(b => b.ExpireMs > MonsterService.NowMs && b.StateOrdinal is > 0 and < 33)
             .Aggregate(0UL, (mask, b) => mask | 1UL << (b.StateOrdinal - 1));
+
+    // LC_UnitSpecialStatus.GetStaggerState 使用 1 << _iStaggerType；這不是 _kForbidden 的位元。
+    internal ulong UnitStaggerMask(WorldUnit unit) => _unitBuffs.TryGetValue(unit.Uid, out var buffs)
+        ? StaggerMask(buffs) : 0;
+
+    private ulong StaggerMask(IEnumerable<ActiveBuff> buffs)
+    {
+        ulong mask = 0;
+        foreach (var buff in buffs.Where(b => b.ExpireMs > MonsterService.NowMs && b.StateOrdinal > 0))
+            if (_data.Row("SpecialStatusConfig", buff.StateOrdinal) is { } row
+                && GameData.Int(row, "_iStaggerType") is > 0 and < 64)
+                mask |= 1UL << (int)GameData.Int(row, "_iStaggerType");
+        return mask;
+    }
+
+    // LC_State_Unit_Stagger.StateProcess 回傳 PROCESS_HOLD；LC_UnitBase 的 Stagger 優先於 Skill。
+    // (inferred) 伺服器同步拒絕硬直中的技能，不捏造原設定沒有的 CastSkill 禁止位元。
+    internal bool UnitActionBlocked(WorldUnit unit, int ordinal) => UnitForbidden(unit, ordinal)
+        || ordinal == ForbiddenState.CastSkill && UnitStaggerMask(unit) != 0;
+
+    internal bool ActionBlocked(GameSession player, int ordinal, int skillGroup = 0) =>
+        !(ordinal == ForbiddenState.CastSkill && skillGroup == ControlReleaseSkillGroup)
+        && (HasForbidden(player, ordinal) || ordinal == ForbiddenState.CastSkill && StaggerMask(player.Buffs) != 0);
 
     internal ulong UnitForbiddenMask(WorldUnit unit)
     {

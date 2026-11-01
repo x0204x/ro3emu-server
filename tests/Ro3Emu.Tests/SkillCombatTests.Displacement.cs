@@ -68,6 +68,7 @@ public sealed partial class SkillCombatTests
     {
         await using var alice = await InWorld("Alice");
         await Gm("alice", "!lvl 99"); await Teach("alice", group);
+        if (group is 11624 or 11628) await EquipConditionFixtureAsync("alice", 2050120);
         var session = Session("alice");
         var nav = _app.Services.GetRequiredService<WorldData>().Map(session.SceneEntry)!.Nav;
         var start = session.Position.Clone();
@@ -133,6 +134,7 @@ public sealed partial class SkillCombatTests
     {
         await using var alice = await InWorld("Alice");
         await Gm("alice", "!job 3100"); await Teach("alice", 13005);
+        await EquipConditionFixtureAsync("alice", 2110120);
         var session = Session("alice");
         var nav = _app.Services.GetRequiredService<WorldData>().Map(session.SceneEntry)!.Nav;
         var start = session.Position.Clone();
@@ -170,6 +172,7 @@ public sealed partial class SkillCombatTests
         await using var alice = await InWorld("Alice");
         await using var bob = await InWorld("Bob");
         await Gm("alice", $"!job {job}"); await Teach("alice", group);
+        if (group == 13005) await EquipConditionFixtureAsync("alice", 2110120);
         await Gm("bob", "!lvl 99"); // a full HP pool that a low-level hit leaves standing
         if (metres < 0) await Gm("alice", "!lvl 99"); // Tetra Vortex costs more SP than a level 1 pool
         var source = Session("alice");

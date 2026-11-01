@@ -43,7 +43,9 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
     {
         var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
-        var role = await bot.CreateRoleAsync(name); await bot.EnterWorldAsync(role.RoleBaseInfo.Id);
+        var role = await bot.CreateRoleAsync(name);
+        Assert.NotNull(role.RoleBaseInfo); // 建角拒絕時直接顯示失敗，不在後續操作產生誤導性的 NullReference。
+        await bot.EnterWorldAsync(role.RoleBaseInfo.Id);
         return bot;
     }
     private static async Task<T> Next<T>(BotClient bot, uint id, Google.Protobuf.MessageParser<T> parser, Func<T, bool>? match = null)

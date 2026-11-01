@@ -1,5 +1,6 @@
 using Romsg;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Maps;
 
 namespace Ro3Emu.Server.Game;
@@ -101,9 +102,10 @@ public sealed class TowerPetUnit : WorldUnit
                     (int)Math.Max(200, GameData.Int(row, "_iActionTime")),
                     Math.Max(1f, GameData.Int(row, "_iDistanceMax") / 100f), GameData.Int(row, "_iActionTimeInfluence") != 0);
                 if (PetCombatRules.SupportFor(row) != null) supportSkills.Add(skill);
-                else if (row.TryGetProperty("_kDamageParam1", out var damage)
+                else if ((row.TryGetProperty("_kDamageParam1", out var damage)
                     && damage.ValueKind == System.Text.Json.JsonValueKind.Array && damage.GetArrayLength() > 0
                     && GameData.Number(damage[0]) is > 0
+                    || SkillExtraFormulaRules.HasPetHealthDamage(new SkillConfig(row)))
                     && GameData.Int(row, "_iRelease") is 1 or 2
                     && GameData.Int(row, "_iRangeType") is 1 or 2)
                     attackSkills.Add(skill);

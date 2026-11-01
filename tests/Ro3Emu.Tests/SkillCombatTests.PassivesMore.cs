@@ -16,6 +16,7 @@ public sealed partial class SkillCombatTests
     {
         await using var alice = await InWorld("Alice");
         await Gm("alice", "!lvl 99"); await Gm("alice", "!job 5200"); await Teach("alice", 15102);
+        await EquipConditionFixtureAsync("alice", 2120120);
         _app.Services.GetRequiredService<CombatService>().Rolls = new GuardianStableDamageRolls();
 
         // A fresh monster each time: a hit at low Life may kill it.

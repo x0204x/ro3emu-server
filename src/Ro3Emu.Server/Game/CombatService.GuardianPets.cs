@@ -21,7 +21,7 @@ public sealed partial class CombatService
         DamageAdjusters.Add((s, _, row, _, damage) => GuardianOutgoingDamage(s, row, damage));
         DamageAdjusters.Add((s, target, _, _, damage) => GuardianControlledDamage(s, GuardianControlTarget(target), damage));
         _buffs.UnitChanged.Add(PublishMonsterAttributesAsync);
-        _monsters.Forbidden = _buffs.UnitForbidden;
+        _monsters.Forbidden = _buffs.UnitActionBlocked;
         _monsters.TargetVisible = (m, p) => !Stealthed(p) && _buffs.CanSeePosition(m, p.Position);
     }
 
@@ -210,7 +210,11 @@ public sealed partial class CombatService
         if (first && CurrentCastMap(s, action)) await GuardianSupportAsync(s, skill, action);
         if (first && CurrentCastMap(s, action)) await GuardianSpecialSupportAsync(s, skill, action);
         if (first && CurrentCastMap(s, action)) await GuardianReactionsAsync(s, skill, action);
-        if (last && CurrentCastMap(s, action)) await GuardianCoreDamageAsync(s, action);
+        if (last && CurrentCastMap(s, action))
+        {
+            await GuardianCoreDamageAsync(s, action);
+            await CompleteCastOnceAsync(s, action, skill.Active, primaryGuardian: true);
+        }
     }
 
     private GameSession[] GuardianAllies(GameSession s, GuardianPetRules.Skill skill)
@@ -288,7 +292,7 @@ public sealed partial class CombatService
         if (!current() || source.Role == null || recipient.Role == null) return;
         foreach (var modifier in ExtraHeal) amount = modifier(source, amount);
         var stats = _character.Stats(recipient);
-        amount = ModifiedHealing(_buffs.GuardianAttributes(source), _buffs.GuardianAttributes(recipient), amount);
+        amount = ModifiedHealing(_character.HealingStats(source), _character.HealingStats(recipient), amount);
         long actual = Math.Min(Math.Max(0, amount), Math.Max(0, stats[AttributeId.MaxHp] - stats[AttributeId.Hp]));
         long owner = source.Role!.Id, target = recipient.Role!.Id;
         await _character.SetHpSpAsync(recipient, stats[AttributeId.Hp] + actual, null);
@@ -306,5 +310,8 @@ public sealed partial class CombatService
             if (!current()) break;
             await observer(source, actual);
         }
+        if (current() && _data.Row("SkillConfig", skillId) is { } healingRow)
+            foreach (var observer in HealingApplied)
+                if (current()) await observer(source, recipient, healingRow, actual);
     }
 }

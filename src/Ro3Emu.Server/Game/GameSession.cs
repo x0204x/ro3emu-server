@@ -171,6 +171,8 @@ public sealed class GameSession(PhonestChannel channel, TrafficLog traffic, Skil
     public long ImmuneRecoveryUntilMs { get; set; }
     public int ImmuneRecoveryPercent { get; set; }
     public Dictionary<int, long> SkillCds { get; } = new();
+    internal Dictionary<int, long> SkillPublicCds { get; } = new();
+    internal Dictionary<(int Group, int Mode), int> SkillCooldownShownModes { get; } = new();
     public Dictionary<int, long> ItemCds { get; } = new();
     public Dictionary<int, long> ItemGroupCds { get; } = new();
 

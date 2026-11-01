@@ -27,11 +27,19 @@ public sealed partial class CombatService
     {
         if (!skill.CanDamageEnemy || !Reaches(companion, target, skill, 1f) || SkillConfig.Get(_data, skill.Id) is not { } config) return;
         long castId = ++_sessionIds;
-        await _world.ToUnitViewersAsync(companion, UseInSkill, new UseInSkillInfo
+        await _world.ToUnitViewersAsync(companion, companion.Spec.StoryPresentationOnly ? UseInSkillHigh : UseInSkill, new UseInSkillInfo
         {
             SrcID = companion.Uid, SkillID = skill.Id, TargetId = target.Uid, TargetPos = target.Pos, Face = companion.Face,
             SessionId = castId, SkillMs = skill.ActionMs, StartTime = Now, PlayAct = true,
+            SkillInterruptMs = companion.Spec.StoryPresentationOnly ? skill.ActionMs : 0,
         });
+        if (companion.Spec.StoryPresentationOnly)
+        {
+            // 原服已觀察支援者與敵人互相鎖定；採既有同伴應戰規則，仇恨優先序仍為推定。
+            _monsters.Engage(target, companion);
+            ScheduleAirshipSupportMove(companion, target, skill);
+            return;
+        }
         ScheduleRuntime(companion.WorldScene, TimeSpan.FromMilliseconds(skill.ActionMs * CompanionHitShare),
             () => CompanionHitAsync(companion, target, skill, config.Row, castId));
     }
@@ -52,6 +60,9 @@ public sealed partial class CombatService
         bool Current() => ReferenceEquals(player.Role, role) && ReferenceEquals(player.Attachment, attachment)
             && !player.SceneLoading && player.SceneGeneration == generation && player.WorldScene == target.WorldScene;
         var (damage, result) = Damage(CompanionFighter(companion.Template), MonsterFighter(target), row);
+        long beforeShield = damage;
+        damage = await _buffs.AbsorbAsync(target, damage, row);
+        if (!Current() || !Reaches(companion, target, skill, 2f)) return;
         long previousHp = target.Hp;
         target.Hp = Math.Max(0, target.Hp - damage);
         bool lethal = target.Hp == 0; // reserved before the awaited settlement, as a player's hit does
@@ -60,7 +71,8 @@ public sealed partial class CombatService
         {
             SrcID = companion.Uid, SkillId = skill.Id, ShowPoint = HitEffect(new SkillConfig(row).ScriptShow),
             SessionId = castId, SrcElement = companion.Template.Element,
-            Dsts = { new DamageInfo { DstID = target.Uid, Damage = damage, HitResult = result, DstElement = target.Template.Element,
+            Dsts = { new DamageInfo { DstID = target.Uid, Damage = damage, SheildDamage = beforeShield - damage,
+                HitResult = result, DstElement = target.Template.Element,
                 IsDead = target.Hp == 0 } },
         };
         foreach (var viewer in target.Viewers.Union(companion.Viewers).ToArray()) await viewer.SendGameAsync(SkillHit, hit);
@@ -130,13 +142,18 @@ public sealed partial class CombatService
             : (Math.Max(1, monster.Template.Atk), DamageHitResult.Normal);
         damage = MonsterBuffDamage(monster, row, ScaleMonsterDamage(damage, monster.DamageRatio));
         if (damagePercent != 100) damage = damagePercent <= 0 ? 0 : ScaleMonsterDamage(damage, damagePercent * 100);
+        long beforeShield = damage;
+        damage = await _buffs.AbsorbAsync(companion, damage, row);
+        if (companion.Removed || companion.Dead || companion.Hp <= 0 || monster.Removed || monster.Dead
+            || monster.WorldScene != companion.WorldScene) return;
         companion.Hp = Math.Max(0, companion.Hp - damage);
         companion.Dead = companion.Hp == 0; // reserved before the awaited broadcasts
         var hit = new SkillHitInfo
         {
             SrcID = monster.Uid, SkillId = skillId, ShowPoint = showPoint, SessionId = castId,
             SrcElement = monster.Template.Element,
-            Dsts = { new DamageInfo { DstID = companion.Uid, Damage = damage, HitResult = result, DstElement = t.Element,
+            Dsts = { new DamageInfo { DstID = companion.Uid, Damage = damage, SheildDamage = beforeShield - damage,
+                HitResult = result, DstElement = t.Element,
                 IsDead = companion.Dead } },
         };
         await _world.ToUnitViewersAsync(monster, SkillHit, hit);
@@ -152,6 +169,7 @@ public sealed partial class CombatService
     /// </summary>
     internal double CompanionDps(CompanionUnit.Kit kit, MonsterTemplate target)
     {
+        if (kit.StoryPresentationOnly) return 0;
         if (!kit.Skills.Any(skill => skill.CanDamageEnemy)) return 0;
         var attacker = CompanionFighter(kit.Template);
         var defender = new Fighter(0, 0, target.Flee, 0, target.Level, target.Element) { Def = target.Def, Mdef = target.Mdef, Flee = target.Flee };

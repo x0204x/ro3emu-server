@@ -535,7 +535,7 @@ public sealed class GuardianPetTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task OnlyAGuardiansControlBuffStopsAMonster(bool guardian)
+    public async Task StandardControlBuffStopsAMonsterFromEitherSource(bool guardian)
     {
         await using var f = new Fixture();
         await f.Start();
@@ -547,13 +547,15 @@ public sealed class GuardianPetTests
             if (guardian) await buffs.AddGuardianAsync(monster, Petrify, 5000, f.Session.Role!.Id);
             else await buffs.AddSupportAsync(monster, Petrify, 5000, f.Session.Role!.Id);
             Assert.True(buffs.UnitHasGroup(monster, BuffService.PetrifyGroup));
-            Assert.Equal(guardian, buffs.UnitForbidden(monster, ForbiddenState.Walk));
-            Assert.Equal(guardian ? 1UL << 11 : 0, buffs.UnitStatus(monster)); // SpecialStatusConfig 12, Petrify
+            Assert.True(buffs.UnitForbidden(monster, ForbiddenState.Walk));
+            Assert.Equal(1UL << 11, buffs.UnitStatus(monster)); // SpecialStatusConfig 12, Petrify
         });
     }
 
-    [Fact]
-    public async Task ABornControlImmunityRefusesAGuardiansControlBuff()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ABornControlImmunityRefusesAControlBuffFromEitherSource(bool guardian)
     {
         await using var f = new Fixture();
         await f.Start();
@@ -563,16 +565,17 @@ public sealed class GuardianPetTests
         {
             var monster = await f.SpawnMonsterAsync();
             await buffs.AddSupportAsync(monster, BornImmunity, 60000, monster.Uid);
-            await buffs.AddGuardianAsync(monster, Petrify, 5000, f.Session.Role!.Id);
+            if (guardian) await buffs.AddGuardianAsync(monster, Petrify, 5000, f.Session.Role!.Id);
+            else await buffs.AddSupportAsync(monster, Petrify, 5000, f.Session.Role!.Id);
             Assert.False(buffs.UnitHasGroup(monster, BuffService.PetrifyGroup));
             Assert.False(buffs.UnitForbidden(monster, ForbiddenState.Walk));
         });
     }
 
     [Theory]
-    [InlineData(false, 250)]
+    [InlineData(false, 125)]
     [InlineData(true, 125)]
-    public async Task OnlyAGuardiansDebuffChangesAMonstersSpeed(bool guardian, int expectedCm)
+    public async Task StandardDebuffChangesAMonstersSpeedFromEitherSource(bool guardian, int expectedCm)
     {
         await using var f = new Fixture();
         await f.Start();
@@ -584,13 +587,15 @@ public sealed class GuardianPetTests
             if (guardian) await buffs.AddGuardianAsync(monster, Slow, 5000, f.Session.Role!.Id);
             else await buffs.AddSupportAsync(monster, Slow, 5000, f.Session.Role!.Id);
             Assert.Equal(expectedCm, monster.SpeedCm(MonsterService.NowMs));
+            await buffs.RemoveUnitConfigAsync(monster, Slow);
+            Assert.Equal(250, monster.SpeedCm(MonsterService.NowMs));
         });
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task OnlyAGuardiansBlindLimitsThePlayersSight(bool guardian)
+    public async Task OrdinaryAndGuardianBlindUseTheSameExplicitSightPolicy(bool guardian)
     {
         await using var f = new Fixture();
         await f.Start();
@@ -602,8 +607,8 @@ public sealed class GuardianPetTests
             far.X += BuffService.BlindRadiusCm / 100f + 5;
             if (guardian) await buffs.AddGuardianAsync(f.Session, Blind, 5000, f.Session.Role!.Id);
             else await buffs.AddAsync(f.Session, Blind, 5000, f.Session.Role!.Id);
-            Assert.Equal(guardian, buffs.Blinded(f.Session));
-            Assert.Equal(!guardian, buffs.CanSeePosition(f.Session, far));
+            Assert.True(buffs.Blinded(f.Session));
+            Assert.False(buffs.CanSeePosition(f.Session, far));
             Assert.True(buffs.CanSeePosition(f.Session, f.Session.Position));
         });
     }
@@ -611,7 +616,7 @@ public sealed class GuardianPetTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task OnlyAGuardiansCastSpeedShortensTheVariableChant(bool guardian)
+    public async Task OrdinaryAndGuardianCastSpeedShortenTheVariableChant(bool guardian)
     {
         await using var f = new Fixture();
         await f.Start();
@@ -624,8 +629,7 @@ public sealed class GuardianPetTests
             if (guardian) await buffs.AddGuardianAsync(f.Session, CastSpeedBuff, 5000, f.Session.Role!.Id);
             else await buffs.AddAsync(f.Session, CastSpeedBuff, 5000, f.Session.Role!.Id);
             int after = f.Combat.ChantMs(f.Session, row);
-            if (guardian) Assert.True(after < before, $"Guardian C-SPD did not shorten chant: {before} -> {after}");
-            else Assert.Equal(before, after);
+            Assert.True(after < before, $"C-SPD did not shorten chant (guardian={guardian}): {before} -> {after}");
         });
     }
 }

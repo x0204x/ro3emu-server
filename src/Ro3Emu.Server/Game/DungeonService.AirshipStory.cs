@@ -26,6 +26,10 @@ public sealed partial class DungeonService
         public bool CannonReady, CaptainStarted, Rolled, Stopped;
         public long RollSerial;
         public readonly List<SceneActorUnit> DeckActors = new();
+        public bool SupportStarted;
+        public readonly List<CompanionUnit> Support = new();
+        public readonly List<SceneActorUnit> Barrels = new();
+        public long BarrelSerial;
     }
 
     private AirshipStoryState AirshipState(Attempt a) => _airshipStories.GetValue(a, static _ => new AirshipStoryState());
@@ -55,6 +59,7 @@ public sealed partial class DungeonService
                 await AirshipDeckBlastAsync(a, state, new Vec3 { X = 236, Y = 228.65002f, Z = 467.79f }, leaveBurn: true);
                 break;
             case 2:
+                StartAirshipSupport(a, state);
                 AirshipLater(a, state, 500, () => AirshipShoutsAsync(a, 5300558, 4380041), () => a.Wave == 2);
                 break;
             case 5: await StartAirshipAftermathAsync(a, state); break;
@@ -90,11 +95,16 @@ public sealed partial class DungeonService
 
     private async Task StartAirshipAftermathAsync(Attempt a, AirshipStoryState state)
     {
+        await ClearAirshipBarrelsAsync(a, state);
         await ResetAirshipRollAsync(a, state, 0);
         await AirshipShoutsAsync(a, 5300561, 4380042);
         AirshipLines(a, state, 4000, 5300562, wave: 5);
         AirshipLines(a, state, 8000, 5300563, 4380043, wave: 5);
-        AirshipLater(a, state, 8200, () => SyncSceneActorsAsync(a, Step(a)!.Actors), () => a.Wave == 5);
+        AirshipLater(a, state, 8200, async () =>
+        {
+            await ClearAirshipSupportAsync(a, state);
+            await SyncSceneActorsAsync(a, Step(a)!.Actors);
+        }, () => a.Wave == 5);
         AirshipLines(a, state, 10500, 5300564, wave: 5);
         AirshipLines(a, state, 13000, 5300565, wave: 5);
         AirshipLater(a, state, 15500, async () =>
@@ -149,6 +159,7 @@ public sealed partial class DungeonService
     private bool BindAirshipCannonTarget(Attempt a, GameSession member, ReconstructedDungeons.ScriptedStep step, CastSkillReq req)
     {
         if (a.Plan.SceneEntry != AirshipScene) return true;
+        if (req.TargetPos is not null && !ValidAirshipAim(member, req)) return false;
         if (req.TargetsId.Count > 1 || req.TargetId != 0 && req.TargetsId.Count == 1 && req.TargetsId[0] != req.TargetId)
             return false;
         long target = req.TargetId != 0 ? req.TargetId : req.TargetsId.SingleOrDefault();
@@ -183,10 +194,14 @@ public sealed partial class DungeonService
     /// 原服 5353001 的 18 次砲擊皆送出 31108／6120105，目標為座標；61098 模板無彈道事件。
     /// 飛行時間由 EffectData 的速度 50 計算；空瞄也呈現，但不產生命中。
     /// </summary>
-    private CastProjectile? AirshipCannonProjectile(GameSession member, ActiveSkillCast cast) =>
-        member.SceneEntry == AirshipScene && cast.Request.SkillId == 5353001
-        && Active(member) is { } attempt && attempt.CannonUsers.ContainsKey(member)
-            ? new CastProjectile(6120105, PositionTarget: true, CastEffectId: 5353201) : null;
+    private CastProjectile? AirshipCannonProjectile(GameSession member, ActiveSkillCast cast)
+    {
+        if (!PreserveAirshipCannonAim(member, cast.Request) || Active(member) is not { } attempt) return null;
+        // 彈道綁定接受當下的房間／目標／瞄點；正常離砲不能把已飛出的砲彈重新判成普通技能。
+        _airshipCannonAccepted.GetValue(cast, _ => new AirshipCannonAuthorization(attempt.Room.Id,
+            cast.Request.TargetId, cast.Request.TargetPos.Clone()));
+        return new CastProjectile(6120105, PositionTarget: true, CastEffectId: 5353201);
+    }
 
     /// <summary>合法泡泡只 ACK，不再要求四船員／五次戰後互動。船長選項只啟動一次收尾。</summary>
     private async Task<bool> TryAirshipStoryInteractionAsync(Attempt a, GameSession member,
@@ -285,13 +300,14 @@ public sealed partial class DungeonService
         AirshipLater(a, state, 3440, async () =>
         {
             if (boss.Dead || boss.Removed || boss.Hp <= 0 || boss.BossSkills?.CastSerial != castSerial
-                || _buffs.UnitForbidden(boss, ForbiddenState.CastSkill)) return;
+                || _buffs.UnitActionBlocked(boss, ForbiddenState.CastSkill)) return;
             await ResetAirshipRollAsync(a, state, 0);
             state.Rolled = true;
             state.RollSerial = castSerial;
             await AirshipClientAsync(a, "SetMainCameraConfigId", Integer(88), Integer(11000), Integer(1200), Boolean(false));
             await AirshipClientAsync(a, "RollTheWholeScene", Real(0), Integer(400), Boolean(true),
                 new EventParams { Vec3Params = { new Vec3 { X = -25 } } }, Integer(0));
+            ScheduleAirshipBarrels(a, state, boss, castSerial);
         }, () => a.Wave == 4);
         AirshipLater(a, state, 8440, () => state.RollSerial == castSerial
             ? ResetAirshipRollAsync(a, state, 6000) : Task.CompletedTask);
@@ -311,6 +327,8 @@ public sealed partial class DungeonService
         if (a.Plan.SceneEntry != AirshipScene || !_airshipStories.TryGetValue(a, out var state)) return;
         state.Stopped = true;
         state.Generation++;
+        await ClearAirshipSupportAsync(a, state);
+        await ClearAirshipBarrelsAsync(a, state);
         await ClearAirshipDeckAsync(a, state);
         await ResetAirshipRollAsync(a, state, 0);
     }

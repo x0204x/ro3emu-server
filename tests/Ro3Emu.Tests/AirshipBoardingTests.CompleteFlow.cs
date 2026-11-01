@@ -153,7 +153,7 @@ public sealed partial class AirshipBoardingTests
         var timeline = await Next(bot, CombatService.UseInSkillHigh, UseInSkillInfo.Parser,
             use => use.SkillID == 5353001 && use.SessionId == accepted.SessionId);
         Assert.Equal(Session.Role!.Id, timeline.SrcID);
-        Assert.Equal(ship.Uid, timeline.TargetId);
+        Assert.Equal(0, timeline.TargetId); // 原服31106與31108都以同一座標瞄準，不公開內部結算UID。
         var projectile = await Next(bot, CombatService.SkillBulletHigh, SkillFixTimeBulletNotify.Parser,
             bullet => bullet.SkillConfigId == 5353001 && bullet.EffectId == 6120105);
         Assert.Equal(Session.Role!.Id, projectile.SourceId);

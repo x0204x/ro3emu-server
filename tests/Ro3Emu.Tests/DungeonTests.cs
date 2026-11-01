@@ -149,6 +149,11 @@ public sealed partial class DungeonTests : IAsyncLifetime
 
     private async Task Kill(BotClient bot, MonsterUnit actor)
     {
+        if (actor.SceneEntry == LifecycleAirship && actor.Template.NpcId is 5300015 or 5300053)
+        {
+            await KillAirshipFixtureShip(bot, actor);
+            return;
+        }
         await SwingWait.UntilDoneAsync(Service<GameLoop>(), Session(bot), actor.Uid);
         await OnLoop(async () =>
         {

@@ -5,8 +5,8 @@ namespace Ro3Emu.Server.Game;
 
 public sealed partial class CombatService
 {
-    /// <summary>A player's chant uses their own C-SPD and variable/fixed chant modifiers, plus live guardian modifiers.
-    /// Ordinary timed buffs stay outside the guardian-specific path until their source behaviour is established.</summary>
+    /// <summary>角色詠唱使用配裝與所有仍有效的增益所提供之 C-SPD、固定及變動詠唱修正；
+    /// 普通技能、卡片被動及寵物增益共用屬性計算，不因來源不同而排除。</summary>
     internal int ChantMs(GameSession s, JsonElement row) => ChantMilliseconds(_data, row, _character.ChantStats(s));
 
     /// <summary>A*cspd/(B+C*cspd) from PublicParamConfig, cast speed clamped to FinalAtkSpdThdAndCastSpdThd[1].</summary>

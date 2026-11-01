@@ -234,6 +234,7 @@ public sealed partial class EmblemService
     internal async Task SyncGenrePlanAsync(GameSession session, long previousPower)
     {
         await SyncAsync(session);
+        await PublishSkillEffectsAsync(session);
         await PowerAsync(session, previousPower);
     }
 
@@ -343,6 +344,7 @@ public sealed partial class EmblemService
         if (inventory) await _character.ItemsChangedAsync(session, stats: false);
         await SyncAsync(session);
         await _character.RefreshStatsAsync(session);
+        await PublishSkillEffectsAsync(session);
         await PowerAsync(session, previous);
     }
 

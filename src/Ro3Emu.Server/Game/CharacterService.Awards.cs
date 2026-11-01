@@ -418,6 +418,8 @@ public sealed partial class CharacterService
         foreach (var (key, value) in source.Currency) result.Currency[key] = value;
         foreach (var (key, value) in source.Skills) result.Skills[key] = value;
         foreach (var (key, value) in source.SkillBar) result.SkillBar[key] = value;
+        // 卡片授予技能也參與方案及快捷列驗證；僅複製暫存權限，不寫入角色技能欄位。
+        foreach (var (key, value) in source.GrantedSkills) result.GrantedSkills[key] = value;
         return result;
     }
 

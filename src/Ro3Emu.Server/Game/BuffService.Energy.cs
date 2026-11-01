@@ -171,4 +171,24 @@ public sealed partial class BuffService
         });
         foreach (var handler in Changed) await handler(p);
     }
+
+    /// <summary>技能機制設定既有且仍屬於角色的能量；依原表上限裁切，不建立未授權能量表。</summary>
+    internal async Task<bool> SetExistingEnergyValueAsync(GameSession player, int id, long value)
+    {
+        if (player.Progress == null || !player.Energy.TryGetValue(id, out var meter)
+            || _data.Row("EnergyConfig", id) is not { } row
+            || !BelongsToJob(row, player.Progress.Career) && !BelongsToOwnedMount(row, player)) return false;
+        meter.Value = Math.Clamp(value, 0, Math.Max(0, GameData.Int(row, "_iLimitValue")));
+        await SendEnergyAsync(player, id, (EPlayerEnergyChangeReason)2);
+        return true;
+    }
+
+    /// <summary>技能機制消耗既有能量；拒絕不足的值，不建立不存在的能量表。</summary>
+    internal async Task<bool> ConsumeEnergyAmountAsync(GameSession player, int id, long amount)
+    {
+        if (amount < 0 || !player.Energy.TryGetValue(id, out var meter) || meter.Value < amount) return false;
+        meter.Value -= amount;
+        await SendEnergyAsync(player, id, (EPlayerEnergyChangeReason)5);
+        return true;
+    }
 }

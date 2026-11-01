@@ -79,8 +79,10 @@ public sealed class TrainingService : IGameTicker
             if (!_attempts.TryGetValue(s, out var a) || a.Dummy != m || s.InstanceId != a.Room.Id || s.SceneLoading)
                 return Task.CompletedTask;
             if (a.Running && Now < a.End && amount > 0) a.Damage = checked(a.Damage + amount);
-            // NPCConfig's auto-recovery buffs describe an enduring target. Keep it alive after measured hits (inferred).
-            m.Hp = m.Template.MaxHp; m.Target = null;
+            // NPCConfig 的恢復 Buff 未證實每擊瞬間補滿；普通受擊保留真實 HP，讓 31048 正常顯示。
+            // 僅致死時沿用不死訓練目標的復原兜底（inferred），不進入怪物死亡／掉落管線。
+            if (m.Hp <= 0) m.Hp = m.Template.MaxHp;
+            m.Target = null;
             return Task.CompletedTask;
         });
     }
@@ -159,6 +161,11 @@ public sealed class TrainingService : IGameTicker
         template = template with { SpeedCm = 0, AttackRange = 0, Aggressive = false, RoamDistance = 0 };
         if (!a.Challenge) template = template with { Race = a.Race, Element = a.Element, Size = a.Size };
         a.Dummy = await _instances.SpawnAsync(a.Room, npc, _points[a.Room.SceneEntry], customTemplate: template);
+        if (a.Dummy is { } dummy)
+        {
+            dummy.StaysOutOfBattle = true;
+            dummy.KeepsDamage = true; // 不讓通用追擊返回流程抹掉剛扣除的 HP。
+        }
     }
 
     private Task SnapshotAsync(GameSession s, Attempt a)

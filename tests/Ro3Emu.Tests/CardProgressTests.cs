@@ -468,22 +468,52 @@ public sealed class CardProgressTests : IAsyncLifetime
         long socketGuid = insert.CardGuid;
         var atSocket = await Next(alice, CharacterService.OnePropertyChange, OnePropertyChange.Parser,
             m => m.Property.Propertys.Any(p => p.PropertyId == 6 && p.Data == 2));
+        Assert.Contains(28, atSocket.AttrModTypes);
         long atk = atSocket.Property.Propertys.Single(p => p.PropertyId == 103).Data;
 
         await alice.SendGameAsync(CardService.LevelUp, new CardLevelUpReq
         { SourceType = (CardLevelSourceType)4, Guid = socketGuid, GridType = (EquipGridType)1, SlotIndex = 1 });
         Assert.Equal(1, (await Next(alice, CardService.LevelUp, CardLevelUpResp.Parser)).NewLevel);
-        await Next(alice, CharacterService.OnePropertyChange, OnePropertyChange.Parser,
+        var cultivated = await Next(alice, CharacterService.OnePropertyChange, OnePropertyChange.Parser,
             m => m.Property.Propertys.Any(p => p.PropertyId == 103 && p.Data == atk + 2));
+        Assert.Contains(28, cultivated.AttrModTypes);
         await alice.SendGameAsync(CardService.StarUp, new CardStarUpReq
         { SourceType = (CardLevelSourceType)4, Guid = socketGuid, GridType = (EquipGridType)1, SlotIndex = 1 });
         Assert.Equal(1, (await Next(alice, CardService.StarUp, CardStarUpResp.Parser)).NewStarNum);
-        await Next(alice, CharacterService.OnePropertyChange, OnePropertyChange.Parser,
+        var starred = await Next(alice, CharacterService.OnePropertyChange, OnePropertyChange.Parser,
             m => m.Property.Propertys.Any(p => p.PropertyId == 103 && p.Data == atk + 16));
+        Assert.Contains(28, starred.AttrModTypes);
         var plan = await Next(alice, CardService.StorageHoleSync, DBStorageHoleInfoIncrement.Parser,
             m => m.StoragePlans.TryGetValue(1, out var p) && p.Inc?.CardInfo.TryGetValue(1, out var grid) == true
                 && grid.Inc?.CardSlotInfo.TryGetValue(1, out var slot) == true && slot.Inc?.StarLevel == 1);
         Assert.Equal(1, plan.StoragePlans[1].Inc.CardInfo[1].Inc.CardSlotInfo[1].Inc.StarLevel);
+        // 拔卡也顯示實際減少；失敗重送不再次發送屬性提示。
+        var removalProperty = new TaskCompletionSource<OnePropertyChange>(TaskCreationOptions.RunContinuationsAsynchronously);
+        alice.EnableLoadMode(128, e =>
+        {
+            if (e.IsGame(CharacterService.OnePropertyChange))
+                removalProperty.TrySetResult(OnePropertyChange.Parser.ParseFrom(e.Body));
+        });
+        using var removalReply = alice.Inbox.Expect(e => e.IsGame(CardService.SlotRemove));
+        await alice.SendGameAsync(CardService.SlotRemove, new EquipmentCardRemoveReq { EquipPos = (EquipGridType)1, SlotIndex = 1 });
+        Assert.Equal(0, EquipmentCardRemoveResp.Parser.ParseFrom((await removalReply.WaitAsync(Wait)).Body).Result);
+        var removed = await removalProperty.Task.WaitAsync(Wait);
+        Assert.Contains(removed.Property.Propertys, p => p.PropertyId == 6 && p.Data == 1);
+        Assert.Contains(28, removed.AttrModTypes);
+        int prompts = 0;
+        alice.EnableLoadMode(128, e =>
+        {
+            if (e.IsGame(CharacterService.OnePropertyChange) && OnePropertyChange.Parser.ParseFrom(e.Body).AttrModTypes.Count != 0)
+                Interlocked.Increment(ref prompts);
+        });
+        using var duplicateReply = alice.Inbox.Expect(e => e.IsGame(CardService.SlotRemove));
+        await alice.SendGameAsync(CardService.SlotRemove, new EquipmentCardRemoveReq { EquipPos = (EquipGridType)1, SlotIndex = 1 });
+        Assert.Equal(ErrorCodes.SlotEmpty, EquipmentCardRemoveResp.Parser.ParseFrom((await duplicateReply.WaitAsync(Wait)).Body).Result);
+        using var missingReply = alice.Inbox.Expect(e => e.IsGame(CardService.LevelUp));
+        await alice.SendGameAsync(CardService.LevelUp, new CardLevelUpReq
+        { SourceType = (CardLevelSourceType)4, Guid = socketGuid, GridType = (EquipGridType)1, SlotIndex = 1 });
+        Assert.NotEqual(0, CardLevelUpResp.Parser.ParseFrom((await missingReply.WaitAsync(Wait)).Body).Result);
+        Assert.Equal(0, Volatile.Read(ref prompts));
     }
 
     [ClientDataFact]

@@ -48,6 +48,9 @@ public sealed partial class CombatService
         var (damage, result) = skill is { } row ? Damage(MonsterFighter(source), MonsterFighter(target), row.Row)
             : (Math.Max(1, source.Template.Atk), DamageHitResult.Normal);
         damage = Math.Max(0, adjust(MonsterBuffDamage(source, skill?.Row, ScaleMonsterDamage(damage, source.DamageRatio))));
+        long beforeShield = damage;
+        damage = await _buffs.AbsorbAsync(target, damage, skill?.Row);
+        if (target.Removed || target.Dead || target.Hp <= 0 || source.Removed || source.Dead || source.WorldScene != target.WorldScene) return;
         target.Hp = Math.Max(0, target.Hp - damage);
         bool lethal = target.Hp == 0;
         var hit = new SkillHitInfo
@@ -55,7 +58,8 @@ public sealed partial class CombatService
             SrcID = source.Uid, SkillId = (int)(skill?.Id ?? 0),
             ShowPoint = skill is { } shown ? HitEffect(shown.ScriptShow) : DefaultHitEffect, SessionId = castId,
             SrcElement = source.Template.Element,
-            Dsts = { new DamageInfo { DstID = target.Uid, Damage = damage, HitResult = result, DstElement = target.Template.Element,
+            Dsts = { new DamageInfo { DstID = target.Uid, Damage = damage, SheildDamage = beforeShield - damage,
+                HitResult = result, DstElement = target.Template.Element,
                 IsDead = lethal } },
         };
         foreach (var viewer in target.Viewers.Union(source.Viewers).ToArray()) await viewer.SendGameAsync(SkillHit, hit);
