@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using Ro3Emu.ClientRelease;
 using Ro3Emu.ClientTools;
 using Ro3Emu.DataExport;
 
@@ -56,6 +57,16 @@ public sealed partial class PreparedGameDataTests : IDisposable
         // Server 產生的非資料檔不屬於 curated 靜態集合。
         Write(Data, "logs/runtime.log", "自造記錄"); Write(Data, "realm.db", "自造DB");
         Assert.True(PreparedGameData.UseIfPresent(Data, Client, false));
+    }
+
+    [Fact]
+    public void SetupManifestIsAcceptedByTheServersCoreDataGate()
+    {
+        var manifest = Prepare();
+        var records = manifest.Files.ToDictionary(pair => pair.Key,
+            pair => new DataFileRecord(pair.Value.Length, pair.Value.Sha256));
+        GameDataIntegrity.Validate(Data, records);
+        Assert.Contains(ClientScenes.FileName, GameDataIntegrity.Capture(Data).Keys);
     }
 
     [Fact]
