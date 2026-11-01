@@ -137,13 +137,12 @@ public sealed class SkillGrowthTests : IAsyncLifetime
         Assert.Equal(10000, saved.SkillAssignPlans.All.Value[0].ManualLoadSkill[2].SkillId);
     }
 
-    // The PC skill tree shows a Swordman's attack in the Novice page's first cell as JobAttackConfig's 1001001 (group 10010),
-    // the one place to drag it back from after taking it off the bar, and the cell drags only at a level above 0 in the
-    // plan. A role saved before that group was sent gets it on login.
+    // G 的 JobAttackConfig 將無武器劍士的普攻設為 1001001；技能樹顯示群組 10010。
+    // 保留初心者群組 10000 的別名操作，驗證移動、移除及舊存檔修復均只維持一格普攻。
     [ClientDataFact]
     public async Task ARemovedNormalAttackComesBackFromTheSkillTreeCell()
     {
-        const int Attack = 11000, Cell = 10010, SwordSmash = 11099;
+        const int Attack = 10000, Cell = 10010, SwordSmash = 11099;
         long roleId;
         async Task<int> Load(BotClient bot, SkillLoadOperation op, int socket, int group)
         {
@@ -160,16 +159,16 @@ public sealed class SkillGrowthTests : IAsyncLifetime
             await Gm("sword", "!job 1100");
             await sword.SendGameAsync(1023, new PlayerAssetReq { AssetType = { 5 } });
             var swordman = await Next(sword, SkillService.SkillDataSync, DBSkillDataIncrement.Parser,
-                m => m.SyncAllMark && m.CurrentAtkSkillId == 1100001);
+                m => m.SyncAllMark && m.CurrentAtkSkillId == 1001001);
             Assert.Contains(Cell, swordman.SkillList.All.Value);
             Assert.Equal(1, swordman.SkillAssignPlans.All.Value[0].SkillAssigns[Cell].SkillLevel);
-            Assert.Equal(1100001, swordman.SkillWheel.All.WhellSkills[1].SkillConfigId);
+            Assert.Equal(1001001, swordman.SkillWheel.All.WhellSkills[1].SkillConfigId);
 
             Assert.Equal(0, await Load(sword, SkillLoadOperation.SkillLoadOpLoad, 1, SwordSmash));
             Assert.Equal(0, await Load(sword, SkillLoadOperation.SkillLoadOpUnload, 0, Attack));
         }
 
-        // A role saved without the cell's group (before this fix) is repaired on login.
+        // 舊存檔缺少技能樹普攻群組時，重新登入必須補回可拖曳的等級。
         var roles = _app.Services.GetRequiredService<RoleStore>();
         var old = DBSkillData.Parser.ParseFrom(roles.LoadSkillPlans(roleId)!);
         Assert.DoesNotContain(old.SkillAssignPlans[0].ManualLoadSkill, load => load.SkillId == Attack);
@@ -181,18 +180,18 @@ public sealed class SkillGrowthTests : IAsyncLifetime
         await using (var again = await InWorld("Sword", create: false))
         {
             var removed = await Next(again, SkillService.SkillDataSync, DBSkillDataIncrement.Parser);
-            Assert.DoesNotContain(removed.SkillWheel.All.WhellSkills.Values, slot => slot.SkillConfigId == 1100001);
+            Assert.DoesNotContain(removed.SkillWheel.All.WhellSkills.Values, slot => slot.SkillConfigId == 1001001);
             Assert.Contains(Cell, removed.SkillList.All.Value);
             Assert.All(removed.SkillAssignPlans.All.Value, plan => Assert.Equal(1, plan.SkillAssigns[Cell].SkillLevel));
-            // Dragged from the cell, it shows as the career's own attack; moving it keeps one copy on the bar.
+            // 從技能樹拖出與透過初心者別名移動，快捷列都只能保留同一個目前普攻。
             Assert.Equal(0, await Load(again, SkillLoadOperation.SkillLoadOpLoad, 0, Cell));
             Assert.Equal(0, await Load(again, SkillLoadOperation.SkillLoadOpLoad, 2, Attack));
         }
         await using var last = await InWorld("Sword", create: false);
         var restored = await Next(last, SkillService.SkillDataSync, DBSkillDataIncrement.Parser);
-        Assert.Equal(1100001, restored.SkillWheel.All.WhellSkills[3].SkillConfigId);
-        Assert.Single(restored.SkillWheel.All.WhellSkills.Values, slot => slot.SkillConfigId == 1100001);
-        // The client names the slot by the row it shows (11000), not the cell's stored 10010.
+        Assert.Equal(1001001, restored.SkillWheel.All.WhellSkills[3].SkillConfigId);
+        Assert.Single(restored.SkillWheel.All.WhellSkills.Values, slot => slot.SkillConfigId == 1001001);
+        // 初心者群組別名也能卸下技能樹群組所放入的目前普攻。
         Assert.Equal(0, await Load(last, SkillLoadOperation.SkillLoadOpLoad, 0, Cell));
         Assert.Equal(0, await Load(last, SkillLoadOperation.SkillLoadOpUnload, 0, Attack));
         Assert.DoesNotContain(DBSkillData.Parser.ParseFrom(roles.LoadSkillPlans(roleId)!).SkillAssignPlans[0].ManualLoadSkill,

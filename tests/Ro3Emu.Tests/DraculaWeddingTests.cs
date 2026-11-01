@@ -43,10 +43,19 @@ public sealed class DraculaWeddingTests : IAsyncLifetime
             o.HttpPort = web; o.MicroGatePort = micro; o.GameGatePort = game;
             o.SeasonStart = "2026-10-05"; o.PlayBook = 101;
         }, _clock);
-        SureHitRolls.Install(_app); // lethal hits are prepared; a FLEE miss would only be noise
+        Service<CombatService>().Rolls = new WeddingFlowRolls();
         Service<DraculaWeddingService>().Lottery = TimeSpan.Zero;
         await _app.StartAsync();
         _http = $"http://127.0.0.1:{web}";
+    }
+
+    // 這組測試驗證婚禮流程與獎勵；固定命中、傷害及觸發亂數，避免戰鬥機率干擾流程。
+    private sealed class WeddingFlowRolls : CombatRolls
+    {
+        public override double Hit() => 0;
+        public override double DamageFloat() => 0.5;
+        public override double Crit() => 1;
+        public override int Proc(int max) => Math.Max(0, max - 1);
     }
 
     public async Task DisposeAsync()
@@ -66,6 +75,8 @@ public sealed class DraculaWeddingTests : IAsyncLifetime
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         await bot.EnterWorldAsync((await bot.CreateRoleAsync(name)).RoleBaseInfo.Id);
         await Gm(bot, "!lvl 99");
+        // 仍透過實際施放與擊殺流程完成任務，只隔離 NPC 對測試角色造成的致死傷害。
+        await OnLoop(() => { Session(bot).GmCombat = GmCombatSwitches.Unlimited; return Task.CompletedTask; });
         return bot;
     }
 
@@ -163,9 +174,27 @@ public sealed class DraculaWeddingTests : IAsyncLifetime
             CombatTestFixture.ReadyNormalAttack(Service<GameLoop>(), Session(bot));
         });
         await bot.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = actor.Uid });
-        Assert.Equal(0, (await Next(bot, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
-        await Next(bot, CombatService.SkillHit, SkillHitInfo.Parser, hit => hit.Dsts.Any(d => d.DstID == actor.Uid && d.IsDead));
+        int result = (await Next(bot, CombatService.UseSkill, CastSkillRsp.Parser)).Result;
+        Assert.True(result == 0, $"婚禮流程擊殺施放失敗：result={result}，{await FightState(bot, actor)}");
+        try
+        {
+            await Next(bot, CombatService.SkillHit, SkillHitInfo.Parser, hit => hit.Dsts.Any(d => d.DstID == actor.Uid && d.IsDead));
+        }
+        catch (TimeoutException error)
+        {
+            throw new InvalidOperationException($"婚禮流程未收到死亡命中：{await FightState(bot, actor)}", error);
+        }
     }
+
+    private Task<string> FightState(BotClient bot, MonsterUnit actor) => Read(() =>
+    {
+        var session = Session(bot);
+        var cast = session.SkillCast;
+        return $"dead={session.Dead}, loading={session.SceneLoading}, hp={session.CurrentHp}, "
+            + $"actor={actor.Template.NpcId}/{actor.Uid}, actorHp={actor.Hp}, actorDead={actor.Dead}, "
+            + $"cast={cast?.Id}, resolved={cast?.Resolved}, cancelled={cast?.Cancelled}, "
+            + $"buffs={string.Join(',', session.Buffs.Select(buff => buff.ConfigId))}";
+    });
 
     private static async Task<int> Interact(BotClient bot, DungeonService.SceneActorUnit actor, int interaction)
     {

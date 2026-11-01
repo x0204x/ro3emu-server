@@ -21,6 +21,9 @@ public sealed class DungeonMatchTests : IAsyncLifetime
 
     private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
 
+    // 配對回覆可能先入傳送佇列；在遊戲迴圈中讀取，確保同一次指令的狀態變更已結束。
+    private Task<T> Read<T>(Func<T> read) => Service<GameLoop>().InvokeAsync(() => Task.FromResult(read()));
+
     public async Task InitializeAsync()
     {
         var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
@@ -258,15 +261,15 @@ public sealed class DungeonMatchTests : IAsyncLifetime
             r => r.MatchEntryId == 2);
         Assert.Equal(0, firstTimed.Result);
         Assert.Equal(_clock.GetUtcNow().ToUnixTimeSeconds(), firstTimed.MatchStartTime);
-        Assert.True(Service<TimedBattleService>().IsMatching(Session(alice)));
+        Assert.True(await Read(() => Service<TimedBattleService>().IsMatching(Session(alice))));
         await Start(alice, expected: ErrorCodes.DungeonBusy);
         await alice.SendGameAsync(TimedBattleService.CancelMatch, new CancelMatchReq
         { MatchEntryId = 2, NextMatchEntry = Entry, NextMatchData = Request().MatchData });
         Assert.Equal(0, (await Next(alice, TimedBattleService.CancelMatch, CancelMatchResp.Parser, r => r.MatchEntryId == 2)).Result);
         Assert.Equal(0, (await Next(alice, DungeonMatchService.StartMatch, StartMatchResp.Parser,
             r => r.MatchEntryId == Entry)).Result);
-        Assert.True(Service<DungeonMatchService>().Owns(Session(alice)));
-        Assert.False(Service<TimedBattleService>().IsMatching(Session(alice)));
+        Assert.True(await Read(() => Service<DungeonMatchService>().Owns(Session(alice))));
+        Assert.False(await Read(() => Service<TimedBattleService>().IsMatching(Session(alice))));
         await alice.SendGameAsync(TimedBattleService.StartMatch, new StartMatchReq { MatchEntryId = 2 });
         Assert.Equal(ErrorCodes.DungeonBusy,
             (await Next(alice, TimedBattleService.StartMatch, StartMatchResp.Parser, r => r.MatchEntryId == 2)).Result);
@@ -277,8 +280,8 @@ public sealed class DungeonMatchTests : IAsyncLifetime
             r => r.MatchEntryId == 2);
         Assert.Equal(0, switchedTimed.Result);
         Assert.Equal(_clock.GetUtcNow().ToUnixTimeSeconds(), switchedTimed.MatchStartTime);
-        Assert.False(Service<DungeonMatchService>().Owns(Session(alice)));
-        Assert.True(Service<TimedBattleService>().IsMatching(Session(alice)));
+        Assert.False(await Read(() => Service<DungeonMatchService>().Owns(Session(alice))));
+        Assert.True(await Read(() => Service<TimedBattleService>().IsMatching(Session(alice))));
         await alice.SendGameAsync(TimedBattleService.CancelMatch, new CancelMatchReq { MatchEntryId = 2 });
         Assert.Equal(0, (await Next(alice, TimedBattleService.CancelMatch, CancelMatchResp.Parser, r => r.MatchEntryId == 2)).Result);
 
@@ -286,17 +289,17 @@ public sealed class DungeonMatchTests : IAsyncLifetime
         var role = (long)alice.Self!.Uuid;
         var original = Session(alice);
         await alice.SwitchRoleAsync();
-        Assert.False(Service<DungeonMatchService>().Owns(original));
+        Assert.False(await Read(() => Service<DungeonMatchService>().Owns(original)));
         await alice.EnterWorldAsync(role);
-        Assert.False(Session(alice).DungeonSoloMatch);
+        Assert.False(await Read(() => Session(alice).DungeonSoloMatch));
         await Start(alice);
-        Assert.True(Service<DungeonMatchService>().Owns(Session(alice)));
+        Assert.True(await Read(() => Service<DungeonMatchService>().Owns(Session(alice))));
         await alice.SendGameAsync(DungeonMatchService.CancelMatch, new CancelMatchReq
         { MatchEntryId = Entry, NextMatchEntry = Entry, NextMatchData = Request().MatchData });
         Assert.Equal(0, (await Next(alice, DungeonMatchService.CancelMatch, CancelMatchResp.Parser)).Result);
         Assert.Equal(0, (await Next(alice, DungeonMatchService.StartMatch, StartMatchResp.Parser,
             r => r.MatchEntryId == Entry)).Result);
-        Assert.True(Service<DungeonMatchService>().Owns(Session(alice)));
+        Assert.True(await Read(() => Service<DungeonMatchService>().Owns(Session(alice))));
     }
 
     private sealed class ManualClock(DateTimeOffset now) : TimeProvider
