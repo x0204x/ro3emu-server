@@ -7,7 +7,7 @@ using Ro3Emu.Server.Game;
 
 namespace Ro3Emu.Tests;
 
-/// <summary>自造職業與技能驗證 queue 載體的 wire 投射；不複製 client 資料，也不假造載體執行規則。</summary>
+/// <summary>自造資料驗證上游免費隊列技能、快捷列及轉職後授權，不複製客戶端資料。</summary>
 public sealed class ProfessionQueueCarrierTests
 {
     private const int Career = 7100, NoCarrierCareer = 7200, InvalidCarrierCareer = 7300;
@@ -16,15 +16,16 @@ public sealed class ProfessionQueueCarrierTests
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);
 
     [Fact]
-    public async Task CareerQueueCarrierSurvivesQueueEditsAndReconnectThenExplicitZeroRemovesIt()
+    public async Task FreeCareerQueueAppearsAfterLoadingAndSurvivesReconnectThenAnotherCareerRemovesIt()
     {
         await using var f = await Fixture.StartAsync();
         await using (var bot = await f.Host.InWorldAsync("Queue"))
         {
             await Next(bot, SkillService.SkillDataSync, DBSkillDataIncrement.Parser, m => m.SyncAllMark);
             await f.SetJobAsync(Career);
-            await f.AssertCatalogueOnly();
-            AssertCarrier(await NextWheel(bot, m => m.SkillWheel.All.WhellSkills.ContainsKey(QueueSlot)));
+            await f.AssertRuntimeCarrier(1);
+            var empty = await NextWheel(bot, m => !m.SkillWheel.All.WhellSkills.ContainsKey(QueueSlot));
+            Assert.Contains(CarrierGroup, empty.SkillList.All.Value);
             await bot.SendGameAsync(SkillService.QueueUpdate, new SkillQueueUpdateReq
             {
                 Plan = 0, QueueIndex = 0, OpType = SkillLoadOperation.SkillLoadOpLoad,
@@ -33,7 +34,7 @@ public sealed class ProfessionQueueCarrierTests
             Assert.Equal(0, (await Next(bot, SkillService.QueueUpdate, SkillQueueUpdateResp.Parser)).Result);
             var queued = await NextWheel(bot, m => m.SkillAssignPlans.All.Value[0].SkillQueue[0].SkillId == Group);
             AssertCarrier(queued);
-            await f.AssertCatalogueOnly();
+            await f.AssertRuntimeCarrier(1);
             Assert.Equal(Carrier, queued.SkillWheel.All.SkillQueue.SkillConfigId);
             Assert.NotEqual(Active, queued.SkillWheel.All.WhellSkills[QueueSlot].SkillConfigId);
         }
@@ -42,24 +43,25 @@ public sealed class ProfessionQueueCarrierTests
         await using var again = await f.Host.InWorldAsync("Queue", create: false);
         var reconnected = await NextWheel(again, m => m.SkillWheel.All.WhellSkills.ContainsKey(QueueSlot));
         AssertCarrier(reconnected);
-        await f.AssertCatalogueOnly();
+        await f.AssertRuntimeCarrier(1);
         Assert.Equal(Group, reconnected.SkillAssignPlans.All.Value[0].SkillQueue[0].SkillId);
         await f.SetJobAsync(NoCarrierCareer);
         var removed = await NextWheel(again, m => !m.SkillWheel.All.WhellSkills.ContainsKey(QueueSlot));
         Assert.False(removed.OriginSkillWheel.All.WhellSkills.ContainsKey(QueueSlot));
         Assert.DoesNotContain(CarrierGroup, removed.SkillList.All.Value);
-        await f.AssertCatalogueOnly();
+        await f.AssertRuntimeCarrier(0);
     }
 
     [Fact]
-    public async Task DisplayDoesNotGrantCarrierCombatEffectsAndWrongCarrierTypeIsNotProjected()
+    public async Task WrongCarrierTypeDoesNotGrantTheQueueOrItsCombatEffects()
     {
         await using var f = await Fixture.StartAsync();
         await using var bot = await f.Host.InWorldAsync("Refuse");
         await Next(bot, SkillService.SkillDataSync, DBSkillDataIncrement.Parser, m => m.SyncAllMark);
         await f.SetJobAsync(Career);
-        await f.AssertCatalogueOnly();
-        AssertCarrier(await NextWheel(bot, m => m.SkillWheel.All.WhellSkills.ContainsKey(QueueSlot)));
+        await f.AssertRuntimeCarrier(1);
+        await f.SetJobAsync(InvalidCarrierCareer);
+        await f.AssertRuntimeCarrier(0);
         var before = await f.Read(() => (f.Player.CurrentHp, f.Player.CurrentSp, f.Player.SkillCast, f.Player.SkillCds.Count));
         await bot.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = Carrier });
         Assert.Equal(ErrorCodes.SkillNotLearned, (await Next(bot, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
@@ -67,7 +69,6 @@ public sealed class ProfessionQueueCarrierTests
         Assert.Equal(before, after);
         Assert.DoesNotContain(bot.Inbox.Snapshot(), e => e.IsGame(CombatService.UseInSkill)
             || e.IsGame(CombatService.SkillHit));
-        await f.SetJobAsync(InvalidCarrierCareer);
         var invalid = await NextWheel(bot, m => !m.SkillWheel.All.WhellSkills.ContainsKey(QueueSlot));
         Assert.False(invalid.OriginSkillWheel.All.WhellSkills.ContainsKey(QueueSlot));
         Assert.DoesNotContain(CarrierGroup, invalid.SkillList.All.Value);
@@ -77,10 +78,10 @@ public sealed class ProfessionQueueCarrierTests
     {
         var actual = state.SkillWheel.All.WhellSkills[QueueSlot];
         Assert.Equal(Carrier, actual.SkillConfigId);
-        Assert.False(actual.Enable);
+        Assert.True(actual.Enable);
         Assert.Contains(CarrierGroup, state.SkillList.All.Value);
         foreach (var plan in state.SkillAssignPlans.All.Value)
-            Assert.False(plan.SkillAssigns.TryGetValue(CarrierGroup, out var assigned) && assigned.SkillLevel > 0);
+            Assert.Equal(1, plan.SkillAssigns[CarrierGroup].SkillLevel);
         Assert.Equal(actual, state.OriginSkillWheel.All.WhellSkills[QueueSlot]);
     }
 
@@ -114,11 +115,11 @@ public sealed class ProfessionQueueCarrierTests
         public Task SetJobAsync(int career) => Host.Service<GameLoop>().InvokeAsync(async () =>
             await Host.Service<CharacterService>().SetJobAsync(Player, career));
         public Task<T> Read<T>(Func<T> read) => Host.Service<GameLoop>().InvokeAsync(() => Task.FromResult(read()));
-        public Task AssertCatalogueOnly() => Host.Service<GameLoop>().InvokeAsync(() =>
+        public Task AssertRuntimeCarrier(int expectedLevel) => Host.Service<GameLoop>().InvokeAsync(() =>
         {
             var progress = Player.Progress!;
             var skills = Host.Service<SkillService>();
-            Assert.Equal(0, skills.Level(progress, CarrierGroup));
+            Assert.Equal(expectedLevel, skills.Level(progress, CarrierGroup));
             Assert.False(progress.Skills.ContainsKey(CarrierGroup));
             Assert.False(progress.GrantedSkills.ContainsKey(CarrierGroup));
             Assert.DoesNotContain(skills.Tree(progress.Career), slot => slot.Group == CarrierGroup);
@@ -137,8 +138,8 @@ public sealed class ProfessionQueueCarrierTests
             {
                 [1000] = new { _iID = 1000, _iJobRank = 1 },
                 [Career] = new { _iID = Career, _iJobRank = 2, _iParentId = 1000, _iQueueSkillId = Carrier },
-                // 明確 0 必須蓋過父職；不能把父職載體自動套用所有職業。
-                [NoCarrierCareer] = new { _iID = NoCarrierCareer, _iJobRank = 2, _iParentId = Career, _iQueueSkillId = 0 },
+                // 整條職業鏈都沒有隊列載體時，不可繼續使用前一職業的載體。
+                [NoCarrierCareer] = new { _iID = NoCarrierCareer, _iJobRank = 2, _iParentId = 1000, _iQueueSkillId = 0 },
                 [InvalidCarrierCareer] = new { _iID = InvalidCarrierCareer, _iJobRank = 2, _iParentId = 1000, _iQueueSkillId = Active },
             });
             Write("SkillConfig", new Dictionary<int, object>
