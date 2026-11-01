@@ -370,6 +370,7 @@ public sealed class WildAfkTests : IAsyncLifetime
                 state.Info.TodayKillCount = 7;
                 state.ConsumedTodaySeconds = 2400;
                 state.DailyEpoch = new DateTimeOffset(DateTimeOffset.FromUnixTimeSeconds(state.DailyEpoch).LocalDateTime.AddDays(-1)).ToUnixTimeSeconds();
+                state.AllowanceEpoch = new DateTimeOffset(DateTimeOffset.FromUnixTimeSeconds(state.AllowanceEpoch).LocalDateTime.AddDays(-1)).ToUnixTimeSeconds();
                 return Task.CompletedTask;
             });
             Assert.Equal(4800, await Query(bot));
@@ -379,7 +380,8 @@ public sealed class WildAfkTests : IAsyncLifetime
             await OnOwnedLoop(bot, "AFK bank cap fixture", _ =>
             {
                 var state = Session(bot).WildAfk!;
-                state.DailyEpoch = new DateTimeOffset(DateTimeOffset.FromUnixTimeSeconds(state.DailyEpoch).LocalDateTime.AddDays(-7)).ToUnixTimeSeconds();
+                state.AllowanceEpoch = new DateTimeOffset(DateTimeOffset.FromUnixTimeSeconds(state.AllowanceEpoch).LocalDateTime.AddDays(-7)).ToUnixTimeSeconds();
+                state.Info.HighMultiplierTimeSeconds = 150 * 60;
                 return Task.CompletedTask;
             });
             remaining = await Query(bot);
@@ -418,15 +420,14 @@ public sealed class WildAfkTests : IAsyncLifetime
             afk.AccountedAtMs = boundary * 1000 - 500;
             afk.LastKillAtMs = boundary * 1000 - 1000;
             await Service<DailyActivityService>().ReconcileAsync(s);
-            // The final second reached the 3600 s threshold before the old epoch was removed (its 40 liveness is
-            // paid below), and the same reset command restored the new day's allowance and persisted it with the
-            // daily rows in one transaction (C/D 09), instead of a later separate AFK restore.
+            // 舊任務日界的最後一秒先完成 3600 秒任務，再結算活躍度。
+            // 額度已於當日午夜領取，05:00 僅重置任務統計，不再補發 60 分鐘。
             Assert.Equal(boundary, afk.DailyEpoch);
             Assert.Equal(0, afk.ConsumedTodaySeconds);
-            Assert.Equal(3600, afk.Info.HighMultiplierTimeSeconds);
+            Assert.Equal(0, afk.Info.HighMultiplierTimeSeconds);
             var stored = JsonSerializer.Deserialize<WildAfkService.State>(Service<RoleStore>().LoadWildAfk(s.Role!.Id)!)!;
             Assert.Equal(boundary, stored.DailyEpoch);
-            Assert.Equal(3600, stored.Info.HighMultiplierTimeSeconds);
+            Assert.Equal(0, stored.Info.HighMultiplierTimeSeconds);
             Assert.Equal(0, afk.RemainderMs); // the 300ms beyond the exhausted old bank cannot debit tomorrow
             Assert.Equal(0, s.DailyRows!.ActivityData[106].TaskCompleteTimes);
         }));
@@ -500,13 +501,13 @@ public sealed class WildAfkTests : IAsyncLifetime
         }));
         Assert.Equal(boundary, await State(bot, x => x.Daily!.DailyEpoch));
         Assert.Equal(boundary, await State(bot, x => x.WildAfk!.DailyEpoch));
-        Assert.Equal(4800, await State(bot, x => x.WildAfk!.Info.HighMultiplierTimeSeconds));
+        Assert.Equal(1200, await State(bot, x => x.WildAfk!.Info.HighMultiplierTimeSeconds));
         Assert.Equal(0, await State(bot, x => x.Progress!.Currency.GetValueOrDefault(5)));
         var afkRow = await Stored(bot, (id, r) => JsonSerializer.Deserialize<WildAfkService.State>(r.LoadWildAfk(id)!)!);
         Assert.Equal(boundary, afkRow.DailyEpoch);
-        Assert.Equal(4800, afkRow.Info.HighMultiplierTimeSeconds);
+        Assert.Equal(1200, afkRow.Info.HighMultiplierTimeSeconds);
         Assert.Equal(0, afkRow.ConsumedTodaySeconds);
-        Assert.Equal(4800, await Query(bot)); // no second restore after the committed one
+        Assert.Equal(1200, await Query(bot)); // no second restore after the committed one
     }
 
     [ClientDataFact]
@@ -540,13 +541,13 @@ public sealed class WildAfkTests : IAsyncLifetime
             release.TrySetResult();
             await first;
             await second;
-            Assert.Equal(4800, (await Next(bot, WildAfkService.Info, WildAFKInfoRsp.Parser)).CurAfkTime);
+            Assert.Equal(1200, (await Next(bot, WildAfkService.Info, WildAFKInfoRsp.Parser)).CurAfkTime);
             var claim = await Next(bot, DailyActivityService.StageGain, StageRewardGainResp.Parser);
             Assert.NotEqual(0, claim.Result); // yesterday's 1000 liveness was reset before the claim was decided
             Assert.Equal(1, Volatile.Read(ref resets));
             Assert.Equal(boundary, await State(bot, x => x.Daily!.DailyEpoch));
             Assert.Equal(0, await State(bot, x => x.Progress!.Currency.GetValueOrDefault(5)));
-            Assert.Equal(4800, await Query(bot));
+            Assert.Equal(1200, await Query(bot));
         }
         finally { release.TrySetResult(); accounts.BeforeOwnedCommitForTest = null; }
     }
@@ -576,7 +577,7 @@ public sealed class WildAfkTests : IAsyncLifetime
             Assert.Equal(0, s.Progress.Currency.GetValueOrDefault(5));
             Assert.Equal(0, s.Tasks!.Infos[500130].CompleteNum[0]);
         });
-        Assert.Equal(7200, await Query(bot));
+        Assert.Equal(3600, await Query(bot));
         Assert.Equal(0, await State(bot, s => s.Progress!.Currency.GetValueOrDefault(5)));
     }
 
@@ -616,7 +617,7 @@ public sealed class WildAfkTests : IAsyncLifetime
         {
             await Next(again, CharacterService.GetRewardNotify, GetRewardNotify.Parser,
                 x => x.Rewards.Any(i => i.ItemEntry == 5 && i.Stack == 40));
-            Assert.Equal(3600, await Query(again));
+            Assert.Equal(0, await Query(again));
             Assert.Equal(0, await State(again, s => s.WildAfk!.ConsumedTodaySeconds));
             Assert.Equal(0, await State(again, s => s.DailyRows!.ActivityData[106].TaskCompleteTimes));
             Assert.Equal(0, await State(again, s => s.Progress!.Currency.GetValueOrDefault(5)));
@@ -624,7 +625,7 @@ public sealed class WildAfkTests : IAsyncLifetime
             await Next(again, MsgId.Logout, LogoutResp.Parser);
         }
         await using var third = await InWorld(create: false);
-        Assert.Equal(3600, await Query(third));
+        Assert.Equal(0, await Query(third));
         Assert.Equal(0, await State(third, s => s.Progress!.Currency.GetValueOrDefault(5)));
 
     }
@@ -655,7 +656,7 @@ public sealed class WildAfkTests : IAsyncLifetime
             Assert.Equal(old, s.Daily.DailyEpoch); // reset is held, so the earned old-day award remains retryable
             FixtureSql.Execute(Service<AccountStore>(), "DROP TRIGGER fail_afk_award");
         });
-        Assert.Equal(3600, await Query(bot)); // recovery settles once, then restores the new day
+        Assert.Equal(0, await Query(bot)); // 補發舊任務獎勵不會重發當日午夜已領過的額度。
         await Next(bot, CharacterService.GetRewardNotify, GetRewardNotify.Parser, x => x.Rewards.Any(i => i.ItemEntry == 5 && i.Stack == 40));
         Assert.Equal(0, await State(bot, s => s.DailyRows!.ActivityData[106].TaskCompleteTimes));
         Assert.Equal(0, await State(bot, s => s.WildAfk!.ConsumedTodaySeconds));

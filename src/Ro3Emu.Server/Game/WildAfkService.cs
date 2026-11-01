@@ -11,14 +11,15 @@ namespace Ro3Emu.Server.Game;
 
 /// <summary>
 /// Field Bonus Time: 5035 and the OnHook panel's 434xx requests (LC_DAL_OnHook).
-/// PublicParamConfig supplies the daily 60 minutes, 180 minute cap, 05:00 reset and ten-second kill monitor;
+/// PublicParamConfig supplies the daily 60 minutes, 180 minute cap and ten-second kill monitor;
+/// 本服依使用者指定於遊戲時區午夜補當日在線額度，不補離線漏天；每日任務仍於 05:00 結算。
 /// Localization_en 10960000077 proves suspension, dungeon exclusion and MVP aggro exclusion.
 /// (inferred) AutoBattle is the activity switch; only ordinary field kills with granted drops renew the monitor.
 /// NPCConfig._iDrop uses environment 0 for reduced rewards and 1 for qualified Bonus Time (inferred);
 /// _iNormalDrop remains additive under its own configured conditions.
 /// No offline reward formula is present in the current schema; 43405 refuses without granting phantom loot.
 /// </summary>
-public sealed class WildAfkService : IGameTicker
+public sealed partial class WildAfkService : IGameTicker
 {
     public const uint Sync = 5035, Info = 43401, Notify = 43402, SaveCharge = 43403, Collection = 43404,
         OfflineReward = 43405, Magnification = 43406, DungeonStart = 43408, Start = 43409, Pause = 43410,
@@ -32,12 +33,15 @@ public sealed class WildAfkService : IGameTicker
     private readonly SessionRegistry _sessions;
     private readonly World _world;
     private readonly GameLoop _loop;
+    private readonly TimeProvider _clock;
 
     /// <summary>Durable dataset and reset/accounting metadata; clock anchors and the UI power-saving flag are session-only.</summary>
     public sealed class State
     {
         public byte[] Data { get => Info.ToByteArray(); set => Info = DBWildAFKInfo.Parser.ParseFrom(value); }
         public long DailyEpoch { get; set; }
+        /// <summary>最後補充額度的遊戲時區午夜；0 表示尚未從舊版 05:00 日期遷移。</summary>
+        public long AllowanceEpoch { get; set; }
         public long ConsumedTodaySeconds { get; set; }
         public long RemainderMs { get; set; }
         public long LastToggleMs { get; set; }
@@ -55,7 +59,7 @@ public sealed class WildAfkService : IGameTicker
     }
 
     public WildAfkService(GameData data, RoleStore roles, FunctionService functions, TaskService tasks, DailyActivityService daily,
-        SessionRegistry sessions, World world, GameLoop loop, SceneService scene, CombatService combat, RewardService rewards)
+        SessionRegistry sessions, World world, GameLoop loop, SceneService scene, CombatService combat, RewardService rewards, TimeProvider clock)
     {
         this._data = data;
         this._roles = roles;
@@ -65,6 +69,7 @@ public sealed class WildAfkService : IGameTicker
         this._sessions = sessions;
         this._world = world;
         this._loop = loop;
+        this._clock = clock;
         scene.Leaving.Add(s => SuspendAsync(s));
         scene.Loaded.Add(s => ReconcileAsync(s));
         combat.PlayerDied.Add(s => SuspendAsync(s));
@@ -80,7 +85,7 @@ public sealed class WildAfkService : IGameTicker
     private long DailySeconds => Param("OnHookDailyFightTime", 60) * 60;
     private long CapSeconds => Param("OnHookFightTimeLimit", 180) * 60;
     private long MonitorMs => Param("OnHookConditionMonito", 10) * 1000;
-    private static long Now => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+    private long Now => _clock.GetUtcNow().ToUnixTimeMilliseconds();
     // A queued operation may acquire the old role's gate after logout or a role switch replaced this state.
     private static bool Owns(GameSession s, State state) => s.Role != null && ReferenceEquals(s.WildAfk, state);
     private async Task<LegacyOwnerScope?> EnterStateScopeAsync(GameSession s, State state, string origin)
@@ -105,9 +110,9 @@ public sealed class WildAfkService : IGameTicker
 
     private long Epoch(long nowMs)
     {
-        var local = DateTimeOffset.FromUnixTimeMilliseconds(nowMs).LocalDateTime;
+        var local = TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeMilliseconds(nowMs), _clock.LocalTimeZone).DateTime;
         var day = local.AddHours(-Param("OnHookDailyRefreshTime", 5)).Date.AddHours(Param("OnHookDailyRefreshTime", 5));
-        return new DateTimeOffset(day).ToUnixTimeSeconds();
+        return new DateTimeOffset(day, _clock.LocalTimeZone.GetUtcOffset(day)).ToUnixTimeSeconds();
     }
 
     /// <summary>Before quest login: persisted seconds, rollover and a safe full 5035 even for a locked new role.</summary>
@@ -124,7 +129,12 @@ public sealed class WildAfkService : IGameTicker
             state.Info.HighMultiplierTimeSeconds = DailySeconds;
             state.Info.IsHighMagnification = true; // daily auto-enable: UIWords 37014 (initial default inferred).
             state.DailyEpoch = Epoch(now);
+            state.AllowanceEpoch = AllowanceDay(now);
         }
+        // 登入不消耗離線時間；補充只處理當日，不追補缺席日期。
+        state.AccountedAtMs = now;
+        state.LastKillAtMs = 0;
+        RestoreAllowance(s, now);
         var dailyBytes = _roles.LoadDaily(s.Role.Id);
         var oldDaily = dailyBytes == null ? null : JsonSerializer.Deserialize<DailyActivityService.DailyState>(dailyBytes);
         var oldRows = oldDaily == null ? null : DBDailyActivityInfo.Parser.ParseFrom(oldDaily.Rows);
@@ -161,19 +171,13 @@ public sealed class WildAfkService : IGameTicker
         state.SyncedInfo = bytes;
     }
 
-    /// <summary>Calendar-day catch-up (not 86400-second division, so local DST cannot skip a reset).</summary>
+    /// <summary>每日任務及掉落統計仍依原設定 05:00 換日；額度由獨立午夜日期處理。</summary>
     private bool Restore(State state, long now)
     {
         long epoch = Epoch(now);
         if (epoch <= state.DailyEpoch) return false;
-        var previous = DateTimeOffset.FromUnixTimeSeconds(state.DailyEpoch).LocalDateTime.Date;
-        var current = DateTimeOffset.FromUnixTimeSeconds(epoch).LocalDateTime.Date;
-        long days = Math.Max(1, (current - previous).Days);
-        state.Info.HighMultiplierTimeSeconds = Math.Min(CapSeconds, state.Info.HighMultiplierTimeSeconds + days * DailySeconds);
         state.Info.TodayKillCount = 0;
         state.ConsumedTodaySeconds = 0;
-        state.Info.IsHighMagnification = true;
-        state.Info.IsSuspended = true;
         state.DailyEpoch = epoch;
         // Cumulative snapshots must not go backwards when old dated records are pruned (IncomeWidget subtracts them).
         int keep = (int)Math.Max(1, Param("OnHookRecordLimit", 8));
@@ -196,11 +200,11 @@ public sealed class WildAfkService : IGameTicker
     /// </summary>
     private async Task ReconcileCoreAsync(GameSession s, long now, bool forceSuspended = false, bool publish = true)
     {
+        long consumed = RestoreAllowance(s, now);
         var state = s.WildAfk!;
         var info = state.Info;
-        long consumed = 0;
         bool running = info.IsHighMagnification && !info.IsSuspended;
-        // Settle the old day's eligible interval before adding the new allowance, even if the loop crossed 05:00.
+        // 05:00 先結清舊任務日的有效消耗；午夜額度已由獨立日期處理。
         bool reset = Epoch(now) > state.DailyEpoch;
         if (reset && publish && s.DailyReady) await _daily.ReconcileAsync(s);
         if (reset && running) ConsumeUntil(state, Math.Min(now, Epoch(now) * 1000));
@@ -215,7 +219,7 @@ public sealed class WildAfkService : IGameTicker
             Restore(state, now);
             state.AccountedAtMs = Math.Max(state.AccountedAtMs, state.DailyEpoch * 1000);
         }
-        if (running) consumed = ConsumeUntil(state, now);
+        if (running) consumed += ConsumeUntil(state, now);
         state.AccountedAtMs = Math.Max(state.AccountedAtMs, now);
         if (info.HighMultiplierTimeSeconds <= 0)
         {
@@ -258,8 +262,8 @@ public sealed class WildAfkService : IGameTicker
     /// <summary>
     /// The daily reset command (DailyActivityService, TaskLock held under the role's scope; the AFK gate is not
     /// taken: AFK operations take AFK gate -> TaskLock, so the reverse order may only touch state, never the gate).
-    /// The old interval was settled by <see cref="BeforeDailyResetAsync"/>; this restores the new day's allowance
-    /// in memory and returns the bytes the reset transaction persists, with the undo for a failed commit.
+    /// 舊消耗已由 BeforeDailyResetAsync 結算；這裡只重置 05:00 任務統計，並保留失敗回復。
+    /// 午夜補充額度由 AllowanceEpoch 獨立管理，不能在每日任務重置時再補一次。
     /// </summary>
     internal (byte[] Bytes, Action Committed, Action Rollback)? PlanDailyRollover(GameSession s)
     {
