@@ -236,6 +236,15 @@ for this file when an update or launch appears stuck; it contains no account pas
 這個位址。未設定時使用原本的 DNS／代理行為。旁置 `launcher.json` 仍優先於內嵌設定，因此發布前應核對
 實際載入的設定，而非只確認內嵌檔案已更新。
 
+發行者可在內嵌設定加入 `legacyHttpRepositories`，明列可遷移的舊 HTTP 完整網址。例如
+`["http://100.126.246.106:8080/ro3/"]`。外部旁檔的來源必須完全命中白名單，且頻道、遊戲伺服器、
+完整發行者公鑰集合與內嵌設定一致，雙方也必須要求頻道簽章；內嵌目標須為強制 HTTPS。
+符合條件時，啟動器在記憶體中套用新的 HTTPS 來源與連線位址，保留旁檔原件、自訂介面與客戶端目錄。
+本機設定仍使用原來源身份，保留已接受的更新序號；原先明確指定的 `settingsFile`／`settingsIdentity`
+不變，原本依來源承接共用設定的行為也不變。外部旁檔自行宣告的白名單不具授權效果，其他來源不會遷移。
+這項修正需要先取得新版啟動器；已被舊旁檔的 HTTP 設定擋住的安裝，必須透過受信任的 HTTPS 入口取得
+新版執行檔，或由管理者備份並修正該旁檔，不能靠放寬 HTTPS 驗證繼續下載。
+
 Run the deterministic visual matrix after changing WPF layout or state projection:
 
 ```

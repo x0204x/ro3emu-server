@@ -5,12 +5,14 @@ using Ro3Emu.Patcher;
 
 namespace Ro3Emu.Launcher;
 
-/// <summary>launcher.json: built into the exe (LauncherConfigFile in the csproj); a file beside the exe wins.</summary>
+/// <summary>外部 launcher.json 優先；只有內嵌設定明列且發行者相同的舊 HTTP 來源會遷移。</summary>
 public sealed class LauncherConfig
 {
     [JsonPropertyName("repository")] public string Repository { get; set; } = "http://localhost:8790/";
     /// <summary>選用的核准私有來源 TCP 位址；不變更 HTTPS 主機、TLS 驗證或其他來源的 DNS。</summary>
     [JsonPropertyName("repositoryConnectionAddress")] public string? RepositoryConnectionAddress { get; set; }
+    /// <summary>僅採用內嵌版本的白名單；外部設定不能授權來源遷移。</summary>
+    [JsonPropertyName("legacyHttpRepositories")] public string[] LegacyHttpRepositories { get; set; } = [];
     [JsonPropertyName("channel")] public string Channel { get; set; } = "test";
     [JsonPropertyName("server")] public string? Server { get; set; }
     [JsonPropertyName("serverName")] public string ServerName { get; set; } = "Ragnarok 3";
@@ -38,20 +40,50 @@ public sealed class LauncherConfig
     [JsonPropertyName("clientDirectory")] public string? ClientDirectory { get; set; } = ".";
 
     static readonly JsonSerializerOptions Options = new() { ReadCommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
+    private string? _legacySettingsRepository;
 
     public static LauncherConfig Load(string besideExe)
     {
         try
         {
-            if (File.Exists(besideExe)) return JsonSerializer.Deserialize<LauncherConfig>(File.ReadAllBytes(besideExe), Options) ?? new();
             using var stream = typeof(LauncherConfig).Assembly.GetManifestResourceStream("launcher.json");
-            return stream is null ? new() : JsonSerializer.Deserialize<LauncherConfig>(stream, Options) ?? new();
+            var embedded = stream is null ? new LauncherConfig() : JsonSerializer.Deserialize<LauncherConfig>(stream, Options) ?? new();
+            return Load(besideExe, embedded);
         }
         catch (JsonException)
         {
             return new();
         }
     }
+
+    internal static LauncherConfig Load(string besideExe, LauncherConfig embedded)
+    {
+        if (!File.Exists(besideExe)) return embedded;
+        var external = JsonSerializer.Deserialize<LauncherConfig>(File.ReadAllBytes(besideExe), Options) ?? new();
+        if (!external.CanMigrateRepository(embedded)) return external;
+
+        // 不寫回玩家旁檔，也不搬動設定；每次啟動套用受信任內嵌版本的相同遷移規則。
+        if (string.IsNullOrWhiteSpace(external.SettingsFile) && external.SettingsIdentity is null)
+        {
+            external._legacySettingsRepository = external.Repository;
+            external.SettingsIdentity = UserSettings.FileKey(external.Repository);
+        }
+        external.Repository = embedded.Repository;
+        external.RepositoryConnectionAddress = embedded.RepositoryConnectionAddress;
+        external.RequireHttpsRepository = true;
+        external.RequireServerClientRelease |= embedded.RequireServerClientRelease;
+        return external;
+    }
+
+    private bool CanMigrateRepository(LauncherConfig embedded)
+        => Uri.TryCreate(Repository, UriKind.Absolute, out var oldUri) && oldUri.Scheme == "http"
+            && Uri.TryCreate(embedded.Repository, UriKind.Absolute, out var newUri) && newUri.Scheme == "https"
+            && embedded.LegacyHttpRepositories?.Contains(Repository, StringComparer.Ordinal) == true
+            && embedded.RequireHttpsRepository && embedded.RequireSignedChannel && RequireSignedChannel
+            && !string.IsNullOrWhiteSpace(Server) && Server == embedded.Server && Channel == embedded.Channel
+            && TrustedPublisherKeys is { Count: > 0 } && embedded.TrustedPublisherKeys is { Count: > 0 }
+            && TrustedPublisherKeys.Count == embedded.TrustedPublisherKeys.Count
+            && TrustedPublisherKeys.All(key => embedded.TrustedPublisherKeys.TryGetValue(key.Key, out var value) && value == key.Value);
 
     public RepositoryTrustOptions RepositoryTrust => new()
     {
@@ -73,7 +105,9 @@ public sealed class LauncherConfig
 
     /// <summary>明確指定身份或檔案時不回落共用設定；資料夾參數只供隔離測試，不從 launcher.json 讀取。</summary>
     internal UserSettings LoadSettings(string executableDirectory, string settingsDirectory)
-        => !string.IsNullOrWhiteSpace(SettingsFile) || SettingsIdentity is not null
+        => _legacySettingsRepository is not null
+            ? UserSettings.ForRepository(_legacySettingsRepository, settingsDirectory)
+            : !string.IsNullOrWhiteSpace(SettingsFile) || SettingsIdentity is not null
             ? UserSettings.Load(ResolveSettingsFile(executableDirectory, settingsDirectory))
             : UserSettings.ForRepository(Repository, settingsDirectory);
 
