@@ -224,32 +224,50 @@ public sealed class LevelDropEnergyRulesTests : IAsyncLifetime
     }
 
     [ClientDataFact]
-    public void ExpCurveDropGroupsAreImplicitGuaranteedBaseExp()
+    public void ExpCurveDropGroupsUseExplicitBaseExpItemWeightAndQuantity()
     {
+        // 實際 Genesis 匯出明示經驗道具、權重與數量，不依賴舊版缺省補值。
+        var row = Data.Row("DropGroupConfig", 3005)!.Value[0];
+        Assert.Equal(100, GameData.Int(row, "_kDropItem"));
+        Assert.Equal(1, GameData.Int(row, "_iWeights"));
+        Assert.Equal(5, GameData.Int(row, "_iMinNumber"));
+        Assert.Equal(5, GameData.Int(row, "_iMaxNumber"));
         var drops = new List<(int, int)>();
         Service<RewardService>().PickFromGroup(3005, new RoleProgress { Career = 1000, Level = 5 }, drops);
         Assert.Equal([(100, 5)], drops);
     }
 
     [ClientDataFact]
-    public void DAsiaSerialKeyedDropGroupUsesOmittedWeightAndQuantityDefaults()
+    public void DropGroupsRequireArrayRowsAndExplicitPositiveWeights()
     {
         var groups = Assert.IsType<Dictionary<string, JsonElement>>(Data.Table("DropGroupConfig"));
         const string groupId = "121121";
         JsonElement original = groups[groupId];
-        groups[groupId] = JsonSerializer.SerializeToElement(new Dictionary<string, object>
-        {
-            ["6"] = new
-            {
-                _iID = 121121, _iJobLimit = MageJobLimit, _iMinLevelLimit = 1,
-                _iSerial = 6, _kDropItem = 2090120,
-            },
-        });
         try
         {
+            var explicitRow = new
+            {
+                _iID = 121121, _iJobLimit = MageJobLimit, _iMinLevelLimit = 1,
+                _iSerial = 6, _kDropItem = 2090120, _iWeights = 1, _iMinNumber = 1, _iMaxNumber = 1,
+            };
+            // 上游接受陣列且權重明示為正的資料，保留正向對照。
+            groups[groupId] = JsonSerializer.SerializeToElement(new[] { explicitRow });
             var drops = new List<(int, int)>();
             Service<RewardService>().PickFromGroup(121121, new RoleProgress { Career = 2100, Level = 10 }, drops);
             Assert.Equal([(2090120, 1)], drops);
+            // 舊 D Asia 以序號為鍵的物件不再視為上游陣列格式。
+            groups[groupId] = JsonSerializer.SerializeToElement(new Dictionary<string, object> { ["6"] = explicitRow });
+            drops.Clear();
+            Service<RewardService>().PickFromGroup(121121, new RoleProgress { Career = 2100, Level = 10 }, drops);
+            Assert.Empty(drops);
+            // 即使格式為陣列，省略權重也不能默認為保證發獎。
+            groups[groupId] = JsonSerializer.SerializeToElement(new[]
+            {
+                new { _iID = 121121, _iJobLimit = MageJobLimit, _iMinLevelLimit = 1,
+                    _iSerial = 6, _kDropItem = 2090120, _iMinNumber = 1, _iMaxNumber = 1 },
+            });
+            Service<RewardService>().PickFromGroup(121121, new RoleProgress { Career = 2100, Level = 10 }, drops);
+            Assert.Empty(drops);
         }
         finally { groups[groupId] = original; }
     }

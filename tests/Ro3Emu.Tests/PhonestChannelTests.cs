@@ -67,6 +67,79 @@ public sealed class PhonestChannelTests : IAsyncLifetime
         await run.WaitAsync(TimeSpan.FromSeconds(15));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CompressedFramesPastOneFramesLimitInOneReadArriveInOrder(bool keyFrameFirst)
+    {
+        await using var channel = new PhonestChannel(_server, NullLogger.Instance);
+        var key = new byte[20];
+        var peer = new StreamConvertor(key);
+        var seen = new List<ushort>();
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var run = channel.RunAsync((ch, index, body) =>
+        {
+            if (index == 0) { ch.EnableConvertor(key); ready.TrySetResult(); return ValueTask.CompletedTask; }
+            Assert.Equal(100_000, body.Length);
+            Assert.All(body.ToArray(), b => Assert.Equal((byte)index, b));
+            seen.Add(index);
+            if (seen.Count == 20) done.TrySetResult();
+            return ValueTask.CompletedTask;
+        }, CancellationToken.None);
+        // 2 MB of valid frames in far less than one 64 KiB read; the bytes after the plaintext key frame take the other path.
+        var wire = Enumerable.Range(1, 20).SelectMany(i => peer.ConvertOutput(Frame((ushort)i, 100_000, (byte)i))).ToArray();
+        Assert.True(wire.Length < 32 * 1024);
+        if (keyFrameFirst)
+        {
+            await _client.SendAsync(Frame(0, 0), SocketFlags.None);
+            await ready.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await _client.SendAsync(wire, SocketFlags.None);
+        }
+        else await _client.SendAsync(Frame(0, 0).Concat(wire).ToArray(), SocketFlags.None);
+        await done.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(Enumerable.Range(1, 20).Select(i => (ushort)i), seen);
+        _client.Shutdown(SocketShutdown.Send);
+        await run.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task AnOversizedCompressedFrameIsRefusedBeforeItIsHandled()
+    {
+        await using var channel = new PhonestChannel(_server, NullLogger.Instance);
+        var key = new byte[20];
+        var peer = new StreamConvertor(key);
+        int handled = 0;
+        await _client.SendAsync(Frame(0, 0).Concat(peer.ConvertOutput(Frame(1, 2 * 1024 * 1024))).ToArray(), SocketFlags.None);
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => channel.RunAsync((ch, index, _) =>
+        {
+            if (index == 0) ch.EnableConvertor(key);
+            else handled++;
+            return ValueTask.CompletedTask;
+        }, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Contains("bad frame size", error.Message);
+        Assert.Equal(0, handled);
+    }
+
+    [Fact]
+    public async Task OneReadCannotInflateWithoutLimit()
+    {
+        await using var channel = new PhonestChannel(_server, NullLogger.Instance);
+        var key = new byte[20];
+        var peer = new StreamConvertor(key);
+        // 48 MiB of valid frames in one small write: even if TCP splits it once, one of the reads passes the limit.
+        var frame = Frame(1, 1024 * 1024 - 2);
+        var wire = Frame(0, 0).Concat(Enumerable.Range(0, 48).SelectMany(_ => peer.ConvertOutput(frame))).ToArray();
+        Assert.True(wire.Length < 64 * 1024);
+        await _client.SendAsync(wire, SocketFlags.None);
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => channel.RunAsync((ch, index, _) =>
+        {
+            if (index == 0) ch.EnableConvertor(key);
+            return ValueTask.CompletedTask;
+        }, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(20)));
+        Assert.Contains("inflates past", error.Message);
+    }
+
     [Fact]
     public async Task OversizedFrameIsRefused()
     {

@@ -193,7 +193,7 @@ public sealed partial class WardrobeService
         var current = session.Wardrobe!;
         var row = Row(req.AppearanceId);
         int result = row == null ? ErrorCodes.Parameter : Validate(session, current, req.AppearanceId, requireOwned: false);
-        if (result == 0 && Owns(current, req.AppearanceId)) result = ErrorCodes.Parameter; // (inferred) already unlocked.
+        if (result == 0 && Owns(current, req.AppearanceId)) result = ErrorCodes.ShopAppearanceOwned; // (inferred) already unlocked.
         var costs = row is { } r ? Materials(r) : [];
         if (result == 0 && costs.Count == 0) result = ErrorCodes.FeatureUnavailable; // No free unlock path inferred.
         if (result == 0 && costs.Any(c => c.Entry <= 0 || c.Count <= 0 || _data.Row("ItemConfig", c.Entry) == null))
@@ -245,7 +245,7 @@ public sealed partial class WardrobeService
             else appearanceId = (int)(GameData.Number(effects[0][2]) ?? 0);
         }
         if (result == 0) result = Validate(session, session.Wardrobe!, appearanceId, requireOwned: false);
-        if (result == 0 && Owns(session.Wardrobe!, appearanceId)) result = ErrorCodes.Parameter;
+        if (result == 0 && Owns(session.Wardrobe!, appearanceId)) result = ErrorCodes.ShopAppearanceOwned; // (inferred) already unlocked.
         if (result == 0)
         {
             var next = session.Wardrobe!.Clone();

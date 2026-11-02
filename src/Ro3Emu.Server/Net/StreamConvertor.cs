@@ -27,27 +27,33 @@ public sealed class StreamConvertor
         _deflater = new ZLibStream(_packed, CompressionLevel.Optimal, leaveOpen: true);
     }
 
-    /// <summary>Decrypts and inflates a chunk of received bytes; returns the plain frame bytes it yields (possibly none).
-    /// More than <paramref name="maxOutput"/> plain bytes from one chunk is refused (a decompression bomb).</summary>
-    public byte[] ConvertInput(ReadOnlySpan<byte> received, int maxOutput = int.MaxValue)
+    /// <summary>Decrypts and inflates a chunk of received bytes; returns the plain frame bytes it yields (possibly none).</summary>
+    public byte[] ConvertInput(ReadOnlySpan<byte> received)
+    {
+        BeginInput(received);
+        using var plain = new MemoryStream();
+        while (ReadInput() is { IsEmpty: false } step) plain.Write(step);
+        return plain.ToArray();
+    }
+
+    /// <summary>Decrypts a chunk of received bytes for <see cref="ReadInput"/>, which must have run it dry before the next one.</summary>
+    public void BeginInput(ReadOnlySpan<byte> received)
     {
         var buf = received.ToArray();
         _decrypt.Process(buf);
         _inflater.SetInput(buf);
-        using var plain = new MemoryStream();
+    }
+
+    /// <summary>The next plain bytes of the chunk, at most 16 KiB and valid until the next call; empty when it has run dry.</summary>
+    public ReadOnlySpan<byte> ReadInput()
+    {
         while (true)
         {
             int n = _inflater.Inflate(_inScratch);
-            if (n > 0)
-            {
-                if (plain.Length + n > maxOutput) throw new InvalidDataException($"inflated input exceeds {maxOutput} bytes");
-                plain.Write(_inScratch, 0, n);
-                continue;
-            }
-            if (_inflater.IsNeedingInput || _inflater.IsFinished) break;
+            if (n > 0) return _inScratch.AsSpan(0, n);
+            if (_inflater.IsNeedingInput || _inflater.IsFinished) return default;
             if (_inflater.IsNeedingDictionary) throw new InvalidDataException("zlib stream wants a preset dictionary");
         }
-        return plain.ToArray();
     }
 
     /// <summary>Deflates one or more whole frames with a sync flush and encrypts the result.</summary>

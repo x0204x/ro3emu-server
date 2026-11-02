@@ -346,6 +346,7 @@ public sealed class WorldCoreTests : IAsyncLifetime
         await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1411201, TargetId = b.Role.Id });
         Assert.Equal(ErrorCodes.SkillNotLearned, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
         await Service<GameLoop>().InvokeAsync(() => { a.Progress!.Skills[14112] = 1; return Task.CompletedTask; });
+        a.NoRegenUntilMs = long.MaxValue; // a recovery tick would pay for the refused cast
         await Service<GameLoop>().InvokeAsync(() => Service<CharacterService>().SetHpSpAsync(a, null, 0));
         await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1411201, TargetId = b.Role.Id });
         Assert.Equal(3013, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);

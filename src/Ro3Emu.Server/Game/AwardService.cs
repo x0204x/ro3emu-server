@@ -142,29 +142,22 @@ public sealed class AwardService(GameData data, IOptions<ServerOptions>? options
             if (groupId <= 0 || chance is < 0 or > 1_000_000 || rolls is < 1 or > 1000 || picks is < 1 or > 1000)
                 throw Fail($"DropPoolConfig {poolId} slot {slot} has unsupported range");
             var candidates = EligibleRows(groupId, progress);
-            long weight = candidates.Sum(DropWeight);
+            long weight = candidates.Sum(r => new DropGroupConfig(r).Weights);
             if (weight <= 0) continue;
             // (inferred) RewardService's current [group,chance-per-million,rolls,picks] interpretation.
             for (int r = 0; r < rolls; r++)
             {
                 if (Random.Shared.NextInt64(1_000_000) >= chance) continue;
-                for (int p = 0; p < picks; p++)
+                foreach (var candidate in DropPicks.Distinct(candidates, picks, Random.Shared.NextInt64))
                 {
-                    long choice = Random.Shared.NextInt64(weight);
-                    foreach (var candidate in candidates)
-                    {
-                        choice -= DropWeight(candidate);
-                        if (choice >= 0) continue;
-                        int min = checked((int)DropQuantity(candidate, "_iMinNumber"));
-                        int max = checked((int)DropQuantity(candidate, "_iMaxNumber"));
-                        if (min < 1 || max < min) throw Fail($"DropGroupConfig {groupId} has invalid quantity range");
-                        int count = checked((int)Random.Shared.NextInt64(min, (long)max + 1));
-                        int entry = DropEntry(candidate, groupId);
-                        int bind = PoolBindType(candidate, groupId);
-                        ValidateGrant(entry, count, bind, 0);
-                        grants.Add(new AwardGrant(entry, count, bind));
-                        break;
-                    }
+                    int min = checked((int)new DropGroupConfig(candidate).MinNumber);
+                    int max = checked((int)new DropGroupConfig(candidate).MaxNumber);
+                    if (min < 1 || max < min) throw Fail($"DropGroupConfig {groupId} has invalid quantity range");
+                    int count = checked((int)Random.Shared.NextInt64(min, (long)max + 1));
+                    int entry = checked((int)new DropGroupConfig(candidate).DropItem);
+                    int bind = PoolBindType(candidate, groupId);
+                    ValidateGrant(entry, count, bind, 0);
+                    grants.Add(new AwardGrant(entry, count, bind));
                 }
             }
         }
@@ -172,17 +165,17 @@ public sealed class AwardService(GameData data, IOptions<ServerOptions>? options
 
     private List<JsonElement> EligibleRows(long groupId, RoleProgress? progress)
     {
-        if (data.Row("DropGroupConfig", groupId) is not { } raw || !GameData.TryGroupedRows(raw, out var rows))
+        if (data.Row("DropGroupConfig", groupId) is not { ValueKind: JsonValueKind.Array } rows)
             throw Fail($"missing DropGroupConfig {groupId}");
         var eligible = new List<JsonElement>();
-        foreach (var row in rows)
+        foreach (var row in rows.EnumerateArray())
         {
-            long weight = DropWeight(row);
+            long weight = new DropGroupConfig(row).Weights;
             if (weight <= 0) continue;
             // A declared but empty/zero-weight pool still resolves fixed grants without a recipient.
             // Only an eligible weighted candidate needs role level and career.
             if (progress == null) throw Fail($"DropGroupConfig {groupId} requires a recipient");
-            long min = GameData.Int(row, "_iMinLevelLimit"), max = GameData.Int(row, "_iMaxLevelLimit");
+            long min = new DropGroupConfig(row).MinLevelLimit, max = new DropGroupConfig(row).MaxLevelLimit;
             if (progress.Level < min || max > 0 && progress.Level > max) continue;
             if (row.TryGetProperty("_iJobLimit", out var jobs) && jobs.ValueKind == JsonValueKind.Array && jobs.GetArrayLength() > 0
                 && !jobs.EnumerateArray().Any(j => GameData.Number(j) == progress.Career)) continue;
@@ -190,36 +183,19 @@ public sealed class AwardService(GameData data, IOptions<ServerOptions>? options
                 throw Fail($"DropGroupConfig {groupId} has unresolved job filter");
             // DropAttenuationConfig scales by the player/monster level gap; an award has no slain monster, so a row
             // with _iAttenuationPlanID drops in full (DropAttenuation, inferred).
-            if (GameData.Int(row, "_iQuestLimit") != 0 || GameData.Int(row, "_iActivityid") != 0
-                || GameData.Int(row, "_kCoefficient") != 0
-                || GameData.Int(row, "_iBind") != 0 || HasValues(row, "_kServerLevel"))
+            if (new DropGroupConfig(row).QuestLimit != 0 || new DropGroupConfig(row).Activityid != 0
+                || new DropGroupConfig(row).Coefficient != 0
+                || new DropGroupConfig(row).Bind != 0 || HasValues(row, "_kServerLevel"))
                 throw Fail($"DropGroupConfig {groupId} has unresolved eligibility or bind policy");
             int bind = PoolBindType(row, groupId);
-            int entry = DropEntry(row, groupId);
-            int low = checked((int)DropQuantity(row, "_iMinNumber"));
-            int high = checked((int)DropQuantity(row, "_iMaxNumber"));
+            int entry = checked((int)new DropGroupConfig(row).DropItem);
+            int low = checked((int)new DropGroupConfig(row).MinNumber);
+            int high = checked((int)new DropGroupConfig(row).MaxNumber);
             if (low <= 0 || high < low) throw Fail($"DropGroupConfig {groupId} has invalid quantity range");
             ValidateGrant(entry, low, bind, 0);
             eligible.Add(row);
         }
         return eligible;
-    }
-
-    // D Asia omits Lua defaults from repeated DropGroupConfig rows. Genesis serializes these fields explicitly.
-    // Preserve an explicitly serialized zero; only an absent field receives the client-table default.
-    private static long DropWeight(JsonElement row) =>
-        row.TryGetProperty("_iWeights", out _) ? GameData.Int(row, "_iWeights") : 1;
-
-    private static long DropQuantity(JsonElement row, string field) =>
-        row.TryGetProperty(field, out _) ? GameData.Int(row, field) : 1;
-
-    private static int DropEntry(JsonElement row, long groupId)
-    {
-        var config = new DropGroupConfig(row);
-        if (config.HasDropItem) return checked((int)config.DropItem);
-        // D Asia omits the Lua default item from its level-banded EXP curves. Match RewardService while keeping
-        // every other malformed group fail-closed through ValidateGrant's item-zero rejection.
-        return groupId is >= 3000 and < 4000 && config.HasMinNumber && config.HasMaxNumber ? BaseExpItem : 0;
     }
 
     private static int PoolBindType(JsonElement row, long groupId)

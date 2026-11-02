@@ -16,7 +16,7 @@ public sealed class TaskDeliveryJumpTests
         string fixture = CreateFixture();
         try
         {
-            await using var host = await SyntheticHost.StartAsync(o => o.GameDataDir = fixture);
+            await using var host = await SyntheticHost.StartAsync(o => { o.GameDataDir = fixture; o.TravelCheck = "enforce"; });
             await using var alice = await host.InWorldAsync("TaskJump");
             var request = Jump();
             Assert.Equal(ErrorCodes.TaskRequirements, await RequestJump(alice, request));

@@ -266,7 +266,7 @@ public sealed class GuildHomeTests : IAsyncLifetime
         await OnLoop(() =>
         {
             session.Dead = false; session.StatusBits |= 1L << 15; session.LastCombatMs = MonsterService.NowMs;
-            session.NoRegenUntilMs = MonsterService.NowMs + 10000; // fighting no longer pauses regeneration
+            session.NoRegenUntilMs = long.MaxValue; // fighting no longer pauses regeneration
             return Task.CompletedTask;
         });
         Assert.Equal(ErrorCodes.ActionInBattle, (await Request(alice)).Result);

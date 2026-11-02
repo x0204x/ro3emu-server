@@ -275,6 +275,7 @@ public sealed partial class GuildLeagueTests : IAsyncLifetime
         await OnLoop(async () =>
         {
             Session(alice).Position = Session(carol).Position.Clone();
+            Session(carol).NoRegenUntilMs = long.MaxValue; // a recovery tick would lift this 1 HP out of one lethal hit
             await Service<CharacterService>().SetHpSpAsync(Session(carol), 1, null);
         });
         await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = Session(carol).Role!.Id });

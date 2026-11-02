@@ -17,7 +17,7 @@ public sealed partial class ActivityAdventuresTests
     // G 的 StartHunt／GetAreaCenter 僅支援當前地圖；拒絕外圖選點不得消耗圖或寫入進度。
     [ClientDataTheory]
     [InlineData(1112001, 10101)]
-    [InlineData(1112002, 10111)]
+    [InlineData(1112002, 10100)]
     public async Task TreasureMapWithoutEligibleLocalPointPreservesBagCooldownAndCursor(int itemId, int mapId)
     {
         var window = _app.Services.GetRequiredService<ActivityClock>()
@@ -31,7 +31,7 @@ public sealed partial class ActivityAdventuresTests
         Assert.Equal(mapId, session.SceneEntry);
         Assert.Equal(RuntimeMapKind.PublicLine, session.RuntimeMap.Kind);
         Assert.DoesNotContain(TreasureHuntMapPointConfig.All(_app.Services.GetRequiredService<GameData>()),
-            point => point.MapId == mapId && (itemId == 1112002 ? point.Id >= 2000 : point.Id < 2000));
+            point => point.MapId == mapId);
         long roleId = session.Role!.Id;
         long guid = session.Items.Single(i => i.Entry == itemId).Guid;
         var roles = _app.Services.GetRequiredService<RoleStore>();
@@ -56,7 +56,7 @@ public sealed partial class ActivityAdventuresTests
             Assert.Equal(runtimeBefore, roles.LoadActivityRuntime(roleId));
             Assert.Equal(bagBefore, roles.LoadBagState(roleId));
         }));
-        Assert.Equal(ErrorCodes.ItemUseAreaForbidden,
+        Assert.Equal(ErrorCodes.TreasurePointNotOnMap,
             (await Next(alice, CharacterService.ItemUse, ItemUseResp.Parser)).Result);
     }
 
@@ -80,7 +80,8 @@ public sealed partial class ActivityAdventuresTests
         var started = await Next(alice, 5064, DBTreasureInfoIncrement.Parser, info => info.PointId > 0);
         var point = TreasureHuntMapPointConfig.Get(_app.Services.GetRequiredService<GameData>(), started.PointId);
         Assert.NotNull(point);
-        Assert.True(point.Value.Id >= 2000);
+        // 上游確認高級圖也使用目前地圖的有效點，不能再以 2000 切開可用點位。
+        Assert.Equal(1112002, session.ActivityRuntime.AdventureTreasure.ItemId);
         Assert.Equal(session.SceneEntry, point.Value.MapId);
         Assert.Equal(1, session.Items.Single(i => i.Guid == guid).Stack);
         string committedCursor = JsonSerializer.Serialize(session.ActivityRuntime.AdventureTreasure);

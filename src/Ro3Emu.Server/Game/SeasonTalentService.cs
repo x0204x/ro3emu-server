@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Google.Protobuf;
 using Microsoft.Data.Sqlite;
@@ -228,7 +229,14 @@ public sealed partial class SeasonTalentService
         _data.Row("SeasonTalentConfig", kv.Key) is not { } row || GameData.Int(row, "_iType") == ChoiceNodeType ? 0
             : Math.Max(0, GameData.Int(row, "_iType") == PvpNodeType ? state.BattleOathLevel : kv.Value.CurrentLevel));
 
-    private JsonElement? Effect(long group, long level, int career)
+    /// <summary>Effect rows by (group, level, career). CharacterService.Stats asks for every bought node, and the table does
+    /// not change once loaded, so it is scanned once per key.</summary>
+    private readonly ConcurrentDictionary<(long Group, long Level, int Career), JsonElement?> _effects = new();
+
+    private JsonElement? Effect(long group, long level, int career) =>
+        _effects.GetOrAdd((group, level, career), static (key, self) => self.FindEffect(key.Group, key.Level, key.Career), this);
+
+    private JsonElement? FindEffect(long group, long level, int career)
     {
         JsonElement? generic = null;
         foreach (var row in _data.Table("SeasonTalentEffectConfig").Values)

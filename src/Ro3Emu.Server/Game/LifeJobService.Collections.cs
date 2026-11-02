@@ -23,10 +23,24 @@ public sealed partial class LifeJobService
             var c = new LifeCollectionConfig(row);
             long job = c.JobId;
             if (!Current(row) || !next.ActiveLifejob.Values.Contains(job) || !next.LifeJobInfoMap.TryGetValue(job, out var info)
-                || info.JobLevel <= 0 || info.GatherInfo.ItemDetails.ContainsKey(c.CollectionId)
-                || !EarnedBy(s, next, c.Condition)) continue;
-            UnlockCollection(next, row);
+                || info.JobLevel <= 0) continue;
+            if (info.GatherInfo.ItemDetails.ContainsKey(c.CollectionId)) UnlockEarnedDrops(s, next, row);
+            else if (EarnedBy(s, next, c.Condition)) UnlockCollection(s, next, row);
         }
+    }
+
+    /// <summary>
+    /// A drop with no _kUnlockcost unlocks itself once its LifeDropConfig._iCondition holds: the client shows its unlock
+    /// button only for a drop with a cost (UI_Sys_Life_ProductItemWidgetCtrl m_kGetIsShowButton, LC_LifeJobHelper
+    /// GetIsDropCanUnlock), so it never sends StudyCollectionDrop for these. Every drop from Lv. 2 up is such a row, and
+    /// without this those resources paid only EXP (#bug-reports "Any Life Skill level 2 and above").
+    /// </summary>
+    private void UnlockEarnedDrops(GameSession s, DBLifeJobInfo next, JsonElement collection)
+    {
+        foreach (long id in new LifeCollectionConfig(collection).DropId)
+            if (!next.LifeJobUnLockDrop.ContainsKey(id) && _data.Row("LifeDropConfig", id) is { } drop
+                && Costs(drop, "_kUnlockcost").Count == 0 && EarnedBy(s, next, new LifeDropConfig(drop).Condition))
+                next.LifeJobUnLockDrop[id] = 1;
     }
 
     private bool EarnedBy(GameSession s, DBLifeJobInfo next, long conditionId)

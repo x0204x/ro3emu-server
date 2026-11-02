@@ -32,7 +32,7 @@ public sealed partial class NewActivityService
     /// ItemConfig 1112001/1112002 action 304, called with ActivityGate and CharacterService's item-use lock held.
     /// LC_DAL_SeasonTreasure consumes 5064.pointId and LC_System_SeasonTreasure starts the hunt.
     /// LC_System_SeasonTreasure.StartHunt/_doStartHunt 只在同圖啟動，GetAreaCenter 也只查目前地圖。
-    /// 在目前公開地圖的有效點中選取，無點時以 178 拒絕且保留道具；選點與拒絕碼為 (inferred)。
+    /// 在目前公開地圖的有效點中選取，無點時依上游以 6502 拒絕且保留道具；選點與拒絕碼為 (inferred)。
     /// </summary>
     private async Task<CharacterService.ItemUseOutcome> StartTreasureMapAsync(GameSession session, ItemUseReq req,
         Action<Ro3Emu.Server.Accounts.Persistence.RoleItemPlanBuilder> persistCooldown, Action publishCooldown)
@@ -43,15 +43,17 @@ public sealed partial class NewActivityService
         if (item == null || item.Entry is not (1112001 or 1112002) || item.Stack < 1 || item.IsLocked)
             return new(ErrorCodes.ItemMissing);
         var cursor = session.ActivityRuntime.AdventureTreasure;
-        if ((cursor.PointId != 0 && Now < cursor.Began + 10800) || cursor.PendingMonsterAward != 0)
-            return new(ErrorCodes.ItemUseForbidden); // 恢復分支以外的防線，不使用需要任務名稱的 101 模板。
+        // ItemUseResp 沒有文字參數；不可使用會顯示原始 ${1} 的 TaskExists。
+        if (cursor.PendingMonsterAward != 0) return new(ErrorCodes.ItemCannotBeUsed);
+        if (cursor.PointId != 0 && Now < cursor.Began + 10800)
+            return new(_scene.TreasurePoint(cursor.PointId)?.Scene == session.SceneEntry
+                ? ErrorCodes.ItemCannotBeUsed : ErrorCodes.TreasurePointNotOnMap);
         if (session.RuntimeMap.Kind != RuntimeMapKind.PublicLine) return new(ErrorCodes.ItemUseAreaForbidden);
-        var local = TreasureHuntMapPointConfig.All(_data)
-            .Where(p => p.Id > 0 && p.MapId == session.SceneEntry
-                && (item.Entry == 1112002 ? p.Id >= 2000 : p.Id < 2000)).ToArray();
-        if (local.Length == 0) return new(ErrorCodes.ItemUseAreaForbidden);
-        var points = local.Where(p => _scene.TreasurePoint(p.Id) != null).OrderBy(p => p.Id).ToArray();
-        if (points.Length == 0) return new(ErrorCodes.FeatureUnavailable);
+        // 依上游：普通與高級圖都從目前地圖選點；沒有客戶端支持的跨圖尋路時不能扣圖。
+        var points = TreasureHuntMapPointConfig.All(_data)
+            .Where(p => p.Id > 0 && p.MapId == session.SceneEntry && _scene.TreasurePoint(p.Id) != null)
+            .OrderBy(p => p.Id).ToArray();
+        if (points.Length == 0) return new(ErrorCodes.TreasurePointNotOnMap);
         var chosen = points[Random.Shared.Next(points.Length)];
         var runtime = CloneRuntime(session);
         runtime.AdventureTreasure = new AdventureTreasureCursor
@@ -81,7 +83,9 @@ public sealed partial class NewActivityService
         var item = session.Items.FirstOrDefault(i => i.Guid == req.ItemGuid && i.Grid == 0);
         if (item == null || item.Entry is not (1112001 or 1112002) || item.Stack < 1 || item.IsLocked) return null;
         var cursor = session.ActivityRuntime.AdventureTreasure;
-        return cursor.PendingMonsterAward != 0 || cursor.PointId != 0 && Now < cursor.Began + 10800
+        // 只恢復目前地圖可呈現的同一個尋寶目標；異圖通過一般冷卻與資格檢查後回覆上游的 6502。
+        return _scene.TreasurePoint(cursor.PointId)?.Scene == session.SceneEntry
+            && (cursor.PendingMonsterAward != 0 || cursor.PointId != 0 && Now < cursor.Began + 10800)
             ? TreasureProjectionAfterReply(session, cursor) : null;
     }
 

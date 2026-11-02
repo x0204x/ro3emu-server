@@ -376,6 +376,7 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
         // (inferred from the codes' texts).
         int code = npc == null || npc.SceneEntry != s.SceneEntry ? ErrorCodes.NpcMissing
             : s.SceneLoading ? ErrorCodes.SwitchingScenes
+            : s.Dead && req.InteractionId is InteractPortal or InteractKafraTeleport ? ErrorCodes.TeleportDead
             : req.SceneConfigId != 0 && req.SceneConfigId != s.SceneEntry ? ErrorCodes.NpcParameter
             : req.Pos != null && !WorldCoreService.Finite(req.Pos) ? ErrorCodes.NpcParameter
             : !Near(s, npc) ? ErrorCodes.NpcTooFar
@@ -418,10 +419,8 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
             && ids.EnumerateArray().Any(x => Data.GameData.Number(x) == id);
 
     /// <summary>
-    /// 30012: travel to a map's born point. The client sends it for its cross-scene auto path (LC_Actor_ControlMove), a failed
-    /// scene load and leaving Territory Wars (LC_TransitionBase, LC_TerritoryWarsServer: 10100), the GvG transfer node
-    /// (10110), leaving auto battle and more, so the target itself is not limited here. (inferred) A dead role gets the
-    /// client's own "Cannot teleport while dead", except to its map or the town a failed load falls back to.
+    /// 30012: travel to a map's born point, for the requests the client really sends one (SceneService.Travel.cs). (inferred)
+    /// A dead role gets the client's own "Cannot teleport while dead", except to its map or the town a failed load falls back to.
     /// </summary>
     public async Task SceneTeleportAsync(GameSession s, SceneTeleportReq req)
     {
@@ -434,16 +433,18 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
         bool known = data.Row("MapConfig", req.TargetMapId) != null && worldData.Map(req.TargetMapId) != null
             && worldData.ClientHasScene(req.TargetMapId);
         int result = !known ? ErrorCodes.SceneMissing : s.Dead && !RescueTarget(s, req.TargetMapId) ? ErrorCodes.TeleportDead : 0;
+        if (result == 0 && !TravelPasses(s, TravelAllowed(s, req.TargetMapId),
+            $"30012 scene {s.SceneEntry} -> {req.TargetMapId}, reason {req.TeleportReason?.EType}"))
+            result = ErrorCodes.Parameter;
         await s.SendGameAsync(SceneTeleport, new SceneTeleportRsp { Result = result });
         if (result == 0) await EnterSceneAsync(s, req.TargetMapId);
     }
 
-    /// <summary>The role's own map or the main city (PublicParamConfig.AutoBattleAutoBackMainCityID, the 10100 of LC_TransitionBase).</summary>
-    private bool RescueTarget(GameSession s, long target) => target == s.SceneEntry
-        || data.Table("PublicParamConfig").TryGetValue("AutoBattleAutoBackMainCityID", out var city) && Data.GameData.Number(city) == target;
+    /// <summary>The role's own map or the main city.</summary>
+    private bool RescueTarget(GameSession s, long target) => target == s.SceneEntry || IsMainCity(target);
 
-    /// <summary>30131: a dialog option jumping to a numbered point of a map (e.g. the palace guard). A dialog needs a living
-    /// role in a loaded scene.</summary>
+    /// <summary>30131: an authored jump to a numbered point of a map (e.g. the palace guard), AuthoredJumps. A dialog needs a
+    /// living role in a loaded scene.</summary>
     public async Task CustomJumpAsync(GameSession s, ClientCustomJumpMapReq req)
     {
         if (s.Dead || s.SceneLoading)
@@ -455,6 +456,10 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
         var point = map?.Points.GetValueOrDefault(req.PointId);
         int code = point == null ? map == null ? ErrorCodes.SceneMissing : ErrorCodes.Parameter
             : ValidateCustomJump?.Invoke(s, req) ?? 0;
+        // 保留已交付任務與來源參數驗證，並同時套用上游配置目的地白名單。
+        if (code == 0 && !TravelPasses(s, AuthoredJumps().Contains((req.SceneId, req.PointId)),
+            $"30131 scene {s.SceneEntry} -> {req.SceneId} point {req.PointId}"))
+            code = ErrorCodes.Parameter;
         await s.SendGameAsync(CustomJumpMap, new ClientCustomJumpMapResp { Result = code });
         if (code == 0 && point is { } p) await EnterSceneAsync(s, req.SceneId, p);
     }

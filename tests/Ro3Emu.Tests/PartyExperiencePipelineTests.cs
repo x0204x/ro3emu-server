@@ -187,7 +187,7 @@ public sealed partial class PartyExperiencePipelineTests
             new { _iID = Pool, _iDropGroup_1 = new long[] { Curve, 1_000_000, 1, 1 } });
         Append(config, "DropGroupConfig", Curve, new[]
         {
-            new { _iWeights = 1, _iMinLevelLimit = 1, _iMaxLevelLimit = 5,
+            new { _kDropItem = 100, _iWeights = 1, _iMinLevelLimit = 1, _iMaxLevelLimit = 5,
                 _iMinNumber = 7, _iMaxNumber = 7 }
         });
         Append(config, "LvExpCorrectionConfig", 1,

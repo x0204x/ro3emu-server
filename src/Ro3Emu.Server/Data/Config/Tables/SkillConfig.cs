@@ -30,6 +30,7 @@ public readonly partial record struct SkillConfig(JsonElement Row)
     [ConfigField("_iIfAutoAtk")] public partial long IfAutoAtk { get; }
     [ConfigField("_iImportantSkill")] public partial long ImportantSkill { get; }
     [ConfigField("_iInitialLevel")] public partial long InitialLevel { get; }
+    [ConfigField("_iInterruptedType")] public partial long InterruptedType { get; }
     [ConfigField("_iIsNormalAtk")] public partial long IsNormalAtk { get; }
 
     /// <summary>

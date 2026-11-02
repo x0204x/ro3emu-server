@@ -376,6 +376,7 @@ public sealed partial class DungeonTests
         {
             await OnLoop(async () =>
             {
+                session.NoRegenUntilMs = long.MaxValue; // a recovery tick would lift this 1 HP out of one lethal hit
                 await Service<CharacterService>().SetHpSpAsync(session, 1, 1);
                 await Service<SceneService>().TeleportInMapAsync(session,
                     new MapPoint(monster.X + 1, monster.Y, monster.Z, monster.Face));
@@ -453,7 +454,7 @@ public sealed partial class DungeonTests
             foreach (var monster in session.DungeonAttempt!.Room.Monsters) monster.Dead = true;
             session.LastCombatMs = MonsterService.NowMs;
             session.StatusBits |= 1L << 15;
-            session.NoRegenUntilMs = MonsterService.NowMs + 10000; // fighting no longer pauses regeneration
+            session.NoRegenUntilMs = long.MaxValue; // fighting no longer pauses regeneration
             await Service<CharacterService>().SetHpSpAsync(session, hp, sp);
         });
         var self = await ReturnFromDungeon(alice, RoleStore.SpawnSceneEntry);

@@ -287,6 +287,18 @@ public sealed class AwardTests : IAsyncLifetime
     }
 
     [ClientDataFact]
+    public async Task AWeaponKitGivesEachWeaponOfTheClassOnce()
+    {
+        // DropPoolConfig 31121, the reward of quest 10101210: [121121, 100%, 1, 10] over one row per weapon, by class.
+        var rewards = _app.Services.GetRequiredService<RewardService>();
+        var swordsman = rewards.RollPoolBound(31121, new RoleProgress { Level = 20, Career = 1100 });
+        Assert.Equal(4, swordsman.Count); // Sword, Two-Handed Sword, Knight Spear, Guard
+        Assert.All(swordsman, grant => Assert.Equal(1, grant.Count));
+        var novice = rewards.RollPoolBound(31121, new RoleProgress { Level = 20, Career = 1000 });
+        Assert.Equal(2, Assert.Single(novice).Count); // the row's own 2 daggers, not ten times that
+    }
+
+    [ClientDataFact]
     public async Task FirstGearInAnUnsentPackResendsTheWholeBag()
     {
         // Once the starter weapon and shirt are worn, a later login's 5009 has no equipment pack (2). The client

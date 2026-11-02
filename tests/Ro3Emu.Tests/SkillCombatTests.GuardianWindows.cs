@@ -42,6 +42,7 @@ public sealed partial class SkillCombatTests
         await Task.Delay(100); // registration follows the buff publication
         var row = JsonSerializer.SerializeToElement(new
         { _iID = 789124, _iSkillHit = 10000, _iDmgType = 1, _kDamageParam1 = WindowZeroDamage, _kDamageParam2 = WindowNegligibleDamage });
+        source.NoRegenUntilMs = long.MaxValue; // the HP comparison below must not meet a recovery tick
         await Loop.InvokeAsync(() => Character.SetHpSpAsync(source, 10, null));
         await Loop.InvokeAsync(() => combat.MonsterSkillHitAsync(attacker, row, [source], attacker.Uid));
         var heal = await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser,

@@ -56,6 +56,7 @@ public sealed class LocalServer : IAsyncDisposable
         // The measured configuration is production's: tables parsed before admission, no traffic log.
         start.Environment["Ro3Emu__PreloadGameData"] = "true";
         start.Environment["Ro3Emu__TrafficLog"] = "off";
+        start.Environment["Ro3Emu__TravelCheck"] = "log"; // the scenarios place their bots with a raw 30012
         start.Environment["Logging__LogLevel__Default"] = "Warning";
         start.Environment["ASPNETCORE_ENVIRONMENT"] = "Production";
         Directory.CreateDirectory(outputDir);

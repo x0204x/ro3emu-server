@@ -2,6 +2,7 @@ using System.Text.Json;
 using Romsg;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 
 namespace Ro3Emu.Server.Game;
 
@@ -89,11 +90,13 @@ public sealed partial class EmblemService
                 item.Sort = nextSort;
                 changed = true;
             }
-            if (item.Attrs == null || !item.Attrs.ContainsKey(Level))
+            if (item.Attrs == null || !item.Attrs.TryGetValue(Level, out long reached))
             {
                 item.Attrs = GenerateAttrs(item.Entry);
                 changed = true;
             }
+            // Echoes levelled before random marks were rolled hold 0 in their lit slots.
+            else if (AddMarks(item.Attrs, item.Entry, (int)reached)) changed = true;
         }
         var active = next.Plans[next.CurrentPlan];
         var seen = new HashSet<long>();
@@ -596,17 +599,38 @@ public sealed partial class EmblemService
         }
     }
 
-    private void AddMarks(Dictionary<int, long> attrs, int entry, int level)
+    /// <summary>
+    /// Lights the _kInitialMark slots the level reached; true when that changed the item. A slot's mark 0 is a random
+    /// element, rolled once: UI_Sys_SoulUpgradePanelCtrl (:1147-1149, PlayChaosMarkUpgradeSound :1202-1277) animates
+    /// such a slot as random and then reads its real mark off the upgraded item, and the help text says each lit element is random.
+    /// </summary>
+    private bool AddMarks(Dictionary<int, long> attrs, int entry, int level)
     {
-        if (_data.Row("EmblemConfig", entry) is not { } row || !row.TryGetProperty("_kInitialMark", out var list) || list.ValueKind != JsonValueKind.Array) return;
+        if (_data.Row("EmblemConfig", entry) is not { } row || !row.TryGetProperty("_kInitialMark", out var list) || list.ValueKind != JsonValueKind.Array) return false;
+        bool changed = false;
         int slot = 0;
         foreach (var pair in list.EnumerateArray())
         {
             if (slot >= 10 || pair.ValueKind != JsonValueKind.Array || pair.GetArrayLength() < 2) break;
             if ((long)(GameData.Number(pair[0]) ?? 0) > level) break;
-            attrs[1021 + slot] = (long)(GameData.Number(pair[1]) ?? 0);
+            long mark = (long)(GameData.Number(pair[1]) ?? 0);
+            if (mark == 0) mark = attrs.GetValueOrDefault(1021 + slot) is var kept and > 0 ? kept : RollMark();
+            if (!attrs.TryGetValue(1021 + slot, out long held) || held != mark)
+            {
+                attrs[1021 + slot] = mark;
+                changed = true;
+            }
             slot++;
         }
+        return changed;
+    }
+
+    /// <summary>Uniform over the elements EmblemMarkConfig has stages for (inferred: the client holds no weights).</summary>
+    private long RollMark()
+    {
+        var pool = EmblemMarkConfig.All(_data).Where(r => r.MarkStage > 0 && SeasonRowsValid(r.Row))
+            .Select(r => r.EmblemMarkId).Distinct().ToArray();
+        return pool.Length == 0 ? 0 : pool[Random.Shared.Next(pool.Length)];
     }
 
     /// <summary>Positive-weight rows selected without replacement by actual attribute ID (inferred selection).</summary>

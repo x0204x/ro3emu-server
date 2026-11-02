@@ -112,7 +112,7 @@ public sealed partial class PartyExperiencePipelineTests
         Replace("JobLvConfig", "101", new { _iID = 101, _iMaxJobLv = 10, _iJobeExp = 10000 });
         Replace("DropGroupConfig", Curve.ToString(System.Globalization.CultureInfo.InvariantCulture), new[]
         {
-            new { _iWeights = 1, _iMinLevelLimit = 1, _iMaxLevelLimit = 5, _iMinNumber = 100, _iMaxNumber = 100 }
+            new { _kDropItem = 100, _iWeights = 1, _iMinLevelLimit = 1, _iMaxLevelLimit = 5, _iMinNumber = 100, _iMaxNumber = 100 }
         });
         return root;
 

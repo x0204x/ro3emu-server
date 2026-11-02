@@ -372,6 +372,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         var hit = await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser, x => x.SessionId == accepted.SessionId);
         Assert.Equal((long)bob.Self.Uuid, Assert.Single(hit.Dsts).DstID); Assert.Equal(DamageType.Heal, hit.Dsts[0].DamageType);
         await Task.Delay(600);
+        Session("alice").NoRegenUntilMs = long.MaxValue; // a recovery tick would pay for the refused cast
         await Loop.InvokeAsync(() => Character.SetHpSpAsync(Session("alice"), null, 0));
         await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1400101 });
         Assert.Equal(ErrorCodes.SkillCostShort, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
@@ -390,6 +391,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
         var settled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await Loop.InvokeAsync(async () =>
         {
+            player.NoRegenUntilMs = long.MaxValue; // a recovery tick would lift this 1 HP out of one lethal hit
             await Character.SetHpSpAsync(player, 1, null);
             combat.TakenAsync.Add(async (_, target, _) =>
             {
@@ -527,6 +529,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
             await _app.Services.GetRequiredService<SceneService>().TeleportInMapAsync(b,
                 new MapPoint(a.Position.X, a.Position.Y, a.Position.Z, b.Face));
             await _app.Services.GetRequiredService<BuffService>().AddAsync(b, 2052101, 60000, b.Role.Id);
+            b.NoRegenUntilMs = long.MaxValue; // the exact HP below must not meet a recovery tick
             await Character.SetHpSpAsync(b, 1, null);
             await Character.SetHpSpAsync(a, null, long.MaxValue);
             a.SkillCds.Clear(); a.SkillModeCds.Clear();

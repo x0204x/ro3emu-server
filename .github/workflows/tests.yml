@@ -53,7 +53,7 @@ jobs:
       # A step that times out fails, so the steps below still run; a job that times out is cancelled and uploads nothing.
       - name: Server tests
         timeout-minutes: 24
-        run: dotnet test tests/Ro3Emu.Tests -c Release --filter "Category!=Slow" --logger "trx;LogFileName=server.trx" --results-directory TestResults/server ${{ env.TEST_ARGS }} ${{ env.COVERAGE }}
+        run: dotnet test tests/Ro3Emu.Tests -c Release --filter "Category!=Slow&Category!=Flaky" --logger "trx;LogFileName=server.trx" --results-directory TestResults/server ${{ env.TEST_ARGS }} ${{ env.COVERAGE }}
       - name: Patcher tests
         if: ${{ !cancelled() }}
         run: dotnet test tests/Ro3Emu.Patcher.Tests -c Release --logger "trx;LogFileName=patcher.trx" --results-directory TestResults/patcher ${{ env.TEST_ARGS }} ${{ env.COVERAGE }}
@@ -83,3 +83,38 @@ jobs:
           # The attachment of each project's run (TestResults/<project>/<run id>/), not VSTest's copy in its In folder.
           path: TestResults/*/*/coverage.cobertura.xml
           retention-days: 30
+
+  # The quarantine (docs/guide/testing.md): the tests marked Category=Flaky, each with up to two retries. Not a required
+  # check and never red for a merge. A test only comes here with its reason and its date in that list.
+  quarantine:
+    name: quarantine (Category=Flaky)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - uses: actions/checkout@v7
+      - id: list
+        name: Anything quarantined?
+        run: |
+          if grep -rqs --include='*.cs' 'Trait("Category", "Flaky")' tests; then echo 'any=true' >> "$GITHUB_OUTPUT"
+          else echo 'Nothing is quarantined.'; fi
+      - uses: actions/setup-dotnet@v6
+        if: steps.list.outputs.any == 'true'
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: |
+            Directory.Packages.props
+            **/*.csproj
+      - name: Flaky tests
+        if: steps.list.outputs.any == 'true'
+        timeout-minutes: 24
+        run: |
+          dotnet build tests/Ro3Emu.Tests -c Release
+          for attempt in 1 2 3; do
+            dotnet test tests/Ro3Emu.Tests -c Release --no-build --filter "Category=Flaky" --blame-hang-timeout 5m && exit 0
+          done
+          exit 1

@@ -77,7 +77,7 @@ jobs:
             Directory.Packages.props
             **/*.csproj
       - name: Server tests
-        run: dotnet test tests/Ro3Emu.Tests -c Release --filter "Category!=Slow"
+        run: dotnet test tests/Ro3Emu.Tests -c Release --filter "Category!=Slow&Category!=Flaky"
       - name: Setup tests
         run: dotnet test tests/Ro3Emu.Setup.Tests -c Release --filter "Category!=Slow"
       - name: Pack

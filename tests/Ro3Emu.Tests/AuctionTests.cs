@@ -318,8 +318,9 @@ public sealed partial class AuctionTests : AuctionTestsHost
             await bot.SendGameAsync(AuctionService.Quit, new QuitAuctionReq { AuctionId = row.Id });
             Assert.Equal(0, (await Next(bot, AuctionService.Quit, QuitAuctionRes.Parser)).Result);
         }
-        for (int i = 0; i < 100 && Service<AuctionStore>().Get(row.Id)!.State != AuctionState.Settled; i++)
-            await Task.Delay(50);
+        // The notice follows the settlement's completion: from the committed row alone a mailbox read can still be served
+        // the recipient's snapshot, which the writer drops just after the commit.
+        await Next(alice, AuctionService.DungeonDone, DungeonAuctionDoneNtf.Parser);
         var settled = Service<AuctionStore>().Get(row.Id)!;
         Assert.Equal(AuctionState.Settled, settled.State);
         Assert.Contains(settled.Winner, row.Eligible);

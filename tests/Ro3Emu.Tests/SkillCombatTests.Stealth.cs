@@ -93,7 +93,7 @@ public sealed partial class SkillCombatTests
             var accepted = await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser);
             Assert.Equal(0, accepted.Result);
             await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser, h => h.SessionId == accepted.SessionId);
-            await Task.Delay(300);
+            await Task.Delay(600); // past the end of the cast: Fire Bolt's show can be interrupted only there
             Assert.Equal(hit < 5, b.Buffs.Any(x => x.ConfigId == 1530401));
         }
         Assert.DoesNotContain(b.Buffs, x => x.ConfigId == 1530501); // its linked speed group

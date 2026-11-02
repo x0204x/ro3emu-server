@@ -489,7 +489,7 @@ public sealed class RewardService : IGameTicker
             for (int r = 0; r < rolls; r++)
             {
                 if (_random.NextDouble() * 1_000_000 >= chance) continue;
-                for (int i = 0; i < picks; i++) PickFromGroup(group, progress, drops, bound, monsterLevel, questActive);
+                PickFromGroup(group, progress, drops, bound, monsterLevel, questActive, picks);
             }
         }
     }
@@ -593,50 +593,32 @@ public sealed class RewardService : IGameTicker
         => PickFromGroup(group, player.Progress!, drops, bound);
 
     /// <summary>
-    /// One weighted pick. A row with _iQuestLimit is a quest drop (DropGroupConfig 144: Card: Poring, _iQuestLimit 10102100,
+    /// Up to <paramref name="picks"/> different rows by weight (DropPicks). A row with _iQuestLimit is a quest drop (DropGroupConfig 144: Card: Poring, _iQuestLimit 10102100,
     /// the quest the dropping Egg Thief wave plays): it is a candidate only when <paramref name="questActive"/> says the
     /// quest is accepted and not yet delivered (inferred); without one (awards, AFK stages) it never is.
     /// </summary>
     internal void PickFromGroup(long group, RoleProgress progress, List<(int, int)> drops, List<(int Entry, int Count, int Bind)>? bound = null,
-        int monsterLevel = DropAttenuation.NoMonster, Func<long, bool>? questActive = null)
+        int monsterLevel = DropAttenuation.NoMonster, Func<long, bool>? questActive = null, int picks = 1)
     {
-        var rows = DropGroupConfig.Get(_data, group);
-        if (rows.Count == 0) return;
+        if (_data.Row("DropGroupConfig", group) is not { ValueKind: JsonValueKind.Array } rows) return;
         var p = progress;
-        // D Asia omits _iWeights for an unweighted row; that row still participates with weight one (for example
-        // group 105, and the equal-choice item groups). An explicitly serialized zero remains disabled. Groups
-        // 3000..3999 are level-banded EXP curves: they also omit _kDropItem, while min/max carry the EXP amount.
-        bool expCurve = group is >= 3000 and < 4000;
-        long Weight(DropGroupConfig row)
+        var candidates = rows.EnumerateArray().Where(r =>
         {
-            if (!row.HasDropItem && (!expCurve || !row.HasMinNumber || !row.HasMaxNumber)) return 0;
-            return row.WeightOrDefault;
-        }
-        var candidates = rows.Where(r =>
-        {
-            if (Weight(r) <= 0 || r.Activityid != 0) return false;
-            if (r.QuestLimit is var quest and not 0 && questActive?.Invoke(quest) != true) return false;
-            long min = r.MinLevelLimit, max = r.MaxLevelLimit;
+            if (new DropGroupConfig(r).Weights <= 0 || new DropGroupConfig(r).Activityid != 0) return false;
+            if (new DropGroupConfig(r).QuestLimit is var quest and not 0 && questActive?.Invoke(quest) != true) return false;
+            long min = new DropGroupConfig(r).MinLevelLimit, max = new DropGroupConfig(r).MaxLevelLimit;
             if (p.Level < min || max > 0 && p.Level > max) return false;
-            return r.JobLimit.Length == 0 || r.JobLimit.Contains(p.Career);
+            return !r.TryGetProperty("_iJobLimit", out var jobs) || jobs.ValueKind != JsonValueKind.Array || jobs.GetArrayLength() == 0
+                   || jobs.EnumerateArray().Any(j => GameData.Number(j) == p.Career);
         }).ToList();
-        long total = candidates.Sum(Weight);
-        if (total <= 0) return;
-        long roll = (long)(_random.NextDouble() * total);
-        foreach (var r in candidates)
+        foreach (var r in DropPicks.Distinct(candidates, picks, _random.NextInt64))
         {
-            roll -= Weight(r);
-            if (roll >= 0) continue;
-            int min = (int)r.MinNumberOrDefault;
-            int max = (int)r.MaxNumberOrDefault;
-            if (min <= 0 || max < min) return;
-            int count = _random.Next(min, max + 1);
-            int entry = r.HasDropItem ? (int)r.DropItem : BaseExpItem;
-            int amount = _attenuation.Apply(r.Row, count, p.Level, monsterLevel, _random);
-            if (amount <= 0) return;
+            int count = _random.Next((int)new DropGroupConfig(r).MinNumber, (int)Math.Max(new DropGroupConfig(r).MinNumber, new DropGroupConfig(r).MaxNumber) + 1);
+            int entry = (int)new DropGroupConfig(r).DropItem;
+            int amount = _attenuation.Apply(r, Math.Max(1, count), p.Level, monsterLevel, _random);
+            if (amount <= 0) continue;
             drops.Add((entry, amount));
-            bound?.Add((entry, amount, (int)r.Bind));
-            return;
+            bound?.Add((entry, amount, (int)new DropGroupConfig(r).Bind));
         }
     }
 

@@ -224,7 +224,7 @@ public sealed partial class ActivityAdventuresTests
     }
 
     [ClientDataFact]
-    public async Task TreasureResumePreservesAnOutsideMapCursorAcrossReplayAndRelog()
+    public async Task TreasureResumeRejectsAnOutsideMapUseButPreservesCursorAcrossRelogAndReturn()
     {
         var hunt = await StartResumeHuntAsync();
         var bot = hunt.Bot;
@@ -236,12 +236,11 @@ public sealed partial class ActivityAdventuresTests
         int from = bot.Inbox.Snapshot().Count;
         await bot.SendGameAsync(CharacterService.ItemUse, new ItemUseReq { ItemGuid = hunt.Guid, ItemCount = 1 });
         var response = await Next(bot, CharacterService.ItemUse, ItemUseResp.Parser);
-        Assert.Equal(0, response.Result);
+        // 異圖不能進入免冷卻恢復；依上游一般道具判定順序先回覆冷卻錯誤。
+        Assert.Equal(ErrorCodes.Cooldown, response.Result);
         Assert.Equal(0, response.ItemCount);
         Assert.Equal(0, response.ItemId);
-        await Next(bot, 5064, DBTreasureInfoIncrement.Parser,
-            info => info.SyncAllMark && info.PointId == hunt.PointId);
-        AssertResumeFrameOrder(bot, from, CharacterService.ItemUse, hunt.PointId);
+        Assert.DoesNotContain(bot.Inbox.Snapshot().Skip(from), frame => frame.IsGame(5064));
         Assert.Equal(before, await ResumeSnapshotAsync(hunt.Session));
         Assert.Equal(cursor, JsonSerializer.Serialize(hunt.Session.ActivityRuntime.AdventureTreasure));
         await bot.DisposeAsync();
@@ -257,6 +256,25 @@ public sealed partial class ActivityAdventuresTests
         await Next(again, 5064, DBTreasureInfoIncrement.Parser,
             info => info.SyncAllMark && info.PointId == hunt.PointId);
         Assert.Equal(cursor, JsonSerializer.Serialize(current.ActivityRuntime.AdventureTreasure));
+        Assert.Equal(1, _app.Services.GetRequiredService<ItemStore>().Load(roleId).Single(i => i.Guid == hunt.Guid).Stack);
+
+        // 回到原尋寶地圖後，冷卻中的同一張道具仍可恢復已提交的目標，不再扣圖。
+        await Gm("alice", "!warp 10111");
+        Assert.Equal(10111, current.SceneEntry);
+        Assert.True(current.ItemCds[1112001] > DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        before = await ResumeSnapshotAsync(current);
+        from = again.Inbox.Snapshot().Count;
+        await again.SendGameAsync(CharacterService.ItemUse, new ItemUseReq { ItemGuid = hunt.Guid, ItemCount = 1 });
+        var resumed = await Next(again, CharacterService.ItemUse, ItemUseResp.Parser);
+        Assert.Equal(0, resumed.Result);
+        Assert.Equal(0, resumed.ItemCount);
+        Assert.Equal(0, resumed.ItemId);
+        await Next(again, 5064, DBTreasureInfoIncrement.Parser,
+            info => info.SyncAllMark && info.PointId == hunt.PointId);
+        AssertResumeFrameOrder(again, from, CharacterService.ItemUse, hunt.PointId);
+        Assert.Equal(before, await ResumeSnapshotAsync(current));
+        Assert.Equal(cursor, JsonSerializer.Serialize(current.ActivityRuntime.AdventureTreasure));
+        Assert.Equal(1, current.Items.Single(i => i.Guid == hunt.Guid).Stack);
         Assert.Equal(1, _app.Services.GetRequiredService<ItemStore>().Load(roleId).Single(i => i.Guid == hunt.Guid).Stack);
     }
 }

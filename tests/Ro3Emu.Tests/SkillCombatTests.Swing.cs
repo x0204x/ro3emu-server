@@ -104,4 +104,37 @@ public sealed partial class SkillCombatTests
         await archer.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = ArcherAttack, TargetId = target.Uid });
         Assert.Equal(0, (await Next(archer, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
     }
+
+    /// <summary>LC_Skill_RunTimeContext.SkillCanInterrupted: the running skill decides, not _bCancelCast of the next one.</summary>
+    [ClientDataFact]
+    public async Task ARunningCastGivesWayByItsOwnInterruptRule()
+    {
+        const int SwordAttack = 1001001; // JobAttackConfig 職業 1100 的普攻，_iInterruptedType 1。
+        const int Bash = 1100101; // _iInterruptedType 2, _bCancelCast 0, its show can be interrupted 400 ms into its 1000 ms
+        await using var alice = await InWorld("Alice");
+        await Gm("alice", "!lvl 14");
+        await Gm("alice", "!job 1100"); await Teach("alice", 11001);
+        var target = await Target("alice", stationary: true);
+        await Loop.InvokeAsync(() => { target.Hp = 1_000_000; return Task.CompletedTask; });
+        var session = Session("alice");
+        async Task<int> Cast(int skill)
+        {
+            await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = skill, TargetId = target.Uid });
+            return (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result;
+        }
+
+        // A skill cuts a swing at once, whatever its own _bCancelCast.
+        Assert.Equal(0, await Cast(SwordAttack));
+        Assert.Equal(0, await Cast(Bash));
+        long start = await Loop.InvokeAsync(() => Task.FromResult(session.SkillCast!.StartMs));
+
+        // Before Bash's interrupt time neither it nor a swing gets in.
+        Assert.Equal(ErrorCodes.SkillBusy, await Cast(Bash));
+        Assert.Equal(ErrorCodes.SkillBusy, await Cast(SwordAttack));
+        Assert.True(MonsterService.NowMs < start + 400 - CombatService.SwingJitterMs, "the test ran past the interrupt time; nothing left to check");
+
+        // From there it gives way.
+        await Task.Delay(TimeSpan.FromMilliseconds(Math.Max(0, start + 420 - MonsterService.NowMs)));
+        Assert.Equal(0, await Cast(SwordAttack));
+    }
 }

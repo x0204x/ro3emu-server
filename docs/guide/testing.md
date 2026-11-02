@@ -74,6 +74,23 @@ because the test host takes minutes to write coverage as it exits). The run then
 the list of the tests that were running and a dump of the test host. Main's Linux run measures
 coverage and prints it in the job summary, and the `coverage` artifact holds the Cobertura files.
 
+## Quarantine
+
+A test that fails now and then gets fixed: reproduce it (many runs, with CPU load if needed), prove the cause, and wait
+on a hook, an event or the state itself. A longer delay or a weaker assertion is not a fix. Only a test that can't be
+fixed yet may go into quarantine: `Trait("Category", "Flaky")` on the test and a row below, for two weeks at most. By
+then it is fixed or deleted.
+
+The required `test` and the release run skip `Category=Flaky`. The `quarantine` job runs those tests with up to two
+retries, is not a required check and can't block a merge. The nightly run has no such filter, so it still reports them.
+
+The floor stays where it is. A quarantined test stops counting in `tests/test-floor.txt` and the floor never goes down,
+so if the required run has no spare tests to cover it, the same pull request adds a test or doesn't quarantine.
+
+| Test | Since | Why it can't be fixed yet |
+| --- | --- | --- |
+| none | | |
+
 ## Snapshot tests
 
 Some tests compare what the server does with a checked-in list in `tests/Ro3Emu.Tests/Snapshots/`:
@@ -85,3 +102,34 @@ Some tests compare what the server does with a checked-in list in `tests/Ro3Emu.
 
 A failing snapshot test lists what changed. Regenerate the file with `RO3EMU_UPDATE_SNAPSHOTS=1` only for an intended
 change, and say in the pull request why it is safe.
+
+## The nightly run
+
+CI has no client, so more than half of the server's tests never run there and nothing builds the projects that compile
+against the client. `tools/nightly-tests.ps1` does both on a machine that has an export, once a day:
+
+```powershell
+pwsh tools/install-nightly-task.ps1 -Client D:\RO3\ROO_PC      # daily at 06:00, -At to change; -Uninstall removes it
+pwsh tools/nightly-tests.ps1 -Client D:\RO3\ROO_PC             # one run now
+Start-ScheduledTask 'RO3Emu nightly tests'                     # the same run as the schedule makes
+```
+
+Each run takes `origin/main` into its own worktree next to your checkout (`ro3emu-nightly`, or `-Root`), links its
+`data` to your export (`-Data`) and leaves your checkout alone. It runs the whole server suite at below normal priority
+and builds `Ro3Emu.ClientHooks`, `Ro3Emu.Loc` and `Ro3Emu.ClientTools`. If the machine was off at 06:00 the task starts
+when it comes back, once it has been up for 30 minutes (`-BootDelayMinutes`). It runs only while you are logged on,
+opens no window, and needs no admin rights.
+
+It does not start while a test host or the game client runs, or with under 16 GB of memory or 15 GB of disk free: two
+full suites at once take a machine with 32 GB down. Don't start a full suite of your own in the morning without
+checking `Get-Process testhost`.
+
+`-Root\latest.txt` holds the last report, `-Root\skipped.log` the refusals, and `-Root\runs\<time>-<commit>\` one run:
+`report.txt`, `summary.json`, `tests.json`, the `.trx` and the hang dump under `results\`, the logs, and
+`msg-coverage.json`. The newest 14 runs stay, and the newest 3 keep their dumps. A test that fails and then passes when
+run again alone counts as flaky: the run is reported as such, naming the test and how often it was flaky in the kept
+runs. A test that fails both times makes the run red, with its first error.
+
+For a push to your phone, put `NTFY_TOPIC` (and `NTFY_SERVER`, `NTFY_TOKEN` if you use them) in the file `-NotifyEnv`
+names, by default `~/.codex/notify-secrets.env`. It is never copied or logged. Without a topic the report stays on disk
+and says it was not sent.

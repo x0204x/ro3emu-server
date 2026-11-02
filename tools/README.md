@@ -17,6 +17,7 @@ ignored `data/` and `re/` folders. The main [README](../README.md#1-export-the-g
 | `ClientTextures/` | renders English versions of images with baked-in Chinese text from a texture dump of your client |
 | `EconomyProbe` | read-only economy snapshots and ledger checks against a server database (used by load scenario S3) |
 | `patch-client.ps1` | rebuilds the client hooks and patches the client in `RO3_CLIENT_DIR` against a local server |
+| `nightly-tests.ps1`, `install-nightly-task.ps1` | the whole test suite with client data and the client-only builds, once a day ([testing guide](../docs/guide/testing.md#the-nightly-run)) |
 | `run-server.ps1` | runs the server and restarts it when it exits, logging to `data/logs/` |
 
 `opcode-matrix.js` always emits the generic static decode. Version-specific evidence IDs and semantic overrides are emitted only when every recorded descriptor and Lua input hash matches a known profile; unknown builds remain unclassified instead of inheriting stale evidence.

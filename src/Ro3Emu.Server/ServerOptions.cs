@@ -92,6 +92,12 @@ public sealed class ServerOptions
     /// </summary>
     public string WalkCheck { get; set; } = "enforce";
 
+    /// <summary>
+    /// Travel check (SceneService.Travel): which raw 30012 and 30131 requests a client may send. "enforce" (default) refuses
+    /// the others, "log" counts them and lets them through (CheatMonitor), "off" skips the check.
+    /// </summary>
+    public string TravelCheck { get; set; } = "enforce";
+
     /// <summary>Anti-cheat limits and the web panel's suspicious-activity thresholds (CheatMonitor, docs/systems/anticheat.md).</summary>
     public AntiCheatOptions AntiCheat { get; set; } = new();
 

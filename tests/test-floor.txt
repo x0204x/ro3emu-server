@@ -2,6 +2,6 @@
 # fails below it, so a change that silently skips tests (an attribute, a broken ClientData check) shows up. Raise a
 # number when you add tests; never lower one: CI refuses a lower number than in the parent commit.
 # Linux and Windows both have to meet it; the patcher runs one more test on Windows.
-server 1173
+server 1564
 patcher 26
 setup 290

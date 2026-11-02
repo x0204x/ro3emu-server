@@ -21,6 +21,7 @@ public sealed partial class SkillService
     public const uint SkillReset = 31156, QueueUpdate = 31159, SwitchGenre = 31160;
     private const int PlanCount = 5; // (inferred) PublicParamConfig.SchemeNum.
     private const int BarSlots = 6;
+    private const int BattleMountSlot = 2, MainHandGrid = 1, ViceHandGrid = 2;
     private const long FightBit = 1L << 15;
 
     private readonly GameData _data;
@@ -117,17 +118,23 @@ public sealed partial class SkillService
     public int NormalAttack(int career) => ResolveNormalAttack(career, 0, 0);
 
     /// <summary>The current attack for the client's main/off-hand weapon key and active battle mount.</summary>
-    public int NormalAttack(GameSession session)
+    public int NormalAttack(GameSession session) => MountAttack(session) is > 0 and var attack
+        ? attack : WalkingNormalAttack(session);
+
+    // 本機步行武器修正保留；騎乘選擇直接使用上游 MountAttack，避免額外回退改變原表規則。
+    private int WalkingNormalAttack(GameSession session) =>
+        ResolveNormalAttack(session.Progress!.Career, WalkingWeaponKey(session), 0);
+
+    /// <summary>保留本機步行普攻的裝備背包條件；騎乘武器鍵另依上游 WeaponKey 計算。</summary>
+    private int WalkingWeaponKey(GameSession session)
     {
-        var main = session.Items.FirstOrDefault(item => item.Pack == 2 && item.Grid == 1);
-        var vice = session.Items.FirstOrDefault(item => item.Pack == 2 && item.Grid == 2);
+        var main = session.Items.FirstOrDefault(item => item.Pack == 2 && item.Grid == MainHandGrid);
+        var vice = session.Items.FirstOrDefault(item => item.Pack == 2 && item.Grid == ViceHandGrid);
         int mainSubtype = main != null ? (int)(ItemConfig.Get(_data, main.Entry)?.SubType ?? 0) : 0;
         int viceSubtype = vice != null ? (int)(ItemConfig.Get(_data, vice.Entry)?.SubType ?? 0) : 0;
         int subtype = mainSubtype > 0 ? mainSubtype : Math.Max(0, viceSubtype);
         bool dual = mainSubtype > 0 && mainSubtype == viceSubtype;
-        int mount = session.Mounts?.MountIds.TryGetValue(2, out var battle) == true && battle.IsRiding
-            ? (int)battle.MountId : 0;
-        return ResolveNormalAttack(session.Progress!.Career, subtype * 10 + (dual ? 1 : 0), mount);
+        return subtype * 10 + (dual ? 1 : 0);
     }
 
     internal int Rank(int career) => (int)(_data.Row("JobConfig", career) is { } job ? Math.Max(1, GameData.Int(job, "_iJobRank")) : 1);
@@ -249,7 +256,8 @@ public sealed partial class SkillService
     private DBSkillData BuildFresh(GameSession session)
     {
         var p = session.Progress!;
-        int atk = NormalAttack(session);
+        // 儲存方案與 OriginSkillWheel 保留步行普攻；騎乘覆蓋僅套用於送往客戶端的副本。
+        int atk = WalkingNormalAttack(session);
         int atkGroup = _data.Row("SkillConfig", atk) is { } a ? (int)GameData.Int(a, "_iSkillID") : 0;
         var tree = Tree(p.Career);
         var skillData = new DBSkillData { MaxPlanCount = PlanCount, CurrentPlanIndex = 0, CurrentAtkSkillId = atk };
@@ -593,9 +601,9 @@ public sealed partial class SkillService
     private bool IsActive(int group) =>
         RealId(group, 1) is var id and > 0 && _data.Row("SkillConfig", id) is { } row && GameData.Int(row, "_iBasicType") == 1;
 
-    /// <summary>The skill group of the attack selected by the current weapon, dual-wield and battle mount.</summary>
+    /// <summary>方案中的步行普攻群組；騎乘覆蓋由 ApplyMountAttack 在送出時套用。</summary>
     private int CurrentNormalGroup(GameSession session) =>
-        _data.Row("SkillConfig", NormalAttack(session)) is { } row ? (int)new SkillConfig(row).SkillId : 0;
+        _data.Row("SkillConfig", WalkingNormalAttack(session)) is { } row ? (int)new SkillConfig(row).SkillId : 0;
 
     /// <summary>The normal attack of the career or of one before it (the Novice's 10000 for every career).</summary>
     private bool IsChainNormalGroup(RoleProgress p, int group) =>
@@ -606,10 +614,59 @@ public sealed partial class SkillService
     private Task SyncLoadoutAsync(GameSession session) => session.SkillPlans == null
         ? Task.CompletedTask : SyncAsync(session);
 
+    /// <summary>
+    /// The normal attack a ridden battle mount makes of the career's (JobAttackConfig; 0 for none), as
+    /// Lua_CFG_JobAttackConfig._getData reads it: the career's rows of the weapon key, else its rows without a weapon, and
+    /// in those the mount's row. The client asks this table for its skill window alone; its bar and auto-attack cast what
+    /// the wheel holds (LC_System_Skill: whellSkills, LC_DAL_SkillDevelop: atkSkillId).
+    /// </summary>
+    private int MountAttack(GameSession session)
+    {
+        if (session.Progress is not { } p || session.Mounts?.MountIds.GetValueOrDefault(BattleMountSlot) is not { IsRiding: true } ride) return 0;
+        var rows = JobAttackConfig.All(_data).Where(r => r.JobId == p.Career).ToArray();
+        long key = WeaponKey(session);
+        var tier = rows.Where(r => AttackWeaponKey(r) == key).ToArray();
+        if (tier.Length == 0) tier = [.. rows.Where(r => AttackWeaponKey(r) == -1)];
+        return tier.Where(r => r.MountId == ride.MountId).Select(r => (int)r.SkillId).FirstOrDefault();
+    }
+
+    private static long AttackWeaponKey(JobAttackConfig row) => row.WeaponType switch
+    {
+        [] => -1,
+        [var one] => one * 10,
+        [var main, var off, ..] => main * 10 + off,
+    };
+
+    /// <summary>依上游 LC_UnitBase.RefreshWeaponData 與 _getData 的武器鍵計算騎乘普攻。</summary>
+    private long WeaponKey(GameSession session)
+    {
+        long SubType(int grid) => session.Items.FirstOrDefault(i => i.Grid == grid) is { } item && _data.Row("ItemConfig", item.Entry) is { } row
+            ? new ItemConfig(row).SubType : 0;
+        long main = SubType(MainHandGrid), off = SubType(ViceHandGrid);
+        return (main > 0 ? main : off) * 10 + (main > 0 && main == off ? 1 : 0);
+    }
+
+    /// <summary>Sent, never saved: the plan and the origin wheel keep the career's own attack for the dismount.</summary>
+    private void ApplyMountAttack(GameSession session, DBSkillData state)
+    {
+        int attack = session.WheelMountAttack = MountAttack(session);
+        if (attack == 0) return;
+        state.CurrentAtkSkillId = attack;
+        state.SkillWheel.AtkSkillId = attack;
+        int own = CurrentNormalGroup(session);
+        foreach (var slot in state.SkillWheel.WhellSkills.Values)
+            if (_data.Row("SkillConfig", slot.SkillConfigId) is { } row && (int)new SkillConfig(row).SkillId == own) slot.SkillConfigId = attack;
+    }
+
+    /// <summary>MountService.RideChanged: a ride that changes the normal attack, on a career with such a mount, sends the wheel.</summary>
+    internal Task RideChangedAsync(GameSession session) =>
+        session.SkillPlans == null || MountAttack(session) == session.WheelMountAttack ? Task.CompletedTask : SyncAsync(session);
+
     public async Task SyncAsync(GameSession session)
     {
         if (session.SkillPlans == null) await LoadAsync(session);
         var state = Build(session);
+        ApplyMountAttack(session, state);
         // A granted skill (a socketed card's Skill(3)) is listed with its level in the current plan, where the skill panel's
         // card skills read it (UI_Sys_SkillPanelModel.GetCardSkillList: ServerAllSkills = skillList, then the plan's
         // skillAssigns with level > 0). It is sent, never saved in a plan: a plan switch checks its groups against the tree.

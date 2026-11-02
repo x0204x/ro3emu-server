@@ -16,6 +16,9 @@ public sealed class PhonestChannel : IAsyncDisposable
 
     /// <summary>Largest accepted client frame. The client's biggest requests (settings blobs, chat) are a few KB.</summary>
     private const int MaxFrame = 1024 * 1024;
+    /// <summary>Plain bytes one socket read may inflate to (a decompression bomb of many small valid frames): zlib can reach
+    /// about 1000:1, so a full read could reach 64 MiB. Ordinary coalesced frames are far below this (inferred).</summary>
+    private const int MaxInflatedPerRead = 16 * 1024 * 1024;
     /// <summary>
     /// Bytes queued for one connection's writer before it counts as a stalled reader. Past it the connection is closed
     /// (reconnect = full resync) rather than letting the queue grow without bound or dropping reliable messages.
@@ -37,6 +40,7 @@ public sealed class PhonestChannel : IAsyncDisposable
     private StreamConvertor? _convertor;
     private bool _inboundConverted;
     private bool _switchInboundAfterCurrentFrame;
+    private int _inflatedFromRead;
     private bool _plaintextNextSend;
 
     public PhonestChannel(Socket socket, ILogger log)
@@ -98,11 +102,7 @@ public sealed class PhonestChannel : IAsyncDisposable
             int n = await _socket.ReceiveAsync(buf, SocketFlags.None, ct);
             Metrics?.ReceivedBytes(n);
             if (n == 0) { Volatile.Write(ref _closing, 1); return; }
-            if (_inboundConverted)
-            {
-                var plain = _convertor!.ConvertInput(buf.AsSpan(0, n), MaxFrame + 6);
-                _pending.Write(plain);
-            }
+            if (_inboundConverted) BeginConverted(buf.AsSpan(0, n));
             else
             {
                 _pending.Write(buf, 0, n);
@@ -113,7 +113,9 @@ public sealed class PhonestChannel : IAsyncDisposable
 
     /// <summary>
     /// Hands every complete frame in <see cref="_pending"/> to the handler, reading with a cursor and compacting the
-    /// unread tail once at the end (a burst of N frames is one copy, not N copies of the remainder).
+    /// unread tail once at the end (a burst of N frames is one copy, not N copies of the remainder). Compressed input
+    /// inflates only when the frames so far are used up, so an oversized header fails before more of it is inflated and
+    /// the buffer holds one incomplete frame at most.
     /// </summary>
     private async Task DrainFramesAsync(FrameHandler handler)
     {
@@ -124,10 +126,15 @@ public sealed class PhonestChannel : IAsyncDisposable
             {
                 var data = _pending.GetBuffer();
                 int available = (int)_pending.Length - offset;
-                if (available < 4) return;
-                int size = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(offset));
-                if (size < 2 || size > MaxFrame) throw new InvalidDataException($"bad frame size {size} from {Remote}");
-                if (available < 4 + size) return;
+                int size = available < 4 ? 0 : BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(offset));
+                if (available >= 4 && (size < 2 || size > MaxFrame)) throw new InvalidDataException($"bad frame size {size} from {Remote}");
+                if (available < 4 || available < 4 + size)
+                {
+                    if (!_inboundConverted) return;
+                    offset = Compact(offset);
+                    if (!InflateMore()) return;
+                    continue;
+                }
 
                 ushort index = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(offset + 4));
                 var body = data.AsSpan(offset + 6, size - 2).ToArray();
@@ -144,21 +151,45 @@ public sealed class PhonestChannel : IAsyncDisposable
                     var rest = _pending.GetBuffer().AsSpan(offset, (int)_pending.Length - offset).ToArray();
                     _pending.SetLength(0);
                     offset = 0;
-                    if (rest.Length > 0) _pending.Write(_convertor!.ConvertInput(rest, MaxFrame + 6));
+                    BeginConverted(rest);
                 }
             }
         }
         finally
         {
-            if (offset > 0)
-            {
-                var data = _pending.GetBuffer();
-                int remaining = (int)_pending.Length - offset;
-                Buffer.BlockCopy(data, offset, data, 0, remaining);
-                _pending.SetLength(remaining);
-            }
-            _pending.Position = _pending.Length; // RunAsync appends the next received chunk
+            Compact(offset);
         }
+    }
+
+    private void BeginConverted(ReadOnlySpan<byte> received)
+    {
+        _convertor!.BeginInput(received);
+        _inflatedFromRead = 0;
+    }
+
+    /// <summary>Appends the next plain bytes of the current read to <see cref="_pending"/>; false when it has run dry.</summary>
+    private bool InflateMore()
+    {
+        var plain = _convertor!.ReadInput();
+        if (plain.IsEmpty) return false;
+        _inflatedFromRead += plain.Length;
+        if (_inflatedFromRead > MaxInflatedPerRead) throw new InvalidDataException($"one read inflates past {MaxInflatedPerRead} bytes from {Remote}");
+        _pending.Write(plain);
+        return true;
+    }
+
+    /// <summary>Drops the frames read so far and leaves the stream at its end for the next append; returns the new cursor, 0.</summary>
+    private int Compact(int offset)
+    {
+        if (offset > 0)
+        {
+            var data = _pending.GetBuffer();
+            int remaining = (int)_pending.Length - offset;
+            Buffer.BlockCopy(data, offset, data, 0, remaining);
+            _pending.SetLength(remaining);
+        }
+        _pending.Position = _pending.Length;
+        return 0;
     }
 
     public Task SendAsync(ushort index, IMessage message) => SendRawAsync(index, message.ToByteArray());

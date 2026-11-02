@@ -277,7 +277,8 @@ public sealed partial class PanelBackend
                         long item = candidate.DropItem;
                         if (!_items.ContainsKey(item)) continue;
                         double share = candidate.Weights / total;
-                        double missRoll = 1 - hit + hit * Math.Pow(1 - share, picks);
+                        // Picks take different rows (DropPicks); with fewer picks than rows this is an estimate.
+                        double missRoll = 1 - hit + hit * (picks >= candidates.Count ? 0 : Math.Pow(1 - share, picks));
                         double miss = Math.Pow(missRoll, rolls);
                         var key = (item, string.Join(',', maps));
                         int min = (int)Math.Max(1, candidate.MinNumber), max = (int)Math.Max(min, candidate.MaxNumber);

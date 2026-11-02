@@ -18,6 +18,7 @@ the original server's limits are not in the client.
 | A seventh role on one account | `RoleSessionService.CreateRoleAsync` | `role-limit` |
 | A chat line too long or past the chat budget | `ChatService.SendTextAsync` | `chat` |
 | Saved settings past 256 KiB | `RoleSessionService.SaveSettingAsync` | `payload` |
+| A raw 30012 or 30131 to where the client would not send one | `SceneService.TravelPasses` | `travel` |
 
 Corrected without a refusal (an honest client can send these too):
 
@@ -45,10 +46,22 @@ held to it until it is back on. A walk refused in "enforce" mode puts the player
 A cast while walking: the client casts on reaching range and stops just after, so a walking caster's range allows the
 distance walked since its last walk, measured along the walk's direction (`WalkReq.dir`) with 1 m to the side.
 
+### Travel
+
+A portal or Kafra is checked at its NPC, and refuses a dead role. 30012 and 30131 have no NPC, so they are held to what
+the client sends them for (`SceneService.Travel.cs`). 30012 may go to the role's own map, the main city (10100,
+`AutoBattleAutoBackMainCityID`, `OnHookReturnMap`), a Territory Wars map, the GvG transfer's 10110 from a dungeon or Territory Wars, and any
+map while flying (31083, which needs the fly buff). 30131 may go to a scene and point that an authored action 141 names
+(`TaskConfig`, `DialogueConfig`, `TypewriterConfig`). Anything else gets `ErrorCodes.Parameter`, spends nothing and leaves
+the role where it is; the client only shows the error.
+
 ## Options
 
 `ServerOptions.WalkCheck`: `enforce` (default), `log` (refusals are counted and let through; a position that is not a
 number is still refused) or `off`.
+
+`ServerOptions.TravelCheck`: the same three for the travel check. The load test places its bots with a raw 30012, so a
+remote server it runs against needs `log` (`LocalServer` sets it).
 
 `Ro3Emu:AntiCheat`:
 
@@ -88,7 +101,7 @@ floor, and on an Admin's request the duplication check's flags. See [web panel](
 ## Tests
 
 `AntiCheatTests` (the budget, walks, floods, roles, chat, settings, guides, and on client data the area report),
-`AntiCheatPanelTests` (the panel list), `SkillCombatTests.ClicksAlternatingBetweenTwoTargetsDoNotSwingFaster` and
-`TerritoryWarsTests.ACannonShotThatWouldLandBeyondTheAimIsRefused` play the modified client; the existing walking-cast,
-swing and quest tests play the honest one. Tests run with `WalkCheck` "log" (`TestHostDefaults`), since most put a bot
-where they need it with one walk; the anti-cheat tests set "enforce".
+`AntiCheatPanelTests` (the panel list), `TravelCheckTests`, `SkillCombatTests.ClicksAlternatingBetweenTwoTargetsDoNotSwingFaster`
+and `TerritoryWarsTests.ACannonShotThatWouldLandBeyondTheAimIsRefused` play the modified client; the existing walking-cast,
+swing and quest tests play the honest one. Tests run with `WalkCheck` and `TravelCheck` "log" (`TestHostDefaults`), since
+most put a bot where they need it with one walk or one 30012; the anti-cheat and travel tests set "enforce".

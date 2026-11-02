@@ -14,11 +14,12 @@ public sealed partial class DungeonTests
         var s = Session(bot);
         await OnLoop(async () =>
         {
+            s.NoRegenUntilMs = long.MaxValue; // the exact HP below must not meet a recovery tick
             await character.SetHpSpAsync(s, 10, 5);
             await character.AddExpAsync(s, 1, 0); // lv1 needs 5: no level up, no heal
         });
         Assert.Equal(1, s.Progress!.Level);
-        Assert.True(s.CurrentHp < 30, $"HP {s.CurrentHp}"); // still hurt (natural regen may add a little)
+        Assert.Equal(10, s.CurrentHp); // still hurt
 
         await OnLoop(() => character.AddExpAsync(s, 20, 0)); // past lv2 (5) and lv3 (8)
         var stats = await Service<GameLoop>().InvokeAsync(() => Task.FromResult(character.Stats(s)));

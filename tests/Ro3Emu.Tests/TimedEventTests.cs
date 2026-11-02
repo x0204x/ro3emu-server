@@ -512,6 +512,7 @@ public sealed class TimedEventTests : IAsyncLifetime
         await OnLoop(() =>
         {
             Assert.True(Service<TimedBattleService>().CanFight(Session(alice), Session(bob)));
+            Session(bob).NoRegenUntilMs = long.MaxValue; // a recovery tick would lift this 1 HP out of one lethal hit
             Session(bob).CurrentHp = 1;
             return Task.CompletedTask;
         });
@@ -630,6 +631,7 @@ public sealed class TimedEventTests : IAsyncLifetime
         {
             Assert.False(Service<TimedBattleService>().CanFight(Session(alice), Session(bob)));
             Assert.True(Service<TimedBattleService>().CanFight(Session(alice), Session(cara)));
+            Session(cara).NoRegenUntilMs = Session(dan).NoRegenUntilMs = long.MaxValue; // a recovery tick would lift this 1 HP out of one lethal hit
             Session(cara).CurrentHp = 1;
             Session(dan).CurrentHp = 1;
             return Task.CompletedTask;

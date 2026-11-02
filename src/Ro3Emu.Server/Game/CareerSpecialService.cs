@@ -42,6 +42,7 @@ public sealed partial class CareerSpecialService
         this._mounts = mounts; this._roles = roles; this._world = world; this._loop = loop;
         // A job change can leave a lease the new career may not hold (GM !job, or a line without the item; inferred).
         character.JobChanged.Add(ReconcileAsync);
+        mounts.RideChanged.Add(RideChangedAsync);
     }
 
     /// <summary>The mount slot's lease entitles MountService's battle slot 2.</summary>
@@ -55,8 +56,21 @@ public sealed partial class CareerSpecialService
     /// <summary>EntityBase.pendantInfo of the leased items (self and AOI). Piles 1 is inferred: these rows have _iMaxLayer 0.</summary>
     public static void PopulateEntity(GameSession s, EntityBase entity)
     {
-        foreach (int pendant in s.CareerPendants) entity.PendantInfo[pendant] = new PendantData { PendantId = pendant, Piles = 1 };
+        foreach (int pendant in s.CareerPendants) entity.PendantInfo[pendant] = Pendant(s, pendant);
     }
+
+    /// <summary>
+    /// A shown pendant. The leased mount's own (the wolf's 54001) is hidden while it is ridden: Wolf Taming's wolf follows
+    /// only "when not mounted", and the client hides pendants by itself on a system mount alone
+    /// (LC_System_Pendant._onDoPendantMountState, IsRideSystemMount; its PendantMountTypeBlackList holds the wolf's type 6).
+    /// </summary>
+    private static PendantData Pendant(GameSession s, int pendant) => new()
+    {
+        PendantId = pendant, Piles = 1,
+        IsHide = pendant == s.CareerMountPendant && MountService.Rider(s) == s.CareerSpecial?.MountsSlot?.CartRemouldCfg,
+    };
+
+    private Task RideChangedAsync(GameSession s) => s.CareerMountPendant == 0 ? Task.CompletedTask : PendantsAsync(s, s.CareerPendants);
 
     // ------------------------------------------------------------------ load / 5002
 
@@ -68,7 +82,7 @@ public sealed partial class CareerSpecialService
         Shape(info);
         if (Repair(s, info)) _roles.SaveCareerSpecial(s.Role.Id, info.ToByteArray());
         s.CareerSpecial = info;
-        s.CareerPendants = Pendants(info);
+        SetPendants(s, info);
     }
 
     /// <summary>5002: the equipment window reads SpecialPropData.pendantSlot/mountsSlot unguarded, so it always goes out.</summary>
@@ -83,9 +97,14 @@ public sealed partial class CareerSpecialService
 
     private JsonElement? Row(long id) => id == 0 ? null : _data.Row("CartRemouldTable", id);
 
-    private int[] Pendants(DBCareerSpecial info) => [.. new[] { info.PendantSlot.CartRemouldCfg, info.MountsSlot.CartRemouldCfg }
-        .Select(id => Row(id) is { } row ? (int)GameData.Int(row, "_iPendantId") : 0)
-        .Where(p => p != 0 && _data.Row("PendantConfig", p) != null).Distinct()];
+    private int PendantOf(long id) => Row(id) is { } row && (int)GameData.Int(row, "_iPendantId") is var pendant and not 0
+        && _data.Row("PendantConfig", pendant) != null ? pendant : 0;
+
+    private void SetPendants(GameSession s, DBCareerSpecial info)
+    {
+        s.CareerMountPendant = PendantOf(info.MountsSlot.CartRemouldCfg);
+        s.CareerPendants = [.. new[] { PendantOf(info.PendantSlot.CartRemouldCfg), s.CareerMountPendant }.Where(p => p != 0).Distinct()];
+    }
 
     /// <summary>Who may lease: LC_EquipmentHelper.CanWearProfessionItem, plus the unused _iTaskId (error 1104).</summary>
     private int Entitlement(GameSession s, JsonElement? found)
@@ -204,7 +223,7 @@ public sealed partial class CareerSpecialService
         await _roles.CommitAsync(tx, "career-special/" + action, _ =>
         {
             s.CareerSpecial = next;
-            s.CareerPendants = Pendants(next);
+            SetPendants(s, next);
             if (nextMounts != null) s.Mounts = nextMounts;
         });
     }
@@ -227,7 +246,7 @@ public sealed partial class CareerSpecialService
     private async Task PendantsAsync(GameSession s, int[] shown)
     {
         var packet = new PendantUpdate { EntityID = s.Role!.Id };
-        foreach (int pendant in s.CareerPendants) packet.PendantInfo[pendant] = new PendantData { PendantId = pendant, Piles = 1 };
+        foreach (int pendant in s.CareerPendants) packet.PendantInfo[pendant] = Pendant(s, pendant);
         foreach (int gone in shown.Except(s.CareerPendants)) packet.PendantInfo[gone] = new PendantData { PendantId = gone, Piles = 1, IsHide = true };
         await s.SendGameAsync(WorldEffectsService.Pendant, packet);
         if (!s.Owners!.AllowsPresentation(s)) return;

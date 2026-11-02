@@ -135,10 +135,8 @@ public sealed partial class CombatService
         {
             int group = (int)new SkillConfig(row!.Value).SkillId, mode = (int)new SkillConfig(row.Value).Mode;
             if (own == null && Math.Max(s.SkillCds.GetValueOrDefault(group), s.SkillModeCds.GetValueOrDefault((group, mode))) > Now) error = ErrorCodes.SkillCooldown;
-            // Preserve the established cooldown refusal for a repeated cast, including during its action tail.
             else if (s.SkillCast is { Cancelled: false } active && Now < active.StartMs + active.ChantMs + active.ActionMs
-                && (!new SkillConfig(row.Value).CancelCast || RepeatsActiveSkill(active, row.Value, req)
-                    || SwingInFlight(active, row.Value, req))) error = ErrorCodes.SkillBusy;
+                && (RepeatsActiveSkill(active, row.Value, req) || !CastYields(active, row.Value, req))) error = ErrorCodes.SkillBusy;
             else
             {
                 error = TargetAimErrors.Select(validate => validate(s, req)).FirstOrDefault(value => value != 0);
@@ -302,15 +300,38 @@ public sealed partial class CombatService
     }
 
     /// <summary>
-    /// (inferred safeguard) A repeated non-normal row cannot restart its own chant/action when its configured CD is
-    /// zero or shorter than that action. Different rows keep their configured cancellation behavior; normal attacks
-    /// keep their separate swing/jitter rule.
+    /// 本機防重播保護（推定）：同一非普攻技能的 CD 為零或短於動作時，仍不得重啟自己的詠唱／動作。
+    /// 不同技能依原施放的中斷規則判定；普攻保留獨立的揮擊節奏與網路誤差容許。
     /// </summary>
     private bool RepeatsActiveSkill(ActiveSkillCast active, JsonElement row, CastSkillReq req) =>
         req.SkillId == active.Request.SkillId && !new SkillConfig(row).IsNormalAttack(_data);
 
     /// <summary>
-    /// A normal attack (_bCancelCast 1) may cut a skill's action short, but not the swing before it at the same target:
+    /// May this cast cut the running one short? The running skill decides, as in LC_Skill_RunTimeContext.SkillCanInterrupted;
+    /// the client reads _bCancelCast only for its cancel button. A normal attack during a normal attack keeps its own pacing.
+    /// </summary>
+    private bool CastYields(ActiveSkillCast active, JsonElement row, CastSkillReq req)
+    {
+        var next = new SkillConfig(row);
+        var running = new SkillConfig(active.Row);
+        if (next.IsNormalAttack(_data) && running.IsNormalAttack(_data)) return next.CancelCast && !SwingInFlight(active, row, req);
+        return CastYields(running.InterruptedType, running.Id == next.Id, Now - active.StartMs,
+            SkillShow.InterruptOffset(_data.SkillTemplate(running.ScriptShow), active.ChantMs, active.ActionMs));
+    }
+
+    /// <summary>
+    /// _iInterruptedType 1 yields to any other skill at once but not to itself; 2 yields to anything from the show's interrupt
+    /// time, which the client also takes from its own send: <see cref="SwingJitterMs"/> of slack (inferred). Others hold to the end.
+    /// </summary>
+    internal static bool CastYields(long interruptedType, bool sameSkill, long elapsedMs, int? interruptOffsetMs) => interruptedType switch
+    {
+        1 => !sameSkill,
+        2 => interruptOffsetMs is { } offset && elapsedMs >= offset - SwingJitterMs,
+        _ => false,
+    };
+
+    /// <summary>
+    /// A normal attack may not restart the swing before it at the same target:
     /// otherwise a burst of clicks restarts the swing each time and hits at click speed (issue #121). The client paces swings
     /// at the same ASPD-scaled action time (the normal attack shows' m_fInterruptTime is their whole length) from its own
     /// send, so network jitter can bring a legitimate next swing a little early: <see cref="SwingJitterMs"/> of slack (inferred).

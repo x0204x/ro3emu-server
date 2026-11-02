@@ -41,6 +41,7 @@ public sealed partial class SiegeTests
         {
             await Service<SceneService>().TeleportInMapAsync(Session(attack), new MapPoint(153.5f, 27.15f, 119.5f, 0));
             await Service<SceneService>().TeleportInMapAsync(Session(defense), new MapPoint(154.5f, 27.15f, 119.5f, 0));
+            Session(defense).NoRegenUntilMs = long.MaxValue; // a recovery tick would lift this 1 HP out of one lethal hit
             await Service<CharacterService>().SetHpSpAsync(Session(defense), 1, null);
         });
         await attack.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = defenseRole });

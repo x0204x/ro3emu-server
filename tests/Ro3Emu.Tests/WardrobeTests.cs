@@ -216,6 +216,25 @@ public sealed class WardrobeTests : IAsyncLifetime
     }
 
     [ClientDataFact]
+    public async Task AppearanceItemOfAnOwnedLookSaysSoAndKeepsTheItem()
+    {
+        const int Banquet = 3054201, SameLook = 3054202, Look = 20040020; // ItemConfig action 200, one WardRobeConfig row.
+        await using var alice = await InWorld("Alice");
+        await Next(alice, WardrobeService.WardrobeSync, DBWardRobeInfoIncrement.Parser);
+        await Gm("alice", $"!item {Banquet} 1");
+        await Gm("alice", $"!item {SameLook} 1");
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
+        await alice.SendGameAsync(CharacterService.ItemUse, new ItemUseReq
+        { ItemGuid = session.Items.Single(i => i.Entry == Banquet).Guid, ItemCount = 1 });
+        Assert.Equal(0, (await Next(alice, CharacterService.ItemUse, ItemUseResp.Parser)).Result);
+        Assert.True(session.Wardrobe!.AllLightUpAppearances.ContainsKey(Look));
+        var same = session.Items.Single(i => i.Entry == SameLook);
+        await alice.SendGameAsync(CharacterService.ItemUse, new ItemUseReq { ItemGuid = same.Guid, ItemCount = 1 });
+        Assert.Equal(ErrorCodes.ShopAppearanceOwned, (await Next(alice, CharacterService.ItemUse, ItemUseResp.Parser)).Result);
+        Assert.Contains(session.Items, i => i.Guid == same.Guid);
+    }
+
+    [ClientDataFact]
     public async Task LateDeadlineRemovesWornTimedAppearanceAndPersistsTheReconciledState()
     {
         await using var alice = await InWorld("Alice");

@@ -363,7 +363,7 @@ public sealed class EquipmentAffixTests : IAsyncLifetime
                 // The exact recovery assertion starts at 1 HP; exclude unrelated five-second combat regeneration.
                 s.LastCombatMs = MonsterService.NowMs;
                 s.StatusBits |= 1L << 15;
-                s.NoRegenUntilMs = MonsterService.NowMs + 10000; // fighting no longer pauses regeneration
+                s.NoRegenUntilMs = long.MaxValue; // fighting no longer pauses regeneration
                 await Service<CharacterService>().SetHpSpAsync(s, 1, null);
             }));
         await bot.SendGameAsync(CharacterService.ItemUse, new ItemUseReq { ItemGuid = potion, ItemCount = 1 });

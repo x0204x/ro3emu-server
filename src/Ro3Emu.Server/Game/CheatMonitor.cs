@@ -18,7 +18,8 @@ public sealed partial class CheatMonitor(IOptions<ServerOptions> options, Accoun
 {
     /// <summary>The kinds of refusal (anticheat_refusal.kind).</summary>
     public const string Walk = "walk", Flight = "flight", Cannon = "cannon", QuestArea = "quest-area",
-        QuestInteract = "quest-interact", Flood = "flood", RoleLimit = "role-limit", Chat = "chat", Payload = "payload";
+        QuestInteract = "quest-interact", Flood = "flood", RoleLimit = "role-limit", Chat = "chat", Payload = "payload",
+        Travel = "travel";
 
     /// <summary>The first refusals of an account and kind are logged one by one, then every this many.</summary>
     internal const int LogFirst = 5, LogEvery = 50;

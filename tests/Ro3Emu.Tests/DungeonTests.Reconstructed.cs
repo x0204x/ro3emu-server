@@ -411,6 +411,7 @@ public sealed partial class DungeonTests
         Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = 1015051 }));
         long instance = await Load(alice, 1015051);
         await WaveIn(instance, 2);
+        Session(alice).NoRegenUntilMs = long.MaxValue; // a recovery tick would lift this 1 HP out of one lethal hit
         await Gm(alice, "!hp 1");
         await Next(alice, DungeonService.ReviveInfo, SyncClientPlayerReviveInfoNtf.Parser, n => n.BDead);
         await Task.Delay(500); // anything else published for this death has arrived by now

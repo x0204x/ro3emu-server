@@ -690,7 +690,12 @@ public sealed class TowerTests : IAsyncLifetime
         await using var alice = await InWorld("Alice");
         await Eligible(alice, level: 33);
         var a = await EnterFloor(alice, 1);
-        await OnLoop(() => Service<CharacterService>().SetHpSpAsync(Session(alice), 1, null));
+        await OnLoop(() =>
+        {
+            // A recovery tick before the first hit outlasts this floor's monsters: no death.
+            Session(alice).NoRegenUntilMs = long.MaxValue;
+            return Service<CharacterService>().SetHpSpAsync(Session(alice), 1, null);
+        });
         await alice.SendGameAsync(MsgId.Walk, new WalkReq { Pos = a.Monsters[0].MovementInfo.Pos, BStop = true, SpeedRate = 1 });
         // Let the spawned monster's normal AI/skill land the fatal hit, rather than calling the settlement hook.
         await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser,

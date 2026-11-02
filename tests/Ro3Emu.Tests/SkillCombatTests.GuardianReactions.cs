@@ -47,6 +47,7 @@ public sealed partial class SkillCombatTests
             return Task.CompletedTask;
         });
         await EquipGuardian(alice, 11001, 1611001);
+        target.NoRegenUntilMs = long.MaxValue; // the exact HP below must not meet a recovery tick
         long hp = Character.Stats(target)[2000];
         await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 2356201 });
         Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
