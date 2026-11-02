@@ -157,7 +157,7 @@ public sealed partial class CombatService
         var attachment = s.Attachment;
         long generation = s.SceneGeneration, scene = s.WorldScene;
         bool Current() => _buffs.PeriodicCurrent(effect) && ReferenceEquals(s.Role, role) && ReferenceEquals(s.Attachment, attachment) && !s.SceneLoading
-            && s.SceneGeneration == generation && s.WorldScene == scene && _sessions.All().Contains(s);
+            && s.SceneGeneration == generation && s.WorldScene == scene && _sessions.Contains(s);
         var rule = effect.Rule;
         var defender = MonsterFighter(m);
         long amount = PeriodicAmount(attacker, defender, rule, buff.PileCount);

@@ -592,6 +592,17 @@ public sealed class BackupOptions
     /// <summary>Newest copies left as plain .db files, ready to restore or open; at least 1. Set it to
     /// <see cref="Keep"/> to compress nothing.</summary>
     public int Uncompressed { get; set; } = 2;
+
+    /// <summary>Disk space a backup leaves free for the live database to grow (inferred; server tuning). When a copy and this
+    /// do not fit, the oldest copies go first (never the newest two), or the backup is skipped and logged as critical.</summary>
+    public int ReserveMegabytes { get; set; } = 1024;
+
+    /// <summary>From this database size a restart makes no copy while the newest is younger than <see cref="IntervalHours"/>,
+    /// and a scheduled copy is checked once per <see cref="BigDatabaseCheckHours"/> (inferred; server tuning). 0 turns this off.</summary>
+    public int BigDatabaseMegabytes { get; set; } = 4096;
+
+    /// <summary>Hours between integrity checks of scheduled copies on a big database.</summary>
+    public int BigDatabaseCheckHours { get; set; } = 24;
 }
 
 /// <summary>

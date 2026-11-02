@@ -49,6 +49,14 @@ public sealed partial class CharacterService
         if (outcome.AfterReply != null) await outcome.AfterReply();
     }
 
+    /// <summary>The server uses one unit itself: the same validated path, without a 31323 reply nobody asked for.</summary>
+    internal async Task<int> AutoUseItemAsync(GameSession session, long guid)
+    {
+        var outcome = await UseItemCoreAsync(session, new ItemUseReq { ItemGuid = guid, ItemCount = 1 }, reply: false);
+        if (outcome.AfterReply != null) await outcome.AfterReply();
+        return outcome.Result;
+    }
+
     /// <summary>BuffService supplies live item-use restrictions to every use path, including shortcuts.</summary>
     public Func<GameSession, bool>? IsItemUseForbidden { get; set; }
 
@@ -76,7 +84,7 @@ public sealed partial class CharacterService
             : req.ItemParam.Count > 0 && WingDestination(row.Value, req) == null && !CarriesPetChoice(row.Value, req)
                 && !CarriesBoxParam(row.Value, req)
                 && !AcceptsItemActionParam(row.Value, req) ? ErrorCodes.FeatureUnavailable
-            : item.BindExpire > 0 && item.BindExpire <= DateTimeOffset.UtcNow.ToUnixTimeSeconds() ? ErrorCodes.ItemMissing
+            : item.BindExpire > 0 && item.BindExpire <= UseClock.GetUtcNow().ToUnixTimeSeconds() ? ErrorCodes.ItemMissing
             : session.Dead ? ErrorCodes.UseWhileDead
             : IsItemUseForbidden?.Invoke(session) == true ? ErrorCodes.ItemUseForbidden
             : 0;
@@ -457,6 +465,11 @@ public sealed partial class CharacterService
             ItemGuid = item.Guid, ItemEntry = item.Entry, Stack = item.Stack, IsLocked = item.IsLocked,
             ItemBindInfo = new ItemBindInfo { ItemBindType = (ItemBindType)item.BindType, ExpireTimeStamp = item.BindExpire },
         };
+        // A seasonal item with no season reads "This item has expired" (LC_ItemHelper.GetIsSeasonItemValid). Nothing lapses
+        // here (all content stays open), so it belongs to the current season (inferred).
+        var config = Data.Config.ItemConfig.Get(data, item.Entry);
+        if (config is { SeasonResetType: not 0 }) info.Season = seasons.SeasonId;
+        if (config is { TimeBoundEnum: AcquireTimeBound }) info.ExpireTm = item.BindExpire; // AcquireExpiry
         info.ItemInfos[AttrSetUpSource] = new ItemAttrValue { LongVal = 0 };
         if (IsEquipment(item.Entry)) info.ItemInfos[AttrAppraise] = new ItemAttrValue { LongVal = IsAppraised(item) ? 1 : 0 };
         if (item.Attrs != null)

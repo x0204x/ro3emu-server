@@ -95,7 +95,7 @@ public sealed class DungeonMatchService : IGameTicker
 
     private int Admission(GameSession s, DungeonCatalog.Plan plan, bool alreadyOwned = false)
     {
-        if (s.Role == null || !_sessions.All().Contains(s)) return ErrorCodes.PlayerOffline;
+        if (s.Role == null || !_sessions.Contains(s)) return ErrorCodes.PlayerOffline;
         if (_timedBattles.IsMatching(s) || !alreadyOwned && Owns(s))
             return ErrorCodes.DungeonBusy;
         return _dungeons.MatchAdmission(s, plan);

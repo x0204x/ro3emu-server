@@ -138,8 +138,9 @@ public sealed partial class GuildTests
         Assert.Null(store.ForRole((long)founder.Self!.Uuid));
         var ledger = S3EconomyReader.ReadLedger(_dataDir, catalog, opening, closing)!;
         Assert.True(ledger.CompleteHistory, string.Join(";", ledger.Issues.Select(x => x.Detail)));
-        Assert.Single(ledger.Receipts);
-        Assert.Equal(escrow == 0 ? 10 : 12, ledger.Legs.Count);
+        // A quest award can land between the two snapshots, so only the disband's own receipt and legs count.
+        var disband = Assert.Single(ledger.Receipts, x => x.CommandKind == "guild-disband");
+        Assert.Equal(escrow == 0 ? 10 : 12, ledger.Legs.Count(x => x.OperationId == disband.OperationId));
         Assert.Empty(store.LoadMarket().Stalls);
         foreach (long asset in Enumerable.Range(1, 5).Select(x => (long)x))
         {

@@ -16,8 +16,6 @@ public sealed partial class CombatService
     {
         if (template is not { } value) return [];
         var points = Numbers(value, "m_kAtkPoints");
-        if (row.ScriptLogic == "VolleyArrows") return VolleyArrowStages(row, points);
-        if (row.ScriptLogic == "HighAltitudeBombing") return HighAltitudeBombingStages(row, points);
         if (row.DamageParam1.Length == 4 && points.Length >= 4 && row.ScriptLogic is
             "TetraVortex" or "TetraVortex2" or "TetraVortexcopy" or "TetraVortex2copy")
             return [.. points.Take(4).Select((point, index) => new AuthoredDamageStage(point, index, 1))];
@@ -37,6 +35,8 @@ public sealed partial class CombatService
     private bool TryScheduleAuthoredStages(GameSession source, ActiveSkillCast cast, JsonElement? template,
         Func<bool> current, Func<Task> finished, IReadOnlyList<MonsterUnit>? chosenTargets = null, int travelMs = 0)
     {
+        // 上游引導技能有自己的排程；禁止再由本地多段排程重複觸發。
+        if (ChannelScripts.Contains(Script(cast.Row))) return false;
         var stages = AuthoredDamageStages(new SkillConfig(cast.Row), template);
         if (stages.Length == 0) return false;
         cast.AuthoredStageCount = stages.Length;

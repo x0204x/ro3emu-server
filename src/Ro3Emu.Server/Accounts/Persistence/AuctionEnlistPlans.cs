@@ -245,6 +245,7 @@ internal sealed class AuctionItemWritePlan : DbPlan
         cmd.Parameters.AddWithValue("$id", id);
         if (_before is not null) cmd.Parameters.AddWithValue("$before", _before);
         if (cmd.ExecuteNonQuery() != 1) throw new RolePlanConflictException();
+        DbWriter.AfterJob(WrittenCache.Auction);
         AuctionItemColumns.Write(db, tx, id, JsonSerializer.Deserialize<AuctionStore.Item>(state)
             ?? throw new InvalidDataException("Auction lot state must contain an item."));
         return new AuctionItemWriteReceipt(id, state);

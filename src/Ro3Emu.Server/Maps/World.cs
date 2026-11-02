@@ -109,6 +109,9 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
     /// <summary>Every server unit on every map.</summary>
     public IEnumerable<WorldUnit> AllUnits() => _maps.Values.SelectMany(m => m.Units);
 
+    /// <summary>The server units of one runtime map (empty when it has none); never creates the map.</summary>
+    public IEnumerable<WorldUnit> UnitsIn(long worldScene) => _maps.TryGetValue(worldScene, out var map) ? map.Units : [];
+
     public async Task AddUnitAsync(WorldUnit unit)
     {
         var entered = new List<GameSession>();

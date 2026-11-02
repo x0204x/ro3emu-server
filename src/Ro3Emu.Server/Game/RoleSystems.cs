@@ -164,6 +164,7 @@ public sealed class RoleSystems(Maps.World world, ChatService chat, CharacterSer
         checkpoint();
         await tavern.LoginAsync(session); // 5043: a role still in a room (a relog) rejoins its chat and voice
         checkpoint();
+        mounts.UseHeldVouchers(session); // posted: runs once the login has finished
     }
 
     /// <summary>The keys the login steps write besides the role, its account and lifecycle.</summary>

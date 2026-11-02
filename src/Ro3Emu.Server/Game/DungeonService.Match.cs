@@ -18,7 +18,7 @@ public sealed partial class DungeonService
     public async Task<int> BeginMatchedAsync(DungeonCatalog.Plan plan, GameSession[] members, long teamId)
     {
         if (members.Length == 0 || members.Distinct().Count() != members.Length
-            || members.Any(s => s.Role == null || !_sessions.All().Contains(s))) return ErrorCodes.PlayerOffline;
+            || members.Any(s => s.Role == null || !_sessions.Contains(s))) return ErrorCodes.PlayerOffline;
         if (members.Length < plan.MinPlayers && !(members.Length == 1 && members[0].DungeonSoloMatch))
             return ErrorCodes.DungeonTeamSize;
         if (members.Length > plan.MaxPlayers) return ErrorCodes.PartyFull;

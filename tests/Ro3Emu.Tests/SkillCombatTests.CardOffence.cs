@@ -22,11 +22,26 @@ public sealed partial class SkillCombatTests
         public override int Proc(int max) => Math.Min(ProcValue, max - 1);
     }
 
+    /// <summary>卡片效果測試先建立同部位的實際裝備；不可再依靠舊版空裝備格也生效的行為。
+    /// 僅供已在遊戲迴圈內的隔離戰鬥 fixture，真實插卡／穿戴請求另由 CardRulesTests 驗證。</summary>
+    private void EnsureCardFixtureGear(GameSession player, int grid)
+    {
+        if (player.Items.Any(i => i.Grid == grid)) return;
+        var data = _app.Services.GetRequiredService<GameData>();
+        int part = grid switch { 1 => 2, 2 => 3, 3 => 4, 4 => 5, 5 => 6, 6 or 7 => 7, _ => grid };
+        var gear = data.Table("ItemConfig").Values.Select(row => new ItemConfig(row))
+            .Where(item => (grid == 1 ? item.EquipPart is 1 or 2 : item.EquipPart == part) && item.LevelNeed <= 1
+                && (item.JobNeed.Length == 0 || item.JobNeed.Contains(0) || item.JobNeed.Contains(player.Progress!.Career)))
+            .OrderBy(item => item.Id).First();
+        player.Items.Add(new InvItem { Guid = 9850000 + grid, Entry = (int)gear.Id, Stack = 1, Pack = 2, Grid = grid });
+    }
+
     private async Task CardOffenceEquipAsync(GameSession player, int entry, int tier)
     {
         await Loop.InvokeAsync(async () =>
         {
             player.Items.RemoveAll(i => i.Guid == 9930001);
+            if (entry != 0) EnsureCardFixtureGear(player, 1);
             if (entry != 0) player.Items.Add(new InvItem
             {
                 Guid = 9930001, Entry = entry, Stack = 1, Pack = 3,

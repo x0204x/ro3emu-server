@@ -267,7 +267,7 @@ public sealed class CoreMessages(RoleSessionService roleSessions, ChatService ch
             // C/D 16: every player's heartbeat used to be one Realm scope (S3: 10k per 5 min, the top Realm waiter,
             // other replies queued behind it up to 2.5 s). The role's own reconciliation runs under its reservation;
             // realm guild maintenance (at most once a second) admits its own guild keys.
-            async Task OwnAsync() { await daily.ReconcileAsync(session); await dungeons.ReconcileAsync(session); }
+            async Task OwnAsync() { await daily.ReconcileWindowsAsync(session); await dungeons.ReconcileAsync(session); }
             if (session.Owners is { } owners && session.Role is { } role)
                 await owners.RunSessionAsync("heartbeat",
                     [Ownership.ReservationKey.Role(role.Id), Ownership.ReservationKey.Lifecycle(role.Id)], session, OwnAsync);

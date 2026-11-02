@@ -5,6 +5,7 @@ using Ro3Emu.Bot;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Data;
 using Ro3Emu.Server.Game;
+using Ro3Emu.Server.Maps;
 
 namespace Ro3Emu.Tests;
 
@@ -21,6 +22,11 @@ public sealed class ProfessionTalentEffectTests : IAsyncDisposable
     // TalentProcs.BuffBonuses keys Magic Infusion's talent buff to Mystical Amplification's group 12201; values invented.
     private const int MagicInfusion = 1249301, Amplify = 77021, AmplifyGroup = 12201;
     private const int Guard = 77011, GuardGroup = 77010;
+    // TalentProcs reads Blitz Beat's group 13102; its own row names the automatic group. The values are invented.
+    private const int AttackRow = 90002, BlitzBeatGroup = 13102, BlitzBeatRow = 77030, AutoGroup = 77031, AutoRow = 77032, ChanceTalent = 77033,
+        Falcon = 52001, Wolf = 1500400;
+    private static readonly int[] BlitzBeatLogic = [2500, AutoGroup];
+    private static readonly string[] AutoDescription = ["18", "3", "2"];
     private readonly string _configRoot = Path.Combine(Path.GetTempPath(), "ro3emu-talent-effects-" + Guid.NewGuid().ToString("N"));
     private SyntheticHost _host = null!;
     private GameSession Session => _host.Service<SessionRegistry>().All().Single(s => s.Role != null);
@@ -68,7 +74,7 @@ public sealed class ProfessionTalentEffectTests : IAsyncDisposable
                 _iID = 1002, _kDescData = OptionValues, _kSpecialEffect = new[]
                 {
                     new long[] { 1, 103, 7 }, [16, 2, 1, 3], [16, 3, 1, 3], [19, Mastery, 2, 4, 6], [22, 2, 103, 5, Mastery], [2, Buff], [2, AutoGuardEnhance],
-                    [2, MagicInfusion],
+                    [2, MagicInfusion], [2, ChanceTalent],
                 },
             },
         });
@@ -85,9 +91,19 @@ public sealed class ProfessionTalentEffectTests : IAsyncDisposable
             new { _iID = Guard, _iBuffID = GuardGroup, _kChangeAttri = GuardAttrs },
             new { _iID = MagicInfusion },
             new { _iID = Amplify, _iBuffID = AmplifyGroup, _kChangeAttri = AmplifyAttrs },
+            new { _iID = BlitzBeatRow, _iBuffID = BlitzBeatGroup, _kLogicData = BlitzBeatLogic },
+            new { _iID = ChanceTalent, _kBuffAttributeList = new[] { new[] { "0", $"{BlitzBeatGroup}", "4", "1", "1000", "0" } } },
         });
-        Write("SkillConfig", new[]
+        Write("PendantConfig", new object[] { new { _iID = Falcon, _iType = 1 } });
+        Write("SkillConfig", new object[]
         {
+            new { _iID = AttackRow, _iSkillID = 902, _iLevel = 1, _iMode = 0, _iMaxLevel = 1, _iBasicType = 1, _iIsNormalAtk = 1 },
+            new { _iID = BlitzBeatRow, _iSkillID = BlitzBeatGroup, _iLevel = 1, _iMode = 0, _iMaxLevel = 1, _iBasicType = 1 },
+            new
+            {
+                _iID = AutoRow, _iSkillID = AutoGroup, _iLevel = 1, _iMode = 0, _iMaxLevel = 1, _iBasicType = 1,
+                _kDamageParam1 = Ratio, _kDamageParam2 = Flat, _kDescData = AutoDescription,
+            },
             new
             {
                 _iID = SkillRow, _iSkillID = Skill, _iLevel = 1, _iMode = 0, _iMaxLevel = 1, _iBasicType = 1, _iCD = 10000,
@@ -193,5 +209,66 @@ public sealed class ProfessionTalentEffectTests : IAsyncDisposable
             body => SeasonTalentSetCurPlanResp.Parser.ParseFrom(body).Result));
         Assert.Equal(10000, GameData.Int(await Effective(), "_iCD"));
         Assert.Equal(patk, await Stat(103));
+    }
+
+    // "When using a Basic Attack, the Falcon has a ${8}% Chance to cast [Blitz Beat] on the enemy": the chance and the
+    // automatic group are in Blitz Beat's own BuffConfig row, a talent's type 4 tuple adds to the chance, and the row's
+    // condition asks for the falcon and no wolf under the rider.
+    [Fact]
+    public async Task BlitzBeatsOwnRowFiresOnABasicAttackWithTheFalconAtTheChanceTheTalentRaises()
+    {
+        await Start();
+        await using var bot = await _host.InWorldAsync("Talent");
+        var monster = await OnLoop(async () =>
+        {
+            var s = Session;
+            s.Progress!.Career = 1000;
+            s.Progress.Skills[BlitzBeatGroup] = 1;
+            s.Tasks ??= new DBTaskInfo();
+            s.Tasks.CompleteTaskNum[10101170] = 1;
+            s.Tasks.CompleteTaskNum[10103160] = 1;
+            s.SeasonTalent!.Plan[0].TalentNodes[1].CurrentLevel = 1;
+            await _host.Service<SeasonTalentService>().SyncAsync(s);
+            var spawned = await _host.Service<MonsterService>().SpawnSingleAsync(s.SceneEntry, 16320001,
+                new MapPoint(s.Position.X, s.Position.Y, s.Position.Z, 0), s.InstanceId);
+            Assert.NotNull(spawned);
+            spawned.Hp = 1_000_000;
+            return spawned;
+        });
+
+        async Task<bool> FiresAt(int roll)
+        {
+            int Hits() => bot.Inbox.Snapshot().Count(e => e.IsGame(CombatService.SkillHit) && SkillHitInfo.Parser.ParseFrom(e.Body).SkillId == AutoRow);
+            int before = Hits();
+            _host.Service<TalentProcs>().Roll = bound => bound == 10000 ? roll : bound - 1;
+            await OnLoop(async () =>
+            {
+                var action = new ActiveSkillCast
+                {
+                    Id = 1, OwnerId = Session.Role!.Id, WorldScene = Session.WorldScene, Origin = Session.Position.Clone(),
+                    Request = new CastSkillReq { SkillId = AttackRow, TargetId = monster.Uid },
+                    Row = _host.Service<GameData>().Row("SkillConfig", AttackRow)!.Value, StartMs = 0, ChantMs = 0, ActionMs = 1,
+                };
+                foreach (var resolved in _host.Service<CombatService>().CastResolved)
+                    await resolved(Session, action, [monster], new SkillHitInfo());
+                return 0;
+            });
+            await Task.Delay(100);
+            return Hits() > before;
+        }
+
+        Assert.False(await FiresAt(0)); // no falcon
+        await OnLoop(() => { Session.CareerPendants = [Falcon]; return Task.FromResult(0); });
+        Assert.True(await FiresAt(2499));
+        Assert.False(await FiresAt(2500));
+
+        await OnLoop(() => { Session.MountState.QuestMount = Wolf; return Task.FromResult(0); });
+        Assert.False(await FiresAt(0));
+        await OnLoop(() => { Session.MountState.QuestMount = 0; return Task.FromResult(0); });
+
+        Assert.Equal(0, await Request(bot, SeasonTalentService.Upgrade, new SeasonTalentUpgradeReq { TalentId = 4 },
+            body => SeasonTalentUpgradeResp.Parser.ParseFrom(body).Result));
+        Assert.True(await FiresAt(3499));
+        Assert.False(await FiresAt(3500));
     }
 }

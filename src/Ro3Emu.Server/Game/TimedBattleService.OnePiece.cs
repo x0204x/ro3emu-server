@@ -373,7 +373,7 @@ public sealed partial class TimedBattleService
         // Everyone is checked again after the last answer; the stone must still be this party's.
         foreach (var member in vote.Members)
         {
-            error = !_sessions.All().Contains(member) ? ErrorCodes.PlayerOffline
+            error = !_sessions.Contains(member) ? ErrorCodes.PlayerOffline
                 : _riftRound < 0 || _riftStones.GetValueOrDefault(vote.Stone.Uid) != vote.Stone
                     || vote.Stone.Challenger != vote.Leader ? ErrorCodes.NpcMissing
                 : RiftMemberError(member, vote.Stone, vote);

@@ -57,6 +57,10 @@ public sealed class CardCrashRecoveryTests
             (await client.PostAsync($"http://127.0.0.1:{http}/ro3emu/gm?account=crashalice",
                 Operator.Command($"!item {card} 1"))).EnsureSuccessStatusCode();
         }
+        // Obtaining the card collected it on its own; the crash below is about the treasure unlock alone.
+        var store = app.Services.GetRequiredService<RoleStore>();
+        while (store.LoadLibrary(role) is not { } saved || DBLibraryInfo.Parser.ParseFrom(saved).Cards.GetValueOrDefault(card)?.Unlock != true)
+            await Task.Delay(20);
         app.Services.GetRequiredService<TaskService>().BeforeProgress = session =>
         {
             if (session.Library?.Cards.TryGetValue(card, out var value) != true || !value.TreasureUnlock)

@@ -44,6 +44,7 @@
     <Reference Include="UnityEngine.CoreModule"><HintPath>$(ClientManaged)\UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Unity.TextMeshPro"><HintPath>$(ClientManaged)\Unity.TextMeshPro.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.UI"><HintPath>$(ClientManaged)\UnityEngine.UI.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.InputLegacyModule"><HintPath>$(ClientManaged)\UnityEngine.InputLegacyModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.UIModule"><HintPath>$(ClientManaged)\UnityEngine.UIModule.dll</HintPath><Private>false</Private></Reference>
     <!-- English replacements for Chinese-text UI textures (TextureSwap), carried inside this DLL. -->
     <EmbeddedResource Include="Textures\*.png" LogicalName="textures/%(Filename)%(Extension)" />

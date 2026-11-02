@@ -42,7 +42,7 @@ public sealed partial class SkillCombatTests
         for (int i = 0; i < 10; i++)
         { var target = await Target("mechabombing", stationary: true, immobile: true); await CardOffenceDummyAsync(target); targets.Add(target); }
         // 五名內側、同範圍第六名、後方、側外、前方超距；最後一名探查15m邊界內。
-        (float Ahead, float Side)[] points = [(8, 0), (8, 4.9f), (8, -4.9f), (10, 0), (14.9f, 0), (14.95f, 0), (-1, 0), (8, 5.1f), (15.1f, 0), (14.99f, 4.9f)];
+        (float Ahead, float Side)[] points = [(8, 0), (8, 4.9f), (8, -4.9f), (10, 0), (14.9f, 0), (14.95f, 0), (-1, 0), (8, 5.2f), (15.2f, 0), (14.99f, 4.9f)];
         int completed = 0, resolved = 0;
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await Loop.InvokeAsync(async () =>

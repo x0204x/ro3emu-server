@@ -4,6 +4,7 @@ using Ro3Emu.Bot;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Game;
 using Ro3Emu.Server.Game.Ownership;
+using Ro3Emu.Server.Game.Persistence;
 
 namespace Ro3Emu.Tests;
 
@@ -160,6 +161,35 @@ public sealed class WildAfkDailyAllowanceTests
         Assert.Equal(1, await Read(host, () => session.WildAfk!.ConsumedTodaySeconds));
         Assert.Equal(0, await Read(host, () => session.WildAfk!.RemainderMs));
         Assert.Equal(Local(3).ToUnixTimeSeconds(), await Read(host, () => Stored(host, session.Role!.Id).AllowanceEpoch));
+    }
+
+    [Fact]
+    public async Task MidnightGrantCommitsThePendingClockAndClearsItsLazySave()
+    {
+        var clock = new Clock(Local(2, 23, 59, 59));
+        await using var host = await SyntheticHost.StartAsync(clock: clock);
+        await using var bot = await host.InWorldAsync("Barrier");
+        var session = Session(host, bot);
+        var lazy = host.Service<WildAfkPersistence>();
+        await Owned(host, session, async () =>
+        {
+            host.Service<GameLoop>().Remove(host.Service<WildAfkService>());
+            host.Service<GameLoop>().Remove(lazy);
+            var state = session.WildAfk!;
+            state.Info.HighMultiplierTimeSeconds = 1200;
+            state.LazyMarked = JsonSerializer.SerializeToUtf8Bytes(state);
+            lazy.MarkDirty(session, urgent: false);
+            Assert.True(lazy.IsDirty(session));
+            clock.Set(Local(3));
+            await host.Service<WildAfkService>().ReconcileAsync(session);
+            Assert.False(lazy.IsDirty(session));
+            Assert.Null(state.LazyMarked);
+            Assert.Equal(4800, Stored(host, session.Role!.Id).Info.HighMultiplierTimeSeconds);
+        });
+        long role = session.Role!.Id;
+        await bot.SwitchRoleAsync();
+        await bot.EnterWorldAsync(role);
+        Assert.Equal(4800, await Query(bot));
     }
 
     [Fact]

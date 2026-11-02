@@ -46,6 +46,27 @@ public sealed partial class SkillCombatTests
     }
 
     [ClientDataFact]
+    public async Task ASwingTakenInTheSlackStartsWhenTheOneBeforeEnds()
+    {
+        // Holding the key sends a request every 200 ms; started at once, the slack came off every swing.
+        await using var alice = await InWorld("Alice");
+        var target = await Target("alice", stationary: true);
+        await Loop.InvokeAsync(() => { target.Hp = 1_000_000; return Task.CompletedTask; });
+        var session = Session("alice");
+        await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = NoviceAttack, TargetId = target.Uid });
+        Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
+        long end = await Loop.InvokeAsync(() => Task.FromResult(
+            session.SkillCast!.StartMs + session.SkillCast.ChantMs + session.SkillCast.ActionMs));
+        long wait = end - CombatService.SwingJitterMs + 40 - MonsterService.NowMs;
+        if (wait > 0) await Task.Delay(TimeSpan.FromMilliseconds(wait));
+        Assert.True(MonsterService.NowMs < end, "the test ran past the swing; nothing left to check");
+        await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = NoviceAttack, TargetId = target.Uid });
+        Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
+        long next = await Loop.InvokeAsync(() => Task.FromResult(session.SkillCast!.StartMs));
+        Assert.True(next >= end, $"the next swing started {end - next} ms before the one before it ended");
+    }
+
+    [ClientDataFact]
     public async Task ClicksAlternatingBetweenTwoTargetsDoNotSwingFaster()
     {
         // A modified client restarted the swing with every click by alternating its target: hits at click speed. A turn

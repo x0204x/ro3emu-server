@@ -175,7 +175,7 @@ public sealed partial class CharacterService
         foreach (var table in new[] { "StrengthenEffectTable", "RefiningEffectTable" })
             if (ResonanceRow(session, table) is { } effect)
                 foreach (var (id, v) in GameData.Pairs(effect, "_kEffect")) Add(id, v);
-        foreach (var card in session.Items.Where(i => i.Grid < 0))
+        foreach (var card in EquipmentStunts.ActiveCards(session, data))
         {
             int tier = (int)(card.Attrs?.GetValueOrDefault(AttrCardStar) ?? 0);
             int level = (int)(card.Attrs?.GetValueOrDefault(AttrCardLevel) ?? 0);

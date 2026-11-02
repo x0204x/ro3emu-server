@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Google.Protobuf;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,7 +14,7 @@ namespace Ro3Emu.Tests;
 /// <summary>
 /// GenericStageRewardsConfig types 3 (wardrobe fashion score), 4 (Codex Collection Points) and 6 (Survivor Battle rank)
 /// through 31178/31175 and the shared 5059 list (DailyActivityService.StageError), and the Collection Points of a card
-/// collection unlock (82404).
+/// that enters the collection (CardService.QueueCollection).
 /// </summary>
 public sealed class StageRewardTests : IAsyncLifetime
 {
@@ -74,6 +75,23 @@ public sealed class StageRewardTests : IAsyncLifetime
     {
         using var http = new HttpClient();
         (await http.PostAsync($"{_httpUrl}/ro3emu/gm?account={account}", Operator.Command(line))).EnsureSuccessStatusCode();
+    }
+
+    /// <summary>The card collection queued so far has finished: it holds the role key, and this is queued behind it.</summary>
+    private async Task Settled()
+    {
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var loop = _app.Services.GetRequiredService<GameLoop>();
+        await loop.InvokeAsync(() =>
+        {
+            loop.PostOwned(_app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role != null), () =>
+            {
+                done.SetResult();
+                return Task.CompletedTask;
+            }, "test");
+            return Task.CompletedTask;
+        });
+        await done.Task.WaitAsync(Wait);
     }
 
     private async Task<T> State<T>(Func<GameSession, T> read) =>
@@ -259,18 +277,17 @@ public sealed class StageRewardTests : IAsyncLifetime
         Assert.Equal(ErrorCodes.CurrencyShort, await Claim(again, 6004));
     }
 
+    private int CollectionPoints(long quality) => _app.Services.GetRequiredService<GameData>().Table("PublicParamConfig")["LibraryCardUnlockReward"]
+        .GetProperty(quality.ToString()).GetProperty("PointValue").GetProperty("0").GetInt32();
+
     [ClientDataFact]
-    public async Task ACardCollectionUnlockPaysItsCollectionPointsOnce()
+    public async Task ObtainingACardCollectsItAndPaysItsCollectionPointsOnce()
     {
         var data = _app.Services.GetRequiredService<GameData>();
-        int Reward(long quality) => data.Table("PublicParamConfig")["LibraryCardUnlockReward"].GetProperty(quality.ToString())
-            .GetProperty("PointValue").GetProperty("0").GetInt32();
         int treasurable = (int)GameData.Int(data.Table("ItemConfig").Values.First(row => GameData.Int(row, "_iType") == 4
             && GameData.Int(row, "_iSubType") == 400 && GameData.Int(row, "_iQuality") == 4), "_iID");
 
         var bot = await InWorld("Alice");
-        await Gm("alice", $"!item {Lunatic} 1");
-        await Gm("alice", $"!item {treasurable} 1");
         long role = await State(s => s.Role!.Id);
         var roles = _app.Services.GetRequiredService<RoleStore>();
         async Task<int> Unlock(BotClient client, int card, bool treasure)
@@ -279,27 +296,61 @@ public sealed class StageRewardTests : IAsyncLifetime
             return (await Next(client, CardService.LibraryCardUnlock, LibraryCardUnlockResp.Parser, r => r.CardId == card)).Result;
         }
 
-        // The points ride the unlock's own commit: a failed write leaves neither the entry, the points nor a follow-up.
-        FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(),
-            "CREATE TRIGGER fail_card_points BEFORE UPDATE OF currency ON role BEGIN SELECT RAISE(ABORT, 'card points fault'); END");
-        Assert.Equal(ErrorCodes.Unknown, await Unlock(bot, Lunatic, false));
-        FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(), "DROP TRIGGER fail_card_points");
+        // 領卡已提交的 card-sight 與收藏交易各有後續任務；只驗證失敗收藏不能留下自己的義務。
+        // 其他既有義務可能仍待任務結算，不能用 HasTaskFollowup=false 假設整個角色已無待辦。
+        HashSet<string> Followups() => roles.LoadTaskFollowup(role) is { Length: > 0 } bytes
+            ? JsonSerializer.Deserialize<HashSet<string>>(bytes) ?? [] : [];
+        var previousFollowups = Followups();
+        long epoch = await State(s => s.Owner!.LifecycleEpoch);
+        string sightSource = $"card-sight/{role}/{epoch}/{Lunatic}";
+        string unlockSource = $"{role}:{epoch}:{Lunatic}:0";
+        int failedCommits = 0;
+        // The points ride the unlock's own commit: a failed write leaves no unlock, points, receipt or unlock follow-up.
+        var accounts = _app.Services.GetRequiredService<AccountStore>();
+        accounts.BeforeCommitForTest = label =>
+        {
+            if (label != "economy/cd13e/library-award") return;
+            Interlocked.Increment(ref failedCommits);
+            throw new InvalidOperationException("card points fault");
+        };
+        try
+        {
+            await Gm("alice", $"!item {Lunatic} 1");
+            await Settled();
+        }
+        finally { accounts.BeforeCommitForTest = null; }
+        Assert.True(Volatile.Read(ref failedCommits) > 0, "收藏交易必須實際到達失敗注入點。");
         Assert.False(await State(s => s.Library!.Cards[Lunatic].Unlock));
         Assert.False(DBLibraryInfo.Parser.ParseFrom(roles.LoadLibrary(role)!).Cards[Lunatic].Unlock);
-        Assert.False(roles.HasTaskFollowup(role));
+        var pendingFollowups = Followups();
+        Assert.DoesNotContain(unlockSource, pendingFollowups);
+        Assert.All(pendingFollowups, source => Assert.True(previousFollowups.Contains(source) || source == sightSource,
+            $"失敗收藏新增了非既有／領卡義務：{source}"));
+        Assert.Equal(0, OwnedSourceCount($"library-card/{role}/{Lunatic}", "cd13e/library-award"));
         Assert.Equal(0, await Count(Points));
 
-        Assert.Equal(0, await Unlock(bot, Lunatic, false));
-        long expected = Reward(GameData.Int(data.Row("ItemConfig", Lunatic)!.Value, "_iQuality"));
+        // No request: the next copy collects it, and the client hears of it through 5057.
+        await Gm("alice", $"!item {Lunatic} 1");
+        await Settled();
+        var change = await Next(bot, CardService.LibrarySync, DBLibraryInfoIncrement.Parser,
+            m => m.Cards.TryGetValue(Lunatic, out var card) && (card.All?.Unlock == true || card.Inc?.Unlock == true));
+        Assert.False(change.SyncAllMark);
+        long expected = CollectionPoints(GameData.Int(data.Row("ItemConfig", Lunatic)!.Value, "_iQuality"));
         Assert.True(expected > 0);
         Assert.Equal(expected, await Count(Points));
         Assert.True(await State(s => s.Library!.Cards[Lunatic].Unlock));
+        Assert.True(DBLibraryInfo.Parser.ParseFrom(roles.LoadLibrary(role)!).Cards[Lunatic].Unlock);
         Assert.Equal(1, OwnedSourceCount($"library-card/{role}/{Lunatic}", "cd13e/library-award"));
         Assert.Equal(ErrorCodes.AlreadyUnlocked, await Unlock(bot, Lunatic, false));
+        await Gm("alice", $"!item {Lunatic} 1");
+        await Settled();
         Assert.Equal(expected, await Count(Points));
 
-        Assert.Equal(0, await Unlock(bot, treasurable, false));
-        expected += Reward(4);
+        await Gm("alice", $"!item {treasurable} 1");
+        await Settled();
+        expected += CollectionPoints(4);
+        Assert.Equal(expected, await Count(Points));
+        Assert.False(await State(s => s.Library!.Cards[treasurable].TreasureUnlock)); // a normal copy is not a Collector card
         Assert.Equal(0, await Unlock(bot, treasurable, true)); // (inferred) the treasure unlock pays nothing
         Assert.Equal(expected, await Count(Points));
 
@@ -310,5 +361,41 @@ public sealed class StageRewardTests : IAsyncLifetime
         Assert.Equal(ErrorCodes.AlreadyUnlocked, await Unlock(again, Lunatic, false));
         Assert.Equal(expected, await Count(Points));
         Assert.Equal(1, OwnedSourceCount($"library-card/{role}/{Lunatic}", "cd13e/library-award"));
+    }
+
+    [ClientDataFact]
+    public async Task LoginCollectsEntriesAnOlderServerLeftLocked()
+    {
+        const int Flash = 1440101, Hidden = 1430114; // quality 4 on the Collector page; no CardConfig._iShowLibrary row
+        var bot = await InWorld("Alice");
+        long role = await State(s => s.Role!.Id);
+        await LoggedOut(bot);
+
+        var old = new DBLibraryInfo();
+        old.Cards[Lunatic] = new LibraryCardInfo { CardId = Lunatic };
+        old.Cards[Flash] = new LibraryCardInfo { CardId = Flash, Treasured = 1 };
+        old.Cards[Hidden] = new LibraryCardInfo { CardId = Hidden };
+        var roles = _app.Services.GetRequiredService<RoleStore>();
+        roles.SaveLibrary(role, old.ToByteArray());
+
+        var again = await InWorld("Alice", create: false);
+        await Settled();
+        var seen = await Next(again, CardService.LibrarySync, DBLibraryInfoIncrement.Parser,
+            m => !m.SyncAllMark && m.Cards.ContainsKey(Lunatic));
+        Assert.True(seen.Cards[Lunatic].Inc.Unlock);
+        var library = DBLibraryInfo.Parser.ParseFrom(roles.LoadLibrary(role)!);
+        Assert.True(library.Cards[Lunatic].Unlock);
+        Assert.True(library.Cards[Flash].Unlock);
+        Assert.True(library.Cards[Flash].TreasureUnlock);
+        Assert.False(library.Cards[Lunatic].TreasureUnlock);
+        Assert.False(library.Cards[Hidden].Unlock);
+        long expected = CollectionPoints(2) + CollectionPoints(4);
+        Assert.Equal(expected, await Count(Points));
+
+        await LoggedOut(again);
+        await using var third = await InWorld("Alice", create: false);
+        await Settled();
+        Assert.Equal(expected, await Count(Points));
+        Assert.False(await State(s => s.Library!.Cards[Hidden].Unlock));
     }
 }

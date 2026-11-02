@@ -46,6 +46,8 @@ public sealed partial class WildAfkService
         state.RemainderMs = next.RemainderMs;
         state.AccountedAtMs = next.AccountedAtMs;
         state.Persisted = bytes;
+        state.LazyMarked = null;
+        _lazySave.Persisted(session);
         return consumed;
     }
 }

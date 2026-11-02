@@ -97,6 +97,16 @@ public sealed class CardGrantedSkillTests : IAsyncLifetime
         Assert.Equal(0, (await Next(bot, CharacterService.EquipItemOpr, EquipItemOprResp.Parser)).Result);
     }
 
+    private async Task WearCardGear(BotClient bot, GameSession session, int entry, int grid)
+    {
+        var existing = await OnLoop(() => session.Items.Select(i => i.Guid).ToHashSet());
+        await Gm("alice", $"!item {entry} 1");
+        long guid = await OnLoop(() => session.Items.Single(i => i.Entry == entry && !existing.Contains(i.Guid)).Guid);
+        await bot.SendGameAsync(CharacterService.EquipItemOpr,
+            new EquipItemOprReq { Opr = 0, Pos = (EquipGridType)grid, ItemGUID = guid });
+        Assert.Equal(0, (await Next(bot, CharacterService.EquipItemOpr, EquipItemOprResp.Parser)).Result);
+    }
+
     [ClientDataTheory]
     [InlineData(1430600, 20044)] // 治癒術
     [InlineData(1420605, 20042)] // 施毒
@@ -106,6 +116,7 @@ public sealed class CardGrantedSkillTests : IAsyncLifetime
         var session = Session("Alice");
         await Gm("alice", "!lvl 80");
         await Gm("alice", $"!item {card} 1");
+        await WearCardGear(bot, session, 2700120, 6); // 空飾品格的卡片依上游不生效。
         Assert.Equal(0, await Insert(bot, 6, 1, session.Items.Single(i => i.Entry == card).Guid));
         await Eventually(() => session.Progress!.GrantedSkills.GetValueOrDefault(group) == 1, "卡片技能授予");
         foreach (bool manual in new[] { true, false })
@@ -157,6 +168,7 @@ public sealed class CardGrantedSkillTests : IAsyncLifetime
             var session = Session("Alice");
             await Gm("alice", "!lvl 80");
             await Gm("alice", $"!item {card} 1");
+            await WearCardGear(bot, session, 2700120, 6);
             Assert.Equal(0, await Insert(bot, 6, 1, session.Items.Single(i => i.Entry == card).Guid));
             await Eventually(() => session.Progress!.GrantedSkills.ContainsKey(group), "插卡");
             foreach (bool manual in new[] { true, false })
@@ -257,6 +269,7 @@ public sealed class CardGrantedSkillTests : IAsyncLifetime
         Assert.True(await Hit() > low);
 
         await Gm("alice", "!item 1460300 1");
+        await WearCardGear(bot, session, 2550120, 3); // 衣服本身先納入基準，再測卡片的百分比 HP。
         long hpBefore = (await OnLoop(() => character.Stats(session)))[101];
         Assert.Equal(0, await Insert(bot, 3, 1, session.Items.Single(i => i.Entry == 1460300).Guid));
         var hpAfter = await OnLoop(() => character.Stats(session));

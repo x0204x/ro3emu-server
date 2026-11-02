@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 
 namespace Ro3Emu.Server.Game;
 
@@ -44,14 +45,70 @@ internal static class EquipmentStunts
             ? list.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).Where(id => id > 0) : [];
 
     /// <summary>
+    /// The socketed copies that take effect. A card stays in its grid's socket when the gear leaves, but the client marks
+    /// that socket enum_CardStatus.NotEffect (UI_Sys_CardSelect_CellWidgetCtrl._getSlotState through
+    /// UI_Sys_CardPanelModel.IsSlotValid, UIWords 30121 "Inactive", 30122 "Cards are inactive when no gear is equipped").
+    /// Counting only these in the stats is (inferred) from that display.
+    /// </summary>
+    internal static IEnumerable<InvItem> ActiveCards(GameSession session, GameData data)
+    {
+        long worn1 = 0, worn2 = 0;
+        HashSet<int>? wornGrids = null;
+        foreach (var item in session.Items)
+        {
+            if (item.Grid <= 0) continue;
+            if (item.Grid == 1) worn1 = item.Entry;
+            else if (item.Grid == 2) worn2 = item.Entry;
+            else (wornGrids ??= []).Add(item.Grid);
+        }
+        foreach (var card in session.Items)
+        {
+            if (card.Grid >= 0) continue;
+            var (grid, socket) = CharacterService.CardSocket(card);
+            if (EquipGridConfig.Get(data, grid) is { GridCategory: 3 }) yield return card; // enum_GridType.Fashion
+            else if (grid > 2 ? wornGrids?.Contains(grid) == true : WeaponSocketActive(session, data, grid, socket, worn1, worn2)) yield return card;
+        }
+    }
+
+    /// <summary>LC_CardViewHelper.IsActive (lua:2000-2184) for the weapon grids, by LC_EquipmentHelper.GetWeaponStatusType
+    /// (lua:865-908, _kWeaponForm): which sockets a weapon opens depends on the career's form and the weapon's
+    /// enum_EquipPosType (TwoHand 1, MainHand 2, ViceHand 3).</summary>
+    private static bool WeaponSocketActive(GameSession session, GameData data, int grid, int socket, long main, long vice)
+    {
+        const int TwoHand = 1, MainHand = 2, ViceHand = 3, Sockets = 4;
+        long worn = grid == 1 ? main : vice;
+        long Part(long entry) => ItemConfig.Get(data, entry)?.EquipPart ?? 0;
+        long[]? forms = JobConfig.Get(data, session.Progress!.Career)?.WeaponForm;
+        if (forms == null) return worn != 0;
+        if (forms.Length != 1 && !forms.Contains(1)) // TwoHandAndDoubleHand: every card sits on the main-hand grid
+        {
+            if (grid != 1) return false;
+            if (main != 0)
+            {
+                if (Part(main) == TwoHand) return socket <= Sockets;
+                if (Part(main) == MainHand) return vice != 0 && Part(vice) == MainHand ? socket <= Sockets : socket <= Sockets / 2;
+            }
+            return vice != 0 && (Part(vice) == TwoHand || Part(vice) == MainHand && socket > Sockets / 2);
+        }
+        if (worn == 0) return false;
+        if (forms.Length != 1 && !forms.Contains(3)) // SingleHandAndTwoHand
+            return grid == 1 ? Part(worn) == MainHand && socket < Sockets || Part(worn) == TwoHand
+                : Part(worn) == ViceHand && socket == 1;
+        if (forms is [1]) return grid == 1 && Part(worn) == MainHand && socket < Sockets; // OnlySingleHand
+        if (forms is [2]) return grid == 1; // OnlyTwoHand
+        return true;
+    }
+
+    /// <summary>
     /// Card-owned SpecialEffectConfig ids of a socketed copy at its star: CardConfig._kSkillAttribute always, and
     /// _kFlashAttribute for a Flash copy (item attr 530 = enum_CardType.Flash). LC_CardHelper.GetCardAttributes and
     /// GetFlashCardAttributes (lua:1057-1206) list them beside _kBasicAttribute; the Flash list only when the type is
-    /// Flash. Bag copies contribute nothing, like _kBasicAttribute in CharacterService.AddOwnAttributes.
+    /// Flash. Bag copies and inactive sockets (ActiveCards) contribute nothing, like _kBasicAttribute in
+    /// CharacterService.AddOwnAttributes.
     /// </summary>
     internal static IEnumerable<(InvItem Card, long Effect)> CardEffects(GameSession session, GameData data)
     {
-        foreach (var card in session.Items.Where(i => i.Grid < 0))
+        foreach (var card in ActiveCards(session, data))
         {
             if (CardRow(data, card.Entry, card.Attrs?.GetValueOrDefault(502) ?? 0) is not { } row) continue;
             foreach (long id in Ids(row, "_kSkillAttribute")) yield return (card, id);

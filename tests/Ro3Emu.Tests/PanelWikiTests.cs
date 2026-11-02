@@ -17,7 +17,8 @@ public sealed class PanelWikiTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         _data = WikiData();
-        (_host, _panel) = await PanelTests.StartAsync(o => o.GameDataDir = _data);
+        // A fixed past opening: one opened this week anchors weekly windows on next Monday, past the calendar's 7 days on most weekdays.
+        (_host, _panel) = await PanelTests.StartAsync(o => { o.GameDataDir = _data; o.SeasonStart = "2026-01-05"; });
     }
 
     public async Task DisposeAsync()

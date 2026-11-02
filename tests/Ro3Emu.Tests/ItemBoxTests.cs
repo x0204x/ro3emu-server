@@ -193,35 +193,35 @@ public sealed class ItemBoxTests : IAsyncLifetime
     [ClientDataFact]
     public async Task ADailyUseLimitResetsAtFiveInTheRealmZoneAndSurvivesRelog()
     {
-        // 1300000 _kUseTimes [1,10]: ten a day (enum_ItemUseLimit.Day); level 10, sex 1, jobs [1000,5100,5200,5300].
+        // 1300089 _kUseTimes [1,10]: ten a day (enum_ItemUseLimit.Day), with no end of its own.
         await using (var bot = await Enter("Daily"))
         {
             await Gm(bot, "!lvl 10");
-            await Gm(bot, "!item 1300000 12");
+            await Gm(bot, "!item 1300089 12");
             for (int n = 1; n <= 10; n++)
             {
-                var used = await Use(bot, 1300000);
+                var used = await Use(bot, 1300089);
                 Assert.Equal(0, used.Result);
                 Assert.Equal(n, used.ItemTimes);
             }
-            await UseTimesSync(bot, 1300000, 10);
-            Assert.Equal(CharacterService.ErrUseTimes, (await Use(bot, 1300000)).Result);
-            Assert.Equal(2, Count(bot, 1300000));
-            Assert.Equal(10, SavedBag(bot).UseTimes[1300000]);
+            await UseTimesSync(bot, 1300089, 10);
+            Assert.Equal(CharacterService.ErrUseTimes, (await Use(bot, 1300089)).Result);
+            Assert.Equal(2, Count(bot, 1300089));
+            Assert.Equal(10, SavedBag(bot).UseTimes[1300089]);
         }
 
         await using var again = await Enter("Daily", create: false);
-        await UseTimesSync(again, 1300000, 10);
-        Assert.Equal(CharacterService.ErrUseTimes, (await Use(again, 1300000)).Result);
+        await UseTimesSync(again, 1300089, 10);
+        Assert.Equal(CharacterService.ErrUseTimes, (await Use(again, 1300089)).Result);
         _clock.Now = _clock.Now.AddHours(5).AddMinutes(29); // Wednesday 04:59: still Tuesday's game day
-        Assert.Equal(CharacterService.ErrUseTimes, (await Use(again, 1300000)).Result);
+        Assert.Equal(CharacterService.ErrUseTimes, (await Use(again, 1300089)).Result);
 
         _clock.Now = _clock.Now.AddMinutes(2); // 05:01: the online role is told the count is gone
-        await UseTimesSync(again, 1300000, null);
-        var fresh = await Use(again, 1300000);
+        await UseTimesSync(again, 1300089, null);
+        var fresh = await Use(again, 1300089);
         Assert.Equal(0, fresh.Result);
         Assert.Equal(1, fresh.ItemTimes);
-        await UseTimesSync(again, 1300000, 1);
+        await UseTimesSync(again, 1300089, 1);
     }
 
     [ClientDataFact]

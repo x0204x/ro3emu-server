@@ -427,7 +427,7 @@ public sealed class TotemEffects : IGameTicker
 
     private async Task OnTakenAsync(MonsterUnit attacker, GameSession s, long damage)
     {
-        if (damage <= 0 || s.Dead || _character.Stats(s)[2000] <= 0) return;
+        if (damage <= 0 || s.Dead || s.CurrentHp is <= 0) return; // runs on every hit a player takes: no stat sheet for it
         foreach (var passive in Passives(s).Where(p => p.Id == 2502301).DistinctBy(p => (p.Item.Guid, p.Id)))
         {
             var desc = passive.Row.GetProperty("_kDescData");

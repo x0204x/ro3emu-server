@@ -43,6 +43,7 @@ public sealed class ReservationCoordinator
     private TaskCompletionSource _changed = NewSignal();
     public long Conflicts { get; private set; }
     public int Active => _held.Count;
+    internal IReadOnlyDictionary<long, ReservationKey[]> Held => _held;
     internal int WaitingWriters => _waitingWriters.Count;
     public int RecoveryRequired => _recovery.Count;
     internal void Quarantine(string operation, IEnumerable<ReservationKey> keys) => _recovery[operation] = [.. keys.Distinct()];

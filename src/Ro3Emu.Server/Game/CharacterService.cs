@@ -15,7 +15,7 @@ namespace Ro3Emu.Server.Game;
 /// requests that change them. Numbers come from the client's own tables (AttriBaseLvConfig, AttributeConversionConfig,
 /// BaseLvConfig, JobLvConfig, BasePointConfig, EquipConfig).
 /// </summary>
-public sealed partial class CharacterService(RoleStore roles, ItemStore itemStore, GameData data, World world, ILogger<CharacterService> log)
+public sealed partial class CharacterService(RoleStore roles, ItemStore itemStore, GameData data, World world, SeasonService seasons, ILogger<CharacterService> log)
 {
     public const uint RoleBaseInfoSync = 5066;
     public const uint BaseAttrSync = 5067;
@@ -80,6 +80,9 @@ public sealed partial class CharacterService(RoleStore roles, ItemStore itemStor
 
     /// <summary>An item entered the bag: entry and the count gained (card collection first sight, achievement counters).</summary>
     public List<Action<GameSession, int, int>> ItemGained { get; } = [];
+
+    /// <summary>The items of a committed award (quest reward, drop, gift). A GM grant or a shop exchange does not pass here.</summary>
+    public List<Action<GameSession, IReadOnlyList<(int Entry, int Count)>>> ItemsAwarded { get; } = [];
     internal sealed record FirstCardSightPlan(Action<RoleItemPlanBuilder> Persist, Action Apply);
     /// <summary>CardService enlists first sight in owned award/exchange commits and, for a kill, the slain monster's Codex kill (NPC id, 0 none).</summary>
     internal Func<GameSession, IReadOnlyList<int>, int, FirstCardSightPlan?>? StageFirstCardSight { get; set; }

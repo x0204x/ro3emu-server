@@ -18,7 +18,8 @@ namespace Ro3Emu.Tests;
 /// </summary>
 public sealed class ClientMapModuleTests
 {
-    /// <summary>Scene-editor modules no reachable scene needs: (inferred) unreachable rows, or no scene bundle at all.</summary>
+    /// <summary>Scene-editor modules no reachable scene needs: (inferred) unreachable rows, or no scene bundle at all. The
+    /// export lists them (ClientScenes.UnloadableModules) and the server refuses to send a player there.</summary>
     private static readonly Dictionary<string, string> KnownEditorGaps = new(StringComparer.OrdinalIgnoreCase)
     {
         // MapConfig 100, the role-creation scene (LC_LoginManager.lua:2580); role creation works in game without it.

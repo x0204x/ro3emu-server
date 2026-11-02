@@ -18,6 +18,7 @@ public sealed class SessionRegistry(ILogger<SessionRegistry> log, Ownership.Owne
     /// <summary>Copy-on-write snapshot for <see cref="All"/>: tickers enumerate it many times a second; it changes
     /// only on (un)registration.</summary>
     private volatile GameSession[] _snapshot = [];
+    private volatile HashSet<GameSession> _members = new(ReferenceEqualityComparer.Instance);
     internal Action<GameSession>? UnregisteredForTest { get; set; }
 
     /// <summary>
@@ -50,7 +51,7 @@ public sealed class SessionRegistry(ILogger<SessionRegistry> log, Ownership.Owne
             session.AccountGeneration = checked(generation + 1);
             _generations[session.Account!] = session.AccountGeneration;
             _byAccount[session.Account!] = session;
-            _snapshot = [.. _byAccount.Values];
+            Publish();
         }
         if (previous == null || previous == session) return;
         // Claim the newest account generation before any kick send or old cleanup can suspend.
@@ -83,7 +84,7 @@ public sealed class SessionRegistry(ILogger<SessionRegistry> log, Ownership.Owne
             if (session.Account != null && _byAccount.TryGetValue(session.Account, out var current) && current == session)
             {
                 _byAccount.Remove(session.Account);
-                _snapshot = [.. _byAccount.Values];
+                Publish();
                 UnregisteredForTest?.Invoke(session);
             }
         }
@@ -91,4 +92,15 @@ public sealed class SessionRegistry(ILogger<SessionRegistry> log, Ownership.Owne
 
     /// <summary>The registered sessions; an immutable snapshot (callers must not cast and mutate it).</summary>
     public IReadOnlyList<GameSession> All() => _snapshot;
+
+    /// <summary>Whether the session is registered, without walking <see cref="All"/>: combat checks this on every hit.</summary>
+    public bool Contains(GameSession session) => _members.Contains(session);
+
+    /// <summary>Under _sync: replaces both immutable views together.</summary>
+    private void Publish()
+    {
+        GameSession[] all = [.. _byAccount.Values];
+        _members = new HashSet<GameSession>(all, ReferenceEqualityComparer.Instance);
+        _snapshot = all;
+    }
 }

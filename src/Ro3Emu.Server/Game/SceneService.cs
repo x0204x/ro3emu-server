@@ -101,8 +101,8 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
         if (map == null && data.Table("MapConfig").Count > 0) return false;
         // Dungeon admission belongs to 30400 / 32801; a generic teleport must not create a public dungeon.
         if (data.Row("DungeonConfig", scene) != null && instanceId == 0) return false;
-        // (inferred) A scene the client has no Unity scene for never loads: its loading screen retries forever.
-        if (map != null && !worldData.ClientHasScene(scene)) return false;
+        // (inferred) A scene the client lacks a Unity scene or its scene-editor module for never loads.
+        if (map != null && !worldData.ClientCanEnter(scene)) return false;
         if (s.SceneRecoveryRequired || s.Handoff is { Completing: false }) return false;
         if (s.Handoff is { Completing: true } completing && completing.Destination.SceneEntry == scene)
         {
@@ -209,9 +209,7 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
     {
         if (worldData.Map(scene) == null) return data.Table("MapConfig").Count > 0 ? "there is no such scene" : null;
         if (data.Row("DungeonConfig", scene) != null) return "it is a dungeon scene, entered only through its dungeon";
-        if (!worldData.ClientHasScene(scene))
-            return "the game client has no scene for it (its map files are not in this client), so the client would never finish loading";
-        return null;
+        return worldData.WhyClientCannotEnter(scene);
     }
 
     /// <summary>A server-chosen position for a login: the saved one when it is walkable, else the map's born point.</summary>
@@ -431,7 +429,7 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
             return;
         }
         bool known = data.Row("MapConfig", req.TargetMapId) != null && worldData.Map(req.TargetMapId) != null
-            && worldData.ClientHasScene(req.TargetMapId);
+            && worldData.ClientCanEnter(req.TargetMapId);
         int result = !known ? ErrorCodes.SceneMissing : s.Dead && !RescueTarget(s, req.TargetMapId) ? ErrorCodes.TeleportDead : 0;
         if (result == 0 && !TravelPasses(s, TravelAllowed(s, req.TargetMapId),
             $"30012 scene {s.SceneEntry} -> {req.TargetMapId}, reason {req.TeleportReason?.EType}"))

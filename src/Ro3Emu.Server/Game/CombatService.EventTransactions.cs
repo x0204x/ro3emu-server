@@ -36,7 +36,7 @@ public sealed partial class CombatService
                 || !ReferenceEquals(killer.Attachment, attachment) || attachment?.Cancelled == true
                 || killer.SceneLoading || killer.SceneGeneration != sceneGeneration
                 || killer.WorldScene != worldScene || killer.WorldScene != monster.WorldScene
-                || !_sessions.All().Contains(killer))
+                || !_sessions.Contains(killer))
                 throw new OperationCanceledException("Retained kill lost its original reward recipient.");
             await CommitMonsterDeathAsync(killer, monster, beforeHp, monster.StagedLethalDamage,
                 role, attachment, sceneGeneration, worldScene);
@@ -53,7 +53,7 @@ public sealed partial class CombatService
         bool CurrentCaster() => role != null && ReferenceEquals(killer.Role, role)
             && ReferenceEquals(killer.Attachment, attachment)
             && killer.SceneGeneration == sceneGeneration && killer.WorldScene == worldScene
-            && !killer.SceneLoading && _sessions.All().Contains(killer);
+            && !killer.SceneLoading && _sessions.Contains(killer);
         if (!monster.DeathDurable) throw new InvalidOperationException("Retained death lacks its ordinary reward barrier.");
         try
         {

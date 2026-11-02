@@ -48,6 +48,13 @@ separate ownership, selected slot and visible riding. In particular:
   preview. 32749 accepts only that paid preview for the exact mount/plan/part. 32750 selects a plan.
 - 32744 validates every unique threshold index and atomically grants each `MountsSpecialConfig`
   award once. Its claimed set persists across reconnects.
+- The server uses a mount voucher itself. Every action-201 item has `_QuickUse` [3, 0] (`enum_FastUseType.AutoUse`, `GetAutoUseSec` 0),
+  for which `LC_FastUseManager.AddFastUse` shows no widget and sends no use. The first mount's quest 10101250 grants the career's
+  voucher (MultiverseGroup 31125, AwardConfig 10031125, DropGroup 1216), and guides 1811-1821 on 10101251 start at the wardrobe
+  cell, so the mount must be lit by then. `MountService.UseHeldVouchers` runs after an award that holds one and at login, the
+  repair of a role that passed the quest with the voucher in its bag. A refusal (level, already owned) leaves it in the bag. A GM
+  `!item` and a shop exchange do not trigger it until the next login. The other `_QuickUse` [3, 0] items (121 appearance vouchers, 7
+  hatchery by-products, one box) keep their manual use: 109 of those appearances are tradable, which sits badly with using them on gain.
 - `TaskConfig[103012]` executes 412 for mount 60040033; 103014 recycles it with action 54.
   Task reward, task completion and temporary ride persistence share `ApplyAwardAsync`'s SQLite
   transaction. Mount publication follows its commit. It does not create permanent collection ownership.
@@ -79,6 +86,7 @@ Mount implementation inferences, rather than captured original-server behavior:
 7. The dismount lead `MountService.DismountMs` (500 ms) is inferred: the dismount is a Unity animation plus an effect, with
    no duration in the config tables or Lua. That every accepted cast of a system-mount rider dismounts it (not only damaging
    ones) follows the client holding any skill, and that a flying rider keeps its mount is an implementation choice.
+8. That the server uses a voucher on gain follows from the client doing nothing with `_QuickUse` [3, 0]; no capture shows it.
 
 ## Divine Totem behavior and evidence
 

@@ -33,7 +33,7 @@ public sealed class EconomyEnvelopeTests : IDisposable
     }
 
     private RoleItemPlanBuilder Spend(string operation, string source, long declared = 10, bool debit = true,
-        int shopCount = 0, Action? onApply = null)
+        int shopCount = 0, Action? onApply = null, byte[]? shopBytes = null)
     {
         var tx = _roles.NewTransaction();
         var progress = _roles.LoadProgress(_role);
@@ -47,6 +47,7 @@ public sealed class EconomyEnvelopeTests : IDisposable
             });
             tx.Add(new RoleBlobWritePlan(_role, "shop", shop), _ => onApply?.Invoke());
         }
+        if (shopBytes != null) tx.Add(new RoleBlobWritePlan(_role, "shop", shopBytes), _ => { });
         tx.WithEconomy(new EconomyEnvelope(operation, "e05d-account", _role, "e05d-test-spend",
             "spend:10", source, 1_000_000,
             declared == 0 ? [] : [new(new(EconomyAssetKind.Currency, 1),
@@ -93,6 +94,40 @@ public sealed class EconomyEnvelopeTests : IDisposable
         Assert.True(ledger.CompleteHistory, string.Join("; ", ledger.Issues.Select(x => x.Detail)));
         Assert.All(EconomyExactnessChecker.Check(opening, closing, ledger).Locations,
             location => Assert.Equal("0", location.Residual));
+    }
+
+    private void StoreItem(long role, long guid, long entry)
+    {
+        using var db = new SqliteConnection($"Data Source={_accounts.DatabasePath};Pooling=False");
+        db.Open();
+        using var insert = db.CreateCommand();
+        insert.CommandText = "INSERT INTO item(guid, role_id, entry, stack, pack, sort, grid, is_locked, bind_type, bind_expire) "
+            + "VALUES($guid, $role, $entry, 1, 1, 0, 0, 0, 0, 0)";
+        insert.Parameters.AddWithValue("$guid", guid);
+        insert.Parameters.AddWithValue("$role", role);
+        insert.Parameters.AddWithValue("$entry", entry);
+        insert.ExecuteNonQuery();
+    }
+
+    [Fact]
+    public async Task AnUndecodableRowOnAnotherCharacterDoesNotRefuseThisOperation()
+    {
+        const long Unknown = 987_654_321;
+        Assert.False(_catalog.TryAsset(Unknown, out _));
+        long other = _roles.Create("e05d-other", 1, "E05" + Guid.NewGuid().ToString("N")[..8], 1, 1000, 1)!.Id;
+        StoreItem(other, 900_001, Unknown);
+        await Spend("e05d-tolerates-" + Guid.NewGuid().ToString("N"), "src-" + Guid.NewGuid().ToString("N")).CommitAsync(_accounts, "test");
+        Assert.Equal(90, _roles.LoadProgress(_role).Currency[1]);
+        Assert.Equal(1, _accounts.StandingEconomyIssues);
+    }
+
+    [Fact]
+    public async Task ARowThePlanItselfBreaksRollsTheOperationBack()
+    {
+        var tx = Spend("e05d-breaks-" + Guid.NewGuid().ToString("N"), "src-" + Guid.NewGuid().ToString("N"), shopBytes: "not json"u8.ToArray());
+        var refused = await Assert.ThrowsAnyAsync<Exception>(() => tx.CommitAsync(_accounts, "test"));
+        Assert.Contains("unclassified/corrupt", refused.ToString());
+        Assert.Equal(100, _roles.LoadProgress(_role).Currency[1]);
     }
 
     [Fact]

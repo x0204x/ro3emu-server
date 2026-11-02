@@ -128,7 +128,9 @@ public sealed partial class SkillCombatTests
             Guid = 891000 + slot, Entry = (int)GameData.Int(row, "_iCardID"), Stack = 1,
             Pack = 3, Grid = CharacterService.CardGrid(1, slot), Attrs = new() { [502] = tier }
         };
+        EnsureCardFixtureGear(player, 1);
         player.Items.Add(item);
+        Assert.Contains(item, EquipmentStunts.ActiveCards(player, data));
         await _app.Services.GetRequiredService<CardEffects>().RefreshAsync(player);
         return item;
     }
@@ -188,7 +190,6 @@ public sealed partial class SkillCombatTests
         await Gm("cardhealsource", "!job 4100");
         await Teach("cardhealsource", 14007);
         IsolateDirectHealing();
-        await HealingStat(bot, 104, 1000);
         await HealingStat(other, 101, 100000);
         var source = Session("cardhealsource"); var recipient = Session("cardhealtarget");
         var effects = _app.Services.GetRequiredService<CardEffects>();
@@ -206,6 +207,9 @@ public sealed partial class SkillCombatTests
             Assert.Equal(1, recipient.CurrentHp);
             effects.Roll = _ => 999;
         });
+        // 先穿裝啟用卡片，再固定這個精準公式案例的 MATK；否則新穿的裝備會加回屬性。
+        await HealingStat(bot, 104, 1000);
+        Assert.Equal(1000, Character.HealingStats(source)[104]);
         await bot.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1400701, TargetId = recipient.Role!.Id });
         Assert.Equal(0, (await Next(bot, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
         var proc = await Next(bot, CombatService.SkillHit, SkillHitInfo.Parser, h => h.SkillId == 2003901);

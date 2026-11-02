@@ -56,6 +56,9 @@ public sealed partial class SkillCombatTests
     private async Task PrepareReflectionRoom(Ro3Emu.Bot.BotClient alice, Ro3Emu.Bot.BotClient bob,
         GameSession source, GameSession target, int card, int tier)
     {
+        // 反射卡的副手孔需要可裝盾的職業與盾牌；空副手不應觸發效果。
+        if (source.Progress!.Career == 1000) await Gm(source.Role!.Name.ToLowerInvariant(), "!job 2100");
+        if (target.Progress!.Career == 1000) await Gm(target.Role!.Name.ToLowerInvariant(), "!job 2100");
         var combat = _app.Services.GetRequiredService<CombatService>();
         var instances = _app.Services.GetRequiredService<InstanceService>();
         var room = await Loop.InvokeAsync(() => Task.FromResult(instances.Create(source.SceneEntry, [source, target])));
@@ -75,6 +78,8 @@ public sealed partial class SkillCombatTests
             combat.Rolls = new StormBoundaryRolls(9999);
             combat.SetEventPvPHandlers((a, b) => a == source && b == target || a == target && b == source, (_, _) => Task.CompletedTask);
             // 此案專驗真卡星階的戰鬥效果；卡片培養／插卡准入已有獨立真請求測試。
+            EnsureCardFixtureGear(target, card % 1000 / 100);
+            EnsureCardFixtureGear(source, 2);
             using (await CharacterService.Lock(target))
                 target.Items.Add(new InvItem
                 {

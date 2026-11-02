@@ -18,6 +18,7 @@ public sealed partial class SkillCombatTests
         await Gm("cardcast", "!lvl 80");
         await Gm("cardcast", $"!item {card} 1");
         var player = Session("cardcast");
+        await Loop.InvokeAsync(() => { EnsureCardFixtureGear(player, grid); return Task.CompletedTask; });
         long guid = player.Items.Single(i => i.Entry == card).Guid;
         await alice.SendGameAsync(CardService.SlotInsert, new EquipmentCardInsertReq
         { EquipPos = (EquipGridType)grid, SlotIndex = 1, CardGuid = guid });
@@ -78,6 +79,7 @@ public sealed partial class SkillCombatTests
             await Loop.InvokeAsync(async () =>
             {
                 using var held = await CharacterService.Lock(player);
+                EnsureCardFixtureGear(player, 6);
                 player.Items.RemoveAll(i => i.Guid == 880002);
                 player.Items.Add(new InvItem
                 {

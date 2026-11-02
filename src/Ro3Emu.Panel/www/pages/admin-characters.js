@@ -24,7 +24,7 @@ async function adminCharacterPage(id) {
     if (after) after(); else route();
   };
   const kick = form([textField('Reason (for the audit log)', 'reason', '', { maxlength: '300' })], 'Kick', v => post('kick', { reason: v.reason }), 'danger');
-  const mapOptions = maps.map(m => [String(m.id), `${m.name} (${m.id})`]);
+  const mapOptions = maps.filter(m => m.enterable).map(m => [String(m.id), `${m.name} (${m.id})`]);
   const teleport = form([
     selectField('Map', 'map', mapOptions, String(sheet.mapId)),
     h('div', { class: 'pair' }, field('X (optional)', 'x', 'number', { step: 'any', required: false }), field('Z (optional)', 'z', 'number', { step: 'any', required: false }))],

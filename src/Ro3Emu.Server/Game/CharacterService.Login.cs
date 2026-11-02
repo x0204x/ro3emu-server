@@ -43,6 +43,7 @@ public sealed partial class CharacterService
         LoadStatPlans(session);
         MigrateEquipmentInstances(session);
         MigrateCardPackItems(session);
+        MigrateAcquireTimeBoundItems(session);
         session.EquipLevels = roles.LoadEquipLevels(role.Id) is { } levels ? System.Text.Json.JsonSerializer.Deserialize<EquipLevels>(levels) ?? new() : new();
         LoadEquipmentPlans(session);
         session.AutoDecompose = roles.LoadAutoDecompose(role.Id) is { } setting ? AutoDecomposeSetting.Parser.ParseFrom(setting) : new();
@@ -138,6 +139,28 @@ public sealed partial class CharacterService
         var receipts = roles.Commit(builder, "character/equipment-migration");
         for (int i = 0; i < additions.Count; i++) additions[i].Guid = ((long[])receipts[inserted[i]]!)[0];
         session.Items = [.. session.Items.Select(i => replacements.GetValueOrDefault(i.Guid, i)), .. additions];
+    }
+
+    /// <summary>
+    /// (inferred) An _iTimeBoundEnum 1 instance obtained while the end was not stored has none, and the client shows it as
+    /// expired (AcquireExpiry). It was never usable, so it gets one full duration from this login; the stored end makes
+    /// this happen once.
+    /// </summary>
+    private void MigrateAcquireTimeBoundItems(GameSession session)
+    {
+        var stamped = new Dictionary<long, InvItem>();
+        foreach (var old in session.Items.Where(i => i.BindExpire == 0))
+            if (AcquireExpiry(old.Entry) is var end and not 0)
+            {
+                var item = old.Clone();
+                item.BindExpire = end;
+                stamped[item.Guid] = item;
+            }
+        if (stamped.Count == 0) return;
+        var builder = roles.NewTransaction();
+        foreach (var item in stamped.Values) builder.ItemUpdate(item);
+        roles.Commit(builder, "character/time-bound-migration");
+        session.Items = [.. session.Items.Select(i => stamped.GetValueOrDefault(i.Guid, i))];
     }
 
     /// <summary>Full syncs of the role datasets, after role select (5066 must precede 5009: currency merges into it).</summary>

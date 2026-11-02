@@ -78,6 +78,10 @@ Open TCP `5380`, `20000` and `33100`, and the voice port if you turn voice on wi
   newest two are gzip-compressed (`.db.gz`, about a quarter of the size); `Ro3Emu.Server --restore-backup` takes either
   kind. `Ro3Emu__Backup__Keep`, `Ro3Emu__Backup__IntervalHours` and `Ro3Emu__Backup__Uncompressed` (or `Backup` under
   `Ro3Emu` in `appsettings.json`) change the three numbers; `Uncompressed` equal to `Keep` compresses nothing.
+  A backup leaves 1 GB free for the live database (`Ro3Emu__Backup__ReserveMegabytes`): when the disk is short it removes
+  the oldest copies (never the newest two), or skips the backup and logs it as critical. From 4 GB
+  (`Ro3Emu__Backup__BigDatabaseMegabytes`, 0 turns this off) a restart makes no copy while the newest is younger than the
+  interval, and scheduled copies are integrity checked once a day (`Ro3Emu__Backup__BigDatabaseCheckHours`).
 - **Database size:** every reward, purchase and activity writes a receipt so a lost or repeated request is never paid
   twice. Receipts older than 2 days are trimmed to their hashes every hour, in small batches
   (`Ro3Emu__ReceiptRetention__Days`, `__BatchSize`, `__IntervalMinutes`; `Days` 0 keeps them whole). The space freed

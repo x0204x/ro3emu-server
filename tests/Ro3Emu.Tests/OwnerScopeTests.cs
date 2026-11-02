@@ -13,12 +13,14 @@ public sealed class OwnerScopeTests : IAsyncLifetime
     private sealed class LoopErrors : ILogger<GameLoop>
     {
         public ConcurrentQueue<Exception> Exceptions { get; } = new();
+        public ConcurrentQueue<string> Warnings { get; } = new();
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-        public bool IsEnabled(LogLevel level) => level >= LogLevel.Error;
+        public bool IsEnabled(LogLevel level) => level >= LogLevel.Warning;
         public void Log<TState>(LogLevel level, EventId eventId, TState state, Exception? exception,
             Func<TState, Exception?, string> formatter)
         {
             if (level >= LogLevel.Error) Exceptions.Enqueue(exception ?? new InvalidOperationException(formatter(state, exception)));
+            else if (level == LogLevel.Warning) Warnings.Enqueue(formatter(state, exception));
         }
     }
 
@@ -460,5 +462,32 @@ public sealed class OwnerScopeTests : IAsyncLifetime
         });
         await blocker;
         Assert.Equal(0, _owners.Reservations.Active);
+    }
+
+    [Fact]
+    public async Task StuckWorkIsReportedWithTheReservationsHeldAndTheGateItWaitsAt()
+    {
+        _loop.StuckWorkAge = TimeSpan.FromMilliseconds(200);
+        using var gate = new SemaphoreSlim(0, 1);
+        var stuck = _loop.InvokeAsync(() => _owners.RunAsync("kill reward", [ReservationKey.Role(401), ReservationKey.Role(402)], async () =>
+        {
+            using var scope = await _owners.EnterWithGateAsync("Character.StateLock", gate, [ReservationKey.Role(402)]);
+            gate.Release();
+        }));
+        string? report = null;
+        var until = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (report == null && DateTime.UtcNow < until)
+        {
+            report = _errors.Warnings.FirstOrDefault(w => w.Contains("stuck"));
+            if (report == null) await Task.Delay(20);
+        }
+        await Task.Delay(500); // a second scan must not report the same item again
+        gate.Release();
+        await stuck.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.NotNull(report);
+        Assert.Contains("kill reward", report);
+        Assert.Contains("RolePart:401", report);
+        Assert.Contains("waiting at Character.StateLock", report);
+        Assert.Single(_errors.Warnings, w => w.Contains("stuck"));
     }
 }

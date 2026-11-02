@@ -119,6 +119,55 @@ public sealed class GameLoopTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task OneTickStartsSeveralDueTimersThatCostMilliseconds()
+    {
+        // Each timer spins past the old 2 ms budget, which started only one of them per tick.
+        const int count = 12;
+        int tick = 0, ran = 0;
+        var perTick = new Dictionary<int, int>();
+        var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _loop.Add(new CallbackTicker(() => tick++));
+        await _loop.InvokeAsync(() =>
+        {
+            for (int i = 0; i < count; i++)
+                _loop.Schedule(TimeSpan.Zero, () =>
+                {
+                    perTick[tick] = perTick.GetValueOrDefault(tick) + 1;
+                    var work = System.Diagnostics.Stopwatch.StartNew();
+                    while (work.Elapsed.TotalMilliseconds < 3) Thread.SpinWait(100);
+                    if (++ran == count) finished.TrySetResult();
+                    return Task.CompletedTask;
+                });
+            return Task.CompletedTask;
+        });
+        await finished.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.True(perTick.Values.Max() >= 2, "every tick started one timer: " + string.Join(",", perTick.Values));
+    }
+
+    [Fact]
+    public async Task AVeryLongChainOfDetachedRunsReleasesWithoutOverflowingTheStack()
+    {
+        // Each run starts the next from its own continuation, so every permit is the parent of the next one and stays open
+        // until the end of the chain.
+        const int Length = 100_000;
+        int ran = 0;
+        var last = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Spawn(int left) => _loop.TrackDetached("chain", async () =>
+        {
+            await Task.Yield();
+            ran++;
+            if (left > 1) Spawn(left - 1);
+            else last.SetResult();
+        });
+        await _loop.InvokeAsync(() => { Spawn(Length); return Task.CompletedTask; });
+        await last.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        var until = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (_loop.DrainStatus.Outstanding != 0 && DateTime.UtcNow < until) await Task.Delay(5);
+        Assert.Equal(Length, ran);
+        Assert.Equal(0, _loop.DrainStatus.Outstanding);
+    }
+
+    [Fact]
     public async Task StopWaitsForTickerStartedDetachedCompletion()
     {
         using var loop = new GameLoop(NullLogger<GameLoop>.Instance);

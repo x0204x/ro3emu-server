@@ -198,6 +198,123 @@ public sealed class SkillGrowthTests : IAsyncLifetime
             load => load.SkillId is Attack or Cell);
     }
 
+    // The client's three bar drags (UI_Sys_Main_JoyStickSkillItemWidget_PCCtrl): off the bar an Unload, from the skill
+    // window (its iSlotIndex is 0) a Load even onto a taken slot, from another slot onto a taken one a Replace.
+    private static async Task<int> Drag(BotClient bot, SkillLoadOperation op, int slot, (int Group, int Level) skill, (int Group, int Level)? replaced = null)
+    {
+        var req = new SkillLoadReq { OpType = op, IsManual = true, SocketNum = slot - 1, Info = new SkillData { SkillId = skill.Group, SkillLevel = skill.Level } };
+        if (replaced is { } old) req.ReplaceInfo = new SkillData { SkillId = old.Group, SkillLevel = old.Level };
+        await bot.SendGameAsync(SkillService.SkillLoad, req);
+        return (await Next(bot, SkillService.SkillLoad, SkillLoadResp.Parser)).Result;
+    }
+
+    private GameSession Session(BotClient bot) =>
+        _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == (long)bot.Self!.Uuid);
+
+    private static async Task<string> GmPanel(BotClient bot, int op, string param)
+    {
+        await bot.SendGameAsync(GmCommands.GeneralProcGm, new GeneralGMProcReq { GmType = (GmOpEnum)op, ParamString = param });
+        return (await Next(bot, GmCommands.GeneralProcGm, GeneralGMProcRsp.Parser)).ErrInfo;
+    }
+
+    // Discord: after the GM button "learn all skills" (GmCurAllSkillLevUpMax 110) a drag off the bar or onto it changed nothing.
+    // The grant charges no points, so the plan is over its rank's points and every request that staged it came back 307.
+    [ClientDataFact]
+    public async Task TheBarStaysEditableAfterTheLearnAllGmCommand()
+    {
+        // JobAttackConfig: JobID 1100、MountID 0、空武器鍵的步行普攻為 1001001。
+        const int Attack = 10010, Bash = 11001, Provoke = 11002, Magnum = 11004, Other = 11005, FirstAid = 10003;
+        var skills = _app.Services.GetRequiredService<SkillService>();
+        (int, int) Max(int group) => (group, skills.MaxLevel(group));
+        int Row(int group) => skills.RealId(group, skills.MaxLevel(group));
+
+        await using (var sword = await InWorld("Sword"))
+        {
+            await Gm("sword", "!job 1100");
+            Assert.Contains("skills learned", await GmPanel(sword, 110, "1"));
+        }
+
+        // What the command saved is what a role affected before this fix has: the login accepts it as it is.
+        await using (var sword = await InWorld("Sword", create: false))
+        {
+            var login = await Next(sword, SkillService.SkillDataSync, DBSkillDataIncrement.Parser, m => m.SyncAllMark);
+            var plan = login.SkillAssignPlans.All.Value[0];
+            Assert.All<int>([Bash, Provoke, Magnum], group => Assert.Equal(skills.MaxLevel(group), plan.SkillAssigns[group].SkillLevel));
+            Assert.Equal(Row(Magnum), login.SkillWheel.All.WhellSkills[5].SkillConfigId);
+            Assert.Equal(Row(Provoke), login.SkillWheel.All.WhellSkills[6].SkillConfigId);
+
+            Assert.Equal(0, await Drag(sword, SkillLoadOperation.SkillLoadOpUnload, 6, Max(Provoke)));
+            Assert.Equal(0, await Drag(sword, SkillLoadOperation.SkillLoadOpLoad, 5, Max(Other)));
+            Assert.Equal(0, await Drag(sword, SkillLoadOperation.SkillLoadOpReplace, 3, Max(Bash), (FirstAid, 1)));
+            Assert.Equal(0, await Drag(sword, SkillLoadOperation.SkillLoadOpLoad, 6, Max(Provoke)));
+        }
+
+        await using (var sword = await InWorld("Sword", create: false))
+        {
+            var login = await Next(sword, SkillService.SkillDataSync, DBSkillDataIncrement.Parser, m => m.SyncAllMark);
+            var wheel = login.SkillWheel.All.WhellSkills;
+            Assert.Equal(skills.RealId(Attack, 1), wheel[1].SkillConfigId);
+            Assert.Equal(Row(Bash), wheel[3].SkillConfigId);
+            Assert.False(wheel.ContainsKey(4));
+            Assert.Equal(Row(Other), wheel[5].SkillConfigId);
+            Assert.Equal(Row(Provoke), wheel[6].SkillConfigId);
+            Assert.Equal(skills.MaxLevel(Magnum), Session(sword).Progress!.Skills[Magnum]);
+
+            // The plan can be left and come back to.
+            var session = Session(sword);
+            int[] there = [1, 0];
+            foreach (int plan in there)
+            {
+                session.SkillPlanSwitchUtc = default;
+                await sword.SendGameAsync(SkillService.SwitchPlan, new SwitchPlanReq { Plan = plan });
+                Assert.Equal(0, (await Next(sword, SkillService.SwitchPlan, SwitchPlanResp.Parser)).Result);
+            }
+            Assert.Equal(skills.MaxLevel(Bash), session.Progress!.Skills[Bash]);
+
+            // Levels can be given back but not raised over the points again.
+            var refund = new SkillGrowthSkillPlanUpdateReq { Plan = 0 };
+            refund.LevelUpList[Provoke] = new SkillData { SkillId = Provoke, SkillLevel = 1 };
+            await sword.SendGameAsync(SkillService.PlanUpdate, refund);
+            Assert.Equal(0, (await Next(sword, SkillService.PlanUpdate, SkillGrowthSkillPlanUpdateResp.Parser)).Result);
+            var raise = new SkillGrowthSkillPlanUpdateReq { Plan = 0 };
+            raise.LevelUpList[Provoke] = new SkillData { SkillId = Provoke, SkillLevel = skills.MaxLevel(Provoke) };
+            await sword.SendGameAsync(SkillService.PlanUpdate, raise);
+            Assert.Equal(ErrorCodes.SkillPointsShort, (await Next(sword, SkillService.PlanUpdate, SkillGrowthSkillPlanUpdateResp.Parser)).Result);
+
+            Assert.Contains("Skill bar: 2 skills", await GmPanel(sword, 172, $"{skills.RealId(Bash, 1)},{skills.RealId(Provoke, 1)}"));
+        }
+    }
+
+    // A drop from the skill window onto a taken slot is a Load (the window's iSlotIndex is 0), for every role.
+    [ClientDataFact]
+    public async Task ASkillFromTheWindowTakesATakenSlotAndPointsStayChecked()
+    {
+        // JobAttackConfig: JobID 1100、MountID 0、空武器鍵的步行普攻為 1001001。
+        const int Attack = 10010, Bash = 11001, Provoke = 11002;
+        var skills = _app.Services.GetRequiredService<SkillService>();
+        await using var alice = await InWorld("Alice");
+        await Gm("alice", "!job 1100");
+        var all = new SkillGrowthSkillPlanUpdateReq { Plan = 0 };
+        foreach (var (group, _) in skills.Tree(1100).Where(t => t.Career == 1100))
+            if (skills.MaxLevel(group) > 0) all.LevelUpList[group] = new SkillData { SkillId = group, SkillLevel = skills.MaxLevel(group) };
+        await alice.SendGameAsync(SkillService.PlanUpdate, all);
+        Assert.Equal(ErrorCodes.SkillPointsShort, (await Next(alice, SkillService.PlanUpdate, SkillGrowthSkillPlanUpdateResp.Parser)).Result);
+
+        var learn = new SkillGrowthSkillPlanUpdateReq { Plan = 0 };
+        learn.LevelUpList[Bash] = new SkillData { SkillId = Bash, SkillLevel = 5 };
+        learn.LevelUpList[Provoke] = new SkillData { SkillId = Provoke, SkillLevel = 1 };
+        await alice.SendGameAsync(SkillService.PlanUpdate, learn);
+        Assert.Equal(0, (await Next(alice, SkillService.PlanUpdate, SkillGrowthSkillPlanUpdateResp.Parser)).Result);
+
+        var bar = skills.Build(Session(alice)).SkillWheel.WhellSkills;
+        int taken = bar.Single(slot => slot.Value.SkillConfigId == skills.RealId(Provoke, 1)).Key;
+        Assert.Equal(0, await Drag(alice, SkillLoadOperation.SkillLoadOpLoad, taken, (Bash, 1)));
+        bar = skills.Build(Session(alice)).SkillWheel.WhellSkills;
+        Assert.Equal(skills.RealId(Bash, 1), bar[taken].SkillConfigId);
+        Assert.DoesNotContain(bar.Values, slot => slot.SkillConfigId == skills.RealId(Provoke, 1));
+        Assert.Single(bar.Values, slot => slot.SkillConfigId == skills.RealId(Attack, 1));
+    }
+
     [ClientDataFact]
     public async Task AllocationAndDependentRefundAreAtomic()
     {

@@ -25,6 +25,48 @@ public class DataExportTests
     public void NavFileNameReplacesTheFirstSuffix(string navName, string file) => Assert.Equal(file, NavExporter.FileName(navName));
 
     [Fact]
+    public void ADefaultRowReachesPlainRowsAndTheInnerRowsOfAGroup()
+    {
+        var dir = Directory.CreateTempSubdirectory("ro3emu-config-");
+        try
+        {
+            var source = """
+                local defaults = { weight = 320, item = 7 }
+                local mt = { __index = defaults }
+                local t = { m_kValues = {
+                  [601] = { { weight = 5 }, { count = 2 } },
+                  [700] = setmetatable({ count = 3 }, mt),
+                  [800] = { list = { 1, 2 }, name = "plain" },
+                } }
+                for _, row in ipairs(t.m_kValues[601]) do setmetatable(row, mt) end
+                return t
+                """;
+            using (var lua = new KeraLua.Lua())
+            {
+                lua.OpenLibs();
+                lua.PushString(source);
+                lua.SetGlobal("SOURCE");
+                lua.PushString(Path.Combine(dir.FullName, "Sample.luac"));
+                lua.SetGlobal("OUT");
+                Assert.False(lua.DoString("local f = assert(io.open(OUT, 'wb')); f:write(string.dump(assert(load(SOURCE)))); f:close()"));
+            }
+            using (var exporter = new LuaConfigExporter(dir.FullName))
+                Assert.Equal((1, 0), exporter.ExportDirs(Path.Combine(dir.FullName, "out"), ["Sample.luac"]));
+            using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(dir.FullName, "out", "Sample.json")));
+            var group = json.RootElement.GetProperty("601");
+            Assert.Equal(5, group[0].GetProperty("weight").GetInt32()); // a field of the row wins
+            Assert.Equal(7, group[0].GetProperty("item").GetInt32());
+            Assert.Equal(320, group[1].GetProperty("weight").GetInt32());
+            Assert.Equal(2, group[1].GetProperty("count").GetInt32());
+            Assert.Equal(320, json.RootElement.GetProperty("700").GetProperty("weight").GetInt32());
+            var plain = json.RootElement.GetProperty("800");
+            Assert.Equal("plain", plain.GetProperty("name").GetString());
+            Assert.Equal(2, plain.GetProperty("list").GetArrayLength());
+        }
+        finally { dir.Delete(true); }
+    }
+
+    [Fact]
     public void NavNamesAreDistinctInTableOrder()
     {
         var dir = Directory.CreateTempSubdirectory("ro3emu-nav-");

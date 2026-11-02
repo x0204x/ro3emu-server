@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Romsg;
 using Ro3Emu.Bot;
+using Ro3Emu.DataExport;
 using Ro3Emu.Server;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Game;
@@ -64,8 +65,8 @@ public sealed class ClientSceneTests : IAsyncDisposable
         string data = GameData();
         await using var host = await SyntheticHost.StartAsync(o => o.GameDataDir = data);
         await using var alice = await host.InWorldAsync("Alice");
-        Assert.False(host.Service<WorldData>().ClientHasScene(Field));
-        Assert.True(host.Service<WorldData>().ClientHasScene(SyntheticData.Town));
+        Assert.False(host.Service<WorldData>().ClientCanEnter(Field));
+        Assert.True(host.Service<WorldData>().ClientCanEnter(SyntheticData.Town));
 
         using (var http = new HttpClient())
             (await http.PostAsync($"{host.Http}/ro3emu/gm?account=alice", Operator.Command($"!warp {Field}"))).EnsureSuccessStatusCode();
@@ -108,6 +109,45 @@ public sealed class ClientSceneTests : IAsyncDisposable
 
     private static GameSession Session(SyntheticHost host, string account) =>
         host.Service<SessionRegistry>().All().First(s => s.Account == account && s.Role != null);
+
+    /// <summary>
+    /// The export's writer in front of the server's reader, on an invented client: a module two files share and one no
+    /// file has are refused as RecoveryLuaSourceResolver refuses them (ambiguous_reconstructed_module_alias,
+    /// reconstructed_module_not_admitted), a module with one file is not, and the server keeps a player off the map.
+    /// </summary>
+    [Fact]
+    public async Task TheExportListsTheModulesTheClientsLoaderRefusesAndTheServerReadsThem()
+    {
+        string data = GameData();
+        string payload = Path.Combine(_gameData, "payload");
+        foreach (var module in new[] { "Config/Map/synthetic_field", "Config/SceneEditor/synthetic_field", "Config/SceneEditor/SYNTHETIC_TOWN" })
+        {
+            var file = Path.Combine(payload, module + ".lua.bytes");
+            Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+            File.WriteAllBytes(file, []);
+        }
+        // The fixture's town and field, plus a dungeon row whose module is not in the client at all.
+        var tables = Directory.CreateDirectory(Path.Combine(_gameData, "tables")).FullName;
+        File.Copy(Path.Combine(_gameData, "config", "MapConfig.json"), Path.Combine(tables, "MapConfig.json"));
+        File.WriteAllText(Path.Combine(tables, "DungeonConfig.json"), """{"1":{"_kResSceneEditorName":"synthetic_nowhere"},"2":{"_kResSceneEditorName":""},"3":{}}""");
+        var modules = ClientScenes.UnloadableModules(payload, tables);
+        Assert.Contains("synthetic_field", modules);
+        Assert.Contains("synthetic_nowhere", modules);
+        Assert.DoesNotContain("synthetic_town", modules, StringComparer.OrdinalIgnoreCase);
+
+        // An asset index with both Unity scenes (27 bytes an entry: asset hash, load type, dyn id, file hash, VFS hash).
+        var meta = new byte[4 + 27 * 2 + 4];
+        BitConverter.TryWriteBytes(meta.AsSpan(0), 2u);
+        BitConverter.TryWriteBytes(meta.AsSpan(4), Vfs.LowerHash("sc_synthetic_town.unity"));
+        BitConverter.TryWriteBytes(meta.AsSpan(4 + 27), Vfs.LowerHash("sc_synthetic_field.unity"));
+        File.WriteAllBytes(Path.Combine(_gameData, "assetmeta.data"), meta);
+        using (var vfs = new Vfs(_gameData))
+            Assert.Empty(ClientScenes.Write(Path.Combine(_gameData, "config", "MapResource.json"), vfs, Path.Combine(_gameData, ClientScenes.FileName), modules));
+
+        await using var host = await SyntheticHost.StartAsync(o => o.GameDataDir = data);
+        Assert.False(host.Service<WorldData>().ClientCanEnter(Field));
+        Assert.True(host.Service<WorldData>().ClientCanEnter(SyntheticData.Town));
+    }
 }
 
 /// <summary>
@@ -117,7 +157,7 @@ public sealed class ClientSceneTests : IAsyncDisposable
 /// </summary>
 public sealed class GlastHeimSceneTests : IAsyncLifetime
 {
-    private const long GlastHeim = 10700, Prontera = 10100;
+    private const long GlastHeim = 10700, Prontera = 10100, Gonryun = 10602;
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
     private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-glast-" + Guid.NewGuid().ToString("N"));
     private WebApplication? _app;
@@ -240,5 +280,77 @@ public sealed class GlastHeimSceneTests : IAsyncLifetime
 
         Assert.DoesNotContain(alice.Inbox.Snapshot(), e => SwitchTo(e, GlastHeim));
         Assert.Contains(alice.Inbox.Snapshot(), e => SwitchTo(e, RoleStore.SpawnSceneEntry));
+    }
+
+    /// <summary>
+    /// Gonryun on the client's own data (Discord report: a panel teleport left the player at 85%): MapConfig 10602 has its
+    /// Unity scene, but Config/Map and Config/SceneEditor both have sc_gonryun_001_sceneeditor, so the client's require of
+    /// it fails (ClientScenes.UnloadableModules).
+    /// </summary>
+    [ClientDataFact]
+    public async Task GmWarpsToGonryunAreRefusedAndACharacterSavedThereLogsInAtTheSpawnMap()
+    {
+        Service<WorldData>().UseClientSceneListForTest([], ["sc_gonryun_001_sceneeditor"]);
+        await using var alice = await InWorld("Alice");
+        long role = _role;
+
+        await Gm("alice", $"!warp {Gonryun}");
+        Assert.Equal("Cannot warp to 10602 Gonryun: the game client cannot load its map script sc_gonryun_001_sceneeditor, "
+            + "so the client would never finish loading.", (await Next(alice, GmCommands.BroadcastNotify, BroadCastNotify.Parser)).Content);
+        Assert.DoesNotContain(alice.Inbox.Snapshot(), e => SwitchTo(e, Gonryun));
+
+        await alice.SwitchRoleAsync();
+        await Service<GameLoop>().InvokeAsync(() =>
+        {
+            Service<RoleStore>().SavePosition(role, Gonryun, 159.46f, 10.21f, 141.51f, 0);
+            return Task.CompletedTask;
+        });
+        await alice.EnterWorldAsync(role);
+        Assert.DoesNotContain(alice.Inbox.Snapshot(), e => SwitchTo(e, Gonryun));
+        Assert.Contains(alice.Inbox.Snapshot(), e => SwitchTo(e, RoleStore.SpawnSceneEntry));
+    }
+
+    /// <summary>The installed client's lists, as an export writes them, against the map table.</summary>
+    [InstalledClientFact]
+    public void TheInstalledClientCannotEnterGonryunNorTheMapsWithoutAScene()
+    {
+        string client = InstalledClientFactAttribute.Client!;
+        string config = Path.Combine(ClientData.RepoRoot, "data", "config");
+        var streaming = Path.Combine(client, "ro3_Data", "StreamingAssets");
+        using var vfs = new Vfs(Path.Combine(streaming, "VFS"));
+        var modules = ClientScenes.UnloadableModules(Path.Combine(streaming, "Recovery", "LuaPayload"), config);
+        Assert.Contains("sc_gonryun_001_sceneeditor", modules);
+        Assert.Contains("sc_creator_002_sceneeditor", modules);
+        Assert.DoesNotContain("sc_prontera_001_sceneeditor", modules);
+        Service<WorldData>().UseClientSceneListForTest(ClientScenes.Missing(Path.Combine(config, "MapResource.json"), vfs), modules);
+
+        var blocked = Ro3Emu.Server.Data.Config.MapConfig.All(Service<Ro3Emu.Server.Data.GameData>()).Select(m => m.Id)
+            .Where(id => !Service<WorldData>().ClientCanEnter(id)).ToList();
+        Assert.Contains(Gonryun, blocked);
+        Assert.Contains(GlastHeim, blocked);
+        Assert.Contains(100, blocked); // the character selection scene: no module at all
+        Assert.DoesNotContain(Prontera, blocked);
+        Assert.DoesNotContain(RoleStore.SpawnSceneEntry, blocked);
+        Assert.DoesNotContain(10600, blocked); // Alberta, the town of the same batch that has its module
+    }
+}
+
+/// <summary>A fact that needs the exported game data and the client it was exported from (data/client-dir.txt).</summary>
+public sealed class InstalledClientFactAttribute : FactAttribute
+{
+    public static string? Client { get; } = Find();
+
+    public InstalledClientFactAttribute()
+    {
+        if (!ClientData.Available) Skip = ClientData.SkipReason;
+        else if (Client == null) Skip = "Needs the client the game data was exported from (data/client-dir.txt).";
+    }
+
+    private static string? Find()
+    {
+        var file = Path.Combine(ClientData.RepoRoot, "data", "client-dir.txt");
+        if (!File.Exists(file)) return null;
+        string dir = File.ReadAllText(file).Trim();
+        return Directory.Exists(Path.Combine(dir, "ro3_Data", "StreamingAssets", "Recovery", "LuaPayload")) ? dir : null;
     }
 }

@@ -7,6 +7,7 @@ using Ro3Emu.Bot;
 using Ro3Emu.Server;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Game;
+using Ro3Emu.Server.Maps;
 
 namespace Ro3Emu.Tests;
 
@@ -270,6 +271,74 @@ public sealed class MountTests : IAsyncLifetime
             Assert.Equal(700, Session("alice").Speed);
             Assert.Empty(Session("alice").Mounts!.Mounts);
             await Next(a, 31049, EntityBase.Parser, p => p.NotifyType == EntityBase.Types.NotifyType.Rider && p.CurRider == 0);
+        }
+    }
+
+    /// <summary>
+    /// The first mount, as a fresh Archer plays it: the dialogue that delivers 10101250 grants the voucher (AwardConfig
+    /// 10031125, DropGroup 1216), the guide on 10101251 leads to the lit cell, closing the wardrobe sends 31183 + 32743
+    /// (UI_Sys_WardrobePanelCtrl._doSaveWardrobe) and L sends 32745 tp 1 (UI_Sys_Main_MountWidgetCtrl._onClickMount).
+    /// </summary>
+    [ClientDataFact]
+    public async Task FirstMountQuestLeavesTheMountOwnedLitAndRideable()
+    {
+        const int voucher = 1501018, mount = 60030060;
+        await using var a = await InWorld("Alice");
+        await Gm("alice", "!job 3100"); await Gm("alice", "!lvl 14");
+        await Gm("alice", "!quest accept 10101250");
+        var point = _app.Services.GetRequiredService<WorldData>().Map(10111)!.Points[1010121001];
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
+        {
+            Session("alice").Position = new Vec3 { X = point.X, Y = point.Y, Z = point.Z };
+            return Task.CompletedTask;
+        });
+
+        await a.SendGameAsync(SceneService.ClientNpcInteract, new ClientNpcInteractReq { DialogID = 1010125001, Areapointid = 1010121001 });
+        Assert.Equal(mount, (await Next(a, MountService.Unlock, PlayerMountUnLockNtf.Parser)).RiderId);
+        var session = Session("alice");
+        Assert.Equal(TaskState.Delivery, session.Tasks!.Infos[10101250].Status);
+        Assert.True(session.Mounts!.Mounts.ContainsKey(mount));
+        Assert.True(session.Wardrobe!.AllLightUpAppearances.ContainsKey(mount));
+        Assert.DoesNotContain(session.Items, i => i.Entry == voucher);
+
+        await a.SendGameAsync(WardrobeService.Use, new WardRobeUseAppearanceReq { AppearanceIds = { mount } });
+        await a.SendGameAsync(MountService.SetConfig, new PlayerMountsSetCfgReq { MountId = mount });
+        Assert.Equal(0, (await Next(a, MountService.SetConfig, PlayerMountsSetCfgResp.Parser)).Result);
+        await a.SendGameAsync(MountService.Ride, new PlayerRiderMountReq { Tp = (eRiderType)1 });
+        Assert.Equal(0, (await Next(a, MountService.Ride, PlayerRiderMountResp.Parser)).Result);
+        Assert.Equal(mount, MountService.Rider(session));
+    }
+
+    /// <summary>A role that passed the quest with the voucher left in its bag gets the mount at its next login, once.</summary>
+    [ClientDataFact]
+    public async Task LoginUsesAHeldVoucherOnceAndKeepsARefusedOne()
+    {
+        const int voucher = 1501018, mount = 60030060;
+        await using (var a = await InWorld("Alice"))
+        {
+            await Gm("alice", "!lvl 14");
+            await Gm("alice", $"!item {voucher} 2"); // a GM grant stays in the bag, as a voucher from before this repair did
+            Assert.Equal(2, Session("alice").Items.Where(i => i.Entry == voucher).Sum(i => i.Stack));
+            Assert.Empty(Session("alice").Mounts!.Mounts);
+        }
+        await using (var a = await InWorld("Alice", false))
+        {
+            Assert.Equal(mount, (await Next(a, MountService.Unlock, PlayerMountUnLockNtf.Parser)).RiderId);
+            await a.SendGameAsync(MountService.SetConfig, new PlayerMountsSetCfgReq()); // returns after the login's posted use
+            await Next(a, MountService.SetConfig, PlayerMountsSetCfgResp.Parser);
+            var session = Session("alice");
+            Assert.True(session.Mounts!.Mounts.ContainsKey(mount));
+            Assert.True(session.Wardrobe!.AllLightUpAppearances.ContainsKey(mount));
+            // The second one is refused as already owned, not consumed.
+            Assert.Equal(1, session.Items.Where(i => i.Entry == voucher).Sum(i => i.Stack));
+        }
+        await using (var a = await InWorld("Alice", false))
+        {
+            await a.SendGameAsync(MountService.SetConfig, new PlayerMountsSetCfgReq());
+            await Next(a, MountService.SetConfig, PlayerMountsSetCfgResp.Parser);
+            Assert.DoesNotContain(a.Inbox.Snapshot(), e => e.IsGame(MountService.Unlock));
+            Assert.Equal(1, Session("alice").Items.Where(i => i.Entry == voucher).Sum(i => i.Stack));
+            Assert.True(Session("alice").Mounts!.Mounts.ContainsKey(mount));
         }
     }
 

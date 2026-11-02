@@ -257,6 +257,41 @@ public sealed partial class AuctionTests : AuctionTestsHost
     }
 
     [Fact]
+    public async Task OwnLotsAreServedFromMemoryUntilALotIsWritten()
+    {
+        await using var alice = await InWorld("Alice");
+        await Gm(alice, "!zeny 10000");
+        var row = Seed(AuctionType.Dungeon, alice);
+        var accounts = Service<AccountStore>();
+        int reads = 0;
+        accounts.ReadSyncObserved = (label, _) => { if (label == "auction/read-OfType") Interlocked.Increment(ref reads); };
+        try
+        {
+            async Task<QuerySelfAuctionRes> Own()
+            {
+                await alice.SendGameAsync(AuctionService.Self, new QuerySelfAuctionReq { AuctionType = AuctionType.Dungeon });
+                return await Next(alice, AuctionService.Self, QuerySelfAuctionRes.Parser);
+            }
+            Assert.Contains((await Own()).SelfAuctions, item => item.AuctionId == row.Id);
+            int first = reads;
+            Assert.True(first > 0);
+            for (int i = 0; i < 3; i++) await Own();
+            Assert.Equal(first, reads);
+
+            // A bid writes the lot: the next ask reads again and shows it.
+            Assert.Equal(0, (await Bid(alice, row.Id, 1000, BiddingType.Manual)).Result);
+            var after = (await Own()).SelfAuctions.Single(item => item.AuctionId == row.Id);
+            Assert.True(reads > first);
+            Assert.NotEqual(0, after.LastBiddingTime);
+
+            // So does a new lot.
+            var added = Seed(AuctionType.Dungeon, alice);
+            Assert.Contains((await Own()).SelfAuctions, item => item.AuctionId == added.Id);
+        }
+        finally { accounts.ReadSyncObserved = null; }
+    }
+
+    [Fact]
     public async Task IncreasingOwnAutoLimitOnlyDebitsDeltaAndKeepsPublicPrice()
     {
         await using var alice = await InWorld("Alice");

@@ -76,6 +76,7 @@ public sealed partial class SkillCombatTests
     {
         await using var sourceBot = await InWorld("ReflectPvpSource");
         await using var targetBot = await InWorld("ReflectPvpTarget");
+        IsolateDirectHealing(); // 等待反射冷卻時自然回血不得污染此案例的精確扣血與非遞迴斷言。
         foreach (string account in new[] { "reflectpvpsource", "reflectpvptarget" })
         {
             await Gm(account, "!lvl 99"); await Gm(account, "!job 1410"); await Teach(account, 11609, level);

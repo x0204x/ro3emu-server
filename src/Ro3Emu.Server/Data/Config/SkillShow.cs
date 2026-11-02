@@ -5,6 +5,11 @@ namespace Ro3Emu.Server.Data.Config;
 /// <summary>The client's skill show (data/skills/skill_*.json, GameData.SkillTemplate): its timeline.</summary>
 internal static class SkillShow
 {
+    /// <summary>The show's m_kAtkPoints in seconds on its timeline, in table order.</summary>
+    public static double[] AttackPoints(JsonElement? show) =>
+        show is { } row && row.TryGetProperty("m_kAtkPoints", out var points) && points.ValueKind == JsonValueKind.Array
+            ? [.. points.EnumerateArray().Select(point => GameData.Number(point) ?? 0)] : [];
+
     /// <summary>
     /// Milliseconds after a cast's start from which it can be interrupted, or null if never before its end: m_fInterruptTime on
     /// the client's timeline (LC_Skill_RunTimeContext.calcDynamicTimeLine). m_kState.Time holds the chant's end and the show's

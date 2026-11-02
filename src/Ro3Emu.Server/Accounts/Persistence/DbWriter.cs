@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Data.Sqlite;
 using Ro3Emu.Server.Diagnostics;
+using Ro3Emu.Server.Economy;
 
 namespace Ro3Emu.Server.Accounts.Persistence;
 
@@ -85,6 +86,13 @@ public sealed class DbWriter : IDisposable
     /// <summary>For a plan's Execute: the job writes rows behind <paramref name="cache"/>.</summary>
     internal static void AfterJob(WrittenCache cache) => (_afterJob ??= []).Add(cache);
 
+    // A plan's instance fields are part of its receipt fingerprint, so a plan reports through this writer thread instead.
+    [ThreadStatic] private static DbWriter? _onThread;
+    /// <summary>Receives the stored rows the economy decoder could not read (<see cref="ReportStandingIssue"/>).</summary>
+    internal Action<EconomyIssue>? StandingIssue { get; init; }
+    /// <summary>For a plan's Execute: a stored row it found unreadable, left out of its economy checks.</summary>
+    internal static void ReportStandingIssue(EconomyIssue issue) => _onThread?.StandingIssue?.Invoke(issue);
+
     /// <summary>The cache generations of this writer's database (its <see cref="AccountStore"/>).</summary>
     public CacheGenerations Caches { get; init; } = new();
 
@@ -98,6 +106,7 @@ public sealed class DbWriter : IDisposable
 
     private void Run()
     {
+        _onThread = this;
         try
         {
             using var db = new SqliteConnection(new SqliteConnectionStringBuilder(_connectionString) { Pooling = false }.ToString());

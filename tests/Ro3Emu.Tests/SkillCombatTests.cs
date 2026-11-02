@@ -361,6 +361,21 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
     }
 
     [ClientDataFact]
+    public async Task GroundUnitDamageCountsForItsCasterInTheStatistics()
+    {
+        await using var alice = await InWorld("Alice");
+        await Gm("alice", "!job 2100"); await Teach("alice", 12010);
+        var target = await Target("alice", stationary: true);
+        await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1201001, TargetPos = target.Pos.Clone() });
+        Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
+        long caster = (long)alice.Self!.Uuid;
+        var tick = await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser, x => x.SrcID != caster && x.Dsts.Any(d => d.DstID == target.Uid));
+        var report = await Next(alice, CombatService.DamageStatistics, DamageStatisticsNotify.Parser, n => n.Damages.Any(d => d.DamageTargetId == target.Uid));
+        Assert.Equal(caster, Assert.Single(report.Damages).DamageSourceId);
+        Assert.Equal(tick.SkillId, report.Damages[0].SkillId);
+    }
+
+    [ClientDataFact]
     public async Task HealSelectsAllyAndInsufficientSpDoesNotStartCooldown()
     {
         await using var alice = await InWorld("Alice"); await using var bob = await InWorld("Bob");

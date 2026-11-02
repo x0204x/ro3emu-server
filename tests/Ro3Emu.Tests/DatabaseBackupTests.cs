@@ -104,6 +104,111 @@ public sealed class DatabaseBackupTests : IDisposable
     }
 
     [Fact]
+    public void ACopyThatRunsOutOfDiskLeavesNoPartialFileBehind()
+    {
+        using var accounts = Store();
+        new RoleStore(accounts).Create("full", 1, "Full", 1, 1000, 1);
+        var backup = Backup(accounts);
+        // The destination cannot grow past one page: SQLite reports the disk full mid-copy.
+        backup.BeforeCopyForTest = destination =>
+        {
+            using var cap = destination.CreateCommand();
+            cap.CommandText = "PRAGMA max_page_count=1";
+            cap.ExecuteNonQuery();
+        };
+        Assert.Throws<SqliteException>(() => backup.Backup());
+        Assert.Empty(Directory.GetFiles(backup.Directory));
+        backup.BeforeCopyForTest = null;
+        DatabaseRestore.Validate(backup.Backup());
+    }
+
+    [Fact]
+    public void ABackupRemovesTheOldestCopiesToLeaveTheLiveDatabaseItsReserve()
+    {
+        using var accounts = Store();
+        new RoleStore(accounts).Create("room", 1, "Room", 1, 1000, 1);
+        var backup = Backup(accounts, new BackupOptions { Uncompressed = 20 });
+        long disk = long.MaxValue / 2;
+        backup.FreeBytes = dir => disk - Directory.GetFiles(dir).Sum(f => new FileInfo(f).Length);
+        var made = Enumerable.Range(0, 5).Select(_ => backup.Backup()).ToList();
+        long copy = new FileInfo(made[0]).Length;
+
+        // The next copy fits beside the reserve only once the two oldest copies are gone.
+        disk = 5 * copy + backup.RequiredFreeBytes() - 2 * copy;
+        var next = backup.Backup();
+        Assert.Equal(made.Skip(2).Append(next).OrderBy(f => f), DatabaseBackup.Completed(backup.Directory).OrderBy(f => f));
+    }
+
+    [Fact]
+    public void ABackupThatCannotFitKeepsTheNewestCopiesAndSkips()
+    {
+        using var accounts = Store();
+        new RoleStore(accounts).Create("skip", 1, "Skip", 1, 1000, 1);
+        var backup = Backup(accounts, new BackupOptions { Uncompressed = 20 });
+        long disk = long.MaxValue / 2;
+        backup.FreeBytes = dir => disk - Directory.GetFiles(dir).Sum(f => new FileInfo(f).Length);
+        var made = Enumerable.Range(0, 4).Select(_ => backup.Backup()).ToList();
+        long copy = new FileInfo(made[0]).Length;
+
+        // Removing every copy but the newest two would still leave less than a copy and the reserve: nothing is
+        // removed and no copy is started.
+        disk = 4 * copy + backup.RequiredFreeBytes() - 3 * copy;
+        Assert.Contains("free", Assert.Throws<IOException>(() => backup.Backup()).Message);
+        Assert.Equal(made.OrderBy(f => f), Directory.GetFiles(backup.Directory).OrderBy(f => f));
+    }
+
+    [Fact]
+    public void TheReserveFollowsTheSetting()
+    {
+        using var accounts = Store();
+        long big = Backup(accounts, new BackupOptions { ReserveMegabytes = 2 }).RequiredFreeBytes();
+        long none = Backup(accounts, new BackupOptions { ReserveMegabytes = 0 }).RequiredFreeBytes();
+        Assert.InRange(big - none, 2L * 1024 * 1024 - 1024 * 1024, 2L * 1024 * 1024 + 1024 * 1024);
+    }
+
+    [Fact]
+    public void ASmallDatabaseKeepsItsStartupCopyAndEveryCheck()
+    {
+        using var accounts = Store();
+        var backup = Backup(accounts);
+        backup.Backup();
+        Assert.Equal(TimeSpan.Zero, backup.UntilNextBackup(DateTime.UtcNow));
+        Assert.True(backup.IntegrityCheckDue(DateTime.UtcNow));
+    }
+
+    [Fact]
+    public void ABigDatabaseRestartWaitsForTheIntervalSinceTheNewestCopy()
+    {
+        using var accounts = Store();
+        var backup = Backup(accounts);
+        backup.DatabaseBytes = () => 5L << 30;
+        Assert.Equal(TimeSpan.Zero, backup.UntilNextBackup(DateTime.UtcNow)); // no copy yet
+        var copy = backup.Backup();
+        var now = DateTime.UtcNow;
+        Assert.InRange(backup.UntilNextBackup(now), TimeSpan.FromHours(5.9), TimeSpan.FromHours(6));
+        File.SetLastWriteTimeUtc(copy, now - TimeSpan.FromHours(7));
+        Assert.Equal(TimeSpan.Zero, backup.UntilNextBackup(now));
+    }
+
+    [Fact]
+    public void ABigDatabaseChecksAScheduledCopyOnceADay()
+    {
+        using var accounts = Store();
+        var backup = Backup(accounts);
+        backup.DatabaseBytes = () => 5L << 30;
+        var now = DateTime.UtcNow;
+        Assert.True(backup.IntegrityCheckDue(now)); // never checked
+
+        // An unchecked copy is still a good copy and doesn't count as a check.
+        DatabaseRestore.Validate(backup.Backup(verify: false));
+        Assert.True(backup.IntegrityCheckDue(now));
+
+        backup.Backup();
+        Assert.False(backup.IntegrityCheckDue(DateTime.UtcNow));
+        Assert.True(backup.IntegrityCheckDue(DateTime.UtcNow + TimeSpan.FromHours(25)));
+    }
+
+    [Fact]
     public void CompressedCopiesKeepTheirTimeAndRestoreLikePlainOnes()
     {
         string first;

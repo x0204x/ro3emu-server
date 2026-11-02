@@ -396,9 +396,9 @@ public sealed class CharacterTests : IAsyncLifetime
         Assert.True(removed.StoragePack.Inc.CardInfo[1].Del);
         Assert.Equal(0, (await Next(alice, CardService.SlotRemove, EquipmentCardRemoveResp.Parser)).Result);
 
-        await alice.SendGameAsync(CardService.LibraryCardUnlock, new LibraryCardUnlockReq { CardId = Lunatic });
-        var unlocked = await Next(alice, CardService.LibrarySync, DBLibraryInfoIncrement.Parser, m => !m.SyncAllMark);
-        Assert.True(unlocked.Cards[Lunatic].Inc.Unlock);
+        // Obtaining it collected it: the client has no request for that (CardService.QueueCollection).
+        await Next(alice, CardService.LibrarySync, DBLibraryInfoIncrement.Parser,
+            m => m.Cards.TryGetValue(Lunatic, out var card) && (card.All?.Unlock == true || card.Inc?.Unlock == true));
     }
 
     [ClientDataFact]

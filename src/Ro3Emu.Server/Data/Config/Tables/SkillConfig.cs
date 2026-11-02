@@ -111,6 +111,14 @@ public readonly partial record struct SkillConfig(JsonElement Row)
         return JsonSerializer.SerializeToElement(node);
     }
 
+    /// <summary>This row without its caster buffs, everything else kept: a later hit of a cast whose start applied them.</summary>
+    public JsonElement WithoutBuff1()
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(Row.GetRawText())!.AsObject();
+        node["_kBuff1"] = new System.Text.Json.Nodes.JsonArray();
+        return JsonSerializer.SerializeToElement(node);
+    }
+
     /// <summary>This row with other damage ratios (basis points) and flat damage, everything else kept.</summary>
     public JsonElement WithDamage(long[] ratios, long[] flats)
     {

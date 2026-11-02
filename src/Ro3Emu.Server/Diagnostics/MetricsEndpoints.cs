@@ -19,11 +19,12 @@ public static class MetricsEndpoints
         // Login snapshots (C/D 14/16), lazy position (C/D 18) and the owner vector cache (C/D 16).
         app.MapGet("/ro3emu/metrics/persistence", (Accounts.AccountStore accounts,
             Game.Persistence.PositionPersistence positions, Game.Persistence.SettingsPersistence settings,
+            Game.Persistence.WildAfkPersistence wildAfk,
             IEnumerable<IHostedService> hosted) => Results.Json(new
             {
                 snapshots = accounts.Snapshots.Snapshot(), skippedWrites = accounts.Snapshots.SkippedWrites,
-                positions = positions.Snapshot(), settings = settings.Snapshot(), vectorCacheHits = accounts.VectorCacheHits, vectorCacheRetries = accounts.VectorCacheRetries,
-                unchangedSaves = accounts.Snapshots.PersistedSkips, backup = hosted.OfType<Accounts.DatabaseBackup>().SingleOrDefault()?.Snapshot(), loopWaits = accounts.AccessMetrics.LoopWaits(40)
+                positions = positions.Snapshot(), settings = settings.Snapshot(), wildAfk = wildAfk.Snapshot(), vectorCacheHits = accounts.VectorCacheHits, vectorCacheRetries = accounts.VectorCacheRetries,
+                unchangedSaves = accounts.Snapshots.PersistedSkips, standingEconomyIssues = accounts.StandingEconomyIssues, backup = hosted.OfType<Accounts.DatabaseBackup>().SingleOrDefault()?.Snapshot(), loopWaits = accounts.AccessMetrics.LoopWaits(40)
             })).RequireOperator();
         app.MapGet("/ro3emu/metrics/public-key", (GateCrypto crypto) =>
             Results.Text(crypto.PublicKeyPem, "text/plain")).RequireOperator();

@@ -31,6 +31,8 @@ namespace Ro3Emu.ClientHooks
     /// <item>Map config modules this build does not ship (Dracula's Lair, the territory maps) go into package.loaded
     /// before any scene needs them (MapModules).</item>
     /// <item>Profile cards without stickers parse (LC_DAL_Personal.ParsePersonalInfo walks a nil list; PersonalCards).</item>
+    /// <item>A 5006 while the emote widget is closed no longer raises a Lua error (EmoteWidget).</item>
+    /// <item>The Lua info logs that cost frames in Auto-Battle are off (LuaLogs).</item>
     /// </list>
     /// </summary>
     public static class LuaPatches
@@ -106,6 +108,8 @@ namespace Ro3Emu.ClientHooks
                     global.Obf_RuA<Obf_R.Obf_ff>("LC_SeasonExplorationHelper") ?? Module(manager, global, "lc_seasonexplorationhelper"));
                 LevelCapTip.Install(Module(manager, global, "lua_cfg_baselvlimitconfig"));
                 PersonalCards.Install((Obf_R.Obf_Cf)env, Module(manager, global, "lc_dal_personal"));
+                LuaLogs.Install(global);
+                EmoteWidget.Install(Module(manager, global, "ui_sys_main_actionwidgetbasectrl"));
                 Debug.Log("[Ro3Emu.LuaPatches] lc_itemshowfunc: " + added + " card show-func method(s) added; stall name limit "
                     + (param != null ? StallNameMaxLength.ToString() : "not set (publicparamconfig missing)"));
             }

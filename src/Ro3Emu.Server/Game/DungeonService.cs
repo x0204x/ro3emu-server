@@ -353,7 +353,7 @@ public sealed partial class DungeonService
         // Revalidate everyone after the last confirmation; no member can enter dead/offline/in another scene.
         foreach (var member in p.Members)
         {
-            error = _sessions.All().Contains(member) ? Admission(member, p.Plan, continuation: true) : ErrorCodes.PlayerOffline;
+            error = _sessions.Contains(member) ? Admission(member, p.Plan, continuation: true) : ErrorCodes.PlayerOffline;
             if (error != 0) { await CancelAsync(p, error, member.Role?.Id ?? 0); return; }
         }
         p.Closed = true;

@@ -19,6 +19,10 @@ the places of the board as it stands then (`RankService.RoleTopAsync`) with the 
 place as the letter's `${1}`. The delivery key `rank-reward:<board>:<settlement>:<role>` pays a role once per board and
 settlement, also after a restart or a retried failure; `server_state` `rank_rewards` keeps each board's last settlement.
 
+The title items in these awards (1950015 Spirit Conqueror, 1950019 Fashion Gala) are `_iTimeBoundEnum` 1 with
+`_kTimeBoundPara` [1440]: an instance lasts 24 hours from the claim, and `ItemBaseInfo.expireTm` tells the client its
+end (stored as `BindExpire`). Using one starts the 24 hours of the honor itself (`SocialOutfitWearConfig._iTimeLimit`).
+
 **(inferred)**: the board at the settlement moment is the result (`_iRefresh` 4, these boards never reset); ties keep
 the board's own order; a settlement missed while the server was down is paid once, at the next start, with the board
 as it is then; a board never settled before (a new realm, or the first start with this feature) starts with its next

@@ -42,6 +42,7 @@ public sealed partial class SkillCombatTests
         await Loop.InvokeAsync(async () =>
         {
             target.Hp = 1_000_000; target.StaysOutOfBattle = true; target.KeepsDamage = true;
+            EnsureCardFixtureGear(player, 1);
             player.Items.Add(new InvItem
             {
                 Guid = 880001, Entry = (int)GameData.Int(card, "_iCardID"), Stack = 1,

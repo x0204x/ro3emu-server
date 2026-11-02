@@ -31,7 +31,7 @@ public sealed partial class TalentProcs
         TurnUndead = 14118, MagnusExorcismus = 14109,
         FireBolt = 12004, LightningBolt = 12005, ColdBolt = 12006, FireBall = 12012, EarthSpike = 12100, JupitelThunder = 12102,
         FrostNova = 12103, MeteorStorm = 12106, StormGust = 12108, GravitationField = 12212,
-        ArrowAttack = 13000, DoubleStrafe = 13003, ArrowShower = 13004, BlitzBeat = 13102, FalconAssault = 13202,
+        ArrowAttack = 13000, DoubleStrafe = 13003, ArrowShower = 13004, BlitzBeat = 13102, AutoBlitzBeat = 13110, FalconAssault = 13202,
         SonicBlow = 15102, VirusSpread = 15106, Grimtooth = 15109, SoulDestroyer = 15210, MeteorAssault = 15229,
         CartRevolution = 16006, HammerFall = 16104, HighSpeedCartRam = 16202, Smite = 11409, Basilica = 14206;
     // The client's element enum (Lua_GameDefine): None 1, Wind 2, Earth 3, Fire 4, Water 5, Poison 6 ...
@@ -223,11 +223,13 @@ public sealed partial class TalentProcs
         // within a ${2}-meter radius of the target. Internal Cooldown: ${6} seconds."
         [1321501] = new([DoubleStrafe], Logic: 1, Chance: 0, Radius: 1, Count: 2, Cooldown: 5),
         // Falcon Strike: "When [Blitz Beat] hits an enemy, it has a ${1}% Chance to Summon the Falcon ... Internal Cooldown: ${4} seconds."
-        [1321701] = new([BlitzBeat], Logic: 1, Chance: 0, Cooldown: 3),
+        // Its 0.2 s and Lightning Blitz's 1 s cooldowns mean nothing on a skill with a 10 s cooldown, so the automatic casts
+        // (TalentProcs.Passives) count (inferred).
+        [1321701] = new([BlitzBeat, AutoBlitzBeat], Logic: 1, Chance: 0, Cooldown: 3),
         // Meteor Arrow Shower: "When [Arrow Shower] hits enemies, it deals ... to one of them. Internal Cooldown: ${3} seconds."
         [1322001] = new([ArrowShower], Logic: 1, Cooldown: 2),
         // Lightning Blitz: "After casting [Blitz Beat], ASPD increases by ${1}% for ${2} seconds. Internal Cooldown: ${3} seconds."
-        [1322401] = new([BlitzBeat], Logic: 1, Buff: true, BuffSeconds: 1, Cooldown: 2),
+        [1322401] = new([BlitzBeat, AutoBlitzBeat], Logic: 1, Buff: true, BuffSeconds: 1, Cooldown: 2),
         // Double Assault: "Casts [Falcon Assault] ${1} times. Internal Cooldown: ${2} seconds."
         [1323501] = new([FalconAssault], Recast: true, Cooldown: 1),
         // Falcon Rush: "When [Falcon Assault] hits an enemy, it deals ... to up to ${2} enemies within a ${1}-meter radius of
@@ -390,6 +392,13 @@ public sealed partial class TalentProcs
         await ChargesAsync(s, action, cast, processed);
         await HealProcsAsync(s, action, cast, hit);
         GravityTrap(s, action, cast);
+        await RuleProcsAsync(s, action, cast, processed);
+    }
+
+    /// <summary>The <see cref="Rules"/> of the session's talents that <paramref name="cast"/> triggers.</summary>
+    private async Task RuleProcsAsync(GameSession s, ActiveSkillCast action, SkillConfig cast, IReadOnlyList<MonsterUnit> processed)
+    {
+        if (s.Role == null) return;
         foreach (var (buff, description) in s.TalentProcBuffs)
         {
             if (!Rules.TryGetValue(buff, out var rule)) continue;

@@ -17,6 +17,7 @@ public sealed partial class SkillCombatTests
             && EquipmentStunts.Ids(r, "_kSkillAttribute").SelectMany(id =>
                 EquipmentAffixes.Rows(data.Row("SpecialEffectConfig", id)!.Value, "_kSpecialEffect"))
                 .Any(op => op is [2, var id] && BuffConfig.Get(data, id)?.BuffId == group));
+        EnsureCardFixtureGear(player, 1);
         player.Items.RemoveAll(i => i.Guid == 889901);
         player.Items.Add(new InvItem
         {
@@ -338,6 +339,7 @@ public sealed partial class SkillCombatTests
                     && EquipmentStunts.Ids(r, "_kSkillAttribute").SelectMany(id =>
                         EquipmentAffixes.Rows(data.Row("SpecialEffectConfig", id)!.Value, "_kSpecialEffect"))
                     .Any(op => op is [2, var id] && BuffConfig.Get(data, id)?.BuffId == group));
+                EnsureCardFixtureGear(source, 1);
                 source.Items.Add(new InvItem
                 {
                     Guid = 889910 + socket, Entry = (int)GameData.Int(card, "_iCardID"), Stack = 1,

@@ -183,7 +183,16 @@ public sealed class LuaConfigExporter : IDisposable
           local data = t
           if type(t) == "table" and type(rawget(t, "m_kValues")) == "table" then
             data = {}
-            for k, row in next, rawget(t, "m_kValues") do data[k] = merged(row) end
+            for k, row in next, rawget(t, "m_kValues") do
+              -- A grouped table keys a plain list of rows, and the defaults hang on each inner row.
+              if type(row) == "table" and getmetatable(row) == nil then
+                local rows = {}
+                for i, inner in next, row do rows[i] = merged(inner) end
+                data[k] = rows
+              else
+                data[k] = merged(row)
+              end
+            end
           end
           local out = {}
           encode(data, out, 0)

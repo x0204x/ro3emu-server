@@ -303,48 +303,72 @@ public sealed partial class WorldData(IOptions<ServerOptions> options, GameData 
         }
     }
 
-    private HashSet<string>? _clientMissingScenes;
+    /// <summary>The export's client-scenes.json: its Unity scenes and scene-editor modules the client lacks.</summary>
+    private sealed record ClientGaps(HashSet<string> Scenes, HashSet<string> Modules);
+
+    private ClientGaps? _clientGaps;
+
+    /// <summary>Whether the game client can finish loading this scene (<see cref="WhyClientCannotEnter"/>).</summary>
+    public bool ClientCanEnter(long sceneEntry) => WhyClientCannotEnter(sceneEntry) == null;
 
     /// <summary>
-    /// Whether the game client can show this scene: the export's client-scenes.json lists the MapResource scenes
-    /// (_kResource) the client has no Unity scene for (Ro3Emu.DataExport.ClientScenes; Glast Heim and five eastern towns
-    /// in the October 2026 client). A client sent there retries "Failed to load the area" forever. Without the list (data
-    /// exported before it) every scene counts as shown, as before.
+    /// Why the game client cannot finish loading this scene, or null when it can. The export's client-scenes.json
+    /// (Ro3Emu.DataExport.ClientScenes) lists the MapResource scenes (_kResource) the client has no Unity scene for
+    /// (Glast Heim and five eastern towns in the October 2026 client: "Failed to load the area" forever, the screen creeping
+    /// to 80%) and the scene-editor modules (_kResSceneEditorName) its Lua loader refuses (Gonryun: stuck at 85%). Data
+    /// exported before a list has nothing to refuse by it; <see cref="LoadClientGaps"/> warns.
     /// </summary>
-    public bool ClientHasScene(long sceneEntry)
+    public string? WhyClientCannotEnter(long sceneEntry)
     {
-        var missing = ClientMissingScenes();
-        if (missing.Count == 0) return true;
-        long resource = MapConfig.Get(data, sceneEntry)?.MapResourceId ?? DungeonConfig.Get(data, sceneEntry)?.MapResourceId ?? 0;
-        return MapResource.Get(data, resource)?.Resource is not { Length: > 0 } name || !missing.Contains(name);
+        var gaps = LoadClientGaps();
+        var map = MapConfig.Get(data, sceneEntry);
+        var dungeon = map == null ? DungeonConfig.Get(data, sceneEntry) : null;
+        long resource = map?.MapResourceId ?? dungeon?.MapResourceId ?? 0;
+        if (MapResource.Get(data, resource)?.Resource is { Length: > 0 } scene && gaps.Scenes.Contains(scene))
+            return "the game client has no scene for it (its map files are not in this client), so the client would never finish loading";
+        string module = map?.ResSceneEditorName ?? dungeon?.ResSceneEditorName ?? "";
+        return gaps.Modules.Contains(module)
+            ? $"the game client cannot load its map script {module}, so the client would never finish loading"
+            : null;
     }
 
-    /// <summary>Tests on the real data: the list an export would have written.</summary>
-    internal void UseClientSceneListForTest(IEnumerable<string> missing)
+    /// <summary>Tests on the real data: the lists an export would have written.</summary>
+    internal void UseClientSceneListForTest(IEnumerable<string> missing, IEnumerable<string>? modules = null)
     {
-        lock (_sync) _clientMissingScenes = new HashSet<string>(missing, StringComparer.OrdinalIgnoreCase);
+        lock (_sync)
+            _clientGaps = new(new(missing, StringComparer.OrdinalIgnoreCase), new(modules ?? [], StringComparer.OrdinalIgnoreCase));
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "No {File} in the game data: a warp to a map the game client cannot show is not refused; export the game data again")]
-    private static partial void LogNoClientSceneList(ILogger logger, string file);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{File} in the game data has no {List}: a warp to a map the game client cannot show is not refused; export the game data again")]
+    private static partial void LogNoClientSceneList(ILogger logger, string file, string list);
 
-    private HashSet<string> ClientMissingScenes()
+    private ClientGaps LoadClientGaps()
     {
         lock (_sync)
         {
-            if (_clientMissingScenes != null) return _clientMissingScenes;
-            _clientMissingScenes = new(StringComparer.OrdinalIgnoreCase);
+            if (_clientGaps != null) return _clientGaps;
+            _clientGaps = new(new(StringComparer.OrdinalIgnoreCase), new(StringComparer.OrdinalIgnoreCase));
             if (DataFiles.Find(options.Value.GameDataDir ?? options.Value.DataDir, ClientSceneList) is not { } path)
             {
-                LogNoClientSceneList(log, ClientSceneList);
-                return _clientMissingScenes;
+                LogNoClientSceneList(log, ClientSceneList, "lists");
+                return _clientGaps;
             }
             using var doc = JsonDocument.Parse(File.ReadAllBytes(path));
-            if (doc.RootElement.TryGetProperty("Missing", out var list) && list.ValueKind == JsonValueKind.Array)
-                foreach (var name in list.EnumerateArray().Where(n => n.ValueKind == JsonValueKind.String))
-                    _clientMissingScenes.Add(name.GetString()!);
-            return _clientMissingScenes;
+            ReadClientGapList(doc.RootElement, "Missing", _clientGaps.Scenes);
+            ReadClientGapList(doc.RootElement, "UnloadableModules", _clientGaps.Modules);
+            return _clientGaps;
         }
+    }
+
+    private void ReadClientGapList(JsonElement root, string key, HashSet<string> into)
+    {
+        if (!root.TryGetProperty(key, out var list) || list.ValueKind != JsonValueKind.Array)
+        {
+            LogNoClientSceneList(log, ClientSceneList, key);
+            return;
+        }
+        foreach (var name in list.EnumerateArray().Where(n => n.ValueKind == JsonValueKind.String))
+            into.Add(name.GetString()!);
     }
 
     private MapWorld? Load(long sceneEntry)

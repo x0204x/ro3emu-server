@@ -343,7 +343,7 @@ public sealed partial class RoleSessionService(RoleStore roles, Data.GameData da
         {
             EnsureSelection(session, lease);
             // (inferred) A saved scene the server cannot place the role on (unknown, a dungeon scene outside its
-            // instance, one the client has no scene for): the spawn map's born point, where a new character starts.
+            // instance, one the client cannot load): the spawn map's born point, where a new character starts.
             LogMovedToSpawn(log, role.Name, role.Id, role.SceneEntry, data.MapName(role.SceneEntry),
                 scene.Unplaceable(role.SceneEntry) ?? "refused", RoleStore.SpawnSceneEntry);
             await scene.EnterSceneAsync(session, RoleStore.SpawnSceneEntry, null, reason: 7);

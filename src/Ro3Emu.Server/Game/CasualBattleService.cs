@@ -233,7 +233,7 @@ public sealed partial class CasualBattleService : IGameTicker
     /// <summary>The queued groups become two camps (whole groups to the smaller camp, at most 40 each) and enter.</summary>
     private async Task FormAsync()
     {
-        _queue.RemoveAll(g => g.Members.Any(m => !_sessions.All().Contains(m) || m.InstanceId != 0 || m.Dead || m.SceneLoading));
+        _queue.RemoveAll(g => g.Members.Any(m => !_sessions.Contains(m) || m.InstanceId != 0 || m.Dead || m.SceneLoading));
         var camps = new Dictionary<int, List<GameSession>> { [1] = [], [2] = [] };
         foreach (var group in _queue.OrderByDescending(g => g.Members.Length).ToArray())
         {

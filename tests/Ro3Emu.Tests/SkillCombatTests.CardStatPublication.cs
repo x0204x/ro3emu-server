@@ -15,6 +15,7 @@ public sealed partial class SkillCombatTests
         var player = Session("cardstats");
         await Loop.InvokeAsync(async () =>
         {
+            EnsureCardFixtureGear(player, 6);
             // 非零基值隔離百分比變化；原卡 2024001 的 1335 仍由真實被動路徑讀取。
             Character.ExtraAttributes.Add(s => s == player ? [(202L, 1000.0)] : []);
             await Character.RefreshStatsAsync(player);

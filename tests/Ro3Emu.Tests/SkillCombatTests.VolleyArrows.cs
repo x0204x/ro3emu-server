@@ -49,12 +49,12 @@ public sealed partial class SkillCombatTests
         int originalLevel = source.Progress!.Level, completed = 0, resolved = 0, published = 0;
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var timing = new ConcurrentQueue<CombatService.ImpactTimingSample>();
-        var inputs = new ConcurrentQueue<(int Branch, long Attack)>();
+        var inputs = new ConcurrentQueue<(long Ratio, long Attack)>();
         combat.ImpactTimingObserver = timing.Enqueue;
         combat.DamageAdjusters.Add((s, m, actual, _, amount) =>
         {
             if (s == source && m == target && new SkillConfig(actual).SkillId == 13320)
-                inputs.Enqueue((actual.GetProperty("_ro3DamageBranch").GetInt32(), Character.Stats(s)[103]));
+                inputs.Enqueue((new SkillConfig(actual).DamageParam1[0], Character.Stats(s)[103]));
             return amount;
         });
         combat.SkillCastCompleted.Add((s, _, _) =>
@@ -73,6 +73,9 @@ public sealed partial class SkillCombatTests
         var cd = Assert.Single(SkillCdNotify.Parser.ParseFrom((await cdWire.WaitAsync(Wait)).Body).Infos, c => c.SkillId == 13320);
         Assert.Equal(20000, cd.CdEndTimestampMs - cd.CdStartTimestampMs);
         Assert.Equal(0, cd.SkillMode); Assert.Equal(mode == 0 ? 2370 : 3300, timeline.SkillMs);
+        // 上游在首個攻擊點才上狀態；冷卻與時間軸封包先到，不能用它們當作狀態已發布的證據。
+        await Next(bot, BuffService.BuffUpdate, BuffUpdateNotify.Parser,
+            n => n.UnitId == source.Role!.Id && n.Buffs.Any(b => b.ConfigId == 1332300 + level));
         var startBuff = await Loop.InvokeAsync(() => Task.FromResult(source.Buffs.Single(b => b.ConfigId == 1332300 + level)));
         Assert.Equal(mode == 0 ? 2000 : 2500, startBuff.DurationMs);
         Assert.Contains(startBuff.Changes, c => c.Attr == 1131 && c.Value == (20 + 2 * level) * 100);
@@ -84,7 +87,7 @@ public sealed partial class SkillCombatTests
             var dst = Assert.Single(hit.Dsts); Assert.Equal(target.Uid, dst.DstID);
             Assert.True(inputs.TryDequeue(out var input));
             int branch = mode == 1 && index == pulses ? 1 : 0;
-            Assert.Equal(branch, input.Branch);
+            Assert.Equal(row.DamageParam1[branch], input.Ratio);
             long expected = (long)Math.Round(input.Attack * row.DamageParam1[branch] / 10000d);
             Assert.Equal(expected, dst.Damage); Assert.Equal(2, hit.Split);
             total += dst.Damage;
@@ -98,7 +101,7 @@ public sealed partial class SkillCombatTests
         Assert.Single(bot.Inbox.Snapshot().Where(e => e.IsGame(CombatService.SkillCdUpdate)).Skip(priorCdNotices),
             e => SkillCdNotify.Parser.ParseFrom(e.Body).Infos.Any(c => c.SkillId == 13320));
         Assert.Empty(inputs); Assert.DoesNotContain(source.Buffs, b => b.ConfigId == startBuff.ConfigId);
-        var stages = CombatService.AuthoredDamageStages(row, data.SkillTemplate(row.ScriptShow));
+        var stages = CombatService.ChannelHits(row.Row, data.SkillTemplate(row.ScriptShow));
         var samples = timing.Where(t => t.CastId == accepted.SessionId && t.Stage.EndsWith("-resolve-entered", StringComparison.Ordinal)).ToArray();
         Assert.Equal(count, samples.Length);
         for (int index = 0; index < count; index++)
@@ -108,7 +111,7 @@ public sealed partial class SkillCombatTests
                 stages[index].Point, timeline.ChantMs, timeline.SkillMs);
             Assert.True(samples[index].TimeMs >= deadline, $"Volley stage {index} precedes its authored deadline.");
         }
-        Assert.Equal(mode, stages.Count(s => s.Branch == 1)); // mode1的150%末段只能有一次。
+        Assert.Equal(mode, stages.Count(s => new SkillConfig(s.Row).DamageParam1[0] == 15000)); // mode1的150%末段只能有一次。
     }
 
     [ClientDataTheory]
@@ -235,9 +238,9 @@ public sealed partial class SkillCombatTests
         bool Contains(float forward, float side) => CombatService.VolleyArrowAreaContains(row, new Vec3(), face,
             At(forward, side)) ?? throw new InvalidOperationException("Volley range owner required.");
         Assert.True(Contains(5, 0)); Assert.True(Contains(17.99f, 2.99f));
-        Assert.True(Contains(5, -2.99f)); Assert.False(Contains(18.01f, 0));
-        Assert.False(Contains(-.01f, 0)); Assert.False(Contains(5, 3.01f));
-        Assert.False(Contains(5, -3.01f));
+        Assert.True(Contains(5, -2.99f)); Assert.True(Contains(18.05f, 0)); Assert.False(Contains(18.2f, 0));
+        Assert.True(Contains(-.4f, 0)); Assert.False(Contains(-.6f, 0)); Assert.False(Contains(5, 3.2f));
+        Assert.False(Contains(5, -3.2f));
     }
 
     [ClientDataTheory]
@@ -247,7 +250,7 @@ public sealed partial class SkillCombatTests
     {
         var fixture = await VolleyFixtureAsync(1, mode); await using var bot = fixture.Bot;
         var excluded = new List<MonsterUnit>();
-        foreach (var (forward, side) in new[] { (-.1f, 0f), (18.1f, 0f), (5f, 3.1f) })
+        foreach (var (forward, side) in new[] { (-.6f, 0f), (18.2f, 0f), (5f, 3.2f) })
         {
             var target = await Target("volleyarrows", stationary: true, immobile: true);
             await CardOffenceDummyAsync(target);

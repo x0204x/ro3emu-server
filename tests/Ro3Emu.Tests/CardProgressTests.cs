@@ -64,6 +64,23 @@ public sealed class CardProgressTests : IAsyncLifetime
         (await http.PostAsync($"{_httpUrl}/ro3emu/gm?account={account}", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
+    /// <summary>The card collection queued so far has finished: it holds the role key, and this is queued behind it.</summary>
+    private async Task Settled()
+    {
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var loop = _app.Services.GetRequiredService<GameLoop>();
+        await loop.InvokeAsync(() =>
+        {
+            loop.PostOwned(_app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role != null), () =>
+            {
+                done.SetResult();
+                return Task.CompletedTask;
+            }, "test");
+            return Task.CompletedTask;
+        });
+        await done.Task.WaitAsync(Wait);
+    }
+
     private static ItemBaseInfo FullCard(DBItemsInfoIncrement sync, long guid = 0)
     {
         var cards = sync.PackInfo[3].All.Items.Values.Where(i => i.ItemEntry == Lunatic);
@@ -117,6 +134,7 @@ public sealed class CardProgressTests : IAsyncLifetime
             Ro3Emu.Server.Data.GameData.Int(row, "_iQuality") >= 4), "_iID");
         await Gm("alice", "!quest accept 1700212");
         await Gm("alice", $"!item {card} 1");
+        await Settled();
         long role = (long)alice.Self!.Uuid;
         var accounts = _app.Services.GetRequiredService<AccountStore>();
         var roles = _app.Services.GetRequiredService<RoleStore>();
@@ -149,6 +167,7 @@ public sealed class CardProgressTests : IAsyncLifetime
     {
         await using var alice = await InWorld("Alice");
         await Gm("alice", $"!item {Lunatic} 1");
+        await Settled();
         var cards = _app.Services.GetRequiredService<CardService>();
         int callbacks = 0;
         Func<GameSession, Task> failing = _ =>
@@ -159,12 +178,12 @@ public sealed class CardProgressTests : IAsyncLifetime
         cards.CollectionChanged.Add(failing);
         try
         {
-            await alice.SendGameAsync(CardService.LibraryCardUnlock, new LibraryCardUnlockReq { CardId = Lunatic });
+            await alice.SendGameAsync(CardService.LibraryCardUnlock, new LibraryCardUnlockReq { CardId = Lunatic, IsTreasure = true });
             Assert.Equal(0, (await Next(alice, CardService.LibraryCardUnlock, LibraryCardUnlockResp.Parser)).Result);
             Assert.Equal(1, Volatile.Read(ref callbacks));
             var bytes = _app.Services.GetRequiredService<RoleStore>().LoadLibrary((long)alice.Self!.Uuid);
             Assert.NotNull(bytes);
-            Assert.True(DBLibraryInfo.Parser.ParseFrom(bytes).Cards[Lunatic].Unlock);
+            Assert.True(DBLibraryInfo.Parser.ParseFrom(bytes).Cards[Lunatic].TreasureUnlock);
         }
         finally { cards.CollectionChanged.Remove(failing); }
     }
@@ -688,8 +707,7 @@ public sealed class CardProgressTests : IAsyncLifetime
         await alice.SendGameAsync(CardService.LibraryCardUnlock, new LibraryCardUnlockReq { CardId = Lunatic });
         Assert.Equal(ErrorCodes.ItemMissing, (await Next(alice, CardService.LibraryCardUnlock, LibraryCardUnlockResp.Parser)).Result);
         await Gm("alice", $"!item {Lunatic} 1");
-        await alice.SendGameAsync(CardService.LibraryCardUnlock, new LibraryCardUnlockReq { CardId = Lunatic });
-        Assert.Equal(0, (await Next(alice, CardService.LibraryCardUnlock, LibraryCardUnlockResp.Parser)).Result);
+        await Settled();
         await alice.SendGameAsync(CardService.LibraryCardUnlock, new LibraryCardUnlockReq { CardId = Lunatic });
         Assert.Equal(ErrorCodes.AlreadyUnlocked, (await Next(alice, CardService.LibraryCardUnlock, LibraryCardUnlockResp.Parser)).Result);
     }

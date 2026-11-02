@@ -239,6 +239,16 @@ public sealed partial class SkillService
         return points;
     }
 
+    /// <summary>The points each rank would have left with a plan's levels.</summary>
+    private Dictionary<int, int> PlanPoints(RoleProgress p, SkillPlan plan)
+    {
+        var preview = CharacterService.GenreCloneProgress(p);
+        preview.Skills.Clear();
+        foreach (var (group, assigned) in plan.SkillAssigns)
+            if (assigned.SkillLevel > Initial(preview, group)) preview.Skills[group] = assigned.SkillLevel;
+        return SkillPoints(preview);
+    }
+
     /// <summary>Effective learned level including configured initial skills and the normal attack.</summary>
     public int Level(RoleProgress p, int group)
     {
@@ -704,11 +714,19 @@ public sealed partial class SkillService
             if (assignment.SkillLevel > Initial(progress, group)) progress.Skills[group] = assignment.SkillLevel;
         }
         var remaining = SkillPoints(progress);
-        if (remaining.Values.Any(v => v < 0)) return ErrorCodes.SkillPointsShort;
+        if (remaining.Values.Any(v => v < 0))
+        {
+            // A rank over its points refuses only what spends more than the plan already did. The GM grant (110) charges none,
+            // so such a plan was refused here on every bar edit, plan switch and refund, its levels unchanged. (inferred) It
+            // stays usable and can give levels back. At login the saved plan is not trusted: the role's progress decides.
+            var before = session.SkillPlans is { } saved && index < saved.SkillAssignPlans.Count
+                ? PlanPoints(progress, saved.SkillAssignPlans[index]) : SkillPoints(session.Progress!);
+            if (remaining.Any(rank => rank.Value < Math.Min(0, before.GetValueOrDefault(rank.Key)))) return ErrorCodes.SkillPointsShort;
+        }
         if (progress.Skills.Any(kv => RealId(kv.Key, kv.Value) == 0)) return ErrorCodes.SkillMaxLevel;
         if (!PrerequisitesMet(progress)) return ErrorCodes.SkillPrerequisite;
         source.SkillPoints.Clear();
-        foreach (var (rank, points) in remaining) source.SkillPoints[rank] = points;
+        foreach (var (rank, points) in remaining) source.SkillPoints[rank] = Math.Max(0, points);
         progress.SkillBar.Clear();
         for (int slot = 1; slot <= Math.Min(BarSlots, source.ManualLoadSkill.Count); slot++)
             if (source.ManualLoadSkill[slot - 1] is { SkillId: > 0 } skill && Level(progress, skill.SkillId) > 0)
@@ -969,6 +987,9 @@ public sealed partial class SkillService
         int group = req.Info?.SkillId ?? 0;
         int code = InCombat(session) || target is < 0 or >= BarSlots || op is < 1 or > 3
             ? ErrorCodes.Parameter : 0;
+        // A drop from the skill window is a Load onto a taken slot too, with no ReplaceInfo: the window's drag data has iSlotIndex 0
+        // (UI_Sys_Skill_SetItemWidget_PCCtrl._refreshCanDrag, UI_Sys_Main_JoyStickSkillItemWidget_PCCtrl._progressDragItem). It
+        // takes the slot, as the client's own edit model does (UI_Sys_GenreManualEditSkillModel.ChangeSlotVal).
         // The client names a slot's skill by the group of the wheel row it shows (a normal attack shows as the career's own,
         // BarGroup), so a stored normal attack of another group (the tree cell's 10010, a Novice's 10000) matches it.
         bool Same(int stored, int shown) => stored == shown || stored > 0 && BarGroup(session, stored) is > 0 and var bar && bar == BarGroup(session, shown);
@@ -983,8 +1004,6 @@ public sealed partial class SkillService
             int learned = Level(p, group);
             if (group <= 0 || learned <= 0 || !IsActive(group)
                 || req.Info!.SkillLevel < 1 || req.Info.SkillLevel > learned
-                || op == 1 && target < loadList.Count && loadList[target].SkillId > 0
-                    && !Same(loadList[target].SkillId, group)
                 || op == 3 && (target >= loadList.Count || !Same(loadList[target].SkillId, req.ReplaceInfo?.SkillId ?? 0)))
                 code = ErrorCodes.SkillNotLearned;
         }

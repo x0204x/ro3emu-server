@@ -13,9 +13,24 @@ public sealed partial class CharacterService
     /// <summary>The realm clock of the 05:00 use-time periods; ItemBoxService assigns the host's TimeProvider.</summary>
     internal TimeProvider UseClock { get; set; } = TimeProvider.System;
 
+    /// <summary>
+    /// The end of a new instance of an _iTimeBoundEnum 1 item (enum_ItemTimeBoundType.AcquireTime), unix seconds; 0 for any
+    /// other item. The rows are the 24 h reward items, 1950015 and 1950019 among them: _kTimeBoundPara [1440] minutes. The
+    /// client takes the end only from ItemBaseInfo.expireTm (LC_ItemHelper.GetItemTimeBoundRange: expireTm - minutes * 60 to
+    /// expireTm). With 0 the range is already over: the bag shows "Expired" (LC_BaseShowFunc) and the tips offer no Use
+    /// (UI_Com_ItemTipsWidgetCtrl_Operation). The other time-bound types are worked out from the client's own data.
+    /// (inferred) The time runs from the moment the item enters the bag, so a mail claim starts it, not the delivery. The
+    /// end is stored as BindExpire with no binding: ItemBindInfo.expireTimeStamp counts only for itemBindType 2, and the
+    /// item rows, stacking rules and the use refusal already carry that value.
+    /// </summary>
+    private long AcquireExpiry(int entry) =>
+        ItemConfig.Get(data, entry) is { TimeBoundEnum: AcquireTimeBound, TimeBoundPara: [var minutes, ..] }
+            ? UseClock.GetUtcNow().ToUnixTimeSeconds() + minutes * 60 : 0;
+
     // ErrorCodeConfig 157 "Uses: Insufficient", 172 "Level too low", 173 "Wrong Job", 174 "Gender mismatch".
     internal const int ErrUseTimes = 157, ErrLevelNeed = 172, ErrJobNeed = 173, ErrSexNeed = 174;
     private const int SubTypeChooseGift = 303, SubTypeSelfChoosePet = 912;
+    private const long AcquireTimeBound = 1;
 
     /// <summary>
     /// DBItemsInfo.useTimes key 0 (no ItemConfig row; the client's GetUseTimeType skips it) holds the game day the counts

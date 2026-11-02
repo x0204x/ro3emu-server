@@ -42,11 +42,11 @@ public sealed class DailyWindowsTests : IAsyncLifetime
         try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
-    private async Task<BotClient> InWorld(bool create = true)
+    private async Task<BotClient> InWorld(bool create = true, string account = "windows", string name = "Windows")
     {
         var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
-        await bot.LoginAsync("windows", "pw"); await bot.EnterGateAsync();
-        long role = create ? (await bot.CreateRoleAsync("Windows")).RoleBaseInfo.Id : bot.Roles.Single().Id;
+        await bot.LoginAsync(account, "pw"); await bot.EnterGateAsync();
+        long role = create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id;
         await bot.EnterWorldAsync(role);
         return bot;
     }
@@ -69,6 +69,39 @@ public sealed class DailyWindowsTests : IAsyncLifetime
     {
         var window = Assert.IsType<TimedTodoSchedule.Occurrence>(Service<TimedTodoSchedule>().CurrentOrNext(id));
         Assert.Equal((start, end), (window.Start, window.End));
+    }
+
+    [ClientDataFact]
+    public async Task TheDailyResetIsPacedAndQueuedOncePerSession()
+    {
+        await using var first = await InWorld();
+        await using var second = await InWorld(account: "windows2", name: "Windows2");
+        var daily = Service<DailyActivityService>();
+        daily.ResetsPerTick = 1;
+        // Past the boundary with no tick run yet: the ticks below run in one loop callback, before anything they post.
+        await OnLoop(() =>
+        {
+            _clock.Set("2026-10-10 05:00:01");
+            GameSession a = Session(first), b = Session(second);
+            var at = Service<GameLoop>().Now + TimeSpan.FromMinutes(1);
+            daily.Tick(new GameTime(at, TimeSpan.Zero));
+            Assert.Equal(1, new[] { a, b }.Count(s => s.DailyReconcileQueued));
+            daily.Tick(new GameTime(at + TimeSpan.FromSeconds(2), TimeSpan.Zero));
+            Assert.True(a.DailyReconcileQueued && b.DailyReconcileQueued); // the queued one is skipped, the next one posted
+            return Task.CompletedTask;
+        });
+        // Both resets still run, and the heartbeat's share leaves a crossed day to the tick.
+        long boundary = _clock.Unix("2026-10-10 05:00:00");
+        var until = DateTime.UtcNow + TimeSpan.FromSeconds(15);
+        while (DateTime.UtcNow < until && !await Service<GameLoop>().InvokeAsync(() =>
+            Task.FromResult(Session(first).Daily!.DailyEpoch >= boundary && Session(second).Daily!.DailyEpoch >= boundary)))
+            await Task.Delay(50);
+        await OnLoop(() =>
+        {
+            Assert.True(Session(first).Daily!.DailyEpoch >= boundary && Session(second).Daily!.DailyEpoch >= boundary);
+            Assert.False(Session(first).DailyReconcileQueued || Session(second).DailyReconcileQueued);
+            return Task.CompletedTask;
+        });
     }
 
     [ClientDataFact]

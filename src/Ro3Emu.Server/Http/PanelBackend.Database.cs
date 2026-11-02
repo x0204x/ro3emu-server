@@ -52,7 +52,7 @@ public sealed partial class PanelBackend
 
     private PanelMapSummary MapSummary(long id, string name, List<PanelMapMonster> monsters, int players) =>
         new(id, name, MapImage(id), monsters.Count > 0 ? monsters.Min(m => m.Monster.Level) : 0, monsters.Count > 0 ? monsters.Max(m => m.Monster.Level) : 0,
-            monsters.Count, players);
+            monsters.Count, players, world.ClientCanEnter(id));
 
     /// <summary>The monsters of each map from the spawn index, a monster's variants as one (the database's entry).</summary>
     private async Task<Dictionary<long, List<PanelMapMonster>>> MapSpawnsAsync()

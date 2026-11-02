@@ -497,15 +497,17 @@ public sealed partial class BuffService : IGameTicker
         SweepDecay(now);
         foreach (var s in _sessions.All())
         {
-            // 到期當次的週期工作可能等待HP鎖或逐一處理隊友；完成後才自然移除。
-            // 手動移除／驅散不走此延後，週期生命期檢查仍會立即中止未提交的效果。
-            foreach (var b in s.Buffs.Where(b => b.ExpireMs <= now
-                && !PeriodicBusy(b)).ToList())
-                ExpireOnce(b, "buff expiration", () => RemoveAsync(s, b));
+            // 有到期項目才建立快照；到期當次仍在等待 HP 鎖的週期工作完成後，才自然移除。
+            // 手動移除／驅散不走此延後，生命期檢查仍會中止尚未提交的效果。
+            if (AnyExpired(s.Buffs, now))
+                foreach (var b in s.Buffs.Where(b => b.ExpireMs <= now && !PeriodicBusy(b)).ToList())
+                    ExpireOnce(b, "buff expiration", () => RemoveAsync(s, b));
             TickEnergy(s, now);
             TickImmuneDeath(s, now);
         }
-        foreach (var (uid, list) in _unitBuffs.ToList())
+        bool unitDue = false;
+        foreach (var list in _unitBuffs.Values) if (list.Count == 0 || AnyExpired(list, now)) { unitDue = true; break; }
+        if (unitDue) foreach (var (uid, list) in _unitBuffs.ToList())
         {
             foreach (var buff in list.Where(b => b.ExpireMs <= now && !PeriodicBusy(b)).ToList())
             {
@@ -515,6 +517,12 @@ public sealed partial class BuffService : IGameTicker
             }
             if (list.Count == 0) _unitBuffs.Remove(uid);
         }
+    }
+
+    private static bool AnyExpired(List<ActiveBuff> buffs, long now)
+    {
+        foreach (var b in buffs) if (b.ExpireMs <= now) return true;
+        return false;
     }
 
     /// <summary>One queued removal per expired buff: a removal waits for its reservation, and queuing one every tick

@@ -43,7 +43,7 @@ public sealed partial class CombatService
     private int GuardianError(GameSession s, GuardianPetRules.Skill skill, CastSkillReq req)
     {
         if (s.Role == null || s.Progress == null || s.Dead || s.SceneLoading || s.SceneRecoveryRequired
-            || !_sessions.All().Contains(s) || s.Attachment?.Cancelled == true) return ErrorCodes.SkillBadState;
+            || !_sessions.Contains(s) || s.Attachment?.Cancelled == true) return ErrorCodes.SkillBadState;
         if (!_pets.GuardianEquipped(s, skill)) return ErrorCodes.SkillNotLearned;
         if (req.OpUnitId != 0 && req.OpUnitId != s.Role.Id) return ErrorCodes.SkillRequirements;
         if (!float.IsFinite(req.Face) || req.TargetPos is { } pos && !Finite(pos)) return ErrorCodes.Parameter;

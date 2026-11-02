@@ -44,6 +44,7 @@ public sealed partial class SkillCombatTests
         await using var bot = await InWorld("DarkCondition");
         await Gm("darkcondition", "!lvl 80"); await Gm("darkcondition", "!item 1450401 1");
         var source = Session("darkcondition");
+        await Loop.InvokeAsync(() => { EnsureCardFixtureGear(source, 4); return Task.CompletedTask; });
         await bot.SendGameAsync(CardService.SlotInsert, new EquipmentCardInsertReq
         { EquipPos = (EquipGridType)4, SlotIndex = 1, CardGuid = source.Items.Single(i => i.Entry == 1450401).Guid });
         Assert.Equal(0, (await Next(bot, CardService.SlotInsert, EquipmentCardInsertResp.Parser)).Result);

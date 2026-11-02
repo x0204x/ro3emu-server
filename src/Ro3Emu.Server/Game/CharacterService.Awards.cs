@@ -209,7 +209,7 @@ public sealed partial class CharacterService
                     {
                         Entry = grant.Entry, Stack = stack, Pack = pack,
                         Sort = items.Where(i => i.Grid == 0 && i.Pack == pack).Select(i => i.Sort).DefaultIfEmpty(0).Max() + 1,
-                        BindType = grant.BindType, BindExpire = grant.ExpireTimeStamp,
+                        BindType = grant.BindType, BindExpire = grant.ExpireTimeStamp != 0 ? grant.ExpireTimeStamp : AcquireExpiry(grant.Entry),
                         Attrs = TotemAttrFactory?.Invoke(grant.Entry) ?? EmblemAttrFactory?.Invoke(grant.Entry) ?? RollAttrs(grant.Entry)
                     };
                     items.Add(item);
@@ -367,6 +367,7 @@ public sealed partial class CharacterService
         if (decomposed.DecomposeItemInfo.Count > 0)
             await session.SendGameAsync(EquipmentService.ItemAutoDecomposeNotice, decomposed);
         foreach (var (entry, count) in gained) foreach (var handler in ItemGained) handler(session, entry, count);
+        foreach (var handler in ItemsAwarded) handler(session, gained);
         foreach (var handler in StateChanged) handler(session);
         return true;
     }
@@ -483,7 +484,8 @@ public sealed partial class CharacterService
             var item = new InvItem
             {
                 Entry = entry, Stack = stack, Pack = pack, Sort = NextSort(session, pack),
-                Attrs = TotemAttrFactory?.Invoke(entry) ?? EmblemAttrFactory?.Invoke(entry) ?? RollAttrs(entry), BindType = bind
+                Attrs = TotemAttrFactory?.Invoke(entry) ?? EmblemAttrFactory?.Invoke(entry) ?? RollAttrs(entry), BindType = bind,
+                BindExpire = AcquireExpiry(entry)
             };
             if (persist) itemStore.Insert(session.Role!.Id, item);
             session.Items.Add(item);

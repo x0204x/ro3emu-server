@@ -18,6 +18,7 @@ namespace Ro3Emu.Server.Game;
 /// A talent's BuffLogicData tuple (type 4) changes these values: Efficient Deadly Poison [15211, +2000 at 0], Seize the
 /// Initiative [15220, set 5 at 2], Combo Moonlit Challenger [15002, +1000 at 1]. Double Attack's _kLogicData has one value,
 /// so a tuple past its end changes that chance (inferred).
+/// Blitz Beat is the Hunter's: <see cref="AutoBlitzBeatAsync"/>.
 /// </summary>
 public sealed partial class TalentProcs
 {
@@ -27,6 +28,11 @@ public sealed partial class TalentProcs
     // Triple Slash: "When [Double Attack] triggers, it additionally Deals DMG equal to PATK * ${3}% + ${4} as Neutral Melee
     // Physical damage to up to ${2} enemies within a ${1}-meter radius of you. Cooldown: ${5} seconds."
     private const long TripleSlash = 1523901;
+    // Blitz Beat's area in the description: "... the designated ST enemy ... and up to ${3} Other enemies within ${2} meters".
+    private static readonly Rule BlitzBeatArea = new([], Radius: 1, Others: 2);
+    // SkillConfig._iSkillCondition of Blitz Beat and its automatic rows (86000361, 86000415 ...): LC_ConditionList's
+    // CheckMountType02 [1500400] (not riding the wolf) and CheckPendantType01 [1] (a pendant of PendantConfig._iType 1).
+    private const long WolfMount = 1500400, FalconPendantType = 1;
 
     private async Task PassiveProcsAsync(GameSession s, ActiveSkillCast action, SkillConfig cast, IReadOnlyList<MonsterUnit> processed,
         SkillHitInfo hit)
@@ -39,6 +45,7 @@ public sealed partial class TalentProcs
             if (hit.Dsts.Any(d => d.DstID == target.Uid && d.HitResult is DamageHitResult.Critical or DamageHitResult.DoubleCritical))
                 await KatarMasteryAsync(s);
         }
+        if (cast.IsNormalAttack(_data)) await AutoBlitzBeatAsync(s, action, target);
         await VenomAsync(s, target);
     }
 
@@ -57,6 +64,29 @@ public sealed partial class TalentProcs
         if (around.Count > 0)
             await _combat.CastExtraAsync(s, DescribedHit(cast, TripleSlash, (long)(Value(triple, 2) * 100), (long)Value(triple, 3), Neutral), around);
     }
+
+    /// <summary>
+    /// Blitz Beat: "When using a Basic Attack, the Falcon has a ${8}% Chance to cast [Blitz Beat] on the enemy, dealing
+    /// ${9}% of the original skill's Neutral Ranged Physical DMG." Its BuffConfig row shares the SkillConfig id and holds
+    /// [chance in basis points, the automatic group 13110], whose rows have that share of the damage and _kAutoLearnSkill
+    /// links level for level. Thunder Shockwave's type 4 tuple adds to the chance. The description names no cooldown, though
+    /// the row copies Blitz Beat's _iCD, so it has none (inferred). The automatic cast counts for the talents Blitz Beat
+    /// triggers, the one place a proc leads to another (see Rules) (inferred).
+    /// </summary>
+    private async Task AutoBlitzBeatAsync(GameSession s, ActiveSkillCast action, MonsterUnit target)
+    {
+        int level = _skills.Level(s.Progress!, BlitzBeat);
+        if (level <= 0 || target.Hp <= 0 || !FalconFollows(s)) return;
+        if (BuffConfig.Get(_data, _skills.RealId(BlitzBeat, level))?.LogicData is not { Length: >= 2 } logic) return;
+        if (Roll(10000) >= LogicValue(s, BlitzBeat, logic, 0) || _combat.ModeRow(s, (int)logic[1], level) is not { } row) return;
+        var auto = new SkillConfig(row);
+        var targets = Targets(s, BlitzBeatArea, auto.DescData, auto, target, []);
+        await _combat.CastExtraAsync(s, row, targets);
+        await RuleProcsAsync(s, action, auto, targets);
+    }
+
+    private bool FalconFollows(GameSession s) => MountService.Rider(s) != WolfMount
+        && s.CareerPendants.Any(pendant => PendantConfig.Get(_data, pendant)?.Type == FalconPendantType);
 
     private async Task KatarMasteryAsync(GameSession s)
     {

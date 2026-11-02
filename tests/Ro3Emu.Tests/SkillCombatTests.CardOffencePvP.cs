@@ -11,6 +11,7 @@ public sealed partial class SkillCombatTests
     private async Task CardOffenceRoom(params (BotClient Bot, GameSession Player)[] members)
     {
         var instances = _app.Services.GetRequiredService<InstanceService>();
+        foreach (var (_, player) in members) await CardOffenceWorldReady(player);
         var room = await Loop.InvokeAsync(() => Task.FromResult(instances.Create(members[0].Player.SceneEntry,
             [.. members.Select(m => m.Player)])));
         foreach (var (bot, player) in members)
@@ -19,6 +20,7 @@ public sealed partial class SkillCombatTests
             await Next(bot, MsgId.SwitchSceneLine, SwitchSceneLineResp.Parser, m => m.SceneID == room.Id);
             await bot.SendGameAsync(MsgId.SceneLoaded, new SceneLoadedReq { SceneId = room.SceneEntry });
             await Next(bot, MsgId.EntitySelf, EntitySelf.Parser);
+            await CardOffenceWorldReady(player);
         }
         IsolateDirectHealing();
         foreach (var (bot, player) in members)
@@ -27,6 +29,16 @@ public sealed partial class SkillCombatTests
                 await HealingStat(bot, id, value);
             await Loop.InvokeAsync(() => Character.SetHpSpAsync(player, 1_000_000, 10000));
         }
+    }
+
+    private async Task CardOffenceWorldReady(GameSession player)
+    {
+        // ENTITYSELF／SelfInfoEndFrame 早於 Loaded 與 AfterLoaded；須等完整交接，不能在 Completing 改成私人場景。
+        using var deadline = new CancellationTokenSource(Wait);
+        using var poll = new PeriodicTimer(TimeSpan.FromMilliseconds(10));
+        while (!await Loop.InvokeAsync(() => Task.FromResult(player.Handoff == null && !player.SceneLoading
+                   && _app.Services.GetRequiredService<World>().PlayersIn(player.WorldScene).Contains(player))))
+            await poll.WaitForNextTickAsync(deadline.Token);
     }
 
     private async Task<long> CardOffencePvpWireHit(BotClient bot, GameSession target, int skill)

@@ -26,7 +26,7 @@ namespace Ro3Emu.DataExport;
 public static class GameDataExport
 {
     /// <summary>Bumped when the export's output changes, so RO3Emu.exe exports again after an update of itself.</summary>
-    public const int FormatVersion = 3;
+    public const int FormatVersion = 4;
 
     /// <summary>Client modules under the exported folders that are code, not tables: they never export, and that is fine.</summary>
     public static readonly IReadOnlySet<string> ExpectedTableFailures = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Lua_DBManager" };
@@ -268,8 +268,10 @@ public static class GameDataExport
         using (var vfs = new Vfs(VfsDir(clientDir)))
         {
             nav = NavExporter.Export(mapResource, VfsDir(clientDir), Path.Combine(staged, "nav"), (d, t) => options.Progress?.Invoke("Exporting the walk maps", d, t), vfs);
-            var scenesMissing = ClientScenes.Write(mapResource, vfs, Path.Combine(staged, ClientScenes.FileName));
+            var modulesRefused = ClientScenes.UnloadableModules(LuaPayloadDir(clientDir), Path.Combine(staged, "config"));
+            var scenesMissing = ClientScenes.Write(mapResource, vfs, Path.Combine(staged, ClientScenes.FileName), modulesRefused);
             log($"scenes: {scenesMissing.Count} not in the client {string.Join(" ", scenesMissing)}");
+            log($"scene editors: {modulesRefused.Count} the client cannot load {string.Join(" ", modulesRefused)}");
             filesRead = vfs.FilesRead;
         }
         log($"nav: {nav.Names} names, extracted {nav.Extracted}, missing {nav.Missing.Count} {string.Join(" ", nav.Missing)}");

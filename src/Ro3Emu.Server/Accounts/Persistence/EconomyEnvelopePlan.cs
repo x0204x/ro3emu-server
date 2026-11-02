@@ -85,7 +85,8 @@ internal sealed class EconomyEnvelopePlan(RoleItemPlan child, EconomyEnvelope en
         var beforeEntities = EntityWrites.Concat(EntityDeltaWrites).Distinct()
             .ToDictionary(key => key, key => ReadEntity(db, tx, key));
         var generatedEntities = new HashSet<OwnerRevisionKey>();
-        var before = Read(db, tx);
+        var (before, standing) = Read(db, tx);
+        foreach (var issue in standing) DbWriter.ReportStandingIssue(issue);
         var children = (object?[])child.Execute(db, tx);
         EconomyTransactionPlan.EncodeChildReceipts(children); // Reject any non-durable child result before receipt work.
         // Guild creation obtains its owner ID inside the writer. Its initial revision is inserted by
@@ -102,7 +103,8 @@ internal sealed class EconomyEnvelopePlan(RoleItemPlan child, EconomyEnvelope en
             if (ReadEntity(db, tx, key) is not { Exists: true, Revision: 1 })
                 throw new InvalidDataException("E05d guild creation did not install initial owner revision.");
         }
-        var after = Read(db, tx);
+        var (after, issues) = Read(db, tx);
+        RefuseNewIssues(standing, issues);
         List<EconomyLeg> legs = Match(before, after, ResolveEffects(db, tx, children));
         long sequence;
         using (var advance = DbSql.Command(db, tx,
@@ -224,21 +226,28 @@ internal sealed class EconomyEnvelopePlan(RoleItemPlan child, EconomyEnvelope en
             ? new OwnerRevisionValue(key, value, true) : new OwnerRevisionValue(key, 0, false);
     }
 
-    private static Dictionary<(EconomyAsset Asset, EconomyLocation Location), EconomyHolding> Read(
+    /// <summary>The holdings and the row issues of the realm. This snapshot covers every character, so one bad row is reported
+    /// and leaves other players' operations alone (inferred). The row's value is left out of the holdings.</summary>
+    private static (Dictionary<(EconomyAsset Asset, EconomyLocation Location), EconomyHolding> Holdings, HashSet<EconomyIssue> Issues) Read(
         SqliteConnection db, SqliteTransaction tx, EconomyCatalog catalog)
     {
         var decoded = EconomySnapshotReader.ReadTransaction(db, tx, catalog);
-        if (decoded.Issues.Any(x => x.Kind is EconomyIssueKind.Corruption or EconomyIssueKind.UnknownSchema or EconomyIssueKind.Coverage))
-            throw new InvalidDataException("E05d economic decoder found unclassified/corrupt stored value: " +
-                decoded.Issues.First(x => x.Kind is EconomyIssueKind.Corruption or EconomyIssueKind.UnknownSchema or EconomyIssueKind.Coverage).Detail);
         var result = new Dictionary<(EconomyAsset, EconomyLocation), EconomyHolding>();
         foreach (var holding in decoded.Holdings)
             if (!result.TryAdd((holding.Asset, holding.Location), holding))
                 throw new InvalidDataException("Duplicate economic holding location.");
-        return result;
+        return (result, decoded.Issues.Where(x => x.Kind is EconomyIssueKind.Corruption or EconomyIssueKind.UnknownSchema or EconomyIssueKind.Coverage).ToHashSet());
     }
 
-    private Dictionary<(EconomyAsset Asset, EconomyLocation Location), EconomyHolding> Read(
+    /// <summary>An issue this plan's own writes created refuses the plan, so its transaction rolls back and nothing undecodable
+    /// is stored.</summary>
+    private static void RefuseNewIssues(HashSet<EconomyIssue> before, HashSet<EconomyIssue> after)
+    {
+        if (after.FirstOrDefault(x => !before.Contains(x)) is { } created)
+            throw new InvalidDataException("E05d economic decoder found unclassified/corrupt stored value: " + created.Detail);
+    }
+
+    private (Dictionary<(EconomyAsset Asset, EconomyLocation Location), EconomyHolding> Holdings, HashSet<EconomyIssue> Issues) Read(
         SqliteConnection db, SqliteTransaction tx) => Read(db, tx, catalog);
 
     private IReadOnlyList<EconomyEffect> ResolveEffects(SqliteConnection db, SqliteTransaction tx, object?[] children)

@@ -67,6 +67,43 @@ public sealed partial class NewActivityTests
 
     private const long DummyChallengeQuest = 10200120;
 
+    // A dummy never dies, and every hit on it still reports 31129. The client's Statistics panel ignores them only by its
+    // own pause (LC_DunGeon_Pile.InitBattleInfo, until the challenge starts), which a server pause must not outlive.
+    [ClientDataFact]
+    public async Task EveryHitOnADummyReportsAndAPauseEndsWithItsScene()
+    {
+        var bot = await InWorld("DummyStats");
+        await Next(bot, TrainingService.Sync, DBTrainingGroundInfoIncrement.Parser);
+        await Gm(bot, "!lvl 99"); await Gm(bot, "!job 1100");
+        long role = (long)bot.Self!.Uuid;
+        async Task HitAndExpectReport(long instance)
+        {
+            var dummy = await Service<GameLoop>().InvokeAsync(() => Task.FromResult(Service<World>().AllUnits()
+                .OfType<MonsterUnit>().Single(m => m.InstanceId == instance)));
+            await OnLoop(() => { Session(bot).SkillCds.Clear(); return Task.CompletedTask; });
+            await bot.SendGameAsync(MsgId.Walk, new WalkReq { Pos = dummy.Pos, BStop = true, SpeedRate = 1 });
+            await bot.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1100001, TargetId = dummy.Uid });
+            Assert.Equal(0, (await Next(bot, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
+            var hit = await Next(bot, CombatService.SkillHit, SkillHitInfo.Parser, h => h.Dsts.Any(d => d.DstID == dummy.Uid && d.Damage > 0));
+            var report = await Next(bot, CombatService.DamageStatistics, DamageStatisticsNotify.Parser, n => n.Damages.Any(d => d.DamageTargetId == dummy.Uid));
+            var entry = Assert.Single(report.Damages);
+            Assert.Equal(role, entry.DamageSourceId);
+            Assert.Equal(hit.Dsts.Single(d => d.DstID == dummy.Uid).Damage, entry.DamageValue);
+            Assert.False(dummy.Dead);
+            Assert.Equal(dummy.Template.MaxHp, dummy.Hp);
+            await bot.SendGameAsync(CombatService.SkillInterrupt, new NullArg());
+        }
+        await bot.SendGameAsync(DungeonService.Enter, new EnterDungeonReq { SceneEntry = 2100009 });
+        Assert.Equal(0, (await Next(bot, DungeonService.Enter, EnterDungeonRsp.Parser)).Result);
+        await HitAndExpectReport(await LoadPrivate(bot, 2100009));
+
+        await bot.SendGameAsync(CombatService.TrainingOperation, new BattleTrainingGroundOpReq { OpType = (BattleTrainingGroundOpType)1 });
+        Assert.Equal(0, (await Next(bot, CombatService.TrainingOperation, BattleTrainingGroundOpResp.Parser)).Result);
+        await bot.SendGameAsync(84061, new NullArg());
+        Assert.Equal(0, (await Next(bot, 84061, TrainingChallengeModeResp.Parser)).Result);
+        await HitAndExpectReport(await LoadPrivate(bot, 2100011));
+    }
+
     [ClientDataFact]
     public async Task TrainingMeasuresRealHitsAndRewardClaimsAreAtomicAndDurable()
     {

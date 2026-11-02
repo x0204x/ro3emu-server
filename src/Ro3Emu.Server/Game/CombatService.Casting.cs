@@ -172,7 +172,7 @@ public sealed partial class CombatService
         }
         if (lease?.Cancelled == true || !ReferenceEquals(s.Attachment, lease) ||
             s.SceneGeneration != scene || s.WorldScene != worldScene || s.SceneLoading) return;
-        int turn = owned == null ? SwingTurnLeft(s.SkillCast, row!.Value) : 0;
+        int turn = owned == null ? SwingLeft(s.SkillCast, row!.Value) : 0;
         await CancelCastAsync(s, SkillInterruptedInfo.Types.SkillInterruptType.Skill);
         _eventAttacks.Remove(s);
         await PayCostsAsync(s, costs);
@@ -202,9 +202,34 @@ public sealed partial class CombatService
                 s.Position.X, s.Position.Z);
         if (own != null) await OwnSkillCast!(s, req.SkillId);
         else await StartCooldownAsync(s, row.Value, SkillConfig.Get(_data, request.SkillId) is { } asked ? (int)asked.Mode : null);
-        await StartCastAsync(s, row.Value, req, id, owned, lead);
+        await StartCastAsync(s, WargHuntRow(s, row.Value, req), req, id, owned, lead);
         if (owned == null && !lineup && new SkillConfig(row.Value).SystemType == SkillService.QueueSystemType)
             StartLineup(s, s.SkillCast);
+    }
+
+    private const string WargHuntScript = "WolvesShadow";
+    private const int WargHuntDashDesc = 4;
+
+    /// <summary>
+    /// Warg Hunt (_kScriptLogic WolvesShadow) is an entry row: its show only plays an animation. The wolves are in the shows
+    /// of its _kLogicData rows [near, far], Warg Hunt (Melee) and (Ranged): fx_skill_wughunt_01 and _02 on the target (three
+    /// of them at mode 0), the far row's dash effect and their own _kShowDmg. "If you are more than ${5}m from the target,
+    /// you also dash in front of it" chooses between them. The entry row has been checked and paid and runs the cooldown
+    /// the bar shows; the cast itself runs as the chosen row. The client only plays the row a 31100 names and no client code
+    /// reads this _kLogicData, so sending the chosen row in place of the entry row's timeline is (inferred).
+    /// Buffs select those groups' own modes (Warg King's 1332601: mode 1 of 13323, 13329 and 13330), so the row is looked up
+    /// from its mode 0.
+    /// </summary>
+    private JsonElement WargHuntRow(GameSession s, JsonElement row, CastSkillReq req)
+    {
+        var hunt = new SkillConfig(row);
+        if (hunt.ScriptLogic != WargHuntScript || hunt.LogicData is not [var near, var far] || req.TargetPos is not { } target
+            || hunt.DescData.Length <= WargHuntDashDesc
+            || !float.TryParse(hunt.DescData[WargHuntDashDesc], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float dash)
+            || SkillConfig.Get(_data, Distance(s.Position, target) >= dash ? far : near) is not { } chosen) return row;
+        var effective = EffectiveSkillRow(s, _skills.RealId((int)chosen.SkillId, (int)chosen.Level)) ?? chosen.Row;
+        req.SkillId = (int)new SkillConfig(effective).Id;
+        return effective;
     }
 
     /// <summary>
@@ -344,11 +369,17 @@ public sealed partial class CombatService
     /// but the new swing starts when the one in flight would have ended: the milliseconds left, 0 when it is no such turn.
     /// Starting it at once let clicks alternating between two targets swing at click speed (inferred from the same pacing).
     /// </summary>
-    private int SwingTurnLeft(ActiveSkillCast? active, JsonElement row)
+    private int SwingTurnLeft(ActiveSkillCast? active, JsonElement row) => Math.Max(0, SwingLeft(active, row) - SwingJitterMs);
+
+    /// <summary>
+    /// The milliseconds until the swing in flight ends, where a new normal attack starts. The slack only lets its request in:
+    /// the key held down sends one every 200 ms, so starting it at once cut 150 ms off every swing (346 ms a swing became 200).
+    /// </summary>
+    private int SwingLeft(ActiveSkillCast? active, JsonElement row)
     {
         if (active is not { Cancelled: false } || !new SkillConfig(row).IsNormalAttack(_data) || !new SkillConfig(active.Row).IsNormalAttack(_data))
             return 0;
-        long left = active.StartMs + active.ChantMs + active.ActionMs - SwingJitterMs - Now;
+        long left = active.StartMs + active.ChantMs + active.ActionMs - Now;
         return left > 0 ? (int)Math.Min(left, int.MaxValue) : 0;
     }
 
@@ -694,7 +725,6 @@ public sealed partial class CombatService
         }
         if (leadMs <= 0) await Timeline();
         else ScheduleCastDeadline(action, 0, () => Live(s, action) ? Timeline() : Task.CompletedTask);
-        await PrepareVolleyArrowsAsync(s, action);
         var template = _data.SkillTemplate(skill.ScriptShow);
         var points = template is { } t ? Numbers(t, "m_kAtkPoints") : [];
         double point = points.FirstOrDefault(0.2);

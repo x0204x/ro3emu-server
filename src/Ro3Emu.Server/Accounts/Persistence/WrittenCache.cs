@@ -1,7 +1,7 @@
 namespace Ro3Emu.Server.Accounts.Persistence;
 
 /// <summary>A store's cache over database rows that a writer job can make stale.</summary>
-public enum WrittenCache { Guild, AdventureGroup }
+public enum WrittenCache { Guild, AdventureGroup, Auction }
 
 /// <summary>
 /// The generation of each <see cref="WrittenCache"/> of one database. A plan that writes the cached rows names the cache

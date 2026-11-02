@@ -32,6 +32,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The export's client-scenes.json writer, compiled here so a test can put its file in front of the server's reader. -->
+    <Compile Include="..\..\src\Ro3Emu.DataExport\ClientScenes.cs" Link="DataExport\ClientScenes.cs" />
+    <Compile Include="..\..\src\Ro3Emu.DataExport\Vfs.cs" Link="DataExport\Vfs.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- The synthetic game data (SyntheticData.Dir, docs/guide/testing.md): hand-written, every value invented. -->
     <None Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

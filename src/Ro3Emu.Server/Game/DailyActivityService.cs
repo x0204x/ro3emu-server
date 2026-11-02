@@ -483,16 +483,36 @@ public sealed partial class DailyActivityService : IGameTicker
         // window refresh is posted (every session used to be posted every second: a 300-item queue burst).
         var now = _clock.GetLocalNow().DateTime;
         long daily = Boundary(now), weekly = WeekBoundary(now), seconds = ToUnix(now);
+        // At 05:00 every online role crosses at once (inferred pacing; server tuning): one queued reconciliation per session
+        // and at most ResetsPerTick a second, so a big realm's resets spread over seconds instead of saturating the loop.
+        int posted = 0;
         foreach (var session in _sessions.All())
         {
-            if (session.Daily is not { } state || !session.DailyReady) continue;
+            if (session.Daily is not { } state || !session.DailyReady || session.DailyReconcileQueued) continue;
             if (state.DailyEpoch >= daily && state.WeeklyEpoch >= weekly
                 && seconds < session.DailyWindowRefreshAt && seconds >= session.DailyWindowSampledAt) continue;
-            _loop.PostOwned(session, () => ReconcileAsync(session));
+            if (posted++ == ResetsPerTick) break;
+            session.DailyReconcileQueued = true;
+            _loop.PostOwned(session, async () =>
+            {
+                try { await ReconcileAsync(session); }
+                finally { session.DailyReconcileQueued = false; }
+            }, discarded: () => session.DailyReconcileQueued = false);
         }
     }
 
     private TimeSpan _lastTick;
+    internal int ResetsPerTick { get; set; } = 50;
+
+    /// <summary>The heartbeat's share: a due window refresh only. A crossed day or week is left to <see cref="Tick"/>, which
+    /// paces the realm's resets; every heartbeat starting its own role's reset would begin them all within seconds.</summary>
+    public async Task ReconcileWindowsAsync(GameSession session)
+    {
+        if (session.Daily is not { } state) return;
+        var now = _clock.GetLocalNow().DateTime;
+        if (state.DailyEpoch < Boundary(now) || state.WeeklyEpoch < WeekBoundary(now)) return;
+        await ReconcileAsync(session);
+    }
 
     public async Task ReconcileAsync(GameSession session, DateTime? localNow = null)
     {

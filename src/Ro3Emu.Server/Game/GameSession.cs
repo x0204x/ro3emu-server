@@ -131,6 +131,8 @@ public sealed class GameSession(PhonestChannel channel, TrafficLog traffic, Skil
     /// <summary>C/D 17: the role's client settings, merged in memory and written lazily (SettingsPersistence).</summary>
     internal Romsg.DBSettingInfo? Settings { get; set; }
     internal Persistence.LazyRolePart.State? SettingsPart { get; set; }
+    /// <summary>The Bonus Time clock's lazy save (WildAfkPersistence).</summary>
+    internal Persistence.LazyRolePart.State? WildAfkPart { get; set; }
 
     /// <summary>Dead (HP 0, 31049 state 1) until revived (31013).</summary>
     public bool Dead { get; set; }
@@ -249,6 +251,8 @@ public sealed class GameSession(PhonestChannel channel, TrafficLog traffic, Skil
     /// <summary>Derived 5004 schedule refresh, independent of persisted progress/reset epochs.</summary>
     public long DailyWindowRefreshAt { get; set; }
     public long DailyWindowSampledAt { get; set; }
+    /// <summary>A reconciliation from the paced tick is queued (DailyActivityService.Tick).</summary>
+    internal bool DailyReconcileQueued { get; set; }
 
     /// <summary>Per-role seasonal activities (5013); the source lock serializes claims independently of inventory.</summary>
     public Romsg.DBNewActivityInfo? NewActivities { get; set; }

@@ -62,6 +62,14 @@ public sealed class SocialOwnerCache(AccountStore accounts, OwnerRegistry owners
 
     internal async Task<IReadOnlyDictionary<long, ProfileSnapshot?>> LoadProfilesAsync(IEnumerable<long> roles,
         IReadOnlyDictionary<long, GuildStamp> currentGuilds)
+        => await TryProfilesAsync(roles, currentGuilds) ?? throw new OwnerRevisionConflictException();
+
+    /// <summary>
+    /// These roles' profiles from the current cached ones and one read of the rest. Needs no owner held: the read is kept
+    /// only when every row matches its owner's committed revisions, and null means one did not (a commit in flight).
+    /// </summary>
+    internal async Task<IReadOnlyDictionary<long, ProfileSnapshot?>?> TryProfilesAsync(IEnumerable<long> roles,
+        IReadOnlyDictionary<long, GuildStamp> currentGuilds)
     {
         AssertLoop();
         var ids = roles.Distinct().ToArray();
@@ -74,7 +82,7 @@ public sealed class SocialOwnerCache(AccountStore accounts, OwnerRegistry owners
                 var owner = owners.GetOrRegister(snapshot.Vector);
                 if (!Matches(owner, snapshot.Vector, RevisionStore.Identity, RevisionStore.Progress,
                     "wardrobe", "guild_info", "personal", "personal_upvote", "popularity", "social_outfit", RevisionStore.GuildMembership))
-                    throw new OwnerRevisionConflictException();
+                    return null;
             }
             foreach (var (id, snapshot) in loaded)
             {

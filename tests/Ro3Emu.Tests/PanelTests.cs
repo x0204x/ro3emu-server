@@ -537,6 +537,7 @@ public sealed class PanelTests : IAsyncLifetime
         var map = Assert.Single((await anonymous.GetJsonAsync("/api/maps")).GetProperty("maps").EnumerateArray());
         Assert.Equal(("Synthetic Field", 12, 35, 2, ""), (map.GetProperty("name").GetString(), map.GetProperty("minLevel").GetInt32(),
             map.GetProperty("maxLevel").GetInt32(), map.GetProperty("monsters").GetInt32(), map.GetProperty("image").GetString()));
+        Assert.True(map.GetProperty("enterable").GetBoolean());
         var detail = await anonymous.GetJsonAsync("/api/maps/10112");
         Assert.Equal(["Synthetic Poring", "Synthetic Angeling"], detail.GetProperty("monsters").EnumerateArray()
             .Select(m => m.GetProperty("monster").GetProperty("name").GetString()));

@@ -78,7 +78,7 @@ public sealed class TraditionalChineseProfileTests
         {
             string folder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ro3emu");
             Directory.CreateDirectory(folder);
-            string[] names = { "loc_zh_TW.tsv", "loc_zh_TW.sids.tsv", "loc_en.tsv", "loc_zh_TW_misses.tsv" };
+            string[] names = ["loc_zh_TW.tsv", "loc_zh_TW.sids.tsv", "loc_en.tsv", "loc_zh_TW_misses.tsv"];
             var originals = names.ToDictionary(n => n, n => File.Exists(Path.Combine(folder, n)) ? File.ReadAllBytes(Path.Combine(folder, n)) : null);
             void Reset()
             {

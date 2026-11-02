@@ -827,6 +827,21 @@ public sealed partial class ActivityAdventuresTests : IAsyncLifetime
     }
 
     [ClientDataFact]
+    public async Task SeasonalItemBelongsToTheCurrentSeasonAndOthersHaveNone()
+    {
+        await using var alice = await InWorld("Alice");
+        await Gm("alice", "!item 1112002 1");
+        var rare = await Next(alice, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser,
+            m => m.PackInfo.TryGetValue(1, out var pack) && pack.Inc?.Items.Values.Any(i => i.All?.ItemEntry == 1112002) == true);
+        Assert.Equal(_app.Services.GetRequiredService<SeasonService>().SeasonId,
+            rare.PackInfo[1].Inc.Items.Values.Single(i => i.All?.ItemEntry == 1112002).All.Season);
+        await Gm("alice", "!item 1112001 1");
+        var plain = await Next(alice, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser,
+            m => m.PackInfo.TryGetValue(1, out var pack) && pack.Inc?.Items.Values.Any(i => i.All?.ItemEntry == 1112001) == true);
+        Assert.Equal(0, plain.PackInfo[1].Inc.Items.Values.Single(i => i.All?.ItemEntry == 1112001).All.Season);
+    }
+
+    [ClientDataFact]
     public async Task RareTreasureMapHuntsOnTheCurrentMapToo()
     {
         var window = _app.Services.GetRequiredService<ActivityClock>()
@@ -869,7 +884,7 @@ public sealed partial class ActivityAdventuresTests : IAsyncLifetime
         {
             session.Dead = false;
             var item = session.Items.Single(i => i.Guid == guid);
-            item.BindExpire = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 1;
+            item.BindExpire = _clock.GetUtcNow().ToUnixTimeSeconds() - 1;
             itemStore.Update(item);
             return Task.CompletedTask;
         });

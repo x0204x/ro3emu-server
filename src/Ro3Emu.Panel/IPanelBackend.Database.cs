@@ -118,7 +118,7 @@ public sealed record PanelSpawn(long MapId, string Map, int Count, int RespawnSe
 /// <param name="MinLevel">The lowest level of the monsters that spawn there; 0 when none does.</param>
 /// <param name="Monsters">How many kinds of monster spawn there.</param>
 /// <param name="Players">Characters on the map now.</param>
-public sealed record PanelMapSummary(long Id, string Name, string Image, int MinLevel, int MaxLevel, int Monsters, int Players);
+public sealed record PanelMapSummary(long Id, string Name, string Image, int MinLevel, int MaxLevel, int Monsters, int Players, bool Enterable);
 
 /// <param name="Count">How many the map keeps alive at most.</param>
 public sealed record PanelMapMonster(PanelMonsterSummary Monster, int Count, int RespawnSeconds);
