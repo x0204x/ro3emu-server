@@ -22,6 +22,8 @@ public sealed partial class SkillCombatTests
     {
         var alice = await InWorld("Alice");
         await Gm("alice", "!job 3400"); await Gm("alice", "!lvl 99"); await Teach("alice", MyriadStars);
+        // SkillCondition 86000494 含 [2001,11] 弓裝備條件；未騎乘的正向施放 fixture 須先裝弓。
+        await EquipConditionFixtureAsync("alice", ArcherBow);
         var session = Session("alice");
         var world = _app.Services.GetRequiredService<World>();
         var monsters = new MonsterUnit[places.Length];
