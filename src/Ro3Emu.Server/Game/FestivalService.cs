@@ -5,6 +5,7 @@ using Romsg;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Accounts.Persistence;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Economy;
 using Ro3Emu.Server.Game.Ownership;
 
@@ -34,7 +35,7 @@ public sealed class FestivalService : IGameTicker
     private readonly SessionRegistry _sessions;
     private readonly GameLoop _loop;
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private readonly Dictionary<int, Zone> _zones = new();
+    private readonly Dictionary<int, Zone> _zones = [];
     private Round? _current;
     private InstanceService.Room? _room;
     private TimeSpan _lastTick;
@@ -63,9 +64,9 @@ public sealed class FestivalService : IGameTicker
         public int Question { get; set; }
         public long Deadline { get; set; }
         public long[] Questions { get; set; } = [];
-        public List<long> Answers { get; set; } = new();
-        public Dictionary<long, Candidate> Candidates { get; set; } = new();
-        public Dictionary<long, long> Bets { get; set; } = new();
+        public List<long> Answers { get; set; } = [];
+        public Dictionary<long, Candidate> Candidates { get; set; } = [];
+        public Dictionary<long, long> Bets { get; set; } = [];
         public bool Complete { get; set; }
     }
 
@@ -145,7 +146,7 @@ public sealed class FestivalService : IGameTicker
                 foreach (int source in new[] { 0, 1 })
                     keys.Add(ReservationKey.Entity("festival_reward", $"{round.Cycle}/{id}/{source}"));
         }
-        return keys.ToArray();
+        return [.. keys];
     }
 
     private async Task<LegacyOwnerScope?> EnterRoundWithGateAsync(string origin, params long[] additionalRoles)
@@ -185,8 +186,8 @@ public sealed class FestivalService : IGameTicker
             next ??= new Round
             {
                 Cycle = cycle.Start, AnswerStart = answer.Start, End = answer.End,
-                Deadline = answer.Start, Questions = _data.Table("RainbowKoiQuestionConfig").Values
-                    .Select(r => (long)GameData.Int(r, "_iID")).Where(id => id > 0).Order().Take(15).ToArray()
+                Deadline = answer.Start, Questions = [.. _data.Table("RainbowKoiQuestionConfig").Values
+                    .Select(r => (long)GameData.Int(r, "_iID")).Where(id => id > 0).Order().Take(15)]
             };
         }
         // (inferred) Select eligible online roles during the candidate minute, stable by role id, capped by the map.
@@ -340,10 +341,10 @@ public sealed class FestivalService : IGameTicker
         result.Vars.Add(Var(1102, r.Deadline * 1000));
         result.Vars.Add(Var(1103, r.Phase));
         result.Vars.Add(Var(1104, r.Question + 1));
-        result.Vars.Add(Var(1105, r.Candidates.Where(c => c.Value.Entered && !c.Value.Eliminated && !c.Value.GiveUp).Select(c => c.Key).ToArray()));
-        result.Vars.Add(Var(1106, r.Candidates.Where(c => c.Value.Eliminated || c.Value.GiveUp).Select(c => c.Key).ToArray()));
+        result.Vars.Add(Var(1105, [.. r.Candidates.Where(c => c.Value.Entered && !c.Value.Eliminated && !c.Value.GiveUp).Select(c => c.Key)]));
+        result.Vars.Add(Var(1106, [.. r.Candidates.Where(c => c.Value.Eliminated || c.Value.GiveUp).Select(c => c.Key)]));
         result.Vars.Add(Var(1107, r.Questions));
-        result.Vars.Add(Var(1108, r.Answers.ToArray()));
+        result.Vars.Add(Var(1108, [.. r.Answers]));
         result.Vars.Add(Var(1110, r.Candidates.Count(c => c.Value.Entered && !c.Value.Eliminated && !c.Value.GiveUp)));
         result.Vars.Add(Var(1111, r.Complete ? 2 : r.Phase == 2 ? 1 : 0));
         return result;
@@ -464,10 +465,11 @@ public sealed class FestivalService : IGameTicker
                 frozen.Add((id, 0, GameData.Int(reward, "_iAward"),
                     _awards.ResolveForProgress(_roles.LoadProgress(id), GameData.Int(reward, "_iAward"), 101).Grants.ToArray()));
         }
-        // (inferred) The bet panel previews LuckyAwardPreview; a successful prediction receives that award once.
-        long betAward = _data.Table("PublicParamConfig").TryGetValue("LuckyAwardPreview", out var preview) ? (long)(GameData.Number(preview) ?? 0) : 0;
-        foreach (var (id, target) in r.Bets)
-            if (betAward > 0 && r.Candidates.TryGetValue(target, out var c) && c.Rank == 1 && !c.GiveUp)
+        var winners = r.Bets.Where(b => r.Candidates.TryGetValue(b.Value, out var c) && c.Rank == 1 && !c.GiveUp)
+            .Select(b => b.Key).ToList();
+        long betAward = BetAward(winners.Count);
+        foreach (long id in winners)
+            if (betAward > 0)
                 frozen.Add((id, 1, betAward,
                     _awards.ResolveForProgress(_roles.LoadProgress(id), betAward, 101).Grants.ToArray()));
         foreach (var row in frozen)
@@ -493,6 +495,20 @@ public sealed class FestivalService : IGameTicker
         }
         await transaction.CommitAsync(_accounts, "festival/complete", _ => _current = r);
         _deliverOnline = true;
+    }
+
+    /// <summary>
+    /// What each right bet pays: the KoiBetRewardConfig tier holding the number of players who bet right, the fewer the
+    /// richer (the bet panel lists "${1}~ ${2} players placed the correct bet" per tier, a max of -1 unbounded). The
+    /// winner count is every bet on a candidate who won (inferred: the panel names players, not candidates). Without a
+    /// tier the face-photo panel's single preview, PublicParamConfig LuckyAwardPreview, is paid (inferred).
+    /// </summary>
+    internal long BetAward(int winners)
+    {
+        if (winners <= 0) return 0;
+        if (KoiBetRewardConfig.All(_data).FirstOrDefault(t => t.WinnerMin <= winners && (t.WinnerMax < 0 || winners <= t.WinnerMax))
+            is { AwardId: > 0 } tier) return tier.AwardId;
+        return _data.Table("PublicParamConfig").TryGetValue("LuckyAwardPreview", out var preview) ? (long)(GameData.Number(preview) ?? 0) : 0;
     }
 
     private async Task DeliverAsync(GameSession session)

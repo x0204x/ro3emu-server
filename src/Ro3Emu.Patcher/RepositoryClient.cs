@@ -3,21 +3,30 @@ using System.Text.Json;
 
 namespace Ro3Emu.Patcher;
 
-/// <summary>Reads a release repository over HTTP(S). Mutable channel metadata and signed small assets are fetched uncached.</summary>
+/// <summary>
+/// 透過 HTTPS 讀取更新來源；HTTP 僅允許本機測試。通道、簽章與小型已簽署資產不使用快取，
+/// TLS 與發行者簽章各自驗證，不能以關閉信任旗標略過遠端 HTTPS 限制。
+/// </summary>
 public sealed class RepositoryClient : IDisposable
 {
     readonly HttpClient _http;
     readonly bool _ownsClient;
     readonly RepositoryTrustOptions _trust;
+    readonly string? _refused;
 
     public RepositoryClient(Uri baseUri, HttpMessageHandler? handler = null)
         : this(baseUri, RepositoryTrustOptions.UnsignedLab, handler)
     {
     }
 
-    public RepositoryClient(Uri baseUri, RepositoryTrustOptions trust, HttpMessageHandler? handler = null)
+    public RepositoryClient(Uri baseUri, RepositoryTrustOptions trust, HttpMessageHandler? handler = null,
+        string? connectionAddress = null)
     {
         ArgumentNullException.ThrowIfNull(trust);
+        RepositoryTransport.Validate(baseUri, connectionAddress);
+        _refused = Allowed(baseUri) ? null
+            : $"The update server address {baseUri.GetLeftPart(UriPartial.Authority)} does not use https, so its files " +
+              "cannot be trusted. Ask the server's owner for its https address.";
         if (!baseUri.AbsoluteUri.EndsWith('/'))
         {
             baseUri = new Uri(baseUri.AbsoluteUri + "/");
@@ -32,12 +41,7 @@ public sealed class RepositoryClient : IDisposable
         }
         _trust = trust;
         _http = handler is null
-            ? new HttpClient(new SocketsHttpHandler
-            {
-                AutomaticDecompression = System.Net.DecompressionMethods.None,
-                MaxConnectionsPerServer = 16,
-                PooledConnectionLifetime = TimeSpan.FromMinutes(5),
-            })
+            ? new HttpClient(RepositoryTransport.Create(baseUri, connectionAddress))
             : new HttpClient(handler, disposeHandler: false);
         _ownsClient = true;
         _http.BaseAddress = baseUri;
@@ -49,8 +53,18 @@ public sealed class RepositoryClient : IDisposable
 
     public bool RequiresSignedChannel => _trust.RequireSignedChannel;
 
+    /// <summary>HTTPS，或僅連到本機的 HTTP（localhost、127.0.0.0/8、::1）。</summary>
+    public static bool Allowed(Uri uri) =>
+        uri.Scheme == Uri.UriSchemeHttps || (uri.Scheme == Uri.UriSchemeHttp && uri.IsLoopback);
+
+    void ThrowIfRefused()
+    {
+        if (_refused != null) throw new PatcherException(_refused);
+    }
+
     public async Task<ChannelInfo> GetChannelAsync(string channel, CancellationToken ct)
     {
+        ThrowIfRefused();
         if (string.IsNullOrWhiteSpace(channel) || channel.Any(ch => !(char.IsAsciiLetterOrDigit(ch) || ch == '-')))
         {
             throw new PatcherException("The update channel name is invalid.");
@@ -95,6 +109,7 @@ public sealed class RepositoryClient : IDisposable
 
     public async Task<(Manifest Manifest, byte[] Raw)> GetManifestAsync(ChannelInfo channel, CancellationToken ct)
     {
+        ThrowIfRefused();
         PathRules.ValidateRelative(channel.Manifest);
         using var response = await _http.GetAsync(channel.Manifest, ct);
         EnsureTransport(response);
@@ -110,6 +125,7 @@ public sealed class RepositoryClient : IDisposable
     /// <summary>Downloads one stored chunk; <paramref name="onBytes"/> reports compressed bytes as they arrive.</summary>
     public async Task<byte[]> GetChunkAsync(string hash, int storedSize, Action<int>? onBytes, CancellationToken ct)
     {
+        ThrowIfRefused();
         using var response = await _http.GetAsync(PathRules.ChunkRelative(hash), HttpCompletionOption.ResponseHeadersRead, ct);
         EnsureTransport(response);
         response.EnsureSuccessStatusCode();
@@ -135,6 +151,7 @@ public sealed class RepositoryClient : IDisposable
 
     public async Task<byte[]?> TryGetBytesAsync(string relative, CancellationToken ct)
     {
+        if (_refused != null) return null;
         PathRules.ValidateRelative(relative);
         using var request = new HttpRequestMessage(HttpMethod.Get, relative);
         request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true };

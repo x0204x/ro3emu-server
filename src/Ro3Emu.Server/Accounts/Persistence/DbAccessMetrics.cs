@@ -14,7 +14,7 @@ public sealed class DbAccessMetrics
     private long _writerAuthorizations, _bootstrapAuthorizations, _backupAuthorizations, _nonWriterWriteAttempts, _writeGuardErrors;
     private readonly object _denialGate = new();
     private readonly Queue<object> _writeDenials = new();
-    private readonly Dictionary<(string Access, string Source, int Thread), long> _writeOrigins = new();
+    private readonly Dictionary<(string Access, string Source, int Thread), long> _writeOrigins = [];
     private long _unlistedWriteOrigins;
     private int _writerJobs, _writerBytes, _lazyJobs, _lazyBytes, _readerJobs, _writerThreadId;
     private long _maxWriterQueueTicks;
@@ -91,11 +91,11 @@ public sealed class DbAccessMetrics
         }
     }
     internal void WriteGuardError() => Interlocked.Increment(ref _writeGuardErrors);
-    private object[] WriteDenials() { lock (_denialGate) return _writeDenials.ToArray(); }
+    private object[] WriteDenials() { lock (_denialGate) return [.. _writeDenials]; }
     private object[] WriteOrigins()
     {
-        lock (_denialGate) return _writeOrigins.Select(p => (object)new
-        { access = p.Key.Access, source = p.Key.Source, thread = p.Key.Thread, authorizations = p.Value }).ToArray();
+        lock (_denialGate) return [.. _writeOrigins.Select(p => (object)new
+        { access = p.Key.Access, source = p.Key.Source, thread = p.Key.Thread, authorizations = p.Value })];
     }
     internal void WorkerStopTimedOut(bool writer)
     {
@@ -166,10 +166,9 @@ public sealed class DbAccessMetrics
     };
 
     /// <summary>Synchronous DB waits on the loop by "R|W label", heaviest first (the C/D 16 work list).</summary>
-    public IReadOnlyList<object> LoopWaits(int top) => _loopWaits
+    public IReadOnlyList<object> LoopWaits(int top) => [.. _loopWaits
         .Select(p => (Label: p.Key, Count: Interlocked.Read(ref p.Value.Count), Ticks: Interlocked.Read(ref p.Value.Ticks), Max: Interlocked.Read(ref p.Value.MaxTicks)))
         .OrderByDescending(w => w.Ticks).Take(top)
-        .Select(w => (object)new { label = w.Label, count = w.Count, ms = w.Ticks * 1000d / Stopwatch.Frequency, maxMs = w.Max * 1000d / Stopwatch.Frequency })
-        .ToList();
+        .Select(w => (object)new { label = w.Label, count = w.Count, ms = w.Ticks * 1000d / Stopwatch.Frequency, maxMs = w.Max * 1000d / Stopwatch.Frequency })];
     internal IReadOnlyDictionary<string, long> LoopWaitCounts() => _loopWaits.ToDictionary(p => p.Key, p => Interlocked.Read(ref p.Value.Count), StringComparer.Ordinal);
 }

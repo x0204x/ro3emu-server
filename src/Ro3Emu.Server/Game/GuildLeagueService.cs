@@ -48,7 +48,7 @@ public sealed partial class GuildLeagueService : IGameTicker
 
     /// <summary>A newly committed match outcome: its round (1-3) and each fighter's personal points (quest targets
     /// 106603 and 106019). Runs inside the Realm settlement; listeners post their work.</summary>
-    public List<Action<int, IReadOnlyDictionary<long, long>>> MatchCommitted { get; } = new();
+    public List<Action<int, IReadOnlyDictionary<long, long>>> MatchCommitted { get; } = [];
     private readonly SemaphoreSlim _gate = new(1, 1);
     private LeagueState _state;
 
@@ -59,8 +59,8 @@ public sealed partial class GuildLeagueService : IGameTicker
         /// <summary>The last registered tournament (GuildLeagueCalendar index), 0 before the first.</summary>
         public int Index { get; set; }
         public Cup? Cup { get; set; }
-        public Dictionary<long, Standing> Guilds { get; set; } = new();
-        public List<Report> Reports { get; set; } = new();
+        public Dictionary<long, Standing> Guilds { get; set; } = [];
+        public List<Report> Reports { get; set; } = [];
     }
 
     /// <summary>A guild's place in the league ladder.</summary>
@@ -88,7 +88,7 @@ public sealed partial class GuildLeagueService : IGameTicker
         public long Init { get; set; }
         /// <summary>Preliminaries, semifinals and finals as start/end pairs (unix seconds).</summary>
         public long[] Windows { get; set; } = [];
-        public List<Group> Groups { get; set; } = new();
+        public List<Group> Groups { get; set; } = [];
         /// <summary>The last round whose every pair has an outcome.</summary>
         public int SettledRound { get; set; }
         /// <summary>Places, promotion/relegation and tier mails are done.</summary>
@@ -101,8 +101,8 @@ public sealed partial class GuildLeagueService : IGameTicker
         public int Tier { get; set; }
         public int Order { get; set; }
         /// <summary>The four preliminary pairs as [blue, red]; 0 is an empty slot.</summary>
-        public List<long[]> Pairs { get; set; } = new();
-        public List<Outcome> Outcomes { get; set; } = new();
+        public List<long[]> Pairs { get; set; } = [];
+        public List<Outcome> Outcomes { get; set; } = [];
     }
 
     /// <summary>A decided pair of one round, with what its rewards need.</summary>
@@ -118,7 +118,7 @@ public sealed partial class GuildLeagueService : IGameTicker
         public long Time { get; set; }
         public string Report { get; set; } = "";
         /// <summary>Participant role -> (guild, personal points over both battlefields).</summary>
-        public Dictionary<long, long[]> Players { get; set; } = new();
+        public Dictionary<long, long[]> Players { get; set; } = [];
         public bool Rewarded { get; set; }
         /// <summary>Both guilds' auctions were published or refused by the rule.</summary>
         public bool AuctionDone { get; set; }
@@ -172,10 +172,10 @@ public sealed partial class GuildLeagueService : IGameTicker
     private long Setting(string name, long fallback) => _data.Table("GuildSettingConfig").TryGetValue(name, out var row)
         && row.TryGetProperty("_kValue", out var value) && GameData.Number(value) is { } n ? (long)n : fallback;
     private long[] Param(string name) => _data.Table("PublicParamConfig").TryGetValue(name, out var v) && v.ValueKind == JsonValueKind.Array
-        ? v.EnumerateArray().Select(x => (long)(GameData.Number(x) ?? 0)).ToArray() : [];
+        ? [.. v.EnumerateArray().Select(x => (long)(GameData.Number(x) ?? 0))] : [];
     private JsonElement? Rank(int tier) => _data.Table("GuildLeagueRankConfig").Values
         .Where(r => GameData.Int(r, "_iRank") == tier).Select(r => (JsonElement?)r).FirstOrDefault();
-    private int[] Tiers => _data.Table("GuildLeagueRankConfig").Values.Select(r => (int)GameData.Int(r, "_iRank")).Order().ToArray();
+    private int[] Tiers => [.. _data.Table("GuildLeagueRankConfig").Values.Select(r => (int)GameData.Int(r, "_iRank")).Order()];
     /// <summary>Groups of a tier hold 8 guilds (GetAllRankGroupNum, Lua_CFG_GuildLeagueRankConfig.lua:214-232: _iGroupNum * 8).</summary>
     private int Groups(int tier) => Rank(tier) is { } row ? (int)Math.Max(1, GameData.Int(row, "_iGroupNum")) : 1;
 
@@ -240,7 +240,7 @@ public sealed partial class GuildLeagueService : IGameTicker
             standing.Strength = g.Members.Values.Sum(m => (long)m.Level);
             standing.Name = g.Name; standing.Background = g.Background; standing.Icon = g.Icon;
         }
-        Place(next, eligible.Select(g => g.Id).ToHashSet(), newSeason || next.Guilds.Values.All(s => s.Tier == 0));
+        Place(next, [.. eligible.Select(g => g.Id)], newSeason || next.Guilds.Values.All(s => s.Tier == 0));
         var cup = new Cup
         {
             Index = t.Index, Init = t.Init, Windows = [t.Preliminary.Start, t.Preliminary.End,
@@ -337,7 +337,7 @@ public sealed partial class GuildLeagueService : IGameTicker
     }
 
     private static GuildLeagueBracket.Pair[] Preliminary(Group group) =>
-        group.Pairs.Select(p => new GuildLeagueBracket.Pair(p[0], p[1])).ToArray();
+        [.. group.Pairs.Select(p => new GuildLeagueBracket.Pair(p[0], p[1]))];
 
     private GuildLeagueGuildDungeonData Dungeon(long guild, Group? group, int pairIndex = -1, bool blue = true)
     {

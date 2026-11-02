@@ -29,7 +29,9 @@ public sealed partial class StallsService
         int level = s.Progress!.Skills.GetValueOrDefault(skill);
         var row = _data.Table("SkillConfig").Values.FirstOrDefault(r => GameData.Int(r, "_iSkillID") == skill && GameData.Int(r, "_iLevel") == level);
         var param = row.ValueKind == System.Text.Json.JsonValueKind.Object ? Field(row, "_kSpSkillParam") : [];
-        return (int)Param("StallsDefaultPlaidNum", 10) + (param.Length > 1 ? (int)param[1] : 0);
+        // An advanced pass adds slots (PassPrivileges.StallSlotAdd).
+        return (int)Param("StallsDefaultPlaidNum", 10) + (param.Length > 1 ? (int)param[1] : 0)
+            + PassPrivileges.Added(_data, s, PassPrivileges.StallSlotAdd);
     }
 
     private async Task StartAsync(GameSession s, PlayerStartStallsReq req)

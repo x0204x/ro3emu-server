@@ -33,7 +33,7 @@ public sealed partial class ArrowShopTests
     private static void Row(string root, string table, int id, object row)
     {
         string path = Path.Combine(root, "config", table + ".json");
-        var rows = File.Exists(path) ? JsonNode.Parse(File.ReadAllText(path))!.AsObject() : new JsonObject();
+        JsonObject rows = File.Exists(path) ? JsonNode.Parse(File.ReadAllText(path))!.AsObject() : [];
         rows[id.ToString(CultureInfo.InvariantCulture)] = JsonSerializer.SerializeToNode(row);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!); File.WriteAllText(path, rows.ToJsonString());
     }

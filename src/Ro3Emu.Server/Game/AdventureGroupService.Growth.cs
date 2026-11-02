@@ -23,7 +23,7 @@ namespace Ro3Emu.Server.Game;
 /// </summary>
 public sealed partial class AdventureGroupService
 {
-    private readonly Dictionary<long, (long Group, long Caller, long Scene, MapPoint Point, long Expires)> _rallies = new();
+    private readonly Dictionary<long, (long Group, long Caller, long Scene, MapPoint Point, long Expires)> _rallies = [];
     private long _lastMaintenance;
 
     // ---------------------------------------------------------------- EXP and level

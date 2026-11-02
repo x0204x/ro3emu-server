@@ -60,7 +60,7 @@ public sealed partial class GenreTests : IAsyncLifetime
     private async Task Level(string account, int level)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent($"!lvl {level} 5"))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={account}", Operator.Command($"!lvl {level} 5"))).EnsureSuccessStatusCode();
     }
 
     [ClientDataFact]
@@ -72,7 +72,7 @@ public sealed partial class GenreTests : IAsyncLifetime
             Assert.Equal(5, initial.GenreMap.All.SystemMap.Count);
             await Level("builder", 40);
             using (var client = new HttpClient())
-                (await client.PostAsync($"{_http}/ro3emu/gm?account=builder", new StringContent("!job 1100"))).EnsureSuccessStatusCode();
+                (await client.PostAsync($"{_http}/ro3emu/gm?account=builder", Operator.Command("!job 1100"))).EnsureSuccessStatusCode();
             var attrs = new AllocateAttrPointReq { PlanIndex = 1 };
             foreach (var (stat, value) in new[] { (1, 5), (2, 1), (3, 1), (4, 1), (5, 1), (6, 1) }) attrs.Points[stat] = value;
             await player.SendGameAsync(CharacterService.AllocateAttrPoints, attrs);
@@ -155,7 +155,7 @@ public sealed partial class GenreTests : IAsyncLifetime
         await Next(missing, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser);
         await Level("donor", 40); await Level("owner", 40); await Level("missing", 40);
         using (var client = new HttpClient())
-            (await client.PostAsync($"{_http}/ro3emu/gm?account=missing", new StringContent("!delitem 2010121 1"))).EnsureSuccessStatusCode();
+            (await client.PostAsync($"{_http}/ro3emu/gm?account=missing", Operator.Command("!delitem 2010121 1"))).EnsureSuccessStatusCode();
 
         async Task<long> SentTo(BotClient seeker)
         {
@@ -212,7 +212,7 @@ public sealed partial class GenreTests : IAsyncLifetime
             Assert.Contains(10000, initial.SkillAssignPlans.All.Value[0].SkillAssigns.Keys);
             await Level("attackplan", 40);
             using (var client = new HttpClient())
-                (await client.PostAsync($"{_http}/ro3emu/gm?account=attackplan", new StringContent("!job 1100"))).EnsureSuccessStatusCode();
+                (await client.PostAsync($"{_http}/ro3emu/gm?account=attackplan", Operator.Command("!job 1100"))).EnsureSuccessStatusCode();
 
             await player.SendGameAsync(SkillService.SwitchPlan, new SwitchPlanReq { Plan = 1 });
             Assert.Equal(0, (await Next(player, SkillService.SwitchPlan, SwitchPlanResp.Parser)).Result);
@@ -266,7 +266,7 @@ public sealed partial class GenreTests : IAsyncLifetime
             await Next(player, GenreService.GenreSync, DBGenreIncrement.Parser);
             await Level("scholar", 40);
             using (var client = new HttpClient())
-                (await client.PostAsync($"{_http}/ro3emu/gm?account=scholar", new StringContent("!job 1100"))).EnsureSuccessStatusCode();
+                (await client.PostAsync($"{_http}/ro3emu/gm?account=scholar", Operator.Command("!job 1100"))).EnsureSuccessStatusCode();
 
             var allocation = new AllocateAttrPointReq { PlanIndex = 1 };
             for (int stat = 1; stat <= 6; stat++) allocation.Points[stat] = stat == 1 ? 5 : 1;
@@ -344,7 +344,7 @@ public sealed partial class GenreTests : IAsyncLifetime
         await Level("talentbuild", 40);
         using (var client = new HttpClient())
             foreach (string command in new[] { "!job 1100", "!quest done 10101170", "!quest done 10103160" })
-                (await client.PostAsync($"{_http}/ro3emu/gm?account=talentbuild", new StringContent(command))).EnsureSuccessStatusCode();
+                (await client.PostAsync($"{_http}/ro3emu/gm?account=talentbuild", Operator.Command(command))).EnsureSuccessStatusCode();
 
         await player.SendGameAsync(82806, new SwitchGenrePlanReq
         {
@@ -368,7 +368,7 @@ public sealed partial class GenreTests : IAsyncLifetime
             await Level("echobuild", 40);
             using (var client = new HttpClient())
                 foreach (string command in new[] { "!job 1100", "!quest done 10103040", "!item 1830101", "!item 1830101" })
-                    (await client.PostAsync($"{_http}/ro3emu/gm?account=echobuild", new StringContent(command))).EnsureSuccessStatusCode();
+                    (await client.PostAsync($"{_http}/ro3emu/gm?account=echobuild", Operator.Command(command))).EnsureSuccessStatusCode();
             var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Id == (long)player.Self!.Uuid);
             var guids = session.Items.Where(i => i.Entry == 1830101).Select(i => i.Guid).Order().ToArray();
             Assert.Equal(2, guids.Length);

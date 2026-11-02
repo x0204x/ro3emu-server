@@ -52,9 +52,9 @@ public sealed partial class TerritoryWarsService
                 || GameData.Int(rule, "_iRuleType") != 2) continue;
             var records = state.Battles.Values.Where(b => b.Round == stage.Round).ToArray();
             if (records.Any(b => !b.Settled)) continue;
-            state.RuleResults[stage.ResultRule] = records.Where(b => b.Winner > 0)
+            state.RuleResults[stage.ResultRule] = [.. records.Where(b => b.Winner > 0)
                 .GroupBy(b => b.Winner).OrderByDescending(g => g.Sum(b => b.Scores.GetValueOrDefault(g.Key)))
-                .ThenBy(g => g.Key).Take((int)Math.Max(0, GameData.Int(rule, "_iLimitCount"))).Select(g => g.Key).ToList();
+                .ThenBy(g => g.Key).Take((int)Math.Max(0, GameData.Int(rule, "_iLimitCount"))).Select(g => g.Key)];
             await SaveAsync(state);
         }
     }

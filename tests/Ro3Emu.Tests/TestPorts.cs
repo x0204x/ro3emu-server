@@ -18,7 +18,7 @@ internal static class TestPorts
     // One full run takes ~3 ports per host for ~1100 hosts (16.10); half of the default range leaves headroom.
     private const int Partitions = 2;
     private static readonly object Gate = new();
-    private static readonly HashSet<int> Selected = new();
+    private static readonly HashSet<int> Selected = [];
     private static FileStream? _partitionLock; // held until the process exits
     private static readonly (int First, int End) Range = ClaimPartition(ReadPortRange());
 

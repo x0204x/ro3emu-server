@@ -48,6 +48,9 @@ public static class ErrorCodes
     public const int BattlePassGiftSelf = 8270, BattlePassGiftPending = 8271, BattlePassGiftItem = 8272;
     public const int BattlePassGiftMessage = 8273, BattlePassGiftCharacters = 8274, BattlePassGiftDay = 8275, BattlePassGiftFriend = 8276;
     public const int MonthCardNotOwned = 8300, MonthCardExpired = 8301, MonthCardClaimed = 8302;
+    // Top-up and products (2001 CREATE_ORDER): "Wrong top-up type.", "Invalid top-up option.", "Purchase limit reached",
+    // "Already purchased"; which refusal maps to which code is inferred from the texts.
+    public const int TopUpType = 1001, TopUpOption = 1002, TopUpLimit = 1003, AlreadyPurchased = 6019;
 
     // Auction (ErrorCodeConfig 2100-2119; exact operation mapping is inferred).
     public const int AuctionGuild = 2100;

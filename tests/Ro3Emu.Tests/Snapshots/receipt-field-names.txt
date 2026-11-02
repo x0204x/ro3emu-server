@@ -464,6 +464,9 @@ Ro3Emu.Server.Accounts.Persistence.ProgressionEconomyTransactionPlan/<child>P
 Ro3Emu.Server.Accounts.Persistence.ProgressionEconomyTransactionPlan/<mutation>P
 Ro3Emu.Server.Accounts.Persistence.ProgressionEconomyTransactionPlan/isReplay
 Ro3Emu.Server.Accounts.Persistence.ProgressionEconomyTransactionPlan/pendingAcknowledgementFault
+Ro3Emu.Server.Accounts.Persistence.PronteraDefenseGuildPrepPlan/<exp>P
+Ro3Emu.Server.Accounts.Persistence.PronteraDefenseGuildPrepPlan/<guild>P
+Ro3Emu.Server.Accounts.Persistence.PronteraDefenseGuildPrepPlan/<open>P
 Ro3Emu.Server.Accounts.Persistence.PronteraDefensePointPlan/<map>P
 Ro3Emu.Server.Accounts.Persistence.PronteraDefensePointPlan/<open>P
 Ro3Emu.Server.Accounts.Persistence.PronteraDefensePointPlan/<point>P
@@ -473,9 +476,9 @@ Ro3Emu.Server.Accounts.Persistence.PronteraDefenseStationPlan/<map>P
 Ro3Emu.Server.Accounts.Persistence.PronteraDefenseStationPlan/<open>P
 Ro3Emu.Server.Accounts.Persistence.RealmStatePlan/_kind
 Ro3Emu.Server.Accounts.Persistence.RealmStatePlan/_state
-Ro3Emu.Server.Accounts.Persistence.ReceiptCompactionPlan/<afterSeq>P
 Ro3Emu.Server.Accounts.Persistence.ReceiptCompactionPlan/<batch>P
 Ro3Emu.Server.Accounts.Persistence.ReceiptCompactionPlan/<cutoffUtcMs>P
+Ro3Emu.Server.Accounts.Persistence.ReceiptCompactionPlan/<futureUtcMs>P
 Ro3Emu.Server.Accounts.Persistence.RoleAwardStatePlan/_checkTasks
 Ro3Emu.Server.Accounts.Persistence.RoleAwardStatePlan/_daily
 Ro3Emu.Server.Accounts.Persistence.RoleAwardStatePlan/_expectedDaily

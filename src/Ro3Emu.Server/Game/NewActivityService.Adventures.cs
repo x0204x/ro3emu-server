@@ -609,7 +609,7 @@ public sealed partial class NewActivityService
     private IEnumerable<JsonElement> JourneyPublicArray(string key)
     {
         if (_data.Table("PublicParamConfig").TryGetValue(key, out var value)
-            && value.ValueKind == JsonValueKind.Array) return value.EnumerateArray().ToArray();
+            && value.ValueKind == JsonValueKind.Array) return [.. value.EnumerateArray()];
         return [];
     }
 

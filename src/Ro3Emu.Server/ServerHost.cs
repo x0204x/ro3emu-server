@@ -35,7 +35,7 @@ public static partial class ServerHost
         builder.Services.AddSingleton(Options.Create(options));
         builder.Services.AddSingleton(clock ?? TimeProvider.System);
         // GM and Admin accounts need two-factor authentication on a public panel unless the operator says otherwise.
-        options.Panel.RequireAdmin2FA ??= !System.Net.IPAddress.IsLoopback(PanelAddress(options));
+        options.Panel.RequireAdmin2FA ??= !options.LocalOnly();
         // Loopback for local play and tests; the web panel (docs/guide/panel.md) on its own port, routed by PanelSite.Map.
         builder.WebHost.UseUrls(options.Panel.Enabled
             ? [$"http://{options.ListenAddress()}:{options.HttpPort}", PanelUrl(options)]
@@ -87,6 +87,7 @@ public static partial class ServerHost
         builder.Services.AddSingleton<TimedBattleService>();
         builder.Services.AddSingleton<DungeonMatchService>();
         builder.Services.AddSingleton<FestivalService>();
+        builder.Services.AddSingleton<RankRewardService>();
         builder.Services.AddSingleton<TrainingService>();
         builder.Services.AddSingleton<LotteryService>();
         builder.Services.AddSingleton<GuildHomeService>();
@@ -211,6 +212,7 @@ public static partial class ServerHost
         builder.Services.AddSingleton<Game.Messaging.IMessageModule>(sp => sp.GetRequiredService<TavernService>());
         builder.Services.AddSingleton<GameMessageHandler>();
         builder.Services.AddSingleton(sp => GateCrypto.LoadOrCreate(options.DataDir, sp.GetRequiredService<ILogger<GateCrypto>>()));
+        builder.Services.AddSingleton(_ => OperatorToken.LoadOrCreate(options.DataDir, options.OperatorToken));
         builder.Services.AddSingleton<IMicroService, LoginService>();
         builder.Services.AddSingleton<IMicroService, ClusterRecommendService>();
         builder.Services.AddSingleton<IMicroService, PhonestGateService>();
@@ -253,6 +255,9 @@ public static partial class ServerHost
         var app = builder.Build();
         app.Lifetime.ApplicationStopping.Register(() => httpConnections.AbortAfter(HttpConnectionReaper.Grace));
         app.Services.GetRequiredService<RealmLock>();
+        // After the realm lock, so a second server on the same data dir never rewrites the running one's token; before
+        // the ports open, so a tool started with the server finds the file.
+        app.Services.GetRequiredService<OperatorToken>();
         app.Services.GetRequiredService<Game.Ownership.RoleHandover>()
             .Configure(session => app.Services.GetRequiredService<RoleSessionService>().CleanupRoleAsync(session),
                 session => app.Services.GetRequiredService<RoleSessionService>().CleanupReservation(session));
@@ -271,131 +276,29 @@ public static partial class ServerHost
                 context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
                 return;
             }
-            long started = System.Diagnostics.Stopwatch.GetTimestamp();
-            app.Logger.LogInformation("HTTP {TraceId} {Method} {Path}{Query}", context.TraceIdentifier,
-                context.Request.Method, context.Request.Path, context.Request.QueryString);
-            try
-            {
-                await next();
-                app.Logger.LogInformation("HTTP completed {TraceId} {Method} {Path}: {StatusCode} in {ElapsedMs:F1} ms",
-                    context.TraceIdentifier, context.Request.Method, context.Request.Path, context.Response.StatusCode,
-                    System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-            }
-            catch (Exception exception)
-            {
-                app.Logger.LogError(exception, "HTTP failed {TraceId} {Method} {Path} after {ElapsedMs:F1} ms",
-                    context.TraceIdentifier, context.Request.Method, context.Request.Path,
-                    System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-                throw;
-            }
+            if (app.Logger.IsEnabled(LogLevel.Debug)) app.Logger.LogDebug("HTTP {Method} {Path}{Query}", context.Request.Method, context.Request.Path, context.Request.QueryString);
+            await next();
         });
         SdkEndpoints.Map(app);
         app.MapGet(Ro3Emu.ClientRelease.ClientReleaseRequirement.Endpoint, () => clientRequirement is null
             ? Results.NotFound() : Results.Json(clientRequirement));
         GiftCodeEndpoints.Map(app);
         Diagnostics.MetricsEndpoints.Map(app);
-        // Run a GM command as an online player (loopback only): POST /ro3emu/gm?account=tester body "!warp 10111 150 190".
-        app.MapPost("/ro3emu/gm", async (HttpContext context, SessionRegistry sessions, GmCommands gm, GameLoop loop) =>
-        {
-            if (context.Connection.RemoteIpAddress is not { } ip || !System.Net.IPAddress.IsLoopback(ip)) return Results.NotFound();
-            var account = context.Request.Query["account"].ToString();
-            using var reader = new StreamReader(context.Request.Body);
-            var line = (await reader.ReadToEndAsync()).Trim();
-            if (!line.StartsWith('!')) line = "!" + line;
-            return await loop.InvokeAsync(async () =>
-            {
-                var session = sessions.All().FirstOrDefault(s => string.Equals(s.Account, account, StringComparison.OrdinalIgnoreCase));
-                if (session?.Role == null) return Results.BadRequest("not in game");
-                await gm.RunAsync(session, line, loopbackTool: true);
-                return Results.Ok("done");
-            });
-        });
+        OpsEndpoints.Map(app);
+        AccountEndpoints.Map(app);
         // The web panel's public address for launchers that joined (Ro3Emu:Panel:PublicUrl); 404 without one.
         app.MapGet("/ro3emu/panel", (Microsoft.Extensions.Options.IOptions<ServerOptions> options) =>
             options.Value.Panel is { Enabled: true, PublicUrl: { Length: > 0 } url } && Uri.TryCreate(url, UriKind.Absolute, out var uri)
                 && uri.Scheme is "http" or "https"
                 ? Results.Json(new { url = uri.ToString().TrimEnd('/') })
                 : Results.NotFound());
-        // In-game bug reports (loopback only, docs/guide/feedback.md): GET /ro3emu/reports?since=<id or ISO time>&limit=&format=text
-        app.MapGet("/ro3emu/reports", (HttpContext context, FeedbackService feedback) =>
-        {
-            if (context.Connection.RemoteIpAddress is not { } ip || !System.Net.IPAddress.IsLoopback(ip)) return Results.NotFound();
-            var query = context.Request.Query;
-            long afterId = 0;
-            DateTimeOffset? since = null;
-            string sinceText = query["since"].ToString().Trim();
-            if (sinceText.Length > 0)
-            {
-                if (long.TryParse(sinceText, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out long id)) afterId = id;
-                else if (DateTimeOffset.TryParse(sinceText, System.Globalization.CultureInfo.InvariantCulture,
-                    System.Globalization.DateTimeStyles.AssumeUniversal, out var time)) since = time;
-                else return Results.BadRequest("since: a report id or an ISO-8601 time");
-            }
-            int limit = int.TryParse(query["limit"], out int l) ? Math.Clamp(l, 1, 1000) : 200;
-            var reports = feedback.Store.Read(afterId, since, limit);
-            return string.Equals(query["format"], "text", StringComparison.OrdinalIgnoreCase)
-                ? Results.Text(FeedbackStore.Format(reports), "text/plain; charset=utf-8")
-                : Results.Json(reports, FeedbackStore.Json);
-        });
-        // Character deletion for the launcher / website (the client itself has none): POST form identity, credential,
-        // role (id or name). A role that is in the world cannot be deleted.
-        app.MapPost("/ro3emu/account/delete-role", async (HttpRequest request, CredentialLimiter limiter, AccountStore accounts, RoleStore roles, SessionRegistry sessions, GameLoop loop, Game.Ownership.OwnerRegistry owners, ILogger<RoleStore> log) =>
-        {
-            if (!limiter.TryAcquire(request.HttpContext.Connection.RemoteIpAddress)) return Results.StatusCode(StatusCodes.Status429TooManyRequests);
-            var form = await request.ReadFormAsync();
-            string typed = form["identity"].ToString().Trim(), credential = form["credential"].ToString(), which = form["role"].ToString().Trim();
-            // Roles are keyed by the account's stored name, whatever letter case the form used.
-            if (await accounts.VerifiedAccountAsync(typed, credential) is not { } identity)
-                return Results.Json(new { code = 401, message = "bad account or password" });
-            var role = roles.ForAccount(identity).FirstOrDefault(r => r.Id.ToString() == which || string.Equals(r.Name, which, StringComparison.OrdinalIgnoreCase));
-            if (role == null) return Results.Json(new { code = 404, message = "no such character on this account" });
-            return await loop.InvokeAsync(async () =>
-            {
-                using var lifecycle = await owners.EnterAsync("HTTP delete", Game.Ownership.ReservationKey.Lifecycle(role.Id));
-                var current = roles.Get(role.Id);
-                if (current == null || current.Account != identity)
-                    return Results.Json(new { code = 404, message = "no such character on this account" });
-                var owner = owners.Cached(role.Id);
-                bool attached = owner is { State: not Game.Ownership.RoleOwnerState.Detached } ||
-                    owner?.Attachment != null || owner?.Detaching != null ||
-                    sessions.All().Any(s => s.Role?.Id == role.Id || s.Owner?.RoleId == role.Id || s.Attachment?.RoleId == role.Id);
-                if (attached)
-                    return Results.Json(new { code = 409, message = "the character is in the game; log out first" });
-                bool ok = roles.Delete(identity, role.Id);
-                if (ok) owners.RoleDeleted(role.Id, roles.ReadRevisionVector(role.Id).Epoch);
-                log.LogInformation("Account {Account} deletes role {Name} ({Id}): {Result}", identity, current.Name, role.Id, ok);
-                return Results.Json(new { code = ok ? 0 : 500, message = ok ? $"{current.Name} deleted" : "not deleted" });
-            });
-        });
         // Public status for the launcher's online pill: only a count, never account or character names. Read from the
         // loop's census, so anyone polling it adds no work to the loop.
         app.MapGet("/ro3emu/status", (Diagnostics.SessionCensus census) =>
             Results.Json(new { online = true, players = census.Current.Roles.Count }));
-        // A clean stop for RO3Emu.exe (loopback only): the same shutdown as Ctrl+C, the loop drains and the database closes.
-        app.MapPost("/ro3emu/shutdown", (HttpContext context, IHostApplicationLifetime lifetime) =>
-        {
-            if (context.Connection.RemoteIpAddress is not { } ip || !System.Net.IPAddress.IsLoopback(ip)) return Results.NotFound();
-            lifetime.StopApplication();
-            return Results.Ok("stopping");
-        });
-        // Who is online, for the admin (loopback only): read on the loop, where the sessions change.
-        app.MapGet("/ro3emu/online", async (HttpContext context, SessionRegistry sessions, GameLoop loop) =>
-        {
-            if (context.Connection.RemoteIpAddress is not { } ip || !System.Net.IPAddress.IsLoopback(ip)) return Results.NotFound();
-            var online = await loop.InvokeAsync(() => Task.FromResult(sessions.All().Select(s => new
-            {
-                account = s.Account,
-                role = s.Role?.Name,
-                scene = s.Role == null ? (long?)null : s.SceneEntry,
-                x = s.Position.X,
-                z = s.Position.Z,
-                remote = s.Channel.Remote,
-            }).ToArray()));
-            return Results.Json(online);
-        });
         app.MapFallback((HttpContext context) =>
         {
-            app.Logger.LogWarning("HTTP unhandled {Method} {Path}", context.Request.Method, context.Request.Path);
+            if (app.Logger.IsEnabled(LogLevel.Debug)) app.Logger.LogDebug("HTTP unhandled {Method} {Path}", context.Request.Method, context.Request.Path);
             return Results.NotFound();
         });
         // Services that only hook themselves into others.
@@ -513,9 +416,12 @@ public static partial class ServerHost
             app.Services.GetRequiredService<Ro3Emu.Panel.PanelSite>(); // built now, after every hook above
             string panelUrl = PanelUrl(options);
             LogPanel(app.Logger, panelUrl);
+            LogPanelTwoFactor(app.Logger, options.Panel.RequireAdmin2FA == true ? "required" : "not required");
+            LogPanelAdmins(app.Logger, options);
         }
         app.Logger.LogInformation("Data dir {DataDir}", options.DataDir);
         LogGmPolicy(app.Logger, options, builder.Environment.EnvironmentName);
+        if (!OperatingSystem.IsWindows() && Environment.IsPrivilegedProcess) LogRunningAsRoot(app.Logger);
         LogTesting(app.Logger, options.Testing);
         if (options.RefuseUnknownAccounts && !(options.Panel.Enabled && options.Panel.Registration)) LogNoSignUp(app.Logger);
         // D1 inventory across many short-lived servers (a whole test suite): each appends its loop waits on stop.
@@ -534,9 +440,8 @@ public static partial class ServerHost
         configure?.Invoke(options);
         options.RewardRates.Validate();
         options.SkillTraceTelemetry.Validate();
-        // An empty GM list means nobody on a host started as Production on purpose (docs/guide/gm-access.md). Only an explicit
-        // environment counts: the host's own default is also "Production", and tests and local play set none.
-        options.GmOpenWhenEmpty ??= !ExplicitProduction(configuration);
+        // 空白 GM 名單只在明確非 Production 且僅能從本機存取時開放。
+        options.GmOpenWhenEmpty ??= !ExplicitProduction(configuration) && options.LocalOnly();
         // A relative data dir is relative to the repository root (the folder holding Ro3Emu.slnx), else to the binary.
         if (!Path.IsPathRooted(options.DataDir)) options.DataDir = Path.GetFullPath(Path.Combine(RepositoryRoot(), options.DataDir));
         return options;
@@ -554,17 +459,22 @@ public static partial class ServerHost
         return $"http://{host}:{panel.Port}";
     }
 
-    private static System.Net.IPAddress PanelAddress(ServerOptions options) =>
-        options.Panel.BindAddress is { Length: > 0 } bind ? System.Net.IPAddress.Parse(bind) : options.ListenAddress();
+    private static System.Net.IPAddress PanelAddress(ServerOptions options) => options.PanelListenAddress();
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Web panel on {Url}")]
     private static partial void LogPanel(ILogger logger, string url);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Web panel: two-factor authentication for GM and Admin accounts {State} (Ro3Emu:Panel:RequireAdmin2FA)")]
+    private static partial void LogPanelTwoFactor(ILogger logger, string state);
 
     /// <summary>ASPNETCORE_ENVIRONMENT, DOTNET_ENVIRONMENT or --environment set to Production (not the host default).</summary>
     internal static bool ExplicitProduction(IConfiguration configuration) =>
         string.Equals(configuration[HostDefaults.EnvironmentKey], Environments.Production, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Says at startup who has GM in game, loudly when it is everyone on a public address or nobody.</summary>
+    [LoggerMessage(Level = LogLevel.Warning, Message = "!!! The server is running as root: a hole in it would own the whole machine. Run it as an ordinary user (docs/guide/hosting.md).")]
+    private static partial void LogRunningAsRoot(ILogger logger);
+
     private static void LogGmPolicy(ILogger logger, ServerOptions options, string environment)
     {
         if (options.GmAccounts.Length > 0)
@@ -572,20 +482,48 @@ public static partial class ServerHost
             logger.LogInformation("GM accounts: {Accounts}", string.Join(", ", options.GmAccounts));
             return;
         }
+        bool local = options.LocalOnly();
+        string where = local ? "local only" : $"reachable from other machines: listens on {options.ListenAddress()}, public host {options.PublicHost}";
         if (options.GmOpenWhenEmpty == false)
         {
-            logger.LogWarning("!!! {Environment}: Ro3Emu:GmAccounts is empty, so NO account has GM commands in game. " +
-                "Set Ro3Emu__GmAccounts__0=<account> (docs/guide/gm-access.md). The loopback /ro3emu/gm tool still works.", environment);
+            logger.LogWarning("!!! Ro3Emu:GmAccounts is empty, so NO account has GM commands in game " +
+                "(environment {Environment}, {Where}): an empty list means everyone only on a local server. " +
+                "Set Ro3Emu__GmAccounts__0=<account> (docs/guide/gm-access.md). The loopback /ro3emu/gm tool " +
+                "still works.", environment, where);
             return;
         }
-        bool publicHost = !System.Net.IPAddress.TryParse(options.PublicHost, out var host) || !System.Net.IPAddress.IsLoopback(host);
-        if (publicHost || string.Equals(environment, Environments.Production, StringComparison.OrdinalIgnoreCase) && options.GmOpenWhenEmpty == true)
+        // Open on a server others reach only by an explicit Ro3Emu:GmOpenWhenEmpty. A plain local start has no
+        // environment set, and the host then calls itself Production, so the name alone says nothing.
+        if (!local)
             logger.LogWarning("!!! Ro3Emu:GmAccounts is empty and GM is open: EVERY account can use GM commands in game " +
-                "(environment {Environment}, public host {PublicHost}). For a public server set ASPNETCORE_ENVIRONMENT=Production " +
-                "and Ro3Emu__GmAccounts__0=<account> (docs/guide/gm-access.md).", environment, options.PublicHost);
+                "(environment {Environment}, {Where}, Ro3Emu:GmOpenWhenEmpty set). For a public server list the GM " +
+                "accounts: Ro3Emu__GmAccounts__0=<account> (docs/guide/gm-access.md).", environment, where);
         else
             logger.LogInformation("GM: every account (Ro3Emu:GmAccounts is empty; local or test server)");
     }
+
+    /// <summary>Says at startup who is a configured Admin of the web panel, loudly when nobody is.</summary>
+    private static void LogPanelAdmins(ILogger logger, ServerOptions options)
+    {
+        var admins = options.GmAccounts.Concat(options.Panel.Roles
+            .Where(r => Ro3Emu.Panel.PanelRoles.Parse(r.Value) == Ro3Emu.Panel.PanelRole.Admin).Select(r => r.Key))
+            .Distinct(StringComparer.Ordinal).ToList();
+        if (admins.Count > 0) LogPanelAdminList(logger, admins);
+        else if (StaffRoles.OpenGmAdmin(options)) LogPanelAdminsOpen(logger);
+        else LogPanelNoAdmin(logger);
+    }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Web panel Admins: {Accounts}")]
+    private static partial void LogPanelAdminList(ILogger logger, IReadOnlyList<string> accounts);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Web panel Admins: every account (GmAccounts is empty and GM is open on a local panel)")]
+    private static partial void LogPanelAdminsOpen(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "!!! Web panel: no Admin in the configuration. Set " +
+        "Ro3Emu__GmAccounts__0=<account> (docs/guide/panel.md); Admins given on the panel's Staff roles page keep " +
+        "their role.")]
+    private static partial void LogPanelNoAdmin(ILogger logger);
 
     /// <summary>Ro3Emu:Testing switches are test aids, never the original game: say so loudly while one is on.</summary>
     private static void LogTesting(ILogger logger, TestingOptions testing)
@@ -646,6 +584,7 @@ internal sealed class GameLoopTickers(IServiceProvider services) : IHostedServic
         Add<TimedBattleService>();
         Add<CasualBattleService>();
         Add<FestivalService>();
+        Add<RankRewardService>();
         Add<TrainingService>();
         Add<GuildHomeService>();
         Add<GuildCampfireService>();

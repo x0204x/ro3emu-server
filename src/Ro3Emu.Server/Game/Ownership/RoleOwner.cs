@@ -7,7 +7,20 @@ public sealed class RoleOwner(long roleId, long lifecycleEpoch)
 {
     public long RoleId { get; } = roleId;
     public long LifecycleEpoch { get; internal set; } = lifecycleEpoch;
-    public RoleOwnerState State { get; internal set; } = RoleOwnerState.Detached;
+    private RoleOwnerState _state = RoleOwnerState.Detached;
+    public RoleOwnerState State
+    {
+        get => _state;
+        internal set
+        {
+            var was = _state;
+            _state = value;
+            if (was != value && (was == RoleOwnerState.RecoveryRequired || value == RoleOwnerState.RecoveryRequired))
+                RecoveryChanged?.Invoke(this, value == RoleOwnerState.RecoveryRequired);
+        }
+    }
+    /// <summary>Tells the registry when the role enters or leaves RecoveryRequired, wherever that was decided.</summary>
+    internal Action<RoleOwner, bool>? RecoveryChanged;
     public AttachmentLease? Attachment { get; internal set; }
     public IReadOnlyDictionary<string, long> Revisions { get; internal set; } = new Dictionary<string, long>();
     internal readonly HashSet<long> Operations = [];

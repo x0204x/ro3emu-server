@@ -120,13 +120,13 @@ public sealed class LocMapBuilder
         var lines = File.ReadAllText(file, Encoding.UTF8).TrimStart('\uFEFF').Split('\n').ToList();
         var header = lines[0].TrimEnd('\r').Split('\t');
         lines.RemoveAt(0);
-        return lines.Where(l => l.Trim().Length > 0).Select(l =>
+        return [.. lines.Where(l => l.Trim().Length > 0).Select(l =>
         {
             var cells = l.TrimEnd('\r').Split('\t');
             var row = new Dictionary<string, string>(StringComparer.Ordinal);
             for (int i = 0; i < header.Length; i++) row[header[i]] = Unescape(i < cells.Length ? cells[i] : "");
             return row;
-        }).ToList();
+        })];
     }
 
     private static string Unescape(string s)

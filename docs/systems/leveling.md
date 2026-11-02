@@ -2,6 +2,19 @@
 
 Where a character's Base EXP comes from between the first and the second job change, as the client's tables give it.
 
+## Job EXP
+
+Every Base EXP credited brings `PublicParamConfig.BaseToJobConversionPercent` per 10000 of Job EXP, rounded down, from
+kills, quests and awards, mail, gathering, caravans, dungeons and direct grants; the catch-up bonus counts. An award's own
+item 101 adds to it. **(inferred)** The client's Lua never reads the parameter. The tables support it: 1,377,405 Base EXP up
+to Lv 30 against 261,627 Job EXP up to Job 40 of the second rank, the pair Job Advance asks together, is 19%.
+
+Roles older than this rule have a debt frozen at their next login (`CharacterService.CatchUpJobExpAsync`): the share of their
+total Base EXP less the Job EXP they earned through the ranks. The current rank is paid as far as it has room and each later
+job advance pays the rest the same way, once per rank. It repairs this server's earlier rule and is not original. Role blob
+`job_exp_catchup` holds what is left, written in the same commit as each payment, and the sources `job-exp-catchup/<role>`
+and `job-exp-catchup/<role>/<rank>` allow one payment each; the debt is never worked out again, and nobody loses Job EXP.
+
 ## The story to main task 10105090
 
 The main chain (`10101010` onwards) pays 1,398,053 Base EXP up to `10104090` and 2,148,153 up to `10105090`

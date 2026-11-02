@@ -38,7 +38,7 @@ public sealed class ProgressionEconomyTransactionTests : IDisposable
     {
         var tx = _roles.NewTransaction();
         var before = _items.Load(_role);
-        var after = replacement is null ? before.Select(x => x.Clone()).ToList() : new List<InvItem> { replacement };
+        var after = replacement is null ? before.Select(x => x.Clone()).ToList() : [replacement];
         if (applyGoods && goods > 0) after.Add(new InvItem { Entry = 3, Stack = checked((int)goods), Pack = 1 });
         tx.ItemDelta(_role, before, after);
         if (cost > 0)
@@ -88,7 +88,7 @@ public sealed class ProgressionEconomyTransactionTests : IDisposable
         await _roles.CommitAsync(Progression(accepted, cost: 10, goods: 2), "test/progression-cost-goods");
         var ledger = EconomyLedgerReader.Read(_accounts.DatabasePath, Catalog, "auto", cut, cut + 1);
         Assert.True(ledger.CompleteHistory, string.Join(";", ledger.Issues.Select(x => x.Detail)));
-        Assert.Equal(new long[] { -10, 2 }, ledger.Legs.Select(x => x.Delta).Order().ToArray());
+        Assert.Equal([-10, 2], ledger.Legs.Select(x => x.Delta).Order().ToArray());
         Assert.Equal(90, _roles.LoadProgress(_role).Currency[1]);
         Assert.Equal(2, Assert.Single(_items.Load(_role)).Stack);
     }
@@ -172,7 +172,7 @@ public sealed class ProgressionEconomyTransactionTests : IDisposable
         _accounts.BeforeEconomyResolveForTest = _ =>
         {
             FixtureSql.Execute(_accounts, "UPDATE operation_receipt SET child_receipts=$c WHERE operation_id=$o",
-                ("$c", EconomyTransactionPlan.EncodeChildReceipts(new object?[] { Array.Empty<long>() })), ("$o", op));
+                ("$c", EconomyTransactionPlan.EncodeChildReceipts([Array.Empty<long>()])), ("$o", op));
             return Task.CompletedTask;
         };
         await Assert.ThrowsAsync<EconomyOutcomeUnknownException>(() => _roles.CommitAsync(Progression(op), "test/progression-corrupt"));

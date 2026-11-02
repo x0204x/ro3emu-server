@@ -27,8 +27,19 @@ jobs:
     env:
       DOTNET_NOLOGO: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
+      # Every test project: a test still running after 5 minutes counts as hung, and the run stops with a dump of the
+      # test host and the list of the tests that were running (--blame-hang), instead of reaching the job's timeout.
+      # 15 minutes on the coverage run: coverlet writes its hits while the test host exits, 4 to 7 minutes on the server
+      # tests with no test running, and at 5 minutes blame took the finished run for a hang (main run 41292599038).
+      TEST_ARGS: --blame-hang-timeout ${{ github.event_name == 'push' && matrix.os == 'ubuntu-latest' && '15m' || '5m' }} --blame-hang-dump-type mini
+      # Coverage only on main's Linux run: it slows the tests, and one platform is enough for the numbers.
+      COVERAGE: ${{ github.event_name == 'push' && matrix.os == 'ubuntu-latest' && '--collect "XPlat Code Coverage"' || '' }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The parent commit holds the floor of executed tests that this run's floor may not go below (the base
+          # branch for a pull request, the previous main after a merge).
+          fetch-depth: 2
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
@@ -37,14 +48,38 @@ jobs:
             Directory.Packages.props
             **/*.csproj
       # Tests that need the client's exported game data are skipped here; the synthetic fixture
-      # (tests/Ro3Emu.Tests/Fixtures/GameData, docs/guide/testing.md) lets the rest run.
+      # (tests/Ro3Emu.Tests/Fixtures/GameData, docs/guide/testing.md) lets the rest run. Each project writes to its own
+      # folder, so its coverage file can be told apart. A failing project does not stop the next one.
+      # A step that times out fails, so the steps below still run; a job that times out is cancelled and uploads nothing.
       - name: Server tests
-        run: dotnet test tests/Ro3Emu.Tests -c Release --filter "Category!=Slow" --logger "trx;LogFileName=server.trx" --results-directory TestResults
+        timeout-minutes: 24
+        run: dotnet test tests/Ro3Emu.Tests -c Release --filter "Category!=Slow" --logger "trx;LogFileName=server.trx" --results-directory TestResults/server ${{ env.TEST_ARGS }} ${{ env.COVERAGE }}
       - name: Patcher tests
-        run: dotnet test tests/Ro3Emu.Patcher.Tests -c Release --logger "trx;LogFileName=patcher.trx" --results-directory TestResults
+        if: ${{ !cancelled() }}
+        run: dotnet test tests/Ro3Emu.Patcher.Tests -c Release --logger "trx;LogFileName=patcher.trx" --results-directory TestResults/patcher ${{ env.TEST_ARGS }} ${{ env.COVERAGE }}
       - name: Setup tests (RO3Emu.exe, data export, installer)
-        run: dotnet test tests/Ro3Emu.Setup.Tests -c Release --filter "Category!=Slow" --logger "trx;LogFileName=setup.trx" --results-directory TestResults
+        if: ${{ !cancelled() }}
+        run: dotnet test tests/Ro3Emu.Setup.Tests -c Release --filter "Category!=Slow" --logger "trx;LogFileName=setup.trx" --results-directory TestResults/setup ${{ env.TEST_ARGS }} ${{ env.COVERAGE }}
+      # Fails when a project executed fewer tests than tests/test-floor.txt allows, or when that floor went down.
       - name: Executed and skipped tests
         if: always()
         shell: pwsh
-        run: ./tools/test-summary.ps1 -Results TestResults
+        run: ./tools/test-summary.ps1 -Results TestResults -Floor tests/test-floor.txt
+      # A failed run keeps its results for a week: the .trx files (every test's outcome and output) and, after a hang,
+      # the blame sequence and the test host's dump.
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-${{ matrix.os }}
+          path: TestResults
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Upload coverage
+        if: success() && env.COVERAGE != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          # The attachment of each project's run (TestResults/<project>/<run id>/), not VSTest's copy in its In folder.
+          path: TestResults/*/*/coverage.cobertura.xml
+          retention-days: 30

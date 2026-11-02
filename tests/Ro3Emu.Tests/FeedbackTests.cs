@@ -71,7 +71,7 @@ public sealed class FeedbackTests : IAsyncLifetime
 
     private async Task<List<FeedbackReport>> Reports(string query = "")
     {
-        using var http = new HttpClient();
+        using var http = Operator.Client();
         var json = await http.GetStringAsync($"{_http}/ro3emu/reports{query}");
         return JsonSerializer.Deserialize<List<FeedbackReport>>(json, FeedbackStore.Json)!;
     }
@@ -125,15 +125,15 @@ public sealed class FeedbackTests : IAsyncLifetime
         await Marquee(alice, "Report #2");
 
         var all = await Reports();
-        Assert.Equal(new long[] { 1, 2 }, all.Select(r => r.Id));
+        Assert.Equal([1, 2], all.Select(r => r.Id));
         var button = all[1];
         Assert.Equal("button", button.Source);
         Assert.Equal("Quest log froze\nafter the cutscene", button.Text); // control characters out, new line kept
-        Assert.Equal(new long[] { 2 }, (await Reports("?since=1")).Select(r => r.Id));
-        Assert.Equal(new long[] { 2 }, (await Reports("?since=" + Uri.EscapeDataString(between.ToString("O")))).Select(r => r.Id));
-        Assert.Equal(new long[] { 1 }, (await Reports("?limit=1")).Select(r => r.Id));
+        Assert.Equal([2], (await Reports("?since=1")).Select(r => r.Id));
+        Assert.Equal([2], (await Reports("?since=" + Uri.EscapeDataString(between.ToString("O")))).Select(r => r.Id));
+        Assert.Equal([1], (await Reports("?limit=1")).Select(r => r.Id));
 
-        using var http = new HttpClient();
+        using var http = Operator.Client();
         var text = await http.GetStringAsync($"{_http}/ro3emu/reports?format=text");
         Assert.Contains("#2 ", text);
         Assert.Contains("> Quest log froze", text);
@@ -213,7 +213,7 @@ public sealed class FeedbackTests : IAsyncLifetime
         await Marquee(alice, "Report #1");
         await alice.SendChatAsync("4_1", 2, "/bug again", channelIndex: 4);
         await Marquee(alice, "wait a few seconds");
-        Assert.Equal(new[] { "the shop is empty" }, (await Reports()).Select(r => r.Text));
+        Assert.Equal(["the shop is empty"], (await Reports()).Select(r => r.Text));
     }
 
     [Theory]
@@ -239,7 +239,7 @@ public sealed class FeedbackTests : IAsyncLifetime
         var store = new FeedbackStore(path);
         Assert.Equal(8, store.Append(new FeedbackReport { Text = "ünïcödé \"quoted\"", Source = "chat" }));
         var all = store.Read();
-        Assert.Equal(new long[] { 7, 8 }, all.Select(r => r.Id));
+        Assert.Equal([7, 8], all.Select(r => r.Id));
         Assert.Equal("ünïcödé \"quoted\"", all[1].Text);
         // A fresh store (a restart) continues after the highest id.
         Assert.Equal(9, new FeedbackStore(path).Append(new FeedbackReport { Text = "next" }));

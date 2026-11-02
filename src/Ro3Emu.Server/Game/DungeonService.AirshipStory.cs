@@ -15,7 +15,7 @@ public sealed partial class DungeonService
 {
     private const int AirshipOpeningEnd = 5300541, AirshipAftermathEnd = 5300566;
     private const int AirshipCaptainOption = 5300039, AirshipRollSkill = 5352801;
-    private readonly ConditionalWeakTable<Attempt, AirshipStoryState> _airshipStories = new();
+    private readonly ConditionalWeakTable<Attempt, AirshipStoryState> _airshipStories = [];
 
     private sealed class AirshipStoryState
     {
@@ -25,10 +25,10 @@ public sealed partial class DungeonService
         public int SceneChat = 5300001;
         public bool CannonReady, CaptainStarted, Rolled, Stopped;
         public long RollSerial;
-        public readonly List<SceneActorUnit> DeckActors = new();
+        public readonly List<SceneActorUnit> DeckActors = [];
         public bool SupportStarted;
-        public readonly List<CompanionUnit> Support = new();
-        public readonly List<SceneActorUnit> Barrels = new();
+        public readonly List<CompanionUnit> Support = [];
+        public readonly List<SceneActorUnit> Barrels = [];
         public long BarrelSerial;
     }
 

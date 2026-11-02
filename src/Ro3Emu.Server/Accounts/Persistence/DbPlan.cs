@@ -15,7 +15,7 @@ public abstract class DbPlan
     // A role-writing plan must declare every storage part it changes. The writer checks
     // the captured vector and advances each distinct part in its business transaction.
     internal virtual IReadOnlyList<RoleRevisionKey> RoleWrites => [];
-    internal virtual IReadOnlyList<long> RolePins => RoleWrites.Select(key => key.RoleId).Distinct().ToArray();
+    internal virtual IReadOnlyList<long> RolePins => [.. RoleWrites.Select(key => key.RoleId).Distinct()];
     internal virtual IReadOnlyList<OwnerRevisionKey> EntityWrites => [];
     // Writer-evaluated deltas read the latest aggregate inside BEGIN, then CAS-bump its
     // revision. They contain no detached replacement state to relabel at admission.

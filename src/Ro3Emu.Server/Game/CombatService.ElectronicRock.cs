@@ -7,7 +7,7 @@ namespace Ro3Emu.Server.Game;
 
 public sealed partial class CombatService
 {
-    private readonly ConditionalWeakTable<ActiveSkillCast, object> _precisionEnergyApplied = new();
+    private readonly ConditionalWeakTable<ActiveSkillCast, object> _precisionEnergyApplied = [];
 
     private void WireElectronicRock() => CastResolved.Add(PrecisionEnergyAsync);
 

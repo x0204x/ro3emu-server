@@ -4,10 +4,13 @@ public sealed record RunnerOptions(string Scenario, int Bots, int TargetBots, in
     bool ServerLocal, string? ServerUrl, string? PemPath, string OutputPrefix, string RepositoryRoot)
 {
     public string WalkPhase { get; init; } = "realistic";
+
+    /// <summary>--operator-token-file: the remote server's DataDir/operator.token (a copy), for its metrics and GM tool.</summary>
+    public string? OperatorTokenPath { get; init; }
     public static RunnerOptions Parse(string[] args)
     {
         if (args.Contains("--help") || args.Length == 0)
-            throw new ArgumentException("Usage: --scenario S1|S2|S3|S4|S5 (--server-local | --server URL) [--pem PATH] [--bots N] [--duration-seconds N] [--walk-phase realistic|sync] [--output PREFIX]");
+            throw new ArgumentException("Usage: --scenario S1|S2|S3|S4|S5 (--server-local | --server URL) [--pem PATH] [--operator-token-file PATH] [--bots N] [--duration-seconds N] [--walk-phase realistic|sync] [--output PREFIX]");
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         bool local = false;
         for (int i = 0; i < args.Length; i++)
@@ -33,7 +36,7 @@ public sealed record RunnerOptions(string Scenario, int Bots, int TargetBots, in
         var prefix = values.GetValueOrDefault("--output") ?? Path.Combine(repo, ".loadtest", "runs", $"{DateTime.UtcNow:yyyyMMdd-HHmmss}-{scenario}-{requested}");
         return new(scenario, requested, qualifiedTarget, duration, local, url,
             values.GetValueOrDefault("--pem"), Path.GetFullPath(prefix), repo)
-        { WalkPhase = phase };
+        { WalkPhase = phase, OperatorTokenPath = values.GetValueOrDefault("--operator-token-file") };
     }
 
     private static string FindRepoRoot()

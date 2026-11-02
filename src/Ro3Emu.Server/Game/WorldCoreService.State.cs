@@ -7,14 +7,14 @@ namespace Ro3Emu.Server.Game;
 public sealed partial class WorldCoreService
 {
     public const uint SceneVariables = 30600, SceneEvent = 30601;
-    private readonly Dictionary<long, Dictionary<int, CommonPublicVar>> _sceneVariables = new();
+    private readonly Dictionary<long, Dictionary<int, CommonPublicVar>> _sceneVariables = [];
 
     /// <summary>LC_SceneVariableManager consumes inner var_id and isDelete; never rely on an empty All packet to clear.</summary>
     public async Task SetSceneVariableAsync(long worldScene, CommonPublicVar value)
     {
         if (value.VarId <= 0 || value.Vd64.Any(v => !double.IsFinite(v)) || value.ListVec3.Any(v => !Finite(v)))
             throw new ArgumentException("A scene variable needs a positive id and finite values.");
-        if (!_sceneVariables.TryGetValue(worldScene, out var vars)) _sceneVariables[worldScene] = vars = new();
+        if (!_sceneVariables.TryGetValue(worldScene, out var vars)) _sceneVariables[worldScene] = vars = [];
         if (value.IsDelete) vars.Remove(value.VarId); else vars[value.VarId] = value.Clone();
         var packet = new SceneEventNotify { SceneId = worldScene }; packet.Vars[value.VarId] = value.Clone();
         foreach (var player in _world.PlayersIn(worldScene)) await player.SendGameAsync(SceneEvent, packet);
@@ -29,7 +29,7 @@ public sealed partial class WorldCoreService
     }
 
     private sealed record Admission(long Scene, MapPoint? At, int Reason, long Order, SceneService.TransferStart? Transfer);
-    private readonly Dictionary<GameSession, Admission> _admissions = new();
+    private readonly Dictionary<GameSession, Admission> _admissions = [];
     private long _admissionOrder;
 
     private async Task<bool> QueueAdmissionAsync(GameSession s, long map, MapPoint? at, int reason, SceneService.TransferStart? transfer)

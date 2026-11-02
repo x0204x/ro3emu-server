@@ -20,7 +20,7 @@ public sealed class AdventureFragmentAsk
 
 public sealed partial class ActivityRuntimeState
 {
-    public Dictionary<long, AdventureFragmentAsk> AdventureFragmentAsks { get; set; } = new();
+    public Dictionary<long, AdventureFragmentAsk> AdventureFragmentAsks { get; set; } = [];
 }
 
 public sealed partial class NewActivityService
@@ -201,7 +201,7 @@ public sealed partial class NewActivityService
         var gather = next.ActivityInfo[activityId].ActivityParam.FragmentGather;
         gather.ProgressFinish++;
         gather.Seed = Random.Shared.Next();
-        int result = await CommitAdventureAsync(session, next, costs: FragmentItems.Select(i => (i, 1)).ToArray());
+        int result = await CommitAdventureAsync(session, next, costs: [.. FragmentItems.Select(i => (i, 1))]);
         if (result == 0) res.Level = 1; // (inferred) crystal-set synthesis has no level weighting in extracted config.
         return result;
     }

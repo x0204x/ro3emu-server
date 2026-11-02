@@ -90,7 +90,7 @@ public sealed class GuildCaravanTests : IAsyncLifetime
     private async Task Gm(string name, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{_http}/ro3emu/gm?account={name.ToLowerInvariant()}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={name.ToLowerInvariant()}", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     private async Task<long> Guild(BotClient founder)

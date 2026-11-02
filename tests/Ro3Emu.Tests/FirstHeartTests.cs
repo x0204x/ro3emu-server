@@ -66,7 +66,7 @@ public sealed class FirstHeartTests : IAsyncLifetime
     private async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     private GameSession Session(BotClient bot) => Service<SessionRegistry>().All().Single(s => s.Account == bot.Account && s.Role != null);
@@ -128,12 +128,12 @@ public sealed class FirstHeartTests : IAsyncLifetime
         var all = full.ActivityData[1].All;
         Assert.Equal(1, all.CfgData[1001]);
         Assert.All(Enumerable.Range(1002, 6), day => Assert.Equal(0, all.CfgData[day]));
-        Assert.Equal([LevelTen, LoginOne, CardTask], all.Tasks.Keys.Order().ToArray());
+        Assert.Equal([LevelTen, LoginOne, CardTask], [.. all.Tasks.Keys.Order()]);
         Assert.Equal(FirstHeartTaskState.Accept, all.Tasks[LevelTen].Status);
-        Assert.Equal([10L], all.Tasks[LevelTen].Scores.ToArray());
+        Assert.Equal([10L], [.. all.Tasks[LevelTen].Scores]);
         Assert.Equal(FirstHeartTaskState.Accept, all.Tasks[LoginOne].Status); // the login day counted at login
         Assert.Equal(FirstHeartTaskState.None, all.Tasks[CardTask].Status);
-        Assert.Equal([0L], all.Tasks[CardTask].Scores.ToArray());
+        Assert.Equal([0L], [.. all.Tasks[CardTask].Scores]);
         Assert.Equal(0, all.Scores);
         // The wire-only empty-map marker, deleted by the next increment; the stored state never holds it.
         Assert.True(all.GetRewards.ContainsKey(0));

@@ -37,9 +37,9 @@ public sealed class MessageRoutes
         }
     }
 
-    private readonly Dictionary<uint, Route> _exact = new();
-    private readonly List<Route> _ranges = new();
-    private readonly List<(string Owner, Func<uint, bool> Claims, MessageInterceptor Handler)> _interceptors = new();
+    private readonly Dictionary<uint, Route> _exact = [];
+    private readonly List<Route> _ranges = [];
+    private readonly List<(string Owner, Func<uint, bool> Claims, MessageInterceptor Handler)> _interceptors = [];
 
     /// <summary>
     /// A handler tried before the message's route, in registration order; the first that returns true has handled
@@ -49,8 +49,8 @@ public sealed class MessageRoutes
     public void Intercept(string owner, Func<uint, bool> claims, MessageInterceptor handler) =>
         _interceptors.Add((owner, claims, handler));
 
-    private readonly List<AdmissionTest> _economic = new();
-    private readonly List<(Func<uint, bool> Ids, string Origin)> _runtime = new();
+    private readonly List<AdmissionTest> _economic = [];
+    private readonly List<(Func<uint, bool> Ids, string Origin)> _runtime = [];
 
     /// <summary>
     /// Messages admitted as economic requests: their handlers reserve exactly what they change themselves, so the
@@ -63,8 +63,8 @@ public sealed class MessageRoutes
     /// <summary>Messages that continue work another operation already owns (scene load, logout, heartbeat...).</summary>
     public void AdmitRuntime(Func<uint, bool> ids, string origin) => _runtime.Add((ids, origin));
 
-    private readonly List<Func<uint, bool>> _role = new();
-    private readonly List<Func<uint, bool>> _account = new();
+    private readonly List<Func<uint, bool>> _role = [];
+    private readonly List<Func<uint, bool>> _account = [];
 
     /// <summary>Messages that change only the sender's role: they reserve that role instead of the whole realm.</summary>
     public void AdmitRole(Func<uint, bool> ids) => _role.Add(ids);

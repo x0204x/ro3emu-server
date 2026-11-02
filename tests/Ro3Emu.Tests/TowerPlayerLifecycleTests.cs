@@ -53,8 +53,8 @@ public sealed class TowerPlayerLifecycleTests : IAsyncLifetime
         long id = (await bot.CreateRoleAsync("Alice")).RoleBaseInfo.Id;
         await bot.EnterWorldAsync(id);
         using var client = new HttpClient();
-        (await client.PostAsync($"{_http}/ro3emu/gm?account=alice", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
-        (await client.PostAsync($"{_http}/ro3emu/gm?account=alice", new StringContent("!quest done 10105020"))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account=alice", Operator.Command("!lvl 99"))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account=alice", Operator.Command("!quest done 10105020"))).EnsureSuccessStatusCode();
         return bot;
     }
 
@@ -208,6 +208,7 @@ public sealed class TowerPlayerLifecycleTests : IAsyncLifetime
             foreach (var monster in Session.TowerAttempt!.Monsters) monster.Dead = true;
             Session.LastCombatMs = MonsterService.NowMs;
             Session.StatusBits |= 1L << 15; // suppress out-of-combat regen during the return assertion
+            Session.NoRegenUntilMs = MonsterService.NowMs + 10000; // fighting no longer pauses regeneration
             await Service<CharacterService>().SetHpSpAsync(Session, wounded, spentSp);
         });
         var self = await ReturnToWorld(bot);
@@ -345,6 +346,7 @@ public sealed class TowerPlayerLifecycleTests : IAsyncLifetime
         {
             Session.LastCombatMs = MonsterService.NowMs;
             Session.StatusBits |= 1L << 15;
+            Session.NoRegenUntilMs = MonsterService.NowMs + 10000; // fighting no longer pauses regeneration
             return Service<CharacterService>().SetHpSpAsync(Session, wounded, null);
         });
         var successSelf = await ReturnToWorld(bot);
@@ -359,6 +361,7 @@ public sealed class TowerPlayerLifecycleTests : IAsyncLifetime
         {
             Session.LastCombatMs = MonsterService.NowMs;
             Session.StatusBits |= 1L << 15;
+            Session.NoRegenUntilMs = MonsterService.NowMs + 10000; // fighting no longer pauses regeneration
             return Task.CompletedTask;
         });
         long afterTimeout = Service<CharacterService>().Stats(Session)[2000];

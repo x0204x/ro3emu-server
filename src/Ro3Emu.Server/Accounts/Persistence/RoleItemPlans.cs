@@ -15,7 +15,7 @@ internal sealed class RoleItemPlan : DbPlan
     internal RoleItemPlan(IReadOnlyList<DbPlan> parts, string label, IReadOnlyList<DbPlan>? guards = null, string? operationId = null)
     {
         _guards = guards?.ToArray() ?? [];
-        _parts = parts.ToArray();
+        _parts = [.. parts];
         _label = label;
         _operationId = operationId;
     }
@@ -29,25 +29,25 @@ internal sealed class RoleItemPlan : DbPlan
     {
         foreach (var part in _parts) part.ResolveRoleWrites(accounts);
     }
-    internal override IReadOnlyList<RoleRevisionKey> RoleWrites => _parts.SelectMany(part => part.RoleWrites).Distinct().ToArray();
-    internal override IReadOnlyList<long> RolePins => _guards.Concat(_parts).SelectMany(part => part.RolePins).Distinct().ToArray();
-    internal override IReadOnlyList<OwnerRevisionKey> EntityWrites => _parts.SelectMany(part => part.EntityWrites).Distinct().ToArray();
+    internal override IReadOnlyList<RoleRevisionKey> RoleWrites => [.. _parts.SelectMany(part => part.RoleWrites).Distinct()];
+    internal override IReadOnlyList<long> RolePins => [.. _guards.Concat(_parts).SelectMany(part => part.RolePins).Distinct()];
+    internal override IReadOnlyList<OwnerRevisionKey> EntityWrites => [.. _parts.SelectMany(part => part.EntityWrites).Distinct()];
     internal override IReadOnlyList<OwnerRevisionKey> EntityDeltaWrites =>
-        _parts.SelectMany(part => part.EntityDeltaWrites).Distinct().ToArray();
+        [.. _parts.SelectMany(part => part.EntityDeltaWrites).Distinct()];
     internal override IReadOnlyList<RoleRevisionKey> MutatedRoleWrites(object? result)
     {
         var receipts = (object?[])result!;
-        return _parts.SelectMany((part, index) => part.MutatedRoleWrites(receipts[index])).Distinct().ToArray();
+        return [.. _parts.SelectMany((part, index) => part.MutatedRoleWrites(receipts[index])).Distinct()];
     }
     internal override IReadOnlyList<OwnerRevisionKey> MutatedEntityWrites(object? result)
     {
         var receipts = (object?[])result!;
-        return _parts.SelectMany((part, index) => part.MutatedEntityWrites(receipts[index])).Distinct().ToArray();
+        return [.. _parts.SelectMany((part, index) => part.MutatedEntityWrites(receipts[index])).Distinct()];
     }
     internal override IReadOnlyList<OwnerRevisionKey> MutatedEntityDeltaWrites(object? result)
     {
         var receipts = (object?[])result!;
-        return _parts.SelectMany((part, index) => part.MutatedEntityDeltaWrites(receipts[index])).Distinct().ToArray();
+        return [.. _parts.SelectMany((part, index) => part.MutatedEntityDeltaWrites(receipts[index])).Distinct()];
     }
 
     internal override object Execute(SqliteConnection db, SqliteTransaction tx)
@@ -196,8 +196,7 @@ public sealed class RoleItemPlanBuilder
         foreach (var group in part.RoleWrites.GroupBy(key => key.RoleId))
         {
             var captured = _capturedParts[group.Key];
-            string[] freshParts = group.Select(key => key.Part).Distinct()
-                .Where(partName => !captured.Contains(partName)).ToArray();
+            string[] freshParts = [.. group.Select(key => key.Part).Distinct().Where(partName => !captured.Contains(partName))];
             if (freshParts.Length == 0) continue;
             var current = newRoles.Contains(group.Key) ? _expected[group.Key] : Vector(accounts, group.Key, freshParts);
             var prior = _expected[group.Key];
@@ -374,6 +373,7 @@ public sealed class RoleItemPlanBuilder
             object?[] result;
             try { result = accounts.WriteSync<object?[]>(escrowSubmitted); }
             catch (EconomyOperationConflictException) { throw; }
+            catch (DbQueueFullException) { throw; } // not admitted: a definite failure, nothing to resolve
             catch (Exception original)
             {
                 object?[]? resolved;
@@ -413,6 +413,7 @@ public sealed class RoleItemPlanBuilder
         if (_entities.Count != 0) submitted.ExpectEntities(_entities.Values);
         object?[] receipts;
         try { receipts = accounts.WriteSync<object?[]>(submitted); }
+        catch (DbQueueFullException) { throw; } // not admitted: a definite failure, nothing to resolve
         catch (Exception original)
         {
             object?[]? resolved;
@@ -449,10 +450,14 @@ public sealed class RoleItemPlanBuilder
         get
         {
             var written = _parts.SelectMany(part => part.EntityWrites.Concat(part.EntityDeltaWrites)).ToHashSet();
-            return _expected.Keys.Select(role => Game.Ownership.ReservationKey.Role(role))
-                .Concat(_entities.Keys.Concat(written).Distinct().Select(key => written.Contains(key)
-                    ? Game.Ownership.ReservationKey.Entity(key.Kind, key.Id, key.Part)
-                    : Game.Ownership.ReservationKey.SharedEntity(key.Kind, key.Id))).ToArray();
+            return
+            [
+                .. _expected.Keys.Select(role => Game.Ownership.ReservationKey.Role(role))
+,
+                .. _entities.Keys.Concat(written).Distinct().Select(key => written.Contains(key)
+                        ? Game.Ownership.ReservationKey.Entity(key.Kind, key.Id, key.Part)
+                        : Game.Ownership.ReservationKey.SharedEntity(key.Kind, key.Id)),
+            ];
         }
     }
 
@@ -483,7 +488,7 @@ public sealed class RoleItemPlanBuilder
             if (_expected.Count != 0) submitted.Expect(_expected.Values);
             if (_entities.Count != 0) submitted.ExpectEntities(_entities.Values);
             try { receipts = await accounts.WriteOwnedAsync<object?[]>(submitted); }
-            catch (Exception original) when (original is not EconomyOperationConflictException)
+            catch (Exception original) when (original is not (EconomyOperationConflictException or DbQueueFullException))
             {
                 object?[]? resolved;
                 try
@@ -597,7 +602,7 @@ internal static class RoleColumns
         "life_runtime", "season_talent", "season_page", "season_page_meta", "season_refine", "pets", "mounts",
         "wardrobe", "totems", "totem_refine_epoch", "genre", "skill_plans", "pet_books", "equip_levels",
         "equip_plans", "auto_decompose", "bag_state", "stat_plans", "world_state", "emblems", "guild_info",
-        "tavern", "mailbox", "auction", "tasks", "task_runtime", "task_followup", "wild_afk", "career_special", "heroic_spirit", "paragon", "title", "area_concur", "growth_class", "first_heart", "personal", "personal_upvote", "popularity", "social_outfit", "emoji_info", "gifts", "barroom"
+        "tavern", "job_exp_catchup", "mailbox", "auction", "tasks", "task_runtime", "task_followup", "wild_afk", "career_special", "heroic_spirit", "paragon", "title", "area_concur", "growth_class", "first_heart", "personal", "personal_upvote", "popularity", "social_outfit", "emoji_info", "gifts", "barroom", "gm_state"
     };
 
     internal static void Validate(string column)
@@ -715,7 +720,7 @@ internal sealed class ItemSnapshotWritePlan : DbPlan
     internal ItemSnapshotWritePlan(long role, IReadOnlyList<InvItem> items)
     {
         _role = role;
-        _items = items.Select(ItemValue.Capture).ToArray();
+        _items = [.. items.Select(ItemValue.Capture)];
     }
     internal override int Bytes => 128 + _items.Sum(i => 160 + (i.Attrs?.Length ?? 0) * 2 +
         (i.Enchantments?.Length ?? 0) * 2 + (i.StringAttrs?.Length ?? 0) * 2);
@@ -773,8 +778,8 @@ internal sealed class ItemDeltaWritePlan : DbPlan
     internal ItemDeltaWritePlan(long role, IReadOnlyList<InvItem> before, IReadOnlyList<InvItem> after)
     {
         _role = role;
-        _before = before.Select(ItemValue.Capture).ToArray();
-        _after = after.Select(ItemValue.Capture).ToArray();
+        _before = [.. before.Select(ItemValue.Capture)];
+        _after = [.. after.Select(ItemValue.Capture)];
     }
     internal override int Bytes => 128 + _before.Concat(_after).Sum(i => 160 + (i.Attrs?.Length ?? 0) * 2 +
         (i.Enchantments?.Length ?? 0) * 2 + (i.StringAttrs?.Length ?? 0) * 2);
@@ -1002,18 +1007,18 @@ internal sealed class ItemWritePlan : DbPlan
     {
         if (_resolvedRoles is not null) return;
         if (_role != 0) { _resolvedRoles = [_role]; return; }
-        long[] ids = _kind == ItemWriteKind.Delete ? [_guid] : _items.Select(item => item.Guid).ToArray();
+        long[] ids = _kind == ItemWriteKind.Delete ? [_guid] : [.. _items.Select(item => item.Guid)];
         if (ids.Length == 0) { _resolvedRoles = []; return; }
         var owners = accounts.ReadSync<Dictionary<long, long>>(new ItemOwnerReadPlan(ids));
         if (ids.Any(id => id <= 0 || !owners.ContainsKey(id))) throw new RolePlanConflictException();
         _resolvedOwners = owners;
-        _resolvedRoles = owners.Values.Distinct().ToArray();
+        _resolvedRoles = [.. owners.Values.Distinct()];
     }
-    internal override IReadOnlyList<RoleRevisionKey> RoleWrites => (_resolvedRoles ??
+    internal override IReadOnlyList<RoleRevisionKey> RoleWrites => [.. (_resolvedRoles ??
         throw new InvalidOperationException("Item owner was not resolved before submission."))
         .SelectMany(role => _kind == ItemWriteKind.Equipment
             ? new[] { RevisionStore.Role(role, RevisionStore.Inventory), RevisionStore.Role(role, "equip_plans") }
-            : new[] { RevisionStore.Role(role, RevisionStore.Inventory) }).ToArray();
+            : [RevisionStore.Role(role, RevisionStore.Inventory)])];
     internal override object? Execute(SqliteConnection db, SqliteTransaction tx)
     {
         if (_kind == ItemWriteKind.Delete)
@@ -1068,7 +1073,7 @@ internal sealed class ItemWritePlan : DbPlan
 internal sealed class ItemOwnerReadPlan : DbReadPlan
 {
     private readonly long[] _ids;
-    internal ItemOwnerReadPlan(IEnumerable<long> ids) => _ids = ids.Distinct().ToArray();
+    internal ItemOwnerReadPlan(IEnumerable<long> ids) => _ids = [.. ids.Distinct()];
     internal override int Bytes => 64 + _ids.Length * sizeof(long);
     internal override string Label => "item/read-owners";
     internal override object Execute(SqliteConnection db, SqliteTransaction tx)

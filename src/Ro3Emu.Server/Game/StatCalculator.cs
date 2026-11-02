@@ -5,8 +5,8 @@ namespace Ro3Emu.Server.Game;
 /// <summary>Final attribute values (property data) and the pre-percentage part the client previews from (baseData).</summary>
 public sealed class StatSheet
 {
-    public Dictionary<int, long> Data { get; } = new();
-    public Dictionary<int, long> Base { get; } = new();
+    public Dictionary<int, long> Data { get; } = [];
+    public Dictionary<int, long> Base { get; } = [];
 
     public long this[int id]
     {

@@ -53,7 +53,7 @@ public sealed partial class GiftCodeService(AccountStore accounts, RoleStore rol
         if (await AccountAsync(request) is not { } account) return Answer(ErrorCodes.GiftCardBadCredentials);
         // (inferred) The account budget counts only authenticated attempts, so a wrong token naming someone else's
         // account cannot use up that account's attempts; unauthenticated guessing is bounded by the address budget.
-        if (!limiter.TryAcquire(null, account)) return Answer(ErrorCodes.GiftCardRateLimited);
+        if (!limiter.TryAcquire(default, account)) return Answer(ErrorCodes.GiftCardRateLimited);
         if (await RoleAsync(request.RoleId, account) is not { } role) return Answer(ErrorCodes.GiftCardRoleNotOwned);
         string code = request.Code?.Trim() ?? "";
         if (code.Length is 0 or > MaxCodeLength) return Answer(ErrorCodes.GiftCardUnknown);

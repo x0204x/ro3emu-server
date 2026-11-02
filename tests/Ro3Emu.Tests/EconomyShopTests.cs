@@ -62,7 +62,7 @@ public sealed class EconomyShopTests : IAsyncLifetime
     private async Task Gm(string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync(_http + "/ro3emu/gm?account=economyshop", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync(_http + "/ro3emu/gm?account=economyshop", Operator.Command(command))).EnsureSuccessStatusCode();
     }
     private GameSession Session() => Service<SessionRegistry>().All().Single(s => s.Account == "economyshop" && s.Role != null);
     private EconomySnapshot Cut() => S3EconomyReader.Read(_directory, Catalog.Value);
@@ -152,8 +152,8 @@ public sealed class EconomyShopTests : IAsyncLifetime
         });
         var response = await Next(bot, ShopService.BatchBuyCommodity, BatchBuyCommodityResp.Parser);
         Assert.Equal(ErrorCodes.CurrencyShort, response.Result);
-        Assert.Equal(new[] { 0, ErrorCodes.CurrencyShort, 0 }, response.Results.Select(x => x.Result));
-        Assert.Equal(new[] { 1, 1, 3 }, response.Results.Select(x => x.BuyTimes));
+        Assert.Equal([0, ErrorCodes.CurrencyShort, 0], response.Results.Select(x => x.Result));
+        Assert.Equal([1, 1, 3], response.Results.Select(x => x.BuyTimes));
         var closing = Cut();
         var ledger = Window(opening, closing);
         Assert.Equal(2, ledger.Receipts.Count);

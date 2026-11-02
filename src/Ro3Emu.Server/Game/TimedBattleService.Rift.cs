@@ -41,8 +41,8 @@ public sealed partial class TimedBattleService
         public GameSession? Challenger { get; set; }
     }
 
-    private readonly Dictionary<long, RiftStone> _riftStones = new();
-    private readonly Dictionary<long, int> _riftMapTotals = new();
+    private readonly Dictionary<long, RiftStone> _riftStones = [];
+    private readonly Dictionary<long, int> _riftMapTotals = [];
     private long _riftRound = -1, _riftSeq;
     /// <summary>The round's 9002 went out: its last stone was cleared.</summary>
     private bool _riftResolved;

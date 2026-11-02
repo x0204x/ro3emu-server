@@ -68,8 +68,8 @@ public sealed partial class PartyExperiencePipelineTests
             await hold.WaitAsync(Wait);
             await (kill ?? throw new InvalidOperationException("擊殺沒有進入預約等待")).WaitAsync(Wait);
             // 自造7EXP按已預約3人17000倍率先取整11，只分4／4／3；回線者本次不追補。
-            Assert.Equal(new long[] { 4, 4, 3, 0 }, ids.Select((id, i) => RateProgress(host, id).Base - before[i].Base));
-            Assert.Equal(new long[] { 4, 4, 3, 0 }, ids.Select((id, i) => RateProgress(host, id).Job - before[i].Job));
+            Assert.Equal([4, 4, 3, 0], ids.Select((id, i) => RateProgress(host, id).Base - before[i].Base));
+            Assert.Equal([1, 1, 0, 0], ids.Select((id, i) => RateProgress(host, id).Job - before[i].Job));
             string source = Assert.IsType<RewardSourceId>(monster.RewardSource).Key;
             var obligations = Obligations(host, source);
             Assert.Equal(2, obligations.Count);
@@ -78,11 +78,11 @@ public sealed partial class PartyExperiencePipelineTests
             var settled = ids.Select(id => RateProgress(host, id)).ToArray();
             await loop.InvokeAsync(() => reward.KilledAsync(sessions[0], monster));
             Assert.Equal(settled, ids.Select(id => RateProgress(host, id)).ToArray());
-            Assert.Equal(obligations.ToArray(), Obligations(host, source).ToArray());
+            Assert.Equal<(long Role, long Base, long Job, bool Delivered)>([.. obligations], [.. Obligations(host, source)]);
             await loop.InvokeAsync(() => reward.KilledAsync(sessions[0], NewPipelineMonster(sessions[0], 990309)));
             // 下一次才以4人19000倍率的13池分4／3／3／3，不能永遠漏掉已回線隊員。
-            Assert.Equal(new long[] { 4, 3, 3, 3 }, ids.Select((id, i) => RateProgress(host, id).Base - settled[i].Base));
-            Assert.Equal(new long[] { 4, 3, 3, 3 }, ids.Select((id, i) => RateProgress(host, id).Job - settled[i].Job));
+            Assert.Equal([4, 3, 3, 3], ids.Select((id, i) => RateProgress(host, id).Base - settled[i].Base));
+            Assert.Equal([1, 1, 1, 0], ids.Select((id, i) => RateProgress(host, id).Job - settled[i].Job));
         }
         finally { SqliteConnection.ClearAllPools(); Directory.Delete(fixture, true); }
     }

@@ -112,7 +112,7 @@ base level; the list is empty by default, so nothing changes unless it is set (*
 }
 ```
 
-The first rule whose range holds the killer's base level scales that kill's Base EXP (and the Job EXP, which equals it) after the
+The first rule whose range holds the killer's base level scales that kill's Base EXP (and the Job EXP that comes from it) after the
 level-gap correction and the team bonus; 100 leaves it as it is. It applies only to open-field monsters (`NPCConfig._iWildMonsters`
 1), not to monsters without that flag (the story dungeons' ones, for example), and to both ordinary and Bonus Time kills. A rule with an empty range or a percent outside 1 to
 10000 is ignored, and a kill that pays EXP never pays less than 1. The `BaseExpAddConfig` catch-up is applied after it, as before.

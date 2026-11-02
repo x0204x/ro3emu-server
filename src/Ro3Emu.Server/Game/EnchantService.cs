@@ -71,7 +71,7 @@ public sealed class EnchantService(GameData data, CharacterService character, Fu
                         persist: transaction =>
                         {
                             transaction.WithEconomy(character.FamilyEconomy(session, "cd13a/enchant-apply",
-                                cost.Concat([(scroll.Entry, 1L)]).ToArray(), [],
+                                [.. cost, (scroll.Entry, 1L)], [],
                                 new
                                 {
                                     Equip = equip.Guid, Scroll = scroll.Guid, Installed = installed,
@@ -154,5 +154,5 @@ public sealed class EnchantService(GameData data, CharacterService character, Fu
 
     private static long[] Flat(JsonElement row, string field) =>
         row.TryGetProperty(field, out var value) && value.ValueKind == JsonValueKind.Array
-            ? value.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).ToArray() : [];
+            ? [.. value.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0))] : [];
 }

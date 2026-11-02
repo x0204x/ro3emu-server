@@ -16,7 +16,7 @@ public static class WalkSchedule
             due.Add(at);
             at += phase == "sync" ? .75 : .5 + random.NextDouble() * .5;
         }
-        return due.ToArray();
+        return [.. due];
     }
 }
 
@@ -26,7 +26,12 @@ public sealed record LinePopulation(long Map, long SceneId, int Line, string Kin
 public sealed class LineMeasurements
 {
     private readonly ConcurrentQueue<LinePopulation> _samples = new();
-    public LinePopulation[] Snapshot() => _samples.ToArray();
+    public LinePopulation[] Snapshot()
+    {
+        // ToArray, not a spread: the samplers may still add, and a spread sizes its array from Count first.
+        var snapshot = _samples.ToArray();
+        return snapshot;
+    }
 
     public void Observe(JsonNode metrics)
     {

@@ -25,9 +25,7 @@ public sealed partial class CharacterService
         string operation = Guid.NewGuid().ToString("N");
         return new EconomyMutation(operation, session.Account!, session.Role!.Id, kind, fingerprint,
             kind + "/" + session.Role.Id + "/" + operation, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            costs.Where(x => x.Count > 0).GroupBy(x => x.Entry)
-                .Select(g => new EconomyQuantity(Asset(g.Key), g.Sum(x => x.Count))).ToArray(),
-            goods.Where(x => x.Count > 0).GroupBy(x => x.Entry)
-                .Select(g => new EconomyQuantity(Asset(g.Key), g.Sum(x => (long)x.Count))).ToArray(), receipt);
+            [.. costs.Where(x => x.Count > 0).GroupBy(x => x.Entry).Select(g => new EconomyQuantity(Asset(g.Key), g.Sum(x => x.Count)))],
+            [.. goods.Where(x => x.Count > 0).GroupBy(x => x.Entry).Select(g => new EconomyQuantity(Asset(g.Key), g.Sum(x => (long)x.Count)))], receipt);
     }
 }

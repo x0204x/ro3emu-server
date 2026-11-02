@@ -36,10 +36,10 @@ public sealed partial class TimedBattleService
 
     /// <summary>Freeze every admitted result and its payment before any participant sees terminal success.</summary>
     private static ReservationKey[] SettlementKeys(Match match, long matchId) =>
-        new[] { ReservationKey.Entity("timed_match", matchId.ToString(CultureInfo.InvariantCulture)) }
+        [.. new[] { ReservationKey.Entity("timed_match", matchId.ToString(CultureInfo.InvariantCulture)) }
             .Concat(match.Participants.Values.Select(participant => ReservationKey.Role(participant.Id)))
             .Concat(match.Participants.Values.Select(participant => Obligations.Key(
-                $"timed_battle/{matchId}/{participant.Id}"))).Distinct().ToArray();
+                $"timed_battle/{matchId}/{participant.Id}"))).Distinct()];
 
     private async Task SettleMatchCoreAsync(Match match)
     {
@@ -197,7 +197,7 @@ public sealed partial class TimedBattleService
                         JsonSerializer.SerializeToUtf8Bytes(next), result),
                     _tasks.StageTimedBattleSettlement(player, match.Entry, source, ChickenWeekly(match, player))));
             }
-            frozen = staged.ToArray();
+            frozen = [.. staged];
             var tx = _roles.NewTransaction();
             foreach (var item in frozen)
             {

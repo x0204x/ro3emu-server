@@ -61,7 +61,7 @@ public sealed class CardProgressTests : IAsyncLifetime
     private async Task Gm(string account, string command)
     {
         using var http = new HttpClient();
-        (await http.PostAsync($"{_httpUrl}/ro3emu/gm?account={account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await http.PostAsync($"{_httpUrl}/ro3emu/gm?account={account}", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     private static ItemBaseInfo FullCard(DBItemsInfoIncrement sync, long guid = 0)
@@ -182,7 +182,7 @@ public sealed class CardProgressTests : IAsyncLifetime
                 m => m.PackInfo.TryGetValue(3, out var p) && p.All?.Items.Values.Any(i => i.ItemEntry == ingredient) == true);
             long normalGuid = bag.PackInfo[3].All!.Items.Values.Single(i => i.ItemEntry == ingredient).ItemGuid;
             var four = new CardTreasuredReq { SourceType = (CardLevelSourceType)1 };
-            four.Guids.Add(new long[] { normalGuid, normalGuid, normalGuid, normalGuid });
+            four.Guids.Add([normalGuid, normalGuid, normalGuid, normalGuid]);
             await alice.SendGameAsync(CardService.Treasured, four);
             Assert.Equal(ErrorCodes.FeatureUnavailable, (await Next(alice, CardService.Treasured, CardTreasuredResp.Parser)).Result);
             await Gm("alice", "!lvl 80");
@@ -204,7 +204,7 @@ public sealed class CardProgressTests : IAsyncLifetime
 
             // Lua presents a confirmation for a Flash ingredient, then sends the same 31469 request.
             var withFlash = new CardTreasuredReq { SourceType = (CardLevelSourceType)1 };
-            withFlash.Guids.Add(new long[] { outputGuid, normalGuid, normalGuid, normalGuid });
+            withFlash.Guids.Add([outputGuid, normalGuid, normalGuid, normalGuid]);
             await alice.SendGameAsync(CardService.Treasured, withFlash);
             Assert.Equal(0, (await Next(alice, CardService.Treasured, CardTreasuredResp.Parser,
                 x => x.Guid != outputGuid)).Result);
@@ -259,7 +259,7 @@ public sealed class CardProgressTests : IAsyncLifetime
         {
             var card = session.Items.Single(i => i.Guid == normalGuid);
             card.IsLocked = false;
-            card.Attrs ??= new();
+            card.Attrs ??= [];
             card.Attrs[502] = 1;
             _app.Services.GetRequiredService<ItemStore>().Update(card);
             return Task.CompletedTask;
@@ -291,14 +291,14 @@ public sealed class CardProgressTests : IAsyncLifetime
         var gray = session.Items.Single(i => i.Entry == ingredient && (i.Attrs?.GetValueOrDefault(530) ?? 0) == 0);
         await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
         {
-            gray.Attrs ??= new();
+            gray.Attrs ??= [];
             gray.Attrs[530] = 2; // Client selection has no card-type filter (LC_CardViewHelper.lua:528-608).
             gray.BindType = 1;
             _app.Services.GetRequiredService<ItemStore>().Update(gray);
             return Task.CompletedTask;
         });
         var grayReq = new CardTreasuredReq { SourceType = (CardLevelSourceType)1 };
-        grayReq.Guids.Add(new long[] { gray.Guid, gray.Guid, gray.Guid, gray.Guid });
+        grayReq.Guids.Add([gray.Guid, gray.Guid, gray.Guid, gray.Guid]);
         await alice.SendGameAsync(CardService.Treasured, grayReq);
         var grayResult = await Next(alice, CardService.Treasured, CardTreasuredResp.Parser);
         Assert.Equal(0, grayResult.Result);

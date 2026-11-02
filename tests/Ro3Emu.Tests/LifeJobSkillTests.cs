@@ -48,7 +48,7 @@ public sealed class LifeJobSkillTests : IAsyncLifetime
     private async Task Gm(string line)
     {
         using var c = new HttpClient();
-        var r = await c.PostAsync($"{_http}/ro3emu/gm?account=alice", new StringContent(line));
+        var r = await c.PostAsync($"{_http}/ro3emu/gm?account=alice", Operator.Command(line));
         r.EnsureSuccessStatusCode();
     }
 

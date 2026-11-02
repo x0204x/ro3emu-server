@@ -12,8 +12,8 @@ namespace Ro3Emu.Server.Game;
 /// </summary>
 public sealed class SeasonClock(GameData data, DateTime start, int playBook, TimeZoneInfo zone)
 {
-    private readonly HashSet<(long, bool)> _resolving = new();
-    private readonly Dictionary<(long, bool), long> _resolved = new();
+    private readonly HashSet<(long, bool)> _resolving = [];
+    private readonly Dictionary<(long, bool), long> _resolved = [];
 
     public long StartTime => SeasonService.Unix(start, zone);
 

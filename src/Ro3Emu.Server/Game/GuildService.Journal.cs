@@ -75,7 +75,7 @@ public sealed partial class GuildService
         // getUp walks back from fromIndex (open: 0 = newest; scrolling: oldest shown - 1); otherwise the newer side.
         var page = req.GetUp || req.FromIndex <= 0
             ? rows.Where(r => req.FromIndex <= 0 || r.Index <= req.FromIndex).Take(count).ToList()
-            : rows.Where(r => r.Index > req.FromIndex).TakeLast(count).ToList();
+            : [.. rows.Where(r => r.Index > req.FromIndex).TakeLast(count)];
         resp.Datas.AddRange(page.Select(r => new GuildEventResp.Types.eventData { Data = r.Row, Index = r.Index }));
         resp.ToTop = page.Count == 0 || page[^1].Index == rows[^1].Index;
         resp.ToBottom = page.Count == 0 || page[0].Index == rows[0].Index;

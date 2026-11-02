@@ -45,12 +45,12 @@ public sealed class EconomyEnvelope
                 throw new ArgumentException(name + " is missing or too long.", name);
         OperationId = Required(operationId, 128, nameof(operationId));
         ActorAccount = Required(actorAccount, 512, nameof(actorAccount));
-        if (actorRoleId <= 0) throw new ArgumentOutOfRangeException(nameof(actorRoleId));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(actorRoleId);
         ActorRoleId = actorRoleId;
         CommandKind = Required(commandKind, 128, nameof(commandKind));
         RequestFingerprint = Required(requestFingerprint, 1024, nameof(requestFingerprint));
         SourceKey = Required(sourceKey, 512, nameof(sourceKey));
-        if (effectiveUtcMs <= 0) throw new ArgumentOutOfRangeException(nameof(effectiveUtcMs));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(effectiveUtcMs);
         EffectiveUtcMs = effectiveUtcMs;
         Effects = Array.AsReadOnly((effects ?? throw new ArgumentNullException(nameof(effects))).ToArray());
         _outcome = (byte[])(outcome ?? throw new ArgumentNullException(nameof(outcome))).Clone();

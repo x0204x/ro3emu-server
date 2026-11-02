@@ -67,7 +67,7 @@ public sealed partial class DailyTests : IAsyncLifetime
     private async Task Gm(string account, string line)
     {
         using var http = new HttpClient();
-        (await http.PostAsync($"{_httpUrl}/ro3emu/gm?account={account}", new StringContent(line))).EnsureSuccessStatusCode();
+        (await http.PostAsync($"{_httpUrl}/ro3emu/gm?account={account}", Operator.Command(line))).EnsureSuccessStatusCode();
     }
 
     private void Sql(string command)
@@ -446,13 +446,13 @@ public sealed partial class DailyTests : IAsyncLifetime
 
         var paid = await Batch(bot, 7001, 7002, 7001);
         Assert.Equal(0, paid.Result);
-        Assert.Equal(new[] { 7001, 7002, 7001 }, paid.Req.StageIds.ToArray());
-        Assert.Equal(new[] { 7001, 7002 }, (await State(s => s.Daily!.Claims.Order().ToArray())));
+        Assert.Equal([7001, 7002, 7001], [.. paid.Req.StageIds]);
+        Assert.Equal((int[])[7001, 7002], (await State(s => s.Daily!.Claims.Order().ToArray())));
         Assert.True(await State(s => s.Progress!.Currency.GetValueOrDefault(2)) >= coins + 40000); // 7001 alone pays 40,000
         Assert.Equal(40, await State(s => s.Progress!.Currency.GetValueOrDefault(5))); // threshold, not spend
         var synced = await Next(bot, DailyActivityService.StageSync, DBStageRewardInfoIncrement.Parser,
             m => m.AllStageRewardsFinished?.All?.Value.Count == 2);
-        Assert.Equal(new[] { 7001, 7002 }, synced.AllStageRewardsFinished.All.Value.Order().ToArray());
+        Assert.Equal([7001, 7002], [.. synced.AllStageRewardsFinished.All.Value.Order()]);
         string source = await State(s => $"daily-stage/{s.Role!.Id}/{s.Daily!.DailyEpoch}/7001,7002");
         Assert.Equal(1, OwnedSourceCount(source, "cd13e/daily-stage"));
 
@@ -462,7 +462,7 @@ public sealed partial class DailyTests : IAsyncLifetime
         await bot.DisposeAsync();
 
         await using var again = await InWorld("Alice", create: false);
-        Assert.Equal(new[] { 7001, 7002 }, (await State(s => s.Daily!.Claims.Order().ToArray())));
+        Assert.Equal((int[])[7001, 7002], (await State(s => s.Daily!.Claims.Order().ToArray())));
         Assert.Equal(ErrorCodes.RewardClaimed, (await Batch(again, 7001, 7002)).Result);
         Assert.Equal(1, OwnedSourceCount(source, "cd13e/daily-stage"));
     }
@@ -545,7 +545,7 @@ public sealed partial class DailyTests : IAsyncLifetime
         Assert.Equal(0, await State(s => s.Progress!.Currency.GetValueOrDefault(5)));
         Assert.Equal(0, await State(s => s.DailyRows!.ActivityData[101].TaskCompleteTimes));
         Assert.Equal(initialKeys, await State(s => s.DailyRows!.ActivityData.Keys.Order().ToArray()));
-        Assert.Equal(new[] { 1 }, await State(s => s.Daily!.Claims.Order().ToArray()));
+        Assert.Equal((int[])[1], await State(s => s.Daily!.Claims.Order().ToArray()));
         Assert.Equal(0, await State(s => s.Tasks!.CompleteTaskNum.GetValueOrDefault(500080)));
     }
 
@@ -952,7 +952,7 @@ public sealed partial class DailyTests : IAsyncLifetime
             Assert.Equal(1, await State(s => s.DailyRows!.ActivityData[3302].TaskCompleteTimes));
             Assert.Equal(20, await State(s => s.Progress!.Currency.GetValueOrDefault(5)));
         }
-        Assert.Equal(new[] { 3001, 3011, 3021 }, roots.Order());
+        Assert.Equal([3001, 3011, 3021], roots.Order());
     }
 
     [ClientDataFact]

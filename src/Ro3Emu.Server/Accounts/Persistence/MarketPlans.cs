@@ -63,10 +63,10 @@ internal sealed class MarketRecordGuardPlan : DbPlan
     private readonly (string Id, string Data)[] _expected;
     internal OwnerRevisionValue? CapturedRevision { get; }
     internal MarketRecordGuardPlan(string kind, string? key, IEnumerable<(string Id, string Data)> expected)
-    { _kind = kind; _key = key; _expected = expected.ToArray(); }
+    { _kind = kind; _key = key; _expected = [.. expected]; }
     internal MarketRecordGuardPlan(string kind, string? key, MarketRecordSnapshot snapshot)
     {
-        _kind = kind; _key = key; _expected = snapshot.Rows.ToArray();
+        _kind = kind; _key = key; _expected = [.. snapshot.Rows];
         CapturedRevision = snapshot.KindRevision;
     }
     internal override int Bytes => 128 + _expected.Sum(x => (x.Id.Length + x.Data.Length) * 2);
@@ -125,7 +125,7 @@ internal sealed class MarketRoleGuardPlan : DbPlan
     internal RoleRevisionVector CapturedVector { get; }
     internal MarketRoleGuardPlan(long role, MarketRoleSnapshot original)
     {
-        _role = role; _currency = original.Currency; _items = original.Items.Select(ItemValue.Capture).ToArray();
+        _role = role; _currency = original.Currency; _items = [.. original.Items.Select(ItemValue.Capture)];
         CapturedVector = original.Vector;
     }
     internal override int Bytes => 128 + _currency.Length * 2 + MarketItemsWritePlan.ItemBytes(_items);
@@ -152,14 +152,14 @@ internal sealed class MarketItemsWritePlan : DbPlan
     internal int ExpectedReceiptCount => _receiptSlots.Length;
     internal MarketItemsWritePlan(long role, IReadOnlyList<InvItem> before, IReadOnlyList<InvItem> after)
     {
-        _role = role; _before = before.Select(x => x.Guid).ToArray();
+        _role = role; _before = [.. before.Select(x => x.Guid)];
         // The former synchronous loop assigned a new object's GUID before seeing the same reference again.
         // Preserve that identity, while distinct zero-GUID objects still create distinct rows.
         var unique = after.Distinct<InvItem>(ReferenceEqualityComparer.Instance).ToArray();
         var slots = new Dictionary<InvItem, int>(ReferenceEqualityComparer.Instance);
         for (int i = 0; i < unique.Length; i++) slots.Add(unique[i], i);
-        _after = unique.Select(ItemValue.Capture).ToArray();
-        _receiptSlots = after.Select(item => slots[item]).ToArray();
+        _after = [.. unique.Select(ItemValue.Capture)];
+        _receiptSlots = [.. after.Select(item => slots[item])];
     }
     internal static int ItemBytes(IEnumerable<ItemValue> items) => items.Sum(i => 160 +
         ((i.Attrs?.Length ?? 0) + (i.Enchantments?.Length ?? 0) + (i.StringAttrs?.Length ?? 0)) * 2);

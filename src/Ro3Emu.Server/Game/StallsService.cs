@@ -32,13 +32,13 @@ public sealed partial class StallsService
     private readonly TimeProvider _clock;
     private readonly GameLoop _loop;
     private readonly int _nameMaxLength;
-    private readonly Dictionary<(string Key, int Line), StallActor> _actors = new();
+    private readonly Dictionary<(string Key, int Line), StallActor> _actors = [];
     private long _nextProjectionId = StallActor.ProjectionIdBase;
-    private readonly HashSet<RuntimeMapKey> _activeLines = new();
-    private readonly Dictionary<RuntimeMapKey, int> _pendingProjections = new();
-    private readonly Dictionary<RuntimeMapKey, int> _openingClaims = new();
-    private readonly Dictionary<RuntimeMapKey, HashSet<string>> _pinnedPlayerStalls = new();
-    private readonly Dictionary<long, long> _lastShare = new();
+    private readonly HashSet<RuntimeMapKey> _activeLines = [];
+    private readonly Dictionary<RuntimeMapKey, int> _pendingProjections = [];
+    private readonly Dictionary<RuntimeMapKey, int> _openingClaims = [];
+    private readonly Dictionary<RuntimeMapKey, HashSet<string>> _pinnedPlayerStalls = [];
+    private readonly Dictionary<long, long> _lastShare = [];
     // Visited public scenes whose system stalls the one-second maintenance populates, replaces and restocks (C/D 15:
     // logins and scene loads add their scene). Before, one scene (the last loaded) was kept.
     private readonly HashSet<long> _maintenanceScenes = [];
@@ -77,7 +77,7 @@ public sealed partial class StallsService
         public int Sex { get; set; }
         public int Level { get; set; }
         public int Area { get; set; } = 1;
-        public Dictionary<int, int> Appearance { get; set; } = new();
+        public Dictionary<int, int> Appearance { get; set; } = [];
         public float X { get; set; }
         public float Y { get; set; }
         public float Z { get; set; }
@@ -88,9 +88,9 @@ public sealed partial class StallsService
         public long NextItemId { get; set; } = 1;
         public bool Ended { get; set; }
         public int EndMailId { get; set; }
-        public List<StallItem> Stock { get; set; } = new();
-        public List<byte[]> Records { get; set; } = new();
-        public Dictionary<int, long> Gains { get; set; } = new();
+        public List<StallItem> Stock { get; set; } = [];
+        public List<byte[]> Records { get; set; } = [];
+        public Dictionary<int, long> Gains { get; set; } = [];
         public long TaxRate { get; set; }
     }
 
@@ -101,7 +101,7 @@ public sealed partial class StallsService
         public int Price { get; set; }
         public int Currency { get; set; }
         public int SystemConfig { get; set; }
-        public Dictionary<long, int> Bought { get; set; } = new();
+        public Dictionary<long, int> Bought { get; set; } = [];
     }
 
     public async Task LoginAsync(GameSession s)
@@ -141,7 +141,7 @@ public sealed partial class StallsService
     private long Now => _clock.GetUtcNow().ToUnixTimeSeconds();
     private long Param(string key, long fallback = 0) => _data.Table("PublicParamConfig").TryGetValue(key, out var x) ? (long)(GameData.Number(x) ?? fallback) : fallback;
     private long[] ParamList(string key) => _data.Table("PublicParamConfig").TryGetValue(key, out var x) ? Numbers(x) : [];
-    private static long[] Numbers(JsonElement x) => x.ValueKind == JsonValueKind.Array ? x.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).ToArray() : [];
+    private static long[] Numbers(JsonElement x) => x.ValueKind == JsonValueKind.Array ? [.. x.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0))] : [];
     private static long[] Field(JsonElement row, string name) => row.TryGetProperty(name, out var x) ? Numbers(x) : [];
     private static string PlayerKey(long id) => "p:" + id.ToString(CultureInfo.InvariantCulture);
     private static string SystemKey(long id) => "s:" + id.ToString(CultureInfo.InvariantCulture);
@@ -290,7 +290,7 @@ public sealed partial class StallsService
         }
         else
         {
-            if (!_pinnedPlayerStalls.TryGetValue(runtime, out var pinned)) _pinnedPlayerStalls[runtime] = pinned = new();
+            if (!_pinnedPlayerStalls.TryGetValue(runtime, out var pinned)) _pinnedPlayerStalls[runtime] = pinned = [];
             pinned.Add(row.Key);
         }
     }
@@ -337,7 +337,7 @@ public sealed partial class StallsService
     private async Task PublishCoreAsync(StallRow row, bool notify)
     {
         var lines = row.SystemId == 0 ? new[] { RuntimeMapKey.Public(row.Scene, row.LineNumber) }
-            : _activeLines.Where(x => x.SceneEntry == row.Scene).ToArray();
+            : [.. _activeLines.Where(x => x.SceneEntry == row.Scene)];
         foreach (var runtime in lines)
         {
             ProjectionStart(runtime);

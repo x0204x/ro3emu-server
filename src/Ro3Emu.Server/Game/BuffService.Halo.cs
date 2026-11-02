@@ -38,10 +38,10 @@ public sealed partial class BuffService
         public int Compare((float D2, object Target) a, (float D2, object Target) b) => a.D2.CompareTo(b.D2);
     }
 
-    private readonly List<HaloInstance> _halos = new();
-    private readonly List<GameSession> _haloPlayers = new();
-    private readonly List<WorldUnit> _haloUnits = new();
-    private readonly List<(float D2, object Target)> _haloCandidates = new();
+    private readonly List<HaloInstance> _halos = [];
+    private readonly List<GameSession> _haloPlayers = [];
+    private readonly List<WorldUnit> _haloUnits = [];
+    private readonly List<(float D2, object Target)> _haloCandidates = [];
 
     /// <summary>CombatService: may this player's aura treat that player as an enemy (territory/event PvP).</summary>
     internal Func<GameSession, GameSession, bool>? HaloHostilePlayer { get; set; }

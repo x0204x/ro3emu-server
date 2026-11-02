@@ -192,7 +192,7 @@ public sealed class PronteraDefenseInvaderTests : IAsyncLifetime
     private async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     /// <summary>A warp completed as a real client does it (ActivityAdventuresTests).</summary>

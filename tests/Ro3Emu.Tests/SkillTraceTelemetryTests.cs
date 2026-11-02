@@ -44,7 +44,7 @@ public sealed class SkillTraceTelemetryTests : IAsyncLifetime
     [Fact]
     public void WireFormatRoundTripsAndBoundsReason()
     {
-        byte[] token = Enumerable.Range(1, SkillTraceProtocol.TokenSize).Select(i => (byte)i).ToArray();
+        byte[] token = [.. Enumerable.Range(1, SkillTraceProtocol.TokenSize).Select(i => (byte)i)];
         byte[] grantBytes = SkillTraceProtocol.EncodeGrant(token, 600, 20, 40);
         Assert.True(SkillTraceProtocol.TryDecodeGrant(grantBytes, out var grant));
         Assert.Equal(token, grant.Token);

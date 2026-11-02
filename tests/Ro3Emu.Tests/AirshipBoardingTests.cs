@@ -64,7 +64,7 @@ public sealed partial class AirshipBoardingTests : IAsyncLifetime
     private async Task Gm(string command)
     {
         using var http = new HttpClient();
-        (await http.PostAsync($"{_http}/ro3emu/gm?account=boardingalice", new StringContent(command))).EnsureSuccessStatusCode();
+        (await http.PostAsync($"{_http}/ro3emu/gm?account=boardingalice", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     private static async Task<T> Next<T>(BotClient bot, uint id, MessageParser<T> parser, Func<T, bool>? match = null)

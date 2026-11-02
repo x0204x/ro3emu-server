@@ -27,7 +27,7 @@ public sealed class SeasonService : IGameTicker
     public const uint SeasonSync = 5021, TimeInfoNotify = 82707, StateChangeNotify = 82708;
 
     /// <summary>Activity owners invalidate their deadlines after a committed administrative clock change.</summary>
-    public List<Action> ScheduleChanged { get; } = new();
+    public List<Action> ScheduleChanged { get; } = [];
 
     /// <summary>Legacy identity-only fallback when this playbook has no supported stage clock.</summary>
     private const long SeasonLengthSeconds = 999_999_999;
@@ -44,7 +44,7 @@ public sealed class SeasonService : IGameTicker
     private SeasonTimeInfoNotify? _timing;
     // Stage G: the clock of a playbook is a pure function of the season start and the tables, yet logins and activity
     // windows rebuilt it each time (290 MB per 500 logins). Shared and read-only; cleared with timing.
-    private readonly Dictionary<int, SeasonTimeInfoNotify> _clocks = new();
+    private readonly Dictionary<int, SeasonTimeInfoNotify> _clocks = [];
 
     /// <summary>The playbook's stage clock for the current season start. Shared: callers must not modify it.</summary>
     internal SeasonTimeInfoNotify Clock(int book)
@@ -76,7 +76,7 @@ public sealed class SeasonService : IGameTicker
         OpenContent = options.Value.OpenContent;
         _playBook = int.TryParse(Get("playbook"), CultureInfo.InvariantCulture, out int saved) ? saved : options.Value.PlayBook;
         _seasonId = int.TryParse(Get("season_id"), CultureInfo.InvariantCulture, out int savedId) && savedId > 0 ? savedId : 1;
-        _history = JsonSerializer.Deserialize<Dictionary<int, Season>>(Get("season_history") ?? "{}") ?? new();
+        _history = JsonSerializer.Deserialize<Dictionary<int, Season>>(Get("season_history") ?? "{}") ?? [];
         Start = _seasonId > 1 && DateTime.TryParseExact(Get("season_start"), "yyyy-MM-dd", CultureInfo.InvariantCulture,
             DateTimeStyles.None, out var rolled) ? rolled : options.Value.SeasonStart is { Length: > 0 } configured
             ? DateTime.ParseExact(configured, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None)

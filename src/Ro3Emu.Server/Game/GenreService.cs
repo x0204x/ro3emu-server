@@ -74,7 +74,7 @@ public sealed partial class GenreService(
         public DBPetInfo Pets { get; } = s.Pets!.Clone();
         public EmblemService.EmblemState Echoes { get; } = JsonSerializer.Deserialize<EmblemService.EmblemState>(JsonSerializer.Serialize(s.Emblems))!;
         public DBSeasonTalent Talents { get; } = s.SeasonTalent!.Clone();
-        public List<InvItem> Items { get; } = s.Items.Select(i => i.Clone()).ToList();
+        public List<InvItem> Items { get; } = [.. s.Items.Select(i => i.Clone())];
     }
 
     /// <summary>Validate all requested owners on detached copies before any database or live-session mutation.</summary>
@@ -178,7 +178,7 @@ public sealed partial class GenreService(
             int code = Gate(s);
             if (code == 0 && !state.GenreMap.SystemMap.TryGetValue(req.TargetPlan, out _)) code = ErrorCodes.Parameter;
             var selected = state.GenreMap.SystemMap.TryGetValue(req.TargetPlan, out var preset)
-                ? preset.GenrePlans.ToDictionary(kv => kv.Key, kv => kv.Value) : new Dictionary<int, int>();
+                ? preset.GenrePlans.ToDictionary(kv => kv.Key, kv => kv.Value) : [];
             foreach (var (type, index) in req.ChildSystem) selected[type] = index;
             var next = new Stage(s, skills);
             if (code == 0) code = StageSelection(s, next, selected);
@@ -201,7 +201,8 @@ public sealed partial class GenreService(
                     }
                     else await SaveGenreAsync(s, genre);
                 }
-                catch (Exception e) when (e is Microsoft.Data.Sqlite.SqliteException or InvalidOperationException)
+                catch (Exception e) when (e is Microsoft.Data.Sqlite.SqliteException or PersistenceException
+                    or InvalidOperationException)
                 {
                     log.LogError(e, "Genre build change failed for role {Role}", s.Role!.Id);
                     code = ErrorCodes.Unknown;

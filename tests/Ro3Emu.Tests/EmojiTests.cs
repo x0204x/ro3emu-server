@@ -72,7 +72,7 @@ public sealed class EmojiTests : IAsyncLifetime
     private async Task Gm(string account, string line)
     {
         using var http = new HttpClient();
-        (await http.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(line))).EnsureSuccessStatusCode();
+        (await http.PostAsync($"{_http}/ro3emu/gm?account={account}", Operator.Command(line))).EnsureSuccessStatusCode();
     }
 
     private static ulong Id(BotClient bot) => bot.Self!.Uuid;

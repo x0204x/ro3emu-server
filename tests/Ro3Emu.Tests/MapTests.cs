@@ -5,6 +5,8 @@ using Microsoft.Data.Sqlite;
 using Romsg;
 using Ro3Emu.Bot;
 using Ro3Emu.Server;
+using Ro3Emu.Server.Accounts;
+using Ro3Emu.Server.Data;
 using Ro3Emu.Server.Game;
 using Ro3Emu.Server.Game.Ownership;
 using Ro3Emu.Server.Maps;
@@ -85,7 +87,7 @@ public sealed partial class MapTests : IAsyncLifetime
     private async Task Gm(string account, string line)
     {
         using var http = new HttpClient();
-        (await http.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(line))).EnsureSuccessStatusCode();
+        (await http.PostAsync($"{_http}/ro3emu/gm?account={account}", Operator.Command(line))).EnsureSuccessStatusCode();
     }
 
     /// <summary>Follows a server-sent map change like the client: 70010, then 30005, returns the ENTITYSELF of the new map.</summary>
@@ -201,6 +203,14 @@ public sealed partial class MapTests : IAsyncLifetime
         await Gm("alice", "!lvl 60"); // hit hard enough to finish quickly
         await Gm("alice", "!quest accept 10101220"); // Monster Hunt: 310001 [20, 10111] = kill 20 on South Gate
         await Gm("alice", $"!jump {monster.MovementInfo.Pos.X:0.0} {monster.MovementInfo.Pos.Z + 1:0.0}".Replace(',', '.'));
+        // 先收完 GM 的等級更新，再註冊未來封包；不能把 !lvl 的 HasExp/HasLevel 當成擊殺入帳。
+        await alice.HeartbeatAsync();
+        var roles = _app.Services.GetRequiredService<RoleStore>();
+        var loop = _app.Services.GetRequiredService<GameLoop>();
+        long roleId = (long)alice.Self!.Uuid;
+        var beforeKill = await loop.InvokeAsync(() => Task.FromResult(roles.LoadProgress(roleId)));
+        using var killExp = alice.Inbox.Expect(e => e.IsGame(CharacterService.RoleBaseInfoSync)
+            && RoleBaseInfoIncrement.Parser.ParseFrom(e.Body) is { SyncAllMark: false, HasExp: true });
         await alice.SendGameAsync(CombatService.LockEnemy, new LockEnemyReq { EnemyId = (long)monster.Uuid });
         await SwingWait.UntilDoneAsync(_app.Services.GetRequiredService<GameLoop>(), _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == alice.Account && s.Role != null), (long)monster.Uuid);
         await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = (long)monster.Uuid });
@@ -223,9 +233,19 @@ public sealed partial class MapTests : IAsyncLifetime
         Assert.Equal(3, dead.EntityCamp); // full overwrite: camp and template kept
         Assert.Equal(monster.EntityTemplateID, dead.EntityTemplateID);
         // The killer gets the drop tables' Base EXP (item 100) as exp: a 5066 increment.
-        var exp = await Next(alice, CharacterService.RoleBaseInfoSync, RoleBaseInfoIncrement.Parser, m => !m.SyncAllMark && m.HasExp);
-        Assert.True(exp.Exp > 0 || exp.HasLevel);
-        Assert.True(exp.JobExp > 0 || exp.HasJobLevel);
+        var exp = RoleBaseInfoIncrement.Parser.ParseFrom((await killExp.WaitAsync(TimeSpan.FromSeconds(40))).Body);
+        var afterKill = await loop.InvokeAsync(() => Task.FromResult(roles.LoadProgress(roleId)));
+        Assert.Equal(beforeKill.Level, afterKill.Level);
+        Assert.Equal(beforeKill.JobLevel, afterKill.JobLevel);
+        long gainedBase = afterKill.Exp - beforeKill.Exp;
+        Assert.True(gainedBase > 0);
+        var rate = _app.Services.GetRequiredService<GameData>().Table("PublicParamConfig")["BaseToJobConversionPercent"];
+        long expectedJob = checked(gainedBase * (long)(GameData.Number(rate) ?? 0) / 10000);
+        Assert.Equal(expectedJob, afterKill.JobExp - beforeKill.JobExp);
+        Assert.Equal(afterKill.Exp, exp.Exp);
+        // 等差校正後的小額 Base 可能換算為0 Job；此時增量封包可省略未變欄位。
+        if (expectedJob > 0) Assert.True(exp.HasJobExp);
+        if (exp.HasJobExp) Assert.Equal(afterKill.JobExp, exp.JobExp);
         // The kill counts for the quest: 5027 completeNum 1 of 20.
         var quest = await Next(alice, TaskService.TaskInfoSync, DBTaskInfoIncrement.Parser, m => m.Infos.TryGetValue(10101220, out var t) && t.Inc != null);
         Assert.Equal([1L], quest.Infos[10101220].Inc.CompleteNum.All.Value);
@@ -399,7 +419,7 @@ public sealed partial class MapTests : IAsyncLifetime
             && u.SrcID == (long)angeling.Uuid && u.SkillID == 5202101, TimeSpan.FromSeconds(10));
         Assert.NotNull(summon);
         var minions = await alice.Inbox.WaitAsync(e => e.IsGame(GameAoiSink.SyncAoiView)
-            && AoIViewChangeData.Parser.ParseFrom(e.Body).Bases.Count(b => b.EntityTemplateID == 5000036) >= 1, TimeSpan.FromSeconds(10));
+            && AoIViewChangeData.Parser.ParseFrom(e.Body).Bases.Any(b => b.EntityTemplateID == 5000036), TimeSpan.FromSeconds(10));
         Assert.NotNull(minions);
 
         // The real summon is observed above. Retire its three minions before the slow fault

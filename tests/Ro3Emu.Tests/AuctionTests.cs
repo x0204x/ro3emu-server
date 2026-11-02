@@ -88,7 +88,7 @@ public abstract class AuctionTestsHost : IAsyncLifetime
     protected async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={bot.Account}", new StringContent(command)))
+        (await client.PostAsync($"{http}/ro3emu/gm?account={bot.Account}", Operator.Command(command)))
             .EnsureSuccessStatusCode();
     }
 
@@ -108,7 +108,7 @@ public abstract class AuctionTestsHost : IAsyncLifetime
             Entry = Entry, State = AuctionState.Bidding,
             Start = now - 10, End = now + 120, Price = 500, Raise = 100,
             FixedPrice = 2000, MaxPrice = 2000, Currency = 1,
-            Eligible = eligible.Select(b => (long)b.Self!.Uuid).ToList(),
+            Eligible = [.. eligible.Select(b => (long)b.Self!.Uuid)],
         };
         SaveRows(row);
         return row;
@@ -286,7 +286,7 @@ public sealed partial class AuctionTests : AuctionTestsHost
         await using var carol = await InWorld("Carol");
         foreach (var bot in new[] { alice, bob, carol }) await Gm(bot, "!zeny 10000");
         var unsold = Seed(AuctionType.Dungeon, alice, bob, carol);
-        unsold.GiveUp = unsold.Eligible.ToList();
+        unsold.GiveUp = [.. unsold.Eligible];
         unsold.End = clock.GetUtcNow().ToUnixTimeSeconds() - 1;
         SaveRows(unsold);
         await Service<AuctionService>().SettleAsync(unsold.Id);

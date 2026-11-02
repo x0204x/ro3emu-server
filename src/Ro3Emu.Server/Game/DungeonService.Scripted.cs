@@ -44,7 +44,7 @@ public sealed partial class DungeonService
         public required string Name { get; init; }
         public MonsterTemplate? Template { get; init; }
         public long BornMs { get; init; }
-        public List<BuffInfo> Buffs { get; } = new();
+        public List<BuffInfo> Buffs { get; } = [];
         public InteractInfo? StoryInteraction { get; set; }
         public AoICarryInfo? StoryCarryInfo { get; set; }
         public Action<EntityBase>? StoryEntityExtras { get; set; }
@@ -186,6 +186,7 @@ public sealed partial class DungeonService
     public async Task<bool> TryInteractAsync(GameSession s, NpcInteractionReq req)
     {
         if (req.NpcUid < SceneActorUidBase || req.NpcUid >= SceneActorUidBase << 1) return false;
+        if (await TryTrialInteractAsync(s, req)) return true;
         var a = Active(s);
         var actor = a?.SceneActors.FirstOrDefault(u => u.Uid == req.NpcUid);
         var cannon = a == null ? null : Step(a)?.Cannon;
@@ -423,6 +424,7 @@ public sealed partial class DungeonService
     public async Task PlayerMovedAsync(GameSession s)
     {
         await AntStoryPlayerMovedAsync(s);
+        if (Active(s) is { Raid.Active: { } trial } raid) await TrialTouchesAsync(raid, trial);
         if (s.DungeonAttempt == null || Active(s) is not { } a || Step(a) is not { } step || a.StepDone) return;
         if (step.Seek != null) return; // a hiding place counts when the seeker looks (DungeonService.HideAndSeek)
         foreach (var t in step.Complete)

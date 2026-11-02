@@ -173,11 +173,11 @@ public sealed partial class SeasonTalentService
 
     /// <summary>SeasonTalentTreeConfig's rows (table order), read once: a login rebuilt the unlocks several times,
     /// each time looking every field up in the JSON rows (stage G).</summary>
-    private IReadOnlyList<TalentTree> Trees() => _trees ??= _data.Table("SeasonTalentTreeConfig").Values.Select(row =>
+    private IReadOnlyList<TalentTree> Trees() => _trees ??= [.. _data.Table("SeasonTalentTreeConfig").Values.Select(row =>
         new TalentTree(GameData.Int(row, "_iId"),
             row.TryGetProperty("_kMultiverseArray", out var books) && books.ValueKind == JsonValueKind.Array
-                ? books.EnumerateArray().Select(GameData.Number).ToArray() : [],
-            GameData.Int(row, "_iTreeCondition"), GameData.Int(row, "_iNeedLevel"), GameData.Int(row, "_iUpPvPLvLimit"))).ToArray();
+                ? [.. books.EnumerateArray().Select(GameData.Number)] : [],
+            GameData.Int(row, "_iTreeCondition"), GameData.Int(row, "_iNeedLevel"), GameData.Int(row, "_iUpPvPLvLimit")))];
     private TalentTree[]? _trees;
 
     /// <summary>SeasonTalentConfig's nodes (id &gt; 0, table order) and each node's same-tree parents with their caps,
@@ -195,14 +195,14 @@ public sealed partial class SeasonTalentService
                 if (GameData.Number(v) is { } child)
                 {
                     var key = ((long)child, tree);
-                    if (!parents.TryGetValue(key, out var list)) parents[key] = list = new();
+                    if (!parents.TryGetValue(key, out var list)) parents[key] = list = [];
                     list.Add((parent, max));
                 }
         }
         _parents = parents.ToDictionary(kv => kv.Key, kv => kv.Value.ToArray());
         var nodes = rows.Select(r => new TalentNode(GameData.Int(r, "_iId"), GameData.Int(r, "_iTalentTreeID"), GameData.Int(r, "_iType"),
             GameData.Int(r, "_iNeedLevel"), GameData.Int(r, "_iIsStartPoint") == 1)).Where(n => n.Id > 0).ToArray();
-        _nodeIds = nodes.Select(n => n.Id).ToHashSet();
+        _nodeIds = [.. nodes.Select(n => n.Id)];
         return _nodes = nodes;
     }
 
@@ -293,7 +293,8 @@ public sealed partial class SeasonTalentService
                         persist: tx => { tx.RoleBlob(s.Role!.Id, "season_talent", next.ToByteArray()); tx.WithEconomy(economy); },
                         committed: () => s.SeasonTalent = next, asyncCommit: true);
                 }
-                catch (Exception e) when (e is SqliteException or InvalidOperationException)
+                catch (Exception e) when (e is SqliteException or Accounts.Persistence.PersistenceException
+                    or InvalidOperationException)
                 {
                     _log.LogError(e, "Talent purchase {Node} for role {Role} rolled back", node, s.Role!.Id);
                     result = ErrorCodes.Unknown;
@@ -360,7 +361,8 @@ public sealed partial class SeasonTalentService
                     await _character.RefreshStatsAsync(s);
                     await RefreshEffectsAsync(s);
                 }
-                catch (Exception e) when (e is SqliteException or InvalidOperationException)
+                catch (Exception e) when (e is SqliteException or Accounts.Persistence.PersistenceException
+                    or InvalidOperationException)
                 {
                     _log.LogError(e, "Talent plan switch for role {Role} failed", s.Role!.Id);
                     result = ErrorCodes.Unknown;
@@ -391,7 +393,8 @@ public sealed partial class SeasonTalentService
                     await _roles.CommitAsync(transaction, "season-talent/rename", _ => s.SeasonTalent = next);
                     await CharacterService.SyncAsync(s, TalentSync, next.Clone());
                 }
-                catch (Exception e) when (e is SqliteException or InvalidOperationException)
+                catch (Exception e) when (e is SqliteException or Accounts.Persistence.PersistenceException
+                    or InvalidOperationException)
                 {
                     _log.LogError(e, "Talent plan rename for role {Role} failed", s.Role!.Id);
                     result = ErrorCodes.Unknown;

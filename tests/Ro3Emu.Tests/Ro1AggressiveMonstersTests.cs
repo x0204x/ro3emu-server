@@ -189,7 +189,7 @@ public sealed class Ro1AggressiveMonstersTests
             await bot.EnterWorldAsync(role.RoleBaseInfo.Id);
             using var http = new HttpClient();
             // Sturdy enough to outlast the swings while the test watches.
-            (await http.PostAsync($"{_http}/ro3emu/gm?account={name.ToLowerInvariant()}", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
+            (await http.PostAsync($"{_http}/ro3emu/gm?account={name.ToLowerInvariant()}", Operator.Command("!lvl 99"))).EnsureSuccessStatusCode();
             return bot;
         }
 
@@ -199,7 +199,7 @@ public sealed class Ro1AggressiveMonstersTests
             using var sw = bot.Inbox.Expect(e => e.IsGame(MsgId.SwitchSceneLine));
             using var http = new HttpClient();
             (await http.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}",
-                new StringContent(FormattableString.Invariant($"!warp {scene} {x:0.0} {z:0.0}")))).EnsureSuccessStatusCode();
+                Operator.Command(FormattableString.Invariant($"!warp {scene} {x:0.0} {z:0.0}")))).EnsureSuccessStatusCode();
             long loaded = Romsg.SwitchSceneLineResp.Parser.ParseFrom((await sw.WaitAsync(Wait)).Body).SceneEntry;
             using var self = bot.Inbox.Expect(e => e.IsGame(MsgId.EntitySelf));
             await bot.SendGameAsync(MsgId.SceneLoaded, new Romsg.SceneLoadedReq { SceneId = loaded });

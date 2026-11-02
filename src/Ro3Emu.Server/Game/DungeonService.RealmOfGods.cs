@@ -175,7 +175,7 @@ public sealed partial class DungeonService
     // ---- Final Trial honors ----
 
     private static long[] TrialIds(JsonElement boss) => boss.TryGetProperty("_kFinalTrialID", out var ids)
-        && ids.ValueKind == JsonValueKind.Array ? ids.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).Where(id => id > 0).ToArray() : [];
+        && ids.ValueKind == JsonValueKind.Array ? [.. ids.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).Where(id => id > 0)] : [];
 
     private static DBMultiDungeonHonor? HonorView(State state, string key, JsonElement boss)
     {
@@ -199,7 +199,7 @@ public sealed partial class DungeonService
         var ids = TrialIds(boss);
         if (ids.Length == 0) return;
         string key = RecordKey(a.Plan);
-        if (!next.Honors.TryGetValue(key, out var honors)) next.Honors[key] = honors = new();
+        if (!next.Honors.TryGetValue(key, out var honors)) next.Honors[key] = honors = [];
         int revivesLeft = Math.Max(0, (int)GameData.Int(boss, "_iOriginalReviveNum")) + BlessingRevives(a) - a.RevivesUsed.Values.Sum();
         long enrageLeft = _options.RaidEnrageSeconds - durationMs / 1000;
         bool Holds(JsonElement sub)
@@ -271,7 +271,7 @@ public sealed partial class DungeonService
             catch (AwardResolutionException e) { _log.LogWarning(e, "Final Trial award {Award} rejected", awardId); }
             if (plan == null || plan.Grants.Count == 0) { error = ErrorCodes.RewardMissing; break; }
             var next = CurrentState(s.Dungeons!);
-            if (!next.Honors.TryGetValue(key, out var honors)) next.Honors[key] = honors = new();
+            if (!next.Honors.TryGetValue(key, out var honors)) next.Honors[key] = honors = [];
             honors[id] = HonorReceived;
             var bytes = JsonSerializer.SerializeToUtf8Bytes(next);
             if (!await _character.ApplyAwardAsync(s, plan, persist: tx =>

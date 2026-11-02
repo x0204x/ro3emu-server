@@ -79,6 +79,32 @@ public sealed class PhonestChannelTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AbortAfterFlushDeliversWhatWasQueuedThenEndsTheStream()
+    {
+        await using var channel = new PhonestChannel(_server, NullLogger.Instance);
+        var frame = Frame(1, 100_000);
+        for (int i = 0; i < 20; i++) await channel.SendFrameAsync(frame);
+        channel.AbortAfterFlush();
+        var buf = new byte[64 * 1024];
+        long total = 0;
+        for (int n; (n = await _client.ReceiveAsync(buf, SocketFlags.None).WaitAsync(TimeSpan.FromSeconds(10))) > 0;) total += n;
+        Assert.Equal(20L * frame.Length, total);
+    }
+
+    [Fact]
+    public async Task AbortAfterFlushStillEndsAClientThatStoppedReading()
+    {
+        await using var channel = new PhonestChannel(_server, NullLogger.Instance);
+        _client.ReceiveBufferSize = 4096;
+        var run = channel.RunAsync((_, _, _) => ValueTask.CompletedTask, CancellationToken.None);
+        for (int i = 0; i < 50; i++) await channel.SendRawAsync(1, new byte[100_000]);
+        channel.AbortAfterFlush();
+        // The reset ends the reader either way: as the end of the stream or as a socket error.
+        try { await run.WaitAsync(TimeSpan.FromSeconds(10)); }
+        catch (Exception e) when (e is SocketException or ObjectDisposedException or IOException) { }
+    }
+
+    [Fact]
     public async Task ClientThatStopsReadingIsClosedInsteadOfQueuingForever()
     {
         await using var channel = new PhonestChannel(_server, NullLogger.Instance);

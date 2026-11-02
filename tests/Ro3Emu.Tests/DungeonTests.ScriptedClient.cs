@@ -81,7 +81,7 @@ public sealed partial class DungeonTests
                             Assert.Equal(point.X, view.Entity.MovementInfo.Pos.X, 0.01f);
                             Assert.Equal(point.Z, view.Entity.MovementInfo.Pos.Z, 0.01f);
                             // It registers for interaction and offers the step's interaction (directly, or from its dialogue).
-                            Assert.NotEqual(0, catalog.Interactions(actor.NpcId).FirstOrDefault());
+                            Assert.NotEqual(0, catalog.Interactions(actor.NpcId)[0]);
                             int offered = Reachable(actor.NpcId, interaction);
                             Assert.True(ConditionHolds(offered, view.BuffGroups),
                                 $"interaction {offered} of {actor.NpcId}: NPC condition fails with buff groups [{string.Join(',', view.BuffGroups)}]");
@@ -224,7 +224,7 @@ public sealed partial class DungeonTests
     private int Reachable(int npcId, long interaction)
     {
         var data = Service<GameData>();
-        static int[] Modes(JsonElement row) => row.GetProperty("_iInteractionMode").EnumerateArray().Select(v => (int)(GameData.Number(v) ?? 0)).ToArray();
+        static int[] Modes(JsonElement row) => [.. row.GetProperty("_iInteractionMode").EnumerateArray().Select(v => (int)(GameData.Number(v) ?? 0))];
         static IEnumerable<string[]> Actions(JsonElement row, string field) => row.TryGetProperty(field, out var a) && a.ValueKind == JsonValueKind.Array
             ? a.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.Array).Select(x => x.EnumerateArray().Select(v => v.ToString()).ToArray()) : [];
         var row = data.Row("NPCInteractConfig", interaction)!.Value;

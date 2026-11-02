@@ -6,16 +6,26 @@ namespace Ro3Emu.Tests;
 
 public sealed class SurfaceWalkSyntheticTests
 {
-    /// <summary>自造地面格全部不可走；只有配置指定的表面場景可徒步，其他場景仍拒絕。</summary>
+    /// <summary>依上游 v1.0.26，起點已在導航格外時，普通及表面場景均不因缺地面格被拉回。</summary>
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task OnlyTheConfiguredSurfaceSceneAllowsWalkingOffTheGroundGrid(bool surface)
+    public Task OffGridStartDoesNotSnapBackInEitherScene(bool surface) =>
+        CheckWalkAsync(surface, validStart: false);
+
+    /// <summary>起點確在有效格時，只有配置指定的表面場景可走到地面格外；普通場景必須拒絕。</summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public Task OnlySurfaceSceneCanLeaveAValidGroundGrid(bool surface) =>
+        CheckWalkAsync(surface, validStart: true);
+
+    private static async Task CheckWalkAsync(bool surface, bool validStart)
     {
         string directory = Path.Combine(Path.GetTempPath(), "ro3emu-surface-" + Guid.NewGuid().ToString("N"));
         try
         {
-            PrepareData(directory, surface);
+            PrepareData(directory, surface, validStart);
             await using var host = await SyntheticHost.StartAsync(o => { o.GameDataDir = directory; o.WalkCheck = "enforce"; });
             await using var bot = await host.InWorldAsync("Walker");
             var session = host.Service<SessionRegistry>().All().Single(s => s.Account == bot.Account && s.Role != null);
@@ -23,18 +33,23 @@ public sealed class SurfaceWalkSyntheticTests
             var loop = host.Service<GameLoop>();
             Assert.Equal(surface, scene.MovesOnSurface(session.SceneEntry));
             Assert.Null(scene.StoryMovementSpeed?.Invoke(session));
-            Assert.NotNull(host.Service<WorldData>().Map(session.SceneEntry)!.Nav);
+            var nav = host.Service<WorldData>().Map(session.SceneEntry)!.Nav;
+            Assert.NotNull(nav);
             var start = await loop.InvokeAsync(() => Task.FromResult(session.Position.Clone()));
-            await bot.WalkAsync(start.X + .5f, start.Y, start.Z, stop: true);
+            Assert.Equal(validStart, nav.NearestWalkable(start.X, start.Z, start.Y) != null);
+            float distance = validStart ? 2f : .5f;
+            Assert.Null(nav.NearestWalkable(start.X + distance, start.Z, start.Y));
+            bool allowed = surface || !validStart;
+            await bot.WalkAsync(start.X + distance, start.Y, start.Z, stop: true);
             await bot.HeartbeatAsync();
-            Assert.Equal(start.X + (surface ? .5f : 0),
+            Assert.Equal(start.X + (allowed ? distance : 0),
                 await loop.InvokeAsync(() => Task.FromResult(session.Position.X)), 3);
-            Assert.Equal(surface ? 0 : 1, host.Service<CheatMonitor>().LoggedCount(bot.Account!, CheatMonitor.Walk));
+            Assert.Equal(allowed ? 0 : 1, host.Service<CheatMonitor>().LoggedCount(bot.Account!, CheatMonitor.Walk));
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
     }
 
-    private static void PrepareData(string directory, bool surface)
+    private static void PrepareData(string directory, bool surface, bool validStart)
     {
         foreach (var file in Directory.GetFiles(SyntheticData.Dir, "*", SearchOption.AllDirectories))
         {
@@ -53,10 +68,12 @@ public sealed class SurfaceWalkSyntheticTests
         var parameters = JsonNode.Parse(File.ReadAllText(publicPath))!;
         parameters["NoviceDungeonReverseDungeonID"] = surface ? SyntheticData.Town : 990002;
         File.WriteAllText(publicPath, parameters.ToJsonString());
-        // 一格空地面格，角色出生區沒有地面導航；不複製任何客戶端資料。
-        byte[] nav = new byte[68];
-        foreach (var (offset, value) in new[] { (20, 1), (24, 1), (28, 1), (48, 64), (56, 68) })
+        // 完全自造一個導航區塊；有效起點案僅開放出生格(150,186)，終點與其相距兩格。
+        int side = validStart ? 200 : 1;
+        byte[] nav = new byte[64 + side * side * 4];
+        foreach (var (offset, value) in new[] { (20, side), (24, side), (28, side), (48, 64), (56, nav.Length) })
             BitConverter.GetBytes(value).CopyTo(nav, offset);
+        if (validStart) nav[64 + (186 * side + 150) * 4] = 0x80;
         Directory.CreateDirectory(Path.Combine(directory, "nav"));
         File.WriteAllBytes(Path.Combine(directory, "nav", "synthetic_surface_dynamicmapdata.bytes"), nav);
     }

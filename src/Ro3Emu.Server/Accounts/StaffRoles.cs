@@ -8,26 +8,51 @@ namespace Ro3Emu.Server.Accounts;
 /// The web panel's staff roles (docs/guide/panel.md, Roles): Ro3Emu:Panel:Roles and Ro3Emu:GmAccounts (Admin) from the
 /// configuration, which the panel cannot change, and the panel_role rows an Admin gave on the panel. The rows are kept
 /// in memory (read at start, replaced after each change), so a role check never waits on the database. Maintenance
-/// mode lets every staff account in. Whoever has GM in game is an Admin here too; the other roles are the panel's only.
+/// mode lets every staff account in. A listed GM account is an Admin here too (an empty list only on a local panel);
+/// the other roles are the panel's only.
 /// </summary>
 public sealed class StaffRoles(IOptions<ServerOptions> options, AccountStore accounts, TimeProvider clock)
 {
     private volatile Dictionary<string, StaffRoleRow>? _panel;
 
     /// <summary>
-    /// The configured role of <paramref name="account"/>, or null: Admin for whoever has GM in game (the same check,
-    /// GmCommands.Allowed: the listed GmAccounts, or every account while the list is empty and GM is open), then
-    /// Ro3Emu:Panel:Roles.
+    /// The configured role of <paramref name="account"/>, or null: Admin for an account listed in GmAccounts, or, while
+    /// that list is empty, for every account only when GM is open and the panel is local (<see cref="OpenGmAdmin"/>);
+    /// then Ro3Emu:Panel:Roles.
     /// </summary>
     public PanelRole? Configured(string account)
     {
         var o = options.Value;
-        if (Game.GmCommands.Allowed(o, account, loopbackTool: false)) return PanelRole.Admin;
+        if (GmAdmin(o, account)) return PanelRole.Admin;
         return o.Panel.Roles.TryGetValue(account, out string? text) && PanelRoles.Parse(text) is { } role && role != PanelRole.None ? role : null;
     }
 
+    /// <summary>Admin by the GM rule: a listed GM account; with an empty list, <see cref="OpenGmAdmin"/>.</summary>
+    internal static bool GmAdmin(ServerOptions o, string account) =>
+        o.GmAccounts.Length > 0 ? Game.GmCommands.Allowed(o, account, loopbackTool: false) : OpenGmAdmin(o);
+
+    /// <summary>
+    /// An empty GmAccounts makes every account an Admin only when GM is open and no other machine reaches the server
+    /// (<see cref="ServerOptions.LocalOnly"/>): a public, tunnelled or proxied panel would hand the server to whoever
+    /// signs up (docs/guide/panel.md), even where an operator opened GM in game on purpose with Ro3Emu:GmOpenWhenEmpty.
+    /// </summary>
+    internal static bool OpenGmAdmin(ServerOptions o) =>
+        o.GmAccounts.Length == 0 && o.GmOpenWhenEmpty != false && o.LocalOnly();
+
     public PanelRole RoleOf(string account) =>
         Configured(account) ?? (Rows().TryGetValue(account, out var row) && PanelRoles.Parse(row.Role) is { } role ? role : PanelRole.None);
+
+    /// <summary>
+    /// The role from the lists alone, without <see cref="OpenGmAdmin"/>: what a forwarded request gets. A proxy that
+    /// nobody told the server about still sends its forwarding header, and the player behind it is not this machine.
+    /// </summary>
+    public PanelRole ListedRoleOf(string account)
+    {
+        var o = options.Value;
+        if (!OpenGmAdmin(o)) return RoleOf(account);
+        if (o.Panel.Roles.TryGetValue(account, out string? text) && PanelRoles.Parse(text) is { } listed && listed != PanelRole.None) return listed;
+        return Rows().TryGetValue(account, out var row) && PanelRoles.Parse(row.Role) is { } given ? given : PanelRole.None;
+    }
 
     /// <summary>Every staff account: the configured ones and the panel's, by name.</summary>
     internal IReadOnlyList<(string Account, PanelRole Role, string Source, StaffRoleRow? Row)> All()

@@ -73,7 +73,7 @@ public sealed partial class EconomyMutation
             !string.IsNullOrWhiteSpace(value) && value.Length <= limit ? value : throw new ArgumentException(name + " is missing or too long.", name);
         OperationId = Required(operationId, 128, nameof(operationId));
         ActorAccount = Required(actorAccount, 512, nameof(actorAccount));
-        if (actorRoleId <= 0) throw new ArgumentOutOfRangeException(nameof(actorRoleId));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(actorRoleId);
         ActorRoleId = actorRoleId;
         CommandKind = Required(commandKind, 128, nameof(commandKind));
         if (!IsProgression && (progressionCatalog != null || planFingerprint != null))
@@ -82,7 +82,7 @@ public sealed partial class EconomyMutation
         PlanFingerprint = planFingerprint;
         RequestFingerprint = Required(requestFingerprint, 1024, nameof(requestFingerprint));
         SourceKey = Required(sourceKey, 512, nameof(sourceKey));
-        if (effectiveUtcMs <= 0) throw new ArgumentOutOfRangeException(nameof(effectiveUtcMs));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(effectiveUtcMs);
         EffectiveUtcMs = effectiveUtcMs;
         Costs = Array.AsReadOnly((costs ?? throw new ArgumentNullException(nameof(costs))).ToArray());
         Goods = Array.AsReadOnly((goods ?? throw new ArgumentNullException(nameof(goods))).ToArray());

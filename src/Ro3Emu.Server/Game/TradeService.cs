@@ -254,5 +254,5 @@ public sealed partial class TradeService(
         };
     }
 
-    private static List<Listing> Active(MarketTransaction tx) => tx.All<Listing>(Listings).Where(l => l.Quantity > 0).ToList();
+    private static List<Listing> Active(MarketTransaction tx) => [.. tx.All<Listing>(Listings).Where(l => l.Quantity > 0)];
 }

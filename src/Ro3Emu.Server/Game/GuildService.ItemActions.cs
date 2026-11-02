@@ -102,7 +102,7 @@ public sealed partial class GuildService
         int template = (int)use.Arg(2);
         if (data.Row("MailConfig", template) == null || data.Row("MultiverseGroupConfig", group) == null) return ErrorCodes.ItemNoConfig;
         IReadOnlyList<MailService.Attachment> attachments;
-        try { attachments = awards.Resolve(s, group).Grants.Select(a => new MailService.Attachment(a.Entry, a.Count, a.BindType)).ToArray(); }
+        try { attachments = [.. awards.Resolve(s, group).Grants.Select(a => new MailService.Attachment(a.Entry, a.Count, a.BindType))]; }
         catch (AwardResolutionException) { return ErrorCodes.ItemNoConfig; }
         var recipients = g.Members.Values.Where(m => Compare(op, m.Official, position)).Select(m => m.RoleId).Order().ToArray();
         if (recipients.Length == 0) return ErrorCodes.Parameter;
@@ -229,5 +229,5 @@ public sealed partial class GuildService
 
     private static long[] Flat(System.Text.Json.JsonElement row, string field) =>
         row.TryGetProperty(field, out var value) && value.ValueKind == System.Text.Json.JsonValueKind.Array
-            ? value.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).ToArray() : [];
+            ? [.. value.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0))] : [];
 }

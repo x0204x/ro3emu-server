@@ -128,7 +128,7 @@ public sealed partial class SkillCombatTests
         if (immune) Assert.Empty(applications);
         else if (rollsSucceed)
         {
-            Assert.Equal(new[] { 902001, 902701, 902101, 901601 }, applications.Select(b => b.ConfigId));
+            Assert.Equal([902001, 902701, 902101, 901601], applications.Select(b => b.ConfigId));
             Assert.DoesNotContain(applications, b => b.ConfigId == 902001 && b.Duration == 1500);
         }
         else

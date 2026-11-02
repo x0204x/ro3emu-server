@@ -73,7 +73,7 @@ public sealed class S3EconomyDecoderTests
                 "auction guild_info guild_challenge pet_books daily new_activities activity_runtime timed_activity timed_battle " +
                 "training lottery tower wild_afk dungeons territory_escort lifejob life_restrict life_runtime season_talent " +
                 "season_page season_page_meta season_refine equip_levels equip_plans auto_decompose bag_state stat_plans " +
-                "world_state emblems pets mounts wardrobe totems totem_refine_epoch genre career_special heroic_spirit paragon title area_concur growth_class first_heart personal personal_upvote popularity social_outfit emoji_info gifts barroom").Split(' '))
+                "world_state emblems pets mounts wardrobe totems totem_refine_epoch genre career_special heroic_spirit paragon title area_concur growth_class first_heart personal personal_upvote popularity social_outfit emoji_info gifts barroom gm_state job_exp_catchup").Split(' '))
                 Exec("ALTER TABLE role ADD COLUMN " + column + " BLOB");
         }
         internal void Exec(string sql)
@@ -87,6 +87,25 @@ public sealed class S3EconomyDecoderTests
             cmd.ExecuteNonQuery();
         }
         public void Dispose() { Db.Dispose(); File.Delete(PathName); }
+    }
+
+    [Fact]
+    public void ShopGiftsAndTavernCountersHaveStrictJsonProfiles()
+    {
+        // A role that sat in a Tavern room or sent a shop gift: without a profile its row blocked every economic write
+        // that read it (a guild member's login, through the guild's caravan or challenge state).
+        using var f = new Fixture();
+        f.Insert("INSERT INTO role(id,currency,barroom,gifts) VALUES(101,'1:7',$0,$1)",
+            B("{\"Version\":1,\"Popularity\":1,\"WeekPopularity\":1,\"WeekStartMs\":1792987200000,\"ActDays\":0,"
+                + "\"DayStartMs\":1793419200000,\"TodaySeconds\":60,\"TodayComplete\":false,\"DrinkOwed\":0}"),
+            B("{\"Received\":{},\"Sent\":{\"7\":{\"OrderId\":7,\"SenderId\":101,\"SenderName\":\"A\",\"RecipientId\":102,"
+                + "\"RecipientName\":\"B\",\"CommodityId\":1,\"AppearanceId\":2,\"AppearanceAwardId\":3,\"CurrencyId\":4,"
+                + "\"CurrencyCount\":5,\"GiftContent\":\"\",\"CreatedUtc\":6,\"State\":1}}}"));
+        var issues = EconomySnapshotReader.Read(f.PathName, Catalog, "realm-fixture").Issues;
+        Assert.DoesNotContain(issues, x => x.Key is "role/101/barroom" or "role/101/gifts");
+        f.Insert("UPDATE role SET barroom=$0 WHERE id=101", B("{\"Popularity\":\"x\"}"));
+        Assert.Contains(EconomySnapshotReader.Read(f.PathName, Catalog, "realm-fixture").Issues,
+            x => x.Kind == EconomyIssueKind.Corruption && x.Key == "role/101/barroom");
     }
 
     [Fact]

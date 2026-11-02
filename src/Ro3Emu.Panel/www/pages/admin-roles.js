@@ -16,9 +16,9 @@ async function adminRolesPage() {
     route();
   };
   const grant = form([
-    field('Account', 'account', 'text', { autocomplete: 'off', maxlength: '64', placeholder: 'Account name' }),
+    field('Account', 'staff', 'search', { autocomplete: 'off', maxlength: '64', placeholder: 'Account to give a role' }),
     selectField('Role', 'role', [['moderator', 'Moderator'], ['gm', 'GM'], ['admin', 'Admin']], 'moderator')],
-  'Give the role', async values => set(values.account.trim(), values.role));
+  'Give the role', async values => set(values.staff.trim(), values.role));
   const rows = staff.length
     ? table([
       { label: 'Account', grow: true, value: s => [link('/admin/accounts/' + encodeURIComponent(s.account), { class: 'row-link mono' }, s.account),

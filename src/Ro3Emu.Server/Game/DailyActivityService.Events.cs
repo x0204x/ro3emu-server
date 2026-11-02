@@ -5,7 +5,7 @@ namespace Ro3Emu.Server.Game;
 public sealed partial class DailyActivityService
 {
     /// <summary>Event owners project their authoritative state into the shared 5004 snapshot before every send.</summary>
-    public List<Action<GameSession, DBDailyActivityInfo>> EventProjections { get; } = new();
+    public List<Action<GameSession, DBDailyActivityInfo>> EventProjections { get; } = [];
 
     private Task SyncRowsAsync(GameSession session, DateTime? localNow = null)
     {

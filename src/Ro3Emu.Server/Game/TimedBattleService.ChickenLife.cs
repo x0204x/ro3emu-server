@@ -50,12 +50,19 @@ public sealed partial class TimedBattleService
             || !run.Players.ContainsKey(killer) || match.Faction[killer] == match.Faction[victim]) return Task.CompletedTask;
         match.Kills[killer] = match.Kills.GetValueOrDefault(killer) + 1;
         long now = NowMs();
+        List<GameSession> credited = [killer];
         foreach (var (helper, at) in dead.LastHitBy)
             if (helper != killer && now - at <= 10_000 && run.Players.TryGetValue(helper, out var assist)
-                && match.Faction[helper] != match.Faction[victim]) assist.Assists++;
+                && match.Faction[helper] != match.Faction[victim]) { assist.Assists++; credited.Add(helper); }
         dead.LastHitBy.Clear();
-        return Task.CompletedTask;
+        return CountersAsync(match, credited);
     }
+
+    /// <summary>30123: the battle report button's own kill and assist counters (DungeonService.PlayerCounters).</summary>
+    private Task CountersAsync(Match match, IEnumerable<GameSession> players) =>
+        RoleFanout.EachAsync(players.Where(p => _active.GetValueOrDefault(p) == match && match.Loaded.Contains(p)), p =>
+            p.SendGameAsync(DungeonService.PlayerStatistics, DungeonService.PlayerCounters(match.Participants[p].Id,
+                match.Kills.GetValueOrDefault(p), match.Chicken?.Players.GetValueOrDefault(p)?.Assists ?? 0)));
 
     /// <summary>CombatService.CastLanded: a participant's resolved cast, counted per skill family.</summary>
     private Task ChickenCastAsync(GameSession caster, System.Text.Json.JsonElement skill)

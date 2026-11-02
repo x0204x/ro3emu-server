@@ -54,7 +54,7 @@ public sealed class TotemFamilyEconomyTests : IAsyncLifetime
     private async Task Gm(string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync(_http + "/ro3emu/gm?account=alice", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync(_http + "/ro3emu/gm?account=alice", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     private async Task<long> Give(int entry)

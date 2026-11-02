@@ -20,14 +20,14 @@ public sealed class TotemEffects : IGameTicker
     private readonly MonsterService _monsters;
     private readonly SessionRegistry _sessions;
     private readonly GameLoop _loop;
-    private readonly ConditionalWeakTable<GameSession, Runtime> _runtime = new();
+    private readonly ConditionalWeakTable<GameSession, Runtime> _runtime = [];
     private long _nextShieldSweepMs;
     [ThreadStatic] private static bool _calculatingHpCondition;
 
     private sealed class Runtime
     {
-        public readonly Dictionary<(long Source, int Effect), long> Cooldowns = new();
-        public readonly Dictionary<long, Shield> Shields = new();
+        public readonly Dictionary<(long Source, int Effect), long> Cooldowns = [];
+        public readonly Dictionary<long, Shield> Shields = [];
     }
     private sealed record Shield(long Amount, long ExpireMs, int Stage);
     private sealed record Passive(InvItem Item, int Skill, int Id, JsonElement Row);
@@ -39,7 +39,7 @@ public sealed class TotemEffects : IGameTicker
         [2500101] = 2500301, [2500201] = 2500401, [2500501] = 2500701, [2500601] = 2500801,
         [2500901] = 2501101, [2501001] = 2501201, [2501301] = 2501501, [2501401] = 2501601,
     };
-    private static readonly HashSet<int> TimedStackIds = CastStacks.Values.ToHashSet();
+    private static readonly HashSet<int> TimedStackIds = [.. CastStacks.Values];
     private static readonly IReadOnlyDictionary<int, int> StackSources = CastStacks.ToDictionary(p => p.Value, p => p.Key);
     private static readonly IReadOnlyDictionary<int, int> ProcSources = new Dictionary<int, int>
     {
@@ -66,7 +66,7 @@ public sealed class TotemEffects : IGameTicker
     }
 
     private static long[] Numbers(JsonElement array) => array.ValueKind == JsonValueKind.Array
-        ? array.EnumerateArray().Select(x => (long)(GameData.Number(x) ?? 0)).ToArray() : [];
+        ? [.. array.EnumerateArray().Select(x => (long)(GameData.Number(x) ?? 0))] : [];
     private static IEnumerable<long[]> Ops(JsonElement row)
     {
         if (!row.TryGetProperty("_kSpecialEffect", out var list) || list.ValueKind != JsonValueKind.Array) yield break;
@@ -264,7 +264,9 @@ public sealed class TotemEffects : IGameTicker
     {
         if (s.Role == null || s.Progress == null) return;
         try { await _character.RefreshStatsAsync(s); }
-        catch (Exception e) when (e is IOException or ObjectDisposedException or InvalidOperationException) { }
+        catch (Exception e) when (e is IOException or ObjectDisposedException
+            or Accounts.Persistence.PersistenceException or InvalidOperationException)
+        { }
     }
 
     private static bool Magic(JsonElement row) => GameData.Int(row, "_iDmgType") == 2;

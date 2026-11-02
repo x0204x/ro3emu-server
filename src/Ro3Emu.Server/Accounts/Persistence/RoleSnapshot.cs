@@ -76,16 +76,16 @@ public sealed class RoleSnapshots
     }
 
     private readonly object _gate = new();
-    private readonly Dictionary<long, Entry> _installed = new();
-    private readonly Dictionary<(long Role, string Part), long> _writtenAt = new();
+    private readonly Dictionary<long, Entry> _installed = [];
+    private readonly Dictionary<(long Role, string Part), long> _writtenAt = [];
     private long _sequence;
     private long _prunedThrough; // _writtenAt no longer knows commits at or before this sequence
     private long _served, _invalidated, _installs, _staleInstalls;
     // C/D 16 part 3: the last value this process persisted for a role part (its SHA-256), valid until any other
     // commit touches the part. A runtime save of identical bytes is then skipped instead of written on the loop.
     private sealed class PendingSave { public int Commits; }
-    private readonly Dictionary<(long Role, string Part), byte[]> _persisted = new();
-    private readonly Dictionary<(long Role, string Part), PendingSave> _pending = new();
+    private readonly Dictionary<(long Role, string Part), byte[]> _persisted = [];
+    private readonly Dictionary<(long Role, string Part), PendingSave> _pending = [];
     private long _persistedSkips;
     private const int MaxPersisted = 65536, MaxInstalled = 4096;
 

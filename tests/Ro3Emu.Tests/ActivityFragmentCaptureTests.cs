@@ -48,7 +48,7 @@ public sealed class ActivityFragmentCaptureTests : IDisposable
         {
             original.Stack = 3;
             _items.Update(original);
-            Assert.ThrowsAny<InvalidOperationException>(() => transaction.Commit(_accounts, "test/fragment-conflict"));
+            Assert.ThrowsAny<PersistenceException>(() => transaction.Commit(_accounts, "test/fragment-conflict"));
             Assert.Equal(0, gift.Guid);
             Assert.Equal(3, Assert.Single(_items.Load(sender)).Stack);
             Assert.Empty(_items.Load(recipient));

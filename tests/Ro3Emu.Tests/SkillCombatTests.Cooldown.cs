@@ -17,7 +17,7 @@ public sealed partial class SkillCombatTests
         var skill = Assert.IsType<SkillConfig>(SkillConfig.Get(_app.Services.GetRequiredService<GameData>(), fireBall));
         Assert.True(skill.Cd > skill.ChantVar + skill.ActionTime);
         var cost = Assert.Single(skill.Cost);
-        Assert.Equal(new long[] { 1, AttributeId.Sp, 0 }, cost.Take(3));
+        Assert.Equal([1, AttributeId.Sp, 0], cost.Take(3));
         long spCost = cost[3];
         Assert.True(spCost > 0);
         await using var alice = await InWorld("Alice");

@@ -49,8 +49,13 @@ The original never opened the system: function 14 needs base level 9999, and no 
   | 95-99 | Heroes |
   | 100 and up | Hero Token |
 
-- **PvP bonus.** The bonus against lower titles (`TitleBuffConfig`, `Formula_ATitleDamageAdd`, the widget's "Title
-  level differences will trigger Extra effects") is not applied yet.
+- **PvP counter.** A player's hit on a player changes by the title levels (`TitleBuffConfig`,
+  `Formula_ATitleDamageAdd`, the widget's "Title level differences will trigger Extra effects", UIWords 31009 "you deal
+  Extra damage to players with a lower Title level, but deal reduced damage to players with a higher Title level").
+  A rank's level is `TitleConfig._kTitleLev` (1-5), the key of `TitleBuffConfig._kIndex`; its term is the row's value
+  (400-2000, the column is named `_kTitleName`). *(inferred)* The hit is multiplied by 1 + (attacker's term - target's
+  term) / 10000 after the resonance and totem counters; a role without a rank has term 0. Level 5 against level 1 deals
+  +16%, the other way -16%; equal levels change nothing.
 
 ## Verified
 

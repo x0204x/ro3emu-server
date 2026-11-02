@@ -2,6 +2,7 @@ using System.Text.Json;
 using Romsg;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 
 namespace Ro3Emu.Server.Game;
 
@@ -25,9 +26,7 @@ public sealed partial class CharacterService
     /// <summary>
     /// Refusals the client data names for a 31323 use. LC_ItemHelper.CanUseByInfo: level &lt; _iLevelNeed, _kJobNeed
     /// without 0 or the career, _iSexNeed other than 0 and the role's sex (the client only greys the item out; the
-    /// server refusal and its codes are inferred). ItemCanUseInCurrentMap: MapConfig _iLimitType 1 forbids, 2 allows only
-    /// the _kLimitItem [1, type] / [2, subtype] entries. _kUseLimit names ItemUseLimitConfig rows the client never reads:
-    /// _iLimitType 1 with maps _kParam is read like MapConfig's 1, a forbidden-map list (inferred). _kUseTimes
+    /// server refusal and its codes are inferred). The scene's item limit: <see cref="ItemMapLimit"/>. _kUseTimes
     /// [period, limit] (enum_ItemUseLimit 1 day, 2 week, 3 month) caps the units used per period (GetItemUseTimeLimited).
     /// </summary>
     private int ItemRuleError(GameSession session, JsonElement row, int entry, int count)
@@ -37,32 +36,16 @@ public sealed partial class CharacterService
         var jobs = Numbers(row, "_kJobNeed");
         if (jobs.Length > 0 && !jobs.Contains(0) && !jobs.Contains(p.Career)) return ErrJobNeed;
         if (GameData.Int(row, "_iSexNeed") is var sex and not 0 && sex != session.Role!.Sex) return ErrSexNeed;
-        if (!UsableOnMap(row, session.SceneEntry)) return ErrorCodes.ItemUseAreaForbidden;
+        if (!ItemMapLimit.Allows(data, session.SceneEntry, row)) return ErrorCodes.ItemUseAreaForbidden;
         var (period, limit) = UseTimesRule(row);
         if (period != 0 && CurrentUseTimes(session.BagState.Info).GetValueOrDefault(entry) + (long)count > limit)
             return ErrUseTimes;
         return 0;
     }
 
-    private bool UsableOnMap(JsonElement row, long scene)
-    {
-        if (data.Row("MapConfig", scene) is { } map && GameData.Int(map, "_iLimitType") is var type and (1 or 2)
-            && map.TryGetProperty("_kLimitItem", out var limits) && limits.ValueKind == JsonValueKind.Array)
-        {
-            long itemType = GameData.Int(row, "_iType"), subType = GameData.Int(row, "_iSubType");
-            bool listed = limits.EnumerateArray().Any(l => l.ValueKind == JsonValueKind.Array && l.GetArrayLength() >= 2
-                && (GameData.Number(l[0]) == 1 && GameData.Number(l[1]) == itemType || GameData.Number(l[0]) == 2 && GameData.Number(l[1]) == subType));
-            if (listed == (type == 1)) return false;
-        }
-        // ItemUseLimitConfig (_kUseLimit 1001/1002: maps 10110/10111 on the wings and quest items) is not enforced: no client
-        // code reads it, so whether it lists forbidden or the only allowed maps is unknown, and either guess would block the
-        // wings or quest items somewhere players need them (the starting maps, or every map but those two).
-        return true;
-    }
-
     private static long[] Numbers(JsonElement row, string field) =>
         row.TryGetProperty(field, out var list) && list.ValueKind == JsonValueKind.Array
-            ? list.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).ToArray() : [];
+            ? [.. list.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0))] : [];
 
     private static (int Period, int Limit) UseTimesRule(JsonElement row) =>
         Numbers(row, "_kUseTimes") is [var period and (1 or 2 or 3), var limit, ..] ? ((int)period, (int)limit) : (0, 0);

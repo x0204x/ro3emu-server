@@ -47,7 +47,7 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
     public sealed class Mailbox
     {
         public long NextId { get; set; }
-        public List<Letter> Letters { get; set; } = new();
+        public List<Letter> Letters { get; set; } = [];
     }
 
     public sealed class Letter
@@ -72,9 +72,9 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
         public byte[]? ContentParams { get; set; }
         public bool Read { get; set; }
         public bool Claimed { get; set; }
-        public List<Attachment> Attachments { get; set; } = new();
-        public List<InvItem> Items { get; set; } = new();
-        public Dictionary<int, long> Currency { get; set; } = new();
+        public List<Attachment> Attachments { get; set; } = [];
+        public List<InvItem> Items { get; set; } = [];
+        public Dictionary<int, long> Currency { get; set; } = [];
     }
 
     /// <summary>Configured entry/count/binding grants, including virtual Base/Job EXP 100/101; market instances use Items.</summary>
@@ -96,7 +96,7 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
                 strings.Add(reader.GetString()!);
             }
             if (reader.TokenType != JsonTokenType.EndArray) throw new JsonException("Unterminated mail content parameters.");
-            return EncodeLanguageData(strings.ToArray());
+            return EncodeLanguageData([.. strings]);
         }
 
         public override void Write(Utf8JsonWriter writer, byte[]? value, JsonSerializerOptions options)
@@ -179,7 +179,7 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
         var expired = box.Letters.Where(m => m.RemoveTime != 0 && now >= m.RemoveTime).ToArray();
         if (transaction != null)
         {
-            if (role <= 0) throw new ArgumentOutOfRangeException(nameof(role));
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(role);
             AuthorizeMailExpiry(role, transaction, expired);
         }
         if (expired.Length == 0) return false;
@@ -222,7 +222,7 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
         var letter = new Letter
         {
             DeliveryKey = key, CreatedTime = now.ToUnixTimeSeconds(), RemoveTime = 0,
-            TemplateId = templateId, Attachments = attachments.ToList(),
+            TemplateId = templateId, Attachments = [.. attachments],
             ContentParams = EncodeLanguageData(contentParams),
         };
         transaction.Add(new FinancialMailAppendPlan(role, key, letter, now.UtcTicks));
@@ -264,7 +264,7 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
         if (attached.Any(i => i.Entry is 100 or 101 || i.Entry <= 0 || i.Stack <= 0 || i.Grid != 0
             || data.Row("ItemConfig", i.Entry) is not { } row || GameData.Int(row, "_iType") == 1))
             throw new ArgumentException("Invalid mail item", nameof(items));
-        var amounts = currency?.ToDictionary(p => p.Key, p => p.Value) ?? new();
+        var amounts = currency?.ToDictionary(p => p.Key, p => p.Value) ?? [];
         if (amounts.Any(p => p.Key <= 0 || p.Value <= 0 || data.Row("ItemConfig", p.Key) is not { } row
             || GameData.Int(row, "_iType") != 1))
             throw new ArgumentException("Invalid mail currency", nameof(currency));
@@ -275,7 +275,7 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
         {
             Id = id, TemplateId = templateId, Sender = "", CreatedTime = now.ToUnixTimeSeconds(),
             RemoveTime = attached.Count > 0 || amounts.Count > 0 ? 0 : now.AddDays(30).ToUnixTimeSeconds(),
-            Items = attached, Currency = amounts, ContentParams = EncodeLanguageData(contentParams.Cast<object>().ToArray()),
+            Items = attached, Currency = amounts, ContentParams = EncodeLanguageData([.. contentParams.Cast<object>()]),
         });
         transaction.RoleBlob(role, "mailbox", JsonSerializer.SerializeToUtf8Bytes(box));
         return id;
@@ -304,8 +304,8 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
                 {
                     Id = id, TemplateId = row.TemplateId, Sender = "", CreatedTime = row.CreatedTime,
                     RemoveTime = row.Items.Count > 0 || row.Currency.Count > 0 ? 0 : row.RemoveTime,
-                    Read = row.Read, Claimed = row.Claimed, Items = row.Items.Select(i => i.Clone()).ToList(),
-                    Currency = new(row.Currency), ContentParams = EncodeLanguageData(row.ContentParams.Cast<object>().ToArray()),
+                    Read = row.Read, Claimed = row.Claimed, Items = [.. row.Items.Select(i => i.Clone())],
+                    Currency = new(row.Currency), ContentParams = EncodeLanguageData([.. row.ContentParams.Cast<object>()]),
                 });
             }
             transaction.RoleBlob(group.Key, "mailbox", JsonSerializer.SerializeToUtf8Bytes(box));
@@ -322,7 +322,7 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
         public bool Read { get; set; }
         public bool Claimed { get; set; }
         public List<InvItem> Items { get; set; } = [];
-        public Dictionary<int, long> Currency { get; set; } = new();
+        public Dictionary<int, long> Currency { get; set; } = [];
         public string[] ContentParams { get; set; } = [];
     }
 
@@ -346,7 +346,7 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
         DeliverAsync(role, new Letter
         {
             Title = title, Content = content, Sender = sender, Category = category,
-            ImportantType = importantType, Attachments = attachments?.ToList() ?? new()
+            ImportantType = importantType, Attachments = attachments?.ToList() ?? []
         }, expiresAt,
             attachments is { Count: > 0 } ? 30 : 7);
 
@@ -396,7 +396,7 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
         return DeliverAsync(role, new Letter
         {
             TemplateId = templateId, SenderId = "0", Category = category,
-            ImportantType = importantType, Attachments = attachments.ToList()
+            ImportantType = importantType, Attachments = [.. attachments]
         }, expiresAt, days > 0 ? days : 30);
     }
 
@@ -427,7 +427,7 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
         return DeliverAsync(role, new Letter
         {
             TemplateId = templateId, SenderId = "0", DeliveryKey = sourceKey,
-            Attachments = attachments.ToList(), ContentParams = EncodeLanguageData(contentParams?.ToArray() ?? []),
+            Attachments = [.. attachments], ContentParams = EncodeLanguageData(contentParams?.ToArray() ?? []),
         }, null, days > 0 ? days : 30, persist, ownerContext, authorize,
             parentEconomy);
     }
@@ -468,11 +468,11 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
         return grants;
     }
 
-    private List<Attachment> ScaleRewardAttachments(IEnumerable<Attachment> attachments) => attachments
+    private List<Attachment> ScaleRewardAttachments(IEnumerable<Attachment> attachments) => [.. attachments
         .Select(grant => (Original: grant, Scaled: grant.Count <= 0 ? grant
             : grant with { Count = rewardRates.ScaleConfiguredAward(grant.Entry, grant.Count) }))
         .Where(pair => pair.Original.Count <= 0 || pair.Scaled.Count > 0)
-        .Select(pair => pair.Scaled).ToList();
+        .Select(pair => pair.Scaled)];
 
     private static bool HasValues(JsonElement row, string field) => row.TryGetProperty(field, out var value) && (value.ValueKind switch
     {
@@ -729,9 +729,10 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
                     source = new RoleBlobSnapshot(true, purged, purge.CommittedVector(role, "mailbox"));
                 }
                 int refusal = ErrorCodes.MailMissing;
+                var letters = box.Letters.ToLookup(m => m.Id);
                 foreach (string id in request.MailUid.Distinct())
                 {
-                    var mail = box.Letters.FirstOrDefault(m => m.Id == id);
+                    var mail = letters[id].FirstOrDefault();
                     if (mail == null) { if (expiredIds.Contains(id)) refusal = ErrorCodes.MailExpired; continue; }
                     if (mail.Claimed) { refusal = ErrorCodes.MailAlreadyClaimed; continue; }
                     if (mail.Attachments.Count == 0 && mail.Items.Count == 0 && mail.Currency.Count == 0)
@@ -739,7 +740,7 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
                     var attachments = mail.Attachments.Select(a => (a.Entry, a.Count, a.Bind)).ToArray();
                     var boundGoods = attachments.Where(a => a.Entry is not (100 or 101)).ToArray();
                     long baseExp = attachments.Where(a => a.Entry == 100).Sum(a => (long)a.Count);
-                    long jobExp = attachments.Where(a => a.Entry == 101).Sum(a => (long)a.Count);
+                    long jobExp = attachments.Where(a => a.Entry == 101).Sum(a => (long)a.Count) + character.JobExpFromBase(baseExp);
                     int preflight = character.PlainGrantError(session, [], mail.Items, mail.Currency,
                         boundGoods: attachments);
                     if (preflight != 0) { refusal = preflight; continue; }
@@ -784,7 +785,7 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
                             baseExp: baseExp, jobExp: jobExp, committed: () => box = next, asyncCommit: true);
                         if (granted == null) continue;
                     }
-                    catch (Exception e) when (e is SqliteException or InvalidOperationException)
+                    catch (Exception e) when (e is SqliteException or PersistenceException or InvalidOperationException)
                     {
                         log.LogWarning(e, "Mail {Mail} grant transaction failed", id);
                         refusal = ErrorCodes.Unknown;

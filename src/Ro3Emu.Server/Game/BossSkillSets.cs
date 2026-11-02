@@ -99,7 +99,7 @@ public sealed class BossSkillRuntime(BossSkillBook book)
     public long ActiveSession { get; set; }
     public int ActiveSkill { get; set; }
     public long ActiveEndMs { get; set; }
-    public List<Maps.MonsterUnit> Summons { get; } = new();
+    public List<Maps.MonsterUnit> Summons { get; } = [];
     /// <summary>The ground objects its skills placed (<see cref="BossSkill.GroundNpc"/>), removed with the boss.</summary>
     internal List<MvpFieldUnit> Grounds { get; } = [];
 }
@@ -186,7 +186,7 @@ public sealed class BossSkillSets(GameData data, BossSkillOptions options)
     private const int OnceCooldownMs = 1_000_000;
     private const int SelfDestructBuff = 5002801; // BuffConfig "Summoned Unit Self-Destruct": its time is the life
 
-    private readonly Dictionary<int, BossSkillBook?> _books = new();
+    private readonly Dictionary<int, BossSkillBook?> _books = [];
     private readonly object _sync = new();
     private Dictionary<string, List<long>>? _byLogicPrefix;
 
@@ -305,7 +305,7 @@ public sealed class BossSkillSets(GameData data, BossSkillOptions options)
             skills.Add(Build(npcId, (int)id, row, logic, placeholder, from, to, isOnce));
         }
         var thresholds = options.PhaseHpPercents.Select(p => Math.Clamp(p, 1, 99) * 100).OrderDescending().Take(phases - 1).ToArray();
-        return new BossSkillBook { Family = family, Skills = skills.ToArray(), Phases = phases, PhaseHpBp = thresholds };
+        return new BossSkillBook { Family = family, Skills = [.. skills], Phases = phases, PhaseHpBp = thresholds };
     }
 
     /// <summary>A row the client can play and the generic resolution can carry out.</summary>
@@ -401,8 +401,7 @@ public sealed class BossSkillSets(GameData data, BossSkillOptions options)
             HitMs = StoryBossSkillRules.HasUnknownImpact(npcId, id) ? [] : HitMoments(template, chant, action),
             HighLevel = GameData.Int(row, "_iSkillEffectLevel") > 0, TargetsSelf = self,
             Damages = damages, HitsPlayers = damages || hostile.Length > 0,
-            SelfBuffs = Tuples(row, "_kBuff1").Where(b => b.Length >= 3 && b[0] > 0).Concat(beneficial)
-                .Select(b => ((int)b[0], (int)b[1], (int)b[2])).ToArray(),
+            SelfBuffs = [.. Tuples(row, "_kBuff1").Where(b => b.Length >= 3 && b[0] > 0).Concat(beneficial).Select(b => ((int)b[0], (int)b[1], (int)b[2]))],
             SummonNpc = SummonNpc(row), SummonCount = SummonCountOf(row), SummonLifeMs = SummonLifeOf(row), SummonBlast = SummonBlastOf(row),
             GroundNpc = GroundNpc(row), GroundLifeMs = GroundLifeOf(row),
             GroundBlast = GroundNpc(row) is var ground and > 0 && NPCConfig.Get(data, ground) is { RespawnSkill: > 0 and var groundBlast }
@@ -422,8 +421,7 @@ public sealed class BossSkillSets(GameData data, BossSkillOptions options)
         var points = template is { } t && t.TryGetProperty("m_kAtkPoints", out var list) && list.ValueKind == JsonValueKind.Array
             ? list.EnumerateArray().Select(v => GameData.Number(v) ?? 0).Where(v => v >= 0).Distinct().Order().ToArray() : [];
         if (points.Length == 0 || points.All(p => p < 0.05) && action >= 1000) return [chant + action * 7 / 10];
-        return points.Select(p => CombatService.ImpactOffset(template, p, chant, action)).Distinct()
-            .Take(Math.Max(1, options.MaxHitsPerCast)).ToArray();
+        return [.. points.Select(p => CombatService.ImpactOffset(template, p, chant, action)).Distinct().Take(Math.Max(1, options.MaxHitsPerCast))];
     }
 
     /// <summary>"summons three" / "@{1} Thief Bugs": the description's first parameter when it is a small count.</summary>
@@ -534,7 +532,7 @@ public sealed class BossSkillSets(GameData data, BossSkillOptions options)
         foreach (var (key, row) in data.Table("SkillConfig"))
             if (Logic(row) is { Length: > 0 } logic && long.TryParse(key, out long id))
             {
-                if (!byLogic.TryGetValue(logic.ToLowerInvariant(), out var ids)) byLogic[logic.ToLowerInvariant()] = ids = new();
+                if (!byLogic.TryGetValue(logic.ToLowerInvariant(), out var ids)) byLogic[logic.ToLowerInvariant()] = ids = [];
                 ids.Add(id);
             }
         foreach (var ids in byLogic.Values) ids.Sort();
@@ -548,7 +546,7 @@ public sealed class BossSkillSets(GameData data, BossSkillOptions options)
 
     private static double[] Numbers(JsonElement row, string field) =>
         row.TryGetProperty(field, out var list) && list.ValueKind == JsonValueKind.Array
-            ? list.EnumerateArray().Select(v => GameData.Number(v) ?? 0).ToArray() : [];
+            ? [.. list.EnumerateArray().Select(v => GameData.Number(v) ?? 0)] : [];
 
     private static IEnumerable<double[]> Tuples(JsonElement row, string field) =>
         row.TryGetProperty(field, out var list) && list.ValueKind == JsonValueKind.Array

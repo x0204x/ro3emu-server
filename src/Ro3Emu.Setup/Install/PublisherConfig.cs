@@ -74,7 +74,7 @@ public sealed record PublisherConfig
         return new PublisherConfig
         {
             Origins = custom.Origins.Length > 0 ? custom.Origins : Genesis.Origins,
-            AllowedOrigins = custom.AllowedOrigins.Length > 0 ? custom.AllowedOrigins : Genesis.AllowedOrigins.Concat(custom.Origins).ToArray(),
+            AllowedOrigins = custom.AllowedOrigins.Length > 0 ? custom.AllowedOrigins : [.. Genesis.AllowedOrigins, .. custom.Origins],
             FullManifest = custom.FullManifest.Length > 0 ? custom.FullManifest : Genesis.FullManifest,
             FullSignature = custom.FullSignature.Length > 0 ? custom.FullSignature : Genesis.FullSignature,
             DeltaManifest = custom.DeltaManifest ?? Genesis.DeltaManifest,

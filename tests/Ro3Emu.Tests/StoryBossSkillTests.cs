@@ -32,10 +32,10 @@ public sealed partial class StoryBossSkillTests
         foreach (int id in new[] { 5300101, 5300601 }) Skill(data, id, "MainStory_HuWangNormalAttack");
         foreach (int id in new[] { 5352001, 5352101, 5352201 }) Skill(data, id, "MainStory_EvilBossNormalAttack1");
         var attacks = new BossNormalAttacks(data);
-        Assert.Equal(new long[] { 5300101, 5300601 }, attacks.VariantsFor(5300001));
-        Assert.Equal(new long[] { 5352001, 5352101, 5352201 }, attacks.VariantsFor(5300018));
+        Assert.Equal([5300101, 5300601], attacks.VariantsFor(5300001));
+        Assert.Equal([5352001, 5352101, 5352201], attacks.VariantsFor(5300018));
         ((IDictionary<string, JsonElement>)data.Table("SkillConfig")).Remove("5352101");
-        Assert.Equal(new long[] { 5352001, 5352201 }, attacks.VariantsFor(5300018));
+        Assert.Equal([5352001, 5352201], attacks.VariantsFor(5300018));
         Assert.Empty(attacks.VariantsFor(991234));
     }
 

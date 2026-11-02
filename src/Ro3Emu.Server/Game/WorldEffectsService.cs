@@ -28,9 +28,9 @@ public sealed class WorldEffectsService
     private readonly World _world;
     private readonly GameData _data;
     private readonly GameLoop _loop;
-    private readonly Dictionary<long, Dictionary<uint, ForceFieldInfo>> _fields = new();
-    private readonly Dictionary<long, long> _latency = new();
-    private readonly Dictionary<MonsterUnit, UnitEffects> _units = new();
+    private readonly Dictionary<long, Dictionary<uint, ForceFieldInfo>> _fields = [];
+    private readonly Dictionary<long, long> _latency = [];
+    private readonly Dictionary<MonsterUnit, UnitEffects> _units = [];
 
     public WorldEffectsService(World world, GameData data, SceneService scene, MonsterService monsters,
         GmCommands gm, GameLoop loop, ILogger<WorldEffectsService> log)
@@ -78,7 +78,7 @@ public sealed class WorldEffectsService
             || !Finite(custom.ForceSpeed) || custom.ForceSpeed <= 0 || custom.ForceSpeed > 100
             || custom.ForceRangeInfo is not { } range || !ValidRange(range)
             || lifetime <= TimeSpan.Zero || lifetime > TimeSpan.FromMinutes(5)) return false;
-        if (!_fields.TryGetValue(worldScene, out var scene)) _fields[worldScene] = scene = new();
+        if (!_fields.TryGetValue(worldScene, out var scene)) _fields[worldScene] = scene = [];
         if (scene.ContainsKey(field.Uuid)) return false;
         var copy = field.Clone();
         scene.Add(copy.Uuid, copy);
@@ -166,7 +166,7 @@ public sealed class WorldEffectsService
     {
         if (!Active(unit) || sourceUids.Count > 32 || sourceUids.Any(id => id <= 0 ||
             !_world.AllUnits().Any(other => other.Uid == id && other.WorldScene == unit.WorldScene))) return false;
-        Effects(unit).BeEnforcedUids = sourceUids.ToArray();
+        Effects(unit).BeEnforcedUids = [.. sourceUids];
         await _world.ToUnitViewersAsync(unit, BeEnforced, new EntityBeEnforcedChange
         { Uuid = unit.Uid, BeEnforcedUids = { sourceUids } });
         return true;
@@ -186,7 +186,7 @@ public sealed class WorldEffectsService
     public async Task<bool> SetHitRulesAsync(MonsterUnit unit, IReadOnlyCollection<int> rules)
     {
         if (!Active(unit) || rules.Count > 32 || rules.Any(id => id < 0)) return false;
-        Effects(unit).HitDecorateRules = rules.ToArray();
+        Effects(unit).HitDecorateRules = [.. rules];
         await _world.ToUnitViewersAsync(unit, HitRules, new HitDecorateRulesNotify
         { EntityId = unit.Uid, HitDecorateRules = { rules } });
         return true;

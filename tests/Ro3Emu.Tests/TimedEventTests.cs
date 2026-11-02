@@ -207,7 +207,7 @@ public sealed class TimedEventTests : IAsyncLifetime
     private async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     /// <summary>
@@ -293,6 +293,11 @@ public sealed class TimedEventTests : IAsyncLifetime
         Assert.Equal(ErrorCodes.FunctionLocked,
             (await Next(bot, NewActivityService.Common, CommonActivityRes.Parser)).Result);
         await Gm(bot, "!lvl 99");
+        // The widget only donates for a guild member (_checkCanDonate: HaveGuild).
+        await bot.SendGameAsync(NewActivityService.Common, request);
+        Assert.Equal(ErrorCodes.NotInGuild,
+            (await Next(bot, NewActivityService.Common, CommonActivityRes.Parser)).Result);
+        long guild = await FoundGuildAsync(bot);
         await bot.SendGameAsync(NewActivityService.Common, request);
         Assert.Equal(ErrorCodes.ItemsShort,
             (await Next(bot, NewActivityService.Common, CommonActivityRes.Parser)).Result);
@@ -355,6 +360,53 @@ public sealed class TimedEventTests : IAsyncLifetime
         var saved = Service<RoleStore>().LoadTimedActivity(role);
         Assert.NotNull(saved);
         Assert.Contains("ContributionPoint", System.Text.Encoding.UTF8.GetString(saved));
+        // The two supplies are the guild's preparation exp: level 1, 2/1000 on the bar.
+        var info = await OnLoop2(() => Service<PronteraDefenseService>().BuildPlayerState(Session(bot)).GlobalInfo.GuildInfo[guild]);
+        Assert.Equal((1, 2, 2), (info.GuildPrepLv, info.GuildPrepExp, info.GuildContribution));
+        using (var db = Service<AccountStore>().Open())
+        using (var cmd = db.CreateCommand())
+        {
+            cmd.CommandText = "SELECT exp FROM prontera_defense_guild_prep WHERE guild_id=$guild";
+            cmd.Parameters.AddWithValue("$guild", guild);
+            Assert.Equal(2L, cmd.ExecuteScalar());
+        }
+        // On a Battle for Prontera map (PronteraDefenseMapConfig 10101) a member carries level 1's buff 8000101.
+        using (var sw = bot.Inbox.Expect(e => e.IsGame(MsgId.SwitchSceneLine)))
+        {
+            await Gm(bot, "!warp 10101");
+            await sw.WaitAsync(TimeSpan.FromSeconds(8));
+        }
+        using (var buff = bot.Inbox.Expect(e => e.IsGame(BuffService.BuffUpdate)
+            && BuffUpdateNotify.Parser.ParseFrom(e.Body).Buffs.Any(b => b.ConfigId == 8000101)))
+        {
+            await bot.SendGameAsync(MsgId.SceneLoaded, new SceneLoadedReq { SceneId = 10101 });
+            await buff.WaitAsync(TimeSpan.FromSeconds(8));
+        }
+    }
+
+    [ClientDataFact]
+    public void GuildPreparationFillsEachLevelsBarAndCarriesTheRest()
+    {
+        var data = Service<GameData>();
+        // PronteraDefenseGuildPrepConfig: levels 1-5, _iExp 1000/2000/3000/4000/5000.
+        Assert.Equal((1L, 0L), PronteraDefenseService.PrepLevel(data, 0));
+        Assert.Equal((1L, 999L), PronteraDefenseService.PrepLevel(data, 999));
+        Assert.Equal((2L, 0L), PronteraDefenseService.PrepLevel(data, 1000));
+        Assert.Equal((3L, 500L), PronteraDefenseService.PrepLevel(data, 3500));
+        Assert.Equal((5L, 0L), PronteraDefenseService.PrepLevel(data, 10000));
+        Assert.Equal((5L, 7000L), PronteraDefenseService.PrepLevel(data, 17000));
+    }
+
+    private Task<T> OnLoop2<T>(Func<T> work) => Service<GameLoop>().InvokeAsync(() => Task.FromResult(work()));
+
+    private static async Task<long> FoundGuildAsync(BotClient leader)
+    {
+        await leader.SendGameAsync(GuildService.Create, new GuildCreateReq
+        {
+            Name = "Testers", Icon = new GuildHeadIcon { BackgroundType = 100101, IconType = 200101 },
+        });
+        Assert.Equal(0, (await Next(leader, GuildService.Create, GuildCreateResp.Parser)).Result);
+        return (await Next(leader, GuildService.Full, GuildFullInfoNtf.Parser, n => n.Guid > 0)).Guid;
     }
 
     [ClientDataTheory]
@@ -843,7 +895,7 @@ public sealed class TimedEventTests : IAsyncLifetime
             await Gm(bot, "!lvl 99");
             await WarpRiftMapAsync(bot);
         }
-        return bots.ToArray();
+        return [.. bots];
     }
 
     private async Task<long> RiftPartyAsync(BotClient leader, params BotClient[] others)
@@ -961,8 +1013,8 @@ public sealed class TimedEventTests : IAsyncLifetime
         await ada.SendGameAsync(TimedBattleService.OnePieceInfo, new HiddenTreasureRoundInfoReq());
         var vault = await Next(ada, TimedBattleService.OnePieceInfo, HiddenTreasureRoundInfoResp.Parser, r => r.IsOpen);
         // _updateGargoyles: [1] Special Commendation, [2] Commendation Gift Box, [3] Standard Compensation Chests (weekly).
-        Assert.Equal(new[] { (1302001, 5L), (1302002, 5L), (1302000, 20L) },
-            vault.ItemInfo.Select(i => (i.ItemId, i.MaxGainCount)).ToArray());
+        Assert.Equal([(1302001, 5L), (1302002, 5L), (1302000, 20L)],
+            [.. vault.ItemInfo.Select(i => (i.ItemId, i.MaxGainCount))]);
         Assert.All(vault.ItemInfo, i => Assert.Equal(0, i.CurGainCount));
 
         var stone = await GmRiftStoneAsync(ada, "!rift 1 Cat");
@@ -1001,8 +1053,8 @@ public sealed class TimedEventTests : IAsyncLifetime
         // OnePieceMonsterConfig[16100001]: award 9101 (10000 Minted Coin), extra 9201 (gift box + chest).
         Assert.All(results, r => Assert.Equal((2, 10000), (r.Data.OnePieceData.BaseReward.Single().ItemEntry,
             r.Data.OnePieceData.BaseReward.Single().Stack)));
-        Assert.Equal(new[] { 1302002, 1302000 }, results[0].Data.OnePieceData.ExtraReward.Select(i => i.ItemEntry).ToArray());
-        Assert.Equal(new[] { 1302000 }, results[1].Data.OnePieceData.ExtraReward.Select(i => i.ItemEntry).ToArray());
+        Assert.Equal([1302002, 1302000], [.. results[0].Data.OnePieceData.ExtraReward.Select(i => i.ItemEntry)]);
+        Assert.Equal([1302000], [.. results[1].Data.OnePieceData.ExtraReward.Select(i => i.ItemEntry)]);
         Assert.Empty(results[2].Data.OnePieceData.ExtraReward); // UIWords 68002: no additional rewards
         for (int i = 0; i < bots.Length; i++)
             Assert.Equal(coins[i] + 10000, Service<CharacterService>().CountOf(Session(bots[i]), 2));
@@ -1023,14 +1075,14 @@ public sealed class TimedEventTests : IAsyncLifetime
 
         await ada.SendGameAsync(TimedBattleService.OnePieceInfo, new HiddenTreasureRoundInfoReq());
         vault = await Next(ada, TimedBattleService.OnePieceInfo, HiddenTreasureRoundInfoResp.Parser, r => r.IsOpen);
-        Assert.Equal(new[] { 0L, 1L, 1L }, vault.ItemInfo.Select(i => i.CurGainCount).ToArray());
+        Assert.Equal([0L, 1L, 1L], [.. vault.ItemInfo.Select(i => i.CurGainCount)]);
         // RestrictConfig 1020 is daily (_iRecoverType 1): the next day has 10 again, the week's items stay.
         var now = _clock.GetUtcNow();
         _clock.Set(now.AddDays(1).ToUnixTimeSeconds());
         await ada.SendGameAsync(TimedBattleService.OnePieceInfo, new HiddenTreasureRoundInfoReq());
         vault = await Next(ada, TimedBattleService.OnePieceInfo, HiddenTreasureRoundInfoResp.Parser);
         Assert.Equal(10, await RiftCountAsync(ada));
-        Assert.Equal(new[] { 0L, 1L, 1L }, vault.ItemInfo.Select(i => i.CurGainCount).ToArray());
+        Assert.Equal([0L, 1L, 1L], [.. vault.ItemInfo.Select(i => i.CurGainCount)]);
         // The item caps are weekly (_iRecoverType 2): the next Monday starts from zero.
         _clock.Set(now.AddDays(4).ToUnixTimeSeconds());
         await ada.SendGameAsync(TimedBattleService.OnePieceInfo, new HiddenTreasureRoundInfoReq());

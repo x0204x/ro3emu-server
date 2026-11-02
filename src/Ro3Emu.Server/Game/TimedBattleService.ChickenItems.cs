@@ -29,7 +29,7 @@ internal sealed class ChickenChestUnit : WorldUnit
     public required string Name { get; init; }
     public int Quality { get; init; }
     public bool Opened { get; set; }
-    public Dictionary<long, ChickenItem> Items { get; } = new();
+    public Dictionary<long, ChickenItem> Items { get; } = [];
     public required Func<ChickenItem, ItemBaseInfo> Wire { get; init; }
 
     private ChickenChestInfo Info()

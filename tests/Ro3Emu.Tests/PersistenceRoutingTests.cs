@@ -504,7 +504,7 @@ public sealed class PersistenceRoutingTests : IDisposable
     private sealed class RecordingLogger : ILogger
     {
         private readonly System.Collections.Concurrent.ConcurrentQueue<string> _messages = new();
-        public string[] Messages => _messages.ToArray();
+        public string[] Messages => [.. _messages];
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
         public bool IsEnabled(LogLevel logLevel) => true;
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,

@@ -148,7 +148,7 @@ public sealed class GuildProfileTests : IAsyncLifetime
     private async Task Gm(string account, string command)
     {
         using var client = new HttpClient();
-        using var response = await client.PostAsync($"{_httpUrl}/ro3emu/gm?account={account}", new StringContent(command));
+        using var response = await client.PostAsync($"{_httpUrl}/ro3emu/gm?account={account}", Operator.Command(command));
         response.EnsureSuccessStatusCode();
     }
 

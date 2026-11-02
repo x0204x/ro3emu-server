@@ -20,7 +20,7 @@ public sealed partial class NaturalRegenerationTests : IAsyncLifetime
     {
         _host = await SyntheticHost.StartAsync();
         var character = Service<CharacterService>(); var loop = Service<GameLoop>();
-        character.MatchAttributes = _ => new (long, double)[] { (101, 200), (102, 100), (107, 5), (108, 2), (1081, 500) };
+        character.MatchAttributes = _ => [(101, 200), (102, 100), (107, 5), (108, 2), (1081, 500)];
         character.DynamicProperties.Add(_ => _zero || !_natural && !ReferenceEquals(loop.CurrentWork, _regenWork)
             ? new (int, long)[] { (107, 0), (108, 0), (1071, 0), (1081, 0) } : []);
     }
@@ -28,7 +28,7 @@ public sealed partial class NaturalRegenerationTests : IAsyncLifetime
     public async Task DisposeAsync() => await _host.DisposeAsync();
 
     [Fact]
-    public async Task RealTickerPublishesSpRecoveryDuringBattleWhileHpStaysUnchanged()
+    public async Task RealTickerPublishesHpAndSpRecoveryDuringBattle()
     {
         await using var bot = await _host.InWorldAsync("NaturalBattle");
         var s = Session(bot);
@@ -41,10 +41,10 @@ public sealed partial class NaturalRegenerationTests : IAsyncLifetime
         var update = OnePropertyChange.Parser.ParseFrom((await bot.Inbox.WaitAsync(packet =>
             packet.IsGame(CharacterService.OnePropertyChange) && OnePropertyChange.Parser.ParseFrom(packet.Body)
                 .Property.Propertys.Any(p => p.PropertyId == AttributeId.Sp && p.Data == 27), Wait)).Body);
-        Assert.Equal(50, update.Property.Propertys.Single(p => p.PropertyId == AttributeId.Hp).Data);
+        Assert.Equal(55, update.Property.Propertys.Single(p => p.PropertyId == AttributeId.Hp).Data);
         Assert.Equal(27, update.Property.Propertys.Single(p => p.PropertyId == AttributeId.Sp).Data);
         Assert.Equal(Battle, s.StatusBits & Battle);
-        Assert.Equal(50, s.CurrentHp); Assert.Equal(27, s.CurrentSp);
+        Assert.Equal(55, s.CurrentHp); Assert.Equal(27, s.CurrentSp);
     }
 
     [Theory]
@@ -72,21 +72,21 @@ public sealed partial class NaturalRegenerationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task BattleRecoveryCapsAtMaximumWithoutHealingHp()
+    public async Task BattleRecoveryCapsBothHpAndSpAtMaximum()
     {
         await using var bot = await _host.InWorldAsync("NaturalCap"); var s = Session(bot);
         await Service<GameLoop>().InvokeAsync(async () =>
         {
-            s.CurrentHp = 50; s.CurrentSp = 99; s.StatusBits |= Battle; s.LastCombatMs = MonsterService.NowMs;
+            s.CurrentHp = 199; s.CurrentSp = 99; s.StatusBits |= Battle; s.LastCombatMs = MonsterService.NowMs;
             _regenWork = Service<GameLoop>().CurrentWork;
             await Service<CombatService>().RegenAsync(s, () => true);
         });
-        Assert.Equal(50, s.CurrentHp); Assert.Equal(100, s.CurrentSp);
+        Assert.Equal(200, s.CurrentHp); Assert.Equal(100, s.CurrentSp);
         var update = OnePropertyChange.Parser.ParseFrom((await bot.Inbox.WaitAsync(packet =>
             packet.IsGame(CharacterService.OnePropertyChange) && OnePropertyChange.Parser.ParseFrom(packet.Body)
                 .Property.Propertys.Any(p => p.PropertyId == AttributeId.Sp && p.Data == 100)
-                && OnePropertyChange.Parser.ParseFrom(packet.Body).Property.Propertys.Any(p => p.PropertyId == AttributeId.Hp && p.Data == 50), Wait)).Body);
-        Assert.Equal(50, update.Property.Propertys.Single(p => p.PropertyId == AttributeId.Hp).Data);
+                && OnePropertyChange.Parser.ParseFrom(packet.Body).Property.Propertys.Any(p => p.PropertyId == AttributeId.Hp && p.Data == 200), Wait)).Body);
+        Assert.Equal(200, update.Property.Propertys.Single(p => p.PropertyId == AttributeId.Hp).Data);
     }
 
     [Theory]
@@ -135,7 +135,7 @@ public sealed partial class NaturalRegenerationTests : IAsyncLifetime
             finally { await loop.InvokeAsync(() => { owners.DeferredForTest = null; return Task.CompletedTask; }); }
         }
         Assert.NotNull(pending);
-        Assert.Equal(stale ? 50 : 57, s.CurrentSp); Assert.Equal(50, s.CurrentHp);
+        Assert.Equal(stale ? 50 : 57, s.CurrentSp); Assert.Equal(stale ? 50 : 55, s.CurrentHp);
     }
 
     private static int PropertyPackets(BotClient bot) => bot.Inbox.Snapshot().Count(p => p.IsGame(CharacterService.OnePropertyChange));

@@ -12,10 +12,10 @@ public sealed partial class TerritoryWarsService
     private const long WorldPickupUidEnd = 1L << 46;
     private const int SupplyCurrency = 133;
     private readonly SemaphoreSlim _worldGate = new(1, 1);
-    private readonly HashSet<long> _worldMapsLoaded = new();
-    private readonly Dictionary<long, WorldPickupUnit> _worldPickups = new();
-    private readonly Dictionary<int, MonsterUnit> _worldActivities = new();
-    private readonly Dictionary<int, long> _worldActivityOrdinals = new();
+    private readonly HashSet<long> _worldMapsLoaded = [];
+    private readonly Dictionary<long, WorldPickupUnit> _worldPickups = [];
+    private readonly Dictionary<int, MonsterUnit> _worldActivities = [];
+    private readonly Dictionary<int, long> _worldActivityOrdinals = [];
     private long _nextWorldPickupUid;
     private long _worldGeneration;
     internal Action? BeforeWorldPickupApplyForTest;

@@ -88,7 +88,8 @@ public sealed partial class SeasonTalentService
                         transaction.RoleBlob(s.Role!.Id, "season_talent", next.ToByteArray());
                         await _roles.CommitAsync(transaction, "season-talent/profession", _ => s.SeasonTalent = next);
                     }
-                    catch (Exception error) when (error is SqliteException or InvalidOperationException)
+                    catch (Exception error) when (error is SqliteException
+                        or Accounts.Persistence.PersistenceException or InvalidOperationException)
                     {
                         _log.LogError(error, "Profession talent selection {Node} failed for {Role}", req.TalentId, s.Role!.Id);
                         result = ErrorCodes.Unknown;

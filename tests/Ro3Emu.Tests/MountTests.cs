@@ -39,7 +39,7 @@ public sealed class MountTests : IAsyncLifetime
     private static async Task<T> Next<T>(BotClient b, uint id, MessageParser<T> p, Func<T, bool>? match = null) where T : IMessage<T>
     { var e = await b.Inbox.WaitAsync(e => e.IsGame(id) && (match == null || match(p.ParseFrom(e.Body))), Wait); return p.ParseFrom(e.Body); }
     private async Task Gm(string account, string command)
-    { using var h = new HttpClient(); (await h.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(command))).EnsureSuccessStatusCode(); }
+    { using var h = new HttpClient(); (await h.PostAsync($"{_http}/ro3emu/gm?account={account}", Operator.Command(command))).EnsureSuccessStatusCode(); }
     private GameSession Session(string account) => _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == account && s.Role != null);
     private async Task UnlockMount(BotClient b, string account, int item)
     {

@@ -16,8 +16,7 @@ public sealed partial class DungeonService
 
     private static long[] PositionsFor(GameData data, long job) => data.Row("JobConfig", job) is { } row
         && row.TryGetProperty("_iDungeonJobPositionID", out var values) && values.ValueKind == JsonValueKind.Array
-        ? values.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0))
-            .Where(id => data.Row("DungeonJobPositionConfig", id) != null).ToArray() : [];
+        ? [.. values.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).Where(id => data.Row("DungeonJobPositionConfig", id) != null)] : [];
 
     /// <summary>
     /// (verified) TenGameplayBondsConfig -> LC_ConditionList 36000000 [7003,2] and 36000001 [3036,5]:
@@ -56,7 +55,7 @@ public sealed partial class DungeonService
             if (cache != null) cache[id] = enabled;
             if (enabled) result.Add(id);
         }
-        return result.ToArray();
+        return [.. result];
     }
 
     /// <summary>(verified) LC_DAL_Team:278-395 decodes member.multiDungeonBytes for bonds, rewards and jobPosition.</summary>
@@ -84,8 +83,7 @@ public sealed partial class DungeonService
     private GameSession[] BondRoster(Attempt attempt, GameSession subject)
     {
         long team = subject.Role == null ? 0 : _teams.TeamOf(subject.Role.Id).TeamId;
-        return team == 0 ? [subject] : Present(attempt).Where(attempt.Loaded.Contains)
-            .Where(s => _teams.TeamOf(s.Role!.Id).TeamId == team).ToArray();
+        return team == 0 ? [subject] : [.. Present(attempt).Where(attempt.Loaded.Contains).Where(s => _teams.TeamOf(s.Role!.Id).TeamId == team)];
     }
 
     /// <summary>

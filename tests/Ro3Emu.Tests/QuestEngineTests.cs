@@ -61,7 +61,7 @@ public sealed class QuestEngineTests : IAsyncLifetime
     private async Task Gm(string line, string account = "questalice")
     {
         using var http = new HttpClient();
-        (await http.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(line))).EnsureSuccessStatusCode();
+        (await http.PostAsync($"{_http}/ro3emu/gm?account={account}", Operator.Command(line))).EnsureSuccessStatusCode();
     }
 
     private GameSession Alice => Service<SessionRegistry>().All().Single(s => s.Role?.Name == "QuestAlice");
@@ -143,8 +143,8 @@ public sealed class QuestEngineTests : IAsyncLifetime
             var request = new ClientNpcInteractReq { DialogID = 1010104001, Areapointid = 1010104001 };
             await bot.SendGameAsync(SceneService.ClientNpcInteract, request);
             var reward = await Next(bot, CharacterService.GetRewardNotify, GetRewardNotify.Parser);
-            Assert.Equal(100, Assert.Single(reward.Rewards).ItemEntry);
-            Assert.Equal(7, reward.Rewards[0].Stack);
+            // 7 Base EXP brings its share of Job EXP, rounded down (CharacterService.JobExpFromBase).
+            Assert.Equal([(100, 7), (101, 1)], reward.Rewards.Select(r => (r.ItemEntry, r.Stack)));
             await Next(bot, TaskService.TaskInfoSync, DBTaskInfoIncrement.Parser,
                 m => m.CompleteTaskNum.TryGetValue(10101040, out var n) && n.All == 1);
             await bot.SendGameAsync(SceneService.ClientNpcInteract, request);
@@ -450,13 +450,13 @@ public sealed class QuestEngineTests : IAsyncLifetime
         await bot.SendGameAsync(CharacterService.EquipSwitchPlan, new EquipSwitchPlanReq { TargetIndex = 1 });
         Assert.Equal(0, (await Next(bot, CharacterService.EquipSwitchPlan, EquipSwitchPlanResp.Parser)).Result);
         await Next(bot, TaskService.TaskInfoSync, DBTaskInfoIncrement.Parser,
-            m => m.Infos.GetValueOrDefault(1700101)?.Inc?.CompleteNum?.All?.Value.SequenceEqual(new long[] { 0 }) == true);
+            m => m.Infos.GetValueOrDefault(1700101)?.Inc?.CompleteNum?.All?.Value.SequenceEqual([0]) == true);
         Assert.Equal(0, (await State(1700101)).CompleteNum[0]);
 
         await bot.SendGameAsync(CharacterService.EquipSwitchPlan, new EquipSwitchPlanReq { TargetIndex = 0 });
         Assert.Equal(0, (await Next(bot, CharacterService.EquipSwitchPlan, EquipSwitchPlanResp.Parser)).Result);
         await Next(bot, TaskService.TaskInfoSync, DBTaskInfoIncrement.Parser,
-            m => m.Infos.GetValueOrDefault(1700101)?.Inc?.CompleteNum?.All?.Value.SequenceEqual(new long[] { 1 }) == true);
+            m => m.Infos.GetValueOrDefault(1700101)?.Inc?.CompleteNum?.All?.Value.SequenceEqual([1]) == true);
         Assert.Equal(1, (await State(1700101)).CompleteNum[0]);
         Assert.Equal(TaskState.Running, (await State(1700101)).Status);
     }

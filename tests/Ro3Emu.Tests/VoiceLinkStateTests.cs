@@ -14,7 +14,7 @@ public sealed class VoiceLinkStateTests
     {
         public readonly VoiceLinkState State = new();
         public int TransportClosed;
-        public readonly List<string> Notices = new();
+        public readonly List<string> Notices = [];
 
         public void Close()
         {

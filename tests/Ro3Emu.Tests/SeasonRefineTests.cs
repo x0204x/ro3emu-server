@@ -65,7 +65,7 @@ public sealed class SeasonRefineTests : IAsyncLifetime
     private async Task Gm(string account, string line)
     {
         using var client = new HttpClient();
-        var reply = await client.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(line));
+        var reply = await client.PostAsync($"{_http}/ro3emu/gm?account={account}", Operator.Command(line));
         reply.EnsureSuccessStatusCode();
     }
 
@@ -90,8 +90,8 @@ public sealed class SeasonRefineTests : IAsyncLifetime
     /// <summary>An offer after a 5023 increment: the previous keys minus deleted ones plus added ones.</summary>
     private static int[] Offer(IEnumerable<int> before,
         Google.Protobuf.Collections.MapField<int, DBSeasonRefineSlotIncrement.Types.canSelectedAttrFieldIncrement> change) =>
-        before.Where(id => !(change.TryGetValue(id, out var v) && v.Del))
-            .Concat(change.Where(kv => !kv.Value.Del).Select(kv => kv.Key)).Distinct().ToArray();
+        [.. before.Where(id => !(change.TryGetValue(id, out var v) && v.Del))
+            .Concat(change.Where(kv => !kv.Value.Del).Select(kv => kv.Key)).Distinct()];
 
     [Fact]
     public async Task RequestsBeforeRoleSelectionAreRefusedWithoutDroppingTheConnection()
@@ -354,7 +354,7 @@ public sealed class SeasonRefineTests : IAsyncLifetime
             var freeOffer = free.EquipParts[1].Inc.RefineSlots[1].Inc.CanSelectedAttr.Keys.ToArray();
             var (recastResult, recastOffer, _) = await RecastOffer(alice, freeOffer);
             Assert.Equal(0, recastResult);
-            offered = recastOffer.Order().ToArray();
+            offered = [.. recastOffer.Order()];
         }
 
         await using var relog = await InWorld("Alice", create: false);

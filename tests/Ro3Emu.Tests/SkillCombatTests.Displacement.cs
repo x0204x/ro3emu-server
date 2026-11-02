@@ -53,7 +53,7 @@ public sealed partial class SkillCombatTests
         Assert.True(unlocked.Count > 40);
         Assert.Equal(["AxeLeapAttackS1BD2", "AxeTornadoProS1BD1", "BackSlide", "MoonSlasher2", "MoonSlasher2s1", "PinpointAttack3",
             "RetreatingShadows", "RetreatingShadowsS1", "VectorShock", "VectorShock1"],
-            unlocked.Where(CombatService.Displacements.ContainsKey).OrderBy(s => s, StringComparer.Ordinal).ToArray());
+            [.. unlocked.Where(CombatService.Displacements.ContainsKey).OrderBy(s => s, StringComparer.Ordinal)]);
     }
 
     /// <summary>A knockback or pull on a monster for each kind of rule: away from / toward the caster, toward the area's

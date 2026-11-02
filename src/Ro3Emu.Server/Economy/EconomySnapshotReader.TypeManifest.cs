@@ -60,8 +60,15 @@ public static partial class EconomySnapshotReader
     // Item actions: role.social_outfit is DBSocialOutfit (chat cosmetics unlocked by 349 items, with unlock and expiry
     // times, and the worn choices) and role.emoji_info is DBEmojiInfo (chat emoticon ids unlocked by 212 items). Unlocks,
     // no balance and no asset: the item is spent by the cd13a/character-item-action receipt that writes them.
+    // GM panel: role.gm_state is GmCommands.RoleGmState (AllFunctionsOpen, openallfunc kept across logins): a flag that
+    // opens client functions, no balance and no asset.
+    // Job EXP catch-up: role.job_exp_catchup is CharacterService.JobExpCatchUpState: the Job EXP paid to the role, what
+    // later job advances still owe it and the rank last paid, no balance and no asset; the EXP comes with its cd13e/grant
+    // receipts.
     // Tavern: role.barroom is TavernService.RoleState (Star Power received from Tavern gifts, its week, active days and
     // today's time in a room): counters, no balance and no asset; the gift drink is spent by the event/tavern-gift receipt.
+    // Shop gifts: role.gifts is ShopService.GiftState (sent and received gift orders): records, no balance and no asset;
+    // the currency is spent by the sender's exchange receipt and the appearance granted by the pick's own receipt.
     // Power: role.emblems EmblemState.Power (PowerService.Record) holds the role's last published power total and its
     // best total (maxHistoryPower), as normal/season parts. Rating counters, no balance and no asset: they only gate
     // Become Stronger stage claims (whose goods come with their own daily-stage receipt) and rank the Hero Registry.
@@ -97,7 +104,17 @@ public static partial class EconomySnapshotReader
     // 舊酒館型別移至相容層，保留原持久化欄位及每日結算收據。
     // WildAfk.State.AllowanceEpoch 僅保存當天已補充額度的日期，避免重登重領；
     // 不是第二份時間餘額或待領資產。移除此單一欄位的型別圖雜湊與原 pin 完全相符。
-    public const string ExpectedFormatManifestHash = "B4439997B02300182D824EB9455323709835D2AA885AC57BBDC1B746C3B79805";
+    // Faction Quest: role.task_runtime FactionDay/FactionPoints (TaskRuntimeState) are the game day and the Faction Quest
+    // points counted that day against TerritoryWarzoneTaskPointsLimit. A counter, no balance and no asset.
+    // Free cash shop: role.activity_runtime Purchases (NewActivityService.Purchases) counts each top-up or product a role
+    // took, in total and on its game day. Counters, no balance and no asset: the goods come with the order's own
+    // newactivity receipt that also saves them.
+    // Leaderboard rewards: server_state rank_rewards (RankRewardService) names each rewarded board's last settlement
+    // time. A key, no balance: the goods are the rank letters' attachments, each delivered once by its delivery key.
+    // v1.0.26 聯集已逐欄核對：gm_state 為功能開關；job_exp_catchup 的 Granted 為歷史入帳，
+    // Remaining 為未來職階進度權利，不重複計入物品／貨幣持有量。空 blob 是尚未決定，不能視為餘額零。
+    // 此固定雜湊驗證格式分類，不替代補發來源與進度交易的一次性驗證。
+    public const string ExpectedFormatManifestHash = "BBD984F4D3FF71E1E370846B4D19E1C49BFAFA7124B9B7540D58D9E5C1BDB24C";
     public static string FormatManifestHash => State.FormatManifestHash;
 
     private sealed partial class State
@@ -172,6 +189,7 @@ public static partial class EconomySnapshotReader
             TypeShape(typeof(Ro3Emu.Server.Game.FestivalService.Round));
             entries.Add("server_state/season_history:Ro3Emu.Server.Game.SeasonService.Season");
             TypeShape(typeof(Ro3Emu.Server.Game.SeasonService.Season));
+            entries.Add("server_state/rank_rewards:board id -> yyyyMMddHH settlement");
             entries.Add("server_state/multi_dungeon_server:romsg.DBMultiDungeonServerInfo");
             Message(Romsg.DBMultiDungeonServerInfo.Descriptor);
             return Hash(string.Join("\n", entries));

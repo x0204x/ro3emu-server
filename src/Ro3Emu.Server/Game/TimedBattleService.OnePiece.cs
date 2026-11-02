@@ -36,7 +36,7 @@ public sealed partial class TimedBattleService
         public required int Monster;
         public required long Started;
         public required RiftStone Stone;
-        public HashSet<GameSession> Loaded { get; } = new();
+        public HashSet<GameSession> Loaded { get; } = [];
         public MonsterUnit? Boss;
         public bool Spawning;
         public bool Settled;
@@ -49,15 +49,15 @@ public sealed partial class TimedBattleService
         public required GameSession[] Members;
         public required RiftStone Stone;
         public required long TeamId;
-        public HashSet<GameSession> Ready { get; } = new();
+        public HashSet<GameSession> Ready { get; } = [];
         public bool Closed;
     }
 
     private sealed record TreasurePay(GameSession Player, State Next, TimedBattleObligationRow Obligation,
         AwardGrant[] Grants, CharacterService.FirstCardSightPlan? TaskPlan);
 
-    private readonly Dictionary<GameSession, Treasure> _treasure = new();
-    private readonly Dictionary<GameSession, RiftVote> _riftVotes = new();
+    private readonly Dictionary<GameSession, Treasure> _treasure = [];
+    private readonly Dictionary<GameSession, RiftVote> _riftVotes = [];
 
     /// <summary>TEST AID set by GM "!rift party [min]" (not original behaviour): the smallest party a stone admits.</summary>
     internal int? RiftTestMinParty { get; set; }
@@ -66,7 +66,7 @@ public sealed partial class TimedBattleService
     {
         if (_data.Row("NPCConfig", stone.StoneNpc) is not { } npc || !npc.TryGetProperty("_iInteractID", out var ids)
             || ids.ValueKind != JsonValueKind.Array) return [];
-        return ids.EnumerateArray().Select(GameData.Number).Where(x => x != null).Select(x => (long)x!.Value).ToArray();
+        return [.. ids.EnumerateArray().Select(GameData.Number).Where(x => x != null).Select(x => (long)x!.Value)];
     }
 
     /// <summary>32700 for a Rift stone and one of its NPCConfig _iInteractID entries.</summary>
@@ -445,14 +445,13 @@ public sealed partial class TimedBattleService
     }
 
     /// <summary>Members of the run still in its room (dead or alive).</summary>
-    private GameSession[] Present(Treasure a) => a.Members
-        .Where(m => _treasure.GetValueOrDefault(m) == a && m.InstanceId == a.Room.Id && m.Role != null).ToArray();
+    private GameSession[] Present(Treasure a) => [.. a.Members.Where(m => _treasure.GetValueOrDefault(m) == a && m.InstanceId == a.Room.Id && m.Role != null)];
 
     private async Task OnePieceLoadedAsync(GameSession session)
     {
         if (session.InstanceId == 0)
         {
-            await RiftViewAsync(session, [], _riftStones.Values.Where(s => s.Map == session.SceneEntry).ToArray());
+            await RiftViewAsync(session, [], [.. _riftStones.Values.Where(s => s.Map == session.SceneEntry)]);
             await SendOnePieceMapAsync(session);
         }
         if (!_treasure.TryGetValue(session, out var a) || a.Room.Id != session.InstanceId || a.Settled) return;
@@ -539,14 +538,13 @@ public sealed partial class TimedBattleService
             ? await owners.EnterAsync("timed battle onepiece settlement", keys) : null)
         {
             if (a.Settled) return;
-            present = present.Where(m => m.Role?.Id == roleIds[m] && _treasure.GetValueOrDefault(m) == a
-                && m.InstanceId == a.Room.Id).ToArray();
+            present = [.. present.Where(m => m.Role?.Id == roleIds[m] && _treasure.GetValueOrDefault(m) == a
+                && m.InstanceId == a.Room.Id)];
             if (win)
             {
                 try
                 {
-                    paid = present.Where(m => m.ActivitiesReady && m.TimedBattle != null && m.Progress != null)
-                        .Select(m => StageTreasureReward(a, m)).ToArray();
+                    paid = [.. present.Where(m => m.ActivitiesReady && m.TimedBattle != null && m.Progress != null).Select(m => StageTreasureReward(a, m))];
                     if (paid.Length == 0) win = false;
                     else await CommitTreasureAsync(a, paid);
                 }
@@ -645,9 +643,9 @@ public sealed partial class TimedBattleService
             tx.WithEventEconomy(new EventEconomyMutation(catalog, Guid.NewGuid().ToString("N"),
                 "realm", 0, "event/timed-battle-onepiece", $"timed_battle/onepiece/{a.Room.Id.ToString(CultureInfo.InvariantCulture)}",
                 DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), [],
-                economic.Select(x => new EconomyQuantity(Asset(x.Grant.Entry), x.Grant.Count)).ToArray(),
-                economic.Select(x => new EventEconomyOwnerDelta(new EconomyOwner(EconomyOwnerKind.Role,
-                    x.Pay.Obligation.RoleId.ToString(CultureInfo.InvariantCulture)), Asset(x.Grant.Entry), x.Grant.Count)).ToArray(),
+                [.. economic.Select(x => new EconomyQuantity(Asset(x.Grant.Entry), x.Grant.Count))],
+                [.. economic.Select(x => new EventEconomyOwnerDelta(new EconomyOwner(EconomyOwnerKind.Role,
+                    x.Pay.Obligation.RoleId.ToString(CultureInfo.InvariantCulture)), Asset(x.Grant.Entry), x.Grant.Count))],
                 JsonSerializer.SerializeToUtf8Bytes(new
                 {
                     a.Started, Scene = a.Room.SceneEntry,

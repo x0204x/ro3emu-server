@@ -1,5 +1,7 @@
 using Phonest.Proto;
 using System.Diagnostics;
+using System.Globalization;
+using System.Runtime.CompilerServices;
 
 namespace Ro3Emu.Bot;
 
@@ -23,10 +25,10 @@ public sealed record BotEvent(BotEventKind Kind)
 /// <summary>Everything received, in order; waiters consume the first unconsumed matching event.</summary>
 public sealed class BotInbox
 {
-    private readonly List<BotEvent> _events = new();
+    private readonly List<BotEvent> _events = [];
     private readonly HashSet<BotEvent> _consumed = new(ReferenceEqualityComparer.Instance);
     private readonly SemaphoreSlim _signal = new(0);
-    private readonly List<BotExpectation> _expectations = new();
+    private readonly List<BotExpectation> _expectations = [];
     private int _capacity = int.MaxValue;
     private Action<BotEvent>? _observer;
     private long _dropped;
@@ -37,7 +39,7 @@ public sealed class BotInbox
     /// <summary>Opt-in bounded typed awaiters for sustained load; unsolicited bodies go only to the observer.</summary>
     public void ConfigureBounded(int capacity, Action<BotEvent> observer)
     {
-        if (capacity < 1) throw new ArgumentOutOfRangeException(nameof(capacity));
+        ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 1);
         lock (_events) { _capacity = Math.Min(capacity, 32); _observer = observer; }
     }
 
@@ -88,15 +90,15 @@ public sealed class BotInbox
         if (_capacity == int.MaxValue) _signal.Release();
     }
 
-    /// <summary>Register before sending so a fast reply cannot race the waiter.</summary>
-    public BotExpectation Expect(Func<BotEvent, bool> match)
+    /// <summary>Register before sending so a fast reply cannot race the waiter. A timeout names the filter.</summary>
+    public BotExpectation Expect(Func<BotEvent, bool> match, [CallerArgumentExpression(nameof(match))] string? what = null)
     {
         lock (_events)
         {
             if (_failure != null) throw new InvalidOperationException("bot connection failed", _failure);
             if (_capacity != int.MaxValue && _expectations.Count >= _capacity)
                 throw new InvalidOperationException("bot typed awaiter capacity exceeded");
-            var waiter = new BotExpectation(match, RemoveExpectation);
+            var waiter = new BotExpectation(match, RemoveExpectation, what);
             _expectations.Add(waiter);
             return waiter;
         }
@@ -107,12 +109,15 @@ public sealed class BotInbox
         lock (_events) _expectations.Remove(waiter);
     }
 
+    internal static string TimedOut(TimeSpan timeout, string? what) => string.Create(CultureInfo.InvariantCulture,
+        $"bot: expected server message did not arrive in {timeout.TotalSeconds:0.#} s: {what}");
+
     public IReadOnlyList<BotEvent> Snapshot()
     {
-        lock (_events) return _events.ToList();
+        lock (_events) return [.. _events];
     }
 
-    public async Task<BotEvent> WaitAsync(Func<BotEvent, bool> match, TimeSpan timeout)
+    public async Task<BotEvent> WaitAsync(Func<BotEvent, bool> match, TimeSpan timeout, [CallerArgumentExpression(nameof(match))] string? what = null)
     {
         if (_capacity != int.MaxValue) throw new InvalidOperationException("load mode requires Expect before send");
         var deadline = DateTime.UtcNow + timeout;
@@ -131,12 +136,12 @@ public sealed class BotInbox
                 if (_failure != null) throw new InvalidOperationException("bot connection failed", _failure);
             }
             var left = deadline - DateTime.UtcNow;
-            if (left <= TimeSpan.Zero || !await _signal.WaitAsync(left)) throw new TimeoutException("bot: expected server message did not arrive");
+            if (left <= TimeSpan.Zero || !await _signal.WaitAsync(left)) throw new TimeoutException(TimedOut(timeout, what));
         }
     }
 }
 
-public sealed class BotExpectation(Func<BotEvent, bool> match, Action<BotExpectation> remove) : IDisposable
+public sealed class BotExpectation(Func<BotEvent, bool> match, Action<BotExpectation> remove, string? what = null) : IDisposable
 {
     private readonly TaskCompletionSource<BotEvent> _source = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly long _registered = Stopwatch.GetTimestamp();
@@ -145,7 +150,10 @@ public sealed class BotExpectation(Func<BotEvent, bool> match, Action<BotExpecta
     internal double ElapsedMilliseconds => Stopwatch.GetElapsedTime(_registered).TotalMilliseconds;
     internal void Complete(BotEvent e) => _source.TrySetResult(e);
     internal void Fail(Exception e) => _source.TrySetException(e);
-    public Task<BotEvent> WaitAsync(TimeSpan timeout, CancellationToken cancellationToken = default) =>
-        _source.Task.WaitAsync(timeout, cancellationToken);
+    public async Task<BotEvent> WaitAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        try { return await _source.Task.WaitAsync(timeout, cancellationToken); }
+        catch (TimeoutException e) { throw new TimeoutException(BotInbox.TimedOut(timeout, what), e); }
+    }
     public void Dispose() => remove(this);
 }

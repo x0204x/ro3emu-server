@@ -12,7 +12,7 @@ namespace Ro3Emu.Tests;
 
 /// <summary>
 /// 自造資料驗證目前伺服器野外組隊 EXP 管線與重送冪等性；4／4／3 是本地推定政策，
-/// 並非原服分配公式或遠距資格的驗收證據。本案直接呼叫正式 RewardService，
+/// Job 依自造25%轉換為1／1／0；並非原服分配公式或遠距資格的驗收證據。本案直接呼叫正式 RewardService，
 /// 未模擬玩家施放技能或命中封包。
 /// </summary>
 public sealed partial class PartyExperiencePipelineTests
@@ -60,10 +60,10 @@ public sealed partial class PartyExperiencePipelineTests
 
             string source = Assert.IsType<RewardSourceId>(monster.RewardSource).Key;
             Assert.True(await host.Service<CharacterService>().RewardSourceCommittedAsync(source));
-            Assert.Equal(new long[] { 4, 4, 3 }, roleIds.Select((id, index) => Progress(host, id).Base - before[index].Base));
-            Assert.Equal(new long[] { 4, 4, 3 }, roleIds.Select((id, index) => Progress(host, id).Job - before[index].Job));
-            Assert.Equal(new long[] { 4, 4, 3 }, sessions.Select((session, index) => session.Progress!.Exp - before[index].Base));
-            Assert.Equal(new long[] { 4, 4, 3 }, sessions.Select((session, index) => session.Progress!.JobExp - before[index].Job));
+            Assert.Equal([4, 4, 3], roleIds.Select((id, index) => Progress(host, id).Base - before[index].Base));
+            Assert.Equal([1, 1, 0], roleIds.Select((id, index) => Progress(host, id).Job - before[index].Job));
+            Assert.Equal([4, 4, 3], sessions.Select((session, index) => session.Progress!.Exp - before[index].Base));
+            Assert.Equal([1, 1, 0], sessions.Select((session, index) => session.Progress!.JobExp - before[index].Job));
             for (int i = 0; i < bots.Length; i++)
             {
                 await bots[i].HeartbeatAsync();
@@ -72,16 +72,18 @@ public sealed partial class PartyExperiencePipelineTests
                     .Where(packet => packet.IsGame(CharacterService.RoleBaseInfoSync))
                     .Skip(syncBefore[i])
                     .Select(packet => RoleBaseInfoIncrement.Parser.ParseFrom(packet.Body));
-                Assert.Contains(updates, update => update.HasExp && update.HasJobExp
-                    && update.Exp == expected.Base && update.JobExp == expected.Job);
+                Assert.Contains(updates, update => update.HasExp && update.Exp == expected.Base
+                    && (expected.Job == before[i].Job
+                        ? !update.HasJobExp || update.JobExp == expected.Job
+                        : update.HasJobExp && update.JobExp == expected.Job));
             }
 
             var obligations = Obligations(host, source);
             Assert.Equal(2, obligations.Count);
             Assert.Equal(new long[] { roleIds[1], roleIds[2] }.OrderBy(id => id),
                 obligations.Select(row => row.Role));
-            Assert.Equal(new long[] { 4, 3 }, obligations.Select(row => row.Base));
-            Assert.Equal(new long[] { 4, 3 }, obligations.Select(row => row.Job));
+            Assert.Equal([4, 3], obligations.Select(row => row.Base));
+            Assert.Equal([1, 0], obligations.Select(row => row.Job));
             Assert.All(obligations, row => Assert.True(row.Delivered));
 
             // 同一 MonsterUnit／來源再次進入預備與結算，不可新增義務或重新發獎。
@@ -92,7 +94,7 @@ public sealed partial class PartyExperiencePipelineTests
                 await reward.KilledAsync(sessions[0], monster);
             });
             Assert.Equal(settled, roleIds.Select(id => Progress(host, id)).ToArray());
-            Assert.Equal(obligations.ToArray(), Obligations(host, source).ToArray());
+            Assert.Equal<(long Role, long Base, long Job, bool Delivered)>([.. obligations], [.. Obligations(host, source)]);
         }
         finally
         {
@@ -198,7 +200,7 @@ public sealed partial class PartyExperiencePipelineTests
     private static void Append(string config, string table, int key, object row)
     {
         string path = Path.Combine(config, table + ".json");
-        var content = File.Exists(path) ? JsonNode.Parse(File.ReadAllText(path))!.AsObject() : new JsonObject();
+        JsonObject content = File.Exists(path) ? JsonNode.Parse(File.ReadAllText(path))!.AsObject() : [];
         content.Add(key.ToString(CultureInfo.InvariantCulture), JsonSerializer.SerializeToNode(row));
         File.WriteAllText(path, content.ToJsonString());
     }

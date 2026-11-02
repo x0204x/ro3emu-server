@@ -107,7 +107,7 @@ internal sealed class MvpSettlementProbeReadPlan(string sourceKey) : DbReadPlan
         using var rows = cmd.ExecuteReader();
         var obligations = new List<MvpObligationRow>();
         while (rows.Read()) obligations.Add(MvpObligationRow.Read(rows));
-        return new MvpSettlementSnapshot(death, obligations.ToArray());
+        return new MvpSettlementSnapshot(death, [.. obligations]);
     }
 }
 internal enum MvpReadKind { States, Cooldowns, Counters }

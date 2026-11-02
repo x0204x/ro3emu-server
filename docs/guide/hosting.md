@@ -57,6 +57,14 @@ Open TCP `5380`, `20000` and `33100`, and the voice port if you turn voice on wi
   checks one, and, under systemd (`./server.sh --service`) or a Windows service wrapper, installs it or rolls it back
   through a planned restart with a database backup first. In a terminal, under RO3Emu.exe or in Docker it downloads
   and checks, then lists the steps ([web panel, Updates](panel.md#updates)).
+- **Not as root:** `server.sh` refuses to run as root (`--allow-root` overrides it); run it as an ordinary user, and
+  `--service` asks for sudo only to install the unit. The unit runs with `NoNewPrivileges`, `ProtectSystem=strict`,
+  `ProtectHome=read-only` and a private `/tmp`: the server can write only inside the folder you extracted (its
+  single-file build unpacks to `.net` there) and to a `/tmp` of its own. A data dir elsewhere
+  (`Ro3Emu__DataDir`) needs `ReadWritePaths=<that dir>` in a drop-in. The data dir and its private files (the gate
+  key, the database, the backups, the operator token) are readable only by the server's user: modes 0700 and 0600 on
+  Linux, an access list of that user, SYSTEM and the Administrators on Windows. Your own scripts send
+  that token (`data/operator.token`) to the loopback tools ([GM access](gm-access.md#the-loopback-tool)).
 - **Bug reports from players:** the Feedback button in the game menu or `/bug <text>` in chat ([feedback](feedback.md)), optionally posted to a Discord channel.
 - **Monsters that attack on sight as in RO1** (on by default, as a trial): set `Ro3Emu__Ro1AggressiveMonsters=false` (or
   `"Ro1AggressiveMonsters": false` under `Ro3Emu` in `appsettings.json`) to turn it off. The field monsters whose Ragnarok Online 1

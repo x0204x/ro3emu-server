@@ -54,7 +54,7 @@ public sealed class QuestWalkTests : IAsyncLifetime
     private async Task Gm(string line)
     {
         using var http = new HttpClient();
-        (await http.PostAsync($"{_http}/ro3emu/gm?account=walker", new StringContent(line))).EnsureSuccessStatusCode();
+        (await http.PostAsync($"{_http}/ro3emu/gm?account=walker", Operator.Command(line))).EnsureSuccessStatusCode();
     }
 
     /// <summary>The server's view of the walker: running/finished task ids and the current map.</summary>

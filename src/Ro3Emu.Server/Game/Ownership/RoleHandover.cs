@@ -1,4 +1,5 @@
 using Ro3Emu.Server.Accounts;
+using Ro3Emu.Server.Accounts.Persistence;
 
 namespace Ro3Emu.Server.Game.Ownership;
 
@@ -62,6 +63,21 @@ public sealed class RoleHandover(GameLoop loop, OwnerRegistry owners, RoleStore 
         }
     }
 
+    /// <summary>How long the revision fence waits for room in a full reader queue.</summary>
+    internal TimeSpan FenceQueuePatience { get; set; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>The fence's read stays in one step with what follows it; only a refused read waits and asks again.</summary>
+    private async Task<RoleRevisionVector> ReadFenceAsync(long role)
+    {
+        var patience = new QueueFullPatience(FenceQueuePatience);
+        while (true)
+        {
+            try { return roles.ReadRevisionVector(role); }
+            catch (Exception e) when (patience.MayRetry(e)) { }
+            await patience.WaitAsync();
+        }
+    }
+
     private async Task FinishAsync(GameSession session, RoleOwner owner, AttachmentLease lease)
     {
         try
@@ -83,7 +99,7 @@ public sealed class RoleHandover(GameLoop loop, OwnerRegistry owners, RoleStore 
                 await _cleanup(session);
             }
             PhaseForTest?.Invoke("BeforeFence", session);
-            var durable = roles.ReadRevisionVector(owner.RoleId);
+            var durable = await ReadFenceAsync(owner.RoleId);
             if (durable.Deleted || durable.Epoch != owner.LifecycleEpoch ||
                 owner.Revisions.Any(part => durable.Revision(part.Key) < part.Value))
                 throw new InvalidOperationException($"Role {owner.RoleId} handover revision fence failed.");

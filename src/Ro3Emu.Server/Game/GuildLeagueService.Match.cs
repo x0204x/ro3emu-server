@@ -88,7 +88,7 @@ public sealed partial class GuildLeagueService
         public long NextHold { get; set; }
         /// <summary>The circle unit the fighter stands in, as last sent in dungeon var 10103.</summary>
         public long InCircle { get; set; }
-        public Dictionary<long, long> HitBy { get; } = new();
+        public Dictionary<long, long> HitBy { get; } = [];
     }
 
     internal sealed class Point
@@ -112,11 +112,11 @@ public sealed partial class GuildLeagueService
     {
         public long Scene { get; } = scene;
         public InstanceService.Room? Room { get; set; }
-        public Dictionary<long, Fighter> Fighters { get; } = new();
-        public Dictionary<int, Point> Points { get; } = new();
-        public Dictionary<MonsterUnit, (Kind Kind, string Slot)> Actors { get; } = new();
-        public HashSet<string> Killed { get; } = new();
-        public Dictionary<MonsterUnit, HashSet<long>> Hitters { get; } = new();
+        public Dictionary<long, Fighter> Fighters { get; } = [];
+        public Dictionary<int, Point> Points { get; } = [];
+        public Dictionary<MonsterUnit, (Kind Kind, string Slot)> Actors { get; } = [];
+        public HashSet<string> Killed { get; } = [];
+        public Dictionary<MonsterUnit, HashSet<long>> Hitters { get; } = [];
         public bool Spawning { get; set; }
         public bool Live => Room is { Closed: false };
     }
@@ -135,11 +135,11 @@ public sealed partial class GuildLeagueService
         public required long End { get; init; }
         public required Field Main { get; init; }
         public required Field Sub { get; init; }
-        public Dictionary<long, long> Points { get; } = new();
-        public Dictionary<long, long> Morale { get; } = new();
-        public Dictionary<long, long> MainKills { get; } = new();
-        public HashSet<long> Carriers { get; } = new();
-        public HashSet<long> Leaving { get; } = new();
+        public Dictionary<long, long> Points { get; } = [];
+        public Dictionary<long, long> Morale { get; } = [];
+        public Dictionary<long, long> MainKills { get; } = [];
+        public HashSet<long> Carriers { get; } = [];
+        public HashSet<long> Leaving { get; } = [];
         public int Bosses { get; set; }
         public MonsterUnit? Boss { get; set; }
         public int Wave { get; set; }
@@ -154,8 +154,8 @@ public sealed partial class GuildLeagueService
         public Field FieldOf(long scene) => scene == Main.Scene ? Main : Sub;
     }
 
-    private readonly Dictionary<string, Match> _matches = new();
-    private readonly HashSet<GameSession> _switching = new();
+    private readonly Dictionary<string, Match> _matches = [];
+    private readonly HashSet<GameSession> _switching = [];
     internal IReadOnlyCollection<Match> Matches => _matches.Values;
     private static string MatchKey(int index, int round, int tier, int order, int pair) => $"{index}:{round}:{tier}:{order}:{pair}";
 
@@ -274,7 +274,7 @@ public sealed partial class GuildLeagueService
 
     private long[] SettingArray(string name) => _data.Table("GuildSettingConfig").TryGetValue(name, out var row)
         && row.TryGetProperty("_kValue", out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Array
-        ? v.EnumerateArray().Select(x => (long)(GameData.Number(x) ?? 0)).ToArray() : [];
+        ? [.. v.EnumerateArray().Select(x => (long)(GameData.Number(x) ?? 0))] : [];
 
     private Match MatchFor(Cup cup, Group group, int round, int pair, GuildLeagueBracket.Pair guildsOf, GuildLeagueCalendar.Window window)
     {
@@ -424,15 +424,15 @@ public sealed partial class GuildLeagueService
 
     private void AddPoints(Match m, long guild, long amount)
     {
-        if (m.Ended || amount <= 0 || !m.Points.ContainsKey(guild)) return;
-        m.Points[guild] = Math.Min(MaxGuildPoint, m.Points[guild] + amount);
+        if (m.Ended || amount <= 0 || !m.Points.TryGetValue(guild, out long points)) return;
+        m.Points[guild] = Math.Min(MaxGuildPoint, points + amount);
         m.Dirty = true;
     }
 
     private void AddMorale(Match m, long guild, long amount)
     {
-        if (m.Ended || amount <= 0 || !m.Morale.ContainsKey(guild)) return;
-        m.Morale[guild] = Math.Min(MoraleSteps[^1], m.Morale[guild] + amount);
+        if (m.Ended || amount <= 0 || !m.Morale.TryGetValue(guild, out long morale)) return;
+        m.Morale[guild] = Math.Min(MoraleSteps[^1], morale + amount);
         m.Dirty = true;
     }
 
@@ -563,7 +563,7 @@ public sealed partial class GuildLeagueService
     {
         if (amount > 0 && Locate(s) is { } at && at.Field.Actors.ContainsKey(monster) && s.Role != null)
         {
-            if (!at.Field.Hitters.TryGetValue(monster, out var set)) at.Field.Hitters[monster] = set = new();
+            if (!at.Field.Hitters.TryGetValue(monster, out var set)) at.Field.Hitters[monster] = set = [];
             set.Add(s.Role.Id);
             if (at.Field.Fighters.TryGetValue(s.Role.Id, out var f)) f.Damage += amount;
         }
@@ -746,7 +746,7 @@ public sealed partial class GuildLeagueService
                     {
                         m.Boss = boss; field.Actors[boss] = (Kind.Courtyard, "boss:" + due);
                         boss.CustomData.Add(LongData(IsFlagKey, 1));
-                        await SendAllAsync(boss.Viewers.ToArray(), WorldCoreService.CustomChange,
+                        await SendAllAsync([.. boss.Viewers], WorldCoreService.CustomChange,
                             new CustomDataChange { EntityId = boss.Uid, CustomDatas = { boss.CustomData } });
                     }
                 }
@@ -772,7 +772,7 @@ public sealed partial class GuildLeagueService
         finally { field.Spawning = false; }
     }
 
-    private readonly Dictionary<(long, int), long[]> _subGroups = new();
+    private readonly Dictionary<(long, int), long[]> _subGroups = [];
     /// <summary>The point ids of a scene-editor group (m_kGroups itemIdList; its region centres are in m_kAllPoints).</summary>
     private long[] SubGroup(long sceneEntry, int groupId)
     {
@@ -787,7 +787,7 @@ public sealed partial class GuildLeagueService
                 if (doc.RootElement.TryGetProperty("m_kGroups", out var groups)
                     && groups.TryGetProperty(groupId.ToString(System.Globalization.CultureInfo.InvariantCulture), out var group)
                     && group.TryGetProperty("itemIdList", out var list))
-                    ids = list.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).ToArray();
+                    ids = [.. list.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0))];
             }
         }
         return _subGroups[(sceneEntry, groupId)] = ids;

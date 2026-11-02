@@ -16,7 +16,7 @@ public sealed partial class DungeonTests
     private const long LifecycleClearTask = 10103210, LifecycleBridgeTask = 10103220, LifecycleCampTask = 10104010;
     private const long LifecycleNextTask = 10104020, LifecycleOpening = 130161, LifecycleSuccess = 130162, LifecycleFailure = 130163;
     private const int LifecycleCaptain = 5300038, LifecycleCaptainTalk = 5300035, LifecycleCaptainOption = 5300039;
-    private readonly Dictionary<BotClient, long> _airshipStoryReturnScenes = new();
+    private readonly Dictionary<BotClient, long> _airshipStoryReturnScenes = [];
 
     // 前六步是受控 LAB 前置；保留實際計時閘，本案從船長正式對話選項起驗協定。
     [ClientDataTheory]

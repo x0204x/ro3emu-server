@@ -25,7 +25,7 @@ public static unsafe class SqliteMetrics
     /// <summary>Diagnostic aid: RO3EMU_SQL_CALLSITES="role/SELECT,guild/SELECT" samples every 20th such statement's
     /// game-code call site into the metrics (database.callSites). Off unless set; never on a measured run.</summary>
     private static readonly HashSet<string>? TracedOperations = Environment.GetEnvironmentVariable("RO3EMU_SQL_CALLSITES")
-        is { Length: > 0 } list ? list.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToHashSet() : null;
+        is { Length: > 0 } list ? [.. list.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)] : null;
     private static long _sampled;
 
     [DllImport("e_sqlite3", CallingConvention = CallingConvention.Cdecl)]
@@ -63,7 +63,7 @@ public static unsafe class SqliteMetrics
     private sealed class TraceState(ServerMetrics metrics)
     {
         public readonly ServerMetrics Metrics = metrics;
-        public readonly Dictionary<nint, Measurement> Active = new();
+        public readonly Dictionary<nint, Measurement> Active = [];
         public nint Current;
     }
     private record struct Measurement(string Operation, long Start, bool OnLoop, int Thread, bool Commit);

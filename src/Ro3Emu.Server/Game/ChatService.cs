@@ -57,7 +57,7 @@ public sealed partial class ChatService
     private const int SdkAppId = 20047690;
 
     /// <summary>FunctionConfig ids of the chat channels 1..11 (ChatChannelConfig _iType = 2400 + channel).</summary>
-    private static readonly long[] ChatFunctions = Enumerable.Range(2401, 11).Select(i => (long)i).ToArray();
+    private static readonly long[] ChatFunctions = [.. Enumerable.Range(2401, 11).Select(i => (long)i)];
 
     /// <summary>
     /// Character UI (enum_FunctionType): 26 Bag with 2601-2603 (2603 EquipInfo = the equipment window), 15 Card with
@@ -79,8 +79,8 @@ public sealed partial class ChatService
     private const uint ChatTypePrivate = 1;
 
     private readonly object _sync = new();
-    private readonly Dictionary<string, HashSet<GameSession>> _groups = new();
-    private readonly Dictionary<long, GameSession> _online = new();
+    private readonly Dictionary<string, HashSet<GameSession>> _groups = [];
+    private readonly Dictionary<long, GameSession> _online = [];
     private long _nextMessageId = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
     /// <summary>
@@ -93,9 +93,9 @@ public sealed partial class ChatService
     {
         List<(string Id, GameSession[] Recipients)> channels;
         lock (_sync)
-            channels = _groups.Where(x => x.Key.StartsWith("8_", StringComparison.Ordinal)
+            channels = [.. _groups.Where(x => x.Key.StartsWith("8_", StringComparison.Ordinal)
                     || x.Key.StartsWith("@TGS#_8_", StringComparison.Ordinal))
-                .Select(x => (x.Key, x.Value.ToArray())).ToList();
+                .Select(x => (x.Key, x.Value.ToArray()))];
         string extra = guildId == 0 ? "" : JsonSerializer.Serialize(new
         {
             templateId = preCreate ? 100 : 101,
@@ -166,7 +166,7 @@ public sealed partial class ChatService
         // lines already delivered to this session. Leaving/rejoining starts a fresh subscription.
         if (!newlyJoined) return;
         List<TextChatMessage> recent;
-        lock (_sync) recent = _recent.TryGetValue(HistoryKey(req.GroupId, session), out var lines) ? lines.ToList() : new();
+        lock (_sync) recent = _recent.TryGetValue(HistoryKey(req.GroupId, session), out var lines) ? [.. lines] : [];
         long runtime = session.WorldScene, generation = session.SceneGeneration;
         foreach (var line in recent)
         {
@@ -256,7 +256,7 @@ public sealed partial class ChatService
 
     /// <summary>Friend group removal revokes an already joined IM channel before the next message.</summary>
     public void FriendMembershipChanged(GameSession session, string formerGroupId) => Leave(session, $"5_{formerGroupId}");
-    private readonly Dictionary<(string Group, long Runtime), Queue<TextChatMessage>> _recent = new();
+    private readonly Dictionary<(string Group, long Runtime), Queue<TextChatMessage>> _recent = [];
 
     // LC_ChatHelper:5194-5225 uses runtime scene id, optionally with Tencent's prefix.
     // Scope legacy/shared channel spellings too; membership is never permission to listen across lines.
@@ -402,14 +402,14 @@ public sealed partial class ChatService
         {
             if (req.ChatType == ChatTypePrivate)
             {
-                recipients = new() { sender };
+                recipients = [sender];
                 if (long.TryParse(req.ReceiveId, out long target) && _online.TryGetValue(target, out var to) && to != sender) recipients.Add(to);
             }
             else
             {
-                recipients = _groups.TryGetValue(req.ReceiveId, out var members) ? members.ToList() : new();
+                recipients = _groups.TryGetValue(req.ReceiveId, out var members) ? [.. members] : [];
                 if (MapChannel(req.ReceiveId))
-                    recipients = recipients.Where(p => !p.SceneLoading && p.WorldScene == sender.WorldScene).ToList();
+                    recipients = [.. recipients.Where(p => !p.SceneLoading && p.WorldScene == sender.WorldScene)];
                 if (!recipients.Contains(sender)) recipients.Add(sender);
             }
         }
@@ -420,7 +420,7 @@ public sealed partial class ChatService
                 await DownAsync(sender, Cmd.SendText, new SendTextChatMessageResponse { ChatResult = false });
                 return;
             }
-            recipients = recipients.Where(p => GuildAllowed(p, req.ReceiveId)).ToList();
+            recipients = [.. recipients.Where(p => GuildAllowed(p, req.ReceiveId))];
         }
         if (req.ChatType != ChatTypePrivate && TeamChannelId(req.ReceiveId) != null)
             recipients = [.. recipients.Where(p => p == sender || GuildAllowed(p, req.ReceiveId))];
@@ -470,8 +470,7 @@ public sealed partial class ChatService
             }),
         });
         List<(string Id, GameSession[] Members)> channels;
-        lock (_sync) channels = _groups.Where(p => p.Key.StartsWith("@TGS#_8_", StringComparison.Ordinal) || p.Key.StartsWith("8_", StringComparison.Ordinal))
-            .Select(p => (p.Key, p.Value.ToArray())).ToList();
+        lock (_sync) channels = [.. _groups.Where(p => p.Key.StartsWith("@TGS#_8_", StringComparison.Ordinal) || p.Key.StartsWith("8_", StringComparison.Ordinal)).Select(p => (p.Key, p.Value.ToArray()))];
         foreach (var (id, recipients) in channels)
         {
             var message = new TextChatMessage
@@ -496,7 +495,7 @@ public sealed partial class ChatService
     {
         string group = $"2_{guildId}";
         GameSession[] recipients;
-        lock (_sync) recipients = _groups.TryGetValue(group, out var members) ? members.ToArray() : [];
+        lock (_sync) recipients = _groups.TryGetValue(group, out var members) ? [.. members] : [];
         var message = new TextChatMessage
         {
             MessageId = Interlocked.Increment(ref _nextMessageId).ToString(), SenderId = sender.Role!.Id.ToString(),
@@ -517,7 +516,7 @@ public sealed partial class ChatService
     {
         lock (_sync)
         {
-            if (!_groups.TryGetValue(group, out var members)) _groups[group] = members = new();
+            if (!_groups.TryGetValue(group, out var members)) _groups[group] = members = [];
             bool added = members.Add(session);
             session.ChatGroups.Add(group);
             return added;

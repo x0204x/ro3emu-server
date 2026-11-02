@@ -37,7 +37,7 @@ public sealed class BotClient : IAsyncDisposable
     private readonly ILogger _log;
     private readonly BotInbox _inbox = new();
     private readonly CancellationTokenSource _cts = new();
-    private readonly Dictionary<ulong, TaskCompletionSource<byte[]>> _pendingMicro = new();
+    private readonly Dictionary<ulong, TaskCompletionSource<byte[]>> _pendingMicro = [];
     private PhonestChannel? _micro;
     private PhonestChannel? _game;
     /// <summary>Connections the bot dropped or gave up (a refused reconnect, a half-open old socket): their frames
@@ -58,9 +58,23 @@ public sealed class BotClient : IAsyncDisposable
 
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(15);
 
+    /// <summary>
+    /// The operator token of the server's data dir (Http.OperatorToken.Read), for the helpers that raise the bot through
+    /// the local server's GM endpoint; without it they get that endpoint's 404.
+    /// </summary>
+    public string? OperatorToken { get; set; }
+
+    /// <summary>A client of the local server's operator tools (POST /ro3emu/gm and the rest), with <see cref="OperatorToken"/>.</summary>
+    public static HttpClient OperatorHttp(string httpBase, string? operatorToken, TimeSpan timeout)
+    {
+        var http = new HttpClient { BaseAddress = new Uri(httpBase), Timeout = timeout };
+        if (operatorToken != null) http.DefaultRequestHeaders.Add(Ro3Emu.Server.Http.OperatorToken.Header, operatorToken);
+        return http;
+    }
+
     public string? Account { get; private set; }
 
-    public List<RoleBaseInfo> Roles { get; } = new();
+    public List<RoleBaseInfo> Roles { get; } = [];
 
     /// <summary>All game messages and RPCs the server sent, in order.</summary>
     public BotInbox Inbox => _inbox;

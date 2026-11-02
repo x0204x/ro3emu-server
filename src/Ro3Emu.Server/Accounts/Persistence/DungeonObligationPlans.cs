@@ -32,8 +32,7 @@ internal sealed class DungeonObligationSchemaPlan : DbPlan
 
 internal sealed class DungeonObligationFreezePlan(IReadOnlyList<DungeonRewardObligation> rows) : DbPlan
 {
-    private readonly (DungeonRewardObligation Row, byte[] State)[] frozen = rows
-        .Select(row => (row, JsonSerializer.SerializeToUtf8Bytes(row))).ToArray();
+    private readonly (DungeonRewardObligation Row, byte[] State)[] frozen = [.. rows.Select(row => (row, JsonSerializer.SerializeToUtf8Bytes(row)))];
     internal override int Bytes => 256 + frozen.Sum(row => row.State.Length);
     internal override string Label => "dungeon-obligation/freeze";
     internal override object Execute(SqliteConnection db, SqliteTransaction tx)

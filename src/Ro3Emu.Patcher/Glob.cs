@@ -9,7 +9,7 @@ namespace Ro3Emu.Patcher;
 /// </summary>
 public sealed class GlobSet
 {
-    readonly List<Regex> _patterns = new();
+    readonly List<Regex> _patterns = [];
 
     public GlobSet(IEnumerable<string> patterns)
     {

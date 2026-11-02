@@ -16,7 +16,7 @@ public sealed class Deadlines : IGameTicker, IDisposable
     private readonly TimeProvider _clock;
     private readonly int _perTickLimit;
     private readonly Dictionary<GameSession, Owner> _owners = new(ReferenceEqualityComparer.Instance);
-    private readonly ConditionalWeakTable<GameSession, Detached> _detached = new();
+    private readonly ConditionalWeakTable<GameSession, Detached> _detached = [];
     private readonly Dictionary<string, Entry> _global = new(StringComparer.Ordinal);
     private readonly SortedSet<Entry> _due = new(EntryComparer.Instance);
     private long _nextGeneration;

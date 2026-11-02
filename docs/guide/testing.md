@@ -29,8 +29,9 @@ public async Task AClaimIsGrantedOnce()
 ```
 
 Or keep a class's own host setup and point it at the fixture: `o.GameDataDir = SyntheticData.Dir`. Always set
-`GameDataDir` (also for a bare `AccountStore`): without it the server looks for `data/config` in the folders above the
-test binaries and silently uses your client's export, so the test passes on your machine and not in CI.
+`GameDataDir`. A `ServerHost.Create` without it gets the fixture anyway (`TestHostDefaults`), but a bare `AccountStore`
+does not: it looks for `data/config` in the folders above the test binaries and silently uses your client's export,
+so the test passes on your machine and not in CI. A client-data test sets `GameDataDir` to the repository's `data/`.
 
 When a class has both kinds of tests, put the host and helpers in an abstract base with an abstract `GameDataDir` and
 derive one class per data set (see `GuildHuntingHost`, `MailTestsHost`, `AuctionTestsHost`).
@@ -63,7 +64,15 @@ RO3EMU_NO_CLIENT_DATA=1 dotnet test tests/Ro3Emu.Tests --logger "trx;LogFileName
 pwsh tools/test-summary.ps1 -Results TestResults   # server: N executed (0 failed), M skipped (M need client data)
 ```
 
-CI prints the same line per test project in its job summary.
+CI prints the same line per test project in its job summary, and it fails when a project executed fewer tests than
+`tests/test-floor.txt` says. That catches a change that silently skips tests. When you add tests, raise the number to
+what CI now prints. CI refuses a number lower than the one in the parent commit, so the floor only goes up.
+
+A failed run uploads its results as the `test-results-<os>` artifact: the `.trx` files, with every test's outcome and
+output. A test still running after 5 minutes counts as hung (`--blame-hang-timeout 5m`; 15 minutes on main's Linux run,
+because the test host takes minutes to write coverage as it exits). The run then stops, and the artifact also holds
+the list of the tests that were running and a dump of the test host. Main's Linux run measures
+coverage and prints it in the job summary, and the `coverage` artifact holds the Cobertura files.
 
 ## Snapshot tests
 

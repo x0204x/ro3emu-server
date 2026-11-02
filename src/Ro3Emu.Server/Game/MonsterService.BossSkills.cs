@@ -206,6 +206,23 @@ public sealed partial class MonsterService
         }
     }
 
+    /// <summary>
+    /// A raid trial's forced cast (DungeonService.RaidTrials: Drake's barrels while ghost ships come): the boss casts one
+    /// skill of its set at <paramref name="target"/> now, unless it is busy with another cast or the skill is not in its set.
+    /// Its target and threat stay as they are.
+    /// </summary>
+    internal bool CastBossSkillNow(MonsterUnit boss, GameSession target, int id)
+    {
+        long now = NowMs;
+        if (boss.Dead || boss.BusyUntilMs > now || boss.Template.Skills is not { } book) return false;
+        int index = Array.FindIndex(book.Skills, k => k.Id == id);
+        if (index < 0) return false;
+        var rt = boss.BossSkills ??= new BossSkillRuntime(book);
+        rt.Engaged = true;
+        StartBossSkill(boss, target, null, rt, index, now);
+        return true;
+    }
+
     /// <summary>The boss casts one skill of its set at the player (!boss cast, GmTargetCastSkill), engaging her.</summary>
     internal string GmCastBossSkill(MonsterUnit boss, GameSession s, int id)
     {

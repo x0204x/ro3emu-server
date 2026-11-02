@@ -19,9 +19,9 @@ public sealed partial class CharacterService
         EconomyVigorRewardEvidence? vigorEvidence = null)
     {
         EconomyAsset Asset(int entry) => new(IsCurrency(entry) ? EconomyAssetKind.Currency : EconomyAssetKind.Item, entry);
-        EconomyQuantity[] Quantities(IEnumerable<(int Entry, long Count)> values) => values
+        EconomyQuantity[] Quantities(IEnumerable<(int Entry, long Count)> values) => [.. values
             .Where(v => v.Entry is not (BaseExpItem or JobExpItem) && v.Count > 0)
-            .GroupBy(v => v.Entry).Select(g => new EconomyQuantity(Asset(g.Key), g.Sum(v => v.Count))).ToArray();
+            .GroupBy(v => v.Entry).Select(g => new EconomyQuantity(Asset(g.Key), g.Sum(v => v.Count)))];
         var original = Quantities(goods.Select(g => (g.Entry, (long)g.Count)));
         var inputs = Quantities(conversion.DecomposeItemInfo.Select(x => (x.Key, (long)x.Value)));
         var outputs = Quantities(conversion.DecomposeGainItemInfo.Values.SelectMany(x => x.ItemInfo).Select(x => (x.Key, (long)x.Value)));

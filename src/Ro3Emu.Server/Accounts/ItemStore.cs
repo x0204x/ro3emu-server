@@ -34,7 +34,7 @@ public sealed class InvItem
     public long ExpireTimeStamp { get => BindExpire; set => BindExpire = value; }
 
     /// <summary>ItemBaseInfo.enchantment, keyed by Enchantment row id.</summary>
-    public Dictionary<int, ItemEnchantment> Enchantments { get; set; } = new();
+    public Dictionary<int, ItemEnchantment> Enchantments { get; set; } = [];
 
     /// <summary>A detached candidate; publish its changed state only after its database transaction commits.</summary>
     internal InvItem Clone() => new()
@@ -49,7 +49,7 @@ public sealed class InvItem
 /// <summary>One persisted EnchantAttr: actual rolled stats and acquisition time, separate from itemInfos.</summary>
 public sealed class ItemEnchantment
 {
-    public Dictionary<int, int> Attr { get; set; } = new();
+    public Dictionary<int, int> Attr { get; set; } = [];
     public long GetTime { get; set; }
 }
 
@@ -92,7 +92,7 @@ public sealed class ItemStore(AccountStore accounts)
         while (r.Read())
         {
             long role = r.GetInt64(12);
-            if (!items.TryGetValue(role, out var list)) items[role] = list = new();
+            if (!items.TryGetValue(role, out var list)) items[role] = list = [];
             list.Add(Row(r));
         }
         return items;
@@ -103,7 +103,7 @@ public sealed class ItemStore(AccountStore accounts)
         Guid = r.GetInt64(0), Entry = r.GetInt32(1), Stack = r.GetInt32(2), Pack = r.GetInt32(3), Sort = r.GetInt64(4), Grid = r.GetInt32(5),
         Attrs = r.IsDBNull(6) ? null : System.Text.Json.JsonSerializer.Deserialize<Dictionary<int, long>>(r.GetString(6)),
         IsLocked = r.GetBoolean(7),
-        Enchantments = r.IsDBNull(8) ? new() : System.Text.Json.JsonSerializer.Deserialize<Dictionary<int, ItemEnchantment>>(r.GetString(8)) ?? new(),
+        Enchantments = r.IsDBNull(8) ? [] : System.Text.Json.JsonSerializer.Deserialize<Dictionary<int, ItemEnchantment>>(r.GetString(8)) ?? [],
         StringAttrs = r.IsDBNull(9) ? null : System.Text.Json.JsonSerializer.Deserialize<Dictionary<int, string>>(r.GetString(9)),
         BindType = r.GetInt32(10), BindExpire = r.GetInt64(11),
     };
@@ -134,13 +134,13 @@ public sealed class ItemStore(AccountStore accounts)
     public void SaveEquipment(long roleId, IEnumerable<InvItem> moved, byte[] plans)
     {
         _accounts.WriteLegacySync<int>(new ItemWritePlan(ItemWriteKind.Equipment, role: roleId,
-            items: moved.DistinctBy(i => i.Guid).ToArray(), plans: plans));
+            items: [.. moved.DistinctBy(i => i.Guid)], plans: plans));
     }
 
     /// <summary>Appraisal batches are all-or-nothing in SQLite as well as under the session lock.</summary>
     internal void UpdateBatch(IEnumerable<InvItem> items)
     {
-        _accounts.WriteLegacySync<long[]>(new ItemWritePlan(ItemWriteKind.UpdateBatch, items: items.ToArray()));
+        _accounts.WriteLegacySync<long[]>(new ItemWritePlan(ItemWriteKind.UpdateBatch, items: [.. items]));
     }
 
     /// <summary>

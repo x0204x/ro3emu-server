@@ -151,6 +151,81 @@ public sealed class ReceiptRetentionTests : IDisposable
         Assert.True(ReceiptBlobs.IsCompacted(Blobs(kill).Payload));
     }
 
+    private long Watermark()
+    {
+        using var db = _accounts.Open();
+        using var command = db.CreateCommand();
+        command.CommandText = "SELECT compacted_seq FROM economy_meta WHERE singleton=1";
+        return (long)command.ExecuteScalar()!;
+    }
+
+    private long LastSequence()
+    {
+        using var db = _accounts.Open();
+        using var command = db.CreateCommand();
+        command.CommandText = "SELECT MAX(commit_seq) FROM operation_receipt";
+        return (long)command.ExecuteScalar()!;
+    }
+
+    [Fact]
+    public async Task ASecondRunWalksNothingAndTheNextOneResumesFromTheWatermark()
+    {
+        string[] old = [Commit(10), Commit(20), Commit(30)];
+        Run("UPDATE operation_receipt SET recorded_utc_ms=1");
+        var retention = Retention();
+
+        Assert.Equal(3, await retention.CompactAsync()); // two batches of BatchSize 2
+        Assert.Equal(3, retention.LastPassed);
+        Assert.Equal(LastSequence(), Watermark());
+        Assert.All(old, op => Assert.True(ReceiptBlobs.IsCompacted(Blobs(op).Payload)));
+
+        // Right after: nothing behind the watermark is read again.
+        Assert.Equal(0, await retention.CompactAsync());
+        Assert.Equal(0, retention.LastPassed);
+
+        // A receipt not yet due holds the watermark; once due, the next run walks only it.
+        string fresh = Commit(40);
+        Assert.Equal(0, await retention.CompactAsync());
+        Assert.Equal(0, retention.LastPassed);
+        Run("UPDATE operation_receipt SET recorded_utc_ms=1 WHERE operation_id=$op", ("$op", fresh));
+        Assert.Equal(1, await retention.CompactAsync());
+        Assert.Equal(1, retention.LastPassed);
+        Assert.Equal(LastSequence(), Watermark());
+    }
+
+    /// <summary>A host that booted with a wrong clock: one receipt dated 2100 must not stop compaction for 74 years.</summary>
+    [Fact]
+    public async Task AReceiptDatedFarInTheFutureDoesNotStopCompactionAndKeepsItsData()
+    {
+        string misdated = Commit(10);
+        string[] old = [Commit(20), Commit(30)];
+        Run("UPDATE operation_receipt SET recorded_utc_ms=1");
+        Run("UPDATE operation_receipt SET recorded_utc_ms=$at WHERE operation_id=$op",
+            ("$at", new DateTimeOffset(2100, 1, 1, 0, 0, 0, TimeSpan.Zero).ToUnixTimeMilliseconds()), ("$op", misdated));
+        var retention = Retention();
+
+        Assert.Equal(2, await retention.CompactAsync());
+        Assert.Equal(3, retention.LastPassed);
+        Assert.Equal(LastSequence(), Watermark());
+        Assert.All(old, op => Assert.True(ReceiptBlobs.IsCompacted(Blobs(op).Payload)));
+        Assert.False(ReceiptBlobs.IsCompacted(Blobs(misdated).Payload));
+    }
+
+    /// <summary>A receipt only a little ahead of the clock is a short clock step: it waits, as a young receipt does.</summary>
+    [Fact]
+    public async Task AReceiptWithinADayAheadOfTheClockStillHoldsTheWatermark()
+    {
+        string ahead = Commit(10);
+        long before = Watermark();
+        Run("UPDATE operation_receipt SET recorded_utc_ms=$at WHERE operation_id=$op",
+            ("$at", DateTimeOffset.UtcNow.AddHours(6).ToUnixTimeMilliseconds()), ("$op", ahead));
+        var retention = Retention();
+
+        Assert.Equal(0, await retention.CompactAsync());
+        Assert.Equal(before, Watermark());
+        Assert.False(ReceiptBlobs.IsCompacted(Blobs(ahead).Payload));
+    }
+
     [Fact]
     public void BlobComparisonAcceptsTheCurrentLegacyOrCompactedIntentOnly()
     {

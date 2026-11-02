@@ -111,7 +111,7 @@ public sealed class LoadTestLineTests
         Assert.All(a.Zip(a.Skip(1), (x, y) => y - x), gap => Assert.InRange(gap, .5, 1));
         Assert.True(a[^1] < 600);
         var sync = WalkSchedule.DueSeconds(3, 2, "sync");
-        Assert.Equal(new[] { .001, .751, 1.501, 2.251 }, sync);
+        Assert.Equal([.001, .751, 1.501, 2.251], sync);
         Assert.Equal("realistic", RunnerOptions.Parse(["--scenario", "S2", "--server-local"]).WalkPhase);
         Assert.Throws<ArgumentException>(() => RunnerOptions.Parse(["--scenario", "S2", "--server-local", "--walk-phase", "bad"]));
     }

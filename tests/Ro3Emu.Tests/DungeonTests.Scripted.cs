@@ -15,8 +15,8 @@ namespace Ro3Emu.Tests;
 /// </summary>
 public sealed partial class DungeonTests
 {
-    public static TheoryData<long> ScriptedScenes() => new(new ReconstructedDungeons(
-        Options.Create(new ServerOptions())).AllScripted.Select(s => s.Scene).Order());
+    public static TheoryData<long> ScriptedScenes() => [.. new ReconstructedDungeons(
+        Options.Create(new ServerOptions())).AllScripted.Select(s => s.Scene).Order()];
 
     [ClientDataTheory]
     [MemberData(nameof(ScriptedScenes))]
@@ -97,7 +97,7 @@ public sealed partial class DungeonTests
         Assert.Contains(clientShips, ship => MonsterService.Distance(ship.MovementInfo.Pos.X,
             ship.MovementInfo.Pos.Z, Session(alice).Position.X, Session(alice).Position.Z) > World.ViewRadius);
         // The HP fixture follows client-received identities; target discovery must work from the actual cannon.
-        ships = clientShips.Select(ship => ships.Single(monster => monster.Uid == (long)ship.Uuid)).ToArray();
+        ships = [.. clientShips.Select(ship => ships.Single(monster => monster.Uid == (long)ship.Uuid))];
         Assert.DoesNotContain(alice.Inbox.Snapshot().Where(e => e.IsGame(CombatService.SkillHit))
             .Select(e => SkillHitInfo.Parser.ParseFrom(e.Body)), h => h.SkillId == 5365001);
 
@@ -261,6 +261,14 @@ public sealed partial class DungeonTests
         await Next(alice, DungeonService.Event, DungeonEventNotify.Parser, e => e.CliFuncname == "PerformUnitMove");
         await StoryMovesOn(alice, 10104290, 10104300);
         Assert.DoesNotContain(Service<World>().AllUnits(), u => u.InstanceId == instance);
+
+        // 原服以 70010 自動串至狄尼羅場景，不會回覆未曾提出的 30400 進入請求。
+        // Load 同時核對切圖、載入確認、角色同步與新副本資訊，避免只驗任務結算。
+        long nextInstance = await Load(alice, 1000301);
+        Assert.NotEqual(instance, nextInstance);
+        Assert.Equal(1000301, Session(alice).SceneEntry);
+        Assert.Equal(nextInstance, Session(alice).InstanceId);
+        await Stage(alice, 1, quest: 1);
     }
 
     // Issue #181: a player inside the vortex's region 20 before the client's auto interaction came had step 2 done, the
@@ -287,6 +295,8 @@ public sealed partial class DungeonTests
         Assert.Equal(0, await Interact(alice, vortex, 5300030));
     }
 
+    // 上游推定的首次坐車／末次 guide36 傳送已由原服擷取測試取代；
+    // 見 DungeonTests.AntStory、AntCarry、AntSurfaceWalk，勿倒置 5300008／5300005。
     [ClientDataFact]
     public async Task LouiesGamePlaysItsStoriesAndOnlyKatiesBellWins()
     {
@@ -523,6 +533,37 @@ public sealed partial class DungeonTests
             step => Assert.Null(step.React)); // a scene without reactions keeps none
     }
 
+    // The Ant Queen's Nest 1000301 starts the player and Bobo outside its server nav (303 cells, far to the east). With the
+    // walk check enforced the destination was tested first, so every step there was snapped back and the player who
+    // arrived could not move at all.
+    [ClientDataFact]
+    public async Task AWalkOffTheScenesNavIsNotSnappedBack()
+    {
+        const long scene = 1000301;
+        var options = Service<IOptions<ServerOptions>>().Value;
+        options.WalkCheck = "enforce";
+        try
+        {
+            await using var alice = await InWorld("Alice");
+            await Gm(alice, "!quest accept 10104300"); // Explore the Ant Queen's Nest: [101018, 1000301, 1]
+            Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
+            await Load(alice, scene);
+            var from = await Service<GameLoop>().InvokeAsync(() => Task.FromResult(Session(alice).Position));
+            Assert.Null(Service<WorldData>().Map(scene)!.Nav!.NearestWalkable(from.X, from.Z, from.Y));
+            await Task.Delay(600); // the walk budget of the arrival
+            float x = from.X + 1.5f, z = from.Z;
+            await alice.SendGameAsync(MsgId.Walk, new WalkReq { Pos = new Vec3 { X = x, Y = from.Y, Z = z }, BStop = true, SpeedRate = 1 });
+            for (int i = 0; i < 100; i++)
+            {
+                var at = await Service<GameLoop>().InvokeAsync(() => Task.FromResult(Session(alice).Position));
+                if (Math.Abs(at.X - x) < 0.01f && Math.Abs(at.Z - z) < 0.01f) return;
+                await Task.Delay(20);
+            }
+            Assert.Fail("the walk off the nav was snapped back");
+        }
+        finally { options.WalkCheck = "log"; }
+    }
+
     [ClientDataFact]
     public void ServerRegionsUseTheClientsCircleAndRectangleFootprints()
     {
@@ -600,7 +641,7 @@ public sealed partial class DungeonTests
         {
             shown = await Service<GameLoop>().InvokeAsync(() => Task.FromResult(
                 Session(bot).DungeonAttempt?.SceneActors.ToArray() ?? []));
-            if (ready(shown)) return shown.Where(a => match == null || match(a)).ToArray();
+            if (ready(shown)) return [.. shown.Where(a => match == null || match(a))];
             await Task.Delay(20);
         }
         throw new TimeoutException($"The scene actors did not reach the expected state; shown: {string.Join(", ", shown.Select(a => $"{a.NpcId}@{a.Point}[{string.Join('/', a.Buffs.Select(b => b.ConfigId))}]"))}");

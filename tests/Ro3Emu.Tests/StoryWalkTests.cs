@@ -69,7 +69,7 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
     private string _gameData = "";
     private Dictionary<long, JsonElement> _tasks = null!;
     private BotClient _bot = null!;
-    private readonly List<Row> _rows = new();
+    private readonly List<Row> _rows = [];
     private readonly StoryWalkDiagnostics _diagnostics = new();
     private long _currentTask;
     private string _currentTargets = "";
@@ -79,11 +79,7 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
     /// Blockers that stay open on purpose, with the reason (content the client does not ship, or a client-side matter).
     /// The walk still reports them; it fails on any blocker not listed here.
     /// </summary>
-    private static readonly Dictionary<long, string> KnownOpen = new()
-    {
-        // None at present. The scripted scenes without a fight (1000201, 1000301, 3120402) are reconstructed
-        // (Reconstructed/scripted-scenes.json) and played through the events their client sends (ClearDungeonAsync).
-    };
+    private static readonly Dictionary<long, string> KnownOpen = [];
 
     private sealed record Row(long Task, string Name, string Targets, string Result, string Detail);
 
@@ -126,7 +122,7 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
     // ---- the chain ----
 
     private long[] Pre(long id) => _tasks[id].TryGetProperty("_kPreTask", out var p) && p.ValueKind == JsonValueKind.Array
-        ? p.EnumerateArray().Select(e => e.GetInt64()).ToArray() : [];
+        ? [.. p.EnumerateArray().Select(e => e.GetInt64())] : [];
 
     /// <summary>10101010 and then, task by task, the 101xxxxx child whose _kPreTask is the previous one.</summary>
     private List<long> MainChain()
@@ -134,7 +130,7 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
         var children = new Dictionary<long, List<long>>();
         foreach (var id in _tasks.Keys)
             foreach (var pre in Pre(id))
-                (children.TryGetValue(pre, out var list) ? list : children[pre] = new()).Add(id);
+                (children.TryGetValue(pre, out var list) ? list : children[pre] = []).Add(id);
         var chain = new List<long>();
         for (long id = TaskService.FirstTask; id != 0;)
         {
@@ -144,15 +140,15 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
         return chain;
     }
 
-    private long[][] Targets(long id) => _tasks[id].GetProperty("_kProgressTarget").EnumerateArray()
+    private long[][] Targets(long id) => [.. _tasks[id].GetProperty("_kProgressTarget").EnumerateArray()
         .Select(t => t.EnumerateArray().Select(e => e.ValueKind == JsonValueKind.Number ? e.GetInt64() : long.Parse(e.GetString()!, CultureInfo.InvariantCulture)).ToArray())
-        .Where(t => t.Length > 0).ToArray();
+        .Where(t => t.Length > 0)];
 
     private string[][] Actions(long id, string field) => _tasks[id].TryGetProperty(field, out var a) && a.ValueKind == JsonValueKind.Array
-        ? a.EnumerateArray().Select(x => x.EnumerateArray().Select(v => v.ValueKind == JsonValueKind.String ? v.GetString()! : v.ToString()).ToArray()).ToArray() : [];
+        ? [.. a.EnumerateArray().Select(x => x.EnumerateArray().Select(v => v.ValueKind == JsonValueKind.String ? v.GetString()! : v.ToString()).ToArray())] : [];
 
     private long[] Longs(long id, string field) => _tasks[id].TryGetProperty(field, out var a) && a.ValueKind == JsonValueKind.Array
-        ? a.EnumerateArray().Select(e => e.GetInt64()).ToArray() : [];
+        ? [.. a.EnumerateArray().Select(e => e.GetInt64())] : [];
 
     private string Name(long id) => Service<GameData>().TextOf(_tasks[id], "_iName");
 
@@ -331,7 +327,7 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
     private sealed class StoryWalkDiagnostics : ILoggerProvider
     {
         private readonly System.Collections.Concurrent.ConcurrentQueue<string> _lines = new();
-        public string[] Lines => _lines.ToArray();
+        public string[] Lines => [.. _lines];
         public ILogger CreateLogger(string categoryName) => new Writer(this, categoryName);
         public void Dispose() { }
         private sealed class Writer(StoryWalkDiagnostics owner, string category) : ILogger
@@ -378,7 +374,7 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
                     if (reply.Result != 0) detail.Add($"31214 refused {reply.Result}");
                     break;
                 case 104014 or 104002: // kill [npc..., n]
-                    await KillTargetAsync(task, i, t[1..^1].Select(n => (int)n).ToHashSet(), detail);
+                    await KillTargetAsync(task, i, [.. t[1..^1].Select(n => (int)n)], detail);
                     break;
                 case 310001: // kill [n, map]: any monster on that map
                     await KillOnMapAsync(task, i, t[2], detail);
@@ -469,7 +465,7 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
     private async Task Gm(string line)
     {
         using var http = new HttpClient();
-        (await http.PostAsync($"{_http}/ro3emu/gm?account=walker", new StringContent(line))).EnsureSuccessStatusCode();
+        (await http.PostAsync($"{_http}/ro3emu/gm?account=walker", Operator.Command(line))).EnsureSuccessStatusCode();
     }
 
     private async Task<T> RequestAsync<T>(uint id, IMessage body, MessageParser<T> parser) where T : IMessage<T>
@@ -614,7 +610,7 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
         detail.Add($"{kills} kills (fast)");
     }
 
-    private readonly HashSet<long> _unkillable = new();
+    private readonly HashSet<long> _unkillable = [];
     private string _killProblem = "";
 
     /// <summary>
@@ -1098,7 +1094,7 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
     /// Grind stand-in for materials: what a recipe or upgrade costs and the bag lacks is supplied by !item, counted per
     /// item in the report (a real player farms or buys it).
     /// </summary>
-    private readonly Dictionary<long, long> _materialGrind = new();
+    private readonly Dictionary<long, long> _materialGrind = [];
 
     private async Task SupplyAsync(IEnumerable<(long Id, double Value)> cost)
     {
@@ -1264,7 +1260,7 @@ public sealed class StoryWalkTests(ITestOutputHelper output) : IAsyncLifetime
     // ---- data ----
 
     private long? _where;
-    private readonly Dictionary<long, HashSet<long>> _reach = new();
+    private readonly Dictionary<long, HashSet<long>> _reach = [];
 
     /// <summary>Maps reachable on foot from a map: portals (scene-editor NpcTag 26) and Kafras (tag 28) to any Capra map.</summary>
     private HashSet<long> Reachable(long from)

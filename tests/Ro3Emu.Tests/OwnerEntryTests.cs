@@ -52,7 +52,7 @@ public sealed class OwnerEntryTests : IAsyncLifetime
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         using var http = new HttpClient();
         Task contender;
-        if (origin == "GM") contender = http.PostAsync(_url + "/ro3emu/gm?account=owneralice", new StringContent("!item 1 7"));
+        if (origin == "GM") contender = http.PostAsync(_url + "/ro3emu/gm?account=owneralice", Operator.Command("!item 1 7"));
         else if (origin == "micro/MailService") contender = bot.MicroPositionalAsync("MailService", "setMailHaveRead", [role.ToString(), mail]);
         else
         {

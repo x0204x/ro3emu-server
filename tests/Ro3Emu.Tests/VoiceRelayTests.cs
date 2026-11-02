@@ -30,6 +30,7 @@ public sealed class VoiceRelayTests : IAsyncLifetime
         _app = ServerHost.Create([], o =>
         {
             o.DataDir = _dataDir;
+            o.GameDataDir = SyntheticData.Dir;
             o.HttpPort = httpPort;
             o.MicroGatePort = microPort;
             o.GameGatePort = gamePort;
@@ -185,7 +186,7 @@ public sealed class VoiceRelayTests : IAsyncLifetime
             Assert.Equal(VoiceDown.Audio, type);
             Assert.Equal(aliceRole, BitConverter.ToInt64(payload));
             Assert.Equal(seq, BitConverter.ToUInt16(payload, 8));
-            Assert.Equal(new byte[] { (byte)seq, (byte)seq, (byte)seq }, payload[10..]);
+            Assert.Equal([(byte)seq, (byte)seq, (byte)seq], payload[10..]);
         }
         // Alice never hears her own voice.
         await aliceVoice.ExpectNoneAsync((t, _) => t == VoiceDown.Audio, TimeSpan.FromMilliseconds(300));
@@ -641,6 +642,7 @@ public sealed class VoiceRelayTests : IAsyncLifetime
         var off = ServerHost.Create([], o =>
         {
             o.DataDir = dataDir;
+            o.GameDataDir = SyntheticData.Dir;
             o.HttpPort = httpPort;
             o.MicroGatePort = microPort;
             o.GameGatePort = gamePort;

@@ -28,7 +28,7 @@ internal sealed class PanelSignUps(PanelOptions options, TimeProvider clock)
     {
         var now = clock.GetUtcNow();
         int perAddress = options.SignUpsPerAddressPerDay, perHour = options.SignUpsPerHour;
-        var network = perAddress > 0 && client != null ? Network(client) : null;
+        var network = perAddress > 0 && client != null ? ClientAddresses.Network(client) : null;
         slot = new(network, now, perHour > 0);
         lock (_sync)
         {
@@ -56,15 +56,5 @@ internal sealed class PanelSignUps(PanelOptions options, TimeProvider clock)
             if (slot.Network != null && _byNetwork.TryGetValue(slot.Network, out var times)) times.Remove(slot.At);
             if (slot.Hourly) _lastHour.Remove(slot.At);
         }
-    }
-
-    /// <summary>An IPv4 address itself; an IPv6 address's /64 network.</summary>
-    internal static IPAddress Network(IPAddress address)
-    {
-        if (address.IsIPv4MappedToIPv6) return address.MapToIPv4();
-        if (address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetworkV6) return address;
-        byte[] bytes = address.GetAddressBytes();
-        Array.Clear(bytes, 8, 8);
-        return new IPAddress(bytes);
     }
 }

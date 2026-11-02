@@ -412,7 +412,7 @@ public sealed partial class TerritoryWarsTests : IAsyncLifetime
             JsonSerializer.Deserialize<TerritoryWarsService.RoleState>(Service<RoleStore>().LoadTerritoryWars(Session(player).Role!.Id)!)!.Epoch).ToArray();
         Assert.Single(projectionEpochs, epoch => epoch == currentEpoch);
         await OnLoop(wars.ReconcileAsync);
-        Assert.All(new[] { bot, peer }, player => Assert.Equal(currentEpoch,
+        Assert.All([bot, peer], player => Assert.Equal(currentEpoch,
             JsonSerializer.Deserialize<TerritoryWarsService.RoleState>(Service<RoleStore>().LoadTerritoryWars(Session(player).Role!.Id)!)!.Epoch));
         await OnLoop(async () => { Service<SeasonService>().SetPlayBook(101); await wars.ReconcileAsync(); });
         await OnLoop(async () => { Service<SeasonService>().SetPlayBook(102); await wars.ReconcileAsync(); });

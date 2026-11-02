@@ -21,7 +21,7 @@ public sealed partial class ActivityAdventuresTests : IAsyncLifetime
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);
     private WebApplication _app = null!;
     private string _http = "";
-    private readonly Dictionary<string, BotClient> _clients = new();
+    private readonly Dictionary<string, BotClient> _clients = [];
     private readonly FixedClock _clock = new();
 
     private sealed class FixedClock : TimeProvider
@@ -77,7 +77,7 @@ public sealed partial class ActivityAdventuresTests : IAsyncLifetime
     private async Task Gm(string account, string line)
     {
         using var client = new HttpClient();
-        var response = await client.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(line));
+        var response = await client.PostAsync($"{_http}/ro3emu/gm?account={account}", Operator.Command(line));
         response.EnsureSuccessStatusCode();
         if (line.StartsWith("!warp ", StringComparison.Ordinal))
         {
@@ -646,7 +646,7 @@ public sealed partial class ActivityAdventuresTests : IAsyncLifetime
         await Gm("alice", $"!jump {x} {z}");
         await alice.SendGameAsync(SceneService.NpcInteraction, new NpcInteractionReq
         {
-            NpcUid = SceneService.TreasureUidPrefix | session.Role!.Id, InteractionId = 4,
+            NpcUid = SceneService.TreasureUidPrefix | session.Role!.Id, InteractionId = 21070002,
         });
         var interaction = await Next(alice, SceneService.NpcInteraction, NpcInteractionRsp.Parser);
         Assert.Equal(0, interaction.Result);
@@ -655,7 +655,7 @@ public sealed partial class ActivityAdventuresTests : IAsyncLifetime
 
         await alice.SendGameAsync(SceneService.NpcInteraction, new NpcInteractionReq
         {
-            NpcUid = SceneService.TreasureUidPrefix | session.Role.Id, InteractionId = 4,
+            NpcUid = SceneService.TreasureUidPrefix | session.Role.Id, InteractionId = 21070002,
         });
         Assert.NotEqual(0, (await Next(alice, SceneService.NpcInteraction, NpcInteractionRsp.Parser,
             i => i.Result != 0)).Result);
@@ -708,7 +708,8 @@ public sealed partial class ActivityAdventuresTests : IAsyncLifetime
         await Gm("bob", jump);
         await alice.SendGameAsync(SceneService.NpcInteraction, new NpcInteractionReq
         {
-            NpcUid = SceneService.TreasureUidPrefix | digger.Role!.Id, InteractionId = 4,
+            // NPCConfig 21070002 的挖寶互動；4 是其他技能互動，無法進入尋寶流程。
+            NpcUid = SceneService.TreasureUidPrefix | digger.Role!.Id, InteractionId = 21070002,
         });
         Assert.Equal(0, (await Next(alice, SceneService.NpcInteraction, NpcInteractionRsp.Parser)).Result);
         Assert.Equal(ETreasureEventNum.Monster, (await Next(alice, 83251, TreasureEventNotify.Parser)).Type);
@@ -756,7 +757,8 @@ public sealed partial class ActivityAdventuresTests : IAsyncLifetime
         await Next(alice, MsgId.EntitySelf, EntitySelf.Parser);
         await alice.SendGameAsync(SceneService.NpcInteraction, new NpcInteractionReq
         {
-            NpcUid = (long)treasureUid, InteractionId = 4,
+            // 使用正確互動，確實驗證私人副本防線，而非因錯誤互動落入靜態 NPC 搜尋。
+            NpcUid = (long)treasureUid, InteractionId = 21070002,
         });
         Assert.Equal(ErrorCodes.NpcMissing, (await Next(alice, SceneService.NpcInteraction, NpcInteractionRsp.Parser)).Result);
         await loop.InvokeAsync(async () =>
@@ -1249,7 +1251,7 @@ public sealed partial class ActivityAdventuresTests : IAsyncLifetime
         await Gm("alice", $"!jump {x} {z}");
         await alice.SendGameAsync(SceneService.NpcInteraction, new NpcInteractionReq
         {
-            NpcUid = SceneService.TreasureUidPrefix | session.Role!.Id, InteractionId = 4,
+            NpcUid = SceneService.TreasureUidPrefix | session.Role!.Id, InteractionId = 21070002,
         });
         Assert.Equal(0, (await Next(alice, SceneService.NpcInteraction, NpcInteractionRsp.Parser)).Result);
         await Next(alice, 83251, TreasureEventNotify.Parser);

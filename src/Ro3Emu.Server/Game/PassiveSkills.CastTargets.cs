@@ -23,7 +23,7 @@ public sealed partial class PassiveSkills
         var player = action.PublishedPlayerHits.FirstOrDefault(p => p.TargetId == action.Request.TargetId);
         if (monster == null && player == null)
         {
-            monster = processed.FirstOrDefault();
+            monster = processed.Count > 0 ? processed[0] : null;
             if (monster == null) player = action.PublishedPlayerHits.FirstOrDefault();
         }
         bool TargetCurrent() => Current() && (monster != null

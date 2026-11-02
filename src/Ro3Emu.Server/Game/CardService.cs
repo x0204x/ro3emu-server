@@ -24,7 +24,7 @@ public sealed partial class CardService
 
     private const int PlanCount = 5; // (inferred) PublicParamConfig.SchemeNum; card plans have no separate count field.
     private const int NameMax = 8; // (inferred) PublicParamConfig.SchemeNameNumMax shared with scheme UI.
-    public List<Func<GameSession, Task>> CollectionChanged { get; } = new();
+    public List<Func<GameSession, Task>> CollectionChanged { get; } = [];
     /// <summary>Required quest continuation, installed by TaskService. Unlike optional observers it
     /// retains durable debt until the task pass has committed.</summary>
     internal Func<GameSession, OwnerContext, Task<bool>>? RequiredCollectionRefresh { get; set; }
@@ -420,7 +420,7 @@ public sealed partial class CardService
         {
             var plans = session.CardPlans!.Clone();
             plans.StoragePlans[req.TargetIndex].PlanName = req.Name;
-            await CommitCardStateAsync(session, session.Items.Select(i => i.Clone()).ToList(), plans,
+            await CommitCardStateAsync(session, [.. session.Items.Select(i => i.Clone())], plans,
                 "cd13a/card-rename", new { req.TargetIndex, req.Name });
             await CharacterService.SyncAsync(session, StorageHoleSync, plans.Clone());
         }
@@ -452,9 +452,9 @@ public sealed partial class CardService
     private static int MissingTarget(int sourceType) => sourceType is 2 or 3 ? ErrorCodes.FeatureUnavailable
         : sourceType is 1 or 4 ? ErrorCodes.ItemMissing : ErrorCodes.Parameter; // (inferred) legacy carrier refusal.
 
-    private static List<(int Entry, long Count)> Cost(JsonElement row, string name) => GameData.Pairs(row, name)
+    private static List<(int Entry, long Count)> Cost(JsonElement row, string name) => [.. GameData.Pairs(row, name)
         .Select(p => ((int)p.Item1, (long)p.Item2)).Where(p => p.Item1 > 0 && p.Item2 > 0)
-        .GroupBy(p => p.Item1).Select(g => (Entry: g.Key, Count: g.Sum(p => p.Item2))).ToList();
+        .GroupBy(p => p.Item1).Select(g => (Entry: g.Key, Count: g.Sum(p => p.Item2)))];
 
     private readonly record struct PaidCost(int Entry, long Count, int BindType, long BindExpire, int CardType);
 
@@ -495,7 +495,7 @@ public sealed partial class CardService
 
     private static int RecordCost(InvItem target, IEnumerable<PaidCost> cost, int start, int end)
     {
-        var ledger = target.StringAttrs ??= new();
+        var ledger = target.StringAttrs ??= [];
         foreach (var (entry, count, bind, expire, type) in cost)
         {
             int slot = 0;
@@ -549,7 +549,7 @@ public sealed partial class CardService
             {
                 var target = staged.Single(i => i.Guid == card!.Guid);
                 StageSingleTarget(staged, target);
-                target.Attrs ??= new();
+                target.Attrs ??= [];
                 target.Attrs[501] = level + 1;
                 if (RecordCost(target, payment.Ledger, 510, 513) != 0)
                     throw new InvalidOperationException("Validated card level ledger changed during staging.");
@@ -588,7 +588,7 @@ public sealed partial class CardService
         if (error == 0 && session.Library != null)
         {
             var starred = card!.Clone();
-            starred.Attrs ??= new();
+            starred.Attrs ??= [];
             starred.Attrs[502] = tier + 1;
             var library = session.Library.Clone();
             var before = library.Cards.GetValueOrDefault(card.Entry);
@@ -605,14 +605,14 @@ public sealed partial class CardService
                 if (nextPlans != null) builder.RoleBlob(session.Role!.Id, "card_plans", nextPlans.ToByteArray());
                 if (nextLibrary != null) builder.RoleBlob(session.Role!.Id, "library", nextLibrary.ToByteArray());
                 builder.WithEconomy(_character.FamilyEconomy(session, "cd13a/card-star",
-                    economyCosts, tierGains.ToArray(),
+                    economyCosts, [.. tierGains],
                     new { Card = card!.Entry, Guid = card!.Guid, NewStar = tier + 1 }));
             },
             stageItems: staged =>
             {
                 var target = staged.Single(i => i.Guid == card!.Guid);
                 StageSingleTarget(staged, target);
-                target.Attrs ??= new();
+                target.Attrs ??= [];
                 target.Attrs[502] = tier + 1;
                 if (RecordCost(target, payment.Ledger, 520, 529) != 0)
                     throw new InvalidOperationException("Validated card star ledger changed during staging.");
@@ -650,7 +650,7 @@ public sealed partial class CardService
     private static List<PaidCost> ReadLedger(InvItem card)
     {
         var result = new List<PaidCost>();
-        foreach (var (key, text) in card.StringAttrs ?? new())
+        foreach (var (key, text) in card.StringAttrs ?? [])
         {
             if (key is < 510 or > 529 || key is > 513 and < 520) continue;
             var parts = text.Split('|');
@@ -685,8 +685,7 @@ public sealed partial class CardService
         {
             try
             {
-                grouped = refund.GroupBy(x => (x.Entry, x.BindType, x.BindExpire, x.CardType))
-                    .Select(g => (g.Key, Count: g.Sum(x => x.Count))).ToList();
+                grouped = [.. refund.GroupBy(x => (x.Entry, x.BindType, x.BindExpire, x.CardType)).Select(g => (g.Key, Count: g.Sum(x => x.Count)))];
             }
             catch (OverflowException) { error = ErrorCodes.Parameter; }
         }
@@ -699,13 +698,13 @@ public sealed partial class CardService
         if (error == 0 && (granted = await _character.ExchangeLockedAsync(session, fee, [], popup: false, sync: false,
             reservedGuid: card!.Guid, attributedGoods: goods,
             persist: builder => builder.WithEconomy(_character.FamilyEconomy(session, "cd13a/card-revert",
-                fee, goods.Select(g => (g.Entry, g.Count)).ToArray(),
+                fee, [.. goods.Select(g => (g.Entry, g.Count))],
                 new { Card = card!.Entry, Guid = card!.Guid, Refunded = goods.Select(g => new { g.Entry, g.Count, g.BindType, g.BindExpire, g.CardType }).ToArray() })),
             stageAfterGoods: staged =>
             {
                 var target = staged.Single(i => i.Guid == card!.Guid);
                 StageSingleTarget(staged, target);
-                target.Attrs ??= new();
+                target.Attrs ??= [];
                 target.Attrs[501] = 0;
                 target.Attrs[502] = 0;
                 if (target.StringAttrs != null)
@@ -788,7 +787,7 @@ public sealed partial class CardService
                 if (newCards.Length == 0) { builder.RoleBlob(role, "library", next.ToByteArray()); return; } // a Codex kill only
                 byte[]? old = _roles.ReadTaskFollowup(builder, role);
                 var pending = old is { Length: > 0 }
-                    ? JsonSerializer.Deserialize<HashSet<string>>(old) ?? [] : new HashSet<string>();
+                    ? JsonSerializer.Deserialize<HashSet<string>>(old) ?? [] : [];
                 foreach (long card in newCards) pending.Add($"card-sight/{role}/{epoch}/{card}");
                 builder.RoleBlob(role, "library", next.ToByteArray());
                 builder.RoleBlob(role, "task_followup", JsonSerializer.SerializeToUtf8Bytes(pending));

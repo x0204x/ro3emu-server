@@ -388,7 +388,7 @@ internal sealed class ProgressionEconomyTransactionPlan(RoleItemPlan child, Econ
             string? opening = before.GetValueOrDefault(group.Key)?.Fingerprint;
             string? closing = after.GetValueOrDefault(group.Key)?.Fingerprint;
             string? intermediate = opening ?? closing;
-            int[] numbers = group.Select(x => x.index).Order().ToArray();
+            int[] numbers = [.. group.Select(x => x.index).Order()];
             for (int i = 0; i < numbers.Length; i++)
             {
                 int number = numbers[i];

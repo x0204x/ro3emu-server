@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 
 namespace Ro3Emu.Server.Game;
 
@@ -28,9 +29,9 @@ public sealed partial class CombatService
     internal static int ChantMilliseconds(GameData data, JsonElement row, StatSheet stats)
     {
         double reduction = VariableChantReduction(data, stats[AttributeId.CastSpeed]);
-        double variable = Math.Max(0, GameData.Int(row, "_iChantVar") + stats[AttributeId.VarChant])
+        double variable = Math.Max(0, new SkillConfig(row).ChantVar + stats[AttributeId.VarChant])
             * Math.Max(0, 1 + stats[AttributeId.PerVarChant] / 10000.0 - reduction);
-        double fixedTime = Math.Max(0, GameData.Int(row, "_iChantFix") + stats[AttributeId.FixChant])
+        double fixedTime = Math.Max(0, new SkillConfig(row).ChantFix + stats[AttributeId.FixChant])
             * Math.Max(0, 1 + stats[AttributeId.PerFixChant] / 10000.0);
         return (int)Math.Clamp(Math.Floor(variable + fixedTime), 0, int.MaxValue);
     }

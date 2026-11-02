@@ -53,7 +53,7 @@ public sealed class EquipmentRefineEconomyTests : IAsyncLifetime
     private async Task Gm(string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync(_http + "/ro3emu/gm?account=alice", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync(_http + "/ro3emu/gm?account=alice", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     private static async Task<T> Next<T>(BotClient bot, uint id, Google.Protobuf.MessageParser<T> parser)

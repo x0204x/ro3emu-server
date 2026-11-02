@@ -14,8 +14,8 @@ public sealed partial class AccountStore
 {
     internal static readonly IReadOnlySet<string> StagedColumns = new HashSet<string>(StringComparer.Ordinal)
         { "equip_plans", "mounts", "wild_afk", "daily", "wardrobe", "tasks", "task_runtime", "card_plans", "trade_info", "pets",
-          "totems", "totem_refine_epoch", "achievements", "achievement_runtime" };
-    private readonly Dictionary<long, Dictionary<string, byte[]>> _staged = new();
+          "totems", "totem_refine_epoch", "achievements", "achievement_runtime", "job_exp_catchup" };
+    private readonly Dictionary<long, Dictionary<string, byte[]>> _staged = [];
 
     internal void BeginStaging(long role)
     {

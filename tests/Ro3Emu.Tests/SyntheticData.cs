@@ -66,7 +66,7 @@ public sealed class SyntheticHost : IAsyncDisposable
     public T Service<T>() where T : notnull => App.Services.GetRequiredService<T>();
 
     /// <summary>A bot that has not logged in yet.</summary>
-    public BotClient NewBot() => new(Http, File.ReadAllText(Path.Combine(DataDir, "gate_rsa_public.pem")));
+    public BotClient NewBot() => new(Http, File.ReadAllText(Path.Combine(DataDir, "gate_rsa_public.pem"))) { OperatorToken = Operator.Token };
 
     /// <summary>A bot logged in as <paramref name="name"/> (lower case account, password "pw") with a role in the world:
     /// a new role, or with <paramref name="create"/> false the account's only one.</summary>

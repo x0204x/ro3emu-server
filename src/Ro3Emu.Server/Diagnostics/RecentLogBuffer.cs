@@ -48,8 +48,8 @@ public sealed class RecentLogBuffer(TimeProvider clock) : ILoggerProvider
             }
         }
         found.Reverse();
-        return found.Select(l => string.Create(CultureInfo.InvariantCulture,
-            $"{l.Time:HH:mm:ss.fff} {Short(l.Level)} {l.Category}: {l.Text}")).ToList();
+        return [.. found.Select(l => string.Create(CultureInfo.InvariantCulture,
+            $"{l.Time:HH:mm:ss.fff} {Short(l.Level)} {l.Category}: {l.Text}"))];
     }
 
     private static string Short(LogLevel level) => level switch

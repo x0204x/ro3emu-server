@@ -25,7 +25,7 @@ public sealed class TimedEventService(GameData data, TimeProvider time, SessionR
     private readonly GameLoop _loop = loop;
     private readonly SeasonService _seasons = seasons;
     private long _lastSecond = -1;
-    private readonly Dictionary<int, bool> _previous = new();
+    private readonly Dictionary<int, bool> _previous = [];
     // GM test aid (!actauction): an in-memory window per activity, never persisted; the Tick publishes its expiry.
     private readonly System.Collections.Concurrent.ConcurrentDictionary<int, (DateTimeOffset Start, DateTimeOffset End)> _testWindows = new();
 

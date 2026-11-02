@@ -21,7 +21,7 @@ public sealed partial class EmblemService
         foreach (var item in inventory.Where(i => IsEmblem(_data, i.Entry)))
         {
             int slot = slots.FirstOrDefault(s => s.Value == item.Guid).Key;
-            item.Attrs ??= new();
+            item.Attrs ??= [];
             item.Attrs[Source] = slot == 0 ? 0 : 2;
             item.Attrs[Position] = slot;
         }

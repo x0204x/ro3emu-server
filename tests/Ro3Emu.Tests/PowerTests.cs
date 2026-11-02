@@ -75,7 +75,7 @@ public sealed class PowerTests : IAsyncLifetime
     private async Task Gm(string account, string command)
     {
         using var http = new HttpClient();
-        var response = await http.PostAsync($"{_httpUrl}/ro3emu/gm?account={account}", new StringContent(command));
+        var response = await http.PostAsync($"{_httpUrl}/ro3emu/gm?account={account}", Operator.Command(command));
         response.EnsureSuccessStatusCode();
     }
 
@@ -271,7 +271,7 @@ public sealed class PowerTests : IAsyncLifetime
                 s.Emblems.Plans[s.Emblems.CurrentPlan].Slots[slot] = item.Guid;
                 guids.Add(item.Guid);
             }
-            return guids.ToArray();
+            return [.. guids];
         }
 
         var result = await OnLoop("Alice", s =>
@@ -307,7 +307,7 @@ public sealed class PowerTests : IAsyncLifetime
             .Sum(r => GameData.Int(r, "_iSeasonPower"));
         Assert.Equal(result.barePower + stages, result.litPower);
         // SkillInUse rows of stages 2-3 whose SkillConfig._iJob is in the job line: 11130101 and 11130201 for 1400.
-        Assert.Equal(new[] { 11130101, 11130201 }, result.skills);
+        Assert.Equal([11130101, 11130201], result.skills);
         Assert.Empty(result.otherSkills);
     }
 }

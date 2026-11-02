@@ -285,7 +285,7 @@ public static class GameDataExport
         var files = Folders.ToDictionary(folder => folder, folder => CountFiles(Path.Combine(staged, folder)));
         SwapIn(dataDir, staged, Path.Combine(work, "old"), options.SwapStepForTest);
         var stamp = new Stamp(FormatVersion, fingerprint, Path.GetFullPath(clientDir), DateTime.UtcNow, messages, nav.Extracted, config.Ok,
-            QuickFingerprint(clientDir), files, failedTables.ToArray());
+            QuickFingerprint(clientDir), files, [.. failedTables]);
         var stampPath = Path.Combine(dataDir, "export.json");
         File.WriteAllText(stampPath + ".tmp", JsonSerializer.Serialize(stamp, new JsonSerializerOptions { WriteIndented = true }));
         File.Move(stampPath + ".tmp", stampPath, overwrite: true);
@@ -386,8 +386,11 @@ public static class GameDataExport
 
     /// <summary>What a swap replaces, the stamp first (renamed aside like the rest, so a recovery brings it back).</summary>
     private static List<(string Name, bool Folder)> SwapEntries() =>
-        new[] { (Name: "export.json", Folder: false) }.Concat(Folders.Select(name => (Name: name, Folder: true)))
-            .Concat(TopFiles.Select(name => (Name: name, Folder: false))).ToList();
+        [
+            (Name: "export.json", Folder: false),
+            .. Folders.Select(name => (Name: name, Folder: true)),
+            .. TopFiles.Select(name => (Name: name, Folder: false)),
+        ];
 
     private static string SwapJournal(string dataDir) => Path.Combine(dataDir, ".export", "swapping");
 
@@ -428,8 +431,8 @@ public static class GameDataExport
 
     /// <summary>玩家自身的三語來源；繁中與 SID 配對檔不可借用其他客戶端世代。</summary>
     public static string[] LocSourceFiles(string clientDir) =>
-        new[] { "Localization_zh_CN", "Localization_en", "Localization_zh_TW" }
-            .Select(n => Path.Combine(LuaPayloadDir(clientDir), n + ".lua.bytes")).ToArray();
+        [.. new[] { "Localization_zh_CN", "Localization_en", "Localization_zh_TW" }
+            .Select(n => Path.Combine(LuaPayloadDir(clientDir), n + ".lua.bytes"))];
 
     /// <summary>
     /// 不重建伺服器資料，只從玩家的三語來源產生英文及繁中配對檔。

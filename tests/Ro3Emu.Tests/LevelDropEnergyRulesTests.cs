@@ -78,7 +78,7 @@ public sealed class LevelDropEnergyRulesTests : IAsyncLifetime
     private async Task Gm(BotClient bot, string line)
     {
         using var http = new HttpClient();
-        var resp = await http.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", new StringContent(line));
+        var resp = await http.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", Operator.Command(line));
         resp.EnsureSuccessStatusCode();
     }
 

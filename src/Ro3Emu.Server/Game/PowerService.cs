@@ -74,8 +74,8 @@ public sealed class PowerService : IGameTicker
     private readonly SessionRegistry _sessions;
     private readonly GameLoop _loop;
     private readonly ILogger<PowerService> _log;
-    private readonly HashSet<GameSession> _dirty = new();
-    private readonly HashSet<GameSession> _queued = new();
+    private readonly HashSet<GameSession> _dirty = [];
+    private readonly HashSet<GameSession> _queued = [];
     private TimeSpan _lastProbe;
     private int _sweepIndex;
     private Dictionary<long, double>? _weights;
@@ -189,7 +189,7 @@ public sealed class PowerService : IGameTicker
         (long)Math.Ceiling(AttrScore(Enumerable.Range(0, Math.Min(6, stats.Count)).Select(i => ((long)i + 1, (double)Math.Max(0, stats[i] - 1)))) - 1e-9);
 
     private long StatPlan(PlanBaseProperty plan) =>
-        StatPoints(Enumerable.Range(1, 6).Select(i => plan.BaseProperty.TryGetValue(i, out int v) ? v : 1).ToArray());
+        StatPoints([.. Enumerable.Range(1, 6).Select(i => plan.BaseProperty.TryGetValue(i, out int v) ? v : 1)]);
 
     private IEnumerable<(int Group, int Level)> LearnedSkills(GameSession s)
     {
@@ -210,7 +210,7 @@ public sealed class PowerService : IGameTicker
     private long TitleScore(long title) => title > 0 && _data.Row("TitleConfig", title) is { } row
         ? GameData.Int(row, "_iPowerAdd") + (long)Math.Ceiling(AttrScore(GameData.Pairs(row, "_kAttr")) - 1e-9) : 0;
 
-    private static List<InvItem> Worn(GameSession s) => s.Items.Where(i => i.Grid is >= 1 and <= EquipGrids).ToList();
+    private static List<InvItem> Worn(GameSession s) => [.. s.Items.Where(i => i.Grid is >= 1 and <= EquipGrids)];
 
     private PowerUnit EquipRank(GameSession s, IEnumerable<InvItem> worn)
     {

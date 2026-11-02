@@ -25,16 +25,29 @@ address (local play), and to every interface otherwise (`ServerOptions.ListenAdd
 | `GET /ro3emu/status` | public | the player count only, from the loop's census |
 | `POST /ro3emu/account/delete-role` | public, rate limited | needs the account's password; refuses a role that is in the world |
 | `POST /gift-card/use/v2` | public, rate limited | the client's gift-code redemption; needs the account's engine sign (the micro-gate login token); see [gift codes](gift-codes.md) |
-| `/ro3emu/gm`, `/ro3emu/metrics*`, `/ro3emu/online`, `/ro3emu/reports`, `/ro3emu/shutdown` | loopback only | answer 404 to any other address |
+| `/ro3emu/gm`, `/ro3emu/metrics*`, `/ro3emu/online`, `/ro3emu/reports`, `/ro3emu/shutdown` | operator only | loopback, operator token; 404 otherwise |
 
-A reverse proxy on the same machine makes every request arrive from loopback. Do not forward the loopback-only paths.
+The operator tools (`OpsEndpoints`) answer a request only when all of this holds: the peer is loopback, the Host names
+this machine (`127.0.0.1`, `localhost` or `[::1]`, so a page whose own name resolves to 127.0.0.1 is refused), no
+`X-Forwarded-For`, `Forwarded` or `X-Real-IP` header (a proxy on the same machine is loopback too), and the
+`X-Ro3Emu-Operator` header equals the data dir's `operator.token` (compared in constant time). Loopback alone was not
+enough: a web page open in a browser on the host can send a simple POST to 127.0.0.1, but it cannot set that header
+without a preflight the server never answers, and it cannot read the file. Anything else gets the 404 of an unknown
+path. RO3Emu.exe, BotCli and the load test read the token from the data dir; `Ro3Emu__OperatorToken` sets it.
+
+A reverse proxy on the same machine makes every request arrive from loopback. Do not forward the operator paths. The
+web panel on loopback also answers its API only under this machine's name or its `PublicUrl`'s host.
 
 ## Accounts and credentials
 
 - Passwords are stored as PBKDF2-SHA256 hashes, 100 000 rounds, with a per-account salt (`AccountPlans`).
-- A credential check costs one such hash, so `CredentialLimiter` allows `LoginAttemptsPerMinute` (20) per remote
-  address and answers 429 past that without hashing. Loopback is exempt unless `LoginLimitIncludesLoopback` is
-  set. Behind a reverse proxy every player shares the proxy's address, so raise the limit there.
+- A credential check costs one such hash, so `CredentialLimiter` allows `LoginAttemptsPerMinute` (20) per client
+  address (an IPv6 one by its /64 network) and answers 429 past that without hashing. The client address is the peer, or behind a proxy listed in
+  `Ro3Emu:Panel:TrustedProxies` the last `X-Forwarded-For` entry, on the panel and on port 5380 alike. Loopback is
+  exempt only for local tools: not for a request with `X-Forwarded-For`, `Forwarded` or `X-Real-IP`, not on a
+  server others reach (a public `PublicHost` or bind, `TrustedProxies` or `Ro3Emu:Panel:PublicUrl` set), and not with
+  `LoginLimitIncludesLoopback`. Behind a proxy
+  that is not listed every player shares the proxy's address, so list it.
 - `/sdk/login` returns a token. The client presents it to `LoginService.verifySdk` on the micro gate, which binds
   the account to that connection.
 - A banned account cannot sign in. The web panel bans through the server, which closes the account's game session at
@@ -78,7 +91,8 @@ authentication when the panel listens on a public address (`Ro3Emu:Panel:Require
 [web panel](../guide/panel.md#staff-roles).
 
 GM commands (`!` chat lines, the GM panel, 1031/1034) are limited to `Ro3Emu:GmAccounts`. An empty list means
-everyone outside Production. See [GM access](../guide/gm-access.md), and set the list on any public server.
+everyone only on a local server (loopback only, no proxy, not Production), and nobody, in game or as a panel Admin, on
+a server other machines reach. See [GM access](../guide/gm-access.md), and set the list on any public server.
 
 ## Data on disk
 

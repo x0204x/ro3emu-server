@@ -143,8 +143,8 @@ public sealed class BuffStackExpiryTests
             if (worldUnit) await f.Host.Service<World>().AddUnitAsync(unit);
             var character = f.Host.Service<CharacterService>();
             // 最小合成角色沒有MaxHP成長表；先建立有效生命值，否則SetHpSp(1)會被上限0截成0。
-            character.MatchAttributes = _ => new (long, double)[] { (101, 1000), (102, 100) };
-            character.DynamicProperties.Add(_ => new (int, long)[] { (107, 0), (108, 0), (1071, 0), (1081, 0) });
+            character.MatchAttributes = _ => [(101, 1000), (102, 100)];
+            character.DynamicProperties.Add(_ => [(107, 0), (108, 0), (1071, 0), (1081, 0)]);
             Assert.Equal(1000, character.Stats(source)[101]);
             await character.SetHpSpAsync(source, 1, null);
             Assert.Equal(1, source.CurrentHp);

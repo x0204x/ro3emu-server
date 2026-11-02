@@ -108,6 +108,60 @@ public sealed class PanelAdminTests : IAsyncLifetime
         Assert.Equal(["role", "role"], await AuditActionsAsync(admin));
     }
 
+    [Fact]
+    public async Task StaffBanOnlyBelowTheirOwnRole()
+    {
+        Assert.Equal(0, await SdkLoginAsync(_host, "padmin-plain", "pw"));
+        using var admin = await SignedInAsync(Admin);
+        await SdkLoginAsync(_host, "padmin-mod2", "pw");
+        await OkAsync(admin.PostAsync("/api/admin/roles", new { account = "padmin-mod2", role = "moderator" }));
+        using var moderator = await SignedInAsync(Moderator);
+
+        foreach (string above in new[] { Admin, "padmin-mod2" })
+        {
+            var refused = await moderator.PostAsync("/api/admin/accounts/" + above + "/ban", new { reason = "coup", hours = 1 });
+            Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
+        }
+        await OkAsync(moderator.PostAsync("/api/admin/accounts/padmin-plain/ban", new { reason = "botting", hours = 1 }));
+        await OkAsync(admin.PostAsync("/api/admin/accounts/padmin-mod2/ban", new { reason = "abuse", hours = 1 }));
+        Assert.Equal(["ban", "ban", "role"], await AuditActionsAsync(admin));
+    }
+
+    /// <summary>A ban stands against lower roles than the one who placed it, and staff above the caller stay out of reach.</summary>
+    [Fact]
+    public async Task AnUnbanFollowsTheSameRanks()
+    {
+        Assert.Equal(0, await SdkLoginAsync(_host, "padmin-held", "pw"));
+        Assert.Equal(0, await SdkLoginAsync(_host, "padmin-minor", "pw"));
+        using var admin = await SignedInAsync(Admin);
+        using var moderator = await SignedInAsync(Moderator);
+        await OkAsync(admin.PostAsync("/api/admin/accounts/padmin-held/ban", new { reason = "cheating", hours = 1 }));
+        await OkAsync(moderator.PostAsync("/api/admin/accounts/padmin-minor/ban", new { reason = "spam", hours = 1 }));
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await moderator.PostAsync("/api/admin/accounts/padmin-held/unban", new { reason = "pals" })).StatusCode);
+        await OkAsync(moderator.PostAsync("/api/admin/accounts/padmin-minor/unban", new { reason = "appeal" }));
+        await OkAsync(admin.PostAsync("/api/admin/accounts/padmin-held/unban", new { reason = "appeal" }));
+    }
+
+    /// <summary>
+    /// On your own PC an empty GM list makes every account an Admin, which must not make them all equal for a ban. A role
+    /// given by name still ranks.
+    /// </summary>
+    [Fact]
+    public async Task AnOpenLocalPanelCanBanAndUnban()
+    {
+        var (host, panel) = await StartAsync(o => o.Panel.Roles = new(StringComparer.Ordinal) { [Moderator] = "Admin" });
+        await using var _ = host;
+        Assert.Equal(0, await SdkLoginAsync(host, "open-a", "pw"));
+        Assert.Equal(0, await SdkLoginAsync(host, "open-b", "pw"));
+        Assert.Equal(0, await SdkLoginAsync(host, Moderator, "pw"));
+        using var browser = new PanelBrowser(panel);
+        Assert.Equal(HttpStatusCode.OK, (await browser.LoginAsync("open-a", "pw")).StatusCode);
+        await OkAsync(browser.PostAsync("/api/admin/accounts/open-b/ban", new { reason = "test", hours = 1 }));
+        await OkAsync(browser.PostAsync("/api/admin/accounts/open-b/unban", new { reason = "test" }));
+        Assert.Equal(HttpStatusCode.Forbidden, (await browser.PostAsync("/api/admin/accounts/" + Moderator + "/ban", new { reason = "coup", hours = 1 })).StatusCode);
+    }
+
     // ---------------------------------------------------------------- account security
 
     private static string CurrentCode(string base32) => Totp.Code(Totp.FromBase32(base32)!, Totp.TimeStep(DateTimeOffset.UtcNow));
@@ -229,6 +283,35 @@ public sealed class PanelAdminTests : IAsyncLifetime
         await EnableTwoFactorAsync(admin);
         Assert.Equal("admin", (await admin.SessionAsync()).GetProperty("role").GetString());
         Assert.Equal(HttpStatusCode.OK, (await admin.Http.GetAsync("/api/admin/dashboard")).StatusCode);
+    }
+
+    /// <summary>
+    /// Behind a reverse proxy the panel listens on loopback, yet players reach it: a listed proxy (or a public URL)
+    /// turns the 2FA requirement on unless the operator set it.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task BehindAProxyAdminsMustTurnOnTwoFactor(bool trustedProxy, bool publicUrl)
+    {
+        await using var host = await SyntheticHost.StartAsync(o =>
+        {
+            o.GmAccounts = [Admin];
+            o.Panel.Enabled = true;
+            o.Panel.Port = TestPorts.FreePort();
+            if (trustedProxy) o.Panel.TrustedProxies = ["127.0.0.1"];
+            if (publicUrl) o.Panel.PublicUrl = "https://panel.example.com";
+        });
+        var options = host.Service<Microsoft.Extensions.Options.IOptions<Ro3Emu.Server.ServerOptions>>().Value;
+        Assert.True(options.Panel.RequireAdmin2FA);
+        string panel = $"http://127.0.0.1:{options.Panel.Port}";
+        Assert.Equal(0, await SdkLoginAsync(host, Admin, "pw"));
+        using var admin = new PanelBrowser(panel);
+        admin.Http.DefaultRequestHeaders.Add("X-Forwarded-For", "203.0.113.9");
+        var session = await OkAsync(admin.LoginAsync(Admin, "pw"));
+        Assert.False(session.GetProperty("admin").GetBoolean());
+        Assert.True(session.GetProperty("twoFactorRequired").GetBoolean());
+        Assert.Equal(HttpStatusCode.Forbidden, (await admin.Http.GetAsync("/api/admin/dashboard")).StatusCode);
     }
 
     // ---------------------------------------------------------------- report inbox

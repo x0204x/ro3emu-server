@@ -23,8 +23,8 @@ public sealed partial class TradeService
             page.DataList.Clear();
             var rows = FilterRows(Active(tx), req.ItemId, req.ItemSpecialType, req.IsPublicity,
                 req.UserRoleId, req.ShareSkuId, req.WhereFiled).ToList();
-            if (page.SortFiled["item_price"] == "Desc") rows = rows.OrderByDescending(l => l.UnitPrice).ThenBy(l => l.SaleTimeMs).ToList();
-            else rows = rows.OrderBy(l => l.UnitPrice).ThenBy(l => l.SaleTimeMs).ToList();
+            if (page.SortFiled["item_price"] == "Desc") rows = [.. rows.OrderByDescending(l => l.UnitPrice).ThenBy(l => l.SaleTimeMs)];
+            else rows = [.. rows.OrderBy(l => l.UnitPrice).ThenBy(l => l.SaleTimeMs)];
             page.TotalCount = rows.Count;
             page.DataList.AddRange(rows.Skip((page.PageNo - 1) * page.PageSize).Take(page.PageSize).Select(Commodity));
             return 0;
@@ -82,16 +82,24 @@ public sealed partial class TradeService
         catch (JsonException) { return []; }
     }
 
+    /// <summary>
+    /// Items one market query may look at. (inferred) Each walks every listing. With its sell-only toggle on, the client asks
+    /// for the tab's whole item list, not a page (UI_Sys_TradeCellTotalWidgetCtrl: RequestItemListInventory(m_kItemList)), and
+    /// a card tab can hold over 200, so this leaves room above the longest tab without leaving the request unbounded.
+    /// </summary>
+    private const int MaxQueriesPerRequest = 1024;
+
     private async Task Inventory(GameSession s, QueryItemInventoryInfoByItemIdRequest req)
     {
         var dataRows = new ItemInventoryInfoByItemId();
         await market.RunAsync(s, tx =>
         {
             dataRows.ItemInventoryInfos.Clear();
-            foreach (string id in req.ItemIds)
+            var all = Active(tx);
+            foreach (string id in req.ItemIds.Take(MaxQueriesPerRequest))
             {
                 int entry = Entry(id);
-                var rows = Active(tx).Where(l => l.Entry == entry && Visible(l, req.IsPublicity)
+                var rows = all.Where(l => l.Entry == entry && Visible(l, req.IsPublicity)
                     && (req.ItemSpecialType == ETradeItemSpecialType.None || l.SpecialType == (int)req.ItemSpecialType)).ToList();
                 dataRows.ItemInventoryInfos.Add(new ItemInventoryInfo
                 {
@@ -201,7 +209,7 @@ public sealed partial class TradeService
             page.DataList.Clear();
             var rows = FilterRows(Active(tx), req.ItemId, ETradeItemSpecialType.None,
                 req.IsPublicity, req.UserRoleId, filters: req.WhereFiled).ToList();
-            rows = page.SortFiled["item_price"] == "Desc" ? rows.OrderByDescending(l => l.UnitPrice).ToList() : rows.OrderBy(l => l.UnitPrice).ToList();
+            rows = page.SortFiled["item_price"] == "Desc" ? [.. rows.OrderByDescending(l => l.UnitPrice)] : [.. rows.OrderBy(l => l.UnitPrice)];
             page.TotalCount = rows.Count;
             page.DataList.AddRange(rows.Skip((page.PageNo - 1) * page.PageSize).Take(page.PageSize).Select(Commodity));
             return 0;
@@ -216,7 +224,7 @@ public sealed partial class TradeService
         {
             result.Items.Clear();
             var all = Active(tx);
-            foreach (var q in req.Items)
+            foreach (var q in req.Items.Take(MaxQueriesPerRequest))
             {
                 var page = new CQueryProductByParamWithPage
                 {
@@ -225,7 +233,7 @@ public sealed partial class TradeService
                 };
                 page.SortFiled["item_price"] = q.SortFiled.GetValueOrDefault("item_price", "Asc");
                 var rows = FilterRows(all, q.ItemId, q.ItemSpecialType, q.IsPublicity, q.UserRoleId, q.ShareSkuId, q.WhereFiled).ToList();
-                rows = page.SortFiled["item_price"] == "Desc" ? rows.OrderByDescending(l => l.UnitPrice).ToList() : rows.OrderBy(l => l.UnitPrice).ToList();
+                rows = page.SortFiled["item_price"] == "Desc" ? [.. rows.OrderByDescending(l => l.UnitPrice)] : [.. rows.OrderBy(l => l.UnitPrice)];
                 page.TotalCount = rows.Count;
                 page.DataList.AddRange(rows.Skip((page.PageNo - 1) * page.PageSize).Take(page.PageSize).Select(Commodity));
                 result.Items.Add(page);

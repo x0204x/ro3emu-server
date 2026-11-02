@@ -24,7 +24,7 @@ public sealed class MapLineTests : IAsyncLifetime
     private readonly Clock _clock = new();
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
     private T Service<T>() where T : notnull => _app.Services.GetRequiredService<T>();
-    private GameSession Player(string name) => Service<SessionRegistry>().All().Single(s => s.Account == name.ToLowerInvariant());
+    private GameSession Player(string name) => Service<SessionRegistry>().All().Single(s => string.Equals(s.Account, name, StringComparison.OrdinalIgnoreCase));
     private Task OnLoop(Func<Task> action) => Service<GameLoop>().InvokeAsync(action);
     private static string RepoRoot()
     {
@@ -100,7 +100,7 @@ public sealed class MapLineTests : IAsyncLifetime
         Assert.NotNull(reservation);
         await bob.SendGameAsync(70009, new GetSceneLineInfoReq { PlayerUUID = (ulong)b.Role!.Id });
         var listing = await Next(bob, 70009, GetSceneLineInfoResp.Parser);
-        Assert.Equal(0, listing.Result); Assert.Equal(new[] { 1, 2 }, listing.LineInfo.Select(l => l.Linenum));
+        Assert.Equal(0, listing.Result); Assert.Equal([1, 2], listing.LineInfo.Select(l => l.Linenum));
         Assert.All(listing.LineInfo, l => Assert.Equal(1, l.Currolenum));
         await bob.SendGameAsync(MsgId.SwitchSceneLine, new SwitchSceneLineReq { Linenum = 1 });
         Assert.Equal(ErrorCodes.SwitchingScenes, (await Next(bob, MsgId.SwitchSceneLine, SwitchSceneLineResp.Parser)).Result);

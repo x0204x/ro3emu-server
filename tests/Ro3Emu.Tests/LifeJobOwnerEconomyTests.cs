@@ -51,7 +51,7 @@ public sealed class LifeJobOwnerEconomyTests : IAsyncLifetime
     private async Task Gm(string account, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync(_http + $"/ro3emu/gm?account={account}", new StringContent(command)))
+        (await client.PostAsync(_http + $"/ro3emu/gm?account={account}", Operator.Command(command)))
             .EnsureSuccessStatusCode();
     }
 
@@ -89,7 +89,7 @@ public sealed class LifeJobOwnerEconomyTests : IAsyncLifetime
         using var reader = command.ExecuteReader();
         var rows = new List<(long, long)>();
         while (reader.Read()) rows.Add((reader.GetInt64(0), reader.GetInt64(1)));
-        return rows.ToArray();
+        return [.. rows];
     }
 
     [ClientDataFact]

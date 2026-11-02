@@ -106,7 +106,7 @@ public sealed class TerritoryEscortTests : IAsyncLifetime
     private async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     private static GuildCreateReq Create(string name) => new()
@@ -513,7 +513,7 @@ public sealed class TerritoryEscortTests : IAsyncLifetime
         WorldUnit[] cargo = [];
         for (int i = 0; i < 50 && cargo.Length == 0; i++)
         {
-            cargo = Service<World>().AllUnits().Where(u => u.Entity().EntityTemplateID == 4910003).ToArray();
+            cargo = [.. Service<World>().AllUnits().Where(u => u.Entity().EntityTemplateID == 4910003)];
             if (cargo.Length == 0) await Task.Delay(20);
         }
         Assert.NotEmpty(cargo);

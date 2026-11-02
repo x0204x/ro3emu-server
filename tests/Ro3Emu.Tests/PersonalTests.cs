@@ -43,7 +43,7 @@ public sealed class PersonalTests : IAsyncLifetime
     { var e = await b.Inbox.WaitAsync(e => e.IsGame(id) && (match == null || match(p.ParseFrom(e.Body))), Wait); return p.ParseFrom(e.Body); }
 
     private async Task Gm(string account, string command)
-    { using var h = new HttpClient(); (await h.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(command))).EnsureSuccessStatusCode(); }
+    { using var h = new HttpClient(); (await h.PostAsync($"{_http}/ro3emu/gm?account={account}", Operator.Command(command))).EnsureSuccessStatusCode(); }
 
     private GameSession Session(string account) => _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == account && s.Role != null);
 
@@ -94,7 +94,7 @@ public sealed class PersonalTests : IAsyncLifetime
     private static async Task<PopularityStarData> Popularity(BotClient reader, long role)
     {
         var bytes = (byte[])(await Card(reader, role, "Base", "PopularityStar"))["PopularityStar"]!;
-        Assert.Equal(new[] { 8, 16, 24, 32, 40 }, ReadTags(bytes)); // every field present, the gift panel needs updateTime
+        Assert.Equal([8, 16, 24, 32, 40], ReadTags(bytes)); // every field present, the gift panel needs updateTime
         return PopularityStarData.Parser.ParseFrom(bytes);
     }
 
@@ -103,7 +103,7 @@ public sealed class PersonalTests : IAsyncLifetime
         var input = new CodedInputStream(bytes);
         var tags = new List<int>();
         for (uint tag; (tag = input.ReadTag()) != 0; input.SkipLastField()) tags.Add((int)tag);
-        return tags.ToArray();
+        return [.. tags];
     }
 
     [ClientDataFact]
@@ -214,7 +214,7 @@ public sealed class PersonalTests : IAsyncLifetime
         await using var alice = await InWorld("Alice");
         var full = await Next(alice, PersonalService.Sync, DBPersonalInfoIncrement.Parser, i => i.SyncAllMark);
         Assert.Equal(1, full.CurPlanId);
-        Assert.Equal(new[] { 1, 2, 3 }, full.PlanInfos.Keys.Order());
+        Assert.Equal([1, 2, 3], full.PlanInfos.Keys.Order());
         var plan = full.PlanInfos[1].All;
         Assert.Equal(1001, plan.ThemeId); // PublicParamConfig PersonalDefaultTheme
         Assert.Equal(2001, plan.BackgroundId); // PersonalDefaultBackground
@@ -225,7 +225,7 @@ public sealed class PersonalTests : IAsyncLifetime
         Assert.True(full.UnlockInfos[4].All.UnlockMap[1001]);
         Assert.True(full.UnlockInfos[5].All.UnlockMap[2001]);
         Assert.False(full.UnlockInfos[4].All.UnlockMap.ContainsKey(1003)); // Fashion Shop theme
-        Assert.Equal(new[] { 1001 }, full.UnlockInfos[6].All.UnlockMap.Keys);
+        Assert.Equal([1001], full.UnlockInfos[6].All.UnlockMap.Keys);
         // No upvotes yet: a wire-only key keeps the map, the next increment deletes it.
         Assert.Equal(0, full.UpvoteTimes[0].All);
         var seed = await Next(alice, PersonalService.Sync, DBPersonalInfoIncrement.Parser, i => !i.SyncAllMark);

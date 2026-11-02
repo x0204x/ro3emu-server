@@ -18,7 +18,9 @@ public sealed class GmPresetOpTests : IAsyncLifetime
     private WebApplication _app = null!;
     private string _http = "";
 
-    public async Task InitializeAsync()
+    public Task InitializeAsync() => StartAsync();
+
+    private async Task StartAsync()
     {
         var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
         _app = ServerHost.Create([], o =>
@@ -33,20 +35,25 @@ public sealed class GmPresetOpTests : IAsyncLifetime
         _http = $"http://127.0.0.1:{httpPort}";
     }
 
-    public async Task DisposeAsync()
+    private async Task StopAsync()
     {
         await _app.StopAsync();
         await _app.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+    }
+
+    public async Task DisposeAsync()
+    {
+        await StopAsync();
         try { Directory.Delete(_dataDir, true); } catch (IOException) { }
     }
 
-    private async Task<BotClient> InWorld(string name)
+    private async Task<BotClient> InWorld(string name, bool create = true)
     {
         var bot = new BotClient(_http, File.ReadAllText(Path.Combine(_dataDir, "gate_rsa_public.pem")));
         await bot.LoginAsync(name.ToLowerInvariant(), "pw");
         await bot.EnterGateAsync();
-        await bot.EnterWorldAsync((await bot.CreateRoleAsync(name)).RoleBaseInfo.Id);
+        await bot.EnterWorldAsync(create ? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id : bot.Roles.Single().Id);
         return bot;
     }
 
@@ -83,6 +90,47 @@ public sealed class GmPresetOpTests : IAsyncLifetime
         Assert.Contains(s.Items, i => i.Entry == 90000722 && i.Grid > 0);
         var plan = s.SeasonTalent!.Plan[s.SeasonTalent.CurPlanId];
         Assert.Equal(3, plan.TalentNodes[10101001].CurrentLevel); // SeasonTalentConfig _iMaxLevel 3
+    }
+
+    /// <summary>
+    /// A preset-built role never delivered quest 10101170, which opens Skills (function 10): openallfunc held only for
+    /// the session closed the skill bar (its lock, no drags) at the next login and after a server restart.
+    /// </summary>
+    [ClientDataFact]
+    public async Task AssassinPresetKeepsItsFunctionsAndSkillBarAfterRelogAndRestart()
+    {
+        await using (var bot = await InWorld("Sin"))
+        {
+            // 5200 Assassin: levels, job, openallfunc, profession 503's skills, the bar.
+            Assert.DoesNotContain("Not implemented", await PanelAsync(bot, new GeneralGMProcReq { GmListId = 5200 }));
+            Assert.True(Session(bot).GmAllFunctionsOpen);
+        }
+        await AssertBuildAfterLogin();
+        await StopAsync();
+        await StartAsync();
+        await AssertBuildAfterLogin();
+
+        async Task AssertBuildAfterLogin()
+        {
+            await using var bot = await InWorld("Sin", create: false);
+            var open = FunctionOpenInfoIncrement.Parser.ParseFrom((await bot.Inbox.WaitAsync(
+                e => e.IsGame(FunctionService.FunctionOpenSync), Wait)).Body);
+            Assert.True(open.FunctionOpenInfos[10].All); // SkillGrowth: the skill window and the bar
+            Assert.True(open.FunctionOpenInfos[1001].All); // SkillSchool
+            var skills = DBSkillDataIncrement.Parser.ParseFrom((await bot.Inbox.WaitAsync(
+                e => e.IsGame(SkillService.SkillDataSync), Wait)).Body);
+            Assert.Equal(5200, Session(bot).Progress!.Career);
+            Assert.Equal(10, skills.SkillAssignPlans.All.Value[(int)skills.CurrentPlanIndex].SkillAssigns[15111].SkillLevel);
+            Assert.Equal(6, skills.SkillWheel.All.WhellSkills.Count(w => w.Key is >= 1 and <= 6 && w.Value.SkillConfigId > 0));
+            // A learned skill still goes on the bar: Envenom (15005) over slot 6.
+            var plan = Session(bot).SkillPlans!.SkillAssignPlans[Session(bot).SkillPlans!.CurrentPlanIndex];
+            await bot.SendGameAsync(SkillService.SkillLoad, new SkillLoadReq
+            {
+                OpType = SkillLoadOperation.SkillLoadOpReplace, IsManual = true, SocketNum = 5,
+                Info = new SkillData { SkillId = 15005, SkillLevel = 10 }, ReplaceInfo = plan.ManualLoadSkill[5].Clone()
+            });
+            Assert.Equal(0, SkillLoadResp.Parser.ParseFrom((await bot.Inbox.WaitAsync(e => e.IsGame(SkillService.SkillLoad), Wait)).Body).Result);
+        }
     }
 
     [ClientDataFact]

@@ -2,6 +2,7 @@ using System.Text.Json;
 using Google.Protobuf;
 using Romsg;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Maps;
 
 namespace Ro3Emu.Server.Game;
@@ -20,13 +21,13 @@ public sealed partial class TerritoryWarsService
         public long LastTick { get; set; }
         public bool Settled { get; set; }
         public long Winner { get; set; }
-        public List<long> Guilds { get; set; } = new();
-        public Dictionary<long, long> Scores { get; set; } = new();
-        public Dictionary<long, long> Resources { get; set; } = new();
-        public Dictionary<int, CapturePoint> Points { get; set; } = new();
+        public List<long> Guilds { get; set; } = [];
+        public Dictionary<long, long> Scores { get; set; } = [];
+        public Dictionary<long, long> Resources { get; set; } = [];
+        public Dictionary<int, CapturePoint> Points { get; set; } = [];
         /// <summary>30129 gameplay points of the stronghold scene, by spawn point id (TerritoryWarsService.ScenePoints.cs).</summary>
-        public Dictionary<int, ScenePoint> ScenePoints { get; set; } = new();
-        public Dictionary<long, Participant> Players { get; set; } = new();
+        public Dictionary<int, ScenePoint> ScenePoints { get; set; } = [];
+        public Dictionary<long, Participant> Players { get; set; } = [];
         public byte[]? Result { get; set; }
     }
     public sealed class Participant
@@ -84,10 +85,10 @@ public sealed partial class TerritoryWarsService
               ?? throw new InvalidOperationException("Retiring territory battle state is missing.")
             : owner.state.Epoch == Epoch && owner.state.Battles.TryGetValue(Key, out var current) ? current
               : throw new InvalidOperationException("Territory battle has no active or retiring epoch state.");
-        internal Dictionary<int, MonsterUnit> Actors { get; } = new();
+        internal Dictionary<int, MonsterUnit> Actors { get; } = [];
         internal CommandBoard Command { get; } = new();
-        internal HashSet<long> CapturedActors { get; } = new();
-        internal Dictionary<int, ScenePointUnit> ScenePointActors { get; } = new();
+        internal HashSet<long> CapturedActors { get; } = [];
+        internal Dictionary<int, ScenePointUnit> ScenePointActors { get; } = [];
         /// <summary>The SummonPlatforms' rings and the vehicles they raised, by platform point (TerritoryWarsService.SummonPlatforms.cs).</summary>
         internal Dictionary<int, PlatformRing> PlatformRings { get; } = [];
         internal Dictionary<int, VehicleUnit> PlatformVehicles { get; } = [];
@@ -176,7 +177,7 @@ public sealed partial class TerritoryWarsService
         var record = new BattleState
         {
             Zone = zone, Round = round, Scene = entry, StatisticsId = statisticsId,
-            Start = stage.StartTime, End = stage.EndTime, LastTick = _clock.Now, Guilds = QualifiedFor(zone, round).ToList(),
+            Start = stage.StartTime, End = stage.EndTime, LastTick = _clock.Now, Guilds = [.. QualifiedFor(zone, round)],
             ScenePoints = DefaultScenePoints(entry)
         };
         record.Points[0] = new CapturePoint
@@ -209,13 +210,13 @@ public sealed partial class TerritoryWarsService
     private async Task AdmitAsync(GameSession s, int zone, bool reply)
     {
         int key = BattleKey(_clock.Current.Round, zone);
-        if (!state.Battles.ContainsKey(key))
+        if (!state.Battles.TryGetValue(key, out var record))
         {
             long statisticsId = await AllocateStatisticsIdAsync();
             state.Battles[key] = MakeBattle(_clock.Current.Round, zone, statisticsId);
             await SaveAsync(state);
+            record = state.Battles[key];
         }
-        var record = state.Battles[key];
         var guild = Own(s)!;
         if (record.Players.TryGetValue(s.Role!.Id, out var prior) && prior.Guild != guild.Id)
         {
@@ -387,25 +388,34 @@ public sealed partial class TerritoryWarsService
         var owner = s.Owner;
         var epoch = owner?.LifecycleEpoch;
         s.TerritoryBattle = null;
-        await CancelQueueAsync(s, TerritoryWarQueueExitReason.LeaveScene);
-        if (b == null) return;
-        s.TerritoryMinimapOpen = false;
-        if (role != null)
+        try
         {
-            using (var scope = _loop.Owners is { } owners
-                ? await owners.EnterAsync("territory/battle leave fatigue", Ownership.ReservationKey.Role(role.Id)) : null)
+            await CancelQueueAsync(s, TerritoryWarQueueExitReason.LeaveScene);
+            if (b == null) return;
+            s.TerritoryMinimapOpen = false;
+            if (role != null)
             {
-                if (!ReferenceEquals(s.Role, role) || !ReferenceEquals(s.Attachment, attachment)
-                    || !ReferenceEquals(s.Owner, owner) || owner?.LifecycleEpoch != epoch) return;
-                if (owner != null) scope?.Context.Pin(owner);
-                var r = LoadRole(role.Id);
-                r.LastFatigue = _clock.Now;
-                await SaveRoleAsync(role.Id, r);
-                s.TerritoryWars = r;
+                using (var scope = _loop.Owners is { } owners
+                    ? await owners.EnterAsync("territory/battle leave fatigue", Ownership.ReservationKey.Role(role.Id)) : null)
+                {
+                    if (!ReferenceEquals(s.Role, role) || !ReferenceEquals(s.Attachment, attachment)
+                        || !ReferenceEquals(s.Owner, owner) || owner?.LifecycleEpoch != epoch) return;
+                    if (owner != null) scope?.Context.Pin(owner);
+                    var r = LoadRole(role.Id);
+                    r.LastFatigue = _clock.Now;
+                    await SaveRoleAsync(role.Id, r);
+                    s.TerritoryWars = r;
+                }
             }
+            await RemoveBuffAsync(s, (int)Gvg("GVGFieldBuff", 10301));
+            await SendCountsAsync(b);
         }
-        await RemoveBuffAsync(s, (int)Gvg("GVGFieldBuff", 10301));
-        await SendCountsAsync(b);
+        // A full queue wrote nothing: the battle stays for a retry, which would otherwise find nothing to do.
+        catch (Exception e) when (b != null && ReferenceEquals(s.Role, role) && Accounts.Persistence.QueueFullPatience.Refused(e))
+        {
+            s.TerritoryBattle = b;
+            throw;
+        }
     }
     public async Task DisconnectAsync(GameSession s)
     {
@@ -538,17 +548,27 @@ public sealed partial class TerritoryWarsService
             if (!ReferenceEquals(s.Role, role) || !ReferenceEquals(s.Attachment, attachment)
                 || !Active(b) || !Member(s, b)) return;
             var pair = b.Actors.FirstOrDefault(x => x.Value == m);
-            if (pair.Value == null || !b.State.Points.TryGetValue(pair.Key, out var p)) return;
+            if (pair.Value == null) { await ScoreKillAsync(b, role!.Id, m); return; }
+            if (!b.State.Points.TryGetValue(pair.Key, out var p)) return;
             if (!b.CapturedActors.Add(m.Uid)) return;
             long guild = Own(s)!.Id;
             await CaptureAsync(b, p, guild, async () =>
             {
                 p.Hp = 0; p.RespawnAt = _clock.Now + Gvg("GVGEmperiumReviveTime", 30);
-                b.State.Players[role!.Id].Score += 50; // WarzoneTaskConfig type 1, 50; last-hit attribution inferred.
+                // WarzoneTaskConfig type 1 (50); last-hit attribution inferred.
+                b.State.Players[role!.Id].Score += WarzoneTaskConfig.ScoreOf(_data, WarzoneTaskConfig.CaptureLastHit, 0);
                 await SaveAsync(state);
             });
         }
         finally { stagedTerritoryState.Dispose(); _gate.Release(); reservation?.Dispose(); }
+    }
+    /// <summary>WarzoneTaskConfig type 2: the killer's score for a battle-room kill of a listed NPC.</summary>
+    private async Task ScoreKillAsync(Battle b, long role, MonsterUnit m)
+    {
+        long score = WarzoneTaskConfig.ScoreOf(_data, WarzoneTaskConfig.Kill, m.Template.NpcId);
+        if (score <= 0 || !b.State.Players.TryGetValue(role, out var player)) return;
+        player.Score += score;
+        await SaveAsync(state);
     }
     private async Task CaptureAsync(Battle b, CapturePoint p, long guild,
         Func<Task>? afterCapture = null)

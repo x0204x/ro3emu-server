@@ -76,9 +76,9 @@ public sealed class GuildHuntingService : IGameTicker
     /// <summary>This server's bookkeeping beside DBGveHuntingActivityData (column runtime, JSON).</summary>
     private sealed class Runtime
     {
-        public Dictionary<long, Score> Scores { get; set; } = new();
+        public Dictionary<long, Score> Scores { get; set; } = [];
         /// <summary>Guild: members who took part (in the home during combat, or hit their boss).</summary>
-        public Dictionary<long, HashSet<long>> Participants { get; set; } = new();
+        public Dictionary<long, HashSet<long>> Participants { get; set; } = [];
         public bool Mailed { get; set; }
     }
 
@@ -108,7 +108,7 @@ public sealed class GuildHuntingService : IGameTicker
         public bool Saving { get; set; }
         public long Requested { get; set; }
         public long Committed { get; set; }
-        public List<(long Ticket, TaskCompletionSource<bool> Done)> Waiting { get; } = new();
+        public List<(long Ticket, TaskCompletionSource<bool> Done)> Waiting { get; } = [];
     }
 
     /// <summary>The event's phase bounds (unix s), from TimeLimitConfig 1074 offsets on the 3303 occurrence.</summary>
@@ -127,9 +127,9 @@ public sealed class GuildHuntingService : IGameTicker
     private bool _settling, _mailing, _broadcasting;
     /// <summary>A failed save is retried this many seconds later (the periodic save's own interval).</summary>
     private const int RetrySeconds = 5;
-    private readonly Dictionary<long, (InstanceService.Room Room, MonsterUnit Boss)> _bosses = new();
-    private readonly HashSet<long> _spawning = new();
-    private readonly Dictionary<long, CommandSlots> _commands = new();
+    private readonly Dictionary<long, (InstanceService.Room Room, MonsterUnit Boss)> _bosses = [];
+    private readonly HashSet<long> _spawning = [];
+    private readonly Dictionary<long, CommandSlots> _commands = [];
 
     private long Now => _time.GetUtcNow().ToUnixTimeSeconds();
     private long NowMs => _time.GetUtcNow().ToUnixTimeMilliseconds();
@@ -404,7 +404,7 @@ public sealed class GuildHuntingService : IGameTicker
     /// <summary>Task target 210011 (TaskConfig 1602120) once per member and event.</summary>
     private void Participate(Week week, long guild, GameSession session)
     {
-        if (!week.Runtime.Participants.TryGetValue(guild, out var roles)) week.Runtime.Participants[guild] = roles = new();
+        if (!week.Runtime.Participants.TryGetValue(guild, out var roles)) week.Runtime.Participants[guild] = roles = [];
         if (!roles.Add(session.Role!.Id)) return;
         week.Dirty = true;
         _loop.PostOwned(session, () => _tasks.OnGuildHuntAsync(session), "guild hunt task");
@@ -472,11 +472,11 @@ public sealed class GuildHuntingService : IGameTicker
         var ordered = guildIds.Select(g => (Guild: g, Score: ScoreOf(week, g)))
             .OrderByDescending(x => x.Score.Damage).ThenBy(x => x.Score.ReachMs == 0 ? long.MaxValue : x.Score.ReachMs)
             .ThenBy(x => x.Guild).Take(limit).ToArray();
-        return ordered.Select((x, i) => new GveHuntingGuildResult
+        return [.. ordered.Select((x, i) => new GveHuntingGuildResult
         {
             GuildId = x.Guild, Score = x.Score.Damage, ReachTs = x.Score.ReachMs, Rank = i + 1,
             CommandSkillKill = x.Score.SkillUses,
-        }).ToList();
+        })];
     }
 
     private List<GveHuntingGuildResult> RankOf(Week week, GveHuntingMatchGroup group) => RankOf(week, group.GuildIds);
@@ -507,7 +507,7 @@ public sealed class GuildHuntingService : IGameTicker
         var result = new Dictionary<long, List<GameSession>>();
         foreach (var session in _sessions.All())
             if (_home.GuildId(session) is { } guild)
-                (result.TryGetValue(guild, out var list) ? list : result[guild] = new()).Add(session);
+                (result.TryGetValue(guild, out var list) ? list : result[guild] = []).Add(session);
         return result;
     }
 
@@ -649,17 +649,16 @@ public sealed class GuildHuntingService : IGameTicker
         long award = row.ValueKind == JsonValueKind.Object ? GameData.Int(row, "_iAward") : 0;
         if (award <= 0) return null;
         // Fixed AwardConfig rows (Zeny / Guild Contribution): no recipient state is read.
-        return _awards.Resolve(null!, award, _seasons.PlayBook).Grants
-            .Select(g => new MailService.Attachment(g.Entry, g.Count, g.BindType)).ToArray();
+        return [.. _awards.Resolve(null!, award, _seasons.PlayBook).Grants.Select(g => new MailService.Attachment(g.Entry, g.Count, g.BindType))];
     }
 
     // ------------------------------------------------------------------ commander skills
 
     /// <summary>SkillConfig rows whose _kScriptLogic is GveHunting_CommandSkill* (16321401-16322201, proven names).</summary>
-    private long[] CommandPool() => _commandPool ??= _data.Table("SkillConfig").Values
+    private long[] CommandPool() => _commandPool ??= [.. _data.Table("SkillConfig").Values
         .Where(r => r.TryGetProperty("_kScriptLogic", out var logic) && logic.ValueKind == JsonValueKind.String
             && logic.GetString()!.StartsWith("GveHunting_CommandSkill", StringComparison.Ordinal))
-        .Select(r => GameData.Int(r, "_iID")).Order().ToArray();
+        .Select(r => GameData.Int(r, "_iID")).Order()];
     private long[]? _commandPool;
 
     /// <summary>(inferred) Three distinct random skills per refresh (the widget has slots 1-3).</summary>

@@ -46,14 +46,13 @@ public sealed partial class CharacterService
     private (JsonElement Row, long Grids, long Level)[] ResonanceRows(string table)
     {
         if (!_resonanceRows.TryGetValue(table, out var rows))
-            _resonanceRows[table] = rows = data.Table(table).Values.OrderBy(r => GameData.Int(r, "_iEffectLev"))
+            _resonanceRows[table] = rows = [.. data.Table(table).Values.OrderBy(r => GameData.Int(r, "_iEffectLev"))
                 .Where(r => r.TryGetProperty("_kRequest", out var req) && req.ValueKind == JsonValueKind.Array && req.GetArrayLength() >= 2)
-                .Select(r => (r, (long)(GameData.Number(r.GetProperty("_kRequest")[0]) ?? 0), (long)(GameData.Number(r.GetProperty("_kRequest")[1]) ?? 0)))
-                .ToArray();
+                .Select(r => (r, (long)(GameData.Number(r.GetProperty("_kRequest")[0]) ?? 0), (long)(GameData.Number(r.GetProperty("_kRequest")[1]) ?? 0)))];
         return rows;
     }
 
-    private readonly Dictionary<string, (JsonElement Row, long Grids, long Level)[]> _resonanceRows = new();
+    private readonly Dictionary<string, (JsonElement Row, long Grids, long Level)[]> _resonanceRows = [];
 
     private JsonElement? ResonanceRow(GameSession session, string table)
     {

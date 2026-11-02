@@ -65,6 +65,6 @@ public sealed class PanelSignUpTests
         Assert.Equal(PanelSignUps.Refusal.None, signUps.TryReserve(IPAddress.Parse("2001:db8:1:2::1"), out _));
         Assert.Equal(PanelSignUps.Refusal.Address, signUps.TryReserve(IPAddress.Parse("2001:db8:1:2:ffff::9"), out _));
         Assert.Equal(PanelSignUps.Refusal.None, signUps.TryReserve(IPAddress.Parse("2001:db8:1:3::1"), out _));
-        Assert.Equal(IPAddress.Parse("203.0.113.5"), PanelSignUps.Network(IPAddress.Parse("::ffff:203.0.113.5")));
+        Assert.Equal(IPAddress.Parse("203.0.113.5"), ClientAddresses.Network(IPAddress.Parse("::ffff:203.0.113.5")));
     }
 }

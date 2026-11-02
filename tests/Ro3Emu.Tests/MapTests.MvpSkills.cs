@@ -55,7 +55,7 @@ public sealed partial class MapTests
         long uid = (long)angeling.Uuid;
         // _kBornEventBuff: the three permanent MVP buffs are in the boss's AOI snapshot.
         var born = angeling.BuffData.AddBuffs.Select(b => b.ConfigId).ToArray();
-        Assert.Equal([900901, 904101, 904301], born.Order().ToArray());
+        Assert.Equal([900901, 904101, 904301], [.. born.Order()]);
         Assert.All(angeling.BuffData.AddBuffs, b => Assert.Equal(0L, b.ExpireTime));
 
         // Summon Self-Destruct Poring: each minion starts its 16 s Poring Explosion at once.

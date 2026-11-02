@@ -139,7 +139,7 @@ public sealed class MailTests : MailTestsHost
         Assert.Empty(await Letters(alice, role));
 
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account=alice", new StringContent("!mail News 1000000 2"))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{http}/ro3emu/gm?account=alice", Operator.Command("!mail News 1000000 2"))).EnsureSuccessStatusCode();
         await alice.Inbox.WaitAsync(e => e.Name == "push:MailService.newMailNotice", Wait);
         Assert.Equal("News", Row(Assert.Single(await Letters(alice, role)))["Title"]);
     }

@@ -50,7 +50,7 @@ public sealed partial class GameLoop
             if (!Current()) { discarded?.Invoke(); return; }
             if (Owners is not { } owners || role == null) { await work(); return; }
             using var scope = await owners.EnterAsync("timer/" + origin,
-                additionalKeys.Append(ReservationKey.Role(role.Id)).Distinct().ToArray());
+                [.. additionalKeys.Append(ReservationKey.Role(role.Id)).Distinct()]);
             if (!Current()) { discarded?.Invoke(); return; }
             if (owner != null) scope.Context.Pin(owner);
             await work();

@@ -11,9 +11,9 @@ public sealed partial class TaskService
     /// <summary>Preserve action slots, order and string parameters, including the empty sentinel (§1).</summary>
     private static string[][] Actions(JsonElement row, string field) =>
         row.TryGetProperty(field, out var array) && array.ValueKind == JsonValueKind.Array
-            ? array.EnumerateArray().Select(a => a.ValueKind == JsonValueKind.Array
+            ? [.. array.EnumerateArray().Select(a => a.ValueKind == JsonValueKind.Array
                 ? a.EnumerateArray().Select(v => v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : v.ToString()).ToArray()
-                : Array.Empty<string>()).ToArray() : [];
+                : Array.Empty<string>())] : [];
 
     // 0 is a client/no-op slot; -1 is malformed or an unknown action definition.
     private int ServerOpcode(string[] action)
@@ -39,7 +39,7 @@ public sealed partial class TaskService
         out List<(int Entry, int Count)> costs, out bool cutScene, out int? questMount, out List<long> guildActivities)
     {
         context.AssertRole(session.Role!.Id);
-        costs = new();
+        costs = [];
         cutScene = false;
         questMount = null;
         guildActivities = [];
@@ -129,9 +129,9 @@ public sealed partial class TaskService
     private List<(long Id, string[][] Actions)>? _dialogueRows;
 
     /// <summary>Every DialogueConfig row with its _iEXECAction slots (a dialogue id holds an array of rows).</summary>
-    private List<(long Id, string[][] Actions)> DialogueRows() => _dialogueRows ??= _data.Table("DialogueConfig")
+    private List<(long Id, string[][] Actions)> DialogueRows() => _dialogueRows ??= [.. _data.Table("DialogueConfig")
         .SelectMany(kv => kv.Value.ValueKind == JsonValueKind.Array ? kv.Value.EnumerateArray() : Enumerable.Repeat(kv.Value, 1))
-        .Select(r => ((long)GameData.Int(r, "_iID"), Actions(r, "_iEXECAction"))).Where(r => r.Item2.Length > 0).ToList();
+        .Select(r => ((long)GameData.Int(r, "_iID"), Actions(r, "_iEXECAction"))).Where(r => r.Item2.Length > 0)];
 
     /// <summary>32709 exits state only. It never completes a plot objective.</summary>
     public async Task ExitCutSceneAsync(GameSession session)

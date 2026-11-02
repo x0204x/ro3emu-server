@@ -24,8 +24,8 @@ public sealed partial class WorldInteractionService
     private sealed record Active(Anchor Npc, int InteractionId, int StatusId, int StatusType, int SeatIndex,
         bool Scripted = false, long Token = 0, AoICarry? Carry = null);
     private long _seatToken;
-    private readonly Dictionary<GameSession, Active> _active = new();
-    private readonly Dictionary<(long Scene, long Npc, int Seat), GameSession> _seats = new();
+    private readonly Dictionary<GameSession, Active> _active = [];
+    private readonly Dictionary<(long Scene, long Npc, int Seat), GameSession> _seats = [];
     private readonly GameData _data;
     private readonly World _world;
     private readonly WorldData _worldData;
@@ -47,7 +47,7 @@ public sealed partial class WorldInteractionService
     private static int Id(JsonElement row, string key) => (int)GameData.Int(row, key);
     private static int[] Numbers(JsonElement row, string key) => row.TryGetProperty(key, out var values)
         && values.ValueKind == JsonValueKind.Array
-        ? values.EnumerateArray().Select(v => (int)(GameData.Number(v) ?? 0)).ToArray() : [];
+        ? [.. values.EnumerateArray().Select(v => (int)(GameData.Number(v) ?? 0))] : [];
     private static bool InWorld(GameSession s) => s.Role != null && !s.SceneLoading;
     private static bool Near(GameSession s, WorldNpc npc)
     {

@@ -43,9 +43,9 @@ public sealed partial class PartyExperiencePipelineTests
             });
 
             // 全為自造配置：7 * 17000 / 10000 先成 11，再乘野外 300% 成 33。
-            // Base 乘 2、Job 乘 3 後分三席；這只驗本地交易契約，不證原服組隊公式。
+            // Base 乘 2；Job 先按合成配置 25% 取整 8 再乘 3，最後分三席；這只驗交易契約。
             Assert.Equal([22L, 22L, 22L], ids.Select((id, i) => RateProgress(host, id).Base - before[i].Base));
-            Assert.Equal([33L, 33L, 33L], ids.Select((id, i) => RateProgress(host, id).Job - before[i].Job));
+            Assert.Equal([8L, 8L, 8L], ids.Select((id, i) => RateProgress(host, id).Job - before[i].Job));
             string source = Assert.IsType<RewardSourceId>(monster.RewardSource).Key;
             var obligations = Obligations(host, source);
             Assert.Equal(2, obligations.Count);
@@ -53,7 +53,7 @@ public sealed partial class PartyExperiencePipelineTests
             {
                 Assert.True(row.Delivered);
                 Assert.Equal(22, row.Base);
-                Assert.Equal(33, row.Job);
+                Assert.Equal(8, row.Job);
             });
             var settled = ids.Select(id => RateProgress(host, id)).ToArray();
             await host.Service<GameLoop>().InvokeAsync(async () =>

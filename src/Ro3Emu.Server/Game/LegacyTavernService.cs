@@ -26,8 +26,8 @@ public sealed partial class LegacyTavernService : IGameTicker
     private readonly TimeProvider _clock;
     private readonly ILogger<LegacyTavernService> _log;
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private readonly Dictionary<long, LiveLease> _live = new();
-    private readonly Dictionary<GameSession, long> _detaching = new();
+    private readonly Dictionary<long, LiveLease> _live = [];
+    private readonly Dictionary<GameSession, long> _detaching = [];
     private readonly ChatService _chat;
     private WorldState _state;
     private TimeSpan _nextTick;
@@ -52,7 +52,7 @@ public sealed partial class LegacyTavernService : IGameTicker
         handover.Beginning += s => { if (ValidLease(s)) _detaching.TryAdd(s, Now); };
     }
 
-    public sealed class WorldState { public Dictionary<long, Room> Rooms { get; set; } = new(); }
+    public sealed class WorldState { public Dictionary<long, Room> Rooms { get; set; } = []; }
     public sealed class Room
     {
         public long Id { get; set; }
@@ -65,7 +65,7 @@ public sealed partial class LegacyTavernService : IGameTicker
         public bool Closed { get; set; }
         public long LastEditMs { get; set; }
         public long LastTransferMs { get; set; }
-        public Dictionary<long, Member> Members { get; set; } = new();
+        public Dictionary<long, Member> Members { get; set; } = [];
     }
     public sealed class Member { public int Area { get; set; } public long JoinedMs { get; set; } }
     /// <summary>純房間／時間控制欄位，沒有資產；一次性獎勵仍由任務帳本處理。</summary>

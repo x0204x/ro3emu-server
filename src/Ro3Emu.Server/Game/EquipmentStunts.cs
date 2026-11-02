@@ -31,7 +31,7 @@ internal static class EquipmentStunts
                     foreach (var op in EquipmentAffixes.Rows(effect, "_kSpecialEffect")) yield return (item, op);
     }
 
-    private static readonly ConditionalWeakTable<GameData, Dictionary<(long Card, long Tier), JsonElement>> CardRows = new();
+    private static readonly ConditionalWeakTable<GameData, Dictionary<(long Card, long Tier), JsonElement>> CardRows = [];
 
     /// <summary>CardConfig row of a card at a tier (star), indexed once per data set.</summary>
     internal static JsonElement? CardRow(GameData data, int entry, long tier) => CardRows.GetValue(data, d => d.Table("CardConfig").Values

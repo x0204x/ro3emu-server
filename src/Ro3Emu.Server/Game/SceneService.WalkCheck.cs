@@ -82,8 +82,10 @@ public sealed partial class SceneService
     /// </summary>
     private static string? NavProblem(NavGrid nav, Vec3 from, Vec3 to, double available, ref float spend)
     {
-        if (nav.NearestWalkable(to.X, to.Z, to.Y) is not { } end) return "unwalkable cell";
+        // Off the grid first: a scene whose nav covers only part of what the client walks (the Ant Queen's Nest 1000301
+        // starts the player and Bobo outside its 303 cells) must not snap every step of a player who is still out there.
         if (nav.NearestWalkable(from.X, from.Z, from.Y) is not { } start) return null;
+        if (nav.NearestWalkable(to.X, to.Z, to.Y) is not { } end) return "unwalkable cell";
         if (nav.CanWalk(from.X, start.Y, from.Z, to.X, to.Z) || nav.CanWalk(start.X, start.Y, start.Z, end.X, end.Z)) return null;
         var route = nav.FindPath(start.X, start.Y, start.Z, end.X, end.Z, maxNodes: DetourNodes);
         if (route == null) return "path crosses unwalkable cells";

@@ -72,7 +72,7 @@ public sealed class PetFollowerActor(long uid, long ownerId, int petId, int npcT
     public bool IsMoving { get; private set; }
 
     /// <summary>Viewers that received this actor; guarded by World's lock.</summary>
-    public HashSet<GameSession> Viewers { get; } = new();
+    public HashSet<GameSession> Viewers { get; } = [];
 
     /// <summary>Translate the side/back offset with accepted owner movement; reversal stays on the same side (inferred).</summary>
     public void Follow(GameSession owner, WalkReq walk, bool forceTeleport = false)

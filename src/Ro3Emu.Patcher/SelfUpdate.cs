@@ -55,7 +55,7 @@ public static class SelfUpdate
 
     public static Process Restart(string exePath, int previousProcessId, string? token = null)
     {
-        if (previousProcessId <= 0) throw new ArgumentOutOfRangeException(nameof(previousProcessId));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(previousProcessId);
         token ??= Guid.NewGuid().ToString("N");
         if (!RestartHandoff.IsValidToken(token)) throw new ArgumentException("The restart token must be 32 hexadecimal characters.", nameof(token));
         var start = new ProcessStartInfo(exePath)

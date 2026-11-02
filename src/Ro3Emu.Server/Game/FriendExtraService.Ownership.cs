@@ -9,7 +9,7 @@ public sealed partial class FriendExtraService
         Func<Task> work, string? groupId = null)
     {
         var owners = loop.Owners ?? throw new InvalidOperationException("Social owner registry is unavailable.");
-        long[] participantIds = participants.Append(session.Role!.Id).Where(id => id > 0).Distinct().ToArray();
+        long[] participantIds = [.. participants.Append(session.Role!.Id).Where(id => id > 0).Distinct()];
         var keys = participantIds
             .Select(id => ReservationKey.Role(id)).ToList();
         if (long.TryParse(groupId, out long group) && group > 0)
@@ -19,16 +19,16 @@ public sealed partial class FriendExtraService
             bool inherited = owners.Current is { RuntimeOnly: false };
             // A peer may still be online while its attachment is draining. Wait before taking
             // any role or group key, then recheck after admission if another intent held a key.
-            Task[] Handovers() => keys.Where(key => key.Kind == ReservationKind.RolePart)
+            Task[] Handovers() => [.. keys.Where(key => key.Kind == ReservationKind.RolePart)
                 .Select(key => long.TryParse(key.Id, out long id) ? owners.Cached(id) : null)
                 .Where(owner => owner?.State == RoleOwnerState.Quiescing)
-                .Select(owner => owner!.Detaching).OfType<Task>().Distinct().ToArray();
+                .Select(owner => owner!.Detaching).OfType<Task>().Distinct()];
             if (!inherited && Handovers() is { Length: > 0 } pending)
             {
                 await Task.WhenAll(pending);
                 continue;
             }
-            var scope = await owners.EnterAsync(origin, keys.ToArray());
+            var scope = await owners.EnterAsync(origin, [.. keys]);
             OwnerNotices? notices = null;
             Task[] admittedHandovers = [];
             try

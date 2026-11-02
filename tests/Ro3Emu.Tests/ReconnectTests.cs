@@ -33,7 +33,8 @@ public sealed class ReconnectTests : IAsyncLifetime
         _app = ServerHost.Create([], o =>
         {
             o.DataDir = _directory;
-            if (gameData) o.GameDataDir = SyntheticData.Dir;
+            // Without gameData the host has none (its empty data dir): the scene tests warp to maps no table names.
+            o.GameDataDir = gameData ? SyntheticData.Dir : _directory;
             o.HttpPort = hp;
             o.MicroGatePort = mp;
             o.GameGatePort = gp;
@@ -311,7 +312,7 @@ public sealed class ReconnectTests : IAsyncLifetime
         var session = SessionOf("alice");
         using var switched = alice.Inbox.Expect(e => e.IsGame(MsgId.SwitchSceneLine));
         using (var client = new HttpClient())
-            (await client.PostAsync($"{_http}/ro3emu/gm?account=alice", new StringContent("!warp 10100"))).EnsureSuccessStatusCode();
+            (await client.PostAsync($"{_http}/ro3emu/gm?account=alice", Operator.Command("!warp 10100"))).EnsureSuccessStatusCode();
         var change = SwitchSceneLineResp.Parser.ParseFrom((await switched.WaitAsync(Wait)).Body);
         Assert.Equal(10100, change.SceneEntry);
 
@@ -436,7 +437,7 @@ public sealed class ReconnectTests : IAsyncLifetime
         var session = SessionOf("alice");
         await alice.DropGameAsync(BotDrop.HalfOpen); // the bot stops using it; the server drops it
         using (var client = new HttpClient())
-            (await client.PostAsync($"{_http}/ro3emu/gm?account=alice", new StringContent("!netdrop " + mode))).EnsureSuccessStatusCode();
+            (await client.PostAsync($"{_http}/ro3emu/gm?account=alice", Operator.Command("!netdrop " + mode))).EnsureSuccessStatusCode();
         await WaitGraceAsync(session);
         var result = await alice.ReconnectGameAsync();
         Assert.Equal(Reconnected, result.Result);

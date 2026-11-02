@@ -8,7 +8,7 @@ namespace Ro3Emu.Server.Game;
 public sealed partial class TerritoryWarsService
 {
     private WorldState? _seasonCleanupState;
-    private readonly HashSet<long> _seasonRoleProjectionPending = new();
+    private readonly HashSet<long> _seasonRoleProjectionPending = [];
 
     private async Task ProjectSeasonRolesAsync()
     {
@@ -34,7 +34,7 @@ public sealed partial class TerritoryWarsService
 
     private async Task CleanupSeasonRuntimeAsync()
     {
-        await RoleFanout.EachAsync(_queue.Keys.ToArray(),
+        await RoleFanout.EachAsync([.. _queue.Keys],
             s => CancelQueueAsync(s, TerritoryWarQueueExitReason.SceneDestroyed));
         foreach (var b in _battles.Values.ToArray())
         {
@@ -142,7 +142,7 @@ public sealed partial class TerritoryWarsService
             _guildStore.EnlistSave(guild, transaction, "Guild changed during territory season rollover");
         var beforeArchives = targetBytes is { Length: > 0 }
             ? new[] { (State: restored, Prefix: "archive/" + Epoch + "/") } : [];
-        if (WarsEconomy(original, restored, priorTreasury.Values.ToArray(), treasury.Values.ToArray(),
+        if (WarsEconomy(original, restored, [.. priorTreasury.Values], [.. treasury.Values],
             "season-rollover", $"territory-season-rollover:{old.Epoch}:{Epoch}",
             beforeArchives: beforeArchives,
             afterArchives: [(old, "archive/" + old.Epoch + "/")]) is { } economy)

@@ -49,7 +49,7 @@ public sealed class RepositoryTrustTests : IDisposable
     public async Task SignedChannel_WithPinnedKey_IsAccepted()
     {
         await PublishAsync();
-        using var client = new RepositoryClient(new Uri("http://repo.test/"), Trust, new FileRepoHandler(Repo));
+        using var client = new RepositoryClient(new Uri("https://repo.test/"), Trust, new FileRepoHandler(Repo));
         ChannelInfo channel = await client.GetChannelAsync("stable", CancellationToken.None);
         Assert.Equal("1.0.0", channel.Version);
         Assert.Equal(1, channel.Sequence);
@@ -65,7 +65,7 @@ public sealed class RepositoryTrustTests : IDisposable
         raw[raw.Length / 2] ^= 1;
         await File.WriteAllBytesAsync(path, raw);
 
-        using var client = new RepositoryClient(new Uri("http://repo.test/"), Trust, new FileRepoHandler(Repo));
+        using var client = new RepositoryClient(new Uri("https://repo.test/"), Trust, new FileRepoHandler(Repo));
         var error = await Assert.ThrowsAsync<PatcherException>(() => client.GetChannelAsync("stable", CancellationToken.None));
         Assert.Contains("signature", error.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -80,7 +80,7 @@ public sealed class RepositoryTrustTests : IDisposable
             RequireSignedChannel = true,
             TrustedPublicKeys = new Dictionary<string, string> { ["another-key"] = other.ExportSubjectPublicKeyInfoPem() },
         };
-        using var client = new RepositoryClient(new Uri("http://repo.test/"), trust, new FileRepoHandler(Repo));
+        using var client = new RepositoryClient(new Uri("https://repo.test/"), trust, new FileRepoHandler(Repo));
         var error = await Assert.ThrowsAsync<PatcherException>(() => client.GetChannelAsync("stable", CancellationToken.None));
         Assert.Contains("unknown key", error.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -96,7 +96,7 @@ public sealed class RepositoryTrustTests : IDisposable
         await File.WriteAllBytesAsync(path, raw);
         await File.WriteAllBytesAsync(path + ".sig", RepositorySignatures.Sign(raw, Signing));
 
-        using var client = new RepositoryClient(new Uri("http://repo.test/"), Trust, new FileRepoHandler(Repo));
+        using var client = new RepositoryClient(new Uri("https://repo.test/"), Trust, new FileRepoHandler(Repo));
         var error = await Assert.ThrowsAsync<PatcherException>(() => client.GetChannelAsync("stable", CancellationToken.None));
         Assert.Contains("expired", error.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -124,7 +124,7 @@ public sealed class RepositoryTrustTests : IDisposable
         await PublishAsync();
         string signaturePath = Path.Combine(Repo, "channels", "stable.json.sig");
         byte[] signature = await File.ReadAllBytesAsync(signaturePath);
-        using var client = new RepositoryClient(new Uri("http://repo.test/"), Trust, new FileRepoHandler(Repo));
+        using var client = new RepositoryClient(new Uri("https://repo.test/"), Trust, new FileRepoHandler(Repo));
 
         File.Delete(signaturePath);
         await Assert.ThrowsAsync<PatcherException>(() => client.GetChannelAsync("stable", CancellationToken.None));
@@ -146,7 +146,7 @@ public sealed class RepositoryTrustTests : IDisposable
         await File.WriteAllTextAsync(Path.Combine(Build, "data.bin"), "version one");
         await PublishAsync();
         string game = Path.Combine(_root, "install");
-        using var client = new RepositoryClient(new Uri("http://repo.test/"), Trust, new FileRepoHandler(Repo));
+        using var client = new RepositoryClient(new Uri("https://repo.test/"), Trust, new FileRepoHandler(Repo));
         var updater = new Updater(new InstallLayout(game), client);
 
         var first = await updater.CheckAsync("stable", CancellationToken.None);
@@ -175,7 +175,7 @@ public sealed class RepositoryTrustTests : IDisposable
         byte[] news = """{"items":[{"title":"簽章公告"}],"banners":[]}"""u8.ToArray();
         await File.WriteAllBytesAsync(newsPath, news);
         await Publisher.PublishNewsAsync(Repo, "stable", newsPath, Signing);
-        using var client = new RepositoryClient(new Uri("http://repo.test/"), Trust, new FileRepoHandler(Repo));
+        using var client = new RepositoryClient(new Uri("https://repo.test/"), Trust, new FileRepoHandler(Repo));
         ChannelInfo channel = await client.GetChannelAsync("stable", CancellationToken.None);
         Assert.Equal(news, await client.GetVerifiedBytesAsync(channel.News!, CancellationToken.None));
 
@@ -195,7 +195,7 @@ public sealed class RepositoryTrustTests : IDisposable
         string current = Path.Combine(_root, "current-launcher.exe");
         byte[] previous = "previous launcher"u8.ToArray();
         await File.WriteAllBytesAsync(current, previous);
-        using var client = new RepositoryClient(new Uri("http://repo.test/"), Trust, new FileRepoHandler(Repo));
+        using var client = new RepositoryClient(new Uri("https://repo.test/"), Trust, new FileRepoHandler(Repo));
 
         Assert.True(await SelfUpdate.ApplyAsync(client, channel.Launcher!, "1.0.0", current, CancellationToken.None));
         Assert.Equal(next, await File.ReadAllBytesAsync(current));
@@ -240,7 +240,7 @@ public sealed class RepositoryTrustTests : IDisposable
         ChannelInfo channel = JsonSerializer.Deserialize<ChannelInfo>(await File.ReadAllBytesAsync(path), Json.Compact)!;
         channel.Sequence = 0;
         await RewriteChannelAsync(path, channel);
-        using var client = new RepositoryClient(new Uri("http://repo.test/"), Trust, new FileRepoHandler(Repo));
+        using var client = new RepositoryClient(new Uri("https://repo.test/"), Trust, new FileRepoHandler(Repo));
         await Assert.ThrowsAsync<PatcherException>(() => client.GetChannelAsync("stable", CancellationToken.None));
 
         channel.Sequence = 1;

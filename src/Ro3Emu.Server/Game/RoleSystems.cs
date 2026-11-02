@@ -69,6 +69,8 @@ public sealed class RoleSystems(Maps.World world, ChatService chat, CharacterSer
         // 5035 must precede To-Do/scene loading: LC_OnHookHelper calls Mathf.Max on its remaining seconds.
         await afk.LoginAsync(session);
         checkpoint();
+        await character.CatchUpJobExpAsync(session); // before the quests read the role's job level
+        checkpoint();
         await tasks.LoginAsync(session); // 5027 before 5056: quest-gated functions (condition 4004)
         checkpoint();
         await daily.LoginAsync(session); // 5004 and 5059 before 5056 opens To-Do / Dodo

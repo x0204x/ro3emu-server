@@ -15,7 +15,7 @@ public sealed partial class CombatService
     {
         public bool Cancelled { get; set; }
     }
-    private readonly HashSet<HealingField> _healingFields = new();
+    private readonly HashSet<HealingField> _healingFields = [];
 
     /// <summary>Sanctuary 的10級原表均為4秒、每0.6秒。模板14115的單一攻擊點只決定建立時間。
     /// (inferred) 首次恢復在建立後600ms，依描述形成6次週期；原服首次週期相位仍待封包驗收。

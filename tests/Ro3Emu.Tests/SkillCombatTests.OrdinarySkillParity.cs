@@ -134,17 +134,17 @@ public sealed partial class SkillCombatTests
         {
             source.Position = target.Position.Clone();
             if (improved) await buffs.AddAsync(source, 1410401, 20000, source.Role!.Id);
-            foreach (int id in new[] { 902301, 902501, 901601, 903001, 1400101 })
+            foreach (int id in new[] { 902301, 902501, 906501, 908401, 901601, 903001, 1400101 })
                 await buffs.AddAsync(target, id, 20000, source.Role!.Id);
         });
         await OrdinaryCastFinished(alice, source, 1401401, target.Role!.Id);
-        Assert.DoesNotContain(target.Buffs, b => b.ConfigId is 902301 or 902501);
+        Assert.DoesNotContain(target.Buffs, b => b.ConfigId is 902301 or 902501 or 906501 or 908401);
         Assert.Equal(!improved, target.Buffs.Any(b => b.ConfigId == 901601));
         foreach (int id in new[] { 903001, 1400101 }) Assert.Contains(target.Buffs, b => b.ConfigId == id);
     }
 
     [ClientDataFact]
-    public async Task PoisonBoomRealCastBlocksPoisonDamageOnlyUntilItsBuffExpires()
+    public async Task PoisonBoomRealCastCleansesExistingPoisonAndBlocksNewPoisonUntilExpiry()
     {
         await using var alice = await InWorld("PoisonGuard");
         await using var bob = await InWorld("PoisonVictim");
@@ -160,23 +160,48 @@ public sealed partial class SkillCombatTests
             await buffs.AddAsync(target, 903001, 20000, source.Role!.Id);
         });
         await OrdinaryCastFinished(alice, source, 1500701, target.Role!.Id);
-        await Loop.InvokeAsync(async () =>
+        var tick = buffs.PeriodicTick ?? throw new InvalidOperationException("週期傷害未接線");
+        TaskCompletionSource ticked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        long poisonGuid = 0, tickAt = 0, interval = 0, before = 0;
+        try
         {
-            var poison = Assert.Single(target.Buffs, b => b.ConfigId == 903001);
-            var immunity = Assert.Single(target.Buffs, b => b.ConfigId == 1501101);
-            var rule = BuffRuleTables.For(_app.Services.GetRequiredService<GameData>()).Periodic[903001];
-            var effect = new BuffService.PeriodicEffect
+            await Loop.InvokeAsync(async () =>
             {
-                Rule = rule, Player = target, TargetId = target.Role!.Id, Guid = poison.Guid,
-                Source = new BuffService.PeriodicSource(source.Role!.Id, 1000, 1000, 30, 1, source),
-            };
-            long before = target.CurrentHp ?? 0;
-            await buffs.PeriodicTick!(effect, poison);
-            Assert.Equal(before, target.CurrentHp);
-            Assert.Contains(target.Buffs, b => b.ConfigId == 903001);
-            await buffs.RemoveAsync(target, immunity);
-            await buffs.PeriodicTick(effect, poison);
-            Assert.True(target.CurrentHp < before);
-        });
+                // 使用真正登錄的週期生命期；手工建構的 effect 應被 PeriodicCurrent 拒絕。
+                Assert.DoesNotContain(target.Buffs, b => b.ConfigId == 903001);
+                await buffs.AddAsync(target, 903001, 20000, source.Role!.Id);
+                var poison = Assert.Single(target.Buffs, b => b.ConfigId == 903001);
+                Assert.Single(target.Buffs, b => b.ConfigId == 1501101);
+                interval = BuffRuleTables.For(_app.Services.GetRequiredService<GameData>()).Periodic[903001].IntervalMs;
+                poisonGuid = poison.Guid;
+                tickAt = poison.ExpireMs - poison.DurationMs + interval;
+                before = target.CurrentHp ?? 0;
+                buffs.PeriodicTick = async (effect, active) =>
+                {
+                    await tick(effect, active);
+                    if (active.Guid == poisonGuid) ticked.TrySetResult();
+                };
+                buffs.TickPeriodic(tickAt);
+            });
+            await ticked.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            await Loop.InvokeAsync(async () =>
+            {
+                Assert.Equal(before, target.CurrentHp);
+                Assert.Contains(target.Buffs, b => b.ConfigId == 903001);
+                await buffs.RemoveAsync(target, Assert.Single(target.Buffs, b => b.ConfigId == 1501101));
+                ticked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                buffs.TickPeriodic(tickAt + interval);
+            });
+            await ticked.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            await Loop.InvokeAsync(() =>
+            {
+                Assert.True(target.CurrentHp < before);
+                return Task.CompletedTask;
+            });
+        }
+        finally
+        {
+            await Loop.InvokeAsync(() => { buffs.PeriodicTick = tick; return Task.CompletedTask; });
+        }
     }
 }

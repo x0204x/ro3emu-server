@@ -75,7 +75,7 @@ public sealed partial class TerritoryWarsService
     /// unReady point without readyTime alike (Available, LC_DAL_TerritoryWars.lua:3238-3256 and
     /// LC_TerritoryWars_GameplayPointHelper.lua:160-190); which objects start unavailable or owned is not exported.
     /// </summary>
-    private static Dictionary<int, ScenePoint> DefaultScenePoints(long scene) => scene != StrongholdScene ? new()
+    private static Dictionary<int, ScenePoint> DefaultScenePoints(long scene) => scene != StrongholdScene ? []
         : StrongholdGameplayPoints.ToDictionary(p => p.Key, p => new ScenePoint
         {
             Id = p.Key, Type = p.Value,

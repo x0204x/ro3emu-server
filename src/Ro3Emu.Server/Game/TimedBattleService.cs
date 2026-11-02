@@ -75,11 +75,14 @@ public sealed partial class TimedBattleService : IGameTicker
     private readonly GameLoop _loop;
     private readonly PraiseService _praise;
     private readonly ILogger<TimedBattleService> _log;
-    private readonly Dictionary<int, List<GameSession>> _queue = new();
-    private readonly Dictionary<GameSession, Match> _preparing = new();
-    private readonly Dictionary<GameSession, Match> _active = new();
-    private readonly Dictionary<long, Match> _matches = new();
-    private readonly HashSet<long> _pendingDeliveryRoles = new();
+    private readonly Dictionary<int, List<GameSession>> _queue = [];
+    /// <summary>A queued party's members, the same array for each (a solo entrant has none): the party queues, leaves
+    /// the queue and is placed in a match together.</summary>
+    private readonly Dictionary<GameSession, GameSession[]> _queueGroup = [];
+    private readonly Dictionary<GameSession, Match> _preparing = [];
+    private readonly Dictionary<GameSession, Match> _active = [];
+    private readonly Dictionary<long, Match> _matches = [];
+    private readonly HashSet<long> _pendingDeliveryRoles = [];
     private long _lastSecond = -1;
 
     public sealed class State
@@ -89,31 +92,31 @@ public sealed partial class TimedBattleService : IGameTicker
         public int OnePieceExtraUsed { get; set; }
         /// <summary>The week's extra-award items (AwardRestricConfig caps are weekly) for <see cref="OnePieceWeek"/>.</summary>
         public long OnePieceWeek { get; set; }
-        public Dictionary<int, int> OnePieceWeekItems { get; set; } = new();
+        public Dictionary<int, int> OnePieceWeekItems { get; set; } = [];
         /// <summary>Legacy per-day clear and item counters (before the 1020 / weekly limits): read, dropped on the next Rift pay.</summary>
         [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
         public Dictionary<long, int>? OnePieceGains { get; set; }
         [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
         public Dictionary<long, Dictionary<int, int>>? OnePieceItemGains { get; set; }
-        public HashSet<long> ChickenSettled { get; set; } = new();
+        public HashSet<long> ChickenSettled { get; set; } = [];
         public int ChickenRank { get; set; } = 1;
         public long ChickenScore { get; set; }
         public int ChickenMatches { get; set; }
-        public HashSet<long> DragonSettled { get; set; } = new();
-        public HashSet<int> DragonRankClaimed { get; set; } = new();
+        public HashSet<long> DragonSettled { get; set; } = [];
+        public HashSet<int> DragonRankClaimed { get; set; } = [];
         public int DragonRank { get; set; } = 1;
         public long DragonScore { get; set; }
         public long DragonRankScore { get; set; }
         public long DragonCurrencyDay { get; set; }
         public int DragonCurrencyEarned { get; set; }
-        public Dictionary<long, long> OnePieceBestMilliseconds { get; set; } = new();
+        public Dictionary<long, long> OnePieceBestMilliseconds { get; set; } = [];
         /// <summary>Mock Battle (Leisure Forty, CasualBattleService): rating (0 = not yet rated), recent results, the
         /// best and lifetime numbers (5070 DBCasualBattleInfo) and the settled matches (by room).</summary>
         public int CasualMmr { get; set; }
-        public List<CasualRecord> CasualRecords { get; set; } = new();
+        public List<CasualRecord> CasualRecords { get; set; } = [];
         public CasualStats CasualBest { get; set; } = new();
         public CasualStats CasualTotal { get; set; } = new();
-        public HashSet<long> CasualSettled { get; set; } = new();
+        public HashSet<long> CasualSettled { get; set; } = [];
     }
 
     public sealed class CasualRecord
@@ -160,13 +163,13 @@ public sealed partial class TimedBattleService : IGameTicker
         public required long Open;
         public required long Deadline;
         public InstanceService.Room? Room;
-        public HashSet<GameSession> Ready { get; } = new();
-        public HashSet<GameSession> Loaded { get; } = new();
-        public Dictionary<GameSession, int> Faction { get; } = new();
-        public Dictionary<GameSession, Participant> Participants { get; } = new();
-        public Dictionary<GameSession, int> Kills { get; } = new();
-        public HashSet<GameSession> Fallen { get; } = new();
-        public HashSet<GameSession> Absent { get; } = new();
+        public HashSet<GameSession> Ready { get; } = [];
+        public HashSet<GameSession> Loaded { get; } = [];
+        public Dictionary<GameSession, int> Faction { get; } = [];
+        public Dictionary<GameSession, Participant> Participants { get; } = [];
+        public Dictionary<GameSession, int> Kills { get; } = [];
+        public HashSet<GameSession> Fallen { get; } = [];
+        public HashSet<GameSession> Absent { get; } = [];
         public bool Settled;
         /// <summary>Survivor Battle's in-scene state (entry 2), from the room's creation.</summary>
         public ChickenRun? Chicken;
@@ -315,7 +318,11 @@ public sealed partial class TimedBattleService : IGameTicker
         var keys = new List<ReservationKey>
         { ReservationKey.Entity("timed_match_queue", entry.ToString(System.Globalization.CultureInfo.InvariantCulture)) };
         if (session.Role != null)
-        { keys.Add(ReservationKey.Role(session.Role.Id)); keys.Add(ReservationKey.Lifecycle(session.Role.Id)); }
+        {
+            keys.Add(ReservationKey.Role(session.Role.Id)); keys.Add(ReservationKey.Lifecycle(session.Role.Id));
+            // A party leader queues the whole party.
+            keys.AddRange(_teams.MembersOf(session.Role.Id).Select(role => ReservationKey.Role(role)));
+        }
         if (_queue.TryGetValue(entry, out var waiting))
             keys.AddRange(waiting.Where(player => player.Role != null).Select(player => ReservationKey.Role(player.Role!.Id)));
         if (_preparing.TryGetValue(session, out var match))
@@ -323,8 +330,7 @@ public sealed partial class TimedBattleService : IGameTicker
             keys.Add(ReservationKey.Entity("timed_match", MatchKey(match)));
             keys.AddRange(match.Participants.Values.Select(participant => ReservationKey.Role(participant.Id)));
         }
-        return keys.Distinct().OrderBy(key => key.Kind).ThenBy(key => key.Id, StringComparer.Ordinal)
-            .ThenBy(key => key.Part, StringComparer.Ordinal).ToArray();
+        return [.. keys.Distinct().OrderBy(key => key.Kind).ThenBy(key => key.Id, StringComparer.Ordinal).ThenBy(key => key.Part, StringComparer.Ordinal)];
     }
 
     private static string MatchKey(Match match) => match.Room?.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)
@@ -369,23 +375,37 @@ public sealed partial class TimedBattleService : IGameTicker
     public async Task StartMatchAsync(GameSession session, StartMatchReq req)
     {
         using var scope = await EnterCommandAsync(session, req.MatchEntryId, "timed battle start matchmaking");
+        // Party mode (UI_Sys_ChickenContentWidgetBaseCtrl._startMatch, UI_Sys_DragonIslandWidgetCtrl): only a five-person
+        // party's leader starts, every member online ("Only the Party Leader can start matchmaking", UIWords 63512/63514),
+        // and the whole party queues as one team of the match.
+        var group = _teams.MatchGroup(session);
+        var shape = MatchShape(req.MatchEntryId);
         int result = req.OperateId != 0 || req.MatchData?.MultiDungeon != null ? ErrorCodes.Parameter
-            : Admission(session, req.MatchEntryId);
+            : group.Error != 0 ? group.Error
+            : group.Members.Length > 1 && group.Members.Length > shape.TeamSize ? ErrorCodes.PartyFull
+            : group.Members.Select(member => Admission(member, req.MatchEntryId)).FirstOrDefault(error => error != 0);
+        long startTime = _time.GetUtcNow().ToUnixTimeSeconds();
         await session.SendGameAsync(StartMatch, new StartMatchResp
         {
             Result = result, MatchEntryId = req.MatchEntryId, MatchData = req.MatchData?.Clone(),
             // Same LC_DAL_Match.ResetMatchTimer consumer as dungeon matching: Unix seconds.
-            MatchStartTime = result == 0 ? _time.GetUtcNow().ToUnixTimeSeconds() : 0
+            MatchStartTime = result == 0 ? startTime : 0
         });
         if (result != 0) return;
         int entry = req.MatchEntryId;
+        // The other members' searches start with the leader's (LC_DAL_Match._startMatchRespHandler), as in
+        // DungeonMatchService.StartMatchAsync.
+        foreach (var member in group.Members.Where(member => member != session))
+            await member.SendGameAsync(StartMatch, new StartMatchResp
+            { MatchEntryId = entry, MatchData = req.MatchData?.Clone(), MatchStartTime = startTime });
         if (!_queue.TryGetValue(entry, out var waiting)) _queue[entry] = waiting = [];
-        waiting.RemoveAll(p => Admission(p, entry, alreadyQueued: true) != 0);
-        waiting.Add(session);
-        var shape = MatchShape(entry);
-        if (waiting.Count < shape.Players) { await SendQueueCountAsync(entry); return; }
-        var players = waiting.Take(shape.Players).ToArray();
-        waiting.RemoveRange(0, shape.Players);
+        await DropQueuedAsync(entry, p => Admission(p, entry, alreadyQueued: true) != 0, manual: false);
+        if (!_queue.TryGetValue(entry, out waiting)) _queue[entry] = waiting = [];
+        waiting.AddRange(group.Members);
+        if (group.Members.Length > 1)
+            foreach (var member in group.Members) _queueGroup[member] = group.Members;
+        if (Pack(waiting, shape) is not { } players) { await SendQueueCountAsync(entry); return; }
+        foreach (var player in players) { waiting.Remove(player); _queueGroup.Remove(player); }
         if (waiting.Count == 0) _queue.Remove(entry);
         else await SendQueueCountAsync(entry);
         long now = _time.GetUtcNow().ToUnixTimeSeconds();
@@ -404,6 +424,42 @@ public sealed partial class TimedBattleService : IGameTicker
         }
         foreach (var player in players) _preparing[player] = match;
         await BroadcastReadyAsync(match);
+    }
+
+    private GameSession[] QueueGroup(GameSession session) => _queueGroup.TryGetValue(session, out var group) ? group : [session];
+
+    /// <summary>
+    /// The entrants of the next match in team order (team n holds n*TeamSize .. n*TeamSize+TeamSize-1, the order the
+    /// factions and Dragon camps are drawn from), or null while the queue cannot fill it. A party stays in one team; the
+    /// larger groups are placed first, each in the first team with room (inferred packing).
+    /// </summary>
+    private GameSession[]? Pack(List<GameSession> waiting, (int Players, int TeamSize) shape)
+    {
+        if (shape.Players == 0 || waiting.Count < shape.Players) return null;
+        var teams = Enumerable.Range(0, shape.Players / shape.TeamSize).Select(_ => new List<GameSession>()).ToArray();
+        foreach (var group in waiting.Select(QueueGroup).Distinct().OrderByDescending(group => group.Length))
+        {
+            if (teams.FirstOrDefault(team => team.Count + group.Length <= shape.TeamSize) is { } team) team.AddRange(group);
+            if (teams.All(team => team.Count == shape.TeamSize)) return [.. teams.SelectMany(team => team)];
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Takes every queued entrant <paramref name="drop"/> names out of the entry's queue with its whole party; the party's
+    /// other members get 82639 (their search ends with it). Returns whether the queue changed.
+    /// </summary>
+    private async Task<bool> DropQueuedAsync(int entry, Func<GameSession, bool> drop, bool manual, GameSession? departed = null)
+    {
+        if (!_queue.TryGetValue(entry, out var waiting)) return false;
+        var dropped = waiting.Where(drop).ToArray();
+        if (dropped.Length == 0) return false;
+        var partners = dropped.SelectMany(QueueGroup).Except(dropped).Where(waiting.Contains).ToArray();
+        foreach (var player in dropped.Concat(partners)) { waiting.Remove(player); _queueGroup.Remove(player); }
+        if (waiting.Count == 0) _queue.Remove(entry);
+        await RoleFanout.EachAsync(partners.Where(player => player != departed), player =>
+            player.SendGameAsync(82639, new CancelMatchNotify { MatchEntryId = entry, ManualCancel = manual }));
+        return true;
     }
 
     public const uint MatchPlayerNum = 82677;
@@ -426,11 +482,9 @@ public sealed partial class TimedBattleService : IGameTicker
             ? 0 : ErrorCodes.Parameter;
         await session.SendGameAsync(CancelMatch, new CancelMatchResp { Result = result, MatchEntryId = req.MatchEntryId });
         if (result != 0) return false;
-        if (_queue.TryGetValue(req.MatchEntryId, out var waiting) && waiting.Remove(session))
-        {
-            if (waiting.Count == 0) _queue.Remove(req.MatchEntryId);
-            else await SendQueueCountAsync(req.MatchEntryId);
-        }
+        // A party leaves the queue together (inferred: any member's cancel ends the party's search, as in DungeonMatchService).
+        if (await DropQueuedAsync(req.MatchEntryId, p => p == session, manual: true, departed: session))
+            await SendQueueCountAsync(req.MatchEntryId);
         if (_preparing.TryGetValue(session, out var match))
             await CancelReadyAsync(match, true);
         return true;
@@ -472,7 +526,9 @@ public sealed partial class TimedBattleService : IGameTicker
                 PlayerId = match.Participants[player].Id,
                 Status = match.Ready.Contains(player) ? MatchReadyStatus.Ready : MatchReadyStatus.None
             });
-        notify.EndTime = (match.Open + 30) * 1000;
+        // Seconds: UI_Sys_Dungeon_PreparePanelCtrl subtracts TimerManager.GetSystemTime (seconds) from it, as for
+        // DungeonMatchService's ready check (milliseconds showed a countdown of about 1.8 trillion).
+        notify.EndTime = match.Open + 30;
         if (match.Entry == DragonEntry) notify.DragonIslandReadyProgress = new DragonIslandReadyProgress
         { ReadyCount = match.Ready.Count, ExpectedCount = match.Players.Length };
         await RoleFanout.EachAsync(match.Players, player => player.SendGameAsync(ReadyNotify, notify));
@@ -555,9 +611,9 @@ public sealed partial class TimedBattleService : IGameTicker
             await SettleMatchAsync(match);
     }
 
-    private static HashSet<int> RemainingFactions(Match match) => match.Players
+    private static HashSet<int> RemainingFactions(Match match) => [.. match.Players
         .Where(p => !match.Absent.Contains(p) && !match.Fallen.Contains(p))
-        .Select(p => match.Faction[p]).ToHashSet();
+        .Select(p => match.Faction[p])];
 
     private Task SettleMatchAsync(Match match) => SettleMatchCoreAsync(match);
 
@@ -776,8 +832,7 @@ public sealed partial class TimedBattleService : IGameTicker
         }
         if (_treasure.TryGetValue(session, out var run))
             keys.Add(ReservationKey.Entity("timed_onepiece", run.Room.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)));
-        return keys.Distinct().OrderBy(key => key.Kind).ThenBy(key => key.Id, StringComparer.Ordinal)
-            .ThenBy(key => key.Part, StringComparer.Ordinal).ToArray();
+        return [.. keys.Distinct().OrderBy(key => key.Kind).ThenBy(key => key.Id, StringComparer.Ordinal).ThenBy(key => key.Part, StringComparer.Ordinal)];
     }
 
     private async Task<LegacyOwnerScope?> EnterLeaveAsync(GameSession session)
@@ -803,11 +858,8 @@ public sealed partial class TimedBattleService : IGameTicker
         using (var scope = await EnterLeaveAsync(session))
         {
             foreach (int entry in _queue.Keys.ToArray())
-                if (_queue[entry].Remove(session))
-                {
-                    if (_queue[entry].Count == 0) _queue.Remove(entry);
-                    else await SendQueueCountAsync(entry);
-                }
+                if (await DropQueuedAsync(entry, p => p == session, manual: false, departed: session))
+                    await SendQueueCountAsync(entry);
             if (_preparing.TryGetValue(session, out var waiting)) await CancelReadyAsync(waiting, false, session);
             if (_active.TryGetValue(session, out var match) && !match.Settled)
             {
@@ -853,7 +905,9 @@ public sealed partial class TimedBattleService : IGameTicker
             if (_treasure.TryGetValue(session, out var run))
             { run.Settled = true; _treasure.Remove(session); }
         }
-        if (settle != null) await SettleMatchAsync(settle);
+        // A retry of this leave no longer finds the match, so a refused settlement waits for room now. It marks the match
+        // settled only after its commit, so it can run again.
+        if (settle != null) await Accounts.Persistence.QueueFullPatience.RunAsync(() => SettleMatchAsync(settle));
     }
 
     private async Task AbortMatchAsync(Match match, GameSession? departed)
@@ -905,10 +959,9 @@ public sealed partial class TimedBattleService : IGameTicker
                     .Concat(_queue.GetValueOrDefault(entry)?.Where(p => p.Role != null)
                         .Select(p => ReservationKey.Role(p.Role!.Id)) ?? []).Distinct().ToArray();
                 using var scope = _loop.Owners is { } owners ? await owners.EnterAsync("timed match queue expiry", keys) : null;
-                if (!_queue.TryGetValue(entry, out var waiting)) return;
-                if (waiting.RemoveAll(p => Admission(p, entry, alreadyQueued: true) != 0) > 0 && waiting.Count > 0)
+                if (!_queue.ContainsKey(entry)) return;
+                if (await DropQueuedAsync(entry, p => Admission(p, entry, alreadyQueued: true) != 0, manual: false))
                     await SendQueueCountAsync(entry);
-                if (waiting.Count == 0) _queue.Remove(entry);
             });
         foreach (var match in _matches.Values.Distinct().ToArray())
             if (!match.Settled && match.Chicken != null && now < match.Deadline)

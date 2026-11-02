@@ -107,7 +107,7 @@ public sealed partial class ReconstructedDungeons
     public sealed record ScriptedScene(long Scene, string Name, string Confidence, IReadOnlyList<ScriptedStep> Steps,
         IReadOnlyList<int> Unplayed);
 
-    private readonly Dictionary<long, ScriptedScene> _scripted = new();
+    private readonly Dictionary<long, ScriptedScene> _scripted = [];
 
     public IReadOnlyCollection<ScriptedScene> AllScripted => _scripted.Values;
 

@@ -4,7 +4,7 @@ namespace Ro3Emu.Server.Game;
 
 public sealed partial class PassiveSkills
 {
-    private readonly ConditionalWeakTable<GameSession, VictimState> _victimStates = new();
+    private readonly ConditionalWeakTable<GameSession, VictimState> _victimStates = [];
 
     private sealed class VictimState
     {

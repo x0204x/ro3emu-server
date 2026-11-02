@@ -107,7 +107,6 @@ public sealed partial class NewActivityService
         var grants = awardGroups.SelectMany(group => _awards.Resolve(session, group, Playbook(session)).Grants).ToArray();
         if (grants.Any(g => g.BindType != 0 || g.ExpireTimeStamp != 0))
             throw new InvalidOperationException("Season Eve mail requires plain configured item rewards.");
-        return grants.GroupBy(g => g.Entry)
-            .Select(g => new MailService.Attachment(g.Key, checked(g.Sum(item => item.Count)))).ToArray();
+        return [.. grants.GroupBy(g => g.Entry).Select(g => new MailService.Attachment(g.Key, checked(g.Sum(item => item.Count))))];
     }
 }

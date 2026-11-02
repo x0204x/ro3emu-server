@@ -56,7 +56,7 @@ public sealed partial class PanelBackend(IOptions<ServerOptions> options, Accoun
 
     public bool Accepting => loop.Phase == GameLoopPhase.Accepting;
 
-    public bool TryAcquireCredentialCheck(IPAddress? remote) => limiter.TryAcquire(remote);
+    public bool TryAcquireCredentialCheck(Ro3Emu.Panel.RequestClient client) => limiter.TryAcquire(client);
 
     public bool IsAdmin(string account) => staff.RoleOf(account) != PanelRole.None;
 

@@ -24,7 +24,7 @@ public sealed class TowerPetUnit : WorldUnit
     private long _nextSearchMs;
     private MonsterUnit? _target;
     private bool _moving;
-    private readonly Dictionary<int, long> _skillReadyMs = new();
+    private readonly Dictionary<int, long> _skillReadyMs = [];
 
     private TowerPetUnit(GameSession owner, World world, MonsterService monsters, CombatService combat) =>
         (this._owner, this._world, this._monsters, this._combat) = (owner, world, monsters, combat);
@@ -39,7 +39,7 @@ public sealed class TowerPetUnit : WorldUnit
     public IReadOnlyList<AttackSkill> AttackSkills { get; private init; } = [];
     public IReadOnlyList<AttackSkill> SupportSkills { get; private init; } = [];
     internal IReadOnlyDictionary<int, double> BaseAttributes { get; private init; } = new Dictionary<int, double>();
-    internal HashSet<int> PublishedAttributeIds { get; } = new();
+    internal HashSet<int> PublishedAttributeIds { get; } = [];
     public StatSheet CombatStats => _combat.TowerPetStats(this);
     public int SpeedCm => (int)CombatStats[113];
     public int SearchIntervalMs { get; private init; }
@@ -114,7 +114,7 @@ public sealed class TowerPetUnit : WorldUnit
         // enum_PetCamp collection/destiny category (LC_PetHelper.GetPetAttributeInfo), not an enemy camp.
         var ai = data.Row("AIConfig", GameData.Int(npc, "_iAI"));
         return new Stats(npcId, level, (int)GameData.Int(npc, "_iElement"), (int)GameData.Int(npc, "_iCamp"),
-            attackSkills.ToArray(), supportSkills.ToArray(),
+            [.. attackSkills], [.. supportSkills],
             ai is { } brain ? (int)Math.Max(50, GameData.Int(brain, "_iSearchTime")) : 100,
             attackSkills.Count > 0 ? attackSkills.Min(s => s.Range) : 2f, values);
     }

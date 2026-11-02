@@ -19,7 +19,7 @@ namespace Ro3Emu.Server.Game;
 public sealed partial class DungeonService
 {
     public const uint RandomDungeon = 82591;
-    private readonly HashSet<GameSession> _rolling = new();
+    private readonly HashSet<GameSession> _rolling = [];
 
     private static bool IsRandom(DungeonCatalog.Plan plan) => plan.Origin == null && plan.Multi is { } multi
         && GameData.Int(multi, "_iIsRandomDungeon") == 1;

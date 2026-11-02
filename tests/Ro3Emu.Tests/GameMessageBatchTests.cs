@@ -13,7 +13,7 @@ public sealed class GameMessageBatchTests
 
         bot.UnpackServerBatch(batch);
 
-        BotEvent[] events = bot.Inbox.Snapshot().ToArray();
+        BotEvent[] events = [.. bot.Inbox.Snapshot()];
         Assert.Collection(events,
             first =>
             {

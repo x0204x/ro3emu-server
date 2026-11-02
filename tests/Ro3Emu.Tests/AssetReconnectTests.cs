@@ -74,8 +74,8 @@ public sealed class AssetReconnectTests : IAsyncLifetime
             .Where(e => e.Kind == BotEventKind.Game &&
                 (e.MsgId == DailyActivityService.StageSync || e.MsgId == SeasonRefineService.SeasonRefineSync || e.MsgId == MsgId.PlayerAsset))
             .ToArray();
-        Assert.Equal(new uint[] { DailyActivityService.StageSync, SeasonRefineService.SeasonRefineSync,
-            SeasonRefineService.SeasonRefineSync, MsgId.PlayerAsset }, frames.Select(e => e.MsgId));
+        Assert.Equal([ DailyActivityService.StageSync, SeasonRefineService.SeasonRefineSync,
+            SeasonRefineService.SeasonRefineSync, MsgId.PlayerAsset ], frames.Select(e => e.MsgId));
 
         var claims = DBStageRewardInfoIncrement.Parser.ParseFrom(frames[0].Body);
         Assert.True(claims.SyncAllMark);

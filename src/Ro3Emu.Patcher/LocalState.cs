@@ -58,6 +58,6 @@ public sealed class LocalState
 /// <summary>The steps of a commit, written before the first move so a crash mid-commit is finished on the next start.</summary>
 public sealed class CommitJournal
 {
-    [JsonPropertyName("moves")] public List<string> Moves { get; set; } = new();
-    [JsonPropertyName("deletes")] public List<string> Deletes { get; set; } = new();
+    [JsonPropertyName("moves")] public List<string> Moves { get; set; } = [];
+    [JsonPropertyName("deletes")] public List<string> Deletes { get; set; } = [];
 }

@@ -13,7 +13,7 @@ namespace Ro3Emu.Server.Game;
 public sealed class TimedTodoSchedule(GameData data, ActivityClock clock, TimeProvider time, TestingSwitches? testing = null)
 {
     /// <summary>GM test aid only, process-local. Production scheduling never populates this map.</summary>
-    internal Dictionary<int, Occurrence> TestWindows { get; } = new();
+    internal Dictionary<int, Occurrence> TestWindows { get; } = [];
     public sealed record Occurrence(long Start, long End)
     {
         public bool Contains(long seconds) => Start <= seconds && seconds < End;

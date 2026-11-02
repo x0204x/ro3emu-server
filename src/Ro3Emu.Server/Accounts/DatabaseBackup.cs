@@ -69,7 +69,7 @@ public sealed partial class DatabaseBackup(IOptions<ServerOptions> options, Acco
     private string BackupCore()
     {
         var dir = Directory;
-        System.IO.Directory.CreateDirectory(dir);
+        PrivateFiles.Directory(dir);
         var target = Path.Combine(dir, NextName());
         var partial = target + PartialExtension;
         var started = Stopwatch.GetTimestamp();
@@ -90,6 +90,7 @@ public sealed partial class DatabaseBackup(IOptions<ServerOptions> options, Acco
             }
         }
         File.Move(partial, target);
+        PrivateFiles.Files(target);
         _lastMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
         _lastBytes = new FileInfo(target).Length;
         _lastAt = DateTime.UtcNow;
@@ -121,6 +122,7 @@ public sealed partial class DatabaseBackup(IOptions<ServerOptions> options, Acco
                 }
                 File.SetLastWriteTimeUtc(partial, File.GetLastWriteTimeUtc(plain));
                 File.Move(partial, compressed, overwrite: true);
+                PrivateFiles.Files(compressed);
                 File.Delete(plain);
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidDataException)

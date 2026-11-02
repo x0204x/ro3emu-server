@@ -116,8 +116,20 @@ public sealed partial class TavernService
         var next = Rolled(s.Tavern).Clone();
         next.TodaySeconds = AddClamped(next.TodaySeconds, seconds);
         CompleteDay(next);
-        await CommitAsync(s, next, "tavern/stay");
+        try { await CommitAsync(s, next, "tavern/stay"); }
+        // A full queue wrote nothing: the seconds go back, or the handover's retry finds none to write.
+        catch (Exception e) when (Accounts.Persistence.QueueFullPatience.Refused(e))
+        {
+            lock (_sync) _pendingSeconds[s.Role.Id] = _pendingSeconds.GetValueOrDefault(s.Role.Id) + seconds;
+            throw;
+        }
         return true;
+    }
+
+    /// <summary>Tests: time in a room not written yet, without waiting for the sweep to count it.</summary>
+    internal void AddStayForTest(long role, double seconds)
+    {
+        lock (_sync) _pendingSeconds[role] = _pendingSeconds.GetValueOrDefault(role) + seconds;
     }
 
     private void CompleteDay(RoleState state)

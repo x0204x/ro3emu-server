@@ -25,7 +25,7 @@ public sealed partial class EquipmentService
         long career = progress.Career;
         while (career != 0 && career != skill.Job) career = JobConfig.Get(_data, career)?.ParentId ?? 0;
         if (career == 0) return returns;
-        return returns.Select(p => p.Entry == currency
-            ? (p.Entry, p.Count + (long)Math.Floor(p.Count * (decimal)bonus / 10000)) : p).ToList();
+        return [.. returns.Select(p => p.Entry == currency
+            ? (p.Entry, p.Count + (long)Math.Floor(p.Count * (decimal)bonus / 10000)) : p)];
     }
 }

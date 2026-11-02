@@ -230,7 +230,7 @@ public static partial class EconomySnapshotReader
                             long pending = SqlLong(r, 1);
                             if (pending is not (0 or 1)) throw new FormatException("Invalid guild challenge pending status.");
                             var delivered = Try(root, "Delivered", out var settled)
-                                ? Elements(settled).Select(x => x.GetInt64()).ToHashSet() : new HashSet<long>();
+                                ? Elements(settled).Select(x => x.GetInt64()).ToHashSet() : [];
                             if (Try(root, "Personal", out var personal)) foreach (var grant in Properties(personal))
                             {
                                 long role = long.Parse(grant.Name, CultureInfo.InvariantCulture);
@@ -360,6 +360,15 @@ public static partial class EconomySnapshotReader
                         case "flying_dragon":
                             // Starshatter ritual (FlyingDragonService): progress and helpers; the ritual's mail carries the goods.
                             ValidateProto(Convert.FromBase64String(value), DBFlyingDragonProduceInfo.Descriptor);
+                            break;
+                        case "rank_rewards":
+                            // Leaderboard rewards (RankRewardService): each board's last settlement; the letters carry the goods.
+                            using (var doc = Json(value))
+                                foreach (var board in Properties(doc.RootElement))
+                                    if (!long.TryParse(board.Name, NumberStyles.None, CultureInfo.InvariantCulture, out _)
+                                        || board.Value.GetString() is not { Length: 10 } period
+                                        || !DateTime.TryParseExact(period, "yyyyMMddHH", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))
+                                        throw new FormatException("Invalid rank reward settlement.");
                             break;
                         default:
                             Issue(EconomyIssueKind.UnknownSchema, key, "Unclassified server_state key.");

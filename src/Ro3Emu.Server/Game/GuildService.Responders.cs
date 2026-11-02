@@ -35,7 +35,7 @@ public sealed partial class GuildService
         ErrResponseInviteExpired = 10022;
 
     private sealed record HelperInvitation(long GuildId, long Recipient, long Inviter, long ExpiresMs);
-    private readonly Dictionary<long, HelperInvitation> _helperInvites = new();
+    private readonly Dictionary<long, HelperInvitation> _helperInvites = [];
 
     private int ResponderLimit => (int)Setting("GuildResponsePeopleLimit", 3)[0];
 
@@ -82,7 +82,7 @@ public sealed partial class GuildService
             // "${1}, ${2}, and ${3} founded the guild together": the founder, then the responders.
             var founders = guild.Members.Values.OrderBy(m => m.Official != 1).ThenBy(m => m.EnterTime).Take(3).ToArray();
             if (founders.Length == 3)
-                Journal(guild, EvFounded, founders.Select(m => m.RoleId).ToArray(), founders.Select(m => Str(m.Name)).ToArray());
+                Journal(guild, EvFounded, [.. founders.Select(m => m.RoleId)], [.. founders.Select(m => Str(m.Name))]);
         }
         if (!await SaveGuildAsync(guild)) return false;
         if (online != null)
@@ -145,7 +145,7 @@ public sealed partial class GuildService
         if (res.Result == 0)
         {
             // Accept/Refuse All may name every row or none.
-            var ids = (req.PlayerIDList.Count > 0 ? req.PlayerIDList.Distinct() : g!.HelperApplies.Keys.ToArray())
+            var ids = (req.PlayerIDList.Count > 0 ? req.PlayerIDList.Distinct() : [.. g!.HelperApplies.Keys])
                 .Where(g!.HelperApplies.ContainsKey).ToList();
             if (ids.Count == 0) res.Result = ErrorCodes.GuildApplicationMissing;
             foreach (long id in ids)

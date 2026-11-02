@@ -69,7 +69,7 @@ public sealed class PetTests : IAsyncLifetime
     private async Task Gm(string command)
     {
         using var http = new HttpClient();
-        var response = await http.PostAsync($"{_http}/ro3emu/gm?account=alice", new StringContent(command));
+        var response = await http.PostAsync($"{_http}/ro3emu/gm?account=alice", Operator.Command(command));
         response.EnsureSuccessStatusCode();
     }
 
@@ -133,7 +133,7 @@ public sealed class PetTests : IAsyncLifetime
         Assert.True(sync.SyncAllMark);
         Assert.Empty(sync.ListPet);
         Assert.Equal(0, sync.CurrentPlan); // plan N is "Build N+1"
-        Assert.Equal(new[] { 0, 1, 2, 3, 4 }, sync.SetupPlans.Keys.Order());
+        Assert.Equal([0, 1, 2, 3, 4], sync.SetupPlans.Keys.Order());
         Assert.Empty(sync.SetupPlans[0].All.SetUpPets);
         Assert.Equal(1, sync.IncubationLv);
         Assert.Equal(1, sync.OnOpenUIRoomLv);
@@ -151,7 +151,7 @@ public sealed class PetTests : IAsyncLifetime
         Assert.Equal(1, Count(bot, 1250709));
         await Gm("!quest done 10105010");
         var functions = _app.Services.GetRequiredService<FunctionService>();
-        Assert.All(new[] { 33, 3301, 3302 }, f => Assert.True(functions.IsOpen(Session, f)));
+        Assert.All([33, 3301, 3302], f => Assert.True(functions.IsOpen(Session, f)));
     }
 
     [ClientDataFact]
@@ -377,7 +377,7 @@ public sealed class PetTests : IAsyncLifetime
         var skills = _app.Services.GetRequiredService<PetService>().ConfiguredSkills(new PetData { PetId = 10001, Star = 1 });
         Assert.Equal(2353301, skills.Protect);
         Assert.Equal(2353201, skills.Passive);
-        Assert.Equal(new long[] { 2353001, 2353101 }, skills.Active);
+        Assert.Equal([2353001, 2353101], skills.Active);
     }
 
     [ClientDataFact]
@@ -440,12 +440,12 @@ public sealed class PetTests : IAsyncLifetime
         await bot.SendGameAsync(PetService.GenerateEgg, new PetGenEggReq { RoundId = 10008, SlotId = 1 });
         Assert.Equal(ErrorCodes.PetOperation, (await Next(bot, PetService.GenerateEgg, PetGenEggRes.Parser)).Result);
         Assert.Equal(1, Count(bot, 1250709));
-        Assert.Equal(new long[] { 10008, 10009 }, Saved(bot).IncubationSlot[1].IncubateInfo.Keys.Order());
+        Assert.Equal([10008, 10009], Saved(bot).IncubationSlot[1].IncubateInfo.Keys.Order());
         _clock.Advance(600);
         await bot.SendGameAsync(PetService.EggReward, new PetEggRewardReq { RoundId = 10008, SlotIds = { 1 } });
         Assert.Equal(0, (await Next(bot, PetService.EggReward, PetEggRewardRes.Parser)).Result);
         // Collecting the limited egg leaves the permanent egg in the same slot.
-        Assert.Equal(new long[] { 10009 }, Saved(bot).IncubationSlot[1].IncubateInfo.Keys);
+        Assert.Equal([10009], Saved(bot).IncubationSlot[1].IncubateInfo.Keys);
     }
 
     [ClientDataFact]
@@ -479,8 +479,7 @@ public sealed class PetTests : IAsyncLifetime
         {
             var groups = game.Row("DrawConfig", draw)!.Value.GetProperty("_kGuaranteedBanner").EnumerateArray()
                 .Select(v => v.GetInt64()).ToHashSet();
-            return game.Table("DrawPoolConfig").Values.Where(r => groups.Contains(GameData.Int(r, "_iGroupID")))
-                .SelectMany(r => r.GetProperty("_kItem").EnumerateArray().Select(t => t[1].GetInt64())).ToHashSet();
+            return [.. game.Table("DrawPoolConfig").Values.Where(r => groups.Contains(GameData.Int(r, "_iGroupID"))).SelectMany(r => r.GetProperty("_kItem").EnumerateArray().Select(t => t[1].GetInt64()))];
         }
         // Room 1 uses _kDrawIds[1]; the Normal pool's pity key is that draw's _iType, the limited pool's is its draw id.
         long permanentDraw = Flat(game.Row("PetIncubationSlotConfig", 10009)!.Value, "_kDrawIds")[1];
@@ -509,7 +508,7 @@ public sealed class PetTests : IAsyncLifetime
     }
 
     private static long[] Flat(JsonElement row, string key) =>
-        row.GetProperty(key).EnumerateArray().Select(v => v.GetInt64()).ToArray();
+        [.. row.GetProperty(key).EnumerateArray().Select(v => v.GetInt64())];
 
     [ClientDataFact]
     public async Task HatchingAcceleratesAtomicallyAndCollectsOnlyOnce()

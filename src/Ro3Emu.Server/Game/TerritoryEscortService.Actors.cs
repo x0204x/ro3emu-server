@@ -211,13 +211,13 @@ public sealed partial class TerritoryEscortService
         using var stagedEscortLedger = StageLedger();
         try
         {
-            wanted = ledger.Carts.Values.Select(c => new CartState
+            wanted = [.. ledger.Carts.Values.Select(c => new CartState
             {
                 Id = c.Id, Guild = c.Guild,
                 Owner = c.Owner, Round = c.Round, Type = c.Type, Point = c.Point, Count = c.Count,
                 OriginCount = c.OriginCount, DamageTier = c.DamageTier, CurrentHp = c.CurrentHp,
                 Started = c.Started, Scene = c.Scene
-            }).ToArray();
+            })];
         }
         finally { stagedEscortLedger.Dispose(); _gate.Release(); reservation?.Dispose(); }
         await _actorGate.WaitAsync();
@@ -302,11 +302,11 @@ public sealed partial class TerritoryEscortService
         using var stagedEscortLedger = StageLedger();
         try
         {
-            wanted = ledger.Cargo.Values.Where(x => !x.Picked && x.Expires > _clock.Now).Select(x => new CargoState
+            wanted = [.. ledger.Cargo.Values.Where(x => !x.Picked && x.Expires > _clock.Now).Select(x => new CargoState
             {
                 Id = x.Id, Scene = x.Scene, LooterGuild = x.LooterGuild, X = x.X, Y = x.Y, Z = x.Z,
                 FreeAfter = x.FreeAfter, Expires = x.Expires
-            }).ToArray();
+            })];
         }
         finally { stagedEscortLedger.Dispose(); _gate.Release(); reservation?.Dispose(); }
         await _actorGate.WaitAsync();
@@ -507,7 +507,7 @@ public sealed partial class TerritoryEscortService
         var victimRole = victim.Role;
         var victimAttachment = victim.Attachment;
         using var reservation = await EnterGateAsync("escort/player kill", killer,
-            additionalRoles: scorers.Select(s => s.Role!.Id).Append(victim.Role!.Id).ToArray());
+            additionalRoles: [.. scorers.Select(s => s.Role!.Id), victim.Role!.Id]);
         using var stagedEscortLedger = StageLedger();
         try
         {

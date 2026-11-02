@@ -12,11 +12,11 @@ internal sealed class EventSettlementOutcomeUnknownException(string message, Exc
 public sealed partial class CombatService
 {
     /// <summary>E05e: frozen event entitlement precedes lethal wire publication; ordinary kill callbacks retain their order.</summary>
-    public List<Func<GameSession, MonsterUnit, long, Task>> BeforeLethalPublication { get; } = new();
+    public List<Func<GameSession, MonsterUnit, long, Task>> BeforeLethalPublication { get; } = [];
     /// <summary>Finalize a committed event death even when the initiating attachment stopped during commit.</summary>
-    public List<Func<MonsterUnit, Task>> AfterLethalPublication { get; } = new();
+    public List<Func<MonsterUnit, Task>> AfterLethalPublication { get; } = [];
     /// <summary>Undo unpublished combat-side scores when the event source is proven absent.</summary>
-    public List<Action<MonsterUnit>> LethalHitRolledBack { get; } = new();
+    public List<Action<MonsterUnit>> LethalHitRolledBack { get; } = [];
     internal Action<MonsterUnit, long, long>? LethalRollbackObservedForTest { get; set; }
 
     internal void RestoreUnpublishedLethalHit(MonsterUnit monster, long beforeHp)
@@ -68,7 +68,7 @@ public sealed partial class CombatService
         }
     }
     /// <summary>Durable event scores complete before their corresponding hit is published.</summary>
-    public List<Func<GameSession, GameSession, long, bool, Task>> PvpDealtAsync { get; } = new();
-    public List<Func<GameSession, MonsterUnit, long, Task>> EventDamageRecorded { get; } = new();
-    public List<Func<GameSession, long, Task>> HealedAsync { get; } = new();
+    public List<Func<GameSession, GameSession, long, bool, Task>> PvpDealtAsync { get; } = [];
+    public List<Func<GameSession, MonsterUnit, long, Task>> EventDamageRecorded { get; } = [];
+    public List<Func<GameSession, long, Task>> HealedAsync { get; } = [];
 }

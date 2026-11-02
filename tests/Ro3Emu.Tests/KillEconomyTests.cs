@@ -88,7 +88,7 @@ public sealed class KillEconomyTests : IAsyncLifetime
             Service<RewardService>().ResolveKillForTest = (_, _) => ([(1000000, 4), (1, 8), (2, 6)], 4, 4);
             Service<RewardService>().KillDropsGranted.Add((_, _, rewards) =>
             {
-                observed = rewards.ToArray();
+                observed = [.. rewards];
                 return Task.CompletedTask;
             });
             return Task.CompletedTask;
@@ -116,7 +116,7 @@ public sealed class KillEconomyTests : IAsyncLifetime
     {
         await using var bot = await Enter();
         using (var client = new HttpClient())
-            (await client.PostAsync(_http + "/ro3emu/gm?account=killtest", new StringContent("!job 1100"))).EnsureSuccessStatusCode();
+            (await client.PostAsync(_http + "/ro3emu/gm?account=killtest", Operator.Command("!job 1100"))).EnsureSuccessStatusCode();
         var player = Session;
         var monster = await Service<GameLoop>().InvokeAsync(async () =>
         {
@@ -160,7 +160,7 @@ public sealed class KillEconomyTests : IAsyncLifetime
     {
         await using var bot = await Enter();
         using (var client = new HttpClient())
-            (await client.PostAsync(_http + "/ro3emu/gm?account=killtest", new StringContent("!job 1100"))).EnsureSuccessStatusCode();
+            (await client.PostAsync(_http + "/ro3emu/gm?account=killtest", Operator.Command("!job 1100"))).EnsureSuccessStatusCode();
         var player = Session;
         var monster = await Service<GameLoop>().InvokeAsync(async () =>
         {

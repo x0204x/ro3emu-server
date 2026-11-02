@@ -12,7 +12,7 @@ public sealed partial class AuctionContentTests
 {
     private const int NoviceActivity = 10000001, EventTab = 3001;
 
-    private AuctionStore.Item[] Lots(AuctionType type) => Service<AuctionStore>().Items().Where(r => r.Type == type).ToArray();
+    private AuctionStore.Item[] Lots(AuctionType type) => [.. Service<AuctionStore>().Items().Where(r => r.Type == type)];
 
     private static async Task<QueryAuctionCountRes> Count(BotClient bot, AuctionType type)
     {
@@ -28,11 +28,11 @@ public sealed partial class AuctionContentTests
     }
 
     private static long[] IntParams(MailService.Letter letter) =>
-        LanguageData.Parser.ParseFrom(letter.ContentParams!).Param.Select(p =>
+        [.. LanguageData.Parser.ParseFrom(letter.ContentParams!).Param.Select(p =>
         {
             Assert.Equal(LanguageParamType.Int, p.Tp);
             return p.IntParam;
-        }).ToArray();
+        })];
 
     // 2026-10-08 12:00 +02:00 is CEST; WorldAuctionEnd 18 closes World lots at 18:00 local the same day.
     private long SixPm(int days = 0) => new DateTimeOffset(2026, 10, 8 + days, 18, 0, 0, TimeSpan.FromHours(2)).ToUnixTimeSeconds();
@@ -60,7 +60,7 @@ public sealed partial class AuctionContentTests
 
         // The client lists World sub-tabs from itemTypeCount and queries each by item type with srcType 0.
         var counts = (await Count(bob, AuctionType.World)).AuctionSrcTypeCount[(long)AuctionType.World];
-        Assert.Equal([1L, 2L, 3L, 4L], counts.ItemTypeCount.Keys.Order().ToArray());
+        Assert.Equal([1L, 2L, 3L, 4L], [.. counts.ItemTypeCount.Keys.Order()]);
         var lot = lots.Single(r => r.Entry == 1200001);
         var listed = await Query(bob, AuctionType.World, 0, 2);
         Assert.Equal(lot.Id, Assert.Single(listed.Auctions).AuctionId);
@@ -260,7 +260,7 @@ public sealed partial class AuctionContentTests
             await Gm(bob, "!zeny 100000000");
             aliceId = (long)alice.Self!.Uuid; bobId = (long)bob.Self!.Uuid;
             Assert.Equal(0, await Service<AuctionService>().PublishGuildChallengeAsync("restart", guild, 1001, 1, [aliceId]));
-            guildLots = Service<AuctionStore>().Items().Where(r => r.GuildId == guild).Select(r => r.Id).ToArray();
+            guildLots = [.. Service<AuctionStore>().Items().Where(r => r.GuildId == guild).Select(r => r.Id)];
             await Gm(alice, $"!actauction {EventTab} open");
             await Gm(alice, "!worldauction open 1200000");
             eventLot = Lots(AuctionType.Act).Single(r => r.Entry == 1200000).Id;

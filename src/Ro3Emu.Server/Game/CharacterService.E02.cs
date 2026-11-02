@@ -30,10 +30,8 @@ public sealed partial class CharacterService
             : JsonSerializer.SerializeToUtf8Bytes(new { Version = 1, ResultHash = fingerprint, ResultBytes = resolved.Length });
         return new EconomyMutation(Guid.NewGuid().ToString("N"), session.Account!, session.Role!.Id, kind,
             fingerprint, sourceKey, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            costs.Where(x => x.Count > 0).GroupBy(x => x.Entry)
-                .Select(g => new EconomyQuantity(Asset(g.Key), g.Sum(x => x.Count))).ToArray(),
-            goods.Where(x => x.Count > 0).GroupBy(x => x.Entry)
-                .Select(g => new EconomyQuantity(Asset(g.Key), g.Sum(x => (long)x.Count))).ToArray(), receipt);
+            [.. costs.Where(x => x.Count > 0).GroupBy(x => x.Entry).Select(g => new EconomyQuantity(Asset(g.Key), g.Sum(x => x.Count)))],
+            [.. goods.Where(x => x.Count > 0).GroupBy(x => x.Entry).Select(g => new EconomyQuantity(Asset(g.Key), g.Sum(x => (long)x.Count)))], receipt);
     }
 
     private EconomyMutation EconomyForOwnedAward(GameSession session, OwnedAwardSource source, AwardPlan plan,
@@ -46,9 +44,9 @@ public sealed partial class CharacterService
         EconomyAsset Asset(int entry) => data.Row("ItemConfig", entry) is { } row
             ? new(GameData.Int(row, "_iType") == ItemTypeCurrency ? EconomyAssetKind.Currency : EconomyAssetKind.Item, entry)
             : throw new InvalidOperationException("Missing award item configuration: " + entry);
-        EconomyQuantity[] Quantities(IEnumerable<(int Entry, long Count)> values) => values
+        EconomyQuantity[] Quantities(IEnumerable<(int Entry, long Count)> values) => [.. values
             .Where(x => x.Entry is not (BaseExpItem or JobExpItem) && x.Count > 0)
-            .GroupBy(x => x.Entry).Select(x => new EconomyQuantity(Asset(x.Key), x.Sum(v => v.Count))).ToArray();
+            .GroupBy(x => x.Entry).Select(x => new EconomyQuantity(Asset(x.Key), x.Sum(v => v.Count)))];
         var original = Quantities(plan.Grants.Select(x => (x.Entry, (long)x.Count)));
         var inputs = Quantities(conversion.DecomposeItemInfo.Select(x => (x.Key, (long)x.Value)));
         var outputs = Quantities(conversion.DecomposeGainItemInfo.Values.SelectMany(x => x.ItemInfo)

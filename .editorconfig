@@ -24,11 +24,15 @@ dotnet_style_qualification_for_field = false:suggestion
 dotnet_style_qualification_for_property = false:suggestion
 dotnet_style_qualification_for_method = false:suggestion
 dotnet_style_qualification_for_event = false:suggestion
-# Collections are created with [] where the target type allows it (the rules older code breaks are in the baseline).
+# Collections are created with [] where the target type allows it.
 dotnet_style_prefer_collection_expression = when_types_loosely_match
+dotnet_diagnostic.IDE0028.severity = warning
+dotnet_diagnostic.IDE0300.severity = warning
+dotnet_diagnostic.IDE0301.severity = warning
 dotnet_diagnostic.IDE0302.severity = warning
 dotnet_diagnostic.IDE0303.severity = warning
 dotnet_diagnostic.IDE0304.severity = warning
+dotnet_diagnostic.IDE0305.severity = warning
 # A class whose constructor only stores its parameters uses a primary constructor.
 csharp_style_prefer_primary_constructors = true
 dotnet_diagnostic.IDE0290.severity = warning
@@ -57,36 +61,24 @@ dotnet_naming_rule.private_fields_are_underscore_camel_case.severity = warning
 # Analyzer baseline: rules of AnalysisLevel 10.0-recommended and of the style above that older code still breaks, each
 # with its number of violations. They show as suggestions; every other rule fails the build. CI checks the numbers
 # (dotnet run --project tools/AnalyzerBaseline -c Release): more violations fail, and fewer fail until the number is
-# lowered, so new code cannot add any. Delete a rule's two lines once it reaches zero. The counts are the ones of the
+# lowered; a number higher than in the parent commit fails too, so new code cannot add any. Delete a rule's two lines once it reaches zero. The counts are the ones of the
 # SDK band global.json pins: after an SDK update, run the tool and write the numbers it prints. IDE1006 stays: the
 # fields of DbPlan types and of the values they hold keep their names, because EconomyChildIntent and
 # EventPlanFingerprint write those names into stored receipts (ReceiptFieldNamesTests pins them).
 # 22: types that own disposable fields should be disposable
 dotnet_diagnostic.CA1001.severity = suggestion
-# 1: declare types in namespaces
-dotnet_diagnostic.CA1050.severity = suggestion
 # 29: do not declare visible instance fields
 dotnet_diagnostic.CA1051.severity = suggestion
-# 2: CancellationToken parameters must come last
-dotnet_diagnostic.CA1068.severity = suggestion
 # 390: specify IFormatProvider
 dotnet_diagnostic.CA1305.severity = suggestion
 # 55: specify StringComparison for correctness
 dotnet_diagnostic.CA1310.severity = suggestion
 # 1: use nameof
 dotnet_diagnostic.CA1507.severity = suggestion
-# 7: use the ArgumentOutOfRangeException throw helper
-dotnet_diagnostic.CA1512.severity = suggestion
-# 1: use the ObjectDisposedException throw helper
-dotnet_diagnostic.CA1513.severity = suggestion
 # 64: identifiers should not contain underscores
 dotnet_diagnostic.CA1707.severity = suggestion
-# 1: identifiers should differ by more than case
-dotnet_diagnostic.CA1708.severity = suggestion
 # 5: identifiers should not have an incorrect suffix
 dotnet_diagnostic.CA1711.severity = suggestion
-# 1: identifiers should have the correct prefix
-dotnet_diagnostic.CA1715.severity = suggestion
 # 3: identifiers should not match keywords
 dotnet_diagnostic.CA1716.severity = suggestion
 # 4: identifiers should not contain type names
@@ -97,50 +89,27 @@ dotnet_diagnostic.CA1725.severity = suggestion
 dotnet_diagnostic.CA1805.severity = suggestion
 # 163: mark members as static
 dotnet_diagnostic.CA1822.severity = suggestion
-# 4: use a property instead of a LINQ method
-dotnet_diagnostic.CA1826.severity = suggestion
-# 1: use Any instead of Count
-dotnet_diagnostic.CA1827.severity = suggestion
-# 2: use Length/Count instead of Count()
-dotnet_diagnostic.CA1829.severity = suggestion
-# 5: use AsSpan or AsMemory instead of a range indexer
-dotnet_diagnostic.CA1832.severity = suggestion
-# 2: prefer IsEmpty over Count
-dotnet_diagnostic.CA1836.severity = suggestion
-# 4: prefer Dictionary.Contains methods
-dotnet_diagnostic.CA1841.severity = suggestion
-# 376: use LoggerMessage delegates
+# 372: use LoggerMessage delegates
 dotnet_diagnostic.CA1848.severity = suggestion
-# 5: prefer TryGetValue
-dotnet_diagnostic.CA1854.severity = suggestion
-# 65: use concrete types for performance
+# 59: use concrete types for performance
 dotnet_diagnostic.CA1859.severity = suggestion
-# 1: avoid Enumerable.Any()
-dotnet_diagnostic.CA1860.severity = suggestion
-# 164: avoid constant arrays as arguments
+# 100: avoid constant arrays as arguments
 dotnet_diagnostic.CA1861.severity = suggestion
-# 8: use StringComparison for case-insensitive comparisons
-dotnet_diagnostic.CA1862.severity = suggestion
 # 10: cache and reuse JsonSerializerOptions
 dotnet_diagnostic.CA1869.severity = suggestion
-# 146: avoid potentially expensive logging
+# 144: avoid potentially expensive logging
 dotnet_diagnostic.CA1873.severity = suggestion
 # 15: instantiate argument exceptions correctly
 dotnet_diagnostic.CA2208.severity = suggestion
-# 777: use a collection initializer or expression
-dotnet_diagnostic.IDE0028.severity = suggestion
-# 138: use a collection expression for an array
-dotnet_diagnostic.IDE0300.severity = suggestion
-# 13: use a collection expression for an empty collection
-dotnet_diagnostic.IDE0301.severity = suggestion
-# 584: use a collection expression for a fluent call
-dotnet_diagnostic.IDE0305.severity = suggestion
 # 28: naming rule violations (fields persisted by name, see above)
 dotnet_diagnostic.IDE1006.severity = suggestion
 
 # The client projects keep their block-scoped namespaces (built only against a local client).
 [src/Ro3Emu.{ClientHooks,Loc}/**.cs]
 csharp_style_namespace_declarations = block_scoped:silent
+# Members inherited from the client's obfuscated classes differ only by case (Obf_KkD, Obf_kkD). CI builds without the
+# client, so it never sees this rule fail here: only a local build against the client does.
+dotnet_diagnostic.CA1708.severity = none
 
 # Projects that build only against a local client keep their style rules as suggestions.
 [src/Ro3Emu.{ClientHooks,Loc,ClientTools}/**.cs]

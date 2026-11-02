@@ -78,7 +78,7 @@ internal sealed class ActivityInventoryGuardPlan : DbPlan
     private readonly long _role;
     private readonly ItemValue[] _before;
     internal ActivityInventoryGuardPlan(long role, IReadOnlyList<InvItem> before)
-    { _role = role; _before = before.OrderBy(i => i.Guid).Select(ItemValue.Capture).ToArray(); }
+    { _role = role; _before = [.. before.OrderBy(i => i.Guid).Select(ItemValue.Capture)]; }
     internal override int Bytes => 128 + _before.Sum(i => 160 +
         ((i.Attrs?.Length ?? 0) + (i.Enchantments?.Length ?? 0) + (i.StringAttrs?.Length ?? 0)) * 2);
     internal override string Label => "adventure/guard-inventory";

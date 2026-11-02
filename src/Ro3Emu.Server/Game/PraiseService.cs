@@ -32,18 +32,18 @@ public sealed class PraiseService(SessionRegistry sessions, TimeProvider clock)
         public required HashSet<long> Members;
         public required DateTimeOffset Created;
         /// <summary>Target role -> the roles that liked it.</summary>
-        public Dictionary<long, HashSet<long>> LikedBy { get; } = new();
+        public Dictionary<long, HashSet<long>> LikedBy { get; } = [];
     }
 
-    private readonly Dictionary<long, Board> _boards = new();
-    private readonly Dictionary<long, long> _latest = new();
+    private readonly Dictionary<long, Board> _boards = [];
+    private readonly Dictionary<long, long> _latest = [];
 
     /// <summary>A group run started: its members can like each other from now on (until their next run).</summary>
     public void Remember(long id, long scene, IEnumerable<long> members)
     {
         var now = clock.GetUtcNow();
         foreach (var stale in _boards.Values.Where(b => now - b.Created > Lifetime).Select(b => b.Id).ToArray()) _boards.Remove(stale);
-        var board = new Board { Id = id, Scene = (int)scene, Members = members.ToHashSet(), Created = now };
+        var board = new Board { Id = id, Scene = (int)scene, Members = [.. members], Created = now };
         _boards[id] = board;
         foreach (long role in board.Members) _latest[role] = id;
         foreach (long role in _latest.Where(p => !_boards.ContainsKey(p.Value)).Select(p => p.Key).ToArray()) _latest.Remove(role);
@@ -65,7 +65,7 @@ public sealed class PraiseService(SessionRegistry sessions, TimeProvider clock)
                     : board.LikedBy.GetValueOrDefault(target)?.Contains(me) == true ? ErrAlreadyLiked : 0;
                 if (code == 0)
                 {
-                    if (!board.LikedBy.TryGetValue(target, out var likers)) board.LikedBy[target] = likers = new();
+                    if (!board.LikedBy.TryGetValue(target, out var likers)) board.LikedBy[target] = likers = [];
                     likers.Add(me);
                     liked.Add(target);
                 }

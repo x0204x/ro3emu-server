@@ -49,7 +49,7 @@ public static class NavExporter
         using var doc = JsonDocument.Parse(File.ReadAllBytes(mapResourceJson));
         var rows = doc.RootElement.ValueKind == JsonValueKind.Array
             ? doc.RootElement.EnumerateArray().ToList()
-            : doc.RootElement.EnumerateObject().Select(p => p.Value).ToList();
+            : [.. doc.RootElement.EnumerateObject().Select(p => p.Value)];
         var names = new List<string>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var row in rows)

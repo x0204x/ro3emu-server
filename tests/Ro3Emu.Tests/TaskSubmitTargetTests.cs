@@ -178,7 +178,7 @@ public sealed class TaskSubmitTargetTests
             [TaskService.FirstTask.ToString(CultureInfo.InvariantCulture)] = new
             {
                 _iTaskID = TaskService.FirstTask, _iTaskType = 1, _kAcceptTask = new[] { 1 }, _kDeliverTask = new[] { 3 },
-                _kProgressTarget = new[] { new[] { TaskSubmitTarget.Condition, MaterialA, 2, parameter }, new[] { TaskSubmitTarget.Condition, MaterialB, 3, parameter } },
+                _kProgressTarget = new int[][] { [TaskSubmitTarget.Condition, MaterialA, 2, parameter], [TaskSubmitTarget.Condition, MaterialB, 3, parameter] },
                 _iAward = Group,
             },
         };

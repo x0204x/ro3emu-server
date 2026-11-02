@@ -12,7 +12,16 @@ using Ro3Emu.Bot;
 //   wait <secs>
 //   party                 create a party;  invite <roleId>  invite into it;  friend <roleId>  send a friend request
 //   approve <roleId>      as the party's leader, admit a player who asked to join (the client's Finder "Join")
+//   teamaccept            accept the last party invitation (42005 → 42006);  leader <roleId>  hand the party over (42007);  teamleave (42001)
+//   revive                the death panel's Revive (31013, empty like the client's)
+//   send <msgId> <type> <json>   any game message as protobuf JSON, e.g. send 30451 DungeonTeamTransferReq {"targetGuid":"100012"}
+//   gmop <op> <a,b,c>     a GM panel op (30300), e.g. gmop 35 <buffId>,0,<roleId> puts a buff on a role (0 = self)
+//   ready                 answer the last match ready check (82636 → 82637);  confirm  agree to the party's dungeon (42033 → 30406)
+//   like <roleId>         like a player's personal card (82554);  casual  sign up for Mock Battle (43504, activity 3304)
+//   match <entryId>       join a match queue (82681, e.g. 2 = Survivor);  enter <sceneEntry>  ask to enter a dungeon (30400)
+//   guildhome             enter the own guild's home (32256)
 //   guildapply <guildId>  apply to a guild;  guildhelp <guildId>  respond to a guild being founded;  guildleave
+//   guildagree <roleId>   admit an applicant (32224; needs the approval right)
 //   tavernnew <name>      open a Tavern room (prints its guid);  tavern <guid>  enter one;  tavernleave
 //   tavernmic [reason]    ask for a seat;  tavernaccept  accept the last Tavern invitation
 //   taverngift <roleId> <itemId> [count]   give a drink to a member (1200801-1200804)
@@ -34,7 +43,8 @@ string name = args.Length > 0 ? args[0] : "Botty";
 string http = args.Length > 1 ? args[1] : "http://127.0.0.1:5380";
 string dataDir = args.Length > 2 ? args[2] : FindDataDir();
 
-await using var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+await using var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")))
+{ OperatorToken = Ro3Emu.Server.Http.OperatorToken.Read(dataDir) };
 await bot.LoginAsync(name.ToLowerInvariant(), "bot");
 await bot.EnterGateAsync();
 long roleId = bot.Roles.FirstOrDefault(r => r.Name == name)?.Id ?? (await bot.CreateRoleAsync(name)).RoleBaseInfo.Id;
@@ -49,6 +59,49 @@ _ = Task.Run(async () =>
     {
         await Task.Delay(5000);
         try { await bot.SendGameAsync(1, new Romsg.Ping()); } catch { return; }
+    }
+});
+
+// Follow scene switches (a warp, a dungeon entry) like the client: report the scene loaded and take the new position.
+_ = Task.Run(async () =>
+{
+    while (true)
+    {
+        try
+        {
+            var sw = Romsg.SwitchSceneLineResp.Parser.ParseFrom((await bot.Inbox.WaitAsync(e => e.IsGame(Ro3Emu.Server.Game.MsgId.SwitchSceneLine), TimeSpan.FromDays(1))).Body);
+            if (sw.Result != 0) continue;
+            // Take a loading screen's time: an observer's client removes a leaving unit with a delay
+            // (LC_UnitManager.CacheWaitRemoveUnit), so an instant re-entry would be merged into the unit being removed.
+            await Task.Delay(2000);
+            await bot.SendGameAsync(Ro3Emu.Server.Game.MsgId.SceneLoaded, new Romsg.SceneLoadedReq { SceneId = sw.SceneEntry });
+            var moved = Romsg.EntitySelf.Parser.ParseFrom((await bot.Inbox.WaitAsync(e => e.IsGame(Ro3Emu.Server.Game.MsgId.EntitySelf), TimeSpan.FromSeconds(15))).Body);
+            x = moved.Base.MovementInfo.Pos.X; y = moved.Base.MovementInfo.Pos.Y; z = moved.Base.MovementInfo.Pos.Z;
+            Console.WriteLine($"{name} now in scene {sw.SceneEntry} at {x:F1},{z:F1}");
+        }
+        catch (Exception e) when (e is TimeoutException or InvalidOperationException)
+        {
+            if (e is InvalidOperationException) return;
+        }
+    }
+});
+
+// Take the server's own moves of this bot (31081: a camp spawn, a revive point) as the next walk's start, like the client.
+_ = Task.Run(async () =>
+{
+    while (true)
+    {
+        try
+        {
+            var move = Romsg.MovementChangeNtf.Parser.ParseFrom((await bot.Inbox.WaitAsync(e => e.IsGame(31081)
+                && Romsg.MovementChangeNtf.Parser.ParseFrom(e.Body).Uid == roleId, TimeSpan.FromDays(1))).Body);
+            x = move.MovementInfo.Pos.X; y = move.MovementInfo.Pos.Y; z = move.MovementInfo.Pos.Z;
+            Console.WriteLine($"{name} moved to {x:F1},{z:F1}");
+        }
+        catch (Exception e) when (e is TimeoutException or InvalidOperationException)
+        {
+            if (e is InvalidOperationException) return;
+        }
     }
 });
 
@@ -100,6 +153,59 @@ while ((line = Console.ReadLine()) != null)
                 await bot.SendGameAsync(42018, new Romsg.ApplyListOperateReq
                 { OperType = Romsg.ApplyListOperateType.Agree, TargetGuid = long.Parse(p[1], CultureInfo.InvariantCulture) });
                 break;
+            case "teamaccept":
+                var teamInvite = Romsg.NotifyInvitee.Parser.ParseFrom(bot.Inbox.Snapshot().Last(e => e.IsGame(42005)).Body);
+                await bot.SendGameAsync(42006, new Romsg.InviteeResp
+                { TeamId = teamInvite.TeamTotalSimpleInfo.Info.TeamId, IsAgree = true, InviteGuid = teamInvite.InviteGuid });
+                break;
+            case "ready":
+                var readyCheck = Romsg.MatchReadyNotify.Parser.ParseFrom(bot.Inbox.Snapshot().Last(e => e.IsGame(82636)).Body);
+                await bot.SendGameAsync(82637, new Romsg.MatchReadyReq { MatchEntryId = readyCheck.MatchEntryId, PlayerId = roleId, IsReady = true });
+                break;
+            case "confirm":
+                await bot.SendGameAsync(30406, new Romsg.ConfirmTeamDungeonReq { IsAgree = true });
+                break;
+            case "match":
+                await bot.SendGameAsync(82681, new Romsg.StartMatchReq { MatchEntryId = int.Parse(p[1], CultureInfo.InvariantCulture) });
+                break;
+            case "enter":
+                await bot.SendGameAsync(30400, new Romsg.EnterDungeonReq { SceneEntry = long.Parse(p[1], CultureInfo.InvariantCulture) });
+                break;
+            case "guildhome":
+                await bot.SendGameAsync(32256, new Romsg.GuildEnterHomeReq());
+                break;
+            case "casual":
+                await bot.SendGameAsync(43504, new Romsg.CommonDailyActivityReq { ActivityId = 3304, CasualBattleSignUp = new Romsg.CasualBattleSignUpReq() });
+                break;
+            case "like":
+                await bot.SendGameAsync(82554, new Romsg.UpvotePersonalReq { RoleId = long.Parse(p[1], CultureInfo.InvariantCulture) });
+                break;
+            case "teamleave":
+                await bot.SendGameAsync(42001, new Romsg.LeaveTeamReq());
+                break;
+            case "gmop":
+                // The client's GM panel button: GmOpEnum and its comma-separated parameters (e.g. 35 = GmAddBuff).
+                await bot.SendGameAsync(30300, new Romsg.GeneralGMProcReq
+                { GmType = (Romsg.GmOpEnum)int.Parse(p[1], CultureInfo.InvariantCulture), ParamString = p.Length > 2 ? p[2] : "" });
+                var gmReply = await bot.Inbox.WaitAsync(e => e.IsGame(30300), TimeSpan.FromSeconds(5));
+                Console.WriteLine($"gm: {Romsg.GeneralGMProcRsp.Parser.ParseFrom(gmReply.Body).ErrInfo}");
+                break;
+            case "send":
+                // Any game message: send <msgId> <romsg type> <protobuf JSON>, e.g. send 30451 DungeonTeamTransferReq {"targetGuid":"100012"}
+                var rest = p[2].Split(' ', 2);
+                var messageType = typeof(Romsg.Ping).Assembly.GetType("Romsg." + rest[0])
+                    ?? throw new ArgumentException($"no message type Romsg.{rest[0]}");
+                var descriptor = (Google.Protobuf.Reflection.MessageDescriptor)messageType.GetProperty("Descriptor")!.GetValue(null)!;
+                await bot.SendGameAsync(uint.Parse(p[1], CultureInfo.InvariantCulture),
+                    Google.Protobuf.JsonParser.Default.Parse(rest.Length > 1 ? rest[1] : "{}", descriptor));
+                break;
+            case "revive":
+                await bot.SendGameAsync(31013, new Romsg.EntityReliveReq());
+                break;
+            case "leader":
+                await bot.SendGameAsync(42007, new Romsg.TeamOperateReq
+                { Oper = Romsg.TeamOperationType.TeamOperTypeChangeLeader, TargetGuid = long.Parse(p[1], CultureInfo.InvariantCulture) });
+                break;
             case "friend":
                 await bot.MicroAsync("FriendService", "apply", new() { ["Uid"] = roleId.ToString(), ["Target"] = p[1] });
                 break;
@@ -108,6 +214,9 @@ while ((line = Console.ReadLine()) != null)
                 break;
             case "guildhelp":
                 await bot.SendGameAsync(32220, new Romsg.GuildCreateHelperOpeReq { GuildIds = { long.Parse(p[1], CultureInfo.InvariantCulture) } });
+                break;
+            case "guildagree":
+                await bot.SendGameAsync(32224, new Romsg.GuildEnterApplyOpeReq { Agree = true, PlayerIds = { long.Parse(p[1], CultureInfo.InvariantCulture) } });
                 break;
             case "guildleave":
                 await bot.SendGameAsync(32234, new Romsg.GuildMemberLeaveReq());
@@ -206,7 +315,8 @@ static async Task<int> VoiceEchoAsync(string[] args)
     Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };
     static void Log(string line) => Console.WriteLine(line);
 
-    await using var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")));
+    await using var bot = new BotClient(http, File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem")))
+    { OperatorToken = Ro3Emu.Server.Http.OperatorToken.Read(dataDir) };
     await bot.LoginAsync(account, password);
     await bot.EnterGateAsync();
     // An existing role: the one named, else the account's first; none yet: create one.

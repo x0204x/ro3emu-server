@@ -14,10 +14,12 @@ public sealed partial class CombatService
     /// Returns the number of players hit. A boss special passes its cast's <paramref name="session"/>, its damage percent
     /// (BossSkillOptions.DamagePercent) and <paramref name="bossDebuffsOnly"/>: a _kBuff2 without a positive time is an
     /// encounter script's marker (Maya's 4340101, -1 ms) that the script also removed, and one of BuffConfig _iType 1
-    /// (a buff) is the boss's own (inferred); neither goes on the players.
+    /// (a buff) is the boss's own (inferred); neither goes on the players. A raid trial's mechanic hit passes
+    /// <paramref name="maxHpBasisPoints"/>: that share of each player's maximum HP instead of the formula (inferred: a
+    /// failed mechanic punishes the same at any gear).
     /// </summary>
     internal async Task<int> MonsterSkillHitAsync(MonsterUnit caster, JsonElement row, IEnumerable<GameSession> targets, long sourceId,
-        long session = 0, int damagePercent = 100, bool bossDebuffsOnly = false)
+        long session = 0, int damagePercent = 100, bool bossDebuffsOnly = false, int maxHpBasisPoints = 0)
     {
         if (caster.Dead || caster.Removed || caster.Hp <= 0 || _buffs.UnitActionBlocked(caster, ForbiddenState.CastSkill)) return 0;
         int skillId = (int)GameData.Int(row, "_iID");
@@ -38,11 +40,15 @@ public sealed partial class CombatService
             var stats = _character.Stats(p);
             var defender = new Fighter(0, 0, 0, 0, p.Progress.Level, DefenceElement(p))
             { Def = stats[105], Mdef = stats[106], Flee = stats[110], ResCri = stats[112], FixedDamage = (p.GmCombat & GmCombatSwitches.FixedDamage) != 0 };
-            var (damage, result) = Damage(attacker, defender, row);
-            damage = ScaleMonsterDamage(damage, caster.DamageRatio);
-            damage = MonsterBuffDamage(caster, row, damage);
-            if (damagePercent != 100) damage = damagePercent <= 0 ? 0 : ScaleMonsterDamage(damage, damagePercent * 100);
-            foreach (var adjust in MonsterDamageAdjusters) damage = adjust(caster, damage, true);
+            var (damage, result) = maxHpBasisPoints > 0 ? (Math.Max(1, stats[AttributeId.MaxHp] * maxHpBasisPoints / 10000), DamageHitResult.Normal)
+                : Damage(attacker, defender, row);
+            if (maxHpBasisPoints <= 0)
+            {
+                damage = ScaleMonsterDamage(damage, caster.DamageRatio);
+                damage = MonsterBuffDamage(caster, row, damage);
+                if (damagePercent != 100) damage = damagePercent <= 0 ? 0 : ScaleMonsterDamage(damage, damagePercent * 100);
+                foreach (var adjust in MonsterDamageAdjusters) damage = adjust(caster, damage, true);
+            }
             if (damage > 0) foreach (var modifier in IncomingDamageAdjusters) damage = Math.Max(0, await modifier(caster, p, result, damage));
             damage = AdjustIncomingSkillDamage(p, row, result, damage);
             var committed = await CommitPlayerDamageAsync(p, damage, row, Current, sourceElement: element);

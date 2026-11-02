@@ -1,7 +1,8 @@
 // Checks the analyzer baseline in .editorconfig. Builds every project that builds without the game client, with the
 // baseline's rules reported as warnings, and compares each rule's violations with the count written above it. A rule
 // over its count fails: new code broke it. A rule under its count fails too, until the count is lowered, so the numbers
-// stay true and only go down.
+// stay true. Before the build it compares with the parent commit, because a count raised together with new violations
+// would match: a count may not rise, and no rule may be turned down or lose its count line.
 // usage: dotnet run --project tools/AnalyzerBaseline -c Release [repository root]
 using System.Diagnostics;
 using System.Globalization;
@@ -12,6 +13,11 @@ string root = args.Length > 0 ? Path.GetFullPath(args[0]) : FindRoot(Directory.G
 string editorConfig = Path.Combine(root, ".editorconfig");
 string original = File.ReadAllText(editorConfig);
 var baseline = ParseBaseline(original);
+if (LooserThanParent(root, original, baseline))
+{
+    Console.Error.WriteLine("The analyzer baseline in .editorconfig got looser than in the parent commit (see above).");
+    return 1;
+}
 if (baseline.Count == 0)
 {
     Console.WriteLine("No analyzer baseline in .editorconfig.");
@@ -97,6 +103,73 @@ static Dictionary<string, int> ParseBaseline(string config) =>
     Regex.Matches(config, @"^# (?<count>\d+): .*\r?\ndotnet_diagnostic\.(?<rule>(?:CA|IDE)\d+)\.severity = suggestion\r?$",
             RegexOptions.Multiline)
         .ToDictionary(m => m.Groups["rule"].Value, m => int.Parse(m.Groups["count"].Value, CultureInfo.InvariantCulture));
+
+// The parent commit is the base branch of a pull request and the previous main after a merge (CI checks out two commits).
+// An update of the SDK in global.json may bring new violations (.editorconfig says what to do then), so it is not compared.
+static bool LooserThanParent(string root, string config, Dictionary<string, int> baseline)
+{
+    string? parent = Git(root, "show", "HEAD^1:.editorconfig");
+    if (parent == null)
+    {
+        bool ci = Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != null;
+        (ci ? Console.Error : Console.Out).WriteLine("No .editorconfig in the parent commit to compare the baseline with.");
+        return ci;
+    }
+    string? sdk = Git(root, "show", "HEAD^1:global.json");
+    if (sdk?.ReplaceLineEndings() != File.ReadAllText(Path.Combine(root, "global.json")).ReplaceLineEndings())
+    {
+        Console.WriteLine("global.json changed: the baseline is not compared with the parent commit.");
+        return false;
+    }
+
+    var problems = new List<string>();
+    var before = ParseBaseline(parent);
+    foreach (var (rule, count) in baseline)
+        if (before.TryGetValue(rule, out int old) && count > old)
+            problems.Add(string.Create(CultureInfo.InvariantCulture, $"{rule}: {old} in the parent commit, {count} now: fix the new violations"));
+    var turnedDown = TurnedDown(config);
+    foreach (string setting in turnedDown.Except(TurnedDown(parent)))
+        problems.Add($"{setting}: new, and it hides violations from the baseline");
+    foreach (string rule in before.Keys.Except(baseline.Keys))
+        if (turnedDown.Contains($"[*.cs] dotnet_diagnostic.{rule}.severity"))
+            problems.Add($"{rule}: its count line is gone but the rule is still off, so nothing counts it");
+    problems.ForEach(Console.Error.WriteLine);
+    return problems.Count > 0;
+}
+
+// Every setting that keeps a rule, or a whole folder, from failing the build, as "[section] key". The sections of the
+// projects that CI cannot build (they compile against the player's client) and of generated code do not count here.
+static HashSet<string> TurnedDown(string config)
+{
+    string[] exempt = ["[src/Ro3Emu.{ClientHooks,Loc}/**.cs]", "[src/Ro3Emu.{ClientHooks,Loc,ClientTools}/**.cs]", "[**/obj/**.cs]"];
+    var settings = new HashSet<string>(StringComparer.Ordinal);
+    string section = "";
+    foreach (string raw in config.Split('\n'))
+    {
+        string line = raw.Trim();
+        if (line.StartsWith('[')) section = line;
+        var m = Regex.Match(line, @"^(?<key>dotnet_(?:analyzer_)?diagnostic\.\S*severity|generated_code)\s*=\s*(?<value>\S+)$");
+        if (m.Success && !exempt.Contains(section)
+            && m.Groups["value"].Value.ToLowerInvariant() is "suggestion" or "silent" or "none" or "default" or "refactoring" or "true")
+            settings.Add($"{section} {m.Groups["key"].Value}");
+    }
+    return settings;
+}
+
+// The command's output, or null when it failed.
+static string? Git(string root, params string[] arguments)
+{
+    var start = new ProcessStartInfo("git") { RedirectStandardOutput = true, RedirectStandardError = true };
+    start.ArgumentList.Add("-C");
+    start.ArgumentList.Add(root);
+    foreach (string argument in arguments) start.ArgumentList.Add(argument);
+    using var process = Process.Start(start) ?? throw new InvalidOperationException("git did not start");
+    process.ErrorDataReceived += (_, _) => { };
+    process.BeginErrorReadLine();
+    string output = process.StandardOutput.ReadToEnd();
+    process.WaitForExit();
+    return process.ExitCode == 0 ? output : null;
+}
 
 static string AsWarnings(string config, IEnumerable<string> rules) =>
     rules.Aggregate(config, (text, rule) =>

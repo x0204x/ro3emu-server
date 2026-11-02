@@ -160,7 +160,7 @@ public sealed class GuildVoiceInviteTests
         Assert.Empty(empty.PlayersResult);
 
         // 99 個合成非會員各重複一次；Bob 是第 100 個不同目標，Dave 是第 101 個。
-        long[] outsiders = Enumerable.Range(1, 99).Select(i => 1_000_000L + i).ToArray();
+        long[] outsiders = [.. Enumerable.Range(1, 99).Select(i => 1_000_000L + i)];
         long[] targets = [.. outsiders.SelectMany(id => new[] { id, id }), bobId, bobId, daveId];
         using var bobInvited = bob.Inbox.Expect(e => e.IsGame(GuildVoiceService.InviteNotify));
         var response = await Invite(alice, 0, targets);

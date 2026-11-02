@@ -25,7 +25,7 @@ public sealed partial class FriendExtraService(FriendStore friends, RoleStore ro
     private async Task CreateCoreAsync(GameSession s, CreateFriendChatGroupReq req)
     {
         long self = s.Role!.Id;
-        long[] others = req.InviteGuids.Distinct().ToArray();
+        long[] others = [.. req.InviteGuids.Distinct()];
         int code = string.IsNullOrWhiteSpace(req.GroupName) || req.GroupName.Length > 7 || others.Length == 0 || others.Length + 1 > 50 ? ErrorCodes.Parameter
             : (await friends.GroupsForAsync(self)).Count >= 10 ? ErrorCodes.PartyFull : 0;
         foreach (long id in others)
@@ -63,7 +63,7 @@ public sealed partial class FriendExtraService(FriendStore friends, RoleStore ro
 
     private async Task InviteCoreAsync(GameSession s, InviteFriendChatGroupReq req, FriendStore.ChatGroup? group)
     {
-        long[] invited = req.InviteRoleIds.Distinct().ToArray();
+        long[] invited = [.. req.InviteRoleIds.Distinct()];
         int code = !Member(group, s.Role!.Id) ? Denied
             : invited.Length == 0 || group!.Members.Count + invited.Length > 50 ? ErrorCodes.Parameter
             : 0;
@@ -87,7 +87,7 @@ public sealed partial class FriendExtraService(FriendStore friends, RoleStore ro
 
     private async Task KickCoreAsync(GameSession s, KickFriendChatGroupReq req, FriendStore.ChatGroup? group)
     {
-        long[] kicked = req.KickRoleIds.Distinct().ToArray();
+        long[] kicked = [.. req.KickRoleIds.Distinct()];
         int code = group?.Owner != s.Role!.Id ? Denied
             : kicked.Length == 0 || kicked.Contains(group.Owner) || kicked.Any(id => !Member(group, id)) ? ErrorCodes.Parameter : 0;
         if (code == 0)

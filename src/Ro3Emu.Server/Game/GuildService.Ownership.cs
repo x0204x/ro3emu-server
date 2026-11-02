@@ -15,8 +15,8 @@ public sealed partial class GuildService
         IEnumerable<long> roleIds, Func<Task> command, bool maintenance = false, bool disband = false, bool characterGate = false)
     {
         var owners = ownerRegistry;
-        long[] requestedGuilds = guildIds.Where(id => id > 0).Distinct().ToArray();
-        long[] requestedRoles = roleIds.Where(id => id > 0).Distinct().ToArray();
+        long[] requestedGuilds = [.. guildIds.Where(id => id > 0).Distinct()];
+        long[] requestedRoles = [.. roleIds.Where(id => id > 0).Distinct()];
         var lease = actor?.Attachment;
         var role = actor?.Role;
         while (true)
@@ -71,15 +71,18 @@ public sealed partial class GuildService
     private ReservationKey[] GuildKeys(GameSession? actor, long? roleId, long[] requestedGuilds, long[] requestedRoles,
         bool maintenance, bool disband)
     {
-        var guilds = maintenance ? store.List() : requestedGuilds
+        var guilds = maintenance ? store.List() : [.. requestedGuilds
             .Append(actor?.Role is { } r ? store.ForRole(r.Id)?.Id ?? 0 : 0)
-            .Where(id => id > 0).Distinct().Select(store.Get).OfType<GuildStore.State>().ToArray();
-        return guilds.Select(g => ReservationKey.Entity("guild", g.Id.ToString()))
-            .Append(ReservationKey.Entity("guild-catalog", "ordinary"))
-            .Concat(maintenance || disband ? new[] { ReservationKey.Entity("guild_market", "1") } : [])
-            .Concat(guilds.SelectMany(g => g.Members.Keys).Concat(requestedRoles)
-                .Concat(roleId is { } id ? new[] { id } : []).Distinct().Select(id => ReservationKey.Role(id)))
-            .ToArray();
+            .Where(id => id > 0).Distinct().Select(store.Get).OfType<GuildStore.State>()];
+        return
+        [
+            .. guilds.Select(g => ReservationKey.Entity("guild", g.Id.ToString()))
+,
+            ReservationKey.Entity("guild-catalog", "ordinary"),
+            .. maintenance || disband ? new[] { ReservationKey.Entity("guild_market", "1") } : [],
+            .. guilds.SelectMany(g => g.Members.Keys).Concat(requestedRoles)
+                    .Concat(roleId is { } id ? new[] { id } : []).Distinct().Select(id => ReservationKey.Role(id)),
+        ];
     }
 
     /// <summary>The keys of the actor's own ordinary guild operation (own guild, its members, the catalog and the
@@ -180,7 +183,7 @@ public sealed partial class GuildService
     private async Task DeleteGuildAsync(GuildStore.State guild, IEnumerable<long>? removed = null)
     {
         var transaction = roles.NewTransaction();
-        long[] prior = guild.Members.Keys.Concat(removed ?? []).Distinct().ToArray();
+        long[] prior = [.. guild.Members.Keys.Concat(removed ?? []).Distinct()];
         // The last leaver may already be removed from the staged roster; resolve the durable actor.
         transaction.WithEconomy(EnlistDisband(guild, transaction, prior, prior.First()));
         await roles.CommitAsync(transaction, "guild/disband-recovery");

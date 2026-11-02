@@ -62,7 +62,7 @@ public sealed class WorldEffectsTests : IAsyncLifetime
     private async Task Gm(string account, string line)
     {
         using var client = new HttpClient();
-        var response = await client.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(line));
+        var response = await client.PostAsync($"{_http}/ro3emu/gm?account={account}", Operator.Command(line));
         response.EnsureSuccessStatusCode();
     }
 

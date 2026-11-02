@@ -80,7 +80,7 @@ public sealed class GuildHomeTests : IAsyncLifetime
     private async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     private GameSession Session(BotClient bot) => Service<SessionRegistry>()
@@ -266,6 +266,7 @@ public sealed class GuildHomeTests : IAsyncLifetime
         await OnLoop(() =>
         {
             session.Dead = false; session.StatusBits |= 1L << 15; session.LastCombatMs = MonsterService.NowMs;
+            session.NoRegenUntilMs = MonsterService.NowMs + 10000; // fighting no longer pauses regeneration
             return Task.CompletedTask;
         });
         Assert.Equal(ErrorCodes.ActionInBattle, (await Request(alice)).Result);

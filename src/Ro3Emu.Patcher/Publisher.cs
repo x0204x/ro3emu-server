@@ -172,7 +172,7 @@ public static partial class Publisher
                         reused++;
                         continue;
                     }
-                    pendingRefs[hash] = new List<ChunkRef> { chunkRef };
+                    pendingRefs[hash] = [chunkRef];
                     newChunks++;
                     byte[] buffer = ArrayPool<byte>.Shared.Rent(chunk.Length);
                     chunk.Span.CopyTo(buffer);

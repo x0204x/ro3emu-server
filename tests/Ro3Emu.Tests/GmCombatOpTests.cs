@@ -73,7 +73,7 @@ public sealed class GmCombatOpTests : IAsyncLifetime
     private async Task Gm(string account, string line)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(line))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={account}", Operator.Command(line))).EnsureSuccessStatusCode();
     }
 
     /// <summary>One panel button: the op with its comma-separated parameters; the reply text.</summary>

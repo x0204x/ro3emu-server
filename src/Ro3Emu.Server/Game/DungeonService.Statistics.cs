@@ -145,4 +145,23 @@ public sealed partial class DungeonService
 
     // 原服實包已證實部分任務副本也使用 30132，適用名單集中於 StoryResults。
     // 30126's task-score alias and server scoring formula remain unverified.
+
+    /// <summary>
+    /// 30123 DUNGEON_PLAYER_STATISTICS_NTF with a player's own kill and assist counts: LC_DAL_DragonIsland reads only
+    /// extraData KillPlayer/AssistKill into SelfDungeonStatisticsInfo, the battle report button's counters
+    /// (UI_Sys_Siege_BattleReportBtnWidgetBaseCtrl) in the Survivor, Mock Battle and Dragon Coffin Island HUDs.
+    /// </summary>
+    public static DungeonPlayerStatisticsNtf PlayerCounters(long role, long kills, long assists) => new()
+    {
+        PlayerId = role,
+        StatisticsInfo = new RoleStatisticsInfo
+        {
+            BaseInfo = new StatisticsRoleBaseInfo { Id = role },
+            ExtraData =
+            {
+                [1001004] = new ExtraValueData { LongValue = kills }, // KillPlayer
+                [1001005] = new ExtraValueData { LongValue = assists }, // AssistKill
+            },
+        },
+    };
 }

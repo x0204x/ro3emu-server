@@ -22,7 +22,7 @@
 2002	session Realm:legacy: dispatcher/2002	refused
 2003	session Realm:legacy: dispatcher/2003	refused
 2004	session Realm:legacy: dispatcher/2004	refused
-2005	session Realm:legacy: dispatcher/2005	refused
+2005	session role:WholeRole dispatcher/2005	refused
 5001	session Realm:legacy: dispatcher/unrouted	refused
 5002	session Realm:legacy: dispatcher/unrouted	refused
 5003	session Realm:legacy: dispatcher/unrouted	refused

@@ -33,7 +33,7 @@ public sealed partial class GuildService
     {
         var table = data.Table("PublicParamConfig");
         return table.TryGetValue(name, out JsonElement value) && value.ValueKind == JsonValueKind.Array
-            ? value.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).ToArray() : fallback;
+            ? [.. value.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0))] : fallback;
     }
 
     private int MarketGate(GameSession s, GuildStore.State? guild, bool mutation)
@@ -169,7 +169,7 @@ public sealed partial class GuildService
         {
             case MarketBooth:
                 {
-                    GuildStore.MarketStall[] booths = guild == null ? [] : market.Stalls.Where(x => x.GuildId == guild.Id).ToArray();
+                    GuildStore.MarketStall[] booths = guild == null ? [] : [.. market.Stalls.Where(x => x.GuildId == guild.Id)];
                     var rsp = new GetBlackMarketBoothRsp
                     {
                         Result = gate != 0 ? gate : booths.Length == 0 ? ErrorCodes.GuildMissing : 0,

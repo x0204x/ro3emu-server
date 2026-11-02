@@ -12,7 +12,7 @@ public class WorldTests
 {
     private sealed class RecordingSink : IAoiSink
     {
-        public List<string> Events { get; } = new();
+        public List<string> Events { get; } = [];
         public Func<GameSession, IReadOnlyList<WorldUnit>, Task>? BeforeUnitReply { get; set; }
 
         public Task EnterAsync(GameSession viewer, GameSession subject) => Add($"{viewer.Role!.Name}+{subject.Role!.Name}");

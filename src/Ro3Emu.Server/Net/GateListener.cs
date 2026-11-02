@@ -5,12 +5,12 @@ using Ro3Emu.Server.Game;
 namespace Ro3Emu.Server.Net;
 
 /// <summary>Accepts TCP connections on one port and runs a <see cref="PhonestChannel"/> per client.</summary>
-public abstract class GateListener(IPAddress address, int port, ILogger log, Diagnostics.ServerMetrics? metrics = null) : BackgroundService
+public abstract partial class GateListener(IPAddress address, int port, ILogger log, Diagnostics.ServerMetrics? metrics = null) : BackgroundService
 {
     private const int MaxServeTasks = 4096;
     private readonly object _servesGate = new();
-    private readonly Dictionary<long, (Socket Socket, Task Task)> _serves = new();
-    private readonly Dictionary<IPAddress, int> _perAddress = new();
+    private readonly Dictionary<long, (Socket Socket, Task Task)> _serves = [];
+    private readonly Dictionary<IPAddress, int> _perAddress = [];
 
     /// <summary>
     /// Open connections one remote address may hold on this gate. A player needs one per gate (two for a moment while
@@ -86,7 +86,7 @@ public abstract class GateListener(IPAddress address, int port, ILogger log, Dia
                     }
                     if (remote != null && _perAddress.GetValueOrDefault(remote) >= MaxPerAddress)
                     {
-                        Log.LogWarning("{Name}: {Remote} refused, it already holds {Count} connections", Name, remote, MaxPerAddress);
+                        if (_crowdedLog.Allow(out _)) Log.LogWarning("{Name}: {Remote} refused, it already holds {Count} connections", Name, remote, MaxPerAddress);
                         socket.Dispose();
                         continue;
                     }
@@ -99,7 +99,7 @@ public abstract class GateListener(IPAddress address, int port, ILogger log, Dia
                         continue;
                     }
                     // No cancellation token on Task.Run: a canceled dispatch must still dispose its socket.
-                    var task = Task.Run(() => ServeAsync(socket, ct, completion), CancellationToken.None);
+                    var task = Task.Run(() => ServeAsync(socket, completion, ct), CancellationToken.None);
                     _serves.Add(id, (socket, task));
                     if (remote != null) _perAddress[remote] = _perAddress.GetValueOrDefault(remote) + 1;
                     var removed = task.ContinueWith(_ =>
@@ -128,7 +128,7 @@ public abstract class GateListener(IPAddress address, int port, ILogger log, Dia
         {
             // RunAsync observes the canceled receive token; each channel's existing DisposeAsync policy
             // must retain its chance to flush queued output before the socket closes.
-            outstanding = _serves.Values.Select(s => s.Task).ToArray();
+            outstanding = [.. _serves.Values.Select(s => s.Task)];
         }
         try { await Task.WhenAll(outstanding).WaitAsync(TimeSpan.FromSeconds(5), cancellationToken); }
         catch (Exception e) when (e is TimeoutException || (e is OperationCanceledException && cancellationToken.IsCancellationRequested))
@@ -143,13 +143,13 @@ public abstract class GateListener(IPAddress address, int port, ILogger log, Dia
         }
     }
 
-    private async Task ServeAsync(Socket socket, CancellationToken ct, GameLoop.CompletionReservation? completion)
+    private async Task ServeAsync(Socket socket, GameLoop.CompletionReservation? completion, CancellationToken ct)
     {
         _serveCompletion.Value = completion;
         try
         {
             await using var channel = new PhonestChannel(socket, Log) { Metrics = Metrics?.Connect() };
-            Log.LogInformation("{Name}: {Remote} connected", Name, channel.Remote);
+            Log.LogDebug("{Name}: {Remote} connected", Name, channel.Remote);
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
             var watch = WatchHandshakeAsync(channel, deadline);
             try
@@ -158,6 +158,11 @@ public abstract class GateListener(IPAddress address, int port, ILogger log, Dia
             }
             catch (Exception e) when (e is SocketException or OperationCanceledException or IOException)
             {
+            }
+            catch (Exception e) when (e is InvalidDataException or Google.Protobuf.InvalidProtocolBufferException)
+            {
+                // Bytes that are not the client's framing (port scanners, a wrong key): one line without a stack.
+                if (_notAFrameLog.Allow(out long suppressed)) LogNotAFrame(Log, Name, channel.Remote, e.Message, suppressed);
             }
             catch (Exception e)
             {
@@ -172,13 +177,20 @@ public abstract class GateListener(IPAddress address, int port, ILogger log, Dia
                     OnCleanupFailed(channel, e);
                     Log.LogError(e, "{Name}: {Remote} disconnect cleanup failed", Name, channel.Remote);
                 }
-                Log.LogInformation("{Name}: {Remote} disconnected", Name, channel.Remote);
+                Log.LogDebug("{Name}: {Remote} disconnected", Name, channel.Remote);
                 deadline.Cancel();
                 await watch;
             }
         }
         finally { _serveCompletion.Value = null; completion?.Dispose(); }
     }
+
+    // The reasons are the framing's and protobuf's own short messages, not client text.
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{Name}: {Remote} sent data that is not a client frame ({Reason}); closing ({Suppressed} more since the last such line)")]
+    private static partial void LogNotAFrame(ILogger logger, string name, string remote, string reason, long suppressed);
+
+    // Anyone on the internet can trigger these once per connection: at most one line each per 10 s for this gate.
+    private readonly Micro.LogThrottle _notAFrameLog = new(), _handshakeLog = new(), _crowdedLog = new();
 
     /// <summary>Ends a connection that has not encrypted, or not signed in, in time (it would hold a slot forever).</summary>
     private async Task WatchHandshakeAsync(PhonestChannel channel, CancellationTokenSource deadline)
@@ -188,14 +200,14 @@ public abstract class GateListener(IPAddress address, int port, ILogger log, Dia
             await Task.Delay(EncryptDeadline, deadline.Token);
             if (!channel.Encrypted)
             {
-                Log.LogWarning("{Name}: {Remote} did not open an encrypted session in time; closing", Name, channel.Remote);
+                if (_handshakeLog.Allow(out _)) Log.LogWarning("{Name}: {Remote} did not open an encrypted session in time; closing", Name, channel.Remote);
                 deadline.Cancel();
                 return;
             }
             if (SignInDeadline > EncryptDeadline) await Task.Delay(SignInDeadline - EncryptDeadline, deadline.Token);
             if (!IsSignedIn(channel))
             {
-                Log.LogWarning("{Name}: {Remote} did not sign in in time; closing", Name, channel.Remote);
+                if (_handshakeLog.Allow(out _)) Log.LogWarning("{Name}: {Remote} did not sign in in time; closing", Name, channel.Remote);
                 deadline.Cancel();
             }
         }

@@ -12,6 +12,12 @@ public interface IPanelOperations
     /// <summary>The account's staff role: Ro3Emu:Panel:Roles, Ro3Emu:GmAccounts (Admin) or one an Admin gave on the panel.</summary>
     PanelRole RoleOf(string account);
 
+    /// <summary>
+    /// The same from the lists alone: without the rule that an empty GM list on a local server makes every account an
+    /// Admin. A request that a proxy forwarded gets this one.
+    /// </summary>
+    PanelRole ListedRoleOf(string account);
+
     /// <summary>Every account with a staff role, and where the role comes from.</summary>
     Task<IReadOnlyList<PanelStaff>> StaffAsync();
 

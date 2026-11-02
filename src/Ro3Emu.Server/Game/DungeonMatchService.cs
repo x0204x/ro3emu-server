@@ -46,13 +46,13 @@ public sealed class DungeonMatchService : IGameTicker
         public required MatchData Data;
         public required long DeadlineMs;
         public required long StartSeconds;
-        public HashSet<GameSession> Ready { get; } = new();
+        public HashSet<GameSession> Ready { get; } = [];
         public bool Closed;
     }
 
-    private readonly Dictionary<Selection, List<Group>> _queue = new();
-    private readonly Dictionary<GameSession, Group> _waiting = new();
-    private readonly Dictionary<GameSession, Match> _preparing = new();
+    private readonly Dictionary<Selection, List<Group>> _queue = [];
+    private readonly Dictionary<GameSession, Group> _waiting = [];
+    private readonly Dictionary<GameSession, Match> _preparing = [];
     private long _lastSecond = -1;
 
     public DungeonMatchService(GameData data, DungeonCatalog catalog, DungeonService dungeons, TeamService teams,
@@ -140,7 +140,7 @@ public sealed class DungeonMatchService : IGameTicker
         var item = new Group
         {
             Key = selected.Key, Plan = selected.Plan!, Members = group.Members,
-            Ids = group.Members.Select(m => m.Role!.Id).ToArray(), Leader = s.Role!.Id,
+            Ids = [.. group.Members.Select(m => m.Role!.Id)], Leader = s.Role!.Id,
             TeamId = group.TeamId, Data = req.MatchData!.Clone(), StartSeconds = startSeconds
         };
         if (!_queue.TryGetValue(item.Key, out var list)) _queue[item.Key] = list = [];
@@ -173,7 +173,7 @@ public sealed class DungeonMatchService : IGameTicker
         if (quantity is < 1 or > 5) return;
         while (list.Count > 0)
         {
-            var choice = PickGroupIndices(list.Select(g => g.Members.Length).ToArray(), quantity);
+            var choice = PickGroupIndices([.. list.Select(g => g.Members.Length)], quantity);
             if (choice == null) break;
             var picked = choice.Select(i => list[i]).ToArray();
             foreach (var group in picked)
@@ -213,8 +213,8 @@ public sealed class DungeonMatchService : IGameTicker
         long deadlineMs = ((nowMs + seconds * 1000L + 999) / 1000) * 1000;
         var match = new Match
         {
-            Key = first.Key, Plan = first.Plan, Groups = picked.ToArray(),
-            Members = picked.SelectMany(g => g.Members).ToArray(), Data = first.Data,
+            Key = first.Key, Plan = first.Plan, Groups = [.. picked],
+            Members = [.. picked.SelectMany(g => g.Members)], Data = first.Data,
             DeadlineMs = deadlineMs, StartSeconds = picked.Min(g => g.StartSeconds)
         };
         foreach (var member in match.Members) _preparing[member] = match;

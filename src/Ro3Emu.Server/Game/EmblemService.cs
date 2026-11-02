@@ -23,7 +23,7 @@ public sealed partial class EmblemService
 
     public sealed class EmblemState
     {
-        public Dictionary<int, Plan> Plans { get; set; } = new();
+        public Dictionary<int, Plan> Plans { get; set; } = [];
         public int CurrentPlan { get; set; }
         public long HistorySeasonPower { get; set; }
         /// <summary>The role's published and best power total (PowerService); null before its first publish.</summary>
@@ -32,7 +32,7 @@ public sealed partial class EmblemService
 
     public sealed class Plan
     {
-        public Dictionary<int, long> Slots { get; set; } = new();
+        public Dictionary<int, long> Slots { get; set; } = [];
         public string Name { get; set; } = "";
     }
 
@@ -44,7 +44,7 @@ public sealed partial class EmblemService
     private readonly ILogger<EmblemService> _log;
 
     /// <summary>After a committed 82424 upgrade: the levels it gained (quest target 317002). Listeners post their work.</summary>
-    public List<Action<GameSession, int>> Upgraded { get; } = new();
+    public List<Action<GameSession, int>> Upgraded { get; } = [];
 
     public EmblemService(GameData data, CharacterService character, FunctionService functions, SeasonService seasons,
         RoleStore roles, ILogger<EmblemService> log)
@@ -109,7 +109,7 @@ public sealed partial class EmblemService
         foreach (var item in afterItems.Where(i => IsEmblem(_data, i.Entry)))
         {
             int slot = active.Slots.FirstOrDefault(p => p.Value == item.Guid).Key;
-            item.Attrs ??= new();
+            item.Attrs ??= [];
             if (item.Attrs.GetValueOrDefault(Source) == (slot == 0 ? 0 : 2)
                 && item.Attrs.GetValueOrDefault(Position) == slot) continue;
             item.Attrs[Source] = slot == 0 ? 0 : 2;
@@ -281,7 +281,7 @@ public sealed partial class EmblemService
     }
 
     public static bool IsReserved(GameSession session, InvItem item) =>
-        item.Attrs?.GetValueOrDefault(Source) == 2 || session.Emblems.Plans.Values.Any(p => p.Slots.Values.Contains(item.Guid));
+        item.Attrs?.GetValueOrDefault(Source) == 2 || session.Emblems.Plans.Values.Any(p => p.Slots.ContainsValue(item.Guid));
 
     public static bool IsEmblem(GameData data, int entry) =>
         data.Row("ItemConfig", entry) is { } row && GameData.Int(row, "_iType") == 8 && GameData.Int(row, "_iSubType") == 800;
@@ -361,7 +361,7 @@ public sealed partial class EmblemService
         if (code == 0) code = req.EmblemPos is < FirstSlot or > LastSlot ? ErrorCodes.EmblemSlot
             : item == null || !IsEmblem(_data, item.Entry) ? ErrorCodes.EmblemInvalid
             : !SeasonValid(item.Entry) ? ErrorCodes.EmblemOtherSeason
-            : plan.Slots.Values.Contains(req.EmblemGuid) ? ErrorCodes.EmblemAlreadyDeployed : 0;
+            : plan.Slots.ContainsValue(req.EmblemGuid) ? ErrorCodes.EmblemAlreadyDeployed : 0;
         long oldGuid = code == 0 ? plan.Slots.GetValueOrDefault(req.EmblemPos) : 0;
         if (code == 0)
         {
@@ -371,10 +371,10 @@ public sealed partial class EmblemService
             var next = CopyState(session.Emblems);
             if (oldGuid != 0 && afterItems.FirstOrDefault(i => i.Guid == oldGuid) is { } old)
             {
-                old.Attrs ??= new(); old.Attrs[Source] = 0; old.Attrs[Position] = 0;
+                old.Attrs ??= []; old.Attrs[Source] = 0; old.Attrs[Position] = 0;
             }
             var deployed = afterItems.Single(i => i.Guid == req.EmblemGuid);
-            deployed.Attrs ??= GenerateAttrs(deployed.Entry) ?? new();
+            deployed.Attrs ??= GenerateAttrs(deployed.Entry) ?? [];
             deployed.Attrs[Source] = 2; deployed.Attrs[Position] = req.EmblemPos;
             next.Plans[next.CurrentPlan].Slots[req.EmblemPos] = deployed.Guid;
             await CommitEmblemsAsync(session, "emblem-setup", next, beforeItems, afterItems, [],
@@ -403,7 +403,7 @@ public sealed partial class EmblemService
             next.Plans[next.CurrentPlan].Slots.Remove(req.EmblemPos);
             if (afterItems.FirstOrDefault(i => i.Guid == guid) is { } item)
             {
-                item.Attrs ??= new(); item.Attrs[Source] = 0; item.Attrs[Position] = 0;
+                item.Attrs ??= []; item.Attrs[Source] = 0; item.Attrs[Position] = 0;
             }
             await CommitEmblemsAsync(session, "emblem-setdown", next, beforeItems, afterItems, [],
                 new { req.EmblemPos, EmblemGuid = guid });
@@ -471,7 +471,7 @@ public sealed partial class EmblemService
             try
             {
                 // Compute the whole new item state before payment; no roll/overflow can fail after item removal.
-                upgradedAttrs = target!.Attrs == null ? GenerateAttrs(target.Entry) ?? new() : new(target.Attrs);
+                upgradedAttrs = target!.Attrs == null ? GenerateAttrs(target.Entry) ?? [] : new(target.Attrs);
                 long remaining = checked(upgradedAttrs.GetValueOrDefault(Exp) + xp);
                 int next = level;
                 while (next < cap && LevelRow(quality, next + 1) is { } row && remaining >= GameData.Int(row, "_iExp"))

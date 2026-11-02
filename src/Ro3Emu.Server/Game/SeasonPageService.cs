@@ -30,9 +30,9 @@ public sealed class SeasonPageService(GameData data, CharacterService character,
     public sealed class PageMeta
     {
         public int SeasonId { get; set; }
-        public Dictionary<int, long> Baseline { get; set; } = new();
+        public Dictionary<int, long> Baseline { get; set; } = [];
         public long DungeonScore { get; set; }
-        public HashSet<string> DungeonEvents { get; set; } = new();
+        public HashSet<string> DungeonEvents { get; set; } = [];
         public bool BreakSnapshotTaken { get; set; }
     }
 
@@ -202,7 +202,7 @@ public sealed class SeasonPageService(GameData data, CharacterService character,
 
     private int[] FunctionIds(GameSession session) => data.Row("MultiverseConfig", session.SeasonState?.PlayBookId ?? 0) is { } row
         && row.TryGetProperty("_iDanSystem", out var ids) && ids.ValueKind == JsonValueKind.Array
-        ? ids.EnumerateArray().Select(v => v.GetInt32()).ToArray() : [];
+        ? [.. ids.EnumerateArray().Select(v => v.GetInt32())] : [];
 
     public Dictionary<int, long> Scores(GameSession session) => Scores(session,
         LoadMeta(session.Role!.Id, (int)session.SeasonState!.SeasonId, true));
@@ -289,7 +289,7 @@ public sealed class SeasonPageService(GameData data, CharacterService character,
             string source = $"season-rank:{session.Role!.Id}:{seasons.SeasonId}:" +
                 string.Join(",", request.RankReward.OrderBy(x => x.Key).Select(x => $"{x.Key}-{x.Value}"));
             var economy = character.ProgressionEconomy(session, "cd13c/season-page-claim", [],
-                grants.Select(g => (g.Entry, g.Count)).ToArray(),
+                [.. grants.Select(g => (g.Entry, g.Count))],
                 new { Season = seasons.SeasonId, Claims = request.RankReward.OrderBy(x => x.Key).ToArray() }, source);
             if (await character.ExchangeLockedAsync(session, [], [], popup: true, sync: false, attributedGoods: grants,
                     persist: tx => { tx.RoleBlob(session.Role!.Id, "season_page", next!.ToByteArray()); tx.WithEconomy(economy); },

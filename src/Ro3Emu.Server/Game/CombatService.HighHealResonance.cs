@@ -8,7 +8,7 @@ namespace Ro3Emu.Server.Game;
 public sealed partial class CombatService
 {
     private sealed record PoemShieldCooldown(long Role, object Epoch, long Ready);
-    private readonly ConditionalWeakTable<GameSession, PoemShieldCooldown> _poemShields = new();
+    private readonly ConditionalWeakTable<GameSession, PoemShieldCooldown> _poemShields = [];
 
     internal async Task ReconcileHighHealResonanceAsync(GameSession source)
     {

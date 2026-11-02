@@ -13,7 +13,7 @@ public sealed class PetAoiTests
 {
     private sealed class RecordingSink : IAoiSink
     {
-        public List<string> Events { get; } = new();
+        public List<string> Events { get; } = [];
         public Func<GameSession, GameSession, Task>? OnEnter { get; set; }
 
         private Task Add(string value) { Events.Add(value); return Task.CompletedTask; }

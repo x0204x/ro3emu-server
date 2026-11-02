@@ -55,7 +55,7 @@ public sealed class SkillProtocolTests : IAsyncLifetime
     private async Task Gm(string account, string line)
     {
         using var http = new HttpClient();
-        (await http.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(line))).EnsureSuccessStatusCode();
+        (await http.PostAsync($"{_http}/ro3emu/gm?account={account}", Operator.Command(line))).EnsureSuccessStatusCode();
     }
 
     private GameSession Session(string account) => _app.Services.GetRequiredService<SessionRegistry>().All()

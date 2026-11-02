@@ -81,7 +81,7 @@ public sealed class FreshRealmTests : IAsyncLifetime
     private async Task Gm(string account, string line)
     {
         using var http = new HttpClient();
-        (await http.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(line))).EnsureSuccessStatusCode();
+        (await http.PostAsync($"{_http}/ro3emu/gm?account={account}", Operator.Command(line))).EnsureSuccessStatusCode();
     }
 
     [ClientDataFact]
@@ -165,7 +165,7 @@ public sealed class FreshRealmTests : IAsyncLifetime
     {
         // The season page lists MultiverseStage._kStageActivity per chapter; each activity's own condition is [1002,99]
         // (the final level cap, day 198), so the client fell back to its config windows ("Opens in 13 days").
-        Assert.Equal(new long[] { 105, 106, 107, 109, 110, 111, 115 },
+        Assert.Equal([105, 106, 107, 109, 110, 111, 115],
             Service<NewActivityService>().StageActivities(101).Order().ToArray());
         await using var alice = await InWorld("Alice");
         await Gm("alice", "!lvl 60");

@@ -76,8 +76,8 @@ internal static class InstallFlow
     /// Brings <paramref name="folder"/> to the publisher's current release (only the files that differ). Ctrl+C in the
     /// console, or <paramref name="stop"/> from the launcher, pauses it; the next run continues where it stopped.
     /// </summary>
-    public static async Task InstallAsync(string folder, Options options, Func<string, bool>? only = null, CancellationToken stop = default,
-        ClientCompatibilitySpec? required = null)
+    public static async Task InstallAsync(string folder, Options options, Func<string, bool>? only = null,
+        ClientCompatibilitySpec? required = null, CancellationToken stop = default)
     {
         var config = PublisherConfig.Load(SetupHome.AppDir);
         using var http = new HttpClient(new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, ConnectTimeout = TimeSpan.FromSeconds(20) })
@@ -229,6 +229,6 @@ internal sealed class OptionsWithClient(Options options, string client)
         if (o.Ports.Panel > 0) args.AddRange(["--panel-port", o.Ports.Panel.ToString(System.Globalization.CultureInfo.InvariantCulture)]);
         else args.Add("--no-panel");
         if (o.PurchaseUrl != null) args.AddRange(["--purchase-url", o.PurchaseUrl]);
-        return args.ToArray();
+        return [.. args];
     }
 }

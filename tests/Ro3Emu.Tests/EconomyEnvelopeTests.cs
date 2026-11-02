@@ -83,7 +83,7 @@ public sealed class EconomyEnvelopeTests : IDisposable
             using var tx = db.BeginTransaction(deferred: true);
             var inside = EconomySnapshotReader.ReadTransaction(db, tx, _catalog);
             Assert.Empty(inside.Issues);
-            Assert.Equal(opening.Holdings.ToHashSet(), inside.Holdings.ToHashSet());
+            Assert.Equal(opening.Holdings.ToHashSet(), [.. inside.Holdings]);
         }
         await _roles.CommitAsync(Spend(Guid.NewGuid().ToString("N"), "spend-with-pending"), "test/e05d-with-e04-pending");
         var closing = Cut();

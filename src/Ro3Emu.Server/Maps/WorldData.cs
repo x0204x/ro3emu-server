@@ -241,7 +241,7 @@ public sealed partial class WorldData(IOptions<ServerOptions> options, GameData 
     /// <summary>Written by the data export next to config/ (Ro3Emu.DataExport.ClientScenes.FileName).</summary>
     public const string ClientSceneList = "client-scenes.json";
 
-    private readonly Dictionary<long, MapWorld?> _maps = new();
+    private readonly Dictionary<long, MapWorld?> _maps = [];
     private readonly object _sync = new();
     private HashSet<long>? _kafraDestinations;
 
@@ -257,7 +257,7 @@ public sealed partial class WorldData(IOptions<ServerOptions> options, GameData 
         }
     }
 
-    private readonly Dictionary<long, (int NpcId, int Point)[]> _pointNpcs = new();
+    private readonly Dictionary<long, (int NpcId, int Point)[]> _pointNpcs = [];
 
     /// <summary>
     /// Server NPCs a service places on scene-editor monster spawn points whose npcId is 0 (AdventureGroupService: the
@@ -267,7 +267,7 @@ public sealed partial class WorldData(IOptions<ServerOptions> options, GameData 
     {
         lock (_sync)
         {
-            _pointNpcs[sceneEntry] = npcs.ToArray();
+            _pointNpcs[sceneEntry] = [.. npcs];
             _maps.Remove(sceneEntry);
         }
     }
@@ -288,7 +288,7 @@ public sealed partial class WorldData(IOptions<ServerOptions> options, GameData 
         {
             if (_kafraDestinations == null)
             {
-                _kafraDestinations = new();
+                _kafraDestinations = [];
                 if (DataFiles.Find(Dir("sceneeditor"), "MapLinkData.json") is { } path)
                 {
                     using var doc = JsonDocument.Parse(File.ReadAllBytes(path));
@@ -514,7 +514,7 @@ public sealed partial class WorldData(IOptions<ServerOptions> options, GameData 
                 if (e.TryGetProperty("m_kConfigIds", out var ids) && ids.ValueKind == JsonValueKind.Array && ids.GetArrayLength() > 0 && GameData.Number(ids[0]) is { } c)
                     config = (int)c;
                 if (!e.TryGetProperty("position", out var pos)) continue;
-                if (!points.TryGetValue(group, out var list)) points[group] = list = new();
+                if (!points.TryGetValue(group, out var list)) points[group] = list = [];
                 list.Add(new SpawnPoint((int)GameData.Int(e, "Id"), WorldNpc.Float(pos, "x"), WorldNpc.Float(pos, "y"), WorldNpc.Float(pos, "z"),
                     WorldNpc.Float(e, "direction"), config));
             }

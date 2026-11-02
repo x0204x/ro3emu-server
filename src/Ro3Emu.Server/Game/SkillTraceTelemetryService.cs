@@ -524,7 +524,7 @@ public sealed class SkillTraceTelemetryService : Messaging.IMessageModule, IDisp
         if (msgId == CombatService.SkillHit)
         {
             var hit = SkillHitInfo.Parser.ParseFrom(body.Span);
-            long[] targets = hit.Dsts.Take(32).Select(target => target.DstID).ToArray();
+            long[] targets = [.. hit.Dsts.Take(32).Select(target => target.DstID)];
             return new(hit.SkillId, hit.SrcID, targets.FirstOrDefault(), hit.SessionId, hit.ShowPoint, 0, 0,
                 hit.Dsts.Count, targets);
         }

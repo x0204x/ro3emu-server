@@ -183,7 +183,7 @@ public sealed class SkillAnimationRouteCoverageTests(ITestOutputHelper output)
     {
         if (!template.TryGetProperty("m_kState", out var state)
             || !state.TryGetProperty("Time", out var times) || times.ValueKind != JsonValueKind.Array) return [];
-        return times.EnumerateArray().Select(value => value.GetDouble()).ToArray();
+        return [.. times.EnumerateArray().Select(value => value.GetDouble())];
     }
 
     private static IEnumerable<double> AttackPoints(JsonElement template)

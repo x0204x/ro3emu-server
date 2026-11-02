@@ -10,25 +10,25 @@ public sealed partial class TeamService
         var teams = ids.Where(_byMember.ContainsKey).Select(id => _byMember[id]).ToHashSet();
         if (_teams.TryGetValue(teamId, out var requested)) teams.Add(requested);
         foreach (var team in teams) ids.UnionWith(team.Members);
-        return ids.Select(id => ReservationKey.Role(id))
+        return [.. ids.Select(id => ReservationKey.Role(id))
             .Concat(teams.Select(team => ReservationKey.Entity("team", team.Id.ToString(System.Globalization.CultureInfo.InvariantCulture))))
             .Concat(teamId > 0 ? new[] { ReservationKey.Entity("team", teamId.ToString(System.Globalization.CultureInfo.InvariantCulture)) }
-                : Array.Empty<ReservationKey>())
-            .Distinct().ToArray();
+                : [])
+            .Distinct()];
     }
 
     private async Task RunTeamAsync(string origin, IEnumerable<long> roles, long teamId, Func<Task> work)
     {
         var owners = _loop.Owners ?? throw new InvalidOperationException("Team owner registry is unavailable.");
-        long[] participants = roles.ToArray();
+        long[] participants = [.. roles];
         while (true)
         {
             var keys = TeamKeys(participants, teamId);
             bool inherited = owners.Current is { RuntimeOnly: false };
-            Task[] Handovers() => keys.Where(key => key.Kind == ReservationKind.RolePart)
+            Task[] Handovers() => [.. keys.Where(key => key.Kind == ReservationKind.RolePart)
                 .Select(key => long.TryParse(key.Id, out long id) ? owners.Cached(id) : null)
                 .Where(owner => owner?.State == RoleOwnerState.Quiescing)
-                .Select(owner => owner!.Detaching).OfType<Task>().Distinct().ToArray();
+                .Select(owner => owner!.Detaching).OfType<Task>().Distinct()];
             if (!inherited && Handovers() is { Length: > 0 } pending)
             {
                 await Task.WhenAll(pending);

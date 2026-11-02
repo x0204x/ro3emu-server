@@ -34,7 +34,7 @@ public static class GuildLeagueBracket
     public static Pair[] Pairs(IReadOnlyList<Pair> preliminary, IReadOnlyDictionary<long, int> scores, int round)
     {
         if (preliminary.Count != 4) throw new ArgumentException("A group has four preliminary pairs.");
-        if (round <= 1) return preliminary.ToArray();
+        if (round <= 1) return [.. preliminary];
         var semifinal = Next(preliminary, scores, final: false);
         return round == 2 ? semifinal : Next(semifinal, scores, final: true);
     }

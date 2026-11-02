@@ -178,7 +178,7 @@ public sealed partial class SkillService
 
     private IReadOnlyDictionary<int, int> Replacements(int career) => _replacements.GetOrAdd(career, c => _data.Row("JobConfig", c) is { } row
         ? GameData.Pairs(row, "_kSkillReplace").ToDictionary(p => (int)p.Id, p => (int)p.Value)
-        : new Dictionary<int, int>());
+        : []);
 
     /// <summary>Learnable skill groups of a career chain (SkillTreeConfig rows _iX1.._iX7) with the career that teaches them.</summary>
     internal IReadOnlyList<(int Group, int Career)> Tree(int career) => _trees.GetOrAdd(career, BuildTree);
@@ -784,7 +784,7 @@ public sealed partial class SkillService
     }
 
     /// <summary>Skills were learned (quests: 104012 CheckCostJobPoint).</summary>
-    public List<Func<GameSession, Task>> Learned { get; } = new();
+    public List<Func<GameSession, Task>> Learned { get; } = [];
 
     /// <summary>
     /// GM panel 110 GmCurAllSkillLevUpMax (GMConfig 3007: 1 learns every skill of the current job and stage at its

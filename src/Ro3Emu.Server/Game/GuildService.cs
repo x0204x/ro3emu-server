@@ -29,9 +29,9 @@ public sealed partial class GuildService(GameData data, GuildStore store, RoleSt
 
     /// <summary>An online member's committed guild view changed guild or position (create, join, leave, appoint;
     /// achievements 104007/107003). Runs inside the commit's apply: listeners post their work.</summary>
-    public List<Action<GameSession>> MembershipChanged { get; } = new();
+    public List<Action<GameSession>> MembershipChanged { get; } = [];
     /// <summary>Rank rights were saved for this guild. Listeners post work without changing membership.</summary>
-    public List<Action<long>> RightsChanged { get; } = new();
+    public List<Action<long>> RightsChanged { get; } = [];
     public const uint Apply = 32223, ApplyOpe = 32224, ApplyChange = 32225, Edit = 32230, BaseChange = 32231;
     public const uint ChangeOfficial = 32232, Kick = 32233, Leave = 32234, Invite = 32237, InviteNtf = 32238, InviteAck = 32239;
     public const uint Detail = 32290, BuildUpgrade = 32242, MarketBooth = 83900, MarketItems = 83903, MarketList = 83901, MarketUnlist = 83902;
@@ -41,7 +41,7 @@ public sealed partial class GuildService(GameData data, GuildStore store, RoleSt
     /// <summary>Guild-owned goods supplied by the territory escort ledger for the 32213 full snapshot.</summary>
     public Func<long, GuildItemData>? ItemDataOf { get; set; }
 
-    private readonly Dictionary<long, Invitation> _invites = new();
+    private readonly Dictionary<long, Invitation> _invites = [];
     private long _nextToken = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
     private sealed record Invitation(long GuildId, long Recipient, long Inviter, long ExpiresMs);
     // The injected clock, as WeekStart: membership times compared with the guild week must share its calendar.
@@ -118,7 +118,7 @@ public sealed partial class GuildService(GameData data, GuildStore store, RoleSt
             CatShopInfo = prior?.GuildId == guild.Id ? prior.CatShopInfo?.Clone() ?? new DBGuildCatShopInfo()
                 : new DBGuildCatShopInfo(),
             IsCatShopAllSubmit = prior?.GuildId == guild.Id && prior.IsCatShopAllSubmit,
-            ActiveRewardReceived = { prior?.GuildId == guild.Id ? prior.ActiveRewardReceived : new Google.Protobuf.Collections.MapField<long, long>() },
+            ActiveRewardReceived = { prior?.GuildId == guild.Id ? prior.ActiveRewardReceived : [] },
         };
     }
 
@@ -147,7 +147,7 @@ public sealed partial class GuildService(GameData data, GuildStore store, RoleSt
         foreach (var row in data.Table("GuildPermissionConfig").Values)
         {
             int id = (int)GameData.Int(row, "_iID");
-            result[id] = GameData.Pairs(row, "_iDetail").Where(p => p.Value >= 2).Select(p => (int)p.Id).ToList();
+            result[id] = [.. GameData.Pairs(row, "_iDetail").Where(p => p.Value >= 2).Select(p => (int)p.Id)];
         }
         return result;
     }
@@ -341,7 +341,7 @@ public sealed partial class GuildService(GameData data, GuildStore store, RoleSt
     {
         var row = data.Table("GuildSettingConfig").Values.FirstOrDefault(r => r.TryGetProperty("_kSetting", out var v) && v.GetString() == name);
         if (row.ValueKind != JsonValueKind.Object || !row.TryGetProperty("_kValue", out var value)) return fallback;
-        if (value.ValueKind == JsonValueKind.Array) return value.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).ToArray();
+        if (value.ValueKind == JsonValueKind.Array) return [.. value.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0))];
         return GameData.Number(value) is { } n ? [(long)n] : fallback;
     }
 
@@ -906,7 +906,7 @@ public sealed partial class GuildService(GameData data, GuildStore store, RoleSt
                     code = CheckRights(req.Right);
                     if (code == 0 && !req.IsCheck)
                         foreach (var setting in req.Right.Data)
-                            g.Rights[(int)setting.RightType] = setting.AbledOfficial.Select(x => (int)x).ToList();
+                            g.Rights[(int)setting.RightType] = [.. setting.AbledOfficial.Select(x => (int)x)];
                     break;
                 case 5:
                     if (Sensitive(req.Notice)) code = ErrorCodes.TextSensitive;

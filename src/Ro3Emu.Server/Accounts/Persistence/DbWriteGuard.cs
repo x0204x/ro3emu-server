@@ -21,7 +21,7 @@ internal static class DbWriteGuard
         internal string Source = source;
         internal bool RoleWriteAuthorized;
     }
-    private static readonly ConditionalWeakTable<SqliteConnection, State> States = new();
+    private static readonly ConditionalWeakTable<SqliteConnection, State> States = [];
     private static readonly delegate_authorizer Authorizer = Authorize;
     private static readonly HashSet<string> ReadArgumentPragmas = new(StringComparer.OrdinalIgnoreCase)
     { "table_info", "table_xinfo", "index_info", "index_xinfo", "index_list", "foreign_key_list",

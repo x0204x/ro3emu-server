@@ -98,7 +98,7 @@ public sealed class DormantQuestSourceClientTests : IAsyncLifetime
             var task = TaskConfig.Get(data, id);
             Assert.NotNull(task);
             Assert.Equal(19, task.Value.TaskType);
-            Assert.Equal(new long[] { 106012, 1, 9300201 }, Assert.Single(task.Value.ProgressTarget));
+            Assert.Equal([106012, 1, 9300201], Assert.Single(task.Value.ProgressTarget));
             Assert.Equal(0, task.Value.Award);
             Assert.Empty(task.Value.Exp);
         }

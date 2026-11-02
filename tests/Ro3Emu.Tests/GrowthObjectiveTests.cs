@@ -71,7 +71,7 @@ public sealed class GrowthObjectiveTests : IAsyncLifetime
     private async Task Gm(string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{_http}/ro3emu/gm?account=alice", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account=alice", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     private GameSession Session => Service<SessionRegistry>().All().Single(s => s.Account == "alice" && s.Role != null);

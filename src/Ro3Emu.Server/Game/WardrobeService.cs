@@ -323,7 +323,7 @@ public sealed partial class WardrobeService
             if (!Owns(next, id)) next.AllLightUpAppearances[id] = new DBAppearanceInfo { AppearanceId = id };
         var goods = bonus.Grants.Select(g => (g.Entry, g.Count, Bind: g.BindType)).ToList();
         var economy = _character.FamilyEconomy(session, Economy.CharacterFamilyEconomy.ShopAppearanceKind, cost,
-            goods.Select(g => (g.Entry, g.Count)).ToList(), new
+            [.. goods.Select(g => (g.Entry, g.Count))], new
             {
                 Version = 1, Shop = shopOutcome, Appearances = looks, Award = bonus.GroupId, AwardConfig = bonus.AwardId,
                 Grants = goods.Select(g => new { g.Entry, g.Count, g.Bind }),
@@ -422,7 +422,9 @@ public sealed partial class WardrobeService
         await session.SendGameAsync(CharacterService.EntityBaseChange, change);
         foreach (var viewer in _world.Viewers(session))
             try { await viewer.SendGameAsync(CharacterService.EntityBaseChange, change); }
-            catch (Exception e) when (e is IOException or ObjectDisposedException or InvalidOperationException) { }
+            catch (Exception e) when (e is IOException or ObjectDisposedException or PersistenceException
+                or InvalidOperationException)
+            { }
     }
 
     private JsonElement? Row(int id) => _data.Row("WardRobeConfig", id);

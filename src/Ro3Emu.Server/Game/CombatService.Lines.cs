@@ -4,7 +4,7 @@ namespace Ro3Emu.Server.Game;
 
 public sealed partial class CombatService
 {
-    private readonly Dictionary<long, int> _pendingSceneWork = new();
+    private readonly Dictionary<long, int> _pendingSceneWork = [];
 
     /// <summary>Scheduled hit/end work and suspended hit settlement pin their original public line.</summary>
     public bool HasPendingMapWork(RuntimeMapKey map) => _pendingSceneWork.GetValueOrDefault(map.WorldScene) != 0;

@@ -49,7 +49,7 @@ public sealed partial class GuildLeagueTests
         var saved = await SaveElites(alice, 0, (1, Id(alice)), (2, Id(bob)));
         Assert.Equal(0, saved.Result);
         Assert.Equal(1, saved.CurrentEliteData.Version);
-        Assert.Equal(new[] { Id(alice), Id(bob) }, saved.CurrentEliteData.ElitUnitData.OrderBy(u => u.Index).Select(u => u.PlayerId));
+        Assert.Equal([Id(alice), Id(bob)], saved.CurrentEliteData.ElitUnitData.OrderBy(u => u.Index).Select(u => u.PlayerId));
         var pushed = await Next(bob, GuildService.EliteChange, EliteGroupChangeNotify.Parser);
         Assert.Equal(1, Assert.Single(pushed.CurrentEliteData).Version);
         await Next(bob, GuildService.BaseChange, GuildBaseInfoChangeNtf.Parser, n => EliteChange(n, true));
@@ -144,7 +144,7 @@ public sealed partial class GuildLeagueTests
         Assert.Equal(new[] { Id(alice), Id(bob) }.Order(), roster.ElitUnitData.Select(u => u.PlayerId).Order());
 
         var cup = await Read(() => League.State.Cup!);
-        var pairs = GuildLeagueBracket.Pairs(cup.Groups[0].Pairs.Select(p => new GuildLeagueBracket.Pair(p[0], p[1])).ToArray(),
+        var pairs = GuildLeagueBracket.Pairs([.. cup.Groups[0].Pairs.Select(p => new GuildLeagueBracket.Pair(p[0], p[1]))],
             new Dictionary<long, int> { [astra] = 6, [borea] = 6 }, 3);
         int astraCamp = pairs[0].Blue == astra ? 1 : 2;
 
@@ -158,8 +158,8 @@ public sealed partial class GuildLeagueTests
         var view = await Next(alice, GameAoiSink.SyncAoiView, AoIViewChangeData.Parser, v => v.Bases.Any(b => b.EntityTemplateID == 4800000));
         var circles = view.Bases.Where(b => b.EntityTemplateID == 4800000).ToArray();
         Assert.Equal(3, circles.Length);
-        Assert.All(circles, c => Assert.Equal(new long[] { 12, 13, 14, 15, 16 }, c.CustomDatas.Select(d => d.Id).Order()));
-        Assert.Equal(new long[] { 0, 1, 2 }, circles.Select(c => c.CustomDatas.Single(d => d.Id == 16).CustomParam.LongParam).Order());
+        Assert.All(circles, c => Assert.Equal([12, 13, 14, 15, 16], c.CustomDatas.Select(d => d.Id).Order()));
+        Assert.Equal([0, 1, 2], circles.Select(c => c.CustomDatas.Single(d => d.Id == 16).CustomParam.LongParam).Order());
         long fireUid = await Read(() => League.Matches.Single().Main.Points[43].Uid);
         var fireCircle = circles.Single(c => (long)c.Uuid == fireUid);
         Assert.Equal(2, fireCircle.CustomDatas.Single(d => d.Id == 16).CustomParam.LongParam); // GuildLeagueOccupyNoticeType [43, 2]

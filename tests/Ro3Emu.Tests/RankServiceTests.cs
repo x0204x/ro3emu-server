@@ -86,13 +86,13 @@ public sealed class RankServiceTests : IAsyncLifetime
         await using var reader = await Reader();
         var tower = await reader.MicroPositionalAsync("RankService", "rangeUserRank", ["1:1011", 1, 200]);
         Assert.Equal(3L, Convert.ToInt64(tower["Count"]));
-        Assert.Equal(new[] { (bob, 1L), (alice, 2L), (carol, 3L) }, Rows(tower).Select(r => (Id(r), Convert.ToInt64(r["Rank"]))).ToArray());
+        Assert.Equal([(bob, 1L), (alice, 2L), (carol, 3L)], [.. Rows(tower).Select(r => (Id(r), Convert.ToInt64(r["Rank"])))]);
         var top = Rows(tower)[0];
-        Assert.Equal(new[] { 5L, 3000L }, Values(top));
+        Assert.Equal([5L, 3000L], Values(top));
         var climb = LeaderBoardUserDada.Parser.ParseFrom((byte[])top["GameData"]!).ClimbTowerData;
         Assert.Equal(5, climb.TowerLayer);
         Assert.Equal(20, climb.DurationTime);
-        Assert.Equal(new[] { 7001L }, climb.PetIds.ToArray());
+        Assert.Equal([7001L], [.. climb.PetIds]);
         Assert.Equal(12, Assert.Single(climb.PetDatas).Level);
 
         // queryUserRank for the local player (_proessLeaderBoardSync -> SendForGetUserRank).
@@ -105,21 +105,21 @@ public sealed class RankServiceTests : IAsyncLifetime
         // getUserRankSurrounding {RankId, UserId, Before, After}.
         var near = await reader.MicroAsync("RankService", "getUserRankSurrounding",
             new() { ["RankId"] = "1:1011", ["UserId"] = alice.ToString(), ["Before"] = 1, ["After"] = 5 });
-        Assert.Equal(new[] { 1L, 2L, 3L }, Rows(near).Select(r => Convert.ToInt64(r["Rank"])).ToArray());
+        Assert.Equal([1L, 2L, 3L], [.. Rows(near).Select(r => Convert.ToInt64(r["Rank"]))]);
         var notRanked = await reader.MicroAsync("RankService", "getUserRankSurrounding",
             new() { ["RankId"] = "1:1011", ["UserId"] = dave.ToString(), ["Before"] = 2, ["After"] = 2 });
         Assert.Empty(Rows(notRanked));
 
         // Dummy Challenge: overall plus the root job's board (PublicParamConfig.TrainingRootJob2LdId).
-        Assert.Equal(new[] { dave, alice }, Rows(await Range(reader, 1201)).Select(Id).ToArray());
-        Assert.Equal(new[] { alice }, Rows(await Range(reader, 1202)).Select(Id).ToArray());
+        Assert.Equal([dave, alice], [.. Rows(await Range(reader, 1201)).Select(Id)]);
+        Assert.Equal([alice], [.. Rows(await Range(reader, 1202)).Select(Id)]);
         var swordsman = Assert.Single(Rows(await Range(reader, 1204)));
         Assert.Equal(dave, Id(swordsman));
         var common = LeaderBoardUserDada.Parser.ParseFrom((byte[])swordsman["GameData"]!).UserCommonData;
         Assert.Equal(4210L, common.UserDefineData[(int)LeaderBoardSelfDefineDataType.LdCarrer]);
 
         // Fashion Rating: permanent appearances only (10 + 10).
-        Assert.Equal(new[] { 20L, 0L }, Values(Assert.Single(Rows(await Range(reader, 1301)))));
+        Assert.Equal((long[])[20L, 0L], Values(Assert.Single(Rows(await Range(reader, 1301)))));
         // Survivor total points and Dragon Coffin total rank points (level 1 limit 100 + 30).
         Assert.Equal(150L, Values(Assert.Single(Rows(await Range(reader, 1052))))[0]);
         Assert.Equal(130L, Values(Assert.Single(Rows(await Range(reader, 1601))))[0]);
@@ -136,12 +136,12 @@ public sealed class RankServiceTests : IAsyncLifetime
 
         await using var reader = await Reader();
         var board = await Range(reader, 1030);
-        Assert.Equal(new[] { blades, asters }, Rows(board).Select(Id).ToArray());
+        Assert.Equal([blades, asters], [.. Rows(board).Select(Id)]);
         var gve = LeaderBoardUserDada.Parser.ParseFrom((byte[])Rows(board)[1]["GameData"]!).GveData;
         Assert.Equal(("Asters", "Alice", alice, 1L), (gve.GuildName, gve.GuildOwnerName, gve.GuildOwnerId, gve.MemberCount));
 
         // 1031 ranks this week's Guild Activity; a guild without any is not listed.
-        Assert.Equal(new[] { asters }, Rows(await Range(reader, 1031)).Select(Id).ToArray());
+        Assert.Equal([asters], [.. Rows(await Range(reader, 1031)).Select(Id)]);
 
         // The local player's query resolves to its guild's row (inferred footer mapping).
         var mine = await reader.MicroPositionalAsync("RankService", "queryUserRank", ["1:1030", new object[] { alice.ToString() }]);
@@ -169,7 +169,7 @@ public sealed class RankServiceTests : IAsyncLifetime
 
         await using var reader = await Reader();
         var board = await Range(reader, 1401);
-        Assert.Equal(new[] { strong.Guid, weak.Guid }, Rows(board).Select(Id).ToArray());
+        Assert.Equal([strong.Guid, weak.Guid], [.. Rows(board).Select(Id)]);
         var meta = LeaderBoardUserDada.Parser.ParseFrom((byte[])Rows(board)[1]["GameData"]!).EquipMetaData;
         Assert.Equal(alice, meta.UserId);
         Assert.Equal(weak.Guid, ItemBaseInfo.Parser.ParseFrom(meta.ItemBaseInfo).ItemGuid);
@@ -179,9 +179,9 @@ public sealed class RankServiceTests : IAsyncLifetime
         Assert.Equal(0, await ranks.EquipRankAsync(1011, strong.Guid));
 
         // Hero Registry: 1101 all jobs, 1103 swordsman line (1100), 1104 (4100).
-        Assert.Equal(new[] { carol, alice }, Rows(await Range(reader, 1101)).Select(Id).ToArray());
-        Assert.Equal(new[] { alice }, Rows(await Range(reader, 1103)).Select(Id).ToArray());
-        Assert.Equal(new[] { carol }, Rows(await Range(reader, 1104)).Select(Id).ToArray());
+        Assert.Equal([carol, alice], [.. Rows(await Range(reader, 1101)).Select(Id)]);
+        Assert.Equal([alice], [.. Rows(await Range(reader, 1103)).Select(Id)]);
+        Assert.Equal([carol], [.. Rows(await Range(reader, 1104)).Select(Id)]);
 
         InvItem Equip(long role, long value, bool appraised)
         {
@@ -233,12 +233,12 @@ public sealed class RankServiceTests : IAsyncLifetime
         reader.MicroPositionalAsync("RankService", "rangeUserRank", [$"1:{board}", 1, 200]);
 
     private static List<Dictionary<object, object?>> Rows(Dictionary<object, object?> reply) =>
-        ((object?[])reply["RankList"]!).Cast<Dictionary<object, object?>>().ToList();
+        [.. ((object?[])reply["RankList"]!).Cast<Dictionary<object, object?>>()];
 
     private static long Id(Dictionary<object, object?> row) => long.Parse((string)row["UserId"]!);
 
     private static long[] Values(Dictionary<object, object?> row) =>
-        ((object?[])((Dictionary<object, object?>)row["Score"]!)["Values"]!).Select(Convert.ToInt64).ToArray();
+        [.. ((object?[])((Dictionary<object, object?>)row["Score"]!)["Values"]!).Select(Convert.ToInt64)];
 
     private async Task<BotClient> Reader()
     {

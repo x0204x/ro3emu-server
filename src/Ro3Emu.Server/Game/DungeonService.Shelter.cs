@@ -42,12 +42,15 @@ public sealed partial class DungeonService
     /// <summary>Behind the cover as seen from the boss: past it along the boss-cover line, within the shadow's width
     /// and depth.</summary>
     internal static bool Sheltered(float bossX, float bossZ, float coverX, float coverZ, float x, float z,
-        ReconstructedDungeons.Shelter shelter)
+        ReconstructedDungeons.Shelter shelter) => Sheltered(bossX, bossZ, coverX, coverZ, x, z, shelter.Width, shelter.Depth);
+
+    /// <summary>The shadow test with its width and depth (metres): also a raid trial's Shelter rule.</summary>
+    internal static bool Sheltered(float bossX, float bossZ, float coverX, float coverZ, float x, float z, float width, float depth)
     {
         float vx = coverX - bossX, vz = coverZ - bossZ, d = MathF.Sqrt(vx * vx + vz * vz);
         if (d < 0.5f) return false; // the boss stands on the cover: no shadow
         float ux = vx / d, uz = vz / d, wx = x - bossX, wz = z - bossZ;
         float along = wx * ux + wz * uz, across = MathF.Abs(wx * uz - wz * ux);
-        return along >= d && along <= d + shelter.Depth && across <= shelter.Width;
+        return along >= d && along <= d + depth && across <= width;
     }
 }

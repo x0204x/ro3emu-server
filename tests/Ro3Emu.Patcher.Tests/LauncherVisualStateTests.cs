@@ -85,7 +85,7 @@ public sealed class LauncherVisualStateTests
         var cache = new LauncherImageCache<object>(3);
         int created = 0;
         object Create(Uri _) { created++; return new(); }
-        Uri[] uris = Enumerable.Range(1, 4).Select(i => new Uri($"https://example.invalid/{i}.png")).ToArray();
+        Uri[] uris = [.. Enumerable.Range(1, 4).Select(i => new Uri($"https://example.invalid/{i}.png"))];
         object first = cache.GetOrCreate(uris[0], Create);
         Assert.Same(first, cache.GetOrCreate(uris[0], Create));
         Assert.Equal(1, created);

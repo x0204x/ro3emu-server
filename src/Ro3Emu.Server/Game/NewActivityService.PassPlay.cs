@@ -70,8 +70,12 @@ public sealed partial class NewActivityService
             Status = done.Contains(c.Id) ? Romsg.TaskState.Delivery : Romsg.TaskState.Running,
             CompleteNum = { Math.Min(c.Target, progress.GetValueOrDefault(c.Id)) },
         };
-        return DailyChallenges.Where(c => play.Daily.Contains(c.Id)).Select(c => Row(c, play.DailyProgress, play.DailyDone))
-            .Concat(WeeklyChallenges.Select(c => Row(c, play.WeeklyProgress, play.WeeklyDone))).ToArray();
+        return
+        [
+            .. DailyChallenges.Where(c => play.Daily.Contains(c.Id)).Select(c => Row(c, play.DailyProgress, play.DailyDone))
+,
+            .. WeeklyChallenges.Select(c => Row(c, play.WeeklyProgress, play.WeeklyDone)),
+        ];
     }
 
     /// <summary>Ro3Emu.ClientHooks.PassChallenges sends it before opening the panel: its TaskConfig has the rows.</summary>
@@ -88,9 +92,9 @@ public sealed partial class NewActivityService
 
     private long[]? _chapterEnds;
     /// <summary>The last main quest of each story chapter (TaskConfig type 1, ids 1010CXXX grouped by chapter C).</summary>
-    private long[] ChapterEnds() => _chapterEnds ??= _data.Table("TaskConfig").Values
+    private long[] ChapterEnds() => _chapterEnds ??= [.. _data.Table("TaskConfig").Values
         .Where(r => GameData.Int(r, "_iTaskType") == 1 && GameData.Int(r, "_iTaskID") is >= 10_100_000 and < 10_200_000)
-        .Select(r => GameData.Int(r, "_iTaskID")).GroupBy(id => id / 1000).Select(g => g.Max()).ToArray();
+        .Select(r => GameData.Int(r, "_iTaskID")).GroupBy(id => id / 1000).Select(g => g.Max())];
 
     private void InitializePassPlay(CombatService combat, DungeonService dungeons, MvpService mvps, TaskService tasks,
         ChatService chat)
@@ -131,7 +135,7 @@ public sealed partial class NewActivityService
     {
         // A fixed shuffle per role and day: the same three until the day turns, different between players.
         var rng = new Random(HashCode.Combine(roleId, day) & int.MaxValue);
-        return DailyChallenges.OrderBy(_ => rng.Next()).Take(3).ToArray();
+        return [.. DailyChallenges.OrderBy(_ => rng.Next()).Take(3)];
     }
 
     private static bool Roll(PassPlayState play, long roleId, long day, long week)
@@ -140,7 +144,7 @@ public sealed partial class NewActivityService
         if (play.Day != day)
         {
             play.Day = day;
-            play.Daily = DailyFor(roleId, day).Select(c => c.Id).ToList();
+            play.Daily = [.. DailyFor(roleId, day).Select(c => c.Id)];
             play.DailyProgress.Clear();
             play.DailyDone.Clear();
             play.KillExpToday = play.DungeonsToday = play.MvpsToday = 0;
@@ -368,16 +372,16 @@ public sealed class PassPlayState
     public long Day { get; set; }
     public long Week { get; set; }
     public long LastPlayedDay { get; set; }
-    public List<string> Daily { get; set; } = new();
-    public Dictionary<string, long> DailyProgress { get; set; } = new();
-    public List<string> DailyDone { get; set; } = new();
-    public Dictionary<string, long> WeeklyProgress { get; set; } = new();
-    public List<string> WeeklyDone { get; set; } = new();
+    public List<string> Daily { get; set; } = [];
+    public Dictionary<string, long> DailyProgress { get; set; } = [];
+    public List<string> DailyDone { get; set; } = [];
+    public Dictionary<string, long> WeeklyProgress { get; set; } = [];
+    public List<string> WeeklyDone { get; set; } = [];
     public long KillExpToday { get; set; }
     public long DungeonsToday { get; set; }
     public long MvpsToday { get; set; }
     public long LivenessSeen { get; set; }
-    public List<long> ChaptersPaid { get; set; } = new();
+    public List<long> ChaptersPaid { get; set; } = [];
     /// <summary>The pass instance <see cref="Earned"/> and <see cref="Overflow"/> belong to.</summary>
     public long Instance { get; set; }
     public long Earned { get; set; }

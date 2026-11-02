@@ -19,7 +19,7 @@ public sealed partial class GuildService
     public const uint RecommendPlayers = 82211;
     public const int ErrRecommendTooFrequent = 10023;
     private const long RecommendCooldownMs = 3000;
-    private readonly Dictionary<long, long> _lastRecommendMs = new();
+    private readonly Dictionary<long, long> _lastRecommendMs = [];
 
     public Task RecommendPlayersAsync(GameSession s, PullRecommendPlayersReq req) =>
         RunGuildAsync(s, [], [], () => RecommendPlayersCoreAsync(s, req));

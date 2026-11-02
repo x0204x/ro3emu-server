@@ -26,7 +26,8 @@ This page explains how to host your own patch repository and publish to it.
 - The game process is resolved only as `<installed client directory>/ro3.exe`, where the installed client directory
   is the directory managed by this launcher. The signed manifest must name `ro3.exe`, include that file, and use a
   relative non-escaping path; the launcher never falls back to a Genesis/Asia installation elsewhere on the PC.
-- If the update repository is temporarily unreachable, the launcher permits an offline start only when its local
+- 啟用預設的 `requireServerClientRelease` 時，正式機契約或更新站無法核對就停止啟動；不能退回離線模式。
+- Only when strict server-client pairing is explicitly disabled, the launcher permits an offline start when its local
   state belongs to the configured channel, names a packaged launch executable and every managed file still matches
   the last committed size and timestamp. A loose or modified `ro3.exe` is blocked until **Reconnect** can verify and
   repair it; this prevents an official or otherwise unpatched client from silently connecting to the wrong server.
@@ -39,7 +40,7 @@ local repository.
 
 ```json
 {
-  // Patch repository (static HTTP) and the channel this launcher follows.
+  // 更新來源必須使用 HTTPS；HTTP 僅允許 localhost 本機測試。
   "repository": "https://patch.example.com/ro3/",
   "channel": "test",
   // Optional client folder. Relative paths resolve from RO3Launcher.exe; user-selected Settings still wins.
@@ -58,6 +59,8 @@ local repository.
   "requireSignedChannel": true,
   // Optional LAB/test isolation. Player releases normally omit this and use %APPDATA%/RO3Emu.
   "settingsFile": "D:/isolated-lab/launcher-settings.json",
+  // 選用：只保留本機設定檔身份，不是下載網址；settingsFile 有設定時優先。
+  "settingsIdentity": "my-server-stable",
   "trustedPublisherKeys": {
     "my-server-2026": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
   }
@@ -65,8 +68,8 @@ local repository.
 ```
 
 Set `repository` to the public URL of your repository folder and `server` to your game server's public HTTP address.
-For an isolated Tailscale/LAN lab, both trust flags may be `false`. A public player release should require HTTPS and
-a signed channel. `clientDirectory` defaults to `.` so a packaged launcher installs and starts `ro3.exe` beside
+遠端更新來源一律要求 HTTPS，包含 Tailscale 與區域網路；關閉信任旗標也不會放行遠端 HTTP。
+HTTP 僅允許 loopback 本機測試。正式玩家更新仍應同時啟用 HTTPS 與發行者簽章，兩者不能互相替代。 `clientDirectory` defaults to `.` so a packaged launcher installs and starts `ro3.exe` beside
 `RO3Launcher.exe`. Players can still choose another folder in Settings; their saved choice wins. A split layout can
 opt in explicitly: `G:\RO3 test\RO3Emu\RO3Launcher.exe` plus `G:\RO3 test\Client\ro3.exe` uses `../Client`.
 
@@ -157,13 +160,20 @@ runtime (or publish the tool self-contained):
 
 ```
 dotnet publish tools/Ro3Emu.RepositoryServer -c Release -o <server tool dir>
-dotnet <server tool dir>/Ro3Emu.RepositoryServer.dll <repo dir> --bind <tailscale-ip> --port 8080 --path /ro3/
+dotnet <server tool dir>/Ro3Emu.RepositoryServer.dll <repo dir> --bind 127.0.0.1 --port 8080 --path /ro3/
 ```
 
 `<repo dir>` is the directory whose root contains `channels/`, `manifests/`, `chunks/` and `RO3Launcher.exe`.
-Bind the host's current Tailscale IP, not `0.0.0.0`; the tool deliberately rejects wildcard addresses. Keep the
-publisher private key on the release-management computer, never in this served directory. This HTTP option is only
-for a private tailnet with a signed Channel; an Internet-facing repository must use HTTPS on a maintained web server.
+此命令只提供本機 HTTP 後端；遠端玩家應透過具有有效憑證的 HTTPS 反向代理連線。
+例如 Tailscale Serve 可將 tailnet 的 HTTPS FQDN 轉送到 `http://127.0.0.1:8080`，並保留 `/ro3/` 路徑。
+先核對實際 DNS、憑證與完整通道／簽章／清單／區塊路徑，再發布使用該 HTTPS 位址的新登入器。
+不要改成接受不受信任的憑證，也不要為 Tailscale IP 放寬 HTTP 限制。
+既有執行檔旁的 `launcher.json` 優先於內嵌設定，遷移時也必須同步檢查該檔。
+原有各來源設定檔的安裝目錄與最高通道序號需要一併承接；換主機名稱不會自動載入舊來源設定。
+發行者私鑰留在發布管理端，不能放入對外提供的目錄。
+
+參考 [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve)；啟用 HTTPS、調整代理與正式發布
+是獨立部署操作，不會因為編譯登入器而自動完成。
 
 ## Player diagnostics
 
@@ -210,6 +220,21 @@ for this file when an update or launch appears stuck; it contains no account pas
 不同伺服器的啟動器共用遊戲目錄與已接受的簽章更新序號。新來源設定檔尚不存在時，會承接舊共用
 `launcher-settings.json` 的既有選擇；已有來源設定不會被舊檔覆蓋。明確指定 `settingsFile` 時不讀取舊共用檔，
 維持 LAB 隔離與本地的更新序號倒退拒絕規則。
+
+更新來源由 IP 改為 HTTPS 主機名稱時，可明確設定 `settingsIdentity`，沿用舊的
+`launcher-settings-<identity>.json`，保留玩家選定的客戶端目錄與已接受的最高更新序號。
+身份限 1 至 128 個小寫英數字，可含 `.`、`-`、`_`，首尾須為英數，不能是網址或檔案路徑。
+例如原來源 `http://100.126.246.106:8080/ro3/` 的既有身份為 `100.126.246.106_8080_ro3`。
+它只決定本機設定檔名稱；真正下載仍使用 `repository`，HTTPS、簽章及正式機契約照常驗證。
+明確身份不存在時不回落其他共用設定，也不掃描玩家電腦猜測舊目錄。
+未設定身份則沿用原本按更新來源分檔的行為；`settingsFile` 仍有最高優先權。
+
+私人更新站可設定 `repositoryConnectionAddress` 為 `100.126.246.106`，僅限
+`https://hiroshi-pc3.taila2669f.ts.net:443/` 這個核准來源。未使用 Tailscale DNS 的玩家也能連線，
+但仍須連上可達該位址的私人網路。這只指定 TCP 目的地，原始 HTTPS URI、SNI、Host、憑證鏈與主機名稱
+驗證均保留；不更動系統 DNS 或憑證信任庫。此模式停用更新站連線的代理與自動重導向，其他來源不能借用
+這個位址。未設定時使用原本的 DNS／代理行為。旁置 `launcher.json` 仍優先於內嵌設定，因此發布前應核對
+實際載入的設定，而非只確認內嵌檔案已更新。
 
 Run the deterministic visual matrix after changing WPF layout or state projection:
 

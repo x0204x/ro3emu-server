@@ -7,7 +7,7 @@ namespace Ro3Emu.Server.Game;
 public sealed partial class CombatService
 {
     private sealed record OffertoriumOwner(ActiveSkillCast Cast, long BuffGuid);
-    private readonly Dictionary<GameSession, OffertoriumOwner> _offertoriums = new();
+    private readonly Dictionary<GameSession, OffertoriumOwner> _offertoriums = [];
 
     // 14315 四級 → 14325 四級。描述指定「自身魔攻」與「小隊」，不是每個承受者的魔攻。
     // (inferred) 來源持有唯一光環，首次在落地後一秒；每跳重取同五人小隊與30公尺範圍。

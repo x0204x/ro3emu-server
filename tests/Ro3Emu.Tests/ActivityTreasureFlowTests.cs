@@ -51,7 +51,7 @@ public sealed partial class ActivityAdventuresTests
             Assert.Equal(2, session.Items.Single(i => i.Guid == guid).Stack);
             Assert.Equal(2, _app.Services.GetRequiredService<ItemStore>().Load(roleId).Single(i => i.Guid == guid).Stack);
             Assert.Equal(cursorBefore, JsonSerializer.Serialize(session.ActivityRuntime.AdventureTreasure));
-            Assert.Equal(cooldownBefore, session.ItemCds.OrderBy(p => p.Key).ToArray());
+            Assert.Equal(cooldownBefore, [.. session.ItemCds.OrderBy(p => p.Key)]);
             Assert.Equal(liveBagBefore, session.BagState.Info.ToByteArray());
             Assert.Equal(runtimeBefore, roles.LoadActivityRuntime(roleId));
             Assert.Equal(bagBefore, roles.LoadBagState(roleId));

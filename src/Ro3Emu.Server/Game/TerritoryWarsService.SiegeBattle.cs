@@ -15,7 +15,7 @@ public sealed partial class TerritoryWarsService
 
     /// <summary>After a committed siege settlement, per loaded participant: role, personal score, whether its guild
     /// won (quest target 106611). Listeners post their work.</summary>
-    public List<Action<long, long, bool>> SiegeSettled { get; } = new();
+    public List<Action<long, long, bool>> SiegeSettled { get; } = [];
     /// <summary>After a committed territory battle settlement, per loaded participant: role and round (1 Stronghold,
     /// 2 and later Regional Capital). Listeners post their work.</summary>
     public List<Action<long, int>> BattleSettled { get; } = [];
@@ -52,7 +52,7 @@ public sealed partial class TerritoryWarsService
         public long SettledAt { get; set; }
         public bool Settled { get; set; }
         public long Winner { get; set; }
-        public Dictionary<long, Participant> Players { get; set; } = new();
+        public Dictionary<long, Participant> Players { get; set; } = [];
         public byte[]? Result { get; set; }
     }
 
@@ -107,9 +107,9 @@ public sealed partial class TerritoryWarsService
             if (guild == 0)
             { await Send(s, 30400, new EnterDungeonRsp { Result = ErrorCodes.TerritoryGuild }); return true; }
             int requested = req.InitData?.SiegeInitData?.CityId ?? 0;
-            int[] eligible = _data.Table("SiegeConfig").Values.Select(r => (int)GameData.Int(r, "_iID"))
+            int[] eligible = [.. _data.Table("SiegeConfig").Values.Select(r => (int)GameData.Int(r, "_iID"))
                 .Where(id => { var (attack, defense) = SiegeGuilds(id); return guild == attack || guild == defense; })
-                .Order().ToArray();
+                .Order()];
             int city = requested == 0 ? eligible.FirstOrDefault() : requested;
             if (!eligible.Contains(city))
             { await Send(s, 30400, new EnterDungeonRsp { Result = ErrorCodes.TerritoryNotQualified }); return true; }
@@ -208,6 +208,7 @@ public sealed partial class TerritoryWarsService
         await SendSiegeObjectsAsync(s, battle);
         SiegeTrack(battle, [p.Id]);
         await SendCommandBoardAsync(s);
+        await SiegePlayerStatisticsAsync(battle, [p.Id]);
         // DungeonLua_2230101: point 73 defender, point 75 attacker.
         int born = p.Guild == battle.State.Defense ? 73 : 75;
         if (_maps.Map(SiegeScene)?.Points.GetValueOrDefault(born) is { } point)
@@ -364,6 +365,7 @@ public sealed partial class TerritoryWarsService
             else if (amount > 0) SiegeHit(battle, attacker.Id, defender.Id, MonsterService.NowMs);
             await SaveAsync(state);
             if (lethal) SiegeTrack(battle, helpers.Append(attacker.Id));
+            if (lethal) await SiegePlayerStatisticsAsync(battle, helpers.Append(attacker.Id));
         }
         finally { stagedTerritoryState.Dispose(); _gate.Release(); reservation?.Dispose(); }
     }
@@ -461,7 +463,7 @@ public sealed partial class TerritoryWarsService
             }
         };
         history.SiegeWinInfo[run.City] = 1;
-        if (!next.SiegeHistory.TryGetValue(run.City, out var entries)) next.SiegeHistory[run.City] = entries = new();
+        if (!next.SiegeHistory.TryGetValue(run.City, out var entries)) next.SiegeHistory[run.City] = entries = [];
         entries.Add(history.ToByteArray());
         if (entries.Count > 20) entries.RemoveRange(0, entries.Count - 20); // (inferred) bounded history.
         var rolesChanged = new Dictionary<long, RoleState>();
@@ -547,43 +549,57 @@ public sealed partial class TerritoryWarsService
         if (!row.TryGetProperty("_kAward", out var fixedItems)
             || fixedItems.ValueKind != JsonValueKind.Array)
             throw new InvalidOperationException($"Siege reward {id} is unavailable");
-        return fixedItems.EnumerateArray().Where(a => a.ValueKind == JsonValueKind.Array && a.GetArrayLength() >= 2)
+        return [.. fixedItems.EnumerateArray().Where(a => a.ValueKind == JsonValueKind.Array && a.GetArrayLength() >= 2)
             .Select(a => new MailService.Attachment((int)(GameData.Number(a[0]) ?? 0),
                 _rewards.ScaleConfiguredAward((int)(GameData.Number(a[0]) ?? 0), (int)(GameData.Number(a[1]) ?? 0)),
                 a.GetArrayLength() > 2 ? (int)(GameData.Number(a[2]) ?? 0) : 0))
-            .Where(a => a.Count > 0).ToList();
+            .Where(a => a.Count > 0)];
     }
+
+    private static RoleStatisticsInfo SiegeRoleStatistics(Participant p)
+    {
+        var role = new RoleStatisticsInfo
+        {
+            BaseInfo = new StatisticsRoleBaseInfo
+            {
+                Id = p.Id, Area = 1, Name = p.Name, Job = p.Job, GuildId = p.Guild,
+                RewardData = new StatisticsAwardCheckData { PlayerLevel = p.Level, Job = p.Job }
+            },
+            TotalDamage = p.Damage, TotalBeDamage = p.Taken, TotalCure = p.Healed, Totalscore = p.Score
+        };
+        // The client indexes extraData directly while decoding Siege results. These are the
+        // schema's EStatisticsModuleEnum keys; zero means the unsupported action did not occur.
+        role.ExtraData[1001001] = new ExtraValueData { LongValue = p.Damage }; // Damage
+        role.ExtraData[1001002] = new ExtraValueData { LongValue = p.Taken }; // TakeDamage
+        role.ExtraData[1001003] = new ExtraValueData { LongValue = p.Healed }; // heal
+        role.ExtraData[1001004] = new ExtraValueData { LongValue = p.Kills }; // KillPlayer
+        role.ExtraData[1001005] = new ExtraValueData { LongValue = p.Assists }; // AssistKill
+        role.ExtraData[1021001] = new ExtraValueData { LongValue = p.CityDamage }; // AttackCityValue (inferred formula)
+        role.ExtraData[1021002] = new ExtraValueData { LongValue = p.MachineKills }; // DestroyMachinery
+        role.ExtraData[1021003] = new ExtraValueData { LongValue = p.MachineDamage }; // MachineryDamage
+        role.ExtraData[1021004] = new ExtraValueData { LongValue = p.DefenseValue }; // DefenseValue (inferred formula)
+        role.ExtraData[1021006] = new ExtraValueData(); // TitleHistoryList
+        role.ExtraData[1021007] = new ExtraValueData { LongValue = p.Score }; // CurrentScore
+        role.ExtraData[1021008] = new ExtraValueData(); // TitleRank
+        return role;
+    }
+
+    /// <summary>
+    /// 30123 DUNGEON_PLAYER_STATISTICS_NTF: the siege HUD's kill and assist counters
+    /// (UI_Sys_Siege_BattleReportBtnWidgetBaseCtrl binds SelfDungeonStatisticsInfo, which only this push fills:
+    /// LC_DAL_DragonIsland reads extraData KillPlayer/AssistKill). (inferred) Sent to a player on entry and whenever
+    /// a kill or an assist of theirs is counted.
+    /// </summary>
+    private Task SiegePlayerStatisticsAsync(SiegeRun battle, IEnumerable<long> roles) =>
+        RoleFanout.EachAsync(battle.Room.ActiveMembers.Select(m => m.Session)
+            .Where(s => s.Role is { } role && roles.Contains(role.Id) && battle.State.Players.ContainsKey(role.Id)), s =>
+            Send(s, DungeonService.PlayerStatistics, new DungeonPlayerStatisticsNtf
+            { PlayerId = s.Role!.Id, StatisticsInfo = SiegeRoleStatistics(battle.State.Players[s.Role.Id]) }));
 
     private DungeonStatisticsInfoWithDungeon SiegeStatistics(SiegeRunState run)
     {
         var sceneStats = new SceneStatisticsInfo { SceneId = run.StatisticsId, DungeonId = (int)SiegeScene };
-        foreach (var p in run.Players.Values)
-        {
-            var role = new RoleStatisticsInfo
-            {
-                BaseInfo = new StatisticsRoleBaseInfo
-                {
-                    Id = p.Id, Area = 1, Name = p.Name, Job = p.Job, GuildId = p.Guild,
-                    RewardData = new StatisticsAwardCheckData { PlayerLevel = p.Level, Job = p.Job }
-                },
-                TotalDamage = p.Damage, TotalBeDamage = p.Taken, TotalCure = p.Healed, Totalscore = p.Score
-            };
-            // The client indexes extraData directly while decoding Siege results. These are the
-            // schema's EStatisticsModuleEnum keys; zero means the unsupported action did not occur.
-            role.ExtraData[1001001] = new ExtraValueData { LongValue = p.Damage }; // Damage
-            role.ExtraData[1001002] = new ExtraValueData { LongValue = p.Taken }; // TakeDamage
-            role.ExtraData[1001003] = new ExtraValueData { LongValue = p.Healed }; // heal
-            role.ExtraData[1001004] = new ExtraValueData { LongValue = p.Kills }; // KillPlayer
-            role.ExtraData[1001005] = new ExtraValueData { LongValue = p.Assists }; // AssistKill
-            role.ExtraData[1021001] = new ExtraValueData { LongValue = p.CityDamage }; // AttackCityValue (inferred formula)
-            role.ExtraData[1021002] = new ExtraValueData { LongValue = p.MachineKills }; // DestroyMachinery
-            role.ExtraData[1021003] = new ExtraValueData { LongValue = p.MachineDamage }; // MachineryDamage
-            role.ExtraData[1021004] = new ExtraValueData { LongValue = p.DefenseValue }; // DefenseValue (inferred formula)
-            role.ExtraData[1021006] = new ExtraValueData(); // TitleHistoryList
-            role.ExtraData[1021007] = new ExtraValueData { LongValue = p.Score }; // CurrentScore
-            role.ExtraData[1021008] = new ExtraValueData(); // TitleRank
-            sceneStats.RoleStatistics[p.Id] = role;
-        }
+        foreach (var p in run.Players.Values) sceneStats.RoleStatistics[p.Id] = SiegeRoleStatistics(p);
         foreach (var (id, bytes) in new[] { (run.Attack, run.AttackSnapshot), (run.Defense, run.DefenseSnapshot) })
         {
             var guild = GuildSnapInfo.Parser.ParseFrom(bytes);

@@ -46,7 +46,7 @@ public sealed class LotteryService
 
     private static long[] Flat(JsonElement row, string key) => row.TryGetProperty(key, out var values)
         && values.ValueKind == JsonValueKind.Array
-        ? values.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).ToArray() : [];
+        ? [.. values.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0))] : [];
 
     private bool Open(GameSession session, JsonElement draw)
     {
@@ -341,7 +341,7 @@ public sealed class LotteryService
                     bool petDraw = response.ItemList.Any(result => result.IsPet);
                     var familyEconomy = petDraw
                         ? _pets.LotteryEconomy(session, request.PoolId, ticket, count, petState, saved,
-                            goods.Select(grant => (grant.Entry, grant.Count)).ToArray(), response.ItemList)
+                            [.. goods.Select(grant => (grant.Entry, grant.Count))], response.ItemList)
                         : null;
                     // The client sends no request ID. The source is the server-admitted draw sequence;
                     // a later request starts a new sequence only after this commit publishes pity state.

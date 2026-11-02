@@ -13,13 +13,13 @@ public sealed class WorldReducer(int maxEntities = 4096)
     private const int MaxReplyIds = 32;
     private const int MaxReplyBodyBytes = 256;
     private readonly object _lock = new();
-    private readonly Dictionary<ulong, EntityBase> _entities = new();
-    private readonly Dictionary<uint, long> _bytes = new();
-    private readonly Dictionary<uint, long> _counts = new();
-    private readonly List<string> _faults = new();
-    private readonly Dictionary<uint, ReplySummary> _lastReplies = new();
+    private readonly Dictionary<ulong, EntityBase> _entities = [];
+    private readonly Dictionary<uint, long> _bytes = [];
+    private readonly Dictionary<uint, long> _counts = [];
+    private readonly List<string> _faults = [];
+    private readonly Dictionary<uint, ReplySummary> _lastReplies = [];
     private readonly LinkedList<uint> _replyOrder = new();
-    private readonly Dictionary<uint, LinkedListNode<uint>> _replyNodes = new();
+    private readonly Dictionary<uint, LinkedListNode<uint>> _replyNodes = [];
     private ulong _selfUid;
     private bool _selfSeen;
     private int _readyScenes;
@@ -153,8 +153,8 @@ public sealed class WorldReducer(int maxEntities = 4096)
     public ReducerSnapshot Snapshot()
     {
         lock (_lock) return new(InboundCount, InboundBytes, MaxVisible, _entities.Count, _readyScenes,
-            new Dictionary<uint, long>(_counts), new Dictionary<uint, long>(_bytes), _faults.ToArray(),
-            _lastReplies.ToDictionary(x => x.Key, x => x.Value with { BodyPrefix = x.Value.BodyPrefix.ToArray() }))
+            new Dictionary<uint, long>(_counts), new Dictionary<uint, long>(_bytes), [.. _faults],
+            _lastReplies.ToDictionary(x => x.Key, x => x.Value with { BodyPrefix = [.. x.Value.BodyPrefix] }))
         { Location = _location };
     }
 
@@ -177,8 +177,7 @@ public sealed class WorldReducer(int maxEntities = 4096)
     /// <summary>Other players currently shown, with a position.</summary>
     public EntityBase[] Players()
     {
-        lock (_lock) return _entities.Values.Where(x => x.EntityType == 3 && x.Uuid != _selfUid && x.MovementInfo?.Pos != null)
-            .Select(x => x.Clone()).ToArray();
+        lock (_lock) return [.. _entities.Values.Where(x => x.EntityType == 3 && x.Uuid != _selfUid && x.MovementInfo?.Pos != null).Select(x => x.Clone())];
     }
 
     /// <summary>The own entity's last known position (after a revive teleport, for example).</summary>
@@ -189,14 +188,13 @@ public sealed class WorldReducer(int maxEntities = 4096)
 
     public EntityBase[] Monsters()
     {
-        lock (_lock) return _entities.Values.Where(x => x.EntityType == 1 && x.MovementInfo?.Pos != null).Select(x => x.Clone()).ToArray();
+        lock (_lock) return [.. _entities.Values.Where(x => x.EntityType == 1 && x.MovementInfo?.Pos != null).Select(x => x.Clone())];
     }
 
     public bool Sees(long role) { lock (_lock) return _entities.ContainsKey((ulong)role) && (ulong)role != _selfUid; }
     public EntityBase[] GatheringNodes()
     {
-        lock (_lock) return _entities.Values.Where(x => x.CollectionInfo != null && x.MovementInfo?.Pos != null)
-            .Select(x => x.Clone()).ToArray();
+        lock (_lock) return [.. _entities.Values.Where(x => x.CollectionInfo != null && x.MovementInfo?.Pos != null).Select(x => x.Clone())];
     }
 }
 

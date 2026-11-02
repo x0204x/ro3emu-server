@@ -239,7 +239,7 @@ public sealed class RoleRevisionTests : IDisposable
         Put("001", "first");
         Put("1", "second");
         var rows = _accounts.ReadSync<List<(string Id, string Data)>>(new MarketRecordReadPlan("opaque"));
-        Assert.Equal(["001", "1"], rows.Select(row => row.Id).ToArray());
+        Assert.Equal(["001", "1"], [.. rows.Select(row => row.Id)]);
         var first = _accounts.ReadSync<OwnerRevisionValue>(new OwnerRevisionReadPlan(
             RevisionStore.Entity("market_record:opaque", "001")));
         var second = _accounts.ReadSync<OwnerRevisionValue>(new OwnerRevisionReadPlan(

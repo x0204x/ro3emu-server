@@ -4,7 +4,7 @@
 # with RO3Emu.exe join <address>. Without building anything: the release's RO3Emu-server-linux-x64.tar.gz has its own
 # server.sh (tools/release/server.sh).
 #
-# usage: scripts/server.sh [--client DIR] [--host ADDRESS] [--gm ACCOUNT] [--voice-port PORT] [--panel-port PORT | --no-panel] [--no-icons] [--service] [--reexport]
+# usage: scripts/server.sh [--client DIR] [--host ADDRESS] [--gm ACCOUNT] [--voice-port PORT] [--panel-port PORT | --no-panel] [--no-icons] [--service] [--reexport] [--allow-root]
 #   --client DIR    the client folder copied from Windows (at least its ro3_Data/StreamingAssets); first run only
 #   --host ADDRESS  the address players connect to (default: this machine's first address)
 #   --gm ACCOUNT    an account that gets GM commands in game (repeatable)
@@ -13,11 +13,12 @@
 #   --no-icons      no pictures for the web panel (decoded from the client; 120 MB)
 #   --service       install and start a systemd service (needs sudo) instead of running in this terminal
 #   --reexport      export the game data again (after a client update)
+#   --allow-root    run as root anyway (a hole in the server would then own the whole machine)
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")/.." # the repository (this script lives in scripts/)
 root=$(pwd)
 
-client=""; host=""; voice=""; panel=5381; service=0; reexport=0; gms=(); icons=()
+client=""; host=""; voice=""; panel=5381; service=0; reexport=0; allow_root=0; gms=(); icons=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --client) client="$2"; shift 2 ;;
@@ -33,7 +34,8 @@ while [ $# -gt 0 ]; do
     --no-icons) icons=(--no-icons); shift ;;
     --service) service=1; shift ;;
     --reexport) reexport=1; shift ;;
-    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
+    --allow-root) allow_root=1; shift ;;
+    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
     *) echo "unknown option $1 (see scripts/server.sh --help)"; exit 1 ;;
   esac
 done
@@ -41,6 +43,10 @@ done
 step() { printf '\n== %s\n' "$1"; }
 fail() { printf '\n%s\n' "$1" >&2; exit 1; }
 ask() { local answer; read -r -p "$1 [Y/n] " answer; [[ ! "$answer" =~ ^[nN] ]]; }
+
+if [ "$(id -u)" = 0 ] && [ "$allow_root" != 1 ]; then
+  fail "Do not run the server as root: a hole in it would then own the whole machine. Run scripts/server.sh as an ordinary user (with --service it asks sudo only to install the unit), or pass --allow-root."
+fi
 
 # 1. Tools: the .NET 10 SDK, into ~/.dotnet with Microsoft's install script. The data export is C# too.
 step 'Checking the tools'
@@ -123,6 +129,14 @@ if [ "$service" = 1 ]; then
     echo 'Restart=always'
     # A shutdown planned on the web panel exits 0 and stays down; its restart exits 75 and comes back.
     echo 'RestartPreventExitStatus=0'
+    # The server writes only below the repository (data, logs, its build); the rest of the system is read-only to it.
+    # The single-file build unpacks below it too, not into ~/.net, which ProtectHome makes read-only.
+    echo "Environment=DOTNET_BUNDLE_EXTRACT_BASE_DIR=$root/.net"
+    echo 'NoNewPrivileges=yes'
+    echo 'ProtectSystem=strict'
+    echo 'ProtectHome=read-only'
+    echo 'PrivateTmp=yes'
+    echo "ReadWritePaths=$root"
     echo
     echo '[Install]'
     echo 'WantedBy=multi-user.target'

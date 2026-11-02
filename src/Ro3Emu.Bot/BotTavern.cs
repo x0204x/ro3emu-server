@@ -20,7 +20,7 @@ public static class BotTavern
         var reply = await AskAsync(bot, TavernService.CreateMsg, request, CreateBarRoomResp.Parser, ct);
         if (reply.Result == ErrorCodes.FeatureUnavailable)
         {
-            await LevelUpAsync(httpBase, account, log, ct);
+            await LevelUpAsync(httpBase, bot.OperatorToken, account, log, ct);
             reply = await AskAsync(bot, TavernService.CreateMsg, request, CreateBarRoomResp.Parser, ct);
         }
         if (reply.Result != 0) throw new InvalidOperationException($"opening a Tavern room failed (result {reply.Result})");
@@ -37,7 +37,7 @@ public static class BotTavern
         int result = (await AskAsync(bot, TavernService.EnterMsg, request, EnterBarRoomResp.Parser, ct)).Result;
         if (result == ErrorCodes.FeatureUnavailable)
         {
-            await LevelUpAsync(httpBase, account, log, ct);
+            await LevelUpAsync(httpBase, bot.OperatorToken, account, log, ct);
             result = (await AskAsync(bot, TavernService.EnterMsg, request, EnterBarRoomResp.Parser, ct)).Result;
         }
         if (result == ErrorCodes.TavernAlreadyIn) { log($"already in Tavern room {room}"); return; }
@@ -76,10 +76,10 @@ public static class BotTavern
         }
     }
 
-    private static async Task LevelUpAsync(string httpBase, string account, Action<string> log, CancellationToken ct)
+    private static async Task LevelUpAsync(string httpBase, string? operatorToken, string account, Action<string> log, CancellationToken ct)
     {
         log("the Tavern is not open yet: raising to 36 with the GM command");
-        using var http = new HttpClient { BaseAddress = new Uri(httpBase), Timeout = ReplyTimeout };
+        using var http = BotClient.OperatorHttp(httpBase, operatorToken, ReplyTimeout);
         (await http.PostAsync($"/ro3emu/gm?account={Uri.EscapeDataString(account)}", new StringContent(LevelCommand), ct)).EnsureSuccessStatusCode();
     }
 

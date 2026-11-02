@@ -55,7 +55,7 @@ public sealed partial class CharacterService(RoleStore roles, ItemStore itemStor
     public Func<int, Dictionary<int, long>?>? TotemAttrFactory { get; set; }
 
     /// <summary>Transactional collection consumables. Called with StateLock held after common item validation.</summary>
-    public List<Func<GameSession, ItemUseReq, InvItem, JsonElement, int, Task<int?>>> SpecialItemUse { get; } = new();
+    public List<Func<GameSession, ItemUseReq, InvItem, JsonElement, int, Task<int?>>> SpecialItemUse { get; } = [];
 
     /// <summary>EntityBase.equipInfo holds the item ids of equipment grids 1..7 (MainHand, ViceHand, Armor, ...).</summary>
     private const int EquipInfoSlots = 7;
@@ -79,13 +79,13 @@ public sealed partial class CharacterService(RoleStore roles, ItemStore itemStor
     internal void Save(GameSession session) => roles.SaveProgress(session.Role!.Id, session.Progress!);
 
     /// <summary>An item entered the bag: entry and the count gained (card collection first sight, achievement counters).</summary>
-    public List<Action<GameSession, int, int>> ItemGained { get; } = new();
+    public List<Action<GameSession, int, int>> ItemGained { get; } = [];
     internal sealed record FirstCardSightPlan(Action<RoleItemPlanBuilder> Persist, Action Apply);
     /// <summary>CardService enlists first sight in owned award/exchange commits and, for a kill, the slain monster's Codex kill (NPC id, 0 none).</summary>
     internal Func<GameSession, IReadOnlyList<int>, int, FirstCardSightPlan?>? StageFirstCardSight { get; set; }
 
     /// <summary>After a successful 31323 consume and its effects; quest engine queues objective evaluation.</summary>
-    public List<Action<GameSession, int, int>> ItemUsed { get; } = new();
+    public List<Action<GameSession, int, int>> ItemUsed { get; } = [];
 
     /// <summary>LifeJobService owns action 607/315 item transactions; null means ordinary item effects.</summary>
     internal Func<GameSession, InvItem, JsonElement, int, Task<int?>>? LifeItemUse { get; set; }
@@ -103,7 +103,7 @@ public sealed partial class CharacterService(RoleStore roles, ItemStore itemStor
     }
 
     /// <summary>After a committed inventory, equipment or stat change; listeners defer any grant work.</summary>
-    public List<Action<GameSession>> StateChanged { get; } = new();
+    public List<Action<GameSession>> StateChanged { get; } = [];
 
     /// <summary>For CardService: item, stat and look updates after socket changes (caller holds the lock).
     /// 卡片成功變更才要求原生屬性浮字；一般背包同步維持不提示。</summary>
@@ -145,10 +145,10 @@ public sealed partial class CharacterService(RoleStore roles, ItemStore itemStor
     internal Func<GameSession, IEnumerable<(long Id, double Value)>>? TalentAttributes { get; set; }
 
     /// <summary>Runs after level / job level / job changes (SkillService resends skill points and the normal attack).</summary>
-    public List<Func<GameSession, Task>> ProgressHandlers { get; } = new();
+    public List<Func<GameSession, Task>> ProgressHandlers { get; } = [];
 
     /// <summary>Runs after equipped weapons or the active battle mount change.</summary>
-    public List<Func<GameSession, Task>> CombatLoadoutHandlers { get; } = new();
+    public List<Func<GameSession, Task>> CombatLoadoutHandlers { get; } = [];
 
     internal async Task CombatLoadoutChangedAsync(GameSession session)
     {
@@ -160,7 +160,7 @@ public sealed partial class CharacterService(RoleStore roles, ItemStore itemStor
 /// <summary>Per equipment grid (1..7) levels, kept with the role: strengthen, refine and refine luck (1/10000).</summary>
 public sealed class EquipLevels
 {
-    public Dictionary<int, int> Strength { get; set; } = new();
-    public Dictionary<int, int> Refine { get; set; } = new();
-    public Dictionary<int, int> Luck { get; set; } = new();
+    public Dictionary<int, int> Strength { get; set; } = [];
+    public Dictionary<int, int> Refine { get; set; } = [];
+    public Dictionary<int, int> Luck { get; set; } = [];
 }

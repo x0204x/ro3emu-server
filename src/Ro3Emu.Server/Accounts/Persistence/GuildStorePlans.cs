@@ -133,9 +133,9 @@ internal sealed class GuildDeletePlan(long guild) : DbPlan
     internal override IReadOnlyList<OwnerRevisionKey> EntityWrites => [RevisionStore.Entity("guild", guild)];
     internal override void ResolveRoleWrites(AccountStore accounts) =>
         _members ??= accounts.ReadSync<long[]>(new GuildMemberIdsReadPlan(guild));
-    internal override IReadOnlyList<RoleRevisionKey> RoleWrites => (_members ??
+    internal override IReadOnlyList<RoleRevisionKey> RoleWrites => [.. (_members ??
         throw new InvalidOperationException("Guild membership was not captured before deletion."))
-        .Select(role => RevisionStore.Role(role, RevisionStore.GuildMembership)).ToArray();
+        .Select(role => RevisionStore.Role(role, RevisionStore.GuildMembership))];
     internal override object Execute(SqliteConnection db, SqliteTransaction tx)
     {
         DbWriter.AfterJob(WrittenCache.Guild);

@@ -27,8 +27,8 @@ public sealed partial class BuffService
         public bool Busy { get; set; }
     }
 
-    private readonly List<PeriodicEffect> _periodic = new();
-    private readonly Dictionary<long, PeriodicEffect> _periodicByGuid = new();
+    private readonly List<PeriodicEffect> _periodic = [];
+    private readonly Dictionary<long, PeriodicEffect> _periodicByGuid = [];
 
     /// <summary>CombatService: who applied a buff (a player by role id, a monster by uid) in that world scene.</summary>
     internal Func<long, long, PeriodicSource?>? ResolvePeriodicSource { get; set; }

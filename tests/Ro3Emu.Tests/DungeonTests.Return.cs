@@ -453,6 +453,7 @@ public sealed partial class DungeonTests
             foreach (var monster in session.DungeonAttempt!.Room.Monsters) monster.Dead = true;
             session.LastCombatMs = MonsterService.NowMs;
             session.StatusBits |= 1L << 15;
+            session.NoRegenUntilMs = MonsterService.NowMs + 10000; // fighting no longer pauses regeneration
             await Service<CharacterService>().SetHpSpAsync(session, hp, sp);
         });
         var self = await ReturnFromDungeon(alice, RoleStore.SpawnSceneEntry);

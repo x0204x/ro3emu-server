@@ -7,7 +7,7 @@ namespace Ro3Emu.Setup;
 
 /// <summary>
 /// The bundled server (server\Ro3Emu.Server.exe, self-contained) as a child process: its output goes to
-/// logs\server-*.log, it shares this console so Ctrl+C or closing the window reaches it too, RO3Emu.exe stops it with
+/// logs\server-*.log (RollingLog: the newest 5 files of at most 50 MB), it shares this console so Ctrl+C or closing the window reaches it too, RO3Emu.exe stops it with
 /// POST /ro3emu/shutdown, and a job object kills it if RO3Emu.exe goes away any other way.
 /// </summary>
 internal sealed class ServerProcess : IDisposable
@@ -50,19 +50,21 @@ internal sealed class ServerProcess : IDisposable
     }
 
     private readonly Process _process;
-    private readonly StreamWriter _log;
+    private readonly RollingLog _log;
     private readonly IntPtr _job;
+    private readonly string _dataDir;
 
-    public string LogPath { get; }
+    /// <summary>The log file being written now.</summary>
+    public string LogPath => _log.Path;
     public Ports UsedPorts { get; }
     public int Id => _process.Id;
     public bool HasExited => _process.HasExited;
 
-    private ServerProcess(Process process, StreamWriter log, string logPath, IntPtr job, Ports ports)
+    private ServerProcess(Process process, RollingLog log, IntPtr job, Ports ports, string dataDir)
     {
+        _dataDir = dataDir;
         _process = process;
         _log = log;
-        LogPath = logPath;
         _job = job;
         UsedPorts = ports;
     }
@@ -100,9 +102,7 @@ internal sealed class ServerProcess : IDisposable
 
     public static ServerProcess Start(string exe, string dataDir, Ports ports, IEnumerable<string> extraArgs, IDictionary<string, string> environment)
     {
-        Directory.CreateDirectory(SetupHome.LogDir);
-        var logPath = Path.Combine(SetupHome.LogDir, $"server-{DateTime.Now:yyyyMMdd-HHmmss}.log");
-        var log = new StreamWriter(new FileStream(logPath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite), new UTF8Encoding(false)) { AutoFlush = true };
+        var log = new RollingLog(SetupHome.LogDir);
         var start = new ProcessStartInfo(exe)
         {
             UseShellExecute = false,
@@ -124,14 +124,14 @@ internal sealed class ServerProcess : IDisposable
         SetupLog.Write($"server: {exe} {string.Join(' ', start.ArgumentList)}");
 
         var process = new Process { StartInfo = start, EnableRaisingEvents = true };
-        void Line(object _, DataReceivedEventArgs e) { if (e.Data != null) lock (log) log.WriteLine(e.Data); }
+        void Line(object _, DataReceivedEventArgs e) { if (e.Data != null) log.WriteLine(e.Data); }
         process.OutputDataReceived += Line;
         process.ErrorDataReceived += Line;
         if (!process.Start()) throw new SetupException("The server did not start.", "Run RO3Emu.exe diag and attach the zip to an issue.");
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
         var job = OperatingSystem.IsWindows() ? KillOnCloseJob(process) : IntPtr.Zero;
-        return new ServerProcess(process, log, logPath, job, ports);
+        return new ServerProcess(process, log, job, ports, dataDir);
     }
 
     /// <summary>Waits until the server answers HTTP (it preloads the game data first), or it exits, or the time runs out.</summary>
@@ -164,7 +164,7 @@ internal sealed class ServerProcess : IDisposable
     {
         try
         {
-            lock (_log) _log.Flush();
+            _log.Flush();
             using var reader = new StreamReader(new FileStream(LogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite));
             var all = reader.ReadToEnd().Split('\n');
             return string.Join('\n', all.TakeLast(lines)).TrimEnd();
@@ -179,6 +179,9 @@ internal sealed class ServerProcess : IDisposable
         try
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            // The server's operator token (Ro3Emu.Server Http.OperatorToken), written to its data dir at start.
+            string token = Path.Combine(_dataDir, "operator.token");
+            if (File.Exists(token)) http.DefaultRequestHeaders.Add("X-Ro3Emu-Operator", File.ReadAllText(token).Trim());
             using var response = http.PostAsync($"http://127.0.0.1:{UsedPorts.Http}/ro3emu/shutdown", null).GetAwaiter().GetResult();
             SetupLog.Write($"shutdown: {(int)response.StatusCode}");
         }
@@ -194,7 +197,7 @@ internal sealed class ServerProcess : IDisposable
     {
         try { if (!_process.HasExited) _process.Kill(entireProcessTree: true); } catch (Exception) { }
         _process.Dispose();
-        lock (_log) _log.Dispose();
+        _log.Dispose();
         if (_job != IntPtr.Zero) CloseHandle(_job);
     }
 

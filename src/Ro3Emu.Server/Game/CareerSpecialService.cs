@@ -83,9 +83,9 @@ public sealed partial class CareerSpecialService
 
     private JsonElement? Row(long id) => id == 0 ? null : _data.Row("CartRemouldTable", id);
 
-    private int[] Pendants(DBCareerSpecial info) => new[] { info.PendantSlot.CartRemouldCfg, info.MountsSlot.CartRemouldCfg }
+    private int[] Pendants(DBCareerSpecial info) => [.. new[] { info.PendantSlot.CartRemouldCfg, info.MountsSlot.CartRemouldCfg }
         .Select(id => Row(id) is { } row ? (int)GameData.Int(row, "_iPendantId") : 0)
-        .Where(p => p != 0 && _data.Row("PendantConfig", p) != null).Distinct().ToArray();
+        .Where(p => p != 0 && _data.Row("PendantConfig", p) != null).Distinct()];
 
     /// <summary>Who may lease: LC_EquipmentHelper.CanWearProfessionItem, plus the unused _iTaskId (error 1104).</summary>
     private int Entitlement(GameSession s, JsonElement? found)

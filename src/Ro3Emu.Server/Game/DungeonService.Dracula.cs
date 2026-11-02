@@ -53,7 +53,7 @@ public sealed partial class DungeonService
     internal Task StopDraculaAsync(Attempt a) => SettleAsync(a, false);
 
     /// <summary>The room's participants that finished loading it.</summary>
-    internal static IReadOnlyList<GameSession> LoadedMembers(Attempt a) => Present(a).Where(a.Loaded.Contains).ToArray();
+    internal static IReadOnlyList<GameSession> LoadedMembers(Attempt a) => [.. Present(a).Where(a.Loaded.Contains)];
 
     /// <summary>A message to every loaded participant (a failed channel is logged, never thrown).</summary>
     internal Task SendToRoomAsync(Attempt a, uint id, IMessage msg) => BroadcastAsync(a, id, msg);

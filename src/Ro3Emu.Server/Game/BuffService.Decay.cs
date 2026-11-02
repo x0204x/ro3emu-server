@@ -10,7 +10,7 @@ namespace Ro3Emu.Server.Game;
 /// </summary>
 public sealed partial class BuffService
 {
-    private readonly Dictionary<(long Target, int Rule), BuffRuleTables.DecayTrack> _decay = new();
+    private readonly Dictionary<(long Target, int Rule), BuffRuleTables.DecayTrack> _decay = [];
     private long _nextDecaySweepMs;
     private BuffRuleTables? _rules;
     private BuffRuleTables Rules => _rules ??= BuffRuleTables.For(_data);

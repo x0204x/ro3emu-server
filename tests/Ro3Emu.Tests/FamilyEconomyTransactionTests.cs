@@ -38,7 +38,7 @@ public sealed class FamilyEconomyTransactionTests : IDisposable
     {
         var tx = _roles.NewTransaction();
         var before = _items.Load(_role);
-        var after = replacement is null ? before.Select(x => x.Clone()).ToList() : new List<InvItem> { replacement };
+        var after = replacement is null ? before.Select(x => x.Clone()).ToList() : [replacement];
         if (applyGoods && goods > 0) after.Add(new InvItem { Entry = 3, Stack = checked((int)goods), Pack = 1 });
         tx.ItemDelta(_role, before, after);
         if (cost > 0)
@@ -88,7 +88,7 @@ public sealed class FamilyEconomyTransactionTests : IDisposable
         await _roles.CommitAsync(Family(accepted, cost: 10, goods: 2), "test/family-cost-goods");
         var ledger = EconomyLedgerReader.Read(_accounts.DatabasePath, Catalog, "auto", cut, cut + 1);
         Assert.True(ledger.CompleteHistory, string.Join(";", ledger.Issues.Select(x => x.Detail)));
-        Assert.Equal(new long[] { -10, 2 }, ledger.Legs.Select(x => x.Delta).Order().ToArray());
+        Assert.Equal([-10, 2], ledger.Legs.Select(x => x.Delta).Order().ToArray());
         Assert.Equal(90, _roles.LoadProgress(_role).Currency[1]);
         Assert.Equal(2, Assert.Single(_items.Load(_role)).Stack);
     }
@@ -140,7 +140,7 @@ public sealed class FamilyEconomyTransactionTests : IDisposable
         string operation = Guid.NewGuid().ToString("N");
         tx.WithEconomy(new EconomyMutation(operation, "family-account", _role, "cd13b/pet-lottery",
             operation, "family/" + operation, 1_000_000, [],
-            Enumerable.Range(2, 40).Select(id => new EconomyQuantity(new(EconomyAssetKind.Currency, id), 1)).ToArray(),
+            [.. Enumerable.Range(2, 40).Select(id => new EconomyQuantity(new(EconomyAssetKind.Currency, id), 1))],
             [9]));
         await _roles.CommitAsync(tx, "test/family-many-denominations");
         var catalog = new EconomyCatalog(Enumerable.Range(1, 41)
@@ -166,8 +166,8 @@ public sealed class FamilyEconomyTransactionTests : IDisposable
         var closing = EconomySnapshotReader.Read(_accounts.DatabasePath, Catalog, "auto");
         var ledger = EconomyLedgerReader.Read(_accounts.DatabasePath, Catalog, "auto", 0, 1);
         Assert.True(ledger.CompleteHistory, string.Join(";", ledger.Issues.Select(x => x.Detail)));
-        Assert.Equal(new[] { EconomyLegKind.Sink, EconomyLegKind.Source }, ledger.Legs.Select(x => x.Kind));
-        Assert.Equal(new[] { EconomyReason.PetCost, EconomyReason.PetRefund }, ledger.Legs.Select(x => x.Reason));
+        Assert.Equal([EconomyLegKind.Sink, EconomyLegKind.Source], ledger.Legs.Select(x => x.Kind));
+        Assert.Equal([EconomyReason.PetCost, EconomyReason.PetRefund], ledger.Legs.Select(x => x.Reason));
         var exact = EconomyExactnessChecker.Check(opening, closing, ledger);
         Assert.DoesNotContain(exact.Issues, issue => issue.Kind == EconomyIssueKind.Corruption);
         Assert.All(exact.Assets, asset => Assert.Equal("0", asset.Residual));
@@ -268,7 +268,7 @@ public sealed class FamilyEconomyTransactionTests : IDisposable
             Assert.Equal(operation, committed);
             FixtureSql.Execute(_accounts,
                 "UPDATE operation_receipt SET child_receipts=$children WHERE operation_id=$op",
-                ("$children", EconomyTransactionPlan.EncodeChildReceipts(new object?[] { Array.Empty<long>() })),
+                ("$children", EconomyTransactionPlan.EncodeChildReceipts([Array.Empty<long>()])),
                 ("$op", operation));
             return Task.CompletedTask;
         };

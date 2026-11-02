@@ -23,7 +23,7 @@ public sealed class AdventureGroupStore(AccountStore accounts)
         public long Id { get; set; }
         public string Name { get; set; } = "";
         public string Announce { get; set; } = "";
-        public List<int> Labels { get; set; } = new();
+        public List<int> Labels { get; set; } = [];
         public int Background { get; set; } = 1;
         /// <summary>romsg.AdventureGroupStatus: 1 Helper (support recruitment), 2 Temp (creation ritual), 3 Normal.</summary>
         public int Status { get; set; } = 1;
@@ -51,12 +51,12 @@ public sealed class AdventureGroupStore(AccountStore accounts)
         public int SaplingUpvote { get; set; }
         public int ConveneUseTime { get; set; }
         public long LastConveneTime { get; set; }
-        public List<int> AvailableBackgrounds { get; set; } = new();
+        public List<int> AvailableBackgrounds { get; set; } = [];
         public long LastUpdateTime { get; set; }
-        public Dictionary<long, Member> Members { get; set; } = new();
+        public Dictionary<long, Member> Members { get; set; } = [];
         /// <summary>Support applications (status 1) or join applications (status 3), by role.</summary>
-        public Dictionary<long, Applicant> Applications { get; set; } = new();
-        public List<GroupEvent> Events { get; set; } = new();
+        public Dictionary<long, Applicant> Applications { get; set; } = [];
+        public List<GroupEvent> Events { get; set; } = [];
     }
 
     public sealed class Member
@@ -100,8 +100,8 @@ public sealed class AdventureGroupStore(AccountStore accounts)
 
     private readonly object _cacheLock = new();
     private long _cachedGeneration = -1;
-    private Dictionary<long, (byte[] Json, OwnerRevisionValue? Revision)> _byId = new();
-    private Dictionary<long, long> _groupOfRole = new();
+    private Dictionary<long, (byte[] Json, OwnerRevisionValue? Revision)> _byId = [];
+    private Dictionary<long, long> _groupOfRole = [];
 
     private void Refresh()
     {
@@ -145,7 +145,7 @@ public sealed class AdventureGroupStore(AccountStore accounts)
     public IReadOnlyList<State> List()
     {
         Refresh();
-        lock (_cacheLock) return _byId.OrderBy(p => p.Key).Select(p => Copy(p.Value)).ToList();
+        lock (_cacheLock) return [.. _byId.OrderBy(p => p.Key).Select(p => Copy(p.Value))];
     }
 
     public bool NameExists(string name, long exceptId = 0) =>

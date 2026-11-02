@@ -7,7 +7,7 @@ namespace Ro3Emu.Server.Game;
 /// <summary>Extended party operations from all changes use the same authoritative roster.</summary>
 public sealed partial class TeamService
 {
-    private readonly Dictionary<long, DateTimeOffset> _recruitUntil = new();
+    private readonly Dictionary<long, DateTimeOffset> _recruitUntil = [];
     public const uint TeamChangeType = 42002, TeamChangeInfo = 42003, TeamRally = 42009, TeamRallyBroadcast = 42010,
         TeamRallyResponse = 42011, TeamEditor = 42012, TeamGetList = 42013, TeamEnter = 42014, TeamSetFlag = 42015,
         TeamApplyList = 42018, TeamRallyResponseNotify = 42023, TeamChangeTypeNotify = 42027, TeamFollow = 42031,
@@ -301,18 +301,18 @@ public sealed partial class TeamService
 
     /// <summary>PartyService directory payloads consumed by LC_DAL_Team:1967-2123,3191-3265.</summary>
     public object[] Directory(long target = 0, string area = "", long playBook = 0, int map = 0, int offset = 0, int limit = 100) =>
-        PublicTeams(target, area).Where(t => (playBook == 0 || t.PlayBook == playBook)
+        [.. PublicTeams(target, area).Where(t => (playBook == 0 || t.PlayBook == playBook)
             && (map == 0 || Detail(t, t.Leader).MapId == map)).OrderBy(t => t.Created).ThenBy(t => t.Id)
             .Skip(Math.Max(0, offset)).Take(Math.Clamp(limit, 0, 100)).Select(t => (object)new Dictionary<string, object?>
             {
                 ["GameSummaryData"] = TotalSimple(t).ToByteArray(),
-            }).ToArray();
+            })];
 
-    public object[] TargetCounts(string area = "") => _teams.Values.Where(t => area.Length == 0 || t.Area == area)
+    public object[] TargetCounts(string area = "") => [.. _teams.Values.Where(t => area.Length == 0 || t.Area == area)
         .GroupBy(t => t.Target).Select(g => (object)new Dictionary<string, object?>
         {
             ["SubType"] = g.Key, ["Count"] = g.Count(),
-        }).ToArray();
+        })];
 
     public object? DirectoryParty(long id)
     {

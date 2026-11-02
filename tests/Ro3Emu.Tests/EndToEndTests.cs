@@ -20,6 +20,7 @@ public sealed class EndToEndTests : IAsyncLifetime
         _app = ServerHost.Create([], o =>
         {
             o.DataDir = _dataDir;
+            o.GameDataDir = SyntheticData.Dir;
             o.HttpPort = httpPort;
             o.MicroGatePort = microPort;
             o.GameGatePort = gamePort;
@@ -85,7 +86,8 @@ public sealed class EndToEndTests : IAsyncLifetime
             await bot.EnterGateAsync();
             roleId = (await bot.CreateRoleAsync("Dave")).RoleBaseInfo.Id;
             var spawn = await bot.EnterWorldAsync(roleId);
-            Assert.Equal(156f, spawn.MovementInfo.Pos.X);
+            // The fixture town's born point (sceneeditor/synthetic_town.json).
+            Assert.Equal(150f, spawn.MovementInfo.Pos.X);
             await bot.WalkAsync(170f, 1.5f, 200f, stop: true);
             // WalkAsync only sends the packet. Observe its server-side Apply before
             // disconnect, leaving persistence to the real logout barrier below.

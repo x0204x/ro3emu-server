@@ -41,7 +41,7 @@ public sealed class VerificationProgressTests : IDisposable
         var updates = new List<UpdateProgress>();
         var result = await new Updater(new InstallLayout(_root), repository).VerifyInstalledAsync(
             new Manifest { Files = [missing, wrong, empty, intact] }, new InlineProgress(updates.Add), CancellationToken.None);
-        Assert.Equal(new[] { missing.Path, wrong.Path }, result.ChangedFiles);
+        Assert.Equal([missing.Path, wrong.Path], result.ChangedFiles);
         Assert.Equal(67, updates[^1].BytesDone);
         Assert.Equal(4, updates[^1].FilesDone);
         Assert.Equal(4, updates[^1].FilesTotal);

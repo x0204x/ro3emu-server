@@ -28,9 +28,9 @@ public sealed class GuildHomeService : IGameTicker
     private readonly SceneService _scene;
     private readonly DungeonService _dungeons;
     private readonly GameLoop _loop;
-    private readonly Dictionary<long, InstanceService.Room> _homes = new();
-    private readonly Dictionary<long, long> _guildOfRoom = new();
-    private readonly HashSet<GameSession> _ejecting = new();
+    private readonly Dictionary<long, InstanceService.Room> _homes = [];
+    private readonly Dictionary<long, long> _guildOfRoom = [];
+    private readonly HashSet<GameSession> _ejecting = [];
     private long _lastSecond = -1;
     private readonly TimeProvider _time;
 
@@ -58,7 +58,7 @@ public sealed class GuildHomeService : IGameTicker
 
     /// <summary>Every live home room with its guild (event owners iterate these).</summary>
     public IReadOnlyList<(long Guild, InstanceService.Room Room)> Rooms =>
-        _homes.Where(p => !p.Value.Closed).Select(p => (p.Key, p.Value)).ToArray();
+        [.. _homes.Where(p => !p.Value.Closed).Select(p => (p.Key, p.Value))];
 
     /// <summary>The session's guild when the durable roster and the session's own guild view agree.</summary>
     public long? GuildId(GameSession session)

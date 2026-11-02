@@ -27,8 +27,8 @@ checks them, and sends the items to the player's mailbox once.
 
 - It is public and rate limited: `Ro3Emu:GiftCodeAttemptsPerMinute` attempts per remote address (default 10), and the
   same number of authenticated attempts per account. A request whose token does not match its `account_id` only spends
-  the address budget, so nobody can use up another account's attempts. Loopback is exempt from the address budget unless
-  `LoginLimitIncludesLoopback` is set.
+  the address budget, so nobody can use up another account's attempts. Loopback is exempt from the address budget only for local
+  tools, by the same rule as the login budget ([security model](security.md)).
 - The body may be at most 8 KB.
 - Every answer is HTTP 200 with the JSON above. The client treats any other response as a network error.
 

@@ -217,7 +217,7 @@ public sealed class MonsterHuntQuestTargetTests
     private static void Add(string root, string table, long key, object row)
     {
         string path = Path.Combine(root, "config", table + ".json");
-        var rows = File.Exists(path) ? JsonNode.Parse(File.ReadAllText(path))!.AsObject() : new JsonObject();
+        JsonObject rows = File.Exists(path) ? JsonNode.Parse(File.ReadAllText(path))!.AsObject() : [];
         rows.Add(key.ToString(CultureInfo.InvariantCulture), JsonSerializer.SerializeToNode(row));
         File.WriteAllText(path, rows.ToJsonString());
     }

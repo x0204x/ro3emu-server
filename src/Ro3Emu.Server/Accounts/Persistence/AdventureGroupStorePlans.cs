@@ -99,7 +99,7 @@ internal sealed class AdventureGroupSavePlan : DbPlan
         _id = state.Id;
         _name = state.Name;
         _state = JsonSerializer.SerializeToUtf8Bytes(state);
-        _members = state.Members.Keys.ToArray();
+        _members = [.. state.Members.Keys];
     }
 
     internal override int Bytes => 128 + _state.Length + _members.Length * sizeof(long) + _name.Length * sizeof(char);

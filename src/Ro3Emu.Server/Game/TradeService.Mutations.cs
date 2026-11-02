@@ -267,7 +267,7 @@ public sealed partial class TradeService
     private async Task<List<Listing>> OwnRows(GameSession s)
     {
         var result = new List<Listing>();
-        await market.RunAsync(s, tx => { result = Active(tx).Where(l => l.SellerId == s.Role!.Id).ToList(); return 0; });
+        await market.RunAsync(s, tx => { result = [.. Active(tx).Where(l => l.SellerId == s.Role!.Id)]; return 0; });
         return result;
     }
 
@@ -321,7 +321,9 @@ public sealed partial class TradeService
             }
             else return ErrorCodes.TradeRequest;
             int count = next.AttentionUniqueItems.Count + next.AttentionItemTypes.Values.Sum(c => c.ItemIdList.Count);
-            if (count > Public("TradeConcernNum", 15)) return ErrorCodes.TradeQuantity;
+            // An advanced pass raises the limit (PassPrivileges.TradeFavAdd).
+            if (count > Public("TradeConcernNum", 15) + PassPrivileges.Added(data, s, PassPrivileges.TradeFavAdd))
+                return ErrorCodes.TradeQuantity;
             tx.SaveBlob(s.Role!.Id, "trade_info", next.ToByteArray());
             return 0;
         });

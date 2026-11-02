@@ -19,6 +19,7 @@ public sealed class SocialTests : IAsyncLifetime
         _app = ServerHost.Create([], o =>
         {
             o.DataDir = _dataDir;
+            o.GameDataDir = SyntheticData.Dir;
             o.HttpPort = httpPort;
             o.MicroGatePort = microPort;
             o.GameGatePort = gamePort;

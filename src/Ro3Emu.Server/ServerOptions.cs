@@ -21,6 +21,24 @@ public sealed class ServerOptions
         : System.Net.IPAddress.TryParse(PublicHost, out var host) && System.Net.IPAddress.IsLoopback(host) ? System.Net.IPAddress.Loopback
         : System.Net.IPAddress.Any;
 
+    /// <summary>The web panel's listen address: its own bind address, else the server's.</summary>
+    public System.Net.IPAddress PanelListenAddress() =>
+        Panel.BindAddress is { Length: > 0 } bind ? System.Net.IPAddress.Parse(bind) : ListenAddress();
+
+    /// <summary>
+    /// Only this machine reaches the server: the client is told a loopback address, the game ports and the panel listen
+    /// on loopback and no proxy serves the panel (<see cref="Ro3Emu.Panel.PanelOptions.PublicFacing"/>). Local play and
+    /// the tests. A public <see cref="PublicHost"/> with a loopback bind is a tunnel (frp, ssh -R, nginx stream): it
+    /// delivers strangers to loopback. An address that does not parse counts as public, so a typo never opens GM.
+    /// </summary>
+    public bool LocalOnly()
+    {
+        if (!System.Net.IPAddress.TryParse(PublicHost, out var told) || !System.Net.IPAddress.IsLoopback(told)) return false;
+        if (BindAddress is { Length: > 0 } bind && !System.Net.IPAddress.TryParse(bind, out _)) return false;
+        if (Panel.BindAddress is { Length: > 0 } panel && !System.Net.IPAddress.TryParse(panel, out _)) return false;
+        return System.Net.IPAddress.IsLoopback(ListenAddress()) && !Panel.PublicFacing(PanelListenAddress());
+    }
+
     /// <summary>The voice relay serves whenever a port is set (the stream is sealed, so off loopback too).</summary>
     public bool VoiceServed() => Voice.Port > 0;
 
@@ -108,6 +126,9 @@ public sealed class ServerOptions
     /// <summary>Battle pass policy: the premium track is free for now.</summary>
     public PassOptions Pass { get; set; } = new();
 
+    /// <summary>Paid products and top-ups: free for now (owner decision 2026-10-31).</summary>
+    public ShopOptions Shop { get; set; } = new();
+
     /// <summary>
     /// Server-wide reward multipliers. These are orthogonal: monster Zeny is affected by <see cref="RewardRateOptions.Zeny"/>
     /// but not by <see cref="RewardRateOptions.MonsterDrops"/>, while quest EXP uses the Base/Job rates only.
@@ -125,9 +146,10 @@ public sealed class ServerOptions
 
     /// <summary>
     /// What an empty <see cref="GmAccounts"/> means in game: true = every account has GM (research server, tests,
-    /// local play), false = nobody has GM. Left unset, ServerHost decides from the host environment: false when it was
-    /// set to Production explicitly (ASPNETCORE_ENVIRONMENT, DOTNET_ENVIRONMENT or --environment), true otherwise. The
-    /// loopback HTTP POST /ro3emu/gm (the operator's tools) keeps the old rule either way: empty = every account.
+    /// local play), false = nobody has GM. Left unset, ServerHost decides: true only on a server that only this machine
+    /// reaches (<see cref="LocalOnly"/>) and that was not set to Production explicitly (ASPNETCORE_ENVIRONMENT,
+    /// DOTNET_ENVIRONMENT or --environment); false on a public bind, behind a proxy, or in Production. The loopback
+    /// HTTP POST /ro3emu/gm (the operator's tools) keeps the old rule either way: empty = every account.
     /// </summary>
     public bool? GmOpenWhenEmpty { get; set; }
 
@@ -156,6 +178,13 @@ public sealed class ServerOptions
 
     /// <summary>Tests: the credential limit and the gift code address limit apply to loopback too.</summary>
     public bool LoginLimitIncludesLoopback { get; set; }
+
+    /// <summary>
+    /// The operator token the loopback tools (/ro3emu/gm, /shutdown, /online, /reports, /metrics) must send in
+    /// X-Ro3Emu-Operator (Http.OperatorToken). Unset: a random one, kept in DataDir/operator.token. Set (at least 32
+    /// characters): this one, also written to that file, for scripts that already hold a secret.
+    /// </summary>
+    public string? OperatorToken { get; set; }
 
     /// <summary>
     /// A game login (SDK login) with an account name that has no account is refused instead of creating the account,
@@ -609,6 +638,19 @@ public sealed class VoiceOptions
 
     /// <summary>Seconds without any frame before an authed connection is closed as idle. A test host lowers this.</summary>
     public int IdleTimeoutSeconds { get; set; } = 30;
+}
+
+/// <summary>
+/// The client's cash shop (2001 CREATE_ORDER from the top-up panel, the pass and the month card): on this server a purchase
+/// costs nothing (owner decision 2026-10-31, docs/systems/shop-currency.md). Off: every order is refused as unavailable.
+/// </summary>
+public sealed class ShopOptions
+{
+    /// <summary>Products, packs and top-ups are granted without payment.</summary>
+    public bool FreeProducts { get; set; } = true;
+
+    /// <summary>Free top-ups of one package a role may take per game day (inferred cap, at least 1).</summary>
+    public int FreeTopUpsPerDay { get; set; } = 1;
 }
 
 /// <summary>Both off by default so the tests keep the original's pass; a realm turns them on (docs/systems/activities-battlepass-monthcard.md).</summary>

@@ -323,7 +323,7 @@ public sealed class PersonalService
     /// re-arms a like. The liked role gets no notice; its card shows the count and Like History (UserDataService).
     /// </summary>
     /// <summary>After a committed like (quest target 106902); listeners post their work.</summary>
-    public List<Action<GameSession>> Upvoted { get; } = new();
+    public List<Action<GameSession>> Upvoted { get; } = [];
 
     public async Task UpvoteAsync(GameSession s, UpvotePersonalReq req)
     {

@@ -29,12 +29,12 @@ public sealed partial class TimedBattleService
         public long StageStartMs, StageEndMs, BattleStartMs, BattleEndMs;
         public required Random Rng;
         public Dictionary<GameSession, ChickenPlayer> Players { get; } = new(ReferenceEqualityComparer.Instance);
-        public List<ChickenChestUnit> Chests { get; } = new();
-        public List<ZoneEvent> Zone { get; } = new();
-        public List<ZoneShrink> Shrinks { get; } = new();
+        public List<ChickenChestUnit> Chests { get; } = [];
+        public List<ZoneEvent> Zone { get; } = [];
+        public List<ZoneShrink> Shrinks { get; } = [];
         public int ZonePublished = -1;
-        public List<int> EliminatedFactions { get; } = new();
-        public List<ReviveChannel> Channels { get; } = new();
+        public List<int> EliminatedFactions { get; } = [];
+        public List<ReviveChannel> Channels { get; } = [];
         public int PickOrder;
         public long NextGuid = 1;
         /// <summary>Landing follow (TimedBattleService.ChickenFollow): follower role -> followed role, and the invite
@@ -42,7 +42,7 @@ public sealed partial class TimedBattleService
         public Dictionary<long, long> Follow { get; } = [];
         public Dictionary<(long Inviter, long Invitee), long> InviteCdSec { get; } = [];
         public long LastTickMs;
-        public HashSet<long> TagDropped { get; } = new();
+        public HashSet<long> TagDropped { get; } = [];
         public List<ChickenShop> Shops { get; } = [];
         /// <summary>Magic Dice still standing, and the encounter offers' operate ids (TimedBattleService.ChickenAdventure).</summary>
         public List<ChickenNpcUnit> Dice { get; } = [];
@@ -56,13 +56,13 @@ public sealed partial class TimedBattleService
         public int Career;
         public int LandX = UnchosenX, LandZ = UnchosenZ, PickOrder;
         public bool LandChosen;
-        public Dictionary<long, ChickenItem> Pack { get; } = new();
-        public SortedDictionary<int, long> SkillBar { get; } = new();
-        public SortedDictionary<int, long> EquipBar { get; } = new();
-        public SortedDictionary<int, int> ItemBar { get; } = new();
+        public Dictionary<long, ChickenItem> Pack { get; } = [];
+        public SortedDictionary<int, long> SkillBar { get; } = [];
+        public SortedDictionary<int, long> EquipBar { get; } = [];
+        public SortedDictionary<int, int> ItemBar { get; } = [];
         /// <summary>Carried ID tags: dead teammate id -> card guid in the pack (inferred key/value meaning).</summary>
-        public Dictionary<long, long> IdentityCards { get; } = new();
-        public Dictionary<int, long> ItemCd { get; } = new();
+        public Dictionary<long, long> IdentityCards { get; } = [];
+        public Dictionary<int, long> ItemCd { get; } = [];
         public RoundRoleStatus State = RoundRoleStatus.InWar;
         public int FreeRelifeLeft = FreeRelifeCount;
         /// <summary>An open 82663 revive map: the player comes back at a point of its choice before this time.</summary>
@@ -73,7 +73,7 @@ public sealed partial class TimedBattleService
         public long Damage, Injury, Cure, Assists, Deaths, Help, Rescued, Revived;
         public long EliminatedMs;
         public Dictionary<GameSession, long> LastHitBy { get; } = new(ReferenceEqualityComparer.Instance);
-        public List<(long PerTick, long UntilMs)> Heals { get; } = new();
+        public List<(long PerTick, long UntilMs)> Heals { get; } = [];
         public long EmojiAtSec;
         /// <summary>Spectating (TimedBattleService.ChickenWatch): the watched role, the auto-watch time, the last switch.</summary>
         public long Watching, AutoWatchAtMs, WatchSwitchMs;

@@ -27,7 +27,7 @@ public sealed class TrafficLogTests : IDisposable
     }
 
     private string[] Lines() => Directory.Exists(Path.Combine(_dir, "logs"))
-        ? Directory.GetFiles(Path.Combine(_dir, "logs"), "traffic-*.jsonl").SelectMany(File.ReadAllLines).ToArray() : [];
+        ? [.. Directory.GetFiles(Path.Combine(_dir, "logs"), "traffic-*.jsonl").SelectMany(File.ReadAllLines)] : [];
 
     [ClientDataFact]
     public void OnModeFormatsBothDirectionsOffTheCallerThread()

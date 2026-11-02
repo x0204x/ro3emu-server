@@ -18,7 +18,7 @@ internal sealed class EscrowEconomyTransactionPlan(RoleItemPlan child, EscrowEco
         intent.Changes.Count * 256 + child.Parts.Count * 256);
     internal override IReadOnlyList<RoleRevisionKey> RoleWrites => child.RoleWrites;
     internal override IReadOnlyList<long> RolePins => intent.ActorRoleId > 0
-        ? child.RolePins.Append(intent.ActorRoleId).Distinct().ToArray() : child.RolePins;
+        ? [.. child.RolePins.Append(intent.ActorRoleId).Distinct()] : child.RolePins;
     internal override IReadOnlyList<OwnerRevisionKey> EntityWrites => child.EntityWrites;
     internal override IReadOnlyList<OwnerRevisionKey> EntityDeltaWrites => child.EntityDeltaWrites;
     internal override IReadOnlyList<RoleRevisionKey> MutatedRoleWrites(object? result) => child.MutatedRoleWrites(result);
@@ -518,7 +518,7 @@ internal static class EscrowEconomyReceiptCodec
         if (payload.Length > 64 * 1024 * 1024) throw new InvalidDataException("E03 child receipt is too large.");
         var values = JsonSerializer.Deserialize<Value[]>(payload) ?? throw new InvalidDataException("Missing E03 children.");
         if (values.Length is < 1 or > 16384) throw new InvalidDataException("Invalid E03 child count.");
-        return values.Select(x => x.Kind switch
+        return [.. values.Select(x => x.Kind switch
         {
             "null" => null,
             "bool" => (object?)x.Data.GetBoolean(),
@@ -529,7 +529,7 @@ internal static class EscrowEconomyReceiptCodec
             "bytes" => x.Data.Deserialize<byte[]>(),
             "auction" => x.Data.Deserialize<AuctionItemWriteReceipt>(),
             _ => throw new InvalidDataException("Unknown E03 child receipt kind.")
-        }).ToArray();
+        })];
     }
     internal static void Validate(RoleItemPlan child, object?[] values)
     {

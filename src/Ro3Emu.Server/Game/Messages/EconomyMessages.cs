@@ -18,6 +18,7 @@ public sealed class EconomyMessages(ShopService shops, MailService mail, Auction
         // Present/Pick reserve the recipient's own "gifts" blob themselves (another role, not the sender's).
         routes.AdmitEconomic(id => id is ShopService.CommodityPresent or ShopService.CommodityPick);
         routes.AdmitRole(id => id is >= 82332 and <= 82340); // ordinary shops
+        routes.AdmitRole(id => id is ShopService.ItemExchange); // Currency Redemption: the sender's own currencies
         routes.Intercept("trade", id => id is >= 32601 and <= 32630, (session, msgId, body) =>
             session.Role != null && session.Progress != null ? trade.HandleAsync(session, msgId, body) : Task.FromResult(false));
         routes.Intercept("stalls", id => id is >= StallsService.Start and <= StallsService.Share, (session, msgId, body) =>
@@ -31,6 +32,8 @@ public sealed class EconomyMessages(ShopService shops, MailService mail, Auction
         });
         routes.Map(TimedBattleService.DungeonShop, "shops", async (session, msgId, body) =>
             await timedBattles.GetDungeonShopAsync(session, GetDungeonShopReq.Parser.ParseFrom(body.Span)));
+        routes.Map(ShopService.ItemExchange, "shops", async (session, msgId, body) =>
+            await shops.ExchangeCurrencyAsync(session, ItemExchangeReq.Parser.ParseFrom(body.Span)));
         routes.Map(ShopService.BatchBuyCommodity, "shops", async (session, msgId, body) =>
         {
             await shops.BatchBuyAsync(session, BatchBuyCommodityReq.Parser.ParseFrom(body.Span));

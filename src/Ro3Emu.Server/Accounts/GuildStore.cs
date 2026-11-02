@@ -35,28 +35,28 @@ public sealed class GuildStore(AccountStore accounts)
         public long LastChangeNameTime { get; set; }
         public long LastChangeNoticeTime { get; set; }
         public long LastRecruitMs { get; set; }
-        public List<string> HistoryNames { get; set; } = new();
-        public Dictionary<long, Member> Members { get; set; } = new();
-        public Dictionary<long, Application> Applications { get; set; } = new();
+        public List<string> HistoryNames { get; set; } = [];
+        public Dictionary<long, Member> Members { get; set; } = [];
+        public Dictionary<long, Application> Applications { get; set; } = [];
         /// <summary>Founding responses waiting for the founder's approval (ApplyTime in ms; GuildService.Responders).</summary>
-        public Dictionary<long, Application> HelperApplies { get; set; } = new();
-        public Dictionary<int, List<int>> Rights { get; set; } = new();
-        public Dictionary<long, long> Buildings { get; set; } = new();
-        public Dictionary<long, long> BuildingEndTimes { get; set; } = new();
+        public Dictionary<long, Application> HelperApplies { get; set; } = [];
+        public Dictionary<int, List<int>> Rights { get; set; } = [];
+        public Dictionary<long, long> Buildings { get; set; } = [];
+        public Dictionary<long, long> BuildingEndTimes { get; set; } = [];
         /// <summary>Guild Activity (item 106) earned this week and last week; ActivityWeek = the week's Monday 05:00 (unix s).</summary>
         public long CurActivity { get; set; }
         public long LastWeekActivity { get; set; }
         public long ActivityWeek { get; set; }
         /// <summary>Guild League elite roster (MG_Guild EliteGroup, label LeagueLabel): slot index -> role, and the version
         /// 32302 saves against (GuildService.LeagueElite).</summary>
-        public Dictionary<int, long> LeagueElites { get; set; } = new();
+        public Dictionary<int, long> LeagueElites { get; set; } = [];
         public int LeagueEliteVersion { get; set; }
         /// <summary>Badge frames and designs unlocked by 113 items: GuildIconConfig id to removetime (unix s, 0 permanent);
         /// DBGuildData unLockHeadIconData (GuildService.ItemActions).</summary>
-        public Dictionary<long, long> UnlockedHeadIcons { get; set; } = new();
+        public Dictionary<long, long> UnlockedHeadIcons { get; set; } = [];
         /// <summary>Guild Store (ShopConfig 2702) purchases of the week ShopCommodityWeek (Monday 05:00, unix s), guild-wide:
         /// commodity to count; DBGuildData shopCommodityData.</summary>
-        public Dictionary<int, int> ShopCommodityBuys { get; set; } = new();
+        public Dictionary<int, int> ShopCommodityBuys { get; set; } = [];
         public long ShopCommodityWeek { get; set; }
         /// <summary>Guild group mail (32241, GuildService.BroadEmail): when the next letter may go (unix ms), and how many
         /// went on the day BroadEmailDay (05:00, unix s).</summary>
@@ -90,7 +90,7 @@ public sealed class GuildStore(AccountStore accounts)
         /// already left <see cref="WartimeItems"/> and go back on cancel.</summary>
         public Dictionary<long, int> WartimePrepay { get; set; } = [];
         /// <summary>32228 journal rows (GuildEventData bytes) to append with this state's next save; not part of the state.</summary>
-        internal List<byte[]> PendingEvents { get; } = new();
+        internal List<byte[]> PendingEvents { get; } = [];
     }
 
     /// <summary>A merge invitation from guild <see cref="From"/> (received at unix s, with its announcement).</summary>
@@ -134,13 +134,13 @@ public sealed class GuildStore(AccountStore accounts)
         internal OwnerRevisionValue? CapturedRevision { get; set; }
         public long NextId { get; set; }
         public long RecentAvgPrice { get; set; } = 100;
-        public List<long> RecentPrices { get; set; } = new();
-        public List<MarketPrice> PriceHistory { get; set; } = new();
-        public List<MarketStall> Stalls { get; set; } = new();
+        public List<long> RecentPrices { get; set; } = [];
+        public List<MarketPrice> PriceHistory { get; set; } = [];
+        public List<MarketStall> Stalls { get; set; } = [];
         /// <summary>E03: no refund/burn policy is implied by guild deletion; keep orphan stock out of the public book.</summary>
-        public List<MarketStall> RecoveryStalls { get; set; } = new();
-        public List<MarketTrade> Trades { get; set; } = new();
-        public Dictionary<long, long> LastListedMs { get; set; } = new();
+        public List<MarketStall> RecoveryStalls { get; set; } = [];
+        public List<MarketTrade> Trades { get; set; } = [];
+        public Dictionary<long, long> LastListedMs { get; set; } = [];
     }
 
     public sealed class MarketPrice

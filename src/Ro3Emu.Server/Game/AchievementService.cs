@@ -75,9 +75,9 @@ public sealed class AchievementService : IGameTicker
 
     private sealed class Catalog
     {
-        public Dictionary<long, Row> Rows { get; } = new();
+        public Dictionary<long, Row> Rows { get; } = [];
         /// <summary>0 = AchievementLevel (global), 100-105 = AchievementType rows of the type, sorted by _iLevel.</summary>
-        public Dictionary<int, Tier[]> Tiers { get; } = new();
+        public Dictionary<int, Tier[]> Tiers { get; } = [];
     }
 
     private readonly GameData _data;
@@ -91,14 +91,14 @@ public sealed class AchievementService : IGameTicker
     private readonly TimeProvider _clock;
     private readonly ILogger<AchievementService> _log;
     private Catalog? _catalog;
-    private readonly HashSet<GameSession> _recheckQueued = new();
-    private readonly HashSet<GameSession> _dirty = new();
+    private readonly HashSet<GameSession> _recheckQueued = [];
+    private readonly HashSet<GameSession> _dirty = [];
     private int _sweepIndex;
     // Config lookups of the probes (GameData rows are frozen after preload).
     private readonly System.Collections.Concurrent.ConcurrentDictionary<int, (long Type, long SubType, long Quality)> _items = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<int, long> _petQuality = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<long, long> _wardrobeType = new();
-    private readonly HashSet<GameSession> _friendQueued = new();
+    private readonly HashSet<GameSession> _friendQueued = [];
     private TimeSpan _lastTick;
 
     public AchievementService(GameData data, RoleStore roles, CharacterService character, AwardService awards,
@@ -183,17 +183,17 @@ public sealed class AchievementService : IGameTicker
             }
             catalog.Rows[id] = new Row(id, (int)GameData.Int(row, "_iType"), GameData.Int(row, "_iGroup"),
                 (int)GameData.Int(row, "_iPoint"), GameData.Int(row, "_iAward"), targets, required, blocked,
-                targets.Select(t => t is [CTeamBoss, _, var multi, var npc] ? BossRecord(multi, npc) : null).ToArray(),
-                targets.Select(t => t is [CGodBoss, var npc, ..] ? GodRealms.Select(m => BossRecord(m, npc)).OfType<string>().ToArray() : []).ToArray());
+                [.. targets.Select(t => t is [CTeamBoss, _, var multi, var npc] ? BossRecord(multi, npc) : null)],
+                [.. targets.Select(t => t is [CGodBoss, var npc, ..] ? GodRealms.Select(m => BossRecord(m, npc)).OfType<string>().ToArray() : [])]);
         }
-        catalog.Tiers[0] = _data.Table("AchievementLevel").Values.Select(r =>
+        catalog.Tiers[0] = [.. _data.Table("AchievementLevel").Values.Select(r =>
                 new Tier((int)GameData.Int(r, "_iLevel"), GameData.Int(r, "_iPoint"), GameData.Int(r, "_iAward")))
-            .OrderBy(t => t.Level).ToArray();
+            .OrderBy(t => t.Level)];
         foreach (var group in _data.Table("AchievementType").Values.GroupBy(r => (int)GameData.Int(r, "_iTypeID")))
             if (group.Key > 0)
-                catalog.Tiers[group.Key] = group.Select(r =>
+                catalog.Tiers[group.Key] = [.. group.Select(r =>
                         new Tier((int)GameData.Int(r, "_iLevel"), GameData.Int(r, "_iPoint"), GameData.Int(r, "_iAward")))
-                    .OrderBy(t => t.Level).ToArray();
+                    .OrderBy(t => t.Level)];
         int blockedCount = catalog.Rows.Values.Count(r => r.Blocked);
         _log.LogInformation("Achievements: {Rows} rows, {Blocked} blocked, {Types} level tables", catalog.Rows.Count, blockedCount, catalog.Tiers.Count);
         return catalog;
@@ -336,7 +336,7 @@ public sealed class AchievementService : IGameTicker
             case CRefineLevel: // highest refine level on any grid
                 return s.EquipLevels.Refine.Values.DefaultIfEmpty(0).Max();
             case CCardQuality: // [1, type, subtype, quality]: a card of quality >= p4 seen (collection or bag)
-                return (s.Library?.Cards.Keys.ToList() ?? new List<int>()).Concat(s.Items.Select(i => i.Entry))
+                return (s.Library?.Cards.Keys.ToList() ?? []).Concat(s.Items.Select(i => i.Entry))
                     .Any(entry => CardOf(entry, t[2], t[3]) && Quality(entry) >= t[4]) ? r : 0;
             case CCardInserted: // [quality, n]: socketed cards of quality >= p1
                 return s.Items.Count(i => i.Grid < 0 && IsCard(i.Entry) && Quality(i.Entry) >= t[1]);
@@ -744,7 +744,7 @@ public sealed class AchievementService : IGameTicker
         if (level <= claimed) return AlreadyReceived;
         // (inferred) a claim at level N settles every lower unclaimed tier too (the award list marks every
         // _iLevel <= rewardLevel row as received, UI_Sys_Achievement_AwardWidgetCtrl.lua:124-200).
-        tierAwards = tiers.Where(t => t.Level > claimed && t.Level <= level && t.Award != 0).Select(t => t.Award).ToArray();
+        tierAwards = [.. tiers.Where(t => t.Level > claimed && t.Level <= level && t.Award != 0).Select(t => t.Award)];
         return 0;
     }
 
@@ -773,7 +773,7 @@ public sealed class AchievementService : IGameTicker
         try
         {
             int? playBook = PlayBook(s);
-            plans = awardGroups.Select(group => _awards.Resolve(s, group, playBook)).ToArray();
+            plans = [.. awardGroups.Select(group => _awards.Resolve(s, group, playBook))];
         }
         catch (AwardResolutionException e)
         {
@@ -826,7 +826,7 @@ public sealed class AchievementService : IGameTicker
             var next = state.Clone();
             var claimed = ids.Select(id => $"{id}@{state.Infos[id].Stamptime}").ToList();
             foreach (long id in ids) next.Infos[id].Status = AchievementStatusType.GetReward;
-            code = await CommitClaimAsync(s, next, ids.Select(id => Rows().Rows[id].Award).Where(a => a != 0).ToList(),
+            code = await CommitClaimAsync(s, next, [.. ids.Select(id => Rows().Rows[id].Award).Where(a => a != 0)],
                 "task", string.Join(",", claimed), new { Ids = ids });
         }
         resp.Result = code;

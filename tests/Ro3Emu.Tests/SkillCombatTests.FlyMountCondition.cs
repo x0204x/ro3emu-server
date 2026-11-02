@@ -58,7 +58,7 @@ public sealed partial class SkillCombatTests
                         ?? throw new InvalidOperationException("原場景條件缺失。");
                     Assert.True(CombatService.EvaluateKnownSkillCondition(condition, values =>
                     {
-                        Assert.Equal(new long[] { 2009, 1 }, values);
+                        Assert.Equal([2009, 1], values);
                         return true;
                     }));
                 }

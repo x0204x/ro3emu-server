@@ -17,7 +17,7 @@ public sealed partial class ScenarioRunner
     private readonly ConcurrentDictionary<int, long> _s3Expected = new();
     private readonly ConcurrentDictionary<string, byte> _s3Unknown = new();
     private readonly ConcurrentDictionary<ulong, byte> _s3GatherClaims = new();
-    private readonly List<string> _s3Fixtures = new();
+    private readonly List<string> _s3Fixtures = [];
     private int _s3ShopPayment, _s3ShopGoods, _s3ShopGoodsCount;
     private int _s3GatherCompletions, _s3TowerEntries, _s3TowerSettlements;
     private bool _s3Prepared;
@@ -32,12 +32,12 @@ public sealed partial class ScenarioRunner
     }
 
     private void S3Unsupported(RunReport report, string reason) =>
-        report.UnsupportedBehaviours = report.UnsupportedBehaviours.Append(reason).Distinct().ToArray();
+        report.UnsupportedBehaviours = [.. report.UnsupportedBehaviours.Append(reason).Distinct()];
 
     /// <summary>Only fixture work and the opening snapshot run before the measured epoch.</summary>
     private async Task PrepareS3Async(RunReport report, CancellationToken ct)
     {
-        var c = S3Cohorts(_actors.OrderBy(a => a.Account).ToArray());
+        var c = S3Cohorts([.. _actors.OrderBy(a => a.Account)]);
         // Player mail compose/send is absent from MailService's micro router and game dispatcher.
         S3Unsupported(report, "player mail send: no registered client protocol route");
         S3Unsupported(report, "paid equipment refine: no finite equipment/material fixture");
@@ -117,7 +117,7 @@ public sealed partial class ScenarioRunner
             _s3ShopGoods = (int)Ro3Emu.Server.Data.GameData.Int(row, "_iItemId");
             _s3ShopGoodsCount = (int)Math.Max(1, Ro3Emu.Server.Data.GameData.Int(row, "_iItemPerMount"));
         }
-        report.S3SetupFixtures = _s3Fixtures.ToArray();
+        report.S3SetupFixtures = [.. _s3Fixtures];
         _s3EconomyCatalog = EconomyCatalog.Load(Path.Combine(options.RepositoryRoot, "data"));
         report.S3OpeningEconomy = S3EconomyReader.Read(report.ServerDataDir, _s3EconomyCatalog);
         _s3Prepared = true;
@@ -155,7 +155,7 @@ public sealed partial class ScenarioRunner
                     opening, report.S3ClosingEconomy);
         }
         report.S3ExpectedExternalChange = _s3Expected.OrderBy(x => x.Key).ToDictionary(x => x.Key, x => x.Value);
-        report.S3UntrackedEconomySources = _s3Unknown.Keys.Order().ToArray();
+        report.S3UntrackedEconomySources = [.. _s3Unknown.Keys.Order()];
         report.S3GatherCompletions = Volatile.Read(ref _s3GatherCompletions);
         report.S3TowerEntries = Volatile.Read(ref _s3TowerEntries);
         report.S3TowerSettlements = Volatile.Read(ref _s3TowerSettlements);
@@ -165,17 +165,17 @@ public sealed partial class ScenarioRunner
 
     private async Task RunS3Async(RunReport report, CancellationToken ct)
     {
-        var c = S3Cohorts(_actors.OrderBy(a => a.Account).ToArray());
+        var c = S3Cohorts([.. _actors.OrderBy(a => a.Account)]);
         var tasks = new List<Task>
         {
             RunTrafficAsync(c.Town, options.DurationSeconds, chat: true, ct),
-            RunFighterTrafficAsync(c.Field.Skip(Math.Min(4, c.Field.Length)).ToArray(), options.DurationSeconds, ct),
+            RunFighterTrafficAsync([.. c.Field.Skip(Math.Min(4, c.Field.Length))], options.DurationSeconds, ct),
             RunMenuTrafficAsync(c.Menu, options.DurationSeconds, ct),
         };
         if (_s3Prepared)
         {
             tasks.Add(RunS3EconomyAsync(c.Town, c.Field, options.DurationSeconds, ct));
-            tasks.Add(RunS3GatheringAsync(c.Field.Take(4).ToArray(), options.DurationSeconds, ct));
+            tasks.Add(RunS3GatheringAsync([.. c.Field.Take(4)], options.DurationSeconds, ct));
             tasks.Add(RunS3TowerAsync(c.Tower, options.DurationSeconds, ct));
         }
         else tasks.Add(RunHeartbeatsAsync(c.Tower, options.DurationSeconds, ct));

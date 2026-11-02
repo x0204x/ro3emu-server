@@ -55,8 +55,8 @@ public sealed partial class GuildCaravanService(GameData data, GuildStore guilds
         public long ReqHelpOtherCount { get; set; }
         public bool IsAwardGot { get; set; }
         public long LastRefreshTime { get; set; }
-        public List<Sku> Skus { get; set; } = new();
-        public List<PendingAward> PendingAwards { get; set; } = new();
+        public List<Sku> Skus { get; set; } = [];
+        public List<PendingAward> PendingAwards { get; set; } = [];
     }
 
     private sealed class PendingAward
@@ -65,7 +65,7 @@ public sealed partial class GuildCaravanService(GameData data, GuildStore guilds
         public string SourceKey { get; set; } = "";
         public long GuildId { get; set; }
         public bool GuildBooked { get; set; }
-        public List<PendingGrant> Grants { get; set; } = new();
+        public List<PendingGrant> Grants { get; set; } = [];
     }
 
     private sealed class PendingGrant
@@ -274,7 +274,7 @@ public sealed partial class GuildCaravanService(GameData data, GuildStore guilds
         if (_data.Table("GuildSettingConfig").TryGetValue("GuildTransportRoundSAB", out var row)
             && row.TryGetProperty("_kValue", out var array) && array.ValueKind == JsonValueKind.Array
             && round >= 0 && round < array.GetArrayLength() && array[round].ValueKind == JsonValueKind.Array)
-            return array[round].EnumerateArray().Select(x => (long)(GameData.Number(x) ?? 0)).ToArray();
+            return [.. array[round].EnumerateArray().Select(x => (long)(GameData.Number(x) ?? 0))];
         return [];
     }
 
@@ -333,7 +333,7 @@ public sealed partial class GuildCaravanService(GameData data, GuildStore guilds
         if (Guild(s)?.Id != guild.Id || !Eligible(s)) throw new CaravanMembershipChangedException();
         long roleId = s.Role!.Id;
         var state = Read(roleId) ?? new State { Day = Day, GuildId = guild.Id };
-        state.PendingAwards ??= new(); state.Skus ??= new();
+        state.PendingAwards ??= []; state.Skus ??= [];
         if (state.Day != Day)
             state = await RolloverAsync(roleId, state, s.Progress!);
         if (Guild(s)?.Id != guild.Id || !Eligible(s) || state.Day != Day)
@@ -362,7 +362,7 @@ public sealed partial class GuildCaravanService(GameData data, GuildStore guilds
         var next = new State
         {
             Day = Day, GuildId = state.GuildId, Revision = state.Revision,
-            PendingAwards = state.PendingAwards.ToList()
+            PendingAwards = [.. state.PendingAwards]
         };
         long owed = !state.IsAwardGot && state.Skus.Count(x => x.Status == 1) >= Setting("GuildTransportRequestItemTypeNum", 5)
             ? DepartureAward(state) : 0;
@@ -393,7 +393,7 @@ public sealed partial class GuildCaravanService(GameData data, GuildStore guilds
                         _guilds.EnlistCaravanReward(state.GuildId, roleId, funds, contribution, tx);
                 }, _loop.Owners?.Current, parentEconomy: expired => new EconomyEnvelope(operation,
                     actor.Account, roleId, "guild-caravan-rollover", source, source, NowMs,
-                    effects.Concat(expired).ToArray(), []));
+                    [.. effects, .. expired], []));
             if (funds > 0 || contribution > 0)
                 await _guildService.RefreshCaravanResourcesAsync(state.GuildId);
         }
@@ -693,7 +693,8 @@ public sealed partial class GuildCaravanService(GameData data, GuildStore guilds
         {
             committed = await _character.ExchangeLockedAsync(s, cost, goods, boundGoods: bound,
             baseExp: plan.Grants.Where(g => g.Entry == 100).Sum(g => (long)g.Count),
-            jobExp: plan.Grants.Where(g => g.Entry == 101).Sum(g => (long)g.Count),
+            jobExp: plan.Grants.Where(g => g.Entry == 101).Sum(g => (long)g.Count)
+                + _character.JobExpFromBase(plan.Grants.Where(g => g.Entry == 100).Sum(g => (long)g.Count)),
             popup: false, persist: tx =>
             {
                 EnlistMemberSave(tx, s.Role!.Id, guildId, next, fixedPlan == null);
@@ -847,7 +848,7 @@ public sealed partial class GuildCaravanService(GameData data, GuildStore guilds
                 var own = await EnsureAsync(s, guild);
                 resp.DayVersion = Version(guild.Id, own.Day); resp.HelpOtherCount = own.HelpOtherCount;
                 foreach (var member in _guilds.Get(guild.Id)?.Members.Values.AsEnumerable()
-                    ?? Enumerable.Empty<GuildStore.Member>())
+                    ?? [])
                     if (Read(member.RoleId) is { } other && other.GuildId == guild.Id && other.Day == own.Day)
                         foreach (var sku in other.Skus.Where(x => x.Status == 2))
                             resp.Skus.Add(new GuildCatShopItemHelpSku
@@ -919,8 +920,8 @@ public sealed partial class GuildCaravanService(GameData data, GuildStore guilds
                                 {
                                     SourceKey = $"guild-caravan:help:{guild.Id}:{req.PlayerID}:{target.Day}:{target.CurRound}:{req.SkuIndex}",
                                     GuildId = guild.Id, GuildBooked = true,
-                                    Grants = targetPlan.Grants.Select(g => new PendingGrant
-                                    { Entry = g.Entry, Count = g.Count, BindType = g.BindType, ExpireTimeStamp = g.ExpireTimeStamp }).ToList()
+                                    Grants = [.. targetPlan.Grants.Select(g => new PendingGrant
+                                    { Entry = g.Entry, Count = g.Count, BindType = g.BindType, ExpireTimeStamp = g.ExpireTimeStamp })]
                                 });
                                 long targetFunds = targetPlan.Grants.Where(g => g.Entry == 104).Sum(g => (long)g.Count);
                                 long targetContribution = targetPlan.Grants.Where(g => g.Entry == 102).Sum(g => (long)g.Count);

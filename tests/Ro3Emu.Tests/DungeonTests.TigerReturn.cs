@@ -38,7 +38,7 @@ public sealed partial class DungeonTests
         var shouts = alice.Inbox.Snapshot().Where(e => e.IsGame(DungeonService.Event))
             .Select(e => DungeonEventNotify.Parser.ParseFrom(e.Body)).Where(e => e.CliFuncname == "Shouting")
             .Select(e => e.Params[0].IntParams[0]).ToArray();
-        Assert.Equal(new long[] { 5300012, 5300013 }, shouts);
+        Assert.Equal([5300012, 5300013], shouts);
         Assert.Single(alice.Inbox.Snapshot(), e => e.IsGame(DungeonService.ResultNotify));
     }
 

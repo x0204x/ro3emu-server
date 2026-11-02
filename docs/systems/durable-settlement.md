@@ -64,5 +64,7 @@ conflict.
   claims stay. A replay of a compacted operation is accepted by its intent hash (the same request) and returns the
   stored child receipts; the ledger reader certifies its sequence, legs and sources and counts it in
   `CompactedReceipts` instead of re-checking its intent. `mail/*` receipts are never compacted: a delivery's payload is
-  read again when its delivery key comes back.
+  read again when its delivery key comes back. Each run starts from the watermark `economy_meta.compacted_seq` and
+  stops at the first receipt that is not due yet, so it walks only the receipts recorded since the last run instead of
+  the whole history.
 - SQLite reuses the freed pages, so the file stops growing; it only shrinks after an offline `VACUUM`.

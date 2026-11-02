@@ -14,7 +14,7 @@ public sealed partial class TaskService
 
     /// <summary>After a committed delivery: the task and the award it granted (AdventureGroupService counts the group
     /// quests' Adventure Bond Points as group EXP). Runs inside the quest lock: listeners post their work.</summary>
-    public List<Action<GameSession, long, AwardPlan>> QuestDelivered { get; } = new();
+    public List<Action<GameSession, long, AwardPlan>> QuestDelivered { get; } = [];
 
     /// <summary>TaskConfig._iTaskType of a quest (23 = enum_TaskType.AdventureGroup), 0 when unknown.</summary>
     public int TypeOf(long taskId) => Defs().TryGetValue(taskId, out var def) ? def.Type : 0;

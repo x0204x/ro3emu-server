@@ -73,7 +73,7 @@ public sealed class LifeItemPublicationTests : IAsyncLifetime
     private async Task Gm(string line)
     {
         using var client = new HttpClient();
-        using var response = await client.PostAsync($"{_http}/ro3emu/gm?account=alice", new StringContent(line));
+        using var response = await client.PostAsync($"{_http}/ro3emu/gm?account=alice", Operator.Command(line));
         response.EnsureSuccessStatusCode();
     }
 

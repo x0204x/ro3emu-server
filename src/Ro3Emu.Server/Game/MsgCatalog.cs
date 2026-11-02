@@ -25,7 +25,7 @@ public sealed class MsgCatalog
             && !ResponseTypeName.StartsWith("ezmsg.", StringComparison.Ordinal);
     }
 
-    private readonly Dictionary<uint, Entry> _entries = new();
+    private readonly Dictionary<uint, Entry> _entries = [];
 
     public MsgCatalog(IOptions<ServerOptions> options, ILogger<MsgCatalog> log)
     {

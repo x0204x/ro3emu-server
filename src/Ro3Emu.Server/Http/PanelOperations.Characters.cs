@@ -124,11 +124,7 @@ public sealed partial class PanelOperations
             return await loop.InvokeAsync(async () =>
             {
                 using var lifecycle = await owners.EnterAsync(origin, ReservationKey.Lifecycle(character));
-                var owner = owners.Cached(character);
-                bool attached = owner is { State: not RoleOwnerState.Detached and not RoleOwnerState.Deleted } || owner?.Attachment != null
-                    || owner?.Detaching != null || sessions.All().Any(s => s.Role?.Id == character || s.Owner?.RoleId == character
-                        || s.Attachment?.RoleId == character);
-                if (attached) return Refused("The character is in the game; kick it first or try again when it has logged out.");
+                if (RoleAttachment.IsAttached(owners, sessions, character)) return Refused("The character is in the game; kick it first or try again when it has logged out.");
                 return change() switch
                 {
                     PanelRoleResult.Done => null,

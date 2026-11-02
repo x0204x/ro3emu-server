@@ -50,6 +50,10 @@ public sealed partial class PanelSite
             return Reply.Error(StatusCodes.Status404NotFound, "There is no such account.");
         if (string.Equals(account.Name, call.Account, StringComparison.Ordinal))
             return Reply.Error(StatusCodes.Status400BadRequest, "You cannot ban your own account.");
+        // Staff can ban only below their own role: a Moderator cannot lock a GM or an Admin out of the panel. By the lists:
+        // on an open local server every account is an Admin only by that rule, and then nobody could ban anyone.
+        if (_ops.ListedRoleOf(account.Name) >= call.Role)
+            return Reply.Error(StatusCodes.Status403Forbidden, "You can only ban accounts with a lower staff role than yours.");
         DateTimeOffset? until = form?.Hours is { } hours ? _clock.GetUtcNow().AddHours(hours) : null;
         string admin = call.Signed;
         var outcome = await _backend.BanAsync(admin, account.Name, reason, until);
@@ -66,6 +70,11 @@ public sealed partial class PanelSite
         if (reason.Length > ReasonMax) return Reply.Error(StatusCodes.Status400BadRequest, "Give a reason of at most 300 characters.");
         if (await _backend.AccountAsync(call.Args[0]) is not { } account)
             return Reply.Error(StatusCodes.Status404NotFound, "There is no such account.");
+        // As for a ban, and a ban stands against a lower role than the one who placed it.
+        if (_ops.ListedRoleOf(account.Name) >= call.Role)
+            return Reply.Error(StatusCodes.Status403Forbidden, "You can only lift the ban of accounts with a lower staff role than yours.");
+        if (account.Ban?.By is { } placedBy && _ops.ListedRoleOf(placedBy) > call.Role)
+            return Reply.Error(StatusCodes.Status403Forbidden, "Only a role as high as the one who placed this ban can lift it.");
         string admin = call.Signed;
         if (!await _backend.UnbanAsync(admin, account.Name, reason))
             return Reply.Error(StatusCodes.Status409Conflict, "This account is not banned.");

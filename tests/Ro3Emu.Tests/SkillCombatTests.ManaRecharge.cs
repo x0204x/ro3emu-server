@@ -36,7 +36,7 @@ public sealed partial class SkillCombatTests
         var dynamic = await Next(alice, CombatService.SkillAffectedEx, SkillBeAffectedParamExNotify.Parser,
             n => n.AffectParamDict.TryGetValue(14201, out var skill) && skill.AffectParam.ContainsKey(SkillParameterRules.SkillCostType));
         var cost = Assert.Single(dynamic.AffectParamDict[14201].AffectParam[SkillParameterRules.SkillCostType].AffectValueListList);
-        Assert.Equal([1L, AttributeId.Sp, 0L, 14L], cost.AffectValueList.ToArray());
+        Assert.Equal([1L, AttributeId.Sp, 0L, 14L], [.. cost.AffectValueList]);
         await Loop.InvokeAsync(async () =>
         {
             Assert.Equal(-1000, Character.Stats(player)[AttributeId.PerSpDedution]);

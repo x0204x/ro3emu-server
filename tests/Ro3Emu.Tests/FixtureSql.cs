@@ -18,7 +18,7 @@ internal static class FixtureSql
         internal FixtureSqlPlan(string sql, (string Name, object? Value)[] parameters)
         {
             _sql = sql;
-            _parameters = parameters.Select(p => (p.Name, Copy(p.Value))).ToArray();
+            _parameters = [.. parameters.Select(p => (p.Name, Copy(p.Value)))];
         }
 
         internal override int Bytes => 128 + _sql.Length * sizeof(char) + _parameters.Sum(p =>

@@ -72,7 +72,7 @@ public sealed class ShopCycleTests : IAsyncLifetime
     private async Task Gm(string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{_http}/ro3emu/gm?account=cyclealice", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account=cyclealice", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     private static async Task<int> Buy(BotClient bot)

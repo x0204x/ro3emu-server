@@ -69,7 +69,7 @@ public sealed partial class TowerPetTests : IAsyncLifetime
     private async Task Gm(string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{_http}/ro3emu/gm?account=towerpet", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account=towerpet", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     private async Task Eligible(int level = 99)
@@ -103,7 +103,7 @@ public sealed partial class TowerPetTests : IAsyncLifetime
             Assert.Equal(0, ok.Result);
             Assert.Equal(new[] { 10001, 11001, 0, 0 }, ok.Pets);
             var sync = await Next(bot, TowerService.TowerSync, DBClimTowerIncrement.Parser,
-                t => t.PetIds?.All?.Value.SequenceEqual(new[] { 10001, 11001, 0, 0 }) == true);
+                t => t.PetIds?.All?.Value.SequenceEqual([10001, 11001, 0, 0]) == true);
             Assert.False(sync.SyncAllMark);
             await Gm("!lvl 44");
             Assert.Equal(ErrorCodes.PetSetupSlot, (await Set(bot, 10001, 11001, 13001, 0)).Result);
@@ -250,7 +250,7 @@ public sealed partial class TowerPetTests : IAsyncLifetime
             view => view.Bases.Any(e => e.EntityType == 7 && e.EntityTemplateID == 2300130));
         Assert.Contains(substitute.Bases, e => e.EntityType == 7 && e.Owner == (long)bot.Self!.Uuid);
         Assert.All(substitute.Bases.Where(e => e.EntityType == 7), e => Assert.Equal(1, e.EntityCamp));
-        Assert.Equal(new[] { 11001, 13001 }, a.Pets.Select(p => p.PetId).Order());
+        Assert.Equal([11001, 13001], a.Pets.Select(p => p.PetId).Order());
         await Service<GameLoop>().InvokeAsync(() =>
         {
             var second = a.Pets.Single(p => p.PetId == 11001);
@@ -265,9 +265,9 @@ public sealed partial class TowerPetTests : IAsyncLifetime
             state => state.PetDeadState.GetValueOrDefault(11001) == 1);
         await Next(bot, GameAoiSink.SyncAoiView, AoIViewChangeData.Parser,
             view => view.Bases.Any(e => e.EntityType == 7 && e.EntityTemplateID == 2300150 && e.EntityCamp == 1));
-        Assert.Equal(new[] { 12001, 13001 }, a.Pets.Select(p => p.PetId).Order());
-        Assert.Equal(new[] { 10001, 11001, 13001, 12001 }, Service<RoleStore>().LoadTower((long)bot.Self!.Uuid) is { } saved
-            ? DBClimTower.Parser.ParseFrom(saved).PetIds.ToArray() : []);
+        Assert.Equal([12001, 13001], a.Pets.Select(p => p.PetId).Order());
+        Assert.Equal([10001, 11001, 13001, 12001], Service<RoleStore>().LoadTower((long)bot.Self!.Uuid) is { } saved
+            ? [.. DBClimTower.Parser.ParseFrom(saved).PetIds] : []);
         long oldInstance = a.InstanceId;
         var towerPetUids = a.Pets.Select(p => (ulong)p.Uid).ToArray();
         int exitEventStart = bot.Inbox.Snapshot().Count;
@@ -285,7 +285,7 @@ public sealed partial class TowerPetTests : IAsyncLifetime
         var next = await Enter(bot); // also requires an empty 32809 to clear both previous deaths
         Assert.NotEqual(oldInstance, next.InstanceId);
         Assert.Empty(next.DeadPetIds);
-        Assert.Equal(new[] { 10001, 11001 }, next.Pets.Select(p => p.PetId).Order());
+        Assert.Equal([10001, 11001], next.Pets.Select(p => p.PetId).Order());
         Assert.All(next.Pets, p => Assert.True(p.Hp > 0));
     }
 
@@ -347,7 +347,7 @@ public sealed partial class TowerPetTests : IAsyncLifetime
         // World.Join sends all already spawned units in one AOI batch.
         var pets = await Next(bot, GameAoiSink.SyncAoiView, AoIViewChangeData.Parser,
             v => v.Bases.Count(e => e.EntityType == 7) == 2);
-        Assert.Equal(new[] { 2300160UL, 2300440UL }, pets.Bases.Where(e => e.EntityType == 7)
+        Assert.Equal([2300160UL, 2300440UL], pets.Bases.Where(e => e.EntityType == 7)
             .Select(e => e.EntityTemplateID).Order());
         Assert.All(pets.Bases.Where(e => e.EntityType == 7), e =>
         {

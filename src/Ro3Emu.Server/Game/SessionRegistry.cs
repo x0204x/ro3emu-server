@@ -50,7 +50,7 @@ public sealed class SessionRegistry(ILogger<SessionRegistry> log, Ownership.Owne
             session.AccountGeneration = checked(generation + 1);
             _generations[session.Account!] = session.AccountGeneration;
             _byAccount[session.Account!] = session;
-            _snapshot = _byAccount.Values.ToArray();
+            _snapshot = [.. _byAccount.Values];
         }
         if (previous == null || previous == session) return;
         // Claim the newest account generation before any kick send or old cleanup can suspend.
@@ -83,7 +83,7 @@ public sealed class SessionRegistry(ILogger<SessionRegistry> log, Ownership.Owne
             if (session.Account != null && _byAccount.TryGetValue(session.Account, out var current) && current == session)
             {
                 _byAccount.Remove(session.Account);
-                _snapshot = _byAccount.Values.ToArray();
+                _snapshot = [.. _byAccount.Values];
                 UnregisteredForTest?.Invoke(session);
             }
         }

@@ -14,13 +14,13 @@ public sealed class PublicLineManager(GameData data, World world)
     }
     private sealed class Line(RuntimeMapKey map) { public RuntimeMapKey Map = map; public bool Closing; }
     private readonly object _gate = new();
-    private readonly Dictionary<RuntimeMapKey, Line> _lines = new();
-    private readonly Dictionary<long, int> _lastLine = new();
-    private readonly Dictionary<GameSession, Reservation> _reservations = new();
+    private readonly Dictionary<RuntimeMapKey, Line> _lines = [];
+    private readonly Dictionary<long, int> _lastLine = [];
+    private readonly Dictionary<GameSession, Reservation> _reservations = [];
     private long _token;
     private bool _sweeping;
-    public List<Func<RuntimeMapKey, bool>> HasPendingWork { get; } = new();
-    public List<Func<RuntimeMapKey, Task>> Retiring { get; } = new();
+    public List<Func<RuntimeMapKey, bool>> HasPendingWork { get; } = [];
+    public List<Func<RuntimeMapKey, Task>> Retiring { get; } = [];
 
     public (int Soft, int Hard, bool Create) Limits(long scene)
     {
@@ -99,11 +99,11 @@ public sealed class PublicLineManager(GameData data, World world)
         lock (_gate)
         {
             var limits = Limits(scene);
-            return _lines.Values.Where(l => l.Map.SceneEntry == scene && !l.Closing).OrderBy(l => l.Map.Id).Select(l =>
+            return [.. _lines.Values.Where(l => l.Map.SceneEntry == scene && !l.Closing).OrderBy(l => l.Map.Id).Select(l =>
             {
                 int players = world.PlayersIn(l.Map.WorldScene).Count;
                 return new LineInfo(l.Map, players, Load(l) - players, limits.Soft, limits.Hard);
-            }).ToArray();
+            })];
         }
     }
 
@@ -115,7 +115,7 @@ public sealed class PublicLineManager(GameData data, World world)
         try
         {
             Line[] candidates;
-            lock (_gate) candidates = _lines.Values.Where(l => l.Map.Id > 1 && !l.Closing && Load(l) == 0).ToArray();
+            lock (_gate) candidates = [.. _lines.Values.Where(l => l.Map.Id > 1 && !l.Closing && Load(l) == 0)];
             foreach (var line in candidates)
             {
                 lock (_gate)

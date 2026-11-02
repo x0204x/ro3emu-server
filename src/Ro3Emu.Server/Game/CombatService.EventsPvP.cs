@@ -12,7 +12,7 @@ namespace Ro3Emu.Server.Game;
 public sealed partial class CombatService
 {
     private sealed record EventAttack(GameSession Target, int SkillId, long NextSwing, float StartX, float StartZ);
-    private readonly Dictionary<GameSession, EventAttack> _eventAttacks = new();
+    private readonly Dictionary<GameSession, EventAttack> _eventAttacks = [];
     private Func<GameSession, GameSession, bool>? _eventCanFight;
     private Func<GameSession, GameSession, Task>? _eventPlayerKilled;
 
@@ -38,7 +38,7 @@ public sealed partial class CombatService
     {
         float radius = (row.TryGetProperty("_kRange", out var range) && range.ValueKind == JsonValueKind.Array
             && range.GetArrayLength() > 0 ? (float)(Data.GameData.Number(range[0]) ?? 300) : 300) / 100f;
-        return _sessions.All().Where(p => CanPlayerHit(source, p) && PlayerDistance(source, p) <= radius + .5f).ToArray();
+        return [.. _sessions.All().Where(p => CanPlayerHit(source, p) && PlayerDistance(source, p) <= radius + .5f)];
     }
 
     private async Task SwingEventAsync(GameSession source, GameSession target, int skillId, long session)
@@ -103,7 +103,7 @@ public sealed partial class CombatService
                     DstElement = DefenceElement(target), IsDead = hp == 0 } }
                 };
                 var sourceViewers = CurrentPlayerHit(source, target, attackerRole, targetRole, sceneId)
-                    ? _world.Viewers(source).Append(source) : Enumerable.Empty<GameSession>();
+                    ? _world.Viewers(source).Append(source) : [];
                 var hitViewers = sourceViewers.Concat(_world.Viewers(target)).Append(target).Distinct().ToArray();
                 await SendHitBulletsAsync(hitViewers, row, hit, attackerRole.Id, scheduledBulletTarget);
                 foreach (var viewer in hitViewers) await viewer.SendGameAsync(SkillHit, hit);

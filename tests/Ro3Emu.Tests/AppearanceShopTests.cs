@@ -80,7 +80,7 @@ public sealed class AppearanceShopTests : IAsyncLifetime
     private async Task Gm(string command, string account = "fashionalice")
     {
         using var client = new HttpClient();
-        (await client.PostAsync(_http + "/ro3emu/gm?account=" + account, new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync(_http + "/ro3emu/gm?account=" + account, Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     private static async Task<T> Next<T>(BotClient bot, uint id, MessageParser<T> parser, Func<T, bool>? match = null) where T : IMessage<T> =>
@@ -188,8 +188,8 @@ public sealed class AppearanceShopTests : IAsyncLifetime
         var opening = Cut();
         var reply = await Batch(bot, (Stroll, 1, 680), (Potions, 2, 1000));
         Assert.Equal(0, reply.Result);
-        Assert.Equal(new[] { (Stroll, 0, 1), (Potions, 0, 2) },
-            reply.Results.Select(r => (r.CommodityId, r.Result, r.BuyTimes)).ToArray());
+        Assert.Equal([(Stroll, 0, 1), (Potions, 0, 2)],
+            [.. reply.Results.Select(r => (r.CommodityId, r.Result, r.BuyTimes))]);
         Assert.Equal(crystals - 680, Crystals);
         Assert.Equal(zeny - 2000, Service<CharacterService>().CountOf(Alice, 1));
         Assert.Equal(potions + 2, Bag(PotionItem));
@@ -294,9 +294,9 @@ public sealed class AppearanceShopTests : IAsyncLifetime
 
         var reply = await Batch(bot, (9900001, 1, 1880), (9900002, 1, 10), (9900003, 1, 1880), (9900004, 1, 1880),
             (9900005, 1, 1880), (9900006, 1, 1880), (1011001, 1, 1000), (424242, 1, 1));
-        Assert.Equal(new[] { ErrorCodes.ShopNoConfig, ErrorCodes.ShopNoConfig, ErrorCodes.ShopAppearanceMissing,
-                ErrorCodes.ShopRewardMissing, ErrorCodes.ShopNoConfig, ErrorCodes.ShopAppearanceMissing },
-            reply.Results.Take(6).Select(r => r.Result).ToArray());
+        Assert.Equal([ ErrorCodes.ShopNoConfig, ErrorCodes.ShopNoConfig, ErrorCodes.ShopAppearanceMissing,
+                ErrorCodes.ShopRewardMissing, ErrorCodes.ShopNoConfig, ErrorCodes.ShopAppearanceMissing ],
+            [.. reply.Results.Take(6).Select(r => r.Result)]);
         Assert.All(reply.Results, r => Assert.NotEqual(0, r.Result));
         Assert.Equal(ErrorCodes.ShopNoConfig, reply.Result);
         Assert.Equal(ErrorCodes.ShopNoConfig, (await Buy(bot, 9900001, price: 1880)).Result);

@@ -25,7 +25,7 @@ public static class GiftCodeEndpoints
             // sets application/json, but nothing else here depends on it. game_code and the GameCode header are not
             // checked: this server hosts one game.
             var body = await ReadAsync(request);
-            if (!limiter.TryAcquire(request.HttpContext.Connection.RemoteIpAddress, null))
+            if (!limiter.TryAcquire(request.HttpContext))
                 return Reply(GiftCodeService.Answer(ErrorCodes.GiftCardRateLimited));
             if (body == null) return Reply(GiftCodeService.Answer(ErrorCodes.GiftCardBadRequest));
             return Reply(await gifts.RedeemAsync(body));

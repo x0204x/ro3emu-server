@@ -61,7 +61,7 @@ public sealed class EquipmentPlansLockTests : IAsyncLifetime
     private async Task Gm(string line)
     {
         using var http = new HttpClient();
-        var resp = await http.PostAsync($"{_http}/ro3emu/gm?account=alice", new StringContent(line));
+        var resp = await http.PostAsync($"{_http}/ro3emu/gm?account=alice", Operator.Command(line));
         resp.EnsureSuccessStatusCode();
     }
 
@@ -120,7 +120,7 @@ public sealed class EquipmentPlansLockTests : IAsyncLifetime
         await using var alice = await InWorld("Alice");
         var bag = await Next(alice, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser);
         var initial = await Next(alice, CharacterService.EquipSync, DBEquipInfoIncrement.Parser);
-        Assert.Equal(new[] { 0, 1, 2 }, initial.EquipPlans.Keys.Order());
+        Assert.Equal([0, 1, 2], initial.EquipPlans.Keys.Order());
         long dagger = bag.PackInfo[2].All.Items.Values.Single(i => i.ItemEntry == Dagger).ItemGuid;
         long shirt = bag.PackInfo[2].All.Items.Values.Single(i => i.ItemEntry == Shirt).ItemGuid;
         await Equip(alice, dagger, 1);

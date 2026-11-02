@@ -101,7 +101,7 @@ public sealed partial class NewActivityService
 
 public sealed partial class ActivityRuntimeState
 {
-    public Dictionary<long, MonthCardRuntime> MonthCards { get; set; } = new();
+    public Dictionary<long, MonthCardRuntime> MonthCards { get; set; } = [];
 }
 
 public sealed class MonthCardRuntime

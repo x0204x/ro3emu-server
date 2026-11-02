@@ -42,8 +42,8 @@ public static partial class TraditionalChineseMapBuilder
         Write(Path.Combine(destination, TextFile), texts.Select(p => (p.Key, p.Value)));
         Write(Path.Combine(destination, SidFile), sids.Select(p => (p.Key.ToString(CultureInfo.InvariantCulture), p.Value)));
         return new(simplified.Keys.Union(english.Keys).Count(), sids.Count, texts.Count,
-            votes.Count(p => p.Value.Count > 1), missing.ToArray(), mismatches.ToArray(),
-            knownSids.Where(id => !sids.ContainsKey(id)).Order().Select(id => id.ToString(CultureInfo.InvariantCulture)).ToArray());
+            votes.Count(p => p.Value.Count > 1), [.. missing], [.. mismatches],
+            [.. knownSids.Where(id => !sids.ContainsKey(id)).Order().Select(id => id.ToString(CultureInfo.InvariantCulture))]);
     }
 
     private static Dictionary<string, string> ReadTable(string path)

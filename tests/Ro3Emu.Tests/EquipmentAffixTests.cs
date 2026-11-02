@@ -69,7 +69,7 @@ public sealed class EquipmentAffixTests : IAsyncLifetime
     private async Task Gm(string command)
     {
         using var http = new HttpClient();
-        var reply = await http.PostAsync($"{_http}/ro3emu/gm?account=alice", new StringContent(command));
+        var reply = await http.PostAsync($"{_http}/ro3emu/gm?account=alice", Operator.Command(command));
         reply.EnsureSuccessStatusCode();
     }
 
@@ -79,7 +79,7 @@ public sealed class EquipmentAffixTests : IAsyncLifetime
         await grant();
         var bag = await Next(bot, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser, b =>
             b.PackInfo.GetValueOrDefault(2)?.Inc?.Items.Values.Any(i => i.All?.ItemEntry == entry && !before.Contains(i.All.ItemGuid)) == true);
-        return bag.PackInfo[2].Inc.Items.Values.Where(i => i.All?.ItemEntry == entry && !before.Contains(i.All.ItemGuid)).Select(i => i.All).ToArray();
+        return [.. bag.PackInfo[2].Inc.Items.Values.Where(i => i.All?.ItemEntry == entry && !before.Contains(i.All.ItemGuid)).Select(i => i.All)];
     }
 
     private Task<ItemBaseInfo[]> Give(BotClient bot, int entry, int count = 1) => Granted(bot, entry, () => Gm($"!item {entry} {count}"));
@@ -105,8 +105,8 @@ public sealed class EquipmentAffixTests : IAsyncLifetime
         .TakeWhile(i => item.ItemInfos.ContainsKey(100 + i) && item.ItemInfos.ContainsKey(140 + i))
         .ToDictionary(i => (int)item.ItemInfos[100 + i].LongVal, i => item.ItemInfos[140 + i].LongVal);
 
-    private static long[] Specials(ItemBaseInfo item) => Enumerable.Range(80, 10)
-        .TakeWhile(item.ItemInfos.ContainsKey).Select(i => item.ItemInfos[i].LongVal).ToArray();
+    private static long[] Specials(ItemBaseInfo item) => [.. Enumerable.Range(80, 10)
+        .TakeWhile(item.ItemInfos.ContainsKey).Select(i => item.ItemInfos[i].LongVal)];
 
     private void AssertRoll(ItemBaseInfo item)
     {
@@ -155,7 +155,7 @@ public sealed class EquipmentAffixTests : IAsyncLifetime
             });
             Assert.Equal(ErrorCodes.FeatureUnavailable, (await Appraise(bot, unappraised[0].ItemGuid)).Result);
             await Gm("!quest done 10103020");
-            var reply = await Appraise(bot, unappraised.Select(i => i.ItemGuid).ToArray());
+            var reply = await Appraise(bot, [.. unappraised.Select(i => i.ItemGuid)]);
             Assert.Equal(0, reply.Result);
             Assert.Equal(24, reply.AppraiseResult.Count);
             foreach (var item in reply.AppraiseResult)
@@ -243,7 +243,7 @@ public sealed class EquipmentAffixTests : IAsyncLifetime
         await using var bot = await InWorld();
         await Gm("!quest done 10103020");
         var gear = await Give(bot, Red, 24);
-        var reply = await Appraise(bot, gear.Select(i => i.ItemGuid).ToArray());
+        var reply = await Appraise(bot, [.. gear.Select(i => i.ItemGuid)]);
         Assert.Equal(0, reply.Result);
         Assert.Equal(24, reply.AppraiseResult.Count);
         var guaranteed = Data.Table("EquipSpecialGroupConfig").Values.Where(r => GameData.Int(r, "_iGroup") == 40101)
@@ -269,7 +269,7 @@ public sealed class EquipmentAffixTests : IAsyncLifetime
         var item = Assert.Single(await Give(bot, FixedArmor));
         AssertRoll(item);
         Assert.Equal(new Dictionary<int, long> { [1] = 7, [2] = 7 }, Entries(item));
-        Assert.Equal(new long[] { 10010505 }, Specials(item)); // guaranteed 50303 -> refine-step Hit +25
+        Assert.Equal([10010505], Specials(item)); // guaranteed 50303 -> refine-step Hit +25
         await Wear(bot, item.ItemGuid, 3);
         long hit = Service<CharacterService>().Stats(Session)[209];
         var character = Service<CharacterService>();
@@ -310,7 +310,7 @@ public sealed class EquipmentAffixTests : IAsyncLifetime
         // Explicit synthetic exclusion fixture, not evidence of the unavailable original exclusion-table contents.
         SetRow("EquipConfig", entry, ChangedRow("EquipConfig", entry,
             ("_iEntries", 99100), ("_kFixedEntries", new[] { new[] { 1, 9 } }), ("_kFixedSpecialAttribute", new[] { 1 }),
-            ("_kSpecial", new[] { new[] { 99100, 10000 }, new[] { 99101, 10000 }, new[] { 1, 10000 } })));
+            ("_kSpecial", new[] { new[] { 99100, 10000 }, [99101, 10000], [1, 10000] })));
         SetRow("EquipAttriGroupConfig", 99100, new { _iID = 99100, _iGroup = 99100, _iAttriID = 1, _iMin = 99, _iMax = 99, _iWeight = 1000 });
         SetRow("EquipAttriGroupConfig", 99101, new { _iID = 99101, _iGroup = 99100, _iAttriID = 2, _iMin = 7, _iMax = 7, _iWeight = 1 });
         SetRow("EquipAttriGroupConfig", 99102, new { _iID = 99102, _iGroup = 99100, _iAttriID = 2, _iMin = 7, _iMax = 7, _iWeight = 1000 });
@@ -321,7 +321,7 @@ public sealed class EquipmentAffixTests : IAsyncLifetime
         await using var bot = await InWorld();
         var item = Assert.Single(await Give(bot, entry));
         Assert.Equal(new Dictionary<int, long> { [1] = 9, [2] = 7, [3] = 8 }, Entries(item));
-        Assert.Equal(new long[] { 1, 3 }, Specials(item)); // special 2 conflicts with fixed 1; zero never occupies a slot
+        Assert.Equal([1, 3], Specials(item)); // special 2 conflicts with fixed 1; zero never occupies a slot
         Assert.False(item.ItemInfos.ContainsKey(82));
         Assert.False(item.ItemInfos.ContainsKey(103));
         Assert.True(item.ItemInfos[2].LongVal > 0);
@@ -332,7 +332,7 @@ public sealed class EquipmentAffixTests : IAsyncLifetime
     {
         // Raise MATK above the conversion step so the test exercises a nonzero type-8 bonus.
         var basic = EquipmentAffixes.Rows(Data.Row("EquipConfig", FixedArmor)!.Value, "_kBasicAttribute")
-            .Append(new long[] { 104, 300, 300 }).ToArray();
+            .Append([104, 300, 300]).ToArray();
         SetRow("EquipConfig", FixedArmor, ChangedRow("EquipConfig", FixedArmor,
             ("_kBasicAttribute", basic), ("_kSpecial", Array.Empty<int[]>()),
             ("_kFixedSpecialAttribute", new[] { 10010404, 10020402, 10020404, 10020401 })));
@@ -363,6 +363,7 @@ public sealed class EquipmentAffixTests : IAsyncLifetime
                 // The exact recovery assertion starts at 1 HP; exclude unrelated five-second combat regeneration.
                 s.LastCombatMs = MonsterService.NowMs;
                 s.StatusBits |= 1L << 15;
+                s.NoRegenUntilMs = MonsterService.NowMs + 10000; // fighting no longer pauses regeneration
                 await Service<CharacterService>().SetHpSpAsync(s, 1, null);
             }));
         await bot.SendGameAsync(CharacterService.ItemUse, new ItemUseReq { ItemGuid = potion, ItemCount = 1 });
@@ -412,7 +413,7 @@ public sealed class EquipmentAffixTests : IAsyncLifetime
             var bag = await Next(again, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser);
             repaired = bag.PackInfo[2].All.Items[guid];
             AssertRoll(repaired);
-            Assert.Equal(new long[] { 10010404 }, Specials(repaired));
+            Assert.Equal([10010404], Specials(repaired));
             Assert.All(oldAttrs, p => Assert.Equal(p.Value, repaired.ItemInfos[p.Key].LongVal));
             Assert.Equal("legacy creator", repaired.ItemInfos[10000].StrVal);
             var saved = Stored(guid);

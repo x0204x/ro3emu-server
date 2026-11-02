@@ -13,7 +13,7 @@ public sealed class LoadTestReplyStateTests
     {
         var reducer = new WorldReducer();
         for (uint id = 1; id <= 32; id++)
-            reducer.RecordReply(new BotEvent(BotEventKind.Game) { MsgId = id, Body = Enumerable.Repeat((byte)id, 300).ToArray() }, id);
+            reducer.RecordReply(new BotEvent(BotEventKind.Game) { MsgId = id, Body = [.. Enumerable.Repeat((byte)id, 300)] }, id);
 
         var first = reducer.Snapshot();
         Assert.Equal(32, first.LastReplies.Count);

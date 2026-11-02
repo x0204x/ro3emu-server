@@ -87,9 +87,9 @@ public sealed partial class TowerService
         /// <summary>The PowerSuppressConfig buff put on every floor monster and its damage changes (TowerService.PowerSuppress).</summary>
         internal Suppression Suppressed { get; init; }
         public IReadOnlyList<MonsterUnit> Monsters => Room.Monsters;
-        public List<TowerPetUnit> Pets { get; } = new();
-        public HashSet<int> DeadPetIds { get; } = new();
-        public HashSet<long> Killed { get; } = new();
+        public List<TowerPetUnit> Pets { get; } = [];
+        public HashSet<int> DeadPetIds { get; } = [];
+        public HashSet<long> Killed { get; } = [];
         public bool Loaded { get; set; }
         public bool Settled { get; set; }
         public bool ClearCommitted { get; set; }
@@ -112,8 +112,7 @@ public sealed partial class TowerService
     private List<JsonElement> Floors()
     {
         int playBook = _seasons.PlayBook;
-        return _data.Table("PetFloorConfig").Values.Where(r => FitsPlayBook(r, playBook))
-            .OrderBy(r => GameData.Int(r, "_iFloor")).ToList();
+        return [.. _data.Table("PetFloorConfig").Values.Where(r => FitsPlayBook(r, playBook)).OrderBy(r => GameData.Int(r, "_iFloor"))];
     }
 
     /// <summary>LC_SeasonHelper.GetMultiverseFitSeason: empty/[0], explicit membership, or [minimum,-1].</summary>
@@ -132,9 +131,9 @@ public sealed partial class TowerService
     public int HighestClearedFloor(GameSession s) => s.Tower == null ? 0 : Cleared(s);
 
     /// <summary>After a committed floor clear is applied to the session (achievement 101014); listeners post their work.</summary>
-    public List<Action<GameSession>> FloorCleared { get; } = new();
+    public List<Action<GameSession>> FloorCleared { get; } = [];
     /// <summary>After a floor attempt's 32802 result, won or lost (quest targets 101007 / 101010); listeners post.</summary>
-    public List<Action<GameSession, bool>> Settled { get; } = new();
+    public List<Action<GameSession, bool>> Settled { get; } = [];
     private Task SyncAsync(GameSession s) => CharacterService.SyncAsync(s, TowerSync, s.Tower!.Clone());
     private async Task SaveAsync(GameSession s, DBClimTower next)
     {
@@ -209,7 +208,7 @@ public sealed partial class TowerService
         // Mid-fight edits would otherwise despawn/recreate an injured actor at full HP. The UI permits
         // formation requests, but a combat-time swap contract is unproven; reject until settlement (inferred).
         int code = s.TowerAttempt is { Settled: false } ? ErrorCodes.PetOperation
-            : FormationCode(s, req.Pets.ToArray());
+            : FormationCode(s, [.. req.Pets]);
         if (code == 0)
         {
             var next = s.Tower!.Clone();
@@ -309,7 +308,7 @@ public sealed partial class TowerService
             : GameData.Int(floor.Value, "_iFloor") > Cleared(s) + 1 ? ErrorCodes.Parameter
             : req.IsInClimTower != (s.TowerAttempt != null) || s.TowerAttempt is { Settled: false } ? ErrorCodes.Parameter : 0;
         // A saved formation can outlive ownership/level changes; entry must apply the same slot rules as 32803.
-        if (error == 0) error = FormationCode(s, s.Tower!.PetIds.ToArray());
+        if (error == 0) error = FormationCode(s, [.. s.Tower!.PetIds]);
         long mapId = floor is { } f ? GameData.Int(f, "_iMapID") : 0;
         var map = error == 0 ? _worldData.Map(mapId) : null;
         var spawns = error == 0 && map != null ? Expand(floor!.Value, map) : null;
@@ -461,8 +460,7 @@ public sealed partial class TowerService
         (long Guid, InvItem Item, int Stack)[] before = [];
         // Capture after ordinary loot is staged under the same owner lock. A new ordinary stack
         // still has GUID 0 here, so its object identity is retained until ApplyGuids publishes it.
-        settlement.BeforeAdditionalGoods = () => before = s.Items
-            .Select(item => (item.Guid, item, item.Stack)).ToArray();
+        settlement.BeforeAdditionalGoods = () => before = [.. s.Items.Select(item => (item.Guid, item, item.Stack))];
         settlement.AdditionalGoods.AddRange(goods);
         settlement.Enlist = tx =>
         {

@@ -13,7 +13,7 @@ internal static class EquipmentAffixes
 {
     // Stage G: a roll's pools are fixed per (table, quality or group). Scanning the whole table with by-name JSON
     // lookups for every rolled item was a third of a new role's first login (the starter kit). Tables load once.
-    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<GameData, Dictionary<(string Table, long Key), JsonElement[]>> Pools = new();
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<GameData, Dictionary<(string Table, long Key), JsonElement[]>> Pools = [];
     private static readonly Dictionary<string, (string Field, Func<JsonElement, bool> Fixed)> PoolRules = new()
     {
         ["EquipAttriRandom"] = ("_iQuality", r => GameData.Int(r, "_iWeight") > 0),
@@ -26,15 +26,15 @@ internal static class EquipmentAffixes
     /// <summary>The table's rows for the key passing the table's fixed rule, in table order; a fresh list per call.</summary>
     private static List<JsonElement> Pool(GameData data, string table, long key)
     {
-        var cache = Pools.GetValue(data, _ => new());
+        var cache = Pools.GetValue(data, _ => []);
         JsonElement[]? rows;
         lock (cache)
             if (!cache.TryGetValue((table, key), out rows))
             {
                 var (field, rule) = PoolRules[table];
-                cache[(table, key)] = rows = data.Table(table).Values.Where(r => GameData.Int(r, field) == key && rule(r)).ToArray();
+                cache[(table, key)] = rows = [.. data.Table(table).Values.Where(r => GameData.Int(r, field) == key && rule(r))];
             }
-        return new List<JsonElement>(rows);
+        return [.. rows];
     }
 
     internal const int EntryKey = 100, EntryValue = 140, EntrySlots = 20, SpecialKey = 80, SpecialSlots = 10;
@@ -57,7 +57,7 @@ internal static class EquipmentAffixes
     {
         if (Config(item.Entry, data) is not { } equip || data.Row("ItemConfig", item.Entry) is not { } config)
             throw new InvalidDataException($"Equipment {item.Entry} has no config");
-        item.Attrs ??= new();
+        item.Attrs ??= [];
         if (!item.Attrs.ContainsKey(30)) RollBase(item.Attrs, config, equip, data);
         RollAffixes(item.Attrs, config, equip, data);
         item.Attrs[3] = 1;

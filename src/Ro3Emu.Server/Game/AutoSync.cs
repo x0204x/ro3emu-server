@@ -41,10 +41,9 @@ public static class AutoSync
     }
 
     private static readonly Lazy<IReadOnlyList<FileDescriptor>> Files = new(() =>
-        typeof(Romsg.RoleBaseInfo).Assembly.GetTypes()
+        [.. typeof(Romsg.RoleBaseInfo).Assembly.GetTypes()
             .Where(t => t.Name.EndsWith("Reflection", StringComparison.Ordinal) && t.GetProperty("Descriptor")?.GetValue(null) is FileDescriptor)
-            .Select(t => (FileDescriptor)t.GetProperty("Descriptor")!.GetValue(null)!)
-            .ToList());
+            .Select(t => (FileDescriptor)t.GetProperty("Descriptor")!.GetValue(null)!)]);
 
     private static IEnumerable<FileDescriptor> AllFiles(FileDescriptor _) => Files.Value;
 

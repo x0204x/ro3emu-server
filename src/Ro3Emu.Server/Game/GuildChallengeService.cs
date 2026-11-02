@@ -66,7 +66,7 @@ public sealed partial class GuildChallengeService : IGameTicker
             scope.Dispose();
         }
     }
-    private readonly Dictionary<long, DungeonService.Attempt> _runs = new();
+    private readonly Dictionary<long, DungeonService.Attempt> _runs = [];
     private long _lastSweep;
     private long? _testCycle;
     private bool _sweeping;
@@ -98,16 +98,16 @@ public sealed partial class GuildChallengeService : IGameTicker
         public int Stage { get; set; }
         public bool Selected { get; set; }
         public bool Complete { get; set; }
-        public Dictionary<int, int> Progress { get; set; } = new();
-        public Dictionary<int, int> BestTimeMs { get; set; } = new();
-        public List<int> AuctionEntries { get; set; } = new();
+        public Dictionary<int, int> Progress { get; set; } = [];
+        public Dictionary<int, int> BestTimeMs { get; set; } = [];
+        public List<int> AuctionEntries { get; set; } = [];
     }
 
     public sealed class PersonalState
     {
         // (inferred) Once per ordinal stage across difficulties, matching Whale's merged GotStageRewardInfo.
         // Keys include the season and schedule occurrence, not guild membership; switching guild cannot reset a claim.
-        public Dictionary<string, int> Granted { get; set; } = new();
+        public Dictionary<string, int> Granted { get; set; } = [];
     }
 
     public sealed record Good(int Entry, int Count, int Bind);
@@ -125,10 +125,10 @@ public sealed partial class GuildChallengeService : IGameTicker
         public int StageTimeMs { get; set; }
         public int PassTimeMs { get; set; }
         public bool NewRecord { get; set; }
-        public Dictionary<long, List<Good>> Personal { get; set; } = new();
-        public HashSet<long> Delivered { get; set; } = new();
+        public Dictionary<long, List<Good>> Personal { get; set; } = [];
+        public HashSet<long> Delivered { get; set; } = [];
         public bool AuctionPublished { get; set; }
-        public List<int> AuctionEntries { get; set; } = new();
+        public List<int> AuctionEntries { get; set; } = [];
     }
 
     internal sealed class Run
@@ -149,7 +149,7 @@ public sealed partial class GuildChallengeService : IGameTicker
     private JsonElement? Config(int difficulty) => Configs.Where(r => GameData.Int(r, "_iLevel") == difficulty)
         .Select(r => (JsonElement?)r).FirstOrDefault();
     private static int[] Values(JsonElement row, string field) => row.TryGetProperty(field, out var a) && a.ValueKind == JsonValueKind.Array
-        ? a.EnumerateArray().Select(n => (int)(GameData.Number(n) ?? 0)).ToArray() : [];
+        ? [.. a.EnumerateArray().Select(n => (int)(GameData.Number(n) ?? 0))] : [];
     private static string Claim(int season, long cycle, int stage) => $"{season}:{cycle}:{stage}";
     private static string CompletionKey(Clear clear) => $"{clear.Guild}:{clear.Season}:{clear.Cycle}:{clear.Difficulty}:{clear.Stage}";
     private EconomyAsset Asset(int entry)
@@ -486,7 +486,7 @@ public sealed partial class GuildChallengeService : IGameTicker
     }
 
     /// <summary>A settled stage attempt, won or lost, for each guild member present (quest target 103014); listeners post.</summary>
-    public List<Action<GameSession>> Participated { get; } = new();
+    public List<Action<GameSession>> Participated { get; } = [];
 
     internal async Task SettleAsync(DungeonService.Attempt a, bool won)
     {
@@ -536,7 +536,7 @@ public sealed partial class GuildChallengeService : IGameTicker
                             bool alreadyEarned = Personal(s).Granted.ContainsKey(Claim(a.SeasonId, run.Cycle, run.Stage))
                                 || prior.Any(c => c.Personal.TryGetValue(role, out var priorGoods) && priorGoods.Count > 0);
                             clear.Personal[role] = alreadyEarned ? []
-                                : Roll(GameData.Int(stage, "_kRewardStagePersonal"), s).Select(g => new Good(g.Entry, g.Count, g.Bind)).ToList();
+                                : [.. Roll(GameData.Int(stage, "_kRewardStagePersonal"), s).Select(g => new Good(g.Entry, g.Count, g.Bind))];
                         }
                         state.Progress[run.Difficulty] = Math.Max(state.Progress.GetValueOrDefault(run.Difficulty), run.Stage);
                         int final = Values(Config(run.Difficulty)!.Value, "_kStageId").Max();
@@ -635,10 +635,10 @@ public sealed partial class GuildChallengeService : IGameTicker
         {
             string completion = CompletionKey(clear);
             int result = await _auctions.PublishGuildChallengeAsync(completion, clear.Guild, clear.Challenge, clear.Stage,
-                clear.Personal.Keys.ToArray(), committedParticipants: true, rewardPlayBook: clear.PlayBook, rewardOpenDay: clear.OpenDay);
+                [.. clear.Personal.Keys], committedParticipants: true, rewardPlayBook: clear.PlayBook, rewardOpenDay: clear.OpenDay);
             if (result != 0) { _log.LogWarning("Guild Challenge auction {Clear} deferred: {Result}", clear.Id, result); return; }
             string prefix = $"guild:challenge:{clear.Guild}:{clear.Challenge}:{clear.Stage}:{completion}:";
-            clear.AuctionEntries = _auctionStore.Items().Where(i => i.SourceKey.StartsWith(prefix, StringComparison.Ordinal)).Select(i => i.Entry).ToList();
+            clear.AuctionEntries = [.. _auctionStore.Items().Where(i => i.SourceKey.StartsWith(prefix, StringComparison.Ordinal)).Select(i => i.Entry)];
             clear.AuctionPublished = true;
             // One source per stage, preserving repeated entry IDs representing distinct auction lots.
             var occurrenceEntries = _store.Clears(clear.Guild, clear.Season, clear.Cycle)
@@ -721,9 +721,9 @@ public sealed partial class GuildChallengeService : IGameTicker
     }
 
     private bool TestWindowExpired => _testCycle != null && _schedule.TestWindows.TryGetValue(Activity, out var test) && Now >= test.End;
-    private DungeonService.Attempt[] RunsToStop() => _runs.Values.Where(a => !a.Settled && !a.Room.Closed
+    private DungeonService.Attempt[] RunsToStop() => [.. _runs.Values.Where(a => !a.Settled && !a.Room.Closed
         && (Now >= a.GuildChallenge!.End || !_schedule.IsOpen(Activity)
-            || a.SeasonId != _seasons.SeasonId || a.PlayBook != _seasons.PlayBook)).ToArray();
+            || a.SeasonId != _seasons.SeasonId || a.PlayBook != _seasons.PlayBook))];
 
     public void Tick(GameTime _)
     {

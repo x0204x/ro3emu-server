@@ -14,8 +14,8 @@ public sealed class Vfs : IDisposable
     public readonly record struct Entry(ulong Asset, byte LoadType, ushort Dyn, ulong FileHash, ulong VfsHash);
 
     private readonly string _dir;
-    private readonly Dictionary<ulong, List<Entry>> _bundles = new();
-    private readonly Dictionary<ulong, List<Entry>> _bytes = new();
+    private readonly Dictionary<ulong, List<Entry>> _bundles = [];
+    private readonly Dictionary<ulong, List<Entry>> _bytes = [];
     private readonly Dictionary<string, Container> _containers = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>Extract may run on several threads (the icon export): the container cache and FilesRead are shared.</summary>
     private readonly Lock _gate = new();

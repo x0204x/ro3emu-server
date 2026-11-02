@@ -166,7 +166,7 @@ public sealed partial class NewActivityService
             long awardGroup = 0;
             if (type == 1 && action == 300 && value > 0)
             {
-                try { grants = _awards.Resolve(session, value, Playbook(session)).Grants.ToArray(); }
+                try { grants = [.. _awards.Resolve(session, value, Playbook(session)).Grants]; }
                 catch (AwardResolutionException) { return ErrorCodes.RewardMissing; }
             }
             else if (type is 4 or 5 && action == 302 && value > 0)

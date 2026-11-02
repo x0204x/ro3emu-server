@@ -155,7 +155,7 @@ internal sealed class AuctionRunSavePlan : DbPlan
         _id = run.Id; _before = before is null ? null : (byte[])before.Clone();
         _after = JsonSerializer.SerializeToUtf8Bytes(run);
         var old = before is null ? null : JsonSerializer.Deserialize<AuctionStore.Run>(before);
-        _addedRoles = run.Eligible.Except(old?.Eligible ?? []).Where(role => role > 0).Distinct().ToArray();
+        _addedRoles = [.. run.Eligible.Except(old?.Eligible ?? []).Where(role => role > 0).Distinct()];
     }
     internal override int Bytes => 128 + (_before?.Length ?? 0) + _after.Length;
     internal override string Label => "auction/run-save";
@@ -210,12 +210,12 @@ internal sealed class AuctionItemWritePlan : DbPlan
             throw new InvalidOperationException("Auction item update needs its captured source row.");
         _state = JsonSerializer.SerializeToUtf8Bytes(item);
         var old = _before is null ? null : JsonSerializer.Deserialize<AuctionStore.Item>(_before);
-        _actors = new[] { item.Owner != old?.Owner ? item.Owner : 0,
+        _actors = [.. new[] { item.Owner != old?.Owner ? item.Owner : 0,
                 item.Winner != old?.Winner ? item.Winner : 0 }
             .Concat(item.Eligible.Except(old?.Eligible ?? []))
             .Concat(item.GiveUp.Except(old?.GiveUp ?? []))
             .Concat(item.Joined.Except(old?.Joined ?? []))
-            .Where(role => role > 0).Distinct().ToArray();
+            .Where(role => role > 0).Distinct()];
     }
     internal override int Bytes => 128 + _source.Length * 2 + (_before?.Length ?? 0) + _state.Length;
     internal override string Label => "auction/item";
@@ -332,7 +332,7 @@ internal sealed class AuctionRunClearPlan : DbPlan
         IReadOnlyDictionary<int, long> tiers)
     {
         _runId = runId; _roleId = roleId; _guildId = guildId; _sourceType = sourceType; _playBook = playBook;
-        _tiers = tiers.ToArray();
+        _tiers = [.. tiers];
     }
     internal override int Bytes => 128 + _tiers.Length * 16;
     internal override string Label => "auction/run-clear";

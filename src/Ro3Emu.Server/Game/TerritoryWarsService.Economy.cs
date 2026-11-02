@@ -122,8 +122,8 @@ public sealed partial class TerritoryWarsService
         return new EventEconomyMutation(EventEconomy.Catalog(_data), Guid.NewGuid().ToString("N"),
             actor?.Account ?? "realm", actor?.Role?.Id ?? 0, "event/territory-" + kind, sourceKey,
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            totals.Where(x => x.Delta < 0).Select(x => new EconomyQuantity(x.Asset, -x.Delta)).ToArray(),
-            totals.Where(x => x.Delta > 0).Select(x => new EconomyQuantity(x.Asset, x.Delta)).ToArray(),
+            [.. totals.Where(x => x.Delta < 0).Select(x => new EconomyQuantity(x.Asset, -x.Delta))],
+            [.. totals.Where(x => x.Delta > 0).Select(x => new EconomyQuantity(x.Asset, x.Delta))],
             ownerDeltas, JsonSerializer.SerializeToUtf8Bytes(new
             {
                 Kind = kind, Source = sourceKey,

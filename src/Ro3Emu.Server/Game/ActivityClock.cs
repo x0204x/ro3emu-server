@@ -84,7 +84,7 @@ public sealed class ActivityClock(GameData data, SeasonService seasons, TimeProv
                 if (start >= begin && stop <= end && stop > start) windows.Add(new(state, start, stop, index));
             }
         }
-        return windows.OrderBy(w => w.Start).ThenBy(w => w.End).ToArray();
+        return [.. windows.OrderBy(w => w.Start).ThenBy(w => w.End)];
     }
 
     /// <summary>
@@ -134,7 +134,7 @@ public sealed class ActivityClock(GameData data, SeasonService seasons, TimeProv
         {
             var windows = Segments(id, now, playbook);
             return windows.FirstOrDefault(w => w.Contains(now))
-                ?? windows.FirstOrDefault(w => w.Start > now) ?? windows.LastOrDefault()
+                ?? windows.FirstOrDefault(w => w.Start > now) ?? (windows.Count > 0 ? windows[windows.Count - 1] : null)
                 ?? new Window("Close", 0, 0);
         }
         long begin = TupleTime(row, "_kStartTime", ServerOpen), end = TupleTime(row, "_kEndTime", Forever);
@@ -154,7 +154,7 @@ public sealed class ActivityClock(GameData data, SeasonService seasons, TimeProv
     {
         long now = UtcNow.ToUnixTimeSeconds();
         var all = Segments(id, now, seasons.PlayBook);
-        var window = all.FirstOrDefault(w => w.Contains(now)) ?? all.FirstOrDefault(w => w.Start > now) ?? all.LastOrDefault();
+        var window = all.FirstOrDefault(w => w.Contains(now)) ?? all.FirstOrDefault(w => w.Start > now) ?? (all.Count > 0 ? all[all.Count - 1] : null);
         start = DateTimeOffset.FromUnixTimeSeconds(window?.Start ?? 0);
         end = DateTimeOffset.FromUnixTimeSeconds(window?.End ?? 0);
         return window != null;

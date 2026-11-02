@@ -48,7 +48,7 @@ public sealed class LifeJobTests : IAsyncLifetime
     }
     private async Task Gm(string account, string line)
     {
-        using var c = new HttpClient(); var r = await c.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(line)); r.EnsureSuccessStatusCode();
+        using var c = new HttpClient(); var r = await c.PostAsync($"{_http}/ro3emu/gm?account={account}", Operator.Command(line)); r.EnsureSuccessStatusCode();
     }
     private Task<T> OnLoop<T>(string account, Func<GameSession, T> fn) => _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() =>
         Task.FromResult(fn(_app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == account))));

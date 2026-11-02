@@ -63,8 +63,8 @@ public sealed class EconomyProbeTests : IDisposable
         string malformed = Path.Combine(_directory, "malformed.json");
         File.WriteAllText(malformed, "{\"Snapshot\":{}}");
         Assert.Equal(1, RunReadOnly("compare", Database, Data, "auto", malformed, Path.Combine(_directory, "invalid")));
-        Assert.Equal(64, EconomyProbeCli.Run([]));
-        Assert.Equal(64, EconomyProbeCli.Run(["verify-receipts", Database, Data, "auto", "2", "1", "unused"]));
+        Assert.Equal(64, Ro3Emu.EconomyProbe.EconomyProbeCli.Run([]));
+        Assert.Equal(64, Ro3Emu.EconomyProbe.EconomyProbeCli.Run(["verify-receipts", Database, Data, "auto", "2", "1", "unused"]));
         FixtureSql.Execute(_accounts, "DELETE FROM economy_meta");
         Assert.Equal(1, RunReadOnly("verify-receipts", Database, Data, "auto", "0", "0", Path.Combine(_directory, "missing-meta")));
     }
@@ -75,7 +75,7 @@ public sealed class EconomyProbeTests : IDisposable
         long before = Writes();
         byte[] dbBefore = ReadShared(Database);
         byte[]? walBefore = File.Exists(Database + "-wal") ? ReadShared(Database + "-wal") : null;
-        int result = EconomyProbeCli.Run(args);
+        int result = Ro3Emu.EconomyProbe.EconomyProbeCli.Run(args);
         Assert.Equal(before, Writes());
         Assert.Equal(dbBefore, ReadShared(Database));
         if (walBefore != null) Assert.Equal(walBefore, ReadShared(Database + "-wal"));

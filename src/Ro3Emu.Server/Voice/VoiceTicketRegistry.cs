@@ -14,7 +14,7 @@ public sealed class VoiceTicketRegistry(TimeProvider clock)
     private sealed record Ticket(string Account, byte[] Token, byte[] Secret, DateTimeOffset Expires);
 
     private readonly object _sync = new();
-    private readonly Dictionary<long, Ticket> _byRole = new();
+    private readonly Dictionary<long, Ticket> _byRole = [];
 
     /// <summary>A fresh ticket for <paramref name="roleId"/>, replacing whatever ticket that role already held.</summary>
     public VoiceTicketGrant Issue(string account, long roleId, int ttlSeconds)

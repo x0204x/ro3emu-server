@@ -96,6 +96,7 @@ public sealed partial class PanelBackend
             .Select(g => new PanelMapCount(MapName(g.Key), g.Count()));
         return new PanelDashboard(m.Phase, current.Roles.Count(r => !r.Loading), current.Roles.Count(r => r.Loading), current.Login,
             m.Connections, accountCount, characterCount, m.TicksPerSecond, m.Tick.P50, m.Tick.P99, m.Tick.Max, m.Overruns, m.QueueLength,
-            m.WorkingSetBytes, m.CpuSeconds, m.Gen2Collections, m.Exceptions, m.ErrorLogs, m.Commits, [.. maps]);
+            m.WorkingSetBytes, m.CpuSeconds, m.Gen2Collections, m.Exceptions, m.ErrorLogs, m.Commits,
+            metrics.Owners?.RolesInRecovery ?? 0, [.. maps]);
     }
 }

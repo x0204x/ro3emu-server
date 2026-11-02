@@ -65,7 +65,7 @@ public sealed partial class MvpService
     private const int DefaultMinionLifeMs = 15_000;
     private const long FieldUidBase = 1L << 55;
     private long _fieldSerial;
-    private readonly Dictionary<int, IReadOnlyList<BossSkillPlan>> _plans = new();
+    private readonly Dictionary<int, IReadOnlyList<BossSkillPlan>> _plans = [];
     private HashSet<int>? _frenzyNpcs;
 
     internal IReadOnlyList<BossSkillPlan> Plans(int bossNpc)
@@ -385,8 +385,7 @@ public sealed partial class MvpService
 
     private bool Frenzied(MonsterUnit m)
     {
-        _frenzyNpcs ??= BossSkillIds.Keys.Where(boss => Plans(boss).Any(p => p.Kind == BossSkillKind.SelfBuff))
-            .SelectMany(boss => Plans(boss).Where(p => p.Minions != null).Select(p => p.Minions!.Npc).Append(boss)).ToHashSet();
+        _frenzyNpcs ??= [.. BossSkillIds.Keys.Where(boss => Plans(boss).Any(p => p.Kind == BossSkillKind.SelfBuff)).SelectMany(boss => Plans(boss).Where(p => p.Minions != null).Select(p => p.Minions!.Npc).Append(boss))];
         return _frenzyNpcs.Contains(m.Template.NpcId);
     }
 
@@ -410,7 +409,7 @@ public sealed partial class MvpService
 
     private static int[] Ints(JsonElement row, string field) =>
         row.TryGetProperty(field, out var list) && list.ValueKind == JsonValueKind.Array
-            ? list.EnumerateArray().Select(v => (int)(GameData.Number(v) ?? 0)).ToArray() : [];
+            ? [.. list.EnumerateArray().Select(v => (int)(GameData.Number(v) ?? 0))] : [];
 
     private static IEnumerable<(int Buff, int Ms)> BuffTuples(JsonElement row, string field) =>
         row.TryGetProperty(field, out var list) && list.ValueKind == JsonValueKind.Array

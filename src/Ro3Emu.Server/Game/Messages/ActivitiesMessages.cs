@@ -143,6 +143,14 @@ public sealed class ActivitiesMessages(PraiseService praise, CasualBattleService
         {
             await activities.CommonAsync(session, CommonActivityReq.Parser.ParseFrom(body.Span));
         });
+        // The cash shop (MG_Pay): free products, NewActivityService.Purchases. 2004 is the server's notice only.
+        routes.Map(NewActivityService.CreateOrder, "activities", async (session, msgId, body) =>
+            await activities.CreateOrderAsync(session, CreateOrderReq.Parser.ParseFrom(body.Span)));
+        routes.Map(NewActivityService.PayResult, "activities", async (session, msgId, body) =>
+            await activities.PayResultAsync(session, PayResultReq.Parser.ParseFrom(body.Span)));
+        routes.Map(NewActivityService.FirstRechargeAward, "activities", async (session, msgId, body) =>
+            await activities.FirstRechargeAwardsAsync(session));
+        routes.Map(NewActivityService.FirstRechargeUpdate, "activities", async (session, msgId, body) => { });
         routes.Map(NewActivityService.LevelAward, "activities", async (session, msgId, body) =>
         {
             await activities.LevelAwardAsync(session, GetThreeDayLevelAwardReq.Parser.ParseFrom(body.Span));

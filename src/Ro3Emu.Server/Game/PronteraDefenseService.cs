@@ -17,7 +17,7 @@ namespace Ro3Emu.Server.Game;
 /// The invaders march on the city's heart and fight the defenders on the way (<see cref="SpawnAsync"/>); City Defense
 /// falls each minute by the invasion intensity and kills restore it (<see cref="DamageDefensesAsync"/>).
 /// </summary>
-public sealed class PronteraDefenseService : IGameTicker
+public sealed partial class PronteraDefenseService : IGameTicker
 {
     public const int ActivityId = 118, TimeLimitId = 1012, SupplyItem = 600;
     private const int UnlockLevel = 99;
@@ -41,13 +41,13 @@ public sealed class PronteraDefenseService : IGameTicker
     private readonly SessionRegistry _sessions;
     private readonly GameLoop _loop;
     private readonly ILogger<PronteraDefenseService> _log;
-    private readonly Dictionary<long, MonsterUnit> _actors = new();
+    private readonly Dictionary<long, MonsterUnit> _actors = [];
     /// <summary>City Defense a kill of each live invader restores (its difficulty's _iKillPoint).</summary>
     private readonly Dictionary<long, long> _restore = [];
     private readonly Dictionary<int, MonsterTemplate> _invaders = [];
-    private readonly HashSet<(int Round, int Point, int Wave)> _spawned = new();
-    private readonly Dictionary<long, long> _defensePoints = new();
-    private readonly Dictionary<long, long> _station = new();
+    private readonly HashSet<(int Round, int Point, int Wave)> _spawned = [];
+    private readonly Dictionary<long, long> _defensePoints = [];
+    private readonly Dictionary<long, long> _station = [];
     private int _activeRound;
     private long _lastSecond = -1;
     private long _lastDamageMinute = -1;
@@ -59,20 +59,22 @@ public sealed class PronteraDefenseService : IGameTicker
     {
         public long SeasonOpen { get; set; }
         public long ContributionPoint { get; set; }
-        public Dictionary<int, long> RoundContribution { get; set; } = new();
-        public Dictionary<int, long> RoundMap { get; set; } = new();
-        public HashSet<int> SettledRounds { get; set; } = new();
+        public Dictionary<int, long> RoundContribution { get; set; } = [];
+        public Dictionary<int, long> RoundMap { get; set; } = [];
+        public HashSet<int> SettledRounds { get; set; } = [];
     }
 
     public PronteraDefenseService(GameData data, ActivityClock clock, RoleStore roles, AccountStore accounts,
         GuildStore guilds, CharacterService character, AwardService awards, FunctionService functions, MonsterService monsters, WorldData worldData, World world,
-        CombatService combat, SessionRegistry sessions, GameLoop loop, GmCommands gm, ILogger<PronteraDefenseService> log)
+        CombatService combat, SessionRegistry sessions, GameLoop loop, GmCommands gm, ILogger<PronteraDefenseService> log,
+        BuffService buffs, SceneService scene)
     {
         this._data = data; this._clock = clock; this._roles = roles; this._accounts = accounts; this._guilds = guilds;
         this._character = character; this._awards = awards; this._functions = functions; this._monsters = monsters; this._worldData = worldData; this._world = world;
-        this._sessions = sessions; this._loop = loop; this._log = log;
+        this._sessions = sessions; this._loop = loop; this._log = log; this._buffs = buffs;
         LoadWorld();
         combat.Killed.Add(OnKilledAsync);
+        scene.Loaded.Add(ApplyPrepBuffAsync);
         gm.Register("defense", "round <1-4> | end | status (Battle for Prontera test aid: TimeLimit 1012 opens so that round n starts now, "
             + "or back to the real schedule; status lists City Defense and the invaders)", GmAsync);
     }
@@ -86,11 +88,16 @@ public sealed class PronteraDefenseService : IGameTicker
     }
 
     /// <summary>5013 activity 118 projection. Root's bridge handles empty-map wire initialization.</summary>
-    public PlayerActivityPronteraDefense BuildPlayerState(GameSession session) => new()
+    public PlayerActivityPronteraDefense BuildPlayerState(GameSession session)
     {
-        ContributionPoint = session.Defense?.SeasonOpen == Opening() ? session.Defense.ContributionPoint : 0,
-        GlobalInfo = BuildGlobal(),
-    };
+        var global = BuildGlobal();
+        AddOwnGuildInfo(session, global);
+        return new()
+        {
+            ContributionPoint = session.Defense?.SeasonOpen == Opening() ? session.Defense.ContributionPoint : 0,
+            GlobalInfo = global,
+        };
+    }
 
     public DBPronteraDefenseInfo BuildGlobal()
     {
@@ -122,9 +129,7 @@ public sealed class PronteraDefenseService : IGameTicker
             }
             result.MapInfo[map] = one;
         }
-        foreach (var (guild, _) in _station)
-            if (_guilds.Get(guild) is { } g)
-                result.GuildInfo[guild] = new DBPronteraDefenseGuildInfo { GuildId = guild, GuildPrepLv = g.Level };
+        AddGuildInfo(result);
         return result;
     }
 
@@ -139,7 +144,9 @@ public sealed class PronteraDefenseService : IGameTicker
             keys.Add(Ownership.ReservationKey.Entity("guild", guild.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)));
             keys.Add(Ownership.ReservationKey.Entity("prontera_station", $"{Opening()}/{guild.Id}"));
         }
-        return keys.ToArray();
+        if (req.PronteraDefenseDonate != null && session.Role != null && _guilds.ForRole(session.Role.Id) is { } donor)
+            keys.Add(Ownership.ReservationKey.Entity("prontera_prep", $"{Opening()}:{donor.Id}"));
+        return [.. keys];
     }
 
     /// <summary>82976 activity 118; caller sends response and invokes 5013 projection after success.</summary>
@@ -152,32 +159,7 @@ public sealed class PronteraDefenseService : IGameTicker
         if (session.Progress.Level < UnlockLevel || !_functions.IsOpen(session, 68)
             || !_clock.IsOpen(TimeLimitId, _clock.UtcNow))
         { response.Result = ErrorCodes.FeatureUnavailable; return response; }
-        if (req.PronteraDefenseDonate is { } donation)
-        {
-            response.PronteraDefenseDonate = new PronteraDefenseDonateResp { Req = donation.Clone() };
-            long count = donation.ItemCount;
-            if (count <= 0 || count > int.MaxValue) response.Result = ErrorCodes.Parameter;
-            else if (_character.CountOf(session, SupplyItem) < count) response.Result = ErrorCodes.ItemsShort;
-            else
-            {
-                var next = CopyState(session.Defense);
-                next.ContributionPoint = checked(next.ContributionPoint + count); // one point per supply: inferred.
-                int round = RoundAt(now);
-                if (round > 0) next.RoundContribution[round] = next.RoundContribution.GetValueOrDefault(round) + count;
-                byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(next);
-                var committed = await _character.ExchangeAsync(session, [(SupplyItem, count)], [], popup: false,
-                    persist: tx =>
-                    {
-                        tx.RoleBlob(session.Role.Id, "timed_activity", bytes);
-                        tx.WithEventEconomy(EventEconomy.ForRole(_data, session, "prontera-donate",
-                            $"prontera/donate/{Opening()}/{session.Role.Id}/{Guid.NewGuid():N}",
-                            [(SupplyItem, count)], [], new { Count = count, next.ContributionPoint }));
-                    },
-                    committed: () => session.Defense = next);
-                response.Result = committed == null ? ErrorCodes.Unknown : 0;
-                if (committed != null) await NotifyAsync(session);
-            }
-        }
+        if (req.PronteraDefenseDonate is { } donation) await DonateAsync(session, donation, response, now);
         else if (req.PronteraDefenseGuildDefense is { } enlist)
         {
             response.PronteraDefenseGuildDefense = new PronteraDefenseGuildDefenseResp { Req = enlist.Clone() };
@@ -414,8 +396,8 @@ public sealed class PronteraDefenseService : IGameTicker
     }
 
     private static Ownership.ReservationKey[] SettlementKeys(long roleId, long season) =>
-        Enumerable.Range(1, 4).Select(round =>
-            Ownership.ReservationKey.Entity("prontera_round_settlement", $"{season}/{round}/{roleId}")).ToArray();
+        [.. Enumerable.Range(1, 4).Select(round =>
+            Ownership.ReservationKey.Entity("prontera_round_settlement", $"{season}/{round}/{roleId}"))];
 
     private async Task SettleClosedOwnedAsync(GameSession session)
     {
@@ -551,6 +533,7 @@ public sealed class PronteraDefenseService : IGameTicker
             {
                 _defensePoints.Clear();
                 _station.Clear();
+                _prepExp.Clear();
                 LoadWorld();
                 _lastSecond = -1; // the next tick takes the new window up, also within the same second
                 _activeRound = -1; // and starts its round afresh: the old invaders go, the waves come again
@@ -587,5 +570,6 @@ public sealed class PronteraDefenseService : IGameTicker
         var rows = _accounts.ReadSync<PronteraDefenseWorldRows>(new PronteraDefenseWorldReadPlan(open));
         foreach (var (map, point) in rows.Points) _defensePoints[map] = point;
         foreach (var (guild, map) in rows.Stations) _station[guild] = map;
+        LoadPrep(open);
     }
 }

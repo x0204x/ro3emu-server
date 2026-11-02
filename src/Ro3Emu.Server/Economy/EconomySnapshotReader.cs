@@ -50,7 +50,8 @@ public static partial class EconomySnapshotReader
         ["growth_class"] = BlobFormat.Protobuf, ["first_heart"] = BlobFormat.Protobuf,
         ["personal"] = BlobFormat.Protobuf, ["personal_upvote"] = BlobFormat.Protobuf, ["popularity"] = BlobFormat.Protobuf,
         ["social_outfit"] = BlobFormat.Protobuf, ["emoji_info"] = BlobFormat.Protobuf,
-        ["gifts"] = BlobFormat.Json, ["barroom"] = BlobFormat.Json
+        ["gifts"] = BlobFormat.Json, ["barroom"] = BlobFormat.Json, ["gm_state"] = BlobFormat.Json,
+        ["job_exp_catchup"] = BlobFormat.Json
     };
 
     private enum BlobFormat { Json, Protobuf, Mailbox, TerritoryRole, RawEpoch, StringSet }
@@ -127,7 +128,7 @@ public static partial class EconomySnapshotReader
         var cut = new EconomyCut(persistedRealm ?? realmId, schemaVersion, catalog.Version, CoverageVersion,
             commitSequence, DateTimeOffset.UtcNow);
         return new EconomySnapshot(cut, state.Holdings, state.Issues, UncoveredFamilies,
-            state.Metrics.Select(m => new EconomyDecodeMetric(m.Key, m.Value.Rows, m.Value.Blobs, m.Value.Bytes)).ToArray(), timer.Elapsed.TotalMilliseconds)
+            [.. state.Metrics.Select(m => new EconomyDecodeMetric(m.Key, m.Value.Rows, m.Value.Blobs, m.Value.Bytes))], timer.Elapsed.TotalMilliseconds)
         { Progress = progress, ProgressRevisions = progressRevisions };
     }
 

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using Ro3Emu.Server;
 using Ro3Emu.Server.Accounts;
+using Ro3Emu.Server.Accounts.Persistence;
 
 namespace Ro3Emu.Tests;
 
@@ -43,7 +44,7 @@ public sealed class LegacyTransactionCaptureTests : IDisposable
         var items = new ItemStore(accounts);
         var role = roles.Create("rollback", 1, "Rollback", 1, 1000, 1)!;
         var item = new InvItem { Entry = 1001, Stack = 1 };
-        Assert.ThrowsAny<InvalidOperationException>(() => roles.WithTransaction(tx =>
+        Assert.ThrowsAny<PersistenceException>(() => roles.WithTransaction(tx =>
         {
             items.Insert(role.Id, item, tx);
             roles.SaveMailbox(long.MaxValue, [1], tx);

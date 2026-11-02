@@ -3,10 +3,14 @@ using Ro3Emu.Server.Accounts;
 namespace Ro3Emu.Server.Game.Ownership;
 
 /// <summary>Loop-owned role identities and migration reservations; SessionRegistry remains a connection directory.</summary>
-public sealed class OwnerRegistry
+public sealed partial class OwnerRegistry
 {
     private readonly GameLoop _loop;
     private readonly RoleStore _roles;
+    private readonly ILogger<OwnerRegistry>? _log;
+    private long _rolesInRecovery;
+    /// <summary>Roles that cannot log in again until a restart (RoleOwnerState.RecoveryRequired). Any thread may read it.</summary>
+    public long RolesInRecovery => Interlocked.Read(ref _rolesInRecovery);
     private readonly Dictionary<long, RoleOwner> _rolesById = [];
     private long _operation, _admissionSequence;
     public ReservationCoordinator Reservations { get; } = new();
@@ -19,15 +23,25 @@ public sealed class OwnerRegistry
     /// <summary>Replacement admissions that encountered an unresolved predecessor handover/readiness fence.</summary>
     public long HandoverConflicts { get; internal set; }
     internal Action<string>? DeferredForTest { get; set; }
-    public OwnerRegistry(GameLoop loop, RoleStore roles)
+    public OwnerRegistry(GameLoop loop, RoleStore roles, ILogger<OwnerRegistry>? log = null)
     {
-        _loop = loop; _roles = roles; loop.Owners = this;
+        _loop = loop; _roles = roles; _log = log; loop.Owners = this;
         // Diagnostics (C/D 15 inventories): RO3EMU_OWNER_AUDIT=<file> appends every uncovered expansion to the file
         // and lets it proceed under its parent, so one full test run lists every dependency of a narrowed scope.
         if (Environment.GetEnvironmentVariable("RO3EMU_OWNER_AUDIT") is { Length: > 0 } auditFile)
             UncoveredForTest = line => { lock (AuditFileLock) File.AppendAllText(auditFile, line + Environment.NewLine); };
     }
     private static readonly object AuditFileLock = new();
+
+    private void RecoveryChanged(RoleOwner owner, bool entered)
+    {
+        long now = entered ? Interlocked.Increment(ref _rolesInRecovery) : Interlocked.Decrement(ref _rolesInRecovery);
+        if (entered && _log != null) LogRecoveryRequired(_log, owner.RoleId, now);
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Role {Role} needs recovery: it cannot log in again until the server restarts ({Count} such roles now)")]
+    private static partial void LogRecoveryRequired(ILogger logger, long role, long count);
+
     public RoleOwner Get(long id)
     {
         AssertLoop();
@@ -35,7 +49,7 @@ public sealed class OwnerRegistry
         {
             var vector = _roles.ReadRevisionVector(id);
             if (vector.Deleted) throw new InvalidOperationException($"Deleted role {id}.");
-            _rolesById.Add(id, owner = new RoleOwner(id, vector.Epoch) { Revisions = vector.Parts });
+            _rolesById.Add(id, owner = new RoleOwner(id, vector.Epoch) { Revisions = vector.Parts, RecoveryChanged = RecoveryChanged });
         }
         return owner;
     }
@@ -49,7 +63,10 @@ public sealed class OwnerRegistry
         if (snapshot.Deleted) throw new Accounts.Persistence.OwnerRevisionConflictException();
         if (!_rolesById.TryGetValue(snapshot.RoleId, out var owner))
             _rolesById.Add(snapshot.RoleId, owner = new RoleOwner(snapshot.RoleId, snapshot.Epoch)
-            { Revisions = snapshot.Parts.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal) });
+            {
+                Revisions = snapshot.Parts.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
+                RecoveryChanged = RecoveryChanged,
+            });
         if (owner.LifecycleEpoch != snapshot.Epoch || owner.State == RoleOwnerState.Deleted)
             throw new Accounts.Persistence.OwnerRevisionConflictException();
         return owner;
@@ -441,7 +458,7 @@ public sealed class OwnerRegistry
     {
         conflicts = Reservations.Conflicts, deferred = Deferred, maxQueueAgeMs = MaxQueueAgeMs,
         totalQueueWaitMs = TotalQueueWaitMs, realmScopes = RealmScopes, runtimeIntents = RuntimeIntents,
-        handovers = HandoverCount, handoverConflicts = HandoverConflicts, realmByOrigin = RealmByOrigin(), waitByOrigin = WaitByOrigin()
+        handovers = HandoverCount, handoverConflicts = HandoverConflicts, rolesInRecovery = RolesInRecovery, realmByOrigin = RealmByOrigin(), waitByOrigin = WaitByOrigin()
     };
 
     private object RealmByOrigin()

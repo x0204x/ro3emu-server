@@ -78,11 +78,11 @@ public sealed class ReviveRaceTests : IAsyncLifetime
         await bot.SendGameAsync(CombatService.Relive, new EntityReliveReq());
         var first = await bot.Inbox.WaitAsync(e => e.IsGame(CombatService.Relive), TimeSpan.FromSeconds(8));
         var second = await bot.Inbox.WaitAsync(e => e.IsGame(CombatService.Relive), TimeSpan.FromSeconds(8));
-        Assert.Equal(new[] { 0, ErrorCodes.TargetAlive }, new[]
+        Assert.Equal([0, ErrorCodes.TargetAlive], [.. new[]
         {
             EntityReliveAck.Parser.ParseFrom(first.Body).Result,
             EntityReliveAck.Parser.ParseFrom(second.Body).Result,
-        }.OrderBy(x => x).ToArray());
+        }.OrderBy(x => x)]);
         await bot.Inbox.WaitAsync(e => e.IsGame(CombatService.ReviveInfo)
             && !SyncClientPlayerReviveInfoNtf.Parser.ParseFrom(e.Body).BDead, TimeSpan.FromSeconds(8));
         Assert.False(session.Dead);

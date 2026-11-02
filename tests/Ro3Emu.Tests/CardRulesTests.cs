@@ -66,7 +66,7 @@ public sealed class CardRulesTests : IAsyncLifetime
     private async Task Gm(string account, string command)
     {
         using var http = new HttpClient();
-        (await http.PostAsync($"{_httpUrl}/ro3emu/gm?account={account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await http.PostAsync($"{_httpUrl}/ro3emu/gm?account={account}", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     private Task<T> OnLoop<T>(Func<T> action) => Service<GameLoop>().InvokeAsync(() => Task.FromResult(action()));
@@ -127,7 +127,7 @@ public sealed class CardRulesTests : IAsyncLifetime
             await Service<GameLoop>().InvokeAsync(() =>
             {
                 var card = session.Items.Single(i => i.Entry == flashable);
-                card.Attrs ??= new();
+                card.Attrs ??= [];
                 card.Attrs[530] = 1;
                 Service<ItemStore>().Update(card);
                 return Task.CompletedTask;

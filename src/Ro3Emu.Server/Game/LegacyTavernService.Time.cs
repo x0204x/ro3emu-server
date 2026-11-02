@@ -8,7 +8,7 @@ public sealed partial class LegacyTavernService
 {
     // 非持久化的傳輸缺口，僅記錄事實；下一次角色 owner 交易才結算 meter。
     private sealed class TransportGap(long start) { public long Start { get; } = start; public long? End { get; set; } }
-    private readonly Dictionary<GameSession, List<TransportGap>> _transportGaps = new();
+    private readonly Dictionary<GameSession, List<TransportGap>> _transportGaps = [];
     private void ObserveTransportLost(GameSession s, long at)
     {
         _loop.Owners?.AssertLoop();

@@ -85,7 +85,7 @@ public static class EconomyExactnessChecker
         }
         var verdict = issues.Any(x => x.Kind == EconomyIssueKind.Corruption) ? EconomyVerdict.Fail
             : issues.Count != 0 || uncovered.Length != 0 ? EconomyVerdict.NotMeasured : EconomyVerdict.Pass;
-        return new(verdict, assets, locations, issues.Distinct().ToArray(), uncovered);
+        return new(verdict, assets, locations, [.. issues.Distinct()], uncovered);
     }
 
     private static void ValidateRewardProgress(EconomySnapshot opening, EconomySnapshot closing,

@@ -16,7 +16,7 @@ internal sealed class DungeonTaskClearFreezePlan : DbPlan
                 && r.RoomId == c.RoomId && r.SceneEntry == c.SceneEntry && (r.Success || c.Targets.Count == 0))))
             throw new ArgumentException("副本獎勵與任務快照未一一對應。");
         _rewards = new(rewards);
-        _clears = clears.Select(c => (c, c.Encode())).ToArray();
+        _clears = [.. clears.Select(c => (c, c.Encode()))];
     }
     internal override int Bytes => _rewards.Bytes + _clears.Sum(c => c.State.Length + 128);
     internal override string Label => "dungeon-obligation/freeze-task-clears-v1";

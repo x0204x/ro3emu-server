@@ -113,7 +113,7 @@ public sealed partial class TaskService
     /// Tasks the client shows that are not quests of this service (the pass challenges, NewActivityService.PassPlay):
     /// added to every 5027 so the dataset's diff never drops them. They are not in <see cref="GameSession.Tasks"/>.
     /// </summary>
-    public List<Func<GameSession, IEnumerable<TaskInfo>>> ExtraTasks { get; } = new();
+    public List<Func<GameSession, IEnumerable<TaskInfo>>> ExtraTasks { get; } = [];
 
     /// <summary>5027: the role's quests plus <see cref="ExtraTasks"/>, as the change since the last send.</summary>
     public Task SyncTasksAsync(GameSession session)
@@ -638,7 +638,7 @@ public sealed partial class TaskService
             var plan = _awards.ResolveTask(session, def.Award, playBook);
             var runtime = new TaskRuntimeState
             {
-                CompletedGuides = session.TaskRuntime.CompletedGuides.ToHashSet(), InCutScene = session.InCutScene || cutScene,
+                CompletedGuides = [.. session.TaskRuntime.CompletedGuides], InCutScene = session.InCutScene || cutScene,
                 FactionDay = session.TaskRuntime.FactionDay, FactionPoints = session.TaskRuntime.FactionPoints,
             };
             string awardSource = $"task/{session.Role!.Id}/{id}/{next.CompleteTaskNum[id]}/" +
@@ -789,7 +789,7 @@ public sealed partial class TaskService
         var children = new Dictionary<long, List<long>>();
         foreach (var def in defs.Values)
             foreach (var pre in def.Pre)
-                (children.TryGetValue(pre, out var list) ? list : children[pre] = new()).Add(def.Id);
+                (children.TryGetValue(pre, out var list) ? list : children[pre] = []).Add(def.Id);
         _children = children;
         _defs = defs;
         _log.LogInformation("Tasks: {Count} TaskConfig rows", defs.Count);
@@ -833,13 +833,12 @@ public sealed partial class TaskService
 
     private static long[] Longs(JsonElement row, string field) =>
         row.TryGetProperty(field, out var a) && a.ValueKind == JsonValueKind.Array
-            ? a.EnumerateArray().Select(e => (long)(GameData.Number(e) ?? 0)).ToArray() : [];
+            ? [.. a.EnumerateArray().Select(e => (long)(GameData.Number(e) ?? 0))] : [];
 
     private static long First(JsonElement row, string field) => Longs(row, field) is [var first, ..] ? first : 0;
 
     private static long[][] Targets(JsonElement row) =>
         row.TryGetProperty("_kProgressTarget", out var a) && a.ValueKind == JsonValueKind.Array
-            ? a.EnumerateArray().Where(t => t.ValueKind == JsonValueKind.Array && t.GetArrayLength() > 0)
-                .Select(t => t.EnumerateArray().Select(e => (long)(GameData.Number(e) ?? 0)).ToArray()).ToArray()
+            ? [.. a.EnumerateArray().Where(t => t.ValueKind == JsonValueKind.Array && t.GetArrayLength() > 0).Select(t => t.EnumerateArray().Select(e => (long)(GameData.Number(e) ?? 0)).ToArray())]
             : [];
 }

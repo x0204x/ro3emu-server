@@ -66,7 +66,7 @@ public sealed class ItemActionTests : IAsyncLifetime
     private async Task<BotClient> Relogin(BotClient bot, string name)
     {
         await bot.DisposeAsync();
-        await WaitUntil(() => !Sessions.All().Any(s => s.Account == name.ToLowerInvariant() && s.Role != null), name + " still online");
+        await WaitUntil(() => !Sessions.All().Any(s => string.Equals(s.Account, name, StringComparison.OrdinalIgnoreCase) && s.Role != null), name + " still online");
         return await InWorld(name, create: false);
     }
 
@@ -74,7 +74,7 @@ public sealed class ItemActionTests : IAsyncLifetime
     { var e = await b.Inbox.WaitAsync(e => e.IsGame(id) && (match == null || match(p.ParseFrom(e.Body))), Wait); return p.ParseFrom(e.Body); }
 
     private async Task Gm(string account, string command)
-    { using var h = new HttpClient(); (await h.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(command))).EnsureSuccessStatusCode(); }
+    { using var h = new HttpClient(); (await h.PostAsync($"{_http}/ro3emu/gm?account={account}", Operator.Command(command))).EnsureSuccessStatusCode(); }
 
     private SessionRegistry Sessions => _app.Services.GetRequiredService<SessionRegistry>();
     private RoleStore Roles => _app.Services.GetRequiredService<RoleStore>();

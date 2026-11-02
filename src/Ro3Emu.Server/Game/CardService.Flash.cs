@@ -107,7 +107,7 @@ public sealed partial class CardService
                     persist: builder =>
                     {
                         builder.WithEconomy(_character.FamilyEconomy(session, "cd13a/card-flash",
-                            inputs.Select(item => (item.Entry, (long)selected[item.Guid])).ToArray(),
+                            [.. inputs.Select(item => (item.Entry, (long)selected[item.Guid]))],
                             [(output, 1)], new { Output = output, bindType, bindExpire }));
                     },
                     attributedGoods: [new CharacterService.AttributedGood(output, 1, bindType, bindExpire, 1)],

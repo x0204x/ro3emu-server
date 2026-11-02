@@ -49,16 +49,26 @@ public sealed partial class GmCommands
 
     /// <summary>
     /// "openallfunc": every FunctionConfig function counts as open (FunctionService.IsOpen), then 5056 and the other
-    /// function-gated datasets go out as after a level change. (inferred) For this role session only: the emulator
-    /// computes openings from their conditions and keeps no opened set to persist.
+    /// function-gated datasets go out as after a level change. It is kept with the role (role column gm_state; inferred:
+    /// the original server keeps a role's opened functions): a preset-built role has not delivered the quests that open Skills
+    /// (function 10, quest 10101170) and the rest, and a login without the flag closed them again, so the skill bar
+    /// showed its lock and refused drags (UI_Sys_Main_JoyStickSkillWidget_PCCtrl._refreshFunctionUIState,
+    /// UI_Sys_Main_JoyStickSkillItemWidget_PCCtrl.RefreshCanDrag check SkillGrowth).
     /// </summary>
     private async Task<string> PlayerAssetAsync(GameSession s, string[] args)
     {
         if (args.Length == 0 || !args[0].Equals("openallfunc", StringComparison.OrdinalIgnoreCase))
             return $"GmPlayerAsset {string.Join(',', args)}: only openallfunc is known (the presets' one subcommand).";
-        s.GmAllFunctionsOpen = true;
+        character.OpenAllFunctions(s);
         foreach (var handler in character.ProgressHandlers) await handler(s);
-        return "Every function is open for this role session.";
+        return "Every function is open for this role.";
+    }
+
+    /// <summary>The role's GM panel grants kept across logins (role column gm_state, JSON).</summary>
+    public sealed class RoleGmState
+    {
+        /// <summary>openallfunc: every client function counts as open (<see cref="GameSession.GmAllFunctionsOpen"/>).</summary>
+        public bool AllFunctionsOpen { get; set; }
     }
 
     /// <summary>

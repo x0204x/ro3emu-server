@@ -76,7 +76,7 @@ public sealed partial class NewActivityService
             var keys = new List<ReservationKey> { ReservationKey.Role(role.Id), ReservationKey.Lifecycle(role.Id) };
             if (EveKeyFor(session, request, loadedEveCycle, loadedEveEnded) is { } eveKey) keys.Add(eveKey);
             if (request?.ActivityId == 118) keys.AddRange(_defense.OwnerKeys(session, request));
-            var scope = await owners.EnterWithGateAsync(origin, session.ActivityGate, keys.ToArray());
+            var scope = await owners.EnterWithGateAsync(origin, session.ActivityGate, [.. keys]);
             try
             {
                 if (!ReferenceEquals(session.Role, role) || !ReferenceEquals(session.Owner, owner)
@@ -123,7 +123,7 @@ public sealed partial class NewActivityService
             // The social paths run the same settlement pre-step as every Common request, so they need the same key.
             var eveKey = EveKeyFor(sender);
             if (eveKey is { } key) keys.Add(key);
-            var scope = await owners.EnterWithGateAsync(origin, sender.ActivityGate, keys.Distinct().ToArray());
+            var scope = await owners.EnterWithGateAsync(origin, sender.ActivityGate, [.. keys.Distinct()]);
             try
             {
                 if (!ReferenceEquals(sender.Role, role) || !ReferenceEquals(sender.Owner, owner)

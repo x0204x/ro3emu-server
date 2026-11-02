@@ -108,7 +108,7 @@ public sealed class AdventureGroupTests : IAsyncLifetime
     private async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     private GameSession Session(BotClient bot) => Service<SessionRegistry>()
@@ -503,7 +503,7 @@ public sealed class AdventureGroupTests : IAsyncLifetime
         await Gm(alice, "!advguild exp 60");
         await Until(() => Store.Get(group)!.Level == 2, "level 2");
         Assert.Equal(0, (await Ope(alice, OpeType.OpeTakenLevelUpReward, new NormalOpeData { LevelReward = 2 })).Result);
-        Assert.Equal(new[] { 1, 2 }, Session(alice).AdventureGroupRole!.TakenGroupRewardLevel.Order());
+        Assert.Equal([1, 2], Session(alice).AdventureGroupRole!.TakenGroupRewardLevel.Order());
 
         // The claim belongs to the role: in another group the same level is not paid twice.
         Assert.Equal(0, (await Ope(alice, OpeType.OpeLeave, new NormalOpeData { AdventureId = group })).Result);

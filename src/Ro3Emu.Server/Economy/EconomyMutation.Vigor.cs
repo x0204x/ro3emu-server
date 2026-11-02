@@ -43,7 +43,7 @@ public sealed partial class EconomyMutation
         var nextReward = RewardEvidence is { } original ? original with
         { OriginalGoods = (original.OriginalGoods ?? []).Where(q => !Vigor(q)).ToArray() } : null;
         return new EconomyMutation(OperationId, ActorAccount, ActorRoleId, CommandKind, RequestFingerprint,
-            SourceKey, EffectiveUtcMs, Costs, Goods.Where(q => !Vigor(q)).ToArray(),
+            SourceKey, EffectiveUtcMs, Costs, [.. Goods.Where(q => !Vigor(q))],
             JsonSerializer.SerializeToUtf8Bytes(result), nextReward, ProgressionCatalog, PlanFingerprint);
     }
 }

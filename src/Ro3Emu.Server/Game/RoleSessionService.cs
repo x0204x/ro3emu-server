@@ -50,18 +50,29 @@ public sealed partial class RoleSessionService(RoleStore roles, Data.GameData da
 
     /// <summary>Essential unlinking runs after admitted role work, under the handover's cleanup capability.</summary>
     internal Func<string, GameSession, Exception?>? CleanupFailureForTest { get; set; }
+    /// <summary>How long one handover waits, in all, for room in a full database queue.</summary>
+    internal TimeSpan CleanupQueuePatience { get; set; } = TimeSpan.FromSeconds(60);
+
     internal async Task CleanupRoleAsync(GameSession session)
     {
         var failures = new List<Exception>();
         long? snapshotRole = session.Role?.Id;
+        var patience = new Accounts.Persistence.QueueFullPatience(CleanupQueuePatience);
         async Task Step(string name, Func<Task> work)
         {
-            try
+            while (true)
             {
-                if (CleanupFailureForTest?.Invoke(name, session) is { } injected) throw injected;
-                await work();
+                try
+                {
+                    if (CleanupFailureForTest?.Invoke(name, session) is { } injected) throw injected;
+                    await work();
+                    return;
+                }
+                // A full queue wrote nothing and only means the disk is behind: wait for room, the steps run again safely.
+                catch (Exception e) when (patience.MayRetry(e)) { LogCleanupWaits(log, snapshotRole, name); }
+                catch (Exception e) { failures.Add(e); return; }
+                await patience.WaitAsync();
             }
-            catch (Exception e) { failures.Add(e); }
         }
         await systems.LeaveAsync(session, Step, () => SavePosition(session));
         if (snapshotRole is { } released) roles.ReleaseLoginSnapshot(released);
@@ -360,6 +371,9 @@ public sealed partial class RoleSessionService(RoleStore roles, Data.GameData da
         await systems.MovedAsync(session, walk);
     }
 
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Role {Role} cleanup step {Step} waits for room in a full database queue")]
+    private static partial void LogCleanupWaits(ILogger logger, long? role, string step);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Role {Name} ({Id}) was saved on scene {Scene} {Map}, where it cannot log in ({Why}): moved to the spawn map {Spawn}")]
     private static partial void LogMovedToSpawn(ILogger logger, string name, long id, long scene, string map, string why, long spawn);
 
@@ -458,6 +472,7 @@ public sealed partial class RoleSessionService(RoleStore roles, Data.GameData da
             Gender = role.Sex,
             Name = role.Name,
             EntityCamp = session.EventFaction > 0 ? session.EventFaction : 1,
+            TeamId = session.UnitTeamId,
             Face = face,
             MovementInfo = new MovementInfo
             {

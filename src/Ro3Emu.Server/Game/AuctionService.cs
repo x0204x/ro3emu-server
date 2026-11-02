@@ -239,7 +239,7 @@ public sealed partial class AuctionService(AuctionStore store, RoleStore roles, 
                         Bind = bind, Start = start, End = start + duration, State = AuctionState.Public,
                         Price = basePrice, Raise = (int)GameData.Int(cfg, "_iBaseRaisePrice"),
                         FixedPrice = max, MaxPrice = max, Currency = (int)GameData.Int(cfg, "_iCurrency"),
-                        TypeAttr = (int)GameData.Int(cfg, "_iTypeAttr"), Eligible = new(run.Eligible),
+                        TypeAttr = (int)GameData.Int(cfg, "_iTypeAttr"), Eligible = [.. run.Eligible],
                     }, transaction);
                 }
             }
@@ -249,7 +249,7 @@ public sealed partial class AuctionService(AuctionStore store, RoleStore roles, 
             RequireScope(scope, transaction);
             await roles.CommitAsync(transaction, "auction/finalize-run");
             created = goods.Count > 0;
-            notify = run.Eligible.ToArray();
+            notify = [.. run.Eligible];
             break;
         }
         if (created) await NotifyNewRowsAsync(AuctionType.Dungeon, notify);

@@ -270,8 +270,7 @@ public sealed class DungeonCatalog(GameData data, WorldData worldData, MonsterSe
         var explicitPoints = serverPoints.Where(p => GameData.Int(p, "npcId") > 0).ToArray();
         if (explicitPoints.Any(p => monsters.Template((int)GameData.Int(p, "npcId")) == null)) return [];
         if (explicitPoints.Length > 0)
-            return explicitPoints.GroupBy(p => GameData.Int(p, "GroupId")).OrderBy(g => g.Key)
-                .Select((g, i) => new Wave(i + 1, g.Select(p => new Spawn((int)GameData.Int(p, "npcId"), Point(p))).ToArray())).ToArray();
+            return [.. explicitPoints.GroupBy(p => GameData.Int(p, "GroupId")).OrderBy(g => g.Key).Select((g, i) => new Wave(i + 1, [.. g.Select(p => new Spawn((int)GameData.Int(p, "npcId"), Point(p)))]))];
 
         var mapped = new List<Spawn>();
         foreach (var row in data.Table("NpcLevelPointRespawnConfig").Values
@@ -484,12 +483,18 @@ public sealed class DungeonCatalog(GameData data, WorldData worldData, MonsterSe
         if (!Interactions(DraculaCage).Contains(DraculaUnlock)) return null;
         waves.Add(new Wave(waves.Count + 1, [], 0, new ReconstructedDungeons.ScriptedStep("find the key", 0, (0, 1), actors, 0,
             [new(ReconstructedDungeons.TriggerKind.Interaction, DraculaUnlock)],
-            DraculaBushes.SelectMany(Interactions).Select(i => new ReconstructedDungeons.StepTrigger(
-                ReconstructedDungeons.TriggerKind.Interaction, i)).ToArray(), 0, [], false)));
+            [.. DraculaBushes.SelectMany(Interactions).Select(i => new ReconstructedDungeons.StepTrigger(
+                ReconstructedDungeons.TriggerKind.Interaction, i))], 0, [], false)));
         return new Plan(config, null, null, 0, 1, (int)GameData.Int(config, "_iRoleCntLimit"), waves);
     }
 
     /// <summary>A scene-editor point (m_kAllPoints) of the scene's map.</summary>
+    /// <summary>The reconstructions (raid trials, scripted scenes), when registered.</summary>
+    internal ReconstructedDungeons? Reconstructed => reconstructed;
+
+    /// <summary>A scene's map (points, regions, dungeon point groups).</summary>
+    internal MapWorld? Map(long scene) => worldData.Map(scene);
+
     public MapPoint? ScenePoint(long scene, long point) =>
         worldData.Map(scene)?.Points.TryGetValue(point, out var p) == true ? p : null;
 

@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -22,11 +22,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Pure launcher slot logic is source-linked so these tests stay platform-neutral. -->
+    <!-- 純登入器邏輯與安全下載測試不依賴 WPF 執行環境。 -->
     <Compile Include="..\..\src\Ro3Emu.Launcher\GameProcessTracker.cs" Link="Launcher\GameProcessTracker.cs" />
     <Compile Include="..\..\src\Ro3Emu.Launcher\GameProcessDiscovery.cs" Link="Launcher\GameProcessDiscovery.cs" />
     <Compile Include="..\..\src\Ro3Emu.Launcher\LauncherVisualState.cs" Link="Launcher\LauncherVisualState.cs" />
     <Compile Include="..\..\src\Ro3Emu.Launcher\ThrottledProgress.cs" Link="Launcher\ThrottledProgress.cs" />
+    <Compile Include="..\..\src\Ro3Emu.Launcher\GitHubReleases.cs" Link="Launcher\GitHubReleases.cs" />
   </ItemGroup>
 
 </Project>

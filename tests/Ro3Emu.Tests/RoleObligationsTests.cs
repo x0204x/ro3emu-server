@@ -23,7 +23,7 @@ public sealed class RoleObligationsTests : IAsyncLifetime
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "ro3-obligations-" + Guid.NewGuid().ToString("N"));
     private readonly Clock _clock = new(new DateTimeOffset(2026, 10, 18, 12, 0, 0, TimeSpan.Zero));
     private readonly GameLoop _loop = new(NullLogger<GameLoop>.Instance);
-    private readonly Dictionary<long, GameSession> _online = new();
+    private readonly Dictionary<long, GameSession> _online = [];
     /// <summary>Committed payments per source: the "goods" of a payment, counted in its commit's publish.</summary>
     private readonly ConcurrentDictionary<string, int> _paid = new(StringComparer.Ordinal);
     private AccountStore _accounts = null!;
@@ -211,8 +211,8 @@ public sealed class RoleObligationsTests : IAsyncLifetime
             _online.Clear();
             var fresh = Obligations<CasualBattleObligationRow>();
             var keys = await OnLoop(() => fresh.LoginKeysAsync(1));
-            Assert.Equal(restart == 0 ? new[] { RoleObligations<CasualBattleObligationRow>.Key(row.SourceKey) }
-                : Array.Empty<ReservationKey>(), keys);
+            Assert.Equal(restart == 0 ? [RoleObligations<CasualBattleObligationRow>.Key(row.SourceKey)]
+                : [], keys);
             var session = Online(1);
             await OnLoop(() => fresh.DeliverPendingAsync(session, 1, () => true));
             Assert.Equal(1, _paid[row.SourceKey]);
@@ -304,7 +304,7 @@ public sealed class RoleObligationsTests : IAsyncLifetime
         var obligations = Obligations<TRow>(typeof(TRow) == typeof(MvpObligationRow)
             ? ObligationRetry.NextRecovery : ObligationRetry.TickWithBackoff);
         var keys = await OnLoop(() => obligations.LoginKeysAsync(1));
-        Assert.Equal(pending ? new[] { RoleObligations<TRow>.Key(source) } : Array.Empty<ReservationKey>(), keys);
+        Assert.Equal(pending ? [RoleObligations<TRow>.Key(source)] : [], keys);
         var row = (await OnLoop(() => obligations.PendingAsync(1))).SingleOrDefault();
         Assert.Equal(pending, row != null);
         if (row != null) Assert.Equal(source, row.SourceKey);

@@ -11,7 +11,7 @@ namespace Ro3Emu.Server.Game;
 public sealed partial class CardEffects
 {
     private const string SplashDamageField = "_ro3CardSplashDamage";
-    private readonly ConditionalWeakTable<GameSession, OffenceState> _offence = new();
+    private readonly ConditionalWeakTable<GameSession, OffenceState> _offence = [];
 
     private sealed class OffenceState
     {

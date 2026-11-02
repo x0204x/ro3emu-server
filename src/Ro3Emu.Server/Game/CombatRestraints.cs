@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 
 namespace Ro3Emu.Server.Game;
 
@@ -147,4 +148,26 @@ public sealed class TotemRestraint(GameData data)
         }
         return table;
     }
+}
+
+/// <summary>
+/// The title counter, Formula_ATitleDamageAdd (MGCommon's formula terms) from TitleBuffConfig: UIWords 31009 "When
+/// fighting other players, you deal Extra damage to players with a lower Title level, but deal reduced damage to players
+/// with a higher Title level." A title rank's level is TitleConfig._kTitleLev (1..5, the five emblem tiers), the key of
+/// TitleBuffConfig._kIndex. *(inferred)* No client code reads the table: each side's term is its level's row (0 without a
+/// title rank) and the hit changes by the attacker's term minus the target's, per 10000 like the other counters, so
+/// equal levels change nothing and level 5 against level 1 deals +16% (the other way -16%).
+/// </summary>
+public sealed class TitleDamage(GameData data)
+{
+    private Dictionary<long, long>? _byLevel;
+
+    /// <summary>TitleBuffConfig._kTitleName of a title rank (TitleConfig id), 0 for none.</summary>
+    public long Term(long titleId) => TitleConfig.Get(data, titleId) is { } title
+        ? (_byLevel ??= TitleBuffConfig.All(data).ToDictionary(r => r.Index, r => r.DamageAdd)).GetValueOrDefault(title.TitleLev)
+        : 0;
+
+    /// <summary>A player's hit on a player after the title counter.</summary>
+    public long Apply(long attackerTitle, long targetTitle, long damage) => damage <= 0 ? damage
+        : Math.Max(1, damage * Math.Max(0, 10000 + Term(attackerTitle) - Term(targetTitle)) / 10000);
 }

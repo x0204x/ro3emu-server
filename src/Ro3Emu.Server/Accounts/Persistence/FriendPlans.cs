@@ -57,13 +57,13 @@ internal sealed class FriendReadPlan(FriendReadKind kind, long a, long b = 0, in
         var list = new List<FriendStore.ChatMember>();
         using var rows = members.ExecuteReader();
         while (rows.Read()) list.Add(new(rows.GetInt64(0), rows.GetInt64(1) != 0));
-        return new FriendStore.ChatGroup(id.ToString(), owner, name, created, list.ToArray());
+        return new FriendStore.ChatGroup(id.ToString(), owner, name, created, [.. list]);
     }
 
     private static IReadOnlyList<FriendStore.ChatGroup> GroupsFor(SqliteConnection db, SqliteTransaction tx, long role)
     {
         var ids = Ids(db, tx, "SELECT group_id FROM friend_chat_member WHERE role=$a ORDER BY group_id", role, 0);
-        return ids.Select(id => Group(db, tx, id)).Where(x => x != null).Cast<FriendStore.ChatGroup>().ToArray();
+        return [.. ids.Select(id => Group(db, tx, id)).Where(x => x != null).Cast<FriendStore.ChatGroup>()];
     }
 
     private static int Intimacy(SqliteConnection db, SqliteTransaction tx, long owner, long other)
@@ -115,20 +115,20 @@ internal sealed class FriendWritePlan : DbPlan
         {
             FriendWriteKind.SaveMetadata => [_a],
             FriendWriteKind.CreateGroup or FriendWriteKind.RecordTeammates =>
-                new[] { _a }.Concat(_members).Distinct().ToArray(),
+                [.. new[] { _a }.Concat(_members).Distinct()],
             FriendWriteKind.RenameGroup or FriendWriteKind.DismissGroup or
                 FriendWriteKind.ChangeMembers or FriendWriteKind.SetDnd =>
-                _participants.Length != 0 ? _participants.Distinct().ToArray() :
-                    accounts.ReadSync<long[]>(new FriendGroupRolesReadPlan(_a))
+                _participants.Length != 0 ? [.. _participants.Distinct()] :
+                    [.. accounts.ReadSync<long[]>(new FriendGroupRolesReadPlan(_a))
                         .Concat(_kind == FriendWriteKind.ChangeMembers ? _members :
-                            _kind == FriendWriteKind.SetDnd ? [_b] : []).Distinct().ToArray(),
-            _ => new[] { _a, _b }.Where(role => role > 0).Distinct().ToArray()
+                            _kind == FriendWriteKind.SetDnd ? [_b] : []).Distinct()],
+            _ => [.. new[] { _a, _b }.Where(role => role > 0).Distinct()]
         };
     }
-    internal override IReadOnlyList<RoleRevisionKey> RoleWrites => (_roles ??
+    internal override IReadOnlyList<RoleRevisionKey> RoleWrites => [.. (_roles ??
         throw new InvalidOperationException("Friend role participants were not resolved before submission."))
         .Select(role => RevisionStore.Role(role,
-            _kind == FriendWriteKind.SaveMetadata ? RevisionStore.FriendMetadata : RevisionStore.FriendRelation)).ToArray();
+            _kind == FriendWriteKind.SaveMetadata ? RevisionStore.FriendMetadata : RevisionStore.FriendRelation))];
     internal override IReadOnlyList<OwnerRevisionKey> EntityWrites => _kind is
         FriendWriteKind.RenameGroup or FriendWriteKind.DismissGroup or FriendWriteKind.ChangeMembers or FriendWriteKind.SetDnd
         ? [RevisionStore.Entity("friend_group", _a)] : [];

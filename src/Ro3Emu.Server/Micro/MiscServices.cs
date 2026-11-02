@@ -55,7 +55,8 @@ public sealed class PhonestGateService(GateAuthRegistry auths, AccountStore acco
         var account = await accounts.UnlessBannedAsync(auths.Verify(id, MapBytes(args, "Auth")), "gate bind");
         if (account == null || (session.Account != null && !string.Equals(session.Account, account, StringComparison.Ordinal)))
         {
-            log.LogWarning("PhonestGate.bind refused for {Id} from {Remote}", id, session.Channel.Remote);
+            string shown = MicroServiceRouter.Clip(id);
+            log.LogWarning("PhonestGate.bind refused for {Id} from {Remote}", shown, session.Channel.Remote);
             return MicroServiceRouter.Fail("bind refused");
         }
         micro.SignIn(session, account);

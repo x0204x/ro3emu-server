@@ -13,7 +13,7 @@ namespace Ro3Emu.Server.Game;
 /// Kill rewards: the monster's drop chains are rolled for the killer
 /// (NPCConfig._iDrop / _iNormalDrop → MultiverseGroupConfig → NPCDropConfig[env 0 reduced / env 1 Bonus Time, inferred]
 /// / additive NpcNormalDropConfig → DropPoolConfig slots → weighted DropGroupConfig rows). Item 100 rows are Base EXP,
-/// scaled by LvExpCorrectionConfig; Job EXP equals Base EXP (inferred). Currencies go to the currency map, everything
+/// scaled by LvExpCorrectionConfig; Job EXP is CharacterService.JobExpFromBase of it. Currencies go to the currency map, everything
 /// else to the bag; then one 31322 drop notify makes
 /// the client animate the loot from the corpse.
 /// </summary>
@@ -39,7 +39,7 @@ public sealed class RewardService : IGameTicker
     /// Other kills use environment 0, preserving ordinary rewards (localization 10960000077; mapping inferred).</summary>
     public Func<GameSession, MonsterUnit, Task<bool>>? QualifiesForBonus { get; set; }
     /// <summary>Actual committed kill drops, after EXP correction; excludes GM, quest and other item grants.</summary>
-    public List<Func<GameSession, MonsterUnit, IReadOnlyList<(int Entry, long Count)>, Task>> KillDropsGranted { get; } = new();
+    public List<Func<GameSession, MonsterUnit, IReadOnlyList<(int Entry, long Count)>, Task>> KillDropsGranted { get; } = [];
     internal Action<GameSession, MonsterUnit, RewardSettlement, IReadOnlyList<(int Entry, int Count)>, long, long>? StageAfkKill { get; set; }
     /// <summary>Monster Hunt: the area drop rolled with an ordinary field kill (MonsterHuntService).</summary>
     internal List<Func<GameSession, MonsterUnit, IEnumerable<(int Entry, int Count)>>> ExtraKillDrops { get; } = [];
@@ -76,7 +76,7 @@ public sealed class RewardService : IGameTicker
         /// <summary>The bag items the committed kill created (auto-decomposed ones are gone).</summary>
         internal List<InvItem> Granted = [];
     }
-    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<MonsterUnit, KillOutcome> _outcomes = new();
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<MonsterUnit, KillOutcome> _outcomes = [];
     internal Func<GameSession, MonsterUnit, (List<(int Entry, int Count)> Items, long BaseExp, long JobExp)>? ResolveKillForTest { get; set; }
 
     /// <summary>Resolve and admit once before any lethal hit/death packet. A rejected pre-admission hit is
@@ -111,12 +111,12 @@ public sealed class RewardService : IGameTicker
             var taskParticipants = _character.GetKillTaskParticipantKeys?.Invoke(player, monster) ?? [];
             if (_outcomes.TryGetValue(monster, out var stale) && stale.Role.Id != role.Id) _outcomes.Remove(monster);
             _outcomes.TryGetValue(monster, out var existing);
-            var candidates = existing == null
-                ? _teams.ExperienceRecipients(player)
-                    .Select(s => new PartyCandidate(s, s.Role!.Id, s.Attachment)).ToArray()
-                : new[] { new PartyCandidate(player, role.Id, player.Attachment) }
-                    .Concat(existing.PartyExperience.Select(row =>
-                        new PartyCandidate(Online(row.RoleId), row.RoleId, Online(row.RoleId)?.Attachment))).ToArray();
+            PartyCandidate[] candidates = existing == null
+                ? [.. _teams.ExperienceRecipients(player)
+                    .Select(s => new PartyCandidate(s, s.Role!.Id, s.Attachment))]
+                : [new PartyCandidate(player, role.Id, player.Attachment),
+                    .. existing.PartyExperience.Select(row =>
+                        new PartyCandidate(Online(row.RoleId), row.RoleId, Online(row.RoleId)?.Attachment))];
             var partyKeys = candidates.SelectMany(candidate => new[]
                 {
                     Ownership.ReservationKey.Role(candidate.RoleId),
@@ -134,7 +134,9 @@ public sealed class RewardService : IGameTicker
                         .Select(candidate => candidate.Session!).ToArray();
                     if (!eligible.Contains(player, ReferenceEqualityComparer.Instance)) eligible = [player];
                     var (items, baseExp, jobExp) = ResolveKill(player, monster, bonus, _teams.ExperienceBonusForCount(eligible.Length));
-                    items = items.Select(item =>
+                    // 上游進階通行證加成與本地倍率只在首次凍結擊殺結果前計算。
+                    items = PassPrivileges.BoostDrops(_data, player, items);
+                    items = [.. items.Select(item =>
                         {
                             if (_data.Row("ItemConfig", item.Entry) is { } row && new ItemConfig(row).Type == 1)
                                 return item.Entry == 1
@@ -142,7 +144,7 @@ public sealed class RewardService : IGameTicker
                                     : item;
                             return (item.Entry, _rates.ScaleMonsterDrop(item.Count, _random));
                         })
-                        .Where(item => item.Item2 > 0).ToList();
+                        .Where(item => item.Item2 > 0)];
                     baseExp = _rates.ScaleBaseExperience(baseExp);
                     jobExp = _rates.ScaleJobExperience(jobExp);
                     var shares = SplitPartyExperience(settlement, eligible, baseExp, jobExp, role.Id);
@@ -230,7 +232,7 @@ public sealed class RewardService : IGameTicker
                     role, baseShare, jobShare));
             }
         }
-        return new PartyShares(killerBase, killerJob, obligations.ToArray());
+        return new PartyShares(killerBase, killerJob, [.. obligations]);
     }
 
     private static void StagePartyExperience(RewardSettlement settlement,
@@ -267,7 +269,7 @@ public sealed class RewardService : IGameTicker
             bool paid = await _character.ApplyAwardAsync(session, new AwardPlan(0, 0, grants),
                 taskBaseExp: row.BaseExp, persist: builder =>
                     builder.Add(RoleObligations<PartyExperienceObligationRow>.DeliverPlan(row)),
-                stateLockHeld: true);
+                stateLockHeld: true, jobExpAlreadyConverted: true);
             if (!paid) throw new InvalidOperationException("Frozen party experience was not delivered.");
             return true;
         }
@@ -304,8 +306,9 @@ public sealed class RewardService : IGameTicker
             baseExp = Math.Max(1, baseExp * partyExpBonus / 10000);
             baseExp = ScaleFieldExp(monster.Template.NpcId, player.Progress!.Level, baseExp);
         }
-        // BaseExpAddConfig catch-up below the server level raises Base EXP only (CharacterService.LevelRules).
-        return (items, _character.WithPursueBonus(player.Progress!.Level, baseExp), baseExp);
+        // BaseExpAddConfig catch-up below the server level (CharacterService.LevelRules).
+        baseExp = _character.WithPursueBonus(player.Progress!.Level, baseExp);
+        return (items, baseExp, _character.JobExpFromBase(baseExp));
     }
 
     /// <summary>FieldExpRates (inferred): an open-field monster (NPCConfig._iWildMonsters 1) pays the rate of the killer's level.</summary>
@@ -489,7 +492,7 @@ public sealed class RewardService : IGameTicker
     {
         var drops = new List<(int, int)>();
         if (AwardPool(_data, multiverseId) is var pool and > 0) RollPool(pool, player, drops);
-        return drops.GroupBy(d => d.Item1).Select(g => (g.Key, g.Sum(d => d.Item2))).ToList();
+        return [.. drops.GroupBy(d => d.Item1).Select(g => (g.Key, g.Sum(d => d.Item2)))];
     }
 
     /// <summary>The DropPoolConfig id an award id rolls (MultiverseGroupConfig → AwardConfig[0]._iDropPool), else 0.
@@ -502,7 +505,7 @@ public sealed class RewardService : IGameTicker
     public List<(int Entry, int Count, int Bind)> RollPoolBound(long poolId, RoleProgress progress)
     {
         var bound = new List<(int Entry, int Count, int Bind)>();
-        RollPool(poolId, progress, new List<(int, int)>(), bound);
+        RollPool(poolId, progress, [], bound);
         return ScaleAwardGoods(bound.GroupBy(x => (x.Entry, x.Bind))
             .Select(g => (g.Key.Entry, g.Sum(x => x.Count), g.Key.Bind)));
     }
@@ -519,7 +522,7 @@ public sealed class RewardService : IGameTicker
         {
             var row = raw.ValueKind == JsonValueKind.Array && raw.GetArrayLength() > 0 ? raw[0] : raw;
             if (row.ValueKind == JsonValueKind.Object && GameData.Int(row, "_iDropPool") is var pool and > 0)
-                RollPool(pool, progress, new List<(int, int)>(), bound);
+                RollPool(pool, progress, [], bound);
         }
         return ScaleAwardGoods(bound.GroupBy(x => (x.Entry, x.Bind))
             .Select(g => (g.Key.Entry, g.Sum(x => x.Count), g.Key.Bind)));
@@ -557,13 +560,13 @@ public sealed class RewardService : IGameTicker
             .Select(g => (g.Key.Entry, g.Sum(x => x.Count), g.Key.Bind)));
     }
 
-    private List<(int Entry, int Count)> ScaleAwardGoods(IEnumerable<(int Entry, int Count)> goods) => goods
+    private List<(int Entry, int Count)> ScaleAwardGoods(IEnumerable<(int Entry, int Count)> goods) => [.. goods
         .Select(g => (Original: g, Scaled: (g.Entry, Count: g.Count <= 0 ? g.Count : ScaleAwardQuantity(g.Entry, g.Count))))
-        .Where(g => g.Original.Count <= 0 || g.Scaled.Count > 0).Select(g => g.Scaled).ToList();
+        .Where(g => g.Original.Count <= 0 || g.Scaled.Count > 0).Select(g => g.Scaled)];
 
-    private List<(int Entry, int Count, int Bind)> ScaleAwardGoods(IEnumerable<(int Entry, int Count, int Bind)> goods) => goods
+    private List<(int Entry, int Count, int Bind)> ScaleAwardGoods(IEnumerable<(int Entry, int Count, int Bind)> goods) => [.. goods
         .Select(g => (Original: g, Scaled: (g.Entry, Count: g.Count <= 0 ? g.Count : ScaleAwardQuantity(g.Entry, g.Count), g.Bind)))
-        .Where(g => g.Original.Count <= 0 || g.Scaled.Count > 0).Select(g => g.Scaled).ToList();
+        .Where(g => g.Original.Count <= 0 || g.Scaled.Count > 0).Select(g => g.Scaled)];
 
     internal int ScaleConfiguredAward(int entry, int count) => _rates.ScaleConfiguredAward(entry, count);
 

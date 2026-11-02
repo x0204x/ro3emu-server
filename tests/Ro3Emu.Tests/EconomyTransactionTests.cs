@@ -148,7 +148,7 @@ public sealed class EconomyTransactionTests : IDisposable
         Assert.Equal(opening.Cut.CommitSequence + 1, closing.Cut.CommitSequence);
         Assert.True(ledger.CompleteHistory, string.Join("; ", ledger.Issues.Select(x => x.Detail)));
         Assert.Equal(2, ledger.Legs.Count);
-        Assert.Equal(new long[] { -10, 2 }, ledger.Legs.Select(x => x.Delta).Order().ToArray());
+        Assert.Equal([-10, 2], ledger.Legs.Select(x => x.Delta).Order().ToArray());
         var check = EconomyExactnessChecker.Check(opening, closing, ledger);
         Assert.All(check.Assets, asset => Assert.Equal("0", asset.Residual));
         Assert.All(check.Locations, location => Assert.Equal("0", location.Residual));
@@ -217,7 +217,7 @@ public sealed class EconomyTransactionTests : IDisposable
         Assert.Equal(before + 1, _roles.ReadRevisionVector(_role).Revision("inventory"));
         Assert.Equal((long[])committedResult[0]!, committed.ChildReceipts[0].GeneratedIds!.ToArray());
         var replay = _roles.Commit(retry, "test/e01-resolve");
-        Assert.Equal(committed.ChildReceipts[0].GeneratedIds!.ToArray(), (long[])replay[0]!);
+        Assert.Equal([.. committed.ChildReceipts[0].GeneratedIds!], (long[])replay[0]!);
         Assert.Equal(before + 1, _roles.ReadRevisionVector(_role).Revision("inventory"));
         Assert.Equal(2, EconomyLedgerReader.Read(_accounts.DatabasePath, Catalog, "auto", 0, 1).Legs.Count);
     }
@@ -235,7 +235,7 @@ public sealed class EconomyTransactionTests : IDisposable
             [new(new(EconomyAssetKind.Currency, 1), 10)], [1]));
         _roles.Commit(tx, "test/e01-net-zero");
         var legs = EconomyLedgerReader.Read(_accounts.DatabasePath, Catalog, "auto", 0, 1).Legs;
-        Assert.Equal(new long[] { -10, 10 }, legs.Select(x => x.Delta).ToArray());
+        Assert.Equal([-10, 10], legs.Select(x => x.Delta).ToArray());
         Assert.Equal(100, _roles.LoadProgress(_role).Currency[1]);
     }
 

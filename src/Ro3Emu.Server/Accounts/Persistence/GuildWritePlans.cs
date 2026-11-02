@@ -17,7 +17,7 @@ internal sealed class GuildSavePlan : DbPlan
         _id = state.Id;
         _name = state.Name;
         _state = JsonSerializer.SerializeToUtf8Bytes(state);
-        _members = state.Members.Keys.ToArray();
+        _members = [.. state.Members.Keys];
         _missingMessage = missingMessage;
     }
 
@@ -28,11 +28,11 @@ internal sealed class GuildSavePlan : DbPlan
     {
         if (_changedMembers is not null) return;
         long[] prior = _id == 0 ? [] : accounts.ReadSync<long[]>(new GuildMemberIdsReadPlan(_id));
-        _changedMembers = _members.Except(prior).Concat(prior.Except(_members)).Distinct().ToArray();
+        _changedMembers = [.. _members.Except(prior).Concat(prior.Except(_members)).Distinct()];
     }
-    internal override IReadOnlyList<RoleRevisionKey> RoleWrites => (_changedMembers ??
+    internal override IReadOnlyList<RoleRevisionKey> RoleWrites => [.. (_changedMembers ??
         throw new InvalidOperationException("Guild membership was not resolved before submission."))
-        .Select(role => RevisionStore.Role(role, RevisionStore.GuildMembership)).ToArray();
+        .Select(role => RevisionStore.Role(role, RevisionStore.GuildMembership))];
     internal override IReadOnlyList<OwnerRevisionKey> EntityWrites => _id == 0 ? [] : [RevisionStore.Entity("guild", _id)];
 
     internal override object Execute(SqliteConnection db, SqliteTransaction tx)

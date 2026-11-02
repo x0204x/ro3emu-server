@@ -53,6 +53,28 @@ public sealed class WorldCoreTests : IAsyncLifetime
     }
 
     // Datasets without content here still arrive whole at login: the item freeze list, surveys and the Tavern room.
+
+    /// <summary>Client text 61169 "Cannot teleport while dead". The town a failed load falls back to stays open, or a dead
+    /// role with a broken scene would be stuck.</summary>
+    [ClientDataFact]
+    public async Task ADeadRoleCannotTravelExceptToItsMapOrTheMainCity()
+    {
+        await using var alice = await InWorld("Alice");
+        var a = Player("alice");
+        await Service<GameLoop>().InvokeAsync(async () =>
+        {
+            a.Dead = true;
+            await Service<CharacterService>().SetHpSpAsync(a, 0, null);
+        });
+        await alice.SendGameAsync(SceneService.SceneTeleport, new SceneTeleportReq { TargetMapId = 10113 });
+        Assert.Equal(ErrorCodes.TeleportDead, (await Next(alice, SceneService.SceneTeleport, SceneTeleportRsp.Parser)).Result);
+        await alice.SendGameAsync(SceneService.CustomJumpMap, new ClientCustomJumpMapReq { SceneId = 10113, PointId = 1 });
+        Assert.Equal(ErrorCodes.TeleportDead, (await Next(alice, SceneService.CustomJumpMap, ClientCustomJumpMapResp.Parser)).Result);
+        Assert.Equal(10111, a.SceneEntry);
+        await alice.SendGameAsync(SceneService.SceneTeleport, new SceneTeleportReq { TargetMapId = 10100 });
+        Assert.Equal(0, (await Next(alice, SceneService.SceneTeleport, SceneTeleportRsp.Parser)).Result);
+    }
+
     [ClientDataFact]
     public async Task LoginSendsTheEmptyWizardQuestionnaireAndBarRoomDatasets()
     {

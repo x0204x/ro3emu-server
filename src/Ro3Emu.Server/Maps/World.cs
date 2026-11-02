@@ -63,25 +63,25 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
     /// <summary>Grid cell edge: at least the leave radius, so a 3x3 block holds everything a move can affect.</summary>
     private const float CellSize = LeaveRadius;
 
-    private readonly Dictionary<long, List<GameSession>> _scenes = new();
-    private readonly Dictionary<long, Dictionary<(int X, int Z), List<GameSession>>> _grids = new();
-    private readonly Dictionary<GameSession, (long Scene, int X, int Z)> _cells = new();
-    private readonly Dictionary<long, MapInstance> _maps = new();
+    private readonly Dictionary<long, List<GameSession>> _scenes = [];
+    private readonly Dictionary<long, Dictionary<(int X, int Z), List<GameSession>>> _grids = [];
+    private readonly Dictionary<GameSession, (long Scene, int X, int Z)> _cells = [];
+    private readonly Dictionary<long, MapInstance> _maps = [];
     private readonly object _sync = new();
     // AOI membership is chosen under _sync, while writes await sockets. Serialize player/pet transitions across
     // both phases so a lineup refresh cannot send a pet before a simultaneous owner's 31037 enter.
     private readonly SemaphoreSlim _aoiDispatch = new(1, 1);
     // MoveCoreAsync runs only under _aoiDispatch (not reentrant), so its per-walk lists are reused (stage G: they were
     // 238 MB a minute of garbage at 500 players).
-    private readonly List<(GameSession Viewer, GameSession Subject, Change Kind)> _moveWork = new();
-    private readonly List<GameSession> _moveEdges = new(), _moveMovers = new();
+    private readonly List<(GameSession Viewer, GameSession Subject, Change Kind)> _moveWork = [];
+    private readonly List<GameSession> _moveEdges = [], _moveMovers = [];
 
     /// <summary>Persistent per-unit presentation follows its 31037 base for each newly entering viewer.</summary>
-    public List<Func<GameSession, WorldUnit, Task>> UnitEntered { get; } = new();
+    public List<Func<GameSession, WorldUnit, Task>> UnitEntered { get; } = [];
     /// <summary>Player presentation follows its AOI base for each new viewer.</summary>
-    public List<Func<GameSession, GameSession, Task>> PlayerEntered { get; } = new();
+    public List<Func<GameSession, GameSession, Task>> PlayerEntered { get; } = [];
     /// <summary>Presentation owners release per-unit state after any removal path, including instance cleanup.</summary>
-    public List<Func<WorldUnit, Task>> UnitRemoved { get; } = new();
+    public List<Func<WorldUnit, Task>> UnitRemoved { get; } = [];
 
     private async Task AfterUnitEnteredAsync(GameSession viewer, WorldUnit unit)
     {
@@ -119,7 +119,7 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
             unit.Removed = false;
             Map(unit.WorldScene).Add(unit);
             List<GameSession> near;
-            lock (_sync) near = UnitCandidatesLocked(unit).ToList();
+            lock (_sync) near = [.. UnitCandidatesLocked(unit)];
             foreach (var player in near.Where(p => InRange(p, unit, ViewRadius)))
             {
                 unit.Viewers.Add(player);
@@ -170,7 +170,7 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
                 && movement.MovementInfo?.MoveType == MovementType.MoveTypeWalk) return;
             Map(unit.WorldScene).Moved(unit);
             List<GameSession> candidates;
-            lock (_sync) candidates = UnitCandidatesLocked(unit).Concat(unit.Viewers).Distinct().ToList();
+            lock (_sync) candidates = [.. UnitCandidatesLocked(unit).Concat(unit.Viewers).Distinct()];
             var movers = new List<GameSession>();
             foreach (var player in candidates)
             {
@@ -297,7 +297,7 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
 
     private async Task JoinCoreAsync(GameSession session, List<WorldUnit> entered)
     {
-        List<(GameSession Viewer, GameSession Subject)> enters = new();
+        List<(GameSession Viewer, GameSession Subject)> enters = [];
         if (!_rebalancing) { _rebalancing = true; loop.Add(new Rebalancer(this)); }
         lock (_sync)
         {
@@ -341,7 +341,7 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
         lock (_sync)
         {
             if (!_scenes.TryGetValue(session.WorldScene, out var members) || !members.Contains(session)) return;
-            players = ByDistance(session, session.Visible).ToList();
+            players = [.. ByDistance(session, session.Visible)];
             ownPet = session.PetActor is { } pet && pet.Viewers.Contains(session) ? pet : null;
         }
         foreach (var other in players)
@@ -460,13 +460,13 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
             _moveEdges.AddRange(session.Observers);
             foreach (var other in _moveEdges)
             {
-                if (Distance2(session, other) > leave2 || !Observable(other, session)) { Unsee(other, session); work.Add((other, session, Change.Leave)); (refill ??= new()).Add(other); }
+                if (Distance2(session, other) > leave2 || !Observable(other, session)) { Unsee(other, session); work.Add((other, session, Change.Leave)); (refill ??= []).Add(other); }
                 else work.Add((other, session, Change.Move));
             }
             _moveEdges.Clear();
             _moveEdges.AddRange(session.Visible);
             foreach (var other in _moveEdges)
-                if (Distance2(session, other) > leave2 || !Observable(session, other)) { Unsee(session, other); work.Add((session, other, Change.Leave)); (refill ??= new()).Add(session); }
+                if (Distance2(session, other) > leave2 || !Observable(session, other)) { Unsee(session, other); work.Add((session, other, Change.Leave)); (refill ??= []).Add(session); }
             // 2. New edges, nearest first, only where a cap still has room: a saturated crowd sorts nothing.
             bool selfRoom = session.Visible.Count < session.ViewLimit;
             List<(GameSession Player, float D2)>? fresh = null;
@@ -477,7 +477,7 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
                 bool iCan = selfRoom && !session.Visible.Contains(other) && Observable(session, other);
                 if (!theyCan && !iCan) continue;
                 float d2 = Distance2(session, other);
-                if (d2 <= view2) (fresh ??= new()).Add((other, d2));
+                if (d2 <= view2) (fresh ??= []).Add((other, d2));
             }
             if (fresh != null)
                 foreach (var (other, _) in fresh.OrderBy(x => x.D2).ThenBy(x => Key(x.Player)))
@@ -533,7 +533,7 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
         bool petTurned;
         lock (_sync)
         {
-            watchers = session.Observers.ToList();
+            watchers = [.. session.Observers];
             pet = session.PetActor;
             petTurned = pet?.Turn(face) ?? false;
         }
@@ -556,7 +556,7 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
         List<GameSession> watchers;
         List<GameSession> petViewers;
         PetFollowerActor? pet;
-        List<(GameSession Viewer, GameSession Subject)> refills = new();
+        List<(GameSession Viewer, GameSession Subject)> refills = [];
         lock (_sync)
         {
             if (!RemoveLocked(session, out watchers)) return;
@@ -584,7 +584,7 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
         await _aoiDispatch.WaitAsync();
         try
         {
-            List<GameSession> dropped = new(), added = new();
+            List<GameSession> dropped = [], added = [];
             lock (_sync)
             {
                 viewer.ViewLimit = (int)Math.Min(requested, (ulong)MaxViewLimit);
@@ -638,7 +638,7 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
         await _aoiDispatch.WaitAsync();
         try
         {
-            List<(GameSession Viewer, GameSession Out, GameSession In)> swaps = new();
+            List<(GameSession Viewer, GameSession Out, GameSession In)> swaps = [];
             lock (_sync)
             {
                 foreach (var (viewer, cell) in _cells)
@@ -670,7 +670,7 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
             if (other == viewer || viewer.Visible.Contains(other) || !Observable(viewer, other)) continue;
             float d2 = Distance2(viewer, other);
             if (d2 > view2 || d2 >= bar * bar) continue;
-            (closer ??= new()).Add((other, MathF.Sqrt(d2)));
+            (closer ??= []).Add((other, MathF.Sqrt(d2)));
         }
         if (closer == null) return;
         var incoming = closer.OrderBy(x => x.D).ThenBy(x => Key(x.Player)).Take(RebalanceSwapsPerPass).ToList();
@@ -688,7 +688,7 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
     /// <summary>Players whose clients currently show <paramref name="session"/> (its observers).</summary>
     public List<GameSession> Viewers(GameSession session)
     {
-        lock (_sync) return session.Observers.ToList();
+        lock (_sync) return [.. session.Observers];
     }
 
     public IReadOnlyList<GameSession> PlayersIn(long sceneEntry)
@@ -719,7 +719,7 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
     /// <param name="watchers">The players that showed <paramref name="session"/> and must be told it left.</param>
     private bool RemoveLocked(GameSession session, out List<GameSession> watchers)
     {
-        watchers = session.Observers.ToList();
+        watchers = [.. session.Observers];
         foreach (var other in watchers) other.Visible.Remove(session);
         session.Observers.Clear();
         foreach (var other in session.Visible)
@@ -772,8 +772,8 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
             if (old == (scene, x, z)) return;
             Unindex(session);
         }
-        if (!_grids.TryGetValue(scene, out var grid)) _grids[scene] = grid = new();
-        if (!grid.TryGetValue((x, z), out var list)) grid[(x, z)] = list = new();
+        if (!_grids.TryGetValue(scene, out var grid)) _grids[scene] = grid = [];
+        if (!grid.TryGetValue((x, z), out var list)) grid[(x, z)] = list = [];
         list.Add(session);
         _cells[session] = (scene, x, z);
     }
@@ -829,7 +829,7 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
 
     private List<GameSession> Members(long sceneEntry)
     {
-        if (!_scenes.TryGetValue(sceneEntry, out var members)) _scenes[sceneEntry] = members = new();
+        if (!_scenes.TryGetValue(sceneEntry, out var members)) _scenes[sceneEntry] = members = [];
         return members;
     }
 

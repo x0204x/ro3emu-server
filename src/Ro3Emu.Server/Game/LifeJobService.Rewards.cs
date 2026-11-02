@@ -14,7 +14,7 @@ public sealed partial class LifeJobService
     private CharacterService.LifeVigorRewardPlan StageVigorReward(GameSession session, long amount, DBRestrictInfo? prospective)
     {
         if (amount <= 0 || session.Role == null || session.Restrictions == null
-            || !session.Restrictions.RestrictCount.ContainsKey(VigorId))
+            || !session.Restrictions.RestrictCount.TryGetValue(VigorId, out var originalVigor))
             throw new InvalidOperationException("活力獎勵要求已載入的角色限制額度。");
         if (ReferenceEquals(prospective, session.Restrictions))
             throw new InvalidOperationException("生活獎勵必須合成到未發布的限制複本。");
@@ -31,7 +31,7 @@ public sealed partial class LifeJobService
             tx => { if (prospective == null) tx.RoleBlob(role, "life_restrict", next.ToByteArray()); },
             () => { if (prospective == null) session.Restrictions = next; },
             () => SyncRestrictionsAsync(session),
-            new EconomyVigorRewardEvidence(amount, accepted, session.Restrictions.RestrictCount[VigorId].Count,
+            new EconomyVigorRewardEvidence(amount, accepted, originalVigor.Count,
                 beforeReward, vigor.Count, beforeHash, Convert.ToHexString(SHA256.HashData(next.ToByteArray()))));
     }
 }

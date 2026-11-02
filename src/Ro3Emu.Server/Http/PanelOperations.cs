@@ -33,6 +33,8 @@ public sealed partial class PanelOperations(IOptions<ServerOptions> options, Acc
 
     public PanelRole RoleOf(string account) => staff.RoleOf(account);
 
+    public PanelRole ListedRoleOf(string account) => staff.ListedRoleOf(account);
+
     public async Task<IReadOnlyList<PanelStaff>> StaffAsync()
     {
         var withTwoFactor = await accounts.ReadAsync<HashSet<string>>(new TotpEnabledRead());

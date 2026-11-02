@@ -7,7 +7,7 @@ public sealed partial class AdventureGroupService
 {
     /// <summary>Chat invitation tokens (34009 Ope_Invite; the inviter's client sends the link, HLP:2134-2241).
     /// In memory: an invitation does not survive a restart (inferred).</summary>
-    private readonly Dictionary<long, (long Group, long Inviter, long Invitee, long Expires)> _invites = new();
+    private readonly Dictionary<long, (long Group, long Inviter, long Invitee, long Expires)> _invites = [];
     private static readonly TimeSpan InviteLife = TimeSpan.FromHours(24); // (inferred) no config names it
 
     private static long NewToken() => Random.Shared.NextInt64(1, long.MaxValue);
@@ -439,8 +439,8 @@ public sealed partial class AdventureGroupService
                     if (code == 0) g!.Background = d.Background;
                     break;
                 case EditType.EditLabel:
-                    code = CheckLabels(d.Label.ToList());
-                    if (code == 0) g!.Labels = d.Label.ToList();
+                    code = CheckLabels([.. d.Label]);
+                    if (code == 0) g!.Labels = [.. d.Label];
                     break;
                 case EditType.EditAutoAcceptApply:
                     g!.AutoAgreeApply = d.AutoAcceptApply;

@@ -135,7 +135,11 @@ public sealed class PetSupportBuffTests : IAsyncLifetime
         Assert.Equal(20, Buffs.ShieldAmount(other));
         var changed = await Next(alice, CharacterService.AoiAttrChange, AOIAttrChange.Parser,
             x => x.EntityUuid == (ulong)unit.Uid && x.Property.Any(p => p.Idx == 2003 && p.Data == 45));
-        Assert.Equal(45, Assert.Single(changed.Property).Data);
+        // 配對客戶端同時同步總盾量與物理／魔法／通用護盾；此案例是通用護盾。
+        Assert.Equal(45, Assert.Single(changed.Property, p => p.Idx == 2003).Data);
+        Assert.Equal(0, Assert.Single(changed.Property, p => p.Idx == 2006).Data);
+        Assert.Equal(0, Assert.Single(changed.Property, p => p.Idx == 2007).Data);
+        Assert.Equal(45, Assert.Single(changed.Property, p => p.Idx == 2008).Data);
         Assert.Equal(35, await Run(() => Buffs.AbsorbAsync(unit, 80)));
         Assert.Equal(0, Buffs.ShieldAmount(unit));
         Assert.Contains(guid, (await Next(alice, BuffService.BuffRemove, BuffRemoveNotify.Parser,

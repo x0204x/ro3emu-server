@@ -72,11 +72,11 @@ public sealed class BuffRulesTests : IAsyncLifetime
     private async Task Gm(string account, string line)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(line))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={account}", Operator.Command(line))).EnsureSuccessStatusCode();
     }
 
     private GameSession Session(string name) => _app!.Services.GetRequiredService<SessionRegistry>().All()
-        .Single(s => s.Account == name.ToLowerInvariant());
+        .Single(s => string.Equals(s.Account, name, StringComparison.OrdinalIgnoreCase));
     private GameLoop Loop => _app!.Services.GetRequiredService<GameLoop>();
     private BuffService Buffs => _app!.Services.GetRequiredService<BuffService>();
     private Task Run(Func<Task> work) => Loop.InvokeAsync(work);

@@ -167,7 +167,7 @@ public sealed partial class PetService
     }
 
     private Dictionary<int, Dictionary<int, long>> BookLedger(GameSession s) => _roles.LoadPetBooks(s.Role!.Id) is { Length: > 0 } bytes
-        ? JsonSerializer.Deserialize<Dictionary<int, Dictionary<int, long>>>(bytes) ?? new() : new();
+        ? JsonSerializer.Deserialize<Dictionary<int, Dictionary<int, long>>>(bytes) ?? [] : [];
 
     /// <summary>Pre-ledger migration: configured progression plus carried surplus, in whole smallest books.</summary>
     private Dictionary<int, long>? LegacyBooks(PetData pet)
@@ -180,7 +180,7 @@ public sealed partial class PetService
             if (LevelRow(prior) is not { } row || GameData.Int(row, "_iExp") <= 0) return null;
             experience = checked(experience + GameData.Int(row, "_iExp"));
         }
-        return experience >= 500 ? new Dictionary<int, long> { [1250701] = experience / 500 } : new();
+        return experience >= 500 ? new Dictionary<int, long> { [1250701] = experience / 500 } : [];
     }
 
     /// <summary>Pet state, spend ledger, items and currency commit in one CharacterService exchange transaction.</summary>
@@ -208,8 +208,8 @@ public sealed partial class PetService
     private JsonElement? LevelRow(PetData p) => _data.Row("PetBaseConfig", p.PetId) is { } b
         && _levels.TryGetValue(((int)GameData.Int(b, "_iQuality"), p.Level), out var r) ? r : null;
     private static long[] Flat(JsonElement row, string key) => row.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.Array
-        ? v.EnumerateArray().Select(x => (long)(GameData.Number(x) ?? 0)).ToArray() : [];
-    private static List<(int, long)> Cost(JsonElement row, string key) => GameData.Pairs(row, key).Select(p => ((int)p.Id, (long)p.Value)).ToList();
+        ? [.. v.EnumerateArray().Select(x => (long)(GameData.Number(x) ?? 0))] : [];
+    private static List<(int, long)> Cost(JsonElement row, string key) => [.. GameData.Pairs(row, key).Select(p => ((int)p.Id, (long)p.Value))];
     private static List<(int, long)> Piece(JsonElement row)
     {
         var pair = Flat(row, "_kPiece");
@@ -269,7 +269,7 @@ public sealed partial class PetService
             {
                 target.LevelExp = -need;
                 var books = BookLedger(s);
-                if (!books.TryGetValue(req.PetId, out var spent)) books[req.PetId] = spent = LegacyBooks(pet!) ?? new();
+                if (!books.TryGetValue(req.PetId, out var spent)) books[req.PetId] = spent = LegacyBooks(pet!) ?? [];
                 foreach (var (id, amount) in cost) spent[id] = checked(spent.GetValueOrDefault(id) + amount);
                 if (!await ExchangeBooksAsync(s, "level", next, cost, [], books)) code = ErrorCodes.PetLevelMaterials;
                 else pet = target;
@@ -295,7 +295,7 @@ public sealed partial class PetService
             var books = BookLedger(s);
             if (!books.TryGetValue(req.PetId, out var spent))
             {
-                spent = LegacyBooks(pet!) ?? new();
+                spent = LegacyBooks(pet!) ?? [];
             }
             if (code == 0 && spent.Any(x => x.Value < 0 || x.Value > int.MaxValue
                 || x.Key is not (1250701 or 1250702 or 1250703))) code = ErrorCodes.PetNoConfig;
@@ -453,8 +453,8 @@ public sealed partial class PetService
             || rows.GetArrayLength() != 1 || rows[0].ValueKind != JsonValueKind.Object) return null;
         var values = Cost(rows[0], "_kAward");
         if (values.Any(p => p.Item2 is <= 0 or > int.MaxValue || _data.Row("ItemConfig", p.Item1) == null)) return null;
-        return _awards.ScaleRewardGrants(values.Select(p => new AwardGrant(p.Item1, (int)p.Item2)))
-            .Select(g => (g.Entry, g.Count)).ToList();
+        return [.. _awards.ScaleRewardGrants(values.Select(p => new AwardGrant(p.Item1, (int)p.Item2)))
+            .Select(g => (g.Entry, g.Count))];
     }
 
     /// <summary>33312: fragment item _kDecompose, distinct positive counts. Multiplying the preview by count is inferred.</summary>

@@ -78,7 +78,7 @@ public sealed partial class ArrowShopTests : IAsyncLifetime
     private Task Ready(GameSession session) => Service<GameLoop>().InvokeAsync(async () => { await Service<CharacterService>().SetLevelAsync(session, 3, null); });
     private long Balance(GameSession session) => Service<CharacterService>().CountOf(session, ArrowShopCatalog.CurrencyId);
     private static long Count(GameSession session, int item) => session.Items.Where(i => i.Entry == item).Sum(i => (long)i.Stack);
-    private static int[] ArrowIds => ArrowShopCatalog.Offers.Select(offer => offer.ItemId).ToArray();
+    private static int[] ArrowIds => [.. ArrowShopCatalog.Offers.Select(offer => offer.ItemId)];
     private ShopService.ShopState SavedShop(long role) => JsonSerializer.Deserialize<ShopService.ShopState>(Service<RoleStore>().LoadShop(role)!)!;
     private static async Task<BuyCommodityResp> Buy(BotClient bot, int id, int count = 1)
     {

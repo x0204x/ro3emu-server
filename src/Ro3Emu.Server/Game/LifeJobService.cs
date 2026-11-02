@@ -30,7 +30,7 @@ public sealed partial class LifeJobService
     private readonly GameLoop _loop;
     private readonly TimeProvider _clock;
     private readonly ILogger<LifeJobService> _log;
-    private readonly Dictionary<GameSession, ForgeAttempt> _forging = new();
+    private readonly Dictionary<GameSession, ForgeAttempt> _forging = [];
     private sealed record ForgeAttempt(long Recipe, TimeSpan Started, int Duration, long Scene, long Job);
 
     /// <summary>Restriction consumption is durable separately from the current balance; epoch follows To-Do's 05:00.</summary>
@@ -159,7 +159,7 @@ public sealed partial class LifeJobService
 
     /// <summary>Restrictions another service keeps (the Rift's RestrictConfig 1020): shown in the same 5018 map, never
     /// saved with or compared against the life restrictions.</summary>
-    public List<Func<GameSession, RestrictInfo?>> ProjectedRestrictions { get; } = new();
+    public List<Func<GameSession, RestrictInfo?>> ProjectedRestrictions { get; } = [];
 
     private DBRestrictInfo RestrictView(GameSession s)
     {
@@ -196,9 +196,9 @@ public sealed partial class LifeJobService
     private static bool CurrentForBook(JsonElement row, int book) => Numbers(row, "_kMultiverseArray") is var books
         && (books.Length == 0 || books.Contains(0) || books.Contains(book));
     private static long[] Numbers(JsonElement row, string field) => row.TryGetProperty(field, out var a) && a.ValueKind == JsonValueKind.Array
-        ? a.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).ToArray() : [];
+        ? [.. a.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0))] : [];
     private static List<(int Entry, long Count)> Costs(JsonElement row, string field, int count = 1) =>
-        GameData.Pairs(row, field).Select(p => (checked((int)p.Id), checked((long)p.Value * count))).ToList();
+        [.. GameData.Pairs(row, field).Select(p => (checked((int)p.Id), checked((long)p.Value * count)))];
 
     /// <summary>33513/14 both send 33515; both maps must be present even for a single-id query (DAL lines 1542..1554).</summary>
     public Task HealthAsync(GameSession s, GetHealthCostReq? req = null, int error = 0)
@@ -440,7 +440,7 @@ public sealed partial class LifeJobService
         {
             RoleId = s.Role!.Id, BeforeLife = beforeLife,
             BeforeRestrict = beforeRestrict, BeforeRuntime = beforeRuntime, Life = next,
-            Restrict = restrict, Runtime = runtime, Grants = grants.ToArray()
+            Restrict = restrict, Runtime = runtime, Grants = [.. grants]
         });
     }
 
@@ -535,7 +535,7 @@ public sealed partial class LifeJobService
                     }
                     AddExp(s, next, GameData.Int(row, "_iJobId"), OperationExp(s, row, true) * req.ItemNum);
                     var received = await CommitAsync(s, "cd13c/life-forge", next, restrict, runtime,
-                        actualCosts.GroupBy(c => c.Entry).Select(g => (g.Key, g.Sum(c => c.Count))).ToArray(), grants,
+                        [.. actualCosts.GroupBy(c => c.Entry).Select(g => (g.Key, g.Sum(c => c.Count)))], grants,
                         result: new
                         {
                             Recipe = req.ItemUniqueId, Batch = req.ItemNum,
@@ -629,7 +629,8 @@ public sealed partial class LifeJobService
             restrict.RestrictCount[VigorId].LimitCount = VigorLimit(s, life);
         }
         long baseExp = rewardSettlement == null ? 0 : grants.Where(g => g.Entry == 100).Sum(g => (long)g.Count);
-        long jobExp = rewardSettlement == null ? 0 : grants.Where(g => g.Entry == 101).Sum(g => (long)g.Count);
+        long jobExp = rewardSettlement == null ? 0
+            : grants.Where(g => g.Entry == 101).Sum(g => (long)g.Count) + _character.JobExpFromBase(baseExp);
         IEnumerable<AwardGrant> itemGrants = rewardSettlement == null ? grants :
             grants.Where(g => g.Entry is not (100 or 101));
         var semanticCost = cost.Concat((instances ?? new Dictionary<long, int>()).Select(pair =>
@@ -655,7 +656,7 @@ public sealed partial class LifeJobService
                             Result = result
                         }));
             },
-            boundGoods: itemGrants.Select(g => (g.Entry, g.Count, g.BindType)).ToArray(),
+            boundGoods: [.. itemGrants.Select(g => (g.Entry, g.Count, g.BindType))],
             baseExp: baseExp, jobExp: jobExp,
             rewardSettlement: rewardSettlement,
             committed: () =>

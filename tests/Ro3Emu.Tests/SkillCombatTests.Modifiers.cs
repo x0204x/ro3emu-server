@@ -44,7 +44,7 @@ public sealed partial class SkillCombatTests
         });
         var update = await Next(alice, CombatService.SkillAffectedEx, SkillBeAffectedParamExNotify.Parser,
             n => n.AffectParamDict.TryGetValue(14201, out var skill) && skill.AffectParam.ContainsKey(35));
-        Assert.Equal([1L, AttributeId.Sp, 0, 7], Assert.Single(update.AffectParamDict[14201].AffectParam[35].AffectValueListList).AffectValueList.ToArray());
+        Assert.Equal([1L, AttributeId.Sp, 0, 7], [.. Assert.Single(update.AffectParamDict[14201].AffectParam[35].AffectValueListList).AffectValueList]);
         await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1420101 });
         Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
         await Loop.InvokeAsync(async () =>
@@ -185,8 +185,8 @@ public sealed partial class SkillCombatTests
         var effective = combat.EffectiveSkillRow(player, 1510201)!.Value;
         Assert.Equal(7000, effective.GetProperty("_kLogicData")[2].GetInt64());
         // 同一 Buff 還有三筆 type29/+100，以及 index1/2 的 type30/+10；不可只計門檻修改。
-        Assert.Equal([7700L, 9220, 9600], effective.GetProperty("_kDamageParam1").EnumerateArray().Select(v => v.GetInt64()).ToArray());
-        Assert.Equal([41L, 60, 62], effective.GetProperty("_kDamageParam2").EnumerateArray().Select(v => v.GetInt64()).ToArray());
+        Assert.Equal([7700L, 9220, 9600], [.. effective.GetProperty("_kDamageParam1").EnumerateArray().Select(v => v.GetInt64())]);
+        Assert.Equal([41L, 60, 62], [.. effective.GetProperty("_kDamageParam2").EnumerateArray().Select(v => v.GetInt64())]);
         Assert.Equal(982, await Hit(0.69)); // 1000×92.2%+60，選中提升門檻後的增強分支。
         Assert.Equal(811, await Hit(0.71)); // 1000×77%+41，門檻外仍使用普通分支。
         await Loop.InvokeAsync(() => buffs.RemoveAsync(player, player.Buffs.Single(b => b.ConfigId == 1522701)));

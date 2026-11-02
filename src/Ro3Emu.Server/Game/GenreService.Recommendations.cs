@@ -80,7 +80,8 @@ public sealed partial class GenreService
                     await SaveGenreAsync(s, next);
                     await SyncAsync(s);
                 }
-                catch (Exception e) when (e is Microsoft.Data.Sqlite.SqliteException or InvalidOperationException or OverflowException)
+                catch (Exception e) when (e is Microsoft.Data.Sqlite.SqliteException
+                    or Accounts.Persistence.PersistenceException or InvalidOperationException or OverflowException)
                 { log.LogWarning(e, "Build seek code failed"); code = ErrorCodes.Unknown; share = 0; }
             }
             await s.SendGameAsync(82800, new GenreSeekerResp
@@ -108,7 +109,8 @@ public sealed partial class GenreService
                     await SaveGenreAsync(s, next);
                     await SyncAsync(s);
                 }
-                catch (Exception e) when (e is Microsoft.Data.Sqlite.SqliteException or InvalidOperationException or OverflowException)
+                catch (Exception e) when (e is Microsoft.Data.Sqlite.SqliteException
+                    or Accounts.Persistence.PersistenceException or InvalidOperationException or OverflowException)
                 { log.LogWarning(e, "Build sharing code failed"); code = ErrorCodes.Unknown; share = ""; }
             }
             await s.SendGameAsync(82807, new GenreSeekerCodeResp { Result = code, Code = share });
@@ -433,7 +435,7 @@ public sealed partial class GenreService
                 || record.Plans == null || record.RougeInfo?.SeekUserId != s.Role!.Id
                 || record.RougeInfo.ResponserUserId != req.ResponseUserId)) result = ErrorCodes.Parameter;
             var selected = s.Genre!.GenreMap.SystemMap.TryGetValue(req.PlanId, out var current)
-                ? current.GenrePlans.ToDictionary(kv => kv.Key, kv => kv.Value) : new Dictionary<int, int>();
+                ? current.GenrePlans.ToDictionary(kv => kv.Key, kv => kv.Value) : [];
             var replacing = (req.ChildType.Count == 0 ? req.SystemType.Keys : req.ChildType.Where(kv => kv.Value == 1).Select(kv => kv.Key)).ToArray();
             if (result == 0 && (replacing.Length == 0 || replacing.Any(type => type is < Skill or > Talent
                 || !req.SystemType.ContainsKey(type)) || req.ChildType.Any(kv => kv.Value is not 0 and not 1)))
@@ -441,7 +443,7 @@ public sealed partial class GenreService
             var next = new Stage(s, skills);
             // The donor WholeRole reservation includes login reconciliation and item/GM writes through Apply.
             var donorItems = result == 0 ? (Online(req.ResponseUserId)?.Items ?? items.Load(req.ResponseUserId))
-                .ToDictionary(i => i.Guid, i => i.Clone()) : new();
+                .ToDictionary(i => i.Guid, i => i.Clone()) : [];
             var used = new HashSet<long>();
             long Own(long donorGuid)
             {
@@ -548,7 +550,8 @@ public sealed partial class GenreService
                     await CommitAsync(s, next, genre);
                     skillChanged = changed;
                 }
-                catch (Exception e) when (e is Microsoft.Data.Sqlite.SqliteException or InvalidOperationException)
+                catch (Exception e) when (e is Microsoft.Data.Sqlite.SqliteException
+                    or Accounts.Persistence.PersistenceException or InvalidOperationException)
                 { log.LogWarning(e, "Genre recommendation commit failed"); result = ErrorCodes.Unknown; }
             }
             reply.Result = result;

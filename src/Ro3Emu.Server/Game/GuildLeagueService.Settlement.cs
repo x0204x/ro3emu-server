@@ -199,12 +199,12 @@ public sealed partial class GuildLeagueService
         if (_data.Row("AwardConfig", id) is not { } raw) return [];
         var row = raw.ValueKind == JsonValueKind.Array ? raw[0] : raw;
         if (!row.TryGetProperty("_kAward", out var items) || items.ValueKind != JsonValueKind.Array) return [];
-        return items.EnumerateArray().Where(a => a.ValueKind == JsonValueKind.Array && a.GetArrayLength() >= 2)
+        return [.. items.EnumerateArray().Where(a => a.ValueKind == JsonValueKind.Array && a.GetArrayLength() >= 2)
             .Select(a => new MailService.Attachment((int)(GameData.Number(a[0]) ?? 0),
                 _options.Value.RewardRates.ScaleConfiguredAward((int)(GameData.Number(a[0]) ?? 0),
                     (int)(GameData.Number(a[1]) ?? 0)),
                 a.GetArrayLength() > 2 ? (int)(GameData.Number(a[2]) ?? 0) : 0))
-            .Where(a => a.Count > 0 && _data.Row("ItemConfig", a.Entry) != null).ToList();
+            .Where(a => a.Count > 0 && _data.Row("ItemConfig", a.Entry) != null)];
     }
 
     private EventEconomyMutation? AwardSource(IReadOnlyDictionary<long, List<MailService.Attachment>> awards, string sourceKey)

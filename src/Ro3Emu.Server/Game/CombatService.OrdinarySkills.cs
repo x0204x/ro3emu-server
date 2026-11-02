@@ -102,18 +102,18 @@ public sealed partial class CombatService
     {
         var skill = new SkillConfig(row);
         string script = skill.ScriptLogic;
-        bool cleanse = script is "Cleanse" or "Cleanse2";
+        int[] kinds = CleanseKinds(row);
+        bool cleanse = kinds.Length > 0;
         bool release = skill.SkillId == BuffService.ControlReleaseSkillGroup;
         if (!cleanse && !release && script is not ("Detoxify" or "HealingSkills")) return;
         var currentTarget = CapturePlayerSkillTarget(recipient);
-        var categories = cleanse ? Numbers(row, "_kLogicData").ToHashSet() : [];
         // Cleanse 的參數是分類（6 沉默、5 黑暗等），不是 Buff ID。
         foreach (var active in recipient.Buffs.ToArray())
         {
             if (!currentSource() || !currentTarget()) break;
             if (active.IsPassive || BuffConfig.Get(_data, active.ConfigId) is not { } buff
                 || buff.Type != 2 || buff.Disperse == 0) continue;
-            bool remove = cleanse && buff.BuffCategory.Any(c => categories.Contains(c))
+            bool remove = cleanse && Cleanses(kinds, buff)
                 || release && buff.BuffCategory.Contains(37)
                 || script == "Detoxify" && buff.BuffId == 9030
                 || script == "HealingSkills" && buff.BuffId is 9023 or 9025;

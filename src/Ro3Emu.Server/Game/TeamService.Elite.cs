@@ -13,7 +13,7 @@ public sealed partial class TeamService
     public async Task<(int Code, long TeamId)> CreateEliteTeamAsync(GameSession s, IReadOnlyCollection<long> elites)
     {
         long self = s.Role!.Id;
-        long[] online = elites.Where(id => id != self && Session(id) != null).Distinct().ToArray();
+        long[] online = [.. elites.Where(id => id != self && Session(id) != null).Distinct()];
         (int Code, long TeamId) result = (0, 0);
         await RunTeamAsync("team/elite", online.Prepend(self), 0, async () => result = await CreateEliteTeamCoreAsync(s, elites, online));
         return result;

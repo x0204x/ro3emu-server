@@ -6,9 +6,11 @@ namespace Ro3Emu.Server.Data.Config;
 [ConfigTable("MonthCardConfig")]
 public readonly partial record struct MonthCardConfig(JsonElement Row)
 {
+    [ConfigField("_iBuyAward")] public partial long BuyAward { get; }
     [ConfigField("_iDailyAward")] public partial long DailyAward { get; }
     [ConfigField("_iDay")] public partial long Day { get; }
     [ConfigField("_iDayLimit")] public partial long DayLimit { get; }
     [ConfigField("_iId")] public partial long Id { get; }
     [ConfigField("_iItem")] public partial long Item { get; }
+    [ConfigField("_iProduct")] public partial long Product { get; }
 }

@@ -8,7 +8,7 @@ public sealed partial class CardService
 {
     /// <summary>Socketed cards changed (insert, remove, transfer, plan switch, star-up of a socketed copy):
     /// CardEffects reconciles the card-owned passive buffs.</summary>
-    public List<Func<GameSession, Task>> SocketsChanged { get; } = new();
+    public List<Func<GameSession, Task>> SocketsChanged { get; } = [];
 
     private async Task NotifySocketsChangedAsync(GameSession session)
     {

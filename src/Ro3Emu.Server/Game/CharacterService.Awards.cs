@@ -30,7 +30,7 @@ public sealed partial class CharacterService
 
     /// <summary>Loot: several items / currencies at once, one bag sync, marked new (no float: the drop notify shows them).</summary>
     public Task GrantAsync(GameSession session, IReadOnlyList<(int Entry, int Count)> items, Func<bool>? stillOwner = null) =>
-        GrantBoundAsync(session, items.Select(i => (i.Entry, i.Count, Bind: 0)).ToList(), stillOwner);
+        GrantBoundAsync(session, [.. items.Select(i => (i.Entry, i.Count, Bind: 0))], stillOwner);
 
     /// <summary>Quest grants preserve AwardConfig's bind flag; bound and unbound stacks remain separate.</summary>
     public async Task GrantBoundAsync(GameSession session, IReadOnlyList<(int Entry, int Count, int Bind)> items,
@@ -96,13 +96,14 @@ public sealed partial class CharacterService
         byte[]? taskRuntimeState = null, int manifestType = 1, byte[]? expectedDaily = null,
         byte[]? nextDaily = null, byte[]? expectedTasks = null, Action<RoleItemPlanBuilder>? persist = null,
         bool stateLockHeld = false, Action? committed = null, EconomyMutation? familyEconomy = null,
-        OwnedAwardSource? ownedAward = null, bool suppressRewardNotice = false, IReadOnlyList<int>? rewardIndexes = null)
+        OwnedAwardSource? ownedAward = null, bool suppressRewardNotice = false, IReadOnlyList<int>? rewardIndexes = null,
+        bool jobExpAlreadyConverted = false)
     {
         using var _ = stateLockHeld ? null : await LockAsync(session);
         var context = RequireOwnedRole(session);
         return await ApplyAwardCoreAsync(session, context, plan, taskBaseExp, costs, deliveredTaskState,
             taskRuntimeState, manifestType, expectedDaily, nextDaily, expectedTasks, persist, committed,
-            familyEconomy, ownedAward, suppressRewardNotice, rewardIndexes);
+            familyEconomy, ownedAward, suppressRewardNotice, rewardIndexes, jobExpAlreadyConverted);
     }
 
     /// <summary>Checked owned Core: stage copied award values, commit, apply before notices.</summary>
@@ -111,12 +112,12 @@ public sealed partial class CharacterService
         byte[]? taskRuntimeState, int manifestType, byte[]? expectedDaily, byte[]? nextDaily,
         byte[]? expectedTasks, Action<RoleItemPlanBuilder>? persist, Action? committed,
         EconomyMutation? familyEconomy, OwnedAwardSource? ownedAward, bool suppressRewardNotice,
-        IReadOnlyList<int>? rewardIndexes = null)
+        IReadOnlyList<int>? rewardIndexes = null, bool jobExpAlreadyConverted = false)
     {
         context.AssertRole(session.Role!.Id);
         context.BindPresentation(session);
         var attachment = session.Attachment;
-        if (taskBaseExp < 0) throw new ArgumentOutOfRangeException(nameof(taskBaseExp));
+        ArgumentOutOfRangeException.ThrowIfNegative(taskBaseExp);
         // PBManifestType.ManifestTypeRunRing (18) needs the slots LC_DAL_Reward uses to stop the wheel.
         if (manifestType is < 1 or > 19 or 15 || manifestType == TaskService.ManifestTypeRunRing && rewardIndexes is not { Count: > 0 })
             throw new ArgumentOutOfRangeException(nameof(manifestType));
@@ -235,6 +236,8 @@ public sealed partial class CharacterService
         // Other ApplyAward callers have no quest delivery boundary and retain their standalone behavior.
         var decomposed = deliveredTaskState == null && ownedAward?.CommandKind != "cd13e/grant" ? new ItemAutoDecomposeTipsNtf()
             : StageAutoDecomposeAward(session, items, staged, received, beforeGrants, gained);
+        // 已提交的小隊分帳保存確切 Base／Job 金額；重送及舊版本待補發不得重新換算。
+        if (!jobExpAlreadyConverted) jobExp = checked(jobExp + JobExpFromBase(baseExp));
         AddVirtualReward(notification, BaseExpItem, baseExp);
         AddVirtualReward(notification, JobExpItem, jobExp);
         int oldLevel = staged.Level, oldJob = staged.JobLevel;
@@ -243,7 +246,7 @@ public sealed partial class CharacterService
         // use the persisted blob as the SQLite CAS baseline for this single award transaction.
         byte[]? persistedTasks = expectedTasks == null ? null : roles.LoadTasks(session.Role.Id);
         var lifeVigor = StageVigorReward(session, old, staged);
-        var cardSight = StageFirstCardSight?.Invoke(session, gained.Select(g => g.Entry).ToList(), 0);
+        var cardSight = StageFirstCardSight?.Invoke(session, [.. gained.Select(g => g.Entry)], 0);
         void PublishAward()
         {
             session.Progress = staged;

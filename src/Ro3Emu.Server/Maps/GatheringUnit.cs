@@ -20,8 +20,8 @@ public sealed class GatheringUnit : WorldUnit
     public required long BornTimeMs { get; init; }
 
     public int TotalCollectCount { get; set; }
-    public Dictionary<long, int> PersonalCounts { get; } = new();
-    public Dictionary<long, long> Cooldowns { get; } = new();
+    public Dictionary<long, int> PersonalCounts { get; } = [];
+    public Dictionary<long, long> Cooldowns { get; } = [];
     public bool Depleted => SharedLimit > 0 && TotalCollectCount >= SharedLimit;
 
     /// <summary>

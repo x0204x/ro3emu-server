@@ -3,7 +3,7 @@
 # self-contained). Exports the game data from a game folder on the first run, then runs the server in this terminal
 # or as a systemd service. Players join from Windows with: RO3Emu.exe join <address>
 #
-# usage: ./server.sh [--client DIR | --download DIR] [--host ADDRESS] [--gm ACCOUNT] [--voice-port PORT] [--panel-port PORT | --no-panel] [--no-icons] [--service] [--reexport]
+# usage: ./server.sh [--client DIR | --download DIR] [--host ADDRESS] [--gm ACCOUNT] [--voice-port PORT] [--panel-port PORT | --no-panel] [--no-icons] [--service] [--reexport] [--allow-root]
 #   --client DIR    a game folder copied from Windows (at least its ro3_Data/StreamingAssets); first run only
 #   --download DIR  download only the game files the export needs from the official Genesis servers into DIR
 #   --host ADDRESS  the address players connect to (default: this machine's first address)
@@ -13,11 +13,12 @@
 #   --no-icons      no pictures for the web panel (decoded from the game; 120 MB)
 #   --service       install and start a systemd service (needs sudo) instead of running in this terminal
 #   --reexport      export the game data again (after a game update)
+#   --allow-root    run as root anyway (a hole in the server would then own the whole machine)
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 root=$(pwd)
 
-client=""; download=""; host=""; voice=""; panel=5381; service=0; reexport=0; gms=(); icons=()
+client=""; download=""; host=""; voice=""; panel=5381; service=0; reexport=0; allow_root=0; gms=(); icons=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --client) client="$2"; shift 2 ;;
@@ -34,13 +35,18 @@ while [ $# -gt 0 ]; do
     --no-icons) icons=(--no-icons); shift ;;
     --service) service=1; shift ;;
     --reexport) reexport=1; shift ;;
-    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+    --allow-root) allow_root=1; shift ;;
+    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
     *) echo "unknown option $1 (see ./server.sh --help)"; exit 1 ;;
   esac
 done
 
 step() { printf '\n== %s\n' "$1"; }
 fail() { printf '\n%s\n' "$1" >&2; exit 1; }
+
+if [ "$(id -u)" = 0 ] && [ "$allow_root" != 1 ]; then
+  fail "Do not run the server as root: a hole in it would then own the whole machine. Run ./server.sh as an ordinary user (with --service it asks sudo only to install the unit), or pass --allow-root."
+fi
 
 chmod +x ./RO3Emu ./server/Ro3Emu.Server 2>/dev/null || true
 export RO3EMU_HOME="$root"
@@ -114,6 +120,14 @@ if [ "$service" = 1 ]; then
     echo 'Restart=always'
     # A shutdown planned on the web panel exits 0 and stays down; its restart exits 75 and comes back.
     echo 'RestartPreventExitStatus=0'
+    # The server writes only below this folder (data, logs, its own updates); the rest of the system is read-only to it.
+    # The single-file build unpacks below it too, not into ~/.net, which ProtectHome makes read-only.
+    echo "Environment=DOTNET_BUNDLE_EXTRACT_BASE_DIR=$root/.net"
+    echo 'NoNewPrivileges=yes'
+    echo 'ProtectSystem=strict'
+    echo 'ProtectHome=read-only'
+    echo 'PrivateTmp=yes'
+    echo "ReadWritePaths=$root"
     echo
     echo '[Install]'
     echo 'WantedBy=multi-user.target'

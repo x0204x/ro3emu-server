@@ -61,15 +61,15 @@ public sealed class GuildVoiceService(GameData data, GuildStore store, GuildServ
     {
         public int Index { get; } = index;
         public GuildSpeakAuthorityType Mode { get; set; } = GuildSpeakAuthorityType.Free;
-        public Dictionary<long, Seat> Members { get; } = new();
-        public List<Application> Applications { get; } = new();
-        public Dictionary<long, long> Blocked { get; } = new(); // role -> blocked until, unix ms
+        public Dictionary<long, Seat> Members { get; } = [];
+        public List<Application> Applications { get; } = [];
+        public Dictionary<long, long> Blocked { get; } = []; // role -> blocked until, unix ms
     }
 
     private readonly object _sync = new();
-    private readonly Dictionary<long, Channel[]> _byGuild = new();
-    private readonly Dictionary<long, (long Guild, int Index)> _where = new();
-    private readonly HashSet<long> _rechecking = new(); // roles with a sweep recheck already posted
+    private readonly Dictionary<long, Channel[]> _byGuild = [];
+    private readonly Dictionary<long, (long Guild, int Index)> _where = [];
+    private readonly HashSet<long> _rechecking = []; // roles with a sweep recheck already posted
     // invitee -> (last invited, declines invites until), unix ms: GuildVoiceAllData.memberVoiceStates
     private readonly Dictionary<long, (long InvitedMs, long RejectUntilMs)> _inviteStates = [];
     private TimeSpan _lastSweep;
@@ -119,7 +119,7 @@ public sealed class GuildVoiceService(GameData data, GuildStore store, GuildServ
         Channel[] occupied;
         lock (_sync)
             occupied = _byGuild.TryGetValue(guildId, out var channels)
-                ? channels.Where(c => c.Members.Count > 0).ToArray() : [];
+                ? [.. channels.Where(c => c.Members.Count > 0)] : [];
         foreach (var channel in occupied) await PushAsync(guild, channel);
     });
 
@@ -132,7 +132,7 @@ public sealed class GuildVoiceService(GameData data, GuildStore store, GuildServ
         {
             PruneBlocks();
             PruneInviteStates();
-            seated = _where.Keys.ToList();
+            seated = [.. _where.Keys];
         }
         if (seated.Count == 0) return;
         var online = sessions.All().Where(s => s.Role != null).ToDictionary(s => s.Role!.Id);
@@ -555,7 +555,7 @@ public sealed class GuildVoiceService(GameData data, GuildStore store, GuildServ
     private Channel[] Channels(long guildId)
     {
         if (!_byGuild.TryGetValue(guildId, out var channels))
-            _byGuild[guildId] = channels = Enumerable.Range(0, ChannelCount()).Select(i => new Channel(i)).ToArray();
+            _byGuild[guildId] = channels = [.. Enumerable.Range(0, ChannelCount()).Select(i => new Channel(i))];
         return channels;
     }
 
@@ -623,7 +623,7 @@ public sealed class GuildVoiceService(GameData data, GuildStore store, GuildServ
         lock (_sync)
         {
             notify = new GuildVoiceChannelUpdateNotify { ChannelIndex = channel.Index, ChannelInfo = Info(guild, channel) };
-            members = channel.Members.Where(m => m.Key != except).Select(m => (m.Key, m.Value.Session)).ToList();
+            members = [.. channel.Members.Where(m => m.Key != except).Select(m => (m.Key, m.Value.Session))];
         }
         foreach (var (role, session) in members)
             if (ReferenceEquals(Online(role), session)) await session.SendGameAsync(UpdateNotify, notify);

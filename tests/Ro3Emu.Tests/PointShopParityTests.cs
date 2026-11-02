@@ -28,22 +28,22 @@ public sealed class PointShopParityTests : IAsyncLifetime
     {
         var data = Service<GameData>();
         var pet = Commodities(210); Assert.Equal(5, pet.Length);
-        Assert.All(pet, row => Assert.Equal(new long[] { PetToken, 500 }, Price(row)));
+        Assert.All(pet, row => Assert.Equal([PetToken, 500], Price(row)));
         Assert.Equal(0, GameData.Int(data.Row("ShopCommodityConfig", 21101)!.Value, "_iPurchaseNum"));
         Assert.All(pet.Where(row => GameData.Int(row, "_iID") != 21101), row =>
         { Assert.Equal(50, GameData.Int(row, "_iPurchaseNum")); Assert.Equal(4, GameData.Int(row, "_iPurchaseTimesLimit")); });
         var hats = Commodities(260); Assert.Equal(20, hats.Length);
-        Assert.Equal(10, hats.Count(row => Price(row).SequenceEqual(new long[] { 500, 400 })));
-        Assert.Equal(10, hats.Count(row => Price(row).SequenceEqual(new long[] { 500, 200 })));
+        Assert.Equal(10, hats.Count(row => Price(row).SequenceEqual([500, 400])));
+        Assert.Equal(10, hats.Count(row => Price(row).SequenceEqual([500, 200])));
         Assert.All(hats, row =>
         { Assert.Equal(1, GameData.Int(row, "_iPurchaseNum")); Assert.Equal(4, GameData.Int(row, "_iPurchaseTimesLimit")); });
         var pvp = Commodities(250); Assert.Equal(9, pvp.Length);
         Assert.All(pvp, row => Assert.Equal(6, Price(row)[0]));
-        Assert.Equal(new long[] { 1002, 999 }, Condition(8000041));
+        Assert.Equal([1002, 999], Condition(8000041));
         var tower = data.Row("ShopCommodityConfig", 24101)!.Value;
-        Assert.Equal(new long[] { 1, 25000 }, Price(tower));
+        Assert.Equal([1, 25000], Price(tower));
         Assert.Equal(3000, GameData.Int(tower, "_iDiscount"));
-        Assert.Equal(new long[] { 1014, 10 }, Condition(GameData.Int(tower, "_iIsBuy")));
+        Assert.Equal([1014, 10], Condition(GameData.Int(tower, "_iIsBuy")));
         Assert.Equal(1, GameData.Int(tower, "_iPurchaseNum"));
         Assert.Equal(5, GameData.Int(tower, "_iPurchaseTimesLimit"));
         Assert.All(pet.Concat(hats).Concat(pvp).Append(tower), row =>
@@ -52,10 +52,10 @@ public sealed class PointShopParityTests : IAsyncLifetime
             Assert.NotNull(data.Row("ItemConfig", Price(row)[0]));
         });
 
-        JsonElement[] Commodities(long classId) => data.Table("ShopCommodityConfig").Values
-            .Where(row => GameData.Int(row, "_iClassID") == classId).ToArray();
-        long[] Condition(long id) => data.Row("LC_ConditionList", id)!.Value.GetProperty("m_kSubConditionList")[0]
-            .GetProperty("m_kData").EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).ToArray();
+        JsonElement[] Commodities(long classId) => [.. data.Table("ShopCommodityConfig").Values
+            .Where(row => GameData.Int(row, "_iClassID") == classId)];
+        long[] Condition(long id) => [.. data.Row("LC_ConditionList", id)!.Value.GetProperty("m_kSubConditionList")[0]
+            .GetProperty("m_kData").EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0))];
     }
 
     [ClientDataFact]
@@ -139,8 +139,8 @@ public sealed class PointShopParityTests : IAsyncLifetime
     private long Currency(GameSession s) => Service<CharacterService>().CountOf(s, PetToken);
     private static long Goods(GameSession s) => s.Items.Where(i => i.Entry == PetGoods).Sum(i => (long)i.Stack);
     private ShopService.ShopState SavedShop(long role) => JsonSerializer.Deserialize<ShopService.ShopState>(Service<RoleStore>().LoadShop(role)!)!;
-    private static long[] Price(JsonElement row) => row.GetProperty("_kItemPerPrice").EnumerateArray()
-        .Select(value => (long)(GameData.Number(value) ?? 0)).ToArray();
+    private static long[] Price(JsonElement row) => [.. row.GetProperty("_kItemPerPrice").EnumerateArray()
+        .Select(value => (long)(GameData.Number(value) ?? 0))];
     private static async Task<BuyCommodityResp> Buy(BotClient bot, int count)
     {
         await bot.SendGameAsync(ShopService.BuyCommodity,

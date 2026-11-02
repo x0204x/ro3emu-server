@@ -22,6 +22,23 @@ public static partial class SdkEndpoints
     public const int BigArea = 168;
     public const int AreaId = 1;
 
+    /// <summary>
+    /// The login form the client posts is identity, credential and channel_id (HttpNetworkManager): a few short values.
+    /// Anything far larger is refused before it is read in full. (inferred)
+    /// </summary>
+    internal static readonly Microsoft.AspNetCore.Http.Features.FormOptions LoginForm = new()
+    {
+        BufferBody = false,
+        ValueCountLimit = 16,
+        KeyLengthLimit = 64,
+        ValueLengthLimit = 4096,
+        MultipartBodyLengthLimit = 16 * 1024,
+        MultipartHeadersLengthLimit = 4096,
+    };
+
+    /// <summary>Characters of a password the game's login hashes; the panel's own limit (PanelSite.PasswordMax) is far below. (inferred)</summary>
+    internal const int MaxCredential = 1024;
+
     /// <summary>Public half of the gate key, so a player's ClientTools can patch against this server from its URL alone.</summary>
     public const string GateKeyPath = "/ro3emu/gate-key.pem";
 
@@ -33,42 +50,46 @@ public static partial class SdkEndpoints
             IOptions<ServerOptions> options, ILogger<AccountStore> log) =>
         {
             string traceId = request.HttpContext.TraceIdentifier;
-            log.LogInformation("SDK login request {TraceId}: ContentType={ContentType}, ContentLength={ContentLength}, HasFormContentType={HasFormContentType}",
+            log.LogDebug("SDK login request {TraceId}: ContentType={ContentType}, ContentLength={ContentLength}, HasFormContentType={HasFormContentType}",
                 traceId, request.ContentType, request.ContentLength, request.HasFormContentType);
-            if (!limiter.TryAcquire(request.HttpContext.Connection.RemoteIpAddress))
+            if (!limiter.TryAcquire(request.HttpContext))
             {
                 log.LogWarning("SDK login rejected {TraceId}: credential attempt limit reached", traceId);
                 return Results.StatusCode(StatusCodes.Status429TooManyRequests);
             }
-
+            if (!request.HasFormContentType) return Results.StatusCode(StatusCodes.Status400BadRequest);
             IFormCollection form;
             try
             {
-                form = await request.ReadFormAsync(request.HttpContext.RequestAborted);
+                form = await request.ReadFormAsync(LoginForm, request.HttpContext.RequestAborted);
             }
             catch (OperationCanceledException) when (request.HttpContext.RequestAborted.IsCancellationRequested)
             {
-                log.LogWarning("SDK login canceled {TraceId} while reading the form", traceId);
+                log.LogDebug("SDK login canceled {TraceId} while reading the form", traceId);
                 throw;
             }
             catch (Exception exception) when (exception is InvalidDataException or InvalidOperationException or BadHttpRequestException)
             {
-                log.LogWarning(exception, "SDK login rejected {TraceId}: form could not be read", traceId);
-                return Results.Json(new { code = 401, message = "invalid login form" });
+                log.LogWarning("SDK login rejected {TraceId}: invalid form ({ErrorType})", traceId, exception.GetType().Name);
+                return Results.StatusCode(StatusCodes.Status400BadRequest);
             }
             string identity = form["identity"].ToString().Trim();
             string credential = form["credential"].ToString();
-            if (identity.Length == 0 || credential.Length == 0)
+            if (identity.Length == 0 || credential.Length == 0 || credential.Length > MaxCredential)
             {
                 log.LogWarning("SDK login rejected {TraceId}: IdentityPresent={IdentityPresent}, CredentialPresent={CredentialPresent}, ChannelPresent={ChannelPresent}",
                     traceId, identity.Length != 0, credential.Length != 0, !string.IsNullOrWhiteSpace(form["channel_id"].ToString()));
                 return Results.Json(new { code = 401, message = "missing credentials" });
             }
-            var (result, account) = await accounts.SignInAsync(identity, credential, register: !options.Value.RefuseUnknownAccounts);
+            // 新帳號遵守與網頁面板相同的命名規則；既有帳號不因新規則而失去登入資格。
+            bool register = !options.Value.RefuseUnknownAccounts && Ro3Emu.Panel.AccountNames.Problem(identity) == null;
+            var (result, account) = await accounts.SignInAsync(identity, credential, register);
+            log.LogInformation("SDK login {TraceId}: {Result}", traceId, result);
             if (result == AccountStore.LoginResult.Unknown)
-                log.LogInformation("SDK login {TraceId}: Unknown", traceId);
-            else
-                log.LogInformation("SDK login {TraceId}: {Result}", traceId, result);
+            {
+                if (options.Value.RefuseUnknownAccounts) LogUnknownRefused(log, traceId);
+                else LogBadNameRefused(log, traceId);
+            }
             // A banned account answers like a wrong password (inferred: the client has no ban code we know). So does a
             // name without an account when the game may not create it: code 401 is the only refusal the client words
             // (MetaSDKUtil maps it to 10630000002, UI_Sys_LoginWidgetBaseCtrl._loginCallBack shows UIWords 15012
@@ -78,7 +99,7 @@ public static partial class SdkEndpoints
                 return Results.Json(new { code = 401 });
             }
             // The account's login history on the web panel (the address only where the operator keeps addresses).
-            await panel.RecordLoginAsync(account, "game", request.HttpContext.Connection.RemoteIpAddress);
+            await panel.RecordLoginAsync(account, "game", limiter.ClientAddress(request.HttpContext));
             return Results.Json(new { code = 0, data = new { token = await accounts.IssueSdkTokenAsync(account) } });
         });
 
@@ -121,8 +142,11 @@ public static partial class SdkEndpoints
         });
     }
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "SDK login {Identity}: refused, no such account (Ro3Emu:RefuseUnknownAccounts: accounts come from the panel's sign-up)")]
-    private static partial void LogUnknownRefused(ILogger logger, string identity);
+    [LoggerMessage(Level = LogLevel.Information, Message = "SDK login {TraceId}: refused, no such account (Ro3Emu:RefuseUnknownAccounts: accounts come from the panel's sign-up)")]
+    private static partial void LogUnknownRefused(ILogger logger, string traceId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "SDK login {TraceId}: refused, no such account and the name cannot be a new account's")]
+    private static partial void LogBadNameRefused(ILogger logger, string traceId);
 
     /// <summary>
     /// The gates the client should dial: the IP address it reached this server list on, so a host started with its LAN

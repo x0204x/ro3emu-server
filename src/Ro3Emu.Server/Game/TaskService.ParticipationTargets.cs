@@ -13,7 +13,7 @@ public sealed partial class TaskService
     /// <summary>TaskConfig type 16, the guild activity quests (1601010-1603042), and 23, the Adventure Party quests.</summary>
     private const int GuildQuestType = 16, AdventureGroupQuestType = 23;
 
-    private readonly ConditionalWeakTable<Ownership.AttachmentLease, StrongBox<long>> _friendCounts = new();
+    private readonly ConditionalWeakTable<Ownership.AttachmentLease, StrongBox<long>> _friendCounts = [];
 
     /// <summary>The size of the role's friend list (FriendService relation via SocialOwnerCache), null when unknown.</summary>
     public Func<GameSession, Task<long?>>? LoadFriendCount { get; set; }
@@ -56,7 +56,7 @@ public sealed partial class TaskService
         long guild = s.Guild?.GuildId ?? 0, group = s.AdventureGroupRole?.AdventureGroupId ?? 0;
         bool guildMate = guild > 0 && party.Any(o => !ReferenceEquals(o, s) && o.Guild?.GuildId == guild);
         bool groupMate = group > 0 && party.Any(o => !ReferenceEquals(o, s) && o.AdventureGroupRole?.AdventureGroupId == group);
-        await ProgressCoreAsync(s, TTenBossWin, t => t is [TTenBossWin, _, _, ..] && t[2..].Contains(boss) ? 1 : 0,
+        await ProgressCoreAsync(s, TTenBossWin, t => t is [TTenBossWin, _, _, ..] && t.AsSpan(2).Contains(boss) ? 1 : 0,
             def => def.Type switch { GuildQuestType => guildMate, AdventureGroupQuestType => groupMate, _ => true });
     }
 

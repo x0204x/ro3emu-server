@@ -59,7 +59,7 @@ public sealed partial class SurvivorBattleTests : IAsyncLifetime
         await bot.LoginAsync(name.ToLowerInvariant(), "pw"); await bot.EnterGateAsync();
         await bot.EnterWorldAsync((await bot.CreateRoleAsync(name)).RoleBaseInfo.Id);
         using var client = new HttpClient();
-        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", Operator.Command("!lvl 99"))).EnsureSuccessStatusCode();
         return bot;
     }
 

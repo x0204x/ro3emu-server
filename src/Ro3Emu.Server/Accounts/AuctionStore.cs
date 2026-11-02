@@ -37,9 +37,9 @@ public sealed class AuctionStore(AccountStore accounts)
         public bool Auto { get; set; }
         public bool AutoPaused { get; set; }
         public long RunId { get; set; }
-        public List<long> Eligible { get; set; } = new();
-        public List<long> GiveUp { get; set; } = new();
-        public List<long> Joined { get; set; } = new();
+        public List<long> Eligible { get; set; } = [];
+        public List<long> GiveUp { get; set; } = [];
+        public List<long> Joined { get; set; } = [];
         public long Winner { get; set; }
         public bool RandomAward { get; set; }
         // Durable terminal routing obligation: escrow and lot remain intact for operator reconciliation.
@@ -53,8 +53,8 @@ public sealed class AuctionStore(AccountStore accounts)
         public long GuildId { get; set; }
         public int SrcType { get; set; }
         public int PlayBook { get; set; }
-        public Dictionary<int, long> TierGroups { get; set; } = new();
-        public List<long> Eligible { get; set; } = new();
+        public Dictionary<int, long> TierGroups { get; set; } = [];
+        public List<long> Eligible { get; set; } = [];
         public bool Finalized { get; set; }
         public bool Ready { get; set; }
     }

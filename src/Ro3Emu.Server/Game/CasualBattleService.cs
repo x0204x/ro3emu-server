@@ -99,16 +99,16 @@ public sealed partial class CasualBattleService : IGameTicker
         public long DeadUntil;
         public bool Left;
         /// <summary>Who hit this player when, for assists.</summary>
-        public readonly Dictionary<GameSession, long> HitBy = new();
+        public readonly Dictionary<GameSession, long> HitBy = [];
     }
 
     private sealed class Match
     {
         public required InstanceService.Room Room;
         public required long Open;
-        public readonly Dictionary<GameSession, Player> Players = new();
+        public readonly Dictionary<GameSession, Player> Players = [];
         public readonly Dictionary<int, long> CampScore = new() { [1] = 0, [2] = 0 };
-        public readonly HashSet<GameSession> Loaded = new();
+        public readonly HashSet<GameSession> Loaded = [];
         public int Stage;
         /// <summary>The battle is over and its result frozen in memory (<see cref="Frozen"/>); no more fighting.</summary>
         public bool Ending;
@@ -118,7 +118,7 @@ public sealed partial class CasualBattleService : IGameTicker
         public int Failures;
         public long RetryAt;
         public CasualBattleObligationRow[]? Frozen;
-        public readonly Dictionary<long, DungeonResultNotify> Notices = new();
+        public readonly Dictionary<long, DungeonResultNotify> Notices = [];
         /// <summary>A camp's Virtual team leader (30451 DUNGEON_TEAM_TRANSFER), by role id; 0 (the default, unset)
         /// defers to the lowest-indexed squad's own leader.</summary>
         public readonly Dictionary<int, long> TeamLeader = [];
@@ -137,9 +137,9 @@ public sealed partial class CasualBattleService : IGameTicker
         public long Deadline => Open + BattleSeconds;
     }
 
-    private readonly List<Group> _queue = new();
-    private readonly Dictionary<GameSession, Match> _active = new();
-    private readonly List<Match> _matches = new();
+    private readonly List<Group> _queue = [];
+    private readonly Dictionary<GameSession, Match> _active = [];
+    private readonly List<Match> _matches = [];
     private long _lastSecond = -1, _formedWindow = -1;
 
     /// <summary>TEST AID set by GM "!casual open" (not original behaviour): sign-ups outside the Matching window, and
@@ -208,7 +208,7 @@ public sealed partial class CasualBattleService : IGameTicker
                 else { error = Admission(member); members.Add(member); }
             }
         }
-        if (error == 0) _queue.Add(new Group(members.ToArray(), window?.Start ?? -1));
+        if (error == 0) _queue.Add(new Group([.. members], window?.Start ?? -1));
         await s.SendGameAsync(DailyActivityService.RingAccept, new CommonDailyActivityRes
         { Result = error, ActivityId = req.ActivityId, RequestId = req.RequestId, CasualBattleSignUp = new CasualBattleRes() });
     }
@@ -246,7 +246,7 @@ public sealed partial class CasualBattleService : IGameTicker
         if (camps[1].Count + camps[2].Count == 0 || !OpenForTest && (camps[1].Count == 0 || camps[2].Count == 0))
         {
             // One camp only: nobody to fight; the groups wait for the next window (inferred).
-            foreach (var camp in camps.Values.Where(c => c.Count > 0)) _queue.Add(new Group(camp.ToArray(), -1));
+            foreach (var camp in camps.Values.Where(c => c.Count > 0)) _queue.Add(new Group([.. camp], -1));
             return;
         }
         var everyone = camps[1].Concat(camps[2]).ToArray();
@@ -319,6 +319,7 @@ public sealed partial class CasualBattleService : IGameTicker
         if (_worldData.Map(Scene)?.Points.TryGetValue(CampPoints[match.Players[s].Camp - 1], out var start) == true)
             await _scene.TeleportInMapAsync(s, start);
         await SendTeamRosterAsync(match, match.Players[s].Camp);
+        await CountersAsync(match, [s]);
     }
 
     private Task LeavingAsync(GameSession s)
@@ -614,15 +615,22 @@ public sealed partial class CasualBattleService : IGameTicker
         dead.Deaths++;
         Score(m, killer, KillCamp);
         Score(m, killer, KillPersonal);
+        List<GameSession> credited = [killer];
         foreach (var (helper, at) in dead.HitBy)
             if (helper != killer && Now - at <= 10 && m.Players.TryGetValue(helper, out var assist) && assist.Camp == me.Camp)
-            { assist.Assists++; Score(m, helper, AssistPersonal); }
+            { assist.Assists++; Score(m, helper, AssistPersonal); credited.Add(helper); }
         dead.HitBy.Clear();
+        await CountersAsync(m, credited);
         dead.Streak = 0;
         await StreakAsync(m, killer);
         await BroadcastAsync(m);
         if (m.CampScore.Values.Any(score => score >= ScoreBar)) RequestSettle(m);
     }
+
+    /// <summary>30123: the battle report button's own kill and assist counters (DungeonService.PlayerCounters).</summary>
+    private static Task CountersAsync(Match m, IEnumerable<GameSession> players) =>
+        RoleFanout.EachAsync(players.Where(p => m.Loaded.Contains(p) && !m.Players[p].Left), p =>
+            p.SendGameAsync(DungeonService.PlayerStatistics, DungeonService.PlayerCounters(m.Players[p].Id, m.Players[p].Kills, m.Players[p].Assists)));
 
     private void Score(Match m, GameSession player, int row)
     {
@@ -689,7 +697,7 @@ public sealed partial class CasualBattleService : IGameTicker
         public long StartMmr { get; set; }
         public long MmrDelta { get; set; }
         public TimedBattleService.CasualStats Stats { get; set; } = new();
-        public List<long> Pools { get; set; } = new();
+        public List<long> Pools { get; set; } = [];
     }
 
     /// <summary>The frozen payouts: saved before the match counts as settled, paid once each, retried by the tick
@@ -745,7 +753,7 @@ public sealed partial class CasualBattleService : IGameTicker
             if (mvp != null) info.MetaData["mvpPlayerId"] = mvp.Id.ToString(CultureInfo.InvariantCulture);
             match.Notices[p.Id] = new DungeonResultNotify { ResultInfo = info, ResultId = resultId };
         }
-        match.Frozen = rows.ToArray();
+        match.Frozen = [.. rows];
     }
 
     /// <summary>A kill or a departure ended the battle: stop it now, persist on its own realm-scoped turn.</summary>

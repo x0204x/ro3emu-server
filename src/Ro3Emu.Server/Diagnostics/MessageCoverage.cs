@@ -45,10 +45,10 @@ public static class MessageCoverage
 
     private sealed class Evidence
     {
-        public Dictionary<string, string> Routes { get; set; } = new();
-        public Dictionary<string, long> Handled { get; set; } = new();
-        public Dictionary<string, long> Unrouted { get; set; } = new();
-        public Dictionary<string, long> Sent { get; set; } = new();
+        public Dictionary<string, string> Routes { get; set; } = [];
+        public Dictionary<string, long> Handled { get; set; } = [];
+        public Dictionary<string, long> Unrouted { get; set; } = [];
+        public Dictionary<string, long> Sent { get; set; } = [];
     }
 
     /// <summary>Merges this process's evidence into the file (counts add up across runs until the file is deleted).</summary>

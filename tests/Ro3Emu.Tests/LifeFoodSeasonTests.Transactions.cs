@@ -151,7 +151,7 @@ public sealed partial class LifeFoodSeasonTests
         void Row(string table, int key, object row)
         {
             string path = Path.Combine(config, table + ".json");
-            var rows = File.Exists(path) ? JsonNode.Parse(File.ReadAllText(path))!.AsObject() : new JsonObject();
+            JsonObject rows = File.Exists(path) ? JsonNode.Parse(File.ReadAllText(path))!.AsObject() : [];
             rows[key.ToString(CultureInfo.InvariantCulture)] = JsonSerializer.SerializeToNode(row);
             File.WriteAllText(path, rows.ToJsonString());
         }

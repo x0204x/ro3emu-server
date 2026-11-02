@@ -52,7 +52,7 @@ internal sealed class RoleObligationCreatePlan<TRow> : DbPlan where TRow : class
     private readonly TRow[] rows;
     internal RoleObligationCreatePlan(IEnumerable<TRow> rows)
     {
-        this.rows = rows.Select(row => row.Detach()).ToArray();
+        this.rows = [.. rows.Select(row => row.Detach())];
         if (this.rows.Select(row => row.SourceKey).Distinct(StringComparer.Ordinal).Count() != this.rows.Length)
             throw new ArgumentException($"Duplicate {TRow.Table.Table} source.");
     }
@@ -65,7 +65,7 @@ internal sealed class RoleObligationCreatePlan<TRow> : DbPlan where TRow : class
     }));
     internal override string Label => TRow.Table.LabelPrefix + "/create-obligations";
     internal override IReadOnlyList<OwnerRevisionKey> EntityWrites =>
-        rows.Select(row => RevisionStore.Entity(TRow.Table.RevisionKind, row.SourceKey)).ToArray();
+        [.. rows.Select(row => RevisionStore.Entity(TRow.Table.RevisionKind, row.SourceKey))];
     internal override object Execute(SqliteConnection db, SqliteTransaction tx)
     {
         var table = TRow.Table;

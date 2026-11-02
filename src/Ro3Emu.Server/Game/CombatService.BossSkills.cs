@@ -2,6 +2,7 @@ using System.Text.Json;
 using Romsg;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Maps;
 
 namespace Ro3Emu.Server.Game;
@@ -66,7 +67,7 @@ public sealed partial class CombatService
         if (!skill.Once && skill.CdMs > 0) await BossCooldownStartedAsync(boss, skill.Id, now + skill.CdMs);
         await FightingAsync(boss);
         await StoryBossSkillStartedAsync(boss, skill, serial, origin);
-        int show = HitEffect(GameData.Int(skill.Row, "_iScriptShow"));
+        int show = HitEffect(new SkillConfig(skill.Row).ScriptShow);
         for (int i = 0; i < skill.HitMs.Length; i++)
         {
             bool first = i == 0;
@@ -131,6 +132,8 @@ public sealed partial class CombatService
             room -= pets.Count;
             if (companions.Count > room) companions.RemoveRange(room, companions.Count - room);
         }
+        if (skill.Area != BossSkillArea.Target)
+            foreach (var landed in BossAreaLanded) await landed(boss, skill, origin, center, face);
         if (victims.Count > 0)
             await MonsterSkillHitAsync(boss, skill.Row, victims, boss.Uid, session, skill.Damages ? options.DamagePercent : 0, bossDebuffsOnly: true);
         await StoryBossImpactCompletedAsync(boss, skill, serial, first);
@@ -241,7 +244,7 @@ public sealed partial class CombatService
                 await SendMonsterTimelineAsync(minion, new UseInSkillInfo
                 {
                     SrcID = minion.Uid, SkillID = skill.SummonBlast, TargetPos = minion.Pos, Face = minion.Face,
-                    SessionId = ++_sessionIds, SkillMs = (int)GameData.Int(row, "_iActionTime"), StartTime = Now,
+                    SessionId = ++_sessionIds, SkillMs = (int)new SkillConfig(row).ActionTime, StartTime = Now,
                     PlayAct = true,
                 });
             else if (target != null && !target.Dead) _monsters.Engage(minion, target);
@@ -256,7 +259,7 @@ public sealed partial class CombatService
         if (skill.SummonBlast > 0 && _data.Row("SkillConfig", skill.SummonBlast) is { } row)
         {
             float radius = BossSkillRadius(row);
-            int max = (int)Math.Max(1, GameData.Int(row, "_iTargetMax"));
+            int max = (int)Math.Max(1, new SkillConfig(row).TargetMax);
             var near = new List<GameSession>();
             _world.CollectPlayers(minion.WorldScene, minion.X, minion.Z, radius + 0.5f, near);
             near.RemoveAll(p => p.Role == null || p.Dead || p.SceneLoading);
@@ -271,6 +274,30 @@ public sealed partial class CombatService
     /// <summary>A blast row's radius: _kRange in cm when real, else the default.</summary>
     private float BossSkillRadius(JsonElement row) => Numbers(row, "_kRange") is { Length: > 0 } range && range[0] >= 100
         ? (float)range[0] / 100 : _monsters.BossOptions.DefaultRadius;
+
+    /// <summary>
+    /// A raid trial's boss performance (DungeonService.RaidTrials): the row's show for <paramref name="ms"/> on the cast
+    /// wire, without hits (Orc Hero raising his shield, Ilmo beating the drum), at the boss or aimed at
+    /// <paramref name="at"/> facing <paramref name="face"/> (Osiris's Dark Pulse). Returns its session for an interrupt.
+    /// </summary>
+    internal async Task<long> PlayBossShowAsync(MonsterUnit boss, int skillId, int ms, Vec3? at = null, float? face = null)
+    {
+        long session = ++_sessionIds;
+        await SendMonsterTimelineAsync(boss, new UseInSkillInfo
+        {
+            SrcID = boss.Uid, SkillID = skillId, TargetPos = at ?? boss.Pos, Face = face ?? boss.Face, SessionId = session, SkillMs = ms,
+            StartTime = Now,
+        });
+        return session;
+    }
+
+    /// <summary>Ends a performance early (31103 Interrupted, its warnings cleared): the trial was solved.</summary>
+    internal Task InterruptBossShowAsync(MonsterUnit boss, long session) => session <= 0 || boss.Dead ? Task.CompletedTask
+        : _world.ToUnitViewersAsync(boss, SkillEnd, new SkillEndNotify
+        {
+            SrcID = boss.Uid, SessionId = session, Type = SkillEndNotify.Types.SkillEndType.Interrupted, ClearEffect = true,
+            InterruptedInfo = new SkillInterruptedInfo { Type = SkillInterruptedInfo.Types.SkillInterruptType.State },
+        });
 
     /// <summary>The boss's specials ended: interrupt the cast in flight (31103, its warnings cleared) and despawn its summons.</summary>
     private async Task EndBossSkillsAsync(MonsterUnit boss, BossSkillRuntime rt, bool interrupt)

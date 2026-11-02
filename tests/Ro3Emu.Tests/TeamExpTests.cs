@@ -16,7 +16,7 @@ public sealed class TeamExpTests
     [Fact]
     public void FortyPersonTeamUsesKillersFiveSlotSubgroup()
     {
-        long[] members = Enumerable.Range(1, 12).Select(i => (long)i).ToArray();
+        long[] members = [.. Enumerable.Range(1, 12).Select(i => (long)i)];
 
         Assert.Equal((0, 5), TeamService.ExpGroupRange(TeamType.Forty, members, 1));
         Assert.Equal((0, 5), TeamService.ExpGroupRange(TeamType.Forty, members, 5));

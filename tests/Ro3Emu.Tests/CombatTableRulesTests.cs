@@ -52,7 +52,7 @@ public sealed class CombatTableRulesTests
         // FunctionConfig 1001 SkillSchool opens at condition 2000103 = job rank >= 5; every _iJob is a rank-5 job.
         Assert.Equal(2000103, GameData.Int(Data.Row("FunctionConfig", 1001)!.Value, "_kOpenCondition"));
         var sub = Data.Row("LC_ConditionList", 2000103)!.Value.GetProperty("m_kSubConditionList")[0].GetProperty("m_kData");
-        Assert.Equal([1019d, 5d], sub.EnumerateArray().Select(v => v.GetDouble()).ToArray());
+        Assert.Equal([1019d, 5d], [.. sub.EnumerateArray().Select(v => v.GetDouble())]);
         foreach (var row in Data.Table("JobResonanceActiveConfig").Values)
             Assert.Equal(5, GameData.Int(Data.Row("JobConfig", GameData.Int(row, "_iJob"))!.Value, "_iJobRank"));
     }
@@ -125,6 +125,19 @@ public sealed class CombatTableRulesTests
         // An inactive Novice deals -10% to a resonance holder; a miss stays a miss.
         Assert.Equal(900, PlayerRestraints.Apply(resonance, totems, Role(1000), bladeSoul, 1000));
         Assert.Equal(0, PlayerRestraints.Apply(resonance, totems, shrined, bladeSoul, 0));
+    }
+
+    [ClientDataFact]
+    public void ATitleLevelAboveTheTargetsAddsDamageAndBelowItTakesSome()
+    {
+        var titles = new TitleDamage(Data);
+        // TitleConfig 1 is level 1 (TitleBuffConfig 400), 6 level 2 (800), 21 level 5 (2000).
+        Assert.Equal((0, 400, 800, 2000), (titles.Term(0), titles.Term(1), titles.Term(6), titles.Term(21)));
+        Assert.Equal(1160, titles.Apply(21, 1, 1000));
+        Assert.Equal(840, titles.Apply(1, 21, 1000));
+        Assert.Equal(1000, titles.Apply(2, 6, 1000));
+        Assert.Equal(1040, titles.Apply(1, 0, 1000));
+        Assert.Equal(0, titles.Apply(21, 1, 0));
     }
 
     // ---- 6. pet star scaling ----

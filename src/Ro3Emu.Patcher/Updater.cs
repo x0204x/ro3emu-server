@@ -425,8 +425,8 @@ public sealed class Updater(InstallLayout layout, RepositoryClient repository)
         if (previous is not null) owned.UnionWith(previous.Files.Select(f => f.Path));
         var journal = new CommitJournal
         {
-            Moves = changed.Select(p => p.File.Path).ToList(),
-            Deletes = owned.Where(p => !releasePaths.Contains(p)).ToList(),
+            Moves = [.. changed.Select(p => p.File.Path)],
+            Deletes = [.. owned.Where(p => !releasePaths.Contains(p))],
         };
 
         newState.Save(NextStatePath);

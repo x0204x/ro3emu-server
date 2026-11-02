@@ -31,7 +31,7 @@ public sealed partial class RunReport
         }
         S3EconomyCheck = EconomyExactnessChecker.Check(S3OpeningEconomy, S3ClosingEconomy, S3CommittedLedger);
         string[] required = ["exchange-list", "exchange-buy", "mail-claim", "npc-shop-buy", "tower-entry", "gather-start"];
-        string[] absent = required.Where(name => !Actions.TryGetValue(name, out var action) || action.Completed == 0).ToArray();
+        string[] absent = [.. required.Where(name => !Actions.TryGetValue(name, out var action) || action.Completed == 0)];
         bool complete = S3CompletedRun && RequestedBots >= 500 && RequestedSeconds >= 1800 &&
             UnsupportedBehaviours.Length == 0 && S3TowerEntries > 0 && S3GatherCompletions > 0 &&
             S3ClosingEconomy.Cut.CapturedUtc - S3OpeningEconomy.Cut.CapturedUtc >= TimeSpan.FromSeconds(RequestedSeconds * .95) &&

@@ -156,7 +156,7 @@ public sealed class CardAtomicityTests : IAsyncLifetime
     private async Task Gm(string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{_httpUrl}/ro3emu/gm?account=alice", new StringContent(command)))
+        (await client.PostAsync($"{_httpUrl}/ro3emu/gm?account=alice", Operator.Command(command)))
             .EnsureSuccessStatusCode();
     }
 

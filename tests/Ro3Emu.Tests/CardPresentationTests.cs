@@ -52,7 +52,7 @@ public sealed class CardPresentationTests : IAsyncLifetime
     private async Task Gm(string command)
     {
         using var http = new HttpClient();
-        (await http.PostAsync($"{_httpUrl}/ro3emu/gm?account=alice", new StringContent(command))).EnsureSuccessStatusCode();
+        (await http.PostAsync($"{_httpUrl}/ro3emu/gm?account=alice", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     private static async Task<T> Next<T>(BotClient bot, uint id, Google.Protobuf.MessageParser<T> parser)

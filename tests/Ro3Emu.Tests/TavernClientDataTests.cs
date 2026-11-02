@@ -21,6 +21,6 @@ public sealed class TavernClientDataTests
         Assert.Equal(2000, PublicParamConfig.BarroomTaskId(data));
         Assert.Equal(18, PublicParamConfig.BarRoomNameLen(data));
         Assert.Equal(1000, PublicParamConfig.BarroomPersonNum(data));
-        Assert.Equal(new long[] { 106010, 1200 }, TaskConfig.Get(data, 2000)!.Value.ProgressTarget.Single());
+        Assert.Equal([106010, 1200], TaskConfig.Get(data, 2000)!.Value.ProgressTarget.Single());
     }
 }

@@ -47,12 +47,12 @@ public sealed partial class TimedBattleService
     {
         public int Stage;
         public readonly Dictionary<int, long> CampScore = new() { [1] = 0, [2] = 0 };
-        public readonly Dictionary<GameSession, long> Score = new();
-        public readonly Dictionary<GameSession, long> BossDamage = new();
+        public readonly Dictionary<GameSession, long> Score = [];
+        public readonly Dictionary<GameSession, long> BossDamage = [];
         public MonsterUnit? Boss;
         public bool BossSpawned, BossStruck;
         public int GlassWaves;
-        public readonly Dictionary<long, (MonsterUnit Unit, int Skill)> Pickups = new();
+        public readonly Dictionary<long, (MonsterUnit Unit, int Skill)> Pickups = [];
         public long SoulAt;
         public bool SoulSpawned;
         public GameSession? SoulCarrier;
@@ -135,6 +135,7 @@ public sealed partial class TimedBattleService
         DragonScore(match, killer, ScoreKill);
         if (run.SoulCarrier == victim) await GiveSoulAsync(match, killer);
         await BroadcastDragonAsync(match);
+        await CountersAsync(match, [killer]);
     }
 
     private async Task GiveSoulAsync(Match match, GameSession carrier)

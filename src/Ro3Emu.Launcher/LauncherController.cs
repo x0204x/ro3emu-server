@@ -41,14 +41,13 @@ public sealed partial class LauncherController : IDisposable
     {
         _config = config;
         _exePath = exePath;
-        _settings = string.IsNullOrWhiteSpace(config.SettingsFile)
-            ? UserSettings.ForRepository(config.Repository)
-            : UserSettings.Load(config.ResolveSettingsFile(Path.GetDirectoryName(exePath)!));
+        _settings = config.LoadSettings(Path.GetDirectoryName(exePath)!);
         _post = post;
         _pickFolder = pickFolder;
         _closeAfterLaunch = closeAfterLaunch;
         _restore = restore;
-        _repo = new RepositoryClient(new Uri(config.Repository), config.RepositoryTrust);
+        _repo = new RepositoryClient(new Uri(config.Repository), config.RepositoryTrust,
+            connectionAddress: config.RepositoryConnectionAddress);
         string executableDirectory = Path.GetDirectoryName(exePath)!;
         _logPath = Path.Combine(executableDirectory, "launcher.log");
         _layout = new InstallLayout(_settings.ClientDirectory
@@ -165,17 +164,18 @@ public sealed partial class LauncherController : IDisposable
         catch (Exception e) when (e is PatcherException or HttpRequestException or TaskCanceledException or IOException or JsonException)
         {
             Log("Update check failed", e);
+            string? reason = e is PatcherException ? e.Message : null;
             var updater = new Updater(_layout, _repo);
             try
             {
                 _installed = updater.LoadState();
                 OfflineInstallValidation offline = updater.ValidateOfflineInstall(_installed, _config.Channel);
                 if (offline.CanLaunch)
-                    PostState("ready", offline.Reason);
+                    PostState("ready", reason is null ? offline.Reason : reason + " " + offline.Reason);
                 else
                 {
                     _installed = null;
-                    PostState("offline", offline.Reason);
+                    PostState("offline", reason is null ? offline.Reason : reason + " " + offline.Reason);
                 }
             }
             catch (Exception offlineError) when (offlineError is PatcherException or IOException or JsonException or UnauthorizedAccessException or ArgumentException)

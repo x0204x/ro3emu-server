@@ -76,10 +76,10 @@ public sealed partial class TerritoryEscortService
                 }
                 else
                 {
-                    ledger.Goods = new(); ledger.Listings = new(); ledger.Play = new();
-                    ledger.ScoresByRound = new(); ledger.StockRounds = new(); ledger.SkillCooldowns = new();
+                    ledger.Goods = []; ledger.Listings = []; ledger.Play = [];
+                    ledger.ScoresByRound = []; ledger.StockRounds = []; ledger.SkillCooldowns = [];
                 }
-                ledger.Carts = new(); ledger.Cargo = new();
+                ledger.Carts = []; ledger.Cargo = [];
                 ledger.SeasonStart = _clock.SeasonStart; ledger.PlayBook = _clock.PlayBook; ledger.Cycle = _clock.Cycle;
                 resetTransient = true;
                 foreach (var peer in _sessions.All().Where(s => s.Role != null && s.TerritoryEscort != null))
@@ -100,7 +100,7 @@ public sealed partial class TerritoryEscortService
                     && g.Members.Count >= required))
                 {
                     if (!ledger.StockRounds.TryGetValue(guild.Id, out var rounds))
-                        ledger.StockRounds[guild.Id] = rounds = new HashSet<int>();
+                        ledger.StockRounds[guild.Id] = rounds = [];
                     if (!rounds.Add(Round)) continue;
                     ledger.Goods[guild.Id] = checked(ledger.Goods.GetValueOrDefault(guild.Id) + load);
                     var play = GetPlay(guild.Id);
@@ -508,7 +508,7 @@ public sealed partial class TerritoryEscortService
             long roleId = s.Role!.Id;
             var attachment = s.Attachment;
             if (!stagedRoleState.ClaimedByRound.TryGetValue(round, out var claims))
-                stagedRoleState.ClaimedByRound[round] = claims = new HashSet<int>();
+                stagedRoleState.ClaimedByRound[round] = claims = [];
             claims.Add(index);
             var mutation = EventEconomy.ForRole(_data, s, "escort-claim",
                 $"escort-claim:{Epoch}:{round}:{roleId}:{index}", [], plan.Grants,
@@ -605,7 +605,7 @@ public sealed partial class TerritoryEscortService
         var configuredPoint = _data.Table("EscortPointAreaConfig").Values.Where(row =>
             GameData.Int(row, "_iPointId") == req.PointId && GameData.Int(row, "_iMapId") == s.SceneEntry)
             .SelectMany(row => row.TryGetProperty("_kOutpostlNpcConfig", out var points)
-                && points.ValueKind == JsonValueKind.Array ? points.EnumerateArray().ToArray() : Array.Empty<JsonElement>())
+                && points.ValueKind == JsonValueKind.Array ? [.. points.EnumerateArray()] : Array.Empty<JsonElement>())
             .FirstOrDefault(t => t.ValueKind == JsonValueKind.Array && t.GetArrayLength() >= 5
                 && GameData.Number(t[4]) == req.SkillId && NearPoint(s.Position, s.SceneEntry,
                     (long)(GameData.Number(t[1]) ?? 0), 6));

@@ -162,9 +162,9 @@ public sealed class MailAdventureEconomyTests : IAsyncLifetime
         await using var bob = await InWorld("Bob");
         using (var client = new HttpClient())
         {
-            (await client.PostAsync(_http + "/ro3emu/gm?account=alice", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
-            (await client.PostAsync(_http + "/ro3emu/gm?account=bob", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
-            (await client.PostAsync(_http + "/ro3emu/gm?account=bob", new StringContent("!item 1111001 2"))).EnsureSuccessStatusCode();
+            (await client.PostAsync(_http + "/ro3emu/gm?account=alice", Operator.Command("!lvl 99"))).EnsureSuccessStatusCode();
+            (await client.PostAsync(_http + "/ro3emu/gm?account=bob", Operator.Command("!lvl 99"))).EnsureSuccessStatusCode();
+            (await client.PostAsync(_http + "/ro3emu/gm?account=bob", Operator.Command("!item 1111001 2"))).EnsureSuccessStatusCode();
         }
         // This fragment cycle starts after Eve has expired. Finish the login calendar's
         // pending settlement before opening the one-command economic observation window.
@@ -275,9 +275,9 @@ public sealed class MailAdventureEconomyTests : IAsyncLifetime
         long recipient = Service<RoleStore>().Create("pass-offline", 1, "PassOffline", 1, 1000, 1)!.Id;
         using (var client = new HttpClient())
         {
-            (await client.PostAsync(_http + "/ro3emu/gm?account=alice", new StringContent("!lvl 99")))
+            (await client.PostAsync(_http + "/ro3emu/gm?account=alice", Operator.Command("!lvl 99")))
                 .EnsureSuccessStatusCode();
-            (await client.PostAsync(_http + "/ro3emu/gm?account=alice", new StringContent("!item 1020001 2")))
+            (await client.PostAsync(_http + "/ro3emu/gm?account=alice", Operator.Command("!item 1020001 2")))
                 .EnsureSuccessStatusCode();
         }
         var sender = Service<SessionRegistry>().All().Single(s => s.Role?.Id == (long)alice.Self!.Uuid);

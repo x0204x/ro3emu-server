@@ -11,15 +11,15 @@ public sealed partial class TerritoryWarsService
         public int Round { get; set; }
         public long FinalEnd { get; set; }
         public bool Settled { get; set; }
-        public Dictionary<int, AuctionZone> Zones { get; set; } = new();
-        public Dictionary<long, AutoBidPlan> Auto { get; set; } = new();
+        public Dictionary<int, AuctionZone> Zones { get; set; } = [];
+        public Dictionary<long, AutoBidPlan> Auto { get; set; } = [];
     }
     public sealed class AuctionZone
     {
         public int Id { get; set; }
         public int Seats { get; set; }
-        public List<BidEntry> Entries { get; set; } = new();
-        public HashSet<long> Bidded { get; set; } = new();
+        public List<BidEntry> Entries { get; set; } = [];
+        public HashSet<long> Bidded { get; set; } = [];
     }
     public sealed class BidEntry
     {
@@ -101,8 +101,8 @@ public sealed partial class TerritoryWarsService
     private decimal BidUnit(bool legacy) => legacy ? Param("TerritoryAuctionMinBidCost", 1000)
         / (decimal)Math.Max(1, Param("TerritoryStrongHoldAuctionDefaultPrice", 100)) : 1m;
     private decimal BidValue(BidEntry entry) => entry.Amount * BidUnit(entry.Legacy);
-    private List<BidEntry> Ranked(AuctionZone zone) => zone.Entries.OrderByDescending(e => e.Occupier)
-        .ThenByDescending(BidValue).ThenByDescending(e => e.EscortScore).ThenBy(e => e.Time).ThenBy(e => e.GuildId).ToList();
+    private List<BidEntry> Ranked(AuctionZone zone) => [.. zone.Entries.OrderByDescending(e => e.Occupier)
+        .ThenByDescending(BidValue).ThenByDescending(e => e.EscortScore).ThenBy(e => e.Time).ThenBy(e => e.GuildId)];
     private long Minimum(AuctionZone z, long guildId, bool legacy)
     {
         long start = Param(legacy ? "TerritoryStrongHoldAuctionDefaultPrice" : "TerritoryAuctionMinBidCost", legacy ? 100 : 1000);
@@ -156,7 +156,7 @@ public sealed partial class TerritoryWarsService
             if (other != null) { if (evicted.Legacy) other.Materials = checked(other.Materials + evicted.Amount); else other.AuctionMaterials = checked(other.AuctionMaterials + evicted.Amount); }
             if (round.Auto.TryGetValue(evicted.GuildId, out var auto)) auto.Next = _clock.Now + AutoDelay(auto.Style);
         }
-        z.Entries = ranking.Take(z.Seats).ToList();
+        z.Entries = [.. ranking.Take(z.Seats)];
         await CommitAsync(next, treasury.Values, "bid", actor,
             $"territory-bid:{Epoch}:{round.Round}:{zoneId}:{guildId}:{observed}:{amount}:{_clock.Now}");
         return (0, treasury.Keys.ToArray());
@@ -241,7 +241,7 @@ public sealed partial class TerritoryWarsService
     {
         var response = new GetTerritoryWarsAuctionInfoResp { Info = new() };
         var r = Round() ?? NewRound(Math.Clamp(_clock.Current.Round, 1, 3));
-        var ids = req.StateId.Count > 0 ? req.StateId.ToArray() : r.Zones.Keys.Where(z => req.ZoneId == 0 || RootOf(z) == req.ZoneId).ToArray();
+        var ids = req.StateId.Count > 0 ? req.StateId.ToArray() : [.. r.Zones.Keys.Where(z => req.ZoneId == 0 || RootOf(z) == req.ZoneId)];
         foreach (int id in ids) if (r.Zones.TryGetValue(LegacyZone(id), out var z)) response.Info.StateInfos[id] = LegacyInfo(id, z);
         return Send(s, LegacyQuery, response);
     }
@@ -343,11 +343,11 @@ public sealed partial class TerritoryWarsService
         if (!r.Zones.TryGetValue(target, out var z)) return [];
         var entries = Ranked(z).Take(z.Seats).Select(x => x.GuildId).Distinct().ToArray();
         var rule = _clock.RoundStage(round, 16, 17, 18)?.ResultRule ?? 0;
-        if (state.RuleResults.TryGetValue(rule, out var qualified)) entries = entries.Where(qualified.Contains).ToArray();
+        if (state.RuleResults.TryGetValue(rule, out var qualified)) entries = [.. entries.Where(qualified.Contains)];
         if (round != 1) return entries;
         var points = Zones.Where(p => Parent((int)Id(p)) == target && GameData.Int(p, "_iType") == 3).Select(p => (int)Id(p)).Order().ToArray();
         int index = Array.IndexOf(points, territory);
         // (inferred) Snake-free round-robin grouping of the ranked qualifiers, preserving configured three flags/state.
-        return index < 0 ? entries : entries.Where((_, i) => i % points.Length == index).ToArray();
+        return index < 0 ? entries : [.. entries.Where((_, i) => i % points.Length == index)];
     }
 }

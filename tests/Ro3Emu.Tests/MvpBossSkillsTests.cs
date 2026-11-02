@@ -60,7 +60,7 @@ public sealed class MvpBossSkillsTests
         Assert.Equal((5202301, 5002201, 15_000, 30_000), (frenzy.Skill, frenzy.Buff, frenzy.BuffMs, frenzy.CdMs));
         // Delusion: damage +30 %, damage reduction -30 % (more damage taken), ASPD +100.
         var delusion = Data.Row("BuffConfig", 5002201)!.Value;
-        Assert.Equal([(215L, 3000d), (216L, -3000d), (114L, 100d)], GameData.Pairs(delusion, "_kChangeAttri").ToArray());
+        Assert.Equal([(215L, 3000d), (216L, -3000d), (114L, 100d)], [.. GameData.Pairs(delusion, "_kChangeAttri")]);
     }
 
     [ClientDataFact]
@@ -87,9 +87,9 @@ public sealed class MvpBossSkillsTests
             Assert.Equal(20200001, GameData.Int(npc, "_iAI"));
         }
         var ai = Data.Row("AIConfig", 20200001)!.Value;
-        Assert.Equal([901401], ai.GetProperty("_iUnFightBUFF").EnumerateArray().Select(v => v.GetInt32()).ToArray());
-        Assert.Equal([1], ai.GetProperty("_iUnFightType").EnumerateArray().Select(v => v.GetInt32()).ToArray());
-        Assert.Equal([5000], ai.GetProperty("_iUnFightParam").EnumerateArray().Select(v => v.GetInt32()).ToArray());
+        Assert.Equal([901401], [.. ai.GetProperty("_iUnFightBUFF").EnumerateArray().Select(v => v.GetInt32())]);
+        Assert.Equal([1], [.. ai.GetProperty("_iUnFightType").EnumerateArray().Select(v => v.GetInt32())]);
+        Assert.Equal([5000], [.. ai.GetProperty("_iUnFightParam").EnumerateArray().Select(v => v.GetInt32())]);
         foreach (int id in new[] { 900901, 904301, 904101, 901401 })
         {
             var buff = Data.Row("BuffConfig", id)!.Value;
@@ -101,11 +101,11 @@ public sealed class MvpBossSkillsTests
     [ClientDataFact]
     public void TeamScoreDecaysWithCappedMembers()
     {
-        Assert.Equal([100, 90, 80, 70, 60, 50, 50], Enumerable.Range(0, 7).Select(k => MvpService.DecayPercent(Data, k)).ToArray());
+        Assert.Equal([100, 90, 80, 70, 60, 50, 50], [.. Enumerable.Range(0, 7).Select(k => MvpService.DecayPercent(Data, k))]);
         // Party 7 (600 points, one capped member) falls behind solo player 3 (560): 600 x 90 % = 540.
         var ranked = MvpService.RankTeams([(1, 7, 1, 300), (2, 7, 1, 300), (3, 0, 0, 560), (4, 9, 4, -25)],
             role => role == 2, k => MvpService.DecayPercent(Data, k));
-        Assert.Equal([-3L, 7L, 9L], ranked.Select(t => t.Key).ToArray());
+        Assert.Equal([-3L, 7L, 9L], [.. ranked.Select(t => t.Key)]);
         Assert.Equal((540L, true), (ranked[1].Score, ranked[1].Decayed));
         Assert.Equal((560L, false), (ranked[0].Score, ranked[0].Decayed));
         Assert.Equal(-25, ranked[2].Score);

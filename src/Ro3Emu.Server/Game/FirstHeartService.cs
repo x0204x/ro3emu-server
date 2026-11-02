@@ -46,8 +46,8 @@ public sealed class FirstHeartService : IGameTicker
     private readonly TimeProvider _clock;
     private readonly ILogger<FirstHeartService> _log;
     private readonly Day[] _days;
-    private readonly Dictionary<long, TaskRow> _taskRows = new();
-    private readonly HashSet<GameSession> _dirty = new(), _queued = new();
+    private readonly Dictionary<long, TaskRow> _taskRows = [];
+    private readonly HashSet<GameSession> _dirty = [], _queued = [];
     private TimeSpan _lastTick;
     private int _sweepIndex;
 
@@ -60,16 +60,16 @@ public sealed class FirstHeartService : IGameTicker
         this._data = data; this._character = character; this._functions = functions; this._seasons = seasons;
         this._activityClock = activityClock; this._awards = awards; this._tasks = tasks; this._achievements = achievements;
         this._roles = roles; this._sessions = sessions; this._loop = loop; this._clock = clock; this._log = log;
-        _days = data.Table("FirstHeartGroupConfig").Values
+        _days = [.. data.Table("FirstHeartGroupConfig").Values
             .Where(r => GameData.Int(r, "_iActivityType") == Type && GameData.Int(r, "_iActivityID") == Activity)
             .Select(r => new Day(GameData.Int(r, "_iID"), (int)(Numbers(r, "_kStage").ElementAtOrDefault(1)), Numbers(r, "_kTasklist")))
-            .Where(d => d.Number > 0).OrderBy(d => d.Number).ToArray();
+            .Where(d => d.Number > 0).OrderBy(d => d.Number)];
         foreach (var r in data.Table("FirstHeartConfig").Values)
             if (r.TryGetProperty("_kProgressTarget", out var targets) && targets.ValueKind == JsonValueKind.Array
                 && targets.GetArrayLength() > 0 && targets[0].ValueKind == JsonValueKind.Array)
                 _taskRows[GameData.Int(r, "_iID")] = new TaskRow(GameData.Int(r, "_iID"), GameData.Int(r, "_iType"),
                     GameData.Int(r, "_iPoint"), GameData.Int(r, "_iAward"),
-                    targets[0].EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).ToArray());
+                    [.. targets[0].EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0))]);
         character.StateChanged.Add(MarkDirty);
         character.ProgressHandlers.Add(s => { MarkDirty(s); return Task.CompletedTask; });
         cards.CollectionChanged.Add(s => { MarkDirty(s); return Task.CompletedTask; });
@@ -78,7 +78,7 @@ public sealed class FirstHeartService : IGameTicker
 
     private static long[] Numbers(JsonElement row, string field) =>
         row.TryGetProperty(field, out var list) && list.ValueKind == JsonValueKind.Array
-            ? list.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).ToArray() : [];
+            ? [.. list.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0))] : [];
 
     private int PlayBook(GameSession s) => (int)(s.SeasonState?.PlayBookId ?? _seasons.PlayBook);
 
@@ -115,14 +115,14 @@ public sealed class FirstHeartService : IGameTicker
     private DBFirstHeartTaskActivityData Evaluate(GameSession s, DBFirstHeartTaskActivityData state)
     {
         bool open = Open(s);
-        if (!state.GetLvTime.ContainsKey(Type))
+        if (!state.GetLvTime.TryGetValue(Type, out var started))
         {
             if (!open) return state;
-            state.GetLvTime[Type] = Now;
+            state.GetLvTime[Type] = started = Now;
         }
         if (!open) return state; // a closed activity keeps its state as it was
         if (!state.ActivityData.TryGetValue(Type, out var cfg)) state.ActivityData[Type] = cfg = new FirstHeartTaskCfgData();
-        int today = DayNumber(state.GetLvTime[Type]);
+        int today = DayNumber(started);
         foreach (var day in _days)
         {
             bool unlocked = today >= day.Number;

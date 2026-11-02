@@ -7,6 +7,7 @@ namespace Ro3Emu.Server.Data.Config;
 public readonly partial record struct BattlePassConfig(JsonElement Row)
 {
     [ConfigField("_iExpCurrencyId")] public partial long ExpCurrencyId { get; }
+    [ConfigField("_iID")] public partial long Id { get; }
     [ConfigField("_iGiftItemId")] public partial long GiftItemId { get; }
     [ConfigField("_iMaxLevel")] public partial long MaxLevel { get; }
     [ConfigField("_iPremiumItemId")] public partial long PremiumItemId { get; }

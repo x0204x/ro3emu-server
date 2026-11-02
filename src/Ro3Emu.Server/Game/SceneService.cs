@@ -27,16 +27,16 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
     private const float InteractSlack = 8f;
 
     /// <summary>Dungeon owners clean up on every exit and start combat only after the loaded-scene handshake.</summary>
-    public List<Func<GameSession, Task>> Leaving { get; } = new();
+    public List<Func<GameSession, Task>> Leaving { get; } = [];
     /// <summary>Reconcile destination-dependent appearance before ENTITYSELF and the first AOI snapshot.</summary>
-    public List<Func<GameSession, Task>> BeforeSelf { get; } = new();
-    public List<Func<GameSession, Task>> Loaded { get; } = new();
+    public List<Func<GameSession, Task>> BeforeSelf { get; } = [];
+    public List<Func<GameSession, Task>> Loaded { get; } = [];
     /// <summary>Replays require the entity bases installed by JoinAsync.</summary>
-    public List<Func<GameSession, Task>> AfterLoaded { get; } = new();
-    private readonly HashSet<Func<GameSession, Task>> _ownedAfterLoaded = new();
+    public List<Func<GameSession, Task>> AfterLoaded { get; } = [];
+    private readonly HashSet<Func<GameSession, Task>> _ownedAfterLoaded = [];
     /// <summary>Shared keys a loaded hook writes for this session (a hook that writes beyond the role declares them
     /// here when it registers).</summary>
-    public List<Func<GameSession, Ownership.ReservationKey[]>> LoadedKeys { get; } = new();
+    public List<Func<GameSession, Ownership.ReservationKey[]>> LoadedKeys { get; } = [];
 
     /// <summary>C/D 15: the loaded hooks and unowned after-loaded hooks reserve the role's own keys plus what the hooks
     /// declare, not Realm. SceneHookScopeAuditTests guards that nothing else is needed.</summary>
@@ -67,7 +67,7 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
         Func<GameSession, bool>? Valid = null);
     public Func<GameSession, long, MapPoint?, int, TransferStart?, Task<bool>>? QueuePublicAdmission { get; set; }
     public Func<GameSession, long, int>? PreferredLine { get; set; }
-    public List<Action<RuntimeMapKey>> PublicLineOpened { get; } = new();
+    public List<Action<RuntimeMapKey>> PublicLineOpened { get; } = [];
 
     /// <summary>
     /// Sends the player to <paramref name="scene"/> at <paramref name="at"/> (default: the map's born point). Walks are
@@ -322,7 +322,7 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
 
     /// <summary>Presentation-only replays after a silent reconnect (map-scoped views a service pushes in
     /// <see cref="Loaded"/>). Unlike Loaded/AfterLoaded they must not persist anything.</summary>
-    public List<Func<GameSession, Task>> Resync { get; } = new();
+    public List<Func<GameSession, Task>> Resync { get; } = [];
 
     /// <summary>
     /// The scene part of the silent-reconnect resync, after 1011: the own actor, its buffs,
@@ -417,7 +417,12 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
         || row.TryGetProperty("_iInteractID", out var ids) && ids.ValueKind == System.Text.Json.JsonValueKind.Array
             && ids.EnumerateArray().Any(x => Data.GameData.Number(x) == id);
 
-    /// <summary>30012: travel to a map's born point (world-map travel, failed scene load).</summary>
+    /// <summary>
+    /// 30012: travel to a map's born point. The client sends it for its cross-scene auto path (LC_Actor_ControlMove), a failed
+    /// scene load and leaving Territory Wars (LC_TransitionBase, LC_TerritoryWarsServer: 10100), the GvG transfer node
+    /// (10110), leaving auto battle and more, so the target itself is not limited here. (inferred) A dead role gets the
+    /// client's own "Cannot teleport while dead", except to its map or the town a failed load falls back to.
+    /// </summary>
     public async Task SceneTeleportAsync(GameSession s, SceneTeleportReq req)
     {
         if (s.Handoff is { Completing: false } pending)
@@ -426,15 +431,26 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
             RequireReconnect(s, pending); // failed load has no nonce: do not arm an ambiguous same-map retry
             return;
         }
-        bool ok = data.Row("MapConfig", req.TargetMapId) != null && worldData.Map(req.TargetMapId) != null
+        bool known = data.Row("MapConfig", req.TargetMapId) != null && worldData.Map(req.TargetMapId) != null
             && worldData.ClientHasScene(req.TargetMapId);
-        await s.SendGameAsync(SceneTeleport, new SceneTeleportRsp { Result = ok ? 0 : ErrorCodes.SceneMissing });
-        if (ok) await EnterSceneAsync(s, req.TargetMapId);
+        int result = !known ? ErrorCodes.SceneMissing : s.Dead && !RescueTarget(s, req.TargetMapId) ? ErrorCodes.TeleportDead : 0;
+        await s.SendGameAsync(SceneTeleport, new SceneTeleportRsp { Result = result });
+        if (result == 0) await EnterSceneAsync(s, req.TargetMapId);
     }
 
-    /// <summary>30131: a dialog option jumping to a numbered point of a map (e.g. the palace guard).</summary>
+    /// <summary>The role's own map or the main city (PublicParamConfig.AutoBattleAutoBackMainCityID, the 10100 of LC_TransitionBase).</summary>
+    private bool RescueTarget(GameSession s, long target) => target == s.SceneEntry
+        || data.Table("PublicParamConfig").TryGetValue("AutoBattleAutoBackMainCityID", out var city) && Data.GameData.Number(city) == target;
+
+    /// <summary>30131: a dialog option jumping to a numbered point of a map (e.g. the palace guard). A dialog needs a living
+    /// role in a loaded scene.</summary>
     public async Task CustomJumpAsync(GameSession s, ClientCustomJumpMapReq req)
     {
+        if (s.Dead || s.SceneLoading)
+        {
+            await s.SendGameAsync(CustomJumpMap, new ClientCustomJumpMapResp { Result = s.Dead ? ErrorCodes.TeleportDead : ErrorCodes.SwitchingScenes });
+            return;
+        }
         var map = data.Row("MapConfig", req.SceneId) != null ? worldData.Map(req.SceneId) : null;
         var point = map?.Points.GetValueOrDefault(req.PointId);
         int code = point == null ? map == null ? ErrorCodes.SceneMissing : ErrorCodes.Parameter

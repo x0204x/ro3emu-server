@@ -307,7 +307,7 @@ public sealed partial class CharacterService
             persist?.Invoke(builder);
             lifeUse?.Persist(builder);
             lifeVigor?.Persist(builder);
-            cardSight = StageFirstCardSight?.Invoke(session, postCommitHooks.Select(g => g.Entry).ToList(),
+            cardSight = StageFirstCardSight?.Invoke(session, [.. postCommitHooks.Select(g => g.Entry)],
                 rewardSettlement?.LibraryMonster ?? 0);
             cardSight?.Persist(builder);
             if (builder.HasCharacterFamilyEconomy && (prunedPlans = PrunedEquipmentPlans(session, stagedItems)) != null)
@@ -318,8 +318,7 @@ public sealed partial class CharacterService
             if (economy != null) builder.WithEconomy(economy);
             if (rewardSettlement != null)
                 builder.WithEconomy(RewardMutation(session, rewardSettlement, beforeProgress, stagedProgress,
-                    need, goods.Concat((boundGoods ?? []).Select(g => (g.Entry, g.Count)))
-                        .Concat(rewardSettlement.AdditionalGoods).ToArray(),
+                    need, [.. goods, .. (boundGoods ?? []).Select(g => (g.Entry, g.Count)), .. rewardSettlement.AdditionalGoods],
                     baseExp, jobExp, decomposed));
             if (lifeVigor != null) builder.WithVigorReward(lifeVigor.Evidence);
         }
@@ -444,7 +443,7 @@ public sealed partial class CharacterService
             if (popup && reward.Rewards.Count > 0) await session.SendGameAsync(GetRewardNotify, reward);
             // LifeJob publishes its committed life/restriction state after Exchange returns. Its ItemsChangedAsync
             // runs this first notification once those fields agree with the already committed bag and cooldown.
-            if (lifeUse != null) lifeUse.PendingStateChanged = StateChanged.ToArray();
+            if (lifeUse != null) lifeUse.PendingStateChanged = [.. StateChanged];
             else foreach (var handler in StateChanged) handler(session);
         }
         if (rewardSettlement?.DeferPresentation == true) rewardSettlement.Presentation = PresentExchangeAsync;
@@ -581,7 +580,7 @@ public sealed partial class CharacterService
             return Task.FromResult<List<InvItem>?>(null);
         var before = session.Items;
         var currency = session.Progress!.Currency.ToDictionary();
-        session.Items = before.Select(i => i.Clone()).ToList(); // every per-instance field survives the staging
+        session.Items = [.. before.Select(i => i.Clone())]; // every per-instance field survives the staging
         var granted = new List<InvItem>();
         try
         {

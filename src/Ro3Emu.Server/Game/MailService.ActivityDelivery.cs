@@ -120,7 +120,7 @@ public sealed partial class MailService
                         TemplateId = delivery.TemplateId,
                         SenderId = "0",
                         Category = 1,
-                        Attachments = delivery.Attachments.ToList(),
+                        Attachments = [.. delivery.Attachments],
                     }, now, null, days > 0 ? days : 30);
                 }
                 transaction.RoleBlob(role, "mailbox", System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(box));

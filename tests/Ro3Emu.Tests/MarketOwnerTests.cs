@@ -95,7 +95,7 @@ public sealed class MarketOwnerTests(ITestOutputHelper output) : IAsyncLifetime
             Assert.Equal(buyerBefore - 100, buyer.Progress!.Currency[1]);
             Assert.Equal(firstBefore + 40, first.Progress!.Currency[1]);
             Assert.Equal(secondBefore + 40, Roles.LoadProgress(second).Currency[1]);
-            Assert.All(new[] { buyerId, firstId, second }, id => Assert.NotNull(Roles.LoadMailbox(id)));
+            Assert.All([buyerId, firstId, second], id => Assert.NotNull(Roles.LoadMailbox(id)));
             noticeEntered.TrySetResult(); await releaseNotice.Task;
             throw new IOException("injected slow notice failure");
         }));

@@ -64,7 +64,7 @@ public sealed class HttpStateTests : IAsyncLifetime
         while (census.Current is not { Login: 1, Roles.Count: 1 } && DateTime.UtcNow < deadline)
             await Task.Delay(50);
 
-        using var client = new HttpClient();
+        using var client = Operator.Client();
         Assert.Equal(1, (await Get(client, "/ro3emu/status")).GetProperty("players").GetInt32());
         var sessions = (await Get(client, "/ro3emu/metrics")).GetProperty("sessions");
         Assert.Equal(1, sessions.GetProperty("login").GetInt32());

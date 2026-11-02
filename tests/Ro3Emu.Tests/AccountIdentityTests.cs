@@ -95,6 +95,20 @@ public sealed class AccountIdentityTests : IDisposable
         Assert.Contains(steps, s => s.Contains("account_name_nocase", StringComparison.Ordinal));
     }
 
+    /// <summary>A natural-source check asks by source_key alone, once per kill and reward, on a table that grows with them.</summary>
+    [Fact]
+    public void TheDuplicateSourceCheckUsesItsIndex()
+    {
+        using var store = Store();
+        using var db = store.Open();
+        using var plan = db.CreateCommand();
+        plan.CommandText = "EXPLAIN QUERY PLAN SELECT operation_id FROM operation_source WHERE source_key='kill/1'";
+        using var reader = plan.ExecuteReader();
+        var steps = new List<string>();
+        while (reader.Read()) steps.Add(reader.GetString(3));
+        Assert.Contains(steps, s => s.Contains("operation_source_key", StringComparison.Ordinal));
+    }
+
     private static long Count(AccountStore store)
     {
         using var db = store.Open();

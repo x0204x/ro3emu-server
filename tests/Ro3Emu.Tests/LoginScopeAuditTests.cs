@@ -136,7 +136,7 @@ public sealed class LoginScopeAuditTests(ITestOutputHelper output) : IAsyncLifet
     private async Task Gm(string name, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{_http}/ro3emu/gm?account={name.ToLowerInvariant()}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={name.ToLowerInvariant()}", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     private static async Task<T> Next<T>(BotClient bot, uint id, Google.Protobuf.MessageParser<T> parser, Func<T, bool>? match = null)

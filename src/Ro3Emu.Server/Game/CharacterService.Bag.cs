@@ -19,7 +19,7 @@ public sealed partial class CharacterService
         var removed = session.Items.Where(i => i.Grid == 0 && !EmblemService.IsReserved(session, i) && !TotemService.IsReserved(session, i)).ToList();
         var next = session.Items.Except(removed).Select(i => i.Clone()).ToList();
         await CommitCharacterAsync(session, "gm-clear", nextItems: next,
-            costs: removed.Select(i => (i.Entry, (long)i.Stack)).ToArray());
+            costs: [.. removed.Select(i => (i.Entry, (long)i.Stack))]);
         await SyncItemsAsync(session);
         if (removed.Count > 0) foreach (var handler in StateChanged) handler(session);
         return $"Removed {removed.Count} item(s).";
@@ -376,7 +376,7 @@ public sealed partial class CharacterService
             replacements[old] = item;
         }
         roles.Commit(builder, "character/card-pack-migration");
-        session.Items = session.Items.Select(i => replacements.GetValueOrDefault(i, i)).ToList();
+        session.Items = [.. session.Items.Select(i => replacements.GetValueOrDefault(i, i))];
     }
 
     /// <summary>Mail-only preflight for combined plain, bound, exact-instance and long-currency grants under StateLock.</summary>

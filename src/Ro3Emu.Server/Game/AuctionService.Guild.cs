@@ -54,7 +54,7 @@ public sealed partial class AuctionService
         if (string.IsNullOrWhiteSpace(completionKey)) return Task.FromResult(ErrorCodes.Parameter);
         var config = data.Table("GuildLeagueRankConfig").Values.FirstOrDefault(r => GameData.Int(r, "_iRank") == rank);
         if (config.ValueKind != JsonValueKind.Object) return Task.FromResult(ErrorCodes.RewardMissing);
-        long[] distinct = participants.Distinct().Order().ToArray();
+        long[] distinct = [.. participants.Distinct().Order()];
         string field = won ? "_kAuctionAwardList" : "_kAuctionLoseAwardList";
         long group = 0, threshold = -1;
         if (config.TryGetProperty(field, out var tiers) && tiers.ValueKind == JsonValueKind.Array)
@@ -83,7 +83,7 @@ public sealed partial class AuctionService
             group, participants, committedParticipants, rewardPlayBook, rewardOpenDay, economicChallenge));
         if (source.Length > 240 || participants.Count == 0 || srcType <= 0 || group < 0)
             return ErrorCodes.Parameter;
-        long[] members = participants.Distinct().Order().ToArray();
+        long[] members = [.. participants.Distinct().Order()];
         bool committed = false;
         try
         {
@@ -164,7 +164,7 @@ public sealed partial class AuctionService
                             store.EnlistSave(new AuctionStore.Item
                             {
                                 SourceKey = lotSource, Type = AuctionType.Guild, GuildId = guildId,
-                                SrcType = srcType, Entry = entry, Bind = bind, Eligible = members.ToList(),
+                                SrcType = srcType, Entry = entry, Bind = bind, Eligible = [.. members],
                                 Start = start, End = end, State = AuctionState.Public,
                                 Price = (int)GameData.Int(cfg, "_iAuctionPrice"),
                                 Raise = (int)GameData.Int(cfg, "_iBaseRaisePrice"),
@@ -191,7 +191,7 @@ public sealed partial class AuctionService
                     catch (EconomyOperationConflictException) when (store.HasSource(source)) { return 0; }
                     created = goods.Count > 0;
                     committed = true;
-                    noticeRoles = guild.Members.Keys.ToArray();
+                    noticeRoles = [.. guild.Members.Keys];
                 }
                 if (created) await NotifyNewRowsAsync(AuctionType.Guild, noticeRoles);
                 return 0;

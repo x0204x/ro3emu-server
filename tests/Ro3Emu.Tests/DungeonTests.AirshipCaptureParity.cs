@@ -241,7 +241,7 @@ public sealed partial class DungeonTests
     }
 
     private static DungeonEventNotify[] AirshipClientCalls(Ro3Emu.Bot.BotClient bot) =>
-        bot.Inbox.Snapshot().Where(packet => packet.IsGame(DungeonService.Event))
+        [.. bot.Inbox.Snapshot().Where(packet => packet.IsGame(DungeonService.Event))
             .Select(packet => DungeonEventNotify.Parser.ParseFrom(packet.Body))
-            .Where(call => call.DungeonEntry == LifecycleAirship && (int)call.EventType == 6).ToArray();
+            .Where(call => call.DungeonEntry == LifecycleAirship && (int)call.EventType == 6)];
 }

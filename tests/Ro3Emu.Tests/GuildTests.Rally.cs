@@ -24,7 +24,7 @@ public sealed partial class GuildTests
         var guilds = _app.Services.GetRequiredService<GuildStore>();
         // Guild Funds (104) from an award move into the guild.
         using (var client = new HttpClient())
-            (await client.PostAsync($"{_http}/ro3emu/gm?account=alice", new StringContent("!item 104 20"))).EnsureSuccessStatusCode();
+            (await client.PostAsync($"{_http}/ro3emu/gm?account=alice", Operator.Command("!item 104 20"))).EnsureSuccessStatusCode();
         for (int i = 0; i < 250 && guilds.Get(guildId)!.Money < 20; i++) await Task.Delay(20);
         long funds = guilds.Get(guildId)!.Money;
         Assert.True(funds >= 20);

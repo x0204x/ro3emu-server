@@ -27,14 +27,14 @@ public sealed partial class AdventureGroupService
         public InstanceService.Room Room = null!;
         public long Leader;
         public long StartMs;
-        public readonly HashSet<long> Participants = new();
+        public readonly HashSet<long> Participants = [];
         /// <summary>0 hang the declaration, 1 water, 2 declare, 3 founded.</summary>
         public int Step;
-        public readonly HashSet<long> Watered = new(), Declared = new();
+        public readonly HashSet<long> Watered = [], Declared = [];
     }
 
     /// <summary>Running rituals by group (in memory: a restart ends them, the group stays in its earlier status).</summary>
-    private readonly Dictionary<long, Ritual> _rituals = new();
+    private readonly Dictionary<long, Ritual> _rituals = [];
 
     private const int VarPlayerCount = 127, VarPlayerList = 145;
 
@@ -47,7 +47,7 @@ public sealed partial class AdventureGroupService
     private void AbortRitual(long groupId) => _rituals.Remove(groupId);
 
     private GameSession[] RoomMembers(Ritual r) =>
-        r.Room.ActiveMembers.Select(m => m.Session).Where(s => s.Role != null && r.Participants.Contains(s.Role.Id)).ToArray();
+        [.. r.Room.ActiveMembers.Select(m => m.Session).Where(s => s.Role != null && r.Participants.Contains(s.Role.Id))];
 
     // ---------------------------------------------------------------- party admission
 
@@ -131,7 +131,7 @@ public sealed partial class AdventureGroupService
         GameSession[] party = [];
         if (code == 0)
         {
-            party = _teams.MembersOf(s.Role!.Id).Select(Online).OfType<GameSession>().ToArray();
+            party = [.. _teams.MembersOf(s.Role!.Id).Select(Online).OfType<GameSession>()];
             // The party becomes the group's roster for the ritual; nobody is dropped before the founding.
             foreach (var member in party)
                 if (!g!.Members.ContainsKey(member.Role!.Id)) g.Members[member.Role.Id] = NewMember(member.Role.Id);

@@ -68,7 +68,7 @@ public sealed class DungeonMatchTests : IAsyncLifetime
     private async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     private GameSession Session(BotClient bot) => Service<SessionRegistry>().All()
@@ -127,8 +127,8 @@ public sealed class DungeonMatchTests : IAsyncLifetime
     [Fact]
     public void PartyPackingCanSkipAnEarlyIncompatibleGroup()
     {
-        Assert.Equal(new[] { 1, 2 }, DungeonMatchService.PickGroupIndices([4, 3, 2], 5));
-        Assert.Equal(new[] { 0, 1 }, DungeonMatchService.PickGroupIndices([2, 3, 1], 5));
+        Assert.Equal([1, 2], DungeonMatchService.PickGroupIndices([4, 3, 2], 5));
+        Assert.Equal([0, 1], DungeonMatchService.PickGroupIndices([2, 3, 1], 5));
     }
 
     [ClientDataFact]

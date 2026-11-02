@@ -62,8 +62,8 @@ public sealed partial class ShopService(GameData data, CharacterService characte
     /// <summary>Saved per role: purchase counters with the period they were counted in, and favourites.</summary>
     public sealed class ShopState
     {
-        public Dictionary<int, Counter> Bought { get; set; } = new();
-        public HashSet<int> Favorites { get; set; } = new();
+        public Dictionary<int, Counter> Bought { get; set; } = [];
+        public HashSet<int> Favorites { get; set; } = [];
     }
 
     public sealed class Counter
@@ -328,13 +328,12 @@ public sealed partial class ShopService(GameData data, CharacterService characte
     /// <summary>_kAppearanceParts: a JSON array of WardRobeConfig ids, or {} when empty.</summary>
     private static List<int> Parts(JsonElement commodity) =>
         commodity.TryGetProperty("_kAppearanceParts", out var parts) && parts.ValueKind == JsonValueKind.Array
-            ? parts.EnumerateArray().Select(p => (long)(GameData.Number(p) ?? 0)).Where(id => id is > 0 and <= int.MaxValue)
-                .Select(id => (int)id).ToList()
+            ? [.. parts.EnumerateArray().Select(p => (long)(GameData.Number(p) ?? 0)).Where(id => id is > 0 and <= int.MaxValue).Select(id => (int)id)]
             : [];
 
     private static ShopState Copy(ShopState state) => new()
     {
-        Favorites = new HashSet<int>(state.Favorites),
+        Favorites = [.. state.Favorites],
         Bought = state.Bought.ToDictionary(p => p.Key, p => new Counter { Count = p.Value.Count, Period = p.Value.Period }),
     };
 
@@ -384,7 +383,7 @@ public sealed partial class ShopService(GameData data, CharacterService characte
         {
             var next = new ShopState
             {
-                Favorites = new HashSet<int>(session.Shop!.Favorites),
+                Favorites = [.. session.Shop!.Favorites],
                 Bought = session.Shop.Bought.ToDictionary(p => p.Key, p => new Counter { Count = p.Value.Count, Period = p.Value.Period }),
             };
             if (req.OpType == CollectOperateType.Add) next.Favorites.Add(req.CommodityId);

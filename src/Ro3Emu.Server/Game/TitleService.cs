@@ -23,8 +23,8 @@ namespace Ro3Emu.Server.Game;
 /// RolePublicBaseInfo.title. _kAttr is [[101,0],[103,0],[104,0]] in every row, so no stat changes.</item>
 /// </list>
 /// Inferred: the Crests (_kSpend items 1250801-1250808) have no source in the client data; a boss kill drops one at
-/// ServerOptions.TitleCrestPercent, of the tier its level reaches (see CrestDrops). The PvP damage bonus by title
-/// (TitleBuffConfig, Formula_ATitleDamageAdd) is not applied.
+/// ServerOptions.TitleCrestPercent, of the tier its level reaches (see CrestDrops). The PvP damage counter by title
+/// level (TitleBuffConfig, Formula_ATitleDamageAdd) is CombatService's TitleDamage.
 /// </summary>
 public sealed class TitleService
 {

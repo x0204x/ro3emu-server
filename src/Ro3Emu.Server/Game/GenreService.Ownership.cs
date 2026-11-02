@@ -7,9 +7,9 @@ namespace Ro3Emu.Server.Game;
 public sealed partial class GenreService
 {
     private static ReservationKey[] Keys(long role, long other, bool codes) =>
-        new[] { ReservationKey.Role(role), ReservationKey.Entity("genre-seeker", role.ToString()) }
+        [.. new[] { ReservationKey.Role(role), ReservationKey.Entity("genre-seeker", role.ToString()) }
             .Concat(other > 0 ? [ReservationKey.Role(other), ReservationKey.Entity("genre-seeker", other.ToString())] : [])
-            .Concat(codes ? [ReservationKey.Entity("genre-codes", "registry")] : []).Distinct().ToArray();
+            .Concat(codes ? [ReservationKey.Entity("genre-codes", "registry")] : []).Distinct()];
 
     /// <summary>13b: acquire the seeker, responder/donor snapshot and code index together. No gate callback
     /// may carry a detached whole-blob snapshot across another owner's reservation.</summary>

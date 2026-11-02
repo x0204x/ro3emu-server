@@ -1,4 +1,4 @@
-{
+﻿{
   "version": 1,
   "about": "Reconstructed scripted story scenes (no fight). The original server drove their stages with an encounter script the client does not ship. Each scene is a sequence of steps; a step names the DungeonQuestConfig quest the tracker shows (var 10001) and its goal counter (var 10003), the scene actors the server shows during it (client NPCConfig ids at scene-editor points, with the buffs that open their interactions), an optional story the client plays (dungeon var 100020016), the client events that complete it, and an optional teleport after it. A quest of the scene that only a branch the reconstruction cannot reach would show is listed under \"unplayed\" with its reason. Every decision carries its reason and the scene its confidence; what is guessed is listed per scene. Switch: Ro3Emu:ReconstructedDungeons. Never mixed into client data.",
   "contract": {
@@ -23,7 +23,9 @@
       ],
       "guessed": [
         "波波跑入漩渦的巡邏動畫及蟻卵建立來源尚待還原。",
-        "本輪擷取確認540000x下滑及攝影機71；終點region22不得依Fish停在621公尺處任意擴張。"
+        "本輪擷取確認540000x下滑及攝影機71；終點region22不得依Fish停在621公尺處任意擴張。",
+        "Step 1 completes in region 25 (the corridor where guide 24 ends): region 25 is regionType 1, not one of the explicit server regions.",
+        "Region 20 does not end step 2: a player inside it before the auto interaction came had the step done, the vortex gone and the interaction refused (801), so the client never jumped and stayed above the abyss (#181)."
       ],
       "steps": [
         {

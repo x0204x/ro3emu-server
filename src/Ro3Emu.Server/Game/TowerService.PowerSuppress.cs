@@ -23,7 +23,7 @@ public sealed partial class TowerService
 {
     internal readonly record struct Suppression(int Buff, long Dealt, long Taken);
 
-    private readonly ConditionalWeakTable<MonsterUnit, StrongBox<Suppression>> _suppressed = new();
+    private readonly ConditionalWeakTable<MonsterUnit, StrongBox<Suppression>> _suppressed = [];
 
     private void RegisterSuppression()
     {
@@ -72,5 +72,5 @@ public sealed partial class TowerService
 
     private static long[] Numbers(JsonElement row, string field) =>
         row.TryGetProperty(field, out var list) && list.ValueKind == JsonValueKind.Array
-            ? list.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0)).ToArray() : [];
+            ? [.. list.EnumerateArray().Select(v => (long)(GameData.Number(v) ?? 0))] : [];
 }

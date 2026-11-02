@@ -33,17 +33,17 @@ public sealed partial class TerritoryEscortService : IGameTicker
         public int PlayBook { get; set; }
         /// <summary>The Territory War cycle (TerritoryWarsClock.Cycle): every repeat of the war block is its own escort season.</summary>
         public long Cycle { get; set; }
-        public Dictionary<int, long> ScoreByRound { get; set; } = new();
-        public Dictionary<int, HashSet<int>> ClaimedByRound { get; set; } = new();
-        public Dictionary<int, long> LastGuildByRound { get; set; } = new();
-        public Dictionary<string, RoleProgress> Archives { get; set; } = new();
+        public Dictionary<int, long> ScoreByRound { get; set; } = [];
+        public Dictionary<int, HashSet<int>> ClaimedByRound { get; set; } = [];
+        public Dictionary<int, long> LastGuildByRound { get; set; } = [];
+        public Dictionary<string, RoleProgress> Archives { get; set; } = [];
     }
 
     public sealed class RoleProgress
     {
-        public Dictionary<int, long> ScoreByRound { get; set; } = new();
-        public Dictionary<int, HashSet<int>> ClaimedByRound { get; set; } = new();
-        public Dictionary<int, long> LastGuildByRound { get; set; } = new();
+        public Dictionary<int, long> ScoreByRound { get; set; } = [];
+        public Dictionary<int, HashSet<int>> ClaimedByRound { get; set; } = [];
+        public Dictionary<int, long> LastGuildByRound { get; set; } = [];
     }
 
     private sealed class Ledger
@@ -55,25 +55,25 @@ public sealed partial class TerritoryEscortService : IGameTicker
         public long NextGoodsId { get; set; } = 1;
         public long NextCartId { get; set; } = 1;
         public long NextCargoId { get; set; } = 1;
-        public Dictionary<long, Listing> Listings { get; set; } = new();
-        public Dictionary<long, long> Goods { get; set; } = new();
-        public Dictionary<long, CartState> Carts { get; set; } = new();
-        public Dictionary<long, CargoState> Cargo { get; set; } = new();
-        public Dictionary<long, PlayState> Play { get; set; } = new();
-        public Dictionary<long, Dictionary<int, long>> ScoresByRound { get; set; } = new();
-        public Dictionary<long, HashSet<int>> StockRounds { get; set; } = new();
-        public Dictionary<string, long> SkillCooldowns { get; set; } = new();
-        public Dictionary<string, SeasonArchive> Archives { get; set; } = new();
+        public Dictionary<long, Listing> Listings { get; set; } = [];
+        public Dictionary<long, long> Goods { get; set; } = [];
+        public Dictionary<long, CartState> Carts { get; set; } = [];
+        public Dictionary<long, CargoState> Cargo { get; set; } = [];
+        public Dictionary<long, PlayState> Play { get; set; } = [];
+        public Dictionary<long, Dictionary<int, long>> ScoresByRound { get; set; } = [];
+        public Dictionary<long, HashSet<int>> StockRounds { get; set; } = [];
+        public Dictionary<string, long> SkillCooldowns { get; set; } = [];
+        public Dictionary<string, SeasonArchive> Archives { get; set; } = [];
     }
 
     private sealed class SeasonArchive
     {
-        public Dictionary<long, long> Goods { get; set; } = new();
-        public Dictionary<long, Listing> Listings { get; set; } = new();
-        public Dictionary<long, PlayState> Play { get; set; } = new();
-        public Dictionary<long, Dictionary<int, long>> ScoresByRound { get; set; } = new();
-        public Dictionary<long, HashSet<int>> StockRounds { get; set; } = new();
-        public Dictionary<string, long> SkillCooldowns { get; set; } = new();
+        public Dictionary<long, long> Goods { get; set; } = [];
+        public Dictionary<long, Listing> Listings { get; set; } = [];
+        public Dictionary<long, PlayState> Play { get; set; } = [];
+        public Dictionary<long, Dictionary<int, long>> ScoresByRound { get; set; } = [];
+        public Dictionary<long, HashSet<int>> StockRounds { get; set; } = [];
+        public Dictionary<string, long> SkillCooldowns { get; set; } = [];
     }
 
     private sealed class Listing
@@ -86,8 +86,8 @@ public sealed partial class TerritoryEscortService : IGameTicker
         public int State { get; set; }
         public long Time { get; set; }
         public long Buyer { get; set; }
-        public Dictionary<long, Application> Applications { get; set; } = new();
-        public HashSet<long> Rejected { get; set; } = new();
+        public Dictionary<long, Application> Applications { get; set; } = [];
+        public HashSet<long> Rejected { get; set; } = [];
     }
 
     private sealed class Application
@@ -220,7 +220,7 @@ public sealed partial class TerritoryEscortService : IGameTicker
                  .Concat(actor == null ? [] : [Own(actor)?.Id ?? 0])
                  .Concat(additionalGuilds ?? []))
             if (guild > 0) keys.Add(Ownership.ReservationKey.Entity("guild", guild.ToString(System.Globalization.CultureInfo.InvariantCulture)));
-        return keys.ToArray();
+        return [.. keys];
     }
     private async Task<Ownership.LegacyOwnerScope?> EnterGateAsync(string origin, GameSession? actor = null,
         bool includeOnlineRoles = false, IReadOnlyCollection<long>? additionalRoles = null,
@@ -238,8 +238,8 @@ public sealed partial class TerritoryEscortService : IGameTicker
             scope.Dispose();
         }
     }
-    private Dictionary<long, long> _goodsSnapshot = new();
-    private Dictionary<(long Guild, int Round), long> _scoreSnapshot = new();
+    private Dictionary<long, long> _goodsSnapshot = [];
+    private Dictionary<(long Guild, int Round), long> _scoreSnapshot = [];
     private string _committedEpoch = "";
     private TimeSpan _lastTick;
     private bool _ticking, _reconciledOnce; // the first reconciliation runs on the loop's first tick (startup), not 1 s later
@@ -271,7 +271,7 @@ public sealed partial class TerritoryEscortService : IGameTicker
         foreach (var (guild, play) in ledger.Play)
             if (!ledger.ScoresByRound.TryGetValue(guild, out var rounds) || !rounds.ContainsKey(play.Round))
             {
-                if (rounds == null) ledger.ScoresByRound[guild] = rounds = new Dictionary<int, long>();
+                if (rounds == null) ledger.ScoresByRound[guild] = rounds = [];
                 rounds[play.Round] = play.Score;
             }
         PublishSnapshots();
@@ -361,7 +361,7 @@ public sealed partial class TerritoryEscortService : IGameTicker
         }
         else
         {
-            state.ScoreByRound = new(); state.ClaimedByRound = new(); state.LastGuildByRound = new();
+            state.ScoreByRound = []; state.ClaimedByRound = []; state.LastGuildByRound = [];
         }
         state.SeasonStart = _clock.SeasonStart;
         state.PlayBook = _clock.PlayBook;
@@ -374,7 +374,7 @@ public sealed partial class TerritoryEscortService : IGameTicker
         var play = GetPlay(guildId);
         play.Score = checked(play.Score + score);
         if (!ledger.ScoresByRound.TryGetValue(guildId, out var rounds))
-            ledger.ScoresByRound[guildId] = rounds = new Dictionary<int, long>();
+            ledger.ScoresByRound[guildId] = rounds = [];
         rounds[Round] = play.Score;
     }
 

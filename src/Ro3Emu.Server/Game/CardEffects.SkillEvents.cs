@@ -19,7 +19,7 @@ public sealed partial class CardEffects
         public HashSet<long> EvaluatedCasts { get; } = [];
         public Queue<long> CastOrder { get; } = [];
     }
-    private readonly ConditionalWeakTable<GameSession, SkillEventState> _skillEvents = new();
+    private readonly ConditionalWeakTable<GameSession, SkillEventState> _skillEvents = [];
     private SkillEventState SkillEvents(GameSession s)
     {
         if (!_skillEvents.TryGetValue(s, out var state) || state.Role != s.Role!.Id || !ReferenceEquals(state.Epoch, s.SkillProtocol))
@@ -50,7 +50,7 @@ public sealed partial class CardEffects
     private long SpBurn(GameSession source, JsonElement row, long damage, long currentSp)
     {
         if (source.Role == null || source.Dead || damage <= 0 || currentSp <= 0 || IsCardReaction(source, row)) return 0;
-        foreach (var (basis, group, chance, desc) in Procs(Passives(source).ToList()))
+        foreach (var (basis, group, chance, desc) in Procs([.. Passives(source)]))
         {
             if (group != 20230 || desc.Length < 4 || new BuffConfig(basis).LogicData is not [0, var skillId]
                 || SkillConfig.Get(_data, skillId) is not { ScriptLogic: "ReduceMP_Card" } skill) continue;

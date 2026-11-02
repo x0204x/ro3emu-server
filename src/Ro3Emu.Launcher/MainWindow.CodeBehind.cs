@@ -22,9 +22,9 @@ public partial class MainWindow : Window
 {
     readonly LauncherConfig _config;
     readonly LauncherController _controller;
-    readonly ObservableCollection<NoticeCard> _notices = new();
-    readonly List<BannerCard> _banners = new();
-    readonly List<UIElement> _particles = new();
+    readonly ObservableCollection<NoticeCard> _notices = [];
+    readonly List<BannerCard> _banners = [];
+    readonly List<UIElement> _particles = [];
     readonly LauncherVisualState _visualState = new();
     readonly LauncherImageCache<BitmapImage> _bannerImages = new(3);
     readonly Dictionary<string, BitmapImage> _localImages = new(StringComparer.Ordinal);

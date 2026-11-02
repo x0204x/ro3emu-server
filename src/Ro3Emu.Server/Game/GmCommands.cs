@@ -11,8 +11,8 @@ namespace Ro3Emu.Server.Game;
 /// GM commands, two ways in: "!command" lines typed in any chat channel (replies go to the typist only, as the
 /// client's marquee, BROADCAST_NOTIFY 83270 with a raw string) and the client's own GM panel (GENERAL_PROC_GM 30300,
 /// ). ServerOptions.GmAccounts limits who may use them; empty means everyone unless
-/// ServerOptions.GmOpenWhenEmpty is false (a Production host, docs/guide/gm-access.md). The loopback HTTP /ro3emu/gm keeps
-/// "empty = everyone" (<see cref="Allowed(ServerOptions, string?, bool)"/>).
+/// ServerOptions.GmOpenWhenEmpty is false (a public, proxied or Production host, docs/guide/gm-access.md). The
+/// loopback HTTP /ro3emu/gm keeps "empty = everyone" (<see cref="Allowed(ServerOptions, string?, bool)"/>).
 /// </summary>
 public sealed partial class GmCommands(IOptions<ServerOptions> options, GameData data, SessionRegistry sessions, CharacterService character, SceneService scene, TaskService tasks, IServiceProvider services, ILogger<GmCommands> log)
 {

@@ -12,7 +12,7 @@ public sealed partial class SkillCombatTests
     {
         var instances = _app.Services.GetRequiredService<InstanceService>();
         var room = await Loop.InvokeAsync(() => Task.FromResult(instances.Create(members[0].Player.SceneEntry,
-            members.Select(m => m.Player).ToArray())));
+            [.. members.Select(m => m.Player)])));
         foreach (var (bot, player) in members)
         {
             Assert.True(await Loop.InvokeAsync(() => instances.EnterAsync(room, player, reason: 3)));

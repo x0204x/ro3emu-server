@@ -60,7 +60,7 @@ public sealed class SkillGrowthTests : IAsyncLifetime
     private async Task Gm(string account, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={account}", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     private static string RepoRoot()
@@ -365,13 +365,13 @@ public sealed class SkillGrowthTests : IAsyncLifetime
             {
                 Unlocked = true, Name = index == 1 ? "Migrated" : "",
                 Genre = index == 1 ? 2 : 0,
-                Levels = index == 1 ? new Dictionary<int, int> { [13006] = 2 } : new(),
-                Manual = index == 1 ? new Dictionary<int, int> { [3] = 13006 } : new(),
-                ManualLevels = index == 1 ? new Dictionary<int, int> { [3] = 1 } : new(),
-                Auto = index == 1 ? new Dictionary<int, int> { [1] = 13006 } : new(),
-                AutoLevels = index == 1 ? new Dictionary<int, int> { [1] = 2 } : new(),
-                Queue = index == 1 ? new Dictionary<int, int> { [0] = 13006 } : new(),
-                QueueLevels = index == 1 ? new Dictionary<int, int> { [0] = 1 } : new(),
+                Levels = index == 1 ? new Dictionary<int, int> { [13006] = 2 } : [],
+                Manual = index == 1 ? new Dictionary<int, int> { [3] = 13006 } : [],
+                ManualLevels = index == 1 ? new Dictionary<int, int> { [3] = 1 } : [],
+                Auto = index == 1 ? new Dictionary<int, int> { [1] = 13006 } : [],
+                AutoLevels = index == 1 ? new Dictionary<int, int> { [1] = 2 } : [],
+                Queue = index == 1 ? new Dictionary<int, int> { [0] = 13006 } : [],
+                QueueLevels = index == 1 ? new Dictionary<int, int> { [0] = 1 } : [],
             }).ToArray(),
         };
         Assert.Equal(1, FixtureSql.Execute(_app.Services.GetRequiredService<AccountStore>(),

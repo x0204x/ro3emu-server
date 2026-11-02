@@ -36,13 +36,13 @@ public sealed class TotemService
     private JsonElement Param(string key) => _data.Table("PublicParamConfig").GetValueOrDefault(key);
     private int ParamInt(string key, int fallback) => (int)(GameData.Number(Param(key)) ?? fallback);
     private static long[][] Rows(JsonElement v) => v.ValueKind == JsonValueKind.Array
-        ? v.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.Array).Select(x => x.EnumerateArray().Select(y => (long)(GameData.Number(y) ?? 0)).ToArray()).ToArray() : [];
+        ? [.. v.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.Array).Select(x => x.EnumerateArray().Select(y => (long)(GameData.Number(y) ?? 0)).ToArray())] : [];
     private static long[][] Rows(JsonElement row, string key) => row.TryGetProperty(key, out var v) ? Rows(v) : [];
     private static long Value(InvItem item, int key) => item.Attrs?.GetValueOrDefault(key) ?? 0;
     public static bool IsTotem(GameData data, int entry) => data.Row("ItemConfig", entry) is { } row && GameData.Int(row, "_iType") == 7;
 
     /// <summary>A committed combine: the session and the made totem's entry (quest target 315004).</summary>
-    public List<Action<GameSession, int>> Combined { get; } = new();
+    public List<Action<GameSession, int>> Combined { get; } = [];
 
     /// <summary>The active plan's deployed totem instances.</summary>
     internal static IEnumerable<InvItem> Deployed(GameSession s, GameData data)
@@ -147,7 +147,7 @@ public sealed class TotemService
             int slot = selected?.FirstOrDefault(p => p.Value != 0 && p.Value == item.Guid).Key ?? 0;
             if (slot > 0)
             {
-                item.Attrs ??= new();
+                item.Attrs ??= [];
                 if (item.Attrs.GetValueOrDefault(10001) != 1 || item.Attrs.GetValueOrDefault(10002) != slot) item.Attrs[10003] = now;
                 item.Attrs[10001] = 1; item.Attrs[10002] = slot;
             }
@@ -569,7 +569,7 @@ public sealed class TotemService
         var pool = Rows(row, "_kSkillGroup").Where(r => r.Length >= 2).ToList();
         while (count-- > 0 && pool.Count > 0)
         {
-            int selected = (int)WeightedPair(pool.ToArray());
+            int selected = (int)WeightedPair([.. pool]);
             if (!skills.Contains(selected)) skills.Add(selected);
             pool.RemoveAll(r => r[0] == selected);
         }

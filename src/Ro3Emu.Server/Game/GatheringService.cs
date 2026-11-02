@@ -18,11 +18,11 @@ public sealed class GatheringService : IGameTicker
     public const uint MiniGame = 33516;
     private const long UidBase = 1L << 42;
     private const float InteractionSlack = 1.5f;
-    private readonly Dictionary<long, GatheringUnit> _nodes = new();
-    private readonly Dictionary<GameSession, PendingGather> _pending = new();
-    private readonly HashSet<long> _settlingNodes = new();
-    private readonly Dictionary<(RuntimeMapKey Runtime, int Group, int Refresh), GatherGroup> _groups = new();
-    private readonly Dictionary<RuntimeMapKey, GatherRuntime> _runtimes = new();
+    private readonly Dictionary<long, GatheringUnit> _nodes = [];
+    private readonly Dictionary<GameSession, PendingGather> _pending = [];
+    private readonly HashSet<long> _settlingNodes = [];
+    private readonly Dictionary<(RuntimeMapKey Runtime, int Group, int Refresh), GatherGroup> _groups = [];
+    private readonly Dictionary<RuntimeMapKey, GatherRuntime> _runtimes = [];
     private readonly Random _random = new();
     private readonly World _world;
     private readonly WorldData _worldData;
@@ -56,7 +56,7 @@ public sealed class GatheringService : IGameTicker
     {
         public bool Retired;
         public int Pending;
-        public readonly List<(TimeSpan Due, Func<Task> Work, GameSession? Session)> Deadlines = new();
+        public readonly List<(TimeSpan Due, Func<Task> Work, GameSession? Session)> Deadlines = [];
         public readonly TaskCompletionSource Quiesced = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
@@ -65,7 +65,7 @@ public sealed class GatheringService : IGameTicker
         public RuntimeMapKey Runtime { get; } = runtime;
         public GatherRuntime Owner { get; } = owner;
         public IReadOnlyList<GatheringSpawnPoint> Points { get; } = points;
-        public HashSet<int> Occupied { get; } = new();
+        public HashSet<int> Occupied { get; } = [];
         public int Target => Math.Min(Points.Count, Math.Max(0, Points[0].TargetPopulation));
         public int Minimum => Math.Min(Target, Math.Max(0, Points[0].MinimumPopulation));
         public int RefreshSeconds => Math.Max(1, Points[0].RefreshParameter); // inferred unit; spec §5.3

@@ -15,7 +15,7 @@ public sealed partial class CombatService
         public HashSet<long> Applied { get; } = [];
     }
 
-    private readonly ConditionalWeakTable<ActiveSkillCast, GloriaTargets> _gloriaTargets = new();
+    private readonly ConditionalWeakTable<ActiveSkillCast, GloriaTargets> _gloriaTargets = [];
 
     private static int GloriaSp(SkillConfig row) => row.SkillId == 11501 && row.ScriptLogic == "GloriaDomini"
         && int.TryParse(row.DescData.ElementAtOrDefault(3), out int amount) ? Math.Max(0, amount) : 0;

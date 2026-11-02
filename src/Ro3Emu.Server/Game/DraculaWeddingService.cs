@@ -58,7 +58,7 @@ public sealed class DraculaWeddingService : IGameTicker
     private readonly GameLoop _loop;
     private readonly ILogger<DraculaWeddingService> _log;
     /// <summary>The guild's current (or last) occurrence.</summary>
-    private readonly Dictionary<long, Run> _runs = new();
+    private readonly Dictionary<long, Run> _runs = [];
     private long _lastSecond;
     private bool _sweeping;
     private long Now => _clock.GetUtcNow().ToUnixTimeSeconds();
@@ -92,7 +92,7 @@ public sealed class DraculaWeddingService : IGameTicker
         /// <summary>The member the bride is spectating (custom data 1002 on her entity), 0 for none.</summary>
         public long Watched { get; set; }
         public EntityBase? RescuerEntity { get; set; }
-        public HashSet<int> Searched { get; } = new();
+        public HashSet<int> Searched { get; } = [];
         public bool StoryStarted { get; set; }
         public bool Settled { get; set; }
         public bool Closed { get; set; }
@@ -121,9 +121,7 @@ public sealed class DraculaWeddingService : IGameTicker
         && _functions.IsOpen(s, GameData.Int(row, "_iFunction"));
 
     /// <summary>The eligible members loaded inside the guild's home room.</summary>
-    private GameSession[] InHome(InstanceService.Room room) => room.ActiveMembers.Select(m => m.Session)
-        .Where(s => s.Role != null && s.InstanceId == room.Id && s.SceneEntry == _home.Scene && !s.SceneLoading && Eligible(s))
-        .ToArray();
+    private GameSession[] InHome(InstanceService.Room room) => [.. room.ActiveMembers.Select(m => m.Session).Where(s => s.Role != null && s.InstanceId == room.Id && s.SceneEntry == _home.Scene && !s.SceneLoading && Eligible(s))];
 
     private Run? Current(long guild) => _runs.TryGetValue(guild, out var run) && !run.Settled && !run.Closed && Now < run.End
         ? run : null;

@@ -27,17 +27,17 @@ public sealed class RoleProgress
     public long JobExp { get; set; }
     public int[] Stats { get; } = [1, 1, 1, 1, 1, 1];
     public int BonusPoints { get; set; }
-    public Dictionary<int, long> Currency { get; } = new();
+    public Dictionary<int, long> Currency { get; } = [];
     public bool StarterKit { get; set; }
     /// <summary>Astral Level (Paragon, PatronLevelConfig) and the EXP toward the next one; ParagonService.</summary>
     public int ParagonLevel { get; set; }
     public long ParagonExp { get; set; }
 
     /// <summary>Learned skill levels by skill group id (SkillConfig._iSkillID).</summary>
-    public Dictionary<int, int> Skills { get; } = new();
+    public Dictionary<int, int> Skills { get; } = [];
 
     /// <summary>Skill bar: slot (1..6) -> skill group id.</summary>
-    public Dictionary<int, int> SkillBar { get; } = new();
+    public Dictionary<int, int> SkillBar { get; } = [];
 
     /// <summary>Skill groups granted while their source holds, by level: the socketed cards' Skill(3) rows (CardEffects).
     /// Derived on every scene load and socket change, so never saved.</summary>
@@ -55,7 +55,12 @@ public sealed class RoleStore(AccountStore accounts)
     private readonly AccountStore _accounts = accounts;
     private string? _rewardRealm;
     internal string RewardRealmId => _rewardRealm ??= _accounts.ReadSync<string>(new RewardSourceReadPlan());
-    internal Task<bool> RewardSourceCommittedAsync(string source) => _accounts.ReadAsync<bool>(new RewardSourceReadPlan(source));
+    /// <summary>How long <see cref="RewardSourceCommittedAsync"/> waits for room in a full reader queue.</summary>
+    internal TimeSpan RewardSourcePatience { get; set; } = TimeSpan.FromSeconds(30);
+    /// <summary>Whether the source committed. A full reader queue delays the answer; if it stays full the refusal is
+    /// thrown, so "not read" never reads as "not committed".</summary>
+    internal Task<bool> RewardSourceCommittedAsync(string source) =>
+        QueueFullPatience.RunAsync(() => _accounts.ReadAsync<bool>(new RewardSourceReadPlan(source)), RewardSourcePatience);
 
     public RoleItemPlanBuilder NewTransaction() => new(_accounts);
 
@@ -286,7 +291,7 @@ public sealed class RoleStore(AccountStore accounts)
         IReadOnlyList<InvItem> touchedItems, byte[]? previousTasks = null, byte[]? tasks = null)
     {
         // One new stack may be touched by several grants; identity, not Guid=0, distinguishes stacks.
-        InvItem[] uniqueItems = touchedItems.Distinct<InvItem>(ReferenceEqualityComparer.Instance).ToArray();
+        InvItem[] uniqueItems = [.. touchedItems.Distinct<InvItem>(ReferenceEqualityComparer.Instance)];
         var builder = new RoleItemPlanBuilder(_accounts);
         try { builder.BindProgressSource(id, progress); }
         catch (RolePlanConflictException) { return false; }
@@ -482,6 +487,10 @@ public sealed class RoleStore(AccountStore accounts)
     public byte[]? LoadGifts(long id, RoleItemPlanBuilder? transaction = null) => LoadBlob(id, "gifts", transaction);
     public void SaveGifts(long id, byte[] gifts, RoleItemPlanBuilder? tx = null) => SaveBlob(id, "gifts", gifts, tx);
     public byte[]? LoadBarRoom(long id) => LoadBlob(id, "barroom");
+    public byte[]? LoadGmState(long id) => LoadBlob(id, "gm_state");
+    public void SaveGmState(long id, byte[] state) => SaveBlob(id, "gm_state", state);
+    public byte[]? LoadJobExpCatchUp(long id) => LoadBlob(id, "job_exp_catchup");
+    public void SaveJobExpCatchUp(long id, byte[] state, RoleItemPlanBuilder? transaction = null) => SaveBlob(id, "job_exp_catchup", state, transaction);
     public byte[]? LoadGuildInfo(long id) => LoadBlob(id, "guild_info");
     public void SaveGuildInfo(long id, byte[] info, RoleItemPlanBuilder? transaction = null) => SaveBlob(id, "guild_info", info, transaction);
 
@@ -561,7 +570,7 @@ public sealed class RoleStore(AccountStore accounts)
     {
         byte[]? old = builder.ReadRoleBlob(_accounts, role, "task_followup");
         var pending = old is { Length: > 0 }
-            ? JsonSerializer.Deserialize<HashSet<string>>(old) ?? new HashSet<string>() : new HashSet<string>();
+            ? JsonSerializer.Deserialize<HashSet<string>>(old) ?? [] : [];
         pending.Add($"{role}:{epoch}:{card}:{(treasure ? 1 : 0)}");
         builder.RoleBlob(role, "library", library);
         builder.RoleBlob(role, "task_followup", JsonSerializer.SerializeToUtf8Bytes(pending));

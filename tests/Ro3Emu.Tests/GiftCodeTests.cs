@@ -293,7 +293,7 @@ public sealed class GiftCodeTests(GiftCodeTests.HostFixture fixture) : IClassFix
         {
             o.GiftCodeAttemptsPerMinute = 2;
             o.LoginLimitIncludesLoopback = true;
-        });
+        }, new FrozenClock());
         var player = await PlayerAsync(host);
         string code = Unique("RL");
 
@@ -310,12 +310,22 @@ public sealed class GiftCodeTests(GiftCodeTests.HostFixture fixture) : IClassFix
     public void TheAccountBudgetAppliesOnLoopbackToo()
     {
         var options = Microsoft.Extensions.Options.Options.Create(new Ro3Emu.Server.ServerOptions { GiftCodeAttemptsPerMinute = 2 });
-        var limiter = new GiftCodeLimiter(options, TimeProvider.System);
+        var limiter = new GiftCodeLimiter(options, new FrozenClock());
 
-        Assert.True(limiter.TryAcquire(IPAddress.Loopback, "acct"));
-        Assert.True(limiter.TryAcquire(IPAddress.Loopback, "acct"));
-        Assert.False(limiter.TryAcquire(IPAddress.Loopback, "acct"));
-        Assert.True(limiter.TryAcquire(IPAddress.Loopback, "another"));
+        Assert.True(limiter.TryAcquire(new Ro3Emu.Panel.RequestClient(IPAddress.Loopback, false), "acct"));
+        Assert.True(limiter.TryAcquire(new Ro3Emu.Panel.RequestClient(IPAddress.Loopback, false), "acct"));
+        Assert.False(limiter.TryAcquire(new Ro3Emu.Panel.RequestClient(IPAddress.Loopback, false), "acct"));
+        Assert.True(limiter.TryAcquire(new Ro3Emu.Panel.RequestClient(IPAddress.Loopback, false), "another"));
+    }
+
+    /// <summary>
+    /// The gift code budgets are fixed windows per wall-clock minute (GiftCodeLimiter): on the system clock a test that
+    /// counts attempts fails when it straddles a minute boundary.
+    /// </summary>
+    private sealed class FrozenClock : TimeProvider
+    {
+        private readonly DateTimeOffset _now = new(2026, 10, 15, 12, 0, 30, TimeSpan.Zero);
+        public override DateTimeOffset GetUtcNow() => _now;
     }
 
     // Verifier B1: a panel-written entry or count that is not a JSON number is refused as JSON, not an HTTP 500.

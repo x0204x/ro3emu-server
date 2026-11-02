@@ -8,9 +8,9 @@ namespace Ro3Emu.Tests;
 /// </summary>
 public sealed class VoiceCipherTests
 {
-    private static byte[] Secret(byte fill = 7) => Enumerable.Repeat(fill, VoiceCipher.SecretSize).ToArray();
+    private static byte[] Secret(byte fill = 7) => [.. Enumerable.Repeat(fill, VoiceCipher.SecretSize)];
 
-    private static readonly byte[] Speech = Enumerable.Range(0, 321).Select(i => (byte)i).ToArray();
+    private static readonly byte[] Speech = [.. Enumerable.Range(0, 321).Select(i => (byte)i)];
 
     [Fact]
     public void AClientFrameOpensOnTheServer()
@@ -45,7 +45,7 @@ public sealed class VoiceCipherTests
         using var client = VoiceCipher.ForClient(Secret());
         byte[] silence = new byte[320]; // all zero: the easiest pattern to spot in the clear
         byte[] sealedFrame = client.Seal(0x05, silence);
-        byte[] body = sealedFrame.Skip(8).Take(silence.Length).ToArray();
+        byte[] body = [.. sealedFrame.Skip(8).Take(silence.Length)];
         Assert.NotEqual(silence, body);
         Assert.True(body.Count(b => b == 0) < 20, "ciphertext of zeros is mostly zeros");
     }
@@ -109,7 +109,7 @@ public sealed class VoiceCipherTests
     [Fact]
     public void TheAuthProofDependsOnTheSecretTheRoleAndTheToken()
     {
-        byte[] token = Enumerable.Repeat((byte)3, 16).ToArray();
+        byte[] token = [.. Enumerable.Repeat((byte)3, 16)];
         byte[] proof = VoiceCipher.AuthProof(Secret(), 1001, token);
         Assert.Equal(VoiceCipher.AuthProofSize, proof.Length);
         Assert.Equal(proof, VoiceCipher.AuthProof(Secret(), 1001, token));

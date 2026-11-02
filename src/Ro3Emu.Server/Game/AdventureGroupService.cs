@@ -96,7 +96,7 @@ public sealed partial class AdventureGroupService : IGameTicker
         character.RegisterItemAction(UnlockBackgroundAction, UseBackgroundItemAsync, keys: _ => [Ownership.ReservationKey.Realm]);
         // The creation instance's saplings and mentor: scene-editor monster points 26..36 of sc_prontera_001_dg02 carry
         // npcId 0 (HLP:70-97 tSaplingToMonsterAreaMap / iDungeonOathNpc), so the server places them.
-        world.PlacePointNpcs(DungeonScene, SaplingNpcs.Select((npc, i) => (npc, 26 + i)).Append((OathNpc, 36)).ToArray());
+        world.PlacePointNpcs(DungeonScene, [.. SaplingNpcs.Select((npc, i) => (npc, 26 + i)), (OathNpc, 36)]);
         // Group quests (TaskConfig type 23, conditions 88000081-85 = level 999 in this export): a normal group's members.
         functions.ConditionOverride = GroupQuestCondition;
         tasks.QuestDelivered.Add(OnTaskDelivered);
@@ -126,7 +126,7 @@ public sealed partial class AdventureGroupService : IGameTicker
     private int WaterLimit => (int)Number("AdventureGroupWaterSaplingLimit", 1);
     private int EventLimit => (int)Number("AdventureGroupMaxEventLimit", 100);
     private long[] SwornTasks => Param("AdventureGroupSwornTask") is { ValueKind: JsonValueKind.Array } v
-        ? v.EnumerateArray().Select(x => (long)(GameData.Number(x) ?? 0)).ToArray() : [2000500, 2000501, 2000502];
+        ? [.. v.EnumerateArray().Select(x => (long)(GameData.Number(x) ?? 0))] : [2000500, 2000501, 2000502];
 
     /// <summary>AdventureGroupLevelAwardConfig rows by _iLevel: (_iNum, _iLevelAward, _iConveneNum).</summary>
     private SortedDictionary<int, (long Num, long Award, int Convene)> Levels()

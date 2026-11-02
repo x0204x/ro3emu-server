@@ -26,7 +26,7 @@ public static class BotGuildVoice
         if (result == ErrorCodes.GuildJoinLevel)
         {
             log("below the guild's join level: raising to 34 with the GM command");
-            using var http = new HttpClient { BaseAddress = new Uri(httpBase), Timeout = ReplyTimeout };
+            using var http = BotClient.OperatorHttp(httpBase, bot.OperatorToken, ReplyTimeout);
             (await http.PostAsync($"/ro3emu/gm?account={Uri.EscapeDataString(account)}", new StringContent("!lvl 34"), ct)).EnsureSuccessStatusCode();
             result = await ApplyAsync(bot, guildId, ct);
         }

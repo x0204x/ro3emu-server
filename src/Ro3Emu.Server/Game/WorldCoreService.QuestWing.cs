@@ -15,7 +15,6 @@ public sealed partial class WorldCoreService
     /// before the item is spent are the Fly Wing's (WingError: an instance, a scene load, a map without _iFly) and a
     /// destination the map does not have. The jump follows the reply, as a wing's does, through the quest teleport
     /// (SceneService.TaskTrackTeleportAsync: another map's scene entry, or a teleport in this one).
-    /// (inferred) ItemUseLimitConfig 1001 (_kUseLimit, maps 10110/10111) is read by neither the client nor this server.
     /// </summary>
     private async Task<int> UseQuestWingAsync(ItemActionUse use)
     {

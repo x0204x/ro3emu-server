@@ -13,7 +13,7 @@ public sealed class AoiCapTests
 {
     private sealed class RecordingSink : IAoiSink
     {
-        public List<string> Events { get; } = new();
+        public List<string> Events { get; } = [];
         public Task EnterAsync(GameSession viewer, GameSession subject) => Add($"{viewer.Role!.Name}+{subject.Role!.Name}");
         public Task MoveAsync(GameSession viewer, GameSession subject, WalkReq walk) => Add($"{viewer.Role!.Name}~{subject.Role!.Name}");
         public Task TurnAsync(GameSession viewer, GameSession subject, float face) => Add($"{viewer.Role!.Name}^{subject.Role!.Name}");

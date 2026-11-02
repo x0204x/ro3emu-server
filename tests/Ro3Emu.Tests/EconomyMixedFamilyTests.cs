@@ -169,8 +169,8 @@ public sealed class EconomyMixedFamilyTests : IDisposable
             opening.Cut.CommitSequence!.Value, closing.Cut.CommitSequence!.Value);
         var ledger = Read();
         Assert.True(ledger.CompleteHistory, string.Join("; ", ledger.Issues.Select(x => x.Detail)));
-        Assert.Equal(new[] { "npc-shop-buy", "cd13b/pet-feed", "monster-kill", "e05d-shop-metadata",
-                "market/mixed-transfer", "event/mixed-grant" },
+        Assert.Equal([ "npc-shop-buy", "cd13b/pet-feed", "monster-kill", "e05d-shop-metadata",
+                "market/mixed-transfer", "event/mixed-grant" ],
             ledger.Receipts.Select(x => x.CommandKind));
         foreach (var committed in ledger.Receipts)
             Assert.Equal(committed.CommandKind,

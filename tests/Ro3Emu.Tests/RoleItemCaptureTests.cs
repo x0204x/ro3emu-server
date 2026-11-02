@@ -55,7 +55,7 @@ public sealed class RoleItemCaptureTests : IDisposable
         Assert.NotEqual(first.Guid, second.Guid);
         var stored = _items.Load(role);
         Assert.Equal(2, stored.Count);
-        Assert.Equal(new[] { 2, 5 }, stored.Select(i => i.Stack).Order().ToArray());
+        Assert.Equal([2, 5], [.. stored.Select(i => i.Stack).Order()]);
         Assert.Equal(new[] { first.Guid, second.Guid }.Order(), stored.Select(i => i.Guid).Order());
     }
 
@@ -92,8 +92,8 @@ public sealed class RoleItemCaptureTests : IDisposable
 
         var box = JsonSerializer.Deserialize<MailService.Mailbox>(_roles.LoadMailbox(role)!)!;
         Assert.Equal(2, box.Letters.Count);
-        Assert.Equal(new[] { "source:one", "source:two" }, box.Letters.Select(x => x.DeliveryKey));
-        Assert.Equal(new[] { 5, 7 }, box.Letters.Select(x => x.Attachments[0].Count));
+        Assert.Equal(["source:one", "source:two"], box.Letters.Select(x => x.DeliveryKey));
+        Assert.Equal([5, 7], box.Letters.Select(x => x.Attachments[0].Count));
         Assert.NotEqual(box.Letters[0].Id, box.Letters[1].Id);
     }
 

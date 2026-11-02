@@ -49,7 +49,8 @@ public sealed class SocialOwnerTests : IAsyncLifetime
         var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
         _app = ServerHost.Create([], o =>
         {
-            o.DataDir = _dataDir; o.HttpPort = httpPort; o.MicroGatePort = microPort; o.GameGatePort = gamePort;
+            o.DataDir = _dataDir; o.GameDataDir = SyntheticData.Dir;
+            o.HttpPort = httpPort; o.MicroGatePort = microPort; o.GameGatePort = gamePort;
         });
         await _app.StartAsync();
         _http = $"http://127.0.0.1:{httpPort}";
@@ -100,8 +101,8 @@ public sealed class SocialOwnerTests : IAsyncLifetime
         return args;
     }
     private static string[] Ids(Dictionary<object, object?> response, string field) =>
-        ((object?[])response[field]!).Select(value => value is Dictionary<object, object?> row
-            ? (string)row["uid"]! : (string)value!).ToArray();
+        [.. ((object?[])response[field]!).Select(value => value is Dictionary<object, object?> row
+            ? (string)row["uid"]! : (string)value!)];
 
     [Fact]
     public async Task OfflineOwnerAndExternalFriendWriteInvalidateWarmProjection()

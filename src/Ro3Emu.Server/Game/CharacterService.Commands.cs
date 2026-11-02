@@ -39,7 +39,7 @@ public sealed partial class CharacterService
     {
         RequireOwnedRole(session).BindPresentation(session);
         long roleId = session.Role!.Id;
-        nextItems ??= session.Items.Select(i => i.Clone()).ToList();
+        nextItems ??= [.. session.Items.Select(i => i.Clone())];
         var pruned = blobs?.ContainsKey("equip_plans") == true ? null : PrunedEquipmentPlans(session, nextItems);
         var tx = roles.NewTransaction();
         int itemReceipt = tx.ItemDelta(roleId, session.Items, nextItems);

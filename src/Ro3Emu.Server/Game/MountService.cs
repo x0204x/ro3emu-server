@@ -42,8 +42,8 @@ public sealed class MountService : IGameTicker
     public sealed class SavedState
     {
         public byte[] Info { get; set; } = [];
-        public HashSet<long> Claimed { get; set; } = new();
-        public Dictionary<string, int> Previews { get; set; } = new();
+        public HashSet<long> Claimed { get; set; } = [];
+        public Dictionary<string, int> Previews { get; set; } = [];
         public int QuestMount { get; set; }
     }
 
@@ -244,7 +244,14 @@ public sealed class MountService : IGameTicker
         if (error == 0)
         {
             var next = s.Mounts.Clone(); var state = CopyState(s); state.QuestMount = 0;
-            foreach (var (key, value) in next.MountIds) if (key == slot || on) value.IsRiding = key == slot && on;
+            // Both rides can be on at once: the client shows the system mount over the battle mount
+            // (LC_MountHelper.GetRidingMountId), and its battle mount button takes a rider on both off the system mount,
+            // back onto the battle mount (UI_Sys_Main_MountJobWidgetCtrl._onClickMount). So getting on the system mount
+            // (auto-pathing does it by itself, LC_Actor_ControlMove._tryRideSystemMount) keeps the battle ride, and the
+            // dismount before a cast lands the rider on it again; getting on the battle mount ends a system ride (inferred).
+            foreach (var (key, value) in next.MountIds)
+                if (key == slot) value.IsRiding = on;
+                else if (on && slot == 2) value.IsRiding = false;
             await CommitAsync(s, next, state);
         }
         await s.SendGameAsync(Ride, new PlayerRiderMountResp { Result = error, Tp = tp });
@@ -292,7 +299,7 @@ public sealed class MountService : IGameTicker
     }
 
     /// <summary>After a committed 5012 change (ownership, riding): BuffService adds or drops mount energy meters.</summary>
-    public List<Func<GameSession, Task>> Changed { get; } = new();
+    public List<Func<GameSession, Task>> Changed { get; } = [];
 
     /// <summary>5012 after a committed change, then the <see cref="Changed"/> listeners.</summary>
     private async Task PublishOwnedAsync(GameSession s)

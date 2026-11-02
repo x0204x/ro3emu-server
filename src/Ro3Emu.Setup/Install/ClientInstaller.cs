@@ -130,7 +130,7 @@ public sealed class ClientInstaller(PublisherConfig config, HttpClient http, str
         }
         var order = manifests.Full.Packages.Concat(manifests.Delta?.Packages ?? []).Select(p => p.Id).Distinct().ToList();
         return new Plan(needs, targets.Count - missing.Count, keptPatched, missing.Sum(t => t.Length),
-            chosen.Values.OrderBy(p => order.IndexOf(p.Id)).ToList());
+            [.. chosen.Values.OrderBy(p => order.IndexOf(p.Id))]);
     }
 
     private enum Present { No, Yes, Patched }
@@ -187,7 +187,7 @@ public sealed class ClientInstaller(PublisherConfig config, HttpClient http, str
         var part = final + ".part";
         if (File.Exists(final))
         {
-            if (new FileInfo(final).Length == package.Length && Sha256(final) == package.Sha256.ToLowerInvariant()) return final;
+            if (new FileInfo(final).Length == package.Length && string.Equals(Sha256(final), package.Sha256, StringComparison.OrdinalIgnoreCase)) return final;
             File.Delete(final);
         }
         var urls = config.PackageUrls(package.Url);
@@ -202,7 +202,7 @@ public sealed class ClientInstaller(PublisherConfig config, HttpClient http, str
                 if (have < package.Length) await FetchRangeAsync(url, part, have, package.Length, progress, ct);
                 progress?.Invoke(package.Length, package.Length);
                 Progress?.Invoke("Checking the download", 0, 0);
-                if (Sha256(part) == package.Sha256.ToLowerInvariant())
+                if (string.Equals(Sha256(part), package.Sha256, StringComparison.OrdinalIgnoreCase))
                 {
                     File.Move(part, final, overwrite: true);
                     return final;
@@ -273,7 +273,7 @@ public sealed class ClientInstaller(PublisherConfig config, HttpClient http, str
                     output.Write(buffer, 0, read);
                     length += read;
                 }
-                if (length != f.Length || Convert.ToHexStringLower(hash.GetHashAndReset()) != f.Sha256.ToLowerInvariant())
+                if (length != f.Length || !string.Equals(Convert.ToHexStringLower(hash.GetHashAndReset()), f.Sha256, StringComparison.OrdinalIgnoreCase))
                 {
                     output.Dispose();
                     File.Delete(temp);

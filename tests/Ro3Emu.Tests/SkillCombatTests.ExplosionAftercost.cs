@@ -13,10 +13,16 @@ public sealed partial class SkillCombatTests
     public async Task EnergyReleaseChildAppliesNonlethalAftercostOnlyAfterTheRealHit(int healthPercent)
     {
         await using var bot = await InWorld("ExplodeCost");
-        await Gm("explodecost", "!job 6400"); await Teach("explodecost", 16352);
+        await Gm("explodecost", "!lvl 99"); await Gm("explodecost", "!job 6400");
+        await Teach("explodecost", 16309); await Teach("explodecost", 16352);
+        // 原條件 [2003,1500300] 要求戰鬥機甲；租用解鎖需 Base 50 與技能 1630901。
+        await LeaseCompanion(bot, 1500300);
+        await bot.SendGameAsync(MountService.Ride, new PlayerRiderMountReq { Tp = (eRiderType)3 });
+        Assert.Equal(0, (await Next(bot, MountService.Ride, PlayerRiderMountResp.Parser)).Result);
         IsolateDirectHealing();
         await HealingStat(bot, 101, 100_000); await HealingStat(bot, 102, 10000); await HealingStat(bot, 103, 1000);
         var source = Session("explodecost");
+        Assert.Equal(1500300, CombatService.CurrentBattleMount(source));
         var target = await Target("explodecost", stationary: true); await CardOffenceDummyAsync(target);
         await Loop.InvokeAsync(async () =>
         {

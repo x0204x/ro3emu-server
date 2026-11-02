@@ -70,7 +70,7 @@ public sealed class TowerTests : IAsyncLifetime
     private async Task Gm(string account, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={account}", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     private async Task Eligible(BotClient bot, int level = 99)
@@ -236,7 +236,7 @@ public sealed class TowerTests : IAsyncLifetime
             bool ready = false;
             await OnLoop(() =>
             {
-                floor = Service<World>().AllUnits().OfType<MonsterUnit>().Where(m => m.InstanceId == entered.Scene.SceneID).ToArray();
+                floor = [.. Service<World>().AllUnits().OfType<MonsterUnit>().Where(m => m.InstanceId == entered.Scene.SceneID)];
                 ready = floor.Length == 2 && floor.All(m => buffs.UnitAttributes(m).Any(a => a.Id == 215));
                 return Task.CompletedTask;
             });
@@ -320,14 +320,14 @@ public sealed class TowerTests : IAsyncLifetime
                 Assert.Equal(24000001UL, m.EntityTemplateID);
                 Assert.Equal(1200, m.Property.Single(p => p.Idx == 101).Data);
             });
-            Assert.Equal(new[] { 122.91f, 133.3f }, entered.Monsters.Select(m => m.MovementInfo.Pos.X).Order().ToArray());
+            Assert.Equal([122.91f, 133.3f], [.. entered.Monsters.Select(m => m.MovementInfo.Pos.X).Order()]);
             Assert.Equal(ErrorCodes.Parameter, await StartRequest(alice, 1, inside: true));
             foreach (var monster in entered.Monsters) await Kill(alice, monster.Uuid);
             var end = await Next(alice, TowerService.End, ClimTowerEndNotify.Parser);
             Assert.True(end.ClimTowerResult);
             Assert.True(end.IsNewRecord);
             Assert.Equal((1, 1L), (end.Layer, end.PassedMaxLayerConfID));
-            Assert.Equal(new[] { (1250701, 9), (1250709, 5) }, end.RewardNotify.Rewards.OrderBy(r => r.ItemEntry).Select(r => (r.ItemEntry, r.Stack)));
+            Assert.Equal([(1250701, 9), (1250709, 5)], end.RewardNotify.Rewards.OrderBy(r => r.ItemEntry).Select(r => (r.ItemEntry, r.Stack)));
             Assert.All(end.RewardNotify.Rewards, r => { Assert.True(r.ItemGuid > 0); Assert.True(r.ItemInfos.ContainsKey(10001)); });
             var update = await Next(alice, TowerService.TowerSync, DBClimTowerIncrement.Parser, t => !t.SyncAllMark && t.LayerConfID == 1);
             Assert.Equal(60 - end.Duration, update.RemainDuration);
@@ -657,8 +657,7 @@ public sealed class TowerTests : IAsyncLifetime
         MonsterUnit[] actors = [];
         await OnLoop(async () =>
         {
-            actors = Service<World>().AllUnits().OfType<MonsterUnit>()
-                .Where(m => m.InstanceId == entered.Scene.SceneID).ToArray();
+            actors = [.. Service<World>().AllUnits().OfType<MonsterUnit>().Where(m => m.InstanceId == entered.Scene.SceneID)];
             Assert.Equal(2, actors.Length);
             actors[0].Moving = actors[1].Moving = false;
             actors[1].X = actors[0].X;
@@ -719,7 +718,7 @@ public sealed class TowerTests : IAsyncLifetime
         var data = Service<GameData>();
         var map = Service<WorldData>().Map(2100001)!;
         var spawns = Service<TowerService>().Expand(data.Row("PetFloorConfig", 101)!.Value, map)!;
-        Assert.Equal(new[] { 0, 8000, 15000 }, spawns.Select(s => s.DelayMs).Distinct().Order());
+        Assert.Equal([0, 8000, 15000], spawns.Select(s => s.DelayMs).Distinct().Order());
         Assert.Equal(2, spawns.Count(s => s.Point.X == 128 && s.Point.Z == 163.43f)); // group53 at two times
         await using var alice = await InWorld("Alice", cleared: 5);
         await Eligible(alice);

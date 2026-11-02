@@ -11,9 +11,9 @@ public sealed partial class DungeonService
     private const int AirshipCannonImpactEffect = 6120103, AirshipCannonPopupEffect = 6032010;
     private const int AirshipImpactPoint = 4, AirshipImpactDamage = 2;
     private const int AirshipCannonHitsToSink = 5;
-    private readonly ConditionalWeakTable<ActiveSkillCast, HashSet<long>> _airshipCannonResolved = new();
+    private readonly ConditionalWeakTable<ActiveSkillCast, HashSet<long>> _airshipCannonResolved = [];
     private sealed record AirshipCannonAuthorization(long Room, long Target, Vec3 Aim);
-    private readonly ConditionalWeakTable<ActiveSkillCast, AirshipCannonAuthorization> _airshipCannonAccepted = new();
+    private readonly ConditionalWeakTable<ActiveSkillCast, AirshipCannonAuthorization> _airshipCannonAccepted = [];
 
     private int AirshipCannonAimError(GameSession member, CastSkillReq request) =>
         member.SceneEntry == AirshipScene && request.SkillId == AirshipCannonFireSkill

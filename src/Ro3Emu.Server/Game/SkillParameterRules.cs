@@ -38,9 +38,9 @@ internal static class SkillParameterRules
     internal const int SkillCostType = 35;
     internal const int SkillRangeType = 36, SkillDamageParamExtraType = 37;
 
-    private static readonly ConditionalWeakTable<GameData, Dictionary<int, Modifier[]>> Parsed = new();
-    private static readonly ConditionalWeakTable<GameData, Dictionary<int, int[]>> Categories = new();
-    private static readonly ConditionalWeakTable<GameSession, SessionCache> Sessions = new();
+    private static readonly ConditionalWeakTable<GameData, Dictionary<int, Modifier[]>> Parsed = [];
+    private static readonly ConditionalWeakTable<GameData, Dictionary<int, int[]>> Categories = [];
+    private static readonly ConditionalWeakTable<GameSession, SessionCache> Sessions = [];
 
     /// <summary>The session's modifiers and effective rows, kept while its buff set is unchanged: auto-attack swings
     /// and casts read them several times each, and the rows are re-serialized JSON.</summary>
@@ -49,13 +49,13 @@ internal static class SkillParameterRules
         public long Signature = long.MinValue;
         public GameData? Data;
         public IReadOnlyList<Modifier> Modifiers = [];
-        public readonly Dictionary<int, JsonElement> Rows = new();
+        public readonly Dictionary<int, JsonElement> Rows = [];
     }
 
     /// <summary>The parsed tuples of one BuffConfig row (empty when it has none), once per game data.</summary>
     internal static Modifier[] BuffModifiers(GameData data, int configId)
     {
-        var table = Parsed.GetValue(data, _ => new Dictionary<int, Modifier[]>());
+        var table = Parsed.GetValue(data, _ => []);
         lock (table)
         {
             if (table.TryGetValue(configId, out var hit)) return hit;
@@ -64,7 +64,7 @@ internal static class SkillParameterRules
                 && list.ValueKind == JsonValueKind.Array)
                 foreach (var item in list.EnumerateArray())
                     if (Parse(item) is { } mod) result.Add(mod);
-            return table[configId] = result.ToArray();
+            return table[configId] = [.. result];
         }
     }
 
@@ -150,12 +150,12 @@ internal static class SkillParameterRules
     internal static int[] CategoriesOf(GameData data, JsonElement row)
     {
         int id = (int)GameData.Int(row, "_iID");
-        var table = Categories.GetValue(data, _ => new Dictionary<int, int[]>());
+        var table = Categories.GetValue(data, _ => []);
         lock (table)
         {
             if (table.TryGetValue(id, out var hit)) return hit;
             int[] tags = row.TryGetProperty("_kSkillCategory", out var list) && list.ValueKind == JsonValueKind.Array
-                ? list.EnumerateArray().Select(v => GameData.Number(v)).Where(v => v != null).Select(v => (int)v!.Value).ToArray() : [];
+                ? [.. list.EnumerateArray().Select(v => GameData.Number(v)).Where(v => v != null).Select(v => (int)v!.Value)] : [];
             return table[id] = tags;
         }
     }

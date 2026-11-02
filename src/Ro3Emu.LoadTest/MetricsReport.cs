@@ -56,7 +56,7 @@ public sealed class MetricsPair(JsonNode before, JsonNode after)
     }
     private static double Number(JsonNode root, string path) => At(root, path)?.GetValue<double>() ?? 0;
     public Dictionary<string, long> ServerAdmissions() =>
-        (After["inbound"] as JsonObject ?? new JsonObject()).ToDictionary(k => k.Key,
+        (After["inbound"] as JsonObject ?? []).ToDictionary(k => k.Key,
             k => Math.Max(0, (long)(k.Value?["count"]?.GetValue<long>() ?? 0) -
                              (long)(Before["inbound"]?[k.Key]?["count"]?.GetValue<long>() ?? 0)));
     public JsonNode StructuredDelta() => DiffNode(Before, After)!;
@@ -74,8 +74,8 @@ public sealed class MetricsPair(JsonNode before, JsonNode after)
                     ["count"] = hist.Count, ["sum"] = hist.Sum, ["min"] = null,
                     ["max"] = double.IsNaN(hist.Max) ? null : hist.Max,
                     ["p50"] = hist.P50, ["p99"] = hist.P99,
-                    ["bounds"] = new JsonArray(hist.Bounds.Select(x => (JsonNode?)JsonValue.Create(x)).ToArray()),
-                    ["buckets"] = new JsonArray(hist.Buckets.Select(x => (JsonNode?)JsonValue.Create(x)).ToArray())
+                    ["bounds"] = new JsonArray([.. hist.Bounds.Select(x => (JsonNode?)JsonValue.Create(x))]),
+                    ["buckets"] = new JsonArray([.. hist.Buckets.Select(x => (JsonNode?)JsonValue.Create(x))])
                 };
             }
             var result = new JsonObject();
@@ -286,9 +286,9 @@ public static class TargetEvaluation
     public static List<TargetRow> Evaluate(RunReport report)
     {
         var rows = Rows.Select(x => new TargetRow(x.Area, x.Metric, x.Target, "NOT MEASURED", "No qualifying evidence")).ToArray();
-        if (report.ServerBefore == null || report.ServerAfter == null) return rows.ToList();
+        if (report.ServerBefore == null || report.ServerAfter == null) return [.. rows];
         var m = new MetricsPair(report.ServerBefore, report.ServerAfter);
-        if (!m.SameEpoch || m.Seconds <= 0) return rows.ToList();
+        if (!m.SameEpoch || m.Seconds <= 0) return [.. rows];
         int minimumSeconds = report.Scenario switch { "S1" or "S4" => 60, "S2" => 600, "S3" => 1800, _ => int.MaxValue };
         bool full = report.MeasurementPhase == "scenario" && report.RequestedBots == report.TargetBots && report.RequestedSeconds >= minimumSeconds && m.Seconds >= minimumSeconds * .98 &&
             report.AbortReason == null && report.SchedulingLagP99Ms <= 100 && report.UnsupportedBehaviours.Length == 0 &&
@@ -386,7 +386,7 @@ public static class TargetEvaluation
             $"exceptions={m.Delta("errors.exceptions")}; reducer faults={faults}; action failures={report.Actions.Values.Sum(x => x.Failed)}; disconnect proof unavailable");
         // Claims requiring unavailable proof cannot pass even if the observable subset is green.
         if (rows[16].Status == "PASS") rows[16] = rows[16] with { Status = "NOT MEASURED" };
-        return rows.ToList();
+        return [.. rows];
     }
     public static double Percentile(double[] values, double p)
     {

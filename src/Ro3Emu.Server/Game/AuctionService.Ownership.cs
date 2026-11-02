@@ -82,8 +82,8 @@ public sealed partial class AuctionService
         session.Role?.Id == role && ReferenceEquals(session.Attachment, lease) && lease?.Cancelled != true
         && ReferenceEquals(session.Owner?.Attachment, lease);
 
-    private static ReservationKey[] RoleKeys(IEnumerable<long> roles) => roles.Where(role => role > 0)
-        .Distinct().Select(role => ReservationKey.Role(role)).ToArray();
+    private static ReservationKey[] RoleKeys(IEnumerable<long> roles) => [.. roles.Where(role => role > 0)
+        .Distinct().Select(role => ReservationKey.Role(role))];
 
     private ReservationKey[] RowKeys(AuctionStore.Item? row, IEnumerable<long>? extraRoles = null,
         IEnumerable<AuctionStore.Prebuy>? orders = null)
@@ -101,17 +101,17 @@ public sealed partial class AuctionService
             keys.Add(ReservationKey.Role(order.Role));
             if (order.Id != 0) keys.Add(ReservationKey.Entity("auction_prebuy", order.Id.ToString(CultureInfo.InvariantCulture)));
         }
-        return keys.Distinct().ToArray();
+        return [.. keys.Distinct()];
     }
 
     // Query projections read one caller's live personal state alongside selected durable rows.
     // They need that caller and the rows, not every lot participant's inventory/progress.
     private static ReservationKey[] ReadKeys(long role, IEnumerable<AuctionStore.Item> rows,
         IEnumerable<AuctionStore.Prebuy>? orders = null) =>
-        RoleKeys([role]).Concat(rows.Select(row => ReservationKey.Entity("auction_item", row.SourceKey)))
+        [.. RoleKeys([role]).Concat(rows.Select(row => ReservationKey.Entity("auction_item", row.SourceKey)))
             .Concat((orders ?? []).Where(order => order.Id != 0).Select(order =>
                 ReservationKey.Entity("auction_prebuy", order.Id.ToString(CultureInfo.InvariantCulture))))
-            .Distinct().ToArray();
+            .Distinct()];
 
     private static void RequireScope(LegacyOwnerScope scope, RoleItemPlanBuilder builder)
     {

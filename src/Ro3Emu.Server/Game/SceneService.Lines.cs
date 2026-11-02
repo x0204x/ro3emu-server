@@ -5,7 +5,7 @@ namespace Ro3Emu.Server.Game;
 
 public sealed partial class SceneService
 {
-    public List<Func<GameSession, int>> LineSwitchChecks { get; } = new();
+    public List<Func<GameSession, int>> LineSwitchChecks { get; } = [];
     /// <summary>LC_DAL_MapLine:782-790 uses zero map/area for the authenticated current map.</summary>
     public Task LineInfoAsync(GameSession s, GetSceneLineInfoReq req)
     {

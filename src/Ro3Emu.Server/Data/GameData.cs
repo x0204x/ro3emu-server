@@ -43,7 +43,7 @@ public sealed class GameData(IOptions<ServerOptions> options, ILogger<GameData> 
             if (File.Exists(path)) table = LoadConfig(path);
             else
             {
-                table = new();
+                table = [];
                 log.LogWarning("No {Path}; run tools/ConfigExport", path);
             }
             _tables[name] = table;
@@ -181,7 +181,7 @@ public sealed class GameData(IOptions<ServerOptions> options, ILogger<GameData> 
                 texts = _clientTexts;
                 if (texts == null)
                 {
-                    texts = new();
+                    texts = [];
                     foreach (string table in _clientTextTables)
                     {
                         foreach (var (_, row) in Table(table))
@@ -293,7 +293,7 @@ public sealed class GameData(IOptions<ServerOptions> options, ILogger<GameData> 
             if (!_tables.TryGetValue(key, out var table))
             {
                 var path = Path.Combine(Root, "skills", "skill_" + scriptShow + ".json");
-                table = File.Exists(path) ? LoadObject(path) : new();
+                table = File.Exists(path) ? LoadObject(path) : [];
                 _tables[key] = table;
             }
             return table.Values.Cast<JsonElement?>().FirstOrDefault();
@@ -309,7 +309,7 @@ public sealed class GameData(IOptions<ServerOptions> options, ILogger<GameData> 
         {
             if (_tables.TryGetValue(key, out var table)) return table;
             var path = Path.Combine(Root, "skills", name + ".json");
-            table = File.Exists(path) ? LoadObject(path) : new();
+            table = File.Exists(path) ? LoadObject(path) : [];
             _tables[key] = table;
             return table;
         }

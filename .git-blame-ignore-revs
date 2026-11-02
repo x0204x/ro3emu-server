@@ -5,3 +5,6 @@
 
 # Private fields renamed to _camelCase, primary constructors
 10df90d0644bf99921b5119ce2aeebfa27eb374b
+
+# Collection expressions from dotnet format style (IDE0028, IDE0300, IDE0301, IDE0305)
+02fd820161fd8dd98a5ea48fffec45f320901004

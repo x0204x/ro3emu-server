@@ -16,7 +16,7 @@ public sealed partial class DungeonTests
         long instance = await AirshipAtBoarders(alice);
         var first = await WaveIn(instance, 4);
         var units = await AirshipSupportUnits(alice);
-        Assert.Equal(new[] { 5300086, 5300087, 5300088 }, units.Select(unit => unit.NpcId).Order());
+        Assert.Equal([5300086, 5300087, 5300088], units.Select(unit => unit.NpcId).Order());
         var births = alice.Inbox.Snapshot().Where(packet => packet.IsGame(GameAoiSink.SyncAoiView))
             .SelectMany(packet => AoIViewChangeData.Parser.ParseFrom(packet.Body).Bases)
             .Where(entity => units.Any(unit => (ulong)unit.Uid == entity.Uuid)).ToArray();

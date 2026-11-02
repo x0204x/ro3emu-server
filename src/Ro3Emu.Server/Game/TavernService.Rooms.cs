@@ -193,7 +193,7 @@ public sealed partial class TavernService
         if (reply.Result == 0 && (req.TargetGuidList.Count == 0 || req.TargetGuidList.Count > MaxInviteTargets)) reply.Result = ErrorCodes.Parameter;
         List<GameSession> invited = [];
         if (reply.Result == 0)
-            foreach (long target in req.TargetGuidList.Distinct())
+            foreach (long target in req.TargetGuidList.Distinct().Take(200))
                 if (!members.Contains(target) && Online(target) is { } to && _functions.IsOpen(to, Function))
                 {
                     invited.Add(to);

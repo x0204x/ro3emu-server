@@ -20,7 +20,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
     private string _http = "";
     private GameLoop Loop => _app.Services.GetRequiredService<GameLoop>();
     private CharacterService Character => _app.Services.GetRequiredService<CharacterService>();
-    private GameSession Session(string name) => _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == name.ToLowerInvariant());
+    private GameSession Session(string name) => _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => string.Equals(s.Account, name, StringComparison.OrdinalIgnoreCase));
 
     public async Task InitializeAsync()
     {
@@ -57,7 +57,7 @@ public sealed partial class SkillCombatTests : IAsyncLifetime
     private async Task Gm(string account, string line)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(line))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={account}", Operator.Command(line))).EnsureSuccessStatusCode();
     }
     private static string RepoRoot()
     {

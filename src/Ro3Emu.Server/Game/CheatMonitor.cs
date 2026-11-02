@@ -79,7 +79,8 @@ public sealed partial class CheatMonitor(IOptions<ServerOptions> options, Accoun
         if (refusals.Length == 0 && exp.Length == 0) return;
         long keep = clock.GetUtcNow().ToUnixTimeMilliseconds() / HourMs - Math.Max(1, options.Value.AntiCheat.KeepDays) * 24L;
         try { await accounts.WriteAsync<int>(new AntiCheatFlushPlan(refusals, exp, keep)); }
-        catch (Exception e) when (e is SqliteException or IOException or InvalidOperationException or ObjectDisposedException)
+        catch (Exception e) when (e is SqliteException or IOException or PersistenceException
+            or InvalidOperationException or ObjectDisposedException)
         {
             LogFlushFailed(log, e);
             lock (_sync)
@@ -125,7 +126,7 @@ public sealed partial class CheatMonitor(IOptions<ServerOptions> options, Accoun
 
 /// <summary>
 /// A token bucket: <see cref="PerSecond"/> tokens a second up to <see cref="Burst"/>, full at first. Not thread safe: a
-/// session's buckets are used on the game loop only.
+/// game session's buckets are used on the game loop only, a micro connection's by its own frame reader.
 /// </summary>
 internal sealed class RateBucket(double perSecond, double burst)
 {

@@ -68,7 +68,7 @@ public sealed class ClientSceneTests : IAsyncDisposable
         Assert.True(host.Service<WorldData>().ClientHasScene(SyntheticData.Town));
 
         using (var http = new HttpClient())
-            (await http.PostAsync($"{host.Http}/ro3emu/gm?account=alice", new StringContent($"!warp {Field}"))).EnsureSuccessStatusCode();
+            (await http.PostAsync($"{host.Http}/ro3emu/gm?account=alice", Operator.Command($"!warp {Field}"))).EnsureSuccessStatusCode();
         Assert.StartsWith($"Cannot warp to {Field} ", await GmReply(alice));
         await alice.SendGameAsync(GmCommands.GeneralProcGm, new GeneralGMProcReq { GmType = (GmOpEnum)31, ParamString = $"{Field},0,0" });
         var panel = GeneralGMProcRsp.Parser.ParseFrom((await alice.Inbox.WaitAsync(e => e.IsGame(GmCommands.GeneralProcGm), Wait)).Body).ErrInfo;
@@ -171,7 +171,7 @@ public sealed class GlastHeimSceneTests : IAsyncLifetime
     private async Task Gm(string account, string line)
     {
         using var http = new HttpClient();
-        (await http.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(line))).EnsureSuccessStatusCode();
+        (await http.PostAsync($"{_http}/ro3emu/gm?account={account}", Operator.Command(line))).EnsureSuccessStatusCode();
     }
 
     private static async Task<T> Next<T>(BotClient bot, uint msgId, Google.Protobuf.MessageParser<T> parser, Func<T, bool>? match = null)

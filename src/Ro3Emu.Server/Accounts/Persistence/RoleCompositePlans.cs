@@ -2,7 +2,7 @@ using Microsoft.Data.Sqlite;
 
 namespace Ro3Emu.Server.Accounts.Persistence;
 
-internal class RolePlanConflictException : InvalidOperationException { }
+internal class RolePlanConflictException : PersistenceException { }
 internal sealed class OwnerRevisionConflictException : RolePlanConflictException { }
 
 internal sealed class RoleDailyResetPlan : DbPlan
@@ -106,10 +106,12 @@ internal sealed class RoleAwardStatePlan : DbPlan
         (_progress.Stats.Length + _progress.Currency.Length + _progress.Skills.Length + _progress.SkillBar.Length) * 2;
     internal override string Label => "role/award-state";
     internal override IReadOnlyList<RoleRevisionKey> RoleWrites =>
-        new[] { RevisionStore.Role(_id, RevisionStore.Progress) }
-            .Concat(_tasks is null ? [] : [RevisionStore.Role(_id, "tasks")])
-            .Concat(_runtime is null ? [] : [RevisionStore.Role(_id, "task_runtime")])
-            .Concat(_daily is null ? [] : [RevisionStore.Role(_id, "daily")]).ToArray();
+        [
+            RevisionStore.Role(_id, RevisionStore.Progress),
+            .. (_tasks is null ? (RoleRevisionKey[])[] : [RevisionStore.Role(_id, "tasks")]),
+            .. (_runtime is null ? (RoleRevisionKey[])[] : [RevisionStore.Role(_id, "task_runtime")]),
+            .. (_daily is null ? (RoleRevisionKey[])[] : [RevisionStore.Role(_id, "daily")]),
+        ];
     internal override object Execute(SqliteConnection db, SqliteTransaction tx)
     {
         using var cmd = DbSql.Command(db, tx, """
@@ -214,7 +216,7 @@ internal sealed class ItemTalentCostPlan : DbPlan
     private readonly long[] _removed;
     internal ItemTalentCostPlan(long role, IReadOnlyDictionary<long, int> stacks, IReadOnlyCollection<long> removed)
     {
-        _role = role; _stacks = stacks.ToArray(); _removed = removed.ToArray();
+        _role = role; _stacks = [.. stacks]; _removed = [.. removed];
     }
     internal override int Bytes => 128 + _stacks.Length * 16 + _removed.Length * 8;
     internal override string Label => "item/talent-cost";
@@ -246,7 +248,7 @@ internal sealed class ItemExchangeWritePlan : DbPlan
     private readonly ItemValue[] _after;
     internal ItemExchangeWritePlan(long role, IReadOnlyList<InvItem> before, IReadOnlyList<InvItem> after)
     {
-        _role = role; _before = before.Select(i => i.Guid).ToArray(); _after = after.Select(ItemValue.Capture).ToArray();
+        _role = role; _before = [.. before.Select(i => i.Guid)]; _after = [.. after.Select(ItemValue.Capture)];
     }
     internal override int Bytes => 128 + _before.Length * 8 + _after.Sum(i => 160 +
         (i.Attrs?.Length ?? 0) * 2 + (i.Enchantments?.Length ?? 0) * 2 + (i.StringAttrs?.Length ?? 0) * 2);
@@ -288,7 +290,7 @@ internal sealed class ItemAwardUpsertPlan : DbPlan
     private readonly ItemValue[] _items;
     internal ItemAwardUpsertPlan(long role, IReadOnlyList<InvItem> items)
     {
-        _role = role; _items = items.Select(ItemValue.Capture).ToArray();
+        _role = role; _items = [.. items.Select(ItemValue.Capture)];
     }
     internal override int Bytes => 128 + _items.Sum(i => 160 + (i.Attrs?.Length ?? 0) * 2 +
         (i.Enchantments?.Length ?? 0) * 2 + (i.StringAttrs?.Length ?? 0) * 2);

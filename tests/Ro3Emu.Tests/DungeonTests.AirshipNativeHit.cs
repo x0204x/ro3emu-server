@@ -49,7 +49,7 @@ public sealed partial class DungeonTests
                 .Where(packet => packet.IsGame(CombatService.SkillEffect))
                 .Select(packet => SkillEffectDisplayNotify.Parser.ParseFrom(packet.Body))
                 .Where(effect => effect.SkillId == 5353001 && effect.EffectType is 2 or 4).ToArray();
-            Assert.Equal(new[] { (6120103, 4), (6120103, 2), (6032010, 2) },
+            Assert.Equal([(6120103, 4), (6120103, 2), (6032010, 2)],
                 effects.Select(effect => (effect.EffectId, effect.EffectType)));
             Assert.All(effects, effect =>
             {

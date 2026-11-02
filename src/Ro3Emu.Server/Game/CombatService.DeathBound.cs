@@ -14,7 +14,7 @@ public sealed partial class CombatService
         public long Next;
         public long RoleId;
     }
-    private readonly ConditionalWeakTable<GameSession, DeathBoundWindow> _deathBoundWindows = new();
+    private readonly ConditionalWeakTable<GameSession, DeathBoundWindow> _deathBoundWindows = [];
 
     private void WireFormulaEvents()
     {

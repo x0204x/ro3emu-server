@@ -31,10 +31,10 @@ public sealed partial class GameLoop : IHostedService, IDisposable
 {
     public static readonly TimeSpan TickInterval = TimeSpan.FromMilliseconds(50);
 
-    private readonly BlockingCollection<(SendOrPostCallback Callback, object? State, long EnqueuedAt, WorkPermit Permit)> _queue = new();
+    private readonly BlockingCollection<(SendOrPostCallback Callback, object? State, long EnqueuedAt, WorkPermit Permit)> _queue = [];
     private readonly AutoResetEvent _workAvailable = new(false);
     private readonly ServerMetrics? _metrics;
-    private readonly List<IGameTicker> _tickers = new();
+    private readonly List<IGameTicker> _tickers = [];
     private readonly PriorityQueue<Func<Task>, TimeSpan> _timers = new();
     private readonly Stopwatch _clock = new();
     private readonly ILogger<GameLoop> _log;
@@ -42,8 +42,8 @@ public sealed partial class GameLoop : IHostedService, IDisposable
     private readonly LoopContext _context;
     private readonly TaskCompletionSource _workerExited = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly object _lifecycle = new();
-    private readonly Dictionary<long, WorkPermit> _outstanding = new();
-    private readonly List<string> _failedObligations = new();
+    private readonly Dictionary<long, WorkPermit> _outstanding = [];
+    private readonly List<string> _failedObligations = [];
     private readonly AsyncLocal<WorkPermit?> _currentPermit = new();
     private long _nextOperationId, _rejected;
     private const int MaxOrdinaryWork = 4096;
@@ -52,7 +52,7 @@ public sealed partial class GameLoop : IHostedService, IDisposable
     private GameLoopPhase _phase = GameLoopPhase.Accepting;
     private bool _drainFailed;
     private long _orphanContinuations;
-    private readonly HashSet<string> _orphanSites = new();
+    private readonly HashSet<string> _orphanSites = [];
     /// <summary>Never closes and is never counted as outstanding work.</summary>
     private WorkPermit _orphan = null!;
     private bool _started;
@@ -89,9 +89,9 @@ public sealed partial class GameLoop : IHostedService, IDisposable
             lock (_lifecycle)
                 return new(_phase, _outstanding.Count, _queueDisposed ? 0 : _queue.Count, _rejected,
                     _phase == GameLoopPhase.Stopped && !_drainFailed,
-                    _outstanding.Values.Select(p => new GameLoopDrainDebt(p.Id, p.Name,
-                        Stopwatch.GetElapsedTime(p.StartedAt), p.PendingCallbacks)).ToArray(),
-                    _failedObligations.ToArray());
+                    [.. _outstanding.Values.Select(p => new GameLoopDrainDebt(p.Id, p.Name,
+                        Stopwatch.GetElapsedTime(p.StartedAt), p.PendingCallbacks))],
+                    [.. _failedObligations]);
         }
     }
 
@@ -375,7 +375,7 @@ public sealed partial class GameLoop : IHostedService, IDisposable
     {
         lock (_lifecycle)
         {
-            if (_disposeRequested) throw new ObjectDisposedException(nameof(GameLoop));
+            ObjectDisposedException.ThrowIf(_disposeRequested, this);
             if (_phase != GameLoopPhase.Accepting) throw new InvalidOperationException("The game loop has stopped.");
             if (_started) throw new InvalidOperationException("The game loop has already started.");
             _clock.Start();

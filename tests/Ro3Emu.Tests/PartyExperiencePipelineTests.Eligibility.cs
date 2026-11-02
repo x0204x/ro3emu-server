@@ -85,9 +85,9 @@ public sealed partial class PartyExperiencePipelineTests
             var killer = Session(host, ids[0]); var monster = NewPipelineMonster(killer, 990306);
             var reward = host.Service<RewardService>();
             await host.Service<GameLoop>().InvokeAsync(() => reward.KilledAsync(killer, monster));
-            // 自造掉落7乘配置17000/10000先取整11；Base乘2成22、Job乘3成33，再依席位分餘數。
-            Assert.Equal(new long[] { 8, 7, 7 }, ids.Select((id, i) => RateProgress(host, id).Base - before[i].Base));
-            Assert.Equal(new long[] { 11, 11, 11 }, ids.Select((id, i) => RateProgress(host, id).Job - before[i].Job));
+            // 自造掉落7乘配置17000/10000先取整11；Job按自造25%得2。Base乘2成22、Job乘3成6，再分帳。
+            Assert.Equal([8, 7, 7], ids.Select((id, i) => RateProgress(host, id).Base - before[i].Base));
+            Assert.Equal([2, 2, 2], ids.Select((id, i) => RateProgress(host, id).Job - before[i].Job));
             Assert.All(ids, id => Assert.Equal(2, host.Service<RoleStore>().LoadProgress(id).Level));
             string source = Assert.IsType<RewardSourceId>(monster.RewardSource).Key;
             var obligations = Obligations(host, source);
@@ -95,7 +95,7 @@ public sealed partial class PartyExperiencePipelineTests
             var settled = ids.Select(id => RateProgress(host, id)).ToArray();
             await host.Service<GameLoop>().InvokeAsync(() => reward.KilledAsync(killer, monster));
             Assert.Equal(settled, ids.Select(id => RateProgress(host, id)).ToArray());
-            Assert.Equal(obligations.ToArray(), Obligations(host, source).ToArray());
+            Assert.Equal<(long Role, long Base, long Job, bool Delivered)>([.. obligations], [.. Obligations(host, source)]);
         }
         finally { SqliteConnection.ClearAllPools(); Directory.Delete(fixture, true); }
     }
@@ -107,7 +107,7 @@ public sealed partial class PartyExperiencePipelineTests
         // 自造首級門檻為6；倍率份額7／8會升至2級，須把已消耗門檻加回入帳總額。
         long consumed = Enumerable.Range(1, Math.Max(0, progress.Level - 1))
             .Sum(level => data.Row("BaseLvConfig", level) is { } row ? GameData.Int(row, "_iBaseExp") : 0);
-        Assert.Equal(1, progress.JobLevel); // 本案JOB份額11仍低於自造門檻100。
+        Assert.Equal(1, progress.JobLevel); // 本案JOB份額2仍低於自造門檻100。
         return (checked(consumed + progress.Exp), progress.JobExp);
     }
 
@@ -138,18 +138,18 @@ public sealed partial class PartyExperiencePipelineTests
                 source = Assert.IsType<RewardSourceId>(monster.RewardSource).Key;
                 Assert.Equal(before, Progress(host, role));
                 var pending = Assert.Single(Obligations(host, source), row => row.Role == role);
-                Assert.False(pending.Delivered); Assert.Equal(4, pending.Base); Assert.Equal(4, pending.Job);
+                Assert.False(pending.Delivered); Assert.Equal(4, pending.Base); Assert.Equal(1, pending.Job);
             }
             await host.RestartAsync();
             await using var again = await host.InWorldAsync("DebtBob", create: false);
-            Assert.Equal((before.Base + 4, before.Job + 4), Progress(host, role));
+            Assert.Equal((before.Base + 4, before.Job + 1), Progress(host, role));
             var resumed = Session(host, role);
             await host.Service<GameLoop>().InvokeAsync(async () =>
             {
                 await host.Service<RewardService>().RecoverPartyExperienceAsync(resumed);
                 await host.Service<RewardService>().RecoverPartyExperienceAsync(resumed);
             });
-            Assert.Equal((before.Base + 4, before.Job + 4), Progress(host, role));
+            Assert.Equal((before.Base + 4, before.Job + 1), Progress(host, role));
             Assert.True(Assert.Single(Obligations(host, source), row => row.Role == role).Delivered);
         }
         finally { SqliteConnection.ClearAllPools(); Directory.Delete(fixture, true); }

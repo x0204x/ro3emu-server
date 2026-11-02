@@ -44,7 +44,7 @@ public sealed class CareerSpecialTests : IAsyncLifetime
     { var e = await b.Inbox.WaitAsync(e => e.IsGame(id) && (match == null || match(p.ParseFrom(e.Body))), Wait); return p.ParseFrom(e.Body); }
 
     private async Task Gm(string account, string command)
-    { using var h = new HttpClient(); (await h.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(command))).EnsureSuccessStatusCode(); }
+    { using var h = new HttpClient(); (await h.PostAsync($"{_http}/ro3emu/gm?account={account}", Operator.Command(command))).EnsureSuccessStatusCode(); }
 
     private GameSession Session(string account) => _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == account && s.Role != null);
 
@@ -194,6 +194,44 @@ public sealed class CareerSpecialTests : IAsyncLifetime
             p => p.Uuid == a.Self!.Uuid && p.NotifyType == EntityBase.Types.NotifyType.Rider && p.CurRider == 0);
         await a.SendGameAsync(MountService.Ride, new PlayerRiderMountReq { Tp = (eRiderType)3 });
         Assert.NotEqual(0, (await Next(a, MountService.Ride, PlayerRiderMountResp.Parser)).Result);
+    }
+
+    /// <summary>
+    /// A Crusader on a Grand Peco who gets on the travel mount (the client does it by itself when auto-pathing) is back on
+    /// the Peco once off it again, as before a cast.
+    /// </summary>
+    [ClientDataFact]
+    public async Task TheBattleMountOutlastsATravelRide()
+    {
+        await using var a = await InWorld("Alice");
+        await Become("alice", 1210, 30, 11407); // Crusader, Riding
+        Assert.Equal(0, await LeaseAsync(a, GrandPeco));
+        await Gm("alice", "!item 1501013 1");
+        long guid = Session("alice").Items.Single(i => i.Entry == 1501013).Guid;
+        await a.SendGameAsync(31323, new ItemUseReq { ItemGuid = guid, ItemCount = 1 });
+        Assert.Equal(0, (await Next(a, 31323, ItemUseResp.Parser)).Result);
+        await a.SendGameAsync(MountService.SetConfig, new PlayerMountsSetCfgReq { MountId = 60030010 });
+        Assert.Equal(0, (await Next(a, MountService.SetConfig, PlayerMountsSetCfgResp.Parser)).Result);
+
+        foreach (var tp in new[] { eRiderType.OnBattle, eRiderType.OnSystem })
+        {
+            await a.SendGameAsync(MountService.Ride, new PlayerRiderMountReq { Tp = tp });
+            Assert.Equal(0, (await Next(a, MountService.Ride, PlayerRiderMountResp.Parser)).Result);
+        }
+        Assert.Equal(60030010, MountService.Rider(Session("alice")));
+        Assert.True(Session("alice").Mounts!.MountIds[2].IsRiding);
+        await a.SendGameAsync(MountService.Ride, new PlayerRiderMountReq { Tp = eRiderType.OffSystem });
+        Assert.Equal(0, (await Next(a, MountService.Ride, PlayerRiderMountResp.Parser)).Result);
+        Assert.Equal(GrandPeco, MountService.Rider(Session("alice")));
+
+        // The battle mount button on a rider of the travel mount alone swaps them onto the Peco.
+        foreach (var tp in new[] { eRiderType.OffBattle, eRiderType.OnSystem, eRiderType.OnBattle })
+        {
+            await a.SendGameAsync(MountService.Ride, new PlayerRiderMountReq { Tp = tp });
+            Assert.Equal(0, (await Next(a, MountService.Ride, PlayerRiderMountResp.Parser)).Result);
+        }
+        Assert.Equal(GrandPeco, MountService.Rider(Session("alice")));
+        Assert.False(Session("alice").Mounts!.MountIds[1].IsRiding);
     }
 
     // RidingEffects: a ridden mount's _kBindBuff rows, the riding passives' type 17 Movement Speed and their own rows.

@@ -215,7 +215,7 @@ public sealed partial class GenreTests
             { PlanId = 1, ResponseId = response, ResponseUserId = donorSession.Role!.Id, SystemType = { [3] = 1 } });
             await reached.Task.WaitAsync(OwnerWait);
             Assert.Equal(0, target.Items.Single(i => i.Guid == ownGuid).Grid);
-            gm = client.PostAsync($"{_http}/ro3emu/gm?account=snapdonor", new StringContent("!delitem 2010121 1"));
+            gm = client.PostAsync($"{_http}/ro3emu/gm?account=snapdonor", Operator.Command("!delitem 2010121 1"));
             await deferred.Task.WaitAsync(OwnerWait);
             Assert.False(gm.IsCompleted);
             Assert.Contains(donorSession.Items, i => i.Guid == donorGuid);

@@ -23,11 +23,11 @@ public sealed partial class TaskService
     private List<(long Chapter, long[] Children)>? _growthTitles;
 
     /// <summary>NewbieTitlesConfig rows in _iLev order: chapter task and child tasks.</summary>
-    private List<(long Chapter, long[] Children)> GrowthTitles() => _growthTitles ??= _data.Table("NewbieTitlesConfig").Values
+    private List<(long Chapter, long[] Children)> GrowthTitles() => _growthTitles ??= [.. _data.Table("NewbieTitlesConfig").Values
         .Where(r => r.ValueKind == System.Text.Json.JsonValueKind.Object && GameData.Int(r, "_iTaskID") > 0)
         .OrderBy(r => GameData.Int(r, "_iLev")).ThenBy(r => GameData.Int(r, "_iID"))
         .Select(r => (GameData.Int(r, "_iTaskID"), Longs(r, "_iSubTaskId")))
-        .Where(t => Defs().ContainsKey(t.Item1)).ToList();
+        .Where(t => Defs().ContainsKey(t.Item1))];
 
     /// <summary>Offers the current growth title (see the class remarks); returns how many tasks were accepted.</summary>
     private int AcceptGrowthTitle(GameSession session)

@@ -272,7 +272,7 @@ public sealed class FeedbackStore(string path)
     public IReadOnlyList<FeedbackReport> Read(long afterId = 0, DateTimeOffset? since = null, int limit = int.MaxValue)
     {
         lock (_sync)
-            return ReadAll().Where(r => r.Id > afterId && (since == null || r.Time >= since)).Take(limit).ToList();
+            return [.. ReadAll().Where(r => r.Id > afterId && (since == null || r.Time >= since)).Take(limit)];
     }
 
     private IEnumerable<FeedbackReport> ReadAll()

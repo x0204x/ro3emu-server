@@ -158,7 +158,7 @@ public sealed partial class GuildService
     {
         var g = Own(s);
         long self = s.Role?.Id ?? 0;
-        long[] elites = g == null ? [] : LeagueElites(g).Values.ToArray();
+        long[] elites = g == null ? [] : [.. LeagueElites(g).Values];
         int code = g == null ? ErrorCodes.NotInGuild : !HasRight(g, self, EliteRight) ? ErrorCodes.GuildPermission
             : !elites.Any(id => id != self) ? ErrorCodes.EliteTeamShort : 0;
         long teamId = 0;

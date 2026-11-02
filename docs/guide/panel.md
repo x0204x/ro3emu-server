@@ -33,7 +33,7 @@ It is on by default, on port **5381**, next to the server's HTTP port 5380:
 | `Ro3Emu:Panel:ImageDir` | `icons/` of the game data | the pictures the pages show (see [Pictures](#pictures)) |
 | `Ro3Emu:Panel:Branding:*` | RO3Emu's | your server's name, tagline, logo, footer and colour (see [Branding](#branding)) |
 | `Ro3Emu:Panel:Roles:<account>` | none | a staff role, `Moderator`, `GM` or `Admin` (see [Staff roles](#staff-roles)) |
-| `Ro3Emu:Panel:RequireAdmin2FA` | `true` on a public bind, `false` on loopback | GM and Admin accounts must turn on two-factor authentication before the admin area opens to them |
+| `Ro3Emu:Panel:RequireAdmin2FA` | `true` when other machines reach the server (a public bind or `PublicHost`, or `TrustedProxies` or `PublicUrl` set), `false` for local play | GM and Admin accounts must turn on two-factor authentication before the admin area opens to them |
 | `Ro3Emu:Panel:LoginAddresses` | `false` | keep and show the address of each login in the login history |
 
 Set them in `appsettings.json` under `Ro3Emu`, as environment variables (`Ro3Emu__Panel__Port=8081`) or as
@@ -60,18 +60,25 @@ The admin area is for staff. Each role has everything of the one before it:
 
 An account gets its role from, in this order:
 
-1. GM in game ([GM access](gm-access.md)): whoever may use GM commands in the game is an Admin. That is every account
-   listed in `Ro3Emu:GmAccounts`, and, while that list is empty and GM is open (local play, `GmOpenWhenEmpty`), every
-   account.
+1. GM in game ([GM access](gm-access.md)): every account listed in `Ro3Emu:GmAccounts` is an Admin. While that list
+   is empty, every account is an Admin only on a local panel with GM open (local play: `PublicHost`, the server and
+   the panel on loopback, no `PublicUrl`, no `TrustedProxies`); a panel that other machines reach has no Admin from the GM rule.
 2. `Ro3Emu:Panel:Roles`, account to role, spelled as stored: `Ro3Emu__Panel__Roles__anna=Moderator`, or in
    `appsettings.json` `"Panel": { "Roles": { "anna": "Moderator", "tomek": "GM" } }`.
 3. The **Staff roles** page, where an Admin gives an existing account a role or takes it away. These are stored by
    the server (`panel_role`) and audited; the roles of 1 and 2 are shown there but changed only in the configuration.
    Nobody changes their own role.
 
+A request that a proxy forwarded (`X-Forwarded-For`, `Forwarded` or `X-Real-IP`) never gets the Admin of an open local
+server. List your admins before you put a proxy or a tunnel in front of the panel: one that adds no such header
+cannot be told from your own browser ([GM access](gm-access.md)).
+
 **The panel follows the game's GM rule**: on your own PC with an empty `GmAccounts` every account is GM in game and an
-Admin in the panel; on a server started as Production with an empty list nobody is either. A public server lists its
-admins in `GmAccounts`. The roles of 2 and 3 are the panel's only: GM commands in the game still follow `GmAccounts`.
+Admin in the panel. On a server that other machines reach (a LAN or public address, or a panel behind a proxy) or one
+started as Production, an empty list gives nobody either, and the startup log warns `!!! Web panel: no Admin in the
+configuration`. Even `GmOpenWhenEmpty=true` there opens only the game, not the admin area. A public server lists its
+admins in `GmAccounts`; the log says `Web panel Admins: ...` at start. The roles of 2 and 3 are the panel's only: GM
+commands in the game still follow `GmAccounts`.
 
 Every route of the API names the least role it needs and refuses the others (403); the sidebar shows each role only
 the pages it may use.
@@ -93,6 +100,12 @@ A ban from the Accounts page (reason, and 1 day to 30 days or no end):
 - refuses every later login of the account, in the game and on the panel, until it ends or is lifted.
 
 Lifting a ban deletes the row and is audited the same way.
+
+Staff act only below their own role: a Moderator cannot ban or unban a GM or an Admin, and two Admins cannot ban each
+other (take the role away first). A ban also stands against anyone below the one who placed it, so a Moderator cannot
+lift an Admin's ban. On your own PC with an empty `GmAccounts` the role by the lists counts, so every account can ban the
+others there. Signing an account out and resetting its 2FA stay open between Admins: they need Admin already, they are
+audited, and the reset is how an Admin who lost a phone gets back in.
 
 ## Admin tools
 
@@ -135,9 +148,11 @@ Each tool is a page of the admin area's sidebar; each change is written to the a
   stored at all.
 
 **Required for GM and Admin.** With `Ro3Emu:Panel:RequireAdmin2FA`, a GM or Admin without 2FA has no staff role in the
-panel until it is on: the admin area answers 403 and *My account* asks to set it up. Unset, it is on whenever the panel
-listens on an address that is not loopback (a public host) and off for local play; set `false` to turn it off on a
-public host, `true` to require it locally. Moderators are not required to use it.
+panel until it is on: the admin area answers 403 and *My account* asks to set it up. Unset, it is on whenever other
+machines reach the server: it listens on an address that is not loopback, `PublicHost` is not loopback (a tunnel), or a
+proxy serves the panel (`TrustedProxies` or `PublicUrl` is set, because a proxy on the same machine reaches a loopback
+panel). It is off only for local play. Set `false` to turn it off anyway, `true` to require it locally. The startup log says which.
+Moderators are not required to use it.
 
 **Limits.** A login that needs a code waits 5 minutes for it and takes 5 tries; an account takes 10 wrong codes in 15
 minutes from all its logins together, then refuses codes until the window passes. Every code also counts against the
@@ -516,13 +531,26 @@ server {
 }
 ```
 
-Keep `Host` as the browser sent it: the panel refuses a POST whose `Origin` names another host. Forward only the
-panel's port. The server's own HTTP port (5380) has loopback-only operator endpoints that a proxy on the same machine
-would open to everyone ([security model](../systems/security.md)).
+Set `PublicUrl` or `TrustedProxies`: without either, the API of a panel on loopback answers 404 to a `Host` that is not
+this machine (a page that resolves its own name to 127.0.0.1 could otherwise use it), and the log warns once in ten
+minutes. Keep `Host` as the browser sent it: the panel refuses a POST whose `Origin` names another host. Forward only the
+panel's port. The server's own HTTP port (5380) has operator endpoints that answer only a local tool
+([security model](../systems/security.md)). If you proxy 5380 as well (the game's login and the launcher's calls), shut
+just those off in the proxy, because `/ro3emu/status`, `/ro3emu/gate-key.pem`, `/ro3emu/panel` and
+`/ro3emu/account/delete-role` are public and the launcher needs them:
 
-Logins share the server's credential budget (`Ro3Emu:LoginAttemptsPerMinute` per address, the same counter as the
-game's login). Behind a trusted proxy that is per player address; without one, every player behind a proxy shares the
-proxy's.
+```nginx
+    location ~ ^/ro3emu/(gm|shutdown|online|reports|metrics)(/|$) {
+        deny all;
+    }
+```
+
+Logins share the server's credential budget (`Ro3Emu:LoginAttemptsPerMinute` per client address, an IPv6 one by its /64 network, the same counter as
+the game's login, on the panel and on port 5380 alike). Behind a trusted proxy the address is the player's own, from
+`X-Forwarded-For`. A proxy that is not listed in `TrustedProxies` is not believed, so every player behind it counts
+against one budget: the proxy's. Loopback is exempt from the budget only for local tools: a request with
+`X-Forwarded-For`, `Forwarded` or `X-Real-IP`, or any request on a server others reach (a public `PublicHost` or
+bind, `TrustedProxies` or `PublicUrl` set), is counted like any other.
 
 ## Security notes
 

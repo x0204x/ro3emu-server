@@ -69,7 +69,7 @@ public sealed class GuildVoiceAudioTests : IAsyncLifetime
     private async Task Gm(string name, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{_http}/ro3emu/gm?account={name.ToLowerInvariant()}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={name.ToLowerInvariant()}", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     private async Task<(BotClient Alice, long AliceId, BotClient Bob, long BobId, long Guild)> GuildOfTwo()
@@ -86,6 +86,7 @@ public sealed class GuildVoiceAudioTests : IAsyncLifetime
             long guild = GuildFullInfoNtf.Parser.ParseFrom((await full.WaitAsync(Wait)).Body).Guid;
             Assert.Equal(0, (await Ask(alice, GuildService.Edit, new GuildEditReq { Tp = (GuildEditReq.Types.EditType)6, AutoAcceptApply = true }, GuildEditResp.Parser)).Result);
             using var log = new CancellationTokenSource(Wait);
+            bob.OperatorToken = Operator.Token; // its GM raise to the join level
             await BotGuildVoice.JoinGuildAsync(bob, _http, "bob", guild, _ => { }, log.Token);
             return (alice, aliceId, bob, bobId, guild);
         }

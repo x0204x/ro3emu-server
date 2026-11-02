@@ -30,8 +30,8 @@ public sealed class SocialOwnerCache(AccountStore accounts, OwnerRegistry owners
             // This staging scope ends before command admission. Take the whole requested reader set
             // together so a cold snapshot cannot observe SQL commit ahead of its owner's Apply.
             using var scope = await owners.EnterAsync("social/snapshot",
-                ids.Select(id => ReservationKey.Role(id)).ToArray());
-            missing = ids.Where(id => force || Social(id) is null).ToArray();
+                [.. ids.Select(id => ReservationKey.Role(id))]);
+            missing = [.. ids.Where(id => force || Social(id) is null)];
             if (missing.Length == 0) return ids.ToDictionary(id => id, id => Social(id));
             SocialSnapshotLoads++;
             var loaded = await accounts.ReadAsync<Dictionary<long, SocialSnapshot?>>(new SocialSnapshotReadPlan(missing));

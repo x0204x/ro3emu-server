@@ -62,7 +62,7 @@ public sealed class SocialD13dTests : IAsyncLifetime
     {
         using var client = new HttpClient();
         (await client.PostAsync($"{_http}/ro3emu/gm?account={account}",
-            new StringContent($"!item {item} {count}"))).EnsureSuccessStatusCode();
+            Operator.Command($"!item {item} {count}"))).EnsureSuccessStatusCode();
     }
 
     private long Scalar(string sql)
@@ -111,7 +111,7 @@ public sealed class SocialD13dTests : IAsyncLifetime
             var teams = Service<TeamService>();
             var before = await loop.InvokeAsync(() => Task.FromResult((teams.TeamOf(b), Members: teams.MembersOf(a).ToArray())));
             Assert.Equal(0, before.Item1.TeamId);
-            Assert.Equal(new[] { a }, before.Members);
+            Assert.Equal([a], before.Members);
             Assert.Equal(0, Scalar("SELECT COUNT(*) FROM recent_team_peer"));
 
             await charlie.SendGameAsync(FriendExtraService.SetMetadata,
@@ -134,7 +134,7 @@ public sealed class SocialD13dTests : IAsyncLifetime
             await recipientGm.WaitAsync(Wait);
             var after = await loop.InvokeAsync(() => Task.FromResult((teams.TeamOf(b), Members: teams.MembersOf(a).ToArray())));
             Assert.Equal(teamId, after.Item1.TeamId);
-            Assert.Equal(new[] { a, b }, after.Members);
+            Assert.Equal([a, b], after.Members);
             Assert.Contains(b, Service<FriendStore>().RecentTeammates(a));
             Assert.Contains(a, Service<FriendStore>().RecentTeammates(b));
             Assert.Equal(2, Scalar("SELECT COUNT(*) FROM recent_team_peer"));

@@ -1,0 +1,835 @@
+{
+  "version": 1,
+  "about": "Reconstructed raid boss trials (inferred as a whole). The original raid bosses ran server AI scripts (NPCConfig _iAISpecial) that the client does not ship; their scripted mechanics are rebuilt from what the client does ship: the raid's tips (ChatConfig), the encounter guide (TenChallengeHandbookIDConfig), the mechanic's NPCs and buffs, and the scene editor's points. Each trial: a start (time after the boss engages, repeat, HP thresholds), tips, a window, the objects and colours it deals out, a rule judged when the window closes, and the outcomes. A failed rule costs a share of the maximum HP (never a wipe by itself); a solved one may reward and stagger the boss. Engine: DungeonService.RaidTrials.",
+  "contract": {
+    "tips": "1022 SystemBoardCastMsgNtf {chatId}. A CombatCountdownTip (ChatConfig _iType 16) counts its ${1} down from param 1 in seconds (UI_Sys_GVE_MarqueeWidgetCtrl: m_fTargetTimestamp = params[1] + GetSystemTime()).",
+    "colours": "A note buff with _kUIParams [1, colour] shows the local player's note on the HUD (UI_Sys_Main_DungeonNoteWidgetBaseCtrl: Red 1, Yellow 2, Green 3, Blue 4).",
+    "objects": "Props are shown as their NPCConfig _iNPCType (1 monster unit, 2 NPC, 4 trigger, 10 bullet), like the scripted scenes' actors and the field MVPs' ground objects; destructible ones are monsters outside the room's counted actors.",
+    "hits": "A failed trial's hit is the boss's 31101 of the named skill with a share of each player's maximum HP (inferred)."
+  },
+  "raids": {
+    "isti": {
+      "name": "Isti (Realm of the Gods 3020101)",
+      "bosses": [14720026, 14720010, 14720027],
+      "evidence": [
+        "ChatConfig 4110011 (type 12): 'Isti invites you to perform an Ocean Concerto! Quickly touch the bubble matching your note to gain a buff.'",
+        "TenChallengeHandbookIDConfig 1100105 Ocean Concerto: every player gets a note, many bubbles move toward the centre; a bubble touching a player with the matching note disappears and gives that player a damage buff, one reaching the Crystal Orb explodes.",
+        "BuffConfig 14720201/14720501/14720601/14720701: the Red/Yellow/Blue/Green note (_kUIParams [1,1]/[1,2]/[1,4]/[1,3], the HUD note widget), 14720301 Bubble Movement (+5% damage per stack, 30 stacks, 30 s).",
+        "NPCConfig 14720013-14720016: 'P@{1} Red/Yellow/Blue/Green Bubble NPC' (the second phase's bubbles); boss skill 14724101 'P@{1} Action', a 40 s channel whose show is the ground flow, water balls and note tails.",
+        "Scene editor sc_pm_shirenben_001_dg01: groups 17 'P2 bubble points 45 degrees' and 34 'P2 bubble points 22.5 degrees', 16 points on a ring of about 28 m around the BOSS point 93; BGM BGM_S1Ten_Boss1_P1 and _P2 (two phases)."
+      ],
+      "guessed": [
+        "The concerto is the second phase: it starts when Isti falls to 60% HP and comes back every 70 s.",
+        "The moving bubbles stand still, 45% of the way in from the ring toward Isti, two per player (4 to 16); each takes the colour of a note someone holds.",
+        "The window is 25 s; every bubble left then reaches the orb and costs everyone 10% of their maximum HP (at most 50%), shown as Full-Arena Wave 14721101.",
+        "Other first-phase patterns (Bubble Dream, colliding bubbles, Underwater Fireworks) are left to the boss's own skills."
+      ],
+      "trials": [
+        {
+          "name": "Ocean Concerto",
+          "why": "tip 4110011 and the guide's Ocean Concerto: touch the bubble of your note",
+          "start": { "hp": [60], "everyMs": 70000 },
+          "tips": [4110011],
+          "windowMs": 25000,
+          "boss": { "hold": true, "show": 14724101 },
+          "colors": [14720201, 14720501, 14720601, 14720701],
+          "assign": true,
+          "objects": [
+            {
+              "npc": [14720013, 14720014, 14720015, 14720016],
+              "why": "the second phase's Red/Yellow/Blue/Green bubbles, in the order of the note buffs",
+              "at": { "points": [18, 19, 20, 21, 22, 23, 24, 26, 25, 27, 28, 29, 30, 31, 32, 33], "perPlayer": 2, "min": 4, "max": 16, "inward": 0.45 },
+              "match": true
+            }
+          ],
+          "rule": "collect",
+          "radius": 2,
+          "success": { "buff": 14720301, "buffMs": 30000, "why": "Bubble Movement for the player who took a bubble of their note" },
+          "fail": { "who": "all", "hpPercent": 10, "perObject": true, "capPercent": 50, "skill": 14721101, "why": "each bubble left reaches the orb" }
+        }
+      ]
+    },
+    "nasha": {
+      "name": "Nasha (Realm of the Gods 3020102)",
+      "bosses": [14740100, 14740000, 14740200],
+      "evidence": [
+        "ChatConfig 4618 'Ta-da! It's time for your test!', 4611 (CombatCountdownTip, 15 s) 'Reach your performance position within ${1} seconds', 4616 'Wonderful... Finally, someone who can keep up with my steps...', 4615 'Too slow! Go practice and come back later...'.",
+        "TenChallengeHandbookIDConfig 1100201 Backup Dancers: move into the glowing circle within 15 s and follow Nysha's steps; 1100202 Dazzling Dance Step: damage outside the spotlights.",
+        "NPCConfig 14740002 'Circle-Stepping Magic Circle' (type 4, interaction distance 2 m); scene editor sc_pm_shirenben_001_dg02 points 601-623 'circle creation points' on a 10 m grid in front of the boss.",
+        "BuffConfig 14742501 Perfect State (+30% movement speed, +30% damage, 30 s), the reward of a correct dance step; skill 14744200 'Dance Machine_New' (14.66 s), skill 14740500 Dazzling Dance Step.",
+        "BGM Boss2_Dance: a separate dance phase."
+      ],
+      "guessed": [
+        "The dance test comes 25 s into the fight and every 50 s; Nasha holds still dancing (14744200) for its 15 s.",
+        "One circle per player (at least one) at random circle creation points; a player inside any circle (2 m) when the time runs out keeps up and gets Perfect State; one outside takes 35% of their maximum HP as Dazzling Dance Step.",
+        "The four-direction step copying (Dance Move skills, rhythm buttons) is not reproduced: reaching the circle is the test."
+      ],
+      "trials": [
+        {
+          "name": "Dance test",
+          "why": "tips 4618 and 4611 and the guide's Backup Dancers: reach your performance position in 15 s",
+          "start": { "firstMs": 25000, "everyMs": 50000 },
+          "tips": [4618, 4611],
+          "tipParam": "countdown",
+          "windowMs": 15000,
+          "boss": { "hold": true, "show": 14744200 },
+          "objects": [
+            {
+              "npc": 14740002,
+              "why": "the Circle-Stepping Magic Circle at the circle creation points",
+              "at": { "points": [601, 602, 603, 604, 605, 606, 607, 608, 609, 610, 611, 612, 613, 614, 615, 616, 617, 618, 619, 620, 621, 622, 623], "perPlayer": 1, "min": 1, "max": 10 }
+            }
+          ],
+          "rule": "stand",
+          "radius": 2,
+          "success": { "who": "passing", "buff": 14742501, "buffMs": 30000, "say": 4616, "why": "a dancer who keeps up" },
+          "fail": { "who": "failing", "hpPercent": 35, "skill": 14740500, "say": 4615, "why": "left in the dark: Dazzling Dance Step" }
+        }
+      ]
+    },
+    "ilmo": {
+      "name": "Ilmo (Realm of the Gods 3020103)",
+      "bosses": [14761100, 14761000, 14761200],
+      "evidence": [
+        "TenChallengeHandbookIDConfig 1100301 Beat Prison: Ilmo keeps beating a drum to charge an ultimate; several areas appear, players collect the notes shown above the areas and enter the areas to raise a damage immunity barrier.",
+        "ChatConfig 4606 (CombatCountdownTip, 30 s) 'Enter the circles in order to compose the melody. ${1} seconds remaining', 4603 'The drumbeat will explode in ${1} seconds' (30 s).",
+        "NPCConfig 14760001-14760004 'Collect Red/Blue/Yellow/Green Note' at scene points 17-20 (NpcLevelPointRespawnConfig 14760000-14760003), interactions 33-36 casting 'Obtain Red/Blue/Yellow/Green Note' 14772000-14772300; BuffConfig 14760001/14760101/14760201/14760301 Red/Blue/Yellow/Green Note (_kUIParams [1,1]/[1,4]/[1,2]/[1,3]).",
+        "NPCConfig 14760005-14760008: the coloured circles (born buffs 14760501-14760801 Red/Blue/Yellow/Green Note and a ring).",
+        "DungeonLua_3020103 numbylevel {1:2, 2:3, 3:5, 4:6, 5:8, 6:4} and npcidbyregion tables naming the 5 x 5 m regions of the editor's groups 34 (24, 27), 61 (28, 29, 66), 71 (72-75), 48 (49-54).",
+        "Skills 14769000-14769300 Drumbeat Cage (36.6 s, _kDamageParamExtra [2,100000,101,3]: all of the maximum HP), BuffConfig 14761401 Green Energy Barrier, 14761601-14761901 four 'Lock Life at X%' buffs (four phase gates)."
+      ],
+      "guessed": [
+        "Beat Prison comes at 80, 60, 40 and 20% HP (the four Lock Life gates), with 2, 3, 4 and 6 circles (groups 34, 61, 71, 48), each of a random colour.",
+        "A circle is lit by a player carrying its note stepping into it (2.5 m); the order is not enforced. All lit within 30 s: Green Energy Barrier on everyone and no damage; otherwise the cage costs everyone 50% of their maximum HP (not the data's 100%: no instant wipe).",
+        "The note pickups stand at points 17-20 during the trial (their own respawn rows; the editor puts the blue one on 18-20 by mistake)."
+      ],
+      "trials": [
+        {
+          "name": "Beat Prison I",
+          "why": "the first Lock Life gate: two circles (group 34, numbylevel 1)",
+          "start": { "hp": [80] },
+          "tips": [4606],
+          "tipParam": "countdown",
+          "windowMs": 30000,
+          "boss": { "hold": true, "show": 14769000 },
+          "colors": [14760001, 14760101, 14760201, 14760301],
+          "objects": [
+            { "npc": [14760001, 14760002, 14760003, 14760004], "use": "color", "at": { "points": [17, 18, 19, 20] }, "why": "the Red, Blue, Yellow and Green notes to collect" },
+            { "npc": [14760005, 14760006, 14760007, 14760008], "match": true, "at": { "regions": [24, 27] }, "why": "the circles of group 34" }
+          ],
+          "rule": "collect",
+          "radius": 2.5,
+          "success": { "who": "all", "buff": 14761401, "buffMs": 5000, "why": "Green Energy Barrier: the drumbeat explodes harmlessly" },
+          "fail": { "who": "all", "hpPercent": 50, "skill": 14769000, "why": "the Drumbeat Cage explodes" }
+        },
+        {
+          "name": "Beat Prison II",
+          "why": "the second gate: three circles (group 61, numbylevel 2)",
+          "start": { "hp": [60] },
+          "tips": [4606],
+          "tipParam": "countdown",
+          "windowMs": 30000,
+          "boss": { "hold": true, "show": 14769100 },
+          "colors": [14760001, 14760101, 14760201, 14760301],
+          "objects": [
+            { "npc": [14760001, 14760002, 14760003, 14760004], "use": "color", "at": { "points": [17, 18, 19, 20] } },
+            { "npc": [14760005, 14760006, 14760007, 14760008], "match": true, "at": { "regions": [28, 29, 66] } }
+          ],
+          "rule": "collect",
+          "radius": 2.5,
+          "success": { "who": "all", "buff": 14761401, "buffMs": 5000 },
+          "fail": { "who": "all", "hpPercent": 50, "skill": 14769100 }
+        },
+        {
+          "name": "Beat Prison III",
+          "why": "the third gate: four circles (group 71)",
+          "start": { "hp": [40] },
+          "tips": [4606],
+          "tipParam": "countdown",
+          "windowMs": 30000,
+          "boss": { "hold": true, "show": 14769200 },
+          "colors": [14760001, 14760101, 14760201, 14760301],
+          "objects": [
+            { "npc": [14760001, 14760002, 14760003, 14760004], "use": "color", "at": { "points": [17, 18, 19, 20] } },
+            { "npc": [14760005, 14760006, 14760007, 14760008], "match": true, "at": { "regions": [72, 73, 74, 75] } }
+          ],
+          "rule": "collect",
+          "radius": 2.5,
+          "success": { "who": "all", "buff": 14761401, "buffMs": 5000 },
+          "fail": { "who": "all", "hpPercent": 50, "skill": 14769200 }
+        },
+        {
+          "name": "Beat Prison IV",
+          "why": "the last gate: six circles (group 48, numbylevel 4)",
+          "start": { "hp": [20] },
+          "tips": [4606],
+          "tipParam": "countdown",
+          "windowMs": 30000,
+          "boss": { "hold": true, "show": 14769300 },
+          "colors": [14760001, 14760101, 14760201, 14760301],
+          "objects": [
+            { "npc": [14760001, 14760002, 14760003, 14760004], "use": "color", "at": { "points": [17, 18, 19, 20] } },
+            { "npc": [14760005, 14760006, 14760007, 14760008], "match": true, "at": { "regions": [49, 50, 51, 52, 53, 54] } }
+          ],
+          "rule": "collect",
+          "radius": 2.5,
+          "success": { "who": "all", "buff": 14761401, "buffMs": 5000 },
+          "fail": { "who": "all", "hpPercent": 50, "skill": 14769300 }
+        }
+      ]
+    },
+    "mirko-normal": {
+      "name": "Mirko, Normal (Realm of the Gods 3020108)",
+      "bosses": [14780007],
+      "evidence": [
+        "ChatConfig 4620/4621/4622 (CombatCountdownTip, 30 s) 'Activate three/four/two Safe Zones simultaneously. ${1} seconds until the beat explodes'; skill 14783601 'Mechanic Starts' (35 s, 9 999 999 damage) and 14782101 'Party-Wipe Mechanic'.",
+        "NPCConfig 14780006, the zone marker (born buffs 14789001/14789101), placed by NpcLevelPointRespawnConfig at points 118-120 for 3020108 (three zones) and at the corner points 25-28 for 3020104 (four zones).",
+        "ChatConfig 4607 'Players with the corresponding notes must Kill the matching Musical Instrument'; TenChallengeHandbookIDConfig 1100403 Summon Musical Instrument: Harp and Trumpet of different colours, players with the matching colour must destroy them.",
+        "NPCConfig 14780014/14780015 Golden Horn and Blue Harp (level 57, a 20 s timer buff 14789901/14789801); DungeonLua_3020108 buffid {1:147600, 2:147880, 3:147603, 4:147881}: BuffConfig 14788001 (gold note, _kUIParams [1,2]) and 14788101 (blue note, [1,4]); skills 14783501/14783801 Musical Instrument Full-Field AOE.",
+        "Scene editor sc_pm_shirenben_001_dg04 group 18: points 101-104 on the four edges, 16 m from the boss."
+      ],
+      "guessed": [
+        "Safe zones: 40 s into the fight and every 80 s Mirko holds for 30 s playing Mechanic Starts; every zone needs a player standing in it (3 m) at the end, else the beat costs everyone 50% of their maximum HP. Fewer players than zones: as many zones as players (a lone tester gets one, with the two-zone line).",
+        "Instruments: 75 s into the fight and every 80 s, every player gets a gold or blue note and one instrument per player (two to four) stands at the edge points; only a player of its colour damages it, 4 hits per player destroy it; each one left after 20 s costs everyone 20% (at most 60%) as the full-field AOE.",
+        "Compose and Perform Movement (the recorded 4-note scores of DungeonLua music/skill) are not reproduced; the recordable skills stay in the boss's own rotation."
+      ],
+      "trials": [
+        {
+          "name": "Safe zones",
+          "why": "tips 4620-4622 and Mechanic Starts 14783601",
+          "start": { "firstMs": 40000, "everyMs": 80000 },
+          "tipByCount": { "1": 4622, "2": 4622, "3": 4620, "4": 4621 },
+          "tipParam": "countdown",
+          "windowMs": 30000,
+          "boss": { "hold": true, "show": 14783601 },
+          "objects": [ { "npc": 14780006, "at": { "points": [118, 119, 120], "perPlayer": 1, "min": 1, "max": 3 }, "why": "3020108's three zones" } ],
+          "rule": "occupy",
+          "radius": 3,
+          "fail": { "who": "all", "hpPercent": 50, "skill": 14782101, "why": "the beat explodes" }
+        },
+        {
+          "name": "Musical instruments",
+          "why": "tip 4607 and the guide's Summon Musical Instrument",
+          "start": { "firstMs": 75000, "everyMs": 80000 },
+          "tips": [4607],
+          "windowMs": 20000,
+          "colors": [14788001, 14788101],
+          "assign": true,
+          "objects": [ { "npc": [14780014, 14780015], "monster": true, "match": true, "hits": 4, "at": { "points": [101, 102, 103, 104], "perPlayer": 1, "min": 2, "max": 4 }, "why": "the Golden Horn and the Blue Harp, Normal" } ],
+          "rule": "kill",
+          "radius": 3,
+          "fail": { "who": "all", "hpPercent": 20, "perObject": true, "capPercent": 60, "skill": 14783501, "why": "each instrument left plays its full-field AOE" }
+        }
+      ]
+    },
+    "mirko-hard": {
+      "name": "Mirko, Hard (Realm of the Gods 3020104)",
+      "bosses": [14780005],
+      "evidence": ["As Mirko Normal; 3020104 places the zone marker 14780006 at the corner points 25-28 (four zones), the instruments are the level 59 Golden Horn 14780016 and Blue Harp 14780017."],
+      "guessed": ["As Mirko Normal."],
+      "trials": [
+        {
+          "name": "Safe zones",
+          "why": "tips 4620-4622 and Mechanic Starts 14783601",
+          "start": { "firstMs": 40000, "everyMs": 80000 },
+          "tipByCount": { "1": 4622, "2": 4622, "3": 4620, "4": 4621 },
+          "tipParam": "countdown",
+          "windowMs": 30000,
+          "boss": { "hold": true, "show": 14783601 },
+          "objects": [ { "npc": 14780006, "at": { "points": [25, 26, 27, 28], "perPlayer": 1, "min": 1, "max": 4 }, "why": "3020104's four corner zones" } ],
+          "rule": "occupy",
+          "radius": 3,
+          "fail": { "who": "all", "hpPercent": 50, "skill": 14782101 }
+        },
+        {
+          "name": "Musical instruments",
+          "why": "tip 4607 and the guide's Summon Musical Instrument",
+          "start": { "firstMs": 75000, "everyMs": 80000 },
+          "tips": [4607],
+          "windowMs": 20000,
+          "colors": [14788001, 14788101],
+          "assign": true,
+          "objects": [ { "npc": [14780016, 14780017], "monster": true, "match": true, "hits": 4, "at": { "points": [101, 102, 103, 104], "perPlayer": 1, "min": 2, "max": 4 } } ],
+          "rule": "kill",
+          "radius": 3,
+          "fail": { "who": "all", "hpPercent": 20, "perObject": true, "capPercent": 60, "skill": 14783501 }
+        }
+      ]
+    },
+    "mirko-final": {
+      "name": "Mirko, Final Trial (Realm of the Gods 3020104)",
+      "bosses": [14780008],
+      "evidence": ["As Mirko Hard; the Final Trial boss is born with 14783601 (Mechanic Starts) and its instruments are the level 99 Golden Horn 14780018 (Reflect Damage 14783401) and Blue Harp 14780019."],
+      "guessed": ["As Mirko Hard, the safe zones every 60 s (the Final Trial boss is born with the mechanic)."],
+      "trials": [
+        {
+          "name": "Safe zones",
+          "why": "tips 4620-4622 and Mechanic Starts 14783601",
+          "start": { "firstMs": 30000, "everyMs": 60000 },
+          "tipByCount": { "1": 4622, "2": 4622, "3": 4620, "4": 4621 },
+          "tipParam": "countdown",
+          "windowMs": 30000,
+          "boss": { "hold": true, "show": 14783601 },
+          "objects": [ { "npc": 14780006, "at": { "points": [25, 26, 27, 28], "perPlayer": 1, "min": 1, "max": 4 } } ],
+          "rule": "occupy",
+          "radius": 3,
+          "fail": { "who": "all", "hpPercent": 50, "skill": 14782101 }
+        },
+        {
+          "name": "Musical instruments",
+          "why": "tip 4607 and the guide's Summon Musical Instrument",
+          "start": { "firstMs": 65000, "everyMs": 60000 },
+          "tips": [4607],
+          "windowMs": 20000,
+          "colors": [14788001, 14788101],
+          "assign": true,
+          "objects": [ { "npc": [14780018, 14780019], "monster": true, "match": true, "hits": 4, "at": { "points": [101, 102, 103, 104], "perPlayer": 1, "min": 2, "max": 4 } } ],
+          "rule": "kill",
+          "radius": 3,
+          "fail": { "who": "all", "hpPercent": 20, "perObject": true, "capPercent": 60, "skill": 14783801 }
+        }
+      ]
+    },
+    "orc-hero": {
+      "name": "Orc Hero (five-player raid, Orc Village 3120101)",
+      "bosses": [43100003, 43100000],
+      "evidence": [
+        "ChatConfig 4311 (CombatCountdownTip, 15 s) 'Orc Hero will unleash its ultimate skill in ${1} seconds. Pick up the Giant Blade and interrupt Orc Hero's charging!', 4314403 'Pick up the giant blade!!!', 4314404 'Use the skill granted by the giant blade while facing Orc Hero!', 4314405 'Orc Hero dropped his shield! Hurry and pick it up!', 4314406 'Use the shield to block the giant blade launched by Orc Hero!'.",
+        "TenChallengeHandbookIDConfig 1050202 Lost Giant Blade (pick up the blade, use Giant Blade Slash to interrupt the full-screen charge) and 1050203 Giant-Blade Kunai (blades at several players, massive damage to those without the specified status; shields block them), 1050201 Blade Deflection (players must not approach one another).",
+        "Skills 4310801 Blade Deflection ('throws 5 phantom Kunai; if players are within 5 m of one another, the Kunai ricochet between them'; easy 4314701: 3 Kunai), 4315101 'Blade Deflection Mechanic Warning' (a 5 m circle), 4310901 'Blade Deflection - Repeat Until Death' (each ricochet 10% of the maximum HP); BuffConfig 4311601 'Weapon Deflection Mechanic Callout'; ChatConfig 4314407 'Stay away from each other!!!' (a speech line, not sent).",
+        "NPCConfig 43100002 (type 4, unit 40053 'the giant blade dropped in the five-player raid') and 43100004 (type 4, unit 40054 'the dropped shield'); skills 4311501 Raise Shield Start (15 s show), 4311701 Broken While Raising Shield, 4311801 Full-screen AOE, 4312501 Launch Blade (second hit 10 000 000), 4314401 Obtain Greatblade, 4314501 Obtain Shield.",
+        "BuffConfig 4310401 'Blade Mountain-Greatsword' (10 s, 'face the boss and use the skill'), 4310601 Shield (30 s, -50% movement speed, blocks the flying blades), 4311601 the weapon deflection callout.",
+        "Scene editor sc_pm_pve5orchero_001_dg01: mark points 18-25 in a ring of 18-20 m around the boss point 31."
+      ],
+      "guessed": [
+        "Lost Giant Blade 30 s into the fight and every 70 s: Orc Hero holds his raised shield (4311501) for 15 s while the blade lies at a random ring point. Walking onto it picks it up (the blade's derived skill 4313601 is not handed out: the client's derived-skill slot is filled by the skill wheel sync); the carrier's next hit on Orc Hero breaks the shield: he staggers 3 s (4311701). Otherwise the full-screen AOE costs everyone 50%.",
+        "Giant-Blade Kunai 55 s in and every 70 s: the shield lies at his feet, two players (fewer when fewer fight) are marked; after 12 s each marked player without a shield carrier within 3 m (themselves included) takes 60% as Launch Blade.",
+        "Blade Deflection 80 s in and every 70 s: three random players get the callout (the easy count, for both difficulties); after 6 s a marked player with anyone within 5 m, and those beside them, take 30% as the ricochet (three bounces of the data's 10%). The Kunai cast itself stays in his rotation."
+      ],
+      "trials": [
+        {
+          "name": "Lost Giant Blade",
+          "why": "tips 4311 and 4314403 and the guide's Lost Giant Blade",
+          "start": { "firstMs": 30000, "everyMs": 70000 },
+          "tips": [4311, 4314403],
+          "tipParam": "countdown",
+          "windowMs": 15000,
+          "boss": { "hold": true, "show": 4311501 },
+          "objects": [ { "npc": 43100002, "at": { "points": [18, 19, 20, 21, 22, 23, 24, 25], "count": 1 }, "why": "the dropped giant blade" } ],
+          "rule": "carry",
+          "radius": 2.5,
+          "carry": { "buff": 4310401, "ms": 10000, "say": 4314404 },
+          "success": { "who": "all", "say": 4314405, "stagger": 4311701, "staggerMs": 3000, "why": "the shield breaks and drops" },
+          "fail": { "who": "all", "hpPercent": 50, "skill": 4311801, "why": "the full-screen AOE" }
+        },
+        {
+          "name": "Giant-Blade Kunai",
+          "why": "tips 4314405 and 4314406 and the guide's Giant-Blade Kunai",
+          "start": { "firstMs": 55000, "everyMs": 70000 },
+          "tips": [4314405, 4314406],
+          "windowMs": 12000,
+          "marks": { "count": 2, "buff": 4311601 },
+          "objects": [ { "npc": 43100004, "at": { "atBoss": true }, "why": "the dropped shield" } ],
+          "rule": "guard",
+          "radius": 3,
+          "carry": { "buff": 4310601, "ms": 30000 },
+          "fail": { "who": "failing", "hpPercent": 60, "skill": 4312501, "why": "a marked player the shield does not cover" }
+        },
+        {
+          "name": "Blade Deflection",
+          "why": "the guide's Blade Deflection: players must not approach one another",
+          "start": { "firstMs": 80000, "everyMs": 70000 },
+          "windowMs": 6000,
+          "marks": { "count": 3, "buff": 4311601 },
+          "rule": "spread",
+          "radius": 5,
+          "fail": { "who": "failing", "hpPercent": 30, "skill": 4310901, "why": "the kunai ricochet between the players too close" }
+        }
+      ]
+    },
+    "drake-easy": {
+      "name": "Drake, easy (five-player raid, Silent Ship 3120201)",
+      "bosses": [43200006],
+      "evidence": [
+        "ChatConfig 5002 (CombatCountdownTip, 17 s) 'Ghost ships will arrive in ${1} seconds! Destroy them with explosive barrels!', 5350035 'Explosive barrels blast a cross-shaped area. Be sure to dodge!', 5001 'Bombard the puppets with cannon fire'.",
+        "TenChallengeHandbookIDConfig 1050301 Deep-Sea Ghost Ship (massive damage to any player it touches; a following explosive barrel destroys it), 1050303 Cannonball Barrage (guide the cannonballs onto the Puppet to kill it).",
+        "NPCConfig 43200007 Pirate Ship (Projectile), level 30 (43200002 level 60), born buff 'Ghost Ship Second Wave Buff'; 43200001 Puppet (AI RaidFive_Boss02_minion); skills 4323101 'Falling Explosive Barrels' (targets three players, cross-shaped blasts), 4322501 Falling Explosives, 4320101 Falling Cannonball, 4321701 Falling Cross Cannonballs, 4323201 'Ghost Ship Horizontal Easy', 4321501 Minion Wave Attack.",
+        "Scene editor sc_pm_pve5treasure_001_dg01: spawn points 31-35 on the east edge facing west and 36-40 on the north edge facing south, 11.65 m apart (the ship lanes); mark points 18-27 just inside them."
+      ],
+      "guessed": [
+        "Ghost ships 35 s in and every 60 s: two ships at random lane points; Drake throws Falling Explosive Barrels at a random player every 5 s. A barrel landing on a ship sinks it; after 17 s each ship left charges its lane (60 x 8 m ahead of it): 60% to every player in it.",
+        "Puppets 70 s in and every 60 s: one puppet per player (two to four) at the mark points; Drake throws Falling Cannonball at a random player every 6 s; a cannonball landing on a puppet destroys it, players need 12 hits per player each. Each puppet left after 30 s costs everyone 15% (at most 45%)."
+      ],
+      "trials": [
+        {
+          "name": "Ghost ships",
+          "why": "tips 5002 and 5350035 and the guide's Deep-Sea Ghost Ship",
+          "start": { "firstMs": 35000, "everyMs": 60000 },
+          "tips": [5002, 5350035],
+          "tipParam": "countdown",
+          "windowMs": 17000,
+          "boss": { "breakers": [4323101, 4322501], "casts": [ { "skill": 4323101, "everyMs": 5000 } ] },
+          "objects": [ { "npc": 43200007, "lane": [60, 8], "at": { "points": [31, 32, 33, 34, 35, 36, 37, 38, 39, 40], "count": 2 }, "why": "the easy ghost ship at the lane points" } ],
+          "rule": "kill",
+          "radius": 4,
+          "fail": { "who": "inside", "hpPercent": 60, "skill": 4323201, "why": "each ship left charges its lane" }
+        },
+        {
+          "name": "Puppets",
+          "why": "tip 5001 and the guide's Cannonball Barrage",
+          "start": { "firstMs": 70000, "everyMs": 60000 },
+          "tips": [5001],
+          "windowMs": 30000,
+          "boss": { "breakers": [4320101, 4321701], "casts": [ { "skill": 4320101, "everyMs": 6000 } ] },
+          "objects": [ { "npc": 43200001, "monster": true, "hits": 12, "at": { "points": [18, 19, 20, 21, 22, 23, 24, 25, 26, 27], "perPlayer": 1, "min": 2, "max": 4 } } ],
+          "rule": "kill",
+          "radius": 3,
+          "fail": { "who": "all", "hpPercent": 15, "perObject": true, "capPercent": 45, "skill": 4321501, "why": "each puppet left strikes" }
+        }
+      ]
+    },
+    "drake": {
+      "name": "Drake (five-player raid, Silent Ship 3120201)",
+      "bosses": [43200000],
+      "evidence": ["As Drake easy, with the level 60 ship 43200002 and Ghost Ship Grand Charge 4320501."],
+      "guessed": ["As Drake easy."],
+      "trials": [
+        {
+          "name": "Ghost ships",
+          "why": "tips 5002 and 5350035 and the guide's Deep-Sea Ghost Ship",
+          "start": { "firstMs": 35000, "everyMs": 60000 },
+          "tips": [5002, 5350035],
+          "tipParam": "countdown",
+          "windowMs": 17000,
+          "boss": { "breakers": [4323101, 4322501], "casts": [ { "skill": 4323101, "everyMs": 5000 } ] },
+          "objects": [ { "npc": 43200002, "lane": [60, 8], "at": { "points": [31, 32, 33, 34, 35, 36, 37, 38, 39, 40], "count": 2 } } ],
+          "rule": "kill",
+          "radius": 4,
+          "fail": { "who": "inside", "hpPercent": 60, "skill": 4320501 }
+        },
+        {
+          "name": "Puppets",
+          "why": "tip 5001 and the guide's Cannonball Barrage",
+          "start": { "firstMs": 70000, "everyMs": 60000 },
+          "tips": [5001],
+          "windowMs": 30000,
+          "boss": { "breakers": [4320101, 4321701], "casts": [ { "skill": 4320101, "everyMs": 6000 } ] },
+          "objects": [ { "npc": 43200001, "monster": true, "hits": 12, "at": { "points": [18, 19, 20, 21, 22, 23, 24, 25, 26, 27], "perPlayer": 1, "min": 2, "max": 4 } } ],
+          "rule": "kill",
+          "radius": 3,
+          "fail": { "who": "all", "hpPercent": 15, "perObject": true, "capPercent": 45, "skill": 4321501 }
+        }
+      ]
+    },
+    "moonlight-flower": {
+      "name": "Moonlight Flower (five-player raid, 3120801)",
+      "bosses": [4380000, 4380001],
+      "evidence": [
+        "ChatConfig 5005 'A teammate is trapped inside a Bell! Hurry and smash the Bell!', 5007 'Focus on the charged Bell and smash it!', 5006 'Moonlight Flower is preparing to select a target. Stay out of the moonlight!', 5008 'Prioritize avoiding the charged Bells! They'll explode sooner'.",
+        "TenChallengeHandbookIDConfig 1050801 Hidden Bell (destroy the Bell that was initially charged), 1050802 Cat and Mouse (moonlight spotlights punish the exposed), 1050803 Nowhere to Hide (charged bells explode first).",
+        "NPCConfig 4380002 Moonlight Flower Bell Cage (with an HP bar), 4380004 Riddle Bell, 4380006 Spotlight Projectile (fx_moonlight_skill5), 4380008 Four-Corner Bells; BuffConfig 4380001 Charged Bell, 4382301 a target marker, 4381901 Blind; skills 4380501 Bell Cage ('traps one player inside a Bell, then attacks the Bell'), 4380601 Bell Charge Shuffle, 4380701 Spotlight Game, 4380801 Four-Corner Bell.",
+        "Scene editor sc_pm_pve5paydun_001_dg01: points 21-23 in a row beside the boss point 19 (the shuffle bells), 24-27 a diamond around it (the four-corner bells)."
+      ],
+      "guessed": [
+        "Bell Cage 25 s in and every 60 s: one random player is marked and a cage stands on them; 4 hits per player break it within 12 s, else the marked player takes 60%.",
+        "Hidden Bell 45 s in and every 60 s: three Riddle Bells at points 21-23, one shows the Charged Bell glow for 4 s (the shuffle is not animated: remember it); 3 hits per player break a bell; the charged one broken within 15 s solves it, else everyone takes 40%.",
+        "Moonlight 65 s in and every 60 s: a spotlight under every player; still within 3 m after 4 s: 35% and Blind for 3 s.",
+        "Charged bells 85 s in and every 60 s: the four-corner bells at 24-27; within 6 m of one after 6 s: 40%."
+      ],
+      "trials": [
+        {
+          "name": "Bell Cage",
+          "why": "tip 5005 and skill 4380501 'traps one player inside a Bell'",
+          "start": { "firstMs": 25000, "everyMs": 60000 },
+          "tips": [5005],
+          "windowMs": 12000,
+          "marks": { "count": 1, "buff": 4382301 },
+          "objects": [ { "npc": 4380002, "monster": true, "hits": 4, "at": { "onMarked": true } } ],
+          "rule": "kill",
+          "radius": 3,
+          "fail": { "who": "marked", "hpPercent": 60, "skill": 4380501, "why": "the bell is struck with the player inside" }
+        },
+        {
+          "name": "Hidden Bell",
+          "why": "tip 5007 and the guide's Hidden Bell",
+          "start": { "firstMs": 45000, "everyMs": 60000 },
+          "tips": [5007],
+          "windowMs": 15000,
+          "objects": [ { "npc": 4380004, "monster": true, "hits": 3, "chosen": true, "markBuff": 4380001, "markMs": 4000, "at": { "points": [21, 22, 23] } } ],
+          "rule": "kill",
+          "radius": 3,
+          "fail": { "who": "all", "hpPercent": 40, "skill": 4380601, "why": "the charged bell goes off" }
+        },
+        {
+          "name": "Moonlight",
+          "why": "tip 5006 and the guide's Cat and Mouse",
+          "start": { "firstMs": 65000, "everyMs": 60000 },
+          "tips": [5006],
+          "windowMs": 4000,
+          "objects": [ { "npc": 4380006, "at": { "onPlayers": true }, "why": "a spotlight under every player" } ],
+          "rule": "avoid",
+          "radius": 3,
+          "fail": { "who": "failing", "hpPercent": 35, "skill": 4380701, "buff": 4381901, "buffMs": 3000 }
+        },
+        {
+          "name": "Charged bells",
+          "why": "tip 5008 and the guide's Nowhere to Hide",
+          "start": { "firstMs": 85000, "everyMs": 60000 },
+          "tips": [5008],
+          "windowMs": 6000,
+          "objects": [ { "npc": 4380008, "at": { "points": [24, 25, 26, 27] } } ],
+          "rule": "avoid",
+          "radius": 6,
+          "fail": { "who": "failing", "hpPercent": 40, "skill": 4380801 }
+        }
+      ]
+    },
+    "golden-thief-bug": {
+      "name": "Golden Thief Bug (five-player raid, sewers 3120401)",
+      "bosses": [4300001, 4300000],
+      "evidence": [
+        "ChatConfig 4801 'Tap above a wormhole to enter it and emerge from another wormhole', 4802 'A sandstorm is coming! Use the wormholes to avoid it!', 4803 'Guide Golden Thief Bug toward a wormhole! Sandstorms will soon strike randomly from all sides of the map!', 4809 (CombatCountdownTip) 'Golden Thief Bug will burrow again in ${1} seconds!'.",
+        "TenChallengeHandbookIDConfig 1050101 Wormhole (two connected burrows, the Interaction skill takes a player out of the other one), 1050102 Sandstorm (sweeps the field, use the Wormholes to evade it), 1050103 Earthquake (two kinds, evaded by repositioning).",
+        "NPCConfig 4300002/4300003 Wormhole (unit 33107, interactions 37/38: 4306101/4306201 'Enter Wormhole: Emerges from the other end of the Wormhole'), 4300007/4300008 Wormhole (unit 33113 'Golden wormhole 2'), 4300004/4300006 'Sandstorm@{1}m' (bullet units 33110 'Sandstorm 40M' and 33111 'Sandstorm 80M').",
+        "Skills 4301801/4301901 GoldenBug_underground (8.3 s show), 4305901 GoldenBug_underground0 (4 s show), 4305201-4305501 GoldenBug_Storm1-4 (no cast time: the storm's hits).",
+        "Scene editor sc_pm_pve5sewb_001_dg01: group 20 'Sandstorm' (points 21/23/24/25, the middle of each edge facing inward), group 26 'Wormhole' (27-36, the middle rows z 52/68), group 37 'Wormhole 2' (38-45, the rows z 50/70 at x 32/45/55/68)."
+      ],
+      "guessed": [
+        "Sandstorm 30 s in and every 60 s: Golden Thief Bug burrows (4301801) and storms come in from two random edges, each a 60 x 16 m lane across the field (the two storm lines make a cross or a band); the Wormhole 2 burrows stand at the corner points 41, 38, 42, 45 just outside both lanes and their interaction takes a player to the next one. Still in a lane after 10 s: 40%.",
+        "Burrow 55 s in and every 60 s: two burrows of the Wormhole group stand at random; the boss must be within 4 m of one when the 15 s count ends, else he burrows elsewhere and the storm hits everyone for 40%. Lured in: he burrows and resurfaces (4 s, 4305901).",
+        "Earthquake (4305601, 4307001/4307101 easy) stays in the boss's own rotation: the client's show draws it."
+      ],
+      "trials": [
+        {
+          "name": "Sandstorm",
+          "why": "tips 4802 and 4801, the guide's Sandstorm and Wormhole",
+          "start": { "firstMs": 30000, "everyMs": 60000 },
+          "tips": [4802, 4801],
+          "windowMs": 10000,
+          "boss": { "hold": true, "show": 4301801 },
+          "objects": [
+            { "npc": 4300004, "lane": [60, 16], "at": { "points": [21, 23, 24, 25], "count": 2 }, "why": "storms from two random edges" },
+            { "npc": 4300007, "use": "warp", "at": { "points": [41, 38, 42, 45] }, "why": "the Wormhole 2 burrows at the safe corners, in order around them" }
+          ],
+          "rule": "avoid",
+          "radius": 2,
+          "fail": { "who": "failing", "hpPercent": 40, "skill": 4305201, "why": "caught by the sandstorm" }
+        },
+        {
+          "name": "Burrow",
+          "why": "tips 4803 and 4809: guide him toward a wormhole before he burrows again",
+          "start": { "firstMs": 55000, "everyMs": 60000 },
+          "tips": [4803, 4809],
+          "tipParam": "countdown",
+          "windowMs": 15000,
+          "objects": [ { "npc": 4300002, "at": { "points": [27, 28, 29, 30, 31, 32, 33, 34, 35, 36], "count": 2 }, "why": "two burrows of the Wormhole group" } ],
+          "rule": "lure",
+          "radius": 4,
+          "success": { "who": "all", "stagger": 4305901, "staggerMs": 4000, "why": "he burrows into it and resurfaces" },
+          "fail": { "who": "all", "hpPercent": 40, "skill": 4305301, "why": "he burrows elsewhere and the storm sweeps the field" }
+        }
+      ]
+    },
+    "mistress": {
+      "name": "Mistress (five-player raid, Mjolnir 3120301)",
+      "bosses": [4330001, 4330000],
+      "evidence": [
+        "ChatConfig 4314409 'A swarm of Bee Infantry is approaching. Watch your positioning', 4314410 'Bee Cavalry will target players and charge. Watch your positioning', 4314411 'Mistress is Angry! Infantry and cavalry will appear together. Watch out!'.",
+        "TenChallengeHandbookIDConfig 1050401 Hornet Formation (hornets charging horizontally and vertically), 1050402 Hornet Advance (an advancing line of hornets with random gaps, knocking back those they touch), 1050403 Hornet Charge (random players targeted, warning zones, then hornets in eight directions).",
+        "NPCConfig 4330006 Marching Hornet (bullet unit 33121 'marching bee soldiers'), 4330004 Area Effect (unit 33120, the field warning), 4330005 Charge Projectile; skills 4331301 Swarming Bees, 4331501/4331601 Hornet Assault, 4332101 'Hornet Assault+Falling Beehive', Mistress_Rush8 4335301 (eight directions), Mistress_Move1/Move2 4333101-4334801 (the marching rows).",
+        "Scene editor sc_pm_pve5mjolnir_001_dg01: groups 21/34 (points 22-46 on the north and south edges, 10 m apart, facing across) and 47/60 (points 48-72 on the west and east edges); the arena is 60 x 60 m around the boss point 20."
+      ],
+      "guessed": [
+        "Hornet Formation 25 s in and every 75 s: four marching hornets from the north edge (22-27) and four from the west edge (48-53), each a 60 x 5 m lane; still in a lane after 8 s: 40%.",
+        "Hornet Advance 50 s in and every 75 s: five of the six offset west-edge rows (61-66) march, 60 x 10 m each, leaving one 10 m gap; in a lane after 8 s: 30%.",
+        "Hornet Charge 70 s in and every 75 s: two random players are targeted and a warning zone (6 m) stands under each; anyone in a zone after 5 s takes 45%.",
+        "Angry at 50% HP: she holds (4332101) while four north-edge lanes and the targeted zones come together; 50% to those caught after 8 s.",
+        "The knockback and the eight hornet directions are not reproduced: being in the area is the hit."
+      ],
+      "trials": [
+        {
+          "name": "Hornet Formation",
+          "why": "tip 4314409 and the guide's Hornet Formation",
+          "start": { "firstMs": 25000, "everyMs": 75000 },
+          "tips": [4314409],
+          "windowMs": 8000,
+          "objects": [
+            { "npc": 4330006, "lane": [60, 5], "at": { "points": [22, 23, 24, 25, 26, 27], "count": 4 }, "why": "hornets charging north to south" },
+            { "npc": 4330006, "lane": [60, 5], "at": { "points": [48, 49, 50, 51, 52, 53], "count": 4 }, "why": "hornets charging west to east" }
+          ],
+          "rule": "avoid",
+          "radius": 3,
+          "fail": { "who": "failing", "hpPercent": 40, "skill": 4331301 }
+        },
+        {
+          "name": "Hornet Advance",
+          "why": "tip 4314409 and the guide's Hornet Advance: a line with a gap",
+          "start": { "firstMs": 50000, "everyMs": 75000 },
+          "tips": [4314409],
+          "windowMs": 8000,
+          "objects": [ { "npc": 4330006, "lane": [60, 10], "at": { "points": [61, 62, 63, 64, 65, 66], "count": 5 }, "why": "five of six rows march: one gap" } ],
+          "rule": "avoid",
+          "radius": 3,
+          "fail": { "who": "failing", "hpPercent": 30, "skill": 4331601 }
+        },
+        {
+          "name": "Hornet Charge",
+          "why": "tip 4314410 and the guide's Hornet Charge",
+          "start": { "firstMs": 70000, "everyMs": 75000 },
+          "tips": [4314410],
+          "windowMs": 5000,
+          "marks": { "count": 2 },
+          "objects": [ { "npc": 4330004, "at": { "onMarked": true }, "why": "a warning zone under each targeted player" } ],
+          "rule": "avoid",
+          "radius": 6,
+          "fail": { "who": "failing", "hpPercent": 45, "skill": 4331501 }
+        },
+        {
+          "name": "Angry",
+          "why": "tip 4314411: infantry and cavalry together",
+          "start": { "hp": [50] },
+          "tips": [4314411],
+          "windowMs": 8000,
+          "boss": { "hold": true, "show": 4332101 },
+          "marks": { "count": 2 },
+          "objects": [
+            { "npc": 4330006, "lane": [60, 5], "at": { "points": [22, 23, 24, 25, 26, 27], "count": 4 } },
+            { "npc": 4330004, "at": { "onMarked": true } }
+          ],
+          "rule": "avoid",
+          "radius": 6,
+          "fail": { "who": "failing", "hpPercent": 50, "skill": 4332101 }
+        }
+      ]
+    },
+    "maya": {
+      "name": "Maya (five-player raid, Ant Hell 3120501)",
+      "bosses": [4340005, 4340000],
+      "evidence": [
+        "ChatConfig 5201 (CombatCountdownTip) 'Quicksand will strike in ${1} seconds! Hide behind a stone pillar so you don't get pulled in!', 5202 'Maya is summoning quicksand again! Hide behind a stone pillar...', 5203 'Sandstorm meteors will strike in ${1} seconds! Get behind a stone pillar to avoid taking damage!'.",
+        "TenChallengeHandbookIDConfig 1050502 Quicksand Storm (pulled to the centre, meteors, then a quicksand storm; use the stone pillars generated on the field), 1050503 Petrify Mist (a sand tornado launching small tornadoes), 1050501 Silk Spit.",
+        "NPCConfig 4340006 'Magic Circle_Maya Stone Pillar' (unit 33114, the pillar's air-wall effect), 4340015 'Magic Circle_Petrifying Mist new' (unit 40058); skills 4342601 New Ultimate and 4343401 'New Ultimate@{1}' ('creates Stone Pillars, then pulls players toward the center... arena-wide circular AOEs from the edge'), 4342301 Petrifying Mist Tracking (a sand tornado at each targeted player's location); BuffConfig 4340301 Petrify (cannot use skills or move, 3 s).",
+        "Scene editor sc_pm_pve5anthell_001_dg01: mark points 32-35 on the diagonals 14 m from the boss point 17, 36-43 on rows 15 m north and south; six air walls 14 m out (the pillars' bodies)."
+      ],
+      "guessed": [
+        "Quicksand 35 s in and every 70 s: Maya holds (4342601) for 10 s while one stone pillar per player (two to four) rises at the inner diagonal points; a player not in a pillar's shadow (2 m either side, 6 m deep, as seen from Maya) takes 50%.",
+        "Petrify Mist 55 s in and every 70 s: a mist circle lands under every player; still within 4 m after 4 s: 30% and Petrify for 3 s.",
+        "Sandstorm meteors at 40% HP: as Quicksand with the pillars at the north and south row points 36, 37, 40, 41 (about 15 m out) and 8 s (4343401).",
+        "The pull to the centre and Silk Spit's link are not reproduced (the link's pull is a server movement the data does not describe)."
+      ],
+      "trials": [
+        {
+          "name": "Quicksand",
+          "why": "tip 5201 and the guide's Quicksand Storm",
+          "start": { "firstMs": 35000, "everyMs": 70000 },
+          "tips": [5201],
+          "tipParam": "countdown",
+          "windowMs": 10000,
+          "boss": { "hold": true, "show": 4342601 },
+          "objects": [ { "npc": 4340006, "at": { "points": [32, 33, 34, 35], "perPlayer": 1, "min": 2, "max": 4 }, "why": "the stone pillars" } ],
+          "rule": "shelter",
+          "width": 2,
+          "depth": 6,
+          "fail": { "who": "failing", "hpPercent": 50, "skill": 4342601, "why": "pulled into the quicksand" }
+        },
+        {
+          "name": "Petrify Mist",
+          "why": "the guide's Petrify Mist and Petrifying Mist Tracking 4342301",
+          "start": { "firstMs": 55000, "everyMs": 70000 },
+          "windowMs": 4000,
+          "objects": [ { "npc": 4340015, "at": { "onPlayers": true }, "why": "a mist circle under every player" } ],
+          "rule": "avoid",
+          "radius": 4,
+          "fail": { "who": "failing", "hpPercent": 30, "skill": 4342301, "buff": 4340301, "buffMs": 3000 }
+        },
+        {
+          "name": "Sandstorm meteors",
+          "why": "tips 5202 and 5203: behind a stone pillar again",
+          "start": { "hp": [40] },
+          "tips": [5202, 5203],
+          "tipParam": "countdown",
+          "windowMs": 8000,
+          "boss": { "hold": true, "show": 4343401 },
+          "objects": [ { "npc": 4340006, "at": { "points": [36, 37, 40, 41], "perPlayer": 1, "min": 2, "max": 4 }, "why": "the pillars on the north and south rows, 15 m out" } ],
+          "rule": "shelter",
+          "width": 2,
+          "depth": 6,
+          "fail": { "who": "failing", "hpPercent": 50, "skill": 4343401 }
+        }
+      ]
+    },
+    "osiris": {
+      "name": "Osiris (five-player raid, Pyramid 3120601)",
+      "bosses": [4360004, 4360000],
+      "evidence": [
+        "ChatConfig 5003 (CombatCountdownTip) 'Dark Pulse will be unleashed in ${1} seconds! Use Dark Pulse to destroy the Horongs!', 5004 'Star Shift will strike in ${1} seconds! Keep moving to dodge it!'.",
+        "TenChallengeHandbookIDConfig 1050601 Summon Horong (they land, explode and remain), 1050602 Dark Pulse (a beam launched at a player passes between players, who reposition to steer it and detonate the Horongs), 1050603 Astral Shift (walls of fire rotating around the centre).",
+        "NPCConfig 4360006 'Side-by-Side Horongs' (type 4, unit 33127 the Horong's blue fire), 4360008 Astral Shift (unit 33038 'Osiris star-shift circle'); skills 4361301 Dark Pulse, 4361401 Horong Split ('all Horongs launch energy orbs'), 4361701 Astral Shift ('every Horong moves in a circle around the centre').",
+        "Scene editor sc_pm_pve5pryd_001_dg01: monster points 58-63 and 65-73 scattered 10-25 m around the boss point 19; point 20 'Star Shift' at the centre."
+      ],
+      "guessed": [
+        "Dark Pulse 25 s in and every 60 s: one Horong per player (two to four) stands at random scattered points; every 4 s Osiris aims a Dark Pulse at a random player, a 40 x 4 m line from him through that player that detonates the Horongs on it. Each Horong left after 20 s splits for 15% to everyone (at most 45%).",
+        "The pulse itself deals no damage and does not bounce: standing behind a Horong (as seen from Osiris) is how the players steer it.",
+        "Astral Shift 55 s in and every 60 s: a star-shift circle under every player; still within 3 m after 5 s: 35%."
+      ],
+      "trials": [
+        {
+          "name": "Dark Pulse",
+          "why": "tip 5003 and the guide's Summon Horong and Dark Pulse",
+          "start": { "firstMs": 25000, "everyMs": 60000 },
+          "tips": [5003],
+          "tipParam": "countdown",
+          "windowMs": 20000,
+          "boss": { "casts": [ { "skill": 4361301, "everyMs": 4000, "beam": [40, 4] } ] },
+          "objects": [ { "npc": 4360006, "at": { "points": [58, 59, 60, 61, 62, 63, 65, 66, 67, 68, 69, 70, 71, 72, 73], "perPlayer": 1, "min": 2, "max": 4 }, "why": "the Horongs" } ],
+          "rule": "kill",
+          "radius": 2,
+          "fail": { "who": "all", "hpPercent": 15, "perObject": true, "capPercent": 45, "skill": 4361401, "why": "each Horong left splits into energy orbs" }
+        },
+        {
+          "name": "Astral Shift",
+          "why": "tip 5004: keep moving",
+          "start": { "firstMs": 55000, "everyMs": 60000 },
+          "tips": [5004],
+          "tipParam": "countdown",
+          "windowMs": 5000,
+          "objects": [ { "npc": 4360008, "at": { "onPlayers": true }, "why": "a star-shift circle where every player stands" } ],
+          "rule": "avoid",
+          "radius": 3,
+          "fail": { "who": "failing", "hpPercent": 35, "skill": 4361701 }
+        }
+      ]
+    },
+    "pharaoh": {
+      "name": "Pharaoh (five-player raid, Sphinx 3120701)",
+      "bosses": [4370000, 4370001],
+      "evidence": [
+        "ChatConfig 4370001 'Your teammate ${1} is trapped in a coffin! Break it open and rescue them!', 4370004 'Kill the Pharaoh's Coffin as soon as possible!', 4370002 'Pharaoh is unleashing Cleansing Light! Quickly, hide behind the Pyramid!', 4314408 'Pharaoh is about to unleash powerful Damage Skills. Get behind an obstacle!', 4370005 'Move Away from the marked player!'.",
+        "TenChallengeHandbookIDConfig 1050701 Death Ray (the Eye of the Pyramid emits a ray; players hit take heavy damage), 1050702 Coffin Trap (the coffin pulls a selected player inside; break it before it sinks), 1050703 Divine Light Purification (a brief charge, then an enormous area; hide behind the Pyramid).",
+        "NPCConfig 4370002 Pharaoh's Coffin (unit 33123), 4370003/4370004 Pyramid (unit 33124, AI RaidFive_Boss07_Jzt1); BuffConfig 4370501 Shroud ('entangled in the Pharaoh's burial shroud'), 4374901 'AOE Marker', 4375101 Pyramid Laser; skills 4372101 Coffin Bandage Restraint, 4371101 Divine Light Purification (8 s), 4370401 Grasp of the Dead, 4375101 Death Ray.",
+        "Scene editor sc_pm_pve5sphinx_001_dg01: group 52 (points 53, 66-69; 66-69 are the four corners with an air wall each, the pyramids' bodies), points 22-25 one step inside each corner facing the centre."
+      ],
+      "guessed": [
+        "Coffin Trap 25 s in and every 60 s: a random player is wrapped in the Shroud and a coffin stands on them; 4 hits per player break it within 12 s, else the trapped player takes 60%.",
+        "Divine Light Purification 45 s in and every 60 s: Pharaoh holds charging (4371101) for 8 s while the pyramids stand at the four corners; a player outside every pyramid's shadow (2 m either side, 6 m deep, as seen from him) takes 55%.",
+        "Marked 65 s in and every 60 s: two random players get the AOE Marker; after 6 s a marked player with anyone else within 6 m, and those beside them, take 40% as Grasp of the Dead.",
+        "Death Ray 85 s in and every 60 s: two pyramids at random inner corner points fire across the arena, each a 45 x 6 m lane toward the centre; in a lane after 6 s: 50%."
+      ],
+      "trials": [
+        {
+          "name": "Coffin Trap",
+          "why": "tips 4370001 and 4370004 and the guide's Coffin Trap",
+          "start": { "firstMs": 25000, "everyMs": 60000 },
+          "tips": [4370001, 4370004],
+          "tipParam": "marked",
+          "windowMs": 12000,
+          "marks": { "count": 1, "buff": 4370501 },
+          "objects": [ { "npc": 4370002, "monster": true, "hits": 4, "at": { "onMarked": true }, "why": "the coffin around the trapped player" } ],
+          "rule": "kill",
+          "radius": 3,
+          "fail": { "who": "marked", "hpPercent": 60, "skill": 4372101, "why": "the coffin sinks with the player" }
+        },
+        {
+          "name": "Divine Light Purification",
+          "why": "tips 4370002 and 4314408 and the guide's Divine Light Purification",
+          "start": { "firstMs": 45000, "everyMs": 60000 },
+          "tips": [4370002, 4314408],
+          "windowMs": 8000,
+          "boss": { "hold": true, "show": 4371101 },
+          "objects": [ { "npc": 4370003, "at": { "points": [66, 67, 68, 69] }, "why": "the pyramids at the corners" } ],
+          "rule": "shelter",
+          "width": 2,
+          "depth": 6,
+          "fail": { "who": "failing", "hpPercent": 55, "skill": 4371101 }
+        },
+        {
+          "name": "Marked",
+          "why": "tip 4370005",
+          "start": { "firstMs": 65000, "everyMs": 60000 },
+          "tips": [4370005],
+          "windowMs": 6000,
+          "marks": { "count": 2, "buff": 4374901 },
+          "rule": "spread",
+          "radius": 6,
+          "fail": { "who": "failing", "hpPercent": 40, "skill": 4370401 }
+        },
+        {
+          "name": "Death Ray",
+          "why": "the guide's Death Ray: the Eye of the Pyramid",
+          "start": { "firstMs": 85000, "everyMs": 60000 },
+          "windowMs": 6000,
+          "objects": [ { "npc": 4370004, "lane": [45, 6], "buffs": [4375101], "at": { "points": [22, 23, 24, 25], "count": 2 }, "why": "two pyramids firing toward the centre" } ],
+          "rule": "avoid",
+          "radius": 3,
+          "fail": { "who": "failing", "hpPercent": 50, "skill": 4375101 }
+        }
+      ]
+    },
+    "baphomet": {
+      "name": "Baphomet (five-player raid, Labyrinth 3120901)",
+      "bosses": [4390000, 4390001],
+      "evidence": [
+        "ChatConfig 4314472 'Baphomet is about to unleash a Full-screen attack! Quick, get behind a stone pillar!', 4314475 'The stone pillar is about to explode! Move Away!', 4314474 'Stop the illusions from approaching Baphomet!', 4314476 'Baphomet will continuously unleash scythes. Keep moving to dodge them!', 4314473 'Baphomet will Charge toward a player! Quickly, hide behind a Stone Pillar!'.",
+        "TenChallengeHandbookIDConfig 1050901 Scythe Dance (back to the centre, scythe slashes around him; keep evading), 1050902 Demonic Pillar (stone pillars, then a targeted skill; hide behind the pillars), 1050903 Summon Evil (illusions around the field move toward the centre; kill them before they reach it).",
+        "NPCConfig 4390004/4390005 and 4390012-4390017 the stone pillars (units 33132-33136 'pillar', sandpillar models), 4390003 the illusion (unit 33131, Baphomet's model, born buff 4390401 for 9 s), 4390002 'Baphomet AoE Magic Circle' (unit 33024 'Baphomet hell ring'); skills 4393301 Baphomet_Allground (6 s, 15x ATK), 4392501 Baphomet_Zhuzibaozha (the pillar blast), 4392801 Baphomet_Xiaoguai (the illusions), 4391601 Baphomet_Shanxing_270 (8.2 s scythe sweep).",
+        "Scene editor sc_pm_pve5maze_001_dg01: group 28 (points 29-34, a hexagon 20 m around the boss point 26 facing in) with group 27 (six air walls 17.5 m out: the pillars' bodies), group 35 (points 36-41, a hexagon 30 m out facing in)."
+      ],
+      "guessed": [
+        "Demonic Pillar 30 s in and every 70 s: Baphomet holds (4393301) for 8 s while the six pillars stand at 29-34; a player outside every pillar's shadow (2 m either side, 6 m deep, as seen from him) takes 50%.",
+        "Pillar blast 44 s in and every 70 s (right after it): the pillars stand again and explode after 5 s; within 5 m of one: 30%.",
+        "Summon Evil 60 s in and every 70 s: one illusion per player (two to six) at the outer hexagon 36-41; they stand where they appear (inferred: they do not walk to the centre) and never strike; 6 hits per player kill one; each left after 20 s costs everyone 15% (at most 45%).",
+        "Scythe Dance at 60% and 30% HP: he holds sweeping (4391601) while a hell ring lands under every player; still within 3 m after 5 s: 35%.",
+        "The charge at a player (4314473, Baphomet_Rush1) stays out: the pillar rule already asks for cover, and a marked-only shelter has no evidence."
+      ],
+      "trials": [
+        {
+          "name": "Demonic Pillar",
+          "why": "tip 4314472 and the guide's Demonic Pillar",
+          "start": { "firstMs": 30000, "everyMs": 70000 },
+          "tips": [4314472],
+          "windowMs": 8000,
+          "boss": { "hold": true, "show": 4393301 },
+          "objects": [ { "npc": 4390004, "at": { "points": [29, 30, 31, 32, 33, 34] }, "why": "the stone pillars" } ],
+          "rule": "shelter",
+          "width": 2,
+          "depth": 6,
+          "fail": { "who": "failing", "hpPercent": 50, "skill": 4393301, "why": "the full-screen attack" }
+        },
+        {
+          "name": "Pillar blast",
+          "why": "tip 4314475: the pillars explode",
+          "start": { "firstMs": 44000, "everyMs": 70000 },
+          "tips": [4314475],
+          "windowMs": 5000,
+          "objects": [ { "npc": 4390004, "at": { "points": [29, 30, 31, 32, 33, 34] } } ],
+          "rule": "avoid",
+          "radius": 5,
+          "fail": { "who": "failing", "hpPercent": 30, "skill": 4392501 }
+        },
+        {
+          "name": "Summon Evil",
+          "why": "tip 4314474 and the guide's Summon Evil",
+          "start": { "firstMs": 60000, "everyMs": 70000 },
+          "tips": [4314474],
+          "windowMs": 20000,
+          "objects": [ { "npc": 4390003, "monster": true, "still": true, "hits": 6, "at": { "points": [36, 37, 38, 39, 40, 41], "perPlayer": 1, "min": 2, "max": 6 }, "why": "the illusions on the outer hexagon" } ],
+          "rule": "kill",
+          "radius": 3,
+          "fail": { "who": "all", "hpPercent": 15, "perObject": true, "capPercent": 45, "skill": 4392801, "why": "each illusion reaching him" }
+        },
+        {
+          "name": "Scythe Dance",
+          "why": "tip 4314476 and the guide's Scythe Dance",
+          "start": { "hp": [60, 30] },
+          "tips": [4314476],
+          "windowMs": 5000,
+          "boss": { "hold": true, "show": 4391601 },
+          "objects": [ { "npc": 4390002, "at": { "onPlayers": true }, "why": "a hell ring under every player" } ],
+          "rule": "avoid",
+          "radius": 3,
+          "fail": { "who": "failing", "hpPercent": 35, "skill": 4391601 }
+        }
+      ]
+    }
+  }
+}

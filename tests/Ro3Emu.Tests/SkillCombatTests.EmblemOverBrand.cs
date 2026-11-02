@@ -39,6 +39,8 @@ public sealed partial class SkillCombatTests
         IsolateDirectHealing();
         await Gm("echogold", "!lvl 99"); await Gm("echogold", "!job 1410");
         await Teach("echogold", 11604, level); await Teach("echogold", 11607);
+        // OverBrand／Hesperus 的各模式皆要求 [2001,5]：實際穿戴 subtype 5 的槍。
+        await EquipConditionFixtureAsync("echogold", 2050120);
         await HealingStat(bot, 103, 1000); await HealingStat(bot, 102, 10000);
         var source = Session("echogold");
         var combat = _app.Services.GetRequiredService<CombatService>(); combat.Rolls = new CardOffenceRolls();
@@ -114,6 +116,7 @@ public sealed partial class SkillCombatTests
         foreach (var name in new[] { "goldpvp", "goldfoe" })
         { await Gm(name, "!lvl 99"); await Gm(name, "!job 1410"); }
         await Teach("goldpvp", 11604, 5); await Teach("goldpvp", 11607);
+        await EquipConditionFixtureAsync("goldpvp", 2050120); // 保留原版 [2001,5] 裝備門檻。
         var source = Session("goldpvp"); var target = Session("goldfoe");
         var combat = _app.Services.GetRequiredService<CombatService>();
         var instances = _app.Services.GetRequiredService<InstanceService>();

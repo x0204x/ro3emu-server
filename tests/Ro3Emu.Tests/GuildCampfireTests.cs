@@ -68,7 +68,7 @@ public sealed class GuildCampfireTests : IAsyncLifetime
     private async Task Gm(BotClient bot, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={bot.Account}", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     private GameSession Session(BotClient bot) => _app.Services.GetRequiredService<SessionRegistry>()
@@ -173,6 +173,9 @@ public sealed class GuildCampfireTests : IAsyncLifetime
         await Gm(alice, "!item 1201031 1");
         await alice.SendGameAsync(GuildCampfireService.Accelerant, fuel);
         Assert.Equal(0, (await Next(alice, GuildCampfireService.Accelerant, GuildCampFireAddAccelerantRsp.Parser)).Result);
+        // CampFireFuel 1 _iInteractPerformId 3: InteractPerformance status 8 "add accelerant" (type 7) at the fire.
+        var perform = await Next(alice, WorldInteractionService.Change, InteractChangeNtf.Parser, n => n.DataInfo.StateId == 8);
+        Assert.Equal(((long)alice.Self!.Uuid, (long)fire.Uuid, 7), (perform.Uid, perform.DataInfo.ActiveObjId, (int)perform.DataInfo.EType));
         Assert.Equal((1, -1L, (int)EconomyReason.GuildActivityCost), FuelLedger((long)alice.Self!.Uuid));
         await alice.SendGameAsync(GuildCampfireService.Accelerant, fuel);
         Assert.Equal(ErrorCodes.ItemsShort,
@@ -182,8 +185,6 @@ public sealed class GuildCampfireTests : IAsyncLifetime
         _clock.Advance(30);
         Assert.Equal(2, (await Next(alice, GuildCampfireService.Stage, GuildCampFireStageInfo.Parser,
             r => r.NowStage == 2)).NowStage);
-        var lucky = await Next(alice, GuildCampfireService.Lucky, GuildCampFireLuckyPlayerNotify.Parser);
-        Assert.Equal((long)alice.Self!.Uuid, Assert.Single(lucky.PlayerList).PlayerId);
 
         MonsterUnit? fruit = null;
         for (int i = 0; i < 100 && fruit == null; i++)
@@ -209,10 +210,27 @@ public sealed class GuildCampfireTests : IAsyncLifetime
         await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser,
             hit => hit.Dsts.Any(d => d.DstID == fruit.Uid && d.IsDead));
         var nextFruit = await Next(alice, GuildCampfireService.Fruit, GuildCampFireCreateMonsterFruitNotify.Parser);
-        Assert.Single(nextFruit.Infos);
-        Assert.True(nextFruit.Infos[0].NpcGuid > 0);
+        Assert.All(nextFruit.Infos, i => Assert.True(i.NpcGuid > 0));
+        // The kill drops one or two Transformation Manuals (NPC 7020027) beside the next fruit monster.
+        var manuals = await Next(alice, GameAoiSink.SyncAoiView, AoIViewChangeData.Parser,
+            r => r.Bases.Any(b => b.EntityTemplateID == GuildCampfireService.ManualNpc));
+        var manual = manuals.Bases.First(b => b.EntityTemplateID == GuildCampfireService.ManualNpc);
+        Assert.Contains(nextFruit.Infos, i => i.NpcGuid == (long)manual.Uuid);
+        await Move(alice, manual.MovementInfo.Pos);
+        var transform = new NpcInteractionReq { NpcUid = (long)manual.Uuid, InteractionId = GuildCampfireService.ManualInteraction };
+        await alice.SendGameAsync(SceneService.NpcInteraction, transform);
+        Assert.Equal(0, (await Next(alice, SceneService.NpcInteraction, NpcInteractionRsp.Parser)).Result);
+        Assert.Contains(Session(alice).Buffs, b => b.ConfigId is 7020101 or 7020201 or 7020301 or 7020401 or 7020501);
+        await alice.SendGameAsync(SceneService.NpcInteraction, transform);
+        Assert.Equal(ErrorCodes.NpcMissing, (await Next(alice, SceneService.NpcInteraction, NpcInteractionRsp.Parser)).Result);
 
-        _clock.Advance(860); // 20:15, configured client boss stage 4
+        // 20:04:30, 240 s into stage 2: the Third Prize draw (action 5). One member is below the 10-player band: no winner.
+        _clock.Advance(240);
+        var lucky = await Next(alice, GuildCampfireService.Lucky, GuildCampFireLuckyPlayerNotify.Parser);
+        Assert.Equal(3, lucky.AwardLevel);
+        Assert.Empty(lucky.PlayerList);
+
+        _clock.Advance(620); // 20:15, configured client boss stage 4
         Assert.Equal(4, (await Next(alice, GuildCampfireService.Stage, GuildCampFireStageInfo.Parser,
             r => r.NowStage == 4)).NowStage);
         MonsterUnit? boss = null;

@@ -28,8 +28,8 @@ public sealed partial class DungeonTests
         var qte = data.Table("QTEEventConfig").Values.Single(row => GameData.Int(row, "_iQTEID") == 6);
         Assert.Equal((6000L, 3L), (GameData.Int(qte, "_iTime"), GameData.Int(qte, "_iType")));
         Assert.Equal("F", qte.GetProperty("_kShortcutKey").GetString()); // inherited G Lua default
-        Assert.Equal(new long[] { 2, 130162 }, qte.GetProperty("_kSuccessEvent").EnumerateArray().Select(x => x.GetInt64()));
-        Assert.Equal(new long[] { 2, 130163 }, qte.GetProperty("_kFailureEvent").EnumerateArray().Select(x => x.GetInt64()));
+        Assert.Equal([2, 130162], qte.GetProperty("_kSuccessEvent").EnumerateArray().Select(x => x.GetInt64()));
+        Assert.Equal([2, 130163], qte.GetProperty("_kFailureEvent").EnumerateArray().Select(x => x.GetInt64()));
 
         await using var alice = await InWorld("Alice");
         AirshipStoryTestPace();

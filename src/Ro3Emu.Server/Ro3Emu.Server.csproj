@@ -62,6 +62,7 @@
     <EmbeddedResource Include="Reconstructed\dungeon-monsters.json" LogicalName="Ro3Emu.Server.Reconstructed.dungeon-monsters.json" />
     <EmbeddedResource Include="Reconstructed\ro1-monster-hp.json" LogicalName="Ro3Emu.Server.Reconstructed.ro1-monster-hp.json" />
     <EmbeddedResource Include="Reconstructed\scripted-scenes.json" LogicalName="Ro3Emu.Server.Reconstructed.scripted-scenes.json" />
+    <EmbeddedResource Include="Reconstructed\raid-trials.json" LogicalName="Ro3Emu.Server.Reconstructed.raid-trials.json" />
     <EmbeddedResource Include="Reconstructed\ro1-aggressive-monsters.json" LogicalName="Ro3Emu.Server.Reconstructed.ro1-aggressive-monsters.json" />
   </ItemGroup>
 

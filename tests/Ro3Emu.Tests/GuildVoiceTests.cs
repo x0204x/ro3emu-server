@@ -72,7 +72,7 @@ public sealed class GuildVoiceTests : IAsyncLifetime
     private async Task Gm(string name, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{_http}/ro3emu/gm?account={name.ToLowerInvariant()}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={name.ToLowerInvariant()}", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     /// <summary>Alice founds a guild with auto-accept on and Bob joins it (GuildCaravanTests' shortest path).</summary>
@@ -338,6 +338,7 @@ public sealed class GuildVoiceTests : IAsyncLifetime
 
         var log = new System.Collections.Concurrent.ConcurrentQueue<string>();
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        bob.OperatorToken = Operator.Token; // its GM raise to the join level
         await BotGuildVoice.JoinGuildAsync(bob, _http, "bob", guild, log.Enqueue, stop.Token);
         Assert.Contains(log, l => l == $"in guild {guild}");
         Assert.Equal(0, (await Join(alice, 0)).ErrorCode);

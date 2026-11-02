@@ -94,7 +94,7 @@ public sealed class ItemBoxService : IGameTicker
             _log.LogWarning("Box {Item} award {Group} does not resolve: {Reason}", item.Entry, group, error.Message);
             return ErrorCodes.ItemNoConfig;
         }
-        goods = goods.GroupBy(g => (g.Entry, g.Bind)).Select(g => (g.Key.Entry, checked(g.Sum(x => x.Count)), g.Key.Bind)).ToList();
+        goods = [.. goods.GroupBy(g => (g.Entry, g.Bind)).Select(g => (g.Key.Entry, checked(g.Sum(x => x.Count)), g.Key.Bind))];
         // No box in the data grants EXP or an expiring item; the bag exchange below carries neither.
         if (goods.Count == 0 || goods.Any(g => g.Entry is 100 or 101 || g.Bind == 2)) return ErrorCodes.FeatureUnavailable;
         var plain = goods.Where(g => g.Bind == 0).Select(g => (g.Entry, g.Count)).ToList();
@@ -103,7 +103,7 @@ public sealed class ItemBoxService : IGameTicker
         var granted = await _character.ExchangeLockedAsync(s, [], plain, new Dictionary<long, int> { [item.Guid] = count },
             popup: false, sync: false, boundGoods: bound,
             persist: tx => tx.WithEconomy(_character.FamilyEconomy(s, BoxKind, [(item.Entry, (long)count)],
-                goods.Select(g => (g.Entry, g.Count)).ToList(),
+                [.. goods.Select(g => (g.Entry, g.Count))],
                 new { Item = item.Entry, ItemGuid = item.Guid, Count = count, Award = group, Goods = goods })),
             asyncCommit: true);
         if (granted == null) return ErrorCodes.ItemsShort;

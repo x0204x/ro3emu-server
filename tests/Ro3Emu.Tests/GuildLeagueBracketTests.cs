@@ -19,14 +19,14 @@ public sealed class GuildLeagueBracketTests
         Win(GuildLeagueBracket.Pairs(prelim, scores, 1), 1);
         var semi = GuildLeagueBracket.Pairs(prelim, scores, 2);
         // OnHandleFightTwoSchedule: winners of pairs 1/3, losers of 1/3, winners of 2/4, losers of 2/4.
-        Assert.Equal(new GuildLeagueBracket.Pair[] { new(1, 5), new(2, 6), new(3, 7), new(4, 8) }, semi);
+        Assert.Equal([new(1, 5), new(2, 6), new(3, 7), new(4, 8)], semi);
         Win(semi, 2);
         var final = GuildLeagueBracket.Pairs(prelim, scores, 3);
         // OnHandleFightThreeSchedule: places 1-2, 5-6, 3-4, 7-8.
-        Assert.Equal(new GuildLeagueBracket.Pair[] { new(1, 3), new(2, 4), new(5, 7), new(6, 8) }, final);
+        Assert.Equal([new(1, 3), new(2, 4), new(5, 7), new(6, 8)], final);
         Win(final, 3);
         var places = scores.ToDictionary(p => p.Key, p => GuildLeagueBracket.Place(p.Value));
-        Assert.Equal(new[] { 1, 5, 2, 6, 3, 7, 4, 8 }, Enumerable.Range(1, 8).Select(i => places[i]));
+        Assert.Equal([1, 5, 2, 6, 3, 7, 4, 8], Enumerable.Range(1, 8).Select(i => places[i]));
         // The derivation is stable once later rounds are scored (the client recomputes it from final scores).
         Assert.Equal(semi, GuildLeagueBracket.Pairs(prelim, scores, 2));
 

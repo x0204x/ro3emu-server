@@ -57,7 +57,7 @@ public sealed partial class TradeTests : IAsyncLifetime
     private async Task Gm(string name, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{_http}/ro3emu/gm?account={name}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={name}", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     private List<InvItem> Items(BotClient bot) => _app.Services.GetRequiredService<ItemStore>().Load((long)bot.Self!.Uuid);
@@ -80,13 +80,13 @@ public sealed partial class TradeTests : IAsyncLifetime
     {
         var answer = await bot.MicroAsync("MailService", "getUserMailList", new()
         { ["Uid"] = role.ToString(), ["Start"] = 0, ["Limit"] = 150, ["MailType"] = 1 });
-        return Assert.IsType<object?[]>(answer["MailList"]).Select(raw =>
+        return [.. Assert.IsType<object?[]>(answer["MailList"]).Select(raw =>
         {
             var row = Assert.IsType<Dictionary<object, object?>>(raw);
             var args = Assert.IsType<Dictionary<object, object?>>(row["Params"]);
             return (Assert.IsType<string>(row["MailId"]), Convert.ToInt32(args["cfg_id"]),
                 MailItemList.Parser.ParseFrom(Assert.IsType<byte[]>(args["items"])));
-        }).ToArray();
+        })];
     }
 
     [ClientDataFact]

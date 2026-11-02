@@ -10,7 +10,7 @@ internal sealed class KillTaskProgressPlan : DbPlan
 {
     private readonly KillTaskProgress[] _progress;
     internal string SourceKey { get; }
-    internal IReadOnlyList<long> CreditedRoles => _progress.Select(x => x.RoleId).ToArray();
+    internal IReadOnlyList<long> CreditedRoles => [.. _progress.Select(x => x.RoleId)];
     internal KillTaskProgressPlan(string sourceKey, IReadOnlyList<KillTaskProgress> progress)
     {
         if (string.IsNullOrWhiteSpace(sourceKey) || progress.Count == 0 ||
@@ -18,17 +18,17 @@ internal sealed class KillTaskProgressPlan : DbPlan
             progress.Select(x => x.RoleId).Distinct().Count() != progress.Count)
             throw new ArgumentException("Invalid frozen kill task progress.", nameof(progress));
         SourceKey = sourceKey;
-        _progress = progress.OrderBy(x => x.RoleId).Select(x => new KillTaskProgress(x.RoleId,
+        _progress = [.. progress.OrderBy(x => x.RoleId).Select(x => new KillTaskProgress(x.RoleId,
             x.BeforeTasks is null ? null : (byte[])x.BeforeTasks.Clone(), (byte[])x.AfterTasks.Clone(),
-            x.BeforeFollowup is null ? null : (byte[])x.BeforeFollowup.Clone(), (byte[])x.AfterFollowup.Clone())).ToArray();
+            x.BeforeFollowup is null ? null : (byte[])x.BeforeFollowup.Clone(), (byte[])x.AfterFollowup.Clone()))];
     }
     internal override int Bytes => 128 + _progress.Sum(x =>
         (x.BeforeTasks?.Length ?? 0) + x.AfterTasks.Length +
         (x.BeforeFollowup?.Length ?? 0) + x.AfterFollowup.Length + 128);
     internal override string Label => "task/kill-progress";
-    internal override IReadOnlyList<RoleRevisionKey> RoleWrites => _progress
+    internal override IReadOnlyList<RoleRevisionKey> RoleWrites => [.. _progress
         .SelectMany(x => new[] { RevisionStore.Role(x.RoleId, "tasks"),
-            RevisionStore.Role(x.RoleId, "task_followup") }).ToArray();
+            RevisionStore.Role(x.RoleId, "task_followup") })];
     internal override object Execute(SqliteConnection db, SqliteTransaction tx)
     {
         foreach (var item in _progress)

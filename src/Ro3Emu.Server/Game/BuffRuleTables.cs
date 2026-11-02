@@ -43,7 +43,7 @@ internal sealed partial class BuffRuleTables
     public sealed record PeriodicRule(int ConfigId, PeriodicKind Kind, int IntervalMs, bool Magic, int Element, long RatioBp,
         int HealAttr, long HealRatioBp, long HealFlat, JsonElement Row);
 
-    private static readonly ConditionalWeakTable<GameData, BuffRuleTables> Cache = new();
+    private static readonly ConditionalWeakTable<GameData, BuffRuleTables> Cache = [];
 
     public static BuffRuleTables For(GameData data) => Cache.GetValue(data, d => new BuffRuleTables(d));
 
@@ -75,12 +75,12 @@ internal sealed partial class BuffRuleTables
                 tags[(int)GameData.Int(row, "_iID")] = new((int)GameData.Int(row, "_iID"), atk, def, formula);
         }
         Tags = tags;
-        Decays = data.Table("SpecialStatusDecay").Values.Select(r => new DecayRule((int)GameData.Int(r, "_iID"),
+        Decays = [.. data.Table("SpecialStatusDecay").Values.Select(r => new DecayRule((int)GameData.Int(r, "_iID"),
                 (int)GameData.Int(r, "_iDecayType"), (int)GameData.Int(r, "_iDecayRatio"), (int)GameData.Int(r, "_iImmunityTime"),
                 (int)GameData.Int(r, "_iImmunodetection"), (int)GameData.Int(r, "_iIntervalDetection"), Ints(r, "_kBuffCategory")))
-            .Where(r => r.Categories.Length > 0).OrderBy(r => r.Id).ToArray();
-        ExclusiveStates = data.Table("StateExclusionConfig").Values
-            .Select(r => (int)GameData.Int(r, "_iSpecialStatusID")).Where(s => s > 0).Distinct().Order().ToArray();
+            .Where(r => r.Categories.Length > 0).OrderBy(r => r.Id)];
+        ExclusiveStates = [.. data.Table("StateExclusionConfig").Values
+            .Select(r => (int)GameData.Int(r, "_iSpecialStatusID")).Where(s => s > 0).Distinct().Order()];
 
         var tagsByBuff = new Dictionary<int, TagRule[]>();
         var decaysByBuff = new Dictionary<int, DecayRule[]>();
@@ -244,6 +244,6 @@ internal sealed partial class BuffRuleTables
 
     private static int[] Ints(JsonElement row, string field) =>
         row.TryGetProperty(field, out var list) && list.ValueKind == JsonValueKind.Array
-            ? list.EnumerateArray().Select(v => GameData.Number(v)).Where(v => v != null).Select(v => (int)v!.Value).ToArray()
+            ? [.. list.EnumerateArray().Select(v => GameData.Number(v)).Where(v => v != null).Select(v => (int)v!.Value)]
             : [];
 }

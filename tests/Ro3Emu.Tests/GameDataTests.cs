@@ -18,7 +18,7 @@ public sealed class GameDataTests
         var novice = Data.Row("JobConfig", 1000);
         Assert.NotNull(novice);
         Assert.Equal(JsonValueKind.Array, novice.Value.GetProperty("_kAttri").ValueKind);
-        Assert.Equal(new[] { (115L, 100d), (113L, 700d) }, GameData.Pairs(novice.Value, "_kAttri"));
+        Assert.Equal([(115L, 100d), (113L, 700d)], GameData.Pairs(novice.Value, "_kAttri"));
         Assert.Equal(700, Data.JobAttributes(1000)[113]);
         Assert.Equal("Novice", Data.TextOf(novice.Value, "_iName"));
         Assert.Equal("Zeny", Data.ItemName(1));

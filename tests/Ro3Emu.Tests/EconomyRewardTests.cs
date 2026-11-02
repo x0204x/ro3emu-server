@@ -382,7 +382,7 @@ public sealed class EconomyRewardTests : IDisposable
         Assert.Equal(2, delivered.Cut.CommitSequence);
         Assert.DoesNotContain(delivered.Holdings, h => h.Location.Compartment == EconomyCompartment.Pending);
         Assert.Equal(2, Assert.Single(_items.Load(_role)).Stack);
-        Assert.Equal(new long[] { -5, -2, 2, 5 }, delivery.Legs.Select(x => x.Delta).Order().ToArray());
+        Assert.Equal([-5, -2, 2, 5], delivery.Legs.Select(x => x.Delta).Order().ToArray());
         Assert.All(delivery.Legs, leg => Assert.Equal(EconomyLegKind.Transfer, leg.Kind));
         Assert.DoesNotContain(deliveryCheck.Issues, issue => issue.Kind == EconomyIssueKind.Corruption);
     }

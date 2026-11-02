@@ -45,7 +45,7 @@ public sealed partial class AccountStore : IDisposable
         _log = log;
         // A half-done restore may have moved the live file away; opening now would create an empty realm (C/D 19).
         DatabaseRestore.ThrowIfUnfinished(options.Value.DataDir);
-        Directory.CreateDirectory(options.Value.DataDir);
+        PrivateFiles.Directory(options.Value.DataDir);
         _databasePath = Path.Combine(options.Value.DataDir, "ro3emu.db");
         _escrowCatalog = new Lazy<EconomyCatalog>(() =>
         {
@@ -67,6 +67,8 @@ public sealed partial class AccountStore : IDisposable
             wal.CommandText = "PRAGMA journal_mode=WAL;";
             wal.ExecuteNonQuery();
         }
+        // SQLite gives the WAL and shared-memory files the database file's mode, so they follow it.
+        PrivateFiles.Files(_databasePath, _databasePath + "-wal", _databasePath + "-shm");
         using var cmd = db.CreateCommand();
         cmd.CommandText = """
             CREATE TABLE IF NOT EXISTS account (
@@ -223,6 +225,8 @@ public sealed partial class AccountStore : IDisposable
         object?[] result;
         try { result = await Writer.ExecuteAsync<object?[]>(plan); }
         catch (EconomyOperationConflictException) { throw; }
+        // Not admitted: nothing was written, so this is a definite failure, never an unknown outcome to resolve.
+        catch (DbQueueFullException) { throw; }
         catch (Exception original)
         {
             object?[]? resolved;
@@ -267,6 +271,8 @@ public sealed partial class AccountStore : IDisposable
         object?[] result;
         try { result = await Writer.ExecuteAsync<object?[]>(plan); }
         catch (EconomyOperationConflictException) { throw; }
+        // Not admitted: nothing was written, so this is a definite failure, never an unknown outcome to resolve.
+        catch (DbQueueFullException) { throw; }
         catch (Exception original)
         {
             object?[]? resolved;
@@ -418,14 +424,13 @@ public sealed partial class AccountStore : IDisposable
         FlushStagedFor(plan);
         bool cached = false;
         if (plan.RolePins.Count != 0)
-            plan.Expect(plan.RolePins.Distinct().Select(role =>
+            plan.Expect([.. plan.RolePins.Distinct().Select(role =>
             {
                 if (!fresh && OwnerVector(role) is { } vector) { cached = true; return vector; }
                 return ReadVector(role, overtaken: fresh);
-            }).ToArray());
+            })]);
         if (plan.EntityWrites.Count != 0)
-            plan.ExpectEntities(plan.EntityWrites.Distinct()
-                .Select(key => ReadSync<OwnerRevisionValue>(new OwnerRevisionReadPlan(key))).ToArray());
+            plan.ExpectEntities([.. plan.EntityWrites.Distinct().Select(key => ReadSync<OwnerRevisionValue>(new OwnerRevisionReadPlan(key)))]);
         return cached;
     }
     private DbPlan Prepare(DbPlan plan)

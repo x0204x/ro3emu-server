@@ -39,7 +39,15 @@ public sealed class DbWriterFaultTests : IDisposable
         var metrics = new DbAccessMetrics();
         using var writer = new DbWriter($"Data Source={Database}", metrics) { LazyMaxWait = TimeSpan.FromMilliseconds(30) };
         using var hold = new ManualResetEventSlim();
-        var blocker = writer.ExecuteAsync<int>(new Plan("block", _executed, () => hold.Wait(TimeSpan.FromSeconds(10))));
+        using var blocking = new ManualResetEventSlim();
+        var blocker = writer.ExecuteAsync<int>(new Plan("block", _executed, () =>
+        {
+            blocking.Set();
+            hold.Wait(TimeSpan.FromSeconds(10));
+        }));
+        // The writer opens its database before its loop, which can take longer than LazyMaxWait on a cold start. A lazy
+        // job queued by then is overdue and rightly runs first, so queue the rest once the blocker holds the writer.
+        Assert.True(blocking.Wait(TimeSpan.FromSeconds(10)));
         var durable = Enumerable.Range(0, 100).Select(i => writer.ExecuteAsync<int>(new Plan("d" + i, _executed, () => Thread.Sleep(1)))).ToList();
         var lazy = new[] { writer.ExecuteAsync<int>(new Plan("lazy0", _executed), lazy: true), writer.ExecuteAsync<int>(new Plan("lazy1", _executed), lazy: true) };
         await Task.Delay(80); // both lazy jobs are now older than LazyMaxWait

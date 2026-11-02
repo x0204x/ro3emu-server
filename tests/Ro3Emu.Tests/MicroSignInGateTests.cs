@@ -26,6 +26,9 @@ public sealed class MicroSignInGateTests : IAsyncLifetime
             o.HttpPort = httpPort;
             o.MicroGatePort = microPort;
             o.GameGatePort = gamePort;
+            // These tests probe every service from one unverified connection; the budget that closes such a
+            // connection has its own tests (MicroGateTests, MicroGateLimitTests).
+            o.AntiCheat.MicroRequestsBeforeSignIn = "100/100";
         });
         await _app.StartAsync();
         _http = $"http://127.0.0.1:{httpPort}";

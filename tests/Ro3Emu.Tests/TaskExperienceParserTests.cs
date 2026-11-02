@@ -8,7 +8,7 @@ public sealed class TaskExperienceParserTests
     [Fact]
     public void CurrentEmptyAndBaseExperienceShapesKeepTheirMeaning()
     {
-        Assert.Equal(0, TaskService.ParseTaskBaseExperience(42, Array.Empty<long>()));
+        Assert.Equal(0, TaskService.ParseTaskBaseExperience(42, []));
         Assert.Equal(0, TaskService.ParseTaskBaseExperience(42, [1, 0]));
         Assert.Equal(7, TaskService.ParseTaskBaseExperience(42, [1, 7]));
 

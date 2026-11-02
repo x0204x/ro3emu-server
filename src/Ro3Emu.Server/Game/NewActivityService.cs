@@ -12,7 +12,7 @@ namespace Ro3Emu.Server.Game;
 /// MG_NewActivity (13): configuration-driven 5013 state and 82951/82975/82976 operations. Sources:
 /// LC_DAL_NewActivity and LC_ActivityServer. All claims use the
 /// existing award transaction, including source state, costs, bound items and virtual EXP. ActivityGate
-/// serializes source requests; CharacterService owns inventory locking. Cash-shop purchases stay refused.
+/// serializes source requests; CharacterService owns inventory locking. Cash-shop orders: NewActivityService.Purchases.
 /// </summary>
 public sealed partial class NewActivityService
 {
@@ -22,7 +22,7 @@ public sealed partial class NewActivityService
 
     /// <summary>Territory owns type-22 war state; this service retains the complete 5013 catalogue and calendar.</summary>
     public Func<GameSession, PlayerActivityTerritoryWar>? TerritoryWarState { get; set; }
-    public List<Action<GameSession>> ProjectionChanged { get; } = new();
+    public List<Action<GameSession>> ProjectionChanged { get; } = [];
 
     private readonly GameData _data;
     private readonly CharacterService _character;
@@ -44,9 +44,10 @@ public sealed partial class NewActivityService
     private readonly DungeonService _dungeons;
     private readonly PronteraDefenseService _defense;
     private readonly TeamService _teams;
-    private readonly bool _freePremiumPass, _passPlay;
+    private readonly bool _freePremiumPass, _passPlay, _freeProducts;
+    private readonly int _freeTopUpsPerDay;
     private readonly ILogger<NewActivityService> _log;
-    private readonly HashSet<(GameSession Session, long Attachment)> _queued = new();
+    private readonly HashSet<(GameSession Session, long Attachment)> _queued = [];
     private long Now => _clock.GetUtcNow().ToUnixTimeSeconds();
 
     public NewActivityService(GameData data, CharacterService character, FunctionService functions, RoleStore roles,
@@ -65,6 +66,8 @@ public sealed partial class NewActivityService
         this._teams = teams;
         _freePremiumPass = options.Value.Pass.FreePremium;
         _passPlay = options.Value.Pass.Play;
+        _freeProducts = options.Value.Shop.FreeProducts;
+        _freeTopUpsPerDay = options.Value.Shop.FreeTopUpsPerDay;
         if (_passPlay) InitializePassPlay(combat, dungeons, mvps, tasks, chat);
         dungeons.JourneyWon = JourneyDungeonWonAsync;
         dungeons.CanStageJourneyVictory = session => ActivityError(session, 112, 15) == 0;
@@ -131,7 +134,7 @@ public sealed partial class NewActivityService
             || _seasons.OpenContent.OpensStageActivities && StageActivities(Playbook(session)).Contains(GameData.Int(row, "_iID"))
             || _functions.ConditionMet(session, GameData.Int(row, "_kOpenCondition")));
 
-    private readonly Dictionary<int, HashSet<long>> _stageActivities = new();
+    private readonly Dictionary<int, HashSet<long>> _stageActivities = [];
 
     /// <summary>The activities the playbook's season page lists by stage (MultiverseStage._kStageActivity).</summary>
     internal IReadOnlySet<long> StageActivities(int book)
@@ -139,7 +142,7 @@ public sealed partial class NewActivityService
         lock (_stageActivities)
         {
             if (_stageActivities.TryGetValue(book, out var ids)) return ids;
-            ids = new HashSet<long>();
+            ids = [];
             foreach (var row in _data.Table("MultiverseStage").Values.Where(r => GameData.Int(r, "_iMultiverseID") == book))
                 if (row.TryGetProperty("_kStageActivity", out var list) && list.ValueKind == JsonValueKind.Array)
                     foreach (var id in list.EnumerateArray())
@@ -463,7 +466,7 @@ public sealed partial class NewActivityService
             }, ownedAward: journeyEconomy);
             if (!_deadlines.IsCurrent(session, lease) || session.Role?.Id != roleId)
                 throw new OperationCanceledException("Activity attachment changed during award delivery.");
-            if (!accepted) return _character.ShortageOf(session, (costs ?? []).Select(c => (c.Entry, (long)c.Count)).ToArray());
+            if (!accepted) return _character.ShortageOf(session, [.. (costs ?? []).Select(c => (c.Entry, (long)c.Count))]);
             if (beforeSync != null) await beforeSync();
             if (!_deadlines.IsCurrent(session, lease))
                 throw new OperationCanceledException("Activity attachment changed before projection delivery.");

@@ -37,10 +37,14 @@ public sealed partial class PanelSite
     /// <summary>True when the role needs two-factor authentication on this server (GM and Admin, when required).</summary>
     private bool NeedsTwoFactor(PanelRole role) => role >= PanelRole.Gm && _options.RequireAdmin2FA == true;
 
-    /// <summary>The account's staff role as the routes see it: none while a required second factor is not on yet.</summary>
-    private async Task<PanelRole> StaffRoleAsync(string account)
+    /// <summary>
+    /// The account's staff role as the routes see it: none while a required second factor is not on yet. A forwarded
+    /// request comes from a player behind a proxy, not from this machine, so it never gets the Admin of an open local
+    /// server (<see cref="IPanelOperations.ListedRoleOf"/>), whatever the proxy says its Host is.
+    /// </summary>
+    private async Task<PanelRole> StaffRoleAsync(string account, HttpRequest request)
     {
-        var role = _ops.RoleOf(account);
+        var role = ClientAddresses.IsForwarded(request) ? _ops.ListedRoleOf(account) : _ops.RoleOf(account);
         if (NeedsTwoFactor(role) && !(await _ops.TwoFactorAsync(account)).Enabled) return PanelRole.None;
         return role;
     }

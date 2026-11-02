@@ -79,7 +79,7 @@ public sealed partial class AuctionContentTests
         // The client decoder (LC_DAL_Mail._decodeGetAuction) reads price, currency item, auction tab and item as integers.
         var awardParams = LanguageData.Parser.ParseFrom(award.ContentParams!).Param;
         Assert.All(awardParams, p => Assert.Equal(LanguageParamType.Int, p.Tp));
-        Assert.Equal([(long)bought.FixedPrice, bought.Currency, 1003L, bought.Entry], awardParams.Select(p => p.IntParam).ToArray());
+        Assert.Equal([(long)bought.FixedPrice, bought.Currency, 1003L, bought.Entry], [.. awardParams.Select(p => p.IntParam)]);
         var dividend = Assert.Single(Mailbox(alice).Letters, m => m.DeliveryKey == $"auction:{bought.Id}:dividend:{participant}");
         Assert.Equal(1100, dividend.TemplateId);
         Assert.Equal(bought.FixedPrice, Assert.Single(dividend.Attachments).Count);
@@ -153,7 +153,7 @@ public sealed partial class AuctionContentTests
         long role = (long)alice.Self!.Uuid;
         var service = Service<AuctionService>();
         Assert.Equal(0, await service.PublishGuildLeagueAsync("league-one", guild, 1, true,
-            Enumerable.Repeat(role, 20).ToArray()));
+            [.. Enumerable.Repeat(role, 20)]));
         Assert.Empty(Service<AuctionStore>().Items());
         // Challenge 1002 stage 1 explicitly maps to the empty award 1003.
         Assert.Equal(0, await service.PublishGuildChallengeAsync("empty-stage", guild, 1002, 1, [role]));

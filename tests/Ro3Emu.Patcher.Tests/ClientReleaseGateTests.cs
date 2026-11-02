@@ -98,7 +98,7 @@ public sealed class ClientReleaseGateTests : IDisposable
     public async Task MetadataOnlyEpochIncreaseKeepsTheSameVerifiedClientPlayable()
     {
         var release = await PublishAsync();
-        using var repository = new RepositoryClient(new Uri("http://repo.test/"), Trust, new FileRepoHandler(Repo));
+        using var repository = new RepositoryClient(new Uri("https://repo.test/"), Trust, new FileRepoHandler(Repo));
         var updater = new Updater(new InstallLayout(Game), repository);
         var required = Requirement(release.Channel);
         await EnsureAsync(updater, repository, required);
@@ -128,7 +128,7 @@ public sealed class ClientReleaseGateTests : IDisposable
     public async Task ServerMinimumEpochCanAdvanceDuringASameClientVerification()
     {
         var release = await PublishAsync();
-        using var repository = new RepositoryClient(new Uri("http://repo.test/"), Trust, new FileRepoHandler(Repo));
+        using var repository = new RepositoryClient(new Uri("https://repo.test/"), Trust, new FileRepoHandler(Repo));
         var updater = new Updater(new InstallLayout(Game), repository);
         var first = Requirement(release.Channel);
         await EnsureAsync(updater, repository, first);
@@ -161,7 +161,7 @@ public sealed class ClientReleaseGateTests : IDisposable
     {
         var release = await PublishAsync();
         var handler = new FileRepoHandler(Repo);
-        using var repository = new RepositoryClient(new Uri("http://repo.test/"), Trust, handler);
+        using var repository = new RepositoryClient(new Uri("https://repo.test/"), Trust, handler);
         var updater = new Updater(new InstallLayout(Game), repository);
         var required = Requirement(release.Channel);
         Assert.True((await EnsureAsync(updater, repository, required)).Updated);
@@ -183,7 +183,7 @@ public sealed class ClientReleaseGateTests : IDisposable
     public async Task ManifestVerificationFindsMissingFilesOmittedFromLocalState()
     {
         var release = await PublishAsync();
-        using var repository = new RepositoryClient(new Uri("http://repo.test/"), Trust, new FileRepoHandler(Repo));
+        using var repository = new RepositoryClient(new Uri("https://repo.test/"), Trust, new FileRepoHandler(Repo));
         var updater = new Updater(new InstallLayout(Game), repository);
         var required = Requirement(release.Channel);
         await EnsureAsync(updater, repository, required);
@@ -203,7 +203,7 @@ public sealed class ClientReleaseGateTests : IDisposable
     public async Task ServerFailureDoesNotFallBackToAnOldManagedInstall()
     {
         var release = await PublishAsync();
-        using var repository = new RepositoryClient(new Uri("http://repo.test/"), Trust, new FileRepoHandler(Repo));
+        using var repository = new RepositoryClient(new Uri("https://repo.test/"), Trust, new FileRepoHandler(Repo));
         var updater = new Updater(new InstallLayout(Game), repository);
         await EnsureAsync(updater, repository, Requirement(release.Channel));
         string stateHash = Hashing.Sha256File(StatePath);
@@ -218,7 +218,7 @@ public sealed class ClientReleaseGateTests : IDisposable
     public async Task InvalidSignedMetadataNeverFallsBackToTheManagedInstall(bool expired)
     {
         var release = await PublishAsync();
-        using var repository = new RepositoryClient(new Uri("http://repo.test/"), Trust, new FileRepoHandler(Repo));
+        using var repository = new RepositoryClient(new Uri("https://repo.test/"), Trust, new FileRepoHandler(Repo));
         var updater = new Updater(new InstallLayout(Game), repository);
         var required = Requirement(release.Channel);
         await EnsureAsync(updater, repository, required);
@@ -236,7 +236,7 @@ public sealed class ClientReleaseGateTests : IDisposable
     public async Task AVerifiedCurrentReleaseCanStartAnotherGameWithoutWrites()
     {
         var release = await PublishAsync();
-        using var repository = new RepositoryClient(new Uri("http://repo.test/"), Trust, new FileRepoHandler(Repo));
+        using var repository = new RepositoryClient(new Uri("https://repo.test/"), Trust, new FileRepoHandler(Repo));
         var updater = new Updater(new InstallLayout(Game), repository);
         var required = Requirement(release.Channel);
         await EnsureAsync(updater, repository, required);
@@ -252,7 +252,7 @@ public sealed class ClientReleaseGateTests : IDisposable
     {
         var first = await PublishAsync();
         var handler = new FileRepoHandler(Repo);
-        using var repository = new RepositoryClient(new Uri("http://repo.test/"), Trust, handler);
+        using var repository = new RepositoryClient(new Uri("https://repo.test/"), Trust, handler);
         var updater = new Updater(new InstallLayout(Game), repository);
         await EnsureAsync(updater, repository, Requirement(first.Channel));
         string stateHash = Hashing.Sha256File(StatePath), assetHash = Hashing.Sha256File(Path.Combine(Game, "scene.assets"));
@@ -270,7 +270,7 @@ public sealed class ClientReleaseGateTests : IDisposable
     public async Task DamagedRunningInstallIsReadOnlyAndCannotStartAnotherGame()
     {
         var release = await PublishAsync();
-        using var repository = new RepositoryClient(new Uri("http://repo.test/"), Trust, new FileRepoHandler(Repo));
+        using var repository = new RepositoryClient(new Uri("https://repo.test/"), Trust, new FileRepoHandler(Repo));
         var updater = new Updater(new InstallLayout(Game), repository);
         var required = Requirement(release.Channel);
         await EnsureAsync(updater, repository, required);
@@ -286,7 +286,7 @@ public sealed class ClientReleaseGateTests : IDisposable
     public async Task CancelledVerificationNeverCommitsOrBecomesReady()
     {
         var release = await PublishAsync();
-        using var repository = new RepositoryClient(new Uri("http://repo.test/"), Trust, new FileRepoHandler(Repo));
+        using var repository = new RepositoryClient(new Uri("https://repo.test/"), Trust, new FileRepoHandler(Repo));
         var updater = new Updater(new InstallLayout(Game), repository);
         using var cancel = new CancellationTokenSource();
         var progress = new InlineProgress(p => { if (p.Stage is UpdateStage.Verifying or UpdateStage.Scanning) cancel.Cancel(); });
@@ -300,7 +300,7 @@ public sealed class ClientReleaseGateTests : IDisposable
     public async Task AGameAppearingDuringDownloadPreventsTheCommit()
     {
         var release = await PublishAsync();
-        using var repository = new RepositoryClient(new Uri("http://repo.test/"), Trust, new FileRepoHandler(Repo));
+        using var repository = new RepositoryClient(new Uri("https://repo.test/"), Trust, new FileRepoHandler(Repo));
         var updater = new Updater(new InstallLayout(Game), repository);
         var sync = new ClientReleaseSynchronizer(updater, repository, _ => Task.FromResult(Requirement(release.Channel)));
         int checks = 0;
@@ -315,7 +315,7 @@ public sealed class ClientReleaseGateTests : IDisposable
     public async Task ContractIsFetchedAgainAfterVerificationAndCannotSilentlySwitch()
     {
         var release = await PublishAsync();
-        using var repository = new RepositoryClient(new Uri("http://repo.test/"), Trust, new FileRepoHandler(Repo));
+        using var repository = new RepositoryClient(new Uri("https://repo.test/"), Trust, new FileRepoHandler(Repo));
         var updater = new Updater(new InstallLayout(Game), repository);
         var required = Requirement(release.Channel);
         await EnsureAsync(updater, repository, required);
@@ -330,7 +330,7 @@ public sealed class ClientReleaseGateTests : IDisposable
     public async Task UnsignedTrustIsNeverAcceptedByTheStrictSynchronizer()
     {
         var release = await PublishAsync();
-        using var repository = new RepositoryClient(new Uri("http://repo.test/"), new FileRepoHandler(Repo));
+        using var repository = new RepositoryClient(new Uri("https://repo.test/"), new FileRepoHandler(Repo));
         var updater = new Updater(new InstallLayout(Game), repository);
         await Assert.ThrowsAsync<PatcherException>(() => EnsureAsync(updater, repository, Requirement(release.Channel)));
         Assert.False(File.Exists(StatePath));
@@ -345,7 +345,7 @@ public sealed class ClientReleaseGateTests : IDisposable
     public async Task SynchronousContractWorkNeverBlocksTheCallingThread()
     {
         var release = await PublishAsync();
-        using var repository = new RepositoryClient(new Uri("http://repo.test/"), Trust, new FileRepoHandler(Repo));
+        using var repository = new RepositoryClient(new Uri("https://repo.test/"), Trust, new FileRepoHandler(Repo));
         var updater = new Updater(new InstallLayout(Game), repository);
         using var entered = new ManualResetEventSlim();
         using var resume = new ManualResetEventSlim();

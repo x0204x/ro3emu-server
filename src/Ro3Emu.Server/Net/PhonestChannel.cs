@@ -219,6 +219,23 @@ public sealed class PhonestChannel : IAsyncDisposable
         try { _socket.Shutdown(SocketShutdown.Both); } catch (SocketException) { } catch (ObjectDisposedException) { }
     }
 
+    /// <summary>
+    /// Like <see cref="Abort"/>, but what is already queued goes out first (a reply sent just before the close), because
+    /// a shutdown right after queuing drops it. The writer ends the connection when the queue is empty; a client that
+    /// stopped reading gets the same two seconds as <see cref="DisposeAsync"/>, then a reset (see <see cref="SendFrameAsync"/>).
+    /// </summary>
+    public void AbortAfterFlush()
+    {
+        Volatile.Write(ref _closing, 1);
+        _outbound.Writer.TryComplete();
+        _ = ResetUnlessFlushedAsync();
+    }
+
+    private async Task ResetUnlessFlushedAsync()
+    {
+        if (await Task.WhenAny(_writer, Task.Delay(TimeSpan.FromSeconds(2))) != _writer) AbortReset();
+    }
+
     /// <summary>Like <see cref="Abort"/>, but resets the connection (RST, linger 0) instead of a graceful FIN.</summary>
     public void AbortReset()
     {

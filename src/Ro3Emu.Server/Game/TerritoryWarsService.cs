@@ -125,7 +125,7 @@ public sealed partial class TerritoryWarsService : IGameTicker
             .Concat(actor == null ? [] : [Own(actor)?.Id ?? 0])
             .Concat(additionalGuilds ?? []).Where(id => id > 0))
             keys.Add(Ownership.ReservationKey.Entity("guild", guild.ToString(System.Globalization.CultureInfo.InvariantCulture)));
-        return keys.ToArray();
+        return [.. keys];
     }
     private async Task<Ownership.LegacyOwnerScope?> EnterGateAsync(string origin, GameSession? actor = null,
         IReadOnlyCollection<long>? additionalGuilds = null, bool includeParticipants = false)
@@ -152,14 +152,14 @@ public sealed partial class TerritoryWarsService : IGameTicker
             await changed;
         }
     }
-    private readonly Dictionary<int, Battle> _battles = new();
-    private readonly Dictionary<string, SiegeRun> _siegeBattles = new();
-    private readonly Dictionary<GameSession, QueueEntry> _queue = new();
+    private readonly Dictionary<int, Battle> _battles = [];
+    private readonly Dictionary<string, SiegeRun> _siegeBattles = [];
+    private readonly Dictionary<GameSession, QueueEntry> _queue = [];
     private TimeSpan _lastTick;
     private bool _ticking, _reconciledOnce; // the first reconciliation runs on the loop's first tick (startup), not 1 s later
     private string _siegePublishedState = "";
     /// <summary>The guild each session was last sent the siege panel for (weak: dies with the session).</summary>
-    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<GameSession, System.Runtime.CompilerServices.StrongBox<long>> _siegePublishedGuild = new();
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<GameSession, System.Runtime.CompilerServices.StrongBox<long>> _siegePublishedGuild = [];
     private sealed class ActivityBatch(GameLoop.WorkPermit? permit)
     {
         public readonly GameLoop.WorkPermit? Permit = permit;
@@ -238,7 +238,7 @@ public sealed partial class TerritoryWarsService : IGameTicker
     public sealed class RoleState
     {
         public string Epoch { get; set; } = "";
-        public Dictionary<string, RoleSeason> Seasons { get; set; } = new();
+        public Dictionary<string, RoleSeason> Seasons { get; set; } = [];
         public int Camp { get; set; } = 1;
         public long LastCampChange { get; set; }
         public long Honor { get; set; }
@@ -247,10 +247,10 @@ public sealed partial class TerritoryWarsService : IGameTicker
         public int FatigueKills { get; set; }
         public long LastFatigue { get; set; }
         public long Donated { get; set; }
-        public Dictionary<long, long> Donations { get; set; } = new();
-        public Dictionary<string, int> WorldLandClaims { get; set; } = new();
-        public Dictionary<string, List<Grant>> Pending { get; set; } = new();
-        public HashSet<string> Paid { get; set; } = new();
+        public Dictionary<long, long> Donations { get; set; } = [];
+        public Dictionary<string, int> WorldLandClaims { get; set; } = [];
+        public Dictionary<string, List<Grant>> Pending { get; set; } = [];
+        public HashSet<string> Paid { get; set; } = [];
         public GloryState Glory { get; set; } = new();
         public Dictionary<string, GloryState> GlorySeasons { get; set; } = [];
     }
@@ -260,19 +260,19 @@ public sealed partial class TerritoryWarsService : IGameTicker
     {
         public string Epoch { get; set; } = "";
         public int LastStage { get; set; }
-        public Dictionary<int, long> Owners { get; set; } = new();
-        public Dictionary<int, AuctionRound> Rounds { get; set; } = new();
-        public Dictionary<int, BattleState> Battles { get; set; } = new();
-        public Dictionary<int, List<byte[]>> Results { get; set; } = new();
-        public Dictionary<int, List<byte[]>> SiegeHistory { get; set; } = new();
-        public Dictionary<string, SiegeRunState> SiegeRuns { get; set; } = new();
-        public Dictionary<long, long> Donations { get; set; } = new();
-        public Dictionary<int, List<long>> RuleResults { get; set; } = new();
-        public Dictionary<long, WorldDrop> WorldDrops { get; set; } = new();
+        public Dictionary<int, long> Owners { get; set; } = [];
+        public Dictionary<int, AuctionRound> Rounds { get; set; } = [];
+        public Dictionary<int, BattleState> Battles { get; set; } = [];
+        public Dictionary<int, List<byte[]>> Results { get; set; } = [];
+        public Dictionary<int, List<byte[]>> SiegeHistory { get; set; } = [];
+        public Dictionary<string, SiegeRunState> SiegeRuns { get; set; } = [];
+        public Dictionary<long, long> Donations { get; set; } = [];
+        public Dictionary<int, List<long>> RuleResults { get; set; } = [];
+        public Dictionary<long, WorldDrop> WorldDrops { get; set; } = [];
         public long NextWorldDropId { get; set; } = 1;
-        public Dictionary<int, long> WorldActivityRespawns { get; set; } = new();
-        public Dictionary<int, long> WorldActivityOccurrences { get; set; } = new();
-        public Dictionary<string, WorldPickupOccurrence> WorldPickupOccurrences { get; set; } = new();
+        public Dictionary<int, long> WorldActivityRespawns { get; set; } = [];
+        public Dictionary<int, long> WorldActivityOccurrences { get; set; } = [];
+        public Dictionary<string, WorldPickupOccurrence> WorldPickupOccurrences { get; set; } = [];
         /// <summary>Past seasons whose Battle Merit standings are still to be mailed (TerritoryWarsService.BattleGlorySeason).</summary>
         public List<string> GlorySettle { get; set; } = [];
     }
@@ -323,7 +323,7 @@ public sealed partial class TerritoryWarsService : IGameTicker
         var season = value.Seasons.GetValueOrDefault(Epoch);
         value.Epoch = Epoch;
         value.Honor = season?.Honor ?? 0; value.Valor = season?.Valor ?? 0; value.Donated = season?.Donated ?? 0;
-        value.Donations = season?.Donations ?? new();
+        value.Donations = season?.Donations ?? [];
         value.Fatigue = 0; value.FatigueKills = 0; value.LastFatigue = _clock.Now;
         return value;
     }
@@ -356,7 +356,7 @@ public sealed partial class TerritoryWarsService : IGameTicker
     private long Param(string name, long fallback = 0) => _data.Table("PublicParamConfig").TryGetValue(name, out var v) ? (long)(GameData.Number(v) ?? fallback) : fallback;
     private long Gvg(string name, long fallback) => _data.Table("GVGConfig").TryGetValue(name, out var v) ? (long)(GameData.Number(v) ?? fallback) : fallback;
     private long[] ParamArray(string name) => _data.Table("PublicParamConfig").TryGetValue(name, out var v) && v.ValueKind == JsonValueKind.Array
-        ? v.EnumerateArray().Select(x => (long)(GameData.Number(x) ?? 0)).ToArray() : [];
+        ? [.. v.EnumerateArray().Select(x => (long)(GameData.Number(x) ?? 0))] : [];
     private IEnumerable<JsonElement> Zones => _data.Table("GVGWarZoneConfig").Values;
     private JsonElement? Zone(int id) => _data.Row("GVGWarZoneConfig", id);
     private int Parent(int id) => Zone(id) is { } row ? (int)GameData.Int(row, "_iBelongID") : 0;
@@ -698,7 +698,7 @@ public sealed partial class TerritoryWarsService : IGameTicker
                             $"territory-pending-deliver:{s.Role.Id}:{key}", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                             [], [], [], JsonSerializer.SerializeToUtf8Bytes(new { Role = s.Role.Id, Key = key })));
                 },
-                boundGoods: goods.Select(g => (g.Entry, g.Count, g.Bind)).ToArray(), asyncCommit: true) == null) continue;
+                boundGoods: [.. goods.Select(g => (g.Entry, g.Count, g.Bind))], asyncCommit: true) == null) continue;
             current = next;
         }
         s.TerritoryWars = LoadRole(s.Role.Id);

@@ -30,7 +30,7 @@ public sealed partial class GuildTests
         await using var seller = await InWorld("Refundseller");
         await Level("refundseller");
         using (var client = new HttpClient())
-            (await client.PostAsync($"{_http}/ro3emu/gm?account=refundseller", new StringContent("!lvl 99")))
+            (await client.PostAsync($"{_http}/ro3emu/gm?account=refundseller", Operator.Command("!lvl 99")))
                 .EnsureSuccessStatusCode();
         long guildId = await CreateGuild(seller, "Refund");
         var store = _app.Services.GetRequiredService<GuildStore>();
@@ -63,7 +63,7 @@ public sealed partial class GuildTests
         {
             await Level(name);
             using var client = new HttpClient();
-            (await client.PostAsync($"{_http}/ro3emu/gm?account={name}", new StringContent("!lvl 99")))
+            (await client.PostAsync($"{_http}/ro3emu/gm?account={name}", Operator.Command("!lvl 99")))
                 .EnsureSuccessStatusCode();
         }
         long firstId = await CreateGuild(first, "First");
@@ -143,7 +143,7 @@ public sealed partial class GuildTests
         {
             await Level(name);
             using var client = new HttpClient();
-            (await client.PostAsync($"{_http}/ro3emu/gm?account={name}", new StringContent("!lvl 99")))
+            (await client.PostAsync($"{_http}/ro3emu/gm?account={name}", Operator.Command("!lvl 99")))
                 .EnsureSuccessStatusCode();
         }
         long sellerId = await CreateGuild(seller, "Timers");
@@ -227,7 +227,7 @@ public sealed partial class GuildTests
         {
             await Level(name);
             using var client = new HttpClient();
-            (await client.PostAsync($"{_http}/ro3emu/gm?account={name}", new StringContent("!lvl 99")))
+            (await client.PostAsync($"{_http}/ro3emu/gm?account={name}", Operator.Command("!lvl 99")))
                 .EnsureSuccessStatusCode();
         }
         long sellerId = await CreateGuild(seller, "Slows");
@@ -272,11 +272,11 @@ public sealed partial class GuildTests
                 x => x.Resource?.Money == 9750)).Resource.Money);
             Assert.Equal(0, (await Next(buyer, GuildService.MarketBuy, BuyBlackMarketItemRsp.Parser)).Result);
             Assert.Equal(1, buyer.Inbox.Snapshot().Skip(buyerStart).Count(x => x.IsGame(GuildService.MarketBuy)));
-            Assert.Equal(new long[] { 10, 20 }, buyer.Inbox.Snapshot().Skip(buyerStart)
+            Assert.Equal([10, 20], buyer.Inbox.Snapshot().Skip(buyerStart)
                 .Where(x => x.IsGame(GuildService.BaseChange))
                 .Select(x => GuildBaseInfoChangeNtf.Parser.ParseFrom(x.Body))
                 .Where(x => x.Resource != null).Select(x => x.Resource.Materials).ToArray());
-            Assert.Equal(new long[] { 4875, 9750 }, seller.Inbox.Snapshot().Skip(sellerStart)
+            Assert.Equal([4875, 9750], seller.Inbox.Snapshot().Skip(sellerStart)
                 .Where(x => x.IsGame(GuildService.BaseChange))
                 .Select(x => GuildBaseInfoChangeNtf.Parser.ParseFrom(x.Body))
                 .Where(x => x.Resource != null).Select(x => x.Resource.Money).ToArray());

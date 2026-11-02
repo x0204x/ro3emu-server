@@ -48,7 +48,7 @@ public sealed class IdleTickerBenchmarkTests
             IGameTicker[] tickers = [];
             await loop.InvokeAsync(() =>
             {
-                tickers = registered.ToArray();
+                tickers = [.. registered];
                 foreach (var ticker in tickers) loop.Remove(ticker);
                 return Task.CompletedTask;
             });

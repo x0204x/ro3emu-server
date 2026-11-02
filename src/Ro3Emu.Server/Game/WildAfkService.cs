@@ -45,7 +45,7 @@ public sealed partial class WildAfkService : IGameTicker
         public long ConsumedTodaySeconds { get; set; }
         public long RemainderMs { get; set; }
         public long LastToggleMs { get; set; }
-        public Dictionary<int, long> TotalDrops { get; set; } = new();
+        public Dictionary<int, long> TotalDrops { get; set; } = [];
         [JsonIgnore] public DBWildAFKInfo Info { get; set; } = new();
         [JsonIgnore] public long AccountedAtMs { get; set; }
         [JsonIgnore] public long LastKillAtMs { get; set; }
@@ -352,6 +352,7 @@ public sealed partial class WildAfkService : IGameTicker
         using var scope = s.Owners is { } owners && role != null
             ? await owners.EnterWithGateAsync("wild-afk/leave", state.Gate, [ReservationKey.Role(role.Id)]) : null;
         if (scope == null) await state.Gate.WaitAsync();
+        bool refused = false;
         try
         {
             if (Owns(s, state) && ReferenceEquals(s.Role, role))
@@ -360,9 +361,11 @@ public sealed partial class WildAfkService : IGameTicker
                 await ReconcileCoreAsync(s, Now, forceSuspended: true, publish: false);
             }
         }
+        // A full queue wrote nothing: the state stays for the handover's retry, which would otherwise find nothing to save.
+        catch (Exception e) when (Accounts.Persistence.QueueFullPatience.Refused(e)) { refused = true; throw; }
         finally
         {
-            if (ReferenceEquals(s.WildAfk, state))
+            if (!refused && ReferenceEquals(s.WildAfk, state))
             {
                 s.AutoBattle = false;
                 s.WildAfk = null;

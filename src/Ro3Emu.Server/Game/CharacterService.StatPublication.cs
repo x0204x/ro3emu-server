@@ -4,7 +4,7 @@ namespace Ro3Emu.Server.Game;
 
 public sealed partial class CharacterService
 {
-    private readonly ConditionalWeakTable<GameSession, StatPublication> _statPublications = new();
+    private readonly ConditionalWeakTable<GameSession, StatPublication> _statPublications = [];
 
     private sealed class StatPublication
     {

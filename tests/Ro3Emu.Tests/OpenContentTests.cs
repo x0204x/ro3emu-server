@@ -70,7 +70,7 @@ public sealed class OpenContentTests : IAsyncLifetime
     private async Task<string> Gm(string account, string line)
     {
         using var http = new HttpClient();
-        var response = await http.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(line));
+        var response = await http.PostAsync($"{_http}/ro3emu/gm?account={account}", Operator.Command(line));
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadAsStringAsync();
     }

@@ -77,7 +77,7 @@ public sealed partial class PanelSite
         ClearCookie(call.Context, VisitorCookie);
         await _ops.RecordLoginAsync(account, "panel", call.Client);
         LogLogin(_log, account);
-        return Reply.Ok(SessionBody(account, await StaffRoleAsync(account), _sessions.Csrf("session", sessionId)));
+        return Reply.Ok(SessionBody(account, await StaffRoleAsync(account, call.Context.Request), _sessions.Csrf("session", sessionId)));
     }
 
     private async Task<Reply> LoginAsync(Call call)
@@ -86,7 +86,7 @@ public sealed partial class PanelSite
         string name = form?.Account?.Trim() ?? "", password = form?.Password ?? "";
         if (name.Length == 0 || password.Length == 0)
             return Reply.Error(StatusCodes.Status400BadRequest, "Enter your account name and password.");
-        if (!_backend.TryAcquireCredentialCheck(call.Client)) return Reply.Error(StatusCodes.Status429TooManyRequests, TooManyAttempts);
+        if (!_backend.TryAcquireCredentialCheck(call.From)) return Reply.Error(StatusCodes.Status429TooManyRequests, TooManyAttempts);
         // Null for a wrong password, an unknown name and a banned account alike, as the game's login answers.
         if (await _backend.VerifyAsync(name, password) is not { } account)
             return Reply.Error(StatusCodes.Status401Unauthorized, WrongCredentials);
@@ -110,7 +110,7 @@ public sealed partial class PanelSite
         var form = await BodyAsync<Credentials>(call);
         string name = form?.Account?.Trim() ?? "", password = form?.Password ?? "";
         if ((NameProblem(name) ?? PasswordProblem(password)) is { } problem) return Reply.Error(StatusCodes.Status400BadRequest, problem);
-        if (!_backend.TryAcquireCredentialCheck(call.Client)) return Reply.Error(StatusCodes.Status429TooManyRequests, TooManyAttempts);
+        if (!_backend.TryAcquireCredentialCheck(call.From)) return Reply.Error(StatusCodes.Status429TooManyRequests, TooManyAttempts);
         if (_signUps.TryReserve(call.Client, out var slot) is var refusal and not PanelSignUps.Refusal.None)
         {
             bool perAddress = refusal == PanelSignUps.Refusal.Address;
@@ -134,14 +134,14 @@ public sealed partial class PanelSite
     }
 
     /// <summary>
-    /// A new account's name on the panel's sign-up: 4 to 24 ASCII letters, digits and underscores. (inferred) The game
-    /// itself has no rule beyond "not empty once trimmed" (SdkEndpoints, AccountStore), so this is the panel's own, for
-    /// names typed on a public website; it never applies to logins, so an account the game created can always log in.
+    /// A new account's name on the panel's sign-up: the rule of every new account (AccountNames, also the game's first
+    /// login), then 4 to 24 ASCII letters, digits and underscores. (inferred) The second part is the panel's own, for
+    /// names typed on a public website; neither applies to logins, so an account the game created can always log in.
     /// </summary>
     internal const int SignUpNameMin = 4, SignUpNameMax = 24;
 
     internal static string? NameProblem(string name) =>
-        name.Length == 0 ? "Choose an account name."
+        AccountNames.Problem(name) is { } shared && name.Length <= SignUpNameMax ? shared
         : name.Length is < SignUpNameMin or > SignUpNameMax ? "An account name has 4 to 24 characters."
         : !name.All(c => char.IsAsciiLetterOrDigit(c) || c == '_') ? "An account name has only letters (A to Z), digits and underscores."
         : null;
@@ -157,7 +157,7 @@ public sealed partial class PanelSite
         string current = form?.Current ?? "", next = form?.Next ?? "";
         if (current.Length == 0) return Reply.Error(StatusCodes.Status400BadRequest, "Enter your current password.");
         if (PasswordProblem(next) is { } problem) return Reply.Error(StatusCodes.Status400BadRequest, problem);
-        if (!_backend.TryAcquireCredentialCheck(call.Client)) return Reply.Error(StatusCodes.Status429TooManyRequests, TooManyAttempts);
+        if (!_backend.TryAcquireCredentialCheck(call.From)) return Reply.Error(StatusCodes.Status429TooManyRequests, TooManyAttempts);
         string account = call.Signed;
         if (!await _backend.ChangePasswordAsync(account, current, next))
             return Reply.Error(StatusCodes.Status400BadRequest, "Your current password is not right.");

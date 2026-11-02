@@ -75,7 +75,7 @@ internal static class QuestProbe
     public static async Task GmAsync(string http, string account, string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{http}/ro3emu/gm?account={account}", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{http}/ro3emu/gm?account={account}", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     /// <summary>GM accept, then wait until the quest is in the role's state.</summary>

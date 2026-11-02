@@ -18,14 +18,14 @@ public sealed class BossSkillSetsTests(ITestOutputHelper output)
 
     private static BossSkillBook? Book(int npc) => Sets.Value.For(npc, (int)new BossNormalAttacks(Data).For(npc));
 
-    private static int[] Ids(int npc) => Book(npc)!.Skills.Select(k => k.Id).ToArray();
+    private static int[] Ids(int npc) => [.. Book(npc)!.Skills.Select(k => k.Id)];
 
     [ClientDataFact]
     public void AFieldMvpCastsTheRowsNamedAfterIt()
     {
         var book = Book(5020004)!; // Orc Hero
         Assert.Equal([5203001, 5203101, 5203301, 5203401, 5203501], Ids(5020004));
-        Assert.Equal([40000, 80000, 35000, 40000, 35000], book.Skills.Select(k => k.CdMs).ToArray());
+        Assert.Equal([40000, 80000, 35000, 40000, 35000], [.. book.Skills.Select(k => k.CdMs)]);
         Assert.Equal(1, book.Phases);
         var roar = book.Skills[0]; // Terrifying Roar: FixCircle, _kRange 800 cm
         Assert.Equal((BossSkillArea.AroundSelf, 8f, 3733, 30), (roar.Area, roar.Radius, roar.ActionMs, roar.MaxTargets));
@@ -128,7 +128,7 @@ public sealed class BossSkillSetsTests(ITestOutputHelper output)
         Assert.Equal([16000201], Ids(16000003));   // Rift Cat o' Nine-Tail, 3 stars
         // "Skill1..3" number different skills: no phases for the story Golden Thief Bug.
         var bug = Book(5300002)!;
-        Assert.Equal([5310101, 5310201, 5310301], bug.Skills.Select(k => k.Id).ToArray());
+        Assert.Equal([5310101, 5310201, 5310301], [.. bug.Skills.Select(k => k.Id)]);
         Assert.Equal(1, bug.Phases);
         // The airship Evil Warrior's 9999999 ms row is cast once, when the second phase begins.
         var warrior = Book(5300042)!;

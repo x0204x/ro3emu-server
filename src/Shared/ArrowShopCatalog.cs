@@ -13,14 +13,14 @@ public static class ArrowShopCatalog
     public const long ShopNameSid = 10160000268L;
     public const int CurrencyId = 1, UnitPrice = 100;
 
-    public static IReadOnlyList<ArrowShopOffer> Offers { get; } = Array.AsReadOnly(new[]
-    {
+    public static IReadOnlyList<ArrowShopOffer> Offers { get; } = Array.AsReadOnly<ArrowShopOffer>(
+    [
             new ArrowShopOffer(9910212, 1002012, 2), // 火箭矢
             new ArrowShopOffer(9910213, 1002013, 3), // 水靈箭矢
             new ArrowShopOffer(9910214, 1002014, 4), // 銀箭矢
             new ArrowShopOffer(9910215, 1002015, 5), // 風靈箭矢
             new ArrowShopOffer(9910216, 1002016, 6), // 地靈箭矢
-        });
+        ]);
 
     public static bool TryGetOffer(int commodityId, out ArrowShopOffer offer)
     {

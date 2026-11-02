@@ -19,7 +19,7 @@ public sealed partial class EmblemService
     internal static SkillParameterRules.Modifier[] SkillEffects(GameSession session, GameData data) =>
         [.. ResonanceSkills(session, data).SelectMany(id => id switch
         {
-            11336001 => new[] { new SkillParameterRules.Modifier(13305, 29, 1, 300, 0) },
+            11336001 => [new SkillParameterRules.Modifier(13305, 29, 1, 300, 0)],
             // 電子搖滾只加全部百矛係數；精準刺擊4次充能由原140001 meter owner處理，不切其mode。
             11130701 => [new SkillParameterRules.Modifier(11310, 29, 1, 2500, 0)],
             11130601 => NoteLeapSkillEffects(session, data),
@@ -40,6 +40,6 @@ public sealed partial class EmblemService
         JsonElement row, IReadOnlyList<(long Id, double Value)> pairs)
     {
         if (new BuffConfig(row).BuffId != 11645 || !ResonanceSkills(session, data).Contains(11164701)) return pairs;
-        return pairs.Select(p => p.Id is 1052 or 1062 ? (p.Id, p.Value * 2) : p).ToArray();
+        return [.. pairs.Select(p => p.Id is 1052 or 1062 ? (p.Id, p.Value * 2) : p)];
     }
 }

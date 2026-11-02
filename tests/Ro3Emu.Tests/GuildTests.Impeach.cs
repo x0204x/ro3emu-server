@@ -33,7 +33,7 @@ public sealed partial class GuildTests
 
         // The master is online: no grounds (473). The founder herself may not (475).
         using (var client = new HttpClient())
-            (await client.PostAsync($"{_http}/ro3emu/gm?account=bob", new StringContent("!item 3 30"))).EnsureSuccessStatusCode();
+            (await client.PostAsync($"{_http}/ro3emu/gm?account=bob", Operator.Command("!item 3 30"))).EnsureSuccessStatusCode();
         var g = store.Get(guildId)!;
         foreach (var m in g.Members.Values.Where(m => m.RoleId != aliceId)) m.EnterTime -= 8L * 86_400_000;
         Assert.True(store.Save(g));

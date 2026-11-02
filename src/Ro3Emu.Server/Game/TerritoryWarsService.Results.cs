@@ -76,7 +76,7 @@ public sealed partial class TerritoryWarsService
             DungeonStartTimestamp = r.Start * 1000, SceneStatistics = { [r.StatisticsId] = Statistics(r) }
         };
         r.Result = result.ToByteArray();
-        if (!next.Results.TryGetValue(r.Zone, out var list)) next.Results[r.Zone] = list = new();
+        if (!next.Results.TryGetValue(r.Zone, out var list)) next.Results[r.Zone] = list = [];
         list.Add(r.Result);
         if (list.Count > 20) list.RemoveRange(0, list.Count - 20); // bounded history retention (inferred).
         var roleChanges = new Dictionary<long, RoleState>();
@@ -101,7 +101,7 @@ public sealed partial class TerritoryWarsService
                 // paying it per battle as well would pay it twice.
                 if (p.Guild == winner && r.Round >= 2) AddRankAward(goods, "SiegeSettlementSeniorAward", rank, recipient);
             }
-            role.Pending[awardKey] = goods.GroupBy(x => (x.Entry, x.Bind)).Select(g => new Grant(g.Key.Entry, checked(g.Sum(x => x.Count)), g.Key.Bind)).ToList();
+            role.Pending[awardKey] = [.. goods.GroupBy(x => (x.Entry, x.Bind)).Select(g => new Grant(g.Key.Entry, checked(g.Sum(x => x.Count)), g.Key.Bind))];
             roleChanges[p.Id] = role;
         }
         var transaction = _accounts.NewTransaction();

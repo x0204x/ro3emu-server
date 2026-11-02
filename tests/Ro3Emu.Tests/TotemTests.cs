@@ -39,7 +39,7 @@ public sealed class TotemTests : IAsyncLifetime
     private static async Task<T> Next<T>(BotClient b, uint id, MessageParser<T> parser) where T : IMessage<T>
     { var e = await b.Inbox.WaitAsync(e => e.IsGame(id), Wait); return parser.ParseFrom(e.Body); }
     private async Task Gm(string command)
-    { using var h = new HttpClient(); (await h.PostAsync($"{_http}/ro3emu/gm?account=alice", new StringContent(command))).EnsureSuccessStatusCode(); }
+    { using var h = new HttpClient(); (await h.PostAsync($"{_http}/ro3emu/gm?account=alice", Operator.Command(command))).EnsureSuccessStatusCode(); }
     private GameSession Session => _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice" && s.Role != null);
     private InvItem Item(long id) => Session.Items.Single(i => i.Guid == id);
     private async Task<long> Give(int entry)

@@ -91,13 +91,13 @@ public sealed partial class DungeonTests
         });
     }
 
-    private DungeonService.SceneActorUnit[] AirshipDeckActors(long instance) => Service<World>().AllUnits()
+    private DungeonService.SceneActorUnit[] AirshipDeckActors(long instance) => [.. Service<World>().AllUnits()
         .OfType<DungeonService.SceneActorUnit>()
-        .Where(actor => actor.InstanceId == instance && actor.NpcId is 5300037 or 5300057).ToArray();
+        .Where(actor => actor.InstanceId == instance && actor.NpcId is 5300037 or 5300057)];
 
-    private static UseInSkillInfo[] AirshipDeckCasts(BotClient bot) => bot.Inbox.Snapshot()
+    private static UseInSkillInfo[] AirshipDeckCasts(BotClient bot) => [.. bot.Inbox.Snapshot()
         .Where(packet => packet.IsGame(CombatService.UseInSkillHigh))
-        .Select(packet => UseInSkillInfo.Parser.ParseFrom(packet.Body)).Where(cast => cast.SkillID == 5353101).ToArray();
+        .Select(packet => UseInSkillInfo.Parser.ParseFrom(packet.Body)).Where(cast => cast.SkillID == 5353101)];
 
     private static void AssertAirshipDeckActorBornBeforeCastAndRemoved(BotClient bot, long uid)
     {

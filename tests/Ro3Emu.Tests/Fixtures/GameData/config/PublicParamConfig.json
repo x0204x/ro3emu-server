@@ -1,3 +1,4 @@
 {
-  "AUCTION_CURRENCY": 1
+  "AUCTION_CURRENCY": 1,
+  "BaseToJobConversionPercent": 2500
 }

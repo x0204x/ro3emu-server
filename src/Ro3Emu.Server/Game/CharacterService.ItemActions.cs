@@ -28,8 +28,8 @@ public sealed partial class CharacterService
     private sealed record ItemAction(Func<ItemActionUse, Task<int>> Handler, bool TakesParam,
         Func<GameSession, Ownership.ReservationKey[]>? Keys);
 
-    private readonly Dictionary<int, ItemAction> _itemActions = new();
-    private readonly ConditionalWeakTable<GameSession, Func<Task>> _itemActionAfterReply = new();
+    private readonly Dictionary<int, ItemAction> _itemActions = [];
+    private readonly ConditionalWeakTable<GameSession, Func<Task>> _itemActionAfterReply = [];
 
     /// <summary>
     /// Client-hosted actions an item may consist of alone. The client runs them after a successful 31323

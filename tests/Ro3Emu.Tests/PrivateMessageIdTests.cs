@@ -38,13 +38,13 @@ public sealed class PrivateMessageIdTests
     {
         var request = new ManagedChatSendReq
         {
-            ClientMessageId = ByteString.CopyFrom(new byte[] { 1, 2, 3 }),
+            ClientMessageId = ByteString.CopyFrom([1, 2, 3]),
             Channel = new ManagedChatChannelRef { ChannelType = ChatChannelType.Team, TargetId = "42" },
             Content = new ManagedChatContent
             {
                 Kind = ManagedChatContentKind.ManagedChatContentText,
                 Text = "hello",
-                LegacyExtraPayload = ByteString.CopyFrom(new byte[] { 4, 5 }),
+                LegacyExtraPayload = ByteString.CopyFrom([4, 5]),
             },
             RolloutEpoch = 9,
         };
@@ -57,9 +57,9 @@ public sealed class PrivateMessageIdTests
             "ManagedChatCredential", "ManagedChatCredentialRefreshReq", "ManagedChatCredentialRefreshRsp",
             "ManagedChatSendReq", "ManagedChatSendRsp",
         ];
-        string[] actual = ManagedChatSendReq.Descriptor.File.MessageTypes
+        string[] actual = [.. ManagedChatSendReq.Descriptor.File.MessageTypes
             .Select(message => message.Name).Where(name => name.StartsWith("ManagedChat", StringComparison.Ordinal))
-            .Order(StringComparer.Ordinal).ToArray();
+            .Order(StringComparer.Ordinal)];
         Assert.Equal(expected.Order(StringComparer.Ordinal).ToArray(), actual);
     }
 
@@ -170,7 +170,7 @@ public sealed class PrivateMessageIdTests
 
     private static void AssertFields(MessageDescriptor message, params FieldShape[] expected)
     {
-        FieldDescriptor[] actual = message.Fields.InDeclarationOrder().ToArray();
+        FieldDescriptor[] actual = [.. message.Fields.InDeclarationOrder()];
         Assert.Equal(expected.Length, actual.Length);
         for (int i = 0; i < expected.Length; i++)
         {

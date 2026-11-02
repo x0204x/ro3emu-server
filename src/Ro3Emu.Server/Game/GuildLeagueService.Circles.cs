@@ -126,6 +126,6 @@ public sealed partial class GuildLeagueService
         var value = LongData(FlagStateKey, wanted);
         s.WorldState.CustomData[FlagStateKey] = value.Clone();
         var change = new CustomDataChange { EntityId = s.Role.Id, CustomDatas = { value } };
-        await SendAllAsync(_world.Viewers(s).Prepend(s).ToArray(), WorldCoreService.CustomChange, change);
+        await SendAllAsync([.. _world.Viewers(s).Prepend(s)], WorldCoreService.CustomChange, change);
     }
 }

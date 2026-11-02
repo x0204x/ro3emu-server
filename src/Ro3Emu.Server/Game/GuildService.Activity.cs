@@ -36,7 +36,7 @@ public sealed partial class GuildService
     private const int ChestType = 9, DividendMarker = 0, DividendFunction = 1333;
     private const long Week = 7 * 86400;
 
-    private readonly HashSet<GameSession> _depositQueued = new();
+    private readonly HashSet<GameSession> _depositQueued = [];
     private bool _depositHooked;
 
     /// <summary>Monday 05:00 local of this week, unix seconds (the guild activity reset, UITips 17019).</summary>
@@ -168,7 +168,7 @@ public sealed partial class GuildService
 
     /// <summary>This week's received chests (older entries expired with the week, UITips 17019).</summary>
     private Dictionary<long, long> Received(DBRoleGuildInfo? personal) => personal?.ActiveRewardReceived
-        .Where(r => r.Value >= WeekStart).ToDictionary(r => r.Key, r => r.Value) ?? new();
+        .Where(r => r.Value >= WeekStart).ToDictionary(r => r.Key, r => r.Value) ?? [];
 
     private async Task ReceiveWeekRewardCoreAsync(GameSession s, ReceiveGuildWeekActiveRewardReq req)
     {
@@ -190,7 +190,7 @@ public sealed partial class GuildService
     private async Task<int> ClaimPersonalAsync(GameSession s, IReadOnlyList<long> awardGroups, long markerKey, string source)
     {
         AwardPlan[] plans;
-        try { plans = awardGroups.Select(group => awards.Resolve(s, group)).ToArray(); }
+        try { plans = [.. awardGroups.Select(group => awards.Resolve(s, group))]; }
         catch (AwardResolutionException) { return ErrorCodes.RewardMissing; }
         var next = s.Guild!.Clone();
         next.ActiveRewardReceived.Clear();
@@ -236,7 +236,7 @@ public sealed partial class GuildService
                     && GameData.Int(x, "_iServerRate") == protectedId).Select(x => (JsonElement?)x).FirstOrDefault() ?? guildRow;
         }
         var rows = new[] { guildRow, Salary(2, LastWeekActivity(g, m)), Salary(3, 0) };
-        return rows.Where(r => r != null).Select(r => GameData.Int(r!.Value, "_iAward")).Where(a => a > 0).ToArray();
+        return [.. rows.Where(r => r != null).Select(r => GameData.Int(r!.Value, "_iAward")).Where(a => a > 0)];
     }
 
     private long Amount(GameSession s, long[] groups) => groups.Sum(group =>

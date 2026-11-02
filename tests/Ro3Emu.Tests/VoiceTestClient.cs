@@ -17,7 +17,7 @@ namespace Ro3Emu.Tests;
 public sealed class VoiceTestClient(int port) : IAsyncDisposable
 {
     private readonly int _port = port;
-    private readonly List<(byte Type, byte[] Payload)> _buffer = new();
+    private readonly List<(byte Type, byte[] Payload)> _buffer = [];
     private readonly object _sync = new();
     private readonly SemaphoreSlim _signal = new(0);
     private readonly CancellationTokenSource _cts = new();

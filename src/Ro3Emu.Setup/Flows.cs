@@ -182,12 +182,12 @@ internal static partial class Flows
     public static List<string> Translations()
     {
         var assembly = Assembly.GetExecutingAssembly();
-        return assembly.GetManifestResourceNames().Where(n => n.StartsWith("translations/", StringComparison.Ordinal)).Order(StringComparer.Ordinal)
+        return [.. assembly.GetManifestResourceNames().Where(n => n.StartsWith("translations/", StringComparison.Ordinal)).Order(StringComparer.Ordinal)
             .Select(n =>
             {
                 using var reader = new StreamReader(assembly.GetManifestResourceStream(n)!);
                 return reader.ReadToEnd();
-            }).ToList();
+            })];
     }
 
     public static async Task<int> PlayLocalAsync(Options options, bool host)
@@ -428,7 +428,7 @@ internal static partial class Flows
         return 0;
     }
 
-    private static bool GameRunning() => Process.GetProcessesByName("ro3").Any();
+    private static bool GameRunning() => Process.GetProcessesByName("ro3").Length != 0;
 
     internal static Process LaunchGame(string client, long? verifiedGenesisSequence = null)
     {

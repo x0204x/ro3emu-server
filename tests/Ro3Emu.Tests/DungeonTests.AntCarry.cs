@@ -53,8 +53,23 @@ public sealed partial class DungeonTests
             {
                 Assert.Null(Service<DungeonService>().AntStoryMovementSpeed(session));
                 var at = session.Position;
-                Assert.False(await Service<SceneService>().AcceptWalkAsync(session,
-                    new WalkReq { Pos = new Vec3 { X = at.X + 0.5f, Y = at.Y, Z = at.Z } }));
+                var scene = Service<SceneService>();
+                Assert.Null(Service<WorldData>().Map(session.SceneEntry)!.Nav!.NearestWalkable(at.X, at.Z, at.Y));
+                long refused = Service<CheatMonitor>().LoggedCount(session.Account!, CheatMonitor.Walk);
+                // 下車仍在模型表面／導航格外；上游放行短移動，但不保留座位速度或略過空氣牆。
+                var step = new WalkReq { Pos = new Vec3 { X = at.X + 0.5f, Y = at.Y, Z = at.Z } };
+                Assert.True(await scene.AcceptWalkAsync(session, step));
+                Assert.Equal(refused, Service<CheatMonitor>().LoggedCount(session.Account!, CheatMonitor.Walk));
+                Assert.False(await scene.AcceptWalkAsync(session,
+                    new WalkReq { Pos = new Vec3 { X = at.X + 1000, Y = at.Y, Z = at.Z } }));
+                var originalWall = scene.WalkBlocked;
+                try
+                {
+                    scene.WalkBlocked = (_, _, _) => true; // 合成空氣牆，不改原地圖配置。
+                    Assert.False(await scene.AcceptWalkAsync(session, step));
+                }
+                finally { scene.WalkBlocked = originalWall; }
+                Assert.Equal(refused + 2, Service<CheatMonitor>().LoggedCount(session.Account!, CheatMonitor.Walk));
             });
         }
     }
@@ -98,7 +113,7 @@ public sealed partial class DungeonTests
         int before = alice.Inbox.Snapshot().Count;
         await alice.SendGameAsync(WorldInteractionService.Action, new UseInteractActionReq { ButtonId = 26 });
         Assert.Equal(0, (await Next(alice, WorldInteractionService.Action, UseInteractActionRes.Parser)).Result);
-        AssertAntCarryCleared(alice.Inbox.Snapshot().Skip(before).ToArray(), session.Role!.Id, deniro.Uid);
+        AssertAntCarryCleared([.. alice.Inbox.Snapshot().Skip(before)], session.Role!.Id, deniro.Uid);
         Assert.False(Service<WorldInteractionService>().IsSeatedOnSceneActor(session));
         Assert.True(deniro.Entity().CarryInfo == null || deniro.Entity().CarryInfo.AllCarries.Count == 0);
 
@@ -147,7 +162,7 @@ public sealed partial class DungeonTests
         {
             await OnLoop(() => Service<DungeonService>().AbandonAsync(session));
             await Until(() => alice.Inbox.Snapshot().Skip(before).Any(e => AntCarryState(e, rider, InteractInfo.Types.EState.Idle)), "離場送出玩家Idle");
-            AssertAntCarryCleared(alice.Inbox.Snapshot().Skip(before).ToArray(), rider, deniro.Uid);
+            AssertAntCarryCleared([.. alice.Inbox.Snapshot().Skip(before)], rider, deniro.Uid);
         }
         Assert.False(Service<WorldInteractionService>().IsSeatedOnSceneActor(session));
         Assert.Equal(InteractInfo.Types.EState.Idle, deniro.Entity().InteractInfo.EType);
@@ -190,7 +205,7 @@ public sealed partial class DungeonTests
         // 玩家Vehicle已送出，31044理應在它之前；缺包直接失敗，不用等到超時掩蓋問題。
         Assert.Single(bot.Inbox.Snapshot().Skip(before), AntSelfCarry);
         await Until(() => bot.Inbox.Snapshot().Skip(before).Any(e => AntCarrierAdd(e, deniro.Uid, rider)), "載具端新增乘客");
-        return bot.Inbox.Snapshot().Skip(before).ToArray();
+        return [.. bot.Inbox.Snapshot().Skip(before)];
     }
 
     private static bool AntSelfCarry(BotEvent e) => e.IsGame(MsgId.SyncAoiSelf)

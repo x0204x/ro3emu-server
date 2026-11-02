@@ -23,7 +23,7 @@ public sealed class BossSkillSchedulerTests : IAsyncLifetime
     private GameLoop Loop => _app.Services.GetRequiredService<GameLoop>();
     private MonsterService Monsters => _app.Services.GetRequiredService<MonsterService>();
     private BossSkillOptions Options => _app.Services.GetRequiredService<IOptions<ServerOptions>>().Value.BossSkills;
-    private GameSession Session(string name) => _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == name.ToLowerInvariant());
+    private GameSession Session(string name) => _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => string.Equals(s.Account, name, StringComparison.OrdinalIgnoreCase));
 
     public async Task InitializeAsync()
     {
@@ -65,7 +65,7 @@ public sealed class BossSkillSchedulerTests : IAsyncLifetime
     private async Task Gm(string account, string line)
     {
         using var client = new HttpClient();
-        (await client.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(line))).EnsureSuccessStatusCode();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={account}", Operator.Command(line))).EnsureSuccessStatusCode();
     }
 
     /// <summary>The boss on the player's spot, not roaming or swinging (its normal attack stays out of the way), engaged on her.</summary>
@@ -85,9 +85,9 @@ public sealed class BossSkillSchedulerTests : IAsyncLifetime
         return boss;
     });
 
-    private static List<UseInSkillInfo> Casts(BotClient bot, long uid) => bot.Inbox.Snapshot()
+    private static List<UseInSkillInfo> Casts(BotClient bot, long uid) => [.. bot.Inbox.Snapshot()
         .Where(e => e.IsGame(CombatService.UseInSkill) || e.IsGame(CombatService.UseInSkillHigh))
-        .Select(e => UseInSkillInfo.Parser.ParseFrom(e.Body)).Where(u => u.SrcID == uid).ToList();
+        .Select(e => UseInSkillInfo.Parser.ParseFrom(e.Body)).Where(u => u.SrcID == uid)];
 
     [ClientDataFact]
     public async Task ABossCastsItsSkillsOverTimeWithinTheirCooldowns()

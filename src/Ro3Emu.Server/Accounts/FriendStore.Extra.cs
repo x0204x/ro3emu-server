@@ -112,8 +112,8 @@ public sealed partial class FriendStore
             group.Members.Select(member => member.Role), long.Parse(group.Id));
     public Task<bool> ChangeMembersAsync(ChatGroup group, IEnumerable<long> roles, bool add)
     {
-        long[] changed = roles.ToArray();
-        long[] participants = group.Members.Select(member => member.Role).Concat(changed).Distinct().ToArray();
+        long[] changed = [.. roles];
+        long[] participants = [.. group.Members.Select(member => member.Role).Concat(changed).Distinct()];
         return CommitOwnedAsync<bool>(new(FriendWriteKind.ChangeMembers, long.Parse(group.Id), value: add ? 1 : 0,
             members: changed, participants: participants), participants, long.Parse(group.Id));
     }
@@ -142,7 +142,7 @@ public sealed partial class FriendStore
         => Write(new(FriendWriteKind.RecordTeammates, joined, time: DateTimeOffset.UtcNow.ToUnixTimeSeconds(), members: existing));
     public Task<bool> RecordTeammatesAsync(long joined, IEnumerable<long> existing)
     {
-        long[] members = existing.ToArray();
+        long[] members = [.. existing];
         return CommitOwnedAsync<bool>(new(FriendWriteKind.RecordTeammates, joined,
             time: DateTimeOffset.UtcNow.ToUnixTimeSeconds(), members: members), members.Append(joined));
     }

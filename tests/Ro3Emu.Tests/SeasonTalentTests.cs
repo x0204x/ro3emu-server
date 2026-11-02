@@ -137,7 +137,7 @@ public sealed class SeasonTalentTests
         public async Task Gm(string account, string line)
         {
             using var httpClient = new HttpClient();
-            var resp = await httpClient.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(line));
+            var resp = await httpClient.PostAsync($"{_http}/ro3emu/gm?account={account}", Operator.Command(line));
             resp.EnsureSuccessStatusCode();
         }
 

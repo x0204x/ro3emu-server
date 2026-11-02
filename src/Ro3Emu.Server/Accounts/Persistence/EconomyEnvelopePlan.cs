@@ -267,7 +267,7 @@ internal sealed class EconomyEnvelopePlan(RoleItemPlan child, EconomyEnvelope en
                 !lots.TryAdd(plan.SourceKey, receipt.Id))
                 throw new InvalidDataException("E05d auction lot receipt has no exact stored source row.");
         }
-        return envelope.Effects.Select(effect =>
+        return [.. envelope.Effects.Select(effect =>
         {
             if (effect.Owner.Kind != EconomyOwnerKind.Escrow ||
                 !effect.Owner.Id.StartsWith(alias, StringComparison.Ordinal)) return effect;
@@ -282,7 +282,7 @@ internal sealed class EconomyEnvelopePlan(RoleItemPlan child, EconomyEnvelope en
                 Owner = new EconomyOwner(EconomyOwnerKind.Escrow,
                 "auction:" + id.ToString(CultureInfo.InvariantCulture))
             };
-        }).ToArray();
+        })];
     }
 
     private static bool IsAuctionLotSource(string lotSource, string batchSource)

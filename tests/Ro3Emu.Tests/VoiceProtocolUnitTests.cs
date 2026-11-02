@@ -64,7 +64,7 @@ public sealed class VoiceProtocolUnitTests
     [Fact]
     public async Task ReadAsyncReassemblesAFrameSplitAcrossSeveralReads()
     {
-        byte[] payload = Enumerable.Range(0, 37).Select(i => (byte)i).ToArray();
+        byte[] payload = [.. Enumerable.Range(0, 37).Select(i => (byte)i)];
         byte[] bytes = VoiceFrame.Write(VoiceUp.Audio, payload);
         using var stream = new ChunkedStream(bytes, chunk: 3);
         var (type, read) = await VoiceFrame.ReadAsync(stream, 600, CancellationToken.None);
@@ -163,7 +163,7 @@ public sealed class VoiceProtocolUnitTests
         var clock = new FakeClock();
         var registry = new VoiceTicketRegistry(clock);
         var ticket = registry.Issue("alice", 1001, ttlSeconds: 60);
-        byte[] wrong = ticket.Token.ToArray();
+        byte[] wrong = [.. ticket.Token];
         wrong[0] ^= 0xFF;
         Assert.Null(registry.Consume(1001, wrong, Ro3Emu.ClientHooks.VoiceCipher.AuthProof(ticket.Secret, 1001, wrong)));
         Assert.Equal("alice", registry.Consume(1001, ticket.Token, Proof(ticket, 1001))?.Account);

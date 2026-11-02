@@ -13,7 +13,7 @@ public sealed class ClientPatcherBackupTests : IDisposable
     readonly string _client = Path.Combine(Path.GetTempPath(), "ro3emu-patchbackup-" + Guid.NewGuid().ToString("N"));
     string Managed => Path.Combine(_client, "ro3_Data", "Managed");
     string Backup => Path.Combine(_client, "ro3emu-backup");
-    readonly Dictionary<string, byte[]> _originals = new();
+    readonly Dictionary<string, byte[]> _originals = [];
 
     public ClientPatcherBackupTests()
     {

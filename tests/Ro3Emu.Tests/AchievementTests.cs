@@ -91,7 +91,7 @@ public sealed class AchievementTests : IAsyncLifetime
     private async Task Gm(string account, string line)
     {
         using var http = new HttpClient();
-        (await http.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(line))).EnsureSuccessStatusCode();
+        (await http.PostAsync($"{_http}/ro3emu/gm?account={account}", Operator.Command(line))).EnsureSuccessStatusCode();
     }
 
     private GameSession Session(string name) => Service<SessionRegistry>().All().Single(s => s.Role?.Name == name);
@@ -174,11 +174,11 @@ public sealed class AchievementTests : IAsyncLifetime
         Assert.All(blocked, r => Assert.Contains(r.Targets[0][0],
             new long[] { 303001, 302007, 326003, 303004 }));
         Assert.Single(blocked, r => r.Targets[0][0] == 303004); // the fashion-grid variant only
-        Assert.Equal(new[] { 1L, 1, 1 }, rows.Single(r => r.Id == TeamBoss).Required); // 210008 x3, R = p1
+        Assert.Equal([1L, 1, 1], rows.Single(r => r.Id == TeamBoss).Required); // 210008 x3, R = p1
         Assert.Equal(40060010, rows.Single(r => r.Id == Phoenix).Required[0]); // 303002: R is the appearance id
 
         var tables = service.LevelTables;
-        Assert.Equal(new[] { 0, 100, 101, 102, 103, 104, 105 }, tables.Keys.Order());
+        Assert.Equal([0, 100, 101, 102, 103, 104, 105], tables.Keys.Order());
         Assert.Equal(11, tables[0].Length);
         Assert.All(tables.Where(t => t.Key != 0), t => Assert.Equal(6, t.Value.Length));
         foreach (var (points, level) in new[] { (99L, 0), (100, 1), (149, 1), (150, 2), (599, 4), (600, 5), (1000, 5) })
@@ -194,7 +194,7 @@ public sealed class AchievementTests : IAsyncLifetime
     {
         await using var alice = await InWorld("Alice");
         var full = await Full(alice);
-        Assert.Equal(new long[] { 0, 100, 101, 102, 103, 104, 105 }, full.AchievementLevelInfo.Keys.Order());
+        Assert.Equal([0, 100, 101, 102, 103, 104, 105], full.AchievementLevelInfo.Keys.Order());
         Assert.All(full.AchievementLevelInfo.Values, f =>
         {
             Assert.Equal(0, f.All.CurLevelRewardLevel);
@@ -583,7 +583,7 @@ public sealed class AchievementTests : IAsyncLifetime
                 s.Dungeons!.Records[key] = new DungeonService.Record { Passed = true };
             foreach (var handler in Service<DungeonService>().Completed) await handler(s, 0, false);
         });
-        await Until("Alice", s => s.Achievements!.Infos.GetValueOrDefault(TeamBoss)?.Scores.SequenceEqual(new long[] { 1, 1, 0 }) == true,
+        await Until("Alice", s => s.Achievements!.Infos.GetValueOrDefault(TeamBoss)?.Scores.SequenceEqual([1, 1, 0]) == true,
             "two of three bosses");
         Assert.Equal(AchievementStatusType.Complete, (await Info("Alice", GodBoss))!.Status);
         await OnLoop("Alice", s => s.Dungeons!.Records["50101:3"] = new DungeonService.Record { Passed = true });

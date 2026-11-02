@@ -113,7 +113,7 @@ public sealed class BossNormalAttacks(GameData data)
     {
         var observed = StoryBossSkillRules.ObservedNormalIds(npcId);
         if (observed.Length == 0) return For(npcId) is > 0 and var single ? [single] : [];
-        return observed.Where(id => SkillConfig.Get(data, id) is { } row && IsNamedSwing(row.Row)).ToArray();
+        return [.. observed.Where(id => SkillConfig.Get(data, id) is { } row && IsNamedSwing(row.Row))];
     }
 
     /// <summary>A SkillConfig row whose script logic is named as a normal attack (inferred from the name).</summary>
@@ -156,7 +156,7 @@ public sealed class BossNormalAttacks(GameData data)
             foreach (var (key, row) in data.Table("SkillConfig"))
                 if (Logic(row) is { Length: > 0 } logic && long.TryParse(key, out long id))
                 {
-                    if (!byLogic.TryGetValue(logic.ToLowerInvariant(), out var ids)) byLogic[logic.ToLowerInvariant()] = ids = new();
+                    if (!byLogic.TryGetValue(logic.ToLowerInvariant(), out var ids)) byLogic[logic.ToLowerInvariant()] = ids = [];
                     ids.Add(id);
                 }
             foreach (var ids in byLogic.Values) ids.Sort();

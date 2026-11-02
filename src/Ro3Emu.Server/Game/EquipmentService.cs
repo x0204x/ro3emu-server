@@ -22,8 +22,8 @@ public sealed partial class EquipmentService
     private const int ItemTypeEquip = 5;
 
     /// <summary>Committed crafts and paid refinement attempts, for task targets 103024/103006/103005.</summary>
-    public List<Func<GameSession, int, int, int, Task>> Crafted { get; } = new();
-    public List<Func<GameSession, Task>> Refined { get; } = new();
+    public List<Func<GameSession, int, int, int, Task>> Crafted { get; } = [];
+    public List<Func<GameSession, Task>> Refined { get; } = [];
 
     private readonly GameData _data;
     private readonly CharacterService _character;
@@ -263,7 +263,7 @@ public sealed partial class EquipmentService
                 int floor = redDue ? QualityRed : orangeDue ? QualityOrange : 0;
                 var pool = outputs.Where(o => o.Quality >= floor).ToList();
                 var weighted = pool.Where(o => o.Weight > 0).Select(o => (o.Entry, o.Weight)).ToList();
-                if (weighted.Count == 0 && floor > 0) weighted = pool.Select(o => (o.Entry, Weight: 1L)).ToList();
+                if (weighted.Count == 0 && floor > 0) weighted = [.. pool.Select(o => (o.Entry, Weight: 1L))];
                 int entry = Draw(weighted);
                 long quality = outputs.FirstOrDefault(o => o.Entry == entry).Quality;
                 counter.CraftCount++;
@@ -409,10 +409,10 @@ public sealed partial class EquipmentService
     // ---- config helpers ----
 
     private static List<(int Entry, long Count)> Pairs(JsonElement row, string field) =>
-        GameData.Pairs(row, field).Select(p => ((int)p.Item1, (long)p.Item2)).ToList();
+        [.. GameData.Pairs(row, field).Select(p => ((int)p.Item1, (long)p.Item2))];
 
     /// <summary>A flat number array field ([item, count, bonus]); empty for {} / absent.</summary>
     private static long[] Flat(JsonElement row, string field) =>
         row.TryGetProperty(field, out var v) && v.ValueKind == JsonValueKind.Array
-            ? v.EnumerateArray().Select(e => (long)(GameData.Number(e) ?? 0)).ToArray() : [];
+            ? [.. v.EnumerateArray().Select(e => (long)(GameData.Number(e) ?? 0))] : [];
 }

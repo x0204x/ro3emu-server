@@ -20,7 +20,7 @@ public sealed partial class CharacterService
     public void Refresh(GameSession session)
     {
         var stats = Stats(session);
-        session.EntityProperties = PropertyIds(stats).Select(id => (Id: (long)id, Value: stats[id])).ToArray();
+        session.EntityProperties = [.. PropertyIds(stats).Select(id => (Id: (long)id, Value: stats[id]))];
         session.EquipLook = EquipInfo(session);
         session.Speed = stats[Speed];
     }
@@ -261,13 +261,13 @@ public sealed partial class CharacterService
     public Func<GameSession, long>? TitleOf { get; set; }
 
     /// <summary>Configured contributions from other owned systems (pet lineup/collection).</summary>
-    public List<Func<GameSession, IEnumerable<(long Id, double Value)>>> ExtraAttributes { get; } = new();
+    public List<Func<GameSession, IEnumerable<(long Id, double Value)>>> ExtraAttributes { get; } = [];
 
     /// <summary>A match owner's replacement build (null: the character's own), e.g. a Survivor Battle career.</summary>
     public Func<GameSession, IReadOnlyList<(long Id, double Value)>?>? MatchAttributes { get; set; }
 
     /// <summary>Runtime properties such as an absorb shield, projected on full stats and late AOI snapshots.</summary>
-    public List<Func<GameSession, IEnumerable<(int Id, long Value)>>> DynamicProperties { get; } = new();
+    public List<Func<GameSession, IEnumerable<(int Id, long Value)>>> DynamicProperties { get; } = [];
 
     /// <summary>Set by BuffService: puts a buff on the player (item use action 203).</summary>
     public Func<GameSession, int, int, Task>? GiveBuff { get; set; }
@@ -312,7 +312,7 @@ public sealed partial class CharacterService
         if (hp is { } h) session.CurrentHp = Math.Clamp(h, 0, before[MaxHp]);
         if (sp is { } s) session.CurrentSp = Math.Clamp(s, 0, before[MaxSp]);
         var stats = Stats(session);
-        session.EntityProperties = PropertyIds(stats).Select(id => (Id: (long)id, Value: stats[id])).ToArray();
+        session.EntityProperties = [.. PropertyIds(stats).Select(id => (Id: (long)id, Value: stats[id]))];
         var all = new AllProperty { EntityID = session.Role!.Id };
         var aoi = new AOIAttrChange { EntityUuid = (ulong)session.Role.Id };
         foreach (var id in new[] { Hp, Sp })

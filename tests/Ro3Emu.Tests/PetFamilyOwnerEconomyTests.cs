@@ -57,7 +57,7 @@ public sealed class PetFamilyOwnerEconomyTests : IAsyncLifetime
     private async Task Gm(string command)
     {
         using var client = new HttpClient();
-        (await client.PostAsync(_http + "/ro3emu/gm?account=alice", new StringContent(command))).EnsureSuccessStatusCode();
+        (await client.PostAsync(_http + "/ro3emu/gm?account=alice", Operator.Command(command))).EnsureSuccessStatusCode();
     }
 
     private EconomySnapshot Cut() => S3EconomyReader.Read(_directory, EconomyCatalog.Load(Path.Combine(RepoRoot(), "data")));

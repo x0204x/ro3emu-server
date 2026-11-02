@@ -7,9 +7,14 @@ namespace Ro3Emu.Server.Micro;
 /// "LoginService" on the micro gate. verifySdk (Phonest.Client LoginAgent.VerifyWithSdk) turns the HTTP SDK token
 /// into the engine token the client later presents to the game gate (ConnectServerReq.token).
 /// </summary>
-public sealed class LoginService(AccountStore accounts, RoleStore roles, MicroSessions micro, ILogger<LoginService> log) : IMicroService
+public sealed partial class LoginService(AccountStore accounts, RoleStore roles, MicroSessions micro, ILogger<LoginService> log) : IMicroService
 {
     public string Name => "LoginService";
+
+    private readonly LogThrottle _unknownTicketLog = new();
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "verifySdk: unknown ticket from {Remote} ({Suppressed} more since the last such line)")]
+    private static partial void LogUnknownTicket(ILogger logger, string remote, long suppressed);
 
     public async ValueTask<object?> InvokeAsync(MicroSession session, string method, object? args)
     {
@@ -46,7 +51,9 @@ public sealed class LoginService(AccountStore accounts, RoleStore roles, MicroSe
         var account = await accounts.ResolveSdkTokenAsync(ticket);
         if (account == null)
         {
-            log.LogWarning("verifySdk: unknown ticket from {Remote}", session.Channel.Remote);
+            // Anyone who reaches the port can send these, so at most one line per 10 s.
+            if (_unknownTicketLog.Allow(out long suppressed))
+                LogUnknownTicket(log, session.Channel.Remote, suppressed);
             return MicroServiceRouter.Fail("invalid ticket");
         }
         micro.SignIn(session, account);

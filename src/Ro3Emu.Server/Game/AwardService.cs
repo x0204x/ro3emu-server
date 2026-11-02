@@ -15,7 +15,7 @@ public sealed class AwardPlan(long groupId, long awardId, IEnumerable<AwardGrant
 {
     public long GroupId { get; } = groupId;
     public long AwardId { get; } = awardId;
-    public IReadOnlyList<AwardGrant> Grants { get; } = new ReadOnlyCollection<AwardGrant>(grants.ToArray());
+    public IReadOnlyList<AwardGrant> Grants { get; } = new ReadOnlyCollection<AwardGrant>([.. grants]);
 }
 
 public sealed class AwardResolutionException(string message) : InvalidOperationException(message);

@@ -70,7 +70,7 @@ public sealed partial class LotteryActivityTests : IAsyncLifetime
     private async Task Gm(string line)
     {
         using var client = new HttpClient();
-        var response = await client.PostAsync($"{_http}/ro3emu/gm?account=lottery", new StringContent(line));
+        var response = await client.PostAsync($"{_http}/ro3emu/gm?account=lottery", Operator.Command(line));
         response.EnsureSuccessStatusCode();
     }
 

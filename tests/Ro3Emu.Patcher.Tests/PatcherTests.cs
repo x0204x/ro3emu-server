@@ -80,7 +80,7 @@ public sealed class PatcherTests : IDisposable
 
     async Task<UpdateSummary> Update(FileRepoHandler handler, bool verifyAll = false, CancellationToken ct = default)
     {
-        using var client = new RepositoryClient(new Uri("http://repo.test/"), handler);
+        using var client = new RepositoryClient(new Uri("https://repo.test/"), handler);
         var updater = new Updater(Layout, client);
         var check = await updater.CheckAsync("stable", ct);
         return await updater.UpdateAsync(check.Channel, verifyAll, null, ct);
@@ -96,13 +96,32 @@ public sealed class PatcherTests : IDisposable
     }
 
     [Fact]
+    public async Task APlainHttpRepositoryIsRefusedUnlessItIsThisMachine()
+    {
+        WriteBuild("Game.exe", Random(5000, 90));
+        await Publish("1.0.0");
+        foreach (string address in new[] { "http://repo.test/", "http://203.0.113.5:8790/", "http://100.126.246.106:8080/ro3/" })
+        {
+            using var remote = new RepositoryClient(new Uri(address), new FileRepoHandler(Repo));
+            var refused = await Assert.ThrowsAsync<PatcherException>(() => remote.GetChannelAsync("stable", CancellationToken.None));
+            Assert.Contains("https", refused.Message);
+            Assert.Null(await remote.TryGetBytesAsync("channels/stable.json", CancellationToken.None));
+        }
+        foreach (string address in new[] { "http://localhost:8790/", "http://127.0.0.1:8790/", "https://repo.test/" })
+        {
+            using var allowed = new RepositoryClient(new Uri(address), new FileRepoHandler(Repo));
+            Assert.Equal("1.0.0", (await allowed.GetChannelAsync("stable", CancellationToken.None)).Version);
+        }
+    }
+
+    [Fact]
     public async Task FreshInstall_LeavesNoChunksInTheCache()
     {
         // Chunk shared by two files and within one file: deleted only after its last use.
         byte[] shared = Random(50_000, 11);
         WriteBuild("Game.exe", Random(30_000, 10));
-        WriteBuild("data/a.bin", shared.Concat(shared).ToArray());
-        WriteBuild("data/b.bin", shared.Concat(Random(20_000, 12)).ToArray());
+        WriteBuild("data/a.bin", [.. shared, .. shared]);
+        WriteBuild("data/b.bin", [.. shared, .. Random(20_000, 12)]);
         WriteBuild("ro3emu/loc_en.tsv", "zh_CN\tzh_TW"u8.ToArray());
         WriteBuild("ro3emu/skilltrace.on", []);
         var published = await Publish("1.0.0");
@@ -135,7 +154,7 @@ public sealed class PatcherTests : IDisposable
     public void Chunking_InsertionOnlyChangesNearbyChunks()
     {
         byte[] data = Random(2_000_000, 2);
-        byte[] edited = data[..1_000_000].Concat(Random(777, 3)).Concat(data[1_000_000..]).ToArray();
+        byte[] edited = [.. data[..1_000_000], .. Random(777, 3), .. data[1_000_000..]];
         var before = Hashes(data, Small);
         var after = Hashes(edited, Small);
         int shared = after.Count(before.Contains);
@@ -161,7 +180,7 @@ public sealed class PatcherTests : IDisposable
     [Fact]
     public void Glob_ExcludesUnityBuildJunk()
     {
-        var globs = new GlobSet(new[] { "*_BackUpThisFolder_ButDontShipItWithYourGame/", "*.log", "Temp/", "Data/**/*.pdb" });
+        var globs = new GlobSet(["*_BackUpThisFolder_ButDontShipItWithYourGame/", "*.log", "Temp/", "Data/**/*.pdb"]);
         Assert.True(globs.IsMatch("RagnarokUnity_BackUpThisFolder_ButDontShipItWithYourGame/x.cpp"));
         Assert.True(globs.IsMatch("build.log"));
         Assert.True(globs.IsMatch("sub/build.log"));
@@ -246,7 +265,7 @@ public sealed class PatcherTests : IDisposable
         File.WriteAllText(Path.Combine(Game, "settings.json"), "{}");
 
         // 1.0.1: an insertion in the big file, one file removed, one added.
-        byte[] patchedGrf = grf[..300_000].Concat(Random(5000, 13)).Concat(grf[300_000..]).ToArray();
+        byte[] patchedGrf = [.. grf[..300_000], .. Random(5000, 13), .. grf[300_000..]];
         WriteBuild("ROData/data.grf", patchedGrf);
         File.Delete(Path.Combine(Build, "Game_Data", "old.assets"));
         WriteBuild("Game_Data/new.assets", Random(3000, 14));
@@ -288,7 +307,7 @@ public sealed class PatcherTests : IDisposable
         handler.FailWhen = relative => relative.StartsWith("chunks/") && Interlocked.Increment(ref served) > 10;
         await Assert.ThrowsAsync<PatcherException>(() => Update(handler));
         Assert.Equal(File.ReadAllBytes(Path.Combine(Repo, "..", "build", "Game.exe")), File.ReadAllBytes(Path.Combine(Game, "Game.exe")));
-        using (var client = new RepositoryClient(new Uri("http://repo.test/"), handler))
+        using (var client = new RepositoryClient(new Uri("https://repo.test/"), handler))
         {
             var updater = new Updater(Layout, client);
             Assert.Equal("1.0.0", updater.LoadState()!.Version);
@@ -321,7 +340,7 @@ public sealed class PatcherTests : IDisposable
         File.SetLastWriteTimeUtc(grf, File.GetLastWriteTimeUtc(grf).AddSeconds(1));
         File.Delete(Path.Combine(Game, "Game.exe"));
 
-        using (var client = new RepositoryClient(new Uri("http://repo.test/"), handler))
+        using (var client = new RepositoryClient(new Uri("https://repo.test/"), handler))
         {
             var updater = new Updater(Layout, client);
             Assert.Equal(2, updater.QuickVerify(updater.LoadState()!).Count);
@@ -338,7 +357,7 @@ public sealed class PatcherTests : IDisposable
     {
         Directory.CreateDirectory(Game);
         File.WriteAllBytes(Path.Combine(Game, "ro3.exe"), Random(256, 32));
-        using var client = new RepositoryClient(new Uri("http://repo.test/"), new FileRepoHandler(Repo));
+        using var client = new RepositoryClient(new Uri("https://repo.test/"), new FileRepoHandler(Repo));
         var validation = new Updater(Layout, client).ValidateOfflineInstall(null, "stable");
 
         Assert.False(validation.CanLaunch);
@@ -354,7 +373,7 @@ public sealed class PatcherTests : IDisposable
         var handler = new FileRepoHandler(Repo);
         await Update(handler);
 
-        using var client = new RepositoryClient(new Uri("http://repo.test/"), handler);
+        using var client = new RepositoryClient(new Uri("https://repo.test/"), handler);
         var updater = new Updater(Layout, client);
         LocalState state = updater.LoadState()!;
         Assert.True(updater.ValidateOfflineInstall(state, "stable").CanLaunch);
@@ -397,7 +416,7 @@ public sealed class PatcherTests : IDisposable
         Assert.True(File.Exists(Path.Combine(Meta, "journal.json")));
 
         // Next start: the journal is replayed before anything else.
-        using var client = new RepositoryClient(new Uri("http://repo.test/"), handler);
+        using var client = new RepositoryClient(new Uri("https://repo.test/"), handler);
         var updater = new Updater(Layout, client);
         var state = updater.LoadState()!;
         Assert.Equal("1.0.1", state.Version);
@@ -432,7 +451,7 @@ public sealed class PatcherTests : IDisposable
 
         WriteBuild("Game.exe", Random(10_000, 62));
         await Publish("1.0.1");
-        using var client = new RepositoryClient(new Uri("http://repo.test/"), new FileRepoHandler(Repo));
+        using var client = new RepositoryClient(new Uri("https://repo.test/"), new FileRepoHandler(Repo));
         var channel = await client.GetChannelAsync("stable", CancellationToken.None);
         Assert.Equal("1.0.1", channel.Version);
         Assert.Equal("1.0.1", channel.Launcher?.Version);
@@ -471,7 +490,7 @@ public sealed class PatcherTests : IDisposable
         await Update(handler);
         File.WriteAllText(Path.Combine(Game, "player.log"), "game-written");
 
-        using var client = new RepositoryClient(new Uri("http://repo.test/"), handler);
+        using var client = new RepositoryClient(new Uri("https://repo.test/"), handler);
         var state = new Updater(Layout, client).LoadState()!;
 
         // Data to another folder.

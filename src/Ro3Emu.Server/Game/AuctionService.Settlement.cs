@@ -92,10 +92,10 @@ public sealed partial class AuctionService
 
     /// <summary>Commit award, surplus refund, personal history and bonus ledger with the terminal row.</summary>
     // (inferred) A guild-sourced World lot keeps its guild's rule: leaving the guild before settlement forfeits.
-    private long[] DividendRoles(AuctionStore.Item row) => row.Eligible
+    private long[] DividendRoles(AuctionStore.Item row) => [.. row.Eligible
         .Where(role => !(row.Type == AuctionType.Guild || row.Type == AuctionType.World && row.GuildId != 0)
             || guilds.ForRole(role)?.Id == row.GuildId)
-        .Distinct().Order().ToArray();
+        .Distinct().Order()];
 
     public async Task SettleAsync(long id)
     {

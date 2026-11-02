@@ -51,7 +51,7 @@ public sealed partial class CombatService
                 TraceImpact(cast, $"stage-{index}-resolve-entered");
                 if (chosenTargets == null) await ResolveCastAsync(source, cast);
                 else await ApplyEffectsAsync(source, cast, cast.Request.TargetPos ?? cast.Origin,
-                    chosenTargets: chosenTargets.Where(m => !m.Removed).ToArray());
+                    chosenTargets: [.. chosenTargets.Where(m => !m.Removed)]);
                 if (index + 1 < stages.Length && current()) Schedule(index + 1);
                 else { cast.AuthoredStagesFinished = true; await finished(); }
             });

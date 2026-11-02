@@ -26,6 +26,19 @@ public sealed class AntiCheatOptions
         ["1007"] = "0.5/5",  // MsgId.LoginRoleSelect: a full handover and role login
     };
 
+    /// <summary>
+    /// Frames one micro gate connection may send once its account is bound, "perSecond/burst" (heartbeats are free). A
+    /// login opens with a burst of friend, rank and user data calls; after that the client calls on clicks. Over budget a
+    /// request is answered as refused without running.
+    /// </summary>
+    public string MicroRequests { get; set; } = "20/100";
+
+    /// <summary>
+    /// The same before an account is bound: the client needs the key exchange and one verifySdk there. Over budget the
+    /// connection is closed.
+    /// </summary>
+    public string MicroRequestsBeforeSignIn { get; set; } = "2/10";
+
     /// <summary>Chat lines (group channels and whispers) one session may send, "perSecond/burst".</summary>
     public string ChatLines { get; set; } = "1/10";
 

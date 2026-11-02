@@ -10,7 +10,8 @@ internal sealed class PronteraDefenseSchemaPlan : DbPlan
     {
         using var cmd = DbSql.Command(db, tx,
             "CREATE TABLE IF NOT EXISTS prontera_defense_world (season_open INTEGER NOT NULL, map_id INTEGER NOT NULL, defense_point INTEGER NOT NULL, PRIMARY KEY(season_open,map_id));"
-            + "CREATE TABLE IF NOT EXISTS prontera_defense_station (season_open INTEGER NOT NULL, guild_id INTEGER NOT NULL, map_id INTEGER NOT NULL, PRIMARY KEY(season_open,guild_id));");
+            + "CREATE TABLE IF NOT EXISTS prontera_defense_station (season_open INTEGER NOT NULL, guild_id INTEGER NOT NULL, map_id INTEGER NOT NULL, PRIMARY KEY(season_open,guild_id));"
+            + "CREATE TABLE IF NOT EXISTS prontera_defense_guild_prep (season_open INTEGER NOT NULL, guild_id INTEGER NOT NULL, exp INTEGER NOT NULL, PRIMARY KEY(season_open,guild_id));");
         int changed = cmd.ExecuteNonQuery();
         SchemaSql.Execute(db, tx, """
             INSERT OR IGNORE INTO owner_revision(kind,id,part,revision)
@@ -47,7 +48,7 @@ internal sealed class PronteraDefenseWorldReadPlan(long open) : DbReadPlan
             using var reader = cmd.ExecuteReader();
             while (reader.Read()) stations.Add((reader.GetInt64(0), reader.GetInt64(1)));
         }
-        return new PronteraDefenseWorldRows(points.ToArray(), stations.ToArray());
+        return new PronteraDefenseWorldRows([.. points], [.. stations]);
     }
 }
 
@@ -84,5 +85,39 @@ internal sealed class PronteraDefensePointPlan(long open, long map, long point) 
         cmd.Parameters.AddWithValue("$map", map);
         cmd.Parameters.AddWithValue("$hp", point);
         return cmd.ExecuteNonQuery();
+    }
+}
+
+/// <summary>A guild's preparation exp for one opening: the supplies its members donated (82976 PronteraDefenseDonate).</summary>
+internal sealed class PronteraDefenseGuildPrepPlan(long open, long guild, long exp) : DbPlan
+{
+    internal override int Bytes => 128;
+    internal override string Label => "prontera-defense/guild-prep";
+    internal override IReadOnlyList<OwnerRevisionKey> EntityDeltaWrites =>
+        [RevisionStore.Entity("prontera_prep", $"{open}:{guild}")];
+    internal override object Execute(SqliteConnection db, SqliteTransaction tx)
+    {
+        using var cmd = DbSql.Command(db, tx,
+            "INSERT INTO prontera_defense_guild_prep(season_open,guild_id,exp) VALUES($open,$guild,$exp) "
+            + "ON CONFLICT(season_open,guild_id) DO UPDATE SET exp=exp+excluded.exp");
+        cmd.Parameters.AddWithValue("$open", open);
+        cmd.Parameters.AddWithValue("$guild", guild);
+        cmd.Parameters.AddWithValue("$exp", exp);
+        return cmd.ExecuteNonQuery();
+    }
+}
+
+internal sealed class PronteraDefenseGuildPrepReadPlan(long open) : DbReadPlan
+{
+    internal override int Bytes => 128;
+    internal override string Label => "prontera-defense/read-guild-prep";
+    internal override object Execute(SqliteConnection db, SqliteTransaction tx)
+    {
+        var result = new List<(long Guild, long Exp)>();
+        using var cmd = DbSql.Command(db, tx, "SELECT guild_id,exp FROM prontera_defense_guild_prep WHERE season_open=$open");
+        cmd.Parameters.AddWithValue("$open", open);
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read()) result.Add((reader.GetInt64(0), reader.GetInt64(1)));
+        return result.ToArray();
     }
 }

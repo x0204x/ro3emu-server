@@ -18,8 +18,8 @@ public sealed partial class DungeonService
 
     // WorldCoreService 已依賴 DungeonService，以委派連接其 typed custom 同步，避免 DI 循環。
     internal Func<GameSession, CustomData, Task>? SetAntCustomAsync { get; set; }
-    private readonly Dictionary<GameSession, AntTraversal> _antTraversals = new();
-    private readonly Dictionary<Attempt, AntStory> _antStories = new();
+    private readonly Dictionary<GameSession, AntTraversal> _antTraversals = [];
+    private readonly Dictionary<Attempt, AntStory> _antStories = [];
 
     private sealed class AntStory
     {
@@ -41,8 +41,8 @@ public sealed partial class DungeonService
         public SceneActorUnit? Carrier { get; set; }
         public long SeatToken { get; set; }
         public bool CarryPublished { get; set; }
-        public Dictionary<long, CustomData?> Previous { get; } = new();
-        public Dictionary<long, CustomData> Applied { get; } = new();
+        public Dictionary<long, CustomData?> Previous { get; } = [];
+        public Dictionary<long, CustomData> Applied { get; } = [];
     }
 
     private static bool AntAttemptCurrent(Attempt a, int generation) => !a.Settled && !a.Room.Closed
@@ -256,7 +256,7 @@ public sealed partial class DungeonService
             if (!state.WorldState.CustomData.TryGetValue(id, out var now) || !now.Equals(applied)) continue;
             var previous = state.Previous[id];
             var restore = previous ?? (applied.CustomParam.Tp == CustomParam.Types.ParamType.ListLong
-                ? AntList(id, applied.CustomParam.ListLongParam.Select(_ => 0L).ToArray()) : AntLong(id, 0));
+                ? AntList(id, [.. applied.CustomParam.ListLongParam.Select(_ => 0L)]) : AntLong(id, 0));
             if (SetAntCustomAsync != null && s.Role != null && !s.SceneLoading
                 && ReferenceEquals(s.WorldState, state.WorldState) && ReferenceEquals(s.Role, state.Role))
                 try { await SetAntCustomAsync(s, restore); }

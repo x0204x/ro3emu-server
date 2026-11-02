@@ -34,13 +34,13 @@ public sealed partial class MailService
         string id = AddLetter(box, new Letter
         {
             TemplateId = templateId, SenderId = "0", DeliveryKey = sourceKey,
-            Attachments = attachments.ToList(),
+            Attachments = [.. attachments],
         }, Now, null, days > 0 ? days : 30);
         transaction.ItemDelta(role, session.Items, session.Items);
         transaction.RoleBlob(role, "mailbox", JsonSerializer.SerializeToUtf8Bytes(box));
         persist(transaction);
         transaction.WithEconomy(character.ProgressionEconomy(session, "cd13c/season-reissue", [],
-            attachments.Select(a => (a.Entry, a.Count)).ToArray(),
+            [.. attachments.Select(a => (a.Entry, a.Count))],
             new { Season = session.SeasonState!.SeasonId, Source = sourceKey, MailId = id }, sourceKey));
         await roles.CommitAsync(transaction, "season-page/reissue-mail", _ => committed());
         try { await NotifyAsync(role, 1); }

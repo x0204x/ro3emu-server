@@ -15,7 +15,7 @@ public sealed class AppraisalService(GameData data, CharacterService character, 
 
     /// <summary>After a committed appraisal and its reply: the appraised instances (achievements 302006/302008).
     /// Listeners must not take the character lock synchronously (it is held); they post their work.</summary>
-    public List<Action<GameSession, IReadOnlyList<InvItem>>> Appraised { get; } = new();
+    public List<Action<GameSession, IReadOnlyList<InvItem>>> Appraised { get; } = [];
 
     /// <summary>
     /// (inferred) Validate the whole distinct, nonempty batch before changing any item; no additional batch cap or

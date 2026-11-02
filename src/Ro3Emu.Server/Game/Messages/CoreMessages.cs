@@ -37,34 +37,6 @@ public sealed class CoreMessages(RoleSessionService roleSessions, ChatService ch
         routes.Map(GuildChallengeService.Notify, "handler", async (session, msgId, body) =>
         {
         });
-        routes.Map(2001, "handler", async (session, msgId, body) =>
-        {
-            var order = CreateOrderReq.Parser.ParseFrom(body.Span);
-            await session.SendGameAsync(2001, new CreateOrderResp
-            {
-                Result = ErrorCodes.FeatureUnavailable,
-                ChargeId = order.ChargeId, ChargeType = order.ChargeType
-            });
-        });
-        routes.Map(2002, "handler", async (session, msgId, body) =>
-        {
-            await session.SendGameAsync(2002, new PayResultResp
-            {
-                Result = ErrorCodes.FeatureUnavailable,
-                OrderId = PayResultReq.Parser.ParseFrom(body.Span).OrderId
-            });
-        });
-        routes.Map(2003, "handler", async (session, msgId, body) =>
-        {
-            await session.SendGameAsync(2003, new GetRechargeFirstAwardResp { Result = ErrorCodes.FeatureUnavailable });
-        });
-        routes.Map(2004, "handler", async (session, msgId, body) =>
-        {
-        });
-        routes.Map(2005, "handler", async (session, msgId, body) =>
-        {
-            await session.SendGameAsync(2005, new ItemExchangeResp { Result = ErrorCodes.FeatureUnavailable });
-        });
         routes.Map(WorldCoreService.TeleportObject, "handler", async (session, msgId, body) =>
         {
             if (await dungeons.TrySyncAntActorPositionAsync(session, ClientTeleportObject.Parser.ParseFrom(body.Span))) return;

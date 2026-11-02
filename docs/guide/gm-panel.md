@@ -65,7 +65,7 @@ The preset buttons (Gear, class builds) build a test character for a class. They
 
 | Op | What it does |
 |---|---|
-| 999 GmPlayerAsset `openallfunc` | Every function counts as open for this session. |
+| 999 GmPlayerAsset `openallfunc` | Every function counts as open for the role, at later logins too (Skills, the skill bar, Cards and the rest open even though the role skipped the quests that open them). |
 | 170 GMJobProfessSkill, 171 GMJobProfessAttr | The build's recommended skills and stats for the role's level. |
 | 172 GMSetSkillWheel, 38 GMSkillQueue | The skill bar and the skill queue. |
 | 173 GMEquipWeapon | Gives and equips the weapon. |

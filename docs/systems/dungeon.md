@@ -59,6 +59,169 @@ Realm of the Gods extras (`DungeonService.RealmOfGods`, TenGameplayConfig 100101
 - Test aids: `!dungeonsolo on` also admits a lone 30400 entry to a team boss; `!firstclear <boss> [daysAgo] | clear`
   sets the realm's first clear of a boss.
 
+Raid boss trials (`DungeonService.RaidTrials`, `Reconstructed/raid-trials.json`), **inferred as a whole**: the raid
+bosses ran server AI scripts (NPCConfig `_iAISpecial`, "Raid_S01_Boss01_Test", "RaidFive_Boss01") that the client does
+not ship. Their scripted mechanics are rebuilt from what it does ship: the raid's tips (ChatConfig), the encounter
+guide (TenChallengeHandbookIDConfig), the mechanic's NPCs and buffs, and the scene editor's points. Every number and
+placement has its reason in the json (`why`, `evidence`, `guessed`).
+
+- A raid boss with a script gets a 0.5 s trial tick when the fight begins. Its trials take turns: one starts
+  `start.firstMs` after the boss engages and then every `start.everyMs`, and once at each `start.hp` threshold (percent
+  of the boss's HP; a big hit fires the passed thresholds once). No trial starts within 6 s of the previous one's end.
+  A boss that leaves combat ends its trial without a verdict and restarts its clock.
+- A trial sends its tips (1022; a CombatCountdownTip's `${1}` is sent as the window's seconds, which the client counts
+  down, `UI_Sys_GVE_MarqueeWidgetCtrl`), may hold the boss and play a show skill for its window, deals out colours
+  (note buffs, one per player, so every colour in play is someone's), marks random players (a trap or a target), and
+  puts out its objects: scene props shown as their NPCConfig `_iNPCType`, or destructible monsters outside the room's
+  counted actors (an object without its own AI, or marked `still`, stands still and never strikes back; `hits` per
+  player destroy it at any gear; `match` lets only a player of its colour damage it). Pickups hand out a colour through
+  their 32700 interaction.
+- Rules judged when the window closes: per player `stand` (inside an object, of your colour), `avoid` (outside every
+  object's circle or lane), `shelter` (behind an object as seen from the boss), `guard` (a marked player with a carrier
+  beside), `spread` (a marked player with nobody beside); for the party `occupy` (every object at once), `collect`
+  (walk into every object; each one taken can reward its taker), `kill` (every object, or the chosen one), `carry`
+  (touch the object, then hit the boss with it), `lure` (the boss stands in an object's area when the window closes).
+  Boss `breakers` are skills whose landing area destroys the objects in it; `casts` are skills the boss casts at a
+  random player during the window; a cast with a `beam` (length, width) is only the skill's show aimed at that player,
+  and the objects on its line from the boss are destroyed (no hit, the boss keeps fighting).
+- A failure costs a share of each reached player's maximum HP, sent as the boss's hit of the named skill (inferred: it
+  punishes the same at any gear, and no single failure wipes a full-HP party). A solved trial can reward (a buff, a
+  line) and stagger the boss (its show interrupted, a stagger show, the boss held).
+- Test aid: `!raidtrial [list | n | stop]` lists the boss's trials, starts trial n now (engaging the GM if the boss is
+  idle) or ends the running one without a verdict.
+- Coverage: every raid boss of TenGameplayBossConfig with an AI script has trials: Realm of the Gods 100101-100103
+  (Isti, Nasha, Ilmo, Mirko) and the five-player raids 50101/50104 (Golden Thief Bug, Orc Hero, Drake), 50102/50105
+  (Mistress, Maya, Osiris) and 50103/50106 (Pharaoh, Moonlight Flower, Baphomet), each boss at its `_kBoss` mark 1-3.
+  Not covered: the Hidden Realm's 4300099 'Unknown Boss' (50199): no AI script, and its guide only says its skills are
+  'the same as those of the General Boss', without naming which. A mechanic whose boss skill the generic rotation
+  already casts with the client's own show stays there (Golden Thief Bug's Earthquake, Drake's Tidal Tornado 4321001/
+  4321101 and Powder Keg Party 4320401, Orc Hero's Blade Deflection cast 4310801).
+- Isti (Realm of the Gods 3020101; 14720026/14720010/14720027), **Ocean Concerto** (tip 4110011; guide 1100105): from
+  60% HP and then every 70 s Isti holds still playing her 40 s channel 14724101 for a 25 s window. Every player gets a
+  note (14720201 Red, 14720501 Yellow, 14720601 Blue, 14720701 Green; the HUD shows it), and two bubbles per player (4 to
+  16, the NPCs 14720013-14720016 of the notes in play) stand 45% of the way in from the 16 ring points of groups 17 and
+  34. A player who walks into a bubble of their note takes it and gains Bubble Movement 14720301 (+5% damage per stack);
+  each bubble left at the end costs everyone 10% of their maximum HP (at most 50%) as Full-Arena Wave 14721101.
+  Inferred: the phase threshold, the period, the window, standing bubbles instead of moving ones, the damage.
+- Nasha (3020102; 14740100/14740000/14740200), **Dance test** (tips 4618 'It's time for your test!' and 4611 'Reach your
+  performance position within ${1} seconds', 15 s; guide 1100201 Backup Dancers): 25 s into the fight and every 50 s
+  Nasha dances in place (14744200) while one Circle-Stepping Magic Circle 14740002 per player stands at the circle
+  creation points 601-623. A player inside a circle (2 m) at the end gets Perfect State 14742501 (+30% speed and damage)
+  and line 4616; one outside takes 35% as Dazzling Dance Step 14740500 and line 4615. Inferred: the timing, the circle
+  count, the damage; the four-direction step copying is not reproduced.
+- Ilmo (3020103; 14761100/14761000/14761200), **Beat Prison** (tip 4606 'Enter the circles in order to compose the
+  melody', 30 s; guide 1100301): at 80, 60, 40 and 20% HP (the four Lock Life gates 14761601-14761901) Ilmo holds,
+  drumming the Drumbeat Cage 14769000-14769300. The note NPCs 14760001-14760004 stand at points 17-20; their own
+  interactions (33-36) give the Red/Blue/Yellow/Green note 14760001/14760101/14760201/14760301. Coloured circles
+  14760005-14760008 appear in the editor's region groups 34, 61, 71 and 48 (2, 3, 4 and 6 circles, DungeonLua
+  `numbylevel`/`npcidbyregion`); a player carrying a circle's note who steps into it lights it. All lit within 30 s:
+  Green Energy Barrier 14761401 and no damage; otherwise the cage costs everyone 50%. Inferred: the thresholds, the
+  circle counts per gate, any order instead of the melody's order, 50% instead of the data's 100%.
+- Mirko (Normal 3020108 14780007; Hard 3020104 14780005; Final Trial 3020104 14780008): **Safe zones** (tips
+  4620/4621/4622 'Activate three/four/two Safe Zones simultaneously', 30 s; skill 14783601 Mechanic Starts): 40 s in
+  and every 80 s (Final Trial 30 s and 60 s) Mirko holds for 30 s while the zone markers 14780006 stand at points
+  118-120 (3020108, three) or the corners 25-28 (3020104, four), one per player at most; every zone needs a player in it
+  (3 m) at the end, else everyone takes 50% as 14782101. **Musical instruments** (tip 4607; guide 1100403): 75 s in and
+  every 80 s every player gets a gold or blue note (14788001/14788101, DungeonLua `buffid`) and one Golden Horn or Blue
+  Harp per player (two to four; 14780014/15 Normal, 16/17 Hard, 18/19 Final Trial) stands at the edge points 101-104.
+  Only a player of its colour damages it and 4 hits per player destroy it; each one left after 20 s costs everyone 20%
+  (at most 60%). Inferred: all timing and damage; Compose and Perform Movement (DungeonLua `music`/`skill`, the recorded
+  scores) are not reproduced.
+- Orc Hero (five-player raid, Orc Village 3120101; 43100003/43100000): **Lost Giant Blade** (tips 4311 'Pick up the Giant
+  Blade and interrupt Orc Hero's charging!', 15 s, and 4314403; guide 1050202): 30 s in and every 70 s he raises his
+  shield (4311501) for 15 s while the dropped blade 43100002 lies at one of the ring points 18-25. Walking onto it gives
+  the carrier 'Blade Mountain-Greatsword' 4310401 (10 s) and line 4314404; the carrier's next hit on Orc Hero breaks the
+  shield (he staggers 3 s, 4311701; line 4314405). Otherwise the full-screen AOE 4311801 costs everyone 50%. The blade's
+  derived skill 4313601 is not handed out (the client's derived-skill slot comes from the skill wheel sync): any hit
+  counts. **Giant-Blade Kunai** (tips 4314405, 4314406; guide 1050203): 55 s in and every 70 s the shield 43100004 lies at
+  his feet and two players are marked (4311601); picking the shield up gives Shield 4310601 (-50% speed); after 12 s a
+  marked player without a shield carrier within 3 m (themselves included) takes 60% as Launch Blade 4312501. **Blade
+  Deflection** (guide 1050201 'players must not approach one another'; skill 4310801 'if players are within 5 m of one
+  another, the Kunai ricochet between them'): 80 s in and every 70 s three random players get the Weapon Deflection
+  Mechanic Callout 4311601; after 6 s a marked player with anyone within 5 m, and those beside them, take 30% as
+  4310901 (three of the data's 10% ricochets). Inferred: the count for both difficulties, timing, damage; the speech
+  line 4314407 'Stay away from each other!!!' is not sent.
+- Drake (five-player raid, Silent Ship 3120201; easy 43200006, normal 43200000): **Ghost ships** (tips 5002 'Ghost ships
+  will arrive in ${1} seconds! Destroy them with explosive barrels!', 17 s, and 5350035; guide 1050301): 35 s in and every
+  60 s two ghost ships (43200007 easy, 43200002 normal, shown as the bullet units NPCConfig types them) stand at random
+  lane points (31-35 on the east edge facing west, 36-40 on the north edge facing south) and Drake throws Falling
+  Explosive Barrels 4323101 at a random player every 5 s. A barrel (4323101/4322501) landing on a ship sinks it (a boss
+  `breaker`); after 17 s each ship left charges its lane (60 x 8 m ahead of it): 60% to every player in it.
+  **Puppets** (tip 5001; guide 1050303): 70 s in and every 60 s one Puppet 43200001 per player (two to four) fights at the
+  mark points 18-27 and Drake throws Falling Cannonball 4320101 at a random player every 6 s; a cannonball
+  (4320101/4321701) landing on a puppet destroys it, players need 12 hits per player; each puppet left after 30 s costs
+  everyone 15% (at most 45%). Inferred: lanes, timing, hits and damage; the ships do not sail.
+- Moonlight Flower (five-player raid 3120801; easy 4380000, normal 4380001): **Bell Cage** (tip 5005 'A teammate is
+  trapped inside a Bell! Hurry and smash the Bell!'; skill 4380501 'Traps one player inside a Bell, then attacks the
+  Bell'): 25 s in and every 60 s one random player is marked (4382301) and the Bell Cage 4380002 stands on them; 4 hits
+  per player break it within 12 s, else the marked player takes 60% as 4380501. **Hidden Bell** (tip 5007; guide
+  1050801; skill 4380601): 45 s in and every 60 s three Riddle Bells 4380004 stand at points 21-23 beside her, one shows
+  Charged Bell 4380001 for 4 s; breaking that one (3 hits per player) within 15 s solves it, else everyone takes 40%.
+  **Moonlight** (tip 5006; guide 1050802 Cat and Mouse): 65 s in and every 60 s a Spotlight Projectile 4380006 lands
+  under every player; whoever is still within 3 m after 4 s takes 35% as Spotlight Game 4380701 and Blind 4381901 (3 s).
+  **Charged bells** (tip 5008; guide 1050803 Nowhere to Hide): 85 s in and every 60 s the Four-Corner Bells 4380008
+  stand at points 24-27; within 6 m of one after 6 s: 40% as 4380801. Inferred: all timing, hits and damage; the bells
+  do not visibly shuffle (remember the glowing one), the spotlights do not wander, and the second (uncharged) blast of
+  Nowhere to Hide is left out.
+- Golden Thief Bug (five-player raid, sewers 3120401; easy 4300001, normal 4300000): **Sandstorm** (tips 4802 'A
+  sandstorm is coming! Use the wormholes to avoid it!' and 4801; guide 1050101 Wormhole, 1050102 Sandstorm): 30 s in and
+  every 60 s he burrows (4301801) for 10 s while two storms 4300004 come in from random edge points of the editor's
+  'Sandstorm' group (21/23/24/25), each a 60 x 16 m lane across the field. The 'Wormhole 2' burrows 4300007 stand at the
+  corner points 41, 38, 42, 45 just outside both lanes; their interaction takes a player to the next one. Still in a lane
+  at the end: 40% as 4305201. **Burrow** (tips 4803 'Guide Golden Thief Bug toward a wormhole!' and 4809 'Golden Thief Bug
+  will burrow again in ${1} seconds!', 15 s): 55 s in and every 60 s two burrows 4300002 stand at random points of the
+  'Wormhole' group (27-36); the boss must be within 4 m of one when the count ends (he burrows there and resurfaces,
+  4305901, 4 s), else everyone takes 40% as 4305301. Inferred: lanes and their width, timing, damage, the lure rule
+  itself. Earthquake (guide 1050103; 4305601, easy 4307001/4307101) stays in his own rotation.
+- Mistress (five-player raid, Mjolnir 3120301; easy 4330001, normal 4330000): **Hornet Formation** (tip 4314409 'A swarm
+  of Bee Infantry is approaching'; guide 1050401): 25 s in and every 75 s four Marching Hornets 4330006 from the north
+  edge points 22-27 and four from the west edge points 48-53, each a 60 x 5 m lane; in a lane after 8 s: 40% as Swarming
+  Bees 4331301. **Hornet Advance** (tip 4314409; guide 1050402): 50 s in and every 75 s five of the six offset west rows
+  61-66 march (60 x 10 m), one gap left; in a lane after 8 s: 30% as 4331601. **Hornet Charge** (tip 4314410 'Bee Cavalry
+  will target players and charge'; guide 1050403): 70 s in and every 75 s two random players get a warning zone 4330004
+  (6 m) under them; anyone in a zone after 5 s takes 45% as 4331501. **Angry** (tip 4314411 'Infantry and cavalry will
+  appear together'): at 50% HP she holds (4332101) while four north lanes and the two zones come together; 50% to those
+  caught after 8 s. Inferred: all lanes, widths, timing and damage; no knockback, no eight-way charge.
+- Maya (five-player raid, Ant Hell 3120501; easy 4340005, normal 4340000): **Quicksand** (tip 5201 'Quicksand will strike
+  in ${1} seconds! Hide behind a stone pillar', 10 s; guide 1050502): 35 s in and every 70 s Maya holds (New Ultimate
+  4342601) while one stone pillar 4340006 per player (two to four) rises at the diagonal points 32-35, 14 m out; a player
+  not in a pillar's shadow (2 m either side, 6 m deep, as seen from Maya) takes 50%. **Petrify Mist** (guide 1050503;
+  4342301): 55 s in and every 70 s a mist circle 4340015 lands under every player; still within 4 m after 4 s: 30% and
+  Petrify 4340301 (3 s). **Sandstorm meteors** (tips 5202 and 5203, 8 s): at 40% HP the same shelter with the pillars at
+  the row points 36, 37, 40, 41 (4343401). Inferred: timing, shadow size, damage; the pull to the centre and Silk Spit's
+  link (guide 1050501) are not reproduced: the link's pull is a server-side movement the client data does not describe.
+- Osiris (five-player raid, Pyramid 3120601; easy 4360004, normal 4360000): **Dark Pulse** (tip 5003 'Dark Pulse will be
+  unleashed in ${1} seconds! Use Dark Pulse to destroy the Horongs!', 20 s; guide 1050601/1050602): 25 s in and every 60 s
+  one Horong 4360006 per player (two to four) stands at random points of 58-63/65-73; every 4 s Osiris aims a Dark Pulse
+  (4361301, a beam) at a random player: the 40 x 4 m line from him through that player detonates the Horongs on it, so
+  the players steer it by standing behind them. Each Horong left costs everyone 15% (at most 45%) as Horong Split
+  4361401. **Astral Shift** (tip 5004 'Star Shift will strike in ${1} seconds! Keep moving to dodge it!', 5 s; guide
+  1050603): 55 s in and every 60 s a star-shift circle 4360008 lands under every player; still within 3 m: 35% as
+  4361701. Inferred: the beam's size, that it neither hurts nor bounces, timing and damage; the walls do not rotate.
+- Pharaoh (five-player raid, Sphinx 3120701; easy 4370000, normal 4370001): **Coffin Trap** (tips 4370001 'Your teammate
+  ${1} is trapped in a coffin!' with the player's name, and 4370004; guide 1050702): 25 s in and every 60 s a random
+  player is wrapped in the Shroud 4370501 and Pharaoh's Coffin 4370002 stands on them; 4 hits per player break it within
+  12 s, else the trapped player takes 60% as 4372101. **Divine Light Purification** (tips 4370002 'hide behind the
+  Pyramid!' and 4314408; guide 1050703): 45 s in and every 60 s he holds charging (4371101) for 8 s while the pyramids
+  4370003 stand at the four corner points 66-69 (each with an air wall in the editor); a player outside every pyramid's
+  shadow (2 m either side, 6 m deep) takes 55%. **Marked** (tip 4370005 'Move Away from the marked player!'): 65 s in and
+  every 60 s two random players get the AOE Marker 4374901; after 6 s a marked player with anyone within 6 m, and those
+  beside them, take 40% as Grasp of the Dead 4370401. **Death Ray** (guide 1050701): 85 s in and every 60 s two pyramids
+  4370004 (with Pyramid Laser 4375101) stand at random inner corner points 22-25 facing the centre, each firing a 45 x
+  6 m lane; in a lane after 6 s: 50% as 4375101. Inferred: all timing, sizes and damage; the coffin does not sink and the
+  ray does not sweep.
+- Baphomet (five-player raid, Labyrinth 3120901; easy 4390000, normal 4390001): **Demonic Pillar** (tip 4314472 'Full-screen
+  attack! Quick, get behind a stone pillar!'; guide 1050902): 30 s in and every 70 s he holds (4393301) for 8 s while the
+  six stone pillars 4390004 stand at the hexagon 29-34, 20 m out (the editor's six air walls are their bodies); a player
+  outside every pillar's shadow (2 m either side, 6 m deep) takes 50%. **Pillar blast** (tip 4314475 'The stone pillar is
+  about to explode! Move Away!'): 44 s in and every 70 s the pillars stand again; within 5 m of one after 5 s: 30% as
+  4392501. **Summon Evil** (tip 4314474 'Stop the illusions from approaching Baphomet!'; guide 1050903): 60 s in and every
+  70 s one illusion 4390003 per player (two to six) appears on the outer hexagon 36-41; 6 hits per player kill one; each
+  left after 20 s costs everyone 15% (at most 45%) as 4392801. **Scythe Dance** (tip 4314476; guide 1050901): at 60% and
+  30% HP he holds sweeping (4391601) while a hell ring 4390002 lands under every player; still within 3 m after 5 s: 35%.
+  Inferred: timing, sizes and damage; the illusions stand where they appear and never strike (an object's `still`),
+  and the charge at a player (4314473) is not reproduced.
+
 Policies below remain **(inferred)** except for explicitly identified client contracts; they do not establish
 original-server encounter parity:
 

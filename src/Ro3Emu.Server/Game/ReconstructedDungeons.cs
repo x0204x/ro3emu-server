@@ -17,9 +17,9 @@ public sealed partial class ReconstructedDungeons
     public sealed record Wave(int Quest, IReadOnlyList<Spawn> Spawns);
     public sealed record Dungeon(long Scene, string Name, string Confidence, IReadOnlyList<Wave> Waves);
 
-    private readonly Dictionary<long, Dungeon> _dungeons = new();
-    private readonly Dictionary<int, int> _attackSources = new();
-    private readonly Dictionary<int, (int Hp, int Attack)> _soloTuning = new();
+    private readonly Dictionary<long, Dungeon> _dungeons = [];
+    private readonly Dictionary<int, int> _attackSources = [];
+    private readonly Dictionary<int, (int Hp, int Attack)> _soloTuning = [];
 
     public ReconstructedDungeons(IOptions<ServerOptions> options)
     {
@@ -37,13 +37,13 @@ public sealed partial class ReconstructedDungeons
         {
             long scene = long.Parse(entry.Name, System.Globalization.CultureInfo.InvariantCulture);
             var waves = entry.Value.GetProperty("waves").EnumerateArray()
-                .Select(w => new Wave(w.TryGetProperty("quest", out var q) ? q.GetInt32() : 0, w.GetProperty("spawns").EnumerateArray()
-                    .Select(s => new Spawn(s.GetProperty("point").GetInt64(), s.GetProperty("npc").GetInt32())).ToArray()))
+                .Select(w => new Wave(w.TryGetProperty("quest", out var q) ? q.GetInt32() : 0, [.. w.GetProperty("spawns").EnumerateArray().Select(s => new Spawn(s.GetProperty("point").GetInt64(), s.GetProperty("npc").GetInt32()))]))
                 .ToArray();
             _dungeons[scene] = new Dungeon(scene, entry.Value.GetProperty("name").GetString() ?? "",
                 entry.Value.GetProperty("confidence").GetString() ?? "", waves);
         }
         LoadScriptedScenes();
+        LoadRaidTrials();
     }
 
     public bool Enabled { get; }

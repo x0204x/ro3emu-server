@@ -32,13 +32,17 @@ jobs:
         run: dotnet format whitespace --folder --verify-no-changes
 
   # Rebuilds everything that builds without the client with the baseline rules as warnings, and fails when a rule's
-  # count no longer matches the one in .editorconfig (tools/AnalyzerBaseline).
+  # count no longer matches the one in .editorconfig, or when .editorconfig got looser than in the parent commit
+  # (tools/AnalyzerBaseline).
   analyzer-baseline:
     name: Analyzer baseline
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The parent commit holds the counts this run's baseline may not rise above.
+          fetch-depth: 2
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json

@@ -12,7 +12,7 @@ internal sealed record SocialRelationRows(long[] Friends, long[] Applicants, lon
 
 internal sealed class SocialSnapshotReadPlan(IEnumerable<long> roles) : DbReadPlan
 {
-    private readonly long[] _roles = roles.Distinct().ToArray();
+    private readonly long[] _roles = [.. roles.Distinct()];
     internal override int Bytes => 128 + _roles.Length * sizeof(long);
     internal override string Label => "social/snapshot";
 
@@ -36,7 +36,7 @@ internal sealed class SocialSnapshotReadPlan(IEnumerable<long> roles) : DbReadPl
 /// <summary>One friend mutation and its exact post-write relation rows in the same durable transaction.</summary>
 internal sealed class SocialFriendWritePlan(DbPlan inner, IEnumerable<long> roles) : DbPlan
 {
-    private readonly long[] _roles = roles.Distinct().ToArray();
+    private readonly long[] _roles = [.. roles.Distinct()];
     internal override int Bytes => inner.Bytes + 128 + _roles.Length * sizeof(long);
     internal override string Label => "social/friend-write";
     internal override void ResolveRoleWrites(AccountStore accounts) => inner.ResolveRoleWrites(accounts);
@@ -50,7 +50,7 @@ internal sealed class SocialFriendWritePlan(DbPlan inner, IEnumerable<long> role
 
     internal static SocialRelationRows ReadRows(SqliteConnection db, SqliteTransaction tx, long role)
     {
-        long[] Read(FriendReadKind kind) => ((List<long>)new FriendReadPlan(kind, role).Execute(db, tx)!).ToArray();
+        long[] Read(FriendReadKind kind) => [.. ((List<long>)new FriendReadPlan(kind, role).Execute(db, tx)!)];
         var friends = Read(FriendReadKind.Friends);
         var intimacy = friends.ToDictionary(friend => friend,
             friend => (int)new FriendReadPlan(FriendReadKind.Intimacy, role, friend).Execute(db, tx)!);
@@ -72,7 +72,7 @@ internal readonly record struct GuildStamp(long Id, long Revision);
 
 internal sealed class GuildStampReadPlan(IEnumerable<long> roles) : DbReadPlan
 {
-    private readonly long[] _roles = roles.Distinct().ToArray();
+    private readonly long[] _roles = [.. roles.Distinct()];
     internal override int Bytes => 128 + _roles.Length * sizeof(long);
     internal override string Label => "social/guild-stamps";
     internal override object Execute(SqliteConnection db, SqliteTransaction tx)
@@ -100,7 +100,7 @@ internal sealed record ProfileSnapshot(Role Role, RoleRevisionVector Vector, byt
 
 internal sealed class ProfileSnapshotReadPlan(IEnumerable<long> roles) : DbReadPlan
 {
-    private readonly long[] _roles = roles.Distinct().ToArray();
+    private readonly long[] _roles = [.. roles.Distinct()];
     internal override int Bytes => 128 + _roles.Length * sizeof(long);
     internal override string Label => "social/profile-snapshot";
     internal override object Execute(SqliteConnection db, SqliteTransaction tx)

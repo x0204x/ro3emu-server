@@ -145,8 +145,8 @@ public sealed partial class TerritoryWorldTests : IAsyncLifetime
         {
             await OnLoop(() =>
             {
-                actors = Service<World>().AllUnits().Where(u => u.SceneEntry == mapId
-                    && u.Entity().EntityTemplateID == 4907011).ToArray();
+                actors = [.. Service<World>().AllUnits().Where(u => u.SceneEntry == mapId
+                    && u.Entity().EntityTemplateID == 4907011)];
                 return Task.CompletedTask;
             });
             if (actors.Length == 0) await Task.Delay(10);

@@ -28,8 +28,8 @@ public sealed partial class GuildService
     private const int RallyRight = 22;
 
     private sealed record Rally(long GuildId, long Caller, long Scene, MapPoint Point, long ExpiresMs);
-    private readonly Dictionary<long, Rally> _rallies = new();
-    private readonly Dictionary<long, long> _lastRallyMs = new();
+    private readonly Dictionary<long, Rally> _rallies = [];
+    private readonly Dictionary<long, long> _lastRallyMs = [];
 
     private bool GuildWhitelisted(GameSession s, int index)
     {

@@ -34,7 +34,7 @@ public sealed class VoiceRooms(IOptions<ServerOptions> options, TeamService team
     // Ordinal: the account's stored spelling is its identity, and a legacy database can hold "admin" and "Admin" as
     // two accounts, which must not evict each other's voice connection.
     private readonly Dictionary<string, VoiceConnection> _byAccount = new(StringComparer.Ordinal);
-    private readonly Dictionary<long, HashSet<VoiceConnection>> _rooms = new();
+    private readonly Dictionary<long, HashSet<VoiceConnection>> _rooms = [];
     private TimeSpan _sinceSweep;
 
     /// <summary>The account's authed voice connection, or null.</summary>
@@ -69,7 +69,7 @@ public sealed class VoiceRooms(IOptions<ServerOptions> options, TeamService team
             if (members != null && members.Count >= cap) return new VoiceJoinOutcome(VoiceJoinCode.Full, [], []);
             var previousOthers = OthersLocked(connection);
             LeaveLocked(connection);
-            if (members == null) _rooms[roomId] = members = new();
+            if (members == null) _rooms[roomId] = members = [];
             var existing = members.ToArray();
             members.Add(connection);
             connection.RoomId = roomId;
@@ -98,7 +98,7 @@ public sealed class VoiceRooms(IOptions<ServerOptions> options, TeamService team
     }
 
     private VoiceConnection[] OthersLocked(VoiceConnection connection) =>
-        connection.RoomId != 0 && _rooms.TryGetValue(connection.RoomId, out var set) ? set.Where(c => c != connection).ToArray() : [];
+        connection.RoomId != 0 && _rooms.TryGetValue(connection.RoomId, out var set) ? [.. set.Where(c => c != connection)] : [];
 
     private void LeaveLocked(VoiceConnection connection)
     {
@@ -174,12 +174,12 @@ public sealed class VoiceRooms(IOptions<ServerOptions> options, TeamService team
     {
         lock (_sync)
             return sender.RoomId != 0 && _rooms.TryGetValue(sender.RoomId, out var set)
-                ? set.Where(c => c != sender && c.SpeakerOn).ToArray() : [];
+                ? [.. set.Where(c => c != sender && c.SpeakerOn)] : [];
     }
 
     public VoiceConnection[] MembersOf(long roomId)
     {
-        lock (_sync) return _rooms.TryGetValue(roomId, out var set) ? set.ToArray() : [];
+        lock (_sync) return _rooms.TryGetValue(roomId, out var set) ? [.. set] : [];
     }
 
     /// <summary>Records a forwarded audio frame; returns true the first time after silence (the caller then
@@ -221,7 +221,7 @@ public sealed class VoiceRooms(IOptions<ServerOptions> options, TeamService team
         // Asked before taking the lock: MicHeldOff reads TeamService, GuildVoiceService and TavernService (their own locks), and nothing
         // else may ever be locked while _sync is held.
         (VoiceConnection Connection, long Room)[] joined;
-        lock (_sync) joined = _rooms.SelectMany(r => r.Value.Select(c => (c, r.Key))).ToArray();
+        lock (_sync) joined = [.. _rooms.SelectMany(r => r.Value.Select(c => (c, r.Key)))];
         var heldOff = new Dictionary<VoiceConnection, bool>(joined.Length);
         foreach (var (c, room) in joined) heldOff[c] = MicHeldOff(c.RoleId, room);
         lock (_sync)
@@ -232,11 +232,11 @@ public sealed class VoiceRooms(IOptions<ServerOptions> options, TeamService team
                     // A connection that joined in between keeps the value its Join set until the next tick.
                     if (heldOff.TryGetValue(c, out bool off)) c.ChatForbidden = off;
                     var mic = ApplyMicLocked(c, refuseOn: false);
-                    if (mic.Changed) (micChanged ??= new()).Add((c, mic));
+                    if (mic.Changed) (micChanged ??= []).Add((c, mic));
                     if (c.Speaking && now - c.LastAudioAtMs >= VadSilence.TotalMilliseconds)
                     {
                         c.Speaking = false;
-                        (silenced ??= new()).Add((c, room.Key));
+                        (silenced ??= []).Add((c, room.Key));
                     }
                 }
         }
@@ -267,7 +267,7 @@ public sealed class VoiceRooms(IOptions<ServerOptions> options, TeamService team
     private void SweepMembership()
     {
         VoiceConnection[] snapshot;
-        lock (_sync) snapshot = _rooms.Values.SelectMany(s => s).ToArray();
+        lock (_sync) snapshot = [.. _rooms.Values.SelectMany(s => s)];
         foreach (var connection in snapshot)
         {
             long room = connection.RoomId;

@@ -67,7 +67,7 @@ public sealed class TowerShopTests : IAsyncLifetime
     private async Task Gm(string account, string line)
     {
         using var http = new HttpClient();
-        var resp = await http.PostAsync($"{_http}/ro3emu/gm?account={account}", new StringContent(line));
+        var resp = await http.PostAsync($"{_http}/ro3emu/gm?account={account}", Operator.Command(line));
         resp.EnsureSuccessStatusCode();
     }
 

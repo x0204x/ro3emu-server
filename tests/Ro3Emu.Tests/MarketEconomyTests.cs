@@ -135,7 +135,7 @@ public sealed partial class GuildTests
     {
         await using var seller = await InWorld("CapEditor"); await Level("capeditor");
         using (var client = new HttpClient())
-            (await client.PostAsync($"{_http}/ro3emu/gm?account=capeditor", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
+            (await client.PostAsync($"{_http}/ro3emu/gm?account=capeditor", Operator.Command("!lvl 99"))).EnsureSuccessStatusCode();
         long guildId = await CreateGuild(seller, "Edits");
         var store = _app.Services.GetRequiredService<GuildStore>();
         var state = store.Get(guildId)!; state.Materials = 20; Assert.True(store.Save(state));
@@ -174,7 +174,7 @@ public sealed partial class GuildTests
         {
             await Level(name);
             using var client = new HttpClient();
-            (await client.PostAsync($"{_http}/ro3emu/gm?account={name}", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
+            (await client.PostAsync($"{_http}/ro3emu/gm?account={name}", Operator.Command("!lvl 99"))).EnsureSuccessStatusCode();
         }
         long sellerId = await CreateGuild(seller, "Vendor"), buyerId = await CreateGuild(buyer, "Buyer");
         var store = _app.Services.GetRequiredService<GuildStore>();
@@ -207,7 +207,7 @@ public sealed partial class GuildTests
     {
         await using var seller = await InWorld("CapSeller"); await Level("capseller");
         using (var client = new HttpClient())
-            (await client.PostAsync($"{_http}/ro3emu/gm?account=capseller", new StringContent("!lvl 99"))).EnsureSuccessStatusCode();
+            (await client.PostAsync($"{_http}/ro3emu/gm?account=capseller", Operator.Command("!lvl 99"))).EnsureSuccessStatusCode();
         long guildId = await CreateGuild(seller, "Caps");
         var store = _app.Services.GetRequiredService<GuildStore>();
         var state = store.Get(guildId)!; state.Materials = 10; Assert.True(store.Save(state));
