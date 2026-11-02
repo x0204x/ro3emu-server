@@ -20,6 +20,9 @@ public sealed partial class SkillCombatTests
     private async Task<MonsterUnit> FalconHunter(string name, bool falcon = true)
     {
         await Gm(name, "!lvl 99"); await Gm(name, "!job 3400"); await Teach(name, 13101);
+        // JobAttackConfig 20／21：空手為 1000001；本案例的 1300001 箭矢普攻必須裝弓。
+        await EquipConditionFixtureAsync(name, ArcherBow);
+        Assert.Equal(ArcherAttack, _app.Services.GetRequiredService<SkillService>().NormalAttack(Session(name)));
         await Loop.InvokeAsync(async () =>
         {
             var s = Session(name);
