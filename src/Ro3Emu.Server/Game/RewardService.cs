@@ -97,26 +97,37 @@ public sealed class RewardService : IGameTicker
 
     private async Task CommitKillAsync(GameSession player, MonsterUnit monster)
     {
-        var role = player.Role!;
+        var role = player.Role ?? throw new OperationCanceledException("Kill has no recipient.");
+        var attachment = player.Attachment;
         var afk = player.WildAfk;
         bool SameRole() => ReferenceEquals(player.Role, role) && ReferenceEquals(player.WildAfk, afk)
-            && player.Progress != null && player.Attachment?.Cancelled != true;
+            && ReferenceEquals(player.Attachment, attachment) && player.Progress != null && attachment?.Cancelled != true;
+        void RequireRecipient()
+        {
+            if (!SameRole()) throw new OperationCanceledException("Kill recipient detached before reward admission.");
+        }
         var settlement = monster.RewardSettlement!;
         try
         {
             if (await _character.RewardSourceCommittedAsync(settlement.SourceKey))
             { settlement.Committed = true; return; }
+            RequireRecipient();
             // Bonus eligibility may wait on the AFK owner; no successful lethal output precedes admission.
             bool bonus = QualifiesForBonus != null && await QualifiesForBonus(player, monster);
+            // 停服／選角可能已完成交接；ExperienceRecipients 的單人退路仍會回傳原 session。
+            // 必須先拒絕尚未受理的擊殺，不可在 Role 清空後取 Id，亦不可假裝已發獎。
+            RequireRecipient();
             var taskParticipants = _character.GetKillTaskParticipantKeys?.Invoke(player, monster) ?? [];
             if (_outcomes.TryGetValue(monster, out var stale) && stale.Role.Id != role.Id) _outcomes.Remove(monster);
             _outcomes.TryGetValue(monster, out var existing);
             PartyCandidate[] candidates = existing == null
-                ? [.. _teams.ExperienceRecipients(player)
-                    .Select(s => new PartyCandidate(s, s.Role!.Id, s.Attachment))]
-                : [new PartyCandidate(player, role.Id, player.Attachment),
+                ? [.. _teams.ExperienceRecipients(player).Select(CapturePartyCandidate)]
+                : [new PartyCandidate(player, role.Id, attachment),
                     .. existing.PartyExperience.Select(row =>
-                        new PartyCandidate(Online(row.RoleId), row.RoleId, Online(row.RoleId)?.Attachment))];
+                    {
+                        var online = Online(row.RoleId);
+                        return new PartyCandidate(online, row.RoleId, online?.Attachment);
+                    })];
             var partyKeys = candidates.SelectMany(candidate => new[]
                 {
                     Ownership.ReservationKey.Role(candidate.RoleId),
@@ -125,14 +136,15 @@ public sealed class RewardService : IGameTicker
                 .Concat(taskParticipants).Distinct().ToArray();
             using (await CharacterService.Lock(player, partyKeys))
             {
-                if (!SameRole()) throw new OperationCanceledException("Kill recipient detached before reward admission.");
+                RequireRecipient();
                 if (!_outcomes.TryGetValue(monster, out var outcome))
                 {
                     var eligibleNow = _teams.ExperienceRecipients(player).ToHashSet(ReferenceEqualityComparer.Instance);
                     var eligible = candidates.Where(candidate => candidate.Session != null && candidate.RoleId == candidate.Session.Role?.Id &&
                             ReferenceEquals(candidate.Attachment, candidate.Session.Attachment) && eligibleNow.Contains(candidate.Session))
-                        .Select(candidate => candidate.Session!).ToArray();
-                    if (!eligible.Contains(player, ReferenceEqualityComparer.Instance)) eligible = [player];
+                        .ToArray();
+                    if (!eligible.Any(candidate => ReferenceEquals(candidate.Session, player)))
+                        eligible = [new PartyCandidate(player, role.Id, attachment)];
                     var (items, baseExp, jobExp) = ResolveKill(player, monster, bonus, _teams.ExperienceBonusForCount(eligible.Length));
                     // 上游進階通行證加成與本地倍率只在首次凍結擊殺結果前計算。
                     items = PassPrivileges.BoostDrops(_data, player, items);
@@ -199,6 +211,11 @@ public sealed class RewardService : IGameTicker
         ResolveKill(player, monster, bonus, _teams.ExperienceBonusForCount(_teams.ExperienceRecipients(player).Count));
 
     private sealed record PartyCandidate(GameSession? Session, long RoleId, object? Attachment);
+    private static PartyCandidate CapturePartyCandidate(GameSession session)
+    {
+        var role = session.Role ?? throw new OperationCanceledException("Party recipient detached before reward admission.");
+        return new PartyCandidate(session, role.Id, session.Attachment);
+    }
     private sealed record PartyShares(long KillerBaseExp, long KillerJobExp,
         PartyExperienceObligationRow[] Obligations);
 
@@ -210,7 +227,7 @@ public sealed class RewardService : IGameTicker
     /// field EXP pool is divided evenly among the frozen five-slot recipients.  Any integer remainder follows slot order.
     /// </summary>
     private static PartyShares SplitPartyExperience(RewardSettlement settlement,
-        IReadOnlyList<GameSession> recipients, long baseExp, long jobExp, long killerRole)
+        IReadOnlyList<PartyCandidate> recipients, long baseExp, long jobExp, long killerRole)
     {
         int count = Math.Max(1, recipients.Count);
         static long Share(long total, int divisor, int index) =>
@@ -219,7 +236,7 @@ public sealed class RewardService : IGameTicker
         var obligations = new List<PartyExperienceObligationRow>();
         for (int i = 0; i < recipients.Count; i++)
         {
-            long role = recipients[i].Role!.Id;
+            long role = recipients[i].RoleId;
             long baseShare = Share(baseExp, count, i), jobShare = Share(jobExp, count, i);
             if (role == killerRole)
             {
