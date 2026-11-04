@@ -18,12 +18,14 @@ public sealed class AntiCheatOptions
 
     /// <summary>
     /// Tighter budgets of single message ids, "msgId": "perSecond/burst": the ones whose work is large (a full role
-    /// login, a database insert). Unset ids only share the session's budget.
+    /// login, a database insert). Unset ids only share the session's budget. The burst covers the role screen's
+    /// m_iMaxRoleNumber (6) slots, so filling every slot, or visiting every role through "switch character" (the same
+    /// connection), never waits on the rate.
     /// </summary>
     public Dictionary<string, string> MessageLimits { get; set; } = new()
     {
-        ["1006"] = "0.5/5",  // MsgId.LoginRoleCreate: a role insert
-        ["1007"] = "0.5/5",  // MsgId.LoginRoleSelect: a full handover and role login
+        ["1006"] = "0.5/6",  // MsgId.LoginRoleCreate: a role insert
+        ["1007"] = "0.5/6",  // MsgId.LoginRoleSelect: a full handover and role login
     };
 
     /// <summary>

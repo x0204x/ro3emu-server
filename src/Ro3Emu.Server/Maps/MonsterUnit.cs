@@ -26,6 +26,10 @@ public sealed record MonsterTemplate(
     public bool AnswersBattleCall { get; init; }
     /// <summary>僅供指定遠距戰鬥執行個體使用的可見性，不作為野外 NPC 預設。</summary>
     internal bool VisibleAcrossScene { get; init; }
+    /// <summary>Metres a skill reaches past its centre (<see cref="Data.Config.UnitConfig.DamageRadius"/>).</summary>
+    public float DamageRadius { get; init; }
+    /// <summary>NPCConfig _iNPCSubType 3 MT_MINI, 4 MT_MVP, 6 MT_BOSS, as the boss skills and Paragon count them.</summary>
+    public bool IsBoss { get; init; }
 }
 
 /// <summary>A live monster on a map (entityType 1): HP, home point, current walk segment and AI state. The siege war
@@ -75,6 +79,10 @@ public class MonsterUnit : WorldUnit
     public TowerPetUnit? PetTarget { get; set; }
     public long NextSwingMs { get; set; }
     public long NextChaseMs { get; set; }
+    /// <summary>When this monster may search a way around an obstacle again: a straight walk failed, and the search is not free.</summary>
+    public long NextPathMs { get; set; }
+    /// <summary>The players who have engaged it since it last left combat: losing its target, it turns to the nearest of them.</summary>
+    public List<Game.GameSession> Hated { get; } = [];
     public bool Returning { get; set; }
     /// <summary>Back home it keeps its damage instead of healing to full (the siege castle, TerritoryWarsService.SiegeObjects).</summary>
     public bool KeepsDamage { get; set; }

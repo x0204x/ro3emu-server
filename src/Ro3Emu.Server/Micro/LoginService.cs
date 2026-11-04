@@ -39,7 +39,7 @@ public sealed partial class LoginService(AccountStore accounts, RoleStore roles,
             list.Add(new Dictionary<string, object?>
             {
                 ["area"] = r.Area,
-                ["baseInfo"] = Google.Protobuf.MessageExtensions.ToByteArray(Game.RoleProto.BaseInfo(r)),
+                ["baseInfo"] = Google.Protobuf.MessageExtensions.ToByteArray(Game.RoleProto.BaseInfo(r, accounts.ClientAccount(r.Account))),
                 ["appearances"] = Game.RoleProto.WardrobeBytes(r, await roles.LoadWardrobeAsync(r.Id)),
             });
         log.LogInformation("getRoleInfo: {Account} has {Count} role(s)", session.Account, list.Count);

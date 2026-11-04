@@ -154,6 +154,103 @@ public sealed partial class DungeonTests
         await ClientAirships(alice, expected: 0); // corpse/step cleanup still sends the normal 31037 leaves
     }
 
+    /// <summary>The stage 2 of the airship with the cannon the player stands by, and its ships.</summary>
+    private async Task<(BotClient Alice, DungeonService.SceneActorUnit Cannon, IReadOnlyList<MonsterUnit> Ships)> AtTheCannons()
+    {
+        var alice = await InWorld("Alice");
+        await Gm(alice, "!lvl 99");
+        Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = 1000501 }));
+        long instance = await Load(alice, 1000501);
+        await Stage(alice, 1, quest: 1);
+        await Gm(alice, "!actors use"); // the chitchat (all four)
+        await Stage(alice, 2, quest: 2);
+        var cannons = await ActorsIn(alice, 3, a => a.NpcId == 5300022);
+        var ships = await WaveIn(instance, 3);
+        await Gm(alice, "!actors 5300022");
+        return (alice, cannons[0], ships);
+    }
+
+    // The enemy ships fly 70 to 130 m off the deck, past the server's 60 m view radius: the client must be told of them, or
+    // its cannon has nothing to aim at and its player sees an empty sky (two reports on v1.0.28). They start on their
+    // patrols (the first point of 97, 95 and 96) and stay out of the battle, so the player does not pull them to the deck.
+    [ClientDataFact]
+    public async Task TheAirshipsEnemyShipsAreShownFarOffOnTheirPatrols()
+    {
+        var (alice, _, ships) = await AtTheCannons();
+        await using (alice)
+        {
+            Assert.Equal([5300015, 5300053, 5300053], ships.Select(m => m.Template.NpcId).Order());
+            Assert.All(ships, ship =>
+            {
+                Assert.Contains(Session(alice), ship.Viewers);
+                Assert.True(ship.StaysOutOfBattle);
+                Assert.True(ship.Y < 228, $"a ship flies below the deck, this one at {ship.Y}");
+            });
+            var map = Service<WorldData>().Map(1000501)!;
+            long[] patrols = [97, 95, 96];
+            var ends = patrols.Select(p => map.PatrolPaths[p][^1]).ToArray();
+            Assert.All(ships, ship => Assert.Contains(ends, end => MathF.Abs(end.X - ship.X) < 0.01f && MathF.Abs(end.Z - ship.Z) < 0.01f));
+        }
+    }
+
+    // The client's own cannon (GameplayStatusConfig 12, GamePlayStatusExtraConfig[12]): 32702 with the cannon's uid seats the
+    // player, its fire button casts 5353001 at what the crosshair names in targetsId, the ordinary damage sinks the ship, the
+    // tracker counts the ships, the leave button (28) gets off, and the end of the stage puts down whoever still sits there.
+    [ClientDataFact]
+    public async Task TheAirshipCannonIsTheClientsOwnGameplay()
+    {
+        var (alice, cannon, ships) = await AtTheCannons();
+        await using (alice)
+        {
+            Assert.Equal(0, await Interact(alice, cannon, 5300006));
+            var seated = await Next(alice, WorldInteractionService.Change, InteractChangeNtf.Parser, n => n.Uid == Session(alice).Role!.Id);
+            Assert.Equal(InteractInfo.Types.EState.UpperCannon, seated.DataInfo.EType);
+            Assert.Equal(12, seated.DataInfo.StateId);
+            Assert.Equal(5300006, seated.DataInfo.InteractConfigId);
+            Assert.Equal(cannon.Uid, seated.DataInfo.UpperCannonInfo.CannonGuId);
+
+            // The leave button, and on again.
+            await alice.SendGameAsync(WorldInteractionService.Action, new UseInteractActionReq { ButtonId = 28 });
+            Assert.Equal(0, (await Next(alice, WorldInteractionService.Action, UseInteractActionRes.Parser)).Result);
+            Assert.Equal(InteractInfo.Types.EState.Idle,
+                (await Next(alice, WorldInteractionService.Change, InteractChangeNtf.Parser)).DataInfo.EType);
+            Assert.Equal(0, await Interact(alice, cannon, 5300006));
+            await Next(alice, WorldInteractionService.Change, InteractChangeNtf.Parser, n => n.DataInfo.EType == InteractInfo.Types.EState.UpperCannon);
+
+            // A shot past everything answers and hits nothing; the skill is the gunner's, not learned.
+            long role = Session(alice).Role!.Id;
+            await OnLoop(() => { Session(alice).SkillCds.Clear(); Session(alice).SkillModeCds.Clear(); return Task.CompletedTask; });
+            await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 5353001, OpUnitId = role, TargetPos = new Vec3 { X = 300, Y = 240, Z = 450 } });
+            Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
+            Assert.All(ships, ship => Assert.Equal(ship.Template.MaxHp, ship.Hp));
+
+            // Every ship by its own name, as the crosshair sends it: the shot's ordinary damage, then the shot that sinks it (it
+            // takes about a dozen at the row's flat 3000 + 500 a shot and 500 ms, too long to wait for here). The tracker counts the ships.
+            async Task Fire(MonsterUnit ship)
+            {
+                await OnLoop(() => { Session(alice).SkillCds.Clear(); Session(alice).SkillModeCds.Clear(); Session(alice).SkillCast = null; return Task.CompletedTask; });
+                await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 5353001, OpUnitId = role, TargetsId = { ship.Uid }, TargetPos = ship.Pos });
+                Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
+            }
+            for (int sunk = 0; sunk < ships.Count; sunk++)
+            {
+                var ship = ships[sunk];
+                await Fire(ship);
+                await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser, h => h.SkillId == 5353001);
+                for (int i = 0; i < 100 && ship.Hp == ship.Template.MaxHp; i++) await Task.Delay(20);
+                Assert.True(ship.Hp < ship.Template.MaxHp && ship.Hp > 0, $"ship {ship.Template.NpcId}: {ship.Hp} of {ship.Template.MaxHp} after a shot");
+                await OnLoop(() => { ship.Hp = 1; return Task.CompletedTask; });
+                await Fire(ship);
+                int done = sunk + 1;
+                var goal = await Next(alice, DungeonService.BaseInfo, DungeonBaseInfoNotify.Parser,
+                    n => n.Vars.Any(v => v.VarId == 10003 && v.Vi64.Count == 2 && v.Vi64[0] == done));
+                Assert.Equal(ships.Count, goal.Vars.First(v => v.VarId == 10003).Vi64[1]);
+            }
+            await Stage(alice, 3, quest: 3); // the boarding
+            await Next(alice, WorldInteractionService.Change, InteractChangeNtf.Parser, n => n.DataInfo.EType == InteractInfo.Types.EState.Idle);
+        }
+    }
+
     // Moonlight Flower's hide-and-seek (inferred): standing in the open is found and the game starts over; a darkness
     // point passes a round and is searched, so hiding there again is found; another side of the room wins the second round.
     [ClientDataFact]
@@ -297,6 +394,38 @@ public sealed partial class DungeonTests
 
     // 上游推定的首次坐車／末次 guide36 傳送已由原服擷取測試取代；
     // 見 DungeonTests.AntStory、AntCarry、AntSurfaceWalk，勿倒置 5300008／5300005。
+    // After Maya's nest the story goes on on the field (10104320 tracks map 10540), and its quest stays hidden in the scene.
+    [ClientDataFact]
+    public async Task MayasNestReturnsThePlayerToTheFieldAfterItsClear()
+    {
+        const long scene = 1000401;
+        await using var alice = await InWorld("Alice");
+        await Gm(alice, "!lvl 99");
+        Assert.Equal(0, await Enter(alice, new EnterDungeonReq { SceneEntry = scene }));
+        long instance = await Load(alice, scene);
+        using var left = alice.Inbox.Expect(e => e.IsGame(DungeonService.Leave));
+        var plan = Session(alice).DungeonAttempt!.Plan;
+        for (int wave = 0; wave < plan.Waves.Count; wave++)
+        {
+            var step = plan.Waves[wave].Step!;
+            var begun = await Stage(alice, wave + 1, quest: step.Quest);
+            Assert.Equal([0L, 1L], begun.Vars.Single(v => v.VarId == 10003).Vi64); // a new step starts at (0/1)
+            await ActorsIn(alice, step.Actors.Count);
+            if (plan.Waves[wave].Spawns.Count > 0)
+                foreach (var monster in await WaveIn(instance, plan.Waves[wave].Spawns.Count)) await Kill(alice, monster);
+            if (step.Complete.Count > 0)
+            {
+                await Gm(alice, "!actors use");
+                // "Open the treasured chest" reads (1/1) once it is open, and so does each step before it.
+                await Next(alice, DungeonService.BaseInfo, DungeonBaseInfoNotify.Parser,
+                    n => n.Vars.SingleOrDefault(v => v.VarId == 10003)?.Vi64 is [var done, var total] && done == total);
+            }
+        }
+        Assert.Equal((DungeonRes)1, (await Next(alice, DungeonService.Result, DungeonResNotify.Parser)).Res);
+        var leave = await left.WaitAsync(TimeSpan.FromSeconds(DungeonService.PlaneExitSeconds + 10));
+        Assert.Equal(0, LeaveDungeonRsp.Parser.ParseFrom(leave.Body).Result);
+    }
+
     [ClientDataFact]
     public async Task LouiesGamePlaysItsStoriesAndOnlyKatiesBellWins()
     {

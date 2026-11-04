@@ -7,5 +7,5 @@ namespace Ro3Emu.Server.Game;
 /// </summary>
 internal static class ForbiddenState
 {
-    public const int Walk = 3, CastSkill = 4, NormalAttack = 5, Damage = 9, UseItem = 12, Revive = 16;
+    public const int Walk = 3, CastSkill = 4, NormalAttack = 5, Damage = 9, UseItem = 12, SkillChant = 14, SkillCast = 15, Revive = 16;
 }

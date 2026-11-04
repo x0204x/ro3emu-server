@@ -46,7 +46,7 @@ public sealed partial class GuildService
             || guild.Members[s.Role!.Id].Official != 1 ? ErrorCodes.GuildPermission : 0;
         if (code == 0)
         {
-            await DeleteGuildAsync(guild!);
+            await EndFoundingAsync(guild!, s.Role!.Id);
             await s.SendGameAsync(CancelCreate, new GuildCancleCreateResp { Result = 0 });
             foreach (var member in guild!.Members.Values)
             {
@@ -109,7 +109,7 @@ public sealed partial class GuildService
     {
         foreach (var guild in store.List().Where(g => g.Status == (int)GuildStatus.PreCreate && g.HelperDeadlineMs <= NowMs()))
         {
-            await DeleteGuildAsync(guild);
+            await EndFoundingAsync(guild, guild.Members.Values.First(m => m.Official == 1).RoleId);
             foreach (var member in guild.Members.Values)
             {
                 if (Online(member.RoleId) is { } online) await ClearMember(online, guild);

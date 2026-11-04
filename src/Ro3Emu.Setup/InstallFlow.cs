@@ -85,7 +85,7 @@ internal static class InstallFlow
             Timeout = Timeout.InfiniteTimeSpan,
         };
         http.DefaultRequestHeaders.UserAgent.ParseAdd($"RO3Emu/{typeof(InstallFlow).Assembly.GetName().Version}");
-        var installer = new ClientInstaller(config, http, SetupHome.DownloadDir) { Log = SetupLog.Write };
+        var installer = new ClientInstaller(config, http, SetupHome.DownloadDir) { Log = SetupLog.Write, Connections = 4 };
 
         Ui.Step("Asking Genesis' update servers for the current release");
         ClientInstaller.Manifests manifests;

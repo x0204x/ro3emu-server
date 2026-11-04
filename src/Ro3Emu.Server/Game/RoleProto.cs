@@ -9,7 +9,8 @@ public static class RoleProto
     /// <summary>enum_WardrobeShowType.Hair — the appearance slot the create screen fills.</summary>
     public const int HairSlot = 7;
 
-    public static RoleBaseInfo BaseInfo(Role role) => new()
+    /// <param name="account">The account as the client spelled it at login (AccountStore.ClientAccount); default the stored name.</param>
+    public static RoleBaseInfo BaseInfo(Role role, string? account = null) => new()
     {
         Id = role.Id,
         Name = role.Name,
@@ -20,7 +21,7 @@ public static class RoleProto
         CreateTime = role.CreateTime,
         LastLoginTime = role.LastLoginTime,
         LastLoginSceneLineNum = 1,
-        Account = role.Account,
+        Account = account ?? role.Account,
         BornArea = role.Area,
     };
 

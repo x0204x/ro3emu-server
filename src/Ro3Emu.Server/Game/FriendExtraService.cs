@@ -272,7 +272,9 @@ public sealed partial class FriendExtraService(FriendStore friends, RoleStore ro
 
     /// <summary>
     /// 82210: online peers and recorded recent teammates, ranked by role id inside each category (inferred).
-    /// LC_DAL_Friend:3057-3069 takes # of all four arrays, so a success requires every category nonempty.
+    /// LC_DAL_Friend:3057-3069 takes # of all four arrays and an empty one arrives as nil, so a success needs each of them
+    /// filled. The client sends this on opening the panel: (inferred) an empty category shows the first candidate rather than
+    /// refuse a panel that has players to offer, and no candidate at all gets a code with no tip, which leaves its empty state.
     /// </summary>
     public async Task RecommendAsync(GameSession s)
     {
@@ -291,8 +293,13 @@ public sealed partial class FriendExtraService(FriendStore friends, RoleStore ro
         result.RecentTeam.Add(recent.Where(id => candidates.Any(c => c.Id == id)).Take(10));
         result.SameJob.Add(candidates.Where(c => (c.Session?.Progress?.Career ?? c.Role.Career) == myJob)
             .OrderBy(c => c.Id).Take(10).Select(c => c.Id));
-        if (result.DiffSex.Count == 0 || result.LevelRange.Count == 0 || result.RecentTeam.Count == 0 || result.SameJob.Count == 0)
-            result.Result = ErrorCodes.Unknown; // (inferred) no-candidate refusal, avoids nil-array Lua parse.
+        if (candidates.Length == 0) result.Result = ErrorCodes.NoRecommendedFriends;
+        else
+        {
+            long first = candidates.Min(c => c.Id);
+            foreach (var category in new[] { result.DiffSex, result.LevelRange, result.RecentTeam, result.SameJob })
+                if (category.Count == 0) category.Add(first);
+        }
         await s.SendGameAsync(Recommend, result);
     }
 

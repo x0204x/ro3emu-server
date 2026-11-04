@@ -441,6 +441,7 @@ public static class EconomyLedgerReader
                         {
                             "monster-kill" when leg.Kind == EconomyLegKind.Source => EconomyReason.MonsterDrop,
                             "gather-yield" when leg.Kind == EconomyLegKind.Source => EconomyReason.GatherYield,
+                            "gather-yield" when leg.Kind == EconomyLegKind.Sink => EconomyReason.LifeCost,
                             "tower-reward" when leg.Kind == EconomyLegKind.Source => EconomyReason.ActivityReward,
                             "dungeon-obligation-earn" when leg.Kind == EconomyLegKind.Source => EconomyReason.ActivityReward,
                             "dungeon-reward" when leg.Kind == EconomyLegKind.Transfer => EconomyReason.DungeonRewardDelivery,

@@ -221,6 +221,8 @@ public sealed partial class SiegeTests
             // (CombatService.SwingTurnLeft), and the castle's defenders do not wait for it.
             await attack.SendGameAsync(CombatService.SkillInterrupt, new SkillInterruptReq());
             await Next(attack, CombatService.SkillInterrupt, SkillInterruptResp.Parser);
+            // A swing cancelled by a move holds the next one (CombatService.CancelCastAsync).
+            while (MonsterService.NowMs < a.SwingLockUntilMs) await Task.Delay(20);
             await OnLoop(() => Service<SceneService>().TeleportInMapAsync(a, new MapPoint(m.X + 1.5f, m.Y, m.Z, 270)));
             await attack.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = m.Uid });
             Assert.Equal(0, (await Next(attack, CombatService.UseSkill, CastSkillRsp.Parser)).Result);

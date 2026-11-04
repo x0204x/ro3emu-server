@@ -14,6 +14,8 @@ public sealed partial class WorldInteractionService
 {
     public const uint Change = 32702, Action = 32703, Change3C = 32704,
         SeatChange = 32708, VehicleSync = 31074;
+    /// <summary>GameplayStatusConfig _iStatusType 10: enum_InteractState.CommonCannon, InteractInfo.EState.UpperCannon.</summary>
+    private const int CannonStatusType = 10;
 
     /// <summary>The unit a role's gameplay state is on: a world NPC, or a scripted dungeon's scene actor (<see cref="Active.Scripted"/>).</summary>
     private readonly record struct Anchor(long Uid, long SceneEntry, int NpcId)
@@ -127,16 +129,19 @@ public sealed partial class WorldInteractionService
         if (seat >= 0) await Send3CAsync(s, _active[s]);
     }
 
+    private static InteractInfo Info(Active state) => new()
+    {
+        EType = (InteractInfo.Types.EState)state.StatusType, StateId = state.StatusId,
+        InteractConfigId = state.InteractionId, ActiveObjId = state.Npc.Uid,
+        // LC_GamePlayStatusMgr.CommonCannon reads the cannon from it, for every player who shows the gunner.
+        UpperCannonInfo = state.StatusType == CannonStatusType ? new UpperCannonState { CannonGuId = state.Npc.Uid } : null,
+    };
+
     private async Task NotifyAsync(GameSession s, Active state, bool interrupt)
     {
         // G 的 LC_GamePlayStatusMgr.EnterVehicle 需要先由 carry_info 建立乘客元件。
         if (state.Carry != null) await NotifyCarryAsync(s, state.Carry);
-        var info = new InteractInfo
-        {
-            EType = (InteractInfo.Types.EState)state.StatusType, StateId = state.StatusId,
-            InteractConfigId = state.InteractionId, ActiveObjId = state.Npc.Uid,
-        };
-        var message = new InteractChangeNtf { Uid = s.Role!.Id, DataInfo = info, Interrupt = interrupt };
+        var message = new InteractChangeNtf { Uid = s.Role!.Id, DataInfo = Info(state), Interrupt = interrupt };
         await s.SendGameAsync(Change, message);
         foreach (var viewer in _world.Viewers(s)) await viewer.SendGameAsync(Change, message);
     }
@@ -156,6 +161,8 @@ public sealed partial class WorldInteractionService
         };
         await s.SendGameAsync(Change, message);
         foreach (var viewer in _world.Viewers(s)) await viewer.SendGameAsync(Change, message);
+        if (state.Scripted && state.SeatIndex >= 0 && state.Carry == null)
+            await SceneActorCarryAsync(s, state, seated: false);
     }
 
     private Task LeaveAsync(GameSession s) => ExitAsync(s, true);
@@ -175,12 +182,7 @@ public sealed partial class WorldInteractionService
             if (state.Carry != null) await SendCarryAsync(viewer, subject, state.Carry);
             await viewer.SendGameAsync(Change, new InteractChangeNtf
             {
-                Uid = subject.Role!.Id,
-                DataInfo = new InteractInfo
-                {
-                    EType = (InteractInfo.Types.EState)state.StatusType,
-                    StateId = state.StatusId, InteractConfigId = state.InteractionId, ActiveObjId = state.Npc.Uid
-                }
+                Uid = subject.Role!.Id, DataInfo = Info(state),
             });
         }
     }
@@ -196,6 +198,7 @@ public sealed partial class WorldInteractionService
             && actions.ToString().Contains("5004", StringComparison.Ordinal)
             && _data.Row("ActionConfig", 5004) is { } action && action.GetProperty("_iFunctionName").GetString() == "QuitStatus"
             && (state.StatusType == 4 && req.ButtonId == 42
+                || state.StatusType == CannonStatusType
                 || state.StatusType == 3 && VehicleSeats(state) is { Length: > 0 } configured
                     && state.SeatIndex >= 0 && state.SeatIndex < configured.Length
                     && _data.Row("VehicleSeatConfig", configured[state.SeatIndex]) is { } seatRow
@@ -276,6 +279,7 @@ public sealed partial class WorldInteractionService
         try
         {
             if (beforeNotify != null) await beforeNotify();
+            if (state.Carry == null) await SceneActorCarryAsync(s, state, seated: true);
             await NotifyAsync(s, state, false);
             if (send3C) await Send3CAsync(s, state);
         }
@@ -292,6 +296,52 @@ public sealed partial class WorldInteractionService
     }
 
     /// <summary>
+    /// Seats a player on a scripted dungeon's cannon by the interaction's GameplayStatusConfig of type 10 (enum_InteractState
+    /// CommonCannon). The caller has decided the interaction is open. Returns the state's token, as
+    /// <see cref="SeatOnSceneActorAsync"/> does; 0 when the player is in a state already or the interaction is no cannon's.
+    /// </summary>
+    public async Task<long> SeatOnCannonAsync(GameSession s, long cannonUid, int npcId, int interactionId)
+    {
+        if (!InWorld(s) || _active.ContainsKey(s) || NPCInteractConfig.Get(_data, interactionId) is not { StatusId: > 0 } interaction
+            || GameplayStatusConfig.Get(_data, interaction.StatusId) is not { StatusType: CannonStatusType }) return 0;
+        var state = new Active(new Anchor(cannonUid, s.SceneEntry, npcId), interactionId, (int)interaction.StatusId, CannonStatusType, -1,
+            Scripted: true, Token: ++_seatToken);
+        _active[s] = state;
+        try { await NotifyAsync(s, state, false); }
+        catch
+        {
+            if (_active.TryGetValue(s, out var current) && current.Token == state.Token) _active.Remove(s);
+            throw;
+        }
+        return state.Token;
+    }
+
+    /// <summary>Whether the player sits on a scripted dungeon's cannon.</summary>
+    internal bool IsOnCannon(GameSession s) => _active.TryGetValue(s, out var state) && state.StatusType == CannonStatusType;
+
+    private async Task SceneActorCarryAsync(GameSession s, Active state, bool seated)
+    {
+        long type = VehicleSeatConfig.Get(_data, VehicleSeats(state)[state.SeatIndex])?.Type ?? 0;
+        var total = new AoIInfoTotal { AoITickMs = 50, TickNowMs = (ulong)MonsterService.NowMs };
+        var rider = new AoICarry { Id = (ulong)s.Role!.Id, CarrySlot = state.SeatIndex, CarryOffset = new Vec3(), CarryType = (int)type };
+        total.AoiData.Add(new AoIInfoSingle
+        {
+            EntityUuid = (ulong)s.Role.Id,
+            CarryInfo = new AoICarryInfo
+            {
+                BeCarried = new AoICarry { Id = seated ? (ulong)state.Npc.Uid : 0, CarrySlot = state.SeatIndex, CarryOffset = new Vec3(), CarryType = (int)type },
+            },
+        });
+        total.AoiData.Add(new AoIInfoSingle
+        {
+            EntityUuid = (ulong)state.Npc.Uid,
+            CarryInfo = seated ? new AoICarryInfo { AddCarries = { rider } } : new AoICarryInfo { RemoveCarries = { rider } },
+        });
+        await s.SendGameAsync(WorldCoreService.AoiInfo, total);
+        foreach (var viewer in _world.Viewers(s)) await viewer.SendGameAsync(WorldCoreService.AoiInfo, total);
+    }
+
+    /// <summary>
     /// Puts a player down from the scripted ride <paramref name="token"/> (from <see cref="SeatOnSceneActorAsync"/>); a
     /// world vehicle's rider, a later ride of the same player or nobody is left alone.
     /// </summary>
@@ -299,7 +349,9 @@ public sealed partial class WorldInteractionService
         _active.TryGetValue(s, out var state) && state.Scripted && state.Token == token ? ExitAsync(s, false) : Task.CompletedTask;
 
     /// <summary>Whether the player is seated on a scripted dungeon's scene actor.</summary>
-    internal bool IsSeatedOnSceneActor(GameSession s) => _active.TryGetValue(s, out var state) && state.Scripted;
+    internal bool IsSeatedOnSceneActor(GameSession s) => _active.TryGetValue(s, out var state)
+        && state.Scripted && state.SeatIndex >= 0;
     internal bool IsSeatedOnSceneActor(GameSession s, long token, long actorUid) =>
-        _active.TryGetValue(s, out var state) && state.Scripted && state.Token == token && state.Npc.Uid == actorUid;
+        _active.TryGetValue(s, out var state) && state.Scripted && state.SeatIndex >= 0
+        && state.Token == token && state.Npc.Uid == actorUid;
 }

@@ -24,6 +24,10 @@ public sealed class SkillObject : WorldUnit
     public int Charges { get; set; }
     public int PulseLimit { get; init; }
     public int Pulses { get; set; }
+    /// <summary>Strikes left where the row counts them (Meteor Storm "strikes in ${6} waves"), -1 otherwise. It stays shown to its expiry.</summary>
+    public int WavesLeft { get; set; } = -1;
+    /// <summary>Hits left before it goes (Fire Wall "disappear early after being touched by enemies ${7} times"), -1 otherwise.</summary>
+    public int TouchesLeft { get; set; } = -1;
     public int ProtectionDistanceType { get; init; }
     public HashSet<int> Skills { get; } = [];
 
@@ -83,6 +87,7 @@ public sealed partial class CombatService
             }
             return;
         }
+        if (EndureWhileCasting(Script(row))) await _buffs.AddAsync(s, EndureBuff, Math.Max(1, action.ActionMs), s.Role!.Id);
         if (await StartOffertoriumAsync(s, action) || StartHealingField(s, action) || await CreateSkillObjectAsync(s, action))
         {
             await CompleteCastOnceAsync(s, action);
@@ -97,17 +102,55 @@ public sealed partial class CombatService
         }
         if (!CurrentCastMap(s, action)) return;
         // SkillConfig._bMovement is enum_SkillLockMoveType (may the caster walk while casting), not a displacement.
+        if (ReturnsToShadow(s, row)) { await ReturnToShadowAsync(s, action); return; }
+        if (Script(row) is "RetreatingShadows" or "RetreatingShadowsS1") LeaveShadow(s, action);
         if (action.AuthoredStageIndex <= 0) await MoveCasterAsync(s, action);
         if (!CurrentCastMap(s, action)) return;
         if (await StartChannelAsync(s, action)) return;
+        if (Script(row) == "VenomSplasher") { await PlantDynamiteAsync(s, action); return; }
+        if (Script(row) == "BombSuicide1") { await EnergyReleaseAsync(s, action); return; }
+        if (Script(row) == "AxeLeapAttack") { await HighEnergyTakeOffAsync(s, action); return; }
+        if (Script(row) == "huixuanshizizhan") { await ApplyEffectsAsync(s, WithRow(action, await CrossRipperRowAsync(s, row)), action.Request.TargetPos ?? action.Origin); return; }
         await ApplyEffectsAsync(s, action, action.Request.TargetPos ?? action.Origin);
+    }
+
+    /// <summary>Chain Lightning: "the designated ST enemy ... and up to ${3} Other enemies within ${2} meters of the target". Its _kRange is [0].</summary>
+    private static float? ChainRadius(JsonElement row) => Script(row) == "ChainLightning"
+        && new SkillConfig(row).DescData is [_, var metres, ..]
+        && float.TryParse(metres, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float radius) ? radius : null;
+
+    /// <summary>Flowing Shadow: "a ${2}-meter-wide, ${3}-meter-long rectangular" strip from where the dash began. Its _kRange is [100,0,0,0].</summary>
+    private static bool InDashStrip(JsonElement row, ActiveSkillCast action, Vec3 point)
+    {
+        var (forward, side) = FacingOffset(point.X - action.Origin.X, point.Z - action.Origin.Z, action.Request.Face);
+        var desc = new SkillConfig(row).DescData;
+        double Metres(int i) => i < desc.Length && double.TryParse(desc[i], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double v) ? v : 0;
+        return Math.Abs(side) <= Metres(1) / 2 + .1 && forward >= -.5 && forward <= Metres(2) + .1;
+    }
+
+    /// <summary>
+    /// A locked row (_iRelease 1) with _iRangeType 2 and _kRange [0] names no area: Shield Boomerang's "the selected ST enemy",
+    /// Rain of Spears' "toward the locked target" (122 playable rows of 11 groups). Read as an area it was a 0.1 m circle where
+    /// the target stood at the cast, so one that had walked was missed. (inferred) It hits the locked target where it stands;
+    /// a text's splash or area beside that target (Rain of Spears' 5m*10m, Spear Throw's "2 Other enemies") is not in the row.
+    /// </summary>
+    internal static bool LocksItsTarget(JsonElement row)
+    {
+        var skill = new SkillConfig(row);
+        return skill.RangeType == SkillRelease.Area && skill.Release == SkillRelease.Lock && skill.Range is [0];
     }
 
     private List<MonsterUnit> SelectEnemies(GameSession s, ActiveSkillCast action, Vec3 center, float? radiusOverride = null)
     {
         var row = action.Row;
-        int max = (int)Math.Max(1, GameData.Int(row, "_iTargetMax"));
-        if (radiusOverride == null && ((GameData.Int(row, "_iRangeType") != 2 && !AuthoredAssassinSelfArea(row) && !AuthoredVenomDustArea(row)) || LockedTargetCasts.Any(rule => rule(s, action))))
+        if (radiusOverride == null && EnemiesByText(s, action, center) is { } byText) return byText;
+        var skill = new SkillConfig(row);
+        int max = Script(row) is "LandMine" or "ClaymoreTrap" or "FreezingTrap" or "BlastMine" ? TrapTargets(row)
+            : Script(row) == "BombSuicide1" ? int.Parse(skill.DescData[2], System.Globalization.CultureInfo.InvariantCulture) // Energy Release: "up to ${3} enemies"; its row holds 1
+            : FieldTargets(row) is > 0 and var fieldTargets ? fieldTargets : (int)Math.Max(1, GameData.Int(row, "_iTargetMax"));
+        if (radiusOverride == null && ((skill.RangeType != SkillRelease.Area && !AreaDespiteRangeType(skill)
+                && !AuthoredAssassinSelfArea(row) && !AuthoredVenomDustArea(row))
+            || LocksItsTarget(row) && action.Request.TargetId != 0 || LockedTargetCasts.Any(rule => rule(s, action))))
         {
             var target = FindMonster(s.WorldScene, action.Request.TargetId);
             return target != null && target.Hp > 0 && CanHitMonster(s, target) && HealingFieldEnemyAllowed(row, target)
@@ -119,11 +162,16 @@ public sealed partial class CombatService
         // A radius override is a plain circle around the given center; otherwise the row's own area.
         bool InShape(MonsterUnit m) => radiusOverride is { } radius
             ? (height <= 0 || MathF.Abs(m.Y - center.Y) <= height) && Distance(center, m.Pos) <= radius + 0.1f
+            : Script(row) is "yingliu" or "yingliuS1" ? InDashStrip(row, action, m.Pos)
             : SkillAreaContains(row, action.Origin, center, action.Request.Face, m.Pos);
         return [.. _world.Map(s.WorldScene).Units.OfType<MonsterUnit>().Where(m => m.Hp > 0 && CanHitMonster(s, m)
             && HealingFieldEnemyAllowed(row, m) && Relation(row, false, race: m.Template.Race) && InShape(m))
             .OrderBy(m => Distance(center, m.Pos)).ThenBy(m => m.Uid).Take(max)];
     }
+
+    /// <summary>The monsters a cast's own row covers now, nearest its point first.</summary>
+    internal List<MonsterUnit> MonstersInCastArea(GameSession s, ActiveSkillCast action) =>
+        SelectEnemies(s, action, action.Request.TargetPos ?? action.Origin);
 
     private async Task ApplyEffectsAsync(GameSession s, ActiveSkillCast action, Vec3 center, SkillObject? field = null,
         IReadOnlyList<MonsterUnit>? chosenTargets = null, IReadOnlyList<GameSession>? chosenAllies = null)
@@ -148,7 +196,11 @@ public sealed partial class CombatService
             && _sessions.Contains(s);
         string script = Script(row);
         var targets = chosenTargets?.Where(m => m.Hp > 0 && CanHitMonster(s, m) && HealingFieldEnemyAllowed(row, m)).ToList()
-            ?? SelectEnemies(s, action, center, field?.Trap == true ? field.Radius : null);
+            ?? (ChainRadius(row) is { } chain
+                ? SelectEnemies(s, action, FindMonster(s.WorldScene, action.Request.TargetId)?.Pos ?? center, chain)
+                : SelectEnemies(s, action, center, field?.Trap == true ? field.Radius : null));
+        if (script == "Sanctuary") targets.RemoveAll(m => m.Template.Race != DemonRace && m.Template.Element != UndeadElement);
+        targets.RemoveAll(m => !HealingFieldEnemyAllowed(row, m));
         targets.RemoveAll(target => CastTargetAllowed.Any(allow => !allow(s, action, target)));
         var playerTargets = EffectPlayerTargets(s, action, center, field);
         if (action.Request.IsExtraSkill && action.ReadingPlayers is { } fixedPlayers)
@@ -164,6 +216,7 @@ public sealed partial class CombatService
             targets.RemoveAll(m => !selected.Contains(m.Uid));
             playerTargets = [.. playerTargets.Where(p => selected.Contains(p.Role!.Id))];
         }
+        action.PlayersStruck = playerTargets;
         if (!action.Request.IsExtraSkill && action.ReadingMonsters == null && ReadingCopyGroup(new SkillConfig(row).SkillId) != 0)
         {
             action.ReadingMonsters = [.. targets];
@@ -174,7 +227,7 @@ public sealed partial class CombatService
         if (playerTargets.Length > 0)
         {
             var effectTargets = playerTargets.Select(p => (Player: p, Current: CapturePlayerSkillTarget(p))).ToArray();
-            await HitEventPlayersAsync(s, playerTargets,
+            await HitEventPlayersAsync(s, action.PlayersStruck,
                 row, action.Request.SkillId, HitEffect(GameData.Int(row, "_iScriptShow")), action.Id, CanApplyMoreEffects,
                 action.GuardianDamage == null ? null : (id, amount) => RecordGuardianDamage(action, id, amount), center,
                 action.HasTimedBullet ? action.Request.TargetId : 0,
@@ -202,6 +255,7 @@ public sealed partial class CombatService
             {
                 var ally = action.Request.TargetId == s.Role.Id ? s : FindPlayer(s, action.Request.TargetId);
                 if (ally != null && Relation(row, true, ally == s)) allies.Add(ally);
+                if (ally != null && ally != s && ReachesCasterToo(script)) allies.Add(s);
             }
             else
             {
@@ -210,10 +264,13 @@ public sealed partial class CombatService
                 // the client sent, which nothing checks for those releases.
                 var around = field != null || new SkillConfig(row).Release is SkillRelease.DragRect or SkillRelease.DragCircle
                     ? center : action.Origin;
-                allies.AddRange(_world.PlayersIn(s.WorldScene).Where(p => !p.Dead && Relation(row, true, p == s)
-                    && (p == s || radius > 0 && Distance(p.Position, around) <= radius))
-                    .OrderByDescending(p => PreferHealingParty(row, s, p)).ThenBy(p => Distance(p.Position, around))
-                    .Take((int)Math.Max(1, new SkillConfig(row).TargetMax)));
+                allies.AddRange(_world.PlayersIn(s.WorldScene).Where(p => !p.Dead && (Relation(row, true, p == s) || ReachesAlliesDespiteSelector(script))
+                    && (!PartyOnly(script) || p == s || SameHealingParty?.Invoke(s, p) == true)
+                    && (field != null && new SkillConfig(row).Range.Length > 1 ? SkillAreaContains(row, action.Origin, center, action.Request.Face, p.Position)
+                        : p == s || radius > 0 && Distance(p.Position, around) <= radius))
+                    .OrderByDescending(p => PreferHealingParty(row, s, p)).ThenBy(p => OutsideThePartyAsLast(s, p, script))
+                    .ThenBy(p => Distance(p.Position, around))
+                    .Take(FieldTargets(row) is > 0 and var fieldTargets ? fieldTargets : (int)Math.Max(1, new SkillConfig(row).TargetMax)));
                 if (allies.Count == 0 && Relation(row, true, true)) allies.Add(s);
             }
         }
@@ -224,7 +281,7 @@ public sealed partial class CombatService
         var stats = _character.Stats(s);
         int attackElement = AttackElement(s, row);
         var attacker = new Fighter(stats[103], stats[104], stats[109], stats[111], s.Progress!.Level, attackElement)
-        { Attributes = stats, FixedDamage = (s.GmCombat & GmCombatSwitches.FixedDamage) != 0 };
+        { FixedDamage = (s.GmCombat & GmCombatSwitches.FixedDamage) != 0, Attributes = PlayerAttributes(s, stats), Race = PlayerRace, Size = PlayerSize };
         var hit = new SkillHitInfo
         {
             SrcID = field?.Uid ?? action.SourceId, SkillId = action.Request.SkillId, SessionId = action.Id,
@@ -281,6 +338,7 @@ public sealed partial class CombatService
                             catch (Exception ex) { _log.LogError(ex, "Monster damage callback failed for {Uid}", target.Uid); }
                         }
                     TraceImpact(action, "damage-callbacks-complete", target.Uid);
+                    if (field is { TouchesLeft: > 0 } && result != DamageHitResult.Miss) field.TouchesLeft--;
                     hit.Dsts.Add(new DamageInfo
                     {
                         DstID = target.Uid, Damage = amount, SheildDamage = shieldDamage,
@@ -289,10 +347,19 @@ public sealed partial class CombatService
                 }
                 if (CanApplyMoreEffects())
                     foreach (var tuple in Tuples(row, "_kBuff2"))
-                        if (CanApplyMoreEffects() && GuardianAllowsHostileBuff(row, tuple, alreadySlowed.Contains(target.Uid))
+                        // Signum Crucis on Holy Light: "reduces the Physical DEF of Undead-property targets and Demon Race targets"
+                        if (CanApplyMoreEffects() && (script != "HolyLight2" || target.Template.Race == DemonRace || target.Template.Element == UndeadElement)
+                            && (script != "LexDivina" || !target.Template.IsBoss) // "inflicts Silence on normal monsters or players"
+                            && GuardianAllowsHostileBuff(row, tuple, alreadySlowed.Contains(target.Uid))
                             && RollHostileBuff(tuple, s, null, null, target, out int id, out int duration))
+                        {
                             await _buffs.AddSupportAsync(target, id, duration, castingRole.Id,
                                 attributeMultiplier: GuardianPetRules.BuffMultiplier(row), guardianOwned: IsGuardianEffect(row));
+                            action.StatusLanded?.Add(target.Uid);
+                        }
+                if (CanApplyMoreEffects() && row.TryGetProperty(SkillConfig.GuaranteedStatusField, out var guarantee) && action.StatusLanded?.Contains(target.Uid) == false
+                    && RollHostileBuff(guarantee, s, null, null, target, out int sureId, out int sureDuration))
+                    await _buffs.AddSupportAsync(target, sureId, sureDuration, castingRole.Id);
                 if (IsTetraStage(action) && CanApplyMoreEffects())
                     await ApplyTetraStageBuffAsync(s, action, null, target,
                         () => CanApplyMoreEffects() && !target.Removed && !target.Dead && target.Hp > 0 && CanHitMonster(s, target));
@@ -312,9 +379,10 @@ public sealed partial class CombatService
                         if (CanApplyMoreEffects() && HealingTargetCurrent() && RollBuff(tuple, out int id, out int duration)
                             && !AttackShieldBuff(row, id)
                             && (script != "S1_Poem" || poemShieldReady)
-                            && SkillBuffAllowed?.Invoke(s, recipient, id) != false)
-                            await _buffs.AddSupportAsync(recipient, id, duration, castingRole.Id,
-                                HealingSkillShield(row, id, s));
+                            && SkillBuffAllowed?.Invoke(s, recipient, id) != false
+                            && JobAllowsBuff(script, id, recipient) && !ComesFromALoop(script, id))
+                            for (int pile = PilesFor(id, targets.Count); pile > 0 && CanApplyMoreEffects() && HealingTargetCurrent(); pile--)
+                                await ApplySkillBuffAsync(stats, recipient, id, duration, castingRole.Id);
                 if (friendly && damage && HealingTargetCurrent() && CanApplyMoreEffects())
                 {
                     var healingStats = _character.HealingStats(s);
@@ -325,6 +393,12 @@ public sealed partial class CombatService
                     long amount = (long)Math.Max(0, Math.Round(healingStats[104] * multiplier / 10000 + flat));
                     amount = LevelAdjustedHealing(row, s.Progress!.Level, amount);
                     foreach (var modifier in ExtraHeal) amount = modifier(s, amount);
+                    var healResult = DamageHitResult.Normal;
+                    if (Rolls.Crit() < HealCritRate(stats[AttributeId.Cri], stats[DamageAttributes.CritChance], new SkillConfig(row).SkillCri))
+                    {
+                        amount = (long)Math.Round(amount * HealCritMultiplier(stats[DamageAttributes.CritDamage]));
+                        healResult = DamageHitResult.Critical;
+                    }
                     var healedRole = recipient.Role;
                     var healedLease = recipient.Attachment;
                     long healedGeneration = recipient.SceneGeneration;
@@ -332,7 +406,7 @@ public sealed partial class CombatService
                     amount = ModifiedHealing(healingStats, _character.HealingStats(recipient), amount);
                     long actual = Math.Min(amount, Math.Max(0, before[101] - before[2000]));
                     await _character.SetHpSpAsync(recipient, before[2000] + amount, null);
-                    hit.Dsts.Add(new DamageInfo { DstID = recipient.Role!.Id, Damage = actual, DamageType = DamageType.Heal, DstElement = 1 });
+                    hit.Dsts.Add(new DamageInfo { DstID = recipient.Role!.Id, Damage = actual, DamageType = DamageType.Heal, HitResult = healResult, DstElement = 1 });
                     foreach (var handler in Healed) handler(s, actual);
                     foreach (var handler in HealedAsync) await handler(s, actual);
                     foreach (var handler in HealingApplied)
@@ -345,6 +419,7 @@ public sealed partial class CombatService
                     }
                 }
                 if (CanApplyMoreEffects()) await CleanseSkillEffectsAsync(s, recipient, row, CanApplyMoreEffects);
+                if (CanApplyMoreEffects()) await CleanseByTextAsync(recipient, row, script);
             }
             if (hit.Dsts.Count > 0)
             {
@@ -361,6 +436,7 @@ public sealed partial class CombatService
                         DamageBeShield = result.SheildDamage, DamageType = result.DamageType, HitResult = result.HitResult, SkillId = hit.SkillId,
                     });
                 }
+                if (hit.Dsts.All(d => d.DamageType == DamageType.Heal)) hit.ShowPoint = HealEffect(new SkillConfig(row).ScriptShow);
                 if (CurrentCaster() && new SkillConfig(row).SkillId != 11315
                     && hit.Dsts.Any(d => d.HitResult != DamageHitResult.Miss)) await _buffs.RecoverEnergyOnHitAsync(s, row);
                 if (!customPresentation)
@@ -539,6 +615,13 @@ public sealed partial class CombatService
             .OrderBy(m => Distance(center, m.Pos)).ThenBy(m => m.Uid),
     ];
 
+    /// <summary>"Gain [Endure] while casting this skill" with no row in _kBuff1 (Flowing Shadow, Shadow Guard): its text links buff 903101.</summary>
+    private const int EndureBuff = 903101;
+    private static bool EndureWhileCasting(string script) => script is "yingliu" or "yingliuS1" or "qianying";
+
+    private int PilesFor(int buffId, int enemiesHit) => BuffConfig.Get(_data, buffId) is { MaxStack: > 1 } buff && SkillShieldRules.IsShield(buff)
+        ? (int)Math.Clamp(enemiesHit, 1, buff.MaxStack) : 1;
+
     private bool RollBuff(JsonElement tuple, out int id, out int duration)
     {
         id = duration = 0;
@@ -550,7 +633,7 @@ public sealed partial class CombatService
 
     /// <summary>Who a displacement moves: the caster along its facing or at its target, a target away from / toward the
     /// caster, or a target away from / toward the centre of the skill's area (its target point, or a field's position).</summary>
-    internal enum DisplaceKind { CasterForward, CasterBack, CasterToTarget, TargetPush, TargetPull, CenterPush, CenterPull }
+    internal enum DisplaceKind { CasterForward, CasterBack, CasterToTarget, CasterToPoint, TargetPush, TargetPull, CenterPush, CenterPull }
 
     /// <summary>
     /// Skills whose description says they move the caster or knock back / pull what they hit. The distance is the
@@ -562,16 +645,31 @@ public sealed partial class CombatService
     /// in front of it: the 1 m is (inferred) from Charge_Attack's "a point @{2} m in front of the designated ST enemy" and
     /// its _kDescData 1. Warg Strike's 1331203 and Warg Hunt (Ranged)'s 1333014 are in no m_kShows entry, so the move is the
     /// server's; each row's first attack point meets its charge gfx (fx_skill_wugstrike_02 at 0, fx_skill_wugdash_01 at 0.133).
-    /// Not here: ShieldsProtection's 1161341 knockback belongs to its periodic aura, which is not simulated; Axe Tornado's
+    /// Not here: Axe Tornado's
     /// enhanced form (AxeTornadoProS1BD2) pulls only under Enhance; knock-ups (Sonic Burst, Energy Release) move nobody.
     /// </summary>
     internal static readonly IReadOnlyDictionary<string, (DisplaceKind Kind, int DescIndex, float Metres)> Displacements =
         new Dictionary<string, (DisplaceKind, int, float)>
         {
             ["BackSlide"] = (DisplaceKind.CasterBack, 0, 0),
+            ["yingliu"] = (DisplaceKind.CasterForward, 0, 0),             // Flowing Shadow: "dash ${1} meters as a phantom"
+            ["yingliuS1"] = (DisplaceKind.CasterForward, 0, 0),
+            ["hesehuanying"] = (DisplaceKind.CasterToTarget, 4, 0),       // Shadow Step: "a point ${5} meters in front of the target"
+            ["hesehuanyingS1"] = (DisplaceKind.CasterToTarget, 4, 0),
+            ["DarkIllusion"] = (DisplaceKind.CasterForward, 1, 0),        // "quickly dash ${2} meters toward the target"
             ["RetreatingShadows"] = (DisplaceKind.CasterBack, 0, 0),
             ["RetreatingShadowsS1"] = (DisplaceKind.CasterBack, 0, 0),
             ["WolvesDash"] = (DisplaceKind.CasterForward, 0, 0),
+            ["Charge_Attack"] = (DisplaceKind.CasterToTarget, 3, 0),      // "Charge at a designated ST enemy", _kDescData 1 m in front of it
+            ["PowerSwing"] = (DisplaceKind.CasterToTarget, -1, 1),        // Heavy Axe Smash: "Move rapidly in front of the target"
+            ["PowerSwing2"] = (DisplaceKind.CasterToTarget, -1, 1),
+            ["PowerSwing3"] = (DisplaceKind.CasterToTarget, -1, 1),
+            ["WolfAttack"] = (DisplaceKind.CasterToTarget, -1, 1),        // Warg Strike: see FarChargeOnly
+            ["WolfAttackPlus"] = (DisplaceKind.CasterToTarget, -1, 1),
+            ["IgnitionBreak"] = (DisplaceKind.CasterToPoint, 0, 0),       // Rift Impact: "Dives toward a designated location within ${1} meters"
+            ["HesperusLit"] = (DisplaceKind.CasterToPoint, 1, 0),         // Twilight: "Leap to a selected area within ${2} meters"
+            ["HesperusLits1"] = (DisplaceKind.CasterToPoint, 1, 0),
+            ["ShieldsProtection"] = (DisplaceKind.TargetPush, 4, 0),      // Shield Defense: "Every ${7} seconds, inflict a ${5}-meter Knockback"
             ["WugStrike"] = (DisplaceKind.CasterToTarget, -1, 1),         // Warg Strike on the wolf: "Charge the designated ST target"
             ["WolvesShadowFar"] = (DisplaceKind.CasterToTarget, -1, 1),   // Warg Hunt: "you also dash in front of it"
             ["WolvesShadowFarBD"] = (DisplaceKind.CasterToTarget, -1, 1),
@@ -618,6 +716,9 @@ public sealed partial class CombatService
     /// </summary>
     internal static readonly IReadOnlyDictionary<string, int> MovementEffectOverrides = new Dictionary<string, int>
     {
+        ["yingliuS1"] = 1542101, // its mode row's show has no movement of its own; Flowing Shadow's 15421 (inferred)
+        ["hesehuanyingS1"] = 1540104, // likewise, Shadow Step's 15401 (inferred)
+        ["HesperusLits1"] = 1160707, // likewise, Twilight's 11607 (inferred)
         ["Spear_Stab"] = 1631405,
         ["Sightrasher"] = 1631405,
         ["PinpointAttack2"] = 1162412,
@@ -670,8 +771,30 @@ public sealed partial class CombatService
         return (0, 0, "");
     }
 
+    /// <summary>Fearless Charge: "Move ${12} meters in that direction" after a knockback of its own, so the row has two rules. Its ${12} is empty;
+    /// _kDescData[0] and _iDistanceMax both say 12 (inferred). 1162411 is its show's first movement, in the rows on show 111624 too.</summary>
+    private (DisplaceKind Kind, float Distance, int EffectId, int Ms)? AlsoMovesCaster(JsonElement row)
+    {
+        if (Script(row) != "PinpointAttack2") return null;
+        var (effect, ms) = MovementEffectById(_data, 1162411);
+        float distance = new SkillConfig(row).DescData is [var metres, ..] && float.TryParse(metres, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float read) ? read : 0;
+        return effect != 0 && distance > 0 ? (DisplaceKind.CasterForward, distance, effect, ms) : null;
+    }
+
+    /// <summary>Warg Strike: "If you are more than ${6} meters from the target, you also Charge directly in front of it". The wolf's own
+    /// WolfAttack rows have no such number and stay where they are.</summary>
+    private bool FarChargeHolds(GameSession s, ActiveSkillCast action)
+    {
+        if (Script(action.Row) is not ("WolfAttack" or "WolfAttackPlus")) return true;
+        var desc = new SkillConfig(action.Row).DescData;
+        if (desc.Length < 6 || !float.TryParse(desc[5], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float beyond)) return false;
+        var to = FindMonster(s.WorldScene, action.Request.TargetId)?.Pos ?? EventTarget(s, action.Request.TargetId)?.Position;
+        return to != null && Distance(s.Position, to) > beyond;
+    }
+
     private (DisplaceKind Kind, float Distance, int EffectId, int Ms)? Displacement(JsonElement row)
     {
+        if (row.TryGetProperty(SkillConfig.StillHitField, out _)) return null;
         string script = Script(row);
         if (!Displacements.TryGetValue(script, out var rule)) return null;
         var (effect, ms) = MovementEffectOverrides.TryGetValue(script, out int named) ? MovementEffectById(_data, named)
@@ -683,14 +806,20 @@ public sealed partial class CombatService
 
     private async Task MoveCasterAsync(GameSession s, ActiveSkillCast action)
     {
-        if (Displacement(action.Row) is not { Kind: DisplaceKind.CasterForward or DisplaceKind.CasterBack or DisplaceKind.CasterToTarget } move) return;
+        if (Displacement(action.Row) is { Kind: DisplaceKind.CasterForward or DisplaceKind.CasterBack or DisplaceKind.CasterToTarget or DisplaceKind.CasterToPoint } move
+            && FarChargeHolds(s, action)) await MoveCasterAsync(s, action, move);
+    }
+
+    private async Task MoveCasterAsync(GameSession s, ActiveSkillCast action, (DisplaceKind Kind, float Distance, int EffectId, int Ms) move)
+    {
         float face = action.Request.Face + (move.Kind == DisplaceKind.CasterBack ? 180 : 0);
         double angle = face * Math.PI / 180;
         var end = move.Kind == DisplaceKind.CasterToTarget ? ChargeEnd(s, action, move.Distance)
+            : move.Kind == DisplaceKind.CasterToPoint ? PointEnd(s, action, move.Distance)
             : WalkableEnd(s.SceneEntry, s.Position, (float)Math.Sin(angle) * move.Distance, (float)Math.Cos(angle) * move.Distance);
         if (end == null) return;
         // The rest of the show plays where the charge ended: a stop reported there is no walk that interrupts the cast.
-        if (move.Kind == DisplaceKind.CasterToTarget) action.Origin = end.Clone();
+        if (move.Kind is DisplaceKind.CasterToTarget or DisplaceKind.CasterToPoint) action.Origin = end.Clone();
         var start = s.Position.Clone();
         await ToPlayerAndViewersAsync(s, SkillMove, new SkillStartMoveNotify
         {
@@ -701,6 +830,8 @@ public sealed partial class CombatService
         // MoveAsync updates persistent position and AOI membership from the same authoritative destination.
         s.PreviousPosition = start;
         s.Position = end;
+        s.LastWalkUtc = DateTime.UtcNow; // the dash ends the walk it interrupted (GameSession.WalkReportLag)
+        s.Walking = false;
         await _world.MoveAsync(s, new WalkReq { Pos = end, Dir = s.Face, Face = s.Face, BStop = true }, forceTeleport: true);
     }
 
@@ -711,6 +842,14 @@ public sealed partial class CombatService
         var to = FindMonster(s.WorldScene, action.Request.TargetId)?.Pos ?? EventTarget(s, action.Request.TargetId)?.Position
             ?? action.Request.TargetPos ?? s.Position;
         float dx = to.X - s.Position.X, dz = to.Z - s.Position.Z, length = MathF.Sqrt(dx * dx + dz * dz), go = length - stopShort;
+        return go < 0.5f ? null : WalkableEnd(s.SceneEntry, s.Position, dx / length * go, dz / length * go);
+    }
+
+    /// <summary>Where a dive at the cast's point ends: on it, within the row's reach and navigation; null when the caster is about there already.</summary>
+    private Vec3? PointEnd(GameSession s, ActiveSkillCast action, float reach)
+    {
+        var to = action.Request.TargetPos ?? s.Position;
+        float dx = to.X - s.Position.X, dz = to.Z - s.Position.Z, length = MathF.Sqrt(dx * dx + dz * dz), go = MathF.Min(length, reach);
         return go < 0.5f ? null : WalkableEnd(s.SceneEntry, s.Position, dx / length * go, dz / length * go);
     }
 
@@ -728,7 +867,7 @@ public sealed partial class CombatService
     private async Task DisplaceTargetAsync(GameSession s, ActiveSkillCast action, MonsterUnit target, Vec3 center)
     {
         if (new SkillConfig(action.Row).ScriptLogic == "PinpointAttack3" && !LastAuthoredStage(action)) return;
-        if (Displacement(action.Row) is not { } move || TargetMove(move.Kind, s, center) is not var (from, push)) return;
+        if (Displacement(action.Row) is not { } move || TargetMove(move.Kind, s, center) is not var (from, push) || _buffs.ResistsDisplacement(target)) return;
         float dx = target.X - from.X, dz = target.Z - from.Z;
         float length = MathF.Sqrt(dx * dx + dz * dz);
         if (length < 0.001f) return;
@@ -762,7 +901,8 @@ public sealed partial class CombatService
     /// </summary>
     internal async Task KnockPlayerAsync(GameSession p, float fromX, float fromZ, float go, int skillId, int effectId, int ms)
     {
-        if (p.Dead || p.SceneLoading || p.Role is not { } role || go > 0 && DisplacementImmunities.Any(immune => immune(p))) return;
+        if (p.Dead || p.SceneLoading || p.Role is not { } role || _buffs.ResistsDisplacement(p)
+            || go > 0 && DisplacementImmunities.Any(immune => immune(p))) return;
         float dx = p.Position.X - fromX, dz = p.Position.Z - fromZ, length = MathF.Sqrt(dx * dx + dz * dz);
         if (length < 0.001f || go < 0 && length <= -go) return;
         float distance = go >= 0 ? go : -(length + go);
@@ -804,19 +944,32 @@ public sealed partial class CombatService
         var row = action.Row;
         string script = Script(row);
         var logic = Numbers(row, "_kLogicData");
-        int npc = 0, duration = 0, interval = 1000, protection = 0, charges = 0;
+        int npc = 0, duration = 0, interval = 1000, protection = 0, charges = 0, waves = -1, touches = -1, atOnce = 0;
+        var described = new SkillConfig(row).DescData;
+        double Desc(int index) => index < described.Length && double.TryParse(described[index], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double v) ? v : 0;
         bool trap = false;
         float radius = (float)(Numbers(row, "_kRange").FirstOrDefault(150) / 100);
         switch (script)
         {
-            case "Fire_Wall" or "Quagmire" or "Fire_Pillar" or "Meteor_Storm" or "Lord_of_Vermilion" or "Storm_Gust" when logic.Length >= 3:
-                npc = (int)logic[0]; interval = (int)logic[1]; duration = (int)logic[2]; break;
-            case "Magnus_Exorcismus" or "Magnus_ExorcismusBD" when logic.Length >= 2:
-                npc = (int)logic[0]; duration = (int)(logic[1] * 1000);
-                interval = (int)(Numbers(row, "_kDescData").ElementAtOrDefault(4) * 1000); break;
+            // Lord_of_Vermilion_BD is Thunder Shockwave's mode row, with the same _kLogicData and text.
+            case "Fire_Wall" or "Quagmire" or "Fire_Pillar" or "Meteor_Storm" or "Lord_of_Vermilion" or "Lord_of_Vermilion_BD" or "Storm_Gust" when logic.Length >= 3:
+                npc = (int)logic[0]; interval = (int)logic[1]; duration = (int)logic[2];
+                if (script == "Meteor_Storm" && logic.Length > 5) waves = (int)logic[5]; // "strikes in ${6} waves"
+                if (script == "Fire_Wall") { touches = (int)Desc(6); atOnce = (int)Desc(7); } // "touched by enemies ${7} times", "Up to ${8} Fire Walls"
+                break;
+            // "For the next ${4} sec. ... every ${5} sec.": [npc, targets, strikes, ...]; 8 strikes in 4 s. Its talent's "target count +1" edits logic[1].
+            case "Magnus_Exorcismus" or "Magnus_ExorcismusBD" when logic.Length >= 3 && logic[2] > 0 && Desc(3) > 0:
+                npc = (int)logic[0]; duration = (int)(Desc(3) * 1000); interval = (int)(duration / logic[2]); break;
+            // "For the next ${4} seconds, every ${5} seconds": its row names no entity, NPCConfig 22000003 carries its name (inferred).
+            case "Sanctuary" when Desc(3) > 0 && Desc(4) > 0:
+                npc = SanctuaryNpc; duration = (int)(Desc(3) * 1000); interval = (int)(Desc(4) * 1000); break;
+            // [interval, duration, ...]: "lasts 4 seconds and strikes a total of 8 times". NPCConfig 1200013 carries its name (inferred).
+            case "ZhongLiYuanYe" when logic.Length >= 2:
+                npc = GravitationFieldNpc; interval = (int)logic[0]; duration = (int)logic[1]; break;
             case "Safety_Wall" or "Pneuma" when logic.Length >= 8:
                 npc = (int)logic[5]; duration = (int)logic[2]; radius = (float)(logic[7] / 100);
-                protection = script == "Safety_Wall" ? 1 : 2; charges = script == "Safety_Wall" ? (int)logic[1] : int.MaxValue; break;
+                // [targets, ?, duration, hits blocked, buff, npc, at once, radius]: logic[3] runs with the text's "block up to ${5} hits".
+                protection = script == "Safety_Wall" ? 1 : 2; charges = (int)logic[3]; atOnce = (int)logic[6]; break;
             case "LandMine": npc = 22000016; trap = true; break;
             case "ClaymoreTrap": npc = 22000017; trap = true; break;
             case "FreezingTrap": npc = 22000018; trap = true; break;
@@ -848,13 +1001,18 @@ public sealed partial class CombatService
             // Meteor_Storm 的第六欄與 _kDamageScript、各級說明同為波數。保留物件生命期，不以多次傷害填滿動畫。
             PulseLimit = script == "Meteor_Storm" && logic.Length >= 6 ? Math.Max(0, (int)logic[5])
                 : script is "Magnus_Exorcismus" or "Magnus_ExorcismusBD" && interval > 0 ? duration / interval : 0,
+            WavesLeft = waves, TouchesLeft = touches,
         };
+        if (atOnce > 0)
+            foreach (var old in s.SkillObjects.Where(o => !o.Removing && Script(o.Cast.Row) == script).OrderBy(o => o.Uid).SkipLast(atOnce - 1).ToArray())
+                await RemoveSkillObjectAsync(old);
         foreach (int skill in Numbers(npcRow, "_kSkills").Select(v => (int)v)) unit.Skills.Add(skill);
         s.SkillObjects.Add(unit);
         await _world.AddUnitAsync(unit);
         if (!CurrentCastMap(s, action)) { await RemoveSkillObjectAsync(unit); return true; }
         foreach (var tuple in Tuples(row, "_kBuff1"))
-            if (RollBuff(tuple, out int buffId, out int buffDuration)) await _buffs.AddAsync(s, buffId, buffDuration, s.Role.Id);
+            if (RollBuff(tuple, out int buffId, out int buffDuration))
+                await ApplySkillBuffAsync(_character.Stats(s), s, buffId, buffDuration, s.Role.Id);
         return true;
     }
 
@@ -874,11 +1032,12 @@ public sealed partial class CombatService
             }
             if (Now < unit.NextTickMs || unit.PulseLimit > 0 && unit.Pulses >= unit.PulseLimit) return;
             unit.NextTickMs = Now + unit.IntervalMs;
-            if (unit.ProtectionDistanceType != 0) return;
+            if (unit.ProtectionDistanceType != 0 || unit.WavesLeft == 0) return;
             if (unit.Trap && !_world.Map(unit.WorldScene).Near(unit.X, unit.Z, 1.5f).OfType<MonsterUnit>().Any(m => !m.Dead && Distance(m.Pos, unit.Pos) <= 1.5f)) return;
             unit.Pulses++;
+            if (unit.WavesLeft > 0) unit.WavesLeft--;
             await ApplyEffectsAsync(owner, unit.Cast, unit.Pos, unit);
-            if (unit.Trap) await RemoveSkillObjectAsync(unit);
+            if (unit.Trap || unit.TouchesLeft == 0) await RemoveSkillObjectAsync(unit);
         }
         finally { unit.Busy = false; }
     }
@@ -905,11 +1064,16 @@ public sealed partial class CombatService
         foreach (var unit in s.SkillObjects.ToArray()) await RemoveSkillObjectAsync(unit);
     }
 
-    private async Task<bool> GroundProtectsAsync(GameSession target, JsonElement? skill)
+    /// <summary>Safety Wall: "protecting up to ${3} allies within the area from incoming melee Physical" hits, logic[0] allies; Pneuma likewise, ranged
+    /// Physical, "a single ally". Which of those inside is (inferred): the nearest to its centre.</summary>
+    internal async Task<bool> GroundProtectsAsync(GameSession target, JsonElement? skill)
     {
         int distanceType = skill is { } row ? (int)GameData.Int(row, "_iDistanceType") : 1;
+        if (skill is { } incoming && new SkillConfig(incoming).DmgType == 2) return false;
         var field = _world.Map(target.WorldScene).Units.OfType<SkillObject>().FirstOrDefault(u => !u.Removing && u.ExpiresMs > Now
-            && u.ProtectionDistanceType == distanceType && u.Charges > 0 && Distance(u.Pos, target.Position) <= u.Radius);
+            && u.ProtectionDistanceType == distanceType && u.Charges > 0 && Distance(u.Pos, target.Position) <= u.Radius
+            && _world.PlayersIn(target.WorldScene).Where(p => !p.Dead && Distance(u.Pos, p.Position) <= u.Radius).OrderBy(p => Distance(u.Pos, p.Position))
+                .Take((int)Math.Max(1, new SkillConfig(u.Cast.Row).LogicData.FirstOrDefault(1))).Contains(target));
         if (field == null) return false;
         if (--field.Charges == 0) await RemoveSkillObjectAsync(field);
         return true;
@@ -918,7 +1082,12 @@ public sealed partial class CombatService
     /// <summary>The event players a cast can hit: its area's, a guardian's own area selection, or its locked target.</summary>
     private GameSession[] EffectPlayerTargets(GameSession s, ActiveSkillCast action, Vec3 center, SkillObject? field = null)
     {
-        if ((GameData.Int(action.Row, "_iRangeType") != SkillRelease.Area && !AuthoredAssassinSelfArea(action.Row) && !AuthoredVenomDustArea(action.Row)) || LockedTargetCasts.Any(rule => rule(s, action)))
+        if (field == null && IsGuardianEffect(action.Row) && new SkillConfig(action.Row).RangeType == SkillRelease.Area
+            && !LockedTargetCasts.Any(rule => rule(s, action)))
+            return GuardianPlayerTargets(s, action, center);
+        if ((GameData.Int(action.Row, "_iRangeType") != SkillRelease.Area && !AreaDespiteRangeType(new SkillConfig(action.Row))
+                && !AuthoredAssassinSelfArea(action.Row) && !AuthoredVenomDustArea(action.Row))
+            || LocksItsTarget(action.Row) && action.Request.TargetId != 0 || LockedTargetCasts.Any(rule => rule(s, action)))
             return EventTarget(s, action.Request.TargetId) is { } target && PlayerDistance(s, target) <= Range(action.Row) + 1.5f
                 ? [target] : [];
         float height = new SkillConfig(action.Row).AreaHeightRange / 100f;
@@ -933,7 +1102,7 @@ public sealed partial class CombatService
         JsonElement row, string script)
     {
         var (amount, result) = Damage(attacker, MonsterFighter(target), row,
-            OrdinaryMonsterDamageBranch(s, target, row),
+            AuthoredSourceDamageBranch(s, row) ?? Math.Max(OrdinaryMonsterDamageBranch(s, target, row), DamageBranch(s, target, row)),
             GuardianPetRules.CriticalChance(row) + SkillParameterRules.CritChance(s, _data, row),
             GuardianPetRules.CriticalAtHp(row, target.Hp, target.Template.MaxHp));
         if (row.TryGetProperty("_ro3GuardianFixedHit", out var fixedValue))
@@ -944,7 +1113,7 @@ public sealed partial class CombatService
             foreach (var modifier in DamageAdjusters) amount = Math.Max(0, modifier(s, target, row, result, amount));
             foreach (var extra in ExtraHitDamage) amount += Math.Max(0, extra(s, target, row, amount));
         }
-        return (ApplyPetSupportResistance(amount, _buffs.UnitAttributes(target), row, attacker.Element), result);
+        return (ApplyPetSupportResistance(amount, _buffs.UnitCombatAttributes(target), row, attacker.Element), result);
     }
 
     /// <summary>Targets already slowed before this cast. Only Kuang Feng Xi Juan's second slow depends on that, so no
@@ -953,7 +1122,7 @@ public sealed partial class CombatService
     {
         if (GuardianPetRules.Script(row) != KuangFengXiJuan) return [];
         var slowed = monsters.Where(m => m.SlowMovementExpireMs > Now
-            || _buffs.UnitAttributes(m).Any(c => c.Id == AttributeId.PerSpeed && c.Value < 0))
+            || _buffs.UnitCombatAttributes(m).Any(c => c.Id == AttributeId.PerSpeed && c.Value < 0))
             .Select(m => m.Uid).ToHashSet();
         foreach (var player in players.Where(p => p.Buffs.Any(b => b.ExpireMs > Now
             && b.Changes.Any(c => c.Attr == AttributeId.PerSpeed && c.Value < 0)))) slowed.Add(player.Role!.Id);
@@ -965,7 +1134,7 @@ public sealed partial class CombatService
         HashSet<long> alreadySlowed, long sourceRoleId, Func<bool> canApply)
     {
         foreach (var (player, currentTarget) in players.ToArray())
-            foreach (var tuple in Tuples(row, "_kBuff2"))
+            foreach (var tuple in HostileBuffs(row))
                 if (canApply() && currentTarget() && CanPlayerHit(s, player)
                     && GuardianAllowsHostileBuff(row, tuple, alreadySlowed.Contains(player.Role!.Id))
                     && RollHostileBuff(GuardianPetRules.PlayerBuffTuple(row, tuple), s, null, player, null, out int id, out int duration))

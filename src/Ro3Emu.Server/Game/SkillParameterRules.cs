@@ -38,6 +38,12 @@ internal static class SkillParameterRules
     internal const int SkillCostType = 35;
     internal const int SkillRangeType = 36, SkillDamageParamExtraType = 37;
 
+    /// <summary>Tuples the client does not need told (they change what only the server reads), so they stay out of <see cref="Field"/>.
+    /// 35 SkillCost, [.., value, row, column] of _kCost: Survival Instinct's "no longer consumes HP" is -100% of column 3. 31 SkillLogicData, by index: Arrow Flash sets
+    /// Sharp Shooting's [3,150] to 4 and 250, "targets +1, width +1 m"; Magnus and Sanctuary target count +1; Decapitation Sonic Blow's threshold. 20 reads as a flat
+    /// part at its index, Decapitation's "Sonic Blow fixed +10" on a row whose other branches take 30 (inferred).</summary>
+    private const int CostType = 35, LogicType = 31, FlatAtIndexType = 20, FlatType = 30;
+
     private static readonly ConditionalWeakTable<GameData, Dictionary<int, Modifier[]>> Parsed = [];
     private static readonly ConditionalWeakTable<GameData, Dictionary<int, int[]>> Categories = [];
     private static readonly ConditionalWeakTable<GameSession, SessionCache> Sessions = [];
@@ -99,11 +105,15 @@ internal static class SkillParameterRules
         session.Items.Any(i => i.Grid is 1 or 2 && ItemConfig.Get(data, i.Entry) is { } item && item.SubType == subType);
 
     /// <summary>Does the session carry a live buff of this BuffConfig._iBuffID group.</summary>
+    /// <summary>Battle Chant Enhance's form carries 11546 in place of 11505; "While [Battle Chant] is active" holds on it too.</summary>
+    private const long BattleChantGroup = 11505, EnhancedBattleChantGroup = 11546;
+
     internal static bool HasBuffGroup(GameSession session, GameData data, long group)
     {
         long now = MonsterService.NowMs;
         foreach (var buff in session.Buffs)
-            if (buff.ExpireMs > now && BuffConfig.Get(data, buff.ConfigId) is { } row && row.BuffId == group) return true;
+            if (buff.ExpireMs > now && BuffConfig.Get(data, buff.ConfigId) is { } row
+                && (row.BuffId == group || group == BattleChantGroup && row.BuffId == EnhancedBattleChantGroup)) return true;
         return false;
     }
 
@@ -263,7 +273,8 @@ internal static class SkillParameterRules
     internal static JsonElement Effective(JsonElement row, IReadOnlyList<Modifier> modifiers, int[] tags)
     {
         int group = (int)GameData.Int(row, "_iSkillID");
-        var relevant = modifiers.Where(m => Matches(m, group, tags) && (Field(m.Type) != null || m.Type is Buff1Type or Buff2Type || IsCostModifier(m))
+        var relevant = modifiers.Where(m => Matches(m, group, tags)
+            && (Field(m.Type) != null || m.Type is Buff1Type or Buff2Type or FlatAtIndexType || IsCostModifier(m))
             && m.Operation is 1 or 2 or 5).ToList();
         if (relevant.Count == 0) return row;
         var json = JsonNode.Parse(row.GetRawText())!.AsObject();
@@ -284,9 +295,11 @@ internal static class SkillParameterRules
                 ApplyToTuples(json[mod.Type == Buff1Type ? "_kBuff1" : mod.Type == Buff2Type ? "_kBuff2" : "_kDamageParamExtra"], mod);
                 continue;
             }
-            string field = Field(mod.Type)!;
-            if (IsVector(mod.Type))
+            string field = mod.Type switch { LogicType => SkillConfig.LogicDataField, FlatAtIndexType => SkillConfig.FlatDamageField, _ => Field(mod.Type)! };
+            if (IsVector(mod.Type) || mod.Type == FlatAtIndexType)
             {
+                // A flat part on a row with none: Normal Attack Boost's "Basic Attack fixed damage +15" on an empty _kDamageParam2 (Lua writes it as {}).
+                if (mod.Type is FlatType or FlatAtIndexType && json[field] is not JsonArray { Count: > 0 }) json[field] = new JsonArray(JsonValue.Create(0L));
                 if (json[field] is not JsonArray arr) continue;
                 // Index -1 in exported damage modifiers targets the full vector (inferred).
                 int first = mod.Index < 0 ? 0 : mod.Index;

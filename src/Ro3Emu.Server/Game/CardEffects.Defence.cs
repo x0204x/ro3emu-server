@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Text.Json;
-using Romsg;
 using Ro3Emu.Server.Data.Config;
 
 namespace Ro3Emu.Server.Game;
@@ -14,7 +13,7 @@ public sealed partial class CardEffects
     private void InitializeDefence()
     {
         _combat.DefenceElementOverrides.Add(ArmourElement);
-        _combat.IncomingSkillDamageAdjusters.Add(DefensiveDamage);
+        _combat.PlayerDamageAdjusters.Add(DefensiveDamage);
         _combat.DisplacementImmunities.Add(s => HasDefencePassive(s, PermanentEndureGroup));
         _buffs.PlayerBuffImmunities.Add(RejectCardControl);
         _combat.TakenAsync.Add((_, target, amount) => HolyArmourOnHitAsync(target, amount));
@@ -39,11 +38,12 @@ public sealed partial class CardEffects
             .Select(b => (int?)b.LogicData.FirstOrDefault()).LastOrDefault(e => e is >= 1 and <= 10);
     }
 
-    private long DefensiveDamage(GameSession target, JsonElement row, DamageHitResult result, long amount)
+    private long DefensiveDamage(GameSession target, JsonElement? row, bool directHit, long amount)
     {
-        if (amount <= 0 || result == DamageHitResult.Miss) return amount;
+        if (amount <= 0) return amount;
         var active = LiveDefenceBuffs(target).ToArray();
-        if (new SkillConfig(row).DmgType == 2 && !row.TryGetProperty("_ro3CardReflection", out _))
+        if (directHit && SkillShieldRules.IsMagic(row) && row is { } incoming
+            && !incoming.TryGetProperty("_ro3CardReflection", out _))
         {
             // (inferred) 同族重複來源採最高機率並共用冷卻；不是把每張卡當成獨立免傷擲骰。
             var nullifier = active.Where(b => b.BuffId is MagicNullGroup or MagicNullAdvancedGroup)
@@ -54,7 +54,7 @@ public sealed partial class CardEffects
         if (active.Any(b => b.BuffId == BuffService.SilenceGroup))
         {
             long reduction = active.Where(b => b.BuffId == SilenceReductionGroup).Select(b => b.LogicData.FirstOrDefault()).DefaultIfEmpty().Max();
-            amount = (long)Math.Floor(amount * (1 - Math.Clamp(reduction, 0, 10000) / 10000d));
+            amount -= (long)decimal.Floor((decimal)amount * Math.Clamp(reduction, 0, 10000) / 10000m);
         }
         return amount;
     }

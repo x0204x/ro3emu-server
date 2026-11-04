@@ -1313,6 +1313,85 @@ public sealed partial class ActivityAdventuresTests : IAsyncLifetime
         return path?.FullName ?? throw new DirectoryNotFoundException("Repository data/config");
     }
 
+    /// <summary>A dig that disturbs the Drake boss (TreasureHuntResultRateConfig 5) announces ChatConfig 401 to everyone
+    /// online. The finder is mailed the boss's _iAwardId (Dig - Precious Chest) and another player who hit it is mailed
+    /// _iAssistAwardId (Dig - Co-op Chest).</summary>
+    [ClientDataFact]
+    public async Task TreasureBossIsAnnouncedAndHelpersGetTheCoopChest()
+    {
+        var window = _app.Services.GetRequiredService<ActivityClock>()
+            .Segments(1017, _clock.GetUtcNow().ToUnixTimeSeconds()).Single();
+        _clock.Set(window.Start + 60);
+        await using var alice = await InWorld("Alice");
+        await using var bob = await InWorld("Bob");
+        await Gm("alice", "!lvl 99");
+        await Gm("bob", "!lvl 99");
+        await Gm("alice", "!item 1112001 1");
+        var registry = _app.Services.GetRequiredService<SessionRegistry>();
+        var finder = registry.All().Single(s => s.Role?.Name == "Alice");
+        var helper = registry.All().Single(s => s.Role?.Name == "Bob");
+        Assert.Equal(finder.WorldScene, helper.WorldScene);
+        _app.Services.GetRequiredService<NewActivityService>().TreasureOutcomeForTest = 5;
+
+        long guid = finder.Items.Single(i => i.Entry == 1112001).Guid;
+        await alice.SendGameAsync(CharacterService.ItemUse, new ItemUseReq { ItemGuid = guid, ItemCount = 1 });
+        Assert.Equal(0, (await Next(alice, CharacterService.ItemUse, ItemUseResp.Parser)).Result);
+        var cursor = await Next(alice, 5064, DBTreasureInfoIncrement.Parser, i => i.PointId > 0);
+        var target = _app.Services.GetRequiredService<SceneService>().TreasurePoint(cursor.PointId)!.Value;
+        Assert.Equal(finder.SceneEntry, target.Scene);
+        string x = target.Position.X.ToString(CultureInfo.InvariantCulture);
+        string z = target.Position.Z.ToString(CultureInfo.InvariantCulture);
+        await Gm("alice", $"!jump {x} {z}");
+        await Gm("bob", $"!jump {x} {z}");
+        await alice.SendGameAsync(SceneService.NpcInteraction, new NpcInteractionReq
+        {
+            NpcUid = SceneService.TreasureUidPrefix | finder.Role!.Id, InteractionId = 21070002,
+        });
+        Assert.Equal(0, (await Next(alice, SceneService.NpcInteraction, NpcInteractionRsp.Parser)).Result);
+        Assert.Equal(5, (int)(await Next(alice, 83251, TreasureEventNotify.Parser)).Type);
+
+        string map = _app.Services.GetRequiredService<Ro3Emu.Server.Data.GameData>().MapName(finder.SceneEntry);
+        foreach (var bot in new[] { alice, bob })
+        {
+            var marquee = await Next(bot, 1022, SystemBoardCastMsgNtf.Parser, n => n.ChatId == 401);
+            Assert.Equal("Alice", marquee.ParamList[1].Params.Single());
+            Assert.Equal(map, marquee.ParamList[2].Params.Single());
+        }
+
+        var loop = _app.Services.GetRequiredService<GameLoop>();
+        long bossUid = finder.ActivityRuntime.AdventureTreasure.PendingMonsterUid;
+        var boss = await loop.InvokeAsync(() => Task.FromResult(_app.Services.GetRequiredService<Ro3Emu.Server.Maps.World>()
+            .Map(finder.WorldScene).Units.OfType<Ro3Emu.Server.Maps.MonsterUnit>().Single(u => u.Uid == bossUid)));
+        Assert.Equal(80000002, boss.Template.NpcId);
+
+        // Bob hits it first without killing it, then Alice lands the final blow.
+        await loop.InvokeAsync(() => { boss.Hp = Math.Max(boss.Template.MaxHp, 10_000_000); return Task.CompletedTask; });
+        await bob.SendGameAsync(MsgId.Walk, new WalkReq { Pos = boss.Pos, BStop = true, SpeedRate = 1 });
+        await bob.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = boss.Uid });
+        Assert.Equal(0, (await Next(bob, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
+        await Next(bob, CombatService.SkillHit, SkillHitInfo.Parser, h => h.Dsts.Any(d => d.DstID == boss.Uid));
+        await loop.InvokeAsync(() => { boss.Hp = 1; return Task.CompletedTask; });
+        await alice.SendGameAsync(MsgId.Walk, new WalkReq { Pos = boss.Pos, BStop = true, SpeedRate = 1 });
+        await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1000001, TargetId = boss.Uid });
+        Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
+        await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser, h => h.Dsts.Any(d => d.DstID == boss.Uid && d.IsDead));
+
+        // MailConfig 11603 "Dig Rewards" (finder's boss kill) and 11604 (assist), each carrying its configured chest.
+        var roles = _app.Services.GetRequiredService<RoleStore>();
+        MailService.Letter[] Letters(GameSession s) => roles.LoadMailbox(s.Role!.Id) is { } blob
+            ? [.. JsonSerializer.Deserialize<MailService.Mailbox>(blob)!.Letters] : [];
+        bool Mailed(GameSession s, int template, int entry) =>
+            Letters(s).Any(l => l.TemplateId == template && l.Attachments.Any(a => a.Entry == entry && a.Count == 1));
+        var deadline = DateTime.UtcNow + Wait;
+        while (DateTime.UtcNow < deadline && !(Mailed(finder, 11603, 1300088) && Mailed(helper, 11604, 1300089)))
+            await Task.Delay(50);
+        Assert.True(Mailed(finder, 11603, 1300088), "finder's Dig - Precious Chest mail");
+        Assert.True(Mailed(helper, 11604, 1300089), "helper's Dig - Co-op Chest mail");
+        Assert.DoesNotContain(Letters(finder), l => l.TemplateId == 11604);
+        Assert.DoesNotContain(finder.Items, i => i.Entry == 1300088);
+        Assert.Equal(0, finder.ActivityRuntime.AdventureTreasure.PendingMonsterAward);
+    }
+
     /// <summary>106802 counts a committed dig at the Treasure Map's point (growth title 4's 704090 [106802,20], the
     /// activity quest 110008 [106802,1]); using the map alone is not a dig. The count survives a relogin.</summary>
     [ClientDataFact]

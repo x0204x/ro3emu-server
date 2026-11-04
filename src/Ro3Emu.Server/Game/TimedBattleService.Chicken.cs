@@ -186,7 +186,7 @@ public sealed partial class TimedBattleService
     {
         if (!_active.TryGetValue(session, out var match) || match.Chicken is not { } run || run.Stage < StageShowCareer
             || !run.Players.TryGetValue(session, out var me) || me.Career == 0 || CareerRow(me.Career) is not { } career) return null;
-        if (skillId == _skills.NormalAttack(session)) return true;
+        if (skillId == _skills.CurrentAttack(session)) return true;
         foreach (var field in new[] { "_iNormalSkillId", "_iTalentSkillId", "_iDefaultSkillId" })
             if (GameData.Int(career.Row, field) == skillId) return true;
         if (CareerSkill.GetValueOrDefault(me.Career) == skillId) return true;

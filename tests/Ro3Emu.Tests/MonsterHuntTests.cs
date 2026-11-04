@@ -257,4 +257,35 @@ public sealed class MonsterHuntTests : IAsyncLifetime
         var stored = DBAreaConcurInfo.Parser.ParseFrom(Service<RoleStore>().LoadAreaConcur(s.Role!.Id)!);
         Assert.True(stored.AreaInfo[Area].ClaimedAward[1]);
     }
+
+    /// <summary>
+    /// The Area Prize panel enables "Claim" when the monster stages REACHED (12 of 186) hold the threshold (10), whatever was
+    /// claimed: a player with 6 stages claimed and 12 reached pressed it and nothing was paid.
+    /// </summary>
+    [ClientDataFact]
+    public async Task AnAreaStagePaysWhenEnoughMonsterStagesAreReachedEvenIfUnclaimed()
+    {
+        await using var alice = await OnHuntMap("Alice");
+        var s = Session(alice);
+        await OnLoop(() =>
+        {
+            // Stages 1 and 2 (60 and 120 kills) of six monsters reached, none claimed: 12 reached.
+            foreach (long id in new[] { Row, OtherRow, 175L, 176L, 177L, 178L })
+                s.AreaConcur!.MonsterInfo[id] = new AreaConcurMonsterInfo { CurScore = 120 };
+            return Task.CompletedTask;
+        });
+        var req = new AreaConcurGainAreaAwardReq { AreaId = Area };
+        req.StageIds[1] = true;
+        await alice.SendGameAsync(MonsterHuntService.GainAreaAward, req);
+        await Next(alice, MonsterHuntService.GainAreaAward, AreaConcurGainAreaAwardResp.Parser);
+        Assert.True(await Read(() => s.AreaConcur!.AreaInfo[Area].ClaimedAward[1]));
+        Assert.Equal(1, await Read(() => Service<CharacterService>().CountOf(s, 1300067))); // Blue Cards Selection Chest
+        Assert.Equal(0, await Read(() => s.AreaConcur!.AreaInfo[Area].CurScore)); // nothing of the monsters was claimed
+        // Stage 2 needs 35 reached: refused with 12.
+        var second = new AreaConcurGainAreaAwardReq { AreaId = Area };
+        second.StageIds[2] = true;
+        await alice.SendGameAsync(MonsterHuntService.GainAreaAward, second);
+        await Next(alice, MonsterHuntService.GainAreaAward, AreaConcurGainAreaAwardResp.Parser);
+        Assert.False(await Read(() => s.AreaConcur!.AreaInfo[Area].ClaimedAward.ContainsKey(2)));
+    }
 }

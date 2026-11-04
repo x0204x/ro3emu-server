@@ -165,13 +165,14 @@ public sealed partial class CardEffects
             int shift = group == 20508 ? 1 : 0;
             if (desc.Length != 4 + shift || logic.Length != 1 + shift) continue;
             long chance = shift == 1 ? logic[0] : 10000;
-            if (SkillConfig.Get(_data, logic[shift]) is not { } splash) continue;
+            if (SkillConfig.Get(_data, logic[shift]) is not { LogicData: [var effect, ..] } splash) continue;
             float radius = (float)desc[shift];
             int limit = (int)desc[shift + 1];
             var targets = _combat.CardSplashTargets(s, center, primaryId, radius, limit);
             if (targets.Monsters.Length + targets.Players.Length == 0 || Roll(10000) >= chance || !Ready(s, group, (long)(desc[shift + 3] * 1000))) continue;
-            long amount = (long)decimal.Floor((decimal)effective * (decimal)desc[shift + 2] / 100);
-            if (amount <= 0) continue;
+            long amount = Math.Max(1, (long)decimal.Floor((decimal)effective * (decimal)desc[shift + 2] / 100));
+            await _combat.SendGfxAtAsync(s, primaryId, center, effect, splash.Id);
+            if (!Current()) return;
             var node = JsonNode.Parse(splash.AsDescribedHit(0, 1, splash.EleType, limit).GetRawText())!.AsObject();
             node[SplashDamageField] = amount;
             // 目標已依上方共用上限選完。CastExtraAsync 的 Area 會另選玩家，重複打中原目標；

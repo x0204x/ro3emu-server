@@ -13,6 +13,7 @@ public readonly partial record struct ShopCommodityConfig(JsonElement Row)
     [ConfigField("_iID")] public partial long Id { get; }
     [ConfigField("_iIsBuy")] public partial long IsBuy { get; }
     [ConfigField("_iIsLock")] public partial long IsLock { get; }
+    [ConfigField("_iIsShowCount")] public partial long IsShowCount { get; }
     [ConfigField("_iItemId")] public partial long ItemId { get; }
     [ConfigField("_iItemPerMount")] public partial long ItemPerMount { get; }
     [ConfigField("_iMerchantDiscount")] public partial long MerchantDiscount { get; }

@@ -82,16 +82,19 @@ public sealed partial class NewActivityTests
                 .OfType<MonsterUnit>().Single(m => m.InstanceId == instance)));
             await OnLoop(() => { Session(bot).SkillCds.Clear(); return Task.CompletedTask; });
             await bot.SendGameAsync(MsgId.Walk, new WalkReq { Pos = dummy.Pos, BStop = true, SpeedRate = 1 });
-            await bot.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1100001, TargetId = dummy.Uid });
+            await bot.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1001001, TargetId = dummy.Uid });
             Assert.Equal(0, (await Next(bot, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
             var hit = await Next(bot, CombatService.SkillHit, SkillHitInfo.Parser, h => h.Dsts.Any(d => d.DstID == dummy.Uid && d.Damage > 0));
-            var report = await Next(bot, CombatService.DamageStatistics, DamageStatisticsNotify.Parser, n => n.Damages.Any(d => d.DamageTargetId == dummy.Uid));
+            var report = await Next(bot, CombatService.DamageStatistics, DamageStatisticsNotify.Parser, n => n.Damages.Any(d => d.DamageTargetId == dummy.Uid && d.DamageValue > 0)); // a missed swing reports its 0 first
             var entry = Assert.Single(report.Damages);
             Assert.Equal(role, entry.DamageSourceId);
             Assert.Equal(hit.Dsts.Single(d => d.DstID == dummy.Uid).Damage, entry.DamageValue);
             Assert.False(dummy.Dead);
+            // A lethal hit is restored just after its report goes out.
+            for (var until = DateTime.UtcNow.AddSeconds(5); dummy.Hp != dummy.Template.MaxHp && DateTime.UtcNow < until;) await Task.Delay(10);
             Assert.Equal(dummy.Template.MaxHp, dummy.Hp);
             await bot.SendGameAsync(CombatService.SkillInterrupt, new NullArg());
+            await Task.Delay(600); // a swing cancelled by a move holds the next one (CombatService.CancelCastAsync)
         }
         await bot.SendGameAsync(DungeonService.Enter, new EnterDungeonReq { SceneEntry = 2100009 });
         Assert.Equal(0, (await Next(bot, DungeonService.Enter, EnterDungeonRsp.Parser)).Result);

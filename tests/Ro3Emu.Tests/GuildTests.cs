@@ -309,6 +309,8 @@ public sealed partial class GuildTests : IAsyncLifetime
         await Level("helperone");
         await Level("helpertwo");
         await Level("helperthree");
+        _app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<Ro3Emu.Server.ServerOptions>>().Value.GuildFounding = "responders";
+        await GiveEmperium("founder");
         var create = Create("Helpers", "Join us");
         create.AutoCreateHelper = true;
         await founder.SendGameAsync(GuildService.Create, create);

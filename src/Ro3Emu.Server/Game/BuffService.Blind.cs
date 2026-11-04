@@ -16,7 +16,8 @@ public sealed partial class BuffService
     internal bool CanSeePosition(GameSession player, Vec3 position) => !Blinded(player)
         || MonsterService.Distance(player.Position.X, player.Position.Z, position.X, position.Z) <= BlindRadiusCm / 100f;
 
-    // (inferred) Apply the same selection radius to a blinded monster's acquisition and locked target.
+    // (inferred) Apply the same selection radius to a blinded monster's acquisition and locked target, from any source: "Reduces
+    // field of view" is the row's text, and a card's or a skill's Blind on a monster has nothing else to show but the icon.
     internal bool CanSeePosition(WorldUnit unit, Vec3 position) => !_unitBuffs.TryGetValue(unit.Uid, out var buffs)
         || !buffs.Any(b => b.ExpireMs > MonsterService.NowMs && b.ConfigId / 100 == BlindGroup)
         || MonsterService.Distance(unit.X, unit.Z, position.X, position.Z) <= BlindRadiusCm / 100f;

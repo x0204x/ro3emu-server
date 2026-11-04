@@ -17,7 +17,8 @@ public sealed class ProfessionTalentEffectTests : IAsyncDisposable
     private const int AutoGuardEnhance = 1153701, Granted = 77002, AutoGuard = 77003, AutoGuardGroup = 11403;
     private static readonly int[] PlayBook = [101], Career = [1000], BranchEffects = [1001], OptionEffects = [1002],
         Ratio = [1000], Flat = [10], GrantedBuff = [Granted];
-    private static readonly int[][] GrantedAttrs = [[103, 9]], GuardAttrs = [[105, 32], [106, 32]], AmplifyAttrs = [[1043, 1]];
+    private static readonly int[][] GrantedAttrs = [[103, 9]], GuardAttrs = [[105, 32], [106, 32]], AmplifyAttrs = [[1043, 1]],
+        SkillBuffs = [[Buff, 10000, 8000]];
     private static readonly string[] OptionValues = ["5"];
     // TalentProcs.BuffBonuses keys Magic Infusion's talent buff to Mystical Amplification's group 12201; values invented.
     private const int MagicInfusion = 1249301, Amplify = 77021, AmplifyGroup = 12201;
@@ -66,6 +67,7 @@ public sealed class ProfessionTalentEffectTests : IAsyncDisposable
                 _iID = 1001, _kSpecialEffect = new[]
                 {
                     new long[] { 21, 0, 0, Skill, 0, 2, 4000 }, [21, 0, 0, Skill, 29, 1, 250], [12, 0, GuardGroup, 2, 1, 50, 1, 1],
+                    [21, 0, 0, Skill, 33, 2, 120000, 0, 2],
                 },
             },
             // The option: flat attr, sword-only attr (two sword kinds, once), skill-level attr, per-level attr, a buff's tuples.
@@ -107,7 +109,7 @@ public sealed class ProfessionTalentEffectTests : IAsyncDisposable
             new
             {
                 _iID = SkillRow, _iSkillID = Skill, _iLevel = 1, _iMode = 0, _iMaxLevel = 1, _iBasicType = 1, _iCD = 10000,
-                _kDamageParam1 = Ratio, _kDamageParam2 = Flat,
+                _kDamageParam1 = Ratio, _kDamageParam2 = Flat, _kBuff1 = SkillBuffs,
             },
         });
         var items = JsonNode.Parse(File.ReadAllText(Path.Combine(_configRoot, "config", "ItemConfig.json")))!.AsObject();
@@ -167,6 +169,8 @@ public sealed class ProfessionTalentEffectTests : IAsyncDisposable
         Assert.Equal(4000, GameData.Int(row, "_iCD"));
         Assert.Equal(1250, row.GetProperty("_kDamageParam1")[0].GetInt64());
         Assert.Equal(50, row.GetProperty("_kDamageParam2")[0].GetInt64()); // from the option's buff
+        Assert.Equal(Buff, row.GetProperty("_kBuff1")[0][0].GetInt64()); // a tuple's named column: the duration, not the buff
+        Assert.Equal(120000, row.GetProperty("_kBuff1")[0][2].GetInt64());
         // The client's skill panel learns the new cooldown from 31132.
         await bot.Inbox.WaitAsync(e => e.IsGame(CombatService.SkillAffectedEx)
             && SkillBeAffectedParamExNotify.Parser.ParseFrom(e.Body).AffectParamDict.TryGetValue(Skill, out var info)

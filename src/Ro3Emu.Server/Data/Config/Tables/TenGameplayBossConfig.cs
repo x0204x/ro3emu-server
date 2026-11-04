@@ -10,6 +10,7 @@ public readonly partial record struct TenGameplayBossConfig(JsonElement Row)
     [ConfigField("_iBoss")] public partial long Boss { get; }
     [ConfigField("_iDungeon")] public partial long Dungeon { get; }
     [ConfigField("_iOriginalReviveNum")] public partial long OriginalReviveNum { get; }
+    [ConfigField("_iPartAward", Optional = true)] public partial long PartAward { get; }
     [ConfigField("_iPersonAward")] public partial long PersonAward { get; }
     [ConfigField("_kBlessingBuffUnlock")] public partial long BlessingBuffUnlock { get; }
     [ConfigField("_kBlessingID")] public partial long BlessingId { get; }

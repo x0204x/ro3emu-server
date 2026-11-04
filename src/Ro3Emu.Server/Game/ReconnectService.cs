@@ -391,7 +391,7 @@ public sealed class ReconnectService
         {
             Result = 0,
             RoleID = role.Id,
-            Account = session.Account ?? "",
+            Account = session.ClientAccount ?? session.Account ?? "",
             NewToken = "",
             AreaID = role.Area,
             SceneId = session.SceneEntry,

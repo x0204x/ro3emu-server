@@ -1,3 +1,11 @@
 {
-  "9801": { "_iID": 9801, "_iClassID": 9701, "_iItemId": 3990001, "_kItemPerPrice": [ 1, 25 ], "_iItemPerMount": 1 }
+  "9801": { "_iID": 9801, "_iClassID": 9701, "_iItemId": 3990001, "_kItemPerPrice": [ 1, 25 ], "_iItemPerMount": 1 },
+  "90001": {
+    "_iID": 90001, "_iClassID": 900, "_iItemId": 1200000, "_iItemPerMount": 1, "_iIsShowCount": 4,
+    "_kItemPerPrice": [1, 300], "_iDiscount": 0, "_iPurchaseNum": 0, "_iPurchaseTimesLimit": 0, "_kMultiverseArray": [0]
+  },
+  "90002": {
+    "_iID": 90002, "_iClassID": 900, "_iItemId": 1200000, "_iItemPerMount": 1, "_iIsShowCount": 1,
+    "_kItemPerPrice": [1, 100], "_iDiscount": 0, "_iPurchaseNum": 0, "_iPurchaseTimesLimit": 0, "_kMultiverseArray": [0]
+  }
 }

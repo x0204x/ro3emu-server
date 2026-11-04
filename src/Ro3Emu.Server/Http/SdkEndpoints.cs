@@ -98,6 +98,7 @@ public static partial class SdkEndpoints
             {
                 return Results.Json(new { code = 401 });
             }
+            accounts.RecordTypedName(account, identity);
             // The account's login history on the web panel (the address only where the operator keeps addresses).
             await panel.RecordLoginAsync(account, "game", limiter.ClientAddress(request.HttpContext));
             return Results.Json(new { code = 0, data = new { token = await accounts.IssueSdkTokenAsync(account) } });

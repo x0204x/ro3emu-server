@@ -39,7 +39,10 @@ public sealed partial class CombatService
                 && ReferenceEquals(p.Attachment, lease) && lease?.Cancelled != true;
             var stats = _character.Stats(p);
             var defender = new Fighter(0, 0, 0, 0, p.Progress.Level, DefenceElement(p))
-            { Def = stats[105], Mdef = stats[106], Flee = stats[110], ResCri = stats[112], FixedDamage = (p.GmCombat & GmCombatSwitches.FixedDamage) != 0 };
+            {
+                Def = stats[105], Mdef = stats[106], Flee = stats[110], ResCri = stats[112], FixedDamage = (p.GmCombat & GmCombatSwitches.FixedDamage) != 0,
+                Attributes = PlayerAttributes(p, stats), Race = PlayerRace, Size = PlayerSize,
+            };
             var (damage, result) = maxHpBasisPoints > 0 ? (Math.Max(1, stats[AttributeId.MaxHp] * maxHpBasisPoints / 10000), DamageHitResult.Normal)
                 : Damage(attacker, defender, row);
             if (maxHpBasisPoints <= 0)
@@ -51,7 +54,7 @@ public sealed partial class CombatService
             }
             if (damage > 0) foreach (var modifier in IncomingDamageAdjusters) damage = Math.Max(0, await modifier(caster, p, result, damage));
             damage = AdjustIncomingSkillDamage(p, row, result, damage);
-            var committed = await CommitPlayerDamageAsync(p, damage, row, Current, sourceElement: element);
+            var committed = await CommitPlayerDamageAsync(p, damage, row, Current, sourceElement: element, directHit: maxHpBasisPoints <= 0);
             if (committed == null) continue;
             (damage, long hp, long effective, long shieldDamage) = committed.Value;
             hits++;

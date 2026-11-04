@@ -38,13 +38,14 @@ public sealed partial class LifeJobService
         }
         else
         {
-            var energy = restrict.RestrictCount[VigorId]; var uses = restrict.RestrictCount[VigorUsesId];
+            var energy = restrict.RestrictCount[VigorId];
             long amount = checked(PotionAmount(s, Arg(2)) * count);
             if (amount <= 0) return ErrorCodes.LifeConfig;
             // Extra consumable energy uses VitalityExtraLimit, distinct from RestrictConfig's ordinary limitCount.
-            if (amount > Param("VitalityExtraLimit", 5000) - energy.Count) return ErrorCodes.LifeVigorOverflow;
-            if (uses.Count < count) return ErrorCodes.AttemptsExhausted;
-            energy.Count += amount; uses.Count -= count; uses.HistoryUseCount += count;
+            if (amount > Param("VitalityExtraLimit", 5000) - Energy(s)) return ErrorCodes.LifeVigorOverflow;
+            // The limit is the item's own _kUseTimes, which the tooltip counts. The client never reads restriction 1005
+            // (LifeEnergyLimitNum), so a second limit there refused uses the tooltip still offered (inferred: the row is left over).
+            energy.Count += amount;
         }
         if (await CommitAsync(s, food ? "cd13c/life-food" : "cd13c/life-vigor-item", next, restrict, runtime,
             [], [], new Dictionary<long, int> { [item.Guid] = count },

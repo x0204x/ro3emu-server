@@ -136,8 +136,6 @@ public sealed partial class CharacterService
         var oldItemGuids = session.Items.Select(i => i.Guid).ToHashSet();
         var items = session.Items.Select(i => i.Clone()).ToList();
         var expense = (costs ?? []).GroupBy(c => c.Entry).Select(g => (Entry: g.Key, Count: g.Sum(c => (long)c.Count))).ToList();
-        if (expense.Any(c => c.Entry == 407 && c.Count > 0))
-            throw new InvalidOperationException("活力獎勵代號 407 不支援作為獎勵交易成本。");
         foreach (var (entry, count) in expense)
         {
             if (count < 0 || data.Row("ItemConfig", entry) == null) throw new InvalidOperationException($"invalid award cost {entry} x{count}");
@@ -167,6 +165,7 @@ public sealed partial class CharacterService
         long baseExp = taskBaseExp, jobExp = 0;
         var notification = new Romsg.GetRewardNotify { TargetUid = session.Role!.Id };
         var gained = new List<(int Entry, int Count)>();
+        var gearRows = new List<(int Row, InvItem Item)>();
         var received = new HashSet<InvItem>();
         foreach (var grant in plan.Grants)
         {
@@ -221,7 +220,12 @@ public sealed partial class CharacterService
                 if (IsEquipment(grant.Entry))
                 {
                     // Each gear instance may roll distinct attributes; a single aggregate popup would misstate them.
-                    foreach (var item in created) notification.Rewards.Add(ItemInfo(item));
+                    // GUIDs are assigned at commit; the row is rebuilt then (quick-equip prompt needs itemGuid).
+                    foreach (var item in created)
+                    {
+                        gearRows.Add((notification.Rewards.Count, item));
+                        notification.Rewards.Add(ItemInfo(item));
+                    }
                     continue;
                 }
             }
@@ -245,7 +249,7 @@ public sealed partial class CharacterService
         // TaskService can hold unsaved in-memory objective progress. Compare that snapshot above, then
         // use the persisted blob as the SQLite CAS baseline for this single award transaction.
         byte[]? persistedTasks = expectedTasks == null ? null : roles.LoadTasks(session.Role.Id);
-        var lifeVigor = StageVigorReward(session, old, staged);
+        var lifeVigor = StageVigorReward(false, session, old, staged);
         var cardSight = StageFirstCardSight?.Invoke(session, [.. gained.Select(g => g.Entry)], 0);
         void PublishAward()
         {
@@ -360,6 +364,8 @@ public sealed partial class CharacterService
         // A wheel (rewardIndexes) waits for its notice to stop and unlock, even when nothing showable was granted.
         if (!suppressRewardNotice && (notification.Rewards.Count > 0 || rewardIndexes is { Count: > 0 }))
         {
+            foreach (var (row, item) in gearRows)
+                if (item.Guid > 0 && session.Items.Contains(item)) notification.Rewards[row] = ItemInfo(item);
             notification.RewardType.Add(manifestType);
             if (rewardIndexes != null) notification.RewardIndexes.Add(rewardIndexes);
             await session.SendGameAsync(GetRewardNotify, notification);

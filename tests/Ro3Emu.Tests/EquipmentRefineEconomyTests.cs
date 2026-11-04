@@ -109,6 +109,28 @@ public sealed class EquipmentRefineEconomyTests : IAsyncLifetime
             costs.Where(p => p.Item1 == 2).Sum(p => (long)p.Item2));
     }
 
+    /// <summary>Issue #362: the unset refineLv of a failed roll can be stored as +0 by the client, and its 5007 would change
+    /// nothing, so the panel stayed at +0 asking +0 materials. A full 5007, the only one the client takes levels from, carries the real level before the paid bag redraws it.</summary>
+    [ClientDataFact]
+    public async Task AFailedRollSendsTheRealLevelBeforeTheBag()
+    {
+        await using var bot = await Prepared();
+        Service<EquipmentService>().RefineRoll = bound => bound - 1; // fails, and does not demote
+        var earlier = bot.Inbox.Snapshot().ToHashSet(ReferenceEqualityComparer.Instance);
+        Assert.Equal((0, 0), (await Refine(bot)) is var reply ? (reply.Result, reply.RefineLv) : default);
+        BotEvent[] after = [];
+        for (var until = DateTime.UtcNow + Wait; DateTime.UtcNow < until; await Task.Delay(20))
+        {
+            after = [.. bot.Inbox.Snapshot().Where(e => !earlier.Contains(e))];
+            if (after.Any(e => e.IsGame(CharacterService.ItemsSync))) break;
+        }
+        int level = Array.FindIndex(after, e => e.IsGame(CharacterService.EquipSync)
+            && DBEquipInfoIncrement.Parser.ParseFrom(e.Body) is { SyncAllMark: true } full && full.ItemsRefine[Grid].All == 5);
+        int bag = Array.FindIndex(after, e => e.IsGame(CharacterService.ItemsSync));
+        Assert.True(level >= 0, "no 5007 with the real level");
+        Assert.True(level < bag, "the bag came first");
+    }
+
     [ClientDataFact]
     public async Task HeldPaidFailurePublishesNeitherDebitNorLuckUntilCommit()
     {

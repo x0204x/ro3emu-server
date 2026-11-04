@@ -28,7 +28,8 @@ public sealed class AchievementTests : IAsyncLifetime
         FirstCard = 100100800, CardQuality4 = 100100900, JobRank2 = 104100100, JobRank3 = 104100101,
         LoginDays2 = 104100200, Mvp1 = 101100100, Tower5 = 101100200, Tower20 = 101100201, TeamBoss = 101100300,
         GodBoss = 101100400, Guild = 102100100, GuildPosition = 102100200, Friend1 = 102100300, Affection2 = 102100400,
-        Phoenix = 103100200;
+        Phoenix = 103100200, FashionLv2 = 103100100, FashionLv3 = 103100101, FashionLv4 = 103100102,
+        FashionLv5 = 103100103;
     private const int ZenyLike = 1; // AwardConfig 1001001 = 5000 x item 1
 
     public async Task InitializeAsync()
@@ -170,9 +171,9 @@ public sealed class AchievementTests : IAsyncLifetime
         Assert.Equal(134, rows.Count);
         Assert.All(rows, r => Assert.All(r.Required, required => Assert.True(required > 0, $"{r.Id} has no R")));
         var blocked = rows.Where(r => r.Blocked).ToList();
-        Assert.Equal(9, blocked.Count); // 316002 (Echo Resonance) is read from the worn Soul Echoes, 106007/106008 from the Tavern
+        Assert.Equal(3, blocked.Count); // 316002 (Echo Resonance) is read from the worn Soul Echoes, 106007/106008 from the Tavern, 303001 (Fashion Rating) from the Wardrobe
         Assert.All(blocked, r => Assert.Contains(r.Targets[0][0],
-            new long[] { 303001, 302007, 326003, 303004 }));
+            new long[] { 302007, 326003, 303004 }));
         Assert.Single(blocked, r => r.Targets[0][0] == 303004); // the fashion-grid variant only
         Assert.Equal([1L, 1, 1], rows.Single(r => r.Id == TeamBoss).Required); // 210008 x3, R = p1
         Assert.Equal(40060010, rows.Single(r => r.Id == Phoenix).Required[0]); // 303002: R is the appearance id
@@ -593,6 +594,27 @@ public sealed class AchievementTests : IAsyncLifetime
         await OnLoop("Alice", s => s.Wardrobe!.AllLightUpAppearances[40060010] = new DBAppearanceInfo { AppearanceId = 40060010 });
         await ReachedIncrement(alice, Phoenix, SweepWait);
         Assert.Equal([40060010], (await Info("Alice", Phoenix))!.Scores);
+    }
+
+    [ClientDataFact]
+    public async Task FashionRatingRowsReadTheWardrobeLevelOfThePermanentLooks()
+    {
+        await using var alice = await InWorld("Alice");
+        await Full(alice);
+        // WardRobeConfig._iFashionScore 2500 + 1000 = 3500, GenericStageRewardsConfig type 3 level 4 (level 5 at 5500).
+        // The timed 15000 look does not count, as on the client's fashion score.
+        long later = DateTimeOffset.UtcNow.AddDays(7).ToUnixTimeMilliseconds();
+        await OnLoop("Alice", s =>
+        {
+            s.Wardrobe!.AllLightUpAppearances[60050010] = new DBAppearanceInfo { AppearanceId = 60050010 };
+            s.Wardrobe.AllLightUpAppearances[10060010] = new DBAppearanceInfo { AppearanceId = 10060010 };
+            s.Wardrobe.AllLightUpAppearances[60060010] = new DBAppearanceInfo { AppearanceId = 60060010, OverdueTimeMs = later };
+        });
+        await ReachedIncrement(alice, FashionLv4, SweepWait); // no hook fired: the 5 s sweep re-reads
+        foreach (long id in new[] { FashionLv2, FashionLv3, FashionLv4 })
+            Assert.Equal(AchievementStatusType.Complete, (await Info("Alice", id))!.Status);
+        Assert.Equal([4], (await Info("Alice", FashionLv5))!.Scores);
+        Assert.Equal(AchievementStatusType.None, (await Info("Alice", FashionLv5))!.Status);
     }
 
     [ClientDataFact]

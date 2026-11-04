@@ -28,9 +28,9 @@ public sealed partial class ReconstructedDungeons
     /// completes (0: none). <paramref name="Goal"/> is the tracker's "(done/total)" while the step runs.
     /// <paramref name="Fight"/> are monsters spawned at the step's start: the step also waits until every one is
     /// defeated (a story dungeon that mixes fights with scripted parts). <paramref name="All"/>: every completing event
-    /// is needed, not any one ("Have a Chitchat with them"). <paramref name="Strikes"/>: an interaction of an actor that
-    /// casts a skill at the nearest monster of the step's fight (the airship's cannons); with Shots above 0, that many
-    /// strikes defeat a monster whatever the skill's damage. <paramref name="Seek"/>: the step is a hide-and-seek game
+    /// is needed, not any one ("Have a Chitchat with them"). <paramref name="Cannon"/>: an actor's interaction seats its
+    /// user on a cannon of the client's own gameplay, which fires its skill at the step's fight (DungeonService.Cannon).
+    /// <paramref name="Seek"/>: the step is a hide-and-seek game
     /// whose hiding places are its Point triggers; walking there does not complete it, winning the game does.
     /// <paramref name="Companions"/>: the actors marked "companion", shown as allied fighters (CompanionUnit) instead of
     /// plain scene actors; they are not in <paramref name="Actors"/>.
@@ -57,7 +57,11 @@ public sealed partial class ReconstructedDungeons
     }
 
     /// <summary>An UpperCannon status reconstructed from NPCInteractConfig, GamePlayStatusExtraConfig and its buttons.</summary>
-    public sealed record Cannon(long Interaction, int Status, int FireButton, int ExitButton, int FireSkill);
+    public sealed record Cannon(long Interaction, int Status, int FireButton, int ExitButton, int FireSkill)
+    {
+        // Compatibility with the upstream generic cannon helper; the captured airship path validates the full status.
+        public int Fire => FireSkill;
+    }
 
     /// <summary>A post-completion client story and the authoritative plot-end events that close it.</summary>
     public sealed record Outro(long Story, IReadOnlyList<StepTrigger> Complete);
@@ -105,7 +109,7 @@ public sealed partial class ReconstructedDungeons
     /// that shows them cannot be reached in the reconstruction (each has its reason in the json, "unplayed").
     /// </summary>
     public sealed record ScriptedScene(long Scene, string Name, string Confidence, IReadOnlyList<ScriptedStep> Steps,
-        IReadOnlyList<int> Unplayed);
+        IReadOnlyList<int> Unplayed, long ContinuesTo = 0, bool LeavesAfterClear = false);
 
     private readonly Dictionary<long, ScriptedScene> _scripted = [];
 
@@ -127,7 +131,9 @@ public sealed partial class ReconstructedDungeons
             var unplayed = entry.Value.TryGetProperty("unplayed", out var u)
                 ? u.EnumerateArray().Select(q => q.GetProperty("quest").GetInt32()).ToArray() : [];
             _scripted[scene] = new ScriptedScene(scene, entry.Value.GetProperty("name").GetString() ?? "",
-                entry.Value.GetProperty("confidence").GetString() ?? "", steps, unplayed);
+                entry.Value.GetProperty("confidence").GetString() ?? "", steps, unplayed,
+                entry.Value.TryGetProperty("continuesTo", out var next) ? next.GetInt64() : 0,
+                entry.Value.TryGetProperty("leavesAfterClear", out var leaves) && leaves.GetBoolean());
         }
     }
 
@@ -139,7 +145,8 @@ public sealed partial class ReconstructedDungeons
         var actors = listed.Where(x => !IsCompanion(x)).Select(Actor).ToArray();
         var complete = Triggers(s, "complete");
         var fight = s.TryGetProperty("fight", out var f)
-            ? f.EnumerateArray().Select(x => new Spawn(x.GetProperty("point").GetInt64(), x.GetProperty("npc").GetInt32())).ToArray()
+            ? f.EnumerateArray().Select(x => new Spawn(x.TryGetProperty("point", out var p) ? p.GetInt64() : 0, x.GetProperty("npc").GetInt32(),
+                x.TryGetProperty("route", out var r) ? r.GetInt64() : 0)).ToArray()
             : [];
         if (complete.Count == 0 && fight.Length == 0)
             throw new InvalidOperationException($"Scripted step '{s.GetProperty("stage").GetString()}' cannot complete.");

@@ -13,6 +13,8 @@ namespace Ro3Emu.Server.Game;
 /// </summary>
 public sealed class EnchantService(GameData data, CharacterService character, FunctionService functions, ItemStore items, ILogger<EnchantService> log)
 {
+    private const string SkillsField = "_iSkills";
+
     private readonly ItemStore _items = items;
     public const uint Enchant = 31415;
 
@@ -41,9 +43,6 @@ public sealed class EnchantService(GameData data, CharacterService character, Fu
             : enchantRow.ValueKind != JsonValueKind.Object ? ErrorCodes.EnchantParameter
             : !Flat(enchantRow, "_kEquipType").Contains(GameData.Int(g, "_iEquipPart")) ? ErrorCodes.EnchantParameter
             : StarLevel(GameData.Int(enchantRow, "_iStars")) is not > 0 || GameData.Int(g, "_iLevelNeed") > StarLevel(GameData.Int(enchantRow, "_iStars")) ? ErrorCodes.EnchantParameter
-            // The current export also has 28 skill-only rows, more than the documented summary listed.
-            // Their special effects are not implemented; an empty attr map is unsafe for LC_ItemProtoParse:303-317.
-            : Flat(enchantRow, "_iEnchantIDs").Length == 0 && Flat(enchantRow, "_iSkills").Length > 0 ? ErrorCodes.FeatureUnavailable
             : 0;
 
         int enchantId = 0;
@@ -123,12 +122,19 @@ public sealed class EnchantService(GameData data, CharacterService character, Fu
     /// <summary>
     /// EnchantIDConfig._kAttrs is one [attribute, min, max] triple (Lua_CFG_EnchantIDConfig.lua:9-41).
     /// (inferred) Choose a template uniformly (current rows have exactly one), then an inclusive uniform integer.
-    /// Reject malformed templates before payment so the client never sees a present enchant with an empty attr map.
+    /// Reject malformed templates before payment. The 28 skill-only rows (no _iEnchantIDs, _iSkills naming
+    /// SpecialEffectConfig rows) install with an empty attr map: LC_EquipmentHelper.GetEnchantFullDesc lists the
+    /// skill descriptions from config and the server attrs after them, and every enchant screen iterates the map with
+    /// pairs. Their effect is <see cref="SkillAttributes"/>.
     /// </summary>
     private ItemEnchantment? Roll(JsonElement row)
     {
         var templates = Flat(row, "_iEnchantIDs");
-        if (templates.Length == 0) return null;
+        if (templates.Length == 0)
+        {
+            var skills = Flat(row, SkillsField);
+            return skills.Length > 0 && skills.All(id => data.Row("SpecialEffectConfig", id) != null) ? new ItemEnchantment() : null;
+        }
         var ranges = new List<long[]>();
         foreach (long id in templates)
         {
@@ -140,6 +146,30 @@ public sealed class EnchantService(GameData data, CharacterService character, Fu
         }
         var range = ranges[Random.Shared.Next(ranges.Count)];
         return new ItemEnchantment { Attr = { [(int)range[0]] = (int)Random.Shared.NextInt64(range[1], range[2] + 1) } };
+    }
+
+    private const int OpEmblemMarkCountAddAttr = 11;
+
+    /// <summary>
+    /// Stats of an installed enchant's _iSkills rows. Every current row is EmblemMarkCountAddAttr (11)
+    /// [11, mark, cap, attr, perMark] "Each Soul Echo element grants ${1} Extra ATK (up to ${2} elements)":
+    /// min(lit marks of that id on the worn Soul Echoes, cap) * perMark of attr, as
+    /// LC_SpecialEffectHelper._generateEmblemMarkCountAddAttrDesc computes it (cap -1 = no cap).
+    /// </summary>
+    internal static IEnumerable<(int Id, double Value)> SkillAttributes(GameSession session, int enchantId, GameData data)
+    {
+        if (data.Row("Enchantment", enchantId) is not { } row) yield break;
+        foreach (long id in Flat(row, SkillsField))
+        {
+            if (data.Row("SpecialEffectConfig", id) is not { } effect) continue;
+            foreach (var op in EquipmentAffixes.Rows(effect, "_kSpecialEffect"))
+            {
+                if (op.Length < 5 || op[0] != OpEmblemMarkCountAddAttr || op[1] == 0 || op[3] <= 0 || op[3] > int.MaxValue) continue;
+                long count = EmblemService.MarkCount(session, op[1], data);
+                if (op[2] >= 0) count = Math.Min(count, op[2]);
+                if (count * op[4] != 0) yield return ((int)op[3], count * op[4]);
+            }
+        }
     }
 
     /// <summary>PublicParamConfig.EnchantStarsLevel (Config/ComplexConfig/PublicParamConfig.lua:5951-5995).</summary>

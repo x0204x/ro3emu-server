@@ -89,12 +89,14 @@ public sealed partial class TalentProcs
     /// <paramref name="Hits"/> times; <paramref name="HpBelow"/>: only on a target below that HP percentage;
     /// <paramref name="RandomHit"/> centres the area on a random monster the cast hit (without an area: hits that monster);
     /// <paramref name="Status"/> lands on each monster the described hit struck with the <paramref name="StatusChance"/>% of
-    /// the description for its <paramref name="StatusSeconds"/>.</remarks>
+    /// the description for its <paramref name="StatusSeconds"/>; <paramref name="CastArea"/>: a field's cast hits nothing itself,
+    /// so "within the area" is the monsters its row covers as it is cast, up to Count.</remarks>
     private sealed record Rule(int[] Groups, bool NormalAttack = false, long Weapon = 0, int? Chance = null, int? Cooldown = null,
         int? Radius = null, int? Count = null, int? Others = null, bool OthersOnly = false, bool RowArea = false, bool Buff = false,
         long Active = 0, bool AroundCaster = false, int Logic = 0, bool Recast = false, bool TargetBuff = false, int? BuffSeconds = null,
         bool HitTargets = false, int? Ratio = null, int? Flat = null, int? Hits = null, long Element = Neutral, int? HpBelow = null,
-        bool RandomHit = false, long Status = 0, int? StatusChance = null, int? StatusSeconds = null, int ResetCooldown = 0);
+        bool RandomHit = false, long Status = 0, int? StatusChance = null, int? StatusSeconds = null, int ResetCooldown = 0,
+        bool CastArea = false);
 
     /// <summary>Talent BuffConfig id -> the buff group that must live for its _kLogicData buff to apply.</summary>
     internal static readonly IReadOnlyDictionary<long, long> WhileActive = new Dictionary<long, long>
@@ -172,7 +174,7 @@ public sealed partial class TalentProcs
         // Holy Light Strike: "When [Basic Attack] hits an enemy, it triggers Holy Light Strike ... Internal Cooldown: ${4} seconds."
         [1421601] = new([], NormalAttack: true, Logic: 1, Cooldown: 3),
         // Holy Cross Judgment: "When [Magnus Exorcismus] is cast, it also unleashes ... to up to ${1} enemies within the area."
-        [1422401] = new([MagnusExorcismus], Logic: 1, HitTargets: true, Count: 0),
+        [1422401] = new([MagnusExorcismus], Logic: 1, Count: 0, CastArea: true),
         // Fated Resurrection: "After casting [Turn Undead], there is a ${1}% Chance to trigger Turn Undead one Extra time.
         // Internal Cooldown: ${2} seconds."
         [1422201] = new([TurnUndead], Chance: 0, Cooldown: 1, Recast: true),
@@ -309,6 +311,7 @@ public sealed partial class TalentProcs
         buffs.SourceAttributes = BuffAttributes;
         combat.SkillBuffAllowed = SkillBuffAllowed;
         combat.CastResolved.Add(OnCastResolvedAsync);
+        combat.DealtAsync.Add(RowProcsOnDealtAsync);
         buffs.Changed.Add(OnBuffsChangedAsync);
         combat.TargetCountRow = TargetCountRow;
         combat.TakenAsync.Add(OnTakenAsync);
@@ -388,6 +391,9 @@ public sealed partial class TalentProcs
         if (s.Role == null) return;
         var cast = new SkillConfig(action.Row);
         await PassiveProcsAsync(s, action, cast, processed, hit);
+        await RowProcsAsync(s, action, cast, processed);
+        await LoneEnemyHitAsync(s, cast, processed);
+        await JointDestructionAsync(s, cast, processed);
         if (s.TalentProcBuffs.Count == 0) return;
         await ChargesAsync(s, action, cast, processed);
         await HealProcsAsync(s, action, cast, hit);
@@ -403,6 +409,13 @@ public sealed partial class TalentProcs
         {
             if (!Rules.TryGetValue(buff, out var rule)) continue;
             if (rule.NormalAttack ? !cast.IsNormalAttack(_data) : Array.IndexOf(rule.Groups, (int)cast.SkillId) < 0) continue;
+            if (rule.CastArea)
+            {
+                if (rule.Count is int most && BuffConfig.Get(_data, buff)?.LogicData is { } burst && rule.Logic < burst.Length
+                    && ProcRow(burst[rule.Logic]) is { } burstRow)
+                    await _combat.CastExtraAsync(s, burstRow.Row, [.. _combat.MonstersInCastArea(s, action).Take((int)Value(description, most))]);
+                continue;
+            }
             var target = processed.FirstOrDefault(m => m.Uid == action.Request.TargetId && m.Hp > 0) ?? processed.FirstOrDefault(m => m.Hp > 0)
                 ?? (processed.Count == 0 && rule.Radius is int radius
                     ? _combat.MonstersNear(s, action.Request.TargetPos ?? s.Position, (float)Value(description, radius)).FirstOrDefault()

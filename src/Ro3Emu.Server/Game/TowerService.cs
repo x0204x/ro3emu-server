@@ -300,9 +300,11 @@ public sealed partial class TowerService
     public async Task StartAsync(GameSession s, ClimTowerStartReq req)
     {
         var floor = Floor(req.Layer);
+        // The Failed panel's Try Again is a continuation from the lost floor, where the challenger may lie dead.
+        bool deadRetry = s.Dead && s.TowerAttempt is { Settled: true } lost && s.InstanceId == lost.InstanceId;
         int error = !Open(s) ? ErrorCodes.FeatureUnavailable
             : s.SceneLoading ? ErrorCodes.SwitchingScenes
-            : s.Dead || s.InstanceId != 0 && s.TowerAttempt == null ? ErrorCodes.FeatureUnavailable
+            : s.Dead && !deadRetry || s.InstanceId != 0 && s.TowerAttempt == null ? ErrorCodes.FeatureUnavailable
             : floor == null ? ErrorCodes.Parameter
             : s.Progress!.Level < GameData.Int(floor.Value, "_iLevelLimit") ? ErrorCodes.FeatureUnavailable
             : GameData.Int(floor.Value, "_iFloor") > Cleared(s) + 1 ? ErrorCodes.Parameter
@@ -315,6 +317,14 @@ public sealed partial class TowerService
         if (error == 0 && (map?.Born == null || spawns == null || spawns.Count == 0)) error = ErrorCodes.SceneMissing;
         // Validate the real payout before permitting a clear; previews are never a fallback grant.
         if (error == 0 && Award(GameData.Int(floor!.Value, "_iFirstReward")) == null) error = ErrorCodes.FeatureUnavailable;
+        // Revive at full HP/SP in place, as the 30402 exit's return recovery would, before the next floor (inferred).
+        if (error == 0 && deadRetry)
+        {
+            if (!_combat.TryClaimRevive(s)) error = ErrorCodes.FeatureUnavailable;
+            else
+                try { if (_combat.CommitReviveClaim(s)) await _combat.PublishReviveAsync(s, null); }
+                finally { _combat.ReleaseReviveClaim(s); }
+        }
         await s.SendGameAsync(Start, new ClimTowerStartRes { Result = error });
         if (error != 0) return;
 

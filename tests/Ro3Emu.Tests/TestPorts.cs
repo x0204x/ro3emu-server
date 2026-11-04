@@ -15,12 +15,14 @@ internal static class TestPorts
     // RO3EMU_TEST_PORT_RANGE overrides it (inclusive, e.g. 40000-48999 on Windows); partitions apply to either.
     // A port-0 probe can otherwise be consumed by an outgoing connection while the test host is starting.
     // This still is not a lease against unrelated processes deliberately binding the same server port.
-    // One full run takes ~3 ports per host for ~1100 hosts (16.10); half of the default range leaves headroom.
+    // A full run with the client data starts ~2300 hosts of 3 ports each (11.2026), more than one partition holds, so
+    // the allocator hands a port out again once it has rested (TestPortAllocator.ReuseAfterMs).
     private const int Partitions = 2;
-    private static readonly object Gate = new();
-    private static readonly HashSet<int> Selected = [];
     private static FileStream? _partitionLock; // held until the process exits
-    private static readonly (int First, int End) Range = ClaimPartition(ReadPortRange());
+    private static readonly TestPortAllocator Allocator = Create(ClaimPartition(ReadPortRange()));
+
+    private static TestPortAllocator Create((int First, int End) range) =>
+        new(range.First, range.End, () => Environment.TickCount64, CanBind, Random.Shared.Next);
 
     private static (int First, int End) ClaimPartition((int First, int EndExclusive) pool)
     {
@@ -41,27 +43,16 @@ internal static class TestPorts
     internal static (int Http, int Micro, int Game) FreePorts() =>
         (FreePort(), FreePort(), FreePort());
 
-    internal static int FreePort()
+    internal static int FreePort() => Allocator.Next();
+
+    /// <summary>The safety net: a port a host still listens on (or that is otherwise taken) cannot be bound.</summary>
+    private static bool CanBind(int port)
     {
-        lock (Gate)
-        {
-            // Every port of the partition is tried once from a random start: random probes alone stop finding the last
-            // free ports of a nearly used-up partition.
-            int size = Range.End - Range.First, start = Random.Shared.Next(size);
-            for (int i = 0; i < size; i++)
-            {
-                int port = Range.First + (start + i) % size;
-                if (port is 5380 or 20000 or 33100 or 33101) continue; // Never use the application's default ports.
-                if (Selected.Contains(port)) continue;
-                using var listener = new TcpListener(IPAddress.Loopback, port) { ExclusiveAddressUse = true };
-                try { listener.Start(); }
-                catch (SocketException ex) when (ex.SocketErrorCode is SocketError.AddressAlreadyInUse or SocketError.AccessDenied)
-                { continue; }
-                Selected.Add(port);
-                return port;
-            }
-            throw new InvalidOperationException($"No free distinct loopback test port in {Range.First}-{Range.End - 1} ({Selected.Count} already selected).");
-        }
+        using var listener = new TcpListener(IPAddress.Loopback, port) { ExclusiveAddressUse = true };
+        try { listener.Start(); }
+        catch (SocketException ex) when (ex.SocketErrorCode is SocketError.AddressAlreadyInUse or SocketError.AccessDenied)
+        { return false; }
+        return true;
     }
 
     private static (int First, int EndExclusive) ReadPortRange()
@@ -73,5 +64,51 @@ internal static class TestPorts
             !int.TryParse(parts[1], out int last) || first < 1024 || last > 65535 || first >= last)
             throw new InvalidOperationException("RO3EMU_TEST_PORT_RANGE must be an inclusive unprivileged port range, e.g. 40000-48999.");
         return (first, last + 1);
+    }
+}
+
+/// <summary>
+/// Hands out the ports of [<paramref name="first"/>, <paramref name="end"/>): never-used ports first, then a port
+/// handed out at least <see cref="ReuseAfterMs"/> ago, which by then belongs to a host that bound it long since (and
+/// is still checked with <paramref name="canBind"/>, so a host that still listens on it keeps it). A port handed out
+/// more recently is never repeated: its host may not have bound it yet.
+/// </summary>
+internal sealed class TestPortAllocator(int first, int end, Func<long> nowMs, Func<int, bool> canBind, Func<int, int> random)
+{
+    internal const long ReuseAfterMs = 60_000;
+    private readonly object _gate = new();
+    private readonly Dictionary<int, long> _handedOut = []; // port → when it was last handed out
+
+    internal int Next()
+    {
+        lock (_gate)
+        {
+            long now = nowMs();
+            if ((Scan(now, reuse: false) ?? Scan(now, reuse: true)) is { } port) return Hand(port, now);
+            throw new InvalidOperationException(
+                $"No free distinct loopback test port in {first}-{end - 1} ({_handedOut.Count} handed out, none rested for {ReuseAfterMs} ms).");
+        }
+    }
+
+    private int Hand(int port, long now)
+    {
+        _handedOut[port] = now;
+        return port;
+    }
+
+    /// <summary>Every port of the range is tried once from a random start: random probes alone stop finding the last
+    /// free ports of a nearly used-up range.</summary>
+    private int? Scan(long now, bool reuse)
+    {
+        int size = end - first, start = random(size);
+        for (int i = 0; i < size; i++)
+        {
+            int port = first + (start + i) % size;
+            if (port is 5380 or 20000 or 33100 or 33101) continue; // Never use the application's default ports.
+            bool used = _handedOut.TryGetValue(port, out long at);
+            if (used != reuse || used && now - at < ReuseAfterMs) continue;
+            if (canBind(port)) return port;
+        }
+        return null;
     }
 }

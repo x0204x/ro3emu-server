@@ -1,6 +1,7 @@
 using Romsg;
 using System.Text.Json;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Maps;
 
 namespace Ro3Emu.Server.Game;
@@ -11,6 +12,9 @@ public sealed partial class BuffService
         .Where(b => b.ExpireMs > MonsterService.NowMs && b.ShieldRemaining > 0)
         .Aggregate(0L, (total, buff) => buff.ShieldRemaining > long.MaxValue - total
             ? long.MaxValue : total + buff.ShieldRemaining);
+
+    private static long LiveShield(ActiveBuff? buff) =>
+        buff is { } live && live.ExpireMs > MonsterService.NowMs ? live.ShieldRemaining : 0;
 
     private IEnumerable<(int Id, long Value)> SupportShieldProperties(GameSession player)
     {
@@ -27,8 +31,9 @@ public sealed partial class BuffService
         yield return new AoIProperty { Idx = 2008, Data = LiveShield(live.Where(b => b.ShieldDamageKind == 0)) };
     }
 
-    private static bool ShieldAccepts(ActiveBuff buff, JsonElement? damageSkill) => buff.ShieldDamageKind == 0
-        || damageSkill is { } row && GameData.Int(row, "_iDmgType") == buff.ShieldDamageKind;
+    private static bool ShieldAccepts(ActiveBuff buff, JsonElement? damageSkill, bool magic = false) => buff.ShieldDamageKind == 0
+        || (damageSkill is { } row ? GameData.Int(row, "_iDmgType") == buff.ShieldDamageKind
+            : buff.ShieldDamageKind == (magic ? 2 : 1));
 
     // Kyrie 的技能／增益說明均明列物理限定；_iDmgType=2 是盾量使用 MATK，不能當成吸收魔法。
     private bool HolyLightBreaks(ActiveBuff buff, JsonElement? damageSkill) => damageSkill is { } row
@@ -46,14 +51,41 @@ public sealed partial class BuffService
     internal StatSheet GuardianAttributes(GameSession p)
     {
         var raw = new Dictionary<int, double>();
-        long now = MonsterService.NowMs;
-        foreach (var buff in p.Buffs.Where(b => b.IsGuardianOwned && b.ExpireMs > now))
+        foreach (var buff in p.Buffs.Where(b => b.ExpireMs > MonsterService.NowMs && b.IsGuardianOwned))
+            foreach (var (attr, value) in buff.Changes) raw[(int)attr] = raw.GetValueOrDefault((int)attr) + value;
+        return StatCalculator.Compute(raw, _data);
+    }
+
+    /// <summary>The buffs that count toward a unit's combat attributes: a guardian's, and a debuff (BuffConfig _iType 2) from
+    /// any source, so Petrify's PDEF% and a frost's MSPD apply to a monster. (inferred) A monster's own standing buffs
+    /// (NPCConfig _kBornEventBuff, 102 monsters carry 235 and 236) stay out, so its template stats stay as tuned.</summary>
+    private bool CountsInUnitStats(ActiveBuff buff) => buff.ExpireMs > MonsterService.NowMs
+        && (buff.IsGuardianOwned || buff.Changes.Count > 0 && BuffConfig.Get(_data, buff.ConfigId)?.Type == NegativeBuffType);
+
+    internal IEnumerable<(long Id, double Value)> UnitCombatAttributes(WorldUnit unit) =>
+        _unitBuffs.TryGetValue(unit.Uid, out var buffs)
+            ? buffs.Where(CountsInUnitStats)
+                .SelectMany(b => b.Changes.Select(change => (change.Attr, change.Value))).ToArray()
+            : [];
+
+    /// <summary>A buff whose damage attributes already have their own multiplier, so a hit must not read them off the sheet too:
+    /// a guardian's (GuardianOutgoingDamage), a Pet Tower pet's (ApplyPetSupportResistance) and a totem's (TotemEffects).</summary>
+    internal static bool HasOwnDamagePath(ActiveBuff buff) => buff.IsGuardianOwned || buff.IsTotemOwned
+        || buff.SourceId is >= TowerPetUnit.UidBase and < TowerPetUnit.UidLimit;
+
+    /// <summary>What the player's sheet holds from those buffs, to take off it.</summary>
+    internal StatSheet OwnDamagePathAttributes(GameSession p)
+    {
+        var raw = new Dictionary<int, double>();
+        foreach (var buff in p.Buffs.Where(b => b.ExpireMs > MonsterService.NowMs && HasOwnDamagePath(b)))
             foreach (var (attr, value) in buff.Changes) raw[(int)attr] = raw.GetValueOrDefault((int)attr) + value;
         return StatCalculator.Compute(raw, _data);
     }
 
     internal bool HasUnitBuffs(WorldUnit unit) => _unitBuffs.TryGetValue(unit.Uid, out var buffs)
         && buffs.Any(b => b.ExpireMs > MonsterService.NowMs);
+
+    internal bool HasUnitCombatBuffs(WorldUnit unit) => _unitBuffs.TryGetValue(unit.Uid, out var buffs) && buffs.Any(CountsInUnitStats);
 
     public IEnumerable<(long Id, double Value)> UnitAttributes(WorldUnit unit) =>
         _unitBuffs.TryGetValue(unit.Uid, out var buffs)
@@ -104,8 +136,9 @@ public sealed partial class BuffService
         }
     }
 
-    /// <summary>Consume only live support shields before HP damage; nonpositive damage consumes nothing.</summary>
-    public async Task<long> AbsorbAsync(GameSession target, long damage, JsonElement? damageSkill = null)
+    /// <summary>Consume only live support shields before HP damage; nonpositive damage consumes nothing. A magic hit
+    /// passes the shields that absorb Physical damage only (<see cref="SkillShieldRules.AbsorbsPhysicalOnly"/>).</summary>
+    public async Task<long> AbsorbAsync(GameSession target, long damage, JsonElement? damageSkill = null, bool magic = false)
     {
         if (damage <= 0) return 0;
         if (target.Role == null) return damage;
@@ -114,7 +147,8 @@ public sealed partial class BuffService
         foreach (var broken in target.Buffs.Where(b => b.ShieldRemaining > 0 && HolyLightBreaks(b, damageSkill)).ToArray())
             await RemoveAsync(target, broken);
         // (inferred) Older buffs absorb first. BuffConfig does not identify an order for independent shields.
-        foreach (var buff in target.Buffs.Where(b => b.ShieldRemaining > 0 && b.ExpireMs > MonsterService.NowMs && ShieldAccepts(b, damageSkill))
+        foreach (var buff in target.Buffs.Where(b => b.ShieldRemaining > 0 && b.ExpireMs > MonsterService.NowMs
+                         && ShieldAccepts(b, damageSkill, magic) && !(magic && PhysicalOnly(b)))
                      .OrderBy(b => b.Guid).ToArray())
         {
             long absorbed = Math.Min(damage, buff.ShieldRemaining);
@@ -129,6 +163,9 @@ public sealed partial class BuffService
         }
         return damage;
     }
+
+    private bool PhysicalOnly(ActiveBuff buff) =>
+        BuffConfig.Get(_data, buff.ConfigId) is { } row && SkillShieldRules.AbsorbsPhysicalOnly(row);
 
     /// <summary>Consume only live unit support shields; fully spent buffs are removed and published.</summary>
     public async Task<long> AbsorbAsync(WorldUnit target, long damage, JsonElement? damageSkill = null)

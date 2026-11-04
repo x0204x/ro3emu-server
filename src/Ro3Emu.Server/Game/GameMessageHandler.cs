@@ -5,7 +5,7 @@ namespace Ro3Emu.Server.Game;
 /// the message modules (Game/Messages), mapped once in registration order (ServerHost).
 /// </summary>
 public sealed partial class GameMessageHandler(MsgCatalog catalog, IEnumerable<Messaging.IMessageModule> modules, ILogger<GameMessageHandler> log,
-    Microsoft.Extensions.Options.IOptions<ServerOptions> options, CheatMonitor cheats)
+    Microsoft.Extensions.Options.IOptions<ServerOptions> options, CheatMonitor cheats, TimeProvider clock)
 {
     private Messaging.MessageRoutes? _routes;
     /// <summary>Every game message's single owner; built once, duplicates fail.</summary>
@@ -24,7 +24,7 @@ public sealed partial class GameMessageHandler(MsgCatalog catalog, IEnumerable<M
             Refuse(session, msgId);
             return Task.CompletedTask;
         }
-        if (!WithinRate(session, msgId)) return Task.CompletedTask;
+        if (!WithinRate(session, msgId)) return AnswerOverRate(session, msgId);
         // Cancellation must run before an ordinary reservation that the speculative gate waiter holds.
         if (msgId == MsgId.PreSwitchRole) session.CancelPendingCharacterIntents();
         if (session.Owners is not { } owners) return HandleCoreAsync(session, msgId, body);

@@ -8,6 +8,7 @@ public readonly partial record struct DungeonConfig(JsonElement Row)
 {
     [ConfigField("_iDLoadLv")] public partial long DLoadLv { get; }
     [ConfigField("_iDecayType")] public partial long DecayType { get; }
+    [ConfigField("_iDungeonConditionConfig")] public partial long DungeonConditionConfig { get; }
     [ConfigField("_iDungeonType")] public partial long DungeonType { get; }
     [ConfigField("_iGamePlayType")] public partial long GamePlayType { get; }
     [ConfigField("_iID")] public partial long Id { get; }

@@ -1,5 +1,6 @@
 using Romsg;
 using Ro3Emu.Server.Accounts;
+using Ro3Emu.Server.Economy;
 
 namespace Ro3Emu.Server.Game;
 
@@ -62,6 +63,36 @@ public sealed partial class GuildService
     }
 
     /// <summary>
+    /// A founding that failed (cancelled, out of time, its founder gone): the guild ends and, in one commit, the founder gets
+    /// what they paid back by MailConfig 1018 "Guild creation failed. Items returned." with ${1} hours and ${2} players. The
+    /// template has no award (_iAward 0), so the letter carries the payment. A guild from before payments were kept gets nothing.
+    /// </summary>
+    private async Task EndFoundingAsync(GuildStore.State guild, long founder, IEnumerable<long>? removed = null)
+    {
+        int template = (int)Setting("GuildMail18", 1018)[0];
+        if (guild.FoundingItem == 0 || guild.FoundingCount <= 0 || data.Row("MailConfig", template) == null || roles.Get(founder) == null)
+        {
+            await DeleteGuildAsync(guild, removed);
+            return;
+        }
+        long[] prior = [.. guild.Members.Keys.Concat(removed ?? []).Distinct()];
+        using (await mail.LockRecipientsAsync([founder]))
+        {
+            var transaction = roles.NewTransaction();
+            mail.QueueTemplateLocked(founder, $"guild-found-refund:{guild.Id}", template,
+                [new MailService.Attachment(guild.FoundingItem, (int)guild.FoundingCount)], transaction,
+                (int)(Setting("GuildResponseTimeLimit", 86400)[0] / 3600), ResponderLimit);
+            var refund = new EconomyEffect(new(EconomyAssetKind.Item, guild.FoundingItem),
+                new(EconomyOwnerKind.Role, founder.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                EconomyCompartment.Mail, guild.FoundingCount, EconomyLegKind.Source, EconomyReason.GuildFoundingRefund);
+            transaction.WithEconomy(EnlistDisband(guild, transaction, prior, founder, refund));
+            await roles.CommitAsync(transaction, "guild/founding-refund");
+        }
+        try { await mail.NotifyRecipientAsync(founder); }
+        catch (Exception e) when (e is IOException or ObjectDisposedException or System.Net.Sockets.SocketException) { }
+    }
+
+    /// <summary>
     /// Adds a responder as member 20; at GuildResponsePeopleLimit members the guild becomes Normal and the journal records
     /// the founding (event 13).
     /// </summary>
@@ -79,6 +110,8 @@ public sealed partial class GuildService
             guild.Status = (int)GuildStatus.Normal;
             guild.HelperDeadlineMs = 0;
             guild.HelperApplies.Clear();
+            guild.FoundingItem = 0;
+            guild.FoundingCount = 0;
             // "${1}, ${2}, and ${3} founded the guild together": the founder, then the responders.
             var founders = guild.Members.Values.OrderBy(m => m.Official != 1).ThenBy(m => m.EnterTime).Take(3).ToArray();
             if (founders.Length == 3)
@@ -95,7 +128,13 @@ public sealed partial class GuildService
             if (Online(peer.RoleId) is { } other)
                 await other.SendGameAsync(HelperChange, new GuildCreateHelperMemberChangeNtf
                 { Status = GuildCreateHelperMemberChangeNtf.Types.ChangeType.Add, Info = info });
-        if (formed) await RefreshMembers(guild);
+        if (formed)
+        {
+            await RefreshMembers(guild);
+            // MailConfig 1017 "Guild Creation Successful" names the guild: (inferred) the founder's letter, as 1018 is.
+            await GuildMailAsync(guild.Members.Values.Where(m => m.Official == 1).Select(m => m.RoleId),
+                (int)Setting("GuildMail17", 1017)[0], $"guild-founded:{guild.Id}", guild.Name);
+        }
         await PushRedDotAsync(guild);
         return true;
     }

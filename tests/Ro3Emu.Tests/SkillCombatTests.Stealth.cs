@@ -37,6 +37,18 @@ public sealed partial class SkillCombatTests
         return (a, b);
     }
 
+    /// <summary>The attribute notice arrives while the loop is still adding the other buff: read the list there, until it holds.</summary>
+    private async Task<bool> BuffsSettle(GameSession subject, Func<int[], bool> settled)
+    {
+        var deadline = DateTime.UtcNow + Wait;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (settled(await Loop.InvokeAsync(() => Task.FromResult(subject.Buffs.Select(x => x.ConfigId).ToArray())))) return true;
+            await Task.Delay(20);
+        }
+        return false;
+    }
+
     private static Task<AOIAttrChange> StealthChange(BotClient bot, GameSession subject, int attr, long value) =>
         Next(bot, CombatService.AoiAttrChange, AOIAttrChange.Parser, c => c.EntityUuid == (ulong)subject.Role!.Id
             && c.Property.Any(p => p.Idx == attr && p.Data == value));
@@ -55,8 +67,7 @@ public sealed partial class SkillCombatTests
         Assert.Equal(0, (await Next(bob, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
         await StealthChange(bob, b, StealthAttr, 2);
         await StealthChange(alice, b, StealthAttr, 2); // the viewer's client hides him
-        Assert.Contains(b.Buffs, x => x.ConfigId == 1500602);
-        Assert.Contains(b.Buffs, x => x.ConfigId == 1500702);
+        Assert.True(await BuffsSettle(b, ids => ids.Contains(1500602) && ids.Contains(1500702)));
 
         await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1200401, TargetId = b.Role!.Id });
         Assert.Equal(3022, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
@@ -69,7 +80,7 @@ public sealed partial class SkillCombatTests
         Assert.Equal(0, accepted.Result);
         await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser, h => h.SessionId == accepted.SessionId);
         await StealthChange(bob, b, StealthAttr, 0);
-        Assert.DoesNotContain(b.Buffs, x => x.ConfigId is 1500602 or 1500702); // Camouflage and Hiding end together
+        Assert.True(await BuffsSettle(b, ids => !ids.Contains(1500602) && !ids.Contains(1500702))); // Camouflage and Hiding end together
     }
 
     // Enhance Cloaking level 1 [15305, 1, 5]: five hits taken reveal; the fourth does not.

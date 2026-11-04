@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Romsg;
 using Ro3Emu.Server.Maps;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Game.Ownership;
@@ -69,6 +71,11 @@ public sealed partial class CombatService
     }
     /// <summary>Durable event scores complete before their corresponding hit is published.</summary>
     public List<Func<GameSession, GameSession, long, bool, Task>> PvpDealtAsync { get; } = [];
+    /// <summary>A player's hit on a player, with its row, what the attacker's cards see: the attacker, the target, the row, what it took
+    /// and whether it was lethal (CardEffects).</summary>
+    internal List<Func<GameSession, GameSession, JsonElement, long, bool, Task>> PvpHitLanded { get; } = [];
+    /// <summary>A player's hit on a player before it commits: the attacker, the row, its result, the damage (CardEffects).</summary>
+    internal List<Func<GameSession, JsonElement, DamageHitResult, long, long>> PvpDamageAdjusters { get; } = [];
     public List<Func<GameSession, MonsterUnit, long, Task>> EventDamageRecorded { get; } = [];
     public List<Func<GameSession, long, Task>> HealedAsync { get; } = [];
 }

@@ -184,7 +184,8 @@ public sealed partial class TeamService
     private async Task FollowCoreAsync(GameSession s, TeamFollowOperReq req)
     {
         int code = !_byMember.TryGetValue(s.Role!.Id, out var team) ? ErrorCodes.NotInParty
-            : req.Type is not (ETeamFollowType.Team or ETeamFollowType.Group) ? ErrorCodes.Parameter : 0;
+            // LC_TeamHelper.StopFollow sends the type None with isFollow false.
+            : req.IsFollow && req.Type is not (ETeamFollowType.Team or ETeamFollowType.Group) ? ErrorCodes.Parameter : 0;
         await s.SendGameAsync(TeamFollow, new TeamFollowOperResp { Result = code, Type = req.Type, IsFollow = req.IsFollow });
         if (code != 0) return;
         if (req.IsFollow) team!.Following.Add(s.Role.Id); else team!.Following.Remove(s.Role.Id);

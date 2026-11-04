@@ -123,9 +123,18 @@ public sealed class BuffRulesTests : IAsyncLifetime
             string tip = Data.TextOf(Data.Row("AttributeConfig", tag.AttackAttr)!.Value, "_kTips");
             Assert.Contains(tag.Formula == 1 ? "Chance to inflict" : "duration of", tip);
         }
-        Assert.Equal(1.2, BuffRuleTables.TagFactor(3000, 1000), 6);
-        Assert.Equal(0.9, BuffRuleTables.TagFactor(0, 1000), 6);
-        Assert.Equal(0, BuffRuleTables.TagFactor(0, 20000));
+        // The client's formulas (LC_PlayerInfoHelper): 420 resistance takes 29.6% off a chance or a duration.
+        Assert.Equal(1 / 1.42, Rules.TagFactor(0, 420, 1), 6);
+        Assert.Equal(1000.0 / 1420, Rules.TagFactor(0, 420, 2), 6);
+        Assert.Equal(1.42, Rules.TagFactor(420, 0, 1), 6); // _doFormulaBuffAddRate
+        Assert.Equal(1 + 420.0 / 1420, Rules.TagFactor(420, 0, 2), 6); // _doFormulaBuffDuration
+        Assert.Equal(1.0, Rules.TagFactor(0, 0, 1), 6);
+        Assert.Equal(1.0, Rules.TagFactor(0, 0, 2), 6);
+        Assert.Equal(2.0, Rules.TagFactor(3000, 1000, 1), 6);
+        // A debuff raises what lands, with no value at -1000 in the formulas: it stops at ten times.
+        Assert.Equal(1 / 0.9, Rules.TagFactor(0, -100, 1), 6);
+        Assert.Equal(10, Rules.TagFactor(0, -9900, 1), 6);
+        Assert.Equal(10, Rules.TagFactor(0, -9900, 2), 6);
     }
 
     [ClientDataFact]
@@ -148,7 +157,7 @@ public sealed class BuffRulesTests : IAsyncLifetime
         });
         await Eventually(() => p.Buffs.Any(b => b.ConfigId == 1120210), "the slow");
         Assert.Equal(1000, p.Buffs.Single(b => b.ConfigId == 1120210).DurationMs);
-        // 11531701 grants Slow Resistance 728 +1000: 1 + (0 - 1000) / 10000 = 90 % of the duration.
+        // 11531701 grants Slow Resistance 728 +1000: _doFormulaBuffDuration 1000/(1000+1000) takes half the duration off.
         await Run(async () =>
         {
             await Buffs.RemoveAsync(p, p.Buffs.Single(b => b.ConfigId == 1120210));
@@ -157,7 +166,7 @@ public sealed class BuffRulesTests : IAsyncLifetime
             await combat.MonsterSkillHitAsync(monster, headCrush, [p], monster.Uid);
         });
         await Eventually(() => p.Buffs.Any(b => b.ConfigId == 1120210), "the resisted slow");
-        Assert.Equal(900, p.Buffs.Single(b => b.ConfigId == 1120210).DurationMs);
+        Assert.Equal(500, p.Buffs.Single(b => b.ConfigId == 1120210).DurationMs);
     }
 
     // ---- 2. SpecialStatusDecay ----
@@ -234,6 +243,22 @@ public sealed class BuffRulesTests : IAsyncLifetime
     }
 
     // ---- 4. HaloConfig ----
+
+    [ClientDataFact]
+    public void AurasOfHigherLevelsTakeTheirGroupsNumbers()
+    {
+        Assert.Equal([1150210], Rules.Halos[1150510].Applied); // Battle Chant Lv. 10: -50 ATK
+        Assert.True(Rules.Halos[1150510].Hostile);
+        Assert.Equal(10f, Rules.Halos[1150510].Radius);
+        Assert.Equal([1150310], Rules.Halos[1150610].Applied); // its other half: +50 DEF for you and allies
+        Assert.False(Rules.Halos[1150610].Hostile);
+        Assert.True(Rules.Halos[1150610].IncludeSelf);
+        Assert.Equal([1154310], Rules.Halos[1154610].Applied); // Battle Chant Enhance
+        Assert.True(Rules.Halos[1154610].Hostile);
+        Assert.Equal([1154410], Rules.Halos[1154710].Applied);
+        Assert.False(Rules.Halos[1154710].Hostile);
+        Assert.Equal([1161710], Rules.Halos[1161610].Applied); // Shield Defense Lv. 5
+    }
 
     [ClientDataFact]
     public void HalosJoinTheirBuffRowsTargetsAndSides()

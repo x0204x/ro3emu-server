@@ -431,6 +431,30 @@ public sealed partial class DungeonTests
         Assert.NotEmpty(off.All); // the data still loads; only its use is switched off
     }
 
+    // 1022001's door (condition 1000000: 1101, quest 10102200 running) is closed once its quest is finished, while region
+    // 1010220001 is armed for Running and Finish: walking through it after the fight popped "This feature is unavailable".
+    [ClientDataFact]
+    public async Task TheEddgaRegionPopsNoRefusalOnceItsQuestIsFinished()
+    {
+        await using var alice = await InWorld("Alice");
+        var region = Service<WorldData>().Map(10220)!.Regions[1010220001];
+        await Gm(alice, "!quest accept 10102200");
+        bool entered = await Service<GameLoop>().InvokeAsync(() =>
+        {
+            Session(alice).Tasks!.Infos[10102200].Status = TaskState.Finish;
+            return Service<DungeonService>().EnterFromRegionAsync(Session(alice), region);
+        });
+        Assert.False(entered);
+        // Still running, the same step enters.
+        entered = await Service<GameLoop>().InvokeAsync(() =>
+        {
+            Session(alice).Tasks!.Infos[10102200].Status = TaskState.Running;
+            return Service<DungeonService>().EnterFromRegionAsync(Session(alice), region);
+        });
+        Assert.True(entered);
+        Assert.Equal(0, (await Next(alice, DungeonService.Enter, EnterDungeonRsp.Parser)).Result);
+    }
+
     /// <summary>The living actors of the room's current wave, once all of them have spawned.</summary>
     private async Task<IReadOnlyList<MonsterUnit>> WaveIn(long instance, int count)
     {

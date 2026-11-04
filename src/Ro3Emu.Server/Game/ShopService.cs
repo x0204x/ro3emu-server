@@ -5,6 +5,7 @@ using System.Text.Json;
 using Romsg;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Economy;
 
 namespace Ro3Emu.Server.Game;
@@ -169,7 +170,7 @@ public sealed partial class ShopService(GameData data, CharacterService characte
         }
         else if (error == null)
         {
-            int currency = PaymentItem(row!.Value), entry = (int)GameData.Int(row.Value, "_iItemId"), perUnit = (int)Math.Max(1, GameData.Int(row.Value, "_iItemPerMount"));
+            int currency = PaymentItem(row!.Value), entry = (int)GameData.Int(row.Value, "_iItemId"), perUnit = GoodsPerUnit(row.Value);
             var cost = currency > 0 ? new[] { (currency, (long)unit * count) } : [];
             if ((long)perUnit * count > int.MaxValue) error = new(ErrorCodes.Parameter, "quantity overflow");
             else
@@ -295,6 +296,18 @@ public sealed partial class ShopService(GameData data, CharacterService characte
         if (row.ValueKind != JsonValueKind.Object || !row.TryGetProperty("_kSpSkillParam", out var param)
             || param.ValueKind != JsonValueKind.Array || param.GetArrayLength() < 2) return 0;
         return Math.Clamp((long)(GameData.Number(param[1]) ?? 0), 0, 10000);
+    }
+
+    /// <summary>
+    /// The items one purchase grants. The Spirit Tower rows 24101-24128 show as "Pet Egg x5" in the shop, and their only 5
+    /// is _iIsShowCount (_iItemPerMount is 1); their 25000 Zeny list price is five times the Zeny Shop's single Pet Egg
+    /// (12102, 5000). So the purchase grants the larger of the two fields (inferred: the client's shop Lua was not
+    /// checked); every other row has both at 1.
+    /// </summary>
+    private static int GoodsPerUnit(JsonElement commodity)
+    {
+        var config = new ShopCommodityConfig(commodity);
+        return (int)Math.Clamp(Math.Max(config.ItemPerMount, config.IsShowCount), 1, int.MaxValue);
     }
 
     /// <summary>_kItemPerPrice is one flat [payment item, amount] pair.</summary>

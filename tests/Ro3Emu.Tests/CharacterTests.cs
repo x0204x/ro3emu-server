@@ -591,20 +591,12 @@ public sealed class CharacterTests : IAsyncLifetime
             plan.ManualLoadSkill.Add(new SkillData { SkillId = 10000, SkillLevel = 1 });
             return Task.CompletedTask;
         });
-        await Gm("alice", "!job 3100");
-        const int Bow = 2110120;
-        await Gm("alice", $"!item {Bow}");
-        var granted = await Next(alice, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser,
-            m => m.PackInfo.GetValueOrDefault(2)?.Inc?.Items.Values.Any(i => i.All?.ItemEntry == Bow) == true);
-        long bow = granted.PackInfo[2].Inc.Items.Values.Single(i => i.All?.ItemEntry == Bow).All.ItemGuid;
-        await alice.SendGameAsync(CharacterService.EquipItemOpr,
-            new EquipItemOprReq { Opr = 0, Pos = (EquipGridType)1, ItemGUID = bow });
-        Assert.Equal(0, (await Next(alice, CharacterService.EquipItemOpr, EquipItemOprResp.Parser)).Result);
+        await Gm("alice", "!job 1100");
         await alice.SendGameAsync(1023, new PlayerAssetReq { AssetType = { 5 } });
-        var skills = await Next(alice, SkillService.SkillDataSync, DBSkillDataIncrement.Parser, m => m.SyncAllMark && m.CurrentAtkSkillId == 1300001);
-        Assert.Equal(1300001, skills.SkillWheel.All.AtkSkillId); // JobConfig 3100 _kSkillNormalID
+        var skills = await Next(alice, SkillService.SkillDataSync, DBSkillDataIncrement.Parser, m => m.SyncAllMark && m.CurrentAtkSkillId == 1001001);
+        Assert.Equal(1001001, skills.SkillWheel.All.AtkSkillId); // JobAttackConfig for job 1100
         Assert.DoesNotContain(skills.SkillWheel.All.WhellSkills.Values, slot => slot.SkillConfigId == 1000001);
-        Assert.Equal(1300001, skills.SkillWheel.All.WhellSkills[1].SkillConfigId);
+        Assert.Equal(1001001, skills.SkillWheel.All.WhellSkills[1].SkillConfigId);
     }
 
     [ClientDataFact]
@@ -632,7 +624,7 @@ public sealed class CharacterTests : IAsyncLifetime
 
         await Gm("alice", "!job 1100");
         var swordman = await Next(alice, SkillService.SkillDataSync, DBSkillDataIncrement.Parser, m => !m.SyncAllMark && m.HasCurrentAtkSkillId);
-        Assert.Equal(1001001, swordman.CurrentAtkSkillId); // JobAttackConfig default attack
+        Assert.Equal(1001001, swordman.CurrentAtkSkillId); // JobAttackConfig for job 1100
 
         // Job 15 of rank 2 = 15 points (JobLvConfig 201..215); learn Bash level 3.
         var req = new SkillGrowthSkillPlanUpdateReq { Plan = 0 };

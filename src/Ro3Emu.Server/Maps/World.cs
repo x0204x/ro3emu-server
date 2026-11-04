@@ -136,6 +136,35 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
             if (!unit.Removed && player.VisibleUnits.Contains(unit)) await AfterUnitEnteredAsync(player, unit);
     }
 
+    /// <summary>
+    /// Shows a unit to every player of its map from now on, past <see cref="ViewRadius"/>: what stands far off in a scene
+    /// yet is part of what its players look at and aim at (the airship's enemy ships, 70 to 130 m off the deck; inferred:
+    /// the client's AOI rule is the server's, and its cannon can only aim at a unit it shows).
+    /// </summary>
+    public async Task ShowFromAfarAsync(WorldUnit unit)
+    {
+        var entered = new List<GameSession>();
+        await unit.PresentationGate.WaitAsync();
+        try
+        {
+            if (unit.Removed || unit.SeenFromAfar) return;
+            unit.SeenFromAfar = true;
+            Map(unit.WorldScene).AddFar(unit);
+            List<GameSession> everyone;
+            lock (_sync) everyone = _grids.TryGetValue(unit.WorldScene, out var grid) ? [.. grid.Values.SelectMany(list => list)] : [];
+            foreach (var player in everyone)
+            {
+                if (!unit.Viewers.Add(player)) continue;
+                player.VisibleUnits.Add(unit);
+                await Safe(player, () => sink.UnitsChangedAsync(player, [unit], []));
+                entered.Add(player);
+            }
+        }
+        finally { unit.PresentationGate.Release(); }
+        foreach (var player in entered)
+            if (!unit.Removed && player.VisibleUnits.Contains(unit)) await AfterUnitEnteredAsync(player, unit);
+    }
+
     public async Task RemoveUnitAsync(WorldUnit unit)
     {
         await unit.PresentationGate.WaitAsync();
@@ -215,7 +244,8 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
         if (!_maps.TryGetValue(player.WorldScene, out var map)) return;
         var left = new List<long>();
         // Candidates: units near the player plus the ones it shows (they may have walked away).
-        var candidates = map.Near(player.Position.X, player.Position.Z, LeaveRadius).Concat(map.SceneWideUnits).Concat(player.VisibleUnits)
+        var candidates = map.Near(player.Position.X, player.Position.Z, LeaveRadius)
+            .Concat(map.SceneWideUnits).Concat(map.Far).Concat(player.VisibleUnits)
             .Distinct().OrderBy(unit => unit.Uid).ToArray();
         var held = new List<WorldUnit>(candidates.Length);
         try
@@ -279,12 +309,12 @@ public sealed partial class World(IAoiSink sink, GameLoop loop, ILogger<World> l
 
     private static bool InRange(GameSession player, WorldUnit unit, float radius)
     {
-        if (unit.VisibleAcrossScene) return player.WorldScene == unit.WorldScene;
+        if (unit.VisibleAcrossScene || unit.SeenFromAfar) return player.WorldScene == unit.WorldScene;
         float dx = player.Position.X - unit.X, dz = player.Position.Z - unit.Z;
         return dx * dx + dz * dz <= radius * radius;
     }
 
-    private IEnumerable<GameSession> UnitCandidatesLocked(WorldUnit unit) => unit.VisibleAcrossScene
+    private IEnumerable<GameSession> UnitCandidatesLocked(WorldUnit unit) => unit.VisibleAcrossScene || unit.SeenFromAfar
         ? _scenes.GetValueOrDefault(unit.WorldScene) ?? []
         : NearLocked(unit.WorldScene, unit.X, unit.Z);
 

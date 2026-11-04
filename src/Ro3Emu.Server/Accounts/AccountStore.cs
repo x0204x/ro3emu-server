@@ -585,6 +585,19 @@ public sealed partial class AccountStore : IDisposable
     private static Task<bool> MatchesAsync(string password, AccountCredentials existing)
         => Task.Run(() => CryptographicOperations.FixedTimeEquals(existing.Hash, AccountHash.Hash(password, existing.Salt)));
 
+    /// <summary>
+    /// The spelling each account last typed at /sdk/login. The client keeps that spelling and only asks for its GM button
+    /// when the role's account equals it, case-sensitively (Lua LC_DAL_GM [GMPanelCapability] identity check); everything
+    /// server-side keeps the stored name. In memory: after a restart the stored name is sent until the next login.
+    /// </summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _typedNames = new(StringComparer.OrdinalIgnoreCase);
+
+    public void RecordTypedName(string account, string typed) => _typedNames[account] = typed;
+
+    /// <summary>The account name to show the client: its typed spelling when it is the same name, else the stored one.</summary>
+    public string ClientAccount(string account) =>
+        _typedNames.TryGetValue(account, out var typed) && string.Equals(typed, account, StringComparison.OrdinalIgnoreCase) ? typed : account;
+
     /// <summary>Token returned by /sdk/login, presented as the verifySdk ticket.</summary>
     public string IssueSdkToken(string account) => IssueToken("sdk", account, 24);
     public Task<string> IssueSdkTokenAsync(string account) => IssueTokenAsync("sdk", account, 24);

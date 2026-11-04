@@ -113,7 +113,7 @@ public sealed partial class RoleSessionService(RoleStore roles, Data.GameData da
         var resp = new AccountLoginCreateRoleResp { Result = result };
         if (role != null)
         {
-            resp.RoleBaseInfo = RoleProto.BaseInfo(role);
+            resp.RoleBaseInfo = RoleProto.BaseInfo(role, session.ClientAccount);
             resp.Appearances.Add(RoleProto.Appearances(role));
         }
         await session.SendGameAsync(MsgId.LoginRoleCreate, resp);
@@ -312,7 +312,7 @@ public sealed partial class RoleSessionService(RoleStore roles, Data.GameData da
             Result = 0,
             RoleAssets = new RoleAssets
             {
-                BasicInfo = RoleProto.BaseInfo(role),
+                BasicInfo = RoleProto.BaseInfo(role, session.ClientAccount),
                 ServerTimeMs = NowMs(),
                 ServerInfo = new ServerBasicInfo
                 {
@@ -366,6 +366,7 @@ public sealed partial class RoleSessionService(RoleStore roles, Data.GameData da
         session.Position = walk.Pos;
         session.Face = walk.Face;
         session.WalkDir = float.IsFinite(walk.Dir) ? walk.Dir : walk.Face;
+        session.LastWalkUtc = DateTime.UtcNow; // also when the walk check is off
         session.Walking = !walk.BStop && walk.SpeedRate > 0;
         positions.MarkDirty(session, urgent: walk.BStop); // C/D 18: written lazily, never on the loop
         await systems.MovedAsync(session, walk);

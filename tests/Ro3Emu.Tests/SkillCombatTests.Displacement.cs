@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Romsg;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Game;
 using Ro3Emu.Server.Maps;
 
@@ -46,14 +47,91 @@ public sealed partial class SkillCombatTests
             Assert.True(CombatService.Displacements.ContainsKey(script), script);
             Assert.Equal(effect, CombatService.MovementEffectById(data, effect).Id);
         }
-        // The skills the old reading moved (Stasis, Choral, VolleyArrows, ShieldsProtection...) are no rules. The rules
+        // The skills the old reading moved (Stasis, Choral, VolleyArrows...) are no rules. The rules
         // among the walk-while-casting ones are there for their descriptions: Crescent Moon "pulls the targets closer",
         // Earthshaker's final hit knocks back, Axe Tornado and the Madogear slam pull to their centre, Gravitational Impact pulls in.
         var unlocked = skills.Where(r => GameData.Int(r, "_bMovement") == 1).Select(r => Script(r)).ToHashSet();
         Assert.True(unlocked.Count > 40);
         Assert.Equal(["AxeLeapAttackS1BD2", "AxeTornadoProS1BD1", "BackSlide", "MoonSlasher2", "MoonSlasher2s1", "PinpointAttack3",
-            "RetreatingShadows", "RetreatingShadowsS1", "VectorShock", "VectorShock1"],
+            "RetreatingShadows", "RetreatingShadowsS1", "ShieldsProtection", "VectorShock", "VectorShock1"],
             [.. unlocked.Where(CombatService.Displacements.ContainsKey).OrderBy(s => s, StringComparer.Ordinal)]);
+    }
+
+    /// <summary>The caster's own move on the skills whose text names one, and the distance it ends from the aim.</summary>
+    [ClientDataTheory]
+    [InlineData(11112, 1111201, 1111203, 1f, true)]    // Charge Attack: 1 m in front of the target
+    [InlineData(16305, 1630501, 1630505, 1f, true)]    // Heavy Axe Smash: in front of the target
+    [InlineData(10032, 1003201, 1003205, 1f, true)]    // Warg Strike: more than 5 m away
+    [InlineData(11301, 1130101, 1130109, 0f, false)]   // Rift Impact: onto the point
+    [InlineData(11607, 1160701, 1160707, 0f, false)]   // Twilight: onto the point
+    public async Task ACastersChargeEndsWhereItsTextSays(int group, int skill, int effect, float stopsShort, bool atTarget)
+    {
+        await using var alice = await InWorld("Alice");
+        await Gm("alice", "!lvl 99"); await Gm("alice", "!job " + SkillConfig.Get(_app.Services.GetRequiredService<GameData>(), skill)!.Value.Job); await Teach("alice", group);
+        var session = Session("alice");
+        session.GmCastSkill = skill;
+        var nav = _app.Services.GetRequiredService<WorldData>().Map(session.SceneEntry)!.Nav;
+        var start = session.Position.Clone();
+        var (ux, uz) = new[] { (1f, 0f), (-1f, 0f), (0f, 1f), (0f, -1f) }.First(o => nav == null
+            || nav.CanWalk(start.X, start.Y, start.Z, start.X + o.Item1 * 7, start.Z + o.Item2 * 7));
+        var target = await Target("alice", stationary: true, npcId: 5000002);
+        await Loop.InvokeAsync(() =>
+        {
+            target.StaysOutOfBattle = true; target.Hp = 1000000;
+            target.X = start.X + ux * 6.5f; target.Z = start.Z + uz * 6.5f;
+            foreach (var other in _app.Services.GetRequiredService<World>().Map(session.WorldScene).Units.OfType<MonsterUnit>())
+                if (other != target) { other.X += 200; other.Z += 200; }
+            return Task.CompletedTask;
+        });
+        var point = new Vec3 { X = start.X + ux * 6f, Y = start.Y, Z = start.Z + uz * 6f };
+        await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq
+        {
+            SkillId = skill, TargetId = atTarget ? target.Uid : 0, TargetPos = point, Face = MonsterService.Angle(start.X, start.Z, point.X, point.Z),
+        });
+        Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
+        var moved = await Next(alice, CombatService.SkillMove, SkillStartMoveNotify.Parser, m => m.EntityID == (ulong)session.Role!.Id);
+        Assert.Equal(effect, moved.EffectId);
+        var aim = atTarget ? target.Pos : point;
+        Assert.InRange(MonsterService.Distance(aim.X, aim.Z, moved.EndPos.X, moved.EndPos.Z), stopsShort - 0.1f, stopsShort + 0.1f);
+    }
+
+    [ClientDataFact] // "inflicts Knockback ... Move ${12} meters in that direction, then inflict Knock-Up": pushed once, caster 12 m on, hit twice
+    public async Task FearlessChargeHitsPushesMovesAndHitsAgain()
+    {
+        await using var alice = await InWorld("Alice");
+        await Gm("alice", "!lvl 99"); await Gm("alice", "!job 1410"); await Teach("alice", 11624);
+        var session = Session("alice");
+        session.GmCastSkill = 1162401;
+        var nav = _app.Services.GetRequiredService<WorldData>().Map(session.SceneEntry)!.Nav;
+        var start = session.Position.Clone();
+        var (ux, uz) = new[] { (1f, 0f), (-1f, 0f), (0f, 1f), (0f, -1f) }.First(o => nav == null
+            || nav.CanWalk(start.X, start.Y, start.Z, start.X + o.Item1 * 13, start.Z + o.Item2 * 13));
+        var target = await Target("alice", stationary: true, npcId: 5000002);
+        await Loop.InvokeAsync(() =>
+        {
+            target.StaysOutOfBattle = true; target.Hp = 1000000;
+            target.X = start.X + ux * 3f; target.Z = start.Z + uz * 3f;
+            foreach (var other in _app.Services.GetRequiredService<World>().Map(session.WorldScene).Units.OfType<MonsterUnit>())
+                if (other != target) { other.X += 200; other.Z += 200; }
+            return Task.CompletedTask;
+        });
+        var point = new Vec3 { X = start.X + ux * 3f, Y = start.Y, Z = start.Z + uz * 3f };
+        await alice.SendGameAsync(CombatService.UseSkill, new CastSkillReq
+        {
+            SkillId = 1162401, TargetId = target.Uid, TargetPos = point, Face = MonsterService.Angle(start.X, start.Z, point.X, point.Z),
+        });
+        Assert.Equal(0, (await Next(alice, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
+        var pushed = await Next(alice, CombatService.SkillMove, SkillStartMoveNotify.Parser, m => m.EntityID == (ulong)target.Uid);
+        Assert.InRange(MonsterService.Distance(start.X, start.Z, pushed.EndPos.X, pushed.EndPos.Z), 5.9f, 6.1f);
+        var moved = await Next(alice, CombatService.SkillMove, SkillStartMoveNotify.Parser, m => m.EntityID == (ulong)session.Role!.Id);
+        Assert.Equal(1162411, moved.EffectId);
+        Assert.InRange(MonsterService.Distance(start.X, start.Z, moved.EndPos.X, moved.EndPos.Z), 11.9f, 12.1f);
+        var deadline = DateTime.UtcNow + Wait;
+        var hits = new List<SkillHitInfo>();
+        while (hits.Count < 2 && DateTime.UtcNow < deadline)
+            hits.Add(await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser, h => h.Dsts.Any(d => d.DstID == target.Uid)));
+        Assert.Equal(2, hits.Count);
+        await Loop.InvokeAsync(() => { Assert.Equal(pushed.EndPos, target.Pos); return Task.CompletedTask; }); // the second hit moved it no further
     }
 
     /// <summary>A knockback or pull on a monster for each kind of rule: away from / toward the caster, toward the area's

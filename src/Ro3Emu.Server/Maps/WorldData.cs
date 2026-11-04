@@ -86,6 +86,9 @@ public sealed class MapWorld
     /// <summary>The points of each guide route, id -> (x, y, z) list (a scripted ride walks one).</summary>
     public IReadOnlyDictionary<long, IReadOnlyList<(float X, float Y, float Z)>> GuidePaths { get; init; } =
         new Dictionary<long, IReadOnlyList<(float X, float Y, float Z)>>();
+    /// <summary>The points of each patrol of kPatrolList, id -> (x, y, z) list (what a scripted scene's unit flies).</summary>
+    public IReadOnlyDictionary<long, IReadOnlyList<(float X, float Y, float Z)>> PatrolPaths { get; init; } =
+        new Dictionary<long, IReadOnlyList<(float X, float Y, float Z)>>();
 
     // LC_SceneCom_AirWall loads m_kAirWalls as dynamic blockers. Null means the scene
     // file could not be loaded or its wall table was malformed; a valid scene without
@@ -221,6 +224,46 @@ public sealed class MapWorld
         return p;
     }
 
+    private IReadOnlyList<MapPoint>? _walkableSpots;
+    private volatile IReadOnlyList<MapPoint>? _randomSpots;
+    private Task<IReadOnlyList<MapPoint>>? _warming;
+    private readonly object _warmSync = new();
+
+    /// <summary>
+    /// The spots a Fly Wing picks from (inferred): the map's authored points and monster spawn points on walkable ground
+    /// that can be walked to from where players arrive (born, revive, Kafra and portal arrivals). Field maps carry
+    /// points on walkable strips cut off from the play area, such as Payon Forest's (10220) northern edge at z 398-399;
+    /// landing there strands the player. Without a nav grid, or with no arrival on walkable ground, every spot counts.
+    /// The reachability flood fill takes up to about 400 ms on a field map, so it runs off the game loop, once, for the
+    /// first wing used on the map (<see cref="WarmRandomSpots"/>); until it finishes every walkable spot counts.
+    /// </summary>
+    public IReadOnlyList<MapPoint> RandomSpots => _randomSpots ?? WalkableSpots;
+
+    /// <summary>The map's authored and spawn points grounded on walkable ground, before the reachability filter.</summary>
+    private IReadOnlyList<MapPoint> WalkableSpots => _walkableSpots ??=
+        [.. Points.Values.Concat(SpawnGroups.SelectMany(g => g.Points).Select(p => new MapPoint(p.X, p.Y, p.Z, p.Face)))
+            .Select(Grounded).Where(p => IsWalkable(p.X, p.Y, p.Z))];
+
+    /// <summary>
+    /// Starts the reachability filter of <see cref="RandomSpots"/> on the thread pool, once. The finished list replaces
+    /// the walkable fallback with one reference assignment, so a reader never sees a half-built list.
+    /// </summary>
+    public Task<IReadOnlyList<MapPoint>> WarmRandomSpots()
+    {
+        lock (_warmSync)
+            return _warming ??= Task.Run(() => (IReadOnlyList<MapPoint>)(_randomSpots = FindRandomSpots()));
+    }
+
+    private IReadOnlyList<MapPoint> FindRandomSpots()
+    {
+        var spots = WalkableSpots;
+        if (Nav is not { } nav) return spots;
+        var arrivals = new[] { Born, Revive }.OfType<MapPoint>()
+            .Concat(Npcs.Where(n => n.Kind is WorldNpcKind.Kafra or WorldNpcKind.Portal).Select(n => n.Arrival))
+            .Select(Grounded);
+        var reach = nav.Reachable(arrivals.Select(p => (p.X, p.Y, p.Z)));
+        return reach.IsEmpty ? spots : [.. spots.Where(p => reach.Contains(p.X, p.Y, p.Z))];
+    }
 }
 
 /// <summary>
@@ -254,6 +297,17 @@ public sealed partial class WorldData(IOptions<ServerOptions> options, GameData 
         {
             if (!_maps.TryGetValue(sceneEntry, out var map)) _maps[sceneEntry] = map = Load(sceneEntry);
             return map;
+        }
+    }
+
+    /// <summary>The spots a Fly Wing picks from on this map; the search ran or runs once, and a failed one leaves every walkable spot.</summary>
+    public async Task<IReadOnlyList<MapPoint>> RandomSpotsAsync(MapWorld map, long sceneEntry)
+    {
+        try { return await map.WarmRandomSpots(); }
+        catch (Exception e)
+        {
+            FlyWingSpotsFailed(log, sceneEntry, e);
+            return map.RandomSpots;
         }
     }
 
@@ -371,6 +425,9 @@ public sealed partial class WorldData(IOptions<ServerOptions> options, GameData 
             into.Add(name.GetString()!);
     }
 
+    [LoggerMessage(Level = LogLevel.Error, Message = "Fly Wing spots of map {Scene} failed; every walkable spot stays in use")]
+    private static partial void FlyWingSpotsFailed(ILogger logger, long scene, Exception? error);
+
     private MapWorld? Load(long sceneEntry)
     {
         if ((data.Row("MapConfig", sceneEntry) ?? data.Row("DungeonConfig", sceneEntry)) is not { } row) return null;
@@ -430,6 +487,11 @@ public sealed partial class WorldData(IOptions<ServerOptions> options, GameData 
                 // ends at it. Ground Kafras on the nav mesh. Portals keep their editor y: the client keys teleport triggers
                 // by floor(y*10) (LC_InteractManager.lua:612-644).
                 if (kind == WorldNpcKind.Kafra && map.Nav?.WalkHeight(x, z, y) is { } ground) y = ground;
+                // #bug-reports "Payon - NPC in the ground": an ordinary NPC the editor marks isOnGround can sit below the
+                // only walkable layer (Payon's Monster Ecology Research Scholar 100181: y 14.70 on ground 21.69), drawn
+                // inside the hill and out of its 3D talk range. Raise a sunk one onto that floor; NPCs above it stay.
+                else if (kind == WorldNpcKind.Npc && OnGround(all, (int)GameData.Int(e, "Id")) && map.Nav?.WalkHeight(x, z, y) is { } floor
+                    && floor - y > SunkTolerance) y = floor;
                 npcs.Add(new WorldNpc(NpcUidBase | sceneEntry << 16 | (long)npcs.Count, sceneEntry, kind, npcId,
                     data.ClientTextOf(npcRow, "_kName"), (int)GameData.Int(npcRow, "_iCamp"), x, y, z, face, e));
             }
@@ -452,7 +514,7 @@ public sealed partial class WorldData(IOptions<ServerOptions> options, GameData 
         {
             SceneEntry = sceneEntry, Born = born, Revive = revive, Npcs = npcs, Points = points, Nav = map.Nav, SpawnGroups = spawnGroups,
             GatheringPoints = LoadGatheringPoints(se, sceneEntry), DungeonGroups = LoadDungeonGroups(se), Regions = LoadRegions(se),
-            GuideRoutes = SceneEditorGuides.RouteIds(se), GuidePaths = SceneEditorGuides.Paths(se),
+            GuideRoutes = SceneEditorGuides.RouteIds(se), GuidePaths = SceneEditorGuides.Paths(se), PatrolPaths = SceneEditorGuides.Patrols(se),
             AirWalls = SceneEditorAirWalls.Read(se),
             MaxAuthoredAirWallLevel = airWalls.MaxLevel, AuthoredAirWallCells = airWalls.Cells,
             HasUntrackedUnitAirWall = NpcLevelPointRespawnConfig.All(data)
@@ -470,6 +532,7 @@ public sealed partial class WorldData(IOptions<ServerOptions> options, GameData 
         var cells = new Dictionary<(int X, int Z), int>();
         foreach (var wall in walls.EnumerateObject())
         {
+            if (wall.Value.ValueKind != JsonValueKind.Object) return (null, null);
             int level = wall.Value.TryGetProperty("gridLevel", out var value) && value.ValueKind == JsonValueKind.Number
                 ? value.GetInt32() : 1;
             level = Math.Clamp(level, 0, 255); // SceneSpaceDynamic.AddDynamic clamps block levels.
@@ -478,7 +541,7 @@ public sealed partial class WorldData(IOptions<ServerOptions> options, GameData 
                 return (null, null);
             foreach (var point in points.EnumerateArray())
             {
-                if (!point.TryGetProperty("x", out var x) || !point.TryGetProperty("z", out var z)
+                if (point.ValueKind != JsonValueKind.Object || !point.TryGetProperty("x", out var x) || !point.TryGetProperty("z", out var z)
                     || x.ValueKind != JsonValueKind.Number || z.ValueKind != JsonValueKind.Number)
                     return (null, null);
                 var cell = ((int)MathF.Floor(x.GetSingle()), (int)MathF.Floor(z.GetSingle()));
@@ -487,6 +550,12 @@ public sealed partial class WorldData(IOptions<ServerOptions> options, GameData 
         }
         return (highest, cells);
     }
+    private const float SunkTolerance = 0.3f;
+
+    /// <summary>m_kAllPoints[id].isOnGround (absent counts as on the ground).</summary>
+    private static bool OnGround(JsonElement all, int pointId) =>
+        all.ValueKind != JsonValueKind.Object || !all.TryGetProperty(pointId.ToString(System.Globalization.CultureInfo.InvariantCulture), out var point)
+        || !point.TryGetProperty("isOnGround", out var flag) || flag.ValueKind != JsonValueKind.False;
 
     private static Dictionary<long, MapRegion> LoadRegions(JsonElement se)
     {

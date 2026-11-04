@@ -34,31 +34,31 @@ public sealed partial class DailyTests
     }
 
     [ClientDataFact]
-    public async Task VigorStageClaimCreditsRestrictionOnceAndPreservesLegacyCurrencyAcrossRelog()
+    public async Task VigorStageClaimKeepsCurrencyOnceAndPersistsAcrossRelog()
     {
         var bot = await InWorld("Alice");
         await PrepareVigorClaimAsync();
         await SeedVigorRewardAsync(500, 321);
         await bot.SendGameAsync(DailyActivityService.StageGain, new StageRewardGainReq { StageId = 7001 });
         Assert.Equal(0, (await Next(bot, DailyActivityService.StageGain, StageRewardGainResp.Parser)).Result);
-        var wire = await Next(bot, LifeJobService.RestrictSync, DBRestrictInfoIncrement.Parser,
-            x => x.RestrictCount.TryGetValue(1004, out var v) && v.Inc?.Count == 700);
-        Assert.Equal(700, wire.RestrictCount[1004].Inc.Count);
-        Assert.Equal(321, await State(s => s.Progress!.Currency[407]));
+        Assert.Equal(500, await State(s => s.Restrictions!.RestrictCount[1004].Count));
+        Assert.Equal(521, await State(s => s.Progress!.Currency[407]));
+        Assert.Equal(1021, await State(s => ((DBRestrictInfo)s.Synced[LifeJobService.RestrictSync]).RestrictCount[1004].Count));
         await bot.SendGameAsync(DailyActivityService.StageGain, new StageRewardGainReq { StageId = 7001 });
         Assert.Equal(ErrorCodes.RewardClaimed, (await Next(bot, DailyActivityService.StageGain, StageRewardGainResp.Parser)).Result);
-        Assert.Equal(700, await State(s => s.Restrictions!.RestrictCount[1004].Count));
+        Assert.Equal(500, await State(s => s.Restrictions!.RestrictCount[1004].Count));
+        Assert.Equal(521, await State(s => s.Progress!.Currency[407]));
         await bot.DisposeAsync();
         await using var again = await InWorld("Alice", create: false);
-        Assert.Equal(700, await State(s => s.Restrictions!.RestrictCount[1004].Count));
+        Assert.Equal(500, await State(s => s.Restrictions!.RestrictCount[1004].Count));
         Assert.Equal(5000, await State(s => s.Restrictions!.RestrictCount[1004].LimitCount));
-        Assert.Equal(321, await State(s => s.Progress!.Currency[407]));
+        Assert.Equal(521, await State(s => s.Progress!.Currency[407]));
         await again.SendGameAsync(DailyActivityService.StageGain, new StageRewardGainReq { StageId = 7001 });
         Assert.Equal(ErrorCodes.RewardClaimed, (await Next(again, DailyActivityService.StageGain, StageRewardGainResp.Parser)).Result);
     }
 
     [ClientDataFact]
-    public async Task VigorBatchStageClaimGrantsTheConfiguredThousandOnlyOnce()
+    public async Task VigorBatchStageClaimKeepsTheConfiguredThousandOnlyOnce()
     {
         await using var bot = await InWorld("Alice");
         await PrepareVigorClaimAsync();
@@ -66,31 +66,33 @@ public sealed partial class DailyTests
         var request = new StageRewardBatchGainReq { StageIds = { 7001, 7002, 7003, 7001 } };
         await bot.SendGameAsync(DailyActivityService.StageBatchGain, request);
         Assert.Equal(0, (await Next(bot, DailyActivityService.StageBatchGain, StageRewardBatchGainResp.Parser)).Result);
-        Assert.Equal(1100, await State(s => s.Restrictions!.RestrictCount[1004].Count));
-        Assert.Equal(0, await State(s => s.Progress!.Currency[407]));
+        Assert.Equal(100, await State(s => s.Restrictions!.RestrictCount[1004].Count));
+        Assert.Equal(1000, await State(s => s.Progress!.Currency[407]));
         await bot.SendGameAsync(DailyActivityService.StageBatchGain, request);
         Assert.Equal(ErrorCodes.RewardClaimed, (await Next(bot, DailyActivityService.StageBatchGain, StageRewardBatchGainResp.Parser)).Result);
-        Assert.Equal(1100, await State(s => s.Restrictions!.RestrictCount[1004].Count));
+        Assert.Equal(100, await State(s => s.Restrictions!.RestrictCount[1004].Count));
+        Assert.Equal(1000, await State(s => s.Progress!.Currency[407]));
     }
 
     [ClientDataTheory]
     [InlineData(4900, 5000)]
     [InlineData(5000, 5000)]
     [InlineData(5200, 5200)]
-    public async Task VigorStageClaimCapsNewRewardsWithoutReducingExistingBalances(long before, long expected)
+    public async Task VigorStageClaimPreservesCurrencyAboveDisplayLimit(long before, long expected)
     {
         await using var bot = await InWorld("Alice");
         await PrepareVigorClaimAsync();
         await SeedVigorRewardAsync(before);
         await bot.SendGameAsync(DailyActivityService.StageGain, new StageRewardGainReq { StageId = 7001 });
         Assert.Equal(0, (await Next(bot, DailyActivityService.StageGain, StageRewardGainResp.Parser)).Result);
-        Assert.Equal(expected, await State(s => s.Restrictions!.RestrictCount[1004].Count));
+        Assert.Equal(before, await State(s => s.Restrictions!.RestrictCount[1004].Count));
         Assert.Contains(7001, await State(s => s.Daily!.Claims));
-        Assert.Equal(0, await State(s => s.Progress!.Currency[407]));
+        Assert.Equal(200, await State(s => s.Progress!.Currency[407]));
+        Assert.Equal(expected, await State(s => ((DBRestrictInfo)s.Synced[LifeJobService.RestrictSync]).RestrictCount[1004].Count));
     }
 
     [ClientDataFact]
-    public async Task VigorSaveFailureRollsBackTheWholeStageAndRetryPaysOnce()
+    public async Task VigorCurrencySaveFailureRollsBackTheWholeStageAndRetryPaysOnce()
     {
         await using var bot = await InWorld("Alice");
         await PrepareVigorClaimAsync();
@@ -101,7 +103,7 @@ public sealed partial class DailyTests
         var previousVigor = roles.LoadLifeRestrict(role);
         var previous = await State(s => (s.Progress!.Exp, Currency: s.Progress.Currency.OrderBy(x => x.Key).ToArray(),
             Items: s.Items.Select(i => (i.Entry, i.Stack, i.BindType)).ToArray()));
-        Sql("CREATE TRIGGER fail_vigor_reward BEFORE UPDATE OF life_restrict ON role BEGIN SELECT RAISE(ABORT, 'vigor fixture'); END");
+        Sql("CREATE TRIGGER fail_vigor_reward BEFORE UPDATE OF currency ON role BEGIN SELECT RAISE(ABORT, 'vigor fixture'); END");
         try
         {
             await bot.SendGameAsync(DailyActivityService.StageGain, new StageRewardGainReq { StageId = 7001 });
@@ -117,17 +119,17 @@ public sealed partial class DailyTests
         finally { Sql("DROP TRIGGER fail_vigor_reward"); }
         await bot.SendGameAsync(DailyActivityService.StageGain, new StageRewardGainReq { StageId = 7001 });
         Assert.Equal(0, (await Next(bot, DailyActivityService.StageGain, StageRewardGainResp.Parser)).Result);
-        Assert.Equal(700, await State(s => s.Restrictions!.RestrictCount[1004].Count));
-        Assert.Equal(321, await State(s => s.Progress!.Currency[407]));
+        Assert.Equal(500, await State(s => s.Restrictions!.RestrictCount[1004].Count));
+        Assert.Equal(521, await State(s => s.Progress!.Currency[407]));
     }
 
     [ClientDataFact]
-    public async Task VigorExchangeUsesTheSameAtomicRestrictionPlan()
+    public async Task VigorExchangeKeepsOrdinaryCurrencyAtomic()
     {
         await using var bot = await InWorld("Alice");
         await SeedVigorRewardAsync(500, 321);
         long role = await State(s => s.Role!.Id);
-        Sql("CREATE TRIGGER fail_vigor_exchange BEFORE UPDATE OF life_restrict ON role BEGIN SELECT RAISE(ABORT, 'vigor exchange fixture'); END");
+        Sql("CREATE TRIGGER fail_vigor_exchange BEFORE UPDATE OF currency ON role BEGIN SELECT RAISE(ABORT, 'vigor exchange fixture'); END");
         try
         {
             await Assert.ThrowsAnyAsync<Exception>(() => OwnedFixtureAsync(role, "活力交易失敗", async s =>
@@ -138,31 +140,29 @@ public sealed partial class DailyTests
         finally { Sql("DROP TRIGGER fail_vigor_exchange"); }
         await OwnedFixtureAsync(role, "活力交易重試", async s =>
             Assert.NotNull(await _app.Services.GetRequiredService<CharacterService>().ExchangeAsync(s, [], [(407, 200)])));
-        Assert.Equal(700, await State(s => s.Restrictions!.RestrictCount[1004].Count));
-        Assert.Equal(321, await State(s => s.Progress!.Currency[407]));
+        Assert.Equal(500, await State(s => s.Restrictions!.RestrictCount[1004].Count));
+        Assert.Equal(521, await State(s => s.Progress!.Currency[407]));
     }
 
     [ClientDataFact]
-    public async Task VigorRewardRejectsCurrencyCostsWithoutRestoringOrSpendingLegacyBalances()
+    public async Task VigorCurrencyCanPayExchangeAndAwardCosts()
     {
         await using var bot = await InWorld("Alice");
         await SeedVigorRewardAsync(500, 321);
         long role = await State(s => s.Role!.Id);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => OwnedFixtureAsync(role, "活力不可支付", async s =>
-        {
-            await _app.Services.GetRequiredService<CharacterService>().ExchangeAsync(s, [(407, 100)], [(407, 200)]);
-        }));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => OwnedFixtureAsync(role, "活力不可作為獎勵成本", async s =>
-        {
-            await _app.Services.GetRequiredService<CharacterService>().ApplyAwardAsync(s,
-                new AwardPlan(0, 0, [new AwardGrant(407, 200, 0)]), costs: [(407, 100)]);
-        }));
+        await OwnedFixtureAsync(role, "活力交易支付", async s =>
+            Assert.NotNull(await _app.Services.GetRequiredService<CharacterService>()
+                .ExchangeAsync(s, [(407, 100)], [(407, 200)])));
+        Assert.Equal(421, await State(s => s.Progress!.Currency[407]));
+        await OwnedFixtureAsync(role, "活力獎勵成本", async s =>
+            Assert.True(await _app.Services.GetRequiredService<CharacterService>().ApplyAwardAsync(s,
+                new AwardPlan(0, 0, [new AwardGrant(407, 200, 0)]), costs: [(407, 100)])));
         Assert.Equal(500, await State(s => s.Restrictions!.RestrictCount[1004].Count));
-        Assert.Equal(321, await State(s => s.Progress!.Currency[407]));
+        Assert.Equal(521, await State(s => s.Progress!.Currency[407]));
     }
 
     [ClientDataFact]
-    public async Task VigorLifeCommitComposesConsumptionAndRewardIntoOneRestrictionSnapshot()
+    public async Task VigorLifeCommitKeepsCurrencyRewardAndRestrictionCostAtomic()
     {
         await using var bot = await InWorld("Alice");
         await SeedVigorRewardAsync(500, 321);
@@ -183,7 +183,7 @@ public sealed partial class DailyTests
             var task = (Task<List<InvItem>?>)method.Invoke(_app.Services.GetRequiredService<LifeJobService>(),
                 [s, "cd13c/life-forge", s.LifeJob!.Clone(), next, runtime,
                     Array.Empty<(int Entry, long Count)>(), new AwardGrant[] { new(407, 200, 0) },
-                    null, null, null, new { Fixture = "活力消耗與獎勵合成" }])!;
+                    null, null, null, new { Fixture = "活力消耗與獎勵合成" }, 0L])!;
             Assert.NotNull(await task);
         });
         Sql("CREATE TRIGGER fail_composed_vigor BEFORE UPDATE OF life_restrict ON role BEGIN SELECT RAISE(ABORT, 'composed fixture'); END");
@@ -196,11 +196,11 @@ public sealed partial class DailyTests
         finally { Sql("DROP TRIGGER fail_composed_vigor"); }
         await Execute();
         var saved = DBRestrictInfo.Parser.ParseFrom(roles.LoadLifeRestrict(role)!);
-        Assert.Equal(680, saved.RestrictCount[1004].Count);
+        Assert.Equal(480, saved.RestrictCount[1004].Count);
         Assert.Equal(20, saved.RestrictCount[1004].HistoryUseCount);
         Assert.Equal(4, saved.RestrictCount[1005].Count);
         Assert.Equal(saved.ToByteArray(), await State(s => s.Restrictions!.ToByteArray()));
-        Assert.Equal(321, await State(s => s.Progress!.Currency[407]));
+        Assert.Equal(521, await State(s => s.Progress!.Currency[407]));
     }
 
     [ClientDataFact]

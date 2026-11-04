@@ -269,6 +269,10 @@ public sealed partial class EmblemService
         return stages;
     }
 
+    /// <summary>Lit marks of one id on the active plan's echoes (LC_SpecialEffectHelper._getEmblemMarkCount).</summary>
+    internal static int MarkCount(GameSession session, long mark, GameData data) =>
+        MarkCounts(Worn(session), data).GetValueOrDefault(mark);
+
     /// <summary>Lit marks per mark id over the given echoes (LC_EmblemHelper.GetAllMarkEquipedNum).</summary>
     private static Dictionary<long, int> MarkCounts(IEnumerable<InvItem> worn, GameData data)
     {

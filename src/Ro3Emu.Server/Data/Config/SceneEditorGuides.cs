@@ -25,6 +25,20 @@ public static class SceneEditorGuides
         return paths;
     }
 
+    /// <summary>Each patrol of kPatrolList with at least two points as its (x, y, z) list, in the scene editor's own order.</summary>
+    public static IReadOnlyDictionary<long, IReadOnlyList<(float X, float Y, float Z)>> Patrols(JsonElement sceneEditor)
+    {
+        var paths = new Dictionary<long, IReadOnlyList<(float, float, float)>>();
+        if (!sceneEditor.TryGetProperty("kPatrolList", out var patrols) || patrols.ValueKind != JsonValueKind.Array) return paths;
+        foreach (var patrol in patrols.EnumerateArray())
+        {
+            if (!patrol.TryGetProperty("id", out var id) || !patrol.TryGetProperty("pathPoints", out var points)
+                || points.ValueKind != JsonValueKind.Array || points.GetArrayLength() < 2) continue;
+            paths[id.GetInt64()] = [.. points.EnumerateArray().Select(p => (p[0].GetSingle(), p[1].GetSingle(), p[2].GetSingle()))];
+        }
+        return paths;
+    }
+
     private static readonly string[] Axes = ["x", "y", "z"];
 
     private static bool HasCoordinates(JsonElement point) =>

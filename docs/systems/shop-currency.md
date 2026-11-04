@@ -49,5 +49,5 @@ Purchases are counted per role in `activity_runtime` (`Purchases`, by `chargeTyp
 
 In the current client the shop's recharge button and the "+" on Sacred Relic Crystal open
 `PublicParamConfig.RechargeExternalUrl` instead of the top-up panel; the client hooks send that link to the server's
-purchase address or nowhere (`UrlRewrite`). The pass and month card buttons send 2001 themselves. The top-up panel opens
+purchase address or nowhere (`UrlRewrite`). The pass and month card buttons send 2001 themselves, once the hook `PayManager` stops the pay manager's first use from overflowing the Lua stack (without the store's SDK its `Init` calls back into itself). The top-up panel opens
 only while `RechargeExternalUrl` is empty.

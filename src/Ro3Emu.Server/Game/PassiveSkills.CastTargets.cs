@@ -38,11 +38,14 @@ public sealed partial class PassiveSkills
                 () => TargetCurrent() && granted(), parametersApplied) : Task.CompletedTask;
         }
 
-        // Buff 14311 的兩個門檻各擲一次；14316 為 MATK 來源物理傷害，14317 為魔法傷害。
+        // Buff 14311 的兩個門檻各擲一次；14312 Holy Spirit Surge 生效時兩段必發。
+        // 14316 為 MATK 來源物理傷害，14317 為魔法傷害。
         if (cast.SkillId == Judex && Learned(s, DoubleHolyLight) is
             { Skill: var light, Own: { LogicData: [var firstChance, var first, var secondChance, var second, ..] } })
             foreach (var (chance, id) in new[] { (firstChance, first), (secondChance, second) })
-                if (TargetCurrent() && Granted(light.Id, DoubleHolyLight) && Roll(10000) < chance
+                if (TargetCurrent() && Granted(light.Id, DoubleHolyLight)
+                    && (s.Buffs.Any(b => b.ConfigId / 100 == HolySpiritSurgeGroup && b.ExpireMs > MonsterService.NowMs)
+                        || Roll(10000) < chance)
                     && SkillConfig.Get(_data, id) is { } row)
                     await Extra(row.Row, () => Granted(light.Id, DoubleHolyLight));
 

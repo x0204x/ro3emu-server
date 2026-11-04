@@ -147,10 +147,10 @@ public sealed partial class LifeJobService
     }
 
     /// <summary>Skill 44 restores a fraction of the selected cap when spending drains Vivify to zero.</summary>
-    private void RecoverZeroVigor(GameSession s, DBRestrictInfo restrict)
+    private void RecoverZeroVigor(GameSession s, DBRestrictInfo restrict, long currencyVigorRemaining)
     {
         var vigor = restrict.RestrictCount[VigorId];
-        if (vigor.Count > 0) return;
+        if (vigor.Count > 0 || currencyVigorRemaining > 0) return;
         foreach (var skill in SelectedSkills(s).Where(x => x.Type == 44))
             if (Chance(skill.Value))
             {

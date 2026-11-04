@@ -68,7 +68,7 @@ remote server it runs against needs `log` (`LocalServer` sets it).
 | Option | Default | What |
 |---|---|---|
 | `MessagesPerSecond`, `MessageBurst` | 120, 600 | game messages per session; 0 turns the limit off |
-| `MessageLimits` | `{"1006": "0.5/5", "1007": "0.5/5"}` | tighter budgets per message id, `perSecond/burst` (role create, role select) |
+| `MessageLimits` | `{"1006": "0.5/6", "1007": "0.5/6"}` | tighter budgets per message id, `perSecond/burst` (role create, role select). The burst covers the six role slots; "switch character" stays on the same connection, so selects share one budget. A role create or select over its budget is answered with result 1108 "Too many requests. Please try again later." (inferred) so the role screen does not hang; any other message over budget is dropped unanswered |
 | `MicroRequests` | `20/100` | frames per micro gate connection once signed in, `perSecond/burst` (heartbeats are free); over it a request is answered "too many requests" without running, and 1000 refused frames in 10 s close the connection. The budget counts frames, so requests that take a list also have their own limit (50 roles per `getAttributeBatchByVersion`, the client's own batch size) |
 | `MicroRequestsBeforeSignIn` | `2/10` | the same before `verifySdk` binds an account; over it the connection is closed |
 | `ChatLines` | `1/10` | chat lines per session |

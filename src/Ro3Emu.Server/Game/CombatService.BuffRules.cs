@@ -16,14 +16,15 @@ public sealed partial class CombatService
     {
         _buffs.ResolvePeriodicSource = ResolvePeriodicSource;
         _buffs.PeriodicTick = PeriodicTickAsync;
+        _buffs.ControlChanged = BreakForbiddenCastAsync;
         _buffs.HaloHostilePlayer = (carrier, other) => PlayerHostile?.Invoke(carrier, other) == true;
         _buffs.HaloEnemyMonster = CanHitMonster;
     }
 
     /// <summary>
     /// <see cref="RollBuff"/> for a buff a skill puts on someone else ([buff, chance, ms] of _kBuff2). Each
-    /// BuffTagConfig tag in the buff's _kBuffCategory scales it by 1 + (the applier's _iAtkAttrID - the target's
-    /// _iDefAttrID) / 10000 (BuffRuleTables.TagFactor, inferred arithmetic): formula 1 the chance (Curse, Blind,
+    /// BuffTagConfig tag in the buff's _kBuffCategory scales it by the applier's _iAtkAttrID against the target's
+    /// _iDefAttrID (BuffRuleTables.TagFactor): formula 1 the chance (Curse, Blind,
     /// Silence, Fear, Immobilize, Freeze, Petrify), formula 2 the duration (Poisoned, Bleeding, Burn, Paralyze, Sleep,
     /// Stun, Slow), the split the attributes' own tips state. A duration scaled to nothing does not land.
     /// </summary>
@@ -36,13 +37,14 @@ public sealed partial class CombatService
         duration = (int)(GameData.Number(tuple[2]) ?? 0);
         double chance = GameData.Number(tuple[1]) ?? 0;
         if (id <= 0) return false;
-        if (BuffRuleTables.For(_data).TagsByBuff.TryGetValue(id, out var tags))
+        var rules = BuffRuleTables.For(_data);
+        if (rules.TagsByBuff.TryGetValue(id, out var tags))
         {
             double lasting = 1;
             foreach (var tag in tags)
             {
-                double factor = BuffRuleTables.TagFactor(TagAttribute(sourcePlayer, sourceUnit, tag.AttackAttr),
-                    TagAttribute(targetPlayer, targetUnit, tag.DefenseAttr));
+                double factor = rules.TagFactor(TagAttribute(sourcePlayer, sourceUnit, tag.AttackAttr),
+                    TagAttribute(targetPlayer, targetUnit, tag.DefenseAttr), tag.Formula);
                 if (tag.Formula == 1) chance *= factor;
                 else lasting *= factor;
             }
@@ -101,9 +103,9 @@ public sealed partial class CombatService
 
     /// <summary>One tick: the applier's ATK or MATK x _kData1 through the defender's DEF/MDEF and the buff's element
     /// (the same BaseDamage a skill hit uses), times the buff's piles (Poisoned stacks to 6). (inferred) No hit, float
-    /// or critical roll: the descriptions give a fixed share of the applier's damage.</summary>
+    /// or critical roll: the descriptions give a fixed share of the applier's damage. A tick is no attack, so Bonus ATK and DEF stay out.</summary>
     private long PeriodicAmount(Fighter attacker, Fighter defender, BuffRuleTables.PeriodicRule rule, int piles) =>
-        Math.Max(1, (long)Math.Round(Math.Max(0, BaseDamage(attacker, defender, rule.Row, 0, out _)) * Math.Max(1, piles)));
+        Math.Max(1, (long)Math.Round(Math.Max(0, BaseDamage(attacker, defender, rule.Row, 0, out _, attack: false)) * Math.Max(1, piles)));
 
     /// <summary>A tick on a player: the protected HP transition (shields, lethal prevention) every hit takes, one
     /// 31101 from the applier without a skill (skillId 0, showPoint 0: the number shows, no hit effect) and the HP.</summary>
@@ -117,7 +119,7 @@ public sealed partial class CombatService
                 && GameData.Int(protection, "_iBuffID") == 15011)) return;
         long scene = p.WorldScene, generation = p.SceneGeneration;
         var stats = _character.Stats(p);
-        var defender = new Fighter(0, 0, 0, 0, p.Progress.Level, 1) { Def = stats[105], Mdef = stats[106] };
+        var defender = new Fighter(0, 0, 0, 0, p.Progress.Level, ArmorElement(p)) { Def = stats[105], Mdef = stats[106], Attributes = PlayerAttributes(p, stats), Race = PlayerRace, Size = PlayerSize };
         var rule = effect.Rule;
         long damage = PeriodicAmount(attacker, defender, rule, buff.PileCount);
         var committed = await CommitPlayerDamageAsync(p, damage, rule.Row,
@@ -130,7 +132,7 @@ public sealed partial class CombatService
             await ToPlayerAndViewersAsync(p, SkillHit, new SkillHitInfo
             {
                 SrcID = effect.Source!.Uid, SessionId = ++_sessionIds, SrcElement = rule.Element,
-                Dsts = { new DamageInfo { DstID = role.Id, Damage = damage, SheildDamage = shieldDamage, DstElement = 1, IsDead = hp == 0 } },
+                Dsts = { new DamageInfo { DstID = role.Id, Damage = damage, SheildDamage = shieldDamage, DstElement = ArmorElement(p), IsDead = hp == 0 } },
             });
             await _character.SetHpSpAsync(p, null, null);
             if (effect.Source.Player is { } applier && applier.Role?.Id == effect.Source.Uid)

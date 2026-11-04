@@ -386,7 +386,10 @@ public sealed partial class PetService
             if (skip is { } status) next.SkipAnim = status == 1;
             else next.OnOpenUIRoomLv = next.IncubationLv;
             await SaveAsync(s, next);
-            await SyncAsync(s);
+            // A bar that is full when the panel opens (it filled while the step was unaffordable, or before rooms
+            // levelled themselves) takes its step now; OnOpenUIRoomLv stays behind so the panel shows the new level (inferred).
+            if (skip == null && await AutoRoomLevelAsync(s)) await ChangedAsync(s, items: true);
+            else await SyncAsync(s);
         }
         if (skip != null) await s.SendGameAsync(SetSkipAnim, new PetSetSkipAnimRes { Result = code });
         else await s.SendGameAsync(OpenRoom, new NullArg()); // This protocol has no result field; a closed gate is a no-op.

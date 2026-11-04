@@ -90,6 +90,8 @@ public sealed partial class GuildService
     internal ReservationKey[] OwnGuildKeys(GameSession s) => GuildKeys(s, s.Role?.Id, [], [], false, false);
 
     public Task CreateAsync(GameSession s, GuildCreateReq req) => RunGuildAsync(s, [], [], () => CreateCoreAsync(s, req), characterGate: true);
+    /// <summary>The operator's guild: free and Normal at once whatever the host's GuildFounding.</summary>
+    internal Task CreateInstantAsync(GameSession s, GuildCreateReq req) => RunGuildAsync(s, [], [], () => CreateCoreAsync(s, req, instant: true), characterGate: true);
     public Task ApplyAsync(GameSession s, GuildEnterApplyReq req) => RunGuildAsync(s, req.GuildIds, [], () => ApplyCoreAsync(s, req), true);
     public Task ApplyOpeAsync(GameSession s, GuildEnterApplyOpeReq req) => RunGuildAsync(s, [], req.PlayerIds, () => ApplyOpeCoreAsync(s, req), true);
     public Task InviteAsync(GameSession s, GuildInviteReq req) => RunGuildAsync(s, [], req.TarPlayerID, () => InviteCoreAsync(s, req));
@@ -194,7 +196,8 @@ public sealed partial class GuildService
     /// Shared by disbanding and by a merge, where only the members who stay behind lose it (GuildService.Merge). Returns the
     /// economy envelope, which the caller attaches last (it freezes the transaction).
     /// </summary>
-    private EconomyEnvelope EnlistDisband(GuildStore.State guild, RoleItemPlanBuilder transaction, IEnumerable<long> clearViews, long actorId)
+    private EconomyEnvelope EnlistDisband(GuildStore.State guild, RoleItemPlanBuilder transaction, IEnumerable<long> clearViews, long actorId,
+        EconomyEffect? refund = null)
     {
         var market = store.LoadMarket();
         long escrow = market.Stalls.Where(stall => stall.GuildId == guild.Id).Sum(stall => stall.RemainCount);
@@ -222,6 +225,7 @@ public sealed partial class GuildService
             effects.Add(new(new(EconomyAssetKind.GuildResource, asset), owner, EconomyCompartment.Recovery,
                 count, EconomyLegKind.Transfer, EconomyReason.GuildResourceTransfer, (int)asset));
         }
+        if (refund != null) effects.Add(refund);
         return new EconomyEnvelope(Guid.NewGuid().ToString("N"), actor.Account, actor.Id,
             "guild-disband", "guild:" + guild.Id, "guild-disband:" + guild.Id, NowMs(), effects, []);
     }

@@ -5,6 +5,7 @@ using Google.Protobuf;
 using Romsg;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 
 namespace Ro3Emu.Server.Game;
 
@@ -39,8 +40,8 @@ public sealed class AchievementService : IGameTicker
         CAffection = 106016, CTavernQuest = 106007, CTavernStar = 106008, CFashionLevel = 303001, CAppearance = 303002,
         CAppearanceCount = 303003, CJobRank = 101019, CLoginDays = 101011;
 
-    /// <summary>No table (fashion level) or an unresolved meaning (§5, §10.5).</summary>
-    private static readonly HashSet<long> BlockedConditions = [CFashionLevel, CAppraiseRare, CJobTalent];
+    /// <summary>An unresolved meaning (§5, §10.5).</summary>
+    private static readonly HashSet<long> BlockedConditions = [CAppraiseRare, CJobTalent];
 
     /// <summary>Event counters: no history, the slot is the count since the feature exists (spec §5 "E"). 106007
     /// TaskFinishRepeated [task, n] counts deliveries of the task (the Tavern's daily quest, <see cref="OnTaskCompletions"/>).</summary>
@@ -78,6 +79,8 @@ public sealed class AchievementService : IGameTicker
         public Dictionary<long, Row> Rows { get; } = [];
         /// <summary>0 = AchievementLevel (global), 100-105 = AchievementType rows of the type, sorted by _iLevel.</summary>
         public Dictionary<int, Tier[]> Tiers { get; } = [];
+        /// <summary>The Wardrobe's Fashion Rating levels (GenericStageRewardsConfig type 3), sorted by _iScore.</summary>
+        public (long Score, long Level)[] FashionLevels { get; set; } = [];
     }
 
     private readonly GameData _data;
@@ -194,6 +197,8 @@ public sealed class AchievementService : IGameTicker
                 catalog.Tiers[group.Key] = [.. group.Select(r =>
                         new Tier((int)GameData.Int(r, "_iLevel"), GameData.Int(r, "_iPoint"), GameData.Int(r, "_iAward")))
                     .OrderBy(t => t.Level)];
+        catalog.FashionLevels = [.. GenericStageRewardsConfig.All(_data).Where(r => r.Type == DailyActivityService.FashionStage)
+            .Select(r => (r.Score, r.Level)).OrderBy(l => l.Score)];
         int blockedCount = catalog.Rows.Values.Count(r => r.Blocked);
         _log.LogInformation("Achievements: {Rows} rows, {Blocked} blocked, {Types} level tables", catalog.Rows.Count, blockedCount, catalog.Tiers.Count);
         return catalog;
@@ -377,6 +382,8 @@ public sealed class AchievementService : IGameTicker
                     key => _data.Row("WardRobeConfig", key) is { } w ? GameData.Int(w, "_iType") : -1)));
             case CTavernStar: // [n]: Star Power received from Tavern gifts (TavernService, 5043 popularity)
                 return s.Tavern?.Popularity;
+            case CFashionLevel: // [level]: the Wardrobe's Fashion Rating level
+                return s.Wardrobe == null ? null : FashionLevel(WardrobeService.FashionScore(_data, s.Wardrobe));
             case CJobRank: // [rank]: JobConfig._iJobRank >= p1
                 return s.Progress == null ? null
                     : _data.Row("JobConfig", s.Progress.Career) is { } job && GameData.Int(job, "_iJobRank") >= t[1] ? r : 0;
@@ -388,6 +395,12 @@ public sealed class AchievementService : IGameTicker
     private bool CardOf(int entry, long type, long subtype) => Item(entry) is var item && item.Type == type && item.SubType == subtype;
 
     private long PetQuality(int pet) => _petQuality.GetOrAdd(pet, id => _data.Row("PetBaseConfig", id) is { } row ? GameData.Int(row, "_iQuality") : -1);
+
+    /// <summary>The highest _iLevel whose _iScore the fashion score reaches, the level the Wardrobe's level panel
+    /// shows and claims up to (UI_Sys_WardrobeLevelPanelCtrl, see DailyActivityService.StageError). That 303001 reads
+    /// this level is inferred from its text, "Reach Wardrobe Fashion Rating Lv. @{1}".</summary>
+    private long FashionLevel(long score) =>
+        Rows().FashionLevels.Where(l => l.Score <= score).Select(l => l.Level).DefaultIfEmpty(0).Max();
 
     /// <summary>LC_InteractCondition operator table (lua :313-356): 1 ==, 2 ~=, 3 &gt;, 4 &gt;=, 5 &lt;, 6 &lt;=.</summary>
     private static bool Compare(long op, long value, long param) => op switch

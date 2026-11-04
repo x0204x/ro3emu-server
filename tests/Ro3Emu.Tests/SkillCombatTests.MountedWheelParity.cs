@@ -42,8 +42,8 @@ public sealed partial class SkillCombatTests
             var savedShape = skills.Build(source);
             Assert.Equal(walkingAttack, savedShape.CurrentAtkSkillId);
             Assert.Equal(walkingAttack, savedShape.OriginSkillWheel.AtkSkillId);
-            await skills.RideChangedAsync(source);
-            Assert.Equal(mountedAttack == walkingAttack ? 0 : mountedAttack, source.WheelMountAttack);
+            await skills.AttackInputChangedAsync(source);
+            Assert.Equal(mountedAttack, source.WheelAttack);
             Assert.Equal(originalPlan, source.SkillPlans!.ToByteArray());
         });
         if (mountedAttack == walkingAttack) return;
@@ -57,7 +57,7 @@ public sealed partial class SkillCombatTests
         {
             using var held = await CharacterService.Lock(source);
             source.Mounts!.MountIds[2].IsRiding = false;
-            await skills.RideChangedAsync(source);
+            await skills.AttackInputChangedAsync(source);
             Assert.Equal(walkingAttack, skills.NormalAttack(source));
         });
         var walking = await Next(bot, SkillService.SkillDataSync, DBSkillDataIncrement.Parser,

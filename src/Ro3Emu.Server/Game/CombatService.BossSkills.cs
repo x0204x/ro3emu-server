@@ -30,8 +30,32 @@ public sealed partial class CombatService
     }
 
     private bool BossCastCurrent(MonsterUnit boss, long serial) =>
-        !boss.Dead && !boss.Removed && boss.Hp > 0 && !_buffs.UnitActionBlocked(boss, ForbiddenState.CastSkill)
+        !boss.Dead && !boss.Removed && boss.Hp > 0 && _world.Map(boss.WorldScene).Contains(boss)
+            && !_buffs.UnitActionBlocked(boss, ForbiddenState.CastSkill)
             && boss.BossSkills is { } rt && rt.CastSerial == serial;
+
+    /// <summary>A boss's ground warnings. EffectData holds m_kWarningRange on 575 effects, 512 of them in no show's m_kShows, and the client draws them from an effect message
+    /// (LC_PerformEffect_Mgr), so only the server can start those. Each of this skill's (show * 100 up) ends at its first strike: the timing and the target point are (inferred).</summary>
+    private void BossGroundWarnings(MonsterUnit boss, BossSkill skill, long serial, Vec3 at, long targetId, int chant)
+    {
+        if (skill.HitMs.Length == 0) return;
+        long show = new Data.Config.SkillConfig(skill.Row).ScriptShow;
+        var effects = _data.SkillTemplateTable("Lua_Config_EffectData");
+        var shown = _data.SkillTemplate(show) is { } template ? template.GetRawText() : "";
+        double firstStrike = Math.Max(0, skill.HitMs[0] + chant - skill.ChantMs);
+        for (long id = show * 100; id < show * 100 + 100; id++)
+        {
+            if (!effects.TryGetValue(id.ToString(System.Globalization.CultureInfo.InvariantCulture), out var effect) || Data.Config.SkillEffectData.WarningSeconds(effect) is not { } seconds
+                || shown.Contains(id.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal)) continue;
+            int warning = (int)id;
+            var point = at.Clone();
+            ScheduleRuntime(boss.WorldScene, TimeSpan.FromMilliseconds(Math.Max(0, firstStrike - seconds * 1000)), () => !BossCastCurrent(boss, serial) ? Task.CompletedTask
+                : _world.ToUnitViewersAsync(boss, SkillEffect, new SkillEffectDisplayNotify
+                {
+                    SourceId = boss.Uid, MasterId = boss.Uid, TargetId = targetId, EffectId = warning, EffectType = DisplayGfx, TargetPos = point, SkillId = skill.Id,
+                }));
+        }
+    }
 
     private async Task CastBossSkillAsync(MonsterUnit boss, GameSession? player, TowerPetUnit? pet, BossSkill skill, long serial)
     {
@@ -67,6 +91,7 @@ public sealed partial class CombatService
         if (!skill.Once && skill.CdMs > 0) await BossCooldownStartedAsync(boss, skill.Id, now + skill.CdMs);
         await FightingAsync(boss);
         await StoryBossSkillStartedAsync(boss, skill, serial, origin);
+        BossGroundWarnings(boss, skill, serial, hasTarget ? targetPos : origin, targetId, chant);
         int show = HitEffect(new SkillConfig(skill.Row).ScriptShow);
         for (int i = 0; i < skill.HitMs.Length; i++)
         {

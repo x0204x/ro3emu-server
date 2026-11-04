@@ -1,3 +1,4 @@
 {
-  "9701": { "_iID": 9701, "_iClassID": 9701, "_iShopType": 3, "_iShopName": [ 990000030 ] }
+  "9701": { "_iID": 9701, "_iClassID": 9701, "_iShopType": 3, "_iShopName": [ 990000030 ] },
+  "9001": { "_iID": 9001, "_iClassID": 900, "_iShopId": 900, "_iShopType": 2, "_iFunctionId": 0, "_kMultiverseArray": [0] }
 }

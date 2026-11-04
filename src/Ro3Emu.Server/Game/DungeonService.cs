@@ -98,6 +98,7 @@ public sealed partial class DungeonService
         this._world = world;
         this._vehicles = vehicles;
         vehicles.SceneActorSeatEnded = AntStorySeatEndedAsync;
+        scene.WalkOnRide = vehicles.IsSeatedOnSceneActor;
         gm.Register("actors", "[npcId | walk <x> <z> | use] (scripted scene test aid: the step's scene actors, jump beside one, arrive at x z as a walk would, or complete the step server-side)", ActorsGmAsync);
         WireRaidTrials(combat, gm);
         teams.MultiDungeonInfo = TeamDungeonInfo;
@@ -130,6 +131,9 @@ public sealed partial class DungeonService
 
     public sealed class Attempt
     {
+        /// <summary>Who sits on a scene actor now (a ride, DungeonService.Ride), with the seat's token.</summary>
+        internal Dictionary<GameSession, long> Riders { get; } = [];
+
         public required InstanceService.Room Room { get; init; }
         public required DungeonCatalog.Plan Plan { get; init; }
         public required long Leader { get; init; }
@@ -189,6 +193,8 @@ public sealed partial class DungeonService
         public bool Spawning { get; set; }
         /// <summary>The current scripted step got one of its completing client events (DungeonService.Scripted).</summary>
         public bool StepDone { get; set; }
+        /// <summary>The wave whose scripted step was completed, so its counter reads full and the next one's does not.</summary>
+        public int GoalFullWave { get; set; } = -1;
         /// <summary>A Realm of the Gods raid waits in its preparation phase (DungeonService.RealmOfGods).</summary>
         public bool Preparing { get; set; }
         /// <summary>The boss's Sacred Blessing level (TenGameplayBuffConfig row) active for this run, fixed at its start.</summary>
@@ -539,8 +545,10 @@ public sealed partial class DungeonService
         var v = new DungeonVar { VarId = 10003 };
         if (Step(a) is { } step && size == 0)
         {
-            // A scripted step: its configured counter, or the events an "all" step has seen (inferred).
-            v.Vi64.Add(step.All ? [a.StepSeen.Count, step.Complete.Count] : [step.Goal.Done, step.Goal.Total]);
+            // A scripted step: its configured counter, or the events an "all" step has seen (inferred). A step that was
+            // completed reads full, or the tracker keeps "Open the treasured chest (0/1)" until the scene ends.
+            bool completed = a.GoalFullWave == a.Wave;
+            v.Vi64.Add(step.All ? [a.StepSeen.Count, step.Complete.Count] : [completed ? step.Goal.Total : step.Goal.Done, step.Goal.Total]);
             return v;
         }
         v.Vi64.Add([Math.Clamp(a.Killed.Count - a.WaveBase, 0, size), size]);
@@ -651,7 +659,7 @@ public sealed partial class DungeonService
             var waveTemplate = AirshipWaveTemplate(a, spawn.NpcId);
             var monster = await _instances.SpawnAsync(a.Room, spawn.NpcId,
                 AirshipStorySpawnPoint(a, spawn.NpcId, spawn.Point, a.Spawned - a.WaveBase),
-                customTemplate: waveTemplate, grounded: AirshipStorySpawnGrounded(a));
+                customTemplate: waveTemplate, grounded: spawn.Route == null && AirshipStorySpawnGrounded(a));
             if (a.Settled || a.Room.Closed)
             {
                 a.Spawning = false;
@@ -661,6 +669,11 @@ public sealed partial class DungeonService
             if (monster == null) { a.Spawning = false; await SettleAsync(a, false); return; }
             a.Spawned++;
             if (StartAirshipShip(a, monster, a.Spawned - a.WaveBase - 1)) continue;
+            if (spawn.Route is { } route)
+            {
+                await FlyAsync(a, monster, route);
+                continue;
+            }
             // Multi-bosses retain their AI instead of being ordered to attack on scene load. In Culvert the
             // born point 15 is 15m from monster point 19; NPC 4300000/1 uses non-roaming AI 25000001 and
             // RaidFive_Boss00[easy], whose server script is absent. Waiting for a player hit/taunt is an
@@ -1054,7 +1067,8 @@ public sealed partial class DungeonService
                         await CompleteAntStoryAsync(a);
                         ScheduleCapturedStoryReturn(s, a);
                     }
-                    else if (success && LeavesAfterClear(a)) ScheduleLeaveAfterClear(s, a);
+                    else if (success && (LeavesAfterClear(a) || _catalog.ScriptedLeavesAfterClear(a.Plan.SceneEntry)))
+                        ScheduleLeaveAfterClear(s, a);
                     else if (success && ContinuationOf(a.Plan.SceneEntry) is long nextScene and not 0) ScheduleContinuation(s, a, nextScene);
                     if (success && a.Plan.Multi != null)
                     {

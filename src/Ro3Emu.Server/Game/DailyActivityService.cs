@@ -24,7 +24,7 @@ public sealed partial class DailyActivityService : IGameTicker
 {
     public const uint ActivitySync = 5004, StageSync = 5059, RingAccept = 43504, StageGain = 31178, StageBatchGain = 31175;
     private const int Liveness = 5, RingActivity = 3302, TodoFunction = 25, RingFunction = 5902;
-    private const int FashionStage = 3, LibraryStage = 4, ChickenStage = 6, TodoStage = 7, ChickenScore = 7; // GenericStageRewardsConfig._iType; item 7
+    internal const int FashionStage = 3, LibraryStage = 4, ChickenStage = 6, TodoStage = 7, ChickenScore = 7; // GenericStageRewardsConfig._iType; item 7
     private const int PowerStage = 1, TreasureStage = 8, PowerFunction = 48; // enum_StageRewardType BecomeStronger / SeasonTreasure
     private const int RingRuns = 1; // PublicParamConfig.RunRingTaskRefreshCount (inferred as one accept per reset).
     private static readonly int[] RingStarts = [3001, 3011, 3021];

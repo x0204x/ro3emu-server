@@ -105,6 +105,41 @@ public sealed class NavGrid
     }
 
     /// <summary>
+    /// The walkable layers reachable on foot from the seeds (inferred): a flood fill over the 8 neighbouring cells,
+    /// stepping onto a walkable layer within <see cref="WalkHeightTolerance"/> of the current one, as <see cref="CanWalk"/>
+    /// follows heights. A seed that stands on no walkable layer adds nothing.
+    /// </summary>
+    public NavReach Reachable(IEnumerable<(float X, float Y, float Z)> seeds)
+    {
+        var reached = new HashSet<long>();
+        var open = new Queue<(int X, int Z, float Height)>();
+        foreach (var (x, y, z) in seeds)
+            if (Layer(x, y, z) is { } seed && reached.Add(NavReach.Key(seed.X, seed.Z, seed.Index, Width)))
+                open.Enqueue((seed.X, seed.Z, seed.Height));
+        while (open.TryDequeue(out var at))
+            for (int dx = -1; dx <= 1; dx++)
+                for (int dz = -1; dz <= 1; dz++)
+                    if (Layer(at.X + dx + 0.5f, at.Height, at.Z + dz + 0.5f) is { } next
+                        && reached.Add(NavReach.Key(next.X, next.Z, next.Index, Width)))
+                        open.Enqueue((next.X, next.Z, next.Height));
+        return new NavReach(this, reached);
+    }
+
+    /// <summary>The walkable layer of cell floor(x), floor(z) nearest to y within <see cref="WalkHeightTolerance"/>.</summary>
+    internal (int X, int Z, int Index, float Height)? Layer(float x, float y, float z)
+    {
+        (int X, int Z, int Index, float Height)? best = null;
+        int index = 0;
+        foreach (var (walkable, h) in Layers(x, z))
+        {
+            if (walkable && MathF.Abs(h - y) <= WalkHeightTolerance && (best == null || MathF.Abs(h - y) < MathF.Abs(best.Value.Height - y)))
+                best = ((int)MathF.Floor(x), (int)MathF.Floor(z), index, h);
+            index++;
+        }
+        return best;
+    }
+
+    /// <summary>
     /// Whether the straight 2D segment from a to b crosses only walkable cells (sampled every half metre, heights
     /// followed cell by cell like the client's direct-walk check).
     /// </summary>
@@ -368,4 +403,16 @@ public sealed class NavGrid
         }
         return legs;
     }
+}
+
+/// <summary>A set of walkable layers of one <see cref="NavGrid"/>, from <see cref="NavGrid.Reachable"/>.</summary>
+public sealed class NavReach(NavGrid nav, HashSet<long> layers)
+{
+    public bool IsEmpty => layers.Count == 0;
+
+    /// <summary>Whether the walkable layer under (x, y, z) is in the set.</summary>
+    public bool Contains(float x, float y, float z) =>
+        nav.Layer(x, y, z) is { } at && layers.Contains(Key(at.X, at.Z, at.Index, nav.Width));
+
+    internal static long Key(int x, int z, int index, int width) => ((long)z * width + x) << 8 | (uint)index;
 }

@@ -83,6 +83,27 @@ public sealed class WildAfkTests : IAsyncLifetime
         await Gm(bot, "!quest done 10105090");
     }
 
+    /// <summary>A player who stopped Bonus Time can turn it back on in town: the switch already stays on when they walk from a
+    /// field into town. It waits there suspended and consumes nothing.</summary>
+    [ClientDataFact]
+    public async Task BonusTimeStoppedOnAFieldCanBeTurnedBackOnInTown()
+    {
+        await using var bot = await InWorld();
+        await Eligible(bot);
+        await Warp(bot, 10111);
+        await bot.SendGameAsync(WildAfkService.Pause, new PauseHighMultiplierTimeReq());
+        Assert.Equal(0, (await Next(bot, WildAfkService.Pause, PauseHighMultiplierTimeRsp.Parser)).Result);
+        await Warp(bot, 10100); // MapConfig._iSceneType=0, Prontera
+        await OnOwnedLoop(bot, "AFK toggle cooldown fixture", s =>
+        {
+            s.WildAfk!.LastToggleMs = 0;
+            return Task.CompletedTask;
+        });
+        await bot.SendGameAsync(WildAfkService.Start, new StartHighMultiplierTimeReq());
+        Assert.Equal(0, (await Next(bot, WildAfkService.Start, StartHighMultiplierTimeRsp.Parser)).Result);
+        Assert.True(await State(bot, s => s.WildAfk!.Info.IsHighMagnification && s.WildAfk.Info.IsSuspended));
+    }
+
     private async Task Warp(BotClient bot, int scene)
     {
         await Gm(bot, $"!warp {scene}");
@@ -180,9 +201,9 @@ public sealed class WildAfkTests : IAsyncLifetime
         await bot.SendGameAsync(WildAfkService.Collection, new SetMonsterCollectionReq { MonsterId = 5000001, IsAdd = true });
         Assert.Equal(ErrorCodes.FeatureUnavailable, (await Next(bot, WildAfkService.Collection, SetMonsterCollectionRsp.Parser)).Result);
         await Eligible(bot);
-        await Warp(bot, 10141); // MapConfig._iSceneType=6, sc_iz_dun01_001_sceneeditor
+        await Warp(bot, 10141); // MapConfig._iSceneType=6, a cave: Bonus Time runs there too
         await bot.SendGameAsync(WildAfkService.Start, new StartHighMultiplierTimeReq());
-        Assert.Equal(ErrorCodes.AfkDungeon, (await Next(bot, WildAfkService.Start, StartHighMultiplierTimeRsp.Parser)).Result);
+        Assert.NotEqual(ErrorCodes.AfkDungeon, (await Next(bot, WildAfkService.Start, StartHighMultiplierTimeRsp.Parser)).Result);
         await bot.SendGameAsync(WildAfkService.OfflineReward, new ReceiveOfflineRewardReq());
         Assert.Equal(ErrorCodes.AfkNoSummary, (await Next(bot, WildAfkService.OfflineReward, ReceiveOfflineRewardRsp.Parser)).Result);
         Assert.Equal(3600, await Query(bot));

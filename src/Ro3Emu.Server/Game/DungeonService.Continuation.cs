@@ -14,10 +14,13 @@ public sealed partial class DungeonService
     /// 1000201 (the passage below the vortex). 0: none. The client only skips the loading screen; how the original server
     /// moved the player on is not shipped, so entering the next scene after the clear, and the delay, are (inferred).
     /// Before, a player who reached the bottom of the passage stayed in the dark with nothing happening until they used
-    /// the quest tracker.
+    /// the quest tracker, which a dungeon scene does not offer for a quest without its _iDungeonID
+    /// (LC_TaskHelper.CheckShowMainTask). The next quest of 1000301, 10104310, tracks action 3000 into 1000401 though DungeonConfig
+    /// names no loading link there, so the scripted scene names it (continuesTo, inferred).
     /// </summary>
     private long ContinuationOf(long scene) => DungeonConfig.All(_data)
-        .Where(d => d.SameDupLoadingType == 2 && d.SameDupLoadingTypeParam.Contains(scene)).Select(d => d.Id).FirstOrDefault();
+        .Where(d => d.SameDupLoadingType == 2 && d.SameDupLoadingTypeParam.Contains(scene)).Select(d => d.Id).FirstOrDefault()
+        is var next and not 0 ? next : _catalog.ScriptedContinuation(scene);
 
     private void ScheduleContinuation(GameSession s, Attempt a, long next)
     {

@@ -234,6 +234,8 @@ public sealed partial class CharacterService
         await SyncItemsAsync(session);
         await SyncAsync(session, EquipSync, BuildEquip(session));
 
+        // The client overwrites its resonance levels from this reply (LC_DAL_Equipment), and the 5007 increment does not restore
+        // them: left out, the panel showed level 0 at (7/7) until a relog, though the stats kept counting.
         await session.SendGameAsync(EquipItemOpr, new EquipItemOprResp
         {
             Result = 0,
@@ -241,6 +243,8 @@ public sealed partial class CharacterService
             Pos = (EquipGridType)grid,
             ItemGUID = item!.Guid,
             Item = ItemInfo(item),
+            RefineEffectLv = Resonance(session, "RefiningEffectTable"),
+            StrengthenEffectLv = Resonance(session, "StrengthenEffectTable"),
         });
         await EquipmentAppearanceChangedAsync(session);
         await CombatLoadoutChangedAsync(session);

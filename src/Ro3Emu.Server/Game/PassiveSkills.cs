@@ -18,6 +18,7 @@ namespace Ro3Emu.Server.Game;
 /// </summary>
 public sealed partial class PassiveSkills : IGameTicker
 {
+    private const int HolySpiritSurgeGroup = 14312;
     private const int DoubleHolyLight = 14311, Judex = 14309, EnchantBlade = 11313, EnergyCoat = 12003,
         EmergencyTreatment = 16303, SoulDrain = 12209, PreyOnTheWeak = 15316, PrayerOfGratitude = 14306,
         WoodSpiritsBlessing = 14307, Union = 11614, SoulExpansion = 12302, PsychokineticAstralBody = 12343, ElementControl = 12306;

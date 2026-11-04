@@ -38,6 +38,8 @@ public abstract class WorldUnit
     // An in-flight AOI enter must finish before removal publishes its leave.
     internal SemaphoreSlim PresentationGate { get; } = new(1, 1);
     internal bool Removed { get; set; }
+    /// <summary>Every player of its map shows it, however far (<see cref="World.ShowFromAfarAsync"/>).</summary>
+    internal bool SeenFromAfar { get; set; }
 
     /// <summary>The entity a client creates for it (31037 base).</summary>
     public abstract EntityBase Entity();
@@ -63,6 +65,11 @@ public sealed class MapInstance(long sceneEntry, World world) : IGameTicker
     // (as a list scan it was 13% of the loop's work at 500 players, stage G).
     private readonly HashSet<WorldUnit> _members = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<(int, int), List<WorldUnit>> _cells = [];
+    private readonly List<WorldUnit> _far = [];
+
+    /// <summary>The units every player of this map shows, however far (<see cref="WorldUnit.SeenFromAfar"/>).</summary>
+    internal IReadOnlyList<WorldUnit> Far => _far;
+    internal void AddFar(WorldUnit unit) => _far.Add(unit);
 
     public long SceneEntry => sceneEntry;
     public World World => world;
@@ -87,6 +94,7 @@ public sealed class MapInstance(long sceneEntry, World world) : IGameTicker
         _units.Remove(unit);
         _sceneWideUnits.Remove(unit);
         _members.Remove(unit);
+        if (unit.SeenFromAfar) _far.Remove(unit);
         if (_cells.TryGetValue(unit.Cell, out var list)) list.Remove(unit);
     }
 

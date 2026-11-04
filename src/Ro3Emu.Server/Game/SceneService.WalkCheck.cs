@@ -63,6 +63,8 @@ public sealed partial class SceneService
         float dx = to.X - from.X, dz = to.Z - from.Z, dist = MathF.Sqrt(dx * dx + dz * dz);
         if (dist <= StandStill) return null;
         spend = dist;
+        // The observed Ant ride retains its distance and air-wall gates. Other scripted rides follow a server-owned route.
+        if (WalkOnRide?.Invoke(s) == true && StoryMovementSpeed?.Invoke(s) == null) return null;
         double speed = StoryWalkSpeed(s), available = s.WalkAllowance.Available(now, speed);
         // G 的反向場景對所有單位使用 moveOnSurface（見 MovesOnSurface 的客戶端證據），
         // 徒步與下車後也不走地面導航格；速度仍取本人屬性，只有有效座位才有劇情速度。

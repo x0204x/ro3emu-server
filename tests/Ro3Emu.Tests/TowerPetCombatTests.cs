@@ -108,7 +108,7 @@ public sealed class TowerPetCombatTests : IAsyncLifetime
             x => x.EntityUuid == (ulong)pet.Uid && x.Property.Any(p => p.Idx == 2003 && p.Data == 218));
         var attack = await Next(bot, CombatService.SkillHit, SkillHitInfo.Parser,
             h => h.SrcID == pet.Uid && h.SkillId == 2354401 && h.Dsts.Any(d => d.Damage > 0));
-        Assert.All(attack.Dsts, d => Assert.InRange(d.Damage, 100, 300));
+        Assert.All(attack.Dsts, d => Assert.InRange(d.Damage, 40, 300)); // a level 12 pet against the floor's defense (CombatService.DefenseFactor)
         Assert.DoesNotContain(bot.Inbox.Snapshot().Where(e => e.IsGame(CombatService.SkillHit))
             .Select(e => SkillHitInfo.Parser.ParseFrom(e.Body)), h => h.SrcID == pet.Uid && h.SkillId == 2354301);
     }

@@ -123,6 +123,9 @@ public sealed class TowerShopTests : IAsyncLifetime
             Assert.Equal(before - bought.Price, items.Currency[1].All);
             Assert.Contains(items.PackInfo.Values,
                 p => p.Inc?.Items.Values.Any(i => i.All?.ItemEntry == TowerToken) == true);
+            // The card reads "Pet Egg x5" (_iIsShowCount 5): one purchase is five eggs.
+            var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role != null);
+            Assert.Equal(5, _app.Services.GetRequiredService<CharacterService>().CountOf(session, TowerToken));
 
             Assert.Equal(ErrorCodes.PurchaseLimit, (await Buy(alice, FirstOffer)).Result);
         }

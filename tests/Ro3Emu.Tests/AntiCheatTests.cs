@@ -17,8 +17,18 @@ public sealed class AntiCheatTests
     /// <summary>The fixture's Novice speed: the default 700 (7 m/s).</summary>
     private const double Speed = 7;
 
-    private static Task<SyntheticHost> StartAsync(Action<ServerOptions>? configure = null) =>
-        SyntheticHost.StartAsync(o => { o.WalkCheck = "enforce"; configure?.Invoke(o); });
+    private static Task<SyntheticHost> StartAsync(Action<ServerOptions>? configure = null, TimeProvider? clock = null) =>
+        SyntheticHost.StartAsync(o => { o.WalkCheck = "enforce"; configure?.Invoke(o); }, clock);
+
+    /// <summary>The system clock, moved forward by hand: the message budgets refill on its timestamp.</summary>
+    private sealed class SteppedClock : TimeProvider
+    {
+        private long _offsetTicks;
+        public void Advance(TimeSpan by) => Interlocked.Add(ref _offsetTicks, by.Ticks);
+        public override DateTimeOffset GetUtcNow() => base.GetUtcNow().AddTicks(Interlocked.Read(ref _offsetTicks));
+        public override long GetTimestamp() =>
+            base.GetTimestamp() + (long)(Interlocked.Read(ref _offsetTicks) * (TimestampFrequency / (double)TimeSpan.TicksPerSecond));
+    }
 
     private static GameSession Session(SyntheticHost host, BotClient bot) =>
         host.Service<SessionRegistry>().All().Single(s => s.Account == bot.Account && s.Role != null);
@@ -235,6 +245,55 @@ public sealed class AntiCheatTests
         Assert.Equal(ErrorCodes.Parameter, (await bot.CreateRoleAsync("Alt7")).Result);
         Assert.Equal(6, (await host.Service<Ro3Emu.Server.Accounts.RoleStore>().ForAccountAsync("collector")).Count);
         Assert.Equal(1, Refusals(host, bot, CheatMonitor.RoleLimit));
+    }
+
+    [Fact]
+    public void ARateBucketRefillsAtItsRateWhileItRefuses()
+    {
+        var bucket = new RateBucket(0.5, 5);
+        for (int i = 0; i < 5; i++) Assert.True(bucket.TryTake(1_000));
+        Assert.False(bucket.TryTake(1_000));
+        Assert.False(bucket.TryTake(2_000)); // half a token
+        Assert.True(bucket.TryTake(3_000));  // one token after 2 s; the refused attempt in between kept the refill
+        Assert.False(bucket.TryTake(3_000));
+        for (int i = 0; i < 5; i++) Assert.True(bucket.TryTake(60_000));
+        Assert.False(bucket.TryTake(60_000)); // refilled up to the burst, not past it
+    }
+
+    [Fact]
+    public async Task SixRolesAreCreatedInARowOnOneConnection()
+    {
+        await using var host = await StartAsync();
+        await using var bot = host.NewBot();
+        await bot.LoginAsync("sixslots", "pw");
+        await bot.EnterGateAsync();
+        for (int i = 1; i <= 6; i++) Assert.Equal(0, (await bot.CreateRoleAsync("Six" + i)).Result);
+        Assert.Equal(0, Refusals(host, bot, CheatMonitor.Flood));
+    }
+
+    [Fact]
+    public async Task ARoleCreateOverItsBudgetIsAnsweredAndTheBudgetRefills()
+    {
+        var clock = new SteppedClock();
+        await using var host = await StartAsync(o => o.AntiCheat.MessageLimits["1006"] = "0.5/1", clock);
+        await using var bot = host.NewBot();
+        await bot.LoginAsync("hasty", "pw");
+        await bot.EnterGateAsync();
+        Assert.Equal(0, (await bot.CreateRoleAsync("Hasty1")).Result);
+        Assert.Equal(ErrorCodes.TooManyRequests, (await bot.CreateRoleAsync("Hasty2")).Result);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        Assert.Equal(0, (await bot.CreateRoleAsync("Hasty2")).Result);
+        Assert.Equal(1, Refusals(host, bot, CheatMonitor.Flood));
+    }
+
+    [Fact]
+    public async Task ARoleSelectOverItsBudgetIsAnswered()
+    {
+        await using var host = await StartAsync(o => o.AntiCheat.MessageLimits["1007"] = "0.5/1");
+        await using var bot = await host.InWorldAsync("Switcher");
+        await bot.SwitchRoleAsync();
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => bot.EnterWorldAsync(bot.Roles.Single().Id));
+        Assert.Contains(ErrorCodes.TooManyRequests.ToString(System.Globalization.CultureInfo.InvariantCulture), refused.Message);
     }
 
     // ---------------------------------------------------------------- chat

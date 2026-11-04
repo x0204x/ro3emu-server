@@ -184,7 +184,6 @@ public sealed partial class CombatService
     private async Task GuardianTakenAsync(GameSession target, long damage)
     {
         if (damage <= 0 || target.Dead || target.SceneLoading) return;
-        await _buffs.BreakHitControlsAsync(target);
         await _buffs.ConsumeGuardianGroupAsync(target, GuardianGroup.CatVulnerability);
         foreach (var window in LiveGuardianWindows(target).Where(w => w.Kind is GuardianWindowKind.HealLowHp
             or GuardianWindowKind.DefenceOnHit or GuardianWindowKind.Stealth))

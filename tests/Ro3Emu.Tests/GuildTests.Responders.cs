@@ -8,6 +8,98 @@ namespace Ro3Emu.Tests;
 
 public sealed partial class GuildTests
 {
+    private const int Emperium = 1250714;
+
+    private async Task GiveEmperium(string account)
+    {
+        using var client = new HttpClient();
+        (await client.PostAsync($"{_http}/ro3emu/gm?account={account}", Operator.Command($"!item {Emperium} 1"))).EnsureSuccessStatusCode();
+    }
+
+    private MailService.Letter? FoundingLetter(Ro3Emu.Bot.BotClient bot, int template) =>
+        _app.Services.GetRequiredService<Ro3Emu.Server.Accounts.RoleStore>().LoadMailbox((long)bot.Self!.Uuid) is { } bytes
+            ? System.Text.Json.JsonSerializer.Deserialize<MailService.Mailbox>(bytes)!.Letters.FirstOrDefault(m => m.TemplateId == template)
+            : null;
+
+    // The create widget shows GuildCreateCostShow [Emperium, 1] and the client never checks it: the server refuses.
+    [ClientDataFact]
+    public async Task FoundingCostsAnEmperiumAndACancelledOneSendsItBack()
+    {
+        _app.Services.GetRequiredService<IOptions<ServerOptions>>().Value.GuildFounding = "responders";
+        await using var founder = await InWorld("Founder");
+        await Level("founder");
+        await founder.SendGameAsync(GuildService.Create, Create("Helpers"));
+        Assert.Equal(ErrorCodes.ItemsShort, (await Next(founder, GuildService.Create, GuildCreateResp.Parser)).Result);
+
+        await GiveEmperium("founder");
+        await founder.SendGameAsync(GuildService.Create, Create("Helpers"));
+        Assert.Equal(0, (await Next(founder, GuildService.Create, GuildCreateResp.Parser)).Result);
+        var pre = await Next(founder, GuildService.Full, GuildFullInfoNtf.Parser, x => x.Guid > 0);
+        Assert.Equal(GuildStatus.PreCreate, pre.Status);
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(x => x.Role?.Id == (long)founder.Self!.Uuid);
+        Assert.Equal(0, _app.Services.GetRequiredService<CharacterService>().CountOf(session, Emperium));
+
+        await founder.SendGameAsync(GuildService.CancelCreate, new GuildCancelCreateReq());
+        Assert.Equal(0, (await Next(founder, GuildService.CancelCreate, GuildCancleCreateResp.Parser)).Result);
+        Assert.Null(_app.Services.GetRequiredService<Ro3Emu.Server.Accounts.GuildStore>().Get(pre.Guid));
+        var letter = FoundingLetter(founder, 1018);
+        Assert.NotNull(letter);
+        var returned = Assert.Single(letter!.Attachments);
+        Assert.Equal((Emperium, 1), (returned.Entry, returned.Count));
+    }
+
+    [ClientDataFact]
+    public async Task AFoundingOutOfTimeSendsTheEmperiumBackAndAFormedOneKeepsIt()
+    {
+        var options = _app.Services.GetRequiredService<IOptions<ServerOptions>>().Value;
+        options.GuildFounding = "responders";
+        await using var founder = await InWorld("Founder");
+        await using var late = await InWorld("Late");
+        await using var anna = await InWorld("Anna");
+        await using var ben = await InWorld("Ben");
+        foreach (string name in new[] { "founder", "late", "anna", "ben" }) await Level(name);
+        await GiveEmperium("founder");
+        await GiveEmperium("late");
+        var store = _app.Services.GetRequiredService<Ro3Emu.Server.Accounts.GuildStore>();
+
+        await late.SendGameAsync(GuildService.Create, Create("Toolate"));
+        Assert.Equal(0, (await Next(late, GuildService.Create, GuildCreateResp.Parser)).Result);
+        long lateId = (await Next(late, GuildService.Full, GuildFullInfoNtf.Parser, x => x.Guid > 0)).Guid;
+        _clock.Freeze();
+        _clock.Advance(TimeSpan.FromSeconds(86401));
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(() => _app.Services.GetRequiredService<GuildService>().ReconcileAsync());
+        Assert.Null(store.Get(lateId));
+        Assert.Equal(Emperium, Assert.Single(FoundingLetter(late, 1018)!.Attachments).Entry);
+
+        var create = Create("Helpers");
+        create.AutoCreateHelper = true; // No approval: two responses form it.
+        await founder.SendGameAsync(GuildService.Create, create);
+        Assert.Equal(0, (await Next(founder, GuildService.Create, GuildCreateResp.Parser)).Result);
+        long id = (await Next(founder, GuildService.Full, GuildFullInfoNtf.Parser, x => x.Guid > 0)).Guid;
+        foreach (var helper in new[] { anna, ben })
+        {
+            await helper.SendGameAsync(GuildService.HelperOpe, new GuildCreateHelperOpeReq { GuildIds = { id } });
+            Assert.True(Assert.Single((await Next(helper, GuildService.HelperOpe, GuildCreateHelperOpeResp.Parser)).HelperResult).Success);
+        }
+        var formed = store.Get(id)!;
+        Assert.Equal((int)GuildStatus.Normal, formed.Status);
+        Assert.Equal(0, formed.FoundingItem);
+        Assert.NotNull(FoundingLetter(founder, 1017));
+        Assert.Null(FoundingLetter(founder, 1018));
+    }
+
+    [ClientDataFact]
+    public async Task AnInstantHostIgnoresTheToggle()
+    {
+        await using var founder = await InWorld("Founder");
+        await Level("founder");
+        var create = Create("Helpers");
+        create.AutoCreateHelper = true;
+        await founder.SendGameAsync(GuildService.Create, create);
+        Assert.Equal(0, (await Next(founder, GuildService.Create, GuildCreateResp.Parser)).Result);
+        Assert.Equal(GuildStatus.Normal, (await Next(founder, GuildService.Full, GuildFullInfoNtf.Parser, x => x.Guid > 0)).Status);
+    }
+
     [ClientDataFact]
     public async Task FounderApprovesResponsesAndInvitesUntilTheGuildForms()
     {
@@ -17,6 +109,7 @@ public sealed partial class GuildTests
         await using var ben = await InWorld("Ben");
         await using var cleo = await InWorld("Cleo");
         foreach (string name in new[] { "founder", "anna", "ben", "cleo" }) await Level(name);
+        await GiveEmperium("founder");
         long annaId = (long)anna.Self!.Uuid, benId = (long)ben.Self!.Uuid;
 
         // Without the toggle every guild is still founded through responders, each response needing approval.

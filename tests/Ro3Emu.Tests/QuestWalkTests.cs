@@ -201,7 +201,7 @@ public sealed class QuestWalkTests : IAsyncLifetime
             var me = sessions.All().Single(x => x.Role != null);
             var m = world.AllUnits().OfType<MonsterUnit>().Where(u => u.SceneEntry == scene && !u.Dead && npc(u.Template.NpcId))
                 .OrderBy(u => (u.X - me.Position.X) * (u.X - me.Position.X) + (u.Z - me.Position.Z) * (u.Z - me.Position.Z)).First();
-            return Task.FromResult((m, skills.NormalAttack(me)));
+            return Task.FromResult((m, skills.CurrentAttack(me))); // the row the held weapon gives, as the client sends
         });
         // Like the client: attack again only when the auto-attack stopped (a potion, a jump) and chase a target that
         // roamed out of reach. A new cast cancels the swing in progress, so attacking blindly on a timer starved the

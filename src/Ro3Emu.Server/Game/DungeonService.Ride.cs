@@ -11,21 +11,25 @@ namespace Ro3Emu.Server.Game;
 /// The actor a player used to complete a step walks a guide route of the scene
 /// editor (m_kGuidePoints) and the participants move with it, before the step's teleport and the next step. The client
 /// has no ride rule: the route and the scene's camera animation are data without a trigger, and the original's server
-/// script is not shipped. So (inferred) the carrier walks at its own UnitConfig._fSpeed, both it and the players are
-/// moved in short forced-position steps, and the camera animation is not played. The carrier stays where the route ends
-/// (only a scene's last step has a ride, so no later step shows it again).
+/// script is not shipped. So (inferred) the carrier walks the route leg by leg at its own UnitConfig._fSpeed as a monster
+/// walks, a seated player goes with it on its seat, a player who is not seated is moved in short forced-position steps,
+/// and the camera animation is not played. The carrier stays where the route ends (only a scene's last step has a ride,
+/// so no later step shows it again).
 /// </summary>
 public sealed partial class DungeonService
 {
     private const int RideTickMs = 100;
 
-    /// <summary>其他尚未取得實包的重建載乘暫用下車時間（inferred）；蟻穴Deniro不適用。</summary>
-    private const int SeatedRideMs = 2000;
+    /// <summary>(inferred) The carrier waits this long after seating a rider, while the client plays the seat's enter animation.</summary>
+    private const int RideStartDelayMs = 1500;
+
+    /// <summary>(inferred) The rider's client plays the seat's exit animation for this long after being put down.</summary>
+    private const int RideExitDelayMs = 2500;
 
     /// <summary>
-    /// An actor interaction that seats its user (NPCInteractConfig _iStatusID of a vehicle status)
-    /// puts the player in the actor's seat, the client's own gameplay state; the actor puts them down after
-    /// <see cref="SeatedRideMs"/>, or when they leave the scene, or at once through the client's exit button.
+    /// An actor interaction that seats its user (NPCInteractConfig _iStatusID of a vehicle status, the Deniro's 5300005)
+    /// puts the player in the actor's seat, the client's own gameplay state; the actor puts them down when its ride ends,
+    /// or when they leave the scene, or at once through the client's exit button.
     /// </summary>
     private async Task SeatRiderAsync(Attempt a, GameSession s, SceneActorUnit actor, int interaction)
     {
@@ -34,7 +38,14 @@ public sealed partial class DungeonService
         // Only the interaction the current step waits on seats anyone: the client may send any of an actor's interactions.
         if (!_vehicles.IsRide(interaction) || !StepWaitsOn(a, interaction)) return;
         long token = await _vehicles.SeatOnSceneActorAsync(s, actor.Uid, actor.NpcId, interaction);
-        if (token != 0) _loop.ScheduleLegacy(Paced(SeatedRideMs), () => _vehicles.PutDownFromSceneActorAsync(s, token), "dungeon rider put down");
+        if (token != 0) a.Riders[s] = token;
+    }
+
+    /// <summary>The ride is over: the actor puts its riders down.</summary>
+    private async Task PutDownRidersAsync(Attempt a)
+    {
+        foreach (var (s, token) in a.Riders.ToList()) await _vehicles.PutDownFromSceneActorAsync(s, token);
+        a.Riders.Clear();
     }
 
     /// <summary>Whether the running step is completed by this actor interaction, directly or by its dungeon message.</summary>
@@ -47,6 +58,9 @@ public sealed partial class DungeonService
     {
         /// <summary>Metres along the route the last tick moved the riders to; -1 before the first tick.</summary>
         public float Walked { get; set; } = -1;
+
+        /// <summary>The route leg the carrier was last told to walk, -1 before the first.</summary>
+        public int Leg { get; set; } = -1;
     }
 
     /// <summary>The carrier's walking speed in metres per second: UnitConfig._fSpeed (cm/s) of its NPC's _iUnitID, 0 if none.</summary>
@@ -80,6 +94,20 @@ public sealed partial class DungeonService
         return (path[0].X, path[0].Y, path[0].Z, 0);
     }
 
+    /// <summary>The route leg at <paramref name="metres"/>: its index and its two points.</summary>
+    internal static (int Leg, (float X, float Y, float Z) From, (float X, float Y, float Z) To) RideLeg(
+        IReadOnlyList<(float X, float Y, float Z)> path, float metres)
+    {
+        float left = Math.Max(0, metres);
+        for (int i = 1; i < path.Count; i++)
+        {
+            float segment = MonsterService.Distance(path[i - 1].X, path[i - 1].Z, path[i].X, path[i].Z);
+            if (left < segment || i == path.Count - 1) return (i - 1, path[i - 1], path[i]);
+            left -= segment;
+        }
+        return (0, path[0], path[0]);
+    }
+
     /// <summary>
     /// Starts the step's ride when it has one and the player used an actor that can carry (a route with at least two
     /// points, a positive speed). <paramref name="arrived"/> then runs when the route is walked; false means no ride
@@ -90,8 +118,10 @@ public sealed partial class DungeonService
         if (step.RideAfter == 0 || carrier == null || _catalog.GuidePath(a.Plan.SceneEntry, step.RideAfter) is not { } path) return false;
         float speed = RideSpeed(carrier), length = RideLength(path);
         if (speed <= 0 || length <= 0) return false;
-        var ride = new Ride(path, carrier, length, a.StepGeneration, MonsterService.NowMs, Paced((int)(length / speed * 1000)).TotalMilliseconds);
-        _loop.PostLegacy(() => RideTickAsync(a, ride, arrived), "dungeon ride");
+        TimeSpan delay = a.Riders.Count > 0 ? Paced(RideStartDelayMs) : TimeSpan.Zero;
+        var ride = new Ride(path, carrier, length, a.StepGeneration, MonsterService.NowMs + (long)delay.TotalMilliseconds,
+            Paced((int)(length / speed * 1000)).TotalMilliseconds);
+        _loop.ScheduleLegacy(delay, () => RideTickAsync(a, ride, arrived), "dungeon ride");
         return true;
     }
 
@@ -120,27 +150,69 @@ public sealed partial class DungeonService
         foreach (var corner in RideCorners(ride.Path, ride.Walked, walked)) await MoveRidersAsync(a, ride, corner);
         ride.Walked = walked;
         await MoveRidersAsync(a, ride, RideAt(ride.Path, walked));
-        if (done >= 1) await arrived();
+        await WalkLegAsync(a, ride, walked);
+        if (done >= 1)
+        {
+            // The step's end removes the carrier: not while a rider's client still plays the seat's exit animation, which reads
+            // the vehicle (LC_PassengerComponent._detachFromVehicle), or its next scene change stops at the loading screen.
+            bool seated = a.Riders.Count > 0;
+            await PutDownRidersAsync(a);
+            if (seated) _loop.ScheduleLegacy(Paced(RideExitDelayMs), arrived, "dungeon ride end");
+            else await arrived();
+        }
         else _loop.ScheduleLegacy(Paced(RideTickMs), () => RideTickAsync(a, ride, arrived), "dungeon ride");
     }
 
     private async Task MoveRidersAsync(Attempt a, Ride ride, (float X, float Y, float Z, float Face) at)
     {
+        ride.Carrier.X = at.X; ride.Carrier.Y = at.Y; ride.Carrier.Z = at.Z; ride.Carrier.Face = at.Face;
         // A move that fails for one unit must not strand the step: the ride goes on and arrives.
-        try
-        {
-            ride.Carrier.X = at.X; ride.Carrier.Y = at.Y; ride.Carrier.Z = at.Z; ride.Carrier.Face = at.Face;
-            await _world.MoveUnitAsync(ride.Carrier, new MovementChangeNtf
-            {
-                Uid = ride.Carrier.Uid, TransType = MovementTransitionType.MoveTransForceTeleport,
-                MovementInfo = new MovementInfo { Pos = new Vec3 { X = at.X, Y = at.Y, Z = at.Z }, Face = at.Face, ServerTime = MonsterService.NowMs },
-            });
-        }
-        catch (Exception e) { LogRideMoveFailed(e, a.Plan.SceneEntry, ride.Carrier.NpcId); }
         foreach (var member in Present(a).Where(m => a.Loaded.Contains(m) && !m.SceneLoading))
         {
-            try { await _scenes.TeleportInMapAsync(member, new MapPoint(at.X, at.Y, at.Z, at.Face)); }
+            try
+            {
+                // A seated rider's client moves it with the seat, so a forced position would only shake it.
+                if (a.Riders.ContainsKey(member) && _vehicles.IsSeatedOnSceneActor(member))
+                {
+                    member.PreviousPosition = member.Position;
+                    member.Position = new Vec3 { X = at.X, Y = at.Y, Z = at.Z };
+                }
+                else await _scenes.TeleportInMapAsync(member, new MapPoint(at.X, at.Y, at.Z, at.Face));
+            }
             catch (Exception e) { LogRideMoveFailed(e, a.Plan.SceneEntry, 0); }
         }
+    }
+
+    /// <summary>Tells the viewers to walk the leg the carrier has reached, as a monster's walk is sent (MonsterService).</summary>
+    private async Task WalkLegAsync(Attempt a, Ride ride, float walked)
+    {
+        var (leg, from, to) = RideLeg(ride.Path, walked);
+        if (leg == ride.Leg) return;
+        ride.Leg = leg;
+        float metres = MonsterService.Distance(from.X, from.Z, to.X, to.Z);
+        float speed = (float)(ride.Length / Math.Max(1.0, ride.DurationMs) * 1000);
+        float face = MonsterService.Angle(from.X, from.Z, to.X, to.Z);
+        try
+        {
+            // A driver's client controls its vehicle and ignores a walk for it; transType 3 is the order it obeys:
+            // SetMoveTargetPos to the given position at the unit's own speed (LC_Scene_Sync._syncUnitMoveState).
+            await _world.MoveUnitAsync(ride.Carrier, a.Riders.Keys.Any(_vehicles.IsSeatedOnSceneActor)
+                ? new MovementChangeNtf
+                {
+                    Uid = ride.Carrier.Uid, TransType = MovementTransitionType.MoveTransServerControl,
+                    MovementInfo = new MovementInfo { Pos = new Vec3 { X = to.X, Y = to.Y, Z = to.Z }, Face = face, ServerTime = MonsterService.NowMs },
+                }
+                : new MovementChangeNtf
+                {
+                    Uid = ride.Carrier.Uid, TransType = MovementTransitionType.MoveTransNormal,
+                    MovementInfo = new MovementInfo
+                    {
+                        Pos = new Vec3 { X = from.X, Y = from.Y, Z = from.Z }, ServerTime = MonsterService.NowMs,
+                        MoveDuration = (int)Math.Max(1, metres / speed * 1000), Face = face, MoveType = MovementType.MoveTypeWalk,
+                        MovementWalk = new MovementWalk { Dir = face, Speed = speed, Acc = 0, EndHeight = to.Y },
+                    },
+                });
+        }
+        catch (Exception e) { LogRideMoveFailed(e, a.Plan.SceneEntry, ride.Carrier.NpcId); }
     }
 }

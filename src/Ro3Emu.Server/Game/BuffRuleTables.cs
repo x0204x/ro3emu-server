@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 
 namespace Ro3Emu.Server.Game;
 
@@ -33,6 +34,31 @@ internal sealed partial class BuffRuleTables
     public sealed record HaloRule(int Id, float Radius, int TickMs, int TargetMax, int TargetType, bool Hostile,
         bool IncludeSelf, int[] Applied);
 
+    /// <summary>Battle Chant's halves with no HaloConfig row of their own, and the row each reads as. 11506 is "you and up to ${5} allies"
+    /// (its _kLogicData the DEF buff) at Battle Chant's radius and count; Battle Chant Enhance's 11546 and 11547 are the same two (inferred).</summary>
+    private static readonly (long Group, int Like, bool Allies)[] AurasWithoutARow = [(11506, 1150501, true), (11546, 1150501, false), (11547, 1150501, true)];
+
+    /// <summary>HaloConfig holds an aura's first levels only (Battle Chant 1150501 and 1150502, Shield Defense 1161602); a carrier's other levels
+    /// name their own target buff in _kLogicData (1150510 -> 1150210, -50 ATK) and take the numbers of their group's first row (inferred).</summary>
+    private static void AddAurasOfOtherLevels(GameData data, Dictionary<int, HaloRule> halos)
+    {
+        var firstOfGroup = new Dictionary<long, HaloRule>();
+        foreach (var rule in halos.Values.OrderBy(r => r.Id))
+            if (BuffConfig.Get(data, rule.Id) is { } carrier) firstOfGroup.TryAdd(carrier.BuffId, rule);
+        foreach (var (group, like, allies) in AurasWithoutARow)
+            if (halos.TryGetValue(like, out var rule))
+                firstOfGroup[group] = allies ? rule with { TargetType = 1, Hostile = false, IncludeSelf = true } : rule;
+        foreach (var row in data.Table("BuffConfig").Values)
+        {
+            var buff = new BuffConfig(row);
+            int id = (int)buff.Id;
+            if (halos.ContainsKey(id) || !firstOfGroup.TryGetValue(buff.BuffId, out var rule)) continue;
+            int[] applied = [.. buff.LogicData.Select(value => (int)value).Where(b => b != id && !halos.ContainsKey(b)
+                && BuffConfig.Get(data, b) is { BuffId: > 0 }).Distinct()];
+            if (applied.Length > 0) halos[id] = rule with { Id = id, Applied = applied };
+        }
+    }
+
     public enum PeriodicKind { Damage, Heal }
 
     /// <summary>A BuffConfig row that hurts or heals its bearer every <see cref="IntervalMs"/>. Damage scales the
@@ -48,6 +74,7 @@ internal sealed partial class BuffRuleTables
     public static BuffRuleTables For(GameData data) => Cache.GetValue(data, d => new BuffRuleTables(d));
 
     private readonly GameData _data;
+    private readonly double _stateRate, _stateDuration;
     private readonly ConcurrentDictionary<long, int> _sceneDecay = new();
 
     public IReadOnlyDictionary<int, TagRule> Tags { get; }
@@ -65,6 +92,9 @@ internal sealed partial class BuffRuleTables
     private BuffRuleTables(GameData data)
     {
         this._data = data;
+        var parameters = data.Table("PublicParamConfig");
+        _stateRate = parameters.TryGetValue("FormulaParamState1", out var state1) ? state1.GetDouble() : 10;
+        _stateDuration = parameters.TryGetValue("FormulaParamState2", out var state2) ? state2.GetDouble() : 1000;
         var tags = new Dictionary<int, TagRule>();
         foreach (var row in data.Table("BuffTagConfig").Values)
         {
@@ -123,12 +153,32 @@ internal sealed partial class BuffRuleTables
                 // 2 has no recovered meaning and is not used.
                 !hostile && Ints(row, "_iExtraTarget").Contains(1), applied);
         }
+        AddAurasOfOtherLevels(data, halos);
         Halos = halos;
     }
 
-    /// <summary>Chance or duration factor of one tag pair: 1 + (enhance - resistance) / 10000, never negative (inferred:
-    /// both attributes are basis points, AttributeConfig._kRange "-9900|" keeps one of them above -99%).</summary>
-    public static double TagFactor(long attack, long defense) => Math.Max(0, 1 + (attack - defense) / 10000.0);
+    /// <summary>
+    /// Chance or duration factor of one tag pair, by BuffTagConfig._iFormula and the client's own formulas
+    /// (LC_PlayerInfoHelper, PublicParamConfig FormulaParamState1 10 and FormulaParamState2 1000). Formula 1:
+    /// _doFormulaBuffAddRate x*10/10000 raises the chance and _doFormulaBuffRemoveRate r/(1+r) takes that share off it.
+    /// Formula 2: _doFormulaBuffDuration x/(x+1000), on the duration, both ways. So 420 resistance is 29.6% on either.
+    /// The texts give these attributes as plain numbers ("Slow Resistance increased by @{2}", beside "Movement Speed increased by @{1}%").
+    /// (inferred) No attribute's _iTextValueDisplayType selects these formulas on the client's panel, so the link is their names
+    /// and the two parameters matching _iFormula's two values; enhance and resistance multiply. A negative value (a debuff, down
+    /// to AttributeConfig._kRange -9900) stops at a tenth of the base, as the formulas have no value at -1000.
+    /// </summary>
+    public double TagFactor(long attack, long defense, int formula)
+    {
+        if (formula == 1)
+        {
+            double rate = _stateRate / 10000;
+            return Math.Max(0, 1 + Math.Max(attack, MinTagValue(_stateRate)) * rate) / (1 + Math.Max(defense, MinTagValue(_stateRate)) * rate);
+        }
+        double Share(long value) { double x = Math.Max(value, -0.9 * _stateDuration); return x / (x + _stateDuration); }
+        return Math.Max(0, (1 + Share(attack)) * (1 - Share(defense)));
+    }
+
+    private static double MinTagValue(double rate) => -0.9 * 10000 / rate;
 
     /// <summary>One target's history under one decay row.</summary>
     public sealed class DecayTrack

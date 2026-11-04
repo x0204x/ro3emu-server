@@ -40,10 +40,13 @@ public sealed partial class SceneService
         return placed.Count == 0 || placed.Any(n => (s.Position.X - n.X) * (s.Position.X - n.X) + (s.Position.Z - n.Z) * (s.Position.Z - n.Z) <= reach * reach);
     }
 
-    /// <summary>Within the region's larger side plus 5 m of its centre (inferred tolerance for the walk report's lag).</summary>
+    /// <summary>Within the region's larger side plus 5 m of its centre (inferred tolerance for the walk report's lag). A walker's position is its last report, and the client reports
+    /// only when its direction changes: it is allowed what it can have walked since, up to 2 s (inferred), and nothing once the report is past the walk check's 5 s.</summary>
     private static bool Near(GameSession s, MapRegion region)
     {
-        float dx = s.Position.X - region.X, dz = s.Position.Z - region.Z, reach = Math.Max(region.Width, region.Length) + 5;
+        double sinceWalk = (DateTime.UtcNow - s.LastWalkUtc).TotalSeconds;
+        float lag = s.Walking && sinceWalk is >= 0 and <= 5 ? s.Speed / 100f * (float)Math.Min(sinceWalk, 2) : 0;
+        float dx = s.Position.X - region.X, dz = s.Position.Z - region.Z, reach = Math.Max(region.Width, region.Length) + 5 + lag;
         return !s.SceneLoading && dx * dx + dz * dz <= reach * reach;
     }
 }

@@ -80,6 +80,7 @@
     },
     "1000301": {
       "name": "Ant Queen's Nest: Bobo and the Deniro",
+      "continuesTo": 1000401,
       "confidence": "medium",
       "evidence": [
         "DungeonQuestConfig 5300011-5300015: 1 Help Bobo up, 2 Ride the Deniro, 3 Collect the fluorescent substance, 4 Feed the Deniro, 5 Ride the Deniro to the depths of the Ant Hell.",
@@ -229,6 +230,7 @@
     },
     "1000401": {
       "name": "Maya's nest: Maya, the Professor in the ant egg and the treasure",
+      "leavesAfterClear": true,
       "confidence": "medium",
       "evidence": ["DungeonQuestConfig 5300016-5300020: 1 'Encounter Maya' [5,0,1] 'Defeat Maya'; 2 'Find the Professor' 'Venture deeper into the cave to find the Professor'; 3 'Free the Ant Egg' 'Rescue the Professor from the ant egg'; 4 'Help the Professor Up' 'Help the Weak Professor walk'; 5 \"Maya's Secret Treasure\" 'Open the treasured chest'. Tasks 105103 and 10104310 'Venture Deeper into the Ant Queen's Nest': 'Enter Maya's Nest and rescue the Professor.'", "Editor sc_plot_yhcx_003_dg01: points 21 蚁后刷怪点 (ant queen spawn), 26 教授刷新点 (professor spawn), 32 教授卵刷新点 (professor egg spawn), 34 宝箱刷怪点 (treasure chest spawn); guide 25 蚁卵引导点 (ant egg guide) leads from the born point toward the eggs; dialogue regions 28-30 (regionType 1, client) lie along the way, region 28 about 10 m before point 32.", "NPCInteractConfig 5300021 'Free the Ant Egg' (skill 5362201) on 5300051 and 5300056 sends dungeon message 5300022; 5300022 'Help the Professor Up' (skill 5362301: 'Help the fallen Professor to their feet') on 5300026 Professor sends 5300023; 5300023 'Open' (skill 5362401: 'Open the Treasure in Maya's Nest') on 5300052 Precious Treasure Chest sends 5300024. All three are gated by LC_ConditionList 7100022-7100024: [1004, 53014] CheckHaveBuff group 53014, the gate 1000301's 'Rescue Bobo' uses (BuffConfig 5301401).", "5300056 (unit 5300017, next to the Ant Egg 5300036 unit 5300014) is the egg with the Professor; 5300051 offers the same interaction on unit 70010, the invisible helper model."],
       "guessed": ["Stage 2 completes within 10 m of the egg point 32 (where dialogue region 28 begins); the original likely used a dialogue region, which the client handles itself.", "The egg holding the Professor is 5300056 (its model is next to the Ant Egg model); 5300051 would show nothing.", "Each step gives its actor buff 5301401 (group 53014) to open its interaction, as in 1000301; the original set the buff from its script.", "The chest's _iNormalDrop 330052 is not dropped: the engine gives no loot; the dungeon's own settlement rewards stand."],

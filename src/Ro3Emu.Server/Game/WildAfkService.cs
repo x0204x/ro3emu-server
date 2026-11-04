@@ -105,8 +105,25 @@ public sealed partial class WildAfkService : IGameTicker
         return scope;
     }
     private bool Unlocked(GameSession s) => s.Progress != null && _functions.IsOpen(s, 18);
+    /// <summary>
+    /// The maps the OnHook panel recommends monsters on (OnHookMonsterRecommendConfig._iMapID). Pharos Lighthouse (10537) has _iSceneType 0 like the towns, yet the
+    /// panel recommends six of its monsters, so it is a hunting field for Bonus Time (inferred). Every other listed map is a field (1) or a cave (6).
+    /// </summary>
+    private HashSet<long> RecommendedMaps => _recommendedMaps ??= [.. Data.Config.OnHookMonsterRecommendConfig.All(_data).SelectMany(r => r.MapId)];
+    private HashSet<long>? _recommendedMaps;
+
+    /// <summary>Where Bonus Time runs: fields, caves beside them (enum_SceneType 6: the level 34-45 hunting maps), and Pharos. Private and dungeon maps never qualify.</summary>
     private bool Field(GameSession s) => s.InstanceId == 0 && _data.Row("MapConfig", s.SceneEntry) is { } map
-        && GameData.Int(map, "_iSceneType") == 1; // enum scene type: field; private/dungeon maps never qualify.
+        && GameData.Int(map, "_iSceneType") switch
+        {
+            1 or 6 => true,
+            0 => RecommendedMaps.Contains(s.SceneEntry),
+            _ => false,
+        };
+
+    /// <summary>Where 43409 may turn it back on: those and the towns (scene type 0). Localization_en 10960000077 refuses only "Dungeons and similar Locations", and the
+    /// switch already stays on, suspended, when a player walks from a field into town, so refusing a town left a stopped switch off (inferred). It runs only on a <see cref="Field"/>.</summary>
+    private bool Startable(GameSession s) => Field(s) || s.InstanceId == 0 && _data.Row("MapConfig", s.SceneEntry) is { } map && GameData.Int(map, "_iSceneType") == 0;
     private bool Ordinary(MonsterUnit monster) => _data.Row("NPCConfig", monster.Template.NpcId) is { } npc
         && GameData.Int(npc, "_iWildMonsters") == 1 && GameData.Int(npc, "_iNPCSubType") is 1 or 2;
     // Only the player's own map: this runs every second per auto-battling player.
@@ -467,7 +484,7 @@ public sealed partial class WildAfkService : IGameTicker
             await ReconcileCoreAsync(s, now);
             var info = state.Info;
             int error = !Unlocked(s) ? ErrorCodes.FeatureUnavailable
-                : enabled && !Field(s) ? ErrorCodes.AfkDungeon
+                : enabled && !Startable(s) ? ErrorCodes.AfkDungeon
                 : enabled && info.HighMultiplierTimeSeconds <= 0 ? ErrorCodes.AfkTimeEmpty
                 : enabled == info.IsHighMagnification ? (enabled ? ErrorCodes.AfkAlreadyActive : ErrorCodes.AfkNotActive)
                 : now - state.LastToggleMs < Param("OnHookPauseButtonCD", 1) * 1000 ? ErrorCodes.AfkToggleCooldown : 0;

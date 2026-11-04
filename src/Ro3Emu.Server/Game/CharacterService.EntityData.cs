@@ -4,6 +4,7 @@ using Romsg;
 using Ro3Emu.Server.Accounts;
 using Ro3Emu.Server.Accounts.Persistence;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Economy;
 using Ro3Emu.Server.Maps;
 
@@ -89,6 +90,8 @@ public sealed partial class CharacterService
                 foreach (var (id, v) in buff.Changes) Add(id, v);
         }
         else AddOwnAttributes(session, p, Add, raw, includeBuff);
+        foreach (int grouped in GroupedAttributes)
+            if (AttributeConversionConfig.Get(data, grouped) is { } conversion) AddGroupedConversion(raw, grouped, conversion);
         if (!raw.ContainsKey(Speed)) raw[Speed] = RoleSessionService.DefaultSpeed;
         raw[Speed] += session.SpeedBonus;
         if (!raw.ContainsKey(BaseAspd)) raw[BaseAspd] = 100;
@@ -108,6 +111,23 @@ public sealed partial class CharacterService
             }
         sheet[Lv] = p.Level;
         return sheet;
+    }
+
+    /// <summary>AttributeConfig 30 "Other Elemental Damage Reduction%" and 31 "Crowd Control Resistance". Rows 20-24 of the
+    /// conversion table are not here: no data gives those ids.</summary>
+    private static readonly int[] GroupedAttributes = [23, 24, 30, 31]; // 23 "PATK/MATK" and 24 "PDEF/MDEF" the same way
+
+    /// <summary>
+    /// A grouped attribute is read through its members only (_kTips "Converted to other elemental damage", "Converted to
+    /// other crowd-control debuff attributes"): AttributeConversionConfig 30 gives 312-320, 31 gives 702 ... 728, each 1:1 and
+    /// the same in both columns. It counts whatever gave it, including a negative value (Shadow Card: Deviling's 30 is -200;
+    /// LC_TotemHelper multiplies a conversion by the value as it is).
+    /// </summary>
+    internal static void AddGroupedConversion(Dictionary<int, double> raw, int grouped, AttributeConversionConfig conversion)
+    {
+        if (!raw.TryGetValue(grouped, out double value)) return;
+        foreach (var pair in conversion.Attribute1)
+            if (pair is [var id, var perPoint]) raw[(int)id] = raw.GetValueOrDefault((int)id) + perPoint * value;
     }
 
     /// <summary>
@@ -152,8 +172,9 @@ public sealed partial class CharacterService
                 else Add(id, v);
             }
             // enchant stats are per instance; base stats also feed their derived conversions.
-            foreach (var enchant in item.Enchantments.Values)
-                foreach (var (id, v) in enchant.Attr)
+            foreach (var (enchantId, enchant) in item.Enchantments)
+                foreach (var (id, v) in enchant.Attr.Select(a => (a.Key, (double)a.Value))
+                    .Concat(EnchantService.SkillAttributes(session, enchantId, data).Select(a => (a.Id, a.Value))))
                 {
                     if (id is >= 1 and <= 6) baseStats[id - 1] += v;
                     else Add(id, v);

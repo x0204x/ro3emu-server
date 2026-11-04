@@ -23,6 +23,8 @@ public sealed partial class DungeonService
         public Dictionary<string, Dictionary<long, int>> Honors { get; set; } = [];
         /// <summary>Sacred Blessing level (TenGameplayBuffConfig id) last acknowledged per boss (82588 clears isNeedTip).</summary>
         public Dictionary<long, long> BlessingsSeen { get; set; } = [];
+        /// <summary>"multi:mark" whose first-clear reward (_iPartAward) was paid by 82587; a season reset clears it with Records.</summary>
+        public HashSet<string> FirstPassPaid { get; set; } = [];
     }
 
     public sealed class Record
@@ -155,8 +157,7 @@ public sealed partial class DungeonService
                     // Testing UnlimitedRewards (TEST AID, not original): the count shows full, as it is never spent.
                     TotalNumber = maximum, UseNumber = _testing.UnlimitedRewards ? 0 : maximum - allowance.Remaining,
                     // Separate first clear from recurring counters: Lua adds a free first entitlement for NotPass.
-                    // Automatic personal first-clear settlement (Finish=2) is inferred; no separate bonus is invented.
-                    IsFirst = record?.Passed == true ? 2 : 0,
+                    IsFirst = FirstPassAwardState(state, $"{id}:{mark}", boss, record),
                     FirstPassState = (MultiDungeonFirstPassState)(record?.Passed == true ? 2 : 0),
                     FastRecord = record?.FastestMs ?? 0,
                 };
@@ -226,10 +227,6 @@ public sealed partial class DungeonService
         await s.SendGameAsync(SetGuide, new MultiDungeonSetJobPositionGuideFlagResp
         { Result = s.Dungeons == null ? ErrorCodes.Parameter : 0, GuideFlag = s.Dungeons?.FirstSetted ?? false });
     }
-
-    /// <summary>TenGameplayBossConfig has no first-pass award field; never substitute personal/preview rewards.</summary>
-    public Task ClaimFirstPassAsync(GameSession s, ClaimFirstPassAwardReq req) => s.SendGameAsync(ClaimFirstPass,
-        new ClaimFirstPassAwardResp { Result = ErrorCodes.RewardMissing, MultiDungeonId = req.MultiDungeonId, MarkId = req.MarkId });
 
     private List<(int Entry, int Count, int Bind)>? Award(long group, GameSession s)
     {

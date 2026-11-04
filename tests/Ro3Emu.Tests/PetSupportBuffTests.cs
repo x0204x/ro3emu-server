@@ -173,6 +173,51 @@ public sealed class PetSupportBuffTests : IAsyncLifetime
         Assert.Equal(17, character.Stats(player)[2003]);
     }
 
+    private static long Shield(GameSession player, int buff) =>
+        player.Buffs.Where(b => b.ConfigId == buff).Select(b => b.ShieldRemaining).SingleOrDefault();
+
+    [ClientDataFact]
+    public async Task PlayerSkillShieldsTakeTheirAmountFromTheCaster()
+    {
+        await using var alice = await InWorld("Alice");
+        var player = Session("alice");
+        var combat = _app.Services.GetRequiredService<CombatService>();
+        var caster = new StatSheet { [101] = 12345, [104] = 1000 };
+        // King's Grace 11163401: "Shield equal to Max HP * 20%" of the caster.
+        await Run(() => combat.ApplySkillBuffAsync(caster, player, 11163401, 5000, 7));
+        Assert.Equal(2469, Shield(player, 11163401));
+        // Kyrie Eleison 1411701: Magic ATK * 40%; Meditate's 9302501 restores Life and carries no shield.
+        await Run(() => combat.ApplySkillBuffAsync(caster, player, 1411701, 5000, 7));
+        Assert.Equal(400, Shield(player, 1411701));
+        await Run(() => combat.ApplySkillBuffAsync(caster, player, 9302501, 5000, 7));
+        Assert.Contains(player.Buffs, b => b.ConfigId == 9302501 && b.ShieldRemaining == 0);
+        Assert.Equal(2869, _app.Services.GetRequiredService<CharacterService>().Stats(player)[2003]);
+    }
+
+    [ClientDataFact]
+    public async Task KyrieAbsorbsOnlyPhysicalHitsAndStackedShieldsAddOnePerPile()
+    {
+        await using var alice = await InWorld("Alice");
+        var player = Session("alice");
+        var combat = _app.Services.GetRequiredService<CombatService>();
+        await Run(() => combat.ApplySkillBuffAsync(new StatSheet { [104] = 1000 }, player, 1411701, 5000, 7));
+        Assert.Equal(100, await Run(() => Buffs.AbsorbAsync(player, 100, magic: true)));
+        Assert.Equal(400, Shield(player, 1411701));
+        Assert.Equal(0, await Run(() => Buffs.AbsorbAsync(player, 150)));
+        Assert.Equal(250, Shield(player, 1411701));
+        Assert.Equal(300, await Run(() => Buffs.AbsorbAsync(player, 550)));
+        Assert.DoesNotContain(player.Buffs, b => b.ConfigId == 1411701);
+
+        // Twilight's 1160701 (_iStackType 7, _iMaxStack 5): "Each stack grants a shield equal to 3% of Max Life".
+        var caster = new StatSheet { [101] = 10000 };
+        await Run(() => combat.ApplySkillBuffAsync(caster, player, 1160701, 5000, 7));
+        await Run(() => combat.ApplySkillBuffAsync(caster, player, 1160701, 5000, 7));
+        Assert.Equal(600, Shield(player, 1160701));
+        Assert.Equal(0, await Run(() => Buffs.AbsorbAsync(player, 100, magic: true)));
+        await Run(() => combat.ApplySkillBuffAsync(caster, player, 1160701, 5000, 7));
+        Assert.Equal(800, Shield(player, 1160701));
+    }
+
     private static string RepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

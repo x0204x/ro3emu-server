@@ -335,6 +335,7 @@ public sealed class GatheringTests : IAsyncLifetime
             {
                 RoleId = original.RoleId, BeforeLife = original.BeforeLife,
                 BeforeRestrict = original.BeforeRestrict, BeforeRuntime = original.BeforeRuntime,
+                BeforeCurrencyVigor = original.BeforeCurrencyVigor, CurrencyVigorCost = original.CurrencyVigorCost,
                 Life = original.Life, Restrict = original.Restrict, Runtime = original.Runtime,
                 Grants = [.. original.Grants, new AwardGrant(100, 1), new AwardGrant(101, 1)],
             };

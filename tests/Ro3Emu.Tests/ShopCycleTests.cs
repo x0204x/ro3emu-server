@@ -141,7 +141,7 @@ public sealed class ShopCycleTests : IAsyncLifetime
         }
         finally { character.StateChanged.Remove(failAfterCommit); }
         Assert.Equal(money - 7500, character.CountOf(session, 1));
-        Assert.Equal(tokens + 1, character.CountOf(session, 1250709));
+        Assert.Equal(tokens + 5, character.CountOf(session, 1250709)); // "Pet Egg x5" (_iIsShowCount 5)
         Assert.Equal(1, session.Shop!.Bought[Offer].Count);
         var persisted = JsonSerializer.Deserialize<ShopService.ShopState>(Service<RoleStore>().LoadShop(session.Role!.Id)!)!;
         Assert.Equal(1, persisted.Bought[Offer].Count);

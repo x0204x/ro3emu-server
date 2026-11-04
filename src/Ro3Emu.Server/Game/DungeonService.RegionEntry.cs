@@ -1,5 +1,7 @@
 using System.Globalization;
 using Romsg;
+using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 using Ro3Emu.Server.Maps;
 
 namespace Ro3Emu.Server.Game;
@@ -29,6 +31,10 @@ public sealed partial class DungeonService
             || !long.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out long scene)) return false;
         long task = parts.Length >= 4 && long.TryParse(parts[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out long t) ? t : 0;
         if (task != 0 && !(s.Tasks?.Infos.TryGetValue(task, out var info) == true && info.Status is TaskState.Running or TaskState.Finish))
+            return false;
+        // The scene's own door (DungeonConfig _iDungeonConditionConfig, 1022001's asks for 1101, its quest still running) answers
+        // a step into the region with nothing: a player walking by a finished quest's region gets no "This feature is unavailable".
+        if (_data.Row("DungeonConfig", scene) is { } config && !_functions.ConditionMet(s, new DungeonConfig(config).DungeonConditionConfig))
             return false;
         _log.LogInformation("{Name} enters region {Region}: dungeon {Scene} for task {Task}", s.Role?.Name, region.Id, scene, task);
         var team = s.Role != null ? _teams.TeamOf(s.Role.Id) : default;

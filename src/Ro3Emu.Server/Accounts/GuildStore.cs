@@ -21,6 +21,9 @@ public sealed class GuildStore(AccountStore accounts)
         public long CreateTime { get; set; }
         public int Status { get; set; } = 2;
         public long HelperDeadlineMs { get; set; }
+        /// <summary>What the founder paid while the guild is being founded, refunded if it fails: a config change must not change it.</summary>
+        public int FoundingItem { get; set; }
+        public long FoundingCount { get; set; }
         public int Level { get; set; } = 1;
         public long Background { get; set; }
         public long Icon { get; set; }

@@ -56,10 +56,12 @@ public readonly partial record struct SkillConfig(JsonElement Row)
     [ConfigField("_iPubCDGroup")] public partial long[] PubCDGroup { get; }
     [ConfigField("_iQueue")] public partial long Queue { get; }
     [ConfigField("_iRangeType")] public partial long RangeType { get; }
+    /// <summary>The tags its panel shows (SkillTagConfig: 100 Normal Attack, 101 AoE, 102 ST ...).</summary>
+    [ConfigField("_kSkilltag")] public partial long[] Skilltag { get; }
+    [ConfigField("_iSkillCondition", Optional = true)] public partial long SkillCondition { get; }
     [ConfigField("_iRelease")] public partial long Release { get; }
     [ConfigField("_iScriptShow")] public partial long ScriptShow { get; }
     [ConfigField("_iSkillAdvanced")] public partial long SkillAdvanced { get; }
-    [ConfigField("_iSkillCondition")] public partial long SkillCondition { get; }
     [ConfigField("_iSkillCri")] public partial long SkillCri { get; }
     [ConfigField("_iSkillEffectLevel")] public partial long SkillEffectLevel { get; }
     [ConfigField("_iSkillHit")] public partial long SkillHit { get; }
@@ -85,6 +87,7 @@ public readonly partial record struct SkillConfig(JsonElement Row)
     [ConfigField("_kRange")] public partial long[] Range { get; }
     [ConfigField("_kScriptLogic")] public partial string ScriptLogic { get; }
     [ConfigField("_kShowDmg")] public partial long[] ShowDmg { get; }
+    [ConfigField("_kSkillHighParam", Optional = true)] public partial JsonElement? SkillHighParam { get; }
     [ConfigField("_kSkillCategory")] public partial long[] SkillCategory { get; }
     [ConfigField("_kSpSkillParam")] public partial long[] SpSkillParam { get; }
 
@@ -111,6 +114,19 @@ public readonly partial record struct SkillConfig(JsonElement Row)
         return JsonSerializer.SerializeToElement(node);
     }
 
+    /// <summary>This row dealing exactly this damage to each target (CombatService.MonsterHitDamage's fixed hit: no ratio,
+    /// defense, element, crit or damage attribute), everything else kept.</summary>
+    public bool IsFixedHit => Row.TryGetProperty("_ro3GuardianFixedHit", out _);
+
+    public JsonElement AsFixedHit(long damage)
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(Row.GetRawText())!.AsObject();
+        node["_kDamageParam1"] = new System.Text.Json.Nodes.JsonArray(0);
+        node["_kDamageParam2"] = new System.Text.Json.Nodes.JsonArray(1); // makes the row a damaging one
+        node["_ro3GuardianFixedHit"] = damage;
+        return JsonSerializer.SerializeToElement(node);
+    }
+
     /// <summary>This row without its caster buffs, everything else kept: a later hit of a cast whose start applied them.</summary>
     public JsonElement WithoutBuff1()
     {
@@ -120,6 +136,29 @@ public readonly partial record struct SkillConfig(JsonElement Row)
     }
 
     /// <summary>This row with other damage ratios (basis points) and flat damage, everything else kept.</summary>
+    /// <summary>Set on one hit of a staged cast that moves nobody (Fearless Charge's knock-up, Earthshaker's hits before its last).
+    /// Not a client field: the rule is the cast's, and a hit's row is all both the monster and the player path read.</summary>
+    public const string StillHitField = "stillHit";
+
+    /// <summary>The list fields SkillParameterRules changes by a tuple's index.</summary>
+    public const string LogicDataField = "_kLogicData", CostField = "_kCost", FlatDamageField = "_kDamageParam2";
+
+    /// <summary>A status this hit lands on a target the cast has not yet given one: Tetra Vortex's "guaranteed to inflict at least 1". Not a client field.</summary>
+    public const string GuaranteedStatusField = "guaranteedStatus";
+
+    /// <summary>This row as one stage of a cast: its damage words, optionally an element, a list of statuses, and whether it moves its targets.</summary>
+    public JsonElement AsStage(long words = 0, long element = 0, long[][]? statuses = null, long[]? guaranteed = null, bool still = false)
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(Row.GetRawText())!.AsObject();
+        static System.Text.Json.Nodes.JsonArray Array(IEnumerable<long> values) => new([.. values.Select(v => (System.Text.Json.Nodes.JsonNode)v)]);
+        if (words > 0) node["_kShowDmg"] = Array([words]);
+        if (element > 0) node["_iEleType"] = element;
+        if (statuses != null) node["_kBuff2"] = new System.Text.Json.Nodes.JsonArray([.. statuses.Select(tuple => (System.Text.Json.Nodes.JsonNode)Array(tuple))]);
+        if (guaranteed != null) node[GuaranteedStatusField] = Array(guaranteed);
+        if (still) node[StillHitField] = 1;
+        return JsonSerializer.SerializeToElement(node);
+    }
+
     public JsonElement WithDamage(long[] ratios, long[] flats)
     {
         var node = System.Text.Json.Nodes.JsonNode.Parse(Row.GetRawText())!.AsObject();

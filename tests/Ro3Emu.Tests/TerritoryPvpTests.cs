@@ -439,11 +439,13 @@ public sealed class TerritoryPvpTests : IAsyncLifetime
             firstSession.Progress!.Skills[12013] = 1;
             secondSession.Progress!.Skills[12013] = 1;
             await Service<CharacterService>().SetLevelAsync(victimSession, 99, null);
-            await Service<CharacterService>().SetHpSpAsync(victimSession, 180, null);
+            await Service<CharacterService>().SetLevelAsync(firstSession, 99, null); // defense counts the attacker's level (DefenseFactor)
+            await Service<CharacterService>().SetLevelAsync(secondSession, 99, null);
+            await Service<CharacterService>().SetHpSpAsync(victimSession, 300, null);
             victimSession.LastCombatMs = MonsterService.NowMs;
             victimSession.StatusBits |= 1L << 15;
             victimSession.NoRegenUntilMs = long.MaxValue; // fighting no longer pauses regeneration
-            Assert.Equal(180, victimSession.CurrentHp);
+            Assert.Equal(300, victimSession.CurrentHp);
             var position = victimSession.Position;
             var probe = await Service<MonsterService>().SpawnSingleAsync(victimSession.SceneEntry, 5000001,
                 new MapPoint(position.X, position.Y, position.Z, 0));
@@ -478,7 +480,7 @@ public sealed class TerritoryPvpTests : IAsyncLifetime
             await first.SendGameAsync(CombatService.UseSkill, new CastSkillReq { SkillId = 1201301, TargetPos = victimSession.Position.Clone() });
             Assert.Equal(0, (await Next(first, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
             await held.Task.WaitAsync(Wait); // the first AoE reserved HP, then its real monster callback yielded
-            Assert.True(victimSession.CurrentHp is > 0 and < 180,
+            Assert.True(victimSession.CurrentHp is > 0 and < 300,
                 $"first reserved HP={victimSession.CurrentHp}, dead={victimSession.Dead}, dealt={dealt.Count}");
             Assert.False(victimSession.Dead);
 

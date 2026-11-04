@@ -262,10 +262,7 @@ public sealed partial class DungeonService
         foreach (long id in error == 0 ? wanted : [])
         {
             var goal = _data.Row("TenGameplayFinalTrialConfig", id)!.Value;
-            long group = GameData.Int(goal, "_iPersonAward");
-            long awardId = 0;
-            if (_data.Row("MultiverseGroupConfig", group) is { } mg)
-                awardId = GameData.Int(mg, $"_iValue_{_seasons.PlayBook}") is var v and > 0 ? v : GameData.Int(mg, "_iValue_default");
+            long awardId = MultiverseAward(GameData.Int(goal, "_iPersonAward"));
             AwardPlan? plan = null;
             try { if (awardId > 0) plan = _awards.ResolveDirect(s, awardId); }
             catch (AwardResolutionException e) { _log.LogWarning(e, "Final Trial award {Award} rejected", awardId); }

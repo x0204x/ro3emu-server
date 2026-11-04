@@ -11,7 +11,6 @@ public sealed partial class CombatService
 
     // 說明依序水／火／地／風，EleConfig為5/4/3/2；原Buff2排列是暈／燃燒／石化／冰凍。
     // 元素對應狀態與最後冰凍保底的具體相位為inferred，不把五個tuple每段全部套上。
-    private static readonly int[] TetraElements = [5, 4, 3, 2];
     private static readonly int[] TetraBuffIndices = [3, 1, 2, 0];
 
     private async Task ApplyTetraStageBuffAsync(GameSession source, ActiveSkillCast cast,

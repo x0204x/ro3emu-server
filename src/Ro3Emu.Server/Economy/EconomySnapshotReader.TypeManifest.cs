@@ -111,10 +111,14 @@ public static partial class EconomySnapshotReader
     // newactivity receipt that also saves them.
     // Leaderboard rewards: server_state rank_rewards (RankRewardService) names each rewarded board's last settlement
     // time. A key, no balance: the goods are the rank letters' attachments, each delivered once by its delivery key.
-    // v1.0.26 聯集已逐欄核對：gm_state 為功能開關；job_exp_catchup 的 Granted 為歷史入帳，
-    // Remaining 為未來職階進度權利，不重複計入物品／貨幣持有量。空 blob 是尚未決定，不能視為餘額零。
-    // 此固定雜湊驗證格式分類，不替代補發來源與進度交易的一次性驗證。
-    public const string ExpectedFormatManifestHash = "BBD984F4D3FF71E1E370846B4D19E1C49BFAFA7124B9B7540D58D9E5C1BDB24C";
+    // v1.0.26 local union: gm_state is a feature switch; job_exp_catchup Granted is historical credit and
+    // Remaining is a future progression right, not a second item or currency balance. An empty blob is undecided.
+    // First-clear rewards: role.dungeons DungeonService.State.FirstPassPaid names the bosses whose _iPartAward was paid;
+    // once-only markers, no balance and no asset (the goods are paid by the dungeon/first-pass-award receipt that writes
+    // the marker).
+    // v1.0.29 review: FirstPassPaid is the once-only source marker for each boss reward receipt. The goods enter the
+    // economy through the dungeon/first-pass-award transaction, not as a second balance in this JSON state.
+    public const string ExpectedFormatManifestHash = "A2908FB05C1D0716E6CC7F1C0F0BDDC33CF1B03D619C57EBBBAA2C7FC9B6F91F";
     public static string FormatManifestHash => State.FormatManifestHash;
 
     private sealed partial class State

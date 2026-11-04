@@ -614,7 +614,8 @@ public sealed class QuestEngineTests : IAsyncLifetime
             await Gm("!quest finish 10101210");
             Assert.Equal(TaskState.Delivery, (await State(10101210)).Status);
             Assert.Equal(1, await Read(s => s.Tasks!.CompleteTaskNum[10101210]));
-            Assert.Equal(10, await Read(s => Service<CharacterService>().CountOf(s, 2020120)));
+            // v1.0.29 draws distinct group rows; this D Asia fixture has one eligible row.
+            Assert.Equal(1, await Read(s => Service<CharacterService>().CountOf(s, 2020120)));
             Assert.Equal(1, OwnedQuestSourceCount((long)bot.Self!.Uuid, 10101210));
         }
         finally { groups[groupId] = original; }

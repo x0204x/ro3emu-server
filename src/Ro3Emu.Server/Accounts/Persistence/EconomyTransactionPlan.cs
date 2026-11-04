@@ -250,7 +250,7 @@ internal sealed class EconomyTransactionPlan(RoleItemPlan child, EconomyMutation
             ? [.. child.Parts.Where(p => p is not RoleBlobWritePlan { Column: "life_restrict" })]
             : [.. child.Parts];
         if ((mutation.CommandKind == "world-revive" && mutation.Goods.Count != 0) ||
-            (mutation.CommandKind != "world-revive" && mutation.Costs.Count != 0))
+            (mutation.CommandKind is not ("world-revive" or "gather-yield") && mutation.Costs.Count != 0))
             throw new InvalidOperationException("E04 reward command has unsupported costs or goods.");
         var taskProgress = parts.OfType<KillTaskProgressPlan>().SingleOrDefault();
         var requiredRoles = new[] { mutation.ActorRoleId }
@@ -403,6 +403,7 @@ internal sealed class EconomyTransactionPlan(RoleItemPlan child, EconomyMutation
                 var reason = delta < 0
                     ? mutation.CommandKind switch
                     {
+                        "gather-yield" => EconomyReason.LifeCost,
                         "world-revive" or "cd13e/tower-milestone" => EconomyReason.ItemUse,
                         "cd13e/quest-award" or "cd13e/achievement-award" or "cd13e/advguild-award" or "cd13e/monsterhunt-award" or "cd13e/guild-award" or "cd13e/growthclass-award" or "cd13e/library-award" or "cd13e/firstheart-award" or "cd13e/daily-stage" or
                             "cd13e/journey-victory" => EconomyReason.OwnedAwardCost,

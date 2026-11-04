@@ -12,9 +12,8 @@ using Ro3Emu.Server.Data;
 namespace Ro3Emu.Server.Game;
 
 /// <summary>
-/// Guild membership and roster. ServerOptions.GuildFounding "responders" founds every guild
-/// through responders as the original (PreCreate, GuildService.Responders); "instant" (default) keeps the shortcut:
-/// a guild created without the create widget's autoCreateHelper toggle is Normal at once.
+/// Guild membership and roster. ServerOptions.GuildFounding "responders" (default) founds every guild through responders
+/// as the client says (PreCreate, GuildService.Responders); "instant" is a host's shortcut: a guild is free and Normal at once.
 /// Guild funds, contribution and buildings are persisted and shown; no unproven contribution-earning formula is used.
 /// (inferred) Default building rows, initial rank, hall level mapping, rank order, name character whitelist,
 /// invitation token lifecycle and post-mutation push order are recorded in docs/systems/guild.md.
@@ -358,7 +357,7 @@ public sealed partial class GuildService(GameData data, GuildStore store, RoleSt
         return 0;
     }
 
-    private async Task CreateCoreAsync(GameSession s, GuildCreateReq req)
+    private async Task CreateCoreAsync(GameSession s, GuildCreateReq req, bool instant = false)
     {
         int code = s.Role == null ? ErrorCodes.Parameter
             : !functions.IsOpen(s, 13) ? ErrorCodes.GuildLevelCreate
@@ -370,8 +369,10 @@ public sealed partial class GuildService(GameData data, GuildStore store, RoleSt
         if (code == 0 && req.Announce.Length > Setting("GuildNoticeContentNumNew", 0, 80)[1]) code = ErrorCodes.GuildTextLength;
         if (code == 0 && !req.OnlyCheck)
         {
-            var cost = Setting("GuildCreateCost", 0, 0);
-            bool founding = req.AutoCreateHelper || options.Value.GuildFounding == "responders";
+            bool founding = !instant && options.Value.GuildFounding == "responders";
+            // The create widget shows GuildCreateCostShow (Emperium); GuildCreateCost is 0 and no client text mentions it.
+            var cost = Setting(founding ? "GuildCreateCostShow" : "GuildCreateCost", 0, 0);
+            bool charged = cost.Length >= 2 && cost[0] > 0 && cost[1] > 0;
             var guild = new GuildStore.State
             {
                 Name = req.Name, Announce = req.Announce, CreateTime = NowMs(),
@@ -379,15 +380,17 @@ public sealed partial class GuildService(GameData data, GuildStore store, RoleSt
                 Status = founding ? (int)GuildStatus.PreCreate : (int)GuildStatus.Normal,
                 HelperDeadlineMs = founding ? NowMs() + Setting("GuildResponseTimeLimit", 86400)[0] * 1000 : 0,
                 AutoCreateHelper = req.AutoCreateHelper,
+                FoundingItem = founding && charged ? (int)cost[0] : 0,
+                FoundingCount = founding && charged ? cost[1] : 0,
             };
             foreach (var row in data.Table("GuildBuildingConfig").Values.Where(r => GameData.Int(r, "_iLv") == 1))
                 guild.Buildings[GameData.Int(row, "_iType")] = 1;
             guild.Members[s.Role!.Id] = NewMember(s, 1);
             try
             {
-                if (cost.Length >= 2 && cost[0] > 0 && cost[1] > 0)
+                if (charged)
                 {
-                    // Even when a later config assigns a creation cost, payment and uniqueness commit together.
+                    // Payment and uniqueness commit together.
                     if (await character.ExchangeLockedAsync(s, [((int)cost[0], cost[1])], [],
                             persist: tx =>
                             {
@@ -406,7 +409,8 @@ public sealed partial class GuildService(GameData data, GuildStore store, RoleSt
             {
                 await s.SendGameAsync(Create, new GuildCreateResp { Result = 0 });
                 await SyncRole(s);
-                await SendFull(s, guild, true);
+                // isJoin is the client's "Join a guild: Successful" (LC_DAL_Guild): not yet while it is being founded.
+                await SendFull(s, guild, !founding);
                 return;
             }
         }
@@ -709,7 +713,8 @@ public sealed partial class GuildService(GameData data, GuildStore store, RoleSt
             var machines = DropWartime(g, member.RoleId);
             bool returned = await TakeMachinesAsync(g, member.RoleId);
             var impeach = DropImpeacher(g, [member]);
-            if (g.Members.Count == 0) await DeleteGuildAsync(g, [member.RoleId]);
+            if (g.Members.Count == 0 && g.Status == (int)GuildStatus.PreCreate) await EndFoundingAsync(g, member.RoleId, [member.RoleId]);
+            else if (g.Members.Count == 0) await DeleteGuildAsync(g, [member.RoleId]);
             else
             {
                 Journal(g, EvLeft, [member.RoleId], Str(member.Name));

@@ -186,7 +186,7 @@ public sealed partial class GmCommands
             BackgroundType = icons.Where(i => i.Type == 1).Select(i => i.Id).FirstOrDefault(),
             IconType = icons.Where(i => i.Type == 2).Select(i => i.Id).FirstOrDefault(),
         };
-        await services.GetRequiredService<GuildService>().CreateAsync(s, new GuildCreateReq { Name = name, Icon = icon });
+        await services.GetRequiredService<GuildService>().CreateInstantAsync(s, new GuildCreateReq { Name = name, Icon = icon });
         return guilds.ForRole(s.Role.Id) is { } created
             ? $"Guild {created.Name} ({created.Id}) created."
             : $"Guild {name} not created; the 32210 reply carries the reason.";

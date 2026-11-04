@@ -129,6 +129,17 @@ public sealed partial class MapTests : IAsyncLifetime
     }
 
     [ClientDataFact]
+    public void ASunkNpcStandsOnTheGround()
+    {
+        // #bug-reports "Payon - NPC in the ground": the Monster Ecology Research Scholar (100181) is at y 14.70 in the editor,
+        // 7 m under Payon's only walkable layer (21.69), so it showed inside the hill and could not be talked to.
+        var map = _app.Services.GetRequiredService<WorldData>().Map(10200)!;
+        var scholar = map.Npcs.Single(n => n.NpcId == 100181);
+        Assert.InRange(scholar.Y - map.Nav!.WalkHeight(scholar.X, scholar.Z, scholar.Y)!.Value, -0.01f, 0.01f);
+        Assert.True(scholar.Y > 21f);
+    }
+
+    [ClientDataFact]
     public async Task PortalLeadsToProntera()
     {
         await using var alice = await InWorld("Alice");

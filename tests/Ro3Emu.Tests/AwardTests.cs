@@ -161,8 +161,14 @@ public sealed class AwardTests : IAsyncLifetime
         Assert.Throws<AwardResolutionException>(() => awards.Resolve(null!, long.MaxValue)); // absent group in every client export
         Assert.Throws<AwardResolutionException>(() => awards.Resolve(null!, 21)); // type 1, NPC drop route
         Assert.Throws<AwardResolutionException>(() => awards.Resolve(null!, 40007)); // multirow day selector
-        Assert.Throws<AwardResolutionException>(() => awards.Resolve(null!, 1005)); // AwardConfig _kEXP
-        Assert.Throws<AwardResolutionException>(() => awards.Resolve(null!, 1002)); // AwardConfig _kCondition
+        Assert.Equal(new[] { new AwardGrant(100, 10000), new AwardGrant(1200000, 1) },
+            awards.Resolve(null!, 1005).Grants.ToArray()); // AwardConfig _kEXP [1, 10000] is base EXP
+        Assert.Throws<AwardResolutionException>(() => awards.Resolve(null!, 1007)); // _kEXP [2, 100]: unresolved kind
+        // _kCondition [[2, 11, 99]]: base level 11-99, so it needs a recipient
+        Assert.Throws<AwardResolutionException>(() => awards.Resolve(null!, 1002));
+        Assert.Throws<AwardConditionException>(() => awards.ResolveForProgress(new RoleProgress { Level = 10 }, 1002));
+        Assert.Equal(new[] { new AwardGrant(1200000, 1), new AwardGrant(1420100, 1) },
+            awards.ResolveForProgress(new RoleProgress { Level = 11 }, 1002).Grants.ToArray());
         Assert.Throws<AwardResolutionException>(() => awards.Resolve(null!, 25001)); // restriction replacement
     }
 
@@ -296,6 +302,26 @@ public sealed class AwardTests : IAsyncLifetime
         Assert.All(swordsman, grant => Assert.Equal(1, grant.Count));
         var novice = rewards.RollPoolBound(31121, new RoleProgress { Level = 20, Career = 1000 });
         Assert.Equal(2, Assert.Single(novice).Count); // the row's own 2 daggers, not ten times that
+    }
+
+    [ClientDataFact]
+    public async Task AwardedGearRowCarriesTheCommittedGuidForTheQuickEquipPrompt()
+    {
+        // LC_EquipmentHelper.CanFastEquip reads the GetRewardNotify row itself: itemGuid, appraised (3) and score (2).
+        // Quest awards stage gear before the commit assigns GUIDs, so the row must be built after it.
+        await using var bot = await InWorld("GearAlice");
+        await Next(bot, CharacterService.ItemsSync, DBItemsInfoIncrement.Parser);
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Role?.Name == "GearAlice");
+        var loop = _app.Services.GetRequiredService<GameLoop>();
+        var character = _app.Services.GetRequiredService<CharacterService>();
+        Assert.True(await loop.InvokeAsync(() => character.ApplyAwardAsync(session,
+            new AwardPlan(0, 0, [new AwardGrant(2010120, 2), new AwardGrant(1000000, 1)]))));
+        var notify = await Next(bot, CharacterService.GetRewardNotify, GetRewardNotify.Parser, m => m.Rewards.Count > 0);
+        var gear = session.Items.Where(i => i.Entry == 2010120).Select(i => i.Guid).Order().ToList();
+        var rows = notify.Rewards.Where(r => r.ItemEntry == 2010120).ToList();
+        Assert.Equal(gear, [.. rows.Select(r => r.ItemGuid).Order()]);
+        Assert.All(rows, r => { Assert.True(r.ItemGuid > 0); Assert.Equal(1, r.ItemInfos[3].LongVal); Assert.True(r.ItemInfos[2].LongVal > 0); });
+        Assert.Equal(0, Assert.Single(notify.Rewards, r => r.ItemEntry == 1000000).ItemGuid);
     }
 
     [ClientDataFact]

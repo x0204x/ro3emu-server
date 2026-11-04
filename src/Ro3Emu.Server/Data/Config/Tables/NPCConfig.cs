@@ -32,6 +32,7 @@ public readonly partial record struct NPCConfig(JsonElement Row)
     [ConfigField("_iNormalDrop")] public partial long[] NormalDrop { get; }
     /// <summary>The model's radius in cm (the City Gate's 1000, the ram's 500).</summary>
     [ConfigField("_iPrefabRadius")] public partial long PrefabRadius { get; }
+    [ConfigField("_iModelRatio")] public partial double ModelRatio { get; }
     [ConfigField("_iRace")] public partial long Race { get; }
     [ConfigField("_iSize")] public partial long Size { get; }
     [ConfigField("_iSpeed")] public partial long Speed { get; }

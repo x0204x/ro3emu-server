@@ -130,6 +130,7 @@ public sealed class GameGateServer(
             await session.Channel.SendAsync(ConnectResponse, new ConnectServerResp { Type = ConnectServerResp.Types.RespType.ConnectRefused });
             return;
         }
+        session.ClientAccount = accounts.ClientAccount(account);
         if (!sessions.IsWinner(session) || session.Channel.PeerClosed) return;
         // SwitchToAccount (back to the role screen) answers with its own response type; the rest is the same.
         var resp = type == ConnectServerReq.Types.ReqType.SwitchToAccount

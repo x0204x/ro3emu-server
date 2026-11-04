@@ -75,6 +75,7 @@ public sealed partial class NewActivityService
         character.StartTreasureMap = StartTreasureMapAsync;
         character.ResumeTreasureMap = PlanTreasureMapResume;
         combat.Killed.Add(OnTreasureMonsterKilledAsync);
+        combat.EventDamageRecorded.Add(OnTreasureMonsterDamagedAsync);
         scene.TreasureComplete = CompleteTreasureHuntAsync;
         scene.Loaded.Add(OnTreasureSceneLoadedAsync);
         character.StateChanged.Add(QueueRefresh);

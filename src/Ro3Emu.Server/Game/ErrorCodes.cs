@@ -10,6 +10,7 @@ public static class ErrorCodes
 {
     // ErrorCodeConfig -> Localization_en, territory wars and the 84031 auction contract.
     public const int TerritoryGuild = 6001; // Guild doesn't exist.
+    public const int PlayerLevelLow = 156;     // "Player level too low"
     public const int DataNotFound = 23; // ErrorCodeConfig: Data not found in database.
     public const int TerritoryCampGuild = 6008;
     public const int TerritoryCampCooldown = 6009;
@@ -31,9 +32,11 @@ public static class ErrorCodes
     public const int TerritoryGuildMembers = 6129;
     public const int TerritoryMaxBidLow = 6130;
     public const int Unknown = 24;              // "Unknown error"
+    public const int NoRecommendedFriends = 31; // _iShow 1: LC_PbHelper.PopErrorCodeTip shows no tip for it
     public const int FeatureUnavailable = 28;   // unavailable feature
     public const int ActionInBattle = 47;      // NW_ProtobufDefine.ERR_PlayerActionNotAllowedInBattle
     public const int Parameter = 82;            // "Client Parameter error"
+    public const int TooManyRequests = 1108;    // "Too many requests. Please try again later."
 
     // Activities: ErrorCodeConfig + Localization_en. Selection for each RPC is inferred from these texts.
     public const int ActivityClosed = 3902;      // "Event Not Available"

@@ -84,7 +84,7 @@ public sealed partial class CombatService
         long sourceRole = source.Role!.Id;
         var alreadySlowed = applyHostileBuffs ? GuardianPreviouslySlowed(row.Row, [], [target]) : [];
         bool landed = false;
-        await HitEventPlayersAsync(source, [target], row.Row, (int)row.Id, (int)row.ScriptShow,
+        await HitEventPlayersAsync(source, [target], row.Row, (int)row.Id, HitEffect(row.ScriptShow),
             ++_sessionIds, CurrentSource,
             onCommittedHit: (_, amount, result) => landed = amount > 0 && result != DamageHitResult.Miss);
         // 反傷共鳴的真Buff2也必須走玩家狀態鏈；miss、全無效及舊世代不得補上狀態。

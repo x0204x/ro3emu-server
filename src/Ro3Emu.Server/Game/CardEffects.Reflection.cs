@@ -17,7 +17,7 @@ public sealed partial class CardEffects
     {
         var incoming = new SkillConfig(row);
         if (effective <= 0 || result == DamageHitResult.Miss || row.TryGetProperty("_ro3CardReflection", out _)
-            || incoming.RangeType != SkillRelease.SingleTarget || victim.Dead || attacker.Dead) return;
+            || incoming.IsNormalAttack(_data) || incoming.RangeType != SkillRelease.SingleTarget || victim.Dead || attacker.Dead) return;
         // 同族重複卡採最高星階、共用該族冷卻（inferred）；不同物理／魔法卡按各自描述篩選。
         var candidates = Passives(victim).Where(p => ReflectionFamily(p.Id / 100, incoming.DmgType))
             .GroupBy(p => p.Id / 100).Select(g => g.MaxBy(p => p.Id)!).ToArray();

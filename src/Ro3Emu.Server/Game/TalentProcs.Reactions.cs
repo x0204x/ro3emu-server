@@ -57,6 +57,33 @@ public sealed partial class TalentProcs
 
     private readonly ConditionalWeakTable<GameSession, Reaper> _reapers = [];
 
+    /// <summary>Critical Attack's mode row BowlingBashBD01 ([ratio, 5000] / [flat, 400]): "When [Bowling Bash] hits only 1 enemy,
+    /// it Deals DMG to that enemy equal to an Extra PATK * ${1}% + ${2}", as a hit of its own (inferred).</summary>
+    private async Task LoneEnemyHitAsync(GameSession s, SkillConfig cast, IReadOnlyList<MonsterUnit> processed)
+    {
+        if (cast.ScriptLogic == "BowlingBashBD01" && processed is [{ Hp: > 0 } target]
+            && cast.DamageParam1 is [_, var ratio, ..] && cast.DamageParam2 is [_, var flat, ..])
+            await _combat.CastExtraAsync(s, DescribedHit(cast, BowlingBash, ratio, flat, 0), [target]);
+    }
+
+    // BuffConfig "Joint Beat Movement Speed Reduction", "Attack Speed Reduction", "Physical DEF Reduction", "Damage Taken
+    // Increase": their _kChangeAttri hold the text's 20%, 20%, 5% and 5%, and no other row names them.
+    private static readonly int[] JointBreaks = [1122201, 1122301, 1122401, 1122501];
+
+    /// <summary>Joint Destruction's mode row QiaodaBD02 has no _kBuff2; its _kLogicData holds Joint Beat's tuple [1122101, 10000,
+    /// 8000]: "simultaneously inflicts [Break Ankle], [Break Wrist], [Break Waist], and [Break Neck] on the target". The target
+    /// gets the four breaks for the tuple's time, and Joint Beat's marker at its four piles (inferred).</summary>
+    private async Task JointDestructionAsync(GameSession s, SkillConfig cast, IReadOnlyList<MonsterUnit> processed)
+    {
+        if (cast.ScriptLogic != "QiaodaBD02" || cast.LogicData is not [var marker, _, var ms]) return;
+        foreach (var target in processed.Where(m => m.Hp > 0))
+            foreach (int row in JointBreaks)
+            {
+                await _buffs.AddSupportAsync(target, row, (int)ms, s.Role!.Id);
+                await _buffs.AddSupportAsync(target, (int)marker, (int)ms, s.Role.Id);
+            }
+    }
+
     private static JsonElement TargetCountRow(GameSession s, JsonElement row, int count)
     {
         var skill = new SkillConfig(row);
@@ -118,8 +145,7 @@ public sealed partial class TalentProcs
             yield return (AttrMatk, reaper.Matk);
     }
 
-    /// <summary>Gravitation Field resolves at once here (it leaves no field NPC), so it "ends" its _kLogicData[1] (3900 ms)
-    /// after the cast; the Immobilize then lands on the monsters within its _kRange of the target point (inferred).</summary>
+    /// <summary>Gravitation Field ends its _kLogicData[1] (3900 ms) after the cast; the Immobilize then lands on the monsters within its _kRange of the target point (inferred).</summary>
     private void GravityTrap(GameSession s, ActiveSkillCast action, SkillConfig cast)
     {
         if (cast.SkillId != GravitationField || Talent(s, GravityTrapTalent) is not { } description

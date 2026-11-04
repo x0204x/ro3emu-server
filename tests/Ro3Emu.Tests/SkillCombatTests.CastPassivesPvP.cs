@@ -83,6 +83,37 @@ public sealed partial class SkillCombatTests
     }
 
     [ClientDataFact]
+    public async Task HolySpiritSurgeMakesEachDoubleHolyLightHitFireOnce()
+    {
+        await using var bot = await InWorld("SurgedLight");
+        await using var enemy = await InWorld("SurgedTarget");
+        await Gm("surgedlight", "!job 4400"); await Teach("surgedlight", 14309); await Teach("surgedlight", 14311);
+        var source = Session("surgedlight"); var target = Session("surgedtarget");
+        var combat = await CastPassiveRoomAsync(bot, source, enemy, target);
+        await Loop.InvokeAsync(() => _app.Services.GetRequiredService<BuffService>()
+            .AddAsync(source, 1431201, 5000, source.Role!.Id));
+        Assert.Contains(source.Buffs, b => b.ConfigId == 1431201 && b.ExpireMs > MonsterService.NowMs);
+        var completed = CastPassiveCompletion(combat, source);
+        int rolls = 0;
+        _app.Services.GetRequiredService<PassiveSkills>().Roll = bound =>
+        { Assert.Equal(10000, bound); rolls++; return 9999; };
+        var extras = new List<long>();
+        combat.PvpSkillHitPublished.Add((s, t, row, _, _) =>
+        {
+            if (s == source && t == target && new SkillConfig(row).SkillId is 14316 or 14317)
+                extras.Add(new SkillConfig(row).Id);
+            return Task.CompletedTask;
+        });
+        await bot.SendGameAsync(CombatService.UseSkill, new CastSkillReq
+        { SkillId = 1430901, TargetId = target.Role!.Id, TargetPos = target.Position.Clone() });
+        Assert.Equal(0, (await Next(bot, CombatService.UseSkill, CastSkillRsp.Parser)).Result);
+        await completed.Task.WaitAsync(Wait);
+        long[] expectedExtras = [1431601, 1431701];
+        Assert.Equal(expectedExtras, extras.Order());
+        Assert.Equal(0, rolls);
+    }
+
+    [ClientDataFact]
     public async Task CastPassivePvpSingleTargetJudexIgnoresNearbyMonsterAndDoesNotDoubleProc()
     {
         await using var bot = await InWorld("PvpMixedLight");

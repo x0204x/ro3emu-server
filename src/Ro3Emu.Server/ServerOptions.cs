@@ -217,11 +217,11 @@ public sealed class ServerOptions
     public string[] GuildBlockedWords { get; set; } = [];
 
     /// <summary>
-    /// "instant": a guild is Normal at once unless the founder ticks the create widget's responder toggle (this server's
-    /// shortcut). "responders": every guild is founded through GuildResponsePeopleLimit responders, as the original;
-    /// the toggle then only waives the founder's approval of each response.
+    /// "responders" (as the client says): a guild costs GuildCreateCostShow and is founded through GuildResponsePeopleLimit
+    /// responders within GuildResponseTimeLimit, or the founder gets the cost back by mail; the create widget's toggle only
+    /// waives the founder's approval of each response. "instant": a host's shortcut, a guild is free and Normal at once.
     /// </summary>
-    public string GuildFounding { get; set; } = "instant";
+    public string GuildFounding { get; set; } = "responders";
 
     /// <summary>
     /// Guild League registration's membership threshold. Unset: GuildSettingConfig GuildLeaguePeopleNum (40, read as the

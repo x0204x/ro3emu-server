@@ -32,12 +32,12 @@ public sealed class ActivitiesMessages(PraiseService praise, CasualBattleService
         routes.AdmitEconomic(id => id is FirstHeartService.GetTaskReward or FirstHeartService.GetScoreReward);
         routes.AdmitRole(id => id is TowerService.Info or TowerService.SetPets or TowerService.FirstPassRange
             or TowerService.ClaimFirstPass or TowerService.Sweep or TowerService.End or TowerService.Start);
-        routes.AdmitRole(id => id is DungeonService.SetJobPosition or DungeonService.SetGuide or DungeonService.ClaimFirstPass
+        routes.AdmitRole(id => id is DungeonService.SetJobPosition or DungeonService.SetGuide
             or DungeonService.Statistics or DungeonService.StatisticsHistory or DungeonService.StatisticsCurrent
             or DungeonService.StatisticsModule or DungeonService.QueryResult
             or DungeonService.HallOfFame or DungeonService.MarkBlessings or PraiseService.Praise);
-        // Final Trial honor claims pay their awards (DungeonService.RealmOfGods reserves the role and the claim).
-        routes.AdmitEconomic(id => id is DungeonService.ClaimHonor);
+        // Final Trial honor and first-clear claims pay their awards (DungeonService reserves the role and the claim).
+        routes.AdmitEconomic(id => id is DungeonService.ClaimHonor or DungeonService.ClaimFirstPass);
 
         routes.Map(82800, "genre", async (session, msgId, body) =>
         {

@@ -18,7 +18,7 @@ public sealed class AwardPlan(long groupId, long awardId, IEnumerable<AwardGrant
     public IReadOnlyList<AwardGrant> Grants { get; } = new ReadOnlyCollection<AwardGrant>([.. grants]);
 }
 
-public sealed class AwardResolutionException(string message) : InvalidOperationException(message);
+public class AwardResolutionException(string message) : InvalidOperationException(message);
 
 /// <summary>
 /// Resolves MultiverseGroupConfig type 0 to AwardConfig, including fixed tuples and actual DropPool terminals.
@@ -85,13 +85,13 @@ public sealed class AwardService(GameData data, IOptions<ServerOptions>? options
         if (rows.GetArrayLength() != 1 && serverOpenDay == null)
             throw Fail($"AwardConfig {awardId} has multiple open-day rows; authoritative selector unresolved");
         var row = rows.GetArrayLength() == 1 ? rows[0] : OpenDayRow(rows, serverOpenDay!.Value, awardId);
-        if (serverOpenDay != null && HasValues(row, "_kCondition")) CheckLevelCondition(row, progress, awardId);
-        if (HasValues(row, "_kEXP") || serverOpenDay == null && HasValues(row, "_kCondition"))
-            throw Fail($"AwardConfig {awardId} has unresolved EXP or condition policy");
+        long baseExp = BaseExp(row, awardId);
+        if (HasValues(row, "_kCondition")) CheckLevelCondition(row, progress, awardId);
         if (data.Table("AwardRestricConfig").Values.Any(r => GameData.Int(r, "_iRewardID") == awardId))
             throw Fail($"AwardConfig {awardId} has unresolved restriction/replacement policy");
 
         var grants = new List<AwardGrant>();
+        if (baseExp > 0) grants.Add(new AwardGrant(BaseExpItem, checked((int)baseExp)));
         if (row.TryGetProperty("_kAward", out var fixedItems))
         {
             if (fixedItems.ValueKind == JsonValueKind.Object && !fixedItems.EnumerateObject().Any()) { /* empty export */ }
@@ -142,7 +142,7 @@ public sealed class AwardService(GameData data, IOptions<ServerOptions>? options
             if (groupId <= 0 || chance is < 0 or > 1_000_000 || rolls is < 1 or > 1000 || picks is < 1 or > 1000)
                 throw Fail($"DropPoolConfig {poolId} slot {slot} has unsupported range");
             var candidates = EligibleRows(groupId, progress);
-            long weight = candidates.Sum(r => new DropGroupConfig(r).Weights);
+            long weight = candidates.Sum(r => new DropGroupConfig(r).WeightOrDefault);
             if (weight <= 0) continue;
             // (inferred) RewardService's current [group,chance-per-million,rolls,picks] interpretation.
             for (int r = 0; r < rolls; r++)
@@ -150,8 +150,8 @@ public sealed class AwardService(GameData data, IOptions<ServerOptions>? options
                 if (Random.Shared.NextInt64(1_000_000) >= chance) continue;
                 foreach (var candidate in DropPicks.Distinct(candidates, picks, Random.Shared.NextInt64))
                 {
-                    int min = checked((int)new DropGroupConfig(candidate).MinNumber);
-                    int max = checked((int)new DropGroupConfig(candidate).MaxNumber);
+                    int min = checked((int)new DropGroupConfig(candidate).MinNumberOrDefault);
+                    int max = checked((int)new DropGroupConfig(candidate).MaxNumberOrDefault);
                     if (min < 1 || max < min) throw Fail($"DropGroupConfig {groupId} has invalid quantity range");
                     int count = checked((int)Random.Shared.NextInt64(min, (long)max + 1));
                     int entry = checked((int)new DropGroupConfig(candidate).DropItem);
@@ -165,12 +165,12 @@ public sealed class AwardService(GameData data, IOptions<ServerOptions>? options
 
     private List<JsonElement> EligibleRows(long groupId, RoleProgress? progress)
     {
-        if (data.Row("DropGroupConfig", groupId) is not { ValueKind: JsonValueKind.Array } rows)
+        if (data.Row("DropGroupConfig", groupId) is not { } group || !GameData.TryGroupedRows(group, out var rows))
             throw Fail($"missing DropGroupConfig {groupId}");
         var eligible = new List<JsonElement>();
-        foreach (var row in rows.EnumerateArray())
+        foreach (var row in rows)
         {
-            long weight = new DropGroupConfig(row).Weights;
+            long weight = new DropGroupConfig(row).WeightOrDefault;
             if (weight <= 0) continue;
             // A declared but empty/zero-weight pool still resolves fixed grants without a recipient.
             // Only an eligible weighted candidate needs role level and career.
@@ -189,8 +189,8 @@ public sealed class AwardService(GameData data, IOptions<ServerOptions>? options
                 throw Fail($"DropGroupConfig {groupId} has unresolved eligibility or bind policy");
             int bind = PoolBindType(row, groupId);
             int entry = checked((int)new DropGroupConfig(row).DropItem);
-            int low = checked((int)new DropGroupConfig(row).MinNumber);
-            int high = checked((int)new DropGroupConfig(row).MaxNumber);
+            int low = checked((int)new DropGroupConfig(row).MinNumberOrDefault);
+            int high = checked((int)new DropGroupConfig(row).MaxNumberOrDefault);
             if (low <= 0 || high < low) throw Fail($"DropGroupConfig {groupId} has invalid quantity range");
             ValidateGrant(entry, low, bind, 0);
             eligible.Add(row);
@@ -219,6 +219,19 @@ public sealed class AwardService(GameData data, IOptions<ServerOptions>? options
         if (GameData.Int(item, "_iType") == 1 && (expiry != 0 || bind == 2
             || bind == 1 && (!item.TryGetProperty("_iTrade", out var trade) || GameData.Number(trade) != 0)))
             throw Fail($"currency {entry} has unsupported binding, expiry, or trade policy");
+    }
+
+    /// <summary>
+    /// _kEXP [1, n]: n base EXP, read the way TaskConfig's _kEXP is (TaskService). Any other EXP kind stays unresolved.
+    /// </summary>
+    private static long BaseExp(JsonElement row, long awardId)
+    {
+        if (!HasValues(row, "_kEXP")) return 0;
+        var exp = row.GetProperty("_kEXP");
+        if (exp.ValueKind == JsonValueKind.Array && exp.GetArrayLength() == 2 && GameData.Number(exp[0]) == 1
+            && ExactLong(exp[1], "EXP") is var amount and > 0 and <= int.MaxValue)
+            return amount;
+        throw Fail($"AwardConfig {awardId} has unresolved EXP policy");
     }
 
     private static bool HasValues(JsonElement row, string key) => row.TryGetProperty(key, out var value) && (value.ValueKind switch
@@ -263,4 +276,4 @@ public sealed class AwardService(GameData data, IOptions<ServerOptions>? options
 }
 
 /// <summary>The recipient does not meet an AwardConfig _kCondition the source may refuse on.</summary>
-public sealed class AwardConditionException(string message) : InvalidOperationException(message);
+public sealed class AwardConditionException(string message) : AwardResolutionException(message);

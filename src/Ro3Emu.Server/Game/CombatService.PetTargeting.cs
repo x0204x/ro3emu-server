@@ -40,6 +40,9 @@ public sealed partial class CombatService
                 ? forward >= -.5 && forward <= radius + .1
                 : Math.Abs(forward - range.ElementAtOrDefault(4) / 100) <= radius / 2 + .1;
         }
+        // Shadow Break: "within a ${2}-meter radius centered ${1} meters in front of You", _kRange[3].
+        if (release == SkillRelease.FixCircle && range.ElementAtOrDefault(3) > 0)
+            return Math.Sqrt(Math.Pow(forward - range[3] / 100, 2) + side * side) <= radius + .1;
         return Distance(center, point) <= radius + .1 && (release != SkillRelease.Fan
             || Math.Atan2(Math.Abs(side), forward) <= (range.Length > 1 ? range[1] : 90) * Math.PI / 360);
     }

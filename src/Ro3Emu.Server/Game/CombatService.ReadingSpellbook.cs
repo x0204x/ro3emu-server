@@ -5,7 +5,7 @@ namespace Ro3Emu.Server.Game;
 
 public sealed partial class CombatService
 {
-    private const int ReadingBuff = 1231001, ReadingEnergy = 240001, ReadingToggleGroup = 12319;
+    private const int ReadingEnergy = BookPages, ReadingToggleGroup = 12319;
     private readonly Dictionary<ActiveSkillCast, GameSession> _readingCopies = [];
 
     // SkillConfig 的八組明確 copy 列；不是把所有職業技能無條件再放一次。

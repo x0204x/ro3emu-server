@@ -47,7 +47,7 @@ public sealed partial class CardEffects
     private bool IsCardReaction(GameSession s, JsonElement row) => RuntimeFor(s).ResolvingAutocast
         || SkillEvents(s).Healing || row.TryGetProperty("_ro3CardReflection", out var reflection) && reflection.ValueKind == JsonValueKind.True;
 
-    private long SpBurn(GameSession source, JsonElement row, long damage, long currentSp)
+    private long CardSpBurn(GameSession source, JsonElement row, long damage, long currentSp)
     {
         if (source.Role == null || source.Dead || damage <= 0 || currentSp <= 0 || IsCardReaction(source, row)) return 0;
         foreach (var (basis, group, chance, desc) in Procs([.. Passives(source)]))
@@ -65,7 +65,7 @@ public sealed partial class CardEffects
     internal async Task DrainMonsterSpAsync(GameSession source, MonsterUnit target, JsonElement row, long damage)
     {
         if (target.Dead || target.Hp <= 0) return;
-        long amount = SpBurn(source, row, damage, target.CurrentSp);
+        long amount = CardSpBurn(source, row, damage, target.CurrentSp);
         if (amount <= 0) return;
         target.CurrentSp -= amount;
         var notice = new AOIAttrChange
@@ -89,7 +89,7 @@ public sealed partial class CardEffects
             || source.SceneGeneration != sourceGeneration || target.SceneGeneration != targetGeneration
             || source.Dead || target.Dead || source.SceneLoading || target.SceneLoading
             || source.WorldScene != scene || target.WorldScene != scene) return;
-        long current = _character.Stats(target)[2001], amount = SpBurn(source, row, damage, current);
+        long current = _character.Stats(target)[2001], amount = CardSpBurn(source, row, damage, current);
         if (amount > 0) await _character.SetHpSpAsync(target, null, current - amount);
     }
 
@@ -127,7 +127,11 @@ public sealed partial class CardEffects
             || Roll(10000) >= chance || !SkillEventReady(source, 20531, (long)(desc[1] * 1000))) return;
         var state = SkillEvents(source);
         state.Healing = true;
-        try { await _combat.CastExtraOnAlliesAsync(source, heal.Row, [recipient]); }
+        try
+        {
+            await _combat.CastExtraOnAlliesAsync(source, heal.Row,
+                ReferenceEquals(source, recipient) ? [source] : [recipient, source]);
+        }
         finally { state.Healing = false; }
     }
 }

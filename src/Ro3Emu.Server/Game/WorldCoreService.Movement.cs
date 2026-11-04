@@ -17,16 +17,15 @@ public sealed partial class WorldCoreService
     /// <summary>
     /// Wing use effects (ActionConfig 101 JumpSameMap / 102 JumpOtherMap, _iEXECHost 1; ItemConfig 1002001 Fly Wing and
     /// 1002000 Butterfly Wing). The Fly Wing moves the player to a random spot of the current map (inferred: one of the
-    /// map's authored points or monster spawn points standing on walkable ground, so it never lands outside the play
-    /// area); the Butterfly Wing goes to the picked map's Kafra arrival, else its born point (inferred).
+    /// map's authored points or monster spawn points on walkable ground reachable from the map's arrivals, so it never
+    /// lands outside the play area, MapWorld.RandomSpots); the Butterfly Wing goes to the picked map's Kafra arrival, else its born point (inferred).
     /// </summary>
     private async Task<bool> WingJumpAsync(GameSession s, long scene)
     {
         if (_worldData.Map(scene) is not { } map) return false;
         if (scene != s.SceneEntry) return await this._scene.EnterSceneAsync(s, scene, map.KafraArrival);
-        var spots = map.Points.Values.Concat(map.SpawnGroups.SelectMany(g => g.Points).Select(p => new MapPoint(p.X, p.Y, p.Z, p.Face)))
-            .Select(map.Grounded).Where(p => map.IsWalkable(p.X, p.Y, p.Z)).ToList();
-        if (spots.Count == 0) return false;
+        var spots = await _worldData.RandomSpotsAsync(map, scene);
+        if (spots.Count == 0 || s.SceneEntry != scene) return false;
         await this._scene.TeleportInMapAsync(s, spots[Random.Shared.Next(spots.Count)]);
         return true;
     }

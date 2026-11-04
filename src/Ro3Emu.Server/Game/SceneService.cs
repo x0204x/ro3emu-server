@@ -165,6 +165,8 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
             s.Position = new Vec3 { X = arrival.X, Y = arrival.Y, Z = arrival.Z };
             s.PreviousPosition = s.Position;
             s.Face = arrival.Face;
+            s.LastWalkUtc = DateTime.UtcNow; // the walk before the switch is over (GameSession.WalkReportLag)
+            s.Walking = false;
             s.SceneLoading = true;
             if (instanceId == 0)
             {
@@ -519,4 +521,10 @@ public sealed partial class SceneService(IOptions<ServerOptions> options, World 
     public Func<GameSession, Vec3, Vec3, bool>? WalkBridged { get; set; }
     /// <summary>劇情騎乘的移動速率仍接受新版距離預算、導航與阻擋判定。</summary>
     internal Func<GameSession, double?>? StoryMovementSpeed { get; set; }
+
+    /// <summary>
+    /// The player sits on a scripted ride: the client reports the carrier's walk as its own, up the walls of a surface scene and at
+    /// the carrier's speed, neither of which is the player's (LC_Movement_Controller_NavMesh._getAreaMask). The route is the server's.
+    /// </summary>
+    public Func<GameSession, bool>? WalkOnRide { get; set; }
 }

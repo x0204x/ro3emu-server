@@ -1,6 +1,7 @@
 using System.Globalization;
 using Romsg;
 using Ro3Emu.Server.Data;
+using Ro3Emu.Server.Data.Config;
 
 namespace Ro3Emu.Server.Game;
 
@@ -104,8 +105,27 @@ public sealed partial class BuffService
         {
             await _character.SetHpSpAsync(p, Math.Max(1, stats[101] * percent / 100),
                 Math.Max(1, stats[102] * percent / 100));
+            await ReduceDamageAfterReviveAsync(p, new BuffConfig(row));
         }
         await RefreshControlAsync(p);
+    }
+
+    private const long ReducesAfterRevive = 5006; // _kBuffCategory, Card: Osiris's T2 and T3 rows only
+    private const int ReviveReduction = 2090401;
+
+    /// <summary>
+    /// Card: Osiris T2 and T3: "After the death-prevention effect triggers, Physical/Magic damage taken is reduced by @{3}% for
+    /// @{4} seconds." Their rows' _kDescData ["100", cooldown, "30", "5"] say it, and only they carry category 5006; the categories
+    /// of 20520/20521 pick the script's branch, as 5001-5003 name the three heal rows of _kLogicData [2090101, 2090201, 2090301].
+    /// (inferred) No data links 5006 to row 2090401 (group 20904, "Osiris", "Damage Reduction +30%", _kChangeAttri [216, 3000]): its
+    /// name and number do, and nothing else names that row. (inferred) It starts when the revive is taken: the offer's own
+    /// window already protects, and a declined revive is a death. It reaches a hit through the sheet like any buff's 216.
+    /// </summary>
+    private async Task ReduceDamageAfterReviveAsync(GameSession p, BuffConfig revive)
+    {
+        if (!revive.BuffCategory.Contains(ReducesAfterRevive) || revive.DescData is not [_, _, _, var seconds, ..]
+            || !double.TryParse(seconds, NumberStyles.Float, CultureInfo.InvariantCulture, out double duration)) return;
+        await AddAsync(p, ReviveReduction, (int)(duration * 1000), p.Role!.Id);
     }
 
     private static double DescriptionNumber(System.Text.Json.JsonElement desc, int index, double fallback) =>

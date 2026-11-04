@@ -550,6 +550,7 @@ public sealed class TowerTests : IAsyncLifetime
         Assert.Empty(Session(alice).Tower!.RewardRecord);
         Assert.Empty(Service<RoleStore>().LoadTowerFirstPasses(1, 1));
         FailTowerWrites(false);
+        await Task.Delay(600); // the walk in Kill cancels the swing above, which then holds the next one (CombatService.CancelCastAsync)
         await Kill(alice, a.Monsters[1].Uuid);
         var success = await Next(alice, TowerService.End, ClimTowerEndNotify.Parser);
         Assert.Equal(0, success.Result);
@@ -715,6 +716,30 @@ public sealed class TowerTests : IAsyncLifetime
         await Task.Delay(1200); // pending normal attacks cannot deliver a second result after leaving
         Assert.Single(alice.Inbox.Snapshot(), e => e.IsGame(TowerService.End));
         Assert.Null(Session(alice).TowerAttempt);
+    }
+
+    [ClientDataFact]
+    public async Task TryAgainAfterDeathRevivesAtFullHpOnAFreshFloor()
+    {
+        await using var alice = await InWorld("Alice");
+        await Eligible(alice, level: 33);
+        var lost = await EnterFloor(alice, 1);
+        await OnLoop(() => Service<CharacterService>().SetHpSpAsync(Session(alice), 1, null));
+        await alice.SendGameAsync(MsgId.Walk, new WalkReq { Pos = lost.Monsters[0].MovementInfo.Pos, BStop = true, SpeedRate = 1 });
+        await Next(alice, CombatService.SkillHit, SkillHitInfo.Parser,
+            hit => hit.Dsts.Any(d => d.DstID == (long)alice.Self!.Uuid && d.IsDead));
+        Assert.False((await Next(alice, TowerService.End, ClimTowerEndNotify.Parser)).ClimTowerResult);
+        Assert.True(Session(alice).Dead);
+
+        // The Failed panel's Try Again sends 32801 from inside the tower while the challenger is still dead.
+        var retry = await EnterFloor(alice, 1, inside: true);
+        Assert.NotEqual(lost.Scene.SceneID, retry.Scene.SceneID);
+        Assert.Equal(2, retry.Monsters.Length);
+        await Next(alice, CombatService.ReviveInfo, SyncClientPlayerReviveInfoNtf.Parser, info => !info.BDead);
+        var s = Session(alice);
+        Assert.False(s.Dead);
+        Assert.Equal(Service<CharacterService>().Stats(s)[101], Service<CharacterService>().Stats(s)[2000]);
+        Assert.Equal(retry.Scene.SceneID, s.TowerAttempt!.InstanceId);
     }
 
     [ClientDataFact]

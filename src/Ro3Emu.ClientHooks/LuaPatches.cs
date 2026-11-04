@@ -110,6 +110,7 @@ namespace Ro3Emu.ClientHooks
                 PersonalCards.Install((Obf_R.Obf_Cf)env, Module(manager, global, "lc_dal_personal"));
                 LuaLogs.Install(global);
                 EmoteWidget.Install(Module(manager, global, "ui_sys_main_actionwidgetbasectrl"));
+                PayManager.Install(Module(manager, global, "lua_sdk_paymgr"));
                 Debug.Log("[Ro3Emu.LuaPatches] lc_itemshowfunc: " + added + " card show-func method(s) added; stall name limit "
                     + (param != null ? StallNameMaxLength.ToString() : "not set (publicparamconfig missing)"));
             }

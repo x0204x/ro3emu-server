@@ -57,17 +57,19 @@ public sealed class InstallerTests : IAsyncLifetime
 
     private static async Task Serve(HttpContext context, byte[] body)
     {
-        long from = 0;
+        long from = 0, to = body.Length - 1;
         var range = context.Request.Headers.Range.ToString();
-        if (range.StartsWith("bytes=") && long.TryParse(range[6..].TrimEnd('-'), out var start))
+        var parts = range.StartsWith("bytes=") ? range[6..].Split('-') : [];
+        if (parts.Length == 2 && long.TryParse(parts[0], out var start))
         {
             if (start >= body.Length) { context.Response.StatusCode = 416; return; }
             from = start;
+            if (long.TryParse(parts[1], out var end)) to = Math.Min(end, to);
             context.Response.StatusCode = 206;
-            context.Response.Headers.ContentRange = $"bytes {from}-{body.Length - 1}/{body.Length}";
+            context.Response.Headers.ContentRange = $"bytes {from}-{to}/{body.Length}";
         }
-        context.Response.ContentLength = body.Length - from;
-        await context.Response.Body.WriteAsync(body.AsMemory((int)from));
+        context.Response.ContentLength = to - from + 1;
+        await context.Response.Body.WriteAsync(body.AsMemory((int)from, (int)(to - from + 1)));
     }
 
     private PublisherConfig Config(params string[] origins) => new()
@@ -233,6 +235,53 @@ public sealed class InstallerTests : IAsyncLifetime
         await installer.ApplyAsync(installer.MakePlan(await installer.FetchAsync(), game), game);
         AssertInstalled(game, content);
         Assert.Contains(_requests, r => r.StartsWith("b/" + path + " bytes=") && !r.EndsWith("bytes=0-"));
+    }
+
+    [Fact]
+    public async Task DownloadsInPartsOverSeveralConnections()
+    {
+        var content = Publish(TwoPackages());
+        var big = Zip(TwoPackages()["p2"]);
+        var path = $"b/pkg/{Sha(big)}.zip";
+        int active = 0, peak = 0;
+        // Hold each part briefly so that several are in flight together; a, b hold the same files.
+        foreach (var origin in new[] { "a", "b" })
+            _faults[$"{origin}/pkg/{Sha(big)}.zip"] = async _ =>
+            {
+                int now = Interlocked.Increment(ref active);
+                int seen;
+                while ((seen = Volatile.Read(ref peak)) < now && Interlocked.CompareExchange(ref peak, now, seen) != seen) { }
+                await Task.Delay(100);
+                Interlocked.Decrement(ref active);
+                return false;
+            };
+        var game = Path.Combine(_dir.FullName, "game");
+        var installer = Installer();
+        installer.Connections = 4;
+        installer.ChunkBytes = 16; // the test packages compress to a few hundred bytes
+        await installer.ApplyAsync(installer.MakePlan(await installer.FetchAsync(), game), game);
+        AssertInstalled(game, content);
+        Assert.True(peak > 1, $"parts were fetched one at a time (peak {peak})");
+        Assert.True(_requests.Count(r => r.StartsWith("a/pkg/" + Sha(big), StringComparison.Ordinal) || r.StartsWith(path, StringComparison.Ordinal)) > 4, "the package came in several parts");
+    }
+
+    [Fact]
+    public async Task AServerWithoutRangesStillServesThePackage()
+    {
+        var content = Publish(TwoPackages());
+        var big = Zip(TwoPackages()["p2"]);
+        foreach (var origin in new[] { "a", "b" })
+            _faults[$"{origin}/pkg/{Sha(big)}.zip"] = context =>
+            {
+                context.Request.Headers.Remove("Range");
+                return Task.FromResult(false);
+            };
+        var game = Path.Combine(_dir.FullName, "game");
+        var installer = Installer();
+        installer.Connections = 4;
+        installer.ChunkBytes = 16;
+        await installer.ApplyAsync(installer.MakePlan(await installer.FetchAsync(), game), game);
+        AssertInstalled(game, content);
     }
 
     [Fact]

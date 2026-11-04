@@ -98,6 +98,32 @@ public sealed class AppraiseEnchantTests : IAsyncLifetime
         return await Next(bot, CharacterService.EquipItemOpr, EquipItemOprResp.Parser);
     }
 
+    // RefiningEffectTable level 1 is [7 grids, +3]. Wearing or removing anything keeps the panel's level.
+    [ClientDataFact]
+    public async Task WearingGearKeepsTheResonanceLevelsInTheReply()
+    {
+        await using var alice = await InWorld("Alice");
+        await Gm("alice", "!quest done 10103020");
+        var gear = await Give(Orange);
+        await alice.SendGameAsync(AppraisalService.Appraise, new EquipAppraiseReq { ItemGuids = { gear.Guid } });
+        Assert.Equal(0, (await Next(alice, AppraisalService.Appraise, EquipAppraiseResp.Parser)).Result);
+        var session = _app.Services.GetRequiredService<SessionRegistry>().All().Single(s => s.Account == "alice");
+        var equipment = _app.Services.GetRequiredService<EquipmentService>();
+        await _app.Services.GetRequiredService<GameLoop>().InvokeAsync(async () =>
+        {
+            Assert.NotNull(await equipment.GmSetLevelAsync(session, [1, 2, 3, 4, 5, 6, 7], 3, refine: true));
+            Assert.NotNull(await equipment.GmSetLevelAsync(session, [1, 2, 3, 4, 5, 6, 7], 30, refine: false));
+        });
+
+        var worn = await Wear(alice, gear.Guid);
+        Assert.Equal(0, worn.Result);
+        Assert.Equal(1, worn.RefineEffectLv);
+        Assert.True(worn.StrengthenEffectLv > 0);
+        var removed = await Wear(alice, gear.Guid, remove: true);
+        Assert.Equal(0, removed.Result);
+        Assert.Equal(1, removed.RefineEffectLv);
+    }
+
     [ClientDataFact]
     public async Task AppraisalPreservesGuidAndRollsAndSurvivesRelog()
     {
@@ -384,6 +410,67 @@ public sealed class AppraiseEnchantTests : IAsyncLifetime
         Assert.Equal(0, (await Next(alice, AppraisalService.Appraise, EquipAppraiseResp.Parser)).Result);
     }
 
+    /// <summary>
+    /// Skill-only rows install with an empty attr map. 1011607 "Crimson · Realm-Breaking Power" names SpecialEffectConfig
+    /// 15000040 [11, 1004, 10, 221, 20]: 20 of attribute 221 per lit Crimson (1004) mark on the worn echoes, up to 10.
+    /// </summary>
+    [ClientDataFact]
+    public async Task SkillOnlyEnchantInstallsAndScalesWithWornEchoElements()
+    {
+        const int skillOnly = 1011607, echo = 1850101;
+        await using var alice = await InWorld("Alice");
+        await OpenEnchant();
+        var gear = await Give(Gear);
+        Assert.Equal(0, (await Wear(alice, gear.Guid)).Result);
+        var scroll = await Give(skillOnly);
+        await Gm("alice", "!item 2 10000");
+        var reply = await Apply(alice, gear.Guid, scroll.Guid);
+        Assert.Equal((0, skillOnly), (reply.Result, reply.EnchantId));
+        var equip = await Next(alice, CharacterService.EquipSync, DBEquipInfoIncrement.Parser,
+            m => m.Items.GetValueOrDefault(gear.Guid)?.Inc?.Enchantment.ContainsKey(skillOnly) == true);
+        Assert.Empty(equip.Items[gear.Guid].Inc.Enchantment[skillOnly].All.Attr);
+        Assert.Empty(Service<ItemStore>().Load(Session().Role!.Id).Single(i => i.Guid == gear.Guid).Enchantments[skillOnly].Attr);
+
+        var character = Service<CharacterService>();
+        var (none, one, capped, otherMark, unworn) = await Service<GameLoop>().InvokeAsync(() =>
+        {
+            var s = Session();
+            var none = character.Stats(s)[221];
+            Deploy(s, 1004, echoes: 1, lit: 1);
+            var one = character.Stats(s)[221];
+            Deploy(s, 1004, echoes: 4, lit: 4); // 16 lit marks, capped at 10
+            var capped = character.Stats(s)[221];
+            Deploy(s, 1001, echoes: 4, lit: 4); // another element
+            var otherMark = character.Stats(s)[221];
+            Deploy(s, 1004, echoes: 4, lit: 4);
+            Live(gear.Guid).Grid = 0; // the enchanted gear in the bag adds nothing
+            var unworn = character.Stats(s)[221];
+            Live(gear.Guid).Grid = 1;
+            return Task.FromResult((none, one, capped, otherMark, unworn));
+        });
+        Assert.Equal(none + 20, one);
+        Assert.Equal(none + 200, capped);
+        Assert.Equal(none, otherMark);
+        Assert.Equal(none, unworn);
+
+        static void Deploy(GameSession s, long mark, int echoes, int lit)
+        {
+            s.Emblems.Plans[s.Emblems.CurrentPlan].Slots.Clear();
+            s.Items.RemoveAll(i => i.Entry == echo);
+            for (int slot = 1; slot <= echoes; slot++)
+            {
+                var item = new InvItem
+                {
+                    Entry = echo, Stack = 1, Pack = 5, Sort = 100 + slot, Guid = 9_000_000 + slot,
+                    Attrs = new() { [1001] = 0, [10001] = 2, [10002] = slot }
+                };
+                for (int i = 0; i < lit; i++) item.Attrs[1021 + i] = mark;
+                s.Items.Add(item);
+                s.Emblems.Plans[s.Emblems.CurrentPlan].Slots[slot] = item.Guid;
+            }
+        }
+    }
+
     [ClientDataFact]
     public async Task EnchantRefusalsPreserveBothPlayersItemsCurrencyAndStats()
     {
@@ -397,7 +484,6 @@ public sealed class AppraiseEnchantTests : IAsyncLifetime
         var wrongType = await Give(2010540);
         var overLevel = await Give(2030640);
         var unappraised = await Give(2030550);
-        var skillOnly = await Give(1011607);
         await Gm("alice", "!item 2 10000");
         await Refuse(gear.Guid, scroll.Guid, ErrorCodes.FeatureUnavailable);
         await Gm("alice", "!lvl 50"); // enchant's own condition holds, its parent is still closed
@@ -415,7 +501,6 @@ public sealed class AppraiseEnchantTests : IAsyncLifetime
             (wrongType.Guid, scroll.Guid, ErrorCodes.EnchantParameter),
             (overLevel.Guid, scroll.Guid, ErrorCodes.EnchantParameter),
             (unappraised.Guid, scroll.Guid, ErrorCodes.EquipNotAppraised),
-            (gear.Guid, skillOnly.Guid, ErrorCodes.FeatureUnavailable),
         }) await Refuse(target, material, error);
         await Gm("alice", "!delitem 2 1");
         await Refuse(gear.Guid, scroll.Guid, ErrorCodes.EnchantMaterials);

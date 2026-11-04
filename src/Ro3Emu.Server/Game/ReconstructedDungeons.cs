@@ -13,7 +13,7 @@ namespace Ro3Emu.Server.Game;
 /// </summary>
 public sealed partial class ReconstructedDungeons
 {
-    public sealed record Spawn(long Point, int NpcId);
+    public sealed record Spawn(long Point, int NpcId, long Route = 0);
     public sealed record Wave(int Quest, IReadOnlyList<Spawn> Spawns);
     public sealed record Dungeon(long Scene, string Name, string Confidence, IReadOnlyList<Wave> Waves);
 

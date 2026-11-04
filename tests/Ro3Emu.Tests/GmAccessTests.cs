@@ -126,6 +126,55 @@ public sealed class GmAccessTests
         }
     }
 
+    [Fact]
+    public async Task AGmLoggingInWithOtherCapitalsGetsItsTypedSpellingBack()
+    {
+        // The client shows its GM button only when the role's account equals the typed login, compared case-sensitively.
+        var dataDir = Path.Combine(Path.GetTempPath(), "ro3emu-gmcase-" + Guid.NewGuid().ToString("N"));
+        var (httpPort, microPort, gamePort) = TestPorts.FreePorts();
+        var app = ServerHost.Create([], o =>
+        {
+            o.DataDir = dataDir;
+            o.GameDataDir = Path.Combine(RepoRoot(), "data");
+            o.HttpPort = httpPort;
+            o.MicroGatePort = microPort;
+            o.GameGatePort = gamePort;
+            o.GmAccounts = ["Beansprout"];
+            o.GmOpenWhenEmpty = false;
+        });
+        await app.StartAsync();
+        try
+        {
+            string http = $"http://127.0.0.1:{httpPort}";
+            string pem = File.ReadAllText(Path.Combine(dataDir, "gate_rsa_public.pem"));
+            await using (var first = new BotClient(http, pem))
+            {
+                await first.LoginAsync("Beansprout", "pw");
+                await first.EnterGateAsync();
+                await first.CreateRoleAsync("Sprout");
+            }
+
+            await using var bean = new BotClient(http, pem);
+            await bean.LoginAsync("beansprout", "pw");
+            Assert.Equal("beansprout", Assert.Single(bean.Roles).Account);
+            await bean.EnterGateAsync();
+            await bean.EnterWorldAsync(bean.Roles[0].Id);
+            var select = bean.Inbox.Snapshot().Last(e => e.IsGame(MsgId.LoginRoleSelect));
+            var basic = AccountLoginSelectRoleResp.Parser.ParseFrom(select.Body).RoleAssets.BasicInfo;
+            Assert.Equal("beansprout", basic.Account);
+
+            await bean.SendGameAsync(GmCommands.GeneralProcGm, new GeneralGMProcReq { ParamString = "ro3-gm-panel-capability-v1:1" });
+            Assert.EndsWith(":1", GeneralGMProcRsp.Parser.ParseFrom((await bean.Inbox.WaitAsync(e => e.IsGame(GmCommands.GeneralProcGm), Wait)).Body).ErrInfo);
+        }
+        finally
+        {
+            await app.StopAsync();
+            await app.DisposeAsync();
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            try { Directory.Delete(dataDir, true); } catch (IOException) { }
+        }
+    }
+
     private static async Task<string> Marquee(BotClient bot, string? contains = null) =>
         BroadCastNotify.Parser.ParseFrom((await bot.Inbox.WaitAsync(e => e.IsGame(GmCommands.BroadcastNotify)
             && (contains == null || BroadCastNotify.Parser.ParseFrom(e.Body).Content.Contains(contains)), Wait)).Body).Content;

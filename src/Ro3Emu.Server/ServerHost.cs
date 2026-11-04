@@ -336,6 +336,9 @@ public static partial class ServerHost
         app.Services.GetRequiredService<GuildService>().ItemDataOf = escort.GuildItems;
         var territoryCombat = app.Services.GetRequiredService<CombatService>();
         var league = app.Services.GetRequiredService<GuildLeagueService>(); // 30410-30412 hooks, battlefield scene/combat hooks
+        var partyTeams = app.Services.GetRequiredService<TeamService>();
+        territoryCombat.SameParty = (x, y) => x.Role is { } xr && y.Role is { } yr
+            && partyTeams.TeamOf(xr.Id).TeamId is var team and not 0 && partyTeams.TeamOf(yr.Id).TeamId == team;
         territoryCombat.PlayerHostile = (a, b) => territory.Hostile(a, b) || escort.Hostile(a, b) || territory.WorldHostile(a, b)
             || league.Hostile(a, b);
         territoryCombat.MonsterTargetAllowed = (s, m) => territory.CanHitObjective(s, m) && escort.CanHitCart(s, m) && league.CanHit(s, m);

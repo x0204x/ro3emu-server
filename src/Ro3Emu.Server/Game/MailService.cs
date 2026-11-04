@@ -754,7 +754,9 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
                     RoleItemPlanBuilder? claimPlan = null;
                     try
                     {
-                        var granted = await character.ExchangeLockedAsync(session, [], [], popup: false, sync: false,
+                        // (inferred) The claim shows its goods as a ManifestTypeFloat 31322, like a drop, so a claimed
+                        // piece of equipment gets the quick-equip offer (LC_EquipmentHelper.CanFastEquip).
+                        var granted = await character.ExchangeLockedAsync(session, [], [], popup: true, sync: false,
                             persist: tx =>
                             {
                                 claimPlan = tx;
@@ -782,7 +784,8 @@ public sealed partial class MailService(AccountStore accounts, RoleStore roles, 
                                 tx.WithEscrowEconomy(intent);
                             },
                             boundGoods: boundGoods, exactGoods: mail.Items, currencyGoods: mail.Currency,
-                            baseExp: baseExp, jobExp: jobExp, committed: () => box = next, asyncCommit: true);
+                            baseExp: baseExp, jobExp: jobExp, committed: () => box = next, asyncCommit: true,
+                            convertMailVigorReward: true);
                         if (granted == null) continue;
                     }
                     catch (Exception e) when (e is SqliteException or PersistenceException or InvalidOperationException)

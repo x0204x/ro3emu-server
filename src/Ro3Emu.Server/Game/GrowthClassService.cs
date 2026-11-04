@@ -112,7 +112,9 @@ public sealed class GrowthClassService
         int? playBook = s.Synced.GetValueOrDefault(SeasonService.SeasonSync) is DBSeasonInfo { Current: { } current }
             ? (int)current.PlayBookId : null;
         AwardPlan plan;
+        // Rank 2 (AwardConfig 1001002, [2, 11, 99]) pays from base 11: the rank stays unclaimed until then.
         try { plan = _awards.Resolve(s, group, playBook); }
+        catch (AwardConditionException) { return ErrorCodes.PlayerLevelLow; }
         catch (AwardResolutionException e) when (FixedAward(group, playBook) is { } items)
         {
             _log.LogInformation("Growth Classroom rank {Rank} pays the fixed items of its award: {Reason}", rank, e.Message);

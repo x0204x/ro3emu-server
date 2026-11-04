@@ -19,6 +19,10 @@ public readonly record struct SkillEffectData(JsonElement Row)
     /// (m_kClientPoints, played from the cast's timeline by LC_Skill_RunTimeContext.PlayClientEffect).</summary>
     public static bool HasClientPoints(JsonElement template) => new SkillTimelineData(template).HasClientPoints;
 
+    /// <summary>How long a ground warning this effect holds is drawn (m_kPoint.m_kWarningRange.m_fDuration), or null with none.</summary>
+    public static double? WarningSeconds(JsonElement row) => row.TryGetProperty("m_kPoint", out var point) && point.TryGetProperty("m_kWarningRange", out var warning)
+        ? warning.TryGetProperty("m_fDuration", out var seconds) && seconds.TryGetDouble(out double value) ? value : 0 : null;
+
     public SkillEffectDamage? Damage => ConfigValue.Raw(Row, "m_kDamage") is { } value
         ? new SkillEffectDamage(value) : null;
 

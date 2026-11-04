@@ -28,6 +28,22 @@ public sealed partial class NewActivityService
 {
     private const uint TreasureSync = 5064;
 
+    /// <summary>ChatConfig 401 marquee: "${1} disturbed a terrifying BOSS while treasure hunting in ${2}! Help Defeat it
+    /// to receive a Support Chest!"</summary>
+    private const int TreasureBossChat = 401;
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Treasure award mail {Template} for role {Role} failed")]
+    private static partial void LogTreasureMailFailed(ILogger logger, Exception error, int template, long role);
+    private const uint SystemBroadcast = 1022;
+    private const int TreasureEliteKillMail = 1095, TreasureBossKillMail = 11603, TreasureAssistMail = 11604;
+
+    /// <summary>Role ids that hit each live treasure monster that pays an assist award, keyed by monster UID.</summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<long,
+        System.Collections.Concurrent.ConcurrentDictionary<long, byte>> _treasureHelpers = new();
+
+    /// <summary>Test aid: forces the TreasureHuntResultRateConfig row a dig rolls.</summary>
+    internal long? TreasureOutcomeForTest { get; set; }
+
     /// <summary>
     /// ItemConfig 1112001/1112002 action 304, called with ActivityGate and CharacterService's item-use lock held.
     /// LC_DAL_SeasonTreasure consumes 5064.pointId and LC_System_SeasonTreasure starts the hunt.
@@ -161,13 +177,16 @@ public sealed partial class NewActivityService
             int total = outcomes.Sum(r => (int)GameData.Int(r, "_kGroupProbability"));
             if (total <= 0) return ErrorCodes.FeatureUnavailable;
             int roll = Random.Shared.Next(total);
-            var outcome = outcomes.First(r => (roll -= (int)GameData.Int(r, "_kGroupProbability")) < 0);
+            var outcome = TreasureOutcomeForTest is { } forced
+                ? outcomes.Where(r => new Data.Config.TreasureHuntResultRateConfig(r).Id == forced).DefaultIfEmpty(outcomes[0]).First()
+                : outcomes.First(r => (roll -= (int)GameData.Int(r, "_kGroupProbability")) < 0);
             int type = (int)GameData.Int(outcome, "_iType");
             int action = TreasureAction(outcome, 0), value = TreasureAction(outcome, 1);
             AwardGrant[] grants = [];
             MonsterUnit? monster = null;
             int monsterId = 0;
-            long awardGroup = 0;
+            long awardGroup = 0, assistGroup = 0;
+            bool announce = false;
             if (type == 1 && action == 300 && value > 0)
             {
                 try { grants = [.. _awards.Resolve(session, value, Playbook(session)).Grants]; }
@@ -182,7 +201,14 @@ public sealed partial class NewActivityService
                 monsterId = (int)(GameData.Number(array[0][0]) ?? 0);
                 awardGroup = GameData.Int(monsterRow, "_iAwardId");
                 if (monsterId <= 0 || awardGroup <= 0) return ErrorCodes.FeatureUnavailable;
-                try { _ = _awards.Resolve(session, awardGroup, Playbook(session)); }
+                assistGroup = new Data.Config.TreasureHuntMonsterRewardConfig(monsterRow).AssistAwardId;
+                // _iView=1 (the Drake boss) is the row the client's help-wanted marquee and assist chest are for.
+                announce = new Data.Config.TreasureHuntMonsterRewardConfig(monsterRow).View == 1;
+                try
+                {
+                    _ = _awards.Resolve(session, awardGroup, Playbook(session));
+                    if (assistGroup > 0) _ = _awards.Resolve(session, assistGroup, Playbook(session));
+                }
                 catch (AwardResolutionException) { return ErrorCodes.RewardMissing; }
                 monster = await _scene.SpawnTreasureMonsterAsync(session, monsterId, target.Position);
                 if (monster == null) return ErrorCodes.FeatureUnavailable;
@@ -197,10 +223,15 @@ public sealed partial class NewActivityService
                 PendingMonsterAward = awardGroup,
                 PendingMonsterId = monsterId,
             };
+            if (monster != null && assistGroup > 0) TrackTreasureHelpers(monster.Uid);
             int result = await CommitAdventureAsync(session, session.NewActivities!.Clone(), extra: grants, runtime: runtime);
             if (result != 0)
             {
-                if (monster != null) await _scene.RemoveTreasureMonsterAsync(monster);
+                if (monster != null)
+                {
+                    _treasureHelpers.TryRemove(monster.Uid, out _);
+                    await _scene.RemoveTreasureMonsterAsync(monster);
+                }
                 return result;
             }
             await _scene.RemoveTreasureNpcAsync(session);
@@ -218,6 +249,7 @@ public sealed partial class NewActivityService
             if (monsterId != 0) notice.Param.Add(monsterId);
             await session.SendGameAsync(83251, notice);
             _tasks.OnTreasureDug(session); // quest target 106802, after the dig's commit
+            if (announce) await AnnounceTreasureBossAsync(session);
             return 0;
         }
         finally { session.ActivityGate.Release(); }
@@ -236,23 +268,125 @@ public sealed partial class NewActivityService
     {
         // Any participant may land the final blow; the owner of this one-off spawn receives the configured award.
         var owner = _sessions.All().FirstOrDefault(s => s.ActivityRuntime.AdventureTreasure.PendingMonsterUid == dead.Uid);
-        if (owner == null) return;
+        if (owner == null) { _treasureHelpers.TryRemove(dead.Uid, out _); return; }
         var role = owner.Role;
         var attachment = owner.Attachment;
-        using var scope = owner.Owners is { } owners
+        long assist = 0;
+        using (var scope = owner.Owners is { } owners
             ? await owners.EnterWithGateAsync("treasure monster award", owner.ActivityGate,
-                [Ownership.ReservationKey.Realm]) : null;
-        if (scope == null) await owner.ActivityGate.WaitAsync();
+                [Ownership.ReservationKey.Realm]) : null)
+        {
+            if (scope == null) await owner.ActivityGate.WaitAsync();
+            try
+            {
+                if (!ReferenceEquals(owner.Role, role) || !ReferenceEquals(owner.Attachment, attachment)) return;
+                var cursor = owner.ActivityRuntime.AdventureTreasure;
+                if (cursor.PendingMonsterUid != dead.Uid || cursor.PendingMonsterAward <= 0) return;
+                var runtime = CloneRuntime(owner);
+                runtime.AdventureTreasure = new AdventureTreasureCursor { GroupId = cursor.GroupId };
+                // MailConfig 11603 (boss) / 1095 (elite): "Dig Rewards", claimed from the attachment.
+                var reward = TreasureMonsterReward(cursor.PendingMonsterAward);
+                bool boss = reward is { } row && new Data.Config.TreasureHuntMonsterRewardConfig(row).View == 1;
+                if (await MailTreasureAwardAsync(owner, boss ? TreasureBossKillMail : TreasureEliteKillMail,
+                    cursor.PendingMonsterAward, runtime) == 0 && reward is { } paid)
+                    assist = new Data.Config.TreasureHuntMonsterRewardConfig(paid).AssistAwardId;
+            }
+            finally { owner.ActivityGate.Release(); }
+        }
+        // The finder's award commits first, under its own gate; helpers settle afterwards, one gate at a time.
+        if (assist > 0 && role != null) await AwardTreasureHelpersAsync(role.Id, dead.Uid, assist);
+    }
+
+    /// <summary>The TreasureHuntMonsterRewardConfig row a pending fight came from, found by its kill award.</summary>
+    private System.Text.Json.JsonElement? TreasureMonsterReward(long killAward) => killAward <= 0 ? null
+        : _data.Table("TreasureHuntMonsterRewardConfig").Values
+            .Where(r => new Data.Config.TreasureHuntMonsterRewardConfig(r).AwardId == killAward).Cast<System.Text.Json.JsonElement?>().FirstOrDefault();
+
+    private void TrackTreasureHelpers(long monsterUid) =>
+        _treasureHelpers.TryAdd(monsterUid, new System.Collections.Concurrent.ConcurrentDictionary<long, byte>());
+
+    private Task OnTreasureMonsterDamagedAsync(GameSession player, MonsterUnit monster, long damage)
+    {
+        if (damage > 0 && player.Role is { } role && _treasureHelpers.TryGetValue(monster.Uid, out var helpers))
+            helpers.TryAdd(role.Id, 0);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Each other player who hit the boss gets its assist award once (Dig - Co-op Chest) by MailConfig 11604. Helpers
+    /// must still be online at the kill (inferred).
+    /// </summary>
+    private async Task AwardTreasureHelpersAsync(long ownerRole, long monsterUid, long assistAward)
+    {
+        if (!_treasureHelpers.TryRemove(monsterUid, out var helpers)) return;
+        foreach (long roleId in helpers.Keys.Where(id => id != ownerRole))
+        {
+            var helper = _sessions.All().FirstOrDefault(s => s.Role?.Id == roleId);
+            if (helper == null) continue;
+            var role = helper.Role;
+            var attachment = helper.Attachment;
+            using var scope = helper.Owners is { } owners
+                ? await owners.EnterWithGateAsync("treasure assist award", helper.ActivityGate,
+                    [Ownership.ReservationKey.Realm]) : null;
+            if (scope == null) await helper.ActivityGate.WaitAsync();
+            try
+            {
+                if (!ReferenceEquals(helper.Role, role) || !ReferenceEquals(helper.Attachment, attachment)
+                    || helper.NewActivities is not { } activities) continue;
+                await MailTreasureAwardAsync(helper, TreasureAssistMail, assistAward, runtime: null);
+            }
+            finally { helper.ActivityGate.Release(); }
+        }
+    }
+
+    /// <summary>
+    /// Mail one dig kill award with its configured template; a supplied runtime (the finder's cleared cursor) commits in
+    /// the same transaction as the letter. Called with the recipient's ActivityGate held.
+    /// </summary>
+    private async Task<int> MailTreasureAwardAsync(GameSession session, int template, long awardGroup,
+        ActivityRuntimeState? runtime)
+    {
+        long roleId = session.Role?.Id ?? 0;
+        MailService.Attachment[] attachments;
         try
         {
-            if (!ReferenceEquals(owner.Role, role) || !ReferenceEquals(owner.Attachment, attachment)) return;
-            var cursor = owner.ActivityRuntime.AdventureTreasure;
-            if (cursor.PendingMonsterUid != dead.Uid || cursor.PendingMonsterAward <= 0) return;
-            var runtime = CloneRuntime(owner);
-            runtime.AdventureTreasure = new AdventureTreasureCursor { GroupId = cursor.GroupId };
-            await CommitAdventureAsync(owner, owner.NewActivities!.Clone(), awardIds: [cursor.PendingMonsterAward], runtime: runtime);
+            var grants = _awards.Resolve(session, awardGroup, Playbook(session)).Grants.ToArray();
+            if (grants.Length == 0 || grants.Any(g => g.ExpireTimeStamp != 0)) return ErrorCodes.RewardMissing;
+            attachments = [.. grants.GroupBy(g => (g.Entry, g.BindType))
+                .Select(g => new MailService.Attachment(g.Key.Entry, checked(g.Sum(i => i.Count)), g.Key.BindType))];
         }
-        finally { owner.ActivityGate.Release(); }
+        catch (AwardResolutionException) { return ErrorCodes.RewardMissing; }
+        byte[]? runtimeBytes = runtime == null ? null : System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(runtime);
+        try
+        {
+            await _mail.DeliverActivityBatchAsync(session, [new MailService.ActivityTemplateDelivery(template, attachments)], tx =>
+            {
+                if (session.Role?.Id != roleId)
+                    throw new OperationCanceledException("Role changed before the treasure award mail committed.");
+                if (runtimeBytes != null) tx.RoleBlob(roleId, "activity_runtime", runtimeBytes);
+                var intent = new EscrowEconomyIntent("activity/adventure/treasure-kill-mail", session.Account ?? "", roleId,
+                    transferReason: EconomyReason.MailDelivery);
+                foreach (var group in attachments.GroupBy(a => a.Entry))
+                    intent.Source(AdventureAsset(group.Key), group.Sum(a => (long)a.Count), EconomyReason.ActivityReward);
+                tx.WithEscrowEconomy(intent.Evidence(new { Role = roleId, Template = template, Award = awardGroup, attachments }));
+            }, committed: () => { if (runtime != null) session.ActivityRuntime = runtime; });
+            return 0;
+        }
+        catch (Exception e) when (e is InvalidOperationException or OperationCanceledException)
+        {
+            LogTreasureMailFailed(_log, e, template, roleId);
+            return ErrorCodes.FeatureUnavailable;
+        }
+    }
+
+    /// <summary>Server-wide 1022 marquee, parameters encoded as MvpService does (inferred).</summary>
+    private async Task AnnounceTreasureBossAsync(GameSession finder)
+    {
+        if (_data.Row("ChatConfig", TreasureBossChat) == null || finder.Role == null) return;
+        var ntf = new SystemBoardCastMsgNtf { Source = MsgSource.System, ChatId = TreasureBossChat };
+        ntf.ParamList[1] = new ChatParameter { Params = { finder.Role.Name }, Type = ChatParamType.ChatParamString };
+        ntf.ParamList[2] = new ChatParameter { Params = { _data.MapName(finder.SceneEntry) }, Type = ChatParamType.ChatParamString };
+        await RoleFanout.EachAsync(_sessions.All().Where(p => p.Role != null), p => p.SendGameAsync(SystemBroadcast, ntf));
     }
 
     private async Task OnTreasureSceneLoadedAsync(GameSession session)
@@ -274,6 +408,8 @@ public sealed partial class NewActivityService
             if (at == null) return;
             var monster = await _scene.SpawnTreasureMonsterAsync(session, cursor.PendingMonsterId, at.Value);
             if (monster == null) return;
+            if (TreasureMonsterReward(cursor.PendingMonsterAward) is { } reward && new Data.Config.TreasureHuntMonsterRewardConfig(reward).AssistAwardId > 0)
+                TrackTreasureHelpers(monster.Uid);
             var runtime = CloneRuntime(session);
             runtime.AdventureTreasure.PendingMonsterUid = monster.Uid;
             int result = await CommitAdventureAsync(session, session.NewActivities!.Clone(), runtime: runtime);

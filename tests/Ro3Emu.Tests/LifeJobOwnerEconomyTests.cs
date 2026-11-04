@@ -198,7 +198,7 @@ public sealed class LifeJobOwnerEconomyTests : IAsyncLifetime
         await alice.SendGameAsync(CharacterService.ItemUse, new ItemUseReq { ItemGuid = guid, ItemCount = 1 });
         Assert.Equal(0, (await Next(alice, CharacterService.ItemUse, ItemUseResp.Parser)).Result);
         Assert.Equal(1500, session.Restrictions!.RestrictCount[LifeJobService.VigorId].Count);
-        Assert.Equal(4, session.Restrictions.RestrictCount[LifeJobService.VigorUsesId].Count);
+        Assert.Equal(5, session.Restrictions.RestrictCount[LifeJobService.VigorUsesId].Count);
         Assert.DoesNotContain(session.Items, i => i.Guid == guid);
         var receipt = Receipt("cd13c/life-vigor-item");
         Assert.StartsWith($"cd13c/life-vigor-item/{role}/", receipt.Source);
@@ -330,7 +330,7 @@ public sealed class LifeJobOwnerEconomyTests : IAsyncLifetime
         Assert.Equal(0, forged.Result);
         Assert.Equal(0, (await potionReply!.WaitAsync(TimeSpan.FromSeconds(10))).Result);
         Assert.Equal(1480, session.Restrictions!.RestrictCount[LifeJobService.VigorId].Count);
-        Assert.Equal(4, session.Restrictions.RestrictCount[LifeJobService.VigorUsesId].Count);
+        Assert.Equal(5, session.Restrictions.RestrictCount[LifeJobService.VigorUsesId].Count);
         Assert.Equal(0, session.LifeRuntime.EnergySpent);
         Assert.Equal(DateOnly.FromDateTime(beforeCutoff.AddMinutes(2).LocalDateTime.AddHours(-5)).DayNumber,
             session.LifeRuntime.EnergyDay);

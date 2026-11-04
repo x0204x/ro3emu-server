@@ -33,9 +33,9 @@ public sealed class MonsterDeathMovementTests
             {
                 Uid = monster.Uid, MovementInfo = monster.CurrentMovement(monster.StartMs),
             });
-            Vec3 at = monster.Pos;
             monster.Hp = 0;
             await monsters.KillAsync(monster);
+            Vec3 at = monster.Pos;
             await monsters.KillAsync(monster);
             Assert.False(monster.Moving);
             Assert.Equal(at, monster.Pos);

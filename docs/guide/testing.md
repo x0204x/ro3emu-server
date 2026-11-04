@@ -52,7 +52,8 @@ derive one class per data set (see `GuildHuntingHost`, `MailTestsHost`, `Auction
 What it holds today: the town map 10111 and the guild home 4000101 with their scene editor points; the starter kit,
 the currencies 1, 2, 102 and the virtual EXP items 100/101; bag capacities and a three-level EXP curve; the mail
 templates of mail, market, auction and Guild Hunt; one auction lot item with its `AuctionConfig` row; the guild icons;
-the Hunting Challenge schedule, boss, rewards and award groups; the six denomination tables the economy catalogue reads.
+the Hunting Challenge schedule, boss, rewards and award groups; the six denomination tables the economy catalogue reads;
+one shop (class 900) with a single-item and a bundle commodity.
 
 ## Checking what CI runs
 
